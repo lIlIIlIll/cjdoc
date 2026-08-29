@@ -11,6 +11,52 @@ html_validator="${repo_root}/scripts/validate_html_site.py"
 search_schema="${repo_root}/docs/schema/search-index.schema.json"
 cfg_matrix_schema="${repo_root}/docs/schema/cfg-matrix.schema.json"
 
+if [[ -n "${CJDOC_PYTHON:-}" ]]; then
+    python_cmd="${CJDOC_PYTHON}"
+elif command -v python3.12 >/dev/null 2>&1; then
+    python_cmd=python3.12
+elif command -v python3 >/dev/null 2>&1; then
+    python_cmd=python3
+elif command -v python >/dev/null 2>&1; then
+    python_cmd=python
+else
+    echo "error: Python 3 is required" >&2
+    exit 2
+fi
+
+if command -v rp-rg >/dev/null 2>&1; then
+    rg_cmd=rp-rg
+elif command -v rg >/dev/null 2>&1; then
+    rg_cmd=rg
+else
+    echo "error: ripgrep is required" >&2
+    exit 2
+fi
+
+cjdoc_rg() {
+    if [[ "${rg_cmd}" == "rp-rg" ]]; then
+        "${rg_cmd}" "$@"
+    else
+        LD_LIBRARY_PATH= DYLD_LIBRARY_PATH= "${rg_cmd}" "$@"
+    fi
+}
+
+validate_schema() {
+    "${python_cmd}" "${schema_validator}" "$@"
+}
+
+validate_html() {
+    "${python_cmd}" "${html_validator}" "$@"
+}
+
+assert_no_host_paths() {
+    local path="$1"
+    if cjdoc_rg -n '(/home/|/tmp/|/Users/|(^|["[:space:](])[A-Za-z]:[\\/])' "${path}"; then
+        echo "absolute host path leaked into ${path}" >&2
+        exit 1
+    fi
+}
+
 "${env_runner}" --cwd "${repo_root}" cjpm clean
 "${env_runner}" --cwd "${repo_root}" cjpm build
 if [[ ! -x "${binary}" && -x "${binary}.exe" ]]; then
@@ -38,7 +84,7 @@ run_golden() {
         --project "${project}" --format json \
         --output "${check_dir}/${name}/second/docs.json" "$@"
     jq -e '.schemaVersion == "cjdoc.doc-ir/4"' "${check_dir}/${name}/first/docs.json" >/dev/null
-    "${schema_validator}" "${schema}" "${check_dir}/${name}/first/docs.json"
+    validate_schema "${schema}" "${check_dir}/${name}/first/docs.json"
     jq -e '([.symbols[].id] as $ids | all(.symbols[]; .ownerId as $owner | ($owner == null or ($ids | index($owner) != null))))' \
         "${check_dir}/${name}/first/docs.json" >/dev/null
     jq -e '([.project.modules[].id] as $ids | all(.project.modules[]; all(.dependencyIds[]; . as $dependency | ($ids | index($dependency) != null))))' \
@@ -47,10 +93,7 @@ run_golden() {
         "${check_dir}/${name}/first/docs.json" >/dev/null
     cmp "${expected}" "${check_dir}/${name}/first/docs.json"
     cmp "${check_dir}/${name}/first/docs.json" "${check_dir}/${name}/second/docs.json"
-    if rp-rg -n '/home/|/tmp/' "${check_dir}/${name}/first/docs.json"; then
-        echo "absolute path leaked into ${name} docs.json" >&2
-        exit 1
-    fi
+    assert_no_host_paths "${check_dir}/${name}/first/docs.json"
 }
 
 run_markdown_golden() {
@@ -67,10 +110,7 @@ run_markdown_golden() {
         --output "${check_dir}/${name}/second/docs.md" "$@"
     cmp "${expected}" "${check_dir}/${name}/first/docs.md"
     cmp "${check_dir}/${name}/first/docs.md" "${check_dir}/${name}/second/docs.md"
-    if rp-rg -n '/home/|/tmp/' "${check_dir}/${name}/first/docs.md"; then
-        echo "absolute path leaked into ${name} docs.md" >&2
-        exit 1
-    fi
+    assert_no_host_paths "${check_dir}/${name}/first/docs.md"
 }
 
 run_golden basic "${repo_root}/tests/fixtures/projects/basic" \
@@ -112,11 +152,8 @@ mkdir -p "${check_dir}/cfg_matrix"
 cmp "${repo_root}/tests/fixtures/golden/conditional.matrix.expected.json" \
     "${check_dir}/cfg_matrix/first.json"
 cmp "${check_dir}/cfg_matrix/first.json" "${check_dir}/cfg_matrix/second.json"
-"${schema_validator}" "${cfg_matrix_schema}" "${check_dir}/cfg_matrix/first.json"
-if rp-rg -q '/home/|/tmp/' "${check_dir}/cfg_matrix/first.json"; then
-    echo "absolute path leaked into cfg matrix" >&2
-    exit 1
-fi
+validate_schema "${cfg_matrix_schema}" "${check_dir}/cfg_matrix/first.json"
+assert_no_host_paths "${check_dir}/cfg_matrix/first.json"
 "${env_runner}" --cwd "${repo_root}" "${binary}" \
     --project "${repo_root}/tests/fixtures/projects/conditional" --format json \
     --cfg-matrix-profile linux:os=Linux,arch=x86_64 \
@@ -140,7 +177,7 @@ test "${cfg_matrix_lint_code}" -eq 1
 jq -e '(.diagnostics | length) > 0 and
     all(.diagnostics[]; (.message | startswith("[cfg profile")))' \
     "${check_dir}/cfg_matrix/diagnostics.json" >/dev/null
-"${schema_validator}" "${cfg_matrix_schema}" "${check_dir}/cfg_matrix/lint.json"
+validate_schema "${cfg_matrix_schema}" "${check_dir}/cfg_matrix/lint.json"
 run_golden path_dependencies "${repo_root}/tests/fixtures/projects/path_dependencies" \
     "${repo_root}/tests/fixtures/golden/path_dependencies.expected.json" --include-path-dependencies
 run_golden override "${repo_root}/tests/fixtures/projects/override" \
@@ -151,7 +188,7 @@ mkdir -p "${check_dir}/parallel"
     --project "${repo_root}/tests/fixtures/projects/basic" --format json \
     --lint-missing-params --jobs 4 --output "${check_dir}/parallel/basic.json"
 cmp "${repo_root}/tests/fixtures/golden/basic.expected.json" "${check_dir}/parallel/basic.json"
-"${schema_validator}" "${schema}" "${check_dir}/parallel/basic.json"
+validate_schema "${schema}" "${check_dir}/parallel/basic.json"
 
 mkdir -p "${check_dir}/cli"
 "${env_runner}" --cwd "${repo_root}" "${binary}" \
@@ -209,14 +246,11 @@ jq -e '(.symbols|length == 1) and ([.diagnostics[].code] == ["CJDOC1015", "CJDOC
     --dependency-source "offline_alpha=${repo_root}/tests/fixtures/projects/path_dependencies/deps/alpha" \
     --dependency-source "offline_beta=${repo_root}/tests/fixtures/projects/path_dependencies/deps/beta" \
     --output "${check_dir}/offline_dependency_sources.json"
-"${schema_validator}" "${schema}" "${check_dir}/offline_dependency_sources.json"
+validate_schema "${schema}" "${check_dir}/offline_dependency_sources.json"
 jq -e '([.project.modules[].role] | index("externalDependency") != null) and
     ([.symbols[].documentation.see[]?.state] | index("resolved") != null)' \
     "${check_dir}/offline_dependency_sources.json" >/dev/null
-if rp-rg -q '/home/|/tmp/' "${check_dir}/offline_dependency_sources.json"; then
-    echo "absolute dependency source path leaked into docs.json" >&2
-    exit 1
-fi
+assert_no_host_paths "${check_dir}/offline_dependency_sources.json"
 
 run_markdown_golden markdown_basic "${repo_root}/tests/fixtures/projects/basic" \
     "${repo_root}/tests/fixtures/golden/basic.expected.md" --lint-missing-params
@@ -241,8 +275,8 @@ run_html_golden() {
         --project "${project}" --format html --output "${check_dir}/${name}/second" "$@"
     diff -ru "${expected}" "${check_dir}/${name}/first"
     diff -ru "${check_dir}/${name}/first" "${check_dir}/${name}/second"
-    "${html_validator}" "${check_dir}/${name}/first"
-    "${schema_validator}" "${search_schema}" "${check_dir}/${name}/first/search-index.json"
+    validate_html "${check_dir}/${name}/first"
+    validate_schema "${search_schema}" "${check_dir}/${name}/first/search-index.json"
 }
 
 run_html_golden html_functions "${repo_root}/tests/fixtures/projects/functions" \
@@ -252,18 +286,18 @@ run_html_golden html_functions "${repo_root}/tests/fixtures/projects/functions" 
     --project "${repo_root}/tests/fixtures/projects/functions" --format html \
     --output "${check_dir}/html_source_links" \
     --source-url-template 'https://example.test/repo/blob/main/{path}#L{line}C{column}'
-"${html_validator}" "${check_dir}/html_source_links"
-rp-rg -q 'class="source-link" href="https://example.test/repo/blob/main/src/fixture.cj#L[0-9]+C[0-9]+"' \
+validate_html "${check_dir}/html_source_links"
+cjdoc_rg -q 'class="source-link" href="https://example.test/repo/blob/main/src/fixture.cj#L[0-9]+C[0-9]+"' \
     "${check_dir}/html_source_links/packages/package-functions_fixture.html"
 
 "${env_runner}" --cwd "${repo_root}" "${binary}" \
     --project "${repo_root}/tests/fixtures/projects/path_dependencies" --format html \
     --include-path-dependencies --output "${check_dir}/html_path_dependencies"
-"${html_validator}" "${check_dir}/html_path_dependencies"
+validate_html "${check_dir}/html_path_dependencies"
 test -f "${check_dir}/html_path_dependencies/packages/package-path_dep_alpha.html"
 test -f "${check_dir}/html_path_dependencies/packages/package-path_dep_beta.html"
-rp-rg -q '<h2>Modules</h2>' "${check_dir}/html_path_dependencies/index.html"
-rp-rg -q 'href="#module-cjdoc_3amodule_3av1_3apath_3apath_dep_beta"' \
+cjdoc_rg -q '<h2>Modules</h2>' "${check_dir}/html_path_dependencies/index.html"
+cjdoc_rg -q 'href="#module-cjdoc_3amodule_3av1_3apath_3apath_dep_beta"' \
     "${check_dir}/html_path_dependencies/index.html"
 
 "${env_runner}" --cwd "${repo_root}" "${binary}" \
@@ -271,10 +305,10 @@ rp-rg -q 'href="#module-cjdoc_3amodule_3av1_3apath_3apath_dep_beta"' \
     --include-path-dependencies --output "${check_dir}/html_dependency_source_links" \
     --dependency-source-url 'path_dep_alpha=https://example.test/alpha/blob/{revision}/{path}#L{line}C{column}' \
     --dependency-revision 'path_dep_alpha=release/1.0'
-"${html_validator}" "${check_dir}/html_dependency_source_links"
-rp-rg -q 'class="source-link" href="https://example.test/alpha/blob/release/1.0/src/alpha.cj#L[0-9]+C[0-9]+"' \
+validate_html "${check_dir}/html_dependency_source_links"
+cjdoc_rg -q 'class="source-link" href="https://example.test/alpha/blob/release/1.0/src/alpha.cj#L[0-9]+C[0-9]+"' \
     "${check_dir}/html_dependency_source_links/packages/package-path_dep_alpha.html"
-if rp-rg -q 'class="source-link"' \
+if cjdoc_rg -q 'class="source-link"' \
     "${check_dir}/html_dependency_source_links/packages/package-path_dep_beta.html"; then
     echo "unconfigured dependency received a guessed source link" >&2
     exit 1
@@ -293,30 +327,30 @@ mkdir -p "${check_dir}/incremental"
 "${env_runner}" --cwd "${repo_root}" "${binary}" \
     --project "${repo_root}/tests/fixtures/projects/basic" --format json \
     --lint-missing-params --output "${incremental_json}"
-json_inode_before="$(python3 "${repo_root}/scripts/portable_probe.py" inode "${incremental_json}")"
+json_inode_before="$("${python_cmd}" "${repo_root}/scripts/portable_probe.py" inode "${incremental_json}")"
 "${env_runner}" --cwd "${repo_root}" "${binary}" \
     --project "${repo_root}/tests/fixtures/projects/basic" --format json \
     --lint-missing-params --output "${incremental_json}"
-json_inode_after="$(python3 "${repo_root}/scripts/portable_probe.py" inode "${incremental_json}")"
+json_inode_after="$("${python_cmd}" "${repo_root}/scripts/portable_probe.py" inode "${incremental_json}")"
 test "${json_inode_before}" = "${json_inode_after}"
 
 incremental_html="${check_dir}/incremental/html"
 "${env_runner}" --cwd "${repo_root}" "${binary}" \
     --project "${repo_root}/tests/fixtures/projects/functions" --format html \
     --lint-missing-params --output "${incremental_html}"
-html_inode_before="$(python3 "${repo_root}/scripts/portable_probe.py" inode "${incremental_html}/index.html")"
+html_inode_before="$("${python_cmd}" "${repo_root}/scripts/portable_probe.py" inode "${incremental_html}/index.html")"
 "${env_runner}" --cwd "${repo_root}" "${binary}" \
     --project "${repo_root}/tests/fixtures/projects/functions" --format html \
     --lint-missing-params --output "${incremental_html}"
-html_inode_after="$(python3 "${repo_root}/scripts/portable_probe.py" inode "${incremental_html}/index.html")"
+html_inode_after="$("${python_cmd}" "${repo_root}/scripts/portable_probe.py" inode "${incremental_html}/index.html")"
 test "${html_inode_before}" = "${html_inode_after}"
 
 mkdir -p "${check_dir}/html_security"
 "${env_runner}" --cwd "${repo_root}" "${binary}" \
     --project "${repo_root}/tests/fixtures/projects/html_security" --format html \
     --output "${check_dir}/html_security/site"
-"${html_validator}" "${check_dir}/html_security/site"
-if rp-rg -n '<script>alert|href="javascript:|src="javascript:|<[^>]+[[:space:]]onerror=' \
+validate_html "${check_dir}/html_security/site"
+if cjdoc_rg -n '<script>alert|href="javascript:|src="javascript:|<[^>]+[[:space:]]onerror=' \
     "${check_dir}/html_security/site" -g '*.html'; then
     echo "unsafe documentation reached generated HTML" >&2
     exit 1
@@ -337,7 +371,7 @@ cp "${repo_root}/tests/fixtures/projects/functions/src/fixture.cj" "${default_ht
 "${env_runner}" --cwd "${repo_root}" "${binary}" --project "${default_html_project}" --format html
 diff -ru "${repo_root}/tests/fixtures/golden/html_functions" \
     "${default_html_project}/target/doc/html"
-"${html_validator}" "${default_html_project}/target/doc/html"
+validate_html "${default_html_project}/target/doc/html"
 
 mkdir -p "${check_dir}/recovery"
 set +e
@@ -350,7 +384,7 @@ test "${recovery_code}" -eq 1
 cmp "${repo_root}/tests/fixtures/golden/recovery.expected.json" "${check_dir}/recovery/docs.json"
 jq -e '(.diagnostics | map(.code) | index("CJDOC1011")) != null and (.symbols | length == 1)' \
     "${check_dir}/recovery/docs.json" >/dev/null
-"${schema_validator}" "${schema}" "${check_dir}/recovery/docs.json"
+validate_schema "${schema}" "${check_dir}/recovery/docs.json"
 
 mkdir -p "${check_dir}/deep_binary"
 set +e
@@ -364,7 +398,7 @@ cmp "${repo_root}/tests/fixtures/golden/deep_binary.expected.json" \
     "${check_dir}/deep_binary/docs.json"
 jq -e '(.diagnostics | map(.code) | index("CJDOC1012")) != null and (.symbols | length == 0)' \
     "${check_dir}/deep_binary/docs.json" >/dev/null
-"${schema_validator}" "${schema}" "${check_dir}/deep_binary/docs.json"
+validate_schema "${schema}" "${check_dir}/deep_binary/docs.json"
 mkdir -p "${check_dir}/deep_binary_parallel"
 set +e
 "${env_runner}" --cwd "${repo_root}" "${binary}" \
@@ -377,7 +411,7 @@ cmp "${check_dir}/deep_binary/docs.json" "${check_dir}/deep_binary_parallel/docs
 
 jq '.schemaVersion = "invalid"' "${check_dir}/recovery/docs.json" >"${check_dir}/invalid-schema.json"
 set +e
-"${schema_validator}" "${schema}" "${check_dir}/invalid-schema.json" >/dev/null 2>&1
+validate_schema "${schema}" "${check_dir}/invalid-schema.json" >/dev/null 2>&1
 invalid_schema_code=$?
 set -e
 test "${invalid_schema_code}" -eq 1
@@ -399,10 +433,11 @@ for valid_project in basic functions types extend_visibility lint source_edges u
 done
 
 provider_plugin="${repo_root}/tests/fixtures/projects/provider_plugin"
-test "$("${env_runner}" --cwd "${provider_plugin}" cjpm run)" = $'provider plugin ok\n\ncjpm run finished'
+provider_output="$("${env_runner}" --cwd "${provider_plugin}" cjpm run | tr -d '\r')"
+test "${provider_output}" = $'provider plugin ok\n\ncjpm run finished'
 
 test "$("${repo_root}/cjdoc" --version)" = "cjdoc 0.3.0"
-"${repo_root}/cjdoc" --help | rp-rg -q '^usage: cjdoc '
+"${repo_root}/cjdoc" --help | cjdoc_rg -q '^usage: cjdoc '
 set +e
 "${repo_root}/cjdoc" --format pdf >/dev/null
 format_code=$?

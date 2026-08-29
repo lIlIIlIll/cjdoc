@@ -1,5 +1,7 @@
 # cjdoc
 
+[![CI](https://github.com/lIlIIlIll/cjdoc/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/lIlIIlIll/cjdoc/actions/workflows/ci.yml)
+
 `cjdoc` 是使用仓颉实现的仓颉 API 文档生成器。当前版本以 `std.ast` 作为源码真值，生成稳定的 Doc IR v4，并从同一份 Doc IR 输出 JSON、Markdown 或静态 HTML。
 
 当前版本不依赖 `stdx.chir`。语义层通过 `SemanticProvider` 隔离，默认实现是保守的 `AstSemanticProvider`。类型 spelling 可以输出，但不会被伪装成已经解析的 canonical type。
@@ -262,9 +264,21 @@ Provider 必须声明能力：source binding、owner、visibility、canonical ty
 - manifest adapter 只读取 cjdoc 需要的 cjpm 字段，不是通用 TOML parser。
 - cache discovery 递归读取已有的 `cjpm.lock` 和 cache，不访问 registry、registry index 或 git 网络。
 - cfg profile 必须显式提供。cjdoc 不读取或推断编译器内建 target profile。
-- 当前只在 Linux x86_64 daily SDK 上运行完整 release gate；Windows、macOS 与其他 target 尚未实测。
+- 本地完整 release gate 已在 Linux x86_64 daily SDK 上运行；GitHub-hosted Windows/macOS 结果以 CI matrix 为准，其他 target 尚未实测。
 
 完整能力证据位于 [`docs/research`](docs/research)，实现结论见 [`IMPLEMENTATION_REPORT.md`](IMPLEMENTATION_REPORT.md)。
+
+## 跨平台 CI
+
+GitHub Actions 使用标准 GitHub-hosted runners 执行完整 acceptance gate：
+
+- `ubuntu-22.04`：Linux x64；
+- `windows-2025`：Windows x64；
+- `macos-15`：macOS ARM64。
+
+三项任务固定使用仓颉官网公开的 Cangjie 1.1.3 SDK，并在解压前验证官网公布的 SHA256。SDK 按平台和摘要缓存；更换 SDK 时必须同时更新 URL、SHA256 和 cache key。Linux runner 执行性能阈值，Windows/macOS runner 仍运行相同的确定性和性能负载，但只记录共享 runner 上的性能结果。
+
+本地 daily SDK 仍用于 API reality check。CI 使用公开 STS SDK，因此不需要把内部 daily 下载凭据保存到 GitHub。
 
 ## 验证
 
@@ -289,4 +303,8 @@ cjdoc acceptance checks passed
 
 完整 gate 需要 `jq`、Python 3.12、`jsonschema` 和 `referencing`。它会验证 Doc IR、cfg matrix 和 search-index schema、传递 dependency 图、HTML links/anchors/CSP、安全渲染、JSON/Markdown/HTML golden、stdout、JSON/SARIF diagnostics、安装产物、冷/热 cache、峰值内存和真实 parser recovery。首次构建还需要取得 `cjpm.lock` 固定的 Markdown commit，已有 cjpm cache 时可以离线构建。
 
-`scripts/check.sh` 在当前开发机优先使用 Codex 的仓颉环境 helper。其他主机只要已经把 `cjc`、`cjpm` 和 SDK runtime 放入环境，就会直接执行命令。也可以用 `CJDOC_CANGJIE_RUNNER=/path/to/runner` 指定支持 `--cwd <dir> <command...>` 的 runner。Windows 没有 Python `resource` 模块，因此该主机上的 gate 会明确报告 peak RSS unsupported；Linux/macOS 仍执行峰值内存阈值。
+`scripts/check.sh` 在当前开发机优先使用 Codex 的仓颉环境 helper。其他主机只要已经把 `cjc`、`cjpm` 和 SDK runtime 放入环境，就会直接执行命令。设置 `CJDOC_DISABLE_CODEX_RUNNER=1` 可以强制使用调用者已准备的 SDK 环境；也可以用 `CJDOC_CANGJIE_RUNNER=/path/to/runner` 指定支持 `--cwd <dir> <command...>` 的 runner。Windows 没有 Python `resource` 模块，因此该主机上的 gate 会明确报告 peak RSS unsupported；Linux/macOS 仍执行峰值内存阈值。
+
+## License
+
+[MIT](LICENSE)

@@ -4,11 +4,14 @@
 *.cjo
 *.chir
 *.chirtxt
+*.pyc
+**/__pycache__/
 /probes/ast_lexer/probe_ast_lexer
 /probes/ast_parser/probe_ast_parser
 /probes/chir_loader/local_chir_loader
 
 # The user's global Git ignore excludes JSON; these are project sources.
+!/requirements-ci.txt
 !/docs/schema/*.json
 !/tests/fixtures/golden/*.json
 !/tests/fixtures/golden/**/*.json

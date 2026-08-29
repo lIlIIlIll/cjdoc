@@ -5,7 +5,7 @@ set -euo pipefail
 # host. Release/CI hosts can call this script unchanged with cjc/cjpm already
 # available in their environment.
 codex_runner=/home/elliot/.codex/scripts/codex_cangjie_env
-if [[ -x "${codex_runner}" ]]; then
+if [[ "${CJDOC_DISABLE_CODEX_RUNNER:-0}" != "1" && -x "${codex_runner}" ]]; then
     exec "${codex_runner}" "$@"
 fi
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3
 """Validate cjdoc JSON artifacts against a selected Draft 2020-12 schema."""
 
 import json
