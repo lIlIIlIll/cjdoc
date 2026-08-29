@@ -1,0 +1,9 @@
+[package]
+  cjc-version = "1.1.0"
+  name = "basic"
+  organization = ""
+  description = "cjdoc golden fixture"
+  version = "0.1.0"
+  output-type = "static"
+
+[dependencies]

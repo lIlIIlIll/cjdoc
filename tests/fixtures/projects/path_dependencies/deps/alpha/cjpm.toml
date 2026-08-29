@@ -1,0 +1,8 @@
+[package]
+  cjc-version = "1.1.0"
+  name = "path_dep_alpha"
+  version = "0.1.0"
+  output-type = "static"
+
+[dependencies]
+  path_dep_beta = { path = "../beta", output-type = "static" }

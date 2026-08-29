@@ -1,0 +1,7 @@
+format = "markdown"
+jobs = 3
+no-cache = true
+lint-missing-symbols = true
+coverage = true
+deny-warnings = true
+

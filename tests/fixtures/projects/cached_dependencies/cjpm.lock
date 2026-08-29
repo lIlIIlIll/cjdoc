@@ -1,0 +1,10 @@
+version = 0
+
+[requires]
+  cached_dep = {
+    git = "https://example.invalid/cached_dep.git",
+    commitId = "abc123",
+    output-type = "static"
+  }
+  absent_dep = { version = "1.2.3" }
+

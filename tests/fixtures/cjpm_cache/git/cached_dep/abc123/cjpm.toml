@@ -1,0 +1,9 @@
+[package]
+  cjc-version = "1.1.0"
+  name = "cached_dep"
+  organization = ""
+  version = "0.1.0"
+output-type = "static"
+
+[dependencies]
+transitive_dep = { git = "https://example.invalid/transitive_dep.git", commitId = "def456", output-type = "static" }

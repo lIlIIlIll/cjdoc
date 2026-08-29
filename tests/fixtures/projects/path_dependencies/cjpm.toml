@@ -1,0 +1,9 @@
+[package]
+  cjc-version = "1.1.0"
+  name = "path_dependencies_fixture"
+  version = "0.1.0"
+  output-type = "static"
+
+[dependencies]
+  "path_dep_alpha" = { path = 'deps/alpha', output-type = "static" }
+  path_dep_beta = { path = "deps/beta", output-type = "static" }

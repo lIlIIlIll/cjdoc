@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cjdoc.local/schema/doc-ir.schema.json",
+  "title": "cjdoc Doc IR v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generator", "project", "configuration", "semanticBinding", "packages", "symbols", "unsupportedDeclarations", "diagnostics"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.doc-ir/4"},
+    "generator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"const": "cjdoc"},
+        "version": {"type": "string"}
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "modules"],
+      "properties": {
+        "name": {"type": "string"},
+        "modules": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/module"}}
+      }
+    },
+    "configuration": {"$ref": "#/$defs/configuration"},
+    "semanticBinding": {"$ref": "#/$defs/semanticBinding"},
+    "packages": {"type": "array", "items": {"$ref": "#/$defs/package"}},
+    "symbols": {"type": "array", "items": {"$ref": "#/$defs/symbol"}},
+    "unsupportedDeclarations": {"type": "array", "items": {"$ref": "#/$defs/unsupportedDeclaration"}},
+    "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}}
+  },
+  "$defs": {
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cfg"],
+      "properties": {
+        "cfg": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "value"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "value": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceBinding", "ownership", "visibility", "canonicalTypes", "canonicalSignatures", "symbolRelationships"],
+      "properties": {
+        "sourceBinding": {"type": "boolean"},
+        "ownership": {"type": "boolean"},
+        "visibility": {"type": "boolean"},
+        "canonicalTypes": {"type": "boolean"},
+        "canonicalSignatures": {"type": "boolean"},
+        "symbolRelationships": {"type": "boolean"}
+      }
+    },
+    "semanticBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "capabilities", "matched", "missing", "ambiguous", "extraneous", "contractViolations"],
+      "properties": {
+        "provider": {"type": "string"},
+        "capabilities": {"$ref": "#/$defs/capabilities"},
+        "matched": {"type": "integer", "minimum": 0},
+        "missing": {"type": "integer", "minimum": 0},
+        "ambiguous": {"type": "integer", "minimum": 0},
+        "extraneous": {"type": "integer", "minimum": 0},
+        "contractViolations": {"type": "integer", "minimum": 0}
+      }
+    },
+    "relativePath": {"type": "string", "pattern": "^(?!/)(?![A-Za-z]:)"},
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "macroSymbolId"],
+      "properties": {
+        "kind": {"enum": ["source", "generated", "unknown"]},
+        "macroSymbolId": {"type": ["string", "null"]}
+      }
+    },
+    "unsupportedDeclaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "reason", "source", "origin"],
+      "properties": {
+        "kind": {"type": "string"},
+        "name": {"type": "string"},
+        "reason": {"type": "string"},
+        "source": {"$ref": "#/$defs/source"},
+        "origin": {"$ref": "#/$defs/origin"}
+      }
+    },
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line", "column"],
+      "properties": {
+        "line": {"type": "integer", "minimum": 1},
+        "column": {"type": "integer", "minimum": 1}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "start", "end"],
+      "properties": {
+        "path": {"$ref": "#/$defs/relativePath"},
+        "start": {"$ref": "#/$defs/position"},
+        "end": {"$ref": "#/$defs/position"}
+      }
+    },
+    "typeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["display", "canonical", "state"],
+      "properties": {
+        "display": {"type": "string"},
+        "canonical": {"type": ["string", "null"]},
+        "state": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]}
+      }
+    },
+    "tag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "subject", "description"],
+      "properties": {
+        "name": {"type": "string"},
+        "subject": {"type": "string"},
+        "description": {"type": "string"}
+      }
+    },
+    "seeTag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "subject", "description", "state", "targetSymbolId"],
+      "properties": {
+        "name": {"const": "see"},
+        "subject": {"type": "string"},
+        "description": {"type": "string"},
+        "state": {"enum": ["resolved", "unresolved", "ambiguous", "broken"]},
+        "targetSymbolId": {"type": ["string", "null"]}
+      }
+    },
+    "comment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw", "summaryMarkdown", "descriptionMarkdown", "params", "returns", "throws", "see", "since", "deprecated", "authors", "version"],
+      "properties": {
+        "raw": {"type": "string"},
+        "summaryMarkdown": {"type": "string"},
+        "descriptionMarkdown": {"type": "string"},
+        "params": {"type": "array", "items": {"$ref": "#/$defs/tag"}},
+        "returns": {"anyOf": [{"$ref": "#/$defs/tag"}, {"type": "null"}]},
+        "throws": {"type": "array", "items": {"$ref": "#/$defs/tag"}},
+        "see": {"type": "array", "items": {"$ref": "#/$defs/seeTag"}},
+        "since": {"type": ["string", "null"]},
+        "deprecated": {"type": ["string", "null"]},
+        "authors": {"type": "array", "items": {"type": "string"}},
+        "version": {"type": ["string", "null"]}
+      }
+    },
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "documentation"],
+      "properties": {
+        "name": {"type": "string"},
+        "type": {"$ref": "#/$defs/typeRef"},
+        "documentation": {"type": ["string", "null"]}
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "target"],
+      "properties": {
+        "kind": {"enum": ["superType", "extensionTarget"]},
+        "target": {"$ref": "#/$defs/typeRef"}
+      }
+    },
+    "symbolRelationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "targetDisplay", "state", "targetSymbolId"],
+      "properties": {
+        "kind": {"enum": ["override"]},
+        "targetDisplay": {"type": "string"},
+        "state": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
+        "targetSymbolId": {"type": ["string", "null"]}
+      }
+    },
+    "semantic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "provider", "canonicalSignature"],
+      "properties": {
+        "state": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
+        "provider": {"type": "string"},
+        "canonicalSignature": {"type": ["string", "null"]}
+      }
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "role", "sourcePrefix", "packageNames", "dependencyIds"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^cjdoc:module:v1:"},
+        "name": {"type": "string"},
+        "role": {"enum": ["root", "workspace", "pathDependency", "externalDependency"]},
+        "sourcePrefix": {"$ref": "#/$defs/relativePath"},
+        "packageNames": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "dependencyIds": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^cjdoc:module:v1:"}}
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "sourceFiles", "symbolIds"],
+      "properties": {
+        "name": {"type": "string"},
+        "sourceFiles": {"type": "array", "items": {"$ref": "#/$defs/relativePath"}},
+        "symbolIds": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "symbol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "name", "qualifiedName", "packageName", "ownerId", "visibility", "genericParameters", "parameters", "returnType", "annotations", "relationships", "symbolRelationships", "documentation", "source", "sourceSignature", "origin", "semantic"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^cjdoc:v1:"},
+        "kind": {"enum": ["class", "struct", "interface", "enum", "enumCase", "extend", "function", "constructor", "property", "variable", "typeAlias"]},
+        "name": {"type": "string"},
+        "qualifiedName": {"type": "string"},
+        "packageName": {"type": "string"},
+        "ownerId": {"type": ["string", "null"]},
+        "visibility": {"enum": ["public", "protected", "internal", "private"]},
+        "genericParameters": {"type": "array", "items": {"type": "string"}},
+        "parameters": {"type": "array", "items": {"$ref": "#/$defs/parameter"}},
+        "returnType": {"anyOf": [{"$ref": "#/$defs/typeRef"}, {"type": "null"}]},
+        "annotations": {"type": "array", "items": {"type": "string"}},
+        "relationships": {"type": "array", "items": {"$ref": "#/$defs/relationship"}},
+        "symbolRelationships": {"type": "array", "items": {"$ref": "#/$defs/symbolRelationship"}},
+        "documentation": {"anyOf": [{"$ref": "#/$defs/comment"}, {"type": "null"}]},
+        "source": {"$ref": "#/$defs/source"},
+        "sourceSignature": {"type": "string"},
+        "origin": {"$ref": "#/$defs/origin"},
+        "semantic": {"$ref": "#/$defs/semantic"}
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "code", "message", "source", "symbolId"],
+      "properties": {
+        "severity": {"enum": ["warning", "error"]},
+        "code": {"type": "string", "pattern": "^CJDOC[0-9]{4}$"},
+        "message": {"type": "string"},
+        "source": {"anyOf": [{"$ref": "#/$defs/source"}, {"type": "null"}]},
+        "symbolId": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

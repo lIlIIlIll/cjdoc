@@ -1,0 +1,16 @@
+[package]
+  cjc-version = "1.1.0"
+  name = "cjdoc_core"
+  organization = ""
+  description = "Reusable source and documentation model for cjdoc"
+  version = "0.3.0"
+  target-dir = ""
+  script-dir = ""
+  output-type = "static"
+  compile-option = ""
+  override-compile-option = ""
+  link-option = ""
+  package-configuration = {}
+
+[dependencies]
+  "markdown" = { git = "https://github.com/lIlIIlIll/markdown.git", commitId = "d73eecee4e19fe56a57cd9f150fe0a62bae405c4", output-type = "static" }

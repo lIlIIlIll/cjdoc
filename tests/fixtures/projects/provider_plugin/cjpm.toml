@@ -1,0 +1,8 @@
+[package]
+  cjc-version = "1.1.0"
+  name = "provider_plugin_fixture"
+  version = "0.1.0"
+  output-type = "executable"
+
+[dependencies]
+  "cjdoc_core" = { path = "../../../../packages/cjdoc_core", output-type = "static" }

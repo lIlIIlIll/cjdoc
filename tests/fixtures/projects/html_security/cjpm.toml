@@ -1,0 +1,9 @@
+[package]
+  cjc-version = "1.1.0"
+  name = "html_security_fixture"
+  organization = ""
+  version = "0.1.0"
+  output-type = "static"
+  src-dir = "src"
+
+[dependencies]

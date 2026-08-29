@@ -1,0 +1,7 @@
+[package]
+cjc-version = "1.1.0"
+name = "deep_binary_fixture"
+version = "0.0.0"
+output-type = "static"
+
+[dependencies]

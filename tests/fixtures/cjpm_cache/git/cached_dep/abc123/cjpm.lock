@@ -1,0 +1,8 @@
+version = 0
+
+[requires]
+  transitive_dep = {
+    git = "https://example.invalid/transitive_dep.git",
+    commitId = "def456",
+    output-type = "static"
+  }

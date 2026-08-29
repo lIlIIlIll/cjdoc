@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cjdoc.local/schema/search-index.schema.json",
+  "title": "cjdoc search index v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "projectName", "symbols"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.search-index/2"},
+    "projectName": {"type": "string"},
+    "symbols": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "name", "qualifiedName", "packageName", "visibility", "summary", "url"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^cjdoc:v1:"},
+          "kind": {"type": "string", "minLength": 1},
+          "name": {"type": "string", "minLength": 1},
+          "qualifiedName": {"type": "string", "minLength": 1},
+          "packageName": {"type": "string", "minLength": 1},
+          "visibility": {"enum": ["public", "protected", "internal", "private"]},
+          "summary": {"type": "string"},
+          "url": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))"}
+        }
+      }
+    }
+  }
+}

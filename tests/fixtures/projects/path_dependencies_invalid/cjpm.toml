@@ -1,0 +1,15 @@
+[package]
+  cjc-version = "1.1.0"
+  name = "path_dependencies_invalid_fixture"
+  version = "0.1.0"
+  output-type = "static"
+
+[dependencies]
+  missing = { path = "missing" }
+  native = { path = "native" }
+  remote = { git = "https://example.invalid/remote.git" }
+  path = "1.2.3"
+  configured_remote = { git = "https://example.invalid/configured.git", package-configuration = { path = "nested-not-a-dependency" } }
+
+[test-dependencies]
+  ignored_test_dependency = { path = "also-missing" }

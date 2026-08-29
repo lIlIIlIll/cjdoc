@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "packages/alpha", # retained member
+    'packages/beta'
+]
+build-members = ["packages/alpha", "packages/beta"]
+test-members = ["packages/alpha", "packages/beta"]
