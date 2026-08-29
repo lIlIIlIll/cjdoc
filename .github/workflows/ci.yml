@@ -40,7 +40,6 @@ jobs:
             enforce_performance: "0"
 
     env:
-      CANGJIE_SDK_DIR: ${{ runner.temp }}/cangjie-sdk-1.1.3
       CJDOC_PYTHON: python
       CJDOC_PERF_ENFORCE_THRESHOLDS: ${{ matrix.enforce_performance }}
       PYTHONUTF8: "1"
@@ -84,7 +83,7 @@ jobs:
         id: sdk-cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: ${{ env.CANGJIE_SDK_DIR }}
+          path: ${{ runner.temp }}/cangjie-sdk-1.1.3
           key: cangjie-sdk-${{ matrix.platform }}-${{ matrix.sdk_sha256 }}-v1
 
       - name: Install checksum-pinned Cangjie SDK
@@ -97,7 +96,7 @@ jobs:
           python scripts/install_cangjie_sdk.py \
             --url "${CANGJIE_SDK_URL}" \
             --sha256 "${CANGJIE_SDK_SHA256}" \
-            --destination "${CANGJIE_SDK_DIR}" \
+            --destination "${RUNNER_TEMP}/cangjie-sdk-1.1.3" \
             --github-output "${GITHUB_OUTPUT}"
 
       - name: Run complete acceptance gate
