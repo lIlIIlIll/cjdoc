@@ -159,7 +159,7 @@ assert_no_host_paths "${check_dir}/cfg_matrix/first.json"
     --cfg-matrix-profile linux:os=Linux,arch=x86_64 \
     --cfg-matrix-profile windows:os=Windows,arch=x86_64 \
     --stdout --diagnostic-output "${check_dir}/cfg_matrix/stdout-diagnostics.txt" \
-    >"${check_dir}/cfg_matrix/stdout.json"
+    | tr -d '\r' >"${check_dir}/cfg_matrix/stdout.json"
 cmp "${check_dir}/cfg_matrix/first.json" "${check_dir}/cfg_matrix/stdout.json"
 test ! -s "${check_dir}/cfg_matrix/stdout-diagnostics.txt"
 
@@ -194,7 +194,7 @@ mkdir -p "${check_dir}/cli"
 "${env_runner}" --cwd "${repo_root}" "${binary}" \
     --project "${repo_root}/tests/fixtures/projects/functions" --format json \
     --lint-missing-params --stdout --diagnostic-output "${check_dir}/cli/diagnostics.txt" \
-    >"${check_dir}/cli/stdout.json"
+    | tr -d '\r' >"${check_dir}/cli/stdout.json"
 cmp "${repo_root}/tests/fixtures/golden/functions.expected.json" "${check_dir}/cli/stdout.json"
 test ! -s "${check_dir}/cli/diagnostics.txt"
 
