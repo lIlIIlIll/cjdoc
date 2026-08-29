@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+# Keep one checked-in CRLF fixture to exercise source-location handling.
+tests/fixtures/projects/source_edges/src/fixture.cj text eol=crlf
