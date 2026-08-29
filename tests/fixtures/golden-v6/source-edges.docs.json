@@ -1,8 +1,8 @@
 {
-  "schemaVersion": "cjdoc.doc-ir/5",
+  "schemaVersion": "cjdoc.doc-ir/6",
   "generator": {
     "name": "cjdoc",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "status": "complete",
   "project": {
@@ -98,6 +98,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": null,
       "source": {
         "path": "src/fixture.cj",
@@ -153,6 +159,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": null,
       "source": {
         "path": "src/fixture.cj",
@@ -206,6 +218,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -280,6 +298,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": null,
       "source": {
         "path": "src/fixture.cj",
@@ -321,6 +345,12 @@
       ],
       "returnType": null,
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -422,6 +452,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {

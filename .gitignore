@@ -12,6 +12,5 @@
 
 # The user's global Git ignore excludes JSON; these are project sources.
 !/AGENTS.md
-!/requirements-ci.txt
 !/docs/schema/*.json
-!/tests/fixtures/golden-v5/*.json
+!/tests/fixtures/golden-v6/*.json

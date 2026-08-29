@@ -7,6 +7,10 @@ private func sortStringList(values: ArrayList<String>): Unit {
     sort(values)
 }
 
+private func optionalString(value: ?String): String {
+    match (value) { case Some(text) => text case None => "" }
+}
+
 private func moduleRoleRank(role: String): Int64 {
     match (role) {
         case "root" => 0
@@ -37,6 +41,26 @@ func sortDocumentationDeterministically(documentation: DocumentationSet): Unit {
         left.packageName < right.packageName ||
             (left.packageName == right.packageName && left.id < right.id)
     }, stable: true)
+    for (symbol in documentation.symbols) {
+        sort(symbol.relationships, lessThan: { left, right =>
+            left.kind < right.kind ||
+                (left.kind == right.kind && left.target.display < right.target.display) ||
+                (left.kind == right.kind && left.target.display == right.target.display &&
+                    left.target.state < right.target.state) ||
+                (left.kind == right.kind && left.target.display == right.target.display &&
+                    left.target.state == right.target.state &&
+                    optionalString(left.target.canonical) < optionalString(right.target.canonical))
+        }, stable: true)
+        sort(symbol.symbolRelationships, lessThan: { left, right =>
+            left.kind < right.kind ||
+                (left.kind == right.kind && left.targetDisplay < right.targetDisplay) ||
+                (left.kind == right.kind && left.targetDisplay == right.targetDisplay &&
+                    left.state < right.state) ||
+                (left.kind == right.kind && left.targetDisplay == right.targetDisplay &&
+                    left.state == right.state &&
+                    optionalString(left.targetSymbolId) < optionalString(right.targetSymbolId))
+        }, stable: true)
+    }
     sort(documentation.unsupportedDeclarations, lessThan: { left, right =>
         left.source.path < right.source.path ||
             (left.source.path == right.source.path && left.source.startLine < right.source.startLine) ||

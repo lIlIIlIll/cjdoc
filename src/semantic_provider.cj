@@ -12,9 +12,10 @@ private func astTypeRef(spelling: String): TypeRef {
 // promoted to canonical/resolved types.
 class AstSemanticProvider <: SemanticProvider {
     public func providerName(): String { "ast" }
+    public func providerVersion(): String { "1" }
 
     public func analyze(source: SourceSnapshot): SemanticResult {
-        let result = SemanticResult(providerName(),
+        let result = SemanticResult(providerName(), providerVersion(),
             SemanticCapabilities(true, true, true, false, false))
         for (declaration in source.declarations) {
             let semantic = SemanticDeclaration(

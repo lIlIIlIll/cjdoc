@@ -9,6 +9,9 @@ import std.process.*
 import std.sort.*
 
 private let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v2"
+private let MAX_SOURCE_FILE_BYTES: Int64 = 32 * 1024 * 1024
+private let MAX_SOURCE_FILES: Int64 = 100000
+private let MAX_SOURCE_DIRECTORY_DEPTH: Int64 = 128
 
 class SourceCacheStats {
     public var hits: Int64 = 0
@@ -509,16 +512,26 @@ private func relativePath(root: String, path: String): String {
     return Path(path).fileName
 }
 
-private func collectSourceFiles(directory: String, result: ArrayList<String>): Unit {
+private func collectSourceFiles(directory: String, result: ArrayList<String>,
+    limit: Int64, depth!: Int64 = 0): Bool {
+    if (depth > MAX_SOURCE_DIRECTORY_DEPTH) { return false }
     let entries = Directory.readFrom(directory)
+    sort(entries, lessThan: { left, right =>
+        left.path.toString() < right.path.toString()
+    }, stable: true)
     for (entry in entries) {
+        if (result.size >= limit) { return false }
         if (entry.isSymbolicLink() || entry.isHidden()) { continue }
         if (entry.isDirectory()) {
-            if (entry.name != "target") { collectSourceFiles(entry.path.toString(), result) }
+            if (entry.name != "target" &&
+                !collectSourceFiles(entry.path.toString(), result, limit, depth: depth + 1)) {
+                return false
+            }
         } else if (entry.isRegular() && entry.path.extensionName == "cj" && !entry.name.endsWith("_test.cj")) {
             result.add(entry.path.toString())
         }
     }
+    true
 }
 
 private class SourceModuleRoot {
@@ -1422,6 +1435,17 @@ private func parseAfterAstPreflight(input: SourceInputFile, fallbackPackageName:
 private func parseSourceInput(input: SourceInputFile, fallbackPackageName: String,
     cacheDirectory: ?String, cacheFingerprint: String,
     astPreflightExecutable: ?String): ParsedSourceFile {
+    try {
+        if (FileInfo(input.actualPath).size > MAX_SOURCE_FILE_BYTES) {
+            let result = ParsedSourceFile(input)
+            result.diagnostics.add(Diagnostic("error", "CJDOC1026",
+                "source file exceeds the 32 MiB safety limit; file skipped",
+                source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
+            return result
+        }
+    } catch (_: Exception) {
+        // The normal read path below reports inaccessible or disappearing files.
+    }
     let source = try {
         normalizeSourceNewlines(String.fromUtf8(File.readFrom(input.actualPath)))
     } catch (_: Exception) {
@@ -1585,10 +1609,14 @@ class AstSourceProvider <: SourceProvider {
         if (hasFatalSourceDiagnostics(sourceSnapshot)) { return sourceSnapshot }
         for (module in moduleRoots) { sourceSnapshot.modules.add(module.documentation) }
         let files = ArrayList<SourceInputFile>()
-        try {
-            for (module in moduleRoots) {
+        var scanLimitReached = false
+        for (module in moduleRoots) {
+            if (files.size >= MAX_SOURCE_FILES) { scanLimitReached = true; break }
+            try {
                 let moduleFiles = ArrayList<String>()
-                collectSourceFiles(Path(module.actualRoot).join("src").toString(), moduleFiles)
+                let complete = collectSourceFiles(Path(module.actualRoot).join("src").toString(),
+                    moduleFiles, MAX_SOURCE_FILES - files.size)
+                if (!complete) { scanLimitReached = true }
                 for (file in moduleFiles) {
                     let moduleRelative = relativePath(module.actualRoot, file)
                     let logicalPath = if (module.logicalPrefix.isEmpty()) {
@@ -1598,11 +1626,17 @@ class AstSourceProvider <: SourceProvider {
                     }
                     files.add(SourceInputFile(file, logicalPath, module.documentation))
                 }
+            } catch (error: Exception) {
+                sourceSnapshot.diagnostics.add(Diagnostic(
+                    if (module.documentation.role == "root") { "error" } else { "warning" },
+                    "CJDOC1027",
+                    "failed to scan source module '${module.documentation.name}': ${error.message}"))
             }
-        } catch (error: Exception) {
-            sourceSnapshot.diagnostics.add(Diagnostic("error", "CJDOC1010",
-                "failed to scan project sources: ${error.message}"))
-            return sourceSnapshot
+            if (scanLimitReached) { break }
+        }
+        if (scanLimitReached) {
+            sourceSnapshot.diagnostics.add(Diagnostic("error", "CJDOC1028",
+                "source scan exceeded 100000 files or 128 directory levels; remaining files skipped"))
         }
         sort(files, lessThan: { left, right => left.logicalPath < right.logicalPath }, stable: true)
         let usableCacheDirectory: ?String = match (cacheDirectory) {

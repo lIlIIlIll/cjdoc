@@ -1,8 +1,8 @@
 {
-  "schemaVersion": "cjdoc.doc-ir/5",
+  "schemaVersion": "cjdoc.doc-ir/6",
   "generator": {
     "name": "cjdoc",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "status": "complete",
   "project": {
@@ -122,6 +122,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** @param value Box value. */",
         "summary": "",
@@ -198,6 +204,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": null,
       "source": {
         "path": "src/api.cj",
@@ -251,6 +263,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -335,6 +353,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -424,6 +448,12 @@
       ],
       "returnType": null,
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -516,6 +546,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": null,
       "source": {
         "path": "src/api.cj",
@@ -569,6 +605,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -661,6 +703,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** Current size. */",
         "summary": "Current size.",
@@ -743,6 +791,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -829,6 +883,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": null,
       "source": {
         "path": "src/api.cj",
@@ -889,6 +949,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": null,
       "source": {
         "path": "src/api.cj",
@@ -932,6 +998,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": null,
       "source": {
         "path": "src/api.cj",
@@ -973,6 +1045,27 @@
       ],
       "returnType": null,
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        {
+          "kind": "superType",
+          "target": {
+            "kind": "source",
+            "spelling": "Reader",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          }
+        }
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -1047,6 +1140,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** Result status. */",
         "summary": "Result status.",
@@ -1119,6 +1218,27 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        {
+          "kind": "extensionTarget",
+          "target": {
+            "kind": "source",
+            "spelling": "Box < String >",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          }
+        }
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** Additional string box helpers. */",
         "summary": "Additional string box helpers.",
@@ -1189,6 +1309,27 @@
       ],
       "returnType": null,
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        {
+          "kind": "extensionTarget",
+          "target": {
+            "kind": "source",
+            "spelling": "Box < String >",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          }
+        }
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -1290,6 +1431,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -1424,6 +1571,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/**\n * Multiline declaration.\n * @param text Text.\n * @param strict Strict mode.\n */",
         "summary": "Multiline declaration.",
@@ -1537,6 +1690,12 @@
       },
       "annotations": [
         "@Deprecated[message: \"Use parse instead.\"]"
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
       ],
       "documentation": {
         "rawText": "/**\n * Deprecated API.\n * @param text Input text.\n * @return Parsed value.\n */",
@@ -1652,6 +1811,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/**\n * Parse bytes.\n * @param data Input bytes.\n * @return Parsed size.\n */",
         "summary": "Parse bytes.",
@@ -1764,6 +1929,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -1938,6 +2109,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/**\n * 中文标识符。\n * @param 文本 文本值。\n * @return 原文本。\n */",
         "summary": "中文标识符。",
@@ -2023,6 +2200,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** A readable value. */",
         "summary": "A readable value.",
@@ -2095,6 +2278,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** Generic box. */",
         "summary": "Generic box.",
@@ -2165,6 +2354,12 @@
       ],
       "returnType": null,
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {

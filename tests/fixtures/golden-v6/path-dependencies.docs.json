@@ -1,8 +1,8 @@
 {
-  "schemaVersion": "cjdoc.doc-ir/5",
+  "schemaVersion": "cjdoc.doc-ir/6",
   "generator": {
     "name": "cjdoc",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "status": "complete",
   "project": {
@@ -148,6 +148,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/**\n * Alpha dependency API.\n * @see path_dep_beta.betaApi\n */",
         "summary": "Alpha dependency API.",
@@ -238,6 +244,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** Beta dependency API. */",
         "summary": "Beta dependency API.",
@@ -320,6 +332,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {

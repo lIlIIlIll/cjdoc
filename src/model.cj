@@ -215,12 +215,14 @@ class SemanticDeclaration {
 
 class SemanticResult {
     public let provider: String
+    public let providerVersion: String
     public let capabilities: SemanticCapabilities
     public let declarations = ArrayList<SemanticDeclaration>()
     public let diagnostics = ArrayList<Diagnostic>()
 
-    public init(provider: String, capabilities: SemanticCapabilities) {
+    public init(provider: String, providerVersion: String, capabilities: SemanticCapabilities) {
         this.provider = provider
+        this.providerVersion = providerVersion
         this.capabilities = capabilities
     }
 }
@@ -249,6 +251,7 @@ class SemanticCapabilities {
 // source declarations that own comments and source ranges.
 class SemanticBindingStats {
     public let provider: String
+    public let providerVersion: String
     public let capabilities: SemanticCapabilities
     public var matched: Int64 = 0
     public var missing: Int64 = 0
@@ -256,8 +259,9 @@ class SemanticBindingStats {
     public var extraneous: Int64 = 0
     public var contractViolations: Int64 = 0
 
-    public init(provider: String, capabilities: SemanticCapabilities) {
+    public init(provider: String, providerVersion: String, capabilities: SemanticCapabilities) {
         this.provider = provider
+        this.providerVersion = providerVersion
         this.capabilities = capabilities
     }
 }
@@ -286,15 +290,17 @@ class TypeRelationship {
 class SymbolRelationship {
     public let kind: String
     public let targetDisplay: String
-    public let state: String
-    public let targetSymbolId: ?String
+    public var state: String
+    public var targetSymbolId: ?String
+    public let targetSourceKey: ?String
 
     public init(kind: String, targetDisplay: String, state: String,
-        targetSymbolId!: ?String = None) {
+        targetSymbolId!: ?String = None, targetSourceKey!: ?String = None) {
         this.kind = kind
         this.targetDisplay = targetDisplay
         this.state = state
         this.targetSymbolId = targetSymbolId
+        this.targetSourceKey = targetSourceKey
     }
 }
 
@@ -425,7 +431,7 @@ class DocumentationSet {
     public let symbols = ArrayList<SymbolDoc>()
     public let unsupportedDeclarations = ArrayList<UnsupportedDeclaration>()
     public let diagnostics = ArrayList<Diagnostic>()
-    public var semanticBinding = SemanticBindingStats("unavailable",
+    public var semanticBinding = SemanticBindingStats("unavailable", "0",
         SemanticCapabilities(false, false, false, false, false))
     public var cfgProfile = CfgProfile()
 
@@ -438,6 +444,7 @@ interface SourceProvider {
 
 interface SemanticProvider {
     func providerName(): String
+    func providerVersion(): String
     func analyze(source: SourceSnapshot): SemanticResult
 }
 

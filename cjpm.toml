@@ -3,7 +3,7 @@
   name = "cjdoc"
   organization = ""
   description = "Cangjie API documentation generator"
-  version = "0.4.0"
+version = "0.5.0"
   target-dir = ""
   script-dir = ""
   output-type = "executable"

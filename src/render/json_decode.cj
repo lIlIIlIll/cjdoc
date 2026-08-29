@@ -150,14 +150,40 @@ private func decodeParameter(node: JsonNode, path: String): ParameterDoc {
         defaultExpression: nullableStringAt(value, "defaultExpression", path))
 }
 
+private func decodeTypeRelationship(node: JsonNode, path: String): TypeRelationship {
+    let value = strictObject(node, path, ["kind", "target"])
+    TypeRelationship(stringAt(value, "kind", path),
+        decodeTypeRef(required(value, "target", path), "${path}.target", 0))
+}
+
+private func decodeSymbolRelationship(node: JsonNode, path: String): SymbolRelationship {
+    let value = strictObject(node, path, ["kind", "targetDisplay", "state", "targetSymbolId"])
+    SymbolRelationship(stringAt(value, "kind", path), stringAt(value, "targetDisplay", path),
+        stringAt(value, "state", path),
+        targetSymbolId: nullableStringAt(value, "targetSymbolId", path))
+}
+
 private func decodeSymbol(node: JsonNode, path: String): SymbolDoc {
     let value = strictObject(node, path, ["id", "kind", "name", "qualifiedName", "packageName",
         "ownerId", "visibility", "genericParameters", "parameters", "returnType", "annotations",
+        "typeRelationships", "symbolRelationships",
         "documentation", "source", "headerSpelling", "semantic", "origin"])
     let parameters = ArrayList<ParameterDoc>()
     var index: Int64 = 0
     for (parameter in arrayAt(value, "parameters", path).values()) {
         parameters.add(decodeParameter(parameter, "${path}.parameters[${index}]")); index++
+    }
+    let typeRelationships = ArrayList<TypeRelationship>()
+    index = 0
+    for (relationship in arrayAt(value, "typeRelationships", path).values()) {
+        typeRelationships.add(decodeTypeRelationship(relationship,
+            "${path}.typeRelationships[${index}]")); index++
+    }
+    let symbolRelationships = ArrayList<SymbolRelationship>()
+    index = 0
+    for (relationship in arrayAt(value, "symbolRelationships", path).values()) {
+        symbolRelationships.add(decodeSymbolRelationship(relationship,
+            "${path}.symbolRelationships[${index}]")); index++
     }
     let returnNode = required(value, "returnType", path)
     let returnType: ?TypeRef = if (returnNode.isNull) { None }
@@ -180,7 +206,9 @@ private func decodeSymbol(node: JsonNode, path: String): SymbolDoc {
         ownerId: nullableStringAt(value, "ownerId", path),
         genericParameters: stringsAt(value, "genericParameters", path),
         parameters: parameters.toArray(), returnType: returnType,
-        annotations: stringsAt(value, "annotations", path), documentation: documentation,
+        annotations: stringsAt(value, "annotations", path),
+        typeRelationships: typeRelationships.toArray(),
+        symbolRelationships: symbolRelationships.toArray(), documentation: documentation,
         origin: DeclarationOrigin(kind: stringAt(origin, "kind", "${path}.origin"),
             macroSymbolId: nullableStringAt(origin, "macroSymbolId", "${path}.origin")))
 }

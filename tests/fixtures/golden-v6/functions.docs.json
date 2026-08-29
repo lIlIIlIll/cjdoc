@@ -1,8 +1,8 @@
 {
-  "schemaVersion": "cjdoc.doc-ir/5",
+  "schemaVersion": "cjdoc.doc-ir/6",
   "generator": {
     "name": "cjdoc",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "status": "complete",
   "project": {
@@ -112,6 +112,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -246,6 +252,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/**\n * Multiline signature.\n * @param text input\n * @param strict mode\n * @return text\n */",
         "summary": "Multiline signature.",
@@ -367,6 +379,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/**\n * Parse bytes.\n * @param data input bytes\n * @return length\n */",
         "summary": "Parse bytes.",
@@ -481,6 +499,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/**\n * Parse text.\n * @param text input text\n * @return length\n */",
         "summary": "Parse text.",
@@ -593,6 +617,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {

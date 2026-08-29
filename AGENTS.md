@@ -2,7 +2,7 @@
 
 ## 项目目标
 
-`cjdoc` 是纯仓颉实现的仓颉 API 文档生成器。当前里程碑以 `std.ast` 和 lexer 为源码真值，输出 schema-versioned、确定性的 Doc IR v5。CHIR 不在当前依赖图中，只能通过公开 `SemanticProvider` SPI 在后续独立接入。
+`cjdoc` 是纯仓颉实现的仓颉 API 文档生成器。当前里程碑以 `std.ast` 和 lexer 为源码真值，输出 schema-versioned、确定性的 Doc IR v6。CHIR 不在当前依赖图中，只能通过公开 `SemanticProvider` SPI 在后续独立接入。
 
 ## 开始工作前
 
@@ -35,7 +35,7 @@ target/release/bin/main generate --project tests/fixtures/projects/basic --forma
 
 安装 `just` 后也可运行 `just doctor`、`just test`、`just check`、`just smoke`。
 
-`scripts/check.sh` 假设 SDK 环境已经准备好，并要求 `python3`、`jq` 及 `requirements-ci.txt` 中的 Python 包。它覆盖 build、unit、v5 golden、schema、两次生成确定性、strict codec round-trip、HTML 安全和外部 provider fixture。
+`scripts/check.sh` 假设 SDK 环境已经准备好，并要求 Bash 和 Python 标准库。它覆盖 build、unit、v6 golden、schema 同步、两次生成确定性、strict codec round-trip、多页 HTML 全站校验、资源限制、安全和外部 provider fixture。
 
 ## 修改规则
 
@@ -44,7 +44,7 @@ target/release/bin/main generate --project tests/fixtures/projects/basic --forma
 - 改 Doc IR 时同时修改：`src/model/doc_ir.cj`、JSON encoder/decoder、`src/schema.cj`、生成的 `docs/schema/`、public-contract tests 和 golden。破坏性 schema 变更必须提升 schema version。
 - 改 provider SPI 时保持 provider session 的 `open → analyze → close` 生命周期；失败必须保留 AST fallback 并产生 `CJDOC2xxx`。
 - 改 renderer 时增加安全测试；用户注释不得未经清理进入 HTML。
-- 不手改 golden 来迎合实现。用当前 binary 重新生成，检查 diff 后提交。
+- 不手改 golden 来迎合实现。运行 `bash scripts/update_goldens.sh`，再检查 diff。
 - 诊断码一旦发布即稳定；新增类别使用：`CJDOC1xxx` source、`2xxx` semantic/binding、`3xxx` docs/lint、`4xxx` render/output。
 
 ## 验证与证据

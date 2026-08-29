@@ -183,14 +183,16 @@ private func sanitizeSemantic(source: SourceDeclaration, semantic: SemanticDecla
     }
     for (relationship in semantic.symbolRelationships) {
         if (!semanticResult.capabilities.symbolRelationships &&
-            (relationship.state == "resolved" || relationship.targetSymbolId.isSome())) {
+            (relationship.state == "resolved" || relationship.targetSymbolId.isSome() ||
+                relationship.targetSourceKey.isSome())) {
             recordContractViolation(documentation, stats,
                 "semantic provider resolved a symbol relationship without symbolRelationships capability",
                 source: source.source)
             sanitized.symbolRelationships.add(SymbolRelationship(relationship.kind,
                 relationship.targetDisplay, "unavailable"))
         } else if (!validSemanticState(relationship.state) ||
-            (relationship.state == "resolved" && relationship.targetSymbolId.isNone())) {
+            (relationship.state == "resolved" && relationship.targetSymbolId.isNone() &&
+                relationship.targetSourceKey.isNone())) {
             recordContractViolation(documentation, stats,
                 "semantic provider returned an invalid symbol relationship", source: source.source)
             sanitized.symbolRelationships.add(SymbolRelationship(relationship.kind,
@@ -200,6 +202,26 @@ private func sanitizeSemantic(source: SourceDeclaration, semantic: SemanticDecla
         }
     }
     return Some(sanitized)
+}
+
+private func resolveSymbolRelationshipSourceKeys(symbols: ArrayList<SymbolDoc>,
+    source: SourceSnapshot): Unit {
+    let idsBySourceKey = HashMap<String, String>()
+    var index: Int64 = 0
+    while (index < source.declarations.size && index < symbols.size) {
+        idsBySourceKey[source.declarations[index].sourceKey] = symbols[index].id
+        index++
+    }
+    for (symbol in symbols) {
+        for (relationship in symbol.symbolRelationships) {
+            if (let Some(sourceKey) <- relationship.targetSourceKey) {
+                match (idsBySourceKey.get(sourceKey)) {
+                    case Some(id) => relationship.targetSymbolId = Some(id)
+                    case None => relationship.state = "unavailable"; relationship.targetSymbolId = None
+                }
+            }
+        }
+    }
 }
 
 private func copySemanticToDoc(source: SourceDeclaration, semantic: SemanticDeclaration): SymbolDoc {
@@ -387,7 +409,8 @@ class DocumentationBinder {
     public func bind(source: SourceSnapshot, semanticResult: SemanticResult,
         expectedProvider!: ?String = None): DocumentationSet {
         let documentation = DocumentationSet(source.projectName)
-        let stats = SemanticBindingStats(semanticResult.provider, semanticResult.capabilities)
+        let stats = SemanticBindingStats(semanticResult.provider, semanticResult.providerVersion,
+            semanticResult.capabilities)
         documentation.semanticBinding = stats
         for (module in source.modules) { documentation.modules.add(copyModule(module)) }
         for (pkg in source.packages) { documentation.packages.add(copyPackage(pkg)) }
@@ -472,6 +495,7 @@ class DocumentationBinder {
         }
 
         finalizeIdentities(documentation.symbols)
+        resolveSymbolRelationshipSourceKeys(documentation.symbols, source)
         let seenIds = HashSet<String>()
         let conditionalDuplicateIds = HashSet<String>()
         index = 0

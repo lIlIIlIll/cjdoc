@@ -13,6 +13,10 @@ public class GenerationRequest {
     public let jobs: Int64
     public let audience: String
     public let lintProfile: String
+    public let cacheDirectory: ?String
+    public let cacheFingerprint: ?String
+    public let astPreflightExecutable: ?String
+    public let cjpmCacheRoot: ?String
     private let dependencySourcesStorage: ArrayList<DependencySourceInput>
     private let cfgValuesStorage: ArrayList<CfgValue>
     private let providerFactoriesStorage: ArrayList<public_provider.SemanticProviderFactory>
@@ -21,7 +25,9 @@ public class GenerationRequest {
         includeCachedDependencies!: Bool = false, jobs!: Int64 = 1,
         audience!: String = "external", lintProfile!: String = "standard",
         dependencySources!: Array<DependencySourceInput> = [], cfgValues!: Array<CfgValue> = [],
-        providerFactories!: Array<public_provider.SemanticProviderFactory> = []) {
+        providerFactories!: Array<public_provider.SemanticProviderFactory> = [],
+        cacheDirectory!: ?String = None, cacheFingerprint!: ?String = None,
+        astPreflightExecutable!: ?String = None, cjpmCacheRoot!: ?String = None) {
         if (projectRoot.isEmpty()) { throw IllegalArgumentException("project root cannot be empty") }
         if (jobs < 1 || jobs > 64) { throw IllegalArgumentException("jobs must be in 1..64") }
         if (audience != "external" && audience != "package" && audience != "all") {
@@ -31,7 +37,12 @@ public class GenerationRequest {
             throw IllegalArgumentException("lint profile must be off, standard, or strict")
         }
         if (providerFactories.size > 1) {
-            throw IllegalArgumentException("cjdoc 0.4 accepts at most one semantic provider factory")
+            throw IllegalArgumentException("cjdoc accepts at most one semantic provider factory")
+        }
+        for (factory in providerFactories) {
+            if (factory.name.isEmpty() || factory.version.isEmpty()) {
+                throw IllegalArgumentException("semantic provider name and version cannot be empty")
+            }
         }
         this.projectRoot = projectRoot
         this.includePathDependencies = includePathDependencies
@@ -39,6 +50,10 @@ public class GenerationRequest {
         this.jobs = jobs
         this.audience = audience
         this.lintProfile = lintProfile
+        this.cacheDirectory = cacheDirectory
+        this.cacheFingerprint = cacheFingerprint
+        this.astPreflightExecutable = astPreflightExecutable
+        this.cjpmCacheRoot = cjpmCacheRoot
         this.dependencySourcesStorage = ArrayList<DependencySourceInput>(dependencySources)
         this.cfgValuesStorage = ArrayList<CfgValue>(cfgValues)
         this.providerFactoriesStorage = ArrayList<public_provider.SemanticProviderFactory>(providerFactories)
@@ -134,6 +149,7 @@ private class FactorySemanticProviderAdapter <: SemanticProvider {
     }
 
     public func providerName(): String { factory.name }
+    public func providerVersion(): String { factory.version }
 
     public func analyze(source: SourceSnapshot): SemanticResult {
         let converted = ArrayList<SemanticDeclaration>()
@@ -210,6 +226,28 @@ private class FactorySemanticProviderAdapter <: SemanticProvider {
                                     case None => None
                                 }
                                 semantic.annotations.add(all: item.annotations)
+                                for (relationship in item.typeRelationships) {
+                                    semantic.relationships.add(TypeRelationship(relationship.kind,
+                                        providerType(relationship.target)))
+                                }
+                                for (relationship in item.symbolRelationships) {
+                                    var state = relationship.state
+                                    let targetSourceKey: ?String = match (relationship.targetSourceId) {
+                                        case Some(target) =>
+                                            let encoded = target.serialize()
+                                            if (sourceByKey(source, encoded).isSome()) { Some(encoded) } else {
+                                                diagnostics.add(Diagnostic("warning", "CJDOC2005",
+                                                    "semantic provider returned an unknown relationship target source declaration id"))
+                                                state = "unavailable"
+                                                None
+                                            }
+                                        case None => None
+                                    }
+                                    semantic.symbolRelationships.add(SymbolRelationship(relationship.kind,
+                                        relationship.targetDisplay, state,
+                                        targetSymbolId: relationship.targetSymbolId,
+                                        targetSourceKey: targetSourceKey))
+                                }
                                 converted.add(semantic)
                             case None =>
                                 diagnostics.add(Diagnostic("warning", "CJDOC2002",
@@ -240,7 +278,8 @@ private class FactorySemanticProviderAdapter <: SemanticProvider {
             }
         }
 
-        let result = SemanticResult(factory.name, SemanticCapabilities(sourceBinding, ownership,
+        let result = SemanticResult(factory.name, factory.version,
+            SemanticCapabilities(sourceBinding, ownership,
             visibility, canonicalTypes, canonicalSignatures, symbolRelationships: relationships))
         result.declarations.add(all: converted)
         result.diagnostics.add(all: diagnostics)
@@ -396,10 +435,21 @@ private func publicDocumentation(documentation: DocumentationSet,
     let declarations = ArrayList<public_model.SymbolDoc>()
     for (symbol in documentation.symbols) {
         let parameters = ArrayList<public_model.ParameterDoc>()
+        let typeRelationships = ArrayList<public_model.TypeRelationship>()
+        let symbolRelationships = ArrayList<public_model.SymbolRelationship>()
         for (parameter in symbol.parameters) {
             parameters.add(public_model.ParameterDoc(parameter.name,
                 publicType(parameter.typeRef, symbol.semanticProvider),
                 documentation: parameter.documentation))
+        }
+        for (relationship in symbol.relationships) {
+            typeRelationships.add(public_model.TypeRelationship(relationship.kind,
+                publicType(relationship.target, symbol.semanticProvider)))
+        }
+        for (relationship in symbol.symbolRelationships) {
+            symbolRelationships.add(public_model.SymbolRelationship(relationship.kind,
+                relationship.targetDisplay, relationship.state,
+                targetSymbolId: relationship.targetSymbolId))
         }
         declarations.add(public_model.SymbolDoc(symbol.id, symbol.kind, symbol.name,
             symbol.qualifiedName, symbol.packageName, symbol.visibility, sourceMapper.range(symbol.source),
@@ -412,6 +462,8 @@ private func publicDocumentation(documentation: DocumentationSet,
                 case Some(value) => Some(publicType(value, symbol.semanticProvider))
                 case None => None
             }, annotations: symbol.annotations.toArray(),
+            typeRelationships: typeRelationships.toArray(),
+            symbolRelationships: symbolRelationships.toArray(),
             documentation: match (symbol.documentation) {
                 case Some(value) => Some(publicComment(value))
                 case None => None
@@ -437,14 +489,15 @@ private func publicDocumentation(documentation: DocumentationSet,
             }, symbolId: diagnostic.symbolId))
     }
     let capabilities = documentation.semanticBinding.capabilities
-    let providers = [public_model.ProviderInfo(documentation.semanticBinding.provider, "1",
+    let providers = [public_model.ProviderInfo(documentation.semanticBinding.provider,
+        documentation.semanticBinding.providerVersion,
         if (documentation.semanticBinding.missing == 0 && documentation.semanticBinding.ambiguous == 0) {
             if (capabilities.canonicalTypes) { "resolved" } else { "partial" }
         } else { "partial" },
         public_model.SemanticCapabilities(capabilities.sourceBinding, capabilities.ownership,
             capabilities.visibility, capabilities.canonicalTypes, capabilities.canonicalSignatures,
             relationships: capabilities.symbolRelationships))]
-    return public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.4.0"),
+    return public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.5.0"),
         if (hasError || hasIncompleteSource) { "partial" } else { "complete" },
         public_model.ProjectInfo(documentation.projectName),
         public_model.ConfigurationSnapshot(audience: request.audience,
@@ -466,7 +519,11 @@ public class DocumentationEngine {
             includePathDependencies: request.includePathDependencies,
             dependencySources: request.dependencySources.toArray(),
             cfgValues: request.cfgValues.toArray(), jobs: request.jobs,
+            cacheDirectory: request.cacheDirectory,
+            cacheFingerprint: request.cacheFingerprint,
+            astPreflightExecutable: request.astPreflightExecutable,
             includeCachedDependencies: request.includeCachedDependencies,
+            cjpmCacheRoot: request.cjpmCacheRoot,
             semanticProvider: semanticProvider)
         match (request.lintProfile) {
             case "off" => resolveDocumentationReferences(documentation)

@@ -1,8 +1,8 @@
 {
-  "schemaVersion": "cjdoc.doc-ir/5",
+  "schemaVersion": "cjdoc.doc-ir/6",
   "generator": {
     "name": "cjdoc",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "status": "complete",
   "project": {
@@ -108,6 +108,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/**\n     * Create a box.\n     * @param value stored value\n     */",
         "summary": "Create a box.",
@@ -196,6 +202,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -305,6 +317,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/**\n     * Create a point.\n     * @param x horizontal coordinate\n     * @param y vertical coordinate\n     */",
         "summary": "Create a point.",
@@ -402,6 +420,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** Read a value. */",
         "summary": "Read a value.",
@@ -491,6 +515,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** Failure state. */",
         "summary": "Failure state.",
@@ -561,6 +591,12 @@
       ],
       "returnType": null,
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -635,6 +671,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** Point with a primary constructor. */",
         "summary": "Point with a primary constructor.",
@@ -705,6 +747,12 @@
       ],
       "returnType": null,
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -779,6 +827,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** Reader API. */",
         "summary": "Reader API.",
@@ -851,6 +905,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** Generic box. */",
         "summary": "Generic box.",
@@ -921,6 +981,12 @@
       ],
       "returnType": null,
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {

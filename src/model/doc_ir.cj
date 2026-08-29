@@ -2,7 +2,7 @@ package cjdoc.model
 
 import std.collection.*
 
-public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/5"
+public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/6"
 
 public func isSemanticState(value: String): Bool {
     value == "resolved" || value == "partial" || value == "unavailable" || value == "ambiguous"
@@ -192,6 +192,38 @@ public class TypeRef {
     public prop arguments: ReadOnlyList<TypeRef> { get() { argumentsStorage } }
 }
 
+public class TypeRelationship {
+    public let kind: String
+    public let target: TypeRef
+
+    public init(kind: String, target: TypeRef) {
+        if (kind.isEmpty()) { throw IllegalArgumentException("type relationship kind cannot be empty") }
+        this.kind = kind
+        this.target = target
+    }
+}
+
+public class SymbolRelationship {
+    public let kind: String
+    public let targetDisplay: String
+    public let state: String
+    public let targetSymbolId: ?String
+
+    public init(kind: String, targetDisplay: String, state: String,
+        targetSymbolId!: ?String = None) {
+        if (kind.isEmpty() || !isSemanticState(state)) {
+            throw IllegalArgumentException("invalid symbol relationship")
+        }
+        if (state == "resolved" && targetSymbolId.isNone()) {
+            throw IllegalArgumentException("resolved symbol relationship requires targetSymbolId")
+        }
+        this.kind = kind
+        this.targetDisplay = targetDisplay
+        this.state = state
+        this.targetSymbolId = targetSymbolId
+    }
+}
+
 public class ParameterDoc {
     public let name: String
     public let typeRef: TypeRef
@@ -301,12 +333,15 @@ public class SymbolDoc {
     private let genericParametersStorage: ArrayList<String>
     private let parametersStorage: ArrayList<ParameterDoc>
     private let annotationsStorage: ArrayList<String>
+    private let typeRelationshipsStorage: ArrayList<TypeRelationship>
+    private let symbolRelationshipsStorage: ArrayList<SymbolRelationship>
 
     public init(id: String, kind: String, name: String, qualifiedName: String, packageName: String,
         visibility: String, source: SourceRange, headerSpelling: String, semantic: SemanticInfo,
         ownerId!: ?String = None, genericParameters!: Array<String> = [],
         parameters!: Array<ParameterDoc> = [], returnType!: ?TypeRef = None,
-        annotations!: Array<String> = [], documentation!: ?DocComment = None,
+        annotations!: Array<String> = [], typeRelationships!: Array<TypeRelationship> = [],
+        symbolRelationships!: Array<SymbolRelationship> = [], documentation!: ?DocComment = None,
         origin!: DeclarationOrigin = DeclarationOrigin()) {
         this.id = id
         this.kind = kind
@@ -324,11 +359,15 @@ public class SymbolDoc {
         this.genericParametersStorage = ArrayList<String>(genericParameters)
         this.parametersStorage = ArrayList<ParameterDoc>(parameters)
         this.annotationsStorage = ArrayList<String>(annotations)
+        this.typeRelationshipsStorage = ArrayList<TypeRelationship>(typeRelationships)
+        this.symbolRelationshipsStorage = ArrayList<SymbolRelationship>(symbolRelationships)
     }
 
     public prop genericParameters: ReadOnlyList<String> { get() { genericParametersStorage } }
     public prop parameters: ReadOnlyList<ParameterDoc> { get() { parametersStorage } }
     public prop annotations: ReadOnlyList<String> { get() { annotationsStorage } }
+    public prop typeRelationships: ReadOnlyList<TypeRelationship> { get() { typeRelationshipsStorage } }
+    public prop symbolRelationships: ReadOnlyList<SymbolRelationship> { get() { symbolRelationshipsStorage } }
 }
 
 public class AssetDoc {

@@ -6,12 +6,12 @@ let DOC_IR_SCHEMA = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-  "title": "cjdoc Doc IR v5",
+  "title": "cjdoc Doc IR v6",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "generator", "status", "project", "configuration", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/5"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/6"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "project": {"$ref": "#/$defs/project"},
@@ -177,9 +177,22 @@ let DOC_IR_SCHEMA = """
       "required": ["kind", "macroSymbolId"],
       "properties": {"kind": {"type": "string", "minLength": 1}, "macroSymbolId": {"$ref": "#/$defs/nullableString"}}
     },
+    "typeRelationship": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "target"],
+      "properties": {"kind": {"type": "string", "minLength": 1}, "target": {"$ref": "#/$defs/typeRef"}}
+    },
+    "symbolRelationship": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "targetDisplay", "state", "targetSymbolId"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1}, "targetDisplay": {"type": "string"},
+        "state": {"$ref": "#/$defs/semanticState"}, "targetSymbolId": {"$ref": "#/$defs/nullableString"}
+      }
+    },
     "declaration": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "kind", "name", "qualifiedName", "packageName", "ownerId", "visibility", "genericParameters", "parameters", "returnType", "annotations", "documentation", "source", "headerSpelling", "semantic", "origin"],
+      "required": ["id", "kind", "name", "qualifiedName", "packageName", "ownerId", "visibility", "genericParameters", "parameters", "returnType", "annotations", "typeRelationships", "symbolRelationships", "documentation", "source", "headerSpelling", "semantic", "origin"],
       "properties": {
         "id": {"type": "string", "minLength": 1}, "kind": {"type": "string", "minLength": 1},
         "name": {"type": "string"}, "qualifiedName": {"type": "string", "minLength": 1},
@@ -189,6 +202,8 @@ let DOC_IR_SCHEMA = """
         "parameters": {"type": "array", "items": {"$ref": "#/$defs/parameter"}},
         "returnType": {"anyOf": [{"$ref": "#/$defs/typeRef"}, {"type": "null"}]},
         "annotations": {"$ref": "#/$defs/stringArray"},
+        "typeRelationships": {"type": "array", "items": {"$ref": "#/$defs/typeRelationship"}},
+        "symbolRelationships": {"type": "array", "items": {"$ref": "#/$defs/symbolRelationship"}},
         "documentation": {"anyOf": [{"$ref": "#/$defs/comment"}, {"type": "null"}]},
         "source": {"$ref": "#/$defs/sourceRange"}, "headerSpelling": {"type": "string"},
         "semantic": {"$ref": "#/$defs/semanticInfo"}, "origin": {"$ref": "#/$defs/origin"}

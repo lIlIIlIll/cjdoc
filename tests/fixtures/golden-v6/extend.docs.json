@@ -1,8 +1,8 @@
 {
-  "schemaVersion": "cjdoc.doc-ir/5",
+  "schemaVersion": "cjdoc.doc-ir/6",
   "generator": {
     "name": "cjdoc",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "status": "complete",
   "project": {
@@ -109,6 +109,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/**\n     * Create a box.\n     * @param value stored value\n     */",
         "summary": "Create a box.",
@@ -199,6 +205,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": null,
       "source": {
         "path": "src/fixture.cj",
@@ -252,6 +264,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -338,6 +356,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": null,
       "source": {
         "path": "src/fixture.cj",
@@ -391,6 +415,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -477,6 +507,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** Pretty value. */",
         "summary": "Pretty value.",
@@ -547,6 +583,12 @@
       ],
       "returnType": null,
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -621,6 +663,27 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        {
+          "kind": "extensionTarget",
+          "target": {
+            "kind": "source",
+            "spelling": "Box < String >",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          }
+        }
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": {
         "rawText": "/** First extension. */",
         "summary": "First extension.",
@@ -691,6 +754,27 @@
       ],
       "returnType": null,
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        {
+          "kind": "extensionTarget",
+          "target": {
+            "kind": "source",
+            "spelling": "Box < String >",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          }
+        }
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": {
@@ -777,6 +861,12 @@
       "annotations": [
         
       ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
       "documentation": null,
       "source": {
         "path": "src/fixture.cj",
@@ -831,6 +921,12 @@
       },
       "annotations": [
         "@Deprecated[message: \"Use Box instead.\"]"
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
       ],
       "documentation": {
         "rawText": "/** Annotated API. */",
@@ -914,6 +1010,12 @@
         }
       },
       "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
         
       ],
       "documentation": null,

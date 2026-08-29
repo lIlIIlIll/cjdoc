@@ -89,6 +89,43 @@ public class SemanticParameter {
     }
 }
 
+public class SemanticTypeRelationship {
+    public let kind: String
+    public let target: TypeRef
+
+    public init(kind: String, target: TypeRef) {
+        if (kind.isEmpty()) { throw IllegalArgumentException("semantic type relationship kind cannot be empty") }
+        this.kind = kind
+        this.target = target
+    }
+}
+
+public class SemanticSymbolRelationship {
+    public let kind: String
+    public let targetDisplay: String
+    public let state: String
+    public let targetSourceId: ?SourceDeclarationId
+    public let targetSymbolId: ?String
+
+    public init(kind: String, targetDisplay: String, state: String,
+        targetSourceId!: ?SourceDeclarationId = None, targetSymbolId!: ?String = None) {
+        if (kind.isEmpty() || !isSemanticState(state)) {
+            throw IllegalArgumentException("invalid semantic symbol relationship")
+        }
+        if (targetSourceId.isSome() && targetSymbolId.isSome()) {
+            throw IllegalArgumentException("symbol relationship accepts one target identity")
+        }
+        if (state == "resolved" && targetSourceId.isNone() && targetSymbolId.isNone()) {
+            throw IllegalArgumentException("resolved symbol relationship requires a target identity")
+        }
+        this.kind = kind
+        this.targetDisplay = targetDisplay
+        this.state = state
+        this.targetSourceId = targetSourceId
+        this.targetSymbolId = targetSymbolId
+    }
+}
+
 public class SemanticDeclaration {
     public let sourceId: SourceDeclarationId
     public let state: String
@@ -98,11 +135,15 @@ public class SemanticDeclaration {
     public let canonicalSignature: ?String
     private let parametersStorage: ArrayList<SemanticParameter>
     private let annotationsStorage: ArrayList<String>
+    private let typeRelationshipsStorage: ArrayList<SemanticTypeRelationship>
+    private let symbolRelationshipsStorage: ArrayList<SemanticSymbolRelationship>
 
     public init(sourceId: SourceDeclarationId, state: String, visibility!: ?String = None,
         ownerId!: ?SourceDeclarationId = None, parameters!: Array<SemanticParameter> = [],
         returnType!: ?TypeRef = None, canonicalSignature!: ?String = None,
-        annotations!: Array<String> = []) {
+        annotations!: Array<String> = [],
+        typeRelationships!: Array<SemanticTypeRelationship> = [],
+        symbolRelationships!: Array<SemanticSymbolRelationship> = []) {
         if (!isSemanticState(state)) { throw IllegalArgumentException("invalid semantic declaration state") }
         this.sourceId = sourceId
         this.state = state
@@ -112,10 +153,16 @@ public class SemanticDeclaration {
         this.canonicalSignature = canonicalSignature
         this.parametersStorage = ArrayList<SemanticParameter>(parameters)
         this.annotationsStorage = ArrayList<String>(annotations)
+        this.typeRelationshipsStorage = ArrayList<SemanticTypeRelationship>(typeRelationships)
+        this.symbolRelationshipsStorage = ArrayList<SemanticSymbolRelationship>(symbolRelationships)
     }
 
     public prop parameters: ReadOnlyList<SemanticParameter> { get() { parametersStorage } }
     public prop annotations: ReadOnlyList<String> { get() { annotationsStorage } }
+    public prop typeRelationships: ReadOnlyList<SemanticTypeRelationship> { get() { typeRelationshipsStorage } }
+    public prop symbolRelationships: ReadOnlyList<SemanticSymbolRelationship> {
+        get() { symbolRelationshipsStorage }
+    }
 }
 
 public class SemanticBatch {

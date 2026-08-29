@@ -6,8 +6,7 @@ default:
 doctor:
     cjc -v
     cjpm -v
-    python3 -c 'import jsonschema, referencing; print("Python schema dependencies: OK")'
-    jq --version
+    python3 -c 'import json; print("Python standard library: OK")'
 
 build:
     cjpm build

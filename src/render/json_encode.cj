@@ -136,6 +136,19 @@ private func appendOrigin(out: StringBuilder, value: DeclarationOrigin): Unit {
     out.append("{\"kind\":${escapeJsonString(value.kind)},\"macroSymbolId\":${nullableString(value.macroSymbolId)}}")
 }
 
+private func appendTypeRelationship(out: StringBuilder, value: TypeRelationship): Unit {
+    out.append("{\"kind\":${escapeJsonString(value.kind)},\"target\":")
+    appendTypeRef(out, value.target)
+    out.append("}")
+}
+
+private func appendSymbolRelationship(out: StringBuilder, value: SymbolRelationship): Unit {
+    out.append("{\"kind\":${escapeJsonString(value.kind)},")
+    out.append("\"targetDisplay\":${escapeJsonString(value.targetDisplay)},")
+    out.append("\"state\":${escapeJsonString(value.state)},")
+    out.append("\"targetSymbolId\":${nullableString(value.targetSymbolId)}}")
+}
+
 private func appendSymbol(out: StringBuilder, value: SymbolDoc): Unit {
     out.append("{\"id\":${escapeJsonString(value.id)},\"kind\":${escapeJsonString(value.kind)},")
     out.append("\"name\":${escapeJsonString(value.name)},\"qualifiedName\":${escapeJsonString(value.qualifiedName)},")
@@ -153,6 +166,21 @@ private func appendSymbol(out: StringBuilder, value: SymbolDoc): Unit {
     match (value.returnType) { case Some(typeRef) => appendTypeRef(out, typeRef) case None => out.append("null") }
     out.append(",\"annotations\":")
     appendStrings(out, value.annotations)
+    out.append(",\"typeRelationships\":[")
+    first = true
+    for (relationship in value.typeRelationships) {
+        if (!first) { out.append(",") }
+        first = false
+        appendTypeRelationship(out, relationship)
+    }
+    out.append("],\"symbolRelationships\":[")
+    first = true
+    for (relationship in value.symbolRelationships) {
+        if (!first) { out.append(",") }
+        first = false
+        appendSymbolRelationship(out, relationship)
+    }
+    out.append("]")
     out.append(",\"documentation\":")
     match (value.documentation) { case Some(comment) => appendComment(out, comment) case None => out.append("null") }
     out.append(",\"source\":")
