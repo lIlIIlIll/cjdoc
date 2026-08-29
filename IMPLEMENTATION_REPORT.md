@@ -16,6 +16,8 @@
 | stdx | 20260829 dynamic/static sidecar 均已检查 |
 | stdx.chir | 20260829 sidecar 中没有 `stdx.chir.cjo`，普通项目不能 import |
 | Markdown | `markdown` 0.9.0，commit `d73eecee4e19fe56a57cd9f150fe0a62bae405c4` |
+| GitHub CI SDK | 官方 Cangjie `1.1.3` |
+| GitHub CI targets | Linux x64、Windows x64、macOS ARM64 |
 
 当前 `/home/elliot/cangjie_sdk/daily/cangjie` 已解析到上述 20260829 SDK。没有构建或修改 compiler、std、stdx。
 
@@ -139,6 +141,8 @@ future serialized CHIR
 - config file、stdout、text/JSON/SARIF diagnostics。
 - `cjpm install`、launcher、自定义下游 SemanticProvider fixture。
 - host path separator/boundary normalization、`.exe` 选择、portable inode/monotonic timing 和无本机 helper 的 release-runner fallback。
+- GitHub-hosted Linux x64、Windows x64、macOS ARM64 acceptance matrix；官方 SDK archive 固定 URL/SHA256 并按平台缓存。
+- source newline canonicalization、仓库 LF 策略和 Windows stdout 传输层换行规范化。
 
 ### Partial
 
@@ -156,7 +160,8 @@ future serialized CHIR
 - `ChirSemanticProvider`。
 - canonical semantic type/signature、semantic extension owner、semantic override target。
 - macro expansion 执行。文档生成默认不会执行用户文档代码或 macro。
-- Windows、macOS 和非 x86_64 target 的 release gate 尚未运行。
+- Linux ARM64、macOS x64 和其他非 CI matrix target 尚未运行 release gate。
+- Windows/macOS daily SDK 尚未运行；公开 CI 使用官方 Cangjie 1.1.3 STS SDK。
 
 ## 6. 关键文件
 
@@ -188,6 +193,10 @@ future serialized CHIR
 | `scripts/validate_html_site.py` | HTML links、anchors、search 和安全 validator |
 | `scripts/perf_gate.sh` | 2000-symbol deterministic performance gate |
 | `scripts/run_with_peak_memory.py` | 无轮询的 child peak RSS 测量 glue |
+| `.github/workflows/ci.yml` | Linux/Windows/macOS 官方 SDK acceptance matrix |
+| `scripts/install_cangjie_sdk.py` | checksum-pinned SDK 下载、校验、安全解压和 cache root 发现 |
+| `scripts/test_install_cangjie_sdk.py` | SDK installer 和 archive traversal 回归测试 |
+| `.gitattributes` | 跨平台 LF 策略和专用 CRLF fixture 例外 |
 | `probes/` | std.ast 和 CHIR reality-check probes |
 
 ## 7. 测试结果
@@ -196,7 +205,8 @@ future serialized CHIR
 
 - `cjpm build`：PASS。
 - 根目录 `cjpm test`：PASS，root executable 本身没有测试用例（TOTAL 0）。
-- `packages/cjdoc_core` 的 `cjpm test`：38/38 PASS。
+- `packages/cjdoc_core` 的 `cjpm test`：39/39 PASS。
+- SDK installer unittest：4/4 PASS。
 - provider plugin executable：PASS，输出 `provider plugin ok`。
 - `cjpm install --path .`：PASS，安装后的 `cjdoc --version` 为 `0.3.0`。
 
@@ -217,7 +227,19 @@ future serialized CHIR
 
 ### 性能门禁
 
-2000 个函数分布在 40 个 source files：cold 703 ms、hot 320 ms、peak RSS 339300 KiB。cold 门限 15000 ms、hot 门限 7000 ms、peak 门限 524288 KiB；两次 JSON byte-identical，cache entry 数为 40。
+2000 个函数分布在 40 个 source files：本机 daily cold 693 ms、hot 319 ms、peak RSS 338936 KiB。cold 门限 15000 ms、hot 门限 7000 ms、peak 门限 524288 KiB；两次 JSON byte-identical，cache entry 数为 40。
+
+### GitHub-hosted release matrix
+
+[GitHub Actions run 33267218113](https://github.com/lIlIIlIll/cjdoc/actions/runs/33267218113) 在 commit `64ba551f42e5f1838c822f1c2e853610c5507321` 上完成：
+
+| runner | target | result | duration |
+|---|---|---|---:|
+| `ubuntu-22.04` | Linux x64 | PASS | 5m05s |
+| `windows-2025` | Windows x64 | PASS | 6m26s |
+| `macos-15` | macOS ARM64 | PASS | 4m36s |
+
+三个 job 均下载并校验官方 Cangjie 1.1.3 SDK，运行 installer tests、`cjc -v`、`cjpm -v` 和完整 `scripts/check.sh`。Windows 不支持 Python `resource` peak RSS，因此记录为 unsupported；确定性、cold/hot workload、build、39 个 core tests、golden、integration、HTML、Markdown、install 仍全部运行。
 
 ### 真实仓库
 
@@ -243,7 +265,7 @@ future serialized CHIR
 - annotations：保存 source spelling，不执行或做 semantic resolution。
 - deep expressions：保留预扫描阈值；其他 parser crash 在 CLI worker process 中隔离。
 - parallelism：确定性成立，性能收益依项目而异，内存通常增加。
-- portability：host path、shell gate、`.exe` 和无本机 runner fallback 已做静态/本机回归；完整 release/installation gate 仍只在当前 Linux x86_64 target 实际运行。Windows 的标准 Python 不提供 `resource`，该平台明确跳过 peak RSS 阈值而不伪造测量。
+- portability：完整 release/installation gate 已在 GitHub-hosted Linux x64、Windows x64 和 macOS ARM64 实际通过。Windows 的标准 Python 不提供 `resource`，该平台明确记录 peak RSS unsupported；共享 Windows/macOS runner 不执行机器相关耗时阈值，但仍运行相同 workload 和确定性检查。其他 architecture/OS target 尚未实测。
 
 ## 9. API 缺口
 
@@ -261,7 +283,7 @@ future serialized CHIR
 ## 10. 下一阶段
 
 - P0：在公开 CHIR artifact、Function location 和 extension owner 全部可用后，重新运行 G1 到 G7，再实现独立 `ChirSemanticProvider` package。
-- P1：在 Windows/macOS daily 上运行 build、install、worker process、path、HTML 和 cache release matrix。
+- P1：如果 daily SDK 能以适合 CI 的方式分发，在 Windows/macOS daily 上补充兼容性 matrix；增加 Linux ARM64 与 macOS x64 target。
 - P2：如果 compiler 后续提供稳定的只读 target cfg API，增加显式 opt-in 的 compiler profile adapter；现阶段继续要求用户提供可复现的 cfg 值。
 
 ## 11. 复现命令
@@ -274,6 +296,7 @@ future serialized CHIR
 /home/elliot/.codex/scripts/codex_cangjie_env \
   --cwd packages/cjdoc_core cjpm test
 scripts/check.sh
+gh run view 33267218113 --repo lIlIIlIll/cjdoc
 ```
 
 生成三种输出：

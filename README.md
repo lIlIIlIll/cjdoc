@@ -264,7 +264,7 @@ Provider 必须声明能力：source binding、owner、visibility、canonical ty
 - manifest adapter 只读取 cjdoc 需要的 cjpm 字段，不是通用 TOML parser。
 - cache discovery 递归读取已有的 `cjpm.lock` 和 cache，不访问 registry、registry index 或 git 网络。
 - cfg profile 必须显式提供。cjdoc 不读取或推断编译器内建 target profile。
-- 本地完整 release gate 已在 Linux x86_64 daily SDK 上运行；GitHub-hosted Windows/macOS 结果以 CI matrix 为准，其他 target 尚未实测。
+- 本地完整 release gate 已在 Linux x86_64 daily SDK 上运行；GitHub-hosted Linux x64、Windows x64 和 macOS ARM64 已使用官方 Cangjie 1.1.3 SDK 完整通过，其他 target 尚未实测。
 
 完整能力证据位于 [`docs/research`](docs/research)，实现结论见 [`IMPLEMENTATION_REPORT.md`](IMPLEMENTATION_REPORT.md)。
 
@@ -277,6 +277,8 @@ GitHub Actions 使用标准 GitHub-hosted runners 执行完整 acceptance gate�
 - `macos-15`：macOS ARM64。
 
 三项任务固定使用仓颉官网公开的 Cangjie 1.1.3 SDK，并在解压前验证官网公布的 SHA256。SDK 按平台和摘要缓存；更换 SDK 时必须同时更新 URL、SHA256 和 cache key。Linux runner 执行性能阈值，Windows/macOS runner 仍运行相同的确定性和性能负载，但只记录共享 runner 上的性能结果。
+
+三平台完整 acceptance gate 的首次共同成功记录为 [GitHub Actions run 33267218113](https://github.com/lIlIIlIll/cjdoc/actions/runs/33267218113)。
 
 本地 daily SDK 仍用于 API reality check。CI 使用公开 STS SDK，因此不需要把内部 daily 下载凭据保存到 GitHub。
 
