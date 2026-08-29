@@ -463,6 +463,35 @@ public func changed(): Int64 { 3 }
     }
 
     @TestCase
+    func crlfMultilineSourceSpellingIsCanonicalized(): Unit {
+        let root = "/tmp/cjdoc-crlf-source-spelling"
+        let _ = removeIfExists(root, recursive: true)
+        Directory.create(Path(root).join("src"), recursive: true)
+        File.writeTo(Path(root).join("cjpm.toml"), """
+[package]
+cjc-version = "1.1.0"
+name = "crlf_source_spelling"
+version = "0.1.0"
+output-type = "static"
+""".toArray())
+        File.writeTo(Path(root).join("src/api.cj"), (
+            "package crlf_source_spelling\r\n\r\n" +
+            "/** Multiline. */\r\n" +
+            "public func multiline(\r\n" +
+            "    text: String,\r\n" +
+            "    strict: Bool\r\n" +
+            "): String { text }\r\n").toArray())
+
+        let documentation = generateDocumentation(root)
+        @Expect(documentation.diagnostics.size, 0)
+        @Expect(documentation.symbols.size, 1)
+        @Expect(documentation.symbols[0].sourceSignature,
+            "public func multiline(\n    text: String,\n    strict: Bool\n): String")
+        @Expect(!renderDocumentationJson(documentation).contains("\\r"))
+        let _ = removeIfExists(root, recursive: true)
+    }
+
+    @TestCase
     func workspaceUsesOnlyDeclaredMembers(): Unit {
         let documentation = generateDocumentation(FIXTURE_PROJECTS + "workspace")
         @Expect(documentation.projectName, "workspace")

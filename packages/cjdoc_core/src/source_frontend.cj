@@ -1371,9 +1371,13 @@ private func parseSourceText(input: SourceInputFile, fallbackPackageName: String
     result
 }
 
+private func normalizeSourceNewlines(source: String): String {
+    source.replace("\r\n", "\n").replace("\r", "\n")
+}
+
 public func runAstParsePreflight(path: String): Int64 {
     try {
-        let source = String.fromUtf8(File.readFrom(path))
+        let source = normalizeSourceNewlines(String.fromUtf8(File.readFrom(path)))
         let tokens = cangjieLex(source)
         if (exceedsSafeBinaryExpressionDepth(tokens)) { return 12 }
         let _ = parseProgram(tokens)
@@ -1419,7 +1423,7 @@ private func parseSourceInput(input: SourceInputFile, fallbackPackageName: Strin
     cacheDirectory: ?String, cacheFingerprint: String,
     astPreflightExecutable: ?String): ParsedSourceFile {
     let source = try {
-        String.fromUtf8(File.readFrom(input.actualPath))
+        normalizeSourceNewlines(String.fromUtf8(File.readFrom(input.actualPath)))
     } catch (_: Exception) {
         let result = ParsedSourceFile(input)
         result.diagnostics.add(Diagnostic("error", "CJDOC1011",
