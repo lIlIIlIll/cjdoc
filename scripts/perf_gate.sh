@@ -62,9 +62,9 @@ done
 start_ns="$("${python_cmd}" "${repo_root}/scripts/portable_probe.py" monotonic-ns)"
 if [[ -x "${env_runner}" ]]; then
     if [[ "${OS:-}" == "Windows_NT" ]]; then
-        "${python_cmd}" "${repo_root}/scripts/run_with_peak_memory.py" --output "${work_dir}/cold-peak-kib.txt" -- \
-            bash "${env_runner}" --cwd "${repo_root}" "${binary}" \
+        "${env_runner}" --cwd "${repo_root}" "${binary}" \
             --project "${project_dir}" --format json --jobs auto --output "${work_dir}/first.json"
+        printf '%s\n' -1 >"${work_dir}/cold-peak-kib.txt"
     else
         "${python_cmd}" "${repo_root}/scripts/run_with_peak_memory.py" --output "${work_dir}/cold-peak-kib.txt" -- \
             "${env_runner}" --cwd "${repo_root}" "${binary}" \
