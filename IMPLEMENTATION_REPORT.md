@@ -1,8 +1,8 @@
 # cjdoc implementation report
 
-报告日期：2026-08-30。
+报告日期：2026-08-30。当前版本：`0.4.0`。
 
-本报告覆盖当前 v0.3.0 的非 CHIR 实现与 hardening。当前版本采用 Gate C：产品使用 `std.ast` 和可插拔 `SemanticProvider`，暂不接入 CHIR。
+本报告只陈述当前工作区和本次实际运行得到的结果。当前架构选择 Gate C：以 `std.ast` 作为源码语法真值，以公开、provider-neutral 的 `SemanticProvider` 作为未来语义扩展点；v0.4 不构建、不导入、也不解析 CHIR。
 
 ## 1. 实际环境
 
@@ -11,17 +11,14 @@
 | cjc | `1.1.0-alpha.20260829040003 (cjnative)` |
 | target | `x86_64-unknown-linux-gnu` |
 | cjpm | `1.1.3` |
-| SDK | `$CANGJIE_HOME=/home/elliot/cangjie_sdk/daily/cangjie`，canonical path 为 `/home/elliot/cangjie_sdk/main/linux_x64/vanilla/20260829/cangjie` |
-| std.ast | SDK 内置，实际编译验证 `cangjieLex`、`parseProgram`、`Program.traverse`、`Visitor` 及使用到的 declaration API |
-| stdx | 20260829 dynamic/static sidecar 均已检查 |
-| stdx.chir | 20260829 sidecar 中没有 `stdx.chir.cjo`，普通项目不能 import |
-| Markdown | `markdown` 0.9.0，commit `d73eecee4e19fe56a57cd9f150fe0a62bae405c4` |
-| GitHub CI SDK | 官方 Cangjie `1.1.3` |
-| GitHub CI targets | Linux x64、Windows x64、macOS ARM64 |
+| SDK executable | `/home/elliot/cangjie_sdk/main/linux_x64/vanilla/20260829/cangjie/bin/cjc` |
+| `std.ast` artifact | `modules/linux_x86_64_cjnative/std/std.ast.cjo` |
+| `std.ast` API | 实际编译/运行验证 `cangjieLex`、`Token.kind/value/pos`、`TokenKind.COMMENT`、`parseProgram`、`Program.traverse`、`Visitor`、declaration position API |
+| `stdx.chir` artifact | 20260829 dynamic/static stdx sidecar 中均不存在 |
+| Markdown | `markdown` commit `3202a82a354a005f5c1e4baa0c9bb800d00c2187` |
+| JSON | `yjson` commit `bf65cbecd99ac25e7485f8db60990e94a04e57bc` |
 
-当前 `/home/elliot/cangjie_sdk/daily/cangjie` 已解析到上述 20260829 SDK。没有构建或修改 compiler、std、stdx。
-
-详细 API 证据位于：
+没有修改或构建 compiler、std、stdx。API probe 与逐项证据位于：
 
 - [`docs/research/api-capability-matrix.md`](docs/research/api-capability-matrix.md)
 - [`docs/research/std-ast-findings.md`](docs/research/std-ast-findings.md)
@@ -29,305 +26,286 @@
 
 ## 2. CHIR 结论
 
-**FAIL，作为当前版本的 authoritative semantic source。Architecture Gate 选择 Gate C。**
+**FAIL，不能作为当前版本的 authoritative semantic source；Architecture Gate 选择 Gate C。**
 
-分项结果：
+| 能力 | 结果 | 原因 |
+|---|---|---|
+| `cjc` 生成 serialized CHIR | PASS | `--emit-chir=raw` 和 `chir-dis` 实际通过 |
+| 普通 daily 项目加载 `stdx.chir` | FAIL | daily stdx 未交付 `stdx.chir.cjo`，import 报 `can not find package 'stdx.chir'` |
+| 主要 declaration、type、owner API | PARTIAL | 仅在另一套同版本 local sidecar 上验证了部分 API 形态，不能证明 current daily 可用 |
+| Function source/debug location | FAIL | 公开 `Function` API 没有足够的只读 location |
+| extension method owner | PARTIAL | local probe 中 extension method 的 `declaredParent` 为空 |
+| Source 与 CHIR function binding | FAIL | overload 可由 signature 区分，但没有稳定位置，无法可靠回绑源码 |
 
-- `cjc --emit-chir=raw` 与 `chir-dis`：PASS。
-- current daily 普通项目 import `stdx.chir`：FAIL，构建产物不存在。
-- local same-version experiment 的 Package、definition、type、owner、generic 等读取：PARTIAL，只证明部分公开 API 形态。
-- `Function` 级 source/debug location：FAIL，公开 API 不足以完成可靠的 source binding。
-- extension method owner：PARTIAL，local probe 中 `declaredParent` 为空。
+因此 v0.4：
 
-因此当前产品没有 `stdx.chir` import、没有 CHIR 文本解析器，也没有 compiler internal 副本。CHIR 只保留为未来 provider 的接入点。
+- 不 import `stdx.chir`；
+- 不解析 `.chirtxt`；
+- 不复制 compiler 内部反序列化器；
+- 不把 source spelling 猜成 canonical type；
+- 仅保留独立 provider SPI，待未来 G1 到 G7 全部 PASS 后接入 CHIR adapter。
 
 ## 3. Source 与 semantic binding
 
-当前产品的 binding 分为两段。
-
-### Source comment binding
-
-Lexer 收集 `/** ... */` 和真实位置，AST 收集 source declaration。Comment binder 先把 `RawDocComment` 绑定到 `SourceDeclaration`，不直接绑定 semantic declaration。
-
-内部 source key 是：
+### 当前 binding strategy
 
 ```text
-logical file path + start line + start column + declaration kind + name
+lexer RawDocComment
+        |
+        v
+std.ast SourceDeclaration
+        |
+        +---- comment binding
+        |
+        v
+SourceDeclarationView ----> SemanticProviderSession.analyze(...)
+        |                              |
+        |                              v
+        +--------------------- SemanticBatch
+                                       |
+                                       v
+                              DocumentationBinder
 ```
 
-owner 通过 AST source range containment 单独确定。source key 可以包含位置，但不会序列化，也不会成为 SymbolId。
+文档注释总是先绑定 source declaration，永远不直接绑定 semantic declaration。provider 收到的是 cjdoc 自己定义的只读 source view，不是 `std.ast` 类型；返回的也是 provider-neutral DTO，不是 CHIR 类型。
 
-### Source 与 SemanticProvider binding
+source key 使用逻辑文件路径、declaration kind、name、起始行列和 owner；signature 仅用于重载消歧。位置只用于 binding、诊断和 source link，不参与稳定 SymbolId。
 
-`SemanticProvider.analyze(SourceSnapshot)` 返回 provider-neutral `SemanticResult`。Binder 以 source key 做一对一匹配，并记录：
+### Ambiguity handling
 
-- matched
-- missing
-- ambiguous
-- extraneous
-- contract violations
+- 零匹配：保留 AST fallback，semantic state 为 `partial` 或 `unavailable`。
+- 多匹配：输出稳定的 ambiguous diagnostic，不任意选择候选。
+- provider 返回未知 source ID、未知 owner、非法 diagnostic 或抛异常：输出 `CJDOC2xxx` contract diagnostic，并继续生成 AST fallback Doc IR。
+- 同一次 generation 最多注册一个 provider factory；session 无论成功或异常都会执行 `close()`。
 
-Provider 声明的 capabilities 会被强制检查。没有声明 canonical types/signatures 的 provider 即使返回这些数据，也会被降级并产生 `CJDOC1017`。
+### 已验证 fixture
 
-已验证 fixture 包括 overload、member declaration、multiline signature、annotation、generic declaration、extend、Unicode identifier、conditional declaration 和 override spelling。仓颉 class declaration 只能位于顶层，因此没有构造不存在的 nested type source fixture。AST provider 的 source binding 为 PASS；CHIR Function binding 仍为 FAIL。
+覆盖 function overload、class、struct、interface、enum、extend、generic type/function、member、annotation spelling、visibility、Unicode identifier、中文注释、多行 signature、workspace、path dependency、conditional source 和 unsupported declaration。外部 provider fixture 验证了独立 cjpm 项目只依赖公开 SPI 即可注入 semantic enrichment。
 
-剩余风险：macro-generated declaration 没有展开 origin，override target 没有 semantic identity，未来 CHIR 版本仍需重新验证 location 与 owner。
+### Remaining risks
+
+- macro-generated declaration 没有 compiler origin；
+- AST fallback 无法解析 canonical alias/type identity、override target 和 compiler owner；
+- CHIR adapter 将来仍须重新验证 function location、extension owner、版本兼容和 source mapping，不能复用当前 FAIL 结论中的假设。
 
 ## 4. 最终架构
 
 ```text
-Cangjie source
-  -> content-addressed source cache
-  -> isolated std.ast preflight worker on cache miss
-  -> std.ast lexer/parser
-  -> AstSourceProvider
-       -> project/workspace/dependency discovery
-       -> RawDocComment collector
-       -> SourceDeclaration collector
-       -> source comment binder
-       -> SourceSnapshot
-  -> SemanticProvider
-       -> AstSemanticProvider
-       -> SemanticResult + capabilities
-  -> DocumentationBinder
-       -> source/semantic contract validation
-       -> stable SymbolId
-       -> DocumentationSet (Doc IR)
-  -> cfg three-value evaluator
-  -> reference resolution + lint + coverage
-  -> JSON renderer
-  -> Markdown renderer -> markdown parser validation
-  -> HTML renderer -> safe HTML + CSP + search index/UI
-
-future serialized CHIR
-  -> ChirSemanticProvider package
-  -> provider-neutral SemanticResult
+Cangjie project/workspace
+        |
+        v
+project discovery + source scanning
+        |
+        v
+std.ast lexer/parser/traversal
+        |
+        +--> RawDocComment collector
+        +--> SourceDeclaration collector
+        +--> CommentBinder
+        |
+        v
+SourceSnapshot
+        |
+        +--> AstSemanticFallbackProvider
+        +--> SemanticProvider SPI --> future ChirSemanticProvider
+        |
+        v
+DocumentationBinder + reference resolver + lint
+        |
+        v
+Doc IR v5
+   |             |                 |
+   v             v                 v
+docs.json   Markdown renderer   HTML renderer + search-index.json
 ```
 
-根 executable 只负责 CLI。可复用产品逻辑位于 `packages/cjdoc_core`。Renderer、comment parser、lint、binder 和 Doc IR 均不依赖 `stdx.chir`。
+依赖边界：
+
+- `std.ast` 只存在于 source frontend；
+- provider API 只暴露 cjdoc DTO；
+- renderer、codec、comment model 和 lint 不 import `std.ast` 或 `stdx.chir`；
+- `render` 子命令只读取严格校验后的 Doc IR，不读取项目源码。
 
 ## 5. 已实现功能
 
 ### Complete
 
-- Phase 0 API reality check、可编译 probe、capability matrix 和 Gate C 决策。
-- 普通 cjpm package、workspace members、递归 `src/**/*.cj` 扫描。
-- 可选 path dependency 扫描，以及显式 `--dependency-source <name>=<path>` 离线源码输入。
-- 可选 `cjpm.lock` + 已有 cjpm cache 离线 dependency discovery，递归读取 dependency lock、保留直接边、阻断循环，不下载内容，显式 source 优先。
-- `std.ast` lexer/parser/traversal，不用正则解析仓颉 declaration。
-- `/** */` collector、source range、source spelling、comment-to-source binding。
-- class、struct、interface、enum、enum case、extend、function、constructor、property、variable、type alias、generic 和 member declaration。
-- visibility、owner、annotation spelling、parameters、return type spelling、supertype 和 extension target source relationships。
-- `SemanticProvider`、`SemanticCapabilities`、`SemanticResult`、`DocumentationBinder` 和 default `AstSemanticProvider`。
-- Provider identity/capability enforcement，以及 matched/missing/ambiguous/extraneous/contract-violation statistics。
-- Doc IR v4：project/modules、configuration、semanticBinding、packages、symbols、origin、unsupported declarations、diagnostics。
-- stable SymbolId，不使用文件名或行号；overload 使用参数类型 identity 区分。
-- semantic state 显式表示 `resolved`、`partial`、`unavailable`、`ambiguous`。
-- Markdown body、summary/description 和全部首版结构化 tags。
-- Doc IR declaration index、跨 package `@see`、显式 signature 消歧和稳定链接。
-- lint：unknown/duplicate `@param`、duplicate `@return`/`@throws`、invalid return docs、missing parameter/symbol docs、broken/unresolved/ambiguous `@see`、Markdown URL/anchor、duplicate SymbolId、ambiguous semantic binding。
-- public symbol/parameter documentation coverage，以及 `--deny-warnings` CI policy。
-- deterministic JSON、Draft 2020-12 schema、无绝对路径、atomic write、内容不变时不替换文件。
-- Markdown renderer，只读取 Doc IR，使用 Markdown AST 调整 heading depth。
-- HTML renderer，只读取 Doc IR，包含 package/type/member 页面、breadcrumbs、search-index v2、确定性排名、kind/package filters、键盘/ARIA、CSP 和安全 HTML。
-- 根项目和每个 dependency 的显式 source URL template；dependency revision 不从 VCS 猜测。
-- `--cfg` profile，支持布尔键、`!`、`&&`、`||`、括号、`==`/`!=` 和三值保守选择。
-- `--cfg-matrix-profile` 显式多 profile 输出，生成 deterministic、schema-versioned 的 `cjdoc.cfg-matrix/1` JSON；参数顺序不影响结果。
-- source macro 以 `unsupportedDeclarations` 和 `origin: source` 记录，不执行 expansion。
-- AST override spelling 以 `symbolRelationships` 记录，目标明确为 `unavailable`。
-- `--jobs auto|1..64` 文件级并行解析；auto 按处理器数选择并限制为 8，按源码逻辑路径确定性合并。
-- 内容寻址的逐文件 source cache，完整 key 校验、SDK/cjc/parser schema invalidation、损坏恢复和显式 stats。
-- CLI cache miss 使用独立 AST preflight process；普通 parse error、已知深 BinaryExpr 与未知 worker crash 分别恢复。
-- config file、stdout、text/JSON/SARIF diagnostics。
-- `cjpm install`、launcher、自定义下游 SemanticProvider fixture。
-- host path separator/boundary normalization、`.exe` 选择、portable inode/monotonic timing 和无本机 helper 的 release-runner fallback。
-- GitHub-hosted Linux x64、Windows x64、macOS ARM64 acceptance matrix；官方 SDK archive 固定 URL/SHA256 并按平台缓存。
-- source newline canonicalization、仓库 LF 策略和 Windows stdout 传输层换行规范化。
+- Phase 0 reality check、可运行 probe、capability matrix 和 Gate C 决策。
+- cjpm project/workspace discovery、递归仓颉源码扫描、path dependency 与显式/cached dependency source 入口。
+- `std.ast` lexer/parser/traversal；没有使用正则解析仓颉 declaration。
+- `/** ... */` collector、真实源码位置/byte offset、raw header spelling、comment-to-source binding。
+- function、constructor、property/variable、type alias、class、struct、interface、enum、enum case、extend、generic、member、visibility 和 annotation spelling 的 source model。
+- 公开 `SemanticProviderFactory`/`SemanticProviderSession`、lifecycle、capability/contract validation、异常 fallback 和外部插件 fixture。
+- Doc IR v5：source、semantic state、origin、unsupported declaration、diagnostic、稳定排序和稳定 SymbolId。
+- `resolved`、`partial`、`unavailable`、`ambiguous` 显式 semantic state；AST spelling 不会标记为 resolved。
+- Markdown GFM AST 转换；summary、description，以及 `@param`、`@return`、`@throws`、`@see`、`@since`、`@deprecated`、`@author`、`@version`。
+- 首版 lint：参数/返回值重复或缺失、无效 `@see`、duplicate SymbolId、ambiguous binding 和 unresolved semantic reference。
+- `generate`、`check`、`render`、`schema` CLI，正确区分 exit code 0/1/2。
+- deterministic、schema-versioned JSON；严格 decoder；无绝对本机路径；9 组 v5 golden。
+- 从同一 Doc IR 生成 Markdown、HTML 和 `cjdoc.search-index/3`；HTML 转义用户 raw HTML，不执行文档代码。
+- Linux 本机 acceptance gate 和三个真实仓库的 deterministic generation。
 
 ### Partial
 
-- AST 类型和签名是 source spelling，不是 type-checker 结果，统一保持 `partial`/`canonical: null`。
-- `@see` 不做 alias 展开、import resolution、隐式转换或完整 overload resolution。
-- cfg evaluator 不读取编译器内建 target profile；单 profile 和矩阵 profile 都必须由调用者显式提供 key/value。
-- macro origin 只覆盖源码 macro declaration，不包含 expansion-generated declaration。
-- override 关系可以识别 modifier，但 AST provider 不能解析目标 SymbolId。
-- manifest/lock adapter 只提取 cjdoc 使用的字段，不是通用 TOML parser。
-- cache discovery 不解析 registry index，也不联网补全缺失 dependency。
-- 并行扫描已经确定性验证，但不保证加速；大型 Markdown 仓库的本次 `--jobs 4` 略慢且内存更高。
+- AST 类型、inheritance、generic constraint 和 extension target 是 source spelling，semantic state 保持 `partial`。
+- `@see` 支持当前 declaration index 与显式 signature，但不实现完整 compiler overload resolution、alias 展开或隐式转换。
+- cfg 由调用者显式传入；不自动读取 compiler target profile。
+- cached dependency discovery 不下载网络内容。
+- HTML 是安全的单页 MVP，有稳定 search index，但没有浏览器端搜索 UI、package/type 分页和完整交叉链接。
+- Markdown AST 保存 kind/literal/children；节点内部 source range 尚未映射回项目级 source range。
 
 ### Not implemented
 
-- `ChirSemanticProvider`。
-- canonical semantic type/signature、semantic extension owner、semantic override target。
-- macro expansion 执行。文档生成默认不会执行用户文档代码或 macro。
-- Linux ARM64、macOS x64 和其他非 CI matrix target 尚未运行 release gate。
-- Windows/macOS daily SDK 尚未运行；公开 CI 使用官方 Cangjie 1.1.3 STS SDK。
+- `ChirSemanticProvider`、CHIR driver/loader 和 canonical compiler type/signature。
+- semantic override relation、macro expansion origin 和 compiler-resolved annotation。
+- 文档示例编译/执行；默认且当前实现都不会执行文档代码。
+- Phase 6 的大型仓库性能基线、峰值内存 gate、错误恢复/资源上限全面加固。
 
 ## 6. 关键文件
 
 | 文件 | 职责 |
 |---|---|
-| `src/main.cj` | executable 入口，只调用 core CLI |
-| `packages/cjdoc_core/src/cli.cj` | CLI、输出路径、atomic/incremental write、HTML managed files |
-| `packages/cjdoc_core/src/model.cj` | Source/Semantic/Doc IR DTO 和 provider boundary |
-| `packages/cjdoc_core/src/manifest_adapter.cj` | 受限 cjpm manifest/lock view |
-| `packages/cjdoc_core/src/source_frontend.cj` | project/dependency discovery、cache、AST worker、lexer/parser、comments、并行 source collection |
-| `packages/cjdoc_core/src/semantic_provider.cj` | default AST semantic provider |
-| `packages/cjdoc_core/src/documentation_binder.cj` | provider contract、binding、SymbolId、Doc IR |
-| `packages/cjdoc_core/src/cfg_profile.cj` | 保守 cfg profile selection |
-| `packages/cjdoc_core/src/comment_parser.cj` | Markdown body 和结构化 tags |
-| `packages/cjdoc_core/src/reference_resolver.cj` | declaration index 和 `@see` resolution |
-| `packages/cjdoc_core/src/lint.cj` | 稳定 diagnostic codes |
-| `packages/cjdoc_core/src/diagnostic_renderer.cj` | JSON diagnostics 和 SARIF 2.1.0 |
-| `packages/cjdoc_core/src/json_renderer.cj` | Doc IR v4 JSON |
-| `packages/cjdoc_core/src/markdown_renderer.cj` | Doc IR 到 Markdown |
-| `packages/cjdoc_core/src/html_renderer.cj` | 安全 HTML、search、source links |
-| `packages/cjdoc_core/src/lib_test.cj` | public behavior unit tests |
-| `docs/schema/doc-ir.schema.json` | `cjdoc.doc-ir/4` schema |
-| `docs/schema/cfg-matrix.schema.json` | `cjdoc.cfg-matrix/1` schema |
-| `docs/schema/search-index.schema.json` | `cjdoc.search-index/2` schema |
+| `src/main.cj` | executable 入口 |
+| `src/new_cli.cj` | `generate/check/render/schema` 参数、exit code 与输出调度 |
+| `src/public_api.cj` | `GenerationRequest`、`DocumentationEngine` 和公开 facade |
+| `src/provider/semantic_provider.cj` | provider SPI、source views、semantic DTO 与 capabilities |
+| `src/source_frontend.cj` | project discovery、source scanning、lexer/parser、declaration/comment collection |
+| `src/documentation_binder.cj` | source/semantic binding、provider contract、SymbolId 与 Doc IR 组装 |
+| `src/model/doc_ir.cj` | 公开 Doc IR v5 model |
+| `src/comment_parser.cj` | Markdown AST 和结构化 tag parser |
+| `src/reference_resolver.cj` | declaration index 与 `@see` resolution |
+| `src/lint.cj` | 稳定 lint diagnostics |
+| `src/render/json_encode.cj` | deterministic Doc IR encoder |
+| `src/render/json_decode.cj` | strict Doc IR decoder |
+| `src/render/renderers.cj` | Markdown、HTML 与 search renderer |
+| `src/schema.cj` | binary 内嵌 authoritative schemas |
+| `docs/schema/*.schema.json` | Doc IR、diagnostic、cfg matrix、search index schemas |
+| `tests/fixtures/golden-v5/` | 9 组 v5 golden |
+| `tests/fixtures/projects/provider_plugin/` | 外部 provider contract fixture |
 | `scripts/check.sh` | 完整 acceptance gate |
-| `scripts/cangjie_env_runner.sh` | 本机 helper 或已有 SDK 环境的 portable command adapter |
-| `scripts/portable_probe.py` | 跨平台 inode 和 monotonic time probe |
-| `scripts/validate_schema.py` | JSON Schema validator |
-| `scripts/validate_html_site.py` | HTML links、anchors、search 和安全 validator |
-| `scripts/perf_gate.sh` | 2000-symbol deterministic performance gate |
-| `scripts/run_with_peak_memory.py` | 无轮询的 child peak RSS 测量 glue |
-| `.github/workflows/ci.yml` | Linux/Windows/macOS 官方 SDK acceptance matrix |
-| `scripts/install_cangjie_sdk.py` | checksum-pinned SDK 下载、校验、安全解压和 cache root 发现 |
-| `scripts/test_install_cangjie_sdk.py` | SDK installer 和 archive traversal 回归测试 |
-| `.gitattributes` | 跨平台 LF 策略和专用 CRLF fixture 例外 |
-| `probes/` | std.ast 和 CHIR reality-check probes |
+| `scripts/validate_html_site.py` | HTML link、anchor 和安全检查 |
+| `.github/workflows/ci.yml` | Linux x64、Windows x64、macOS ARM64 runner 配置 |
+| `AGENTS.md` | 仓库边界、验证入口和 agent 工作约定 |
 
 ## 7. 测试结果
 
-### Build 和 unit
+### Build、unit 和 public contract
 
-- `cjpm build`：PASS。
-- 根目录 `cjpm test`：PASS，root executable 本身没有测试用例（TOTAL 0）。
-- `packages/cjdoc_core` 的 `cjpm test`：39/39 PASS。
-- SDK installer unittest：4/4 PASS。
-- provider plugin executable：PASS，输出 `provider plugin ok`。
-- `cjpm install --path .`：PASS，安装后的 `cjdoc --version` 为 `0.3.0`。
+| Gate | 当前结果 |
+|---|---|
+| `cjpm build` | PASS |
+| `cjpm test` | PASS，11/11 |
+| public Doc IR/codec/provider contract | PASS |
+| external provider fixture | PASS，输出 `provider plugin ok` |
+| README `cjpm run -- generate ... --stdout` | PASS |
+
+构建会显示锁定 `yjson` 依赖宏展开产生的 unused warnings；未影响 build/test 结果。
 
 ### Golden 和 integration
 
-- Doc IR JSON golden：16 个输出，全部 schema-valid、两次 byte-identical、无绝对路径。
-- cfg matrix golden：1 个 `cjdoc.cfg-matrix/1` 输出，profile 与 cfg 参数换序后 byte-identical，嵌套 Doc IR 全部 schema-valid。
-- Markdown golden：5 个输出，两次 byte-identical。
-- HTML golden：站点目录两次一致，links/anchors/CSP/search validator 与 search-index schema PASS。
-- cfg Linux profile、显式 cfg matrix、override、path dependency、offline dependency source、root/dependency source URL、HTML security、stale cleanup：PASS。
-- `--jobs 1`、`--jobs 4` 与 `--jobs auto` 的 fixture/large gate 输出保持确定顺序。
-- cache cold/hot、SDK fingerprint invalidation、corrupt-entry recovery、worker failure isolation：PASS。
-- config、stdout、JSON diagnostics、SARIF、coverage、deny warnings、transitive cached dependency discovery：PASS。
-- self generation 使用 `--include-path-dependencies`：2 modules、2 packages、674 symbols、59 HTML pages、0 diagnostics；两次 JSON byte-identical，Doc IR/search schema 和 HTML validator PASS。
-- 深 BinaryExpr 在 jobs 1/4 下均产生同一 `CJDOC1012` 部分 Doc IR：PASS。
-- JSON 和 HTML 内容不变时 inode 保持不变：PASS。
-- invalid schema、duplicate SymbolId、invalid workspace：fail-closed PASS。
-
-### 性能门禁
-
-2000 个函数分布在 40 个 source files：本机 daily cold 693 ms、hot 319 ms、peak RSS 338936 KiB。cold 门限 15000 ms、hot 门限 7000 ms、peak 门限 524288 KiB；两次 JSON byte-identical，cache entry 数为 40。
-
-### GitHub-hosted release matrix
-
-[GitHub Actions run 33267218113](https://github.com/lIlIIlIll/cjdoc/actions/runs/33267218113) 在 commit `64ba551f42e5f1838c822f1c2e853610c5507321` 上完成：
-
-| runner | target | result | duration |
-|---|---|---|---:|
-| `ubuntu-22.04` | Linux x64 | PASS | 5m05s |
-| `windows-2025` | Windows x64 | PASS | 6m26s |
-| `macos-15` | macOS ARM64 | PASS | 4m36s |
-
-三个 job 均下载并校验官方 Cangjie 1.1.3 SDK，运行 installer tests、`cjc -v`、`cjpm -v` 和完整 `scripts/check.sh`。Windows 不支持 Python `resource` peak RSS，因此记录为 unsupported；确定性、cold/hot workload、build、39 个 core tests、golden、integration、HTML、Markdown、install 仍全部运行。
+- 9 个 v5 golden 全部通过 Draft 2020-12 schema validation。
+- basic、functions、types、extend、source edges、unsupported、workspace、conditional Linux、path dependencies 均两次 byte-identical。
+- JSON、Markdown、HTML、search index 两次生成一致。
+- strict `render` round-trip 后 JSON 字节一致，Markdown/HTML 目录一致。
+- Doc IR、diagnostics、cfg matrix、search index 四份仓库 schema 与 binary 内嵌 schema 字节一致。
+- HTML security fixture 通过 parser-based validator：禁止 script/iframe/object/embed、事件属性和危险 URL；转义后的示例文本保留。
+- `check --deny-warnings` 和无效 CLI 的 exit code contract 通过。
+- 完整入口最终输出 `cjdoc acceptance gate passed`。
 
 ### 真实仓库
 
-所有命令使用当前构建的 cjdoc。被测仓库保持只读，输出和 cache 写入 `/tmp/cjdoc-real-20260830/`。
+三个原仓库只读；clean build 在 `/tmp/cjdoc-real-build` 隔离副本执行，生成输出在 `/tmp/cjdoc-real-smoke`。每个仓库的隔离 clean build 均通过，并分别生成两次、用 `cmp` 验证 `docs.json`。
 
-| repo | source files | packages | symbols | documented | non-resolved type refs | diagnostics | cold | hot | cold peak RSS |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| sse4cj | 16 | 1 | 603 | 0 | 702 | 0 | 0.51 s | 0.16 s | 339192 KiB |
-| llm4cj | 8 | 1 | 787 | 0 | 1099 | 0 | 1.17 s | 0.18 s | 339284 KiB |
-| markdown | 39 | 9 | 2571 | 52 | 3980 | 0 | 12.06 s | 0.42 s | 371436 KiB |
+| repository | clean build | source files | declarations | documented | unresolved types | ambiguous bindings | warnings/errors | first generation |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| llm4cj | PASS | 10 | 1068 | 0 | 0 | 0 | 0/0 | 2 s |
+| markdown | PASS | 39 | 2614 | 53 | 0 | 0 | 0/0 | 13 s |
+| yjson | PASS | 43 | 2753 | 10 | 1 | 0 | 0/0 | 7 s |
 
-三者 cold/hot JSON 均 `cmp` PASS，ambiguous binding 为 0。时间来自执行工具 wall clock，peak RSS 来自 `resource.getrusage(RUSAGE_CHILDREN)`；均为单次观测，不是稳定 benchmark。
+时间来自 zsh `SECONDS` 的单次墙钟测量，只用于冒烟记录，不是 benchmark。当前环境缺少 `/usr/bin/time`，因此 peak memory 为 **NOT COLLECTED**。
+
+### CI evidence boundary
+
+`.github/workflows/ci.yml` 已配置 Linux x64、Windows x64 和 macOS ARM64 runner，但本次工作区 SHA 尚未 push，因此这些 hosted runner 对当前实现是 **NOT RUN**。本报告不把 workflow 配置当作远端通过证据。
 
 ## 8. 当前限制
 
-- macro-generated declaration：不会展开，只记录 source macro unsupported entry。
-- conditional compilation：支持组合表达式和显式 cfg matrix，但不读取 compiler target profile。
-- extend：target 和附加 supertype 是 AST spelling，semantic owner/canonical type 不可用。
-- generic specialization：只记录声明 spelling，不实例化。
-- overload：AST spelling 可以稳定区分，alias 等价性不能 canonicalize。
-- source location：AST 位置可用，column 按 UTF-8 byte；CHIR Function location 不可用。
-- dependency packages：支持 path package、显式离线 source，以及递归的 lock-pinned cache source graph；不下载 registry/git dependency。
-- annotations：保存 source spelling，不执行或做 semantic resolution。
-- deep expressions：保留预扫描阈值；其他 parser crash 在 CLI worker process 中隔离。
-- parallelism：确定性成立，性能收益依项目而异，内存通常增加。
-- portability：完整 release/installation gate 已在 GitHub-hosted Linux x64、Windows x64 和 macOS ARM64 实际通过。Windows 的标准 Python 不提供 `resource`，该平台明确记录 peak RSS unsupported；共享 Windows/macOS runner 不执行机器相关耗时阈值，但仍运行相同 workload 和确定性检查。其他 architecture/OS target 尚未实测。
+- macro-generated declarations：不展开；只能记录 unsupported source/origin。
+- conditional compilation：支持显式 cfg 输入，不能自动取得 compiler 内建 target profile。
+- extend：target 是 source spelling；semantic owner 和 specialization 不可用。
+- generic specialization：不实例化，只记录 declaration/generic spelling。
+- overload：SymbolId 能按参数 type identity 区分；AST fallback 不能判断 alias canonical equivalence。
+- source location：AST 行列和 byte offset 可用；CHIR Function location 不可用。
+- dependency packages：支持 path、显式 source 和可发现 cache；不下载缺失依赖。
+- annotations：保存源码 spelling，不执行、不解析 compiler semantic identity。
+- unsupported declaration：产生 partial Doc IR 或稳定 diagnostic，不使整个 generator crash；尚未覆盖所有 future language construct。
+- HTML：单页、安全、确定性，但尚非完整浏览体验。
+- portability：当前 SHA 只在 Linux x64 daily 本机实际运行；Windows/macOS 仅有 workflow 配置。
 
 ## 9. API 缺口
 
 | 缺失能力 | 为什么需要 | 当前 workaround | 建议最小新增 API |
 |---|---|---|---|
-| daily 未交付 `stdx.chir` | 普通 cjpm package 无法加载 serialized CHIR | Gate C，AST provider | 在 compiler-compatible stdx sidecar 交付已有 package/artifacts |
-| `Function.location` | overload、nested、multiline source binding | 不做 CHIR enrichment | 暴露只读 `location: DebugLocation` |
-| extension method owner | 稳定 extension member owner | AST range owner | 让 `declaredParent` 指向 ExtendDef，或提供只读 declaredExtend |
-| source exact byte range | 直接切出 source spelling | 由 line/UTF-8 byte column 和 lexer token 重算 | 为 AST node 暴露只读 source byte range |
-| generated-node origin | macro-generated declaration 与 source doc 对应 | source macro warning，不声明 resolved | 暴露只读 origin kind/location |
-| `parseProgram` 深 BinaryExpr native crash | unsupported source 不应终止生成器 | lexer guard + CLI subprocess isolation + `CJDOC1012`/`CJDOC1020` | 返回结构化 parse error，并使 parser traversal 栈安全 |
+| daily 未交付 `stdx.chir` artifact | 普通 cjpm package 无法加载 serialized CHIR | Gate C、AST fallback | 交付与 compiler 版本匹配的公开 package/cjo/library |
+| `Function` 只读 source location | overload、多行、Unicode function 回绑 | 不做 CHIR enrichment | 暴露稳定 `location: DebugLocation` 或等价只读字段 |
+| extension method declared owner | 稳定 extension member owner/qualified name | AST range owner | `declaredParent` 指向 `ExtendDef`，或暴露只读 declared extend |
+| semantic override target | 正确链接 override，而不是猜名字 | 显式 unavailable | 暴露只读 target declaration identity |
+| generated declaration origin | macro source comment 与 generated symbol 对应 | 记录 unsupported/macro source | 暴露 origin kind、source invocation identity/location |
+| AST exact byte range | 无需从 line/column/token 重算 spelling | cjdoc 按 UTF-8 source/token 计算 | declaration 暴露只读 UTF-8 byte start/end |
 
-没有提出扩大完整 compiler API surface 的要求。每项建议只覆盖 cjdoc 无法自行可靠证明的最小信息。
+这些建议只覆盖 cjdoc 无法可靠自行证明的最小信息，不要求扩大为完整 compiler internal API。
 
 ## 10. 下一阶段
 
-- P0：在公开 CHIR artifact、Function location 和 extension owner 全部可用后，重新运行 G1 到 G7，再实现独立 `ChirSemanticProvider` package。
-- P1：如果 daily SDK 能以适合 CI 的方式分发，在 Windows/macOS daily 上补充兼容性 matrix；增加 Linux ARM64 与 macOS x64 target。
-- P2：如果 compiler 后续提供稳定的只读 target cfg API，增加显式 opt-in 的 compiler profile adapter；现阶段继续要求用户提供可复现的 cfg 值。
+- P0：补充 parser failure/资源限制 fixture、真实大型 workspace 性能与 peak-memory 基线；继续扩大 unsupported construct 的 fail-soft 覆盖。
+- P1：把 HTML 从单页升级为 package/type/member 页面和浏览器端搜索 UI，同时仍只消费 Doc IR。
+- P1：增加 provider conformance kit 与跨 SDK contract matrix，供未来第三方 semantic provider 使用。
+- P2：仅当 G1 到 G7 重新验证全部 PASS 后，实现独立 `ChirSemanticProvider`；任何 enrichment 失败仍必须回退 AST。
+- P2：在当前提交 push 后运行 Linux/Windows/macOS GitHub-hosted acceptance，并记录 target SHA 证据。
 
 ## 11. 复现命令
 
-准备当前 daily 后运行：
+准备 daily SDK 后：
 
 ```bash
-/home/elliot/.codex/scripts/codex_cangjie_env --cwd . cjpm build
-/home/elliot/.codex/scripts/codex_cangjie_env --cwd . cjpm test
-/home/elliot/.codex/scripts/codex_cangjie_env \
-  --cwd packages/cjdoc_core cjpm test
+cjpm build
+cjpm test
+python3 -m pip install -r requirements-ci.txt
 scripts/check.sh
-gh run view 33267218113 --repo lIlIIlIll/cjdoc
 ```
 
-生成三种输出：
+生成 Doc IR：
 
 ```bash
-cjpm run -- --project . --format json --output target/doc/docs.json
-cjpm run -- --project . --format markdown --output target/doc/docs.md
-cjpm run -- --project . --format html --output target/doc/html --jobs 4
+cjpm run -- generate \
+  --project tests/fixtures/projects/basic \
+  --format json
 ```
 
-生成显式 cfg matrix：
+一次生成全部当前 renderer artifact：
 
 ```bash
-cjpm run -- --project tests/fixtures/projects/conditional --format json \
-  --cfg-matrix-profile linux:os=Linux,arch=x86_64 \
-  --cfg-matrix-profile windows:os=Windows,arch=x86_64 \
-  --output target/doc/docs.matrix.json
+cjpm run -- generate \
+  --project tests/fixtures/projects/basic \
+  --format json \
+  --format markdown \
+  --format html \
+  --output target/example-doc
 ```
 
-验证串并行确定性：
+严格读取 Doc IR 并重新渲染：
 
 ```bash
-./cjdoc --project /home/elliot/playground/markdown \
-  --format json --jobs 1 --output /tmp/markdown-jobs1.json
-./cjdoc --project /home/elliot/playground/markdown \
-  --format json --jobs 4 --output /tmp/markdown-jobs4.json
-cmp /tmp/markdown-jobs1.json /tmp/markdown-jobs4.json
+cjpm run -- render \
+  --input target/example-doc/docs.json \
+  --format markdown \
+  --format html \
+  --output target/rendered-doc
 ```
 
-完整验收成功时最后输出：
+检查 schema 同步：
 
-```text
-cjdoc acceptance checks passed
+```bash
+cjpm run -- schema doc-ir > /tmp/doc-ir.schema.json
+cmp /tmp/doc-ir.schema.json docs/schema/doc-ir.schema.json
 ```

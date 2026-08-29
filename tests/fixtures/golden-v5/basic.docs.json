@@ -1,0 +1,2243 @@
+{
+  "schemaVersion": "cjdoc.doc-ir/5",
+  "generator": {
+    "name": "cjdoc",
+    "version": "0.4.0"
+  },
+  "status": "complete",
+  "project": {
+    "name": "basic",
+    "kind": "package"
+  },
+  "configuration": {
+    "audience": "external",
+    "lintProfile": "standard",
+    "cfgProfile": "default"
+  },
+  "providers": [
+    {
+      "name": "ast",
+      "version": "1",
+      "state": "partial",
+      "capabilities": {
+        "sourceBinding": true,
+        "ownership": true,
+        "visibility": true,
+        "canonicalTypes": false,
+        "canonicalSignatures": false,
+        "relationships": false
+      }
+    }
+  ],
+  "modules": [
+    {
+      "id": "cjdoc:module:v1:root",
+      "name": "basic",
+      "role": "root",
+      "sourcePrefix": "",
+      "packageNames": [
+        "basic"
+      ],
+      "dependencyIds": [
+        
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "name": "basic",
+      "moduleId": "cjdoc:module:v1:root",
+      "sourceFiles": [
+        "src/api.cj"
+      ],
+      "symbolIds": [
+        "cjdoc:v1:basic::Box::constructor:init#g0(T)",
+        "cjdoc:v1:basic::Box::variable:value#g0()",
+        "cjdoc:v1:basic::Box<String>::function:length#g0()",
+        "cjdoc:v1:basic::Box<String>::function:pretty#g0()",
+        "cjdoc:v1:basic::Parser::constructor:init#g0(T)",
+        "cjdoc:v1:basic::Parser::function:hidden#g0()",
+        "cjdoc:v1:basic::Parser::function:read#g0()",
+        "cjdoc:v1:basic::Parser::property:size#g0()",
+        "cjdoc:v1:basic::Parser::variable:value#g0()",
+        "cjdoc:v1:basic::Reader::function:read#g0()",
+        "cjdoc:v1:basic::Status::enumCase:Failed#g0(String)",
+        "cjdoc:v1:basic::Status::enumCase:Ready#g0()",
+        "cjdoc:v1:basic::class:Parser#g1()",
+        "cjdoc:v1:basic::enum:Status#g0()",
+        "cjdoc:v1:basic::extend:Box<String>{function%3Alength%23g0%28%29}#g0()",
+        "cjdoc:v1:basic::extend:Box<String>{function%3Apretty%23g0%28%29}#g0()",
+        "cjdoc:v1:basic::function:identity#g1(T)",
+        "cjdoc:v1:basic::function:multiline#g0(String,Bool)",
+        "cjdoc:v1:basic::function:oldParse#g0(String)",
+        "cjdoc:v1:basic::function:parse#g0(Array<UInt8>)",
+        "cjdoc:v1:basic::function:parse#g0(String)",
+        "cjdoc:v1:basic::function:解析#g0(String)",
+        "cjdoc:v1:basic::interface:Reader#g0()",
+        "cjdoc:v1:basic::struct:Box#g1()",
+        "cjdoc:v1:basic::typeAlias:Name#g0()"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/api.cj",
+      "moduleId": "cjdoc:module:v1:root",
+      "packageName": "basic"
+    }
+  ],
+  "declarations": [
+    {
+      "id": "cjdoc:v1:basic::Box::constructor:init#g0(T)",
+      "kind": "constructor",
+      "name": "init",
+      "qualifiedName": "basic.Box.init",
+      "packageName": "basic",
+      "ownerId": "cjdoc:v1:basic::struct:Box#g1()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "source",
+            "spelling": "T",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "Box value.",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** @param value Box value. */",
+        "summary": "",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "value",
+            "description": "Box value.",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 67,
+          "column": 5,
+          "byteOffset": 1224
+        },
+        "end": {
+          "line": 67,
+          "column": 49,
+          "byteOffset": 1268
+        }
+      },
+      "headerSpelling": "public init(value: T)",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::Box::variable:value#g0()",
+      "kind": "variable",
+      "name": "value",
+      "qualifiedName": "basic.Box.value",
+      "packageName": "basic",
+      "ownerId": "cjdoc:v1:basic::struct:Box#g1()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "T",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": null,
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 65,
+          "column": 5,
+          "byteOffset": 1165
+        },
+        "end": {
+          "line": 65,
+          "column": 24,
+          "byteOffset": 1184
+        }
+      },
+      "headerSpelling": "public let value: T",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::Box<String>::function:length#g0()",
+      "kind": "function",
+      "name": "length",
+      "qualifiedName": "basic.Box < String >.length",
+      "packageName": "basic",
+      "ownerId": "cjdoc:v1:basic::extend:Box<String>{function%3Alength%23g0%28%29}#g0()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Int64",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Value length. */",
+        "summary": "Value length.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Value length.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 85,
+          "column": 5,
+          "byteOffset": 1558
+        },
+        "end": {
+          "line": 85,
+          "column": 54,
+          "byteOffset": 1607
+        }
+      },
+      "headerSpelling": "public func length(): Int64",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::Box<String>::function:pretty#g0()",
+      "kind": "function",
+      "name": "pretty",
+      "qualifiedName": "basic.Box < String >.pretty",
+      "packageName": "basic",
+      "ownerId": "cjdoc:v1:basic::extend:Box<String>{function%3Apretty%23g0%28%29}#g0()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "String",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Pretty value. */",
+        "summary": "Pretty value.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Pretty value.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 79,
+          "column": 5,
+          "byteOffset": 1428
+        },
+        "end": {
+          "line": 79,
+          "column": 43,
+          "byteOffset": 1466
+        }
+      },
+      "headerSpelling": "public func pretty(): String",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::Parser::constructor:init#g0(T)",
+      "kind": "constructor",
+      "name": "init",
+      "qualifiedName": "basic.Parser.init",
+      "packageName": "basic",
+      "ownerId": "cjdoc:v1:basic::class:Parser#g1()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "source",
+            "spelling": "T",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "Initial value.",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n     * Create a parser.\n     * @param value Initial value.\n     */",
+        "summary": "Create a parser.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Create a parser.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "value",
+            "description": "Initial value.",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 47,
+          "column": 5,
+          "byteOffset": 846
+        },
+        "end": {
+          "line": 49,
+          "column": 6,
+          "byteOffset": 902
+        }
+      },
+      "headerSpelling": "public init(value: T)",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::Parser::function:hidden#g0()",
+      "kind": "function",
+      "name": "hidden",
+      "qualifiedName": "basic.Parser.hidden",
+      "packageName": "basic",
+      "ownerId": "cjdoc:v1:basic::class:Parser#g1()",
+      "visibility": "private",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": null,
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 60,
+          "column": 5,
+          "byteOffset": 1084
+        },
+        "end": {
+          "line": 60,
+          "column": 35,
+          "byteOffset": 1114
+        }
+      },
+      "headerSpelling": "private func hidden(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::Parser::function:read#g0()",
+      "kind": "function",
+      "name": "read",
+      "qualifiedName": "basic.Parser.read",
+      "packageName": "basic",
+      "ownerId": "cjdoc:v1:basic::class:Parser#g1()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Int64",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n     * Read a number.\n     * @return Current number.\n     */",
+        "summary": "Read a number.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Read a number.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "return",
+            "subject": "",
+            "description": "Current number.",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 55,
+          "column": 5,
+          "byteOffset": 977
+        },
+        "end": {
+          "line": 55,
+          "column": 36,
+          "byteOffset": 1008
+        }
+      },
+      "headerSpelling": "public func read(): Int64",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::Parser::property:size#g0()",
+      "kind": "property",
+      "name": "size",
+      "qualifiedName": "basic.Parser.size",
+      "packageName": "basic",
+      "ownerId": "cjdoc:v1:basic::class:Parser#g1()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Int64",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Current size. */",
+        "summary": "Current size.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Current size.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 58,
+          "column": 5,
+          "byteOffset": 1039
+        },
+        "end": {
+          "line": 58,
+          "column": 44,
+          "byteOffset": 1078
+        }
+      },
+      "headerSpelling": "public prop size: Int64",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::Parser::variable:value#g0()",
+      "kind": "variable",
+      "name": "value",
+      "qualifiedName": "basic.Parser.value",
+      "packageName": "basic",
+      "ownerId": "cjdoc:v1:basic::class:Parser#g1()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "T",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Stored value. */",
+        "summary": "Stored value.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Stored value.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 41,
+          "column": 5,
+          "byteOffset": 746
+        },
+        "end": {
+          "line": 41,
+          "column": 24,
+          "byteOffset": 765
+        }
+      },
+      "headerSpelling": "public let value: T",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::Reader::function:read#g0()",
+      "kind": "function",
+      "name": "read",
+      "qualifiedName": "basic.Reader.read",
+      "packageName": "basic",
+      "ownerId": "cjdoc:v1:basic::interface:Reader#g0()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Int64",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": null,
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 35,
+          "column": 5,
+          "byteOffset": 637
+        },
+        "end": {
+          "line": 35,
+          "column": 23,
+          "byteOffset": 655
+        }
+      },
+      "headerSpelling": "func read(): Int64",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::Status::enumCase:Failed#g0(String)",
+      "kind": "enumCase",
+      "name": "Failed",
+      "qualifiedName": "basic.Status.Failed",
+      "packageName": "basic",
+      "ownerId": "cjdoc:v1:basic::enum:Status#g0()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "_0",
+          "type": {
+            "kind": "source",
+            "spelling": "String",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": null,
+          "defaultExpression": null
+        }
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": null,
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 73,
+          "column": 7,
+          "byteOffset": 1333
+        },
+        "end": {
+          "line": 73,
+          "column": 21,
+          "byteOffset": 1347
+        }
+      },
+      "headerSpelling": "Failed(String)",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::Status::enumCase:Ready#g0()",
+      "kind": "enumCase",
+      "name": "Ready",
+      "qualifiedName": "basic.Status.Ready",
+      "packageName": "basic",
+      "ownerId": "cjdoc:v1:basic::enum:Status#g0()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": null,
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 72,
+          "column": 7,
+          "byteOffset": 1321
+        },
+        "end": {
+          "line": 72,
+          "column": 12,
+          "byteOffset": 1326
+        }
+      },
+      "headerSpelling": "Ready",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::class:Parser#g1()",
+      "kind": "class",
+      "name": "Parser",
+      "qualifiedName": "basic.Parser",
+      "packageName": "basic",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        "T"
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Generic parser. */",
+        "summary": "Generic parser.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Generic parser.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 39,
+          "column": 1,
+          "byteOffset": 682
+        },
+        "end": {
+          "line": 61,
+          "column": 2,
+          "byteOffset": 1116
+        }
+      },
+      "headerSpelling": "public class Parser<T> <: Reader",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::enum:Status#g0()",
+      "kind": "enum",
+      "name": "Status",
+      "qualifiedName": "basic.Status",
+      "packageName": "basic",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Result status. */",
+        "summary": "Result status.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Result status.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 71,
+          "column": 1,
+          "byteOffset": 1294
+        },
+        "end": {
+          "line": 74,
+          "column": 2,
+          "byteOffset": 1349
+        }
+      },
+      "headerSpelling": "public enum Status",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::extend:Box<String>{function%3Alength%23g0%28%29}#g0()",
+      "kind": "extend",
+      "name": "Box < String >",
+      "qualifiedName": "basic.Box < String >",
+      "packageName": "basic",
+      "ownerId": null,
+      "visibility": "internal",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Additional string box helpers. */",
+        "summary": "Additional string box helpers.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Additional string box helpers.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 83,
+          "column": 1,
+          "byteOffset": 1508
+        },
+        "end": {
+          "line": 86,
+          "column": 2,
+          "byteOffset": 1609
+        }
+      },
+      "headerSpelling": "extend Box<String>",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::extend:Box<String>{function%3Apretty%23g0%28%29}#g0()",
+      "kind": "extend",
+      "name": "Box < String >",
+      "qualifiedName": "basic.Box < String >",
+      "packageName": "basic",
+      "ownerId": null,
+      "visibility": "internal",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** String box helpers. */",
+        "summary": "String box helpers.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "String box helpers.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 77,
+          "column": 1,
+          "byteOffset": 1378
+        },
+        "end": {
+          "line": 80,
+          "column": 2,
+          "byteOffset": 1468
+        }
+      },
+      "headerSpelling": "extend Box<String>",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::function:identity#g1(T)",
+      "kind": "function",
+      "name": "identity",
+      "qualifiedName": "basic.identity",
+      "packageName": "basic",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        "T"
+      ],
+      "parameters": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "source",
+            "spelling": "T",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "Input value.",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "T",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n * Generic identity.\n * @param value Input value.\n * @return Same value.\n */",
+        "summary": "Generic identity.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Generic identity.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "value",
+            "description": "Input value.",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "return",
+            "subject": "",
+            "description": "Same value.",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 93,
+          "column": 1,
+          "byteOffset": 1692
+        },
+        "end": {
+          "line": 93,
+          "column": 47,
+          "byteOffset": 1738
+        }
+      },
+      "headerSpelling": "public func identity<T>(value: T): T",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::function:multiline#g0(String,Bool)",
+      "kind": "function",
+      "name": "multiline",
+      "qualifiedName": "basic.multiline",
+      "packageName": "basic",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "source",
+            "spelling": "String",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "Text.",
+          "defaultExpression": null
+        },
+        {
+          "name": "strict",
+          "type": {
+            "kind": "source",
+            "spelling": "Bool",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "Strict mode.",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "String",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n * Multiline declaration.\n * @param text Text.\n * @param strict Strict mode.\n */",
+        "summary": "Multiline declaration.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Multiline declaration.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "text",
+            "description": "Text.",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "param",
+            "subject": "strict",
+            "description": "Strict mode.",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 118,
+          "column": 1,
+          "byteOffset": 2200
+        },
+        "end": {
+          "line": 123,
+          "column": 2,
+          "byteOffset": 2308
+        }
+      },
+      "headerSpelling": "public func multiline(\n    text: String,\n    strict: Bool\n): String",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::function:oldParse#g0(String)",
+      "kind": "function",
+      "name": "oldParse",
+      "qualifiedName": "basic.oldParse",
+      "packageName": "basic",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "source",
+            "spelling": "String",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "Input text.",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Int64",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        "@Deprecated[message: \"Use parse instead.\"]"
+      ],
+      "documentation": {
+        "rawText": "/**\n * Deprecated API.\n * @param text Input text.\n * @return Parsed value.\n */",
+        "summary": "Deprecated API.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Deprecated API.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "text",
+            "description": "Input text.",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "return",
+            "subject": "",
+            "description": "Parsed value.",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 103,
+          "column": 1,
+          "byteOffset": 1874
+        },
+        "end": {
+          "line": 104,
+          "column": 58,
+          "byteOffset": 1974
+        }
+      },
+      "headerSpelling": "@Deprecated[message: \"Use parse instead.\"]\npublic func oldParse(text: String): Int64",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::function:parse#g0(Array<UInt8>)",
+      "kind": "function",
+      "name": "parse",
+      "qualifiedName": "basic.parse",
+      "packageName": "basic",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "data",
+          "type": {
+            "kind": "source",
+            "spelling": "Array < UInt8 >",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "Input bytes.",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Int64",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n * Parse bytes.\n * @param data Input bytes.\n * @return Parsed size.\n */",
+        "summary": "Parse bytes.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Parse bytes.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "data",
+            "description": "Input bytes.",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "return",
+            "subject": "",
+            "description": "Parsed size.",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 29,
+          "column": 1,
+          "byteOffset": 504
+        },
+        "end": {
+          "line": 31,
+          "column": 2,
+          "byteOffset": 580
+        }
+      },
+      "headerSpelling": "public func parse(data: Array<UInt8>): Int64",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::function:parse#g0(String)",
+      "kind": "function",
+      "name": "parse",
+      "qualifiedName": "basic.parse",
+      "packageName": "basic",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "source",
+            "spelling": "String",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "输入文本。",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Int64",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n * 从文本解析值。\n *\n * ## Example\n *\n * ```cj\n * let value = parse(\"42\")\n * ```\n *\n * @param text 输入文本。\n * @return 解析结果。\n * @throws IllegalArgumentException 输入非法时抛出。\n * @see basic.parse(String)\n * @see basic.parse(Array<UInt8>) 字节数组重载。\n * @see basic.multiline(String,Bool)\n * @since 0.1.0\n */",
+        "summary": "从文本解析值。",
+        "description": "## Example\n\n```cj\nlet value = parse(\"42\")\n```",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "从文本解析值。",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "heading",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Example",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "code_block",
+              "literal": "let value = parse(\"42\")\n",
+              "source": null,
+              "children": [
+                
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "text",
+            "description": "输入文本。",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "return",
+            "subject": "",
+            "description": "解析结果。",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "throws",
+            "subject": "IllegalArgumentException",
+            "description": "输入非法时抛出。",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "see",
+            "subject": "basic.parse(String)",
+            "description": "",
+            "referenceState": "resolved",
+            "targetSymbolId": "cjdoc:v1:basic::function:parse#g0(String)"
+          },
+          {
+            "name": "see",
+            "subject": "basic.parse(Array<UInt8>)",
+            "description": "字节数组重载。",
+            "referenceState": "resolved",
+            "targetSymbolId": "cjdoc:v1:basic::function:parse#g0(Array<UInt8>)"
+          },
+          {
+            "name": "see",
+            "subject": "basic.multiline(String,Bool)",
+            "description": "",
+            "referenceState": "resolved",
+            "targetSymbolId": "cjdoc:v1:basic::function:multiline#g0(String,Bool)"
+          },
+          {
+            "name": "since",
+            "subject": "",
+            "description": "0.1.0",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 20,
+          "column": 1,
+          "byteOffset": 370
+        },
+        "end": {
+          "line": 22,
+          "column": 2,
+          "byteOffset": 426
+        }
+      },
+      "headerSpelling": "public func parse(text: String): Int64",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::function:解析#g0(String)",
+      "kind": "function",
+      "name": "解析",
+      "qualifiedName": "basic.解析",
+      "packageName": "basic",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "文本",
+          "type": {
+            "kind": "source",
+            "spelling": "String",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "文本值。",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "String",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n * 中文标识符。\n * @param 文本 文本值。\n * @return 原文本。\n */",
+        "summary": "中文标识符。",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "中文标识符。",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "文本",
+            "description": "文本值。",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "return",
+            "subject": "",
+            "description": "原文本。",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 111,
+          "column": 1,
+          "byteOffset": 2060
+        },
+        "end": {
+          "line": 111,
+          "column": 54,
+          "byteOffset": 2113
+        }
+      },
+      "headerSpelling": "public func 解析(文本: String): String",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::interface:Reader#g0()",
+      "kind": "interface",
+      "name": "Reader",
+      "qualifiedName": "basic.Reader",
+      "packageName": "basic",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** A readable value. */",
+        "summary": "A readable value.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "A readable value.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 34,
+          "column": 1,
+          "byteOffset": 607
+        },
+        "end": {
+          "line": 36,
+          "column": 2,
+          "byteOffset": 657
+        }
+      },
+      "headerSpelling": "public interface Reader",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::struct:Box#g1()",
+      "kind": "struct",
+      "name": "Box",
+      "qualifiedName": "basic.Box",
+      "packageName": "basic",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        "T"
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Generic box. */",
+        "summary": "Generic box.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Generic box.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 64,
+          "column": 1,
+          "byteOffset": 1138
+        },
+        "end": {
+          "line": 68,
+          "column": 2,
+          "byteOffset": 1270
+        }
+      },
+      "headerSpelling": "public struct Box<T>",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:basic::typeAlias:Name#g0()",
+      "kind": "typeAlias",
+      "name": "Name",
+      "qualifiedName": "basic.Name",
+      "packageName": "basic",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Alias documentation. */",
+        "summary": "Alias documentation.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Alias documentation.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 96,
+          "column": 1,
+          "byteOffset": 1768
+        },
+        "end": {
+          "line": 96,
+          "column": 26,
+          "byteOffset": 1793
+        }
+      },
+      "headerSpelling": "public type Name = String",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    }
+  ],
+  "assets": [
+    
+  ],
+  "orphanDocComments": [
+    
+  ],
+  "macroInvocations": [
+    
+  ],
+  "unsupportedDeclarations": [
+    
+  ],
+  "unboundSemanticDeclarations": [
+    
+  ],
+  "diagnostics": [
+    
+  ]
+}

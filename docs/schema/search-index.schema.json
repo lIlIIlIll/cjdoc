@@ -1,28 +1,22 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cjdoc.local/schema/search-index.schema.json",
-  "title": "cjdoc search index v2",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index.schema.json",
+  "title": "cjdoc search index v3",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "projectName", "symbols"],
+  "required": ["schemaVersion", "entries"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.search-index/2"},
-    "projectName": {"type": "string"},
-    "symbols": {
+    "schemaVersion": {"const": "cjdoc.search-index/3"},
+    "entries": {
       "type": "array",
       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["id", "kind", "name", "qualifiedName", "packageName", "visibility", "summary", "url"],
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "name", "qualifiedName", "kind", "packageName", "summary", "href"],
         "properties": {
-          "id": {"type": "string", "pattern": "^cjdoc:v1:"},
-          "kind": {"type": "string", "minLength": 1},
-          "name": {"type": "string", "minLength": 1},
-          "qualifiedName": {"type": "string", "minLength": 1},
-          "packageName": {"type": "string", "minLength": 1},
-          "visibility": {"enum": ["public", "protected", "internal", "private"]},
-          "summary": {"type": "string"},
-          "url": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))"}
+          "id": {"type": "string", "minLength": 1}, "name": {"type": "string"},
+          "qualifiedName": {"type": "string", "minLength": 1}, "kind": {"type": "string", "minLength": 1},
+          "packageName": {"type": "string", "minLength": 1}, "summary": {"type": "string"},
+          "href": {"type": "string", "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\).+$"}
         }
       }
     }

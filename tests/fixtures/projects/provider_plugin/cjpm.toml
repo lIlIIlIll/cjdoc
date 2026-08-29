@@ -5,4 +5,4 @@
   output-type = "executable"
 
 [dependencies]
-  "cjdoc_core" = { path = "../../../../packages/cjdoc_core", output-type = "static" }
+  "cjdoc" = { path = "../../../..", output-type = "static" }

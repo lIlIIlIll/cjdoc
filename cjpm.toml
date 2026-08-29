@@ -3,7 +3,7 @@
   name = "cjdoc"
   organization = ""
   description = "Cangjie API documentation generator"
-  version = "0.3.0"
+  version = "0.4.0"
   target-dir = ""
   script-dir = ""
   output-type = "executable"
@@ -13,4 +13,5 @@
   package-configuration = {}
 
 [dependencies]
-  "cjdoc_core" = { path = "packages/cjdoc_core", output-type = "static" }
+  "markdown" = { git = "https://github.com/lIlIIlIll/markdown.git", branch = "main", output-type = "static" }
+  "yjson" = { git = "https://github.com/lIlIIlIll/yjson.git", branch = "main", output-type = "static" }

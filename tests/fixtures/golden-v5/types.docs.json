@@ -1,0 +1,999 @@
+{
+  "schemaVersion": "cjdoc.doc-ir/5",
+  "generator": {
+    "name": "cjdoc",
+    "version": "0.4.0"
+  },
+  "status": "complete",
+  "project": {
+    "name": "types_fixture",
+    "kind": "package"
+  },
+  "configuration": {
+    "audience": "external",
+    "lintProfile": "standard",
+    "cfgProfile": "default"
+  },
+  "providers": [
+    {
+      "name": "ast",
+      "version": "1",
+      "state": "partial",
+      "capabilities": {
+        "sourceBinding": true,
+        "ownership": true,
+        "visibility": true,
+        "canonicalTypes": false,
+        "canonicalSignatures": false,
+        "relationships": false
+      }
+    }
+  ],
+  "modules": [
+    {
+      "id": "cjdoc:module:v1:root",
+      "name": "types_fixture",
+      "role": "root",
+      "sourcePrefix": "",
+      "packageNames": [
+        "types_fixture"
+      ],
+      "dependencyIds": [
+        
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "name": "types_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "sourceFiles": [
+        "src/fixture.cj"
+      ],
+      "symbolIds": [
+        "cjdoc:v1:types_fixture::Box::constructor:init#g0(T)",
+        "cjdoc:v1:types_fixture::Box::variable:value#g0()",
+        "cjdoc:v1:types_fixture::Point::constructor:Point#g0(Int64,Int64)",
+        "cjdoc:v1:types_fixture::Reader::function:read#g0()",
+        "cjdoc:v1:types_fixture::State::enumCase:Failed#g0(String)",
+        "cjdoc:v1:types_fixture::State::enumCase:Idle#g0()",
+        "cjdoc:v1:types_fixture::class:Point#g0()",
+        "cjdoc:v1:types_fixture::enum:State#g0()",
+        "cjdoc:v1:types_fixture::interface:Reader#g0()",
+        "cjdoc:v1:types_fixture::struct:Box#g1()",
+        "cjdoc:v1:types_fixture::typeAlias:Name#g0()"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/fixture.cj",
+      "moduleId": "cjdoc:module:v1:root",
+      "packageName": "types_fixture"
+    }
+  ],
+  "declarations": [
+    {
+      "id": "cjdoc:v1:types_fixture::Box::constructor:init#g0(T)",
+      "kind": "constructor",
+      "name": "init",
+      "qualifiedName": "types_fixture.Box.init",
+      "packageName": "types_fixture",
+      "ownerId": "cjdoc:v1:types_fixture::struct:Box#g1()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "source",
+            "spelling": "T",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "stored value",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n     * Create a box.\n     * @param value stored value\n     */",
+        "summary": "Create a box.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Create a box.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "value",
+            "description": "stored value",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 28,
+          "column": 5,
+          "byteOffset": 526
+        },
+        "end": {
+          "line": 30,
+          "column": 6,
+          "byteOffset": 582
+        }
+      },
+      "headerSpelling": "public init(value: T)",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:types_fixture::Box::variable:value#g0()",
+      "kind": "variable",
+      "name": "value",
+      "qualifiedName": "types_fixture.Box.value",
+      "packageName": "types_fixture",
+      "ownerId": "cjdoc:v1:types_fixture::struct:Box#g1()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "T",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Stored value. */",
+        "summary": "Stored value.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Stored value.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 22,
+          "column": 5,
+          "byteOffset": 431
+        },
+        "end": {
+          "line": 22,
+          "column": 24,
+          "byteOffset": 450
+        }
+      },
+      "headerSpelling": "public let value: T",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:types_fixture::Point::constructor:Point#g0(Int64,Int64)",
+      "kind": "constructor",
+      "name": "Point",
+      "qualifiedName": "types_fixture.Point.Point",
+      "packageName": "types_fixture",
+      "ownerId": "cjdoc:v1:types_fixture::class:Point#g0()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "x",
+          "type": {
+            "kind": "source",
+            "spelling": "Int64",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "horizontal coordinate",
+          "defaultExpression": null
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "source",
+            "spelling": "Int64",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "vertical coordinate",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n     * Create a point.\n     * @param x horizontal coordinate\n     * @param y vertical coordinate\n     */",
+        "summary": "Create a point.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Create a point.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "x",
+            "description": "horizontal coordinate",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "param",
+            "subject": "y",
+            "description": "vertical coordinate",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 16,
+          "column": 5,
+          "byteOffset": 298
+        },
+        "end": {
+          "line": 16,
+          "column": 62,
+          "byteOffset": 355
+        }
+      },
+      "headerSpelling": "public Point(public let x: Int64, public let y: Int64)",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:types_fixture::Reader::function:read#g0()",
+      "kind": "function",
+      "name": "read",
+      "qualifiedName": "types_fixture.Reader.read",
+      "packageName": "types_fixture",
+      "ownerId": "cjdoc:v1:types_fixture::interface:Reader#g0()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Int64",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Read a value. */",
+        "summary": "Read a value.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Read a value.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 6,
+          "column": 5,
+          "byteOffset": 97
+        },
+        "end": {
+          "line": 6,
+          "column": 23,
+          "byteOffset": 115
+        }
+      },
+      "headerSpelling": "func read(): Int64",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:types_fixture::State::enumCase:Failed#g0(String)",
+      "kind": "enumCase",
+      "name": "Failed",
+      "qualifiedName": "types_fixture.State.Failed",
+      "packageName": "types_fixture",
+      "ownerId": "cjdoc:v1:types_fixture::enum:State#g0()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "_0",
+          "type": {
+            "kind": "source",
+            "spelling": "String",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": null,
+          "defaultExpression": null
+        }
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Failure state. */",
+        "summary": "Failure state.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Failure state.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 38,
+          "column": 7,
+          "byteOffset": 693
+        },
+        "end": {
+          "line": 38,
+          "column": 21,
+          "byteOffset": 707
+        }
+      },
+      "headerSpelling": "Failed(String)",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:types_fixture::State::enumCase:Idle#g0()",
+      "kind": "enumCase",
+      "name": "Idle",
+      "qualifiedName": "types_fixture.State.Idle",
+      "packageName": "types_fixture",
+      "ownerId": "cjdoc:v1:types_fixture::enum:State#g0()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Idle state. */",
+        "summary": "Idle state.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Idle state.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 36,
+          "column": 7,
+          "byteOffset": 656
+        },
+        "end": {
+          "line": 36,
+          "column": 11,
+          "byteOffset": 660
+        }
+      },
+      "headerSpelling": "Idle",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:types_fixture::class:Point#g0()",
+      "kind": "class",
+      "name": "Point",
+      "qualifiedName": "types_fixture.Point",
+      "packageName": "types_fixture",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Point with a primary constructor. */",
+        "summary": "Point with a primary constructor.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Point with a primary constructor.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 10,
+          "column": 1,
+          "byteOffset": 160
+        },
+        "end": {
+          "line": 17,
+          "column": 2,
+          "byteOffset": 357
+        }
+      },
+      "headerSpelling": "public class Point",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:types_fixture::enum:State#g0()",
+      "kind": "enum",
+      "name": "State",
+      "qualifiedName": "types_fixture.State",
+      "packageName": "types_fixture",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** State values. */",
+        "summary": "State values.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "State values.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 34,
+          "column": 1,
+          "byteOffset": 607
+        },
+        "end": {
+          "line": 39,
+          "column": 2,
+          "byteOffset": 709
+        }
+      },
+      "headerSpelling": "public enum State",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:types_fixture::interface:Reader#g0()",
+      "kind": "interface",
+      "name": "Reader",
+      "qualifiedName": "types_fixture.Reader",
+      "packageName": "types_fixture",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Reader API. */",
+        "summary": "Reader API.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Reader API.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 42
+        },
+        "end": {
+          "line": 7,
+          "column": 2,
+          "byteOffset": 117
+        }
+      },
+      "headerSpelling": "public interface Reader",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:types_fixture::struct:Box#g1()",
+      "kind": "struct",
+      "name": "Box",
+      "qualifiedName": "types_fixture.Box",
+      "packageName": "types_fixture",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        "T"
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Generic box. */",
+        "summary": "Generic box.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Generic box.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 20,
+          "column": 1,
+          "byteOffset": 379
+        },
+        "end": {
+          "line": 31,
+          "column": 2,
+          "byteOffset": 584
+        }
+      },
+      "headerSpelling": "public struct Box<T>",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:types_fixture::typeAlias:Name#g0()",
+      "kind": "typeAlias",
+      "name": "Name",
+      "qualifiedName": "types_fixture.Name",
+      "packageName": "types_fixture",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Name alias. */",
+        "summary": "Name alias.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Name alias.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 42,
+          "column": 1,
+          "byteOffset": 730
+        },
+        "end": {
+          "line": 42,
+          "column": 26,
+          "byteOffset": 755
+        }
+      },
+      "headerSpelling": "public type Name = String",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    }
+  ],
+  "assets": [
+    
+  ],
+  "orphanDocComments": [
+    
+  ],
+  "macroInvocations": [
+    
+  ],
+  "unsupportedDeclarations": [
+    
+  ],
+  "unboundSemanticDeclarations": [
+    
+  ],
+  "diagnostics": [
+    
+  ]
+}

@@ -1,4 +1,5 @@
 version = 0
 
 [requires]
-  markdown = {git = "https://github.com/lIlIIlIll/markdown.git", commitId = "d73eecee4e19fe56a57cd9f150fe0a62bae405c4", output-type = "static"}
+  markdown = {git = "https://github.com/lIlIIlIll/markdown.git", commitId = "3202a82a354a005f5c1e4baa0c9bb800d00c2187", branch = "main", output-type = "static"}
+  yjson = {git = "https://github.com/lIlIIlIll/yjson.git", commitId = "bf65cbecd99ac25e7485f8db60990e94a04e57bc", branch = "main", output-type = "static"}

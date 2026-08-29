@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/diagnostics.schema.json",
+  "title": "cjdoc diagnostics v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "diagnostics"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.diagnostics/2"},
+    "diagnostics": {"type": "array", "items": {"$ref": "doc-ir.schema.json#/$defs/diagnostic"}}
+  }
+}

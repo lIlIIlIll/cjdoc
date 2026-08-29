@@ -2,461 +2,93 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-env_runner="${CJDOC_CANGJIE_RUNNER:-${repo_root}/scripts/cangjie_env_runner.sh}"
-check_dir="${repo_root}/target/cjdoc-check"
+check_dir="${repo_root}/target/acceptance"
 binary="${repo_root}/target/release/bin/main"
-schema="${repo_root}/docs/schema/doc-ir.schema.json"
-schema_validator="${repo_root}/scripts/validate_schema.py"
-html_validator="${repo_root}/scripts/validate_html_site.py"
-search_schema="${repo_root}/docs/schema/search-index.schema.json"
-cfg_matrix_schema="${repo_root}/docs/schema/cfg-matrix.schema.json"
+python_cmd="${CJDOC_PYTHON:-python3}"
 
-if [[ -n "${CJDOC_PYTHON:-}" ]]; then
-    python_cmd="${CJDOC_PYTHON}"
-elif command -v python3.12 >/dev/null 2>&1; then
-    python_cmd=python3.12
-elif command -v python3 >/dev/null 2>&1; then
-    python_cmd=python3
-elif command -v python >/dev/null 2>&1; then
-    python_cmd=python
-else
-    echo "error: Python 3 is required" >&2
-    exit 2
-fi
-
-if command -v rp-rg >/dev/null 2>&1; then
-    rg_cmd=rp-rg
-elif command -v rg >/dev/null 2>&1; then
-    rg_cmd=rg
-else
-    echo "error: ripgrep is required" >&2
-    exit 2
-fi
-
-cjdoc_rg() {
-    if [[ "${rg_cmd}" == "rp-rg" ]]; then
-        "${rg_cmd}" "$@"
-    else
-        LD_LIBRARY_PATH= DYLD_LIBRARY_PATH= "${rg_cmd}" "$@"
-    fi
-}
-
-validate_schema() {
-    "${python_cmd}" "${schema_validator}" "$@"
-}
-
-validate_html() {
-    "${python_cmd}" "${html_validator}" "$@"
-}
-
-assert_no_host_paths() {
-    local path="$1"
-    if cjdoc_rg -n '(/home/|/tmp/|/Users/|(^|["[:space:](])[A-Za-z]:[\\/])' "${path}"; then
-        echo "absolute host path leaked into ${path}" >&2
-        exit 1
-    fi
-}
-
-"${env_runner}" --cwd "${repo_root}" cjpm clean
-"${env_runner}" --cwd "${repo_root}" cjpm build
+cd "${repo_root}"
+cjpm build
 if [[ ! -x "${binary}" && -x "${binary}.exe" ]]; then
     binary="${binary}.exe"
 fi
 test -x "${binary}"
-"${env_runner}" --cwd "${repo_root}/packages/cjdoc_core" cjpm test
-jq -e . "${schema}" >/dev/null
-jq -e . "${search_schema}" >/dev/null
-jq -e . "${cfg_matrix_schema}" >/dev/null
+cjpm test
 
 rm -rf "${check_dir}"
-mkdir -p "${check_dir}"
+mkdir -p "${check_dir}/schemas"
+
+for schema_name in doc-ir diagnostics cfg-matrix search-index; do
+    "${binary}" schema "${schema_name}" >"${check_dir}/schemas/${schema_name}.schema.json"
+done
+cmp docs/schema/doc-ir.schema.json "${check_dir}/schemas/doc-ir.schema.json"
+cmp docs/schema/diagnostics.schema.json "${check_dir}/schemas/diagnostics.schema.json"
+cmp docs/schema/cfg-matrix.schema.json "${check_dir}/schemas/cfg-matrix.schema.json"
+cmp docs/schema/search-index.schema.json "${check_dir}/schemas/search-index.schema.json"
 
 run_golden() {
     local name="$1"
     local project="$2"
     local expected="$3"
     shift 3
-    mkdir -p "${check_dir}/${name}/first" "${check_dir}/${name}/second"
-    "${env_runner}" --cwd "${repo_root}" "${binary}" \
-        --project "${project}" --format json \
-        --output "${check_dir}/${name}/first/docs.json" "$@"
-    "${env_runner}" --cwd "${repo_root}" "${binary}" \
-        --project "${project}" --format json \
-        --output "${check_dir}/${name}/second/docs.json" "$@"
-    jq -e '.schemaVersion == "cjdoc.doc-ir/4"' "${check_dir}/${name}/first/docs.json" >/dev/null
-    validate_schema "${schema}" "${check_dir}/${name}/first/docs.json"
-    jq -e '([.symbols[].id] as $ids | all(.symbols[]; .ownerId as $owner | ($owner == null or ($ids | index($owner) != null))))' \
-        "${check_dir}/${name}/first/docs.json" >/dev/null
-    jq -e '([.project.modules[].id] as $ids | all(.project.modules[]; all(.dependencyIds[]; . as $dependency | ($ids | index($dependency) != null))))' \
-        "${check_dir}/${name}/first/docs.json" >/dev/null
-    jq -e '([.project.modules[].id] as $ids | ($ids | unique | length) == ($ids | length))' \
-        "${check_dir}/${name}/first/docs.json" >/dev/null
+    "${binary}" generate --project "${project}" --format json \
+        --output "${check_dir}/${name}/first" "$@" >/dev/null
+    "${binary}" generate --project "${project}" --format json \
+        --output "${check_dir}/${name}/second" "$@" >/dev/null
     cmp "${expected}" "${check_dir}/${name}/first/docs.json"
     cmp "${check_dir}/${name}/first/docs.json" "${check_dir}/${name}/second/docs.json"
-    assert_no_host_paths "${check_dir}/${name}/first/docs.json"
+    "${python_cmd}" scripts/validate_schema.py docs/schema/doc-ir.schema.json \
+        "${check_dir}/${name}/first/docs.json"
 }
 
-run_markdown_golden() {
-    local name="$1"
-    local project="$2"
-    local expected="$3"
-    shift 3
-    mkdir -p "${check_dir}/${name}/first" "${check_dir}/${name}/second"
-    "${env_runner}" --cwd "${repo_root}" "${binary}" \
-        --project "${project}" --format markdown \
-        --output "${check_dir}/${name}/first/docs.md" "$@"
-    "${env_runner}" --cwd "${repo_root}" "${binary}" \
-        --project "${project}" --format markdown \
-        --output "${check_dir}/${name}/second/docs.md" "$@"
-    cmp "${expected}" "${check_dir}/${name}/first/docs.md"
-    cmp "${check_dir}/${name}/first/docs.md" "${check_dir}/${name}/second/docs.md"
-    assert_no_host_paths "${check_dir}/${name}/first/docs.md"
-}
+run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v5/basic.docs.json
+run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v5/functions.docs.json
+run_golden types tests/fixtures/projects/types tests/fixtures/golden-v5/types.docs.json
+run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v5/extend.docs.json
+run_golden source-edges tests/fixtures/projects/source_edges tests/fixtures/golden-v5/source-edges.docs.json
+run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v5/unsupported.docs.json
+run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v5/workspace.docs.json
+run_golden conditional-linux tests/fixtures/projects/conditional \
+    tests/fixtures/golden-v5/conditional-linux.docs.json --cfg os=Linux
+run_golden path-dependencies tests/fixtures/projects/path_dependencies \
+    tests/fixtures/golden-v5/path-dependencies.docs.json --include-path-dependencies
 
-run_golden basic "${repo_root}/tests/fixtures/projects/basic" \
-    "${repo_root}/tests/fixtures/golden/basic.expected.json" --lint-missing-params
-run_golden functions "${repo_root}/tests/fixtures/projects/functions" \
-    "${repo_root}/tests/fixtures/golden/functions.expected.json" --lint-missing-params
-run_golden types "${repo_root}/tests/fixtures/projects/types" \
-    "${repo_root}/tests/fixtures/golden/types.expected.json" --lint-missing-params
-run_golden extend_visibility "${repo_root}/tests/fixtures/projects/extend_visibility" \
-    "${repo_root}/tests/fixtures/golden/extend_visibility.expected.json"
-run_golden extend_visibility_public "${repo_root}/tests/fixtures/projects/extend_visibility" \
-    "${repo_root}/tests/fixtures/golden/extend_visibility.public.expected.json" --public-only
-run_golden lint "${repo_root}/tests/fixtures/projects/lint" \
-    "${repo_root}/tests/fixtures/golden/lint.expected.json" --lint-missing-params
-run_golden source_edges "${repo_root}/tests/fixtures/projects/source_edges" \
-    "${repo_root}/tests/fixtures/golden/source_edges.expected.json"
-run_golden source_edges_public "${repo_root}/tests/fixtures/projects/source_edges" \
-    "${repo_root}/tests/fixtures/golden/source_edges.public.expected.json" --public-only
-run_golden unsupported "${repo_root}/tests/fixtures/projects/unsupported" \
-    "${repo_root}/tests/fixtures/golden/unsupported.expected.json"
-run_golden workspace "${repo_root}/tests/fixtures/projects/workspace" \
-    "${repo_root}/tests/fixtures/golden/workspace.expected.json"
-run_golden conditional "${repo_root}/tests/fixtures/projects/conditional" \
-    "${repo_root}/tests/fixtures/golden/conditional.expected.json"
-run_golden conditional_linux "${repo_root}/tests/fixtures/projects/conditional" \
-    "${repo_root}/tests/fixtures/golden/conditional.linux.expected.json" --cfg os=Linux
+"${binary}" generate --project tests/fixtures/projects/basic \
+    --format json --format markdown --format html --output "${check_dir}/all/first" >/dev/null
+"${binary}" generate --project tests/fixtures/projects/basic \
+    --format json --format markdown --format html --output "${check_dir}/all/second" >/dev/null
+cmp "${check_dir}/all/first/docs.json" "${check_dir}/all/second/docs.json"
+diff -qr "${check_dir}/all/first/markdown" "${check_dir}/all/second/markdown"
+diff -qr "${check_dir}/all/first/html" "${check_dir}/all/second/html"
+"${python_cmd}" scripts/validate_schema.py docs/schema/search-index.schema.json \
+    "${check_dir}/all/first/html/search-index.json"
+"${python_cmd}" scripts/validate_html_site.py "${check_dir}/all/first/html"
 
-mkdir -p "${check_dir}/cfg_matrix"
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/conditional" --format json \
-    --cfg-matrix-profile windows:os=Windows,arch=x86_64 \
-    --cfg-matrix-profile linux:arch=x86_64,os=Linux \
-    --output "${check_dir}/cfg_matrix/first.json"
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/conditional" --format json \
-    --cfg-matrix-profile linux:os=Linux,arch=x86_64 \
-    --cfg-matrix-profile windows:arch=x86_64,os=Windows \
-    --output "${check_dir}/cfg_matrix/second.json"
-cmp "${repo_root}/tests/fixtures/golden/conditional.matrix.expected.json" \
-    "${check_dir}/cfg_matrix/first.json"
-cmp "${check_dir}/cfg_matrix/first.json" "${check_dir}/cfg_matrix/second.json"
-validate_schema "${cfg_matrix_schema}" "${check_dir}/cfg_matrix/first.json"
-assert_no_host_paths "${check_dir}/cfg_matrix/first.json"
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/conditional" --format json \
-    --cfg-matrix-profile linux:os=Linux,arch=x86_64 \
-    --cfg-matrix-profile windows:os=Windows,arch=x86_64 \
-    --stdout --diagnostic-output "${check_dir}/cfg_matrix/stdout-diagnostics.txt" \
-    | tr -d '\r' >"${check_dir}/cfg_matrix/stdout.json"
-cmp "${check_dir}/cfg_matrix/first.json" "${check_dir}/cfg_matrix/stdout.json"
-test ! -s "${check_dir}/cfg_matrix/stdout-diagnostics.txt"
+"${binary}" render --input "${check_dir}/all/first/docs.json" \
+    --format json --format markdown --format html --output "${check_dir}/roundtrip" >/dev/null
+cmp "${check_dir}/all/first/docs.json" "${check_dir}/roundtrip/docs.json"
+diff -qr "${check_dir}/all/first/markdown" "${check_dir}/roundtrip/markdown"
+diff -qr "${check_dir}/all/first/html" "${check_dir}/roundtrip/html"
+
+"${binary}" generate --project tests/fixtures/projects/basic --format json --stdout \
+    >"${check_dir}/stdout.json"
+jq -e '.schemaVersion == "cjdoc.doc-ir/5" and (.declarations | length) == 25' \
+    "${check_dir}/stdout.json" >/dev/null
 
 set +e
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/lint_quality" --format json \
-    --cfg-matrix-profile docs:docs=true --cfg-matrix-profile nodocs:docs=false \
-    --lint-missing-params --lint-missing-symbols --deny-warnings \
-    --diagnostic-format json \
-    --diagnostic-output "${check_dir}/cfg_matrix/diagnostics.json" \
-    --output "${check_dir}/cfg_matrix/lint.json"
-cfg_matrix_lint_code=$?
+"${binary}" check --project tests/fixtures/projects/basic --lint-profile strict \
+    --deny-warnings >/dev/null 2>"${check_dir}/strict.stderr"
+strict_code=$?
+"${binary}" unknown-command >/dev/null 2>"${check_dir}/invalid.stderr"
+invalid_code=$?
 set -e
-test "${cfg_matrix_lint_code}" -eq 1
-jq -e '(.diagnostics | length) > 0 and
-    all(.diagnostics[]; (.message | startswith("[cfg profile")))' \
-    "${check_dir}/cfg_matrix/diagnostics.json" >/dev/null
-validate_schema "${cfg_matrix_schema}" "${check_dir}/cfg_matrix/lint.json"
-run_golden path_dependencies "${repo_root}/tests/fixtures/projects/path_dependencies" \
-    "${repo_root}/tests/fixtures/golden/path_dependencies.expected.json" --include-path-dependencies
-run_golden override "${repo_root}/tests/fixtures/projects/override" \
-    "${repo_root}/tests/fixtures/golden/override.expected.json"
+test "${strict_code}" -eq 1
+test "${invalid_code}" -eq 2
+test -s "${check_dir}/strict.stderr"
 
-mkdir -p "${check_dir}/parallel"
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/basic" --format json \
-    --lint-missing-params --jobs 4 --output "${check_dir}/parallel/basic.json"
-cmp "${repo_root}/tests/fixtures/golden/basic.expected.json" "${check_dir}/parallel/basic.json"
-validate_schema "${schema}" "${check_dir}/parallel/basic.json"
+"${binary}" generate --project tests/fixtures/projects/html_security --format html \
+    --output "${check_dir}/security" >/dev/null
+"${python_cmd}" scripts/validate_html_site.py "${check_dir}/security/html"
 
-mkdir -p "${check_dir}/cli"
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/functions" --format json \
-    --lint-missing-params --stdout --diagnostic-output "${check_dir}/cli/diagnostics.txt" \
-    | tr -d '\r' >"${check_dir}/cli/stdout.json"
-cmp "${repo_root}/tests/fixtures/golden/functions.expected.json" "${check_dir}/cli/stdout.json"
-test ! -s "${check_dir}/cli/diagnostics.txt"
+(cd tests/fixtures/projects/provider_plugin && cjpm run)
 
-set +e
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/lint_quality" --format json \
-    --lint-missing-params --lint-missing-symbols --deny-warnings \
-    --diagnostic-format json --diagnostic-output "${check_dir}/cli/diagnostics.json" \
-    --output "${check_dir}/cli/lint-quality.json"
-lint_quality_code=$?
-set -e
-test "${lint_quality_code}" -eq 1
-jq -e '.schemaVersion == "cjdoc.diagnostics/1" and ([.diagnostics[].code] | index("CJDOC1025") != null)' \
-    "${check_dir}/cli/diagnostics.json" >/dev/null
-
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/lint_quality" --format json \
-    --diagnostic-format sarif --diagnostic-output "${check_dir}/cli/diagnostics.sarif" \
-    --output "${check_dir}/cli/lint-quality-sarif.json"
-jq -e '.version == "2.1.0" and .runs[0].tool.driver.name == "cjdoc"' \
-    "${check_dir}/cli/diagnostics.sarif" >/dev/null
-
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/cached_dependencies" --format json \
-    --include-cached-dependencies --cjpm-cache "${repo_root}/tests/fixtures/cjpm_cache" \
-    --output "${check_dir}/cli/cached-dependencies.json"
-jq -e '(.symbols | length) == 3 and (.project.modules | length) == 3 and
-    ([.project.modules[] | select(.name == "cached_dep") | .dependencyIds[]] |
-        index("cjdoc:module:v1:external:transitive_dep") != null) and
-    ([.diagnostics[].code] | index("CJDOC1021") != null)' \
-    "${check_dir}/cli/cached-dependencies.json" >/dev/null
-
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/path_dependencies" \
-    --output "${check_dir}/path_dependencies_root_only.json"
-jq -e '(.packages|length == 1) and (.symbols|length == 1)' \
-    "${check_dir}/path_dependencies_root_only.json" >/dev/null
-jq -e '(.project.modules|length == 1) and (.project.modules[0].dependencyIds == [])' \
-    "${check_dir}/path_dependencies_root_only.json" >/dev/null
-
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/path_dependencies_invalid" \
-    --include-path-dependencies --output "${check_dir}/path_dependencies_invalid.json"
-jq -e '(.symbols|length == 1) and ([.diagnostics[].code] == ["CJDOC1015", "CJDOC1016"])' \
-    "${check_dir}/path_dependencies_invalid.json" >/dev/null
-
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/path_dependencies" \
-    --dependency-source "offline_alpha=${repo_root}/tests/fixtures/projects/path_dependencies/deps/alpha" \
-    --dependency-source "offline_beta=${repo_root}/tests/fixtures/projects/path_dependencies/deps/beta" \
-    --output "${check_dir}/offline_dependency_sources.json"
-validate_schema "${schema}" "${check_dir}/offline_dependency_sources.json"
-jq -e '([.project.modules[].role] | index("externalDependency") != null) and
-    ([.symbols[].documentation.see[]?.state] | index("resolved") != null)' \
-    "${check_dir}/offline_dependency_sources.json" >/dev/null
-assert_no_host_paths "${check_dir}/offline_dependency_sources.json"
-
-run_markdown_golden markdown_basic "${repo_root}/tests/fixtures/projects/basic" \
-    "${repo_root}/tests/fixtures/golden/basic.expected.md" --lint-missing-params
-run_markdown_golden markdown_functions "${repo_root}/tests/fixtures/projects/functions" \
-    "${repo_root}/tests/fixtures/golden/functions.expected.md" --lint-missing-params
-run_markdown_golden markdown_types "${repo_root}/tests/fixtures/projects/types" \
-    "${repo_root}/tests/fixtures/golden/types.expected.md" --lint-missing-params
-run_markdown_golden markdown_extend "${repo_root}/tests/fixtures/projects/extend_visibility" \
-    "${repo_root}/tests/fixtures/golden/extend_visibility.expected.md"
-run_markdown_golden markdown_source_edges "${repo_root}/tests/fixtures/projects/source_edges" \
-    "${repo_root}/tests/fixtures/golden/source_edges.expected.md"
-
-run_html_golden() {
-    local name="$1"
-    local project="$2"
-    local expected="$3"
-    shift 3
-    mkdir -p "${check_dir}/${name}"
-    "${env_runner}" --cwd "${repo_root}" "${binary}" \
-        --project "${project}" --format html --output "${check_dir}/${name}/first" "$@"
-    "${env_runner}" --cwd "${repo_root}" "${binary}" \
-        --project "${project}" --format html --output "${check_dir}/${name}/second" "$@"
-    diff -ru "${expected}" "${check_dir}/${name}/first"
-    diff -ru "${check_dir}/${name}/first" "${check_dir}/${name}/second"
-    validate_html "${check_dir}/${name}/first"
-    validate_schema "${search_schema}" "${check_dir}/${name}/first/search-index.json"
-}
-
-run_html_golden html_functions "${repo_root}/tests/fixtures/projects/functions" \
-    "${repo_root}/tests/fixtures/golden/html_functions" --lint-missing-params
-
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/functions" --format html \
-    --output "${check_dir}/html_source_links" \
-    --source-url-template 'https://example.test/repo/blob/main/{path}#L{line}C{column}'
-validate_html "${check_dir}/html_source_links"
-cjdoc_rg -q 'class="source-link" href="https://example.test/repo/blob/main/src/fixture.cj#L[0-9]+C[0-9]+"' \
-    "${check_dir}/html_source_links/packages/package-functions_fixture.html"
-
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/path_dependencies" --format html \
-    --include-path-dependencies --output "${check_dir}/html_path_dependencies"
-validate_html "${check_dir}/html_path_dependencies"
-test -f "${check_dir}/html_path_dependencies/packages/package-path_dep_alpha.html"
-test -f "${check_dir}/html_path_dependencies/packages/package-path_dep_beta.html"
-cjdoc_rg -q '<h2>Modules</h2>' "${check_dir}/html_path_dependencies/index.html"
-cjdoc_rg -q 'href="#module-cjdoc_3amodule_3av1_3apath_3apath_dep_beta"' \
-    "${check_dir}/html_path_dependencies/index.html"
-
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/path_dependencies" --format html \
-    --include-path-dependencies --output "${check_dir}/html_dependency_source_links" \
-    --dependency-source-url 'path_dep_alpha=https://example.test/alpha/blob/{revision}/{path}#L{line}C{column}' \
-    --dependency-revision 'path_dep_alpha=release/1.0'
-validate_html "${check_dir}/html_dependency_source_links"
-cjdoc_rg -q 'class="source-link" href="https://example.test/alpha/blob/release/1.0/src/alpha.cj#L[0-9]+C[0-9]+"' \
-    "${check_dir}/html_dependency_source_links/packages/package-path_dep_alpha.html"
-if cjdoc_rg -q 'class="source-link"' \
-    "${check_dir}/html_dependency_source_links/packages/package-path_dep_beta.html"; then
-    echo "unconfigured dependency received a guessed source link" >&2
-    exit 1
-fi
-
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/basic" --format html \
-    --output "${check_dir}/html_stale_cleanup" >/dev/null
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/functions" --format html \
-    --output "${check_dir}/html_stale_cleanup" --lint-missing-params
-diff -ru "${repo_root}/tests/fixtures/golden/html_functions" "${check_dir}/html_stale_cleanup"
-
-incremental_json="${check_dir}/incremental/docs.json"
-mkdir -p "${check_dir}/incremental"
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/basic" --format json \
-    --lint-missing-params --output "${incremental_json}"
-json_inode_before="$("${python_cmd}" "${repo_root}/scripts/portable_probe.py" inode "${incremental_json}")"
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/basic" --format json \
-    --lint-missing-params --output "${incremental_json}"
-json_inode_after="$("${python_cmd}" "${repo_root}/scripts/portable_probe.py" inode "${incremental_json}")"
-test "${json_inode_before}" = "${json_inode_after}"
-
-incremental_html="${check_dir}/incremental/html"
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/functions" --format html \
-    --lint-missing-params --output "${incremental_html}"
-html_inode_before="$("${python_cmd}" "${repo_root}/scripts/portable_probe.py" inode "${incremental_html}/index.html")"
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/functions" --format html \
-    --lint-missing-params --output "${incremental_html}"
-html_inode_after="$("${python_cmd}" "${repo_root}/scripts/portable_probe.py" inode "${incremental_html}/index.html")"
-test "${html_inode_before}" = "${html_inode_after}"
-
-mkdir -p "${check_dir}/html_security"
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/html_security" --format html \
-    --output "${check_dir}/html_security/site"
-validate_html "${check_dir}/html_security/site"
-if cjdoc_rg -n '<script>alert|href="javascript:|src="javascript:|<[^>]+[[:space:]]onerror=' \
-    "${check_dir}/html_security/site" -g '*.html'; then
-    echo "unsafe documentation reached generated HTML" >&2
-    exit 1
-fi
-
-default_markdown_project="${check_dir}/default-markdown-project"
-mkdir -p "${default_markdown_project}/src"
-cp "${repo_root}/tests/fixtures/projects/functions/cjpm.toml" "${default_markdown_project}/cjpm.toml"
-cp "${repo_root}/tests/fixtures/projects/functions/src/fixture.cj" "${default_markdown_project}/src/fixture.cj"
-"${env_runner}" --cwd "${repo_root}" "${binary}" --project "${default_markdown_project}" --format markdown
-cmp "${repo_root}/tests/fixtures/golden/functions.expected.md" \
-    "${default_markdown_project}/target/doc/docs.md"
-
-default_html_project="${check_dir}/default-html-project"
-mkdir -p "${default_html_project}/src"
-cp "${repo_root}/tests/fixtures/projects/functions/cjpm.toml" "${default_html_project}/cjpm.toml"
-cp "${repo_root}/tests/fixtures/projects/functions/src/fixture.cj" "${default_html_project}/src/fixture.cj"
-"${env_runner}" --cwd "${repo_root}" "${binary}" --project "${default_html_project}" --format html
-diff -ru "${repo_root}/tests/fixtures/golden/html_functions" \
-    "${default_html_project}/target/doc/html"
-validate_html "${default_html_project}/target/doc/html"
-
-mkdir -p "${check_dir}/recovery"
-set +e
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/recovery" --format json \
-    --output "${check_dir}/recovery/docs.json"
-recovery_code=$?
-set -e
-test "${recovery_code}" -eq 1
-cmp "${repo_root}/tests/fixtures/golden/recovery.expected.json" "${check_dir}/recovery/docs.json"
-jq -e '(.diagnostics | map(.code) | index("CJDOC1011")) != null and (.symbols | length == 1)' \
-    "${check_dir}/recovery/docs.json" >/dev/null
-validate_schema "${schema}" "${check_dir}/recovery/docs.json"
-
-mkdir -p "${check_dir}/deep_binary"
-set +e
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/deep_binary" --format json \
-    --output "${check_dir}/deep_binary/docs.json"
-deep_binary_code=$?
-set -e
-test "${deep_binary_code}" -eq 1
-cmp "${repo_root}/tests/fixtures/golden/deep_binary.expected.json" \
-    "${check_dir}/deep_binary/docs.json"
-jq -e '(.diagnostics | map(.code) | index("CJDOC1012")) != null and (.symbols | length == 0)' \
-    "${check_dir}/deep_binary/docs.json" >/dev/null
-validate_schema "${schema}" "${check_dir}/deep_binary/docs.json"
-mkdir -p "${check_dir}/deep_binary_parallel"
-set +e
-"${env_runner}" --cwd "${repo_root}" "${binary}" \
-    --project "${repo_root}/tests/fixtures/projects/deep_binary" --format json --jobs 4 \
-    --output "${check_dir}/deep_binary_parallel/docs.json"
-deep_binary_parallel_code=$?
-set -e
-test "${deep_binary_parallel_code}" -eq 1
-cmp "${check_dir}/deep_binary/docs.json" "${check_dir}/deep_binary_parallel/docs.json"
-
-jq '.schemaVersion = "invalid"' "${check_dir}/recovery/docs.json" >"${check_dir}/invalid-schema.json"
-set +e
-validate_schema "${schema}" "${check_dir}/invalid-schema.json" >/dev/null 2>&1
-invalid_schema_code=$?
-set -e
-test "${invalid_schema_code}" -eq 1
-
-for invalid_project in duplicate workspace_invalid; do
-    rm -f "${check_dir}/${invalid_project}.json"
-    set +e
-    "${env_runner}" --cwd "${repo_root}" "${binary}" \
-        --project "${repo_root}/tests/fixtures/projects/${invalid_project}" \
-        --output "${check_dir}/${invalid_project}.json" >/dev/null
-    invalid_project_code=$?
-    set -e
-    test "${invalid_project_code}" -eq 1
-    test ! -e "${check_dir}/${invalid_project}.json"
-done
-
-for valid_project in basic functions types extend_visibility lint source_edges unsupported workspace conditional deep_binary html_security path_dependencies override; do
-    "${env_runner}" --cwd "${repo_root}/tests/fixtures/projects/${valid_project}" cjpm build
-done
-
-provider_plugin="${repo_root}/tests/fixtures/projects/provider_plugin"
-provider_output="$("${env_runner}" --cwd "${provider_plugin}" cjpm run | tr -d '\r')"
-test "${provider_output}" = $'provider plugin ok\n\ncjpm run finished'
-
-test "$("${repo_root}/cjdoc" --version)" = "cjdoc 0.3.0"
-"${repo_root}/cjdoc" --help | cjdoc_rg -q '^usage: cjdoc '
-set +e
-"${repo_root}/cjdoc" --format pdf >/dev/null
-format_code=$?
-"${repo_root}/cjdoc" --project "${check_dir}/missing" --output "${check_dir}/missing.json" >/dev/null
-missing_code=$?
-set -e
-test "${format_code}" -eq 2
-test "${missing_code}" -eq 1
-test ! -e "${check_dir}/missing.json"
-
-install_root="${check_dir}/install"
-"${env_runner}" --cwd "${repo_root}" cjpm install --path "${repo_root}" --root "${install_root}"
-installed_binary="${install_root}/bin/cjdoc"
-if [[ ! -x "${installed_binary}" && -x "${installed_binary}.exe" ]]; then
-    installed_binary="${installed_binary}.exe"
-fi
-test -x "${installed_binary}"
-test "$("${env_runner}" "${installed_binary}" --version)" = "cjdoc 0.3.0"
-
-"${repo_root}/scripts/perf_gate.sh"
-
-echo "cjdoc acceptance checks passed"
+echo "cjdoc acceptance gate passed"

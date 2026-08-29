@@ -1,6 +1,6 @@
 # cjdoc API capability matrix
 
-调查日期：2026-08-29。结论来自本机 SDK 实物、可编译/可运行 probe 和本机 `cangjie_stdx` 源码；不是仅依据在线文档。
+调查日期：2026-08-29，2026-08-30 重新核对当前 `PATH`。结论来自本机 SDK 实物、可编译/可运行 probe 和本机 `cangjie_stdx` 源码；不是仅依据在线文档。
 
 ## 实际环境
 
@@ -11,7 +11,7 @@
 | cjpm | `1.1.3` |
 | compiler root | `/home/elliot/cangjie_sdk/main/linux_x64/vanilla/20260829/cangjie` |
 | stdx sidecar | `/home/elliot/cangjie_sdk/main/linux_x64/vanilla/20260829/linux_x86_64_cjnative/dynamic/stdx` |
-| default `daily` symlink at investigation time | `20260817`（因此最终验证显式选择 `20260829`） |
+| current `daily` compiler path | `/home/elliot/cangjie_sdk/daily/cangjie/bin/cjc`，版本指向上面的 20260829 daily |
 | `std.ast` artifact | compiler SDK 的 `modules/linux_x86_64_cjnative/std/std.ast.cjo` |
 | `stdx.chir` artifact in 20260829 daily | **不存在**；dynamic/static stdx 目录和原始 stdx zip 均已检查 |
 
@@ -94,7 +94,6 @@ cjc --import-path "$CANGJIE_STDX_PATH" -L "$CANGJIE_STDX_PATH" \
 | G6 source location 足以 binding | FAIL | Function 没有公开 location/debugLocation |
 | G7 普通项目可依赖 `stdx.chir` | FAIL | 20260829 stdx sidecar 未交付该 package |
 
-**决策：Gate C。** 当前使用 `std.ast -> SourceSnapshot -> AstSemanticProvider -> DocumentationBinder -> Doc IR`。`SemanticProvider` 是非变异式 provider-neutral 边界；所有 AST 类型均标为 `partial` 或 `unavailable`，不会伪装为 `resolved`。不复制 compiler parser、不解析 CHIR dump、不修改 compiler/stdx。
+**决策：Gate C，且 v0.4 明确推迟 CHIR。** 当前使用 `std.ast -> SourceSnapshot -> AstSemanticProvider -> DocumentationBinder -> Doc IR`。公开 `SemanticProviderFactory`/`SemanticProviderSession` 是 provider-neutral 边界；所有 AST 类型均标为 `partial` 或 `unavailable`，不会伪装为 `resolved`。不复制 compiler parser、不解析 CHIR dump、不修改 compiler/stdx。
 
-按当前版本范围，CHIR adapter 只保留为后续接入点；v0.3.0 的构建、运行和 renderer
-均不依赖 `stdx.chir`。
+按当前版本范围，CHIR adapter 只保留为后续接入点；v0.4.0 的构建、运行、测试和 renderer 均不依赖 `stdx.chir`。未来只有重新验证 G1 到 G7 全部 PASS，才允许独立实现 `ChirSemanticProvider`。
