@@ -18,7 +18,8 @@ rm -rf "${check_dir}"
 mkdir -p "${check_dir}/schemas"
 
 for schema_name in doc-ir diagnostics cfg-matrix search-index; do
-    "${binary}" schema "${schema_name}" >"${check_dir}/schemas/${schema_name}.schema.json"
+    "${binary}" schema "${schema_name}" | tr -d '\r' \
+        >"${check_dir}/schemas/${schema_name}.schema.json"
 done
 cmp docs/schema/doc-ir.schema.json "${check_dir}/schemas/doc-ir.schema.json"
 cmp docs/schema/diagnostics.schema.json "${check_dir}/schemas/diagnostics.schema.json"
@@ -37,7 +38,7 @@ run_golden() {
     cmp "${expected}" "${check_dir}/${name}/first/docs.json"
     cmp "${check_dir}/${name}/first/docs.json" "${check_dir}/${name}/second/docs.json"
     "${binary}" render --input "${check_dir}/${name}/first/docs.json" \
-        --format json --stdout >"${check_dir}/${name}/validated.json"
+        --format json --stdout | tr -d '\r' >"${check_dir}/${name}/validated.json"
     cmp "${check_dir}/${name}/first/docs.json" "${check_dir}/${name}/validated.json"
 }
 
