@@ -1,0 +1,536 @@
+{
+  "schemaVersion": "cjdoc.doc-ir/6",
+  "generator": {
+    "name": "cjdoc",
+    "version": "0.5.0"
+  },
+  "status": "complete",
+  "project": {
+    "name": "source_edges_fixture",
+    "kind": "package"
+  },
+  "configuration": {
+    "audience": "external",
+    "lintProfile": "standard",
+    "cfgProfile": "default"
+  },
+  "providers": [
+    {
+      "name": "ast",
+      "version": "1",
+      "state": "partial",
+      "capabilities": {
+        "sourceBinding": true,
+        "ownership": true,
+        "visibility": true,
+        "canonicalTypes": false,
+        "canonicalSignatures": false,
+        "relationships": false
+      }
+    }
+  ],
+  "modules": [
+    {
+      "id": "cjdoc:module:v1:root",
+      "name": "source_edges_fixture",
+      "role": "root",
+      "sourcePrefix": "",
+      "packageNames": [
+        "source_edges_fixture"
+      ],
+      "dependencyIds": [
+        
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "name": "source_edges_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "sourceFiles": [
+        "src/fixture.cj"
+      ],
+      "symbolIds": [
+        "cjdoc:v1:source_edges_fixture::PrivateOwner::function:mustNotLeak#g0()",
+        "cjdoc:v1:source_edges_fixture::PublicOwner::function:hidden#g0()",
+        "cjdoc:v1:source_edges_fixture::PublicOwner::function:inherited#g0()",
+        "cjdoc:v1:source_edges_fixture::class:PrivateOwner#g0()",
+        "cjdoc:v1:source_edges_fixture::class:PublicOwner#g0()",
+        "cjdoc:v1:source_edges_fixture::function:解析#g0(String)"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/fixture.cj",
+      "moduleId": "cjdoc:module:v1:root",
+      "packageName": "source_edges_fixture"
+    }
+  ],
+  "declarations": [
+    {
+      "id": "cjdoc:v1:source_edges_fixture::PrivateOwner::function:mustNotLeak#g0()",
+      "kind": "function",
+      "name": "mustNotLeak",
+      "qualifiedName": "source_edges_fixture.PrivateOwner.mustNotLeak",
+      "packageName": "source_edges_fixture",
+      "ownerId": "cjdoc:v1:source_edges_fixture::class:PrivateOwner#g0()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": null,
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 14,
+          "column": 5,
+          "byteOffset": 312
+        },
+        "end": {
+          "line": 14,
+          "column": 39,
+          "byteOffset": 346
+        }
+      },
+      "headerSpelling": "public func mustNotLeak(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:source_edges_fixture::PublicOwner::function:hidden#g0()",
+      "kind": "function",
+      "name": "hidden",
+      "qualifiedName": "source_edges_fixture.PublicOwner.hidden",
+      "packageName": "source_edges_fixture",
+      "ownerId": "cjdoc:v1:source_edges_fixture::class:PublicOwner#g0()",
+      "visibility": "private",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": null,
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 10,
+          "column": 5,
+          "byteOffset": 241
+        },
+        "end": {
+          "line": 10,
+          "column": 35,
+          "byteOffset": 271
+        }
+      },
+      "headerSpelling": "private func hidden(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:source_edges_fixture::PublicOwner::function:inherited#g0()",
+      "kind": "function",
+      "name": "inherited",
+      "qualifiedName": "source_edges_fixture.PublicOwner.inherited",
+      "packageName": "source_edges_fixture",
+      "ownerId": "cjdoc:v1:source_edges_fixture::class:PublicOwner#g0()",
+      "visibility": "protected",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Protected API. */",
+        "summary": "Protected API.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Protected API.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 8,
+          "column": 5,
+          "byteOffset": 198
+        },
+        "end": {
+          "line": 8,
+          "column": 40,
+          "byteOffset": 233
+        }
+      },
+      "headerSpelling": "protected func inherited(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:source_edges_fixture::class:PrivateOwner#g0()",
+      "kind": "class",
+      "name": "PrivateOwner",
+      "qualifiedName": "source_edges_fixture.PrivateOwner",
+      "packageName": "source_edges_fixture",
+      "ownerId": null,
+      "visibility": "private",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": null,
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 13,
+          "column": 1,
+          "byteOffset": 278
+        },
+        "end": {
+          "line": 15,
+          "column": 2,
+          "byteOffset": 349
+        }
+      },
+      "headerSpelling": "private class PrivateOwner",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:source_edges_fixture::class:PublicOwner#g0()",
+      "kind": "class",
+      "name": "PublicOwner",
+      "qualifiedName": "source_edges_fixture.PublicOwner",
+      "packageName": "source_edges_fixture",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Public owner. */",
+        "summary": "Public owner.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Public owner.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 6,
+          "column": 1,
+          "byteOffset": 134
+        },
+        "end": {
+          "line": 11,
+          "column": 2,
+          "byteOffset": 274
+        }
+      },
+      "headerSpelling": "public open class PublicOwner",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:source_edges_fixture::function:解析#g0(String)",
+      "kind": "function",
+      "name": "解析",
+      "qualifiedName": "source_edges_fixture.解析",
+      "packageName": "source_edges_fixture",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "文本",
+          "type": {
+            "kind": "source",
+            "spelling": "String",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": null,
+          "defaultExpression": null
+        }
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "String",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** 中文摘要。 */",
+        "summary": "中文摘要。",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "中文摘要。",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 3,
+          "column": 24,
+          "byteOffset": 55
+        },
+        "end": {
+          "line": 3,
+          "column": 77,
+          "byteOffset": 108
+        }
+      },
+      "headerSpelling": "public func 解析(文本: String): String",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    }
+  ],
+  "assets": [
+    
+  ],
+  "orphanDocComments": [
+    
+  ],
+  "macroInvocations": [
+    
+  ],
+  "unsupportedDeclarations": [
+    
+  ],
+  "unboundSemanticDeclarations": [
+    
+  ],
+  "diagnostics": [
+    
+  ]
+}

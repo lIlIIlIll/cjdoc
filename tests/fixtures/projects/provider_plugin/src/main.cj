@@ -1,19 +1,39 @@
 package provider_plugin_fixture
 
-import cjdoc_core.*
+import cjdoc.*
+import cjdoc.model.*
+import cjdoc.provider.*
+import std.collection.*
 
-class PluginSemanticProvider <: SemanticProvider {
-    public func providerName(): String { "fixture-plugin" }
+class PluginSemanticProviderSession <: SemanticProviderSession {
+    public func analyze(source: ReadOnlyList<SourceDeclarationView>): SemanticBatch {
+        let declarations = ArrayList<SemanticDeclaration>()
+        for (declaration in source) {
+            declarations.add(SemanticDeclaration(declaration.id, "partial"))
+        }
+        SemanticBatch(SemanticCapabilities(true, false, false, false, false),
+            declarations: declarations.toArray())
+    }
 
-    public func analyze(_: SourceSnapshot): SemanticResult {
-        SemanticResult(providerName(), SemanticCapabilities(false, false, false, false, false))
+    public func close(): Unit {}
+}
+
+class PluginSemanticProviderFactory <: SemanticProviderFactory {
+    public prop name: String { get() { "fixture-plugin" } }
+    public prop version: String { get() { "1" } }
+
+    public func open(_: SemanticModule): SemanticProviderSession {
+        PluginSemanticProviderSession()
     }
 }
 
 main(): Int64 {
-    let source = SourceSnapshot("plugin")
-    let result = PluginSemanticProvider().analyze(source)
-    if (result.provider != "fixture-plugin" || result.capabilities.canonicalTypes) { return 1 }
+    let documentation = DocumentationEngine().generate(GenerationRequest(".",
+        providerFactories: [PluginSemanticProviderFactory()]))
+    if (documentation.providers.size != 1 || documentation.providers[0].name != "fixture-plugin") {
+        return 1
+    }
+    if (documentation.declarations.isEmpty()) { return 2 }
     println("provider plugin ok")
     return 0
 }

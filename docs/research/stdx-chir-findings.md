@@ -64,4 +64,4 @@ extend=chir_probe:Parser|methods=1
 - 不按 mangled name 或字符串 type 猜测并标记为 Resolved。
 - 不修改 compiler/stdx，也不复制内部反序列化器。
 
-因此当前 explicit fallback 是 `std.ast -> SourceSnapshot -> AstSemanticProvider -> DocumentationBinder -> Doc IR`。`SemanticProvider` 接收 source snapshot 并返回 provider-neutral semantic result；未来只有当 G1-G7 全部通过才在独立 package 增加 `ChirSemanticProvider`。
+因此当前 explicit fallback 是 `std.ast -> SourceSnapshot -> AstSemanticProvider -> DocumentationBinder -> Doc IR`。公开 SPI 以 cjdoc 自己的 `SourceDeclarationView` 和 `SemanticDeclaration` 传递信息，`stdx.chir` 类型无法越过 provider adapter 边界。未来只有当 G1-G7 全部通过才增加独立 `ChirSemanticProvider`；v0.4 不包含 CHIR loader、driver 或运行时依赖。

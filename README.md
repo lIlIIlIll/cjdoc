@@ -1,69 +1,166 @@
 # cjdoc
 
-[![CI](https://github.com/lIlIIlIll/cjdoc/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/lIlIIlIll/cjdoc/actions/workflows/ci.yml)
+`cjdoc` 是使用仓颉编写的仓颉 API 文档生成器。当前版本从仓颉源码生成确定性的 `cjdoc.doc-ir/6` JSON，也可以从同一份 Doc IR 生成 Markdown、多页静态 HTML 和搜索索引。
 
-`cjdoc` 是使用仓颉实现的仓颉 API 文档生成器。当前版本以 `std.ast` 作为源码真值，生成稳定的 Doc IR v4，并从同一份 Doc IR 输出 JSON、Markdown 或静态 HTML。
+当前版本使用 `std.ast` 和 lexer 读取源码。CHIR 暂不接入，语义信息明确标为 `partial` 或 `unavailable`，不会把字符串推断伪装成已解析类型。
 
-当前版本不依赖 `stdx.chir`。语义层通过 `SemanticProvider` 隔离，默认实现是保守的 `AstSemanticProvider`。类型 spelling 可以输出，但不会被伪装成已经解析的 canonical type。
+## 快速开始
 
-## 构建并生成文档
+### 前置条件
 
-在仓颉 SDK 环境中构建项目：
+- 已准备仓颉 SDK 环境，`cjc` 和 `cjpm` 位于 `PATH`。
+- SDK 包含可由普通 cjpm 项目导入的 `std.ast`。
+- 首次构建可以访问 `cjpm.lock` 固定的 `markdown` 与 `yjson` Git 依赖，或本机已有对应 cjpm cache。
+- 仓库验收脚本和下方 JSON 检查示例需要 Bash 与 Python 3 标准库；运行 `cjdoc` 本身不需要 Python。
+
+### 1. 构建 cjdoc
+
+在仓库根目录构建 executable：
 
 ```bash
 cjpm build
 ```
 
-为当前项目生成 JSON：
+成功时最后一行包含：
 
-```bash
-cjpm run -- --project . --format json
+```text
+cjpm build success
 ```
 
-成功后会生成 `target/doc/docs.json`。输出符合 [`cjdoc.doc-ir/4`](docs/schema/doc-ir.schema.json)，不包含本机绝对路径。
+### 2. 生成 Doc IR
 
-也可以使用仓库内的 launcher：
+为一个含有 `cjpm.toml` 和 `src/*.cj` 的项目生成 JSON：
 
 ```bash
-./cjdoc --project . --format json
+cjpm run -- generate --project tests/fixtures/projects/basic --format json
 ```
 
-## 输出格式
-
-JSON 是稳定的中间表示，也是其他 renderer 的唯一输入：
+命令创建 `tests/fixtures/projects/basic/target/doc/docs.json`。验证 schema 与声明数量：
 
 ```bash
-cjpm run -- \
+python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print({"schemaVersion": d["schemaVersion"], "declarations": len(d["declarations"])})' \
+  tests/fixtures/projects/basic/target/doc/docs.json
+```
+
+当前 fixture 的结果是：
+
+```json
+{
+  "schemaVersion": "cjdoc.doc-ir/6",
+  "declarations": 25
+}
+```
+
+如果你只需要标准输出，运行：
+
+```bash
+cjpm run -- generate --project tests/fixtures/projects/basic --format json --stdout
+```
+
+诊断写入 stderr，因此 stdout 保持为单个 JSON document。
+
+### 3. 生成 Markdown 和 HTML
+
+一次生成全部格式：
+
+```bash
+cjpm run -- generate \
   --project tests/fixtures/projects/basic \
   --format json \
-  --output target/example/docs.json \
-  --lint-missing-params \
-  --public-only
+  --format markdown \
+  --format html \
+  --output target/example-doc
 ```
 
-Markdown 默认写入 `target/doc/docs.md`：
+输出包括：
+
+```text
+target/example-doc/docs.json
+target/example-doc/markdown/docs.md
+target/example-doc/html/index.html
+target/example-doc/html/packages/*.html
+target/example-doc/html/symbols/*.html
+target/example-doc/html/search-index.json
+target/example-doc/html/search.js
+target/example-doc/html/style.css
+```
+
+HTML 正文使用锁定版本的 `markdown` 库进行安全渲染。站点包含 package 页面、type 页面、member section、交叉链接，以及带 kind/package filter 的浏览器端搜索。生成器不会执行文档中的代码或直接插入 raw HTML。
+
+## CLI reference
+
+```text
+cjdoc generate [options]
+cjdoc check [options]
+cjdoc render --input <docs.json> [options]
+cjdoc schema list|doc-ir|diagnostics|cfg-matrix|search-index
+```
+
+构建后可直接运行 `target/release/bin/main`。仓库根目录的 `./cjdoc` launcher 会在缺少 binary 时先执行 `cjpm build`。
+
+### `generate`
+
+常用选项：
+
+| option | value | default | purpose |
+|---|---|---|---|
+| `--project` | directory | `.` | 包含 `cjpm.toml` 的项目或 workspace |
+| `--format` | `json`, `markdown`, `html` | `json` | 可重复指定 |
+| `--output` | directory | `<project>/target/doc` | cjdoc 拥有的输出目录 |
+| `--stdout` | flag | off | 只输出单个 JSON artifact |
+| `--audience` | `external`, `package`, `all` | `external` | 控制 Markdown、HTML 和 search 可见性 |
+| `--lint-profile` | `off`, `standard`, `strict` | `standard` | 文档 lint 强度 |
+| `--jobs` | `1..64` | `1` | source frontend worker 数 |
+| `--cache-dir` | directory | `<project>/target/cjdoc/cache/source-v2` | 增量 source cache |
+| `--no-cache` | flag | off | 禁用增量 source cache |
+| `--cfg` | `NAME=VALUE` | none | 可重复的条件编译输入 |
+| `--include-path-dependencies` | flag | off | 扫描 manifest 中的 path dependency |
+| `--include-cached-dependencies` | flag | off | 扫描可发现的 cjpm cache dependency source |
+| `--cjpm-cache` | directory | SDK/cjpm 默认位置 | 指定只读 cjpm cache root |
+| `--dependency-source` | `NAME=PATH` | none | 显式提供只读 dependency source |
+
+`--stdout` 只能与单个 JSON format 一起使用。`--output` 指向非空目录时，该目录必须已经包含 cjdoc 的 `.cjdoc-output.json` ownership manifest，否则命令会拒绝覆盖。
+
+### `check`
+
+运行 frontend、binding、reference resolution 与 lint，不生成 renderer artifact：
 
 ```bash
-cjpm run -- --project . --format markdown
+cjpm run -- check --project tests/fixtures/projects/basic --lint-profile strict --deny-warnings
 ```
 
-HTML 默认写入 `target/doc/html/`：
+exit code 为 `0` 表示没有被拒绝的诊断，`1` 表示 error 或被 `--deny-warnings` 提升的 warning，`2` 表示 CLI 或输入错误。
+
+### `render`
+
+严格读取已有 Doc IR，再生成所选格式：
 
 ```bash
-cjpm run -- --project . --format html
+cjpm run -- render \
+  --input target/example-doc/docs.json \
+  --format markdown \
+  --format html \
+  --output target/rendered-doc
 ```
 
-HTML 站点包含项目首页、package 页面、类型页面、成员锚点、[`cjdoc.search-index/2`](docs/schema/search-index.schema.json)、浏览器端搜索、CSS 和受控的 `search.js`。搜索按精确名称、前缀和全文命中排序，可以按 kind 与 package 过滤，并支持方向键、Enter、Escape 和 Ctrl/Command+K。每页包含 CSP，搜索控件使用 combobox/listbox ARIA 语义。
+decoder 拒绝未知字段、重复 key、错误 schema version 和超过限制的嵌套结构。`render` 不读取项目源码。
 
-注释正文通过固定版本的 [`markdown`](https://github.com/lIlIIlIll/markdown) 转换为安全 HTML。raw HTML 会被转义，危险 URL 不会生成链接。
+### `schema`
 
-重复生成时，内容未变化的 JSON、Markdown 和 HTML 文件不会被替换。HTML renderer 只清理由 `.cjdoc-files` 记录且已经过期的 cjdoc 文件，不删除输出目录中的用户文件。
+输出当前 binary 内嵌的 authoritative schema：
+
+```bash
+cjpm run -- schema doc-ir > /tmp/doc-ir.schema.json
+cmp /tmp/doc-ir.schema.json docs/schema/doc-ir.schema.json
+```
+
+仓库保存的 schema 必须与 binary 输出 byte-identical。
 
 ## 文档注释
 
-只有 `/** ... */` 被视为文档注释。普通 block comment 和 line comment 默认不会绑定到声明。
+只有 `/** ... */` 被视为 doc comment。普通 `/* ... */` 与 `// ...` 不绑定到声明。
 
-支持的结构化标签包括：
+正文使用 GFM profile 解析为 Doc IR 中的 `MarkdownNode` 树。第一段 paragraph 是 summary，其余正文是 description。结构化 parser 支持：
 
 - `@param`
 - `@return`
@@ -74,239 +171,68 @@ HTML 站点包含项目首页、package 页面、类型页面、成员锚点、[
 - `@author`
 - `@version`
 
-第一段 Markdown paragraph 是 summary，其余 Markdown 是 description。fenced code 中出现的 `@param` 等文本不会被误解析为标签。
-
-`@see` 可以使用 SymbolId、qualified name、simple name，或显式签名：
-
-```text
-@see basic.parse(String)
-@see basic.parse(Array<UInt8>)
-```
-
-显式签名只和 Doc IR 中已有的类型 spelling 精确比较。cjdoc 不实现隐式转换、alias 展开或完整 overload resolution。未解析和歧义引用保留为显式状态并产生 diagnostic。
-
-## 项目、workspace 和依赖源码
-
-`--project` 可以指向普通 cjpm package 或包含 `[workspace].members` 的 workspace。扫描只覆盖 manifest 声明的模块和各模块的 `src/**/*.cj`。
-
-启用本地 path dependency 扫描：
-
-```bash
-cjpm run -- \
-  --project . \
-  --format json \
-  --include-path-dependencies
-```
-
-cjdoc 递归读取 `[dependencies]` 中的 `{ path = "..." }`，按 canonical path 去重和阻断循环。依赖源码写成 `dependencies/<dependency>/src/...`，不会序列化 checkout 的绝对路径。
-
-对于 registry 或 git dependency，可以显式提供已经存在的离线源码目录：
-
-```bash
-cjpm run -- \
-  --project . \
-  --format json \
-  --dependency-source markdown=/opt/src/markdown
-```
-
-cjdoc 也可以按 `cjpm.lock` 从已有 cjpm cache 中离线发现 git 和 registry dependency。此行为必须显式启用，不会下载内容：
-
-```bash
-cjpm run -- \
-  --project . \
-  --format json \
-  --include-cached-dependencies
-```
-
-默认 cache root 是 `$HOME/.cjpm`。使用 `--cjpm-cache <path>` 可以选择其他现有 cache。lock 中的 commit/version 必须精确对应 cache 目录，否则产生 `CJDOC1021` 并跳过该 dependency。发现一个 cache package 后，cjdoc 会继续读取该 package 已有的 `cjpm.lock`，递归建立直接 dependency 边并阻断循环。`--dependency-source` 的显式路径优先于任意层级的同名 cache entry。
-
-cjdoc 不下载依赖。无法访问或不是仓颉源码 package 的依赖产生 warning，其他模块仍会继续生成。
-
-## 条件声明
-
-使用重复的 `--cfg <name>=<value>` 选择简单的 `@When` declaration：
-
-```bash
-cjpm run -- \
-  --project . \
-  --format json \
-  --cfg os=Linux \
-  --cfg arch=x86_64
-```
-
-evaluator 支持布尔键、`!`、`&&`、`||`、括号、`==` 和 `!=`。它使用三值逻辑：已知的 `false && unknown` 可以证明为 false，已知的 `true || unknown` 可以证明为 true。无法证明或格式错误的表达式会被省略并产生 `CJDOC1019`。未指定 cfg profile 且 alternatives 产生相同 SymbolId 时，整组声明会被省略并产生 `CJDOC1013`。
-
-需要比较多个显式配置时，为每个 profile 指定名称和完整 cfg 值：
-
-```bash
-cjpm run -- \
-  --project . \
-  --format json \
-  --cfg-matrix-profile linux:os=Linux,arch=x86_64 \
-  --cfg-matrix-profile windows:os=Windows,arch=x86_64
-```
-
-成功后会生成 `target/doc/docs.matrix.json`。文件符合 [`cjdoc.cfg-matrix/1`](docs/schema/cfg-matrix.schema.json)，每个 profile 内嵌一份完整的 `cjdoc.doc-ir/4`。profile 和 cfg key 按名称排序，因此参数顺序不同不会改变输出。矩阵模式目前只支持 JSON，且不能和单 profile 的 `--cfg` 同时使用。
-
-## 并行扫描
-
-`--jobs` 控制文件级并行解析，范围是 1 到 64。默认值 `auto` 使用处理器数量并限制为最多 8 个 worker：
-
-```bash
-cjpm run -- --project . --format json --jobs 4
-```
-
-合并顺序始终按逻辑源码路径排序。验收测试要求 `--jobs 1` 与 `--jobs 4` 的 Doc IR 逐字节相同。并行模式可能使用更多内存，也不保证每个项目都更快。
-
-## 缓存和 AST 隔离
-
-CLI 默认把逐源文件 cache 写到 `<project>/target/cjdoc/cache/source-v2/`。cache key 包含 source 内容、逻辑路径、fallback package、cache schema、canonical SDK 路径和真实 `cjc --version`。载荷还会校验完整 key。损坏、碰撞、SDK 变化或 parser schema 变化都会回退到重新解析。
-
-选择其他目录或禁用 cache：
-
-```bash
-cjpm run -- --project . --cache-dir /tmp/cjdoc-cache --format json
-cjpm run -- --project . --no-cache --format json
-```
-
-CLI 对 cache miss 使用内部子进程预检 `parseProgram`。普通 parse error 保留为 `CJDOC1011`；worker 无法启动或异常终止产生 `CJDOC1020`，只跳过对应文件。cache hit 已绑定到相同 source、SDK 和 parser schema，不重复启动预检进程。直接使用 `cjdoc_core` 时，cache 与进程隔离都需要显式配置，默认不会写文件或启动 worker。
-
-## Lint、配置和机器输出
-
-启用 public API 文档覆盖检查和汇总：
-
-```bash
-cjpm run -- \
-  --project . \
-  --lint-missing-params \
-  --lint-missing-symbols \
-  --coverage \
-  --deny-warnings
-```
-
-lint 还检查重复 `@throws`、无 value return 的 `@return`、危险 Markdown URL 和失效的 cjdoc symbol anchor。`--deny-warnings` 让任何 warning 导致非零退出码，但仍会生成可检查的输出。
-
-使用 `--config <path>` 读取简单的 `key = value` 配置。支持的 key 与标量 CLI 选项同名，例如 `format`、`jobs`、`no-cache`、`public-only`、lint、coverage 和 dependency discovery。命令行参数在配置之后应用并覆盖标量值。
-
-JSON 或 Markdown 可以写到 stdout。为避免 diagnostic 混入文档内容，stdout 模式要求把 diagnostic 写到单独文件：
-
-```bash
-cjpm run -- \
-  --project . \
-  --format json \
-  --stdout \
-  --diagnostic-format sarif \
-  --diagnostic-output target/doc/cjdoc.sarif \
-  > target/doc/docs.json
-```
-
-`--diagnostic-format` 支持 `text`、`json` 和 SARIF 2.1.0。
-
-## 源码链接
-
-为根项目配置源码链接：
-
-```bash
-cjpm run -- \
-  --project . \
-  --format html \
-  --source-url-template 'https://github.com/example/project/blob/main/{path}#L{line}C{column}'
-```
-
-模板必须使用 `http://` 或 `https://` 并包含 `{path}`。还可以使用 `{line}` 和 `{column}`。
-
-每个 dependency 需要独立且显式的仓库与 revision 配置：
-
-```bash
-cjpm run -- \
-  --project . \
-  --format html \
-  --include-path-dependencies \
-  --dependency-source-url 'markdown=https://github.com/example/markdown/blob/{revision}/{path}#L{line}' \
-  --dependency-revision 'markdown=d73eecee4e19fe56a57cd9f150fe0a62bae405c4'
-```
-
-`--dependency-revision` 只在对应模板包含 `{revision}` 时有效。没有显式映射的 dependency 只显示逻辑路径，不生成猜测的外链。
-
-## SemanticProvider 边界
-
-当前数据流如下：
+## 架构
 
 ```text
 Cangjie source
-  -> AstSourceProvider
-       -> RawDocComment
-       -> SourceDeclaration
-       -> SourceSnapshot
-  -> SemanticProvider
-       -> AstSemanticProvider
-       -> SemanticResult
-  -> DocumentationBinder
-  -> DocumentationSet (Doc IR)
-  -> JSON / Markdown / HTML
+      |
+      v
+std.ast + lexer  ---> SourceSnapshot + RawDocComment
+      |                         |
+      |                         v
+      +---------------> Source declaration binding
+                                |
+                  SemanticProvider SPI
+                     |          |
+              AST fallback   future CHIR adapter
+                     |          |
+                     +----+-----+
+                          v
+                       Doc IR v6
+                    /      |       \
+               JSON     Markdown    HTML + search
 ```
 
-`SemanticProvider` 只接收 provider-neutral 的 `SourceSnapshot`，返回 provider-neutral 的 `SemanticResult`。`stdx.chir` 类型不能进入 binder、Doc IR、lint 或 renderer。
+依赖方向是单向的：renderer 只 import `cjdoc.model`，不读取 AST 或 provider 类型。公开 provider SPI 位于 `cjdoc.provider`，调用生命周期是 `open(module) → analyze(source declarations) → close()`。provider 异常或返回未知 source ID 时，生成器产生 `CJDOC2xxx`，并保留 AST fallback 的声明。
 
-Provider 必须声明能力：source binding、owner、visibility、canonical types、canonical signatures 和 symbol relationships。Binder 会验证声明与实际数据是否一致。违反能力契约的数据会降级，并产生 `CJDOC1017`。
+外部 provider 的可运行示例位于 [`tests/fixtures/projects/provider_plugin`](tests/fixtures/projects/provider_plugin)。
 
-默认 AST provider 能稳定提供 declaration、owner、visibility、generic、annotation 和 type spelling。它不声明 canonical type/signature 能力，因此这些字段保持 `partial` 或 `unavailable`。
+## Doc IR contract
 
-[`tests/fixtures/projects/provider_plugin`](tests/fixtures/projects/provider_plugin) 是独立 cjpm executable。它通过 `cjdoc_core` 的 public API 提供自定义 `SemanticProvider`，验证 provider 可以在不修改 cjdoc 源码的情况下接入。
+[`docs/schema/doc-ir.schema.json`](docs/schema/doc-ir.schema.json) 定义完整 v6 contract。关键属性：
 
-## 当前限制
+- schema version 固定为 `cjdoc.doc-ir/6`。
+- 所有源码路径为 `/` 分隔的相对逻辑路径，不包含本机绝对路径。
+- declarations、packages、files、diagnostics 与 renderer artifacts 使用稳定顺序。
+- SymbolId 由 package、owner、kind、name、generic arity 与参数 type spelling/canonical type 构造，不使用源码行号。
+- semantic state 只能是 `resolved`、`partial`、`unavailable` 或 `ambiguous`。
+- type relationship 和 symbol relationship 是显式字段。resolved symbol relationship 必须带稳定 `targetSymbolId`。
+- provider 的 name、version 和 capabilities 写入 Doc IR。provider 返回的无序 relationship 会在输出前规范排序。
+- unsupported source 和无法恢复的 parse 问题生成 partial Doc IR 与明确诊断。
 
-- `ChirSemanticProvider` 尚未实现。当前 daily 没有可导入的 `stdx.chir` 构建产物，公开 `Function` API 也没有足够的 source location。
-- AST type spelling 不是 type-checker 结果。canonical type/signature 保持不可用。
-- override 会记录为 `state: unavailable`，AST provider 不猜测目标声明。
-- macro declaration 会写入 `unsupportedDeclarations`，不会执行宏或收集展开后的声明。
-- 深层连续二元表达式仍会在 lexer 阶段用保守阈值跳过并产生 `CJDOC1012`。其他未知 parser native failure 由 CLI 子进程边界隔离。
-- manifest adapter 只读取 cjdoc 需要的 cjpm 字段，不是通用 TOML parser。
-- cache discovery 递归读取已有的 `cjpm.lock` 和 cache，不访问 registry、registry index 或 git 网络。
-- cfg profile 必须显式提供。cjdoc 不读取或推断编译器内建 target profile。
-- 本地完整 release gate 已在 Linux x86_64 daily SDK 上运行；GitHub-hosted Linux x64、Windows x64 和 macOS ARM64 已使用官方 Cangjie 1.1.3 SDK 完整通过，其他 target 尚未实测。
+AST fallback 不提供 canonical type，因此当前常见 semantic state 是 `partial`。接入 provider 后，只有 provider 明确返回 canonical information 的字段才能标记为 `resolved`。
 
-完整能力证据位于 [`docs/research`](docs/research)，实现结论见 [`IMPLEMENTATION_REPORT.md`](IMPLEMENTATION_REPORT.md)。
+## 验证修改
 
-## 跨平台 CI
-
-GitHub Actions 使用标准 GitHub-hosted runners 执行完整 acceptance gate：
-
-- `ubuntu-22.04`：Linux x64；
-- `windows-2025`：Windows x64；
-- `macos-15`：macOS ARM64。
-
-三项任务固定使用仓颉官网公开的 Cangjie 1.1.3 SDK，并在解压前验证官网公布的 SHA256。SDK 按平台和摘要缓存；更换 SDK 时必须同时更新 URL、SHA256 和 cache key。Linux runner 执行性能阈值，Windows/macOS runner 仍运行相同的确定性和性能负载，但只记录共享 runner 上的性能结果。
-
-三平台完整 acceptance gate 的首次共同成功记录为 [GitHub Actions run 33267218113](https://github.com/lIlIIlIll/cjdoc/actions/runs/33267218113)。
-
-本地 daily SDK 仍用于 API reality check。CI 使用公开 STS SDK，因此不需要把内部 daily 下载凭据保存到 GitHub。
-
-## 验证
-
-运行核心单元测试：
-
-```bash
-cd packages/cjdoc_core
-cjpm test
-```
-
-运行 build、unit、golden、schema、HTML、安全、provider、安装和性能验收：
+运行完整本地验收：
 
 ```bash
 scripts/check.sh
 ```
 
-成功时最后输出：
+它执行 build、11 个 unit/public-contract tests、9 个 v6 golden、schema 同步、两次生成 byte comparison、strict codec round-trip、HTML 全站校验、安全测试、32 MiB source limit 测试和 provider fixture。脚本只要求仓颉工具链、Bash 和 Python 标准库。
 
-```text
-cjdoc acceptance checks passed
-```
+如果安装了 `just`，`just doctor` 会检查 SDK 和 Python 标准库；`just check` 运行同一验收入口。
 
-完整 gate 需要 `jq`、Python 3.12、`jsonschema` 和 `referencing`。它会验证 Doc IR、cfg matrix 和 search-index schema、传递 dependency 图、HTML links/anchors/CSP、安全渲染、JSON/Markdown/HTML golden、stdout、JSON/SARIF diagnostics、安装产物、冷/热 cache、峰值内存和真实 parser recovery。首次构建还需要取得 `cjpm.lock` 固定的 Markdown commit，已有 cjpm cache 时可以离线构建。
+## 当前限制
 
-`scripts/check.sh` 在当前开发机优先使用 Codex 的仓颉环境 helper。其他主机只要已经把 `cjc`、`cjpm` 和 SDK runtime 放入环境，就会直接执行命令。设置 `CJDOC_DISABLE_CODEX_RUNNER=1` 可以强制使用调用者已准备的 SDK 环境；也可以用 `CJDOC_CANGJIE_RUNNER=/path/to/runner` 指定支持 `--cwd <dir> <command...>` 的 runner。Windows 没有 Python `resource` 模块，因此该主机上的 gate 会明确报告 peak RSS unsupported；Linux/macOS 仍执行峰值内存阈值。
+- CHIR 暂未接入，canonical types、compiler owner/override relation 和 compiler-resolved annotations 不可用。
+- macro invocation 会记录为 unsupported source，不展开生成声明。
+- 条件编译需要显式 `--cfg`，不会读取 compiler target profile。
+- extension target、generic constraints 与 inheritance 目前保留 source spelling。
+- cache dependency discovery 不下载网络依赖。
+- 浏览器搜索是静态前端筛选，不实现 compiler overload resolution。
+- 单个 source 文件上限为 32 MiB；单次扫描上限为 100,000 个文件和 128 层目录。超限会生成诊断并保留 partial Doc IR。
+- Markdown AST 的 node kind、literal 与 children 已保留；节点相对 doc-comment 的 source range 尚未映射到项目 source range。
 
-## License
-
-[MIT](LICENSE)
+真实环境与 API probe 结果见 [`docs/research/api-capability-matrix.md`](docs/research/api-capability-matrix.md)，实现和测试证据见 [`IMPLEMENTATION_REPORT.md`](IMPLEMENTATION_REPORT.md)。

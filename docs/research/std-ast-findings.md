@@ -70,11 +70,10 @@ type-alias|Name|14:1|14:26
   切片，并使用 lexer token 深度找到 body 左花括号，因此保留 annotation、换行和
   内部空格。enum case 的节点 range 无效，改用 constructor 首末 token 位置。
 - AST type spelling 不是 type checking 结果，所以 Doc IR 明确写 `state: partial`、`canonical: null`。
-- `relationships[]` 使用 `superType` 和 `extensionTarget` 保存 AST source relationship；renderer 会显式展示 `partial`，不会把它升级为 semantic inheritance/implementation 或自动生成类型链接。
+- 内部 source snapshot 保存 `superType` 和 `extensionTarget` spelling；v5 provider capability 将 relationships 标为 false，不会把它升级为 semantic inheritance/implementation 或自动生成类型链接。
 - 任何 0/invalid position 的生成节点都不作为 source declaration。
 - 20260829 daily 的 `parseProgram` 在 67 层连续 `BinaryExpr` 上可稳定触发 native
   SIGSEGV；66 层 PASS。产品在 lexer 阶段按括号层级统计，达到 64 时跳过该文件并
-  产生可恢复的 `CJDOC1012`。CLI 在每个 cache miss 上还会通过内部 worker process
-  预检 `parseProgram`；正常 parse error 保留为 `CJDOC1011`，未知异常终止产生
-  `CJDOC1020` 并只跳过该文件。逐文件 cache key 包含 source、SDK/cjc 与 parser
-  schema，cache hit 不重复启动 worker。
+  产生可恢复的 `CJDOC1012`。普通 parser exception 保留为 `CJDOC1011`，该文件
+  被跳过，其他文件仍进入 partial Doc IR。v0.4 public facade 默认不启用 source cache
+  或额外 worker process。

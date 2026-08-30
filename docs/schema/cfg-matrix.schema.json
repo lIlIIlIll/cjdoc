@@ -1,33 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cjdoc.local/schema/cfg-matrix.schema.json",
-  "title": "cjdoc cfg matrix v1",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/cfg-matrix.schema.json",
+  "title": "cjdoc cfg matrix v2",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "generator", "profiles"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.cfg-matrix/1"},
-    "generator": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["name", "version"],
-      "properties": {
-        "name": {"const": "cjdoc"},
-        "version": {"type": "string"}
-      }
-    },
-    "profiles": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["name", "documentation"],
-        "properties": {
-          "name": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
-          "documentation": {"$ref": "https://cjdoc.local/schema/doc-ir.schema.json"}
-        }
-      }
-    }
+    "schemaVersion": {"const": "cjdoc.cfg-matrix/2"},
+    "generator": {"type": "object", "additionalProperties": false, "required": ["name", "version"], "properties": {"name": {"const": "cjdoc"}, "version": {"type": "string"}}},
+    "profiles": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["name", "documentation"], "properties": {"name": {"type": "string", "minLength": 1}, "documentation": {"$ref": "doc-ir.schema.json"}}}}
   }
 }

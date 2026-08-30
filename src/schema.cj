@@ -1,3 +1,8 @@
+package cjdoc
+
+// These strings are the distribution-time schema source of truth. The repository
+// copies under docs/schema are regenerated from `cjdoc schema ...` and compared in CI.
+let DOC_IR_SCHEMA = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
@@ -27,7 +32,7 @@
     "semanticState": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
     "nullableString": {"type": ["string", "null"]},
     "stringArray": {"type": "array", "items": {"type": "string"}},
-    "portablePath": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\).+$"},
+    "portablePath": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\\\\\).+$"},
     "generator": {
       "type": "object", "additionalProperties": false,
       "required": ["name", "version"],
@@ -250,3 +255,62 @@
     }
   }
 }
+"""
+
+let DIAGNOSTICS_SCHEMA = """
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/diagnostics.schema.json",
+  "title": "cjdoc diagnostics v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "diagnostics"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.diagnostics/2"},
+    "diagnostics": {"type": "array", "items": {"$ref": "doc-ir.schema.json#/$defs/diagnostic"}}
+  }
+}
+"""
+
+let CFG_MATRIX_SCHEMA = """
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/cfg-matrix.schema.json",
+  "title": "cjdoc cfg matrix v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generator", "profiles"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.cfg-matrix/2"},
+    "generator": {"type": "object", "additionalProperties": false, "required": ["name", "version"], "properties": {"name": {"const": "cjdoc"}, "version": {"type": "string"}}},
+    "profiles": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["name", "documentation"], "properties": {"name": {"type": "string", "minLength": 1}, "documentation": {"$ref": "doc-ir.schema.json"}}}}
+  }
+}
+"""
+
+let SEARCH_INDEX_SCHEMA = """
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index.schema.json",
+  "title": "cjdoc search index v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "entries"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.search-index/3"},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "name", "qualifiedName", "kind", "packageName", "summary", "href"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1}, "name": {"type": "string"},
+          "qualifiedName": {"type": "string", "minLength": 1}, "kind": {"type": "string", "minLength": 1},
+          "packageName": {"type": "string", "minLength": 1}, "summary": {"type": "string"},
+          "href": {"type": "string", "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\\\\\).+$"}
+        }
+      }
+    }
+  }
+}
+"""

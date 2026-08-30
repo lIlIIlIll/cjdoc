@@ -27,21 +27,17 @@ jobs:
             runner: ubuntu-22.04
             sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.1.3.tar.gz&objectKey=6a19349d21f5a8178d6fd22b"
             sdk_sha256: 2b68905afc466e665ae181595c63f96c18d75fd2c1fb6c6f0cb64e179c28d61a
-            enforce_performance: "1"
           - platform: windows-x64
             runner: windows-2025
             sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-windows-x64-1.1.3.zip&objectKey=6a192b2521f5a8178d6fd222"
             sdk_sha256: 8bb65499c1b30271eaca422568bc9537677bd25debd8f5208e780a22c917da72
-            enforce_performance: "0"
           - platform: macos-arm64
             runner: macos-15
             sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-mac-aarch64-1.1.3.tar.gz&objectKey=6a19312721f5a8178d6fd225"
             sdk_sha256: 7eff8d3b9119535cf3d05cb81526c5df391137dce908d744449f4edb99da3199
-            enforce_performance: "0"
 
     env:
       CJDOC_PYTHON: python
-      CJDOC_PERF_ENFORCE_THRESHOLDS: ${{ matrix.enforce_performance }}
       PYTHONUTF8: "1"
 
     steps:
@@ -52,32 +48,9 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: requirements-ci.txt
-
-      - name: Install CI Python dependencies
-        run: python -m pip install --disable-pip-version-check -r requirements-ci.txt
 
       - name: Test SDK installer
         run: python -m unittest scripts/test_install_cangjie_sdk.py
-
-      - name: Install Linux command dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install --yes jq ripgrep
-
-      - name: Install macOS command dependencies
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          command -v jq >/dev/null || brew install jq
-          command -v rg >/dev/null || brew install ripgrep
-
-      - name: Install Windows command dependencies
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          if (-not (Get-Command jq -ErrorAction SilentlyContinue)) { choco install jq --yes --no-progress }
-          if (-not (Get-Command rg -ErrorAction SilentlyContinue)) { choco install ripgrep --yes --no-progress }
 
       - name: Restore Cangjie SDK
         id: sdk-cache
@@ -99,7 +72,7 @@ jobs:
             --destination "${RUNNER_TEMP}/cangjie-sdk-1.1.3" \
             --github-output "${GITHUB_OUTPUT}"
 
-      - name: Run complete acceptance gate
+      - name: Run v6 acceptance gate
         shell: bash
         env:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}

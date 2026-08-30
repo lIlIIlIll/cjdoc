@@ -1,0 +1,292 @@
+{
+  "schemaVersion": "cjdoc.doc-ir/6",
+  "generator": {
+    "name": "cjdoc",
+    "version": "0.5.0"
+  },
+  "status": "complete",
+  "project": {
+    "name": "workspace",
+    "kind": "package"
+  },
+  "configuration": {
+    "audience": "external",
+    "lintProfile": "standard",
+    "cfgProfile": "default"
+  },
+  "providers": [
+    {
+      "name": "ast",
+      "version": "1",
+      "state": "partial",
+      "capabilities": {
+        "sourceBinding": true,
+        "ownership": true,
+        "visibility": true,
+        "canonicalTypes": false,
+        "canonicalSignatures": false,
+        "relationships": false
+      }
+    }
+  ],
+  "modules": [
+    {
+      "id": "cjdoc:module:v1:workspace:packages/alpha",
+      "name": "workspace_alpha",
+      "role": "workspace",
+      "sourcePrefix": "packages/alpha",
+      "packageNames": [
+        "workspace_alpha"
+      ],
+      "dependencyIds": [
+        
+      ]
+    },
+    {
+      "id": "cjdoc:module:v1:workspace:packages/beta",
+      "name": "workspace_beta",
+      "role": "workspace",
+      "sourcePrefix": "packages/beta",
+      "packageNames": [
+        "workspace_beta"
+      ],
+      "dependencyIds": [
+        
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "name": "workspace_alpha",
+      "moduleId": "cjdoc:module:v1:workspace:packages/alpha",
+      "sourceFiles": [
+        "packages/alpha/src/alpha.cj"
+      ],
+      "symbolIds": [
+        "cjdoc:v1:workspace_alpha::function:alpha#g0()"
+      ]
+    },
+    {
+      "name": "workspace_beta",
+      "moduleId": "cjdoc:module:v1:workspace:packages/beta",
+      "sourceFiles": [
+        "packages/beta/src/beta.cj"
+      ],
+      "symbolIds": [
+        "cjdoc:v1:workspace_beta::function:beta#g0()"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "packages/alpha/src/alpha.cj",
+      "moduleId": "cjdoc:module:v1:workspace:packages/alpha",
+      "packageName": "workspace_alpha"
+    },
+    {
+      "path": "packages/beta/src/beta.cj",
+      "moduleId": "cjdoc:module:v1:workspace:packages/beta",
+      "packageName": "workspace_beta"
+    }
+  ],
+  "declarations": [
+    {
+      "id": "cjdoc:v1:workspace_alpha::function:alpha#g0()",
+      "kind": "function",
+      "name": "alpha",
+      "qualifiedName": "workspace_alpha.alpha",
+      "packageName": "workspace_alpha",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Alpha API. */",
+        "summary": "Alpha API.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Alpha API.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "packages/alpha/src/alpha.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 43
+        },
+        "end": {
+          "line": 4,
+          "column": 29,
+          "byteOffset": 71
+        }
+      },
+      "headerSpelling": "public func alpha(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:workspace_beta::function:beta#g0()",
+      "kind": "function",
+      "name": "beta",
+      "qualifiedName": "workspace_beta.beta",
+      "packageName": "workspace_beta",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Beta API. */",
+        "summary": "Beta API.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Beta API.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "packages/beta/src/beta.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 41
+        },
+        "end": {
+          "line": 4,
+          "column": 28,
+          "byteOffset": 68
+        }
+      },
+      "headerSpelling": "public func beta(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    }
+  ],
+  "assets": [
+    
+  ],
+  "orphanDocComments": [
+    
+  ],
+  "macroInvocations": [
+    
+  ],
+  "unsupportedDeclarations": [
+    
+  ],
+  "unboundSemanticDeclarations": [
+    
+  ],
+  "diagnostics": [
+    
+  ]
+}

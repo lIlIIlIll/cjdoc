@@ -1,0 +1,714 @@
+{
+  "schemaVersion": "cjdoc.doc-ir/6",
+  "generator": {
+    "name": "cjdoc",
+    "version": "0.5.0"
+  },
+  "status": "complete",
+  "project": {
+    "name": "functions_fixture",
+    "kind": "package"
+  },
+  "configuration": {
+    "audience": "external",
+    "lintProfile": "standard",
+    "cfgProfile": "default"
+  },
+  "providers": [
+    {
+      "name": "ast",
+      "version": "1",
+      "state": "partial",
+      "capabilities": {
+        "sourceBinding": true,
+        "ownership": true,
+        "visibility": true,
+        "canonicalTypes": false,
+        "canonicalSignatures": false,
+        "relationships": false
+      }
+    }
+  ],
+  "modules": [
+    {
+      "id": "cjdoc:module:v1:root",
+      "name": "functions_fixture",
+      "role": "root",
+      "sourcePrefix": "",
+      "packageNames": [
+        "functions_fixture"
+      ],
+      "dependencyIds": [
+        
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "name": "functions_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "sourceFiles": [
+        "src/fixture.cj"
+      ],
+      "symbolIds": [
+        "cjdoc:v1:functions_fixture::function:identity#g1(T)",
+        "cjdoc:v1:functions_fixture::function:multiline#g0(String,Bool)",
+        "cjdoc:v1:functions_fixture::function:parse#g0(Array<UInt8>)",
+        "cjdoc:v1:functions_fixture::function:parse#g0(String)",
+        "cjdoc:v1:functions_fixture::function:解析#g0(String)"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/fixture.cj",
+      "moduleId": "cjdoc:module:v1:root",
+      "packageName": "functions_fixture"
+    }
+  ],
+  "declarations": [
+    {
+      "id": "cjdoc:v1:functions_fixture::function:identity#g1(T)",
+      "kind": "function",
+      "name": "identity",
+      "qualifiedName": "functions_fixture.identity",
+      "packageName": "functions_fixture",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        "T"
+      ],
+      "parameters": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "source",
+            "spelling": "T",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "input",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "T",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n * Identity.\n * @param value input\n * @return input\n */",
+        "summary": "Identity.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Identity.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "value",
+            "description": "input",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "return",
+            "subject": "",
+            "description": "input",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 22,
+          "column": 1,
+          "byteOffset": 351
+        },
+        "end": {
+          "line": 22,
+          "column": 47,
+          "byteOffset": 397
+        }
+      },
+      "headerSpelling": "public func identity<T>(value: T): T",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:functions_fixture::function:multiline#g0(String,Bool)",
+      "kind": "function",
+      "name": "multiline",
+      "qualifiedName": "functions_fixture.multiline",
+      "packageName": "functions_fixture",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "source",
+            "spelling": "String",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "input",
+          "defaultExpression": null
+        },
+        {
+          "name": "strict",
+          "type": {
+            "kind": "source",
+            "spelling": "Bool",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "mode",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "String",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n * Multiline signature.\n * @param text input\n * @param strict mode\n * @return text\n */",
+        "summary": "Multiline signature.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Multiline signature.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "text",
+            "description": "input",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "param",
+            "subject": "strict",
+            "description": "mode",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "return",
+            "subject": "",
+            "description": "text",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 37,
+          "column": 1,
+          "byteOffset": 632
+        },
+        "end": {
+          "line": 42,
+          "column": 2,
+          "byteOffset": 740
+        }
+      },
+      "headerSpelling": "public func multiline(\n    text: String,\n    strict: Bool\n): String",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:functions_fixture::function:parse#g0(Array<UInt8>)",
+      "kind": "function",
+      "name": "parse",
+      "qualifiedName": "functions_fixture.parse",
+      "packageName": "functions_fixture",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "data",
+          "type": {
+            "kind": "source",
+            "spelling": "Array < UInt8 >",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "input bytes",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Int64",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n * Parse bytes.\n * @param data input bytes\n * @return length\n */",
+        "summary": "Parse bytes.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Parse bytes.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "data",
+            "description": "input bytes",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "return",
+            "subject": "",
+            "description": "length",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 15,
+          "column": 1,
+          "byteOffset": 224
+        },
+        "end": {
+          "line": 15,
+          "column": 66,
+          "byteOffset": 289
+        }
+      },
+      "headerSpelling": "public func parse(data: Array<UInt8>): Int64",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:functions_fixture::function:parse#g0(String)",
+      "kind": "function",
+      "name": "parse",
+      "qualifiedName": "functions_fixture.parse",
+      "packageName": "functions_fixture",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "source",
+            "spelling": "String",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "input text",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Int64",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n * Parse text.\n * @param text input text\n * @return length\n */",
+        "summary": "Parse text.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Parse text.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "text",
+            "description": "input text",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "return",
+            "subject": "",
+            "description": "length",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 8,
+          "column": 1,
+          "byteOffset": 94
+        },
+        "end": {
+          "line": 8,
+          "column": 60,
+          "byteOffset": 153
+        }
+      },
+      "headerSpelling": "public func parse(text: String): Int64",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v1:functions_fixture::function:解析#g0(String)",
+      "kind": "function",
+      "name": "解析",
+      "qualifiedName": "functions_fixture.解析",
+      "packageName": "functions_fixture",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "文本",
+          "type": {
+            "kind": "source",
+            "spelling": "String",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "输入文本。",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "String",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n * 中文函数。\n * @param 文本 输入文本。\n * @return 输入文本。\n */",
+        "summary": "中文函数。",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "中文函数。",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "文本",
+            "description": "输入文本。",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          },
+          {
+            "name": "return",
+            "subject": "",
+            "description": "输入文本。",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 29,
+          "column": 1,
+          "byteOffset": 486
+        },
+        "end": {
+          "line": 29,
+          "column": 54,
+          "byteOffset": 539
+        }
+      },
+      "headerSpelling": "public func 解析(文本: String): String",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    }
+  ],
+  "assets": [
+    
+  ],
+  "orphanDocComments": [
+    
+  ],
+  "macroInvocations": [
+    
+  ],
+  "unsupportedDeclarations": [
+    
+  ],
+  "unboundSemanticDeclarations": [
+    
+  ],
+  "diagnostics": [
+    
+  ]
+}

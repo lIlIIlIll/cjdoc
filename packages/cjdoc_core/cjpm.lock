@@ -1,4 +1,0 @@
-version = 0
-
-[requires]
-  markdown = {git = "https://github.com/lIlIIlIll/markdown.git", commitId = "d73eecee4e19fe56a57cd9f150fe0a62bae405c4", output-type = "static"}

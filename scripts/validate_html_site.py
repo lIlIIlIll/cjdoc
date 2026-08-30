@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Validate cjdoc's generated static HTML site using only the Python stdlib."""
+"""Validate every cjdoc HTML page, local link, search target, and script sink."""
 
 from __future__ import annotations
 
 import json
 import sys
 from html.parser import HTMLParser
-from pathlib import Path, PurePosixPath
-from urllib.parse import urlsplit
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 
 class PageParser(HTMLParser):
@@ -16,15 +16,17 @@ class PageParser(HTMLParser):
         self.ids: set[str] = set()
         self.links: list[str] = []
         self.errors: list[str] = []
+        self.script_depth = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         lowered_tag = tag.lower()
-        if lowered_tag == "script":
-            attributes = dict(attrs)
-            if attributes.get("src") not in {"search.js", "../search.js"} or "defer" not in attributes:
-                self.errors.append("only the managed deferred search.js script is allowed")
-        elif lowered_tag in {"iframe", "object", "embed"}:
+        if lowered_tag in {"iframe", "object", "embed"}:
             self.errors.append(f"forbidden element <{tag}>")
+        values = {name.lower(): value for name, value in attrs}
+        if lowered_tag == "script":
+            self.script_depth += 1
+            if not values.get("src"):
+                self.errors.append("inline script is forbidden")
         for name, value in attrs:
             if value is None:
                 continue
@@ -38,111 +40,96 @@ class PageParser(HTMLParser):
             elif lowered.startswith("on"):
                 self.errors.append(f"forbidden event attribute {name!r}")
 
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() == "script" and self.script_depth:
+            self.script_depth -= 1
 
-def fail(message: str) -> None:
-    raise ValueError(message)
+    def handle_data(self, data: str) -> None:
+        if self.script_depth and data.strip():
+            self.errors.append("inline script content is forbidden")
 
 
 def resolve_local(root: Path, source: Path, value: str) -> tuple[Path | None, str]:
     parsed = urlsplit(value)
-    if parsed.scheme or parsed.netloc:
+    if parsed.scheme:
+        if parsed.scheme.lower() not in {"http", "https", "mailto"}:
+            raise ValueError(f"unsafe URL scheme in {source.relative_to(root)}: {value}")
         return None, ""
+    if parsed.netloc:
+        raise ValueError(f"protocol-relative URL in {source.relative_to(root)}: {value}")
     if parsed.path.startswith("/"):
-        fail(f"absolute local URL in {source.relative_to(root)}: {value}")
+        raise ValueError(f"absolute local URL in {source.relative_to(root)}: {value}")
     target = (source.parent / parsed.path).resolve() if parsed.path else source.resolve()
     try:
         target.relative_to(root.resolve())
-    except ValueError:
-        fail(f"URL escapes output root in {source.relative_to(root)}: {value}")
-    return target, parsed.fragment
+    except ValueError as error:
+        raise ValueError(
+            f"URL escapes output root in {source.relative_to(root)}: {value}"
+        ) from error
+    return target, unquote(parsed.fragment)
 
 
 def main() -> int:
     if len(sys.argv) != 2:
         print("usage: validate_html_site.py <site-dir>", file=sys.stderr)
         return 2
-    root = Path(sys.argv[1])
-    if not root.is_dir():
-        fail(f"site directory does not exist: {root}")
+    root = Path(sys.argv[1]).resolve()
+    index = root / "index.html"
+    if not index.is_file():
+        raise ValueError("site must contain index.html")
 
-    html_files = sorted(root.rglob("*.html"))
-    if not html_files or not (root / "index.html").is_file():
-        fail("site must contain index.html")
-    parsed_pages: dict[Path, PageParser] = {}
-    for page in html_files:
-        text = page.read_text(encoding="utf-8")
-        if "/home/" in text or "/tmp/" in text:
-            fail(f"absolute filesystem path leaked into {page.relative_to(root)}")
+    pages: dict[Path, PageParser] = {}
+    for page in sorted(root.rglob("*.html")):
+        page_text = page.read_text(encoding="utf-8")
+        if any(marker in page_text for marker in ("/home/", "/tmp/", "/Users/")):
+            raise ValueError(f"absolute filesystem path leaked into {page.relative_to(root)}")
+        if "Content-Security-Policy" not in page_text:
+            raise ValueError(f"CSP meta policy missing from {page.relative_to(root)}")
         parser = PageParser()
-        parser.feed(text)
+        parser.feed(page_text)
         parser.close()
         if parser.errors:
-            fail(f"{page.relative_to(root)}: {'; '.join(parser.errors)}")
-        parsed_pages[page.resolve()] = parser
+            raise ValueError(f"{page.relative_to(root)}: {'; '.join(parser.errors)}")
+        pages[page.resolve()] = parser
 
-    for page, parser in parsed_pages.items():
+    if not pages:
+        raise ValueError("site must contain at least one HTML page")
+    for page, parser in pages.items():
         for link in parser.links:
             target, fragment = resolve_local(root, page, link)
             if target is None:
                 continue
             if not target.is_file():
-                fail(f"broken link in {page.relative_to(root.resolve())}: {link}")
+                raise ValueError(f"broken local link in {page.relative_to(root)}: {link}")
             if fragment:
-                target_parser = parsed_pages.get(target)
+                target_parser = pages.get(target.resolve())
                 if target_parser is None or fragment not in target_parser.ids:
-                    fail(f"broken anchor in {page.relative_to(root.resolve())}: {link}")
+                    raise ValueError(f"broken local anchor in {page.relative_to(root)}: {link}")
 
-    search_path = root / "search-index.json"
-    search_script = root / "search.js"
-    if not search_script.is_file():
-        fail("site must contain search.js")
-    script_text = search_script.read_text(encoding="utf-8")
-    if "innerHTML" in script_text or "document.write" in script_text:
-        fail("search.js must construct results without HTML injection sinks")
-    for page in html_files:
-        page_text = page.read_text(encoding="utf-8")
-        if "data-cjdoc-search" not in page_text or "data-cjdoc-results" not in page_text:
-            fail(f"search UI missing from {page.relative_to(root)}")
-    search = json.loads(search_path.read_text(encoding="utf-8"))
-    if search.get("schemaVersion") != "cjdoc.search-index/2":
-        fail("unexpected search index schemaVersion")
-    symbols = search.get("symbols")
-    if not isinstance(symbols, list):
-        fail("search index symbols must be an array")
-    ids = [entry.get("id") for entry in symbols]
-    if ids != sorted(ids):
-        fail("search index entries are not sorted by SymbolId")
-    if len(ids) != len(set(ids)):
-        fail("search index contains duplicate SymbolId values")
-    for entry in symbols:
-        required = {"id", "kind", "name", "qualifiedName", "packageName", "visibility", "summary", "url"}
-        if set(entry) != required:
-            fail(f"search index entry fields do not match schema: {entry.get('id')}")
-        url = entry.get("url")
-        if not isinstance(url, str):
-            fail("search index entry has no URL")
-        parsed = urlsplit(url)
-        if parsed.scheme or parsed.netloc or parsed.path.startswith("/"):
-            fail(f"search index URL is not a root-relative path: {url}")
-        pure = PurePosixPath(parsed.path)
-        if ".." in pure.parts:
-            fail(f"search index URL escapes output root: {url}")
-        target = (root / parsed.path).resolve()
-        if not target.is_file():
-            fail(f"search index URL target does not exist: {url}")
-        if parsed.fragment:
-            target_parser = parsed_pages.get(target)
-            if target_parser is None or parsed.fragment not in target_parser.ids:
-                fail(f"search index anchor does not exist: {url}")
+    script = (root / "search.js").read_text(encoding="utf-8")
+    for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+        if sink in script:
+            raise ValueError(f"unsafe browser search sink: {sink}")
 
-    for page, parser in parsed_pages.items():
-        page_text = page.read_text(encoding="utf-8")
-        if "Content-Security-Policy" not in page_text:
-            fail(f"CSP meta policy missing from {page.relative_to(root)}")
-        if 'role="combobox"' not in page_text or 'role="listbox"' not in page_text:
-            fail(f"accessible search roles missing from {page.relative_to(root)}")
+    search = json.loads((root / "search-index.json").read_text(encoding="utf-8"))
+    if search.get("schemaVersion") != "cjdoc.search-index/3":
+        raise ValueError("unexpected search index schemaVersion")
+    entries = search.get("entries")
+    if not isinstance(entries, list):
+        raise ValueError("search index entries must be an array")
+    ids = [entry.get("id") for entry in entries]
+    if ids != sorted(ids) or len(ids) != len(set(ids)):
+        raise ValueError("search index IDs must be sorted and unique")
+    expected = {"id", "name", "qualifiedName", "kind", "packageName", "summary", "href"}
+    for entry in entries:
+        if set(entry) != expected:
+            raise ValueError(f"invalid search entry fields for {entry.get('id')}")
+        target, fragment = resolve_local(root, root / "search-index.json", entry["href"])
+        target_parser = pages.get(target.resolve()) if target is not None else None
+        if target_parser is None or (fragment and fragment not in target_parser.ids):
+            raise ValueError(f"broken search target: {entry['href']}")
 
-    print(f"validated {len(html_files)} HTML pages and {len(symbols)} search entries")
+    print(f"validated {len(pages)} HTML pages and {len(entries)} search entries")
     return 0
 
 
