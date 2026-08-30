@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 binary="${repo_root}/target/release/bin/main"
 update_dir="${repo_root}/target/golden-update"
-golden_dir="${repo_root}/tests/fixtures/golden-v6"
+golden_dir="${repo_root}/tests/fixtures/golden-v7"
 
 cd "${repo_root}"
 if [[ ! -x "${binary}" && -x "${binary}.exe" ]]; then
@@ -33,4 +33,4 @@ update_golden workspace tests/fixtures/projects/workspace
 update_golden conditional-linux tests/fixtures/projects/conditional --cfg os=Linux
 update_golden path-dependencies tests/fixtures/projects/path_dependencies --include-path-dependencies
 
-echo "updated Doc IR v6 goldens"
+echo "updated Doc IR v7 goldens"

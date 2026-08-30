@@ -1,0 +1,297 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CJDOC_PYTHON: python
+  PYTHONUTF8: "1"
+
+jobs:
+  release-gate:
+    name: Release gate / linux-x64 / Cangjie 1.1.3
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Restore stable SDK
+        id: sdk-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/cangjie-sdk-1.1.3
+          key: cangjie-sdk-linux-x64-2b68905afc466e665ae181595c63f96c18d75fd2c1fb6c6f0cb64e179c28d61a-v1
+
+      - name: Install stable SDK
+        id: sdk
+        shell: bash
+        env:
+          CANGJIE_SDK_URL: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.1.3.tar.gz&objectKey=6a19349d21f5a8178d6fd22b"
+          CANGJIE_SDK_SHA256: 2b68905afc466e665ae181595c63f96c18d75fd2c1fb6c6f0cb64e179c28d61a
+        run: |
+          python scripts/install_cangjie_sdk.py \
+            --url "${CANGJIE_SDK_URL}" \
+            --sha256 "${CANGJIE_SDK_SHA256}" \
+            --destination "${RUNNER_TEMP}/cangjie-sdk-1.1.3" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Run release gate
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+          CJDOC_RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          scripts/release_check.sh
+
+  platform-acceptance:
+    name: ${{ matrix.platform }} / Cangjie 1.1.3
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            runner: windows-2025
+            sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-windows-x64-1.1.3.zip&objectKey=6a192b2521f5a8178d6fd222"
+            sdk_sha256: 8bb65499c1b30271eaca422568bc9537677bd25debd8f5208e780a22c917da72
+          - platform: macos-arm64
+            runner: macos-15
+            sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-mac-aarch64-1.1.3.tar.gz&objectKey=6a19312721f5a8178d6fd225"
+            sdk_sha256: 7eff8d3b9119535cf3d05cb81526c5df391137dce908d744449f4edb99da3199
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Restore stable SDK
+        id: sdk-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/cangjie-sdk-1.1.3
+          key: cangjie-sdk-${{ matrix.platform }}-${{ matrix.sdk_sha256 }}-v1
+
+      - name: Install stable SDK
+        id: sdk
+        shell: bash
+        env:
+          CANGJIE_SDK_URL: ${{ matrix.sdk_url }}
+          CANGJIE_SDK_SHA256: ${{ matrix.sdk_sha256 }}
+        run: |
+          python scripts/install_cangjie_sdk.py \
+            --url "${CANGJIE_SDK_URL}" \
+            --sha256 "${CANGJIE_SDK_SHA256}" \
+            --destination "${RUNNER_TEMP}/cangjie-sdk-1.1.3" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Run platform acceptance
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            xattr -dr com.apple.quarantine "${CANGJIE_SDK_ROOT}" || true
+          fi
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          scripts/check.sh
+
+  daily-acceptance:
+    name: linux-x64 / configured daily SDK
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      CANGJIE_SDK_URL: ${{ vars.CANGJIE_DAILY_LINUX_X64_URL }}
+      CANGJIE_SDK_SHA256: ${{ vars.CANGJIE_DAILY_LINUX_X64_SHA256 }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Require a checksum-pinned daily SDK
+        shell: bash
+        run: |
+          test -n "${CANGJIE_SDK_URL}"
+          [[ "${CANGJIE_SDK_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+
+      - name: Install daily SDK
+        id: sdk
+        shell: bash
+        run: |
+          python scripts/install_cangjie_sdk.py \
+            --url "${CANGJIE_SDK_URL}" \
+            --sha256 "${CANGJIE_SDK_SHA256}" \
+            --destination "${RUNNER_TEMP}/cangjie-sdk-daily" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Run daily acceptance
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          scripts/check.sh
+          python scripts/real_repository_smoke.py --project .
+
+  prepare-draft:
+    name: Prepare draft release
+    needs: [release-gate, platform-acceptance, daily-acceptance]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Create or verify draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
+              --json isDraft --jq .isDraft >"${RUNNER_TEMP}/is-draft" 2>/dev/null; then
+            test "$(cat "${RUNNER_TEMP}/is-draft")" = "true"
+          else
+            gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
+              --verify-tag --draft --generate-notes --title "cjdoc ${GITHUB_REF_NAME}"
+          fi
+
+  package:
+    name: Package / ${{ matrix.platform }}
+    needs: prepare-draft
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-22.04
+            sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.1.3.tar.gz&objectKey=6a19349d21f5a8178d6fd22b"
+            sdk_sha256: 2b68905afc466e665ae181595c63f96c18d75fd2c1fb6c6f0cb64e179c28d61a
+          - platform: windows-x64
+            runner: windows-2025
+            sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-windows-x64-1.1.3.zip&objectKey=6a192b2521f5a8178d6fd222"
+            sdk_sha256: 8bb65499c1b30271eaca422568bc9537677bd25debd8f5208e780a22c917da72
+          - platform: macos-arm64
+            runner: macos-15
+            sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-mac-aarch64-1.1.3.tar.gz&objectKey=6a19312721f5a8178d6fd225"
+            sdk_sha256: 7eff8d3b9119535cf3d05cb81526c5df391137dce908d744449f4edb99da3199
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install stable SDK
+        id: sdk
+        shell: bash
+        env:
+          CANGJIE_SDK_URL: ${{ matrix.sdk_url }}
+          CANGJIE_SDK_SHA256: ${{ matrix.sdk_sha256 }}
+        run: |
+          python scripts/install_cangjie_sdk.py \
+            --url "${CANGJIE_SDK_URL}" \
+            --sha256 "${CANGJIE_SDK_SHA256}" \
+            --destination "${RUNNER_TEMP}/cangjie-sdk-1.1.3" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Build deterministic package
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+          CJDOC_RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            xattr -dr com.apple.quarantine "${CANGJIE_SDK_ROOT}" || true
+          fi
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          python scripts/verify_release.py
+          cjpm build
+          python scripts/package_release.py --platform "${{ matrix.platform }}"
+
+      - name: Upload package to draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" target/release-package/* \
+            --repo "${GITHUB_REPOSITORY}" --clobber
+
+  publish:
+    name: Publish verified release
+    needs: package
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Verify all assets and publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          asset_dir="${RUNNER_TEMP}/release-assets"
+          mkdir -p "${asset_dir}"
+          gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
+            --dir "${asset_dir}"
+          python - "${asset_dir}" "${GITHUB_REF_NAME#v}" <<'PY'
+          from pathlib import Path
+          import hashlib
+          import re
+          import sys
+
+          root = Path(sys.argv[1])
+          version = sys.argv[2]
+          expected = set()
+          for platform, extension in (("linux-x64", ".tar.gz"),
+                                      ("windows-x64", ".zip"),
+                                      ("macos-arm64", ".tar.gz")):
+              asset = f"cjdoc-{version}-{platform}{extension}"
+              expected.update((asset, asset + ".sha256"))
+          names = {path.name for path in root.iterdir() if path.is_file()}
+          missing = expected - names
+          unexpected = names - expected
+          if missing or unexpected:
+              raise SystemExit(
+                  "release asset set mismatch: missing=" + ",".join(sorted(missing)) +
+                  " unexpected=" + ",".join(sorted(unexpected))
+              )
+          for checksum_path in sorted(root.glob("*.sha256")):
+              match = re.fullmatch(
+                  r"([0-9a-f]{64})  ([^/\\\r\n]+)\n?",
+                  checksum_path.read_text(encoding="ascii"),
+              )
+              if match is None or match.group(2) + ".sha256" != checksum_path.name:
+                  raise SystemExit(f"invalid checksum sidecar: {checksum_path.name}")
+              asset = root / match.group(2)
+              actual = hashlib.sha256(asset.read_bytes()).hexdigest()
+              if actual != match.group(1):
+                  raise SystemExit(f"checksum mismatch: {asset.name}")
+          PY
+          gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
+            --draft=false --latest

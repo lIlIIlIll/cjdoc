@@ -96,4 +96,4 @@ cjc --import-path "$CANGJIE_STDX_PATH" -L "$CANGJIE_STDX_PATH" \
 
 **决策：Gate C，且 v0.4 明确推迟 CHIR。** 当前使用 `std.ast -> SourceSnapshot -> AstSemanticProvider -> DocumentationBinder -> Doc IR`。公开 `SemanticProviderFactory`/`SemanticProviderSession` 是 provider-neutral 边界；所有 AST 类型均标为 `partial` 或 `unavailable`，不会伪装为 `resolved`。不复制 compiler parser、不解析 CHIR dump、不修改 compiler/stdx。
 
-按当前版本范围，CHIR adapter 只保留为后续接入点；v0.5.0 的构建、运行、测试和 renderer 均不依赖 `stdx.chir`。未来只有重新验证 G1 到 G7 全部 PASS，才允许独立实现 `ChirSemanticProvider`。
+按当前版本范围，CHIR adapter 只保留为后续接入点；v0.6.0 的构建、运行、测试和 renderer 均不依赖 `stdx.chir`。未来只有重新验证 G1 到 G7 全部 PASS，才允许独立实现 `ChirSemanticProvider`。

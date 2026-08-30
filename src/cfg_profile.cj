@@ -263,6 +263,10 @@ func filterSourceForCfg(source: SourceSnapshot, profile: CfgProfile): Unit {
                 source.diagnostics.add(Diagnostic("warning", "CJDOC1019",
                     "conditional declaration omitted because its @When expression is unsupported or unresolved",
                     source: declaration.source))
+                source.unsupportedDeclarations.add(UnsupportedDeclaration(declaration.kind,
+                    declaration.name,
+                    "conditional compilation expression is unsupported or unresolved",
+                    declaration.source))
                 false
         }
         if (let Some(ownerKey) <- declaration.ownerSourceKey) {

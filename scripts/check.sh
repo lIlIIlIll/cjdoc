@@ -13,15 +13,18 @@ if [[ ! -x "${binary}" && -x "${binary}.exe" ]]; then
 fi
 test -x "${binary}"
 cjpm test
+"${python_cmd}" -m unittest discover -s scripts -p 'test_*.py'
 
 rm -rf "${check_dir}"
 mkdir -p "${check_dir}/schemas"
 
-for schema_name in doc-ir diagnostics cfg-matrix search-index; do
+for schema_name in doc-ir doc-ir-v6 doc-ir-v7 diagnostics cfg-matrix search-index; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${check_dir}/schemas/${schema_name}.schema.json"
 done
 cmp docs/schema/doc-ir.schema.json "${check_dir}/schemas/doc-ir.schema.json"
+cmp docs/schema/doc-ir-v6.schema.json "${check_dir}/schemas/doc-ir-v6.schema.json"
+cmp docs/schema/doc-ir-v7.schema.json "${check_dir}/schemas/doc-ir-v7.schema.json"
 cmp docs/schema/diagnostics.schema.json "${check_dir}/schemas/diagnostics.schema.json"
 cmp docs/schema/cfg-matrix.schema.json "${check_dir}/schemas/cfg-matrix.schema.json"
 cmp docs/schema/search-index.schema.json "${check_dir}/schemas/search-index.schema.json"
@@ -42,17 +45,22 @@ run_golden() {
     cmp "${check_dir}/${name}/first/docs.json" "${check_dir}/${name}/validated.json"
 }
 
-run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v6/basic.docs.json
-run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v6/functions.docs.json
-run_golden types tests/fixtures/projects/types tests/fixtures/golden-v6/types.docs.json
-run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v6/extend.docs.json
-run_golden source-edges tests/fixtures/projects/source_edges tests/fixtures/golden-v6/source-edges.docs.json
-run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v6/unsupported.docs.json
-run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v6/workspace.docs.json
+run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v7/basic.docs.json
+run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v7/functions.docs.json
+run_golden types tests/fixtures/projects/types tests/fixtures/golden-v7/types.docs.json
+run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v7/extend.docs.json
+run_golden source-edges tests/fixtures/projects/source_edges tests/fixtures/golden-v7/source-edges.docs.json
+run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v7/unsupported.docs.json
+run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v7/workspace.docs.json
 run_golden conditional-linux tests/fixtures/projects/conditional \
-    tests/fixtures/golden-v6/conditional-linux.docs.json --cfg os=Linux
+    tests/fixtures/golden-v7/conditional-linux.docs.json --cfg os=Linux
 run_golden path-dependencies tests/fixtures/projects/path_dependencies \
-    tests/fixtures/golden-v6/path-dependencies.docs.json --include-path-dependencies
+    tests/fixtures/golden-v7/path-dependencies.docs.json --include-path-dependencies
+
+"${binary}" render --input tests/fixtures/golden-v6/basic.docs.json \
+    --format json --stdout >"${check_dir}/migrated-v6.json"
+"${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"]=="cjdoc.doc-ir/7"; assert all("moduleId" in item and item["id"].startswith("cjdoc:v2:") for item in value["declarations"]); assert all(item.startswith("cjdoc:v2:") for package in value["packages"] for item in package["symbolIds"])' \
+    "${check_dir}/migrated-v6.json"
 
 "${binary}" generate --project tests/fixtures/projects/basic \
     --format json --format markdown --format html --output "${check_dir}/all/first" \
@@ -73,7 +81,7 @@ diff -qr "${check_dir}/all/first/html" "${check_dir}/roundtrip/html"
 
 "${binary}" generate --project tests/fixtures/projects/basic --format json --stdout \
     --cache-dir "${check_dir}/cache/stdout" >"${check_dir}/stdout.json"
-"${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/6" and len(value["declarations"]) == 25' \
+"${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/7" and len(value["declarations"]) == 25' \
     "${check_dir}/stdout.json"
 
 set +e
@@ -117,11 +125,57 @@ test -f "${check_dir}/stale/html/index.html"
 test -f "${check_dir}/stale/docs.json"
 test ! -e "${check_dir}/stale/html"
 
+"${binary}" generate --project tests/fixtures/projects/basic \
+    --format json --format html --output "${check_dir}/ownership" \
+    --cache-dir "${check_dir}/cache/ownership" >/dev/null
+printf '%s\n' 'docs.example.test' >"${check_dir}/ownership/CNAME"
+printf '%s\n' 'user-owned edit' >"${check_dir}/ownership/docs.json"
+cp -R "${check_dir}/ownership" "${check_dir}/ownership-before"
+set +e
+"${binary}" generate --project tests/fixtures/projects/basic --format json \
+    --output "${check_dir}/ownership" --cache-dir "${check_dir}/cache/ownership" \
+    >/dev/null 2>"${check_dir}/ownership.stderr"
+ownership_code=$?
+set -e
+test "${ownership_code}" -eq 2
+diff -qr "${check_dir}/ownership" "${check_dir}/ownership-before"
+"${binary}" generate --project tests/fixtures/projects/basic --format json \
+    --output "${check_dir}/ownership" --cache-dir "${check_dir}/cache/ownership" \
+    --force-owned >/dev/null
+test "$(cat "${check_dir}/ownership/CNAME")" = 'docs.example.test'
+test ! -e "${check_dir}/ownership/html"
+"${python_cmd}" -c 'import hashlib,json,sys; root=sys.argv[1]; value=json.load(open(root+"/.cjdoc-output.json", encoding="utf-8")); assert value["schemaVersion"]=="cjdoc.output/2" and value["digestAlgorithm"]=="sha256"; assert all(hashlib.sha256(open(root+"/"+item["path"],"rb").read()).hexdigest()==item["sha256"] for item in value["files"])' \
+    "${check_dir}/ownership"
+
+mkdir -p "${check_dir}/missing-manifest"
+printf '%s\n' 'preserve me' >"${check_dir}/missing-manifest/docs.json"
+set +e
+"${binary}" generate --project tests/fixtures/projects/basic --format json \
+    --output "${check_dir}/missing-manifest" --no-cache --force-owned \
+    >/dev/null 2>"${check_dir}/missing-manifest.stderr"
+missing_manifest_code=$?
+set -e
+test "${missing_manifest_code}" -eq 2
+test "$(cat "${check_dir}/missing-manifest/docs.json")" = 'preserve me'
+
+mkdir -p "${check_dir}/unowned-collision"
+printf '%s\n' 'unowned' >"${check_dir}/unowned-collision/docs.json"
+printf '%s\n' '{"schemaVersion":"cjdoc.output/2","digestAlgorithm":"sha256","files":[]}' \
+    >"${check_dir}/unowned-collision/.cjdoc-output.json"
+set +e
+"${binary}" generate --project tests/fixtures/projects/basic --format json \
+    --output "${check_dir}/unowned-collision" --no-cache --force-owned \
+    >/dev/null 2>"${check_dir}/unowned-collision.stderr"
+unowned_collision_code=$?
+set -e
+test "${unowned_collision_code}" -eq 2
+test "$(cat "${check_dir}/unowned-collision/docs.json")" = 'unowned'
+
 case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*) ;;
     *)
         mkdir -p "${check_dir}/symlink-target" "${check_dir}/symlink-output"
-        printf '%s\n' '{"schemaVersion":"cjdoc.output/1","files":[]}' \
+        printf '%s\n' '{"schemaVersion":"cjdoc.output/2","digestAlgorithm":"sha256","files":[]}' \
             >"${check_dir}/symlink-output/.cjdoc-output.json"
         ln -s "${check_dir}/symlink-target" "${check_dir}/symlink-output/html"
         set +e

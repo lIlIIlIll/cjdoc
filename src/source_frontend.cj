@@ -7,11 +7,15 @@ import std.env.*
 import std.fs.*
 import std.process.*
 import std.sort.*
+import std.sync.AtomicInt64
 
-private let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v2"
+private let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v4"
 private let MAX_SOURCE_FILE_BYTES: Int64 = 32 * 1024 * 1024
+private let MAX_SOURCE_CACHE_BYTES: Int64 = 64 * 1024 * 1024
+private let MAX_SOURCE_CACHE_ITEMS: Int64 = 100000
 private let MAX_SOURCE_FILES: Int64 = 100000
 private let MAX_SOURCE_DIRECTORY_DEPTH: Int64 = 128
+private let NEXT_SOURCE_CACHE_TEMP_ID = AtomicInt64(1)
 
 class SourceCacheStats {
     public var hits: Int64 = 0
@@ -156,15 +160,18 @@ private func addCommonAstData(symbol: SourceDeclaration, decl: Decl): Unit {
 private class AstDeclarationCollector <: Visitor {
     let path: String
     let packageName: String
+    let moduleId: String
     let source: String
     let declarations = ArrayList<SourceDeclaration>()
+    let macroInvocations = ArrayList<MacroInvocation>()
     let unsupportedDeclarations = ArrayList<UnsupportedDeclaration>()
     let diagnostics = ArrayList<Diagnostic>()
     let localScopes = ArrayList<SourceLocation>()
 
-    init(path: String, packageName: String, source: String) {
+    init(path: String, packageName: String, moduleId: String, source: String) {
         this.path = path
         this.packageName = packageName
+        this.moduleId = moduleId
         this.source = source
     }
 
@@ -183,7 +190,7 @@ private class AstDeclarationCollector <: Visitor {
         let endColumn = if (decl.endPos.column > 0) { Int64(decl.endPos.column) } else { startColumn }
         let location = SourceLocation(path, startLine, startColumn, endLine, endColumn)
         let symbol = SourceDeclaration(makeSourceDeclarationKey(location, kind, name), kind, name,
-            packageName, declarationVisibility(decl), location,
+            packageName, moduleId, declarationVisibility(decl), location,
             declarationSignature(decl, source, location, hasBody), isContainer: isContainer)
         addCommonAstData(symbol, decl)
         declarations.add(symbol)
@@ -246,7 +253,7 @@ private class AstDeclarationCollector <: Visitor {
                 let exact = sourceSlice(source, location)
                 let name = constructor.identifier.value
                 let symbol = SourceDeclaration(makeSourceDeclarationKey(location, "enumCase", name),
-                    "enumCase", name, packageName, owner.visibility, location,
+                    "enumCase", name, packageName, moduleId, owner.visibility, location,
                     if (exact.isEmpty()) { constructor.toTokens().toString().trimAscii() } else { exact.trimAscii() })
                 var parameterIndex: Int64 = 0
                 for (argument in constructor.typeArguments) {
@@ -271,6 +278,7 @@ private class AstDeclarationCollector <: Visitor {
 
     public override func visit(decl: TypeAliasDecl): Unit {
         let _ = add(decl, "typeAlias", decl.identifier.value)
+        breakTraverse()
     }
 
     public override func visit(decl: PropDecl): Unit {
@@ -278,6 +286,7 @@ private class AstDeclarationCollector <: Visitor {
             let display = try { normalizedTokens(decl.declType) } catch (_: Exception) { "" }
             if (!display.isEmpty()) { symbol.returnTypeSpelling = Some(display) }
         }
+        breakTraverse()
     }
 
     public override func visit(decl: VarDecl): Unit {
@@ -286,6 +295,7 @@ private class AstDeclarationCollector <: Visitor {
             let display = try { normalizedTokens(decl.declType) } catch (_: Exception) { "" }
             if (!display.isEmpty()) { symbol.returnTypeSpelling = Some(display) }
         }
+        breakTraverse()
     }
 
     public override func visit(decl: FuncDecl): Unit {
@@ -296,12 +306,14 @@ private class AstDeclarationCollector <: Visitor {
             let display = try { normalizedTokens(decl.declType) } catch (_: Exception) { "" }
             if (!display.isEmpty()) { symbol.returnTypeSpelling = Some(display) }
         }
+        breakTraverse()
     }
 
     public override func visit(decl: PrimaryCtorDecl): Unit {
         if (let Some(symbol) <- add(decl, "constructor", decl.identifier.value, hasBody: true)) {
             addParameters(symbol, decl.funcParams)
         }
+        breakTraverse()
     }
 
     public override func visit(decl: MainDecl): Unit {
@@ -309,6 +321,7 @@ private class AstDeclarationCollector <: Visitor {
             localScopes.add(SourceLocation(path, Int64(decl.beginPos.line), Int64(decl.beginPos.column),
                 Int64(decl.endPos.line), Int64(decl.endPos.column)))
         }
+        breakTraverse()
     }
 
     public override func visit(decl: MacroDecl): Unit {
@@ -317,6 +330,20 @@ private class AstDeclarationCollector <: Visitor {
         diagnostics.add(Diagnostic("warning", "CJDOC1009",
             "unsupported declaration 'macro ${decl.identifier.value}'", source: location))
         unsupportedDeclarations.add(UnsupportedDeclaration("macro", decl.identifier.value,
+            "macro expansion is not executed", location))
+        breakTraverse()
+    }
+
+    public override func visit(decl: MacroExpandDecl): Unit {
+        let name = try { decl.fullIdentifier.value } catch (_: Exception) {
+            try { decl.identifier.value } catch (_: Exception) { "<macro>" }
+        }
+        let location = SourceLocation(path, Int64(decl.beginPos.line), Int64(decl.beginPos.column),
+            Int64(decl.endPos.line), Int64(decl.endPos.column))
+        diagnostics.add(Diagnostic("warning", "CJDOC1009",
+            "macro invocation '${name}' is not expanded", source: location))
+        macroInvocations.add(MacroInvocation(name, location))
+        unsupportedDeclarations.add(UnsupportedDeclaration("macroInvocation", name,
             "macro expansion is not executed", location))
         breakTraverse()
     }
@@ -453,7 +480,25 @@ private func assignOwners(symbols: ArrayList<SourceDeclaration>): Unit {
     }
 }
 
-private func bindComments(symbols: ArrayList<SourceDeclaration>, comments: ArrayList<RawDocComment>): Unit {
+private func onlyWhitespaceBetween(source: String, left: SourceLocation,
+    right: SourceLocation): Bool {
+    let start = byteOffset(source, left.endLine, left.endColumn)
+    let end = byteOffset(source, right.startLine, right.startColumn)
+    if (start < 0 || end < start) { return false }
+    let bytes = source.toArray()
+    var index = start
+    while (index < end && index < bytes.size) {
+        match (bytes[index]) {
+            case 9u8 | 10u8 | 13u8 | 32u8 => ()
+            case _ => return false
+        }
+        index++
+    }
+    return index == end
+}
+
+private func bindComments(symbols: ArrayList<SourceDeclaration>,
+    comments: ArrayList<RawDocComment>, source: String): ArrayList<OrphanDocComment> {
     var commentIndex: Int64 = 0
     var candidate: ?RawDocComment = None
     for (symbol in symbols) {
@@ -464,13 +509,18 @@ private func bindComments(symbols: ArrayList<SourceDeclaration>, comments: Array
             commentIndex++
         }
         if (let Some(comment) <- candidate) {
-            if (!comment.bound) {
+            if (!comment.bound && onlyWhitespaceBetween(source, comment.source, symbol.source)) {
                 symbol.documentation = parseDocComment(comment.raw)
                 comment.bound = true
             }
             candidate = None
         }
     }
+    let orphans = ArrayList<OrphanDocComment>()
+    for (comment in comments where !comment.bound) {
+        orphans.add(OrphanDocComment(comment.raw, comment.source))
+    }
+    return orphans
 }
 
 func percentEscapeSymbolPart(value: String): String {
@@ -548,11 +598,13 @@ private class SourceModuleRoot {
 
 private class SourceInputFile {
     let actualPath: String
+    let actualRoot: String
     let logicalPath: String
     let module: SourceModule
 
-    init(actualPath: String, logicalPath: String, module: SourceModule) {
+    init(actualPath: String, actualRoot: String, logicalPath: String, module: SourceModule) {
         this.actualPath = actualPath
+        this.actualRoot = actualRoot
         this.logicalPath = logicalPath
         this.module = module
     }
@@ -927,11 +979,11 @@ private func packageNameFrom(program: Program, fallback: String): String {
     return value.trimAscii()
 }
 
-private func getSourcePackage(source: SourceSnapshot, name: String): SourcePackage {
+private func getSourcePackage(source: SourceSnapshot, moduleId: String, name: String): SourcePackage {
     for (pkg in source.packages) {
-        if (pkg.name == name) { return pkg }
+        if (pkg.moduleId == moduleId && pkg.name == name) { return pkg }
     }
-    let pkg = SourcePackage(name)
+    let pkg = SourcePackage(name, moduleId)
     source.packages.add(pkg)
     return pkg
 }
@@ -1050,7 +1102,9 @@ private func cacheAddTags(writer: SourceCacheWriter, tags: ArrayList<DocTag>): U
 
 private func cacheReadTags(reader: SourceCacheReader, tags: ArrayList<DocTag>): Unit {
     let count = reader.nextInt()
-    if (count < 0 || count > 1000000) { throw IllegalArgumentException("invalid cache list length") }
+    if (count < 0 || count > MAX_SOURCE_CACHE_ITEMS) {
+        throw IllegalArgumentException("invalid cache list length")
+    }
     var index: Int64 = 0
     while (index < count) {
         tags.add(cacheReadTag(reader))
@@ -1065,7 +1119,9 @@ private func cacheAddStrings(writer: SourceCacheWriter, values: ArrayList<String
 
 private func cacheReadStrings(reader: SourceCacheReader, values: ArrayList<String>): Unit {
     let count = reader.nextInt()
-    if (count < 0 || count > 1000000) { throw IllegalArgumentException("invalid cache list length") }
+    if (count < 0 || count > MAX_SOURCE_CACHE_ITEMS) {
+        throw IllegalArgumentException("invalid cache list length")
+    }
     var index: Int64 = 0
     while (index < count) {
         values.add(reader.next())
@@ -1118,6 +1174,7 @@ private func cacheAddDeclaration(writer: SourceCacheWriter, value: SourceDeclara
     writer.add(value.kind)
     writer.add(value.name)
     writer.add(value.packageName)
+    writer.add(value.moduleId)
     writer.add(value.visibility)
     cacheAddLocation(writer, value.source)
     writer.add(value.sourceSignature)
@@ -1145,22 +1202,24 @@ private func cacheAddDeclaration(writer: SourceCacheWriter, value: SourceDeclara
     cacheAddDocComment(writer, value.documentation)
 }
 
-private func cacheReadDeclaration(reader: SourceCacheReader): SourceDeclaration {
+private func cacheReadDeclaration(reader: SourceCacheReader, expectedModuleId: String): SourceDeclaration {
     let sourceKey = reader.next()
     let kind = reader.next()
     let name = reader.next()
     let packageName = reader.next()
+    let moduleId = reader.next()
+    if (moduleId != expectedModuleId) { throw IllegalArgumentException("cache module mismatch") }
     let visibility = reader.next()
     let source = cacheReadLocation(reader)
     let signature = reader.next()
     let isContainer = reader.nextBool()
     let owner = cacheReadOptionalString(reader)
-    let value = SourceDeclaration(sourceKey, kind, name, packageName, visibility,
+    let value = SourceDeclaration(sourceKey, kind, name, packageName, moduleId, visibility,
         source, signature, isContainer: isContainer)
     value.ownerSourceKey = owner
     cacheReadStrings(reader, value.genericParameters)
     let parameterCount = reader.nextInt()
-    if (parameterCount < 0 || parameterCount > 1000000) {
+    if (parameterCount < 0 || parameterCount > MAX_SOURCE_CACHE_ITEMS) {
         throw IllegalArgumentException("invalid cache parameter count")
     }
     var index: Int64 = 0
@@ -1172,7 +1231,7 @@ private func cacheReadDeclaration(reader: SourceCacheReader): SourceDeclaration 
     cacheReadStrings(reader, value.annotations)
     cacheReadStrings(reader, value.modifiers)
     let relationshipCount = reader.nextInt()
-    if (relationshipCount < 0 || relationshipCount > 1000000) {
+    if (relationshipCount < 0 || relationshipCount > MAX_SOURCE_CACHE_ITEMS) {
         throw IllegalArgumentException("invalid cache relationship count")
     }
     index = 0
@@ -1181,7 +1240,7 @@ private func cacheReadDeclaration(reader: SourceCacheReader): SourceDeclaration 
         index++
     }
     let symbolRelationshipCount = reader.nextInt()
-    if (symbolRelationshipCount < 0 || symbolRelationshipCount > 1000000) {
+    if (symbolRelationshipCount < 0 || symbolRelationshipCount > MAX_SOURCE_CACHE_ITEMS) {
         throw IllegalArgumentException("invalid cache symbol relationship count")
     }
     index = 0
@@ -1197,6 +1256,8 @@ private class ParsedSourceFile {
     let input: SourceInputFile
     var packageName: ?String = None
     let declarations = ArrayList<SourceDeclaration>()
+    let orphanDocComments = ArrayList<OrphanDocComment>()
+    let macroInvocations = ArrayList<MacroInvocation>()
     let unsupportedDeclarations = ArrayList<UnsupportedDeclaration>()
     let diagnostics = ArrayList<Diagnostic>()
     var cacheStatus = "disabled"
@@ -1216,6 +1277,24 @@ private func cacheAddUnsupported(writer: SourceCacheWriter, value: UnsupportedDe
 private func cacheReadUnsupported(reader: SourceCacheReader): UnsupportedDeclaration {
     UnsupportedDeclaration(reader.next(), reader.next(), reader.next(), cacheReadLocation(reader),
         origin: DeclarationOrigin(reader.next(), macroSymbolId: cacheReadOptionalString(reader)))
+}
+
+private func cacheAddOrphanDocComment(writer: SourceCacheWriter, value: OrphanDocComment): Unit {
+    writer.add(value.rawText)
+    cacheAddLocation(writer, value.source)
+}
+
+private func cacheReadOrphanDocComment(reader: SourceCacheReader): OrphanDocComment {
+    OrphanDocComment(reader.next(), cacheReadLocation(reader))
+}
+
+private func cacheAddMacroInvocation(writer: SourceCacheWriter, value: MacroInvocation): Unit {
+    writer.add(value.name)
+    cacheAddLocation(writer, value.source)
+}
+
+private func cacheReadMacroInvocation(reader: SourceCacheReader): MacroInvocation {
+    MacroInvocation(reader.next(), cacheReadLocation(reader))
 }
 
 private func cacheAddDiagnostic(writer: SourceCacheWriter, value: Diagnostic): Unit {
@@ -1251,6 +1330,10 @@ private func encodeParsedSource(cacheKey: String, parsed: ParsedSourceFile): Arr
     cacheAddOptionalString(writer, parsed.packageName)
     writer.add(parsed.declarations.size)
     for (declaration in parsed.declarations) { cacheAddDeclaration(writer, declaration) }
+    writer.add(parsed.orphanDocComments.size)
+    for (comment in parsed.orphanDocComments) { cacheAddOrphanDocComment(writer, comment) }
+    writer.add(parsed.macroInvocations.size)
+    for (invocation in parsed.macroInvocations) { cacheAddMacroInvocation(writer, invocation) }
     writer.add(parsed.unsupportedDeclarations.size)
     for (unsupported in parsed.unsupportedDeclarations) { cacheAddUnsupported(writer, unsupported) }
     writer.add(parsed.diagnostics.size)
@@ -1260,8 +1343,137 @@ private func encodeParsedSource(cacheKey: String, parsed: ParsedSourceFile): Arr
 
 private func checkedCacheCount(reader: SourceCacheReader): Int64 {
     let count = reader.nextInt()
-    if (count < 0 || count > 1000000) { throw IllegalArgumentException("invalid cache list length") }
+    if (count < 0 || count > MAX_SOURCE_CACHE_ITEMS) {
+        throw IllegalArgumentException("invalid cache list length")
+    }
     count
+}
+
+private func validCachedLocation(location: SourceLocation, expectedPath: String): Bool {
+    location.path == expectedPath && location.startLine > 0 && location.startColumn > 0 &&
+        location.endLine > 0 && location.endColumn > 0 &&
+        !positionLess(location.endLine, location.endColumn,
+            location.startLine, location.startColumn)
+}
+
+private func validCachedDeclarationKind(kind: String): Bool {
+    match (kind) {
+        case "class" | "struct" | "interface" | "enum" | "enumCase" | "extend" |
+            "typeAlias" | "property" | "variable" | "function" | "constructor" => true
+        case _ => false
+    }
+}
+
+private func validCachedVisibility(visibility: String): Bool {
+    match (visibility) {
+        case "public" | "protected" | "internal" | "private" => true
+        case _ => false
+    }
+}
+
+private func validateCachedDocComment(comment: ?DocComment): Unit {
+    if (let Some(value) <- comment) {
+        if (!value.raw.startsWith("/**") || value.returnTagCount < 0 ||
+            value.returnTagCount > MAX_SOURCE_CACHE_ITEMS) {
+            throw IllegalArgumentException("invalid cached documentation")
+        }
+    }
+}
+
+private func validateDecodedSourceCache(parsed: ParsedSourceFile): Unit {
+    let expectedPath = parsed.input.logicalPath
+    let packageName = match (parsed.packageName) {
+        case Some(value) =>
+            if (value.isEmpty()) { throw IllegalArgumentException("empty cached package") }
+            value
+        case None =>
+            if (!parsed.declarations.isEmpty() || !parsed.orphanDocComments.isEmpty() ||
+                !parsed.macroInvocations.isEmpty() || !parsed.unsupportedDeclarations.isEmpty()) {
+                throw IllegalArgumentException("cached source facts require a package")
+            }
+            ""
+    }
+    let declarationsByKey = HashMap<String, SourceDeclaration>()
+    var previous: ?SourceDeclaration = None
+    for (declaration in parsed.declarations) {
+        if (!validCachedDeclarationKind(declaration.kind) || declaration.name.isEmpty() ||
+            declaration.packageName != packageName || declaration.moduleId != parsed.input.module.id ||
+            !validCachedVisibility(declaration.visibility) ||
+            !validCachedLocation(declaration.source, expectedPath) ||
+            declaration.sourceKey != makeSourceDeclarationKey(declaration.source,
+                declaration.kind, declaration.name) ||
+            declarationsByKey.contains(declaration.sourceKey)) {
+            throw IllegalArgumentException("invalid cached declaration")
+        }
+        if (let Some(value) <- previous) {
+            if (sourceOrderLess(declaration, value)) {
+                throw IllegalArgumentException("cached declarations are not source ordered")
+            }
+        }
+        validateCachedDocComment(declaration.documentation)
+        declarationsByKey[declaration.sourceKey] = declaration
+        previous = Some(declaration)
+    }
+    for (declaration in parsed.declarations) {
+        if (let Some(ownerKey) <- declaration.ownerSourceKey) {
+            if (ownerKey == declaration.sourceKey) {
+                throw IllegalArgumentException("cached declaration owns itself")
+            }
+            match (declarationsByKey.get(ownerKey)) {
+                case Some(owner) =>
+                    if (!owner.isContainer || owner.packageName != declaration.packageName ||
+                        owner.moduleId != declaration.moduleId ||
+                        !rangeContains(owner.source, declaration.source)) {
+                        throw IllegalArgumentException("invalid cached declaration owner")
+                    }
+                case None => throw IllegalArgumentException("unknown cached declaration owner")
+            }
+        }
+        let seenOwners = HashSet<String>()
+        var current = declaration
+        var complete = false
+        while (!complete) {
+            match (current.ownerSourceKey) {
+                case None => complete = true
+                case Some(ownerKey) =>
+                    if (seenOwners.contains(ownerKey)) {
+                        throw IllegalArgumentException("cyclic cached declaration ownership")
+                    }
+                    let _ = seenOwners.add(ownerKey)
+                    current = declarationsByKey.get(ownerKey).getOrThrow()
+            }
+        }
+    }
+    for (comment in parsed.orphanDocComments) {
+        if (!comment.rawText.startsWith("/**") ||
+            !validCachedLocation(comment.source, expectedPath)) {
+            throw IllegalArgumentException("invalid cached orphan documentation")
+        }
+    }
+    for (invocation in parsed.macroInvocations) {
+        if (invocation.name.isEmpty() || !validCachedLocation(invocation.source, expectedPath)) {
+            throw IllegalArgumentException("invalid cached macro invocation")
+        }
+    }
+    for (unsupported in parsed.unsupportedDeclarations) {
+        if (unsupported.kind.isEmpty() || unsupported.name.isEmpty() ||
+            unsupported.reason.isEmpty() || !validCachedLocation(unsupported.source, expectedPath) ||
+            (unsupported.origin.kind != "source" && unsupported.origin.kind != "macro")) {
+            throw IllegalArgumentException("invalid cached unsupported declaration")
+        }
+    }
+    for (diagnostic in parsed.diagnostics) {
+        if ((diagnostic.severity != "warning" && diagnostic.severity != "error") ||
+            !diagnostic.code.startsWith("CJDOC1") || diagnostic.message.isEmpty() ||
+            diagnostic.symbolId.isSome()) {
+            throw IllegalArgumentException("invalid cached source diagnostic")
+        }
+        if (let Some(location) <- diagnostic.source) {
+            if (!validCachedLocation(location, expectedPath)) {
+                throw IllegalArgumentException("invalid cached diagnostic location")
+            }
+        }
+    }
 }
 
 private func decodeParsedSource(input: SourceInputFile, cacheKey: String,
@@ -1275,7 +1487,19 @@ private func decodeParsedSource(input: SourceInputFile, cacheKey: String,
     var count = checkedCacheCount(reader)
     var index: Int64 = 0
     while (index < count) {
-        parsed.declarations.add(cacheReadDeclaration(reader))
+        parsed.declarations.add(cacheReadDeclaration(reader, input.module.id))
+        index++
+    }
+    count = checkedCacheCount(reader)
+    index = 0
+    while (index < count) {
+        parsed.orphanDocComments.add(cacheReadOrphanDocComment(reader))
+        index++
+    }
+    count = checkedCacheCount(reader)
+    index = 0
+    while (index < count) {
+        parsed.macroInvocations.add(cacheReadMacroInvocation(reader))
         index++
     }
     count = checkedCacheCount(reader)
@@ -1291,6 +1515,7 @@ private func decodeParsedSource(input: SourceInputFile, cacheKey: String,
         index++
     }
     if (!reader.finished()) { throw IllegalArgumentException("trailing cache data") }
+    validateDecodedSourceCache(parsed)
     parsed.cacheStatus = "hit"
     return parsed
 }
@@ -1329,6 +1554,7 @@ private func makeSourceCacheKey(input: SourceInputFile, fallbackPackageName: Str
     writer.add(SOURCE_CACHE_FORMAT)
     writer.add(fingerprint)
     writer.add(input.logicalPath)
+    writer.add(input.module.id)
     writer.add(fallbackPackageName)
     writer.add(source)
     String.fromUtf8(writer.result())
@@ -1342,12 +1568,13 @@ private func sourceCachePath(directory: String, input: SourceInputFile,
 }
 
 private func writeSourceCache(path: String, content: Array<UInt8>): Bool {
+    let temporary = "${path}.tmp-${getProcessId()}-${NEXT_SOURCE_CACHE_TEMP_ID.fetchAdd(1)}"
     try {
-        let temporary = path + ".tmp"
         File.writeTo(temporary, content)
         rename(temporary, to: path, overwrite: true)
         return true
     } catch (_: Exception) {
+        try { let _ = removeIfExists(Path(temporary)) } catch (_: Exception) {}
         return false
     }
 }
@@ -1366,14 +1593,21 @@ private func parseSourceText(input: SourceInputFile, fallbackPackageName: String
         }
         let program = parseProgram(tokens)
         let packageName = packageNameFrom(program, fallbackPackageName)
-        let collector = AstDeclarationCollector(relative, packageName, source)
+        let collector = AstDeclarationCollector(relative, packageName, input.module.id, source)
         program.traverse(collector)
         sort(collector.declarations, lessThan: sourceOrderLess, stable: true)
-        bindComments(collector.declarations, collectDocComments(relative, tokens))
         removeLocalDeclarations(collector.declarations, collector.localScopes)
         assignOwners(collector.declarations)
+        result.orphanDocComments.add(all: bindComments(collector.declarations,
+            collectDocComments(relative, tokens), source))
+        for (comment in result.orphanDocComments) {
+            result.diagnostics.add(Diagnostic("warning", "CJDOC1014",
+                "doc comment is not attached to a documentable declaration",
+                source: comment.source))
+        }
         result.packageName = Some(packageName)
         result.declarations.add(all: collector.declarations)
+        result.macroInvocations.add(all: collector.macroInvocations)
         result.unsupportedDeclarations.add(all: collector.unsupportedDeclarations)
         result.diagnostics.add(all: collector.diagnostics)
     } catch (_: Exception) {
@@ -1412,22 +1646,28 @@ private func astPreflightStatus(executable: String, input: SourceInputFile): Int
 
 private func parseAfterAstPreflight(input: SourceInputFile, fallbackPackageName: String,
     source: String, executable: ?String): ParsedSourceFile {
-    if (let Some(actual) <- executable) {
-        let status = astPreflightStatus(actual, input)
-        if (status == 11) {
-            let result = ParsedSourceFile(input)
-            result.diagnostics.add(Diagnostic("error", "CJDOC1011",
-                "failed to parse '${input.logicalPath}'",
-                source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
-            return result
-        }
-        if (status != 0 && status != 12) {
-            let result = ParsedSourceFile(input)
-            result.diagnostics.add(Diagnostic("error", "CJDOC1020",
-                "isolated std.ast parser failed for '${input.logicalPath}'; file skipped",
-                source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
-            return result
-        }
+    if (executable.isNone() || executable.getOrThrow().isEmpty()) {
+        let result = ParsedSourceFile(input)
+        result.diagnostics.add(Diagnostic("error", "CJDOC1020",
+            "isolated std.ast parser is unavailable for '${input.logicalPath}'; file skipped",
+            source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
+        return result
+    }
+    let actual = executable.getOrThrow()
+    let status = astPreflightStatus(actual, input)
+    if (status == 11) {
+        let result = ParsedSourceFile(input)
+        result.diagnostics.add(Diagnostic("error", "CJDOC1011",
+            "failed to parse '${input.logicalPath}'",
+            source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
+        return result
+    }
+    if (status != 0 && status != 12) {
+        let result = ParsedSourceFile(input)
+        result.diagnostics.add(Diagnostic("error", "CJDOC1020",
+            "isolated std.ast parser failed for '${input.logicalPath}'; file skipped",
+            source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
+        return result
     }
     return parseSourceText(input, fallbackPackageName, source)
 }
@@ -1463,6 +1703,9 @@ private func parseSourceInput(input: SourceInputFile, fallbackPackageName: Strin
             let path = sourceCachePath(directory, input, cacheKey)
             if (exists(path)) {
                 try {
+                    if (FileInfo(path).size > MAX_SOURCE_CACHE_BYTES) {
+                        throw IllegalArgumentException("cache entry exceeds 64 MiB")
+                    }
                     return decodeParsedSource(input, cacheKey, File.readFrom(path))
                 } catch (_: Exception) {
                     let parsed = parseAfterAstPreflight(input, fallbackPackageName, source,
@@ -1502,10 +1745,12 @@ private func mergeParsedSource(sourceSnapshot: SourceSnapshot, parsed: ParsedSou
     }
     if (let Some(packageName) <- parsed.packageName) {
         addUniqueString(parsed.input.module.packageNames, packageName)
-        let pkg = getSourcePackage(sourceSnapshot, packageName)
+        let pkg = getSourcePackage(sourceSnapshot, parsed.input.module.id, packageName)
         pkg.sourceFiles.add(parsed.input.logicalPath)
     }
     sourceSnapshot.declarations.add(all: parsed.declarations)
+    sourceSnapshot.orphanDocComments.add(all: parsed.orphanDocComments)
+    sourceSnapshot.macroInvocations.add(all: parsed.macroInvocations)
     sourceSnapshot.unsupportedDeclarations.add(all: parsed.unsupportedDeclarations)
     sourceSnapshot.diagnostics.add(all: parsed.diagnostics)
 }
@@ -1624,7 +1869,8 @@ class AstSourceProvider <: SourceProvider {
                     } else {
                         module.logicalPrefix + "/" + moduleRelative
                     }
-                    files.add(SourceInputFile(file, logicalPath, module.documentation))
+                    files.add(SourceInputFile(file, module.actualRoot, logicalPath,
+                        module.documentation))
                 }
             } catch (error: Exception) {
                 sourceSnapshot.diagnostics.add(Diagnostic(
@@ -1639,6 +1885,10 @@ class AstSourceProvider <: SourceProvider {
                 "source scan exceeded 100000 files or 128 directory levels; remaining files skipped"))
         }
         sort(files, lessThan: { left, right => left.logicalPath < right.logicalPath }, stable: true)
+        for (file in files) {
+            sourceSnapshot.sourceFileOrigins.add(SourceFileOrigin(file.logicalPath,
+                file.actualPath, file.actualRoot, file.module.sourcePrefix))
+        }
         let usableCacheDirectory: ?String = match (cacheDirectory) {
             case None => None
             case Some(directory) => try {

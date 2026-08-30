@@ -14,3 +14,4 @@
 !/AGENTS.md
 !/docs/schema/*.json
 !/tests/fixtures/golden-v6/*.json
+!/tests/perf/*.json

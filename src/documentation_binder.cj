@@ -11,7 +11,7 @@ private func copyModule(source: SourceModule): ModuleDoc {
 }
 
 private func copyPackage(source: SourcePackage): PackageDoc {
-    let pkg = PackageDoc(source.name)
+    let pkg = PackageDoc(source.name, source.moduleId)
     pkg.sourceFiles.add(all: source.sourceFiles)
     return pkg
 }
@@ -22,6 +22,7 @@ private func typeRefFromSourceSpelling(spelling: String): TypeRef {
 
 private func semanticFallback(source: SourceDeclaration, provider: String, state: String): SemanticDeclaration {
     let semantic = SemanticDeclaration(source.sourceKey, source.kind, source.name, source.packageName,
+        source.moduleId,
         source.ownerSourceKey, source.visibility, state, provider, isContainer: source.isContainer)
     semantic.genericParameters.add(all: source.genericParameters)
     for (parameter in source.parameters) {
@@ -79,14 +80,17 @@ private func sanitizeTypeRef(sourceDisplay: String, semantic: TypeRef,
             "semantic provider marked a type resolved without a canonical type", source: source)
         return typeRefFromSourceSpelling(sourceDisplay)
     }
-    return TypeRef(sourceDisplay, canonical: semantic.canonical, state: semantic.state)
+    return TypeRef(sourceDisplay, canonical: semantic.canonical, state: semantic.state,
+        kind: semantic.kind, nullable: semantic.nullable,
+        arguments: semantic.arguments.toArray())
 }
 
 private func sanitizeSemantic(source: SourceDeclaration, semantic: SemanticDeclaration,
-    semanticResult: SemanticResult, documentation: DocumentationSet,
+    moduleResult: ModuleSemanticResult, documentation: DocumentationSet,
     stats: SemanticBindingStats): ?SemanticDeclaration {
     if (semantic.kind != source.kind || semantic.name != source.name ||
-        semantic.packageName != source.packageName || semantic.isContainer != source.isContainer) {
+        semantic.packageName != source.packageName || semantic.moduleId != source.moduleId ||
+        semantic.isContainer != source.isContainer) {
         recordContractViolation(documentation, stats,
             "semantic declaration identity does not match its source declaration", source: source.source)
         return None
@@ -112,7 +116,7 @@ private func sanitizeSemantic(source: SourceDeclaration, semantic: SemanticDecla
             "semantic provider returned an invalid declaration state '${state}'", source: source.source)
         state = "partial"
     }
-    let visibility = if (semanticResult.capabilities.visibility) {
+    let visibility = if (moduleResult.capabilities.visibility) {
         if (validVisibility(semantic.visibility)) {
             semantic.visibility
         } else {
@@ -129,7 +133,7 @@ private func sanitizeSemantic(source: SourceDeclaration, semantic: SemanticDecla
     }
 
     var owner = source.ownerSourceKey
-    if (semanticResult.capabilities.ownership) {
+    if (moduleResult.capabilities.ownership) {
         owner = semantic.ownerSourceKey
         if (owner != source.ownerSourceKey) {
             recordContractViolation(documentation, stats,
@@ -142,47 +146,81 @@ private func sanitizeSemantic(source: SourceDeclaration, semantic: SemanticDecla
     }
 
     var canonicalSignature = semantic.canonicalSignature
-    if (!semanticResult.capabilities.canonicalSignatures && canonicalSignature.isSome()) {
+    if (!moduleResult.capabilities.canonicalSignatures && canonicalSignature.isSome()) {
         recordContractViolation(documentation, stats,
             "semantic provider returned a canonical signature without canonicalSignatures capability",
             source: source.source)
         canonicalSignature = None
     }
     let sanitized = SemanticDeclaration(source.sourceKey, source.kind, source.name, source.packageName,
-        owner, visibility, state, semanticResult.provider, canonicalSignature: canonicalSignature,
+        source.moduleId,
+        owner, visibility, state, moduleResult.provider, canonicalSignature: canonicalSignature,
         isContainer: source.isContainer)
     sanitized.genericParameters.add(all: source.genericParameters)
     index = 0
     while (index < source.parameters.size) {
         sanitized.parameters.add(SemanticParameter(source.parameters[index].name,
             sanitizeTypeRef(source.parameters[index].typeSpelling, semantic.parameters[index].typeRef,
-                semanticResult.capabilities, documentation, stats, source.source)))
+                moduleResult.capabilities, documentation, stats, source.source)))
         index++
     }
     match (source.returnTypeSpelling) {
         case Some(display) =>
             match (semantic.returnType) {
                 case Some(typeRef) => sanitized.returnType = Some(sanitizeTypeRef(display, typeRef,
-                    semanticResult.capabilities, documentation, stats, source.source))
+                    moduleResult.capabilities, documentation, stats, source.source))
                 case None =>
-                    recordContractViolation(documentation, stats,
-                        "semantic declaration omitted a source return type", source: source.source)
                     sanitized.returnType = Some(typeRefFromSourceSpelling(display))
             }
         case None =>
             if (let Some(typeRef) <- semantic.returnType) {
                 sanitized.returnType = Some(sanitizeTypeRef(typeRef.display, typeRef,
-                    semanticResult.capabilities, documentation, stats, source.source))
+                    moduleResult.capabilities, documentation, stats, source.source))
             }
     }
     sanitized.annotations.add(all: source.annotations)
+    if (moduleResult.capabilities.annotations) {
+        sanitized.providerAnnotations.add(all: semantic.providerAnnotations)
+    } else if (!semantic.providerAnnotations.isEmpty()) {
+        recordContractViolation(documentation, stats,
+            "semantic provider returned annotations without annotations capability",
+            source: source.source)
+    }
+    for (relationship in source.relationships) {
+        var supplied = false
+        for (candidate in semantic.relationships) {
+            if (candidate.kind == relationship.kind &&
+                candidate.target.display == relationship.targetSpelling) {
+                supplied = true
+                break
+            }
+        }
+        if (!supplied) {
+            sanitized.relationships.add(TypeRelationship(relationship.kind,
+                typeRefFromSourceSpelling(relationship.targetSpelling)))
+        }
+    }
     for (relationship in semantic.relationships) {
         sanitized.relationships.add(TypeRelationship(relationship.kind,
             sanitizeTypeRef(relationship.target.display, relationship.target,
-                semanticResult.capabilities, documentation, stats, source.source)))
+                moduleResult.capabilities, documentation, stats, source.source)))
+    }
+    for (relationship in source.symbolRelationships) {
+        var supplied = false
+        for (candidate in semantic.symbolRelationships) {
+            if (candidate.kind == relationship.kind &&
+                candidate.targetDisplay == relationship.targetDisplay) {
+                supplied = true
+                break
+            }
+        }
+        if (!supplied) {
+            sanitized.symbolRelationships.add(SymbolRelationship(relationship.kind,
+                relationship.targetDisplay, "unavailable"))
+        }
     }
     for (relationship in semantic.symbolRelationships) {
-        if (!semanticResult.capabilities.symbolRelationships &&
+        if (!moduleResult.capabilities.symbolRelationships &&
             (relationship.state == "resolved" || relationship.targetSymbolId.isSome() ||
                 relationship.targetSourceKey.isSome())) {
             recordContractViolation(documentation, stats,
@@ -225,7 +263,8 @@ private func resolveSymbolRelationshipSourceKeys(symbols: ArrayList<SymbolDoc>,
 }
 
 private func copySemanticToDoc(source: SourceDeclaration, semantic: SemanticDeclaration): SymbolDoc {
-    let symbol = SymbolDoc(semantic.kind, semantic.name, semantic.packageName, semantic.visibility,
+    let symbol = SymbolDoc(semantic.kind, semantic.name, semantic.packageName, semantic.moduleId,
+        semantic.visibility,
         source.source, source.sourceSignature, isContainer: semantic.isContainer,
         semanticState: semantic.state, semanticProvider: semantic.provider,
         canonicalSignature: semantic.canonicalSignature)
@@ -234,7 +273,11 @@ private func copySemanticToDoc(source: SourceDeclaration, semantic: SemanticDecl
         symbol.parameters.add(ParameterDoc(parameter.name, parameter.typeRef))
     }
     symbol.returnType = semantic.returnType
-    symbol.annotations.add(all: semantic.annotations)
+    for (annotation in semantic.annotations) { symbol.annotations.add(DocAnnotation(annotation)) }
+    for (annotation in semantic.providerAnnotations) {
+        symbol.annotations.add(DocAnnotation(annotation, provenance: "provider",
+            provider: Some(semantic.provider)))
+    }
     symbol.relationships.add(all: semantic.relationships)
     symbol.symbolRelationships.add(all: semantic.symbolRelationships)
     symbol.documentation = source.documentation
@@ -244,7 +287,9 @@ private func copySemanticToDoc(source: SourceDeclaration, semantic: SemanticDecl
 private func ownerPath(symbols: ArrayList<SymbolDoc>, symbol: SymbolDoc): String {
     let names = ArrayList<String>()
     var owner = symbol.ownerIndex
+    var rootOwner: Int64 = -1
     while (owner >= 0) {
+        rootOwner = owner
         let name = if (symbols[owner].kind == "extend") {
             normalizeTypeSpelling(symbols[owner].name)
         } else {
@@ -254,6 +299,10 @@ private func ownerPath(symbols: ArrayList<SymbolDoc>, symbol: SymbolDoc): String
         owner = symbols[owner].ownerIndex
     }
     let builder = StringBuilder()
+    if (rootOwner >= 0 && symbols[rootOwner].visibility == "private") {
+        builder.append("::file:")
+        builder.append(percentEscapeSymbolPart(symbols[rootOwner].source.path))
+    }
     for (name in names) {
         builder.append("::")
         builder.append(percentEscapeSymbolPart(name))
@@ -319,10 +368,12 @@ private func extendIdentityName(symbols: ArrayList<SymbolDoc>, extendIndex: Int6
     return builder.toString()
 }
 
-func makeSymbolId(packageName: String, owner: String, kind: String, name: String,
+func makeSymbolId(moduleId: String, packageName: String, owner: String, kind: String, name: String,
     genericArity: Int64, parameterTypes: Array<String>): String {
     let builder = StringBuilder()
-    builder.append("cjdoc:v1:")
+    builder.append("cjdoc:v2:")
+    builder.append(percentEscapeSymbolPart(moduleId))
+    builder.append("::")
     builder.append(percentEscapeSymbolPart(packageName))
     builder.append(owner)
     builder.append("::")
@@ -347,11 +398,14 @@ private func finalizeIdentities(symbols: ArrayList<SymbolDoc>): Unit {
     var index: Int64 = 0
     while (index < symbols.size) {
         let symbol = symbols[index]
-        let owner = ownerPath(symbols, symbol)
+        var owner = ownerPath(symbols, symbol)
+        if (owner.isEmpty() && symbol.visibility == "private") {
+            owner = "::file:" + percentEscapeSymbolPart(symbol.source.path)
+        }
         let types = ArrayList<String>()
         for (parameter in symbol.parameters) { types.add(identityType(parameter.typeRef)) }
         let identityName = if (symbol.kind == "extend") { extendIdentityName(symbols, index) } else { symbol.name }
-        symbol.id = makeSymbolId(symbol.packageName, owner, symbol.kind, identityName,
+        symbol.id = makeSymbolId(symbol.moduleId, symbol.packageName, owner, symbol.kind, identityName,
             symbol.genericParameters.size, types.toArray())
         let qualified = StringBuilder()
         qualified.append(symbol.packageName)
@@ -372,16 +426,16 @@ private func finalizeIdentities(symbols: ArrayList<SymbolDoc>): Unit {
 
 private func isConditionalDeclaration(symbol: SymbolDoc): Bool {
     for (annotation in symbol.annotations) {
-        if (annotation.startsWith("@When")) { return true }
+        if (annotation.spelling.startsWith("@When")) { return true }
     }
     return false
 }
 
-private func getDocPackage(documentation: DocumentationSet, name: String): PackageDoc {
+private func getDocPackage(documentation: DocumentationSet, moduleId: String, name: String): PackageDoc {
     for (pkg in documentation.packages) {
-        if (pkg.name == name) { return pkg }
+        if (pkg.moduleId == moduleId && pkg.name == name) { return pkg }
     }
-    let pkg = PackageDoc(name)
+    let pkg = PackageDoc(name, moduleId)
     documentation.packages.add(pkg)
     return pkg
 }
@@ -409,11 +463,11 @@ class DocumentationBinder {
     public func bind(source: SourceSnapshot, semanticResult: SemanticResult,
         expectedProvider!: ?String = None): DocumentationSet {
         let documentation = DocumentationSet(source.projectName)
-        let stats = SemanticBindingStats(semanticResult.provider, semanticResult.providerVersion,
-            semanticResult.capabilities)
-        documentation.semanticBinding = stats
         for (module in source.modules) { documentation.modules.add(copyModule(module)) }
         for (pkg in source.packages) { documentation.packages.add(copyPackage(pkg)) }
+        documentation.sourceFileOrigins.add(all: source.sourceFileOrigins)
+        documentation.orphanDocComments.add(all: source.orphanDocComments)
+        documentation.macroInvocations.add(all: source.macroInvocations)
         documentation.unsupportedDeclarations.add(all: source.unsupportedDeclarations)
         documentation.diagnostics.add(all: source.diagnostics)
         documentation.diagnostics.add(all: semanticResult.diagnostics)
@@ -425,60 +479,117 @@ class DocumentationBinder {
             index++
         }
 
-        var bindingEnabled = semanticResult.capabilities.sourceBinding
-        if (let Some(expected) <- expectedProvider) {
-            if (semanticResult.provider != expected) {
-                recordContractViolation(documentation, stats,
-                    "semantic provider result '${semanticResult.provider}' does not match provider '${expected}'")
-                bindingEnabled = false
+        let knownModuleIds = HashSet<String>()
+        for (module in source.modules) { let _ = knownModuleIds.add(module.id) }
+        let reportedByModule = HashMap<String, ModuleSemanticResult>()
+        let duplicateModuleResults = HashSet<String>()
+        for (moduleResult in semanticResult.modules) {
+            if (!knownModuleIds.contains(moduleResult.moduleId)) {
+                documentation.diagnostics.add(Diagnostic("warning", "CJDOC1007",
+                    "semantic provider returned a result for an unknown module '${moduleResult.moduleId}'"))
+            } else if (reportedByModule.contains(moduleResult.moduleId)) {
+                let _ = duplicateModuleResults.add(moduleResult.moduleId)
+                documentation.diagnostics.add(Diagnostic("warning", "CJDOC1007",
+                    "semantic provider returned duplicate results for module '${moduleResult.moduleId}'"))
+            } else {
+                reportedByModule[moduleResult.moduleId] = moduleResult
             }
-        }
-        if (!semanticResult.capabilities.sourceBinding && !semanticResult.declarations.isEmpty()) {
-            recordContractViolation(documentation, stats,
-                "semantic provider returned declarations without sourceBinding capability")
         }
 
+        let effectiveByModule = HashMap<String, ModuleSemanticResult>()
+        let statsByModule = HashMap<String, SemanticBindingStats>()
         let semanticBySource = HashMap<String, SemanticDeclaration>()
         let ambiguousSourceKeys = HashSet<String>()
-        for (semantic in semanticResult.declarations) {
-            if (!sourceIndexByKey.contains(semantic.sourceKey)) {
-                stats.extraneous++
-                documentation.diagnostics.add(Diagnostic("warning", "CJDOC1007",
-                    "semantic declaration has no matching source declaration"))
-                continue
-            }
-            if (semantic.provider != semanticResult.provider) {
-                recordContractViolation(documentation, stats,
-                    "semantic declaration provider '${semantic.provider}' does not match result provider '${semanticResult.provider}'")
-                continue
-            }
-            if (!bindingEnabled) { continue }
-            if (semanticBySource.contains(semantic.sourceKey)) {
-                let _ = ambiguousSourceKeys.add(semantic.sourceKey)
+        for (module in source.modules) {
+            let reported: ?ModuleSemanticResult = if (duplicateModuleResults.contains(module.id)) {
+                None
             } else {
-                semanticBySource[semantic.sourceKey] = semantic
+                reportedByModule.get(module.id)
+            }
+            let moduleResult = match (reported) {
+                case Some(value) => value
+                case None =>
+                    let provider = match (expectedProvider) {
+                        case Some(value) => value
+                        case None => "unavailable"
+                    }
+                    let fallback = ModuleSemanticResult(module.id, provider, "unknown",
+                        SemanticCapabilities(false, false, false, false, false))
+                    fallback.diagnostics.add(Diagnostic("warning", "CJDOC2001",
+                        "semantic result is unavailable for module '${module.name}'; AST fallback retained"))
+                    fallback
+            }
+            effectiveByModule[module.id] = moduleResult
+            let stats = SemanticBindingStats(module.id, moduleResult.provider,
+                moduleResult.providerVersion, moduleResult.capabilities)
+            statsByModule[module.id] = stats
+            documentation.semanticBindings.add(stats)
+            documentation.diagnostics.add(all: moduleResult.diagnostics)
+
+            var bindingEnabled = moduleResult.capabilities.sourceBinding
+            if (let Some(expected) <- expectedProvider) {
+                if (moduleResult.provider != expected) {
+                    recordContractViolation(documentation, stats,
+                        "semantic provider result '${moduleResult.provider}' does not match provider '${expected}'")
+                    bindingEnabled = false
+                }
+            }
+            if (!moduleResult.capabilities.sourceBinding && !moduleResult.declarations.isEmpty()) {
+                recordContractViolation(documentation, stats,
+                    "semantic provider returned declarations without sourceBinding capability")
+                bindingEnabled = false
+            }
+            for (semantic in moduleResult.declarations) {
+                let original = match (sourceIndexByKey.get(semantic.sourceKey)) {
+                    case Some(sourceIndex) => source.declarations[sourceIndex]
+                    case None =>
+                        stats.extraneous++
+                        documentation.diagnostics.add(Diagnostic("warning", "CJDOC1007",
+                            "semantic declaration has no matching source declaration"))
+                        continue
+                }
+                if (semantic.moduleId != module.id || original.moduleId != module.id) {
+                    stats.extraneous++
+                    recordContractViolation(documentation, stats,
+                        "semantic declaration crossed its module transaction boundary",
+                        source: original.source)
+                    continue
+                }
+                if (semantic.provider != moduleResult.provider) {
+                    recordContractViolation(documentation, stats,
+                        "semantic declaration provider '${semantic.provider}' does not match result provider '${moduleResult.provider}'")
+                    continue
+                }
+                if (!bindingEnabled) { continue }
+                if (semanticBySource.contains(semantic.sourceKey)) {
+                    let _ = ambiguousSourceKeys.add(semantic.sourceKey)
+                } else {
+                    semanticBySource[semantic.sourceKey] = semantic
+                }
             }
         }
 
         for (declaration in source.declarations) {
+            let moduleResult = effectiveByModule[declaration.moduleId]
+            let stats = statsByModule[declaration.moduleId]
             let semantic = if (ambiguousSourceKeys.contains(declaration.sourceKey)) {
                 stats.ambiguous++
                 documentation.diagnostics.add(Diagnostic("warning", "CJDOC1007",
                     "ambiguous Source to semantic binding", source: declaration.source))
-                semanticFallback(declaration, semanticResult.provider, "ambiguous")
+                semanticFallback(declaration, moduleResult.provider, "ambiguous")
             } else {
                 match (semanticBySource.get(declaration.sourceKey)) {
                     case Some(found) =>
-                        match (sanitizeSemantic(declaration, found, semanticResult, documentation, stats)) {
+                        match (sanitizeSemantic(declaration, found, moduleResult, documentation, stats)) {
                             case Some(sanitized) => stats.matched++; sanitized
                             case None => stats.missing++;
-                                semanticFallback(declaration, semanticResult.provider, "unavailable")
+                                semanticFallback(declaration, moduleResult.provider, "unavailable")
                         }
                     case None =>
                         stats.missing++
                         documentation.diagnostics.add(Diagnostic("warning", "CJDOC1007",
                             "semantic declaration is unavailable", source: declaration.source))
-                        semanticFallback(declaration, semanticResult.provider, "unavailable")
+                        semanticFallback(declaration, moduleResult.provider, "unavailable")
                 }
             }
             let symbol = copySemanticToDoc(declaration, semantic)
@@ -501,7 +612,7 @@ class DocumentationBinder {
         index = 0
         while (index < documentation.symbols.size) {
             let symbol = documentation.symbols[index]
-            let pkg = getDocPackage(documentation, symbol.packageName)
+            let pkg = getDocPackage(documentation, symbol.moduleId, symbol.packageName)
             if (!seenIds.add(symbol.id)) {
                 var conditional = isConditionalDeclaration(symbol)
                 if (!conditional) {

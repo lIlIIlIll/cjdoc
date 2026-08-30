@@ -1,0 +1,75 @@
+name: Daily SDK
+
+on:
+  schedule:
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+    inputs:
+      sdk_url:
+        description: Checksum-pinned Linux x64 daily SDK URL
+        required: false
+        type: string
+      sdk_sha256:
+        description: Lowercase SHA-256 for the daily SDK archive
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-sdk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    name: linux-x64 / configured daily SDK
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      CJDOC_PYTHON: python
+      PYTHONUTF8: "1"
+      CANGJIE_SDK_URL: ${{ inputs.sdk_url || vars.CANGJIE_DAILY_LINUX_X64_URL }}
+      CANGJIE_SDK_SHA256: ${{ inputs.sdk_sha256 || vars.CANGJIE_DAILY_LINUX_X64_SHA256 }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Require a checksum-pinned daily SDK
+        shell: bash
+        run: |
+          test -n "${CANGJIE_SDK_URL}"
+          [[ "${CANGJIE_SDK_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+
+      - name: Restore daily Cangjie SDK
+        id: sdk-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/cangjie-sdk-daily
+          key: cangjie-sdk-daily-linux-x64-${{ inputs.sdk_sha256 || vars.CANGJIE_DAILY_LINUX_X64_SHA256 }}-v1
+
+      - name: Install checksum-pinned daily Cangjie SDK
+        id: sdk
+        shell: bash
+        run: |
+          python scripts/install_cangjie_sdk.py \
+            --url "${CANGJIE_SDK_URL}" \
+            --sha256 "${CANGJIE_SDK_SHA256}" \
+            --destination "${RUNNER_TEMP}/cangjie-sdk-daily" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Run v7 acceptance and real-repository smoke
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          cjc -v
+          cjpm -v
+          scripts/check.sh
+          python scripts/real_repository_smoke.py --project .

@@ -29,7 +29,8 @@ class PluginSemanticProviderFactory <: SemanticProviderFactory {
 
 main(): Int64 {
     let documentation = DocumentationEngine().generate(GenerationRequest(".",
-        providerFactories: [PluginSemanticProviderFactory()]))
+        providerFactories: [PluginSemanticProviderFactory()],
+        astPreflightExecutable: Some("../../../../target/release/bin/main")))
     if (documentation.providers.size != 1 || documentation.providers[0].name != "fixture-plugin") {
         return 1
     }

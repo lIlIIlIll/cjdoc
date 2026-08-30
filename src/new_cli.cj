@@ -2,12 +2,11 @@ package cjdoc
 
 import cjdoc.model as public_model
 import cjdoc.render as public_render
+import cjdoc.schema_data.*
 import std.collection.*
 import std.convert.Parsable
 import std.env.*
 import std.fs.*
-import std.sort.*
-import yjson.*
 
 private class NewCliOptions {
     var command = ""
@@ -18,6 +17,7 @@ private class NewCliOptions {
     let formats = ArrayList<String>()
     var stdout = false
     var denyWarnings = false
+    var forceOwned = false
     var jobs: Int64 = 1
     var jobsExplicit = false
     var audience = "external"
@@ -40,10 +40,10 @@ private func newUsage(): String {
     "                 [--audience external|package|all] [--lint-profile off|standard|strict] [--jobs 1..64]\n" +
     "                 [--cfg NAME=VALUE] [--include-path-dependencies] [--include-cached-dependencies]\n" +
     "                 [--dependency-source NAME=PATH] [--cjpm-cache <dir>]\n" +
-    "                 [--cache-dir <dir>|--no-cache]\n" +
+    "                 [--cache-dir <dir>|--no-cache] [--force-owned]\n" +
     "  cjdoc check [--project <dir>] [--deny-warnings] [--lint-profile off|standard|strict]\n" +
-    "  cjdoc render --input <docs.json> [--format json|markdown|html]... [--output <dir>|--stdout]\n" +
-    "  cjdoc schema list|doc-ir|diagnostics|cfg-matrix|search-index\n"
+    "  cjdoc render --input <docs.json> [--format json|markdown|html]... [--output <dir>|--stdout] [--force-owned]\n" +
+    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|diagnostics|cfg-matrix|search-index\n"
 }
 
 private func splitNamedValue(value: String, option: String): (String, String) {
@@ -90,6 +90,7 @@ private func parseNewCli(args: Array<String>): NewCliOptions {
                 addFormat(options, args[index + 1]); index += 2
             case "--stdout" => options.stdout = true; index++
             case "--deny-warnings" => options.denyWarnings = true; index++
+            case "--force-owned" => options.forceOwned = true; index++
             case "--include-path-dependencies" => options.includePathDependencies = true; index++
             case "--include-cached-dependencies" => options.includeCachedDependencies = true; index++
             case "--cache-dir" =>
@@ -138,7 +139,8 @@ private func parseNewCli(args: Array<String>): NewCliOptions {
         options.cacheDirectory.isSome() || options.noCache || options.cjpmCacheRoot.isSome() ||
         !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty() ||
         options.jobsExplicit || options.audienceExplicit || options.lintProfileExplicit)) {
-        throw IllegalArgumentException("render accepts only --input, --format, --output, and --stdout")
+        throw IllegalArgumentException(
+            "render accepts only --input, --format, --output, --stdout, and --force-owned")
     }
     if (options.command != "render" && options.input.isSome()) {
         throw IllegalArgumentException("--input is only valid for render")
@@ -146,8 +148,14 @@ private func parseNewCli(args: Array<String>): NewCliOptions {
     if (options.command == "check" && (!options.formats.isEmpty() || options.output.isSome() || options.stdout)) {
         throw IllegalArgumentException("check does not accept render output options")
     }
+    if (options.command == "check" && options.forceOwned) {
+        throw IllegalArgumentException("check does not accept --force-owned")
+    }
     if (options.stdout && options.output.isSome()) {
         throw IllegalArgumentException("--stdout and --output are mutually exclusive")
+    }
+    if (options.stdout && options.forceOwned) {
+        throw IllegalArgumentException("--stdout does not accept --force-owned")
     }
     if (options.formats.isEmpty() && options.command != "check") { options.formats.add("json") }
     if (options.stdout && (options.formats.size != 1 || options.formats[0] != "json")) {
@@ -164,7 +172,7 @@ private func selectedSourceCacheDirectory(options: NewCliOptions): ?String {
     match (options.cacheDirectory) {
         case Some(path) => Some(path)
         case None => Some(Path(options.project).join("target").join("cjdoc").join("cache")
-            .join("source-v2").toString())
+            .join("source-v4").toString())
     }
 }
 
@@ -183,126 +191,6 @@ private func renderArtifacts(documentation: public_model.DocumentationSet,
         result.add(all: public_render.rendererFor(format).render(documentation))
     }
     result.toArray()
-}
-
-private func writeOutputAtomically(path: Path, content: String): Unit {
-    let parent = path.parent
-    if (!exists(parent)) { Directory.create(parent, recursive: true) }
-    if (exists(path)) {
-        try { if (String.fromUtf8(File.readFrom(path)) == content) { return } }
-        catch (_: Exception) {}
-    }
-    let temporary = Path(path.toString() + ".tmp")
-    File.writeTo(temporary, content.toArray())
-    rename(temporary, to: path, overwrite: true)
-}
-
-private func ownershipManifest(paths: Array<String>): String {
-    sort(paths)
-    let out = StringBuilder()
-    out.append("{\n  \"schemaVersion\": \"cjdoc.output/1\",\n  \"files\": [")
-    var index: Int64 = 0
-    while (index < paths.size) {
-        if (index > 0) { out.append(",") }
-        out.append("\n    ${public_render.escapeJsonString(paths[index])}")
-        index++
-    }
-    if (!paths.isEmpty()) { out.append("\n  ") }
-    out.append("]\n}\n")
-    out.toString()
-}
-
-private func isSafeOwnedPath(path: String): Bool {
-    !path.isEmpty() && !path.startsWith("/") && !path.contains("\\") && !path.contains("..")
-}
-
-private func readOwnedPaths(manifest: Path): Array<String> {
-    if (!exists(manifest)) { return [] }
-    let bytes = File.readFrom(manifest)
-    if (bytes.size > 8 * 1024 * 1024) {
-        throw IllegalArgumentException("cjdoc output manifest exceeds 8 MiB")
-    }
-    let parsed = YJson.parse(String.fromUtf8(bytes), config: JsonReadConfig(
-        duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject,
-        limits: JsonReadLimits(maxDepth: 8, maxStringBytes: 1024 * 1024, maxBytes: 8 * 1024 * 1024)))
-    let object = try { parsed.asObject() } catch (_: Exception) {
-        throw IllegalArgumentException("invalid cjdoc output manifest: expected object")
-    }
-    if (object.size() != 2 || object.get("schemaVersion").isNone() || object.get("files").isNone()) {
-        throw IllegalArgumentException("invalid cjdoc output manifest fields")
-    }
-    let schema = try { object["schemaVersion"].string } catch (_: Exception) {
-        throw IllegalArgumentException("invalid cjdoc output manifest schemaVersion")
-    }
-    if (schema != "cjdoc.output/1") {
-        throw IllegalArgumentException("unsupported cjdoc output manifest '${schema}'")
-    }
-    let entries = try { object["files"].asArray() } catch (_: Exception) {
-        throw IllegalArgumentException("invalid cjdoc output manifest files")
-    }
-    let result = ArrayList<String>()
-    let seen = HashSet<String>()
-    for (node in entries.values()) {
-        let path = try { node.string } catch (_: Exception) {
-            throw IllegalArgumentException("invalid non-string path in cjdoc output manifest")
-        }
-        if (!isSafeOwnedPath(path) || seen.contains(path)) {
-            throw IllegalArgumentException("invalid owned path '${path}' in cjdoc output manifest")
-        }
-        let _ = seen.add(path)
-        result.add(path)
-    }
-    result.toArray()
-}
-
-private func ensureNoSymbolicLink(root: Path, relativePath: String): Unit {
-    if (exists(root) && FileInfo(root).isSymbolicLink()) {
-        throw IllegalArgumentException("refusing to use symbolic-link output directory '${root}'")
-    }
-    var current = root
-    for (part in relativePath.split("/")) {
-        current = current.join(part)
-        if (exists(current) && FileInfo(current).isSymbolicLink()) {
-            throw IllegalArgumentException("refusing to follow symbolic link '${current}'")
-        }
-    }
-}
-
-private func removeEmptyManagedDirectories(root: Path): Unit {
-    for (relative in ["html/packages", "html/symbols", "html"]) {
-        let path = root.join(relative)
-        if (exists(path) && Directory.readFrom(path).isEmpty()) { let _ = removeIfExists(path) }
-    }
-}
-
-private func writeOwnedArtifacts(outputDirectory: String,
-    artifacts: Array<public_render.RenderArtifact>): Unit {
-    let root = Path(outputDirectory)
-    let manifest = root.join(".cjdoc-output.json")
-    if (exists(root) && !exists(manifest) && !Directory.readFrom(root).isEmpty()) {
-        throw IllegalArgumentException("refusing to write into non-empty unowned output directory '${outputDirectory}'")
-    }
-    if (!exists(root)) { Directory.create(root, recursive: true) }
-    ensureNoSymbolicLink(root, ".cjdoc-output.json")
-    let paths = ArrayList<String>()
-    let nextPaths = HashSet<String>()
-    for (artifact in artifacts) {
-        if (!isSafeOwnedPath(artifact.path) || nextPaths.contains(artifact.path)) {
-            throw IllegalArgumentException("duplicate or unsafe render artifact '${artifact.path}'")
-        }
-        let _ = nextPaths.add(artifact.path)
-        ensureNoSymbolicLink(root, artifact.path)
-        writeOutputAtomically(root.join(artifact.path), artifact.content)
-        paths.add(artifact.path)
-    }
-    for (previous in readOwnedPaths(manifest)) {
-        if (!nextPaths.contains(previous)) {
-            ensureNoSymbolicLink(root, previous)
-            let _ = removeIfExists(root.join(previous))
-        }
-    }
-    removeEmptyManagedDirectories(root)
-    writeOutputAtomically(manifest, ownershipManifest(paths.toArray()))
 }
 
 private func printPublicDiagnostics(documentation: public_model.DocumentationSet): Unit {
@@ -324,8 +212,10 @@ private func publicExitCode(documentation: public_model.DocumentationSet, denyWa
 
 private func runSchema(name: String): Int64 {
     match (name) {
-        case "list" => println("doc-ir\ndiagnostics\ncfg-matrix\nsearch-index")
+        case "list" => println("doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndiagnostics\ncfg-matrix\nsearch-index")
         case "doc-ir" => print(DOC_IR_SCHEMA)
+        case "doc-ir-v6" => print(DOC_IR_V6_SCHEMA)
+        case "doc-ir-v7" => print(DOC_IR_SCHEMA)
         case "diagnostics" => print(DIAGNOSTICS_SCHEMA)
         case "cfg-matrix" => print(CFG_MATRIX_SCHEMA)
         case "search-index" => print(SEARCH_INDEX_SCHEMA)
@@ -334,19 +224,14 @@ private func runSchema(name: String): Int64 {
     0
 }
 
-func runCli(args: Array<String>): Int64 {
-    if (args.size == 1 && (args[0] == "--help" || args[0] == "-h")) { print(newUsage()); return 0 }
-    if (args.size == 1 && args[0] == "--version") { println("cjdoc 0.5.0"); return 0 }
-    try {
-        let options = parseNewCli(args)
-        if (options.command == "schema") { return runSchema(options.schemaName) }
-        let documentation = if (options.command == "render") {
+private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String): Int64 {
+    let documentation = if (options.command == "render") {
             let input = options.input.getOrThrow()
             let bytes = File.readFrom(Path(input))
             if (bytes.size > 64 * 1024 * 1024) {
                 throw IllegalArgumentException("Doc IR input exceeds 64 MiB")
             }
-            public_render.decodeDocIr(String.fromUtf8(bytes))
+            decodeValidatedDocIr(String.fromUtf8(bytes))
         } else {
             let commandLine = getCommandLine()
             let astPreflightExecutable: ?String = if (commandLine.isEmpty()) { None }
@@ -360,23 +245,42 @@ func runCli(args: Array<String>): Int64 {
                 cacheDirectory: selectedSourceCacheDirectory(options),
                 astPreflightExecutable: astPreflightExecutable,
                 cjpmCacheRoot: options.cjpmCacheRoot))
+    }
+    printPublicDiagnostics(documentation)
+    if (options.command != "check") {
+        let artifacts = renderArtifacts(documentation, orderedFormats(options))
+        if (options.stdout) {
+            print(artifacts[0].content)
+        } else {
+            let output = lockedOutput.getOrThrow()
+            writeOwnedArtifactsWithLockHeld(output, artifacts, forceOwned: options.forceOwned)
+            println("generated ${output}")
         }
-        printPublicDiagnostics(documentation)
-        if (options.command != "check") {
-            let artifacts = renderArtifacts(documentation, orderedFormats(options))
-            if (options.stdout) {
-                print(artifacts[0].content)
-            } else {
-                let output = match (options.output) {
-                    case Some(path) => path
-                    case None => if (options.command == "render") { "target/doc" }
-                        else { Path(options.project).join("target").join("doc").toString() }
-                }
-                writeOwnedArtifacts(output, artifacts)
-                println("generated ${output}")
-            }
+    }
+    publicExitCode(documentation, options.denyWarnings)
+}
+
+private func selectedOutputDirectory(options: NewCliOptions): String {
+    match (options.output) {
+        case Some(path) => path
+        case None => if (options.command == "render") { "target/doc" }
+            else { Path(options.project).join("target").join("doc").toString() }
+    }
+}
+
+func runCli(args: Array<String>): Int64 {
+    if (args.size == 1 && (args[0] == "--help" || args[0] == "-h")) { print(newUsage()); return 0 }
+    if (args.size == 1 && args[0] == "--version") { println("cjdoc 0.6.0"); return 0 }
+    try {
+        let options = parseNewCli(args)
+        if (options.command == "schema") { return runSchema(options.schemaName) }
+        if (options.command == "check" || options.stdout) {
+            return executeDocumentCommand(options, None)
         }
-        publicExitCode(documentation, options.denyWarnings)
+        let output = selectedOutputDirectory(options)
+        withOutputLockResult(output, { =>
+            executeDocumentCommand(options, Some(output))
+        })
     } catch (error: Exception) {
         eprintln("error: ${error.message}")
         eprintln(newUsage())

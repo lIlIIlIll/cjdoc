@@ -69,7 +69,8 @@ private func appendRange(out: StringBuilder, value: SourceRange): Unit {
 private func appendCapabilities(out: StringBuilder, value: SemanticCapabilities): Unit {
     out.append("{\"sourceBinding\":${value.sourceBinding},\"ownership\":${value.ownership},")
     out.append("\"visibility\":${value.visibility},\"canonicalTypes\":${value.canonicalTypes},")
-    out.append("\"canonicalSignatures\":${value.canonicalSignatures},\"relationships\":${value.relationships}}")
+    out.append("\"canonicalSignatures\":${value.canonicalSignatures},\"relationships\":${value.relationships},")
+    out.append("\"annotations\":${value.annotations}}")
 }
 
 private func appendSemanticType(out: StringBuilder, value: SemanticType): Unit {
@@ -136,6 +137,12 @@ private func appendOrigin(out: StringBuilder, value: DeclarationOrigin): Unit {
     out.append("{\"kind\":${escapeJsonString(value.kind)},\"macroSymbolId\":${nullableString(value.macroSymbolId)}}")
 }
 
+private func appendAnnotation(out: StringBuilder, value: AnnotationDoc): Unit {
+    out.append("{\"spelling\":${escapeJsonString(value.spelling)},")
+    out.append("\"provenance\":${escapeJsonString(value.provenance)},")
+    out.append("\"provider\":${nullableString(value.provider)}}")
+}
+
 private func appendTypeRelationship(out: StringBuilder, value: TypeRelationship): Unit {
     out.append("{\"kind\":${escapeJsonString(value.kind)},\"target\":")
     appendTypeRef(out, value.target)
@@ -152,7 +159,8 @@ private func appendSymbolRelationship(out: StringBuilder, value: SymbolRelations
 private func appendSymbol(out: StringBuilder, value: SymbolDoc): Unit {
     out.append("{\"id\":${escapeJsonString(value.id)},\"kind\":${escapeJsonString(value.kind)},")
     out.append("\"name\":${escapeJsonString(value.name)},\"qualifiedName\":${escapeJsonString(value.qualifiedName)},")
-    out.append("\"packageName\":${escapeJsonString(value.packageName)},\"ownerId\":${nullableString(value.ownerId)},")
+    out.append("\"packageName\":${escapeJsonString(value.packageName)},")
+    out.append("\"moduleId\":${escapeJsonString(value.moduleId)},\"ownerId\":${nullableString(value.ownerId)},")
     out.append("\"visibility\":${escapeJsonString(value.visibility)},\"genericParameters\":")
     appendStrings(out, value.genericParameters)
     out.append(",\"parameters\":[")
@@ -164,8 +172,14 @@ private func appendSymbol(out: StringBuilder, value: SymbolDoc): Unit {
     }
     out.append("],\"returnType\":")
     match (value.returnType) { case Some(typeRef) => appendTypeRef(out, typeRef) case None => out.append("null") }
-    out.append(",\"annotations\":")
-    appendStrings(out, value.annotations)
+    out.append(",\"annotations\":[")
+    first = true
+    for (annotation in value.annotations) {
+        if (!first) { out.append(",") }
+        first = false
+        appendAnnotation(out, annotation)
+    }
+    out.append("]")
     out.append(",\"typeRelationships\":[")
     first = true
     for (relationship in value.typeRelationships) {
@@ -236,6 +250,7 @@ private func compactDocIr(documentation: DocumentationSet): String {
         if (!first) { out.append(",") }
         first = false
         out.append("{\"name\":${escapeJsonString(provider.name)},\"version\":${escapeJsonString(provider.version)},")
+        out.append("\"moduleId\":${escapeJsonString(provider.moduleId)},")
         out.append("\"state\":${escapeJsonString(provider.state)},\"capabilities\":")
         appendCapabilities(out, provider.capabilities)
         out.append("}")

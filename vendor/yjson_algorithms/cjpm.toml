@@ -1,0 +1,11 @@
+[package]
+cjc-version = "1.1.0"
+name = "yjson_algorithms"
+organization = ""
+description = "Vendored yjson JSON Schema algorithms"
+version = "2.0.1"
+output-type = "static"
+compile-option = "-O2"
+
+[dependencies]
+yjson = { git = "https://github.com/lIlIIlIll/yjson.git", commitId = "bf65cbecd99ac25e7485f8db60990e94a04e57bc", output-type = "static" }

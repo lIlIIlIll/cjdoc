@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-  "title": "cjdoc Doc IR v6",
+  "title": "cjdoc Doc IR v7",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "generator", "status", "project", "configuration", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/6"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/7"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "project": {"$ref": "#/$defs/project"},
@@ -16,7 +16,7 @@
     "packages": {"type": "array", "items": {"$ref": "#/$defs/package"}},
     "files": {"type": "array", "items": {"$ref": "#/$defs/file"}},
     "declarations": {"type": "array", "items": {"$ref": "#/$defs/declaration"}},
-    "assets": {"type": "array", "items": {"$ref": "#/$defs/asset"}},
+    "assets": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/asset"}},
     "orphanDocComments": {"type": "array", "items": {"$ref": "#/$defs/orphanComment"}},
     "macroInvocations": {"type": "array", "items": {"$ref": "#/$defs/macroInvocation"}},
     "unsupportedDeclarations": {"type": "array", "items": {"$ref": "#/$defs/unsupportedDeclaration"}},
@@ -26,6 +26,9 @@
   "$defs": {
     "semanticState": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
     "nullableString": {"type": ["string", "null"]},
+    "moduleId": {"type": "string", "pattern": "^cjdoc:module:v1:.+$"},
+    "symbolId": {"type": "string", "pattern": "^cjdoc:v2:.+$"},
+    "nullableSymbolId": {"anyOf": [{"$ref": "#/$defs/symbolId"}, {"type": "null"}]},
     "stringArray": {"type": "array", "items": {"type": "string"}},
     "portablePath": {"type": "string", "minLength": 1, "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\).+$"},
     "generator": {
@@ -49,18 +52,20 @@
     },
     "capabilities": {
       "type": "object", "additionalProperties": false,
-      "required": ["sourceBinding", "ownership", "visibility", "canonicalTypes", "canonicalSignatures", "relationships"],
+      "required": ["sourceBinding", "ownership", "visibility", "canonicalTypes", "canonicalSignatures", "relationships", "annotations"],
       "properties": {
         "sourceBinding": {"type": "boolean"}, "ownership": {"type": "boolean"},
         "visibility": {"type": "boolean"}, "canonicalTypes": {"type": "boolean"},
-        "canonicalSignatures": {"type": "boolean"}, "relationships": {"type": "boolean"}
+        "canonicalSignatures": {"type": "boolean"}, "relationships": {"type": "boolean"},
+        "annotations": {"type": "boolean"}
       }
     },
     "provider": {
       "type": "object", "additionalProperties": false,
-      "required": ["name", "version", "state", "capabilities"],
+      "required": ["name", "version", "moduleId", "state", "capabilities"],
       "properties": {
         "name": {"type": "string", "minLength": 1}, "version": {"type": "string", "minLength": 1},
+        "moduleId": {"$ref": "#/$defs/moduleId"},
         "state": {"$ref": "#/$defs/semanticState"}, "capabilities": {"$ref": "#/$defs/capabilities"}
       }
     },
@@ -68,26 +73,26 @@
       "type": "object", "additionalProperties": false,
       "required": ["id", "name", "role", "sourcePrefix", "packageNames", "dependencyIds"],
       "properties": {
-        "id": {"type": "string", "minLength": 1}, "name": {"type": "string", "minLength": 1},
+        "id": {"$ref": "#/$defs/moduleId"}, "name": {"type": "string", "minLength": 1},
         "role": {"enum": ["root", "workspace", "pathDependency", "externalDependency"]},
         "sourcePrefix": {"type": "string"}, "packageNames": {"$ref": "#/$defs/stringArray"},
-        "dependencyIds": {"$ref": "#/$defs/stringArray"}
+        "dependencyIds": {"type": "array", "items": {"$ref": "#/$defs/moduleId"}}
       }
     },
     "package": {
       "type": "object", "additionalProperties": false,
       "required": ["name", "moduleId", "sourceFiles", "symbolIds"],
       "properties": {
-        "name": {"type": "string", "minLength": 1}, "moduleId": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1}, "moduleId": {"$ref": "#/$defs/moduleId"},
         "sourceFiles": {"type": "array", "items": {"$ref": "#/$defs/portablePath"}},
-        "symbolIds": {"$ref": "#/$defs/stringArray"}
+        "symbolIds": {"type": "array", "items": {"$ref": "#/$defs/symbolId"}}
       }
     },
     "file": {
       "type": "object", "additionalProperties": false,
       "required": ["path", "moduleId", "packageName"],
       "properties": {
-        "path": {"$ref": "#/$defs/portablePath"}, "moduleId": {"type": "string", "minLength": 1},
+        "path": {"$ref": "#/$defs/portablePath"}, "moduleId": {"$ref": "#/$defs/moduleId"},
         "packageName": {"type": "string", "minLength": 1}
       }
     },
@@ -139,16 +144,16 @@
       "properties": {
         "name": {"type": "string", "minLength": 1}, "subject": {"type": "string"},
         "description": {"type": "string"}, "referenceState": {"$ref": "#/$defs/semanticState"},
-        "targetSymbolId": {"$ref": "#/$defs/nullableString"}
+        "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"}
       }
     },
     "markdownNode": {
       "type": "object", "additionalProperties": false,
       "required": ["kind", "literal", "source", "children"],
       "properties": {
-        "kind": {"type": "string", "minLength": 1}, "literal": {"type": "string"},
+        "kind": {"enum": ["document", "block_quote", "list", "list_item", "paragraph", "heading", "thematic_break", "code_block", "html_block", "table", "table_row", "table_cell", "custom_block", "text", "soft_break", "hard_break", "code_span", "emphasis", "strong", "strikethrough", "link", "image", "html_inline", "custom_inline"]}, "literal": {"type": "string"},
         "source": {"anyOf": [{"$ref": "#/$defs/sourceRange"}, {"type": "null"}]},
-        "children": {"type": "array", "items": {"$ref": "#/$defs/markdownNode"}}
+        "children": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/markdownNode"}}
       }
     },
     "comment": {
@@ -172,6 +177,19 @@
       "required": ["kind", "macroSymbolId"],
       "properties": {"kind": {"type": "string", "minLength": 1}, "macroSymbolId": {"$ref": "#/$defs/nullableString"}}
     },
+    "annotation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["spelling", "provenance", "provider"],
+      "properties": {
+        "spelling": {"type": "string", "minLength": 1},
+        "provenance": {"enum": ["source", "provider"]},
+        "provider": {"$ref": "#/$defs/nullableString"}
+      },
+      "allOf": [
+        {"if": {"properties": {"provenance": {"const": "source"}}}, "then": {"properties": {"provider": {"type": "null"}}}},
+        {"if": {"properties": {"provenance": {"const": "provider"}}}, "then": {"properties": {"provider": {"type": "string", "minLength": 1}}}}
+      ]
+    },
     "typeRelationship": {
       "type": "object", "additionalProperties": false,
       "required": ["kind", "target"],
@@ -182,21 +200,22 @@
       "required": ["kind", "targetDisplay", "state", "targetSymbolId"],
       "properties": {
         "kind": {"type": "string", "minLength": 1}, "targetDisplay": {"type": "string"},
-        "state": {"$ref": "#/$defs/semanticState"}, "targetSymbolId": {"$ref": "#/$defs/nullableString"}
+        "state": {"$ref": "#/$defs/semanticState"}, "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"}
       }
     },
     "declaration": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "kind", "name", "qualifiedName", "packageName", "ownerId", "visibility", "genericParameters", "parameters", "returnType", "annotations", "typeRelationships", "symbolRelationships", "documentation", "source", "headerSpelling", "semantic", "origin"],
+      "required": ["id", "kind", "name", "qualifiedName", "packageName", "moduleId", "ownerId", "visibility", "genericParameters", "parameters", "returnType", "annotations", "typeRelationships", "symbolRelationships", "documentation", "source", "headerSpelling", "semantic", "origin"],
       "properties": {
-        "id": {"type": "string", "minLength": 1}, "kind": {"type": "string", "minLength": 1},
+        "id": {"$ref": "#/$defs/symbolId"}, "kind": {"type": "string", "minLength": 1},
         "name": {"type": "string"}, "qualifiedName": {"type": "string", "minLength": 1},
-        "packageName": {"type": "string", "minLength": 1}, "ownerId": {"$ref": "#/$defs/nullableString"},
+        "packageName": {"type": "string", "minLength": 1}, "ownerId": {"$ref": "#/$defs/nullableSymbolId"},
+        "moduleId": {"$ref": "#/$defs/moduleId"},
         "visibility": {"enum": ["public", "protected", "internal", "private"]},
         "genericParameters": {"$ref": "#/$defs/stringArray"},
         "parameters": {"type": "array", "items": {"$ref": "#/$defs/parameter"}},
         "returnType": {"anyOf": [{"$ref": "#/$defs/typeRef"}, {"type": "null"}]},
-        "annotations": {"$ref": "#/$defs/stringArray"},
+        "annotations": {"type": "array", "items": {"$ref": "#/$defs/annotation"}},
         "typeRelationships": {"type": "array", "items": {"$ref": "#/$defs/typeRelationship"}},
         "symbolRelationships": {"type": "array", "items": {"$ref": "#/$defs/symbolRelationship"}},
         "documentation": {"anyOf": [{"$ref": "#/$defs/comment"}, {"type": "null"}]},
@@ -208,8 +227,10 @@
       "type": "object", "additionalProperties": false,
       "required": ["id", "mediaType", "sourcePath", "base64"],
       "properties": {
-        "id": {"type": "string", "minLength": 1}, "mediaType": {"type": "string", "minLength": 1},
-        "sourcePath": {"$ref": "#/$defs/portablePath"}, "base64": {"type": "string"}
+        "id": {"type": "string", "minLength": 1},
+        "mediaType": {"enum": ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"]},
+        "sourcePath": {"$ref": "#/$defs/portablePath"},
+        "base64": {"type": "string", "minLength": 4, "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"}
       }
     },
     "orphanComment": {
@@ -245,7 +266,7 @@
         "severity": {"enum": ["warning", "error"]}, "code": {"type": "string", "pattern": "^CJDOC[0-9]{4}$"},
         "message": {"type": "string", "minLength": 1},
         "source": {"anyOf": [{"$ref": "#/$defs/sourceRange"}, {"type": "null"}]},
-        "symbolId": {"$ref": "#/$defs/nullableString"}
+        "symbolId": {"$ref": "#/$defs/nullableSymbolId"}
       }
     }
   }

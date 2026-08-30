@@ -3,16 +3,20 @@ package cjdoc
 import cjdoc.model as api_model
 import cjdoc.render as api_render
 import std.collection.*
+import std.env.*
+import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
 
 private let FIXTURES = "tests/fixtures/projects/"
+private let TEST_AST_PREFLIGHT = Some("target/release/bin/main")
 
 private func generateFixture(name: String, lintProfile!: String = "off",
     includePathDependencies!: Bool = false, cfgValues!: Array<CfgValue> = []): api_model.DocumentationSet {
     DocumentationEngine().generate(GenerationRequest(FIXTURES + name,
         lintProfile: lintProfile, audience: "all",
-        includePathDependencies: includePathDependencies, cfgValues: cfgValues))
+        includePathDependencies: includePathDependencies, cfgValues: cfgValues,
+        astPreflightExecutable: TEST_AST_PREFLIGHT))
 }
 
 private func containsDiagnostic(documentation: api_model.DocumentationSet, code: String): Bool {
@@ -63,6 +67,19 @@ class SourcePipelineTest {
     }
 
     @TestCase
+    func filePrivateTopLevelDeclarationsHaveInjectiveSymbolIds(): Unit {
+        let documentation = generateFixture("private_file_scope")
+        let helperIds = ArrayList<String>()
+        for (declaration in documentation.declarations) {
+            if (declaration.name == "sameHelper") { helperIds.add(declaration.id) }
+        }
+        @Expect(helperIds.size, 2)
+        @Expect(helperIds[0] != helperIds[1], true)
+        @Expect(helperIds[0].contains("::file:src/"), true)
+        @Expect(helperIds[1].contains("::file:src/"), true)
+    }
+
+    @TestCase
     func parsesStructuredCommentsAndMarkdownAst(): Unit {
         let documentation = generateFixture("basic")
         var selected: ?api_model.SymbolDoc = None
@@ -106,6 +123,59 @@ class SourcePipelineTest {
     }
 
     @TestCase
+    func recordsFrontendGapsWithoutTraversingFunctionBodies(): Unit {
+        let documentation = generateFixture("frontend_gaps")
+        @Expect(documentation.status, "partial")
+        @Expect(documentation.declarations.size, 1)
+        @Expect(documentation.declarations[0].name, "outer")
+        @Expect(documentation.declarations[0].documentation.isSome())
+        @Expect(documentation.orphanDocComments.size, 2)
+        @Expect(documentation.macroInvocations.size, 1)
+        @Expect(documentation.macroInvocations[0].name, "missing.Generate")
+        @Expect(documentation.unsupportedDeclarations.size, 1)
+        @Expect(containsDiagnostic(documentation, "CJDOC1009"), true)
+        @Expect(containsDiagnostic(documentation, "CJDOC1014"), true)
+    }
+
+    @TestCase
+    func rejectsSemanticallyInvalidSourceCacheEntries(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let cache = temporary.join("cache")
+            Directory.create(cache)
+            let provider = AstSourceProvider(cacheDirectory: Some(cache.toString()),
+                cacheFingerprint: Some("source-cache-contract-v1"),
+                astPreflightExecutable: TEST_AST_PREFLIGHT)
+            let first = provider.collect(FIXTURES + "basic")
+            @Expect(first.declarations.size, 25)
+            @Expect(provider.cacheStats.writes, 1)
+            let entries = Directory.readFrom(cache)
+            @Expect(entries.size, 1)
+            let cachePath = entries[0].path
+            let corrupted = String.fromUtf8(File.readFrom(cachePath))
+                .replace("6:public", "6:bogus!")
+            File.writeTo(cachePath, corrupted.toArray())
+
+            let reparsed = provider.collect(FIXTURES + "basic")
+            @Expect(reparsed.declarations.size, 25)
+            @Expect(provider.cacheStats.hits, 0)
+            @Expect(provider.cacheStats.corruptEntries, 1)
+            @Expect(provider.cacheStats.writes, 1)
+        } finally {
+            let _ = removeIfExists(temporary, recursive: true)
+        }
+    }
+
+    @TestCase
+    func publicEngineFailsClosedWithoutParserWorker(): Unit {
+        let documentation = DocumentationEngine().generate(GenerationRequest(
+            FIXTURES + "basic", lintProfile: "off", audience: "all"))
+        @Expect(documentation.status, "partial")
+        @Expect(documentation.declarations.size, 0)
+        @Expect(containsDiagnostic(documentation, "CJDOC1020"), true)
+    }
+
+    @TestCase
     func scansWorkspaceAndOptInPathDependencies(): Unit {
         let workspace = generateFixture("workspace")
         @Expect(workspace.modules.size, 2)
@@ -127,6 +197,16 @@ class SourcePipelineTest {
         @Expect(documentation.declarations[0].name, "platformName")
         @Expect(documentation.declarations[0].headerSpelling.contains("linux"), false)
         @Expect(documentation.diagnostics.size, 0)
+    }
+
+    @TestCase
+    func unresolvedCfgIsReportedAsUnsupportedSource(): Unit {
+        let documentation = generateFixture("conditional",
+            cfgValues: [CfgValue("arch", "x86_64")])
+        @Expect(documentation.status, "partial")
+        @Expect(documentation.declarations.size, 0)
+        @Expect(documentation.unsupportedDeclarations.size, 2)
+        @Expect(containsDiagnostic(documentation, "CJDOC1019"), true)
     }
 
     @TestCase

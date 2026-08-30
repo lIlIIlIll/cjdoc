@@ -32,14 +32,17 @@ func sortDocumentationDeterministically(documentation: DocumentationSet): Unit {
         sortStringList(module.packageNames)
         sortStringList(module.dependencyIds)
     }
-    sort(documentation.packages, lessThan: { left, right => left.name < right.name }, stable: true)
+    sort(documentation.packages, lessThan: { left, right =>
+        left.moduleId < right.moduleId || (left.moduleId == right.moduleId && left.name < right.name)
+    }, stable: true)
     for (pkg in documentation.packages) {
         sortStringList(pkg.sourceFiles)
         sortStringList(pkg.symbolIds)
     }
     sort(documentation.symbols, lessThan: { left, right =>
-        left.packageName < right.packageName ||
-            (left.packageName == right.packageName && left.id < right.id)
+        left.moduleId < right.moduleId ||
+            (left.moduleId == right.moduleId && left.packageName < right.packageName) ||
+            (left.moduleId == right.moduleId && left.packageName == right.packageName && left.id < right.id)
     }, stable: true)
     for (symbol in documentation.symbols) {
         sort(symbol.relationships, lessThan: { left, right =>
@@ -61,6 +64,20 @@ func sortDocumentationDeterministically(documentation: DocumentationSet): Unit {
                     optionalString(left.targetSymbolId) < optionalString(right.targetSymbolId))
         }, stable: true)
     }
+    sort(documentation.orphanDocComments, lessThan: { left, right =>
+        left.source.path < right.source.path ||
+            (left.source.path == right.source.path && left.source.startLine < right.source.startLine) ||
+            (left.source.path == right.source.path && left.source.startLine == right.source.startLine &&
+                left.source.startColumn < right.source.startColumn)
+    }, stable: true)
+    sort(documentation.macroInvocations, lessThan: { left, right =>
+        left.source.path < right.source.path ||
+            (left.source.path == right.source.path && left.source.startLine < right.source.startLine) ||
+            (left.source.path == right.source.path && left.source.startLine == right.source.startLine &&
+                left.source.startColumn < right.source.startColumn) ||
+            (left.source.path == right.source.path && left.source.startLine == right.source.startLine &&
+                left.source.startColumn == right.source.startColumn && left.name < right.name)
+    }, stable: true)
     sort(documentation.unsupportedDeclarations, lessThan: { left, right =>
         left.source.path < right.source.path ||
             (left.source.path == right.source.path && left.source.startLine < right.source.startLine) ||

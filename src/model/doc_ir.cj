@@ -2,7 +2,8 @@ package cjdoc.model
 
 import std.collection.*
 
-public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/6"
+public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/7"
+public let DOC_IR_V6_SCHEMA_VERSION = "cjdoc.doc-ir/6"
 
 public func isSemanticState(value: String): Bool {
     value == "resolved" || value == "partial" || value == "unavailable" || value == "ambiguous"
@@ -78,28 +79,35 @@ public class SemanticCapabilities {
     public let canonicalTypes: Bool
     public let canonicalSignatures: Bool
     public let relationships: Bool
+    public let annotations: Bool
 
     public init(sourceBinding: Bool, ownership: Bool, visibility: Bool, canonicalTypes: Bool,
-        canonicalSignatures: Bool, relationships!: Bool = false) {
+        canonicalSignatures: Bool, relationships!: Bool = false,
+        annotations!: Bool = false) {
         this.sourceBinding = sourceBinding
         this.ownership = ownership
         this.visibility = visibility
         this.canonicalTypes = canonicalTypes
         this.canonicalSignatures = canonicalSignatures
         this.relationships = relationships
+        this.annotations = annotations
     }
 }
 
 public class ProviderInfo {
     public let name: String
     public let version: String
+    public let moduleId: String
     public let state: String
     public let capabilities: SemanticCapabilities
 
-    public init(name: String, version: String, state: String, capabilities: SemanticCapabilities) {
+    public init(name: String, version: String, moduleId: String, state: String,
+        capabilities: SemanticCapabilities) {
         if (!isSemanticState(state)) { throw IllegalArgumentException("invalid provider semantic state") }
+        if (moduleId.isEmpty()) { throw IllegalArgumentException("provider moduleId cannot be empty") }
         this.name = name
         this.version = version
+        this.moduleId = moduleId
         this.state = state
         this.capabilities = capabilities
     }
@@ -316,12 +324,33 @@ public class DeclarationOrigin {
     }
 }
 
+public class AnnotationDoc {
+    public let spelling: String
+    public let provenance: String
+    public let provider: ?String
+
+    public init(spelling: String, provenance!: String = "source", provider!: ?String = None) {
+        if (spelling.isEmpty()) { throw IllegalArgumentException("annotation spelling cannot be empty") }
+        if (provenance != "source" && provenance != "provider") {
+            throw IllegalArgumentException("invalid annotation provenance")
+        }
+        if ((provenance == "source" && provider.isSome()) ||
+            (provenance == "provider" && provider.isNone())) {
+            throw IllegalArgumentException("annotation provenance/provider mismatch")
+        }
+        this.spelling = spelling
+        this.provenance = provenance
+        this.provider = provider
+    }
+}
+
 public class SymbolDoc {
     public let id: String
     public let kind: String
     public let name: String
     public let qualifiedName: String
     public let packageName: String
+    public let moduleId: String
     public let ownerId: ?String
     public let visibility: String
     public let returnType: ?TypeRef
@@ -332,15 +361,16 @@ public class SymbolDoc {
     public let origin: DeclarationOrigin
     private let genericParametersStorage: ArrayList<String>
     private let parametersStorage: ArrayList<ParameterDoc>
-    private let annotationsStorage: ArrayList<String>
+    private let annotationsStorage: ArrayList<AnnotationDoc>
     private let typeRelationshipsStorage: ArrayList<TypeRelationship>
     private let symbolRelationshipsStorage: ArrayList<SymbolRelationship>
 
     public init(id: String, kind: String, name: String, qualifiedName: String, packageName: String,
+        moduleId: String,
         visibility: String, source: SourceRange, headerSpelling: String, semantic: SemanticInfo,
         ownerId!: ?String = None, genericParameters!: Array<String> = [],
         parameters!: Array<ParameterDoc> = [], returnType!: ?TypeRef = None,
-        annotations!: Array<String> = [], typeRelationships!: Array<TypeRelationship> = [],
+        annotations!: Array<AnnotationDoc> = [], typeRelationships!: Array<TypeRelationship> = [],
         symbolRelationships!: Array<SymbolRelationship> = [], documentation!: ?DocComment = None,
         origin!: DeclarationOrigin = DeclarationOrigin()) {
         this.id = id
@@ -348,6 +378,7 @@ public class SymbolDoc {
         this.name = name
         this.qualifiedName = qualifiedName
         this.packageName = packageName
+        this.moduleId = moduleId
         this.ownerId = ownerId
         this.visibility = visibility
         this.source = source
@@ -358,14 +389,14 @@ public class SymbolDoc {
         this.origin = origin
         this.genericParametersStorage = ArrayList<String>(genericParameters)
         this.parametersStorage = ArrayList<ParameterDoc>(parameters)
-        this.annotationsStorage = ArrayList<String>(annotations)
+        this.annotationsStorage = ArrayList<AnnotationDoc>(annotations)
         this.typeRelationshipsStorage = ArrayList<TypeRelationship>(typeRelationships)
         this.symbolRelationshipsStorage = ArrayList<SymbolRelationship>(symbolRelationships)
     }
 
     public prop genericParameters: ReadOnlyList<String> { get() { genericParametersStorage } }
     public prop parameters: ReadOnlyList<ParameterDoc> { get() { parametersStorage } }
-    public prop annotations: ReadOnlyList<String> { get() { annotationsStorage } }
+    public prop annotations: ReadOnlyList<AnnotationDoc> { get() { annotationsStorage } }
     public prop typeRelationships: ReadOnlyList<TypeRelationship> { get() { typeRelationshipsStorage } }
     public prop symbolRelationships: ReadOnlyList<SymbolRelationship> { get() { symbolRelationshipsStorage } }
 }

@@ -1,7 +1,6 @@
 package cjdoc.render
 
 import cjdoc.model.*
-import markdown.Markdown
 import std.collection.*
 import std.sort.*
 
@@ -9,6 +8,7 @@ public class RenderArtifact {
     public let path: String
     public let mediaType: String
     public let content: String
+    private let bytesStorage: Array<Byte>
 
     public init(path: String, mediaType: String, content: String) {
         if (path.isEmpty() || path.startsWith("/") || path.contains("\\") || path.contains("..")) {
@@ -17,7 +17,21 @@ public class RenderArtifact {
         this.path = path
         this.mediaType = mediaType
         this.content = content
+        this.bytesStorage = content.toArray()
     }
+
+    public init(path: String, mediaType: String, bytes: Array<Byte>) {
+        if (path.isEmpty() || path.startsWith("/") || path.contains("\\") || path.contains("..")) {
+            throw IllegalArgumentException("render artifact path must stay within the output directory")
+        }
+        this.path = path
+        this.mediaType = mediaType
+        this.content = ""
+        this.bytesStorage = bytes
+    }
+
+    public prop bytes: Array<Byte> { get() { bytesStorage.clone() } }
+    public prop isBinary: Bool { get() { content.isEmpty() && !bytesStorage.isEmpty() } }
 }
 
 public interface DocumentationRenderer {
@@ -29,19 +43,9 @@ public class JsonDocumentationRenderer <: DocumentationRenderer {
     public prop format: String { get() { "json" } }
 
     public func render(documentation: DocumentationSet): Array<RenderArtifact> {
+        validateDocumentationSet(documentation)
         [RenderArtifact("docs.json", "application/json", encodeDocIr(documentation))]
     }
-}
-
-private func markdownText(value: String): String {
-    if (value.isEmpty()) { return "" }
-    try { Markdown.toText(value).trimAscii() } catch (_: Exception) { value.trimAscii() }
-}
-
-private func safeMarkdown(value: String): String {
-    if (value.isEmpty()) { return "" }
-    try { Markdown.toSafeHtml(value) }
-    catch (_: Exception) { "<p>${escapeHtml(value)}</p>\n" }
 }
 
 private func isVisibleForAudience(declaration: SymbolDoc, audience: String): Bool {
@@ -53,27 +57,144 @@ private func isVisibleForAudience(declaration: SymbolDoc, audience: String): Boo
     }
 }
 
-private func appendDocumentationMarkdown(out: StringBuilder, comment: DocComment): Unit {
-    if (!comment.summary.isEmpty()) { out.append(comment.summary); out.append("\n\n") }
-    if (!comment.description.isEmpty()) { out.append(comment.description); out.append("\n\n") }
+private func appendMarkdownPlainText(out: StringBuilder, node: MarkdownNode): Unit {
+    match (node.kind) {
+        case "text" | "code_span" | "code_block" | "html_inline" | "html_block" =>
+            out.append(node.literal)
+        case "soft_break" | "hard_break" => out.append("\n")
+        case "thematic_break" => out.append("\n")
+        case _ =>
+            var first = true
+            for (child in node.children) {
+                if (!first && (node.kind == "paragraph" || node.kind == "heading" ||
+                    node.kind == "list_item" || node.kind == "table_cell")) { out.append(" ") }
+                first = false
+                appendMarkdownPlainText(out, child)
+            }
+            if (node.kind == "paragraph" || node.kind == "heading" ||
+                node.kind == "list_item" || node.kind == "block_quote") { out.append("\n") }
+    }
+}
+
+private func markdownNodeText(node: MarkdownNode): String {
+    let out = StringBuilder()
+    appendMarkdownPlainText(out, node)
+    out.toString().trimAscii()
+}
+
+private func appendEscapedMarkdownText(out: StringBuilder, value: String): Unit {
+    for (rune in value.runes()) {
+        match (rune) {
+            case '\\' | '`' | '*' | '_' | '{' | '}' | '[' | ']' | '<' | '>' | '#' |
+                '+' | '-' | '!' | '|' => out.append("\\"); out.append(rune)
+            case _ => out.append(rune)
+        }
+    }
+}
+
+private func safeLinkDestination(value: String): Bool {
+    if (value.isEmpty() || value.contains("\"") || value.contains("'") ||
+        value.contains("\n") || value.contains("\r")) { return false }
+    value.startsWith("https://") || value.startsWith("http://") ||
+        value.startsWith("mailto:") || value.startsWith("#")
+}
+
+private func assetReference(assetLookup: HashMap<String, String>, destination: String): ?String {
+    match (assetLookup.get("path:${destination}")) {
+        case Some(value) => Some(value)
+        case None => match (assetLookup.get("id:${destination}")) {
+            case Some(value) => Some(value)
+            case None => if (destination.startsWith("./")) {
+                assetLookup.get("path:${destination[2..]}")
+            } else { None }
+        }
+    }
+}
+
+private func appendMarkdownNodeMarkdown(out: StringBuilder, node: MarkdownNode,
+    assetLookup: HashMap<String, String>): Unit {
+    match (node.kind) {
+        case "document" => for (child in node.children) {
+            appendMarkdownNodeMarkdown(out, child, assetLookup)
+        }
+        case "paragraph" =>
+            for (child in node.children) { appendMarkdownNodeMarkdown(out, child, assetLookup) }
+            out.append("\n\n")
+        case "heading" =>
+            out.append("### ")
+            for (child in node.children) { appendMarkdownNodeMarkdown(out, child, assetLookup) }
+            out.append("\n\n")
+        case "text" => appendEscapedMarkdownText(out, node.literal)
+        case "soft_break" => out.append("\n")
+        case "hard_break" => out.append("  \n")
+        case "emphasis" =>
+            out.append("*"); for (child in node.children) {
+                appendMarkdownNodeMarkdown(out, child, assetLookup)
+            }; out.append("*")
+        case "strong" =>
+            out.append("**"); for (child in node.children) {
+                appendMarkdownNodeMarkdown(out, child, assetLookup)
+            }; out.append("**")
+        case "strikethrough" =>
+            out.append("~~"); for (child in node.children) {
+                appendMarkdownNodeMarkdown(out, child, assetLookup)
+            }; out.append("~~")
+        case "code_span" => out.append("`"); out.append(node.literal.replace("`", "\\`")); out.append("`")
+        case "code_block" => out.append("```\n"); out.append(node.literal); out.append("\n```\n\n")
+        case "thematic_break" => out.append("---\n\n")
+        case "block_quote" =>
+            out.append("> "); appendEscapedMarkdownText(out, markdownNodeText(node)); out.append("\n\n")
+        case "list" => for (child in node.children) {
+            appendMarkdownNodeMarkdown(out, child, assetLookup)
+        }; out.append("\n")
+        case "list_item" =>
+            out.append("- "); appendEscapedMarkdownText(out, markdownNodeText(node)); out.append("\n")
+        case "link" =>
+            out.append("["); for (child in node.children) {
+                appendMarkdownNodeMarkdown(out, child, assetLookup)
+            }; out.append("]")
+            if (safeLinkDestination(node.literal)) { out.append("(${node.literal})") }
+        case "image" =>
+            let alt = markdownNodeText(node)
+            match (assetReference(assetLookup, node.literal)) {
+                case Some(path) =>
+                    out.append("!["); appendEscapedMarkdownText(out, alt); out.append("](${path})")
+                case None => appendEscapedMarkdownText(out, alt)
+            }
+        case "table" | "table_row" | "table_cell" | "custom_block" | "custom_inline" =>
+            appendEscapedMarkdownText(out, markdownNodeText(node)); out.append("\n")
+        case "html_block" | "html_inline" => appendEscapedMarkdownText(out, node.literal)
+        case _ => appendEscapedMarkdownText(out, markdownNodeText(node))
+    }
+}
+
+private func appendDocumentationMarkdown(out: StringBuilder, comment: DocComment,
+    assetLookup: HashMap<String, String>): Unit {
+    appendMarkdownNodeMarkdown(out, comment.markdown, assetLookup)
     var hasParameters = false
     for (tag in comment.tags) { if (tag.name == "param") { hasParameters = true; break } }
     if (hasParameters) {
         out.append("#### Parameters\n\n")
         for (tag in comment.tags) {
-            if (tag.name == "param") { out.append("- `${tag.subject}` — ${tag.description}\n") }
+            if (tag.name == "param") {
+                out.append("- `${tag.subject}` — "); appendEscapedMarkdownText(out, tag.description); out.append("\n")
+            }
         }
         out.append("\n")
     }
     for (tag in comment.tags) {
-        if (tag.name == "return") { out.append("#### Returns\n\n${tag.description}\n\n") }
+        if (tag.name == "return") {
+            out.append("#### Returns\n\n"); appendEscapedMarkdownText(out, tag.description); out.append("\n\n")
+        }
     }
     var hasThrows = false
     for (tag in comment.tags) { if (tag.name == "throws") { hasThrows = true; break } }
     if (hasThrows) {
         out.append("#### Throws\n\n")
         for (tag in comment.tags) {
-            if (tag.name == "throws") { out.append("- `${tag.subject}` — ${tag.description}\n") }
+            if (tag.name == "throws") {
+                out.append("- `${tag.subject}` — "); appendEscapedMarkdownText(out, tag.description); out.append("\n")
+            }
         }
         out.append("\n")
     }
@@ -83,7 +204,9 @@ private func appendDocumentationMarkdown(out: StringBuilder, comment: DocComment
         out.append("#### See also\n\n")
         for (tag in comment.tags) {
             if (tag.name == "see") { out.append("- `${tag.subject}`")
-                if (!tag.description.isEmpty()) { out.append(" — ${tag.description}") }; out.append("\n") }
+                if (!tag.description.isEmpty()) {
+                    out.append(" — "); appendEscapedMarkdownText(out, tag.description)
+                }; out.append("\n") }
         }
         out.append("\n")
     }
@@ -93,17 +216,18 @@ public class MarkdownDocumentationRenderer <: DocumentationRenderer {
     public prop format: String { get() { "markdown" } }
 
     public func render(documentation: DocumentationSet): Array<RenderArtifact> {
+        validateDocumentationSet(documentation)
         let out = StringBuilder()
-        let index = indexSymbols(documentation)
-        out.append("# ${documentation.project.name}\n\n")
+        let projection = RenderProjection(documentation)
+        let assetLookup = buildAssetLookup(documentation)
+        out.append("# "); appendEscapedMarkdownText(out, documentation.project.name); out.append("\n\n")
         out.append("Generated by `cjdoc ${documentation.generator.version}` from `${documentation.schemaVersion}`.\n\n")
         out.append("## API\n\n")
-        for (declaration in documentation.declarations where
-            isRenderable(documentation, index, declaration)) {
+        for (declaration in projection.visibleSymbols) {
             out.append("### `${declaration.qualifiedName}`\n\n")
             out.append("```cj\n${declaration.headerSpelling}\n```\n\n")
             match (declaration.documentation) {
-                case Some(comment) => appendDocumentationMarkdown(out, comment)
+                case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup)
                 case None => ()
             }
             out.append("- Kind: `${declaration.kind}`\n")
@@ -127,7 +251,10 @@ public class MarkdownDocumentationRenderer <: DocumentationRenderer {
                 out.append("\n")
             }
         }
-        [RenderArtifact("markdown/docs.md", "text/markdown; charset=utf-8", out.toString())]
+        let artifacts = ArrayList<RenderArtifact>()
+        artifacts.add(RenderArtifact("markdown/docs.md", "text/markdown; charset=utf-8", out.toString()))
+        appendAssetArtifacts(artifacts, documentation, "markdown")
+        artifacts.toArray()
     }
 }
 
@@ -144,6 +271,156 @@ private func escapeHtml(value: String): String {
         }
     }
     out.toString()
+}
+
+internal func assetMediaExtension(mediaType: String): String {
+    match (mediaType) {
+        case "image/png" => "png"
+        case "image/jpeg" => "jpg"
+        case "image/gif" => "gif"
+        case "image/webp" => "webp"
+        case "image/avif" => "avif"
+        case _ => throw IllegalArgumentException("unsupported local asset media type '${mediaType}'")
+    }
+}
+
+private func base64Digit(value: Byte): Int64 {
+    if (value >= b'A' && value <= b'Z') { return Int64(value - b'A') }
+    if (value >= b'a' && value <= b'z') { return Int64(value - b'a') + 26 }
+    if (value >= b'0' && value <= b'9') { return Int64(value - b'0') + 52 }
+    if (value == b'+') { return 62 }
+    if (value == b'/') { return 63 }
+    return -1
+}
+
+internal func decodeAssetBase64(value: String): Array<Byte> {
+    let encoded = value.toArray()
+    if (encoded.isEmpty() || encoded.size % 4 != 0) {
+        throw IllegalArgumentException("invalid local asset base64")
+    }
+    let decoded = ArrayList<Byte>()
+    var index: Int64 = 0
+    while (index < encoded.size) {
+        let last = index + 4 == encoded.size
+        let first = base64Digit(encoded[index])
+        let second = base64Digit(encoded[index + 1])
+        if (first < 0 || second < 0) { throw IllegalArgumentException("invalid local asset base64") }
+        let thirdPadding = encoded[index + 2] == b'='
+        let fourthPadding = encoded[index + 3] == b'='
+        if (thirdPadding) {
+            if (!last || !fourthPadding || (second & 15) != 0) {
+                throw IllegalArgumentException("invalid local asset base64 padding")
+            }
+            decoded.add(UInt8((first << 2) | (second >> 4)))
+        } else {
+            let third = base64Digit(encoded[index + 2])
+            if (third < 0) { throw IllegalArgumentException("invalid local asset base64") }
+            decoded.add(UInt8((first << 2) | (second >> 4)))
+            decoded.add(UInt8(((second & 15) << 4) | (third >> 2)))
+            if (fourthPadding) {
+                if (!last || (third & 3) != 0) {
+                    throw IllegalArgumentException("invalid local asset base64 padding")
+                }
+            } else {
+                let fourth = base64Digit(encoded[index + 3])
+                if (fourth < 0) { throw IllegalArgumentException("invalid local asset base64") }
+                decoded.add(UInt8(((third & 3) << 6) | fourth))
+            }
+        }
+        index += 4
+    }
+    decoded.toArray()
+}
+
+private func appendStructuredTextHtml(out: StringBuilder, value: String): Unit {
+    if (!value.isEmpty()) { out.append("<p>${escapeHtml(value)}</p>\n") }
+}
+
+private func appendMarkdownNodeHtml(out: StringBuilder, node: MarkdownNode,
+    assetLookup: HashMap<String, String>, rootPrefix: String): Unit {
+    match (node.kind) {
+        case "document" => for (child in node.children) {
+            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+        }
+        case "paragraph" =>
+            out.append("<p>"); for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            }; out.append("</p>\n")
+        case "heading" =>
+            out.append("<h3>"); for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            }; out.append("</h3>\n")
+        case "text" => out.append(escapeHtml(node.literal))
+        case "soft_break" => out.append("\n")
+        case "hard_break" => out.append("<br>\n")
+        case "emphasis" =>
+            out.append("<em>"); for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            }; out.append("</em>")
+        case "strong" =>
+            out.append("<strong>"); for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            }; out.append("</strong>")
+        case "strikethrough" =>
+            out.append("<del>"); for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            }; out.append("</del>")
+        case "code_span" => out.append("<code>${escapeHtml(node.literal)}</code>")
+        case "code_block" => out.append("<pre><code>${escapeHtml(node.literal)}</code></pre>\n")
+        case "thematic_break" => out.append("<hr>\n")
+        case "block_quote" =>
+            out.append("<blockquote>"); for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            }; out.append("</blockquote>\n")
+        case "list" =>
+            out.append("<ul>"); for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            }; out.append("</ul>\n")
+        case "list_item" =>
+            out.append("<li>"); for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            }; out.append("</li>")
+        case "link" =>
+            if (safeLinkDestination(node.literal)) {
+                out.append("<a href=\"${escapeHtml(node.literal)}\"")
+                if (node.literal.startsWith("http://") || node.literal.startsWith("https://")) {
+                    out.append(" rel=\"noopener noreferrer\"")
+                }
+                out.append(">")
+                for (child in node.children) {
+                    appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+                }
+                out.append("</a>")
+            } else {
+                for (child in node.children) {
+                    appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+                }
+            }
+        case "image" =>
+            let alt = markdownNodeText(node)
+            match (assetReference(assetLookup, node.literal)) {
+                case Some(path) => out.append("<img src=\"${rootPrefix}${escapeHtml(path)}\" alt=\"${escapeHtml(alt)}\" loading=\"lazy\">")
+                case None => out.append(escapeHtml(alt))
+            }
+        case "table" =>
+            out.append("<table>"); for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            }; out.append("</table>\n")
+        case "table_row" =>
+            out.append("<tr>"); for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            }; out.append("</tr>")
+        case "table_cell" =>
+            out.append("<td>"); for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            }; out.append("</td>")
+        case "html_block" => out.append("<pre>${escapeHtml(node.literal)}</pre>\n")
+        case "html_inline" => out.append(escapeHtml(node.literal))
+        case "custom_block" | "custom_inline" => for (child in node.children) {
+            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+        }
+        case _ => out.append(escapeHtml(markdownNodeText(node)))
+    }
 }
 
 private let HTML_STYLE = """
@@ -236,14 +513,12 @@ private let HTML_SEARCH_SCRIPT = """
       selectElement.append(option);
     }
   };
-  fetch(root + "search-index.json", {credentials: "same-origin"})
-    .then((response) => response.ok ? response.json() : Promise.reject(new Error("search index unavailable")))
-    .then((index) => {
-      entries = index.schemaVersion === "cjdoc.search-index/3" && Array.isArray(index.entries) ? index.entries : [];
-      addOptions(kindFilter, entries.map((entry) => entry.kind));
-      addOptions(packageFilter, entries.map((entry) => entry.packageName));
-      render();
-    }).catch(() => { entries = []; });
+  const index = globalThis.__CJDOC_SEARCH_INDEX__;
+  entries = index && index.schemaVersion === "cjdoc.search-index/3" && Array.isArray(index.entries)
+    ? index.entries : [];
+  addOptions(kindFilter, entries.map((entry) => entry.kind));
+  addOptions(packageFilter, entries.map((entry) => entry.packageName));
+  render();
   input.addEventListener("input", render);
   if (kindFilter) kindFilter.addEventListener("change", render);
   if (packageFilter) packageFilter.addEventListener("change", render);
@@ -263,16 +538,10 @@ private let HTML_SEARCH_SCRIPT = """
 
 private func appendSlugByte(out: StringBuilder, byte: Byte): Unit {
     let digits = "0123456789abcdef"
-    if ((byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') ||
-        (byte >= b'0' && byte <= b'9') || byte == b'-' || byte == b'_' || byte == b'.') {
-        out.append(String.fromUtf8([byte]))
-    } else {
-        out.append("_")
-        let high = Int64((byte >> 4) & 0x0F)
-        let low = Int64(byte & 0x0F)
-        out.append(digits[high..high + 1])
-        out.append(digits[low..low + 1])
-    }
+    let high = Int64((byte >> 4) & 0x0F)
+    let low = Int64(byte & 0x0F)
+    out.append(digits[high..high + 1])
+    out.append(digits[low..low + 1])
 }
 
 private func htmlStableSlug(value: String): String {
@@ -298,8 +567,12 @@ private func boundedHtmlSlug(value: String): String {
     slug[..120] + "--" + stableFileHash(value)
 }
 
-private func packagePagePath(name: String): String {
-    "packages/package-${boundedHtmlSlug(name)}.html"
+private func routeKey(moduleId: String, packageName: String): String {
+    "${moduleId.size}:${moduleId}${packageName}"
+}
+
+private func packagePagePath(moduleId: String, name: String): String {
+    "packages/package-${boundedHtmlSlug(routeKey(moduleId, name))}.html"
 }
 
 private func symbolPagePath(symbol: SymbolDoc): String {
@@ -308,6 +581,10 @@ private func symbolPagePath(symbol: SymbolDoc): String {
 
 private func symbolAnchor(symbol: SymbolDoc): String {
     "symbol-${htmlStableSlug(symbol.id)}"
+}
+
+private func assetOutputPath(asset: AssetDoc): String {
+    "assets/asset-${boundedHtmlSlug(asset.id)}.${assetMediaExtension(asset.mediaType)}"
 }
 
 private func isContainerDeclaration(symbol: SymbolDoc): Bool {
@@ -321,22 +598,76 @@ private func indexSymbols(documentation: DocumentationSet): HashMap<String, Symb
     index
 }
 
-private func groupTopLevelByPackage(documentation: DocumentationSet):
+private class ProjectedPackage {
+    let source: PackageDoc
+    let sourceFiles = ArrayList<String>()
+    let symbols = ArrayList<SymbolDoc>()
+
+    init(source: PackageDoc) { this.source = source }
+}
+
+private class ProjectedModule {
+    let source: ModuleDoc
+    let packages = ArrayList<ProjectedPackage>()
+
+    init(source: ModuleDoc) { this.source = source }
+}
+
+private class RenderProjection {
+    let allIndex: HashMap<String, SymbolDoc>
+    let visibleIndex = HashMap<String, SymbolDoc>()
+    let visibleSymbols = ArrayList<SymbolDoc>()
+    let packages = ArrayList<ProjectedPackage>()
+    let modules = ArrayList<ProjectedModule>()
+
+    init(documentation: DocumentationSet) {
+        allIndex = indexSymbols(documentation)
+        for (symbol in documentation.declarations) {
+            if (isRenderable(documentation, allIndex, symbol)) {
+                visibleSymbols.add(symbol)
+                visibleIndex[symbol.id] = symbol
+            }
+        }
+        for (pkg in documentation.packages) {
+            let projected = ProjectedPackage(pkg)
+            let files = HashSet<String>()
+            for (symbol in visibleSymbols) {
+                if (symbol.moduleId != pkg.moduleId || symbol.packageName != pkg.name) { continue }
+                projected.symbols.add(symbol)
+                if (files.add(symbol.source.path)) { projected.sourceFiles.add(symbol.source.path) }
+            }
+            if (!projected.symbols.isEmpty()) {
+                sort(projected.sourceFiles)
+                packages.add(projected)
+            }
+        }
+        for (module in documentation.modules) {
+            let projected = ProjectedModule(module)
+            for (pkg in packages) {
+                if (pkg.source.moduleId == module.id) { projected.packages.add(pkg) }
+            }
+            if (!projected.packages.isEmpty()) { modules.add(projected) }
+        }
+    }
+}
+
+private func groupTopLevelByPackage(projection: RenderProjection):
     HashMap<String, ArrayList<SymbolDoc>> {
     let groups = HashMap<String, ArrayList<SymbolDoc>>()
-    for (symbol in documentation.declarations where symbol.ownerId.isNone()) {
-        match (groups.get(symbol.packageName)) {
+    for (symbol in projection.visibleSymbols where symbol.ownerId.isNone()) {
+        let key = routeKey(symbol.moduleId, symbol.packageName)
+        match (groups.get(key)) {
             case Some(values) => values.add(symbol)
-            case None => groups[symbol.packageName] = ArrayList<SymbolDoc>([symbol])
+            case None => groups[key] = ArrayList<SymbolDoc>([symbol])
         }
     }
     groups
 }
 
-private func groupMembersByOwner(documentation: DocumentationSet):
+private func groupMembersByOwner(projection: RenderProjection):
     HashMap<String, ArrayList<SymbolDoc>> {
     let groups = HashMap<String, ArrayList<SymbolDoc>>()
-    for (symbol in documentation.declarations) {
+    for (symbol in projection.visibleSymbols) {
         match (symbol.ownerId) {
             case Some(ownerId) => match (groups.get(ownerId)) {
                 case Some(values) => values.add(symbol)
@@ -400,15 +731,67 @@ private func symbolUrl(documentation: DocumentationSet, index: HashMap<String, S
         case Some(container) =>
             let page = symbolPagePath(container)
             if (container.id == symbol.id) { page } else { page + "#" + symbolAnchor(symbol) }
-        case None => packagePagePath(symbol.packageName) + "#" + symbolAnchor(symbol)
+        case None => packagePagePath(symbol.moduleId, symbol.packageName) + "#" + symbolAnchor(symbol)
+    }
+}
+
+private func buildAssetLookup(documentation: DocumentationSet): HashMap<String, String> {
+    let lookup = HashMap<String, String>()
+    for (asset in documentation.assets) {
+        let path = assetOutputPath(asset)
+        lookup["id:${asset.id}"] = path
+        lookup["path:${asset.sourcePath}"] = path
+    }
+    lookup
+}
+
+private func appendAssetArtifacts(artifacts: ArrayList<RenderArtifact>,
+    documentation: DocumentationSet, formatRoot: String): Unit {
+    for (asset in documentation.assets) {
+        artifacts.add(RenderArtifact("${formatRoot}/${assetOutputPath(asset)}",
+            asset.mediaType, decodeAssetBase64(asset.base64)))
+    }
+}
+
+private func validateHtmlRouting(documentation: DocumentationSet,
+    projection: RenderProjection): Unit {
+    let paths = HashSet<String>()
+    for (path in ["index.html", "search-index.json", "search-index.js", "search.js", "style.css"]) {
+        let _ = paths.add(path)
+    }
+    for (pkg in projection.packages) {
+        let path = packagePagePath(pkg.source.moduleId, pkg.source.name)
+        if (!paths.add(path)) {
+            throw IllegalArgumentException("HTML route collision for package '${pkg.source.name}'")
+        }
+    }
+    for (symbol in projection.visibleSymbols where isContainerDeclaration(symbol)) {
+        let path = symbolPagePath(symbol)
+        if (!paths.add(path)) {
+            throw IllegalArgumentException("HTML route collision for SymbolId '${symbol.id}'")
+        }
+    }
+    for (asset in documentation.assets) {
+        let path = assetOutputPath(asset)
+        if (!paths.add(path)) {
+            throw IllegalArgumentException("HTML route collision for asset '${asset.id}'")
+        }
+    }
+    let urls = HashSet<String>()
+    for (symbol in projection.visibleSymbols) {
+        let url = symbolUrl(documentation, projection.visibleIndex, symbol)
+        if (!urls.add(url)) {
+            throw IllegalArgumentException("non-injective HTML URL for SymbolId '${symbol.id}'")
+        }
     }
 }
 
 private func appendPageStart(out: StringBuilder, title: String, rootPrefix: String): Unit {
     out.append("<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">")
     out.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
-    out.append("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; form-action 'none'\">")
+    out.append("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'\">")
     out.append("<title>${escapeHtml(title)}</title><link rel=\"stylesheet\" href=\"${rootPrefix}style.css\">")
+    out.append("<script defer src=\"${rootPrefix}search-index.js\"></script>")
     out.append("<script defer src=\"${rootPrefix}search.js\"></script></head><body>\n")
     out.append("<nav class=\"site-nav\"><a href=\"${rootPrefix}index.html\">cjdoc</a>")
     out.append("<div class=\"site-search\"><label><span hidden>Search API</span>")
@@ -439,23 +822,28 @@ private func tagHeading(name: String): String {
 }
 
 private func appendDocumentationHtml(out: StringBuilder, documentation: DocumentationSet,
-    index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String): Unit {
+    index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
+    assetLookup: HashMap<String, String>): Unit {
     match (symbol.documentation) {
         case Some(comment) =>
             match (findTag(comment, "deprecated")) {
-                case Some(tag) => out.append("<aside class=\"card\"><strong>Deprecated.</strong> ${safeMarkdown(tag.description)}</aside>\n")
+                case Some(tag) =>
+                    out.append("<aside class=\"card\"><strong>Deprecated.</strong> ")
+                    appendStructuredTextHtml(out, tag.description)
+                    out.append("</aside>\n")
                 case None => ()
             }
-            if (!comment.summary.isEmpty()) { out.append("<div class=\"summary\">${safeMarkdown(comment.summary)}</div>\n") }
-            if (!comment.description.isEmpty()) { out.append("<div class=\"description\">${safeMarkdown(comment.description)}</div>\n") }
+            out.append("<div class=\"description\">")
+            appendMarkdownNodeHtml(out, comment.markdown, assetLookup, rootPrefix)
+            out.append("</div>\n")
             if (!symbol.parameters.isEmpty()) {
                 out.append("<h3>Parameters</h3><dl>\n")
                 for (parameter in symbol.parameters) {
                     out.append("<dt><code>${escapeHtml(parameter.name)}</code>: <code>${escapeHtml(parameter.typeRef.spelling)}</code></dt><dd>")
                     match (parameter.documentation) {
-                        case Some(value) => out.append(safeMarkdown(value))
+                        case Some(value) => appendStructuredTextHtml(out, value)
                         case None => match (findTag(comment, "param", subject: Some(parameter.name))) {
-                            case Some(tag) => out.append(safeMarkdown(tag.description))
+                            case Some(tag) => appendStructuredTextHtml(out, tag.description)
                             case None => ()
                         }
                     }
@@ -467,7 +855,7 @@ private func appendDocumentationHtml(out: StringBuilder, documentation: Document
                 case Some(returnType) =>
                     out.append("<h3>Returns</h3><p><code>${escapeHtml(returnType.spelling)}</code></p>\n")
                     match (findTag(comment, "return")) {
-                        case Some(tag) => out.append(safeMarkdown(tag.description))
+                        case Some(tag) => appendStructuredTextHtml(out, tag.description)
                         case None => ()
                     }
                 case None => ()
@@ -478,7 +866,9 @@ private func appendDocumentationHtml(out: StringBuilder, documentation: Document
                 out.append("<h3>Throws</h3><dl>\n")
                 for (tag in comment.tags) {
                     if (tag.name == "throws") {
-                        out.append("<dt><code>${escapeHtml(tag.subject)}</code></dt><dd>${safeMarkdown(tag.description)}</dd>\n")
+                        out.append("<dt><code>${escapeHtml(tag.subject)}</code></dt><dd>")
+                        appendStructuredTextHtml(out, tag.description)
+                        out.append("</dd>\n")
                     }
                 }
                 out.append("</dl>\n")
@@ -493,14 +883,14 @@ private func appendDocumentationHtml(out: StringBuilder, documentation: Document
                     match (tag.targetSymbolId) {
                         case Some(targetId) => match (findSymbol(index, targetId)) {
                             case Some(target) =>
-                                if (isRenderable(documentation, index, target)) {
-                                    out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(documentation, index, target))}\"><code>${escapeHtml(tag.subject)}</code></a>")
-                                } else { out.append("<code>${escapeHtml(tag.subject)}</code>") }
+                                out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(documentation, index, target))}\"><code>${escapeHtml(tag.subject)}</code></a>")
                             case None => out.append("<code>${escapeHtml(tag.subject)}</code>")
                         }
                         case None => out.append("<code>${escapeHtml(tag.subject)}</code>")
                     }
-                    if (!tag.description.isEmpty()) { out.append(" ${safeMarkdown(tag.description)}") }
+                    if (!tag.description.isEmpty()) {
+                        out.append(" "); appendStructuredTextHtml(out, tag.description)
+                    }
                     out.append("</li>\n")
                 }
                 out.append("</ul>\n")
@@ -510,7 +900,7 @@ private func appendDocumentationHtml(out: StringBuilder, documentation: Document
                 for (tag in comment.tags) {
                     if (tag.name != name) { continue }
                     if (!opened) { out.append("<h3>${escapeHtml(tagHeading(name))}</h3><ul>\n"); opened = true }
-                    out.append("<li>${safeMarkdown(tag.description)}</li>\n")
+                    out.append("<li>"); appendStructuredTextHtml(out, tag.description); out.append("</li>\n")
                 }
                 if (opened) { out.append("</ul>\n") }
             }
@@ -556,7 +946,7 @@ private func appendSymbolMetadata(out: StringBuilder, documentation: Documentati
         var first = true
         for (annotation in symbol.annotations) {
             if (!first) { out.append(" ") }; first = false
-            out.append("<code>${escapeHtml(annotation)}</code>")
+            out.append("<code>${escapeHtml(annotation.spelling)}</code>")
         }
         out.append("</p>\n")
     }
@@ -569,9 +959,8 @@ private func appendSymbolMetadata(out: StringBuilder, documentation: Documentati
             out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd>")
             match (relationship.targetSymbolId) {
                 case Some(targetId) => match (findSymbol(index, targetId)) {
-                    case Some(target) => if (isRenderable(documentation, index, target)) {
+                    case Some(target) =>
                         out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(documentation, index, target))}\"><code>${escapeHtml(relationship.targetDisplay)}</code></a>")
-                    } else { out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>") }
                     case None => out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
                 }
                 case None => out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
@@ -585,43 +974,47 @@ private func appendSymbolMetadata(out: StringBuilder, documentation: Documentati
 
 private func appendSymbolArticle(out: StringBuilder, documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
-    linkTitle!: Bool = false): Unit {
+    assetLookup: HashMap<String, String>, linkTitle!: Bool = false): Unit {
     out.append("<article id=\"${symbolAnchor(symbol)}\"><h2>")
     if (linkTitle) {
         out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(documentation, index, symbol))}\"><code>${escapeHtml(symbol.qualifiedName)}</code></a>")
     } else { out.append("<code>${escapeHtml(symbol.qualifiedName)}</code>") }
     out.append("</h2>\n")
     appendSymbolMetadata(out, documentation, index, symbol, rootPrefix)
-    appendDocumentationHtml(out, documentation, index, symbol, rootPrefix)
+    appendDocumentationHtml(out, documentation, index, symbol, rootPrefix, assetLookup)
     out.append("</article>\n")
 }
 
-private func renderHtmlIndex(documentation: DocumentationSet): String {
+private func renderHtmlIndex(documentation: DocumentationSet, projection: RenderProjection): String {
     let out = StringBuilder()
     appendPageStart(out, "${documentation.project.name} API documentation", "")
     out.append("<h1>${escapeHtml(documentation.project.name)} API documentation</h1>\n")
-    out.append("<p class=\"meta\">${documentation.modules.size} modules, ${documentation.packages.size} packages, ${documentation.declarations.size} source declarations</p>\n")
-    if (!documentation.modules.isEmpty()) {
+    out.append("<p class=\"meta\">${projection.modules.size} modules, ${projection.packages.size} packages, ${projection.visibleSymbols.size} visible declarations</p>\n")
+    if (!projection.modules.isEmpty()) {
         out.append("<h2>Modules</h2><div class=\"declaration-list\">\n")
-        for (module in documentation.modules) {
+        for (projected in projection.modules) {
+            let module = projected.source
             out.append("<section class=\"card\"><h3><code>${escapeHtml(module.name)}</code> <span class=\"badge\">${escapeHtml(module.role)}</span></h3>")
             let prefix = if (module.sourcePrefix.isEmpty()) { "." } else { module.sourcePrefix }
             out.append("<p class=\"meta\">Source prefix: <code>${escapeHtml(prefix)}</code></p><ul>\n")
-            for (packageName in module.packageNames) {
-                out.append("<li><a href=\"${escapeHtml(packagePagePath(packageName))}\"><code>${escapeHtml(packageName)}</code></a></li>\n")
+            for (pkg in projected.packages) {
+                out.append("<li><a href=\"${escapeHtml(packagePagePath(module.id, pkg.source.name))}\"><code>${escapeHtml(pkg.source.name)}</code></a></li>\n")
             }
             out.append("</ul></section>\n")
         }
         out.append("</div>\n")
     }
     out.append("<h2>Packages</h2><ul>\n")
-    for (pkg in documentation.packages) {
-        out.append("<li><a href=\"${escapeHtml(packagePagePath(pkg.name))}\"><code>${escapeHtml(pkg.name)}</code></a></li>\n")
+    for (pkg in projection.packages) {
+        out.append("<li><a href=\"${escapeHtml(packagePagePath(pkg.source.moduleId, pkg.source.name))}\"><code>${escapeHtml(pkg.source.name)}</code></a></li>\n")
     }
     out.append("</ul>\n")
     if (!documentation.diagnostics.isEmpty()) {
         out.append("<h2>Diagnostics</h2><ul>\n")
         for (diagnostic in documentation.diagnostics) {
+            if (let Some(symbolId) <- diagnostic.symbolId) {
+                if (!projection.visibleIndex.contains(symbolId)) { continue }
+            }
             out.append("<li><strong>${escapeHtml(diagnostic.severity)}[${escapeHtml(diagnostic.code)}]</strong>: ${escapeHtml(diagnostic.message)}")
             match (diagnostic.source) {
                 case Some(source) => out.append(" <code>${escapeHtml(source.path)}:${source.start.line}:${source.start.column}</code>")
@@ -637,11 +1030,12 @@ private func renderHtmlIndex(documentation: DocumentationSet): String {
 
 private func renderPackagePage(documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, topLevelByPackage: HashMap<String, ArrayList<SymbolDoc>>,
-    pkg: PackageDoc): String {
+    pkg: ProjectedPackage, assetLookup: HashMap<String, String>): String {
+    let packageDoc = pkg.source
     let out = StringBuilder()
-    appendPageStart(out, "Package ${pkg.name}", "../")
-    out.append("<nav class=\"breadcrumbs\" aria-label=\"Breadcrumb\"><ol><li><a href=\"../index.html\">Home</a></li><li aria-current=\"page\">Package <code>${escapeHtml(pkg.name)}</code></li></ol></nav>\n")
-    out.append("<h1>Package <code>${escapeHtml(pkg.name)}</code></h1>\n")
+    appendPageStart(out, "Package ${packageDoc.name}", "../")
+    out.append("<nav class=\"breadcrumbs\" aria-label=\"Breadcrumb\"><ol><li><a href=\"../index.html\">Home</a></li><li aria-current=\"page\">Package <code>${escapeHtml(packageDoc.name)}</code></li></ol></nav>\n")
+    out.append("<h1>Package <code>${escapeHtml(packageDoc.name)}</code></h1>\n")
     if (!pkg.sourceFiles.isEmpty()) {
         out.append("<h2>Sources</h2><ul>\n")
         for (path in pkg.sourceFiles) { out.append("<li><code>${escapeHtml(path)}</code></li>\n") }
@@ -649,19 +1043,18 @@ private func renderPackagePage(documentation: DocumentationSet,
     }
     out.append("<h2>Declarations</h2>\n")
     var wroteDeclaration = false
-    match (topLevelByPackage.get(pkg.name)) {
+    match (topLevelByPackage.get(routeKey(packageDoc.moduleId, packageDoc.name))) {
         case Some(symbols) => for (symbol in symbols) {
-            if (!isRenderable(documentation, index, symbol)) { continue }
             wroteDeclaration = true
             if (isContainerDeclaration(symbol)) {
                 out.append("<section class=\"card\"><h3><a href=\"../${escapeHtml(symbolPagePath(symbol))}\"><code>${escapeHtml(symbol.qualifiedName)}</code></a> <span class=\"badge\">${escapeHtml(symbol.kind)}</span></h3>")
                 match (symbol.documentation) {
-                    case Some(comment) => out.append(safeMarkdown(comment.summary))
+                    case Some(comment) => out.append("<p>${escapeHtml(markdownNodeText(comment.markdown))}</p>")
                     case None => ()
                 }
                 out.append("</section>\n")
             } else {
-                appendSymbolArticle(out, documentation, index, symbol, "../")
+                appendSymbolArticle(out, documentation, index, symbol, "../", assetLookup)
             }
         }
         case None => ()
@@ -689,14 +1082,13 @@ private func memberSectionTitle(symbol: SymbolDoc): String {
 
 private func appendMemberSection(out: StringBuilder, documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
-    owner: SymbolDoc, title: String): Unit {
+    owner: SymbolDoc, title: String, assetLookup: HashMap<String, String>): Unit {
     var opened = false
     match (membersByOwner.get(owner.id)) {
         case Some(members) => for (member in members) {
-            if (memberSectionTitle(member) != title ||
-                !isRenderable(documentation, index, member)) { continue }
+            if (memberSectionTitle(member) != title) { continue }
             if (!opened) { out.append("<h2>${escapeHtml(title)}</h2>\n"); opened = true }
-            appendSymbolArticle(out, documentation, index, member, "../",
+            appendSymbolArticle(out, documentation, index, member, "../", assetLookup,
                 linkTitle: isContainerDeclaration(member))
         }
         case None => ()
@@ -705,33 +1097,30 @@ private func appendMemberSection(out: StringBuilder, documentation: Documentatio
 
 private func renderSymbolPage(documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
-    symbol: SymbolDoc): String {
+    symbol: SymbolDoc, assetLookup: HashMap<String, String>): String {
     let out = StringBuilder()
     appendPageStart(out, symbol.qualifiedName, "../")
     out.append("<nav class=\"breadcrumbs\" aria-label=\"Breadcrumb\"><ol><li><a href=\"../index.html\">Home</a></li>")
-    out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.packageName))}\">Package <code>${escapeHtml(symbol.packageName)}</code></a></li>")
+    out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">Package <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     out.append("<li aria-current=\"page\"><code>${escapeHtml(symbol.name)}</code></li></ol></nav>\n")
     out.append("<h1><code>${escapeHtml(symbol.qualifiedName)}</code></h1>\n")
     appendSymbolMetadata(out, documentation, index, symbol, "../")
-    appendDocumentationHtml(out, documentation, index, symbol, "../")
+    appendDocumentationHtml(out, documentation, index, symbol, "../", assetLookup)
     for (title in ["Constructors", "Properties", "Variables", "Functions", "Enum cases",
         "Nested classes", "Nested structs", "Nested interfaces", "Nested enums", "Nested extensions",
         "Other members"]) {
-        appendMemberSection(out, documentation, index, membersByOwner, symbol, title)
+        appendMemberSection(out, documentation, index, membersByOwner, symbol, title, assetLookup)
     }
     appendPageEnd(out, documentation)
     out.toString()
 }
 
 private func renderSearchIndex(documentation: DocumentationSet,
-    index: HashMap<String, SymbolDoc>): String {
+    projection: RenderProjection): String {
     let out = StringBuilder()
     out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/3\",\n  \"entries\": [")
     var first = true
-    let visible = ArrayList<SymbolDoc>()
-    for (declaration in documentation.declarations) {
-        if (isRenderable(documentation, index, declaration)) { visible.add(declaration) }
-    }
+    let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(visible, lessThan: { left, right => left.id < right.id }, stable: true)
     for (declaration in visible) {
         if (!first) { out.append(",") }
@@ -740,39 +1129,52 @@ private func renderSearchIndex(documentation: DocumentationSet,
         out.append("\"qualifiedName\": ${escapeJsonString(declaration.qualifiedName)}, ")
         out.append("\"kind\": ${escapeJsonString(declaration.kind)}, \"packageName\": ${escapeJsonString(declaration.packageName)}, ")
         let summary = match (declaration.documentation) {
-            case Some(comment) => markdownText(comment.summary)
+            case Some(comment) => markdownNodeText(comment.markdown)
             case None => ""
         }
-        out.append("\"summary\": ${escapeJsonString(summary)}, \"href\": ${escapeJsonString(symbolUrl(documentation, index, declaration))}}")
+        out.append("\"summary\": ${escapeJsonString(summary)}, \"href\": ${escapeJsonString(symbolUrl(documentation, projection.visibleIndex, declaration))}}")
     }
     if (!first) { out.append("\n  ") }
     out.append("]\n}\n")
     out.toString()
 }
 
+private func renderSearchIndexScript(searchIndex: String): String {
+    "globalThis.__CJDOC_SEARCH_INDEX__ = ${searchIndex.trimAscii()};\n"
+}
+
 public class HtmlDocumentationRenderer <: DocumentationRenderer {
     public prop format: String { get() { "html" } }
 
     public func render(documentation: DocumentationSet): Array<RenderArtifact> {
+        validateDocumentationSet(documentation)
         let artifacts = ArrayList<RenderArtifact>()
-        let index = indexSymbols(documentation)
-        let topLevelByPackage = groupTopLevelByPackage(documentation)
-        let membersByOwner = groupMembersByOwner(documentation)
-        artifacts.add(RenderArtifact("html/index.html", "text/html; charset=utf-8", renderHtmlIndex(documentation)))
-        artifacts.add(RenderArtifact("html/search-index.json", "application/json",
-            renderSearchIndex(documentation, index)))
+        let projection = RenderProjection(documentation)
+        let index = projection.visibleIndex
+        let assetLookup = buildAssetLookup(documentation)
+        validateHtmlRouting(documentation, projection)
+        let topLevelByPackage = groupTopLevelByPackage(projection)
+        let membersByOwner = groupMembersByOwner(projection)
+        let searchIndex = renderSearchIndex(documentation, projection)
+        artifacts.add(RenderArtifact("html/index.html", "text/html; charset=utf-8",
+            renderHtmlIndex(documentation, projection)))
+        artifacts.add(RenderArtifact("html/search-index.json", "application/json", searchIndex))
+        artifacts.add(RenderArtifact("html/search-index.js", "text/javascript; charset=utf-8",
+            renderSearchIndexScript(searchIndex)))
         artifacts.add(RenderArtifact("html/search.js", "text/javascript; charset=utf-8", HTML_SEARCH_SCRIPT))
         artifacts.add(RenderArtifact("html/style.css", "text/css; charset=utf-8", HTML_STYLE))
-        for (pkg in documentation.packages) {
-            artifacts.add(RenderArtifact("html/${packagePagePath(pkg.name)}", "text/html; charset=utf-8",
-                renderPackagePage(documentation, index, topLevelByPackage, pkg)))
+        for (pkg in projection.packages) {
+            artifacts.add(RenderArtifact("html/${packagePagePath(pkg.source.moduleId, pkg.source.name)}",
+                "text/html; charset=utf-8",
+                renderPackagePage(documentation, index, topLevelByPackage, pkg, assetLookup)))
         }
-        for (symbol in documentation.declarations) {
-            if (isContainerDeclaration(symbol) && isRenderable(documentation, index, symbol)) {
+        for (symbol in projection.visibleSymbols) {
+            if (isContainerDeclaration(symbol)) {
                 artifacts.add(RenderArtifact("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
-                    renderSymbolPage(documentation, index, membersByOwner, symbol)))
+                    renderSymbolPage(documentation, index, membersByOwner, symbol, assetLookup)))
             }
         }
+        appendAssetArtifacts(artifacts, documentation, "html")
         artifacts.toArray()
     }
 }

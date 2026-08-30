@@ -2,19 +2,38 @@ package cjdoc.provider
 
 import cjdoc.model.*
 import std.collection.*
+import std.sync.AtomicInt64
+
+private let NEXT_SOURCE_DECLARATION_ISSUER_ID = AtomicInt64(1)
 
 public class SourceDeclarationId {
     private let encoded: String
+    let issuerId: Int64
 
-    public init(encoded: String) {
+    init(encoded: String, issuerId: Int64) {
         if (encoded.isEmpty()) { throw IllegalArgumentException("source declaration id cannot be empty") }
         this.encoded = encoded
+        this.issuerId = issuerId
     }
 
     public func serialize(): String { encoded }
 
-    public operator func ==(other: SourceDeclarationId): Bool { encoded == other.encoded }
-    public operator func !=(other: SourceDeclarationId): Bool { encoded != other.encoded }
+    public operator func ==(other: SourceDeclarationId): Bool {
+        encoded == other.encoded && issuerId == other.issuerId
+    }
+    public operator func !=(other: SourceDeclarationId): Bool { !(this == other) }
+}
+
+public class SourceDeclarationIssuer {
+    private let id: Int64
+
+    public init() { id = NEXT_SOURCE_DECLARATION_ISSUER_ID.fetchAdd(1) }
+
+    public func issue(encoded: String): SourceDeclarationId {
+        SourceDeclarationId(encoded, id)
+    }
+
+    public func owns(candidate: SourceDeclarationId): Bool { candidate.issuerId == id }
 }
 
 public class SourceParameterView {
@@ -133,6 +152,7 @@ public class SemanticDeclaration {
     public let ownerId: ?SourceDeclarationId
     public let returnType: ?TypeRef
     public let canonicalSignature: ?String
+    public let annotationsProvided: Bool
     private let parametersStorage: ArrayList<SemanticParameter>
     private let annotationsStorage: ArrayList<String>
     private let typeRelationshipsStorage: ArrayList<SemanticTypeRelationship>
@@ -141,7 +161,7 @@ public class SemanticDeclaration {
     public init(sourceId: SourceDeclarationId, state: String, visibility!: ?String = None,
         ownerId!: ?SourceDeclarationId = None, parameters!: Array<SemanticParameter> = [],
         returnType!: ?TypeRef = None, canonicalSignature!: ?String = None,
-        annotations!: Array<String> = [],
+        annotations!: Array<String> = [], annotationsProvided!: Bool = false,
         typeRelationships!: Array<SemanticTypeRelationship> = [],
         symbolRelationships!: Array<SemanticSymbolRelationship> = []) {
         if (!isSemanticState(state)) { throw IllegalArgumentException("invalid semantic declaration state") }
@@ -151,6 +171,7 @@ public class SemanticDeclaration {
         this.ownerId = ownerId
         this.returnType = returnType
         this.canonicalSignature = canonicalSignature
+        this.annotationsProvided = annotationsProvided || !annotations.isEmpty()
         this.parametersStorage = ArrayList<SemanticParameter>(parameters)
         this.annotationsStorage = ArrayList<String>(annotations)
         this.typeRelationshipsStorage = ArrayList<SemanticTypeRelationship>(typeRelationships)
