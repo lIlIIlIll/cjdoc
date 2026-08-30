@@ -2,8 +2,27 @@ package cjdoc.model
 
 import std.collection.*
 
-public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/7"
+public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/8"
+public let DOC_IR_V7_SCHEMA_VERSION = "cjdoc.doc-ir/7"
 public let DOC_IR_V6_SCHEMA_VERSION = "cjdoc.doc-ir/6"
+public let DOC_IR_MAX_TYPE_DEPTH: Int64 = 64
+public let DOC_IR_MAX_MARKDOWN_DEPTH: Int64 = 64
+public let DOC_IR_MAX_FENCE_LENGTH: Int64 = 1024
+protected let DOC_IR_MAX_JSON_STRING_BYTES: Int64 = 24 * 1024 * 1024
+// The release runtime uses a 256 MiB default heap. Keep the complete JSON text,
+// parsed tree, schema evaluation graph, and typed Doc IR simultaneously bounded
+// by limiting input to one eighth of that heap and independently bounding its
+// structured shape below.
+protected let DOC_IR_MAX_JSON_DOCUMENT_BYTES: Int64 = 32 * 1024 * 1024
+protected let DOC_IR_MAX_OUTPUT_ARTIFACT_BYTES: Int64 = 64 * 1024 * 1024
+protected let DOC_IR_MAX_SCHEMA_OBJECTS: Int64 = 65536
+protected let DOC_IR_MAX_SCHEMA_ARRAY_ITEMS: Int64 = 100000
+protected let DOC_IR_MAX_TYPE_OCCURRENCES: Int64 = 32768
+protected let DOC_IR_MAX_TYPE_EDGES: Int64 = 32768
+protected let DOC_IR_MAX_MARKDOWN_OCCURRENCES: Int64 = 32768
+protected let DOC_IR_MAX_MARKDOWN_EDGES: Int64 = 32768
+protected let DOC_IR_MAX_PROVIDER_IDENTITY_BYTES: Int64 = 1024
+protected let DOC_IR_MAX_ORDERED_LIST_NUMBER: Int64 = 999999999
 
 public func isSemanticState(value: String): Bool {
     value == "resolved" || value == "partial" || value == "unavailable" || value == "ambiguous"
@@ -113,6 +132,23 @@ public class ProviderInfo {
     }
 }
 
+private func portableModuleSourcePrefix(value: String): Bool {
+    if (value.isEmpty()) { return true }
+    if (value.startsWith("/") || value.endsWith("/") || value.contains("//") ||
+        value.contains("\\")) { return false }
+    let segments = value.split("/")
+    for (segment in segments) {
+        if (segment.isEmpty() || segment == "." || segment == "..") { return false }
+    }
+    let first = segments[0].toArray()
+    if (first.size >= 2 && first[1] == b':' &&
+        ((first[0] >= b'A' && first[0] <= b'Z') ||
+        (first[0] >= b'a' && first[0] <= b'z'))) {
+        return false
+    }
+    true
+}
+
 public class ModuleDoc {
     public let id: String
     public let name: String
@@ -123,6 +159,10 @@ public class ModuleDoc {
 
     public init(id: String, name: String, role: String, sourcePrefix: String,
         packageNames!: Array<String> = [], dependencyIds!: Array<String> = []) {
+        if (!portableModuleSourcePrefix(sourcePrefix)) {
+            throw IllegalArgumentException(
+                "module sourcePrefix must be empty or a portable relative logical path")
+        }
         this.id = id
         this.name = name
         this.role = role
@@ -265,10 +305,91 @@ public class DocTag {
     }
 }
 
+public class MarkdownNodeMetadata {
+    public let kind: String
+    public let headingLevel: ?Int64
+    public let listKind: ?String
+    public let listStart: ?Int64
+    public let listDelimiter: ?String
+    public let listTight: ?Bool
+    public let taskState: ?String
+    public let codeKind: ?String
+    public let fenceCharacter: ?String
+    public let fenceLength: ?Int64
+    public let infoRaw: ?String
+    public let language: ?String
+    public let attributesRaw: ?String
+    public let tableHeader: ?Bool
+    public let tableAlignment: ?String
+    private let tableAlignmentsStorage: ArrayList<String>
+
+    private init(kind: String, headingLevel!: ?Int64 = None, listKind!: ?String = None,
+        listStart!: ?Int64 = None, listDelimiter!: ?String = None, listTight!: ?Bool = None,
+        taskState!: ?String = None, codeKind!: ?String = None,
+        fenceCharacter!: ?String = None, fenceLength!: ?Int64 = None,
+        infoRaw!: ?String = None, language!: ?String = None, attributesRaw!: ?String = None,
+        tableAlignments!: Array<String> = [], tableHeader!: ?Bool = None,
+        tableAlignment!: ?String = None) {
+        this.kind = kind
+        this.headingLevel = headingLevel
+        this.listKind = listKind
+        this.listStart = listStart
+        this.listDelimiter = listDelimiter
+        this.listTight = listTight
+        this.taskState = taskState
+        this.codeKind = codeKind
+        this.fenceCharacter = fenceCharacter
+        this.fenceLength = fenceLength
+        this.infoRaw = infoRaw
+        this.language = language
+        this.attributesRaw = attributesRaw
+        this.tableAlignmentsStorage = ArrayList<String>(tableAlignments)
+        this.tableHeader = tableHeader
+        this.tableAlignment = tableAlignment
+    }
+
+    public static func forHeading(level: Int64): MarkdownNodeMetadata {
+        MarkdownNodeMetadata("heading", headingLevel: Some(level))
+    }
+
+    public static func forList(listKind: String, start: Int64, delimiter: String,
+        tight: Bool): MarkdownNodeMetadata {
+        MarkdownNodeMetadata("list", listKind: Some(listKind), listStart: Some(start),
+            listDelimiter: Some(delimiter), listTight: Some(tight))
+    }
+
+    public static func forListItem(taskState: String): MarkdownNodeMetadata {
+        MarkdownNodeMetadata("list_item", taskState: Some(taskState))
+    }
+
+    public static func forCodeBlock(codeKind: String, fenceCharacter: ?String,
+        fenceLength: Int64, infoRaw: String, language: String,
+        attributesRaw: String): MarkdownNodeMetadata {
+        MarkdownNodeMetadata("code_block", codeKind: Some(codeKind),
+            fenceCharacter: fenceCharacter, fenceLength: Some(fenceLength),
+            infoRaw: Some(infoRaw), language: Some(language), attributesRaw: Some(attributesRaw))
+    }
+
+    public static func forTable(alignments: Array<String>): MarkdownNodeMetadata {
+        MarkdownNodeMetadata("table", tableAlignments: alignments)
+    }
+
+    public static func forTableRow(header: Bool): MarkdownNodeMetadata {
+        MarkdownNodeMetadata("table_row", tableHeader: Some(header))
+    }
+
+    public static func forTableCell(alignment: String): MarkdownNodeMetadata {
+        MarkdownNodeMetadata("table_cell", tableAlignment: Some(alignment))
+    }
+
+    public prop tableAlignments: ReadOnlyList<String> { get() { tableAlignmentsStorage } }
+}
+
 public class MarkdownNode {
     public let kind: String
     public let literal: String
     public let source: ?SourceRange
+    public let metadata: ?MarkdownNodeMetadata
     private let childrenStorage: ArrayList<MarkdownNode>
 
     public init(kind: String, literal!: String = "", source!: ?SourceRange = None,
@@ -276,6 +397,16 @@ public class MarkdownNode {
         this.kind = kind
         this.literal = literal
         this.source = source
+        this.metadata = None
+        this.childrenStorage = ArrayList<MarkdownNode>(children)
+    }
+
+    public init(kind: String, metadata: MarkdownNodeMetadata, literal!: String = "",
+        source!: ?SourceRange = None, children!: Array<MarkdownNode> = []) {
+        this.kind = kind
+        this.literal = literal
+        this.source = source
+        this.metadata = Some(metadata)
         this.childrenStorage = ArrayList<MarkdownNode>(children)
     }
 
@@ -359,6 +490,7 @@ public class SymbolDoc {
     public let headerSpelling: String
     public let semantic: SemanticInfo
     public let origin: DeclarationOrigin
+    public let enumNonExhaustive: ?Bool
     private let genericParametersStorage: ArrayList<String>
     private let parametersStorage: ArrayList<ParameterDoc>
     private let annotationsStorage: ArrayList<AnnotationDoc>
@@ -387,6 +519,37 @@ public class SymbolDoc {
         this.returnType = returnType
         this.documentation = documentation
         this.origin = origin
+        this.enumNonExhaustive = None
+        this.genericParametersStorage = ArrayList<String>(genericParameters)
+        this.parametersStorage = ArrayList<ParameterDoc>(parameters)
+        this.annotationsStorage = ArrayList<AnnotationDoc>(annotations)
+        this.typeRelationshipsStorage = ArrayList<TypeRelationship>(typeRelationships)
+        this.symbolRelationshipsStorage = ArrayList<SymbolRelationship>(symbolRelationships)
+    }
+
+    public init(id: String, kind: String, name: String, qualifiedName: String, packageName: String,
+        moduleId: String, visibility: String, source: SourceRange, headerSpelling: String,
+        semantic: SemanticInfo, enumNonExhaustive: ?Bool,
+        ownerId!: ?String = None, genericParameters!: Array<String> = [],
+        parameters!: Array<ParameterDoc> = [], returnType!: ?TypeRef = None,
+        annotations!: Array<AnnotationDoc> = [], typeRelationships!: Array<TypeRelationship> = [],
+        symbolRelationships!: Array<SymbolRelationship> = [], documentation!: ?DocComment = None,
+        origin!: DeclarationOrigin = DeclarationOrigin()) {
+        this.id = id
+        this.kind = kind
+        this.name = name
+        this.qualifiedName = qualifiedName
+        this.packageName = packageName
+        this.moduleId = moduleId
+        this.ownerId = ownerId
+        this.visibility = visibility
+        this.source = source
+        this.headerSpelling = headerSpelling
+        this.semantic = semantic
+        this.returnType = returnType
+        this.documentation = documentation
+        this.origin = origin
+        this.enumNonExhaustive = enumNonExhaustive
         this.genericParametersStorage = ArrayList<String>(genericParameters)
         this.parametersStorage = ArrayList<ParameterDoc>(parameters)
         this.annotationsStorage = ArrayList<AnnotationDoc>(annotations)

@@ -17,13 +17,27 @@ class CfgProfile {
     public let values = ArrayList<CfgValue>()
 
     public init(values!: Array<CfgValue> = []) {
-        this.values.add(all: values)
-        sort(this.values, lessThan: { left, right =>
+        let canonical = ArrayList<CfgValue>()
+        canonical.add(all: values)
+        sort(canonical, lessThan: { left, right =>
             if (left.name == right.name) { left.value < right.value } else { left.name < right.name }
         }, stable: true)
+        var previous: ?CfgValue = None
+        for (entry in canonical) {
+            match (previous) {
+                case Some(existing) =>
+                    if (existing.name == entry.name) {
+                        if (existing.value != entry.value) {
+                            throw IllegalArgumentException("conflicting cfg values for '${entry.name}'")
+                        }
+                        continue
+                    }
+                case None => ()
+            }
+            this.values.add(entry)
+            previous = Some(entry)
+        }
     }
-
-    public func isEmpty(): Bool { values.isEmpty() }
 
     public func value(name: String): ?String {
         for (entry in values) {
@@ -55,18 +69,51 @@ func isCfgProfileNameValid(name: String): Bool {
     true
 }
 
+// Shared with binding so annotations such as `@Whenever` never acquire
+// conditional-compilation semantics merely because their names share a prefix.
+func isExactWhenAnnotation(annotation: String): Bool {
+    let value = annotation.trimAscii()
+    if (!value.startsWith("@When")) { return false }
+    if (value.size == "@When".size) { return true }
+    let next = value["@When".size]
+    next == b'[' || next == b' ' || next == b'\t' || next == b'\r' || next == b'\n'
+}
+
 private func whenExpression(annotation: String): ?String {
-    if (!annotation.startsWith("@When")) { return None }
-    var open: Int64 = -1
+    if (!isExactWhenAnnotation(annotation)) { return None }
+    let value = annotation.trimAscii()
+    var open = "@When".size
+    while (open < value.size && (value[open] == b' ' || value[open] == b'\t' ||
+        value[open] == b'\r' || value[open] == b'\n')) { open++ }
+    if (open >= value.size || value[open] != b'[') { return Some("") }
     var close: Int64 = -1
-    var index: Int64 = 0
-    while (index < annotation.size) {
-        if (annotation[index] == b'[' && open < 0) { open = index }
-        if (annotation[index] == b']') { close = index }
+    var index = open + 1
+    var delimiter: UInt8 = 0u8
+    var escaped = false
+    while (index < value.size) {
+        let byte = value[index]
+        if (delimiter != 0u8) {
+            if (escaped) {
+                escaped = false
+            } else if (byte == b'\\') {
+                escaped = true
+            } else if (byte == delimiter) {
+                delimiter = 0u8
+            }
+        } else if (byte == b'\'' || byte == b'"') {
+            delimiter = byte
+        } else if (byte == b']') {
+            close = index
+            break
+        }
         index++
     }
-    if (open < 0 || close <= open) { return Some("") }
-    Some(annotation[open + 1..close].trimAscii())
+    if (close <= open || delimiter != 0u8) { return Some("") }
+    index = close + 1
+    while (index < value.size && (value[index] == b' ' || value[index] == b'\t' ||
+        value[index] == b'\r' || value[index] == b'\n')) { index++ }
+    if (index != value.size) { return Some("") }
+    Some(value[open + 1..close].trimAscii())
 }
 
 private func cfgAnd(left: ?Bool, right: ?Bool): ?Bool {
@@ -238,40 +285,39 @@ private func evaluateWhenExpression(expression: String, profile: CfgProfile): ?B
 }
 
 private func cfgSelection(declaration: SourceDeclaration, profile: CfgProfile): ?Bool {
-    var sawWhen = false
+    var selected: ?Bool = Some(true)
     for (annotation in declaration.annotations) {
         if (let Some(expression) <- whenExpression(annotation)) {
-            sawWhen = true
-            match (evaluateWhenExpression(expression, profile)) {
-                case Some(true) => ()
-                case Some(false) => return Some(false)
-                case None => return None
-            }
+            selected = cfgAnd(selected, evaluateWhenExpression(expression, profile))
         }
     }
-    if (sawWhen) { Some(true) } else { Some(true) }
+    selected
 }
 
 func filterSourceForCfg(source: SourceSnapshot, profile: CfgProfile): Unit {
-    if (profile.isEmpty()) { return }
     let includedByKey = HashMap<String, Bool>()
     let included = ArrayList<Bool>()
     for (declaration in source.declarations) {
-        var keep = match (cfgSelection(declaration, profile)) {
-            case Some(selected) => selected
-            case None =>
-                source.diagnostics.add(Diagnostic("warning", "CJDOC1019",
-                    "conditional declaration omitted because its @When expression is unsupported or unresolved",
-                    source: declaration.source))
-                source.unsupportedDeclarations.add(UnsupportedDeclaration(declaration.kind,
-                    declaration.name,
-                    "conditional compilation expression is unsupported or unresolved",
-                    declaration.source))
-                false
-        }
+        var ownerExcluded = false
         if (let Some(ownerKey) <- declaration.ownerSourceKey) {
             if (let Some(ownerIncluded) <- includedByKey.get(ownerKey)) {
-                if (!ownerIncluded) { keep = false }
+                ownerExcluded = !ownerIncluded
+            }
+        }
+        let keep = if (ownerExcluded) {
+            false
+        } else {
+            match (cfgSelection(declaration, profile)) {
+                case Some(selected) => selected
+                case None =>
+                    source.diagnostics.add(Diagnostic("warning", "CJDOC1019",
+                        "conditional declaration omitted because its @When expression is unsupported or unresolved",
+                        source: declaration.source))
+                    source.unsupportedDeclarations.add(UnsupportedDeclaration(declaration.kind,
+                        declaration.name,
+                        "conditional compilation expression is unsupported or unresolved",
+                        declaration.source))
+                    false
             }
         }
         included.add(keep)

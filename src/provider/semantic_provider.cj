@@ -59,6 +59,7 @@ public class SourceDeclarationView {
     public let returnTypeSpelling: ?String
     public let source: SourceRange
     public let headerSpelling: String
+    public let enumNonExhaustive: ?Bool
     private let parametersStorage: ArrayList<SourceParameterView>
     private let annotationsStorage: ArrayList<String>
 
@@ -76,6 +77,30 @@ public class SourceDeclarationView {
         this.returnTypeSpelling = returnTypeSpelling
         this.source = source
         this.headerSpelling = headerSpelling
+        this.enumNonExhaustive = None
+        this.parametersStorage = ArrayList<SourceParameterView>(parameters)
+        this.annotationsStorage = ArrayList<String>(annotations)
+    }
+
+    // Additive constructor for source frontends that can report enum openness.
+    // The original initializer above remains unchanged for provider source
+    // compatibility and represents the fact as unknown.
+    public init(id: SourceDeclarationId, kind: String, name: String, packageName: String,
+        visibility: String, genericArity: Int64, source: SourceRange, headerSpelling: String,
+        enumNonExhaustive: ?Bool, ownerId!: ?SourceDeclarationId = None,
+        parameters!: Array<SourceParameterView> = [], returnTypeSpelling!: ?String = None,
+        annotations!: Array<String> = []) {
+        this.id = id
+        this.kind = kind
+        this.name = name
+        this.packageName = packageName
+        this.ownerId = ownerId
+        this.visibility = visibility
+        this.genericArity = genericArity
+        this.returnTypeSpelling = returnTypeSpelling
+        this.source = source
+        this.headerSpelling = headerSpelling
+        this.enumNonExhaustive = enumNonExhaustive
         this.parametersStorage = ArrayList<SourceParameterView>(parameters)
         this.annotationsStorage = ArrayList<String>(annotations)
     }

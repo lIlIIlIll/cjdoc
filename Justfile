@@ -4,6 +4,7 @@ default:
     @just --list
 
 doctor:
+    git --version
     cjc -v
     cjpm -v
     python3 -c 'import json; print("Python standard library: OK")'
@@ -15,19 +16,7 @@ test:
     cjpm test
 
 schema:
-    mkdir -p target/schema-check
-    target/release/bin/main schema doc-ir > target/schema-check/doc-ir.schema.json
-    target/release/bin/main schema doc-ir-v6 > target/schema-check/doc-ir-v6.schema.json
-    target/release/bin/main schema doc-ir-v7 > target/schema-check/doc-ir-v7.schema.json
-    target/release/bin/main schema diagnostics > target/schema-check/diagnostics.schema.json
-    target/release/bin/main schema cfg-matrix > target/schema-check/cfg-matrix.schema.json
-    target/release/bin/main schema search-index > target/schema-check/search-index.schema.json
-    cmp docs/schema/doc-ir.schema.json target/schema-check/doc-ir.schema.json
-    cmp docs/schema/doc-ir-v6.schema.json target/schema-check/doc-ir-v6.schema.json
-    cmp docs/schema/doc-ir-v7.schema.json target/schema-check/doc-ir-v7.schema.json
-    cmp docs/schema/diagnostics.schema.json target/schema-check/diagnostics.schema.json
-    cmp docs/schema/cfg-matrix.schema.json target/schema-check/cfg-matrix.schema.json
-    cmp docs/schema/search-index.schema.json target/schema-check/search-index.schema.json
+    target_root="$$(python3 scripts/safe_output_root.py --repo . --directory ./target --create)"; schema_dir="$${target_root}/schema-check"; python3 scripts/safe_output_root.py --repo . --directory "$${schema_dir}" --create >/dev/null; target/release/bin/main schema doc-ir > "$${schema_dir}/doc-ir.schema.json"; target/release/bin/main schema doc-ir-v6 > "$${schema_dir}/doc-ir-v6.schema.json"; target/release/bin/main schema doc-ir-v7 > "$${schema_dir}/doc-ir-v7.schema.json"; target/release/bin/main schema doc-ir-v8 > "$${schema_dir}/doc-ir-v8.schema.json"; target/release/bin/main schema diagnostics > "$${schema_dir}/diagnostics.schema.json"; target/release/bin/main schema cfg-matrix > "$${schema_dir}/cfg-matrix.schema.json"; target/release/bin/main schema search-index > "$${schema_dir}/search-index.schema.json"; cmp docs/schema/doc-ir.schema.json "$${schema_dir}/doc-ir.schema.json"; cmp docs/schema/doc-ir-v6.schema.json "$${schema_dir}/doc-ir-v6.schema.json"; cmp docs/schema/doc-ir-v7.schema.json "$${schema_dir}/doc-ir-v7.schema.json"; cmp docs/schema/doc-ir-v8.schema.json "$${schema_dir}/doc-ir-v8.schema.json"; cmp docs/schema/diagnostics.schema.json "$${schema_dir}/diagnostics.schema.json"; cmp docs/schema/cfg-matrix.schema.json "$${schema_dir}/cfg-matrix.schema.json"; cmp docs/schema/search-index.schema.json "$${schema_dir}/search-index.schema.json"
 
 golden:
     scripts/check.sh

@@ -1,0 +1,28 @@
+{
+  "migrations": {
+    "6": {
+      "basic": {"declarations": 25, "diagnostics": 0, "modules": 1, "sourceSha256": "1b0548ae7ace0419d89da5f6b06e66cf36742af75718d1d38bfc3bea9c87dc99", "unsupportedDeclarations": 0, "v8SemanticSha256": "e1a4ca0602c7380d08cffe46256a78a87d87b0a152e72938ebdc56ac222a4522"},
+      "conditional-linux": {"declarations": 1, "diagnostics": 0, "modules": 1, "sourceSha256": "42abd18703757c032ff9051b57be7b1273c09da969f1fa50a65602f203641a6f", "unsupportedDeclarations": 0, "v8SemanticSha256": "f621f6cd5c750266f1c0e8de96f52930201b955977afc25901063db3bed21623"},
+      "extend": {"declarations": 12, "diagnostics": 0, "modules": 1, "sourceSha256": "b77d18bf0568d257a284f02d8723c6c1a9a846856b960214a0f10a4aecc01f05", "unsupportedDeclarations": 0, "v8SemanticSha256": "d32b357cbbab799bfa6482582542d2e3635a9f2679039fbe16477b4d5d046650"},
+      "functions": {"declarations": 5, "diagnostics": 0, "modules": 1, "sourceSha256": "2714bca4cda7da3b03b379dc184c0645c488a4ee3c4105f4cb94f756a046dde9", "unsupportedDeclarations": 0, "v8SemanticSha256": "25643f5514fe3f9fb08299adcdd09a21072b696d0ddc42ff144cec8c8351b51b"},
+      "path-dependencies": {"declarations": 3, "diagnostics": 0, "modules": 3, "sourceSha256": "2c0411e60842c8990c381aef542a39398816862443d50fd9e5700e20b9b61300", "unsupportedDeclarations": 0, "v8SemanticSha256": "272eb5e1aa78cc93742d259e8c9384fb25ac09e17e0252e098f4ff25e8d52572"},
+      "source-edges": {"declarations": 6, "diagnostics": 0, "modules": 1, "sourceSha256": "10f1655145152330ff86038d05921fda4110714020ffc3d327f2a56474bdd286", "unsupportedDeclarations": 0, "v8SemanticSha256": "2031fed7d581dd17133d2a5ff41bdd9225eaa714b19f8323078adb428be8b506"},
+      "types": {"declarations": 11, "diagnostics": 0, "modules": 1, "sourceSha256": "c561877400fcb365ee4b29e85e35b6a0918205bbd7b3a14f38cfdc1f6d298afe", "unsupportedDeclarations": 0, "v8SemanticSha256": "9d60cac22ff84e8eaca8ce59ad8594019f560ea3134a86af61869336dcce221d"},
+      "unsupported": {"declarations": 0, "diagnostics": 1, "modules": 1, "sourceSha256": "9552222c6e7d5bd21293cc0412e5f41453448b1048917862629abccb00aa5728", "unsupportedDeclarations": 1, "v8SemanticSha256": "c44719649cdb9c2e016734bf367d040f72fd76b67a6fa6cc89e538d505315a9d"},
+      "workspace": {"declarations": 2, "diagnostics": 0, "modules": 2, "sourceSha256": "7bbb6773839d18c34d343ef468e3e47ae0af41310d4cd8d30d021b6ed548eedb", "unsupportedDeclarations": 0, "v8SemanticSha256": "a5019715c4d0a000467b32b61a7705a2355b5f699162603a14085e114420ae6a"}
+    },
+    "7": {
+      "basic": {"declarations": 25, "diagnostics": 0, "modules": 1, "sourceSha256": "a0d17abeae961d1bd79ce3affe1b17c71eea0ecd59a27fab1d00e68528f3300d", "unsupportedDeclarations": 0, "v8SemanticSha256": "d3f79c4464a79a992ee575c02eb7e896bd590f15354dac06c90e8f0acbf3e1cb"},
+      "conditional-linux": {"declarations": 1, "diagnostics": 0, "modules": 1, "sourceSha256": "43edda67270f452ef0d6d5d004153476d4b246ac78a80f488dee3bd413d51049", "unsupportedDeclarations": 0, "v8SemanticSha256": "0b4c8b04f69c732928a7bbd0e34d6f8c6e45cdf4f7b685bf4e8bfa4c5103a283"},
+      "extend": {"declarations": 12, "diagnostics": 0, "modules": 1, "sourceSha256": "a46e490415d1f4a25cefe2ab32255215ead0298b2ace641df3b6b39384da32bd", "unsupportedDeclarations": 0, "v8SemanticSha256": "137246924d97ca1df2c49480f401b51843336e1cf454be2cd9b144347cafb7e1"},
+      "functions": {"declarations": 5, "diagnostics": 0, "modules": 1, "sourceSha256": "cb5fff49c9b26d7e9e3cb82d4142018eb2e9f432d4311ae947368375670fd782", "unsupportedDeclarations": 0, "v8SemanticSha256": "e5313b493d1df5e8a5ee5ef7239fc80c5aceee3b761c2dfc535531c04519b78e"},
+      "path-dependencies": {"declarations": 3, "diagnostics": 0, "modules": 3, "sourceSha256": "263d0970f6a71a61dffbebb6bf13ba1a81c30182e94c7c5a1e0a05cccd6eabc1", "unsupportedDeclarations": 0, "v8SemanticSha256": "54f4b03b528b89f4c76f5fdc8f707cdd82d28fee3091dffe6cb36cae73c46c4e"},
+      "source-edges": {"declarations": 6, "diagnostics": 0, "modules": 1, "sourceSha256": "519c0c3ca08cfe8d3590f4e7803dd261cc52c884bc8651d25bc7b45dd88f2a40", "unsupportedDeclarations": 0, "v8SemanticSha256": "20749c2f50ce90fa80d44304b89e3f08dc1d78c3108ea61d9a3b8f86f31bca56"},
+      "types": {"declarations": 11, "diagnostics": 2, "modules": 1, "sourceSha256": "f66eb3374910ea36cc52cde2e0433422bbc7fefd0d40a58f1071dbc037b6dab4", "unsupportedDeclarations": 0, "v8SemanticSha256": "347143e3e9389ac1fffc5f1ba054bda5387c5f9d3ed1b3a4ff0adf111583cac8"},
+      "unsupported": {"declarations": 0, "diagnostics": 2, "modules": 1, "sourceSha256": "ced79f15613ec62b254a30701415648fb865fd3fc560ebdbf7dc00a06438bde8", "unsupportedDeclarations": 1, "v8SemanticSha256": "982caecd2a1487ea41aa700d1c334ca1195fd392be17d9920af4f2ed4bc4fb12"},
+      "workspace": {"declarations": 2, "diagnostics": 0, "modules": 2, "sourceSha256": "f669f5e53549dd31f9b7a4c047b7c3557cea851c54c83b24c3a92d37308e91bb", "unsupportedDeclarations": 0, "v8SemanticSha256": "209ab009add0b554689ba69b8448b936642027b8d7ffd97abeb3fd8ba97e5e11"}
+    }
+  },
+  "schemaVersion": "cjdoc.legacy-migration-receipts/1",
+  "targetSchemaVersion": "cjdoc.doc-ir/8"
+}

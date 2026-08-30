@@ -1,0 +1,154 @@
+{
+  "schemaVersion": "cjdoc.doc-ir/8",
+  "generator": {
+    "name": "cjdoc",
+    "version": "0.7.0"
+  },
+  "status": "complete",
+  "project": {
+    "name": "conditional_fixture",
+    "kind": "package"
+  },
+  "configuration": {
+    "audience": "external",
+    "lintProfile": "standard",
+    "cfgProfile": "custom"
+  },
+  "providers": [
+    {
+      "name": "ast",
+      "version": "1",
+      "moduleId": "cjdoc:module:v1:root",
+      "state": "partial",
+      "capabilities": {
+        "sourceBinding": true,
+        "ownership": true,
+        "visibility": true,
+        "canonicalTypes": false,
+        "canonicalSignatures": false,
+        "relationships": false,
+        "annotations": false
+      }
+    }
+  ],
+  "modules": [
+    {
+      "id": "cjdoc:module:v1:root",
+      "name": "conditional_fixture",
+      "role": "root",
+      "sourcePrefix": "",
+      "packageNames": [
+        "conditional_fixture"
+      ],
+      "dependencyIds": [
+        
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "name": "conditional_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "sourceFiles": [
+        "src/fixture.cj"
+      ],
+      "symbolIds": [
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::conditional_fixture::function:platformName#g0()"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/fixture.cj",
+      "moduleId": "cjdoc:module:v1:root",
+      "packageName": "conditional_fixture"
+    }
+  ],
+  "declarations": [
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::conditional_fixture::function:platformName#g0()",
+      "kind": "function",
+      "name": "platformName",
+      "qualifiedName": "conditional_fixture.platformName",
+      "packageName": "conditional_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": null,
+      "visibility": "internal",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "String",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        {
+          "spelling": "@When[os == \"Linux\"]",
+          "provenance": "source",
+          "provider": null
+        }
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": null,
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 3,
+          "column": 1,
+          "byteOffset": 29
+        },
+        "end": {
+          "line": 4,
+          "column": 40,
+          "byteOffset": 89
+        }
+      },
+      "headerSpelling": "@When[os == \"Linux\"]\nfunc platformName(): String",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null
+    }
+  ],
+  "assets": [
+    
+  ],
+  "orphanDocComments": [
+    
+  ],
+  "macroInvocations": [
+    
+  ],
+  "unsupportedDeclarations": [
+    
+  ],
+  "unboundSemanticDeclarations": [
+    
+  ],
+  "diagnostics": [
+    
+  ]
+}

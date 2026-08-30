@@ -1808,15 +1808,22 @@ private func validateJsonSchemaTypeName(name: String, schemaPath: String): Unit 
 }
 
 private func jsonSchemaMatchesType(value: JsonNode, typeName: String): Bool {
-    match (typeName) {
-        case "null" => if (let _: JsonNullValue <- value) { true } else { false }
-        case "boolean" => if (let _: JsonBoolValue <- value) { true } else { false }
-        case "object" => if (let _: JsonObjectValue <- value) { true } else { false }
-        case "array" => if (let _: JsonArrayValue <- value) { true } else { false }
-        case "string" => if (let _: JsonStringValue <- value) { true } else { false }
-        case "number" => jsonSchemaNumberAsFloat(value).isSome()
-        case "integer" => jsonSchemaIsInteger(value)
-        case _ => false
+    if (typeName == "null") {
+        if (let _: JsonNullValue <- value) { true } else { false }
+    } else if (typeName == "boolean") {
+        if (let _: JsonBoolValue <- value) { true } else { false }
+    } else if (typeName == "object") {
+        if (let _: JsonObjectValue <- value) { true } else { false }
+    } else if (typeName == "array") {
+        if (let _: JsonArrayValue <- value) { true } else { false }
+    } else if (typeName == "string") {
+        if (let _: JsonStringValue <- value) { true } else { false }
+    } else if (typeName == "number") {
+        jsonSchemaNumberAsFloat(value).isSome()
+    } else if (typeName == "integer") {
+        jsonSchemaIsInteger(value)
+    } else {
+        false
     }
 }
 

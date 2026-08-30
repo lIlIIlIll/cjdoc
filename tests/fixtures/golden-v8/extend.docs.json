@@ -1,0 +1,1119 @@
+{
+  "schemaVersion": "cjdoc.doc-ir/8",
+  "generator": {
+    "name": "cjdoc",
+    "version": "0.7.0"
+  },
+  "status": "complete",
+  "project": {
+    "name": "extend_visibility_fixture",
+    "kind": "package"
+  },
+  "configuration": {
+    "audience": "external",
+    "lintProfile": "standard",
+    "cfgProfile": "default"
+  },
+  "providers": [
+    {
+      "name": "ast",
+      "version": "1",
+      "moduleId": "cjdoc:module:v1:root",
+      "state": "partial",
+      "capabilities": {
+        "sourceBinding": true,
+        "ownership": true,
+        "visibility": true,
+        "canonicalTypes": false,
+        "canonicalSignatures": false,
+        "relationships": false,
+        "annotations": false
+      }
+    }
+  ],
+  "modules": [
+    {
+      "id": "cjdoc:module:v1:root",
+      "name": "extend_visibility_fixture",
+      "role": "root",
+      "sourcePrefix": "",
+      "packageNames": [
+        "extend_visibility_fixture"
+      ],
+      "dependencyIds": [
+        
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "name": "extend_visibility_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "sourceFiles": [
+        "src/fixture.cj"
+      ],
+      "symbolIds": [
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box::constructor:init#g0(@g0)",
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box::function:hiddenMember#g0()",
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box::variable:value#g0()",
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box<String>::extension-block:src/fixture.cj:Box<String>{function%3Apretty%23g0%28%29}#0::function:hiddenExtensionMember#g0()",
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box<String>::function:length#g0()",
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box<String>::function:pretty#g0()",
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::class:Box#g1()",
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::extend:Box<String>{function%3Alength%23g0%28%29}#g0()",
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::extend:Box<String>{function%3Apretty%23g0%28%29}#g0()",
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::file:src/fixture.cj::function:fileOnly#g0()",
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::function:oldApi#g0()",
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::function:packageOnly#g0()"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/fixture.cj",
+      "moduleId": "cjdoc:module:v1:root",
+      "packageName": "extend_visibility_fixture"
+    }
+  ],
+  "declarations": [
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box::constructor:init#g0(@g0)",
+      "kind": "constructor",
+      "name": "init",
+      "qualifiedName": "extend_visibility_fixture.Box.init",
+      "packageName": "extend_visibility_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::class:Box#g1()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "value",
+          "type": {
+            "kind": "source",
+            "spelling": "T",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          },
+          "documentation": "stored value",
+          "defaultExpression": null
+        }
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n     * Create a box.\n     * @param value stored value\n     */",
+        "summary": "Create a box.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "metadata": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "metadata": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Create a box.",
+                  "source": null,
+                  "metadata": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "param",
+            "subject": "value",
+            "description": "stored value",
+            "referenceState": "unavailable",
+            "targetSymbolId": null
+          }
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 12,
+          "column": 5,
+          "byteOffset": 200
+        },
+        "end": {
+          "line": 14,
+          "column": 6,
+          "byteOffset": 256
+        }
+      },
+      "headerSpelling": "public init(value: T)",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box::function:hiddenMember#g0()",
+      "kind": "function",
+      "name": "hiddenMember",
+      "qualifiedName": "extend_visibility_fixture.Box.hiddenMember",
+      "packageName": "extend_visibility_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::class:Box#g1()",
+      "visibility": "private",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": null,
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 16,
+          "column": 5,
+          "byteOffset": 262
+        },
+        "end": {
+          "line": 16,
+          "column": 41,
+          "byteOffset": 298
+        }
+      },
+      "headerSpelling": "private func hiddenMember(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box::variable:value#g0()",
+      "kind": "variable",
+      "name": "value",
+      "qualifiedName": "extend_visibility_fixture.Box.value",
+      "packageName": "extend_visibility_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::class:Box#g1()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "T",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Public value. */",
+        "summary": "Public value.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "metadata": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "metadata": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Public value.",
+                  "source": null,
+                  "metadata": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 6,
+          "column": 5,
+          "byteOffset": 105
+        },
+        "end": {
+          "line": 6,
+          "column": 24,
+          "byteOffset": 124
+        }
+      },
+      "headerSpelling": "public let value: T",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box<String>::extension-block:src/fixture.cj:Box<String>{function%3Apretty%23g0%28%29}#0::function:hiddenExtensionMember#g0()",
+      "kind": "function",
+      "name": "hiddenExtensionMember",
+      "qualifiedName": "extend_visibility_fixture.Box < String >.hiddenExtensionMember",
+      "packageName": "extend_visibility_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::extend:Box<String>{function%3Apretty%23g0%28%29}#g0()",
+      "visibility": "private",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": null,
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 29,
+          "column": 5,
+          "byteOffset": 541
+        },
+        "end": {
+          "line": 29,
+          "column": 50,
+          "byteOffset": 586
+        }
+      },
+      "headerSpelling": "private func hiddenExtensionMember(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box<String>::function:length#g0()",
+      "kind": "function",
+      "name": "length",
+      "qualifiedName": "extend_visibility_fixture.Box < String >.length",
+      "packageName": "extend_visibility_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::extend:Box<String>{function%3Alength%23g0%28%29}#g0()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Int64",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Length. */",
+        "summary": "Length.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "metadata": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "metadata": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Length.",
+                  "source": null,
+                  "metadata": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 22,
+          "column": 5,
+          "byteOffset": 370
+        },
+        "end": {
+          "line": 22,
+          "column": 54,
+          "byteOffset": 419
+        }
+      },
+      "headerSpelling": "public func length(): Int64",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box<String>::function:pretty#g0()",
+      "kind": "function",
+      "name": "pretty",
+      "qualifiedName": "extend_visibility_fixture.Box < String >.pretty",
+      "packageName": "extend_visibility_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::extend:Box<String>{function%3Apretty%23g0%28%29}#g0()",
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "String",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Pretty value. */",
+        "summary": "Pretty value.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "metadata": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "metadata": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Pretty value.",
+                  "source": null,
+                  "metadata": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 28,
+          "column": 5,
+          "byteOffset": 498
+        },
+        "end": {
+          "line": 28,
+          "column": 43,
+          "byteOffset": 536
+        }
+      },
+      "headerSpelling": "public func pretty(): String",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::class:Box#g1()",
+      "kind": "class",
+      "name": "Box",
+      "qualifiedName": "extend_visibility_fixture.Box",
+      "packageName": "extend_visibility_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        "T"
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Public box. */",
+        "summary": "Public box.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "metadata": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "metadata": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Public box.",
+                  "source": null,
+                  "metadata": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 54
+        },
+        "end": {
+          "line": 17,
+          "column": 2,
+          "byteOffset": 300
+        }
+      },
+      "headerSpelling": "public class Box<T>",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::extend:Box<String>{function%3Alength%23g0%28%29}#g0()",
+      "kind": "extend",
+      "name": "Box < String >",
+      "qualifiedName": "extend_visibility_fixture.Box < String >",
+      "packageName": "extend_visibility_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": null,
+      "visibility": "internal",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        {
+          "kind": "extensionTarget",
+          "target": {
+            "kind": "source",
+            "spelling": "Box < String >",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          }
+        }
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** First extension. */",
+        "summary": "First extension.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "metadata": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "metadata": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "First extension.",
+                  "source": null,
+                  "metadata": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 20,
+          "column": 1,
+          "byteOffset": 326
+        },
+        "end": {
+          "line": 23,
+          "column": 2,
+          "byteOffset": 421
+        }
+      },
+      "headerSpelling": "extend Box<String>",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::extend:Box<String>{function%3Apretty%23g0%28%29}#g0()",
+      "kind": "extend",
+      "name": "Box < String >",
+      "qualifiedName": "extend_visibility_fixture.Box < String >",
+      "packageName": "extend_visibility_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": null,
+      "visibility": "internal",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": null,
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        {
+          "kind": "extensionTarget",
+          "target": {
+            "kind": "source",
+            "spelling": "Box < String >",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semantic": {
+              "state": "partial",
+              "canonical": null,
+              "provider": "ast"
+            }
+          }
+        }
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Second extension. */",
+        "summary": "Second extension.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "metadata": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "metadata": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Second extension.",
+                  "source": null,
+                  "metadata": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 26,
+          "column": 1,
+          "byteOffset": 448
+        },
+        "end": {
+          "line": 30,
+          "column": 2,
+          "byteOffset": 588
+        }
+      },
+      "headerSpelling": "extend Box<String>",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::file:src/fixture.cj::function:fileOnly#g0()",
+      "kind": "function",
+      "name": "fileOnly",
+      "qualifiedName": "extend_visibility_fixture.fileOnly",
+      "packageName": "extend_visibility_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": null,
+      "visibility": "private",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": null,
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 37,
+          "column": 1,
+          "byteOffset": 721
+        },
+        "end": {
+          "line": 37,
+          "column": 33,
+          "byteOffset": 753
+        }
+      },
+      "headerSpelling": "private func fileOnly(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::function:oldApi#g0()",
+      "kind": "function",
+      "name": "oldApi",
+      "qualifiedName": "extend_visibility_fixture.oldApi",
+      "packageName": "extend_visibility_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        {
+          "spelling": "@Deprecated[message: \"Use Box instead.\"]",
+          "provenance": "source",
+          "provider": null
+        }
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Annotated API. */",
+        "summary": "Annotated API.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "metadata": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "metadata": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Annotated API.",
+                  "source": null,
+                  "metadata": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 33,
+          "column": 1,
+          "byteOffset": 612
+        },
+        "end": {
+          "line": 34,
+          "column": 30,
+          "byteOffset": 682
+        }
+      },
+      "headerSpelling": "@Deprecated[message: \"Use Box instead.\"]\npublic func oldApi(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::function:packageOnly#g0()",
+      "kind": "function",
+      "name": "packageOnly",
+      "qualifiedName": "extend_visibility_fixture.packageOnly",
+      "packageName": "extend_visibility_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": null,
+      "visibility": "internal",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": null,
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 36,
+          "column": 1,
+          "byteOffset": 684
+        },
+        "end": {
+          "line": 36,
+          "column": 37,
+          "byteOffset": 720
+        }
+      },
+      "headerSpelling": "internal func packageOnly(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null
+    }
+  ],
+  "assets": [
+    
+  ],
+  "orphanDocComments": [
+    
+  ],
+  "macroInvocations": [
+    
+  ],
+  "unsupportedDeclarations": [
+    
+  ],
+  "unboundSemanticDeclarations": [
+    
+  ],
+  "diagnostics": [
+    
+  ]
+}

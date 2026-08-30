@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fixed-CPU ABBA performance evidence and frozen-budget gate for cjdoc."""
+"""Fixed-CPU measurements and a conservative hard-ceiling gate for cjdoc."""
 
 from __future__ import annotations
 
@@ -17,6 +17,17 @@ import sys
 import tempfile
 from typing import Any
 
+sys.dont_write_bytecode = True
+
+try:
+    from .safe_output_root import safe_output_file, safe_regular_file
+    from .source_identity import source_identity as capture_source_identity
+    from .strict_json import strict_dumps, strict_load, strict_loads
+except ImportError:  # Direct script execution.
+    from safe_output_root import safe_output_file, safe_regular_file
+    from source_identity import source_identity as capture_source_identity
+    from strict_json import strict_dumps, strict_load, strict_loads
+
 
 PROFILE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
@@ -33,19 +44,20 @@ def atomic_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent,
                                      prefix=f".{path.name}.", delete=False) as stream:
-        json.dump(value, stream, ensure_ascii=False, indent=2, sort_keys=True)
+        stream.write(strict_dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
         stream.write("\n")
         temporary = Path(stream.name)
     os.replace(temporary, path)
 
 
 def resolve_binary(value: Path) -> Path:
-    candidate = value.resolve()
-    if candidate.is_file():
-        return candidate
-    executable = Path(f"{candidate}.exe")
-    if executable.is_file():
-        return executable
+    candidate = Path(os.path.abspath(os.fspath(value)))
+    for executable in (candidate, Path(f"{candidate}.exe")):
+        try:
+            executable.lstat()
+        except FileNotFoundError:
+            continue
+        return safe_regular_file(executable, description="cjdoc binary")
     raise ValueError(f"cjdoc binary does not exist: {candidate}")
 
 
@@ -57,6 +69,21 @@ def command_version(command: str) -> str | None:
         return None
     text = (result.stdout or result.stderr).strip().splitlines()
     return text[0] if result.returncode == 0 and text else None
+
+
+def source_commit(repo: Path, *, allow_dirty: bool = False) -> str | None:
+    identity = capture_source_identity(repo, allow_dirty=allow_dirty)
+    return identity["headCommit"] if identity["trustedCommit"] else None
+
+
+def measurement_environment(cpu: int | None) -> dict[str, Any]:
+    return {
+        "platform": platform.platform(),
+        "python": platform.python_version(),
+        "cjc": command_version("cjc"),
+        "cjpm": command_version("cjpm"),
+        "fixedCpu": cpu,
+    }
 
 
 def fixed_cpu() -> int | None:
@@ -97,7 +124,7 @@ def parse_profile(value: str, repo: Path) -> dict[str, Any]:
     project = Path(raw_path)
     if not project.is_absolute():
         project = repo / project
-    project = project.resolve()
+    project = Path(os.path.abspath(os.fspath(project)))
     if not (project / "cjpm.toml").is_file():
         raise ValueError(f"profile is not a cjpm project/workspace: {project}")
     stored = "." if project == repo else os.path.relpath(project, repo).replace(os.sep, "/")
@@ -121,7 +148,7 @@ def load_profiles(baseline: dict[str, Any], repo: Path) -> list[dict[str, Any]]:
             raise ValueError("performance profile names must be unique safe identifiers")
         if not isinstance(project_value, str) or not isinstance(minimum, int) or minimum < 1:
             raise ValueError(f"invalid performance profile: {name}")
-        project = (repo / project_value).resolve()
+        project = Path(os.path.abspath(os.fspath(repo / project_value)))
         if not (project / "cjpm.toml").is_file():
             raise ValueError(f"performance project is missing: {project_value}")
         names.add(name)
@@ -133,7 +160,7 @@ def read_measurement(stdout: str) -> dict[str, int | None]:
     lines = [line for line in stdout.splitlines() if line.strip()]
     if not lines:
         raise ValueError("measure_command.py produced no result")
-    value = json.loads(lines[-1])
+    value = strict_loads(lines[-1], description="measurement result")
     elapsed = value.get("elapsedMs")
     rss = value.get("peakRssKiB")
     if not isinstance(elapsed, int) or elapsed < 0:
@@ -144,11 +171,11 @@ def read_measurement(stdout: str) -> dict[str, int | None]:
 
 
 def validate_document(path: Path, minimum: int) -> str:
-    document = json.loads(path.read_text(encoding="utf-8"))
+    document = strict_load(path, description="performance Doc IR")
     declarations = document.get("declarations")
     diagnostics = document.get("diagnostics")
-    if document.get("schemaVersion") != "cjdoc.doc-ir/7":
-        raise ValueError("performance run emitted non-v7 Doc IR")
+    if document.get("schemaVersion") != "cjdoc.doc-ir/8":
+        raise ValueError("performance run emitted non-v8 Doc IR")
     if not isinstance(declarations, list) or len(declarations) < minimum:
         raise ValueError("performance run did not meet its declaration floor")
     if not isinstance(diagnostics, list) or any(
@@ -241,20 +268,15 @@ def baseline_from_results(results: list[dict[str, Any]], cycles: int,
     return {
         "schemaVersion": "cjdoc.perf-baseline/1",
         "state": "candidate",
-        "method": "fixed-cpu cold/warm ABBA; fresh output per sample; SHA-256 identity",
+        "purpose": "hard-ceiling",
+        "method": "fixed-cpu mirrored cold/warm order; fresh output per sample; SHA-256 identity",
         "cycles": cycles,
-        "referenceEnvironment": {
-            "platform": platform.platform(),
-            "python": platform.python_version(),
-            "cjc": command_version("cjc"),
-            "cjpm": command_version("cjpm"),
-            "fixedCpu": cpu,
-        },
+        "referenceEnvironment": measurement_environment(cpu),
         "profiles": profiles,
     }
 
 
-def verify_limits(baseline: dict[str, Any], results: list[dict[str, Any]]) -> None:
+def verify_hard_ceiling(baseline: dict[str, Any], results: list[dict[str, Any]]) -> None:
     expected = {profile["name"]: profile for profile in baseline["profiles"]}
     failures: list[str] = []
     for result in results:
@@ -290,7 +312,23 @@ def verify_limits(baseline: dict[str, Any], results: list[dict[str, Any]]) -> No
                         f"{result['name']}/{variant}: RSS {measured_rss} > {rss_limit} KiB"
                     )
     if failures:
-        raise ValueError("performance gate failed:\n" + "\n".join(failures))
+        raise ValueError("performance hard ceiling failed:\n" + "\n".join(failures))
+
+
+# Compatibility for existing callers; this remains an absolute ceiling check,
+# never a comparable A/B regression verdict.
+def verify_limits(baseline: dict[str, Any], results: list[dict[str, Any]]) -> None:
+    verify_hard_ceiling(baseline, results)
+
+
+def publish_check_evidence(path: Path, evidence: dict[str, Any],
+                           baseline: dict[str, Any],
+                           results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Publish a passed receipt only after every hard-ceiling check succeeds."""
+    verify_hard_ceiling(baseline, results)
+    passed = {**evidence, "verdict": "passed"}
+    atomic_json(path, passed)
+    return passed
 
 
 def main() -> int:
@@ -304,6 +342,8 @@ def main() -> int:
     record.add_argument("--cycles", type=int, default=1)
     record.add_argument("--output", type=Path, required=True)
     record.add_argument("--evidence", type=Path)
+    record.add_argument("--allow-dirty", action="store_true",
+                        help="record explicitly untrusted dirty/unversioned identities")
 
     check = subparsers.add_parser("check")
     check.add_argument("--binary", type=Path, default=repo / "target/release/bin/main")
@@ -311,6 +351,8 @@ def main() -> int:
     check.add_argument("--evidence", type=Path,
                        default=repo / "target/release-evidence/performance.json")
     check.add_argument("--allow-candidate", action="store_true")
+    check.add_argument("--allow-dirty", action="store_true",
+                       help="emit explicitly untrusted dirty/unversioned identities")
 
     args = parser.parse_args()
     try:
@@ -323,36 +365,77 @@ def main() -> int:
             if len(profiles) < 2:
                 raise ValueError("record requires at least two profiles")
             cycles = args.cycles
-            evidence_path = (args.evidence or args.output.with_suffix(".evidence.json")).resolve()
+            evidence_path = safe_output_file(
+                args.evidence or args.output.with_suffix(".evidence.json"),
+                description="performance evidence",
+            )
+            baseline_output = safe_output_file(
+                args.output, description="performance baseline candidate"
+            )
             baseline = None
         else:
-            baseline = json.loads(args.baseline.resolve().read_text(encoding="utf-8"))
+            baseline_path = safe_regular_file(
+                args.baseline, description="performance baseline"
+            )
+            baseline = strict_load(baseline_path, description="performance baseline")
             if baseline.get("schemaVersion") != "cjdoc.perf-baseline/1":
                 raise ValueError("unknown performance baseline schema")
             if baseline.get("state") != "frozen" and not args.allow_candidate:
                 raise ValueError("performance baseline is not frozen")
+            if baseline.get("purpose") != "hard-ceiling":
+                raise ValueError("performance baseline must declare purpose hard-ceiling")
             cycles = baseline.get("cycles")
             if not isinstance(cycles, int):
                 raise ValueError("baseline cycles must be an integer")
             profiles = load_profiles(baseline, repo)
-            evidence_path = args.evidence.resolve()
+            evidence_path = safe_output_file(
+                args.evidence, description="performance evidence"
+            )
 
-        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence_path.unlink(missing_ok=True)
+        repository_identity = capture_source_identity(repo, allow_dirty=args.allow_dirty)
+        project_identities = [
+            capture_source_identity(profile["resolvedProject"], allow_dirty=args.allow_dirty)
+            for profile in profiles
+        ]
+        binary_sha256 = sha256(binary)
         with tempfile.TemporaryDirectory(prefix="performance-", dir=evidence_path.parent) as temporary:
             results = measure_profiles(binary, profiles, cycles, repo, Path(temporary), cpu)
+        if capture_source_identity(repo, allow_dirty=args.allow_dirty) != repository_identity:
+            raise ValueError("cjdoc repository identity changed during performance measurement")
+        for profile, expected_identity in zip(profiles, project_identities):
+            if capture_source_identity(
+                profile["resolvedProject"], allow_dirty=args.allow_dirty
+            ) != expected_identity:
+                raise ValueError(
+                    f"performance project identity changed during measurement: {profile['name']}"
+                )
+        if sha256(binary) != binary_sha256:
+            raise ValueError("cjdoc binary changed during performance measurement")
+        for result, identity in zip(results, project_identities):
+            result["sourceIdentity"] = identity
+        environment = measurement_environment(cpu)
         evidence = {
-            "schemaVersion": "cjdoc.perf-evidence/1",
-            "binarySha256": sha256(binary),
-            "platform": platform.platform(),
-            "fixedCpu": cpu,
+            "schemaVersion": "cjdoc.perf-evidence/2",
+            "kind": "ceiling-calibration" if args.command == "record" else "hard-ceiling",
+            "regressionEvidence": False,
+            "sourceCommit": repository_identity["headCommit"]
+                if repository_identity["trustedCommit"] else None,
+            "sourceIdentity": repository_identity,
+            "binarySha256": binary_sha256,
+            "environment": environment,
+            "referenceEnvironmentComparable": (
+                baseline is not None and baseline.get("referenceEnvironment") == environment
+            ),
             "cycles": cycles,
             "profiles": results,
         }
-        atomic_json(evidence_path, evidence)
         if args.command == "record":
-            atomic_json(args.output.resolve(), baseline_from_results(results, cycles, cpu))
+            evidence = {**evidence, "verdict": "candidate"}
+            atomic_json(evidence_path, evidence)
+            atomic_json(baseline_output, baseline_from_results(results, cycles, cpu))
         else:
-            verify_limits(baseline, results)
+            evidence = publish_check_evidence(evidence_path, evidence, baseline, results)
         print(json.dumps(evidence, ensure_ascii=False, sort_keys=True))
         return 0
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:

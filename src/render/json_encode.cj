@@ -43,6 +43,10 @@ private func nullableString(value: ?String): String {
     match (value) { case Some(text) => escapeJsonString(text) case None => "null" }
 }
 
+private func nullableBool(value: ?Bool): String {
+    match (value) { case Some(item) => item.toString() case None => "null" }
+}
+
 private func appendStrings(out: StringBuilder, values: ReadOnlyList<String>): Unit {
     out.append("[")
     var first = true
@@ -99,9 +103,42 @@ private func appendTag(out: StringBuilder, value: DocTag): Unit {
     out.append("\"targetSymbolId\":${nullableString(value.targetSymbolId)}}")
 }
 
+private func appendMarkdownMetadata(out: StringBuilder, value: MarkdownNodeMetadata): Unit {
+    match (value.kind) {
+        case "heading" => out.append("{\"level\":${value.headingLevel.getOrThrow()}}")
+        case "list" =>
+            out.append("{\"listKind\":${escapeJsonString(value.listKind.getOrThrow())},")
+            out.append("\"start\":${value.listStart.getOrThrow()},")
+            out.append("\"delimiter\":${escapeJsonString(value.listDelimiter.getOrThrow())},")
+            out.append("\"tight\":${value.listTight.getOrThrow()}}")
+        case "list_item" =>
+            out.append("{\"taskState\":${escapeJsonString(value.taskState.getOrThrow())}}")
+        case "code_block" =>
+            out.append("{\"codeKind\":${escapeJsonString(value.codeKind.getOrThrow())},")
+            out.append("\"fenceCharacter\":${nullableString(value.fenceCharacter)},")
+            out.append("\"fenceLength\":${value.fenceLength.getOrThrow()},")
+            out.append("\"infoRaw\":${escapeJsonString(value.infoRaw.getOrThrow())},")
+            out.append("\"language\":${escapeJsonString(value.language.getOrThrow())},")
+            out.append("\"attributesRaw\":${escapeJsonString(value.attributesRaw.getOrThrow())}}")
+        case "table" =>
+            out.append("{\"alignments\":")
+            appendStrings(out, value.tableAlignments)
+            out.append("}")
+        case "table_row" => out.append("{\"header\":${value.tableHeader.getOrThrow()}}")
+        case "table_cell" =>
+            out.append("{\"alignment\":${escapeJsonString(value.tableAlignment.getOrThrow())}}")
+        case _ => throw IllegalArgumentException("invalid Markdown metadata kind '${value.kind}'")
+    }
+}
+
 private func appendMarkdown(out: StringBuilder, value: MarkdownNode): Unit {
     out.append("{\"kind\":${escapeJsonString(value.kind)},\"literal\":${escapeJsonString(value.literal)},\"source\":")
     match (value.source) { case Some(range) => appendRange(out, range) case None => out.append("null") }
+    out.append(",\"metadata\":")
+    match (value.metadata) {
+        case Some(metadata) => appendMarkdownMetadata(out, metadata)
+        case None => out.append("null")
+    }
     out.append(",\"children\":[")
     var first = true
     for (child in value.children) {
@@ -204,6 +241,7 @@ private func appendSymbol(out: StringBuilder, value: SymbolDoc): Unit {
     out.append("\"provider\":${escapeJsonString(value.semantic.provider)},")
     out.append("\"canonicalSignature\":${nullableString(value.semantic.canonicalSignature)}},\"origin\":")
     appendOrigin(out, value.origin)
+    out.append(",\"enumNonExhaustive\":${nullableBool(value.enumNonExhaustive)}")
     out.append("}")
 }
 
@@ -360,5 +398,13 @@ private func prettyJson(compact: String): String {
 }
 
 public func encodeDocIr(documentation: DocumentationSet): String {
-    prettyJson(compactDocIr(documentation))
+    validateDocumentationSet(documentation)
+    let encoded = prettyJson(compactDocIr(documentation))
+    let _ = decodeDocIr(encoded)
+    encoded
+}
+
+func validateTypedDocumentationSet(documentation: DocumentationSet): Unit {
+    validateDocumentationSet(documentation)
+    let _ = decodeDocIr(prettyJson(compactDocIr(documentation)))
 }

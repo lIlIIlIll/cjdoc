@@ -2,7 +2,7 @@ package cjdoc.schema_data
 
 // These strings are the distribution-time schema source of truth. The repository
 // copies under docs/schema are regenerated from `cjdoc schema ...` and compared in CI.
-public let DOC_IR_SCHEMA = """
+public let DOC_IR_V7_SCHEMA = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",

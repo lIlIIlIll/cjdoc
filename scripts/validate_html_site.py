@@ -3,11 +3,23 @@
 
 from __future__ import annotations
 
-import json
+import hashlib
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
+
+try:
+    from .strict_json import strict_loads
+except ImportError:  # Direct script execution.
+    from strict_json import strict_loads
+
+EXPECTED_CSP = (
+    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
+    "base-uri 'none'; form-action 'none'"
+)
+VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
+CANONICAL_SEARCH_JS_SHA256 = "09781aa1da36e60de5485f9d6bf753007eb367e9fe23b0d7c5520781e18461b1"
 
 
 class PageParser(HTMLParser):
@@ -17,16 +29,44 @@ class PageParser(HTMLParser):
         self.links: list[str] = []
         self.errors: list[str] = []
         self.script_depth = 0
+        self.stack: list[str] = []
+        self.csp_policies: list[str] = []
+        self.script_sources: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         lowered_tag = tag.lower()
         if lowered_tag in {"iframe", "object", "embed"}:
             self.errors.append(f"forbidden element <{tag}>")
+        attribute_names = [name.lower() for name, _ in attrs]
+        seen_attributes: set[str] = set()
+        for name in attribute_names:
+            if name in seen_attributes:
+                self.errors.append(f"duplicate attribute {name!r} on <{tag}>")
+            seen_attributes.add(name)
         values = {name.lower(): value for name, value in attrs}
+        if lowered_tag == "style":
+            self.errors.append("inline style element is forbidden")
+        if lowered_tag not in VOID_ELEMENTS:
+            self.stack.append(lowered_tag)
         if lowered_tag == "script":
             self.script_depth += 1
-            if not values.get("src"):
+            source = values.get("src")
+            if not source:
                 self.errors.append("inline script is forbidden")
+            else:
+                self.script_sources.append(source)
+            if not self.csp_policies:
+                self.errors.append("CSP must precede every script")
+            if (
+                len(attribute_names) != 2
+                or set(attribute_names) != {"defer", "src"}
+                or values.get("defer") is not None
+            ):
+                self.errors.append("script must have only defer and src attributes")
+        if lowered_tag == "meta" and (values.get("http-equiv") or "").lower() == "content-security-policy":
+            if self.stack != ["html", "head"]:
+                self.errors.append("CSP meta must be a direct child of head")
+            self.csp_policies.append(values.get("content") or "")
         for name, value in attrs:
             if value is None:
                 continue
@@ -39,14 +79,36 @@ class PageParser(HTMLParser):
                 self.links.append(value)
             elif lowered.startswith("on"):
                 self.errors.append(f"forbidden event attribute {name!r}")
+            elif lowered == "style":
+                self.errors.append("inline style attribute is forbidden")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        lowered = tag.lower()
+        if lowered not in VOID_ELEMENTS:
+            self.handle_endtag(tag)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag.lower() == "script" and self.script_depth:
+        lowered = tag.lower()
+        if lowered in VOID_ELEMENTS:
+            self.errors.append(f"void element </{tag}> must not have an end tag")
+            return
+        if not self.stack or self.stack[-1] != lowered:
+            expected = self.stack[-1] if self.stack else "none"
+            self.errors.append(f"mismatched end tag </{tag}> (expected {expected})")
+            return
+        self.stack.pop()
+        if lowered == "script" and self.script_depth:
             self.script_depth -= 1
 
     def handle_data(self, data: str) -> None:
         if self.script_depth and data.strip():
             self.errors.append("inline script content is forbidden")
+
+    def close(self) -> None:
+        super().close()
+        if self.stack:
+            self.errors.append(f"unclosed element <{self.stack[-1]}>")
 
 
 def resolve_local(root: Path, source: Path, value: str) -> tuple[Path | None, str]:
@@ -57,9 +119,19 @@ def resolve_local(root: Path, source: Path, value: str) -> tuple[Path | None, st
         return None, ""
     if parsed.netloc:
         raise ValueError(f"protocol-relative URL in {source.relative_to(root)}: {value}")
-    if parsed.path.startswith("/"):
+    raw_segments = parsed.path.split("/")
+    decoded_path = unquote(parsed.path)
+    decoded_segments = decoded_path.split("/")
+    for index, segment in enumerate(decoded_segments):
+        if segment in {".", ".."} and (
+            index >= len(raw_segments) or raw_segments[index] != segment
+        ):
+            raise ValueError(
+                f"percent-encoded dot segment in {source.relative_to(root)}: {value}"
+            )
+    if decoded_path.startswith("/"):
         raise ValueError(f"absolute local URL in {source.relative_to(root)}: {value}")
-    target = (source.parent / parsed.path).resolve() if parsed.path else source.resolve()
+    target = (source.parent / decoded_path).resolve() if decoded_path else source.resolve()
     try:
         target.relative_to(root.resolve())
     except ValueError as error:
@@ -83,13 +155,22 @@ def main() -> int:
         page_text = page.read_text(encoding="utf-8")
         if any(marker in page_text for marker in ("/home/", "/tmp/", "/Users/")):
             raise ValueError(f"absolute filesystem path leaked into {page.relative_to(root)}")
-        if "Content-Security-Policy" not in page_text:
-            raise ValueError(f"CSP meta policy missing from {page.relative_to(root)}")
         parser = PageParser()
         parser.feed(page_text)
         parser.close()
         if parser.errors:
             raise ValueError(f"{page.relative_to(root)}: {'; '.join(parser.errors)}")
+        if parser.csp_policies != [EXPECTED_CSP]:
+            raise ValueError(
+                f"{page.relative_to(root)}: expected one exact CSP meta policy"
+            )
+        relative = page.relative_to(root)
+        prefix = "../" * len(relative.parent.parts)
+        expected_scripts = [prefix + "search-index.js", prefix + "search.js"]
+        if parser.script_sources != expected_scripts:
+            raise ValueError(
+                f"{relative}: expected exact canonical script references"
+            )
         pages[page.resolve()] = parser
 
     if not pages:
@@ -106,12 +187,30 @@ def main() -> int:
                 if target_parser is None or fragment not in target_parser.ids:
                     raise ValueError(f"broken local anchor in {page.relative_to(root)}: {link}")
 
-    script = (root / "search.js").read_text(encoding="utf-8")
+    script_paths = {
+        path.relative_to(root).as_posix() for path in root.rglob("*.js")
+    }
+    if script_paths != {"search.js", "search-index.js"}:
+        raise ValueError("site must contain only the canonical script set")
+    script_bytes = (root / "search.js").read_bytes()
+    if hashlib.sha256(script_bytes).hexdigest() != CANONICAL_SEARCH_JS_SHA256:
+        raise ValueError("search.js differs from the canonical renderer script")
+    script = script_bytes.decode("utf-8")
     for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
         if sink in script:
             raise ValueError(f"unsafe browser search sink: {sink}")
 
-    search = json.loads((root / "search-index.json").read_text(encoding="utf-8"))
+    search_text = (root / "search-index.json").read_text(encoding="utf-8")
+    search = strict_loads(search_text, description="HTML search index")
+    search_script = (root / "search-index.js").read_text(encoding="utf-8")
+    prefix = "globalThis.__CJDOC_SEARCH_INDEX__ = "
+    suffix = ";\n"
+    if not search_script.startswith(prefix) or not search_script.endswith(suffix):
+        raise ValueError("search-index.js must contain only the generated search assignment")
+    embedded_search = search_script[len(prefix) : -len(suffix)]
+    if embedded_search != search_text.strip() or \
+            strict_loads(embedded_search, description="embedded HTML search index") != search:
+        raise ValueError("search-index.js payload differs from search-index.json")
     if search.get("schemaVersion") != "cjdoc.search-index/3":
         raise ValueError("unexpected search index schemaVersion")
     entries = search.get("entries")
@@ -136,6 +235,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (OSError, ValueError, json.JSONDecodeError) as error:
+    except (OSError, ValueError) as error:
         print(f"HTML site validation failed: {error}", file=sys.stderr)
         raise SystemExit(1)
