@@ -5,9 +5,23 @@ import std.collection.*
 import std.fs.*
 import std.sort.*
 
-private let LOCAL_ASSET_MAX_BYTES: Int64 = 16 * 1024 * 1024
-private let LOCAL_ASSET_TOTAL_MAX_BYTES: Int64 = 64 * 1024 * 1024
+private let LOCAL_ASSET_MAX_BYTES: Int64 = public_model.DOC_IR_MAX_ASSET_BYTES
+private let LOCAL_ASSET_TOTAL_MAX_BYTES: Int64 = public_model.DOC_IR_MAX_TOTAL_ASSET_BYTES
+private let LOCAL_ASSET_TOTAL_MAX_PIXELS: Int64 = public_model.DOC_IR_MAX_TOTAL_ASSET_PIXELS
+private let LOCAL_ASSET_INSPECTION_IO_MAX_BYTES: Int64 = 64 * 1024 * 1024
+private let LOCAL_ASSET_INSPECTION_CPU_MAX_BYTES: Int64 = 64 * 1024 * 1024
 private let BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+internal func localAssetBudgetAllows(totalBytes: Int64, itemBytes: Int64): Bool {
+    itemBytes > 0 && itemBytes <= LOCAL_ASSET_MAX_BYTES && totalBytes >= 0 &&
+        totalBytes <= LOCAL_ASSET_TOTAL_MAX_BYTES - itemBytes
+}
+
+internal func localAssetInspectionBudgetAllows(totalBytes: Int64, itemBytes: Int64,
+    limitBytes: Int64): Bool {
+    itemBytes > 0 && limitBytes >= 0 && totalBytes >= 0 && itemBytes <= limitBytes &&
+        totalBytes <= limitBytes - itemBytes
+}
 
 private func localAssetBase64(bytes: Array<Byte>): String {
     let out = StringBuilder()
@@ -43,16 +57,6 @@ private func localAssetBase64(bytes: Array<Byte>): String {
     out.toString()
 }
 
-private func localAssetBytesStartWith(value: Array<Byte>, expected: Array<Byte>): Bool {
-    if (value.size < expected.size) { return false }
-    var index: Int64 = 0
-    while (index < expected.size) {
-        if (value[index] != expected[index]) { return false }
-        index++
-    }
-    true
-}
-
 private func localAssetMediaType(path: Path): ?String {
     match (path.extensionName) {
         case "png" => Some("image/png")
@@ -64,24 +68,6 @@ private func localAssetMediaType(path: Path): ?String {
     }
 }
 
-private func localAssetMagicIsValid(mediaType: String, value: Array<Byte>): Bool {
-    match (mediaType) {
-        case "image/png" => localAssetBytesStartWith(value,
-            [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A])
-        case "image/jpeg" => value.size >= 3 && value[0] == 0xFF &&
-            value[1] == 0xD8 && value[2] == 0xFF
-        case "image/gif" => localAssetBytesStartWith(value, "GIF87a".toArray()) ||
-            localAssetBytesStartWith(value, "GIF89a".toArray())
-        case "image/webp" => value.size >= 12 &&
-            localAssetBytesStartWith(value, "RIFF".toArray()) &&
-            value[8] == b'W' && value[9] == b'E' && value[10] == b'B' && value[11] == b'P'
-        case "image/avif" => value.size >= 12 && value[4] == b'f' && value[5] == b't' &&
-            value[6] == b'y' && value[7] == b'p' && value[8] == b'a' && value[9] == b'v' &&
-            value[10] == b'i' && (value[11] == b'f' || value[11] == b's')
-        case _ => false
-    }
-}
-
 private func safeLocalAssetDestination(value: String): Bool {
     !value.isEmpty() && !value.startsWith("/") && !value.contains("\\") &&
         !value.contains(":") && !value.contains("?") && !value.contains("#") &&
@@ -90,11 +76,25 @@ private func safeLocalAssetDestination(value: String): Bool {
 
 private class ResolvedLocalAsset {
     let actualPath: String
+    let actualRoot: String
+    let relativePath: String
     let logicalPath: String
+    let expectedSize: Int64
 
-    init(actualPath: String, logicalPath: String) {
+    init(actualPath: String, actualRoot: String, relativePath: String, logicalPath: String,
+        expectedSize: Int64) {
         this.actualPath = actualPath
+        this.actualRoot = actualRoot
+        this.relativePath = relativePath
         this.logicalPath = logicalPath
+        this.expectedSize = expectedSize
+    }
+}
+
+internal func localAssetRelativePath(root: String, candidate: String): ?String {
+    match (relativePathFromResolved(root, candidate)) {
+        case Some(value) => if (value.isEmpty()) { None<String> } else { Some(value) }
+        case None => None
     }
 }
 
@@ -109,7 +109,10 @@ private func resolveLocalAsset(origin: SourceFileOrigin, destination: String): R
         normalizedCandidate == normalizedRoot) {
         throw IllegalArgumentException("image destination escapes its source module")
     }
-    let relative = normalizedCandidate[(normalizedRoot.size + 1)..]
+    let relative = match (localAssetRelativePath(normalizedRoot, normalizedCandidate)) {
+        case Some(value) => value
+        case None => throw IllegalArgumentException("image destination escapes its source module")
+    }
     var current = Path(normalizedRoot)
     let parts = relative.split("/")
     var index: Int64 = 0
@@ -141,7 +144,16 @@ private func resolveLocalAsset(origin: SourceFileOrigin, destination: String): R
     } else {
         origin.logicalPrefix + "/" + relative
     }
-    ResolvedLocalAsset(canonical, logicalPath)
+    ResolvedLocalAsset(canonical, normalizedRoot, relative, logicalPath, info.size)
+}
+
+private class CachedLocalAssetReference {
+    let id: ?String
+    let reason: ?String
+
+    init(id!: ?String = None, reason!: ?String = None) {
+        this.id = id; this.reason = reason
+    }
 }
 
 class LocalAssetCollector {
@@ -151,8 +163,13 @@ class LocalAssetCollector {
     private let actualReferences = HashMap<String, String>()
     private let digestReferences = HashMap<String, String>()
     private let sourcePathReferences = HashMap<String, String>()
+    private let referenceCache = HashMap<String, CachedLocalAssetReference>()
+    private let actualFailureCache = HashMap<String, String>()
     private let failedReferences = HashSet<String>()
     private var totalBytes: Int64 = 0
+    private var totalPixels: Int64 = 0
+    private var inspectionIoBytes: Int64 = 0
+    private var inspectionCpuBytes: Int64 = 0
     var incomplete: Bool = false
 
     init(sourceFiles: ReadOnlyList<SourceFileOrigin>) {
@@ -169,67 +186,118 @@ class LocalAssetCollector {
             source: Some(source), symbolId: Some(symbolId)))
     }
 
+    private func failCached(referenceKey: String, actualPath: ?String,
+        sourcePath: String, destination: String, source: public_model.SourceRange,
+        symbolId: String, reason: String): ?String {
+        referenceCache[referenceKey] = CachedLocalAssetReference(reason: Some(reason))
+        match (actualPath) {
+            case Some(path) => actualFailureCache[path] = reason
+            case None => ()
+        }
+        fail(sourcePath, destination, source, symbolId, reason)
+        None
+    }
+
+    private func succeedCached(referenceKey: String, actualPath: String, id: String): String {
+        referenceCache[referenceKey] = CachedLocalAssetReference(id: Some(id))
+        actualReferences[actualPath] = id
+        id
+    }
+
     func reference(sourcePath: String, destination: String,
         source: public_model.SourceRange, symbolId: String): ?String {
+        let referenceKey = "${sourcePath.size}:${sourcePath}${destination}"
+        match (referenceCache.get(referenceKey)) {
+            case Some(cached) => match (cached.id) {
+                case Some(id) => return Some(id)
+                case None =>
+                    let reason = cached.reason.getOrThrow()
+                    fail(sourcePath, destination, source, symbolId, reason)
+                    return None
+            }
+            case None => ()
+        }
         let origin = match (origins.get(sourcePath)) {
             case Some(value) => value
             case None =>
-                fail(sourcePath, destination, source, symbolId, "source origin is unavailable")
-                return None
+                return failCached(referenceKey, None<String>, sourcePath, destination, source, symbolId,
+                    "source origin is unavailable")
         }
         let resolved = try {
             resolveLocalAsset(origin, destination)
         } catch (_: Exception) {
-            fail(sourcePath, destination, source, symbolId, "path is missing, unsafe, or unsupported")
-            return None
+            return failCached(referenceKey, None<String>, sourcePath, destination, source, symbolId,
+                "path is missing, unsafe, or unsupported")
         }
         match (actualReferences.get(resolved.actualPath)) {
-            case Some(id) => return Some(id)
+            case Some(id) => return Some(succeedCached(referenceKey, resolved.actualPath, id))
+            case None => ()
+        }
+        match (actualFailureCache.get(resolved.actualPath)) {
+            case Some(reason) => return failCached(referenceKey, Some(resolved.actualPath),
+                sourcePath, destination, source, symbolId, reason)
             case None => ()
         }
         let path = Path(resolved.actualPath)
         let mediaType = match (localAssetMediaType(path)) {
             case Some(value) => value
             case None =>
-                fail(sourcePath, destination, source, symbolId, "media type is not an allowed raster image")
-                return None
+                return failCached(referenceKey, Some(resolved.actualPath), sourcePath, destination,
+                    source, symbolId, "media type is not an allowed raster image")
         }
+        if (!localAssetInspectionBudgetAllows(inspectionIoBytes, resolved.expectedSize,
+            LOCAL_ASSET_INSPECTION_IO_MAX_BYTES)) {
+            return failCached(referenceKey, Some(resolved.actualPath), sourcePath, destination,
+                source, symbolId, "project asset inspection I/O budget exceeds 64 MiB")
+        }
+        if (!localAssetInspectionBudgetAllows(inspectionCpuBytes, resolved.expectedSize,
+            LOCAL_ASSET_INSPECTION_CPU_MAX_BYTES)) {
+            return failCached(referenceKey, Some(resolved.actualPath), sourcePath, destination,
+                source, symbolId, "project asset inspection CPU budget exceeds 64 MiB")
+        }
+        inspectionIoBytes += resolved.expectedSize
+        inspectionCpuBytes += resolved.expectedSize
         let bytes = try {
-            File.readFrom(path)
+            readFileBoundedWithinExpected(Path(resolved.actualRoot), resolved.relativePath,
+                LOCAL_ASSET_MAX_BYTES, resolved.expectedSize)
         } catch (_: Exception) {
-            fail(sourcePath, destination, source, symbolId, "file is not readable")
-            return None
+            return failCached(referenceKey, Some(resolved.actualPath), sourcePath, destination,
+                source, symbolId, "file is not readable or changed while reading")
         }
-        if (bytes.isEmpty() || bytes.size > LOCAL_ASSET_MAX_BYTES ||
-            !localAssetMagicIsValid(mediaType, bytes)) {
-            fail(sourcePath, destination, source, symbolId, "file signature or size is invalid")
-            return None
+        let pixels = try {
+            public_model.validateRasterAsset(mediaType, bytes)
+        } catch (_: Exception) {
+            return failCached(referenceKey, Some(resolved.actualPath), sourcePath, destination,
+                source, symbolId, "image container or dimensions are invalid")
         }
         let digest = Sha256Digest.digestBytes(bytes)
         match (digestReferences.get(digest)) {
             case Some(id) =>
-                actualReferences[resolved.actualPath] = id
-                return Some(id)
+                return Some(succeedCached(referenceKey, resolved.actualPath, id))
             case None => ()
         }
-        if (totalBytes + bytes.size > LOCAL_ASSET_TOTAL_MAX_BYTES) {
-            fail(sourcePath, destination, source, symbolId, "project asset budget exceeds 64 MiB")
-            return None
+        if (!localAssetBudgetAllows(totalBytes, bytes.size)) {
+            return failCached(referenceKey, Some(resolved.actualPath), sourcePath, destination,
+                source, symbolId, "project asset budget exceeds 64 MiB")
+        }
+        if (pixels > LOCAL_ASSET_TOTAL_MAX_PIXELS - totalPixels) {
+            return failCached(referenceKey, Some(resolved.actualPath), sourcePath, destination,
+                source, symbolId, "project image pixel budget exceeds 200 million pixels")
         }
         let id = "sha256-${digest}"
         if (sourcePathReferences.contains(resolved.logicalPath) ||
             sourcePathReferences.contains(id)) {
-            fail(sourcePath, destination, source, symbolId, "asset identity is ambiguous")
-            return None
+            return failCached(referenceKey, Some(resolved.actualPath), sourcePath, destination,
+                source, symbolId, "asset identity is ambiguous")
         }
         sourcePathReferences[resolved.logicalPath] = id
         sourcePathReferences[id] = id
-        actualReferences[resolved.actualPath] = id
         digestReferences[digest] = id
         totalBytes += bytes.size
+        totalPixels += pixels
         assetsStorage.add(public_model.AssetDoc(id, mediaType, resolved.logicalPath,
             localAssetBase64(bytes)))
-        Some(id)
+        Some(succeedCached(referenceKey, resolved.actualPath, id))
     }
 
     func assets(): Array<public_model.AssetDoc> {

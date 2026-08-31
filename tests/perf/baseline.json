@@ -1,12 +1,13 @@
 {
   "cycles": 1,
-  "method": "fixed-cpu cold/warm ABBA; fresh output per sample; SHA-256 identity",
+  "method": "fixed-cpu repeated cold/warm hard ceiling; fresh output per sample; SHA-256 identity",
+  "purpose": "hard-ceiling",
   "profiles": [
     {
       "minDeclarations": 1,
       "name": "basic",
       "project": "tests/fixtures/projects/basic",
-      "referenceDocsSha256": "a0d17abeae961d1bd79ce3affe1b17c71eea0ecd59a27fab1d00e68528f3300d",
+      "referenceDocsSha256": "b0f834fd227f55d1c56becde91d3a7c71103c5494bde7278ceae429f58bc73cf",
       "variants": {
         "cold": {
           "baselineMedianElapsedMs": 323,
@@ -26,7 +27,7 @@
       "minDeclarations": 1,
       "name": "self",
       "project": ".",
-      "referenceDocsSha256": "5257e35a354a134f86c3129a6bdb6ba4d8aee0955d8fec25bd0281c7e8d180f6",
+      "referenceDocsSha256": "5cc9c789d2745fd90914e8a200323b74626e1113b6624527365a226a85cc8208",
       "variants": {
         "cold": {
           "baselineMedianElapsedMs": 9718,
@@ -51,5 +52,5 @@
     "python": "3.14.7"
   },
   "schemaVersion": "cjdoc.perf-baseline/1",
-  "state": "frozen"
+  "state": "candidate"
 }

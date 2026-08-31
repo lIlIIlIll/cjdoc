@@ -42,10 +42,13 @@ class TypeRef {
 class SourceParameter {
     public let name: String
     public let typeSpelling: String
+    public let defaultExpression: ?String
 
-    public init(name: String, typeSpelling: String) {
+    public init(name: String, typeSpelling: String,
+        defaultExpression!: ?String = None) {
         this.name = name
         this.typeSpelling = typeSpelling
+        this.defaultExpression = defaultExpression
     }
 }
 
@@ -87,12 +90,16 @@ class SourceDeclaration {
     public let source: SourceLocation
     public let sourceSignature: String
     public let isContainer: Bool
+    // `Some(true)`/`Some(false)` is source truth for enum declarations.
+    // Non-enum declarations use `None` so the fact cannot be mistaken for an
+    // exhaustive enum during provider/binder projection.
+    public let enumNonExhaustive: ?Bool
     public var ownerSourceKey: ?String = None
     var ownerIndex: Int64 = -1
 
     public init(sourceKey: String, kind: String, name: String, packageName: String, moduleId: String,
         visibility: String, source: SourceLocation, sourceSignature: String,
-        isContainer!: Bool = false) {
+        isContainer!: Bool = false, enumNonExhaustive!: ?Bool = None) {
         this.sourceKey = sourceKey
         this.kind = kind
         this.name = name
@@ -102,6 +109,7 @@ class SourceDeclaration {
         this.source = source
         this.sourceSignature = sourceSignature
         this.isContainer = isContainer
+        this.enumNonExhaustive = enumNonExhaustive
     }
 }
 
@@ -129,6 +137,61 @@ class SourceModule {
     }
 }
 
+// Immutable byte offsets derived from the exact normalized source text captured
+// by the bounded frontend read. Retaining only line boundaries keeps later
+// public/provider range mapping deterministic without reopening host paths.
+let MAX_CAPTURED_SOURCE_LINES: Int64 = 1000000
+
+class CapturedSourceIndex {
+    public let byteLength: Int64
+    public let available: Bool
+    private let lineStarts = ArrayList<Int64>()
+
+    public init(source: String, maxLines!: Int64 = MAX_CAPTURED_SOURCE_LINES) {
+        if (maxLines < 1) {
+            throw IllegalArgumentException("captured source line limit must be positive")
+        }
+        let bytes = source.toArray()
+        this.byteLength = bytes.size
+        lineStarts.add(0)
+        var withinLimit = true
+        var index: Int64 = 0
+        while (index < bytes.size) {
+            if (bytes[index] == b'\n') {
+                if (lineStarts.size >= maxLines) {
+                    withinLimit = false
+                    break
+                }
+                lineStarts.add(index + 1)
+            }
+            index++
+        }
+        this.available = withinLimit
+    }
+
+    public func byteOffset(line: Int64, column: Int64): ?Int64 {
+        if (!available || line < 1 || column < 1) { return None }
+        let lineIndex = line - 1
+        if (lineIndex >= lineStarts.size) { return None }
+        let start = lineStarts[lineIndex]
+        let end = if (lineIndex + 1 < lineStarts.size) {
+            lineStarts[lineIndex + 1] - 1
+        } else {
+            byteLength
+        }
+        let delta = column - 1
+        if (delta > end - start) { return None }
+        Some(start + delta)
+    }
+
+    public func positionMatches(line: Int64, column: Int64, byteOffset: Int64): Bool {
+        match (this.byteOffset(line, column)) {
+            case Some(expected) => expected == byteOffset
+            case None => false
+        }
+    }
+}
+
 // Host paths are retained only while generating one in-memory result. They are
 // never exposed through the public model or serialized into Doc IR.
 class SourceFileOrigin {
@@ -136,13 +199,15 @@ class SourceFileOrigin {
     public let actualPath: String
     public let actualRoot: String
     public let logicalPrefix: String
+    public let capturedSourceIndex: ?CapturedSourceIndex
 
     public init(logicalPath: String, actualPath: String, actualRoot: String,
-        logicalPrefix: String) {
+        logicalPrefix: String, capturedSourceIndex!: ?CapturedSourceIndex = None) {
         this.logicalPath = logicalPath
         this.actualPath = actualPath
         this.actualRoot = actualRoot
         this.logicalPrefix = logicalPrefix
+        this.capturedSourceIndex = capturedSourceIndex
     }
 }
 
@@ -214,9 +279,30 @@ public class DependencySourceInput {
     public let path: String
 
     public init(name: String, path: String) {
+        if (!safeDependencyLogicalName(name)) {
+            throw IllegalArgumentException("dependency name must use non-empty ASCII alphanumeric, '_' or '-' dot-separated segments")
+        }
         this.name = name
         this.path = path
     }
+}
+
+func safeDependencyLogicalName(name: String): Bool {
+    if (name.isEmpty()) { return false }
+    var segmentBytes: Int64 = 0
+    for (byte in name.toArray()) {
+        if (byte == b'.') {
+            if (segmentBytes == 0) { return false }
+            segmentBytes = 0
+            continue
+        }
+        let allowed = (byte >= b'a' && byte <= b'z') ||
+            (byte >= b'A' && byte <= b'Z') ||
+            (byte >= b'0' && byte <= b'9') || byte == b'_' || byte == b'-'
+        if (!allowed) { return false }
+        segmentBytes++
+    }
+    segmentBytes > 0
 }
 
 class SemanticParameter {
@@ -248,10 +334,12 @@ class SemanticDeclaration {
     public let provider: String
     public let canonicalSignature: ?String
     public let isContainer: Bool
+    public let enumNonExhaustive: ?Bool
 
     public init(sourceKey: String, kind: String, name: String, packageName: String, moduleId: String,
         ownerSourceKey: ?String, visibility: String, state: String, provider: String,
-        canonicalSignature!: ?String = None, isContainer!: Bool = false) {
+        canonicalSignature!: ?String = None, isContainer!: Bool = false,
+        enumNonExhaustive!: ?Bool = None) {
         this.sourceKey = sourceKey
         this.kind = kind
         this.name = name
@@ -263,6 +351,7 @@ class SemanticDeclaration {
         this.provider = provider
         this.canonicalSignature = canonicalSignature
         this.isContainer = isContainer
+        this.enumNonExhaustive = enumNonExhaustive
     }
 }
 
@@ -335,11 +424,14 @@ class SemanticBindingStats {
 class ParameterDoc {
     public let name: String
     public let typeRef: TypeRef
+    public let defaultExpression: ?String
     public var documentation: ?String = None
 
-    public init(name: String, typeRef: TypeRef) {
+    public init(name: String, typeRef: TypeRef,
+        defaultExpression!: ?String = None) {
         this.name = name
         this.typeRef = typeRef
+        this.defaultExpression = defaultExpression
     }
 }
 
@@ -457,13 +549,14 @@ class SymbolDoc {
     public let semanticProvider: String
     public let canonicalSignature: ?String
     public let isContainer: Bool
+    public let enumNonExhaustive: ?Bool
     public let origin: DeclarationOrigin
     var ownerIndex: Int64 = -1
 
     public init(kind: String, name: String, packageName: String, moduleId: String, visibility: String,
         source: SourceLocation, sourceSignature: String, isContainer!: Bool = false,
         semanticState!: String = "partial", semanticProvider!: String = "ast",
-        canonicalSignature!: ?String = None,
+        canonicalSignature!: ?String = None, enumNonExhaustive!: ?Bool = None,
         origin!: DeclarationOrigin = DeclarationOrigin("source")) {
         this.kind = kind
         this.name = name
@@ -476,6 +569,7 @@ class SymbolDoc {
         this.semanticProvider = semanticProvider
         this.canonicalSignature = canonicalSignature
         this.isContainer = isContainer
+        this.enumNonExhaustive = enumNonExhaustive
         this.origin = origin
     }
 }

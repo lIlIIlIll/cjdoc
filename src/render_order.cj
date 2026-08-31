@@ -11,6 +11,77 @@ private func optionalString(value: ?String): String {
     match (value) { case Some(text) => text case None => "" }
 }
 
+private func compareString(left: String, right: String): Int64 {
+    if (left < right) { return -1 }
+    if (right < left) { return 1 }
+    0
+}
+
+private func compareInt(left: Int64, right: Int64): Int64 {
+    if (left < right) { return -1 }
+    if (right < left) { return 1 }
+    0
+}
+
+private func compareBool(left: Bool, right: Bool): Int64 {
+    if (left == right) { return 0 }
+    if (!left && right) { -1 } else { 1 }
+}
+
+private func compareOptionalString(left: ?String, right: ?String): Int64 {
+    if (left.isNone()) { return if (right.isNone()) { 0 } else { -1 } }
+    if (right.isNone()) { return 1 }
+    compareString(left.getOrThrow(), right.getOrThrow())
+}
+
+private func compareTypeRef(left: TypeRef, right: TypeRef): Int64 {
+    var compared = compareString(left.kind, right.kind)
+    if (compared != 0) { return compared }
+    compared = compareString(left.display, right.display)
+    if (compared != 0) { return compared }
+    compared = compareBool(left.nullable, right.nullable)
+    if (compared != 0) { return compared }
+    compared = compareString(left.state, right.state)
+    if (compared != 0) { return compared }
+    compared = compareOptionalString(left.canonical, right.canonical)
+    if (compared != 0) { return compared }
+    var index: Int64 = 0
+    while (index < left.arguments.size && index < right.arguments.size) {
+        compared = compareTypeRef(left.arguments[index], right.arguments[index])
+        if (compared != 0) { return compared }
+        index++
+    }
+    compareInt(left.arguments.size, right.arguments.size)
+}
+
+private func compareSource(left: ?SourceLocation, right: ?SourceLocation): Int64 {
+    if (left.isNone()) { return if (right.isNone()) { 0 } else { -1 } }
+    if (right.isNone()) { return 1 }
+    let leftValue = left.getOrThrow()
+    let rightValue = right.getOrThrow()
+    var compared = compareString(leftValue.path, rightValue.path)
+    if (compared != 0) { return compared }
+    compared = compareInt(leftValue.startLine, rightValue.startLine)
+    if (compared != 0) { return compared }
+    compared = compareInt(leftValue.startColumn, rightValue.startColumn)
+    if (compared != 0) { return compared }
+    compared = compareInt(leftValue.endLine, rightValue.endLine)
+    if (compared != 0) { return compared }
+    compareInt(leftValue.endColumn, rightValue.endColumn)
+}
+
+private func compareDiagnostic(left: Diagnostic, right: Diagnostic): Int64 {
+    var compared = compareSource(left.source, right.source)
+    if (compared != 0) { return compared }
+    compared = compareString(left.code, right.code)
+    if (compared != 0) { return compared }
+    compared = compareString(left.severity, right.severity)
+    if (compared != 0) { return compared }
+    compared = compareString(left.message, right.message)
+    if (compared != 0) { return compared }
+    compareOptionalString(left.symbolId, right.symbolId)
+}
+
 private func moduleRoleRank(role: String): Int64 {
     match (role) {
         case "root" => 0
@@ -46,13 +117,9 @@ func sortDocumentationDeterministically(documentation: DocumentationSet): Unit {
     }, stable: true)
     for (symbol in documentation.symbols) {
         sort(symbol.relationships, lessThan: { left, right =>
-            left.kind < right.kind ||
-                (left.kind == right.kind && left.target.display < right.target.display) ||
-                (left.kind == right.kind && left.target.display == right.target.display &&
-                    left.target.state < right.target.state) ||
-                (left.kind == right.kind && left.target.display == right.target.display &&
-                    left.target.state == right.target.state &&
-                    optionalString(left.target.canonical) < optionalString(right.target.canonical))
+            let comparedKind = compareString(left.kind, right.kind)
+            comparedKind < 0 ||
+                (comparedKind == 0 && compareTypeRef(left.target, right.target) < 0)
         }, stable: true)
         sort(symbol.symbolRelationships, lessThan: { left, right =>
             left.kind < right.kind ||
@@ -85,11 +152,6 @@ func sortDocumentationDeterministically(documentation: DocumentationSet): Unit {
                 left.name < right.name)
     }, stable: true)
     sort(documentation.diagnostics, lessThan: { left, right =>
-        let pathLeft = match (left.source) { case Some(v) => v.path case None => "" }
-        let pathRight = match (right.source) { case Some(v) => v.path case None => "" }
-        let lineLeft = match (left.source) { case Some(v) => v.startLine case None => 0 }
-        let lineRight = match (right.source) { case Some(v) => v.startLine case None => 0 }
-        pathLeft < pathRight || (pathLeft == pathRight && lineLeft < lineRight) ||
-            (pathLeft == pathRight && lineLeft == lineRight && left.code < right.code)
+        compareDiagnostic(left, right) < 0
     }, stable: true)
 }

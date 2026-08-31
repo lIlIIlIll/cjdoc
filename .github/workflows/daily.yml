@@ -28,12 +28,15 @@ jobs:
     timeout-minutes: 90
     env:
       CJDOC_PYTHON: python
+      PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUTF8: "1"
       CANGJIE_SDK_URL: ${{ inputs.sdk_url || vars.CANGJIE_DAILY_LINUX_X64_URL }}
       CANGJIE_SDK_SHA256: ${{ inputs.sdk_sha256 || vars.CANGJIE_DAILY_LINUX_X64_SHA256 }}
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -51,7 +54,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ runner.temp }}/cangjie-sdk-daily
-          key: cangjie-sdk-daily-linux-x64-${{ inputs.sdk_sha256 || vars.CANGJIE_DAILY_LINUX_X64_SHA256 }}-v1
+          key: cangjie-sdk-daily-linux-x64-${{ inputs.sdk_sha256 || vars.CANGJIE_DAILY_LINUX_X64_SHA256 }}-v3-authenticated-archive
 
       - name: Install checksum-pinned daily Cangjie SDK
         id: sdk
@@ -63,7 +66,7 @@ jobs:
             --destination "${RUNNER_TEMP}/cangjie-sdk-daily" \
             --github-output "${GITHUB_OUTPUT}"
 
-      - name: Run v7 acceptance and real-repository smoke
+      - name: Run v8 acceptance and real-repository smoke
         shell: bash
         env:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}

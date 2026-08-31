@@ -31,7 +31,8 @@ class AstSemanticProvider <: SemanticProvider {
                 declaration.visibility,
                 "partial",
                 providerName(),
-                isContainer: declaration.isContainer
+                isContainer: declaration.isContainer,
+                enumNonExhaustive: declaration.enumNonExhaustive
             )
                 semantic.genericParameters.add(all: declaration.genericParameters)
                 for (parameter in declaration.parameters) {

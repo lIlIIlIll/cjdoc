@@ -14,4 +14,7 @@
 !/AGENTS.md
 !/docs/schema/*.json
 !/tests/fixtures/golden-v6/*.json
+!/tests/fixtures/golden-v7/*.json
+!/tests/fixtures/golden-v8/*.json
+!/tests/fixtures/legacy-migration-v8.json
 !/tests/perf/*.json

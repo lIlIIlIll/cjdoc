@@ -4,6 +4,62 @@ import cjdoc.model.*
 import std.collection.*
 import std.sort.*
 
+public class RenderResourceLimitException <: Exception {
+    public init(message: String) { super(message) }
+
+    protected override func getClassName(): String { "RenderResourceLimitException" }
+}
+
+private let RENDER_ARTIFACT_LIMIT: Int64 = DOC_IR_MAX_OUTPUT_ARTIFACT_BYTES
+private let RENDER_ARTIFACT_TOTAL_LIMIT: Int64 = 512 * 1024 * 1024
+private let RENDER_ARTIFACT_ENTRY_LIMIT: Int64 = 65536
+
+private func validateRenderArtifactPath(path: String): Unit {
+    if (path.isEmpty() || path.startsWith("/") || path.contains("\\") || path.contains("..")) {
+        throw IllegalArgumentException("render artifact path must stay within the output directory")
+    }
+}
+
+private func reserveRenderBytes(current: Int64, incoming: Int64, limit: Int64,
+    description: String): Int64 {
+    if (incoming < 0 || incoming > limit || current > limit - incoming) {
+        throw RenderResourceLimitException("${description} exceeds ${limit} UTF-8 bytes")
+    }
+    current + incoming
+}
+
+private class RenderTextBuffer {
+    private let storage = StringBuilder()
+    private let limit: Int64
+    private var bytesWritten: Int64 = 0
+
+    init(limit!: Int64 = RENDER_ARTIFACT_LIMIT) {
+        if (limit < 0 || limit > RENDER_ARTIFACT_LIMIT) {
+            throw IllegalArgumentException("invalid renderer text limit")
+        }
+        this.limit = limit
+    }
+
+    func append(value: String): Unit {
+        bytesWritten = reserveRenderBytes(bytesWritten, value.size, limit,
+            "renderer text buffer")
+        storage.append(value)
+    }
+
+    func append(value: Rune): Unit {
+        let code = UInt32(value)
+        let width: Int64 = if (code <= 0x7Fu32) { 1 } else if (code <= 0x7FFu32) { 2 }
+            else if (code <= 0xFFFFu32) { 3 } else { 4 }
+        bytesWritten = reserveRenderBytes(bytesWritten, width, limit,
+            "renderer text buffer")
+        storage.append(value)
+    }
+
+    prop size: Int64 { get() { bytesWritten } }
+
+    func toString(): String { storage.toString() }
+}
+
 public class RenderArtifact {
     public let path: String
     public let mediaType: String
@@ -11,8 +67,10 @@ public class RenderArtifact {
     private let bytesStorage: Array<Byte>
 
     public init(path: String, mediaType: String, content: String) {
-        if (path.isEmpty() || path.startsWith("/") || path.contains("\\") || path.contains("..")) {
-            throw IllegalArgumentException("render artifact path must stay within the output directory")
+        validateRenderArtifactPath(path)
+        if (content.size > RENDER_ARTIFACT_LIMIT) {
+            throw RenderResourceLimitException(
+                "render artifact '${path}' exceeds ${RENDER_ARTIFACT_LIMIT} bytes")
         }
         this.path = path
         this.mediaType = mediaType
@@ -21,17 +79,99 @@ public class RenderArtifact {
     }
 
     public init(path: String, mediaType: String, bytes: Array<Byte>) {
-        if (path.isEmpty() || path.startsWith("/") || path.contains("\\") || path.contains("..")) {
-            throw IllegalArgumentException("render artifact path must stay within the output directory")
+        validateRenderArtifactPath(path)
+        if (bytes.size > RENDER_ARTIFACT_LIMIT) {
+            throw RenderResourceLimitException(
+                "render artifact '${path}' exceeds ${RENDER_ARTIFACT_LIMIT} bytes")
         }
         this.path = path
         this.mediaType = mediaType
         this.content = ""
-        this.bytesStorage = bytes
+        this.bytesStorage = bytes.clone()
+    }
+
+    protected init(path: String, mediaType: String, ownedBytes: Array<Byte>, takeOwnership: Bool) {
+        validateRenderArtifactPath(path)
+        if (!takeOwnership || ownedBytes.size > RENDER_ARTIFACT_LIMIT) {
+            throw RenderResourceLimitException(
+                "render artifact '${path}' exceeds ${RENDER_ARTIFACT_LIMIT} bytes")
+        }
+        this.path = path
+        this.mediaType = mediaType
+        this.content = ""
+        this.bytesStorage = ownedBytes
     }
 
     public prop bytes: Array<Byte> { get() { bytesStorage.clone() } }
+    public prop byteSize: Int64 { get() { bytesStorage.size } }
     public prop isBinary: Bool { get() { content.isEmpty() && !bytesStorage.isEmpty() } }
+}
+
+private class RenderArtifactCollector {
+    private let artifacts = ArrayList<RenderArtifact>()
+    private let artifactLimit: Int64
+    private let totalLimit: Int64
+    private let entryLimit: Int64
+    private var totalBytes: Int64 = 0
+
+    init(artifactLimit!: Int64 = RENDER_ARTIFACT_LIMIT,
+        totalLimit!: Int64 = RENDER_ARTIFACT_TOTAL_LIMIT,
+        entryLimit!: Int64 = RENDER_ARTIFACT_ENTRY_LIMIT) {
+        if (artifactLimit < 0 || artifactLimit > RENDER_ARTIFACT_LIMIT ||
+            totalLimit < 0 || totalLimit > RENDER_ARTIFACT_TOTAL_LIMIT ||
+            entryLimit < 0 || entryLimit > RENDER_ARTIFACT_ENTRY_LIMIT) {
+            throw IllegalArgumentException("invalid render artifact collector limits")
+        }
+        this.artifactLimit = artifactLimit
+        this.totalLimit = totalLimit
+        this.entryLimit = entryLimit
+    }
+
+    private func reserve(size: Int64, path: String): Unit {
+        if (artifacts.size >= entryLimit) {
+            throw RenderResourceLimitException(
+                "render artifacts exceed ${entryLimit} entries")
+        }
+        if (size < 0 || size > artifactLimit) {
+            throw RenderResourceLimitException(
+                "render artifact '${path}' exceeds ${artifactLimit} bytes")
+        }
+        totalBytes = reserveRenderBytes(totalBytes, size, totalLimit,
+            "render artifact set")
+    }
+
+    func addText(path: String, mediaType: String, content: String): Unit {
+        reserve(content.size, path)
+        artifacts.add(RenderArtifact(path, mediaType, content))
+    }
+
+    func addOwnedBytes(path: String, mediaType: String, bytes: Array<Byte>): Unit {
+        reserve(bytes.size, path)
+        artifacts.add(RenderArtifact(path, mediaType, bytes, true))
+    }
+
+    func toArray(): Array<RenderArtifact> { artifacts.toArray() }
+}
+
+protected func validateRenderArtifactBudgetForTest(sizes: Array<Int64>,
+    artifactLimit: Int64, totalLimit: Int64, entryLimit: Int64): Unit {
+    let artifacts = RenderArtifactCollector(artifactLimit: artifactLimit,
+        totalLimit: totalLimit, entryLimit: entryLimit)
+    var index: Int64 = 0
+    for (size in sizes) {
+        if (size < 0 || size > RENDER_ARTIFACT_LIMIT) {
+            throw IllegalArgumentException("invalid test artifact size")
+        }
+        artifacts.addText("test-${index}.txt", "text/plain",
+            String.fromUtf8(Array<Byte>(size, repeat: b'x')))
+        index++
+    }
+}
+
+protected func escapeHtmlWithRenderLimitForTest(value: String, limit: Int64): String {
+    let out = RenderTextBuffer(limit: limit)
+    appendHtmlEscapedValue(out, value)
+    out.toString()
 }
 
 public interface DocumentationRenderer {
@@ -43,9 +183,19 @@ public class JsonDocumentationRenderer <: DocumentationRenderer {
     public prop format: String { get() { "json" } }
 
     public func render(documentation: DocumentationSet): Array<RenderArtifact> {
-        validateDocumentationSet(documentation)
-        [RenderArtifact("docs.json", "application/json", encodeDocIr(documentation))]
+        let artifacts = RenderArtifactCollector()
+        appendJsonArtifacts(artifacts, documentation)
+        artifacts.toArray()
     }
+}
+
+private func appendJsonArtifacts(artifacts: RenderArtifactCollector,
+    documentation: DocumentationSet): Unit {
+    if (!docIrFitsEncodedBudget(documentation, RENDER_ARTIFACT_LIMIT)) {
+        throw RenderResourceLimitException(
+            "Doc IR JSON exceeds ${RENDER_ARTIFACT_LIMIT} bytes")
+    }
+    artifacts.addText("docs.json", "application/json", encodeDocIr(documentation))
 }
 
 private func isVisibleForAudience(declaration: SymbolDoc, audience: String): Bool {
@@ -57,7 +207,7 @@ private func isVisibleForAudience(declaration: SymbolDoc, audience: String): Boo
     }
 }
 
-private func appendMarkdownPlainText(out: StringBuilder, node: MarkdownNode): Unit {
+private func appendMarkdownPlainText(out: RenderTextBuffer, node: MarkdownNode): Unit {
     match (node.kind) {
         case "text" | "code_span" | "code_block" | "html_inline" | "html_block" =>
             out.append(node.literal)
@@ -77,26 +227,73 @@ private func appendMarkdownPlainText(out: StringBuilder, node: MarkdownNode): Un
 }
 
 private func markdownNodeText(node: MarkdownNode): String {
-    let out = StringBuilder()
+    let out = RenderTextBuffer()
     appendMarkdownPlainText(out, node)
     out.toString().trimAscii()
 }
 
-private func appendEscapedMarkdownText(out: StringBuilder, value: String): Unit {
+private func appendEscapedMarkdownText(out: RenderTextBuffer, value: String): Unit {
     for (rune in value.runes()) {
         match (rune) {
-            case '\\' | '`' | '*' | '_' | '{' | '}' | '[' | ']' | '<' | '>' | '#' |
-                '+' | '-' | '!' | '|' => out.append("\\"); out.append(rune)
+            case '\\' | '`' | '*' | '_' | '{' | '}' | '[' | ']' | '(' | ')' | '<' | '>' |
+                '#' | '+' | '-' | '.' | '!' | '|' | '=' | '~' =>
+                out.append("\\"); out.append(rune)
             case _ => out.append(rune)
         }
     }
 }
 
 private func safeLinkDestination(value: String): Bool {
-    if (value.isEmpty() || value.contains("\"") || value.contains("'") ||
-        value.contains("\n") || value.contains("\r")) { return false }
+    if (value.isEmpty() || value.contains("\n") || value.contains("\r")) { return false }
+    for (byte in value.toArray()) {
+        if (byte < 0x20 || byte == 0x7F) { return false }
+    }
     value.startsWith("https://") || value.startsWith("http://") ||
         value.startsWith("mailto:") || value.startsWith("#")
+}
+
+private func markdownHexByte(value: Byte): Bool {
+    (value >= b'0' && value <= b'9') || (value >= b'a' && value <= b'f') ||
+        (value >= b'A' && value <= b'F')
+}
+
+private func markdownDestinationByte(value: Byte): Bool {
+    (value >= b'a' && value <= b'z') || (value >= b'A' && value <= b'Z') ||
+        (value >= b'0' && value <= b'9') || value == b'-' || value == b'.' ||
+        value == b'_' || value == b'~' || value == b':' || value == b'/' ||
+        value == b'?' || value == b'#' || value == b'[' || value == b']' ||
+        value == b'@' || value == b'!' || value == b'$' || value == b'&' ||
+        value == b'*' || value == b'+' || value == b',' || value == b';' || value == b'='
+}
+
+private func appendMarkdownPercentByte(out: RenderTextBuffer, value: Byte): Unit {
+    let digits = "0123456789ABCDEF"
+    let high = Int64((value >> 4) & 0x0F)
+    let low = Int64(value & 0x0F)
+    out.append("%")
+    out.append(digits[high..high + 1])
+    out.append(digits[low..low + 1])
+}
+
+private func markdownLinkDestination(value: String): ?String {
+    if (!safeLinkDestination(value)) { return None }
+    let bytes = value.toArray()
+    let out = RenderTextBuffer()
+    var index: Int64 = 0
+    while (index < bytes.size) {
+        let byte = bytes[index]
+        if (byte == b'%' && index + 2 < bytes.size && markdownHexByte(bytes[index + 1]) &&
+            markdownHexByte(bytes[index + 2])) {
+            out.append(String.fromUtf8([byte, bytes[index + 1], bytes[index + 2]]))
+            index += 3
+        } else {
+            if (markdownDestinationByte(byte)) { out.append(String.fromUtf8([byte])) } else {
+                appendMarkdownPercentByte(out, byte)
+            }
+            index++
+        }
+    }
+    Some(out.toString())
 }
 
 private func assetReference(assetLookup: HashMap<String, String>, destination: String): ?String {
@@ -111,73 +308,356 @@ private func assetReference(assetLookup: HashMap<String, String>, destination: S
     }
 }
 
-private func appendMarkdownNodeMarkdown(out: StringBuilder, node: MarkdownNode,
-    assetLookup: HashMap<String, String>): Unit {
-    match (node.kind) {
-        case "document" => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup)
+private func markdownHeadingLevel(node: MarkdownNode, base: Int64): Int64 {
+    let sourceLevel = match (node.metadata) {
+        case Some(metadata) => if (metadata.kind == "heading") {
+            metadata.headingLevel.getOrThrow()
+        } else { 1 }
+        case None => 1
+    }
+    min(6, base + sourceLevel - 1)
+}
+
+private func appendMarkdownMarks(out: RenderTextBuffer, marker: String, count: Int64): Unit {
+    if (count < 0 || count > DOC_IR_MAX_FENCE_LENGTH) {
+        throw IllegalArgumentException("Markdown marker count exceeds renderer limit")
+    }
+    var index: Int64 = 0
+    while (index < count) { out.append(marker); index++ }
+}
+
+private func longestMarkdownMarkerRun(value: String, marker: Byte): Int64 {
+    var longest: Int64 = 0
+    var current: Int64 = 0
+    for (byte in value.toArray()) {
+        if (byte == marker) {
+            current++
+            if (current > longest) { longest = current }
+        } else { current = 0 }
+    }
+    longest
+}
+
+private func markdownAllSpaces(value: String): Bool {
+    if (value.isEmpty()) { return false }
+    for (rune in value.runes()) { if (UInt32(rune) != 0x20u32) { return false } }
+    true
+}
+
+private func appendHtmlEscapedValue(out: RenderTextBuffer, value: String,
+    encodeTablePipe!: Bool = false): Unit {
+    for (rune in value.runes()) {
+        match (rune) {
+            case '&' => out.append("&amp;")
+            case '<' => out.append("&lt;")
+            case '>' => out.append("&gt;")
+            case '"' => out.append("&quot;")
+            case '\'' => out.append("&#39;")
+            case '|' => if (encodeTablePipe) { out.append("&#124;") } else { out.append(rune) }
+            case _ => out.append(rune)
         }
-        case "paragraph" =>
-            for (child in node.children) { appendMarkdownNodeMarkdown(out, child, assetLookup) }
-            out.append("\n\n")
-        case "heading" =>
-            out.append("### ")
-            for (child in node.children) { appendMarkdownNodeMarkdown(out, child, assetLookup) }
-            out.append("\n\n")
+    }
+}
+
+private func appendMarkdownCodeSpan(out: RenderTextBuffer, value: String,
+    tableCell!: Bool = false): Unit {
+    let normalizedValue = value.replace("\r", " ").replace("\n", " ")
+    // Backslash escaping cannot represent every pipe inside a GFM table code span:
+    // an odd run of preceding backslashes changes whether the table parser sees
+    // the pipe as escaped. Inline HTML has stable table parsing and preserves the
+    // exact code text after entity decoding.
+    if (tableCell && normalizedValue.contains("|")) {
+        out.append("<code>")
+        appendHtmlEscapedValue(out, normalizedValue, encodeTablePipe: true)
+        out.append("</code>")
+        return
+    }
+    let normalized = normalizedValue
+    let delimiterLength = longestMarkdownMarkerRun(normalized, b'`') + 1
+    if (delimiterLength > DOC_IR_MAX_FENCE_LENGTH) {
+        out.append("<code>${escapeHtml(normalized)}</code>")
+        return
+    }
+    let padded = !markdownAllSpaces(normalized) &&
+        (normalized.startsWith(" ") || normalized.endsWith(" ") ||
+        normalized.startsWith("`") || normalized.endsWith("`"))
+    appendMarkdownMarks(out, "`", delimiterLength)
+    if (padded) { out.append(" ") }
+    out.append(normalized)
+    if (padded) { out.append(" ") }
+    appendMarkdownMarks(out, "`", delimiterLength)
+}
+
+private class MarkdownFence {
+    let marker: String
+    let length: Int64
+
+    init(marker: String, length: Int64) { this.marker = marker; this.length = length }
+}
+
+private func markdownFenceCandidate(literal: String, marker: String, requestedLength: Int64,
+    infoRaw: String): ?MarkdownFence {
+    if ((marker != "`" && marker != "~") || requestedLength < 3 ||
+        (marker == "`" && infoRaw.contains("`"))) { return None }
+    let markerByte = if (marker == "`") { b'`' } else { b'~' }
+    let run = longestMarkdownMarkerRun(literal, markerByte)
+    let length = max(requestedLength, run + 1)
+    if (length > DOC_IR_MAX_FENCE_LENGTH) { return None }
+    Some(MarkdownFence(marker, length))
+}
+
+private func selectMarkdownFence(literal: String, requestedMarker: String,
+    requestedLength: Int64, infoRaw: String): MarkdownFence {
+    if (infoRaw.contains("\n") || infoRaw.contains("\r")) {
+        throw IllegalArgumentException("invalid fenced-code renderer info string")
+    }
+    match (markdownFenceCandidate(literal, requestedMarker, requestedLength, infoRaw)) {
+        case Some(value) => return value
+        case None => ()
+    }
+    let alternate = if (requestedMarker == "~") { "`" } else { "~" }
+    match (markdownFenceCandidate(literal, alternate, 3, infoRaw)) {
+        case Some(value) => value
+        case None => throw IllegalArgumentException(
+            "code block cannot be represented within the Markdown fence limit")
+    }
+}
+
+private func appendMarkdownCodeBlock(out: RenderTextBuffer, literal: String, infoRaw: String,
+    requestedMarker: String, requestedLength: Int64): Unit {
+    let fence = selectMarkdownFence(literal, requestedMarker, requestedLength, infoRaw)
+    appendMarkdownMarks(out, fence.marker, fence.length)
+    if (!infoRaw.isEmpty()) { out.append(infoRaw) }
+    out.append("\n")
+    out.append(literal)
+    if (!literal.endsWith("\n")) { out.append("\n") }
+    appendMarkdownMarks(out, fence.marker, fence.length)
+    out.append("\n\n")
+}
+
+private func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode,
+    assetLookup: HashMap<String, String>, headingBase: Int64,
+    tableCell!: Bool = false): Unit {
+    match (node.kind) {
         case "text" => appendEscapedMarkdownText(out, node.literal)
-        case "soft_break" => out.append("\n")
-        case "hard_break" => out.append("  \n")
+        case "soft_break" => out.append(if (tableCell) { "<br>" } else { "\n" })
+        case "hard_break" => out.append(if (tableCell) { "<br>" } else { "  \n" })
         case "emphasis" =>
             out.append("*"); for (child in node.children) {
-                appendMarkdownNodeMarkdown(out, child, assetLookup)
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+                    tableCell: tableCell)
             }; out.append("*")
         case "strong" =>
             out.append("**"); for (child in node.children) {
-                appendMarkdownNodeMarkdown(out, child, assetLookup)
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+                    tableCell: tableCell)
             }; out.append("**")
         case "strikethrough" =>
             out.append("~~"); for (child in node.children) {
-                appendMarkdownNodeMarkdown(out, child, assetLookup)
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+                    tableCell: tableCell)
             }; out.append("~~")
-        case "code_span" => out.append("`"); out.append(node.literal.replace("`", "\\`")); out.append("`")
-        case "code_block" => out.append("```\n"); out.append(node.literal); out.append("\n```\n\n")
-        case "thematic_break" => out.append("---\n\n")
-        case "block_quote" =>
-            out.append("> "); appendEscapedMarkdownText(out, markdownNodeText(node)); out.append("\n\n")
-        case "list" => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup)
-        }; out.append("\n")
-        case "list_item" =>
-            out.append("- "); appendEscapedMarkdownText(out, markdownNodeText(node)); out.append("\n")
+        case "code_span" => appendMarkdownCodeSpan(out, node.literal, tableCell: tableCell)
         case "link" =>
             out.append("["); for (child in node.children) {
-                appendMarkdownNodeMarkdown(out, child, assetLookup)
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+                    tableCell: tableCell)
             }; out.append("]")
-            if (safeLinkDestination(node.literal)) { out.append("(${node.literal})") }
+            match (markdownLinkDestination(node.literal)) {
+                case Some(destination) => out.append("(${destination})")
+                case None => ()
+            }
         case "image" =>
             let alt = markdownNodeText(node)
             match (assetReference(assetLookup, node.literal)) {
                 case Some(path) =>
-                    out.append("!["); appendEscapedMarkdownText(out, alt); out.append("](${path})")
+                    out.append("!["); appendEscapedMarkdownText(out, alt)
+                    match (markdownLinkDestination("#${path}")) {
+                        case Some(encoded) => out.append("](${encoded[1..]})")
+                        case None => out.append("]")
+                    }
                 case None => appendEscapedMarkdownText(out, alt)
             }
-        case "table" | "table_row" | "table_cell" | "custom_block" | "custom_inline" =>
-            appendEscapedMarkdownText(out, markdownNodeText(node)); out.append("\n")
-        case "html_block" | "html_inline" => appendEscapedMarkdownText(out, node.literal)
-        case _ => appendEscapedMarkdownText(out, markdownNodeText(node))
+        case "html_inline" | "html_block" => appendEscapedMarkdownText(out, node.literal)
+        case _ => for (child in node.children) {
+            appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+                tableCell: tableCell)
+        }
     }
 }
 
-private func appendDocumentationMarkdown(out: StringBuilder, comment: DocComment,
+private func appendMarkdownPrefixedBlock(out: RenderTextBuffer, content: String,
+    firstPrefix: String, continuationPrefix: String,
+    prefixBlankLines!: Bool = true): Unit {
+    let lines = content.split("\n")
+    var end = lines.size
+    while (end > 0 && lines[end - 1].isEmpty()) { end-- }
+    var index: Int64 = 0
+    var wrote = false
+    while (index < end) {
+        if (!lines[index].isEmpty() || prefixBlankLines) {
+            out.append(if (!wrote) { firstPrefix } else { continuationPrefix })
+        }
+        out.append(lines[index]); out.append("\n")
+        wrote = true
+        index++
+    }
+    if (!wrote) { out.append(firstPrefix); out.append("\n") }
+}
+
+private func appendMarkdownTableMarkdown(out: RenderTextBuffer, node: MarkdownNode,
+    assetLookup: HashMap<String, String>, headingBase: Int64): Unit {
+    var rowIndex: Int64 = 0
+    for (row in node.children) {
+        out.append("|")
+        for (cell in row.children) {
+            out.append(" ")
+            for (child in cell.children) {
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+                    tableCell: true)
+            }
+            out.append(" |")
+        }
+        out.append("\n")
+        if (rowIndex == 0) {
+            out.append("|")
+            var column: Int64 = 0
+            for (_ in row.children) {
+                let alignment = match (node.metadata) {
+                    case Some(metadata) => if (column < metadata.tableAlignments.size) {
+                        metadata.tableAlignments[column]
+                    } else { "none" }
+                    case None => "none"
+                }
+                match (alignment) {
+                    case "left" => out.append(" :--- |")
+                    case "center" => out.append(" :---: |")
+                    case "right" => out.append(" ---: |")
+                    case _ => out.append(" --- |")
+                }
+                column++
+            }
+            out.append("\n")
+        }
+        rowIndex++
+    }
+    out.append("\n")
+}
+
+private func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNode,
+    assetLookup: HashMap<String, String>, headingBase: Int64): Unit {
+    match (node.kind) {
+        case "document" => for (child in node.children) {
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase)
+        }
+        case "paragraph" =>
+            for (child in node.children) {
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase)
+            }
+            out.append("\n\n")
+        case "heading" =>
+            appendMarkdownMarks(out, "#", markdownHeadingLevel(node, headingBase)); out.append(" ")
+            for (child in node.children) {
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase)
+            }
+            out.append("\n\n")
+        case "text" | "soft_break" | "hard_break" | "emphasis" | "strong" |
+            "strikethrough" | "code_span" | "link" | "image" | "html_inline" =>
+            appendMarkdownInlineNode(out, node, assetLookup, headingBase)
+        case "code_block" =>
+            match (node.metadata) {
+                case Some(metadata) => if (metadata.kind == "code_block" &&
+                    metadata.codeKind.getOrThrow() == "fenced") {
+                    let marker = metadata.fenceCharacter.getOrThrow()
+                    let fenceLength = metadata.fenceLength.getOrThrow()
+                    let infoRaw = metadata.infoRaw.getOrThrow()
+                    appendMarkdownCodeBlock(out, node.literal, infoRaw, marker, fenceLength)
+                } else {
+                    appendMarkdownCodeBlock(out, node.literal, "", "`", 3)
+                }
+                case None => appendMarkdownCodeBlock(out, node.literal, "", "`", 3)
+            }
+        case "thematic_break" => out.append("---\n\n")
+        case "block_quote" =>
+            let nested = RenderTextBuffer()
+            for (child in node.children) {
+                appendMarkdownNodeMarkdown(nested, child, assetLookup, headingBase)
+            }
+            appendMarkdownPrefixedBlock(out, nested.toString(), "> ", "> ")
+            out.append("\n")
+        case "list" =>
+            var itemIndex: Int64 = 0
+            let tight = match (node.metadata) {
+                case Some(value) => value.kind == "list" && value.listTight.getOrThrow()
+                case None => true
+            }
+            for (child in node.children) {
+                let marker = if (let Some(value) <- node.metadata) {
+                    if (value.kind == "list" && value.listKind.getOrThrow() == "ordered") {
+                        let delimiter = if (value.listDelimiter.getOrThrow() == "parenthesis") {
+                            ") "
+                        } else { ". " }
+                        "${value.listStart.getOrThrow() + itemIndex}${delimiter}"
+                    } else { "- " }
+                } else { "- " }
+                let firstPrefix = RenderTextBuffer()
+                firstPrefix.append(marker)
+                if (let Some(itemMetadata) <- child.metadata) {
+                    if (itemMetadata.kind == "list_item") {
+                        match (itemMetadata.taskState.getOrThrow()) {
+                            case "checked" => firstPrefix.append("[x] ")
+                            case "unchecked" => firstPrefix.append("[ ] ")
+                            case _ => ()
+                        }
+                    }
+                }
+                let nested = RenderTextBuffer()
+                for (itemChild in child.children) {
+                    appendMarkdownNodeMarkdown(nested, itemChild, assetLookup, headingBase)
+                }
+                let continuation = RenderTextBuffer()
+                appendMarkdownMarks(continuation, " ", firstPrefix.toString().size)
+                appendMarkdownPrefixedBlock(out, nested.toString(), firstPrefix.toString(),
+                    continuation.toString(), prefixBlankLines: false)
+                if (!tight && itemIndex + 1 < node.children.size) { out.append("\n") }
+                itemIndex++
+            }
+            out.append("\n")
+        case "list_item" =>
+            for (child in node.children) {
+                appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase)
+            }
+        case "table" => appendMarkdownTableMarkdown(out, node, assetLookup, headingBase)
+        case "table_row" | "table_cell" | "custom_block" => for (child in node.children) {
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase)
+        }
+        case "custom_inline" => appendMarkdownInlineNode(out, node, assetLookup, headingBase)
+        case "html_block" => appendEscapedMarkdownText(out, node.literal); out.append("\n\n")
+        case _ => for (child in node.children) {
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase)
+        }
+    }
+}
+
+private func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComment,
     assetLookup: HashMap<String, String>): Unit {
-    appendMarkdownNodeMarkdown(out, comment.markdown, assetLookup)
+    for (tag in comment.tags) {
+        if (tag.name == "deprecated") {
+            out.append("> **Deprecated.** ")
+            appendEscapedMarkdownText(out, tag.description)
+            out.append("\n\n")
+            break
+        }
+    }
+    appendMarkdownNodeMarkdown(out, comment.markdown, assetLookup, 4)
     var hasParameters = false
     for (tag in comment.tags) { if (tag.name == "param") { hasParameters = true; break } }
     if (hasParameters) {
         out.append("#### Parameters\n\n")
         for (tag in comment.tags) {
             if (tag.name == "param") {
-                out.append("- `${tag.subject}` — "); appendEscapedMarkdownText(out, tag.description); out.append("\n")
+                out.append("- "); appendMarkdownCodeSpan(out, tag.subject); out.append(" — ")
+                appendEscapedMarkdownText(out, tag.description); out.append("\n")
             }
         }
         out.append("\n")
@@ -193,7 +673,8 @@ private func appendDocumentationMarkdown(out: StringBuilder, comment: DocComment
         out.append("#### Throws\n\n")
         for (tag in comment.tags) {
             if (tag.name == "throws") {
-                out.append("- `${tag.subject}` — "); appendEscapedMarkdownText(out, tag.description); out.append("\n")
+                out.append("- "); appendMarkdownCodeSpan(out, tag.subject); out.append(" — ")
+                appendEscapedMarkdownText(out, tag.description); out.append("\n")
             }
         }
         out.append("\n")
@@ -203,12 +684,22 @@ private func appendDocumentationMarkdown(out: StringBuilder, comment: DocComment
     if (hasSee) {
         out.append("#### See also\n\n")
         for (tag in comment.tags) {
-            if (tag.name == "see") { out.append("- `${tag.subject}`")
+            if (tag.name == "see") { out.append("- "); appendMarkdownCodeSpan(out, tag.subject)
                 if (!tag.description.isEmpty()) {
                     out.append(" — "); appendEscapedMarkdownText(out, tag.description)
                 }; out.append("\n") }
         }
         out.append("\n")
+    }
+    for ((name, heading) in [("since", "Since"), ("author", "Authors"),
+        ("version", "Version")]) {
+        var opened = false
+        for (tag in comment.tags) {
+            if (tag.name != name) { continue }
+            if (!opened) { out.append("#### ${heading}\n\n"); opened = true }
+            out.append("- "); appendEscapedMarkdownText(out, tag.description); out.append("\n")
+        }
+        if (opened) { out.append("\n") }
     }
 }
 
@@ -216,60 +707,67 @@ public class MarkdownDocumentationRenderer <: DocumentationRenderer {
     public prop format: String { get() { "markdown" } }
 
     public func render(documentation: DocumentationSet): Array<RenderArtifact> {
-        validateDocumentationSet(documentation)
-        let out = StringBuilder()
+        let artifacts = RenderArtifactCollector()
+        appendMarkdownArtifacts(artifacts, documentation)
+        artifacts.toArray()
+    }
+}
+
+private func appendMarkdownArtifacts(artifacts: RenderArtifactCollector,
+    documentation: DocumentationSet): Unit {
+        validateTypedDocumentationSet(documentation)
+        let out = RenderTextBuffer()
         let projection = RenderProjection(documentation)
-        let assetLookup = buildAssetLookup(documentation)
+        let projectedAssets = projectAssets(documentation, projection)
+        let assetLookup = buildAssetLookup(projectedAssets)
         out.append("# "); appendEscapedMarkdownText(out, documentation.project.name); out.append("\n\n")
-        out.append("Generated by `cjdoc ${documentation.generator.version}` from `${documentation.schemaVersion}`.\n\n")
+        out.append("Generated by "); appendMarkdownCodeSpan(out,
+            "cjdoc ${documentation.generator.version}"); out.append(" from ")
+        appendMarkdownCodeSpan(out, documentation.schemaVersion); out.append(".\n\n")
         out.append("## API\n\n")
         for (declaration in projection.visibleSymbols) {
-            out.append("### `${declaration.qualifiedName}`\n\n")
-            out.append("```cj\n${declaration.headerSpelling}\n```\n\n")
+            out.append("### "); appendMarkdownCodeSpan(out, declaration.qualifiedName)
+            out.append("\n\n")
+            appendMarkdownCodeBlock(out, declaration.headerSpelling, "cj", "`", 3)
             match (declaration.documentation) {
                 case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup)
                 case None => ()
             }
-            out.append("- Kind: `${declaration.kind}`\n")
-            out.append("- Visibility: `${declaration.visibility}`\n")
-            out.append("- Semantic state: `${declaration.semantic.state}`\n")
-            out.append("- Source: `${declaration.source.path}:${declaration.source.start.line}:${declaration.source.start.column}`\n\n")
+            out.append("- Kind: "); appendMarkdownCodeSpan(out, declaration.kind); out.append("\n")
+            out.append("- Visibility: "); appendMarkdownCodeSpan(out, declaration.visibility)
+            out.append("\n- Semantic state: "); appendMarkdownCodeSpan(out,
+                declaration.semantic.state)
+            out.append("\n- Source: "); appendMarkdownCodeSpan(out,
+                "${declaration.source.path}:${declaration.source.start.line}:${declaration.source.start.column}")
+            out.append("\n\n")
             if (!declaration.typeRelationships.isEmpty()) {
                 out.append("#### Type relationships\n\n")
                 for (relationship in declaration.typeRelationships) {
-                    out.append("- `${relationship.kind}` → `${relationship.target.spelling}` ")
-                    out.append("(`${relationship.target.semantic.state}`)\n")
+                    out.append("- "); appendMarkdownCodeSpan(out, relationship.kind)
+                    out.append(" → "); appendMarkdownCodeSpan(out, relationship.target.spelling)
+                    out.append(" ("); appendMarkdownCodeSpan(out, relationship.target.semantic.state)
+                    out.append(")\n")
                 }
                 out.append("\n")
             }
             if (!declaration.symbolRelationships.isEmpty()) {
                 out.append("#### Symbol relationships\n\n")
                 for (relationship in declaration.symbolRelationships) {
-                    out.append("- `${relationship.kind}` → `${relationship.targetDisplay}` ")
-                    out.append("(`${relationship.state}`)\n")
+                    out.append("- "); appendMarkdownCodeSpan(out, relationship.kind)
+                    out.append(" → "); appendMarkdownCodeSpan(out, relationship.targetDisplay)
+                    out.append(" ("); appendMarkdownCodeSpan(out, relationship.state)
+                    out.append(")\n")
                 }
                 out.append("\n")
             }
         }
-        let artifacts = ArrayList<RenderArtifact>()
-        artifacts.add(RenderArtifact("markdown/docs.md", "text/markdown; charset=utf-8", out.toString()))
-        appendAssetArtifacts(artifacts, documentation, "markdown")
-        artifacts.toArray()
-    }
+        artifacts.addText("markdown/docs.md", "text/markdown; charset=utf-8", out.toString())
+        appendAssetArtifacts(artifacts, projectedAssets, "markdown")
 }
 
 private func escapeHtml(value: String): String {
-    let out = StringBuilder()
-    for (rune in value.runes()) {
-        match (rune) {
-            case '&' => out.append("&amp;")
-            case '<' => out.append("&lt;")
-            case '>' => out.append("&gt;")
-            case '"' => out.append("&quot;")
-            case '\'' => out.append("&#39;")
-            case _ => out.append(rune)
-        }
-    }
+    let out = RenderTextBuffer()
+    appendHtmlEscapedValue(out, value)
     out.toString()
 }
 
@@ -332,68 +830,184 @@ internal func decodeAssetBase64(value: String): Array<Byte> {
     decoded.toArray()
 }
 
-private func appendStructuredTextHtml(out: StringBuilder, value: String): Unit {
+private func appendStructuredTextHtml(out: RenderTextBuffer, value: String): Unit {
     if (!value.isEmpty()) { out.append("<p>${escapeHtml(value)}</p>\n") }
 }
 
-private func appendMarkdownNodeHtml(out: StringBuilder, node: MarkdownNode,
-    assetLookup: HashMap<String, String>, rootPrefix: String): Unit {
+private func markdownFragmentSlug(value: String): String {
+    let out = RenderTextBuffer()
+    var pendingDash = false
+    var wrote = false
+    for (rune in value.runes()) {
+        let code = UInt32(rune)
+        if (code == 0x20u32 || code == 0x09u32 || code == 0x0Au32 || code == 0x0Du32) {
+            pendingDash = wrote
+            continue
+        }
+        let keep = (code >= 0x30u32 && code <= 0x39u32) ||
+            (code >= 0x41u32 && code <= 0x5Au32) ||
+            (code >= 0x61u32 && code <= 0x7Au32) || code == 0x2Du32 || code == 0x5Fu32 ||
+            code >= 0x80u32
+        if (!keep) { continue }
+        if (pendingDash) { out.append("-"); pendingDash = false }
+        if (code >= 0x41u32 && code <= 0x5Au32) {
+            out.append(String.fromUtf8([UInt8(code + 0x20u32)]))
+        } else {
+            out.append(rune)
+        }
+        wrote = true
+    }
+    let slug = out.toString()
+    if (slug.isEmpty()) { "section" } else { slug }
+}
+
+private class HtmlMarkdownContext {
+    let headingBase: Int64
+    let headingIds = ArrayList<String>()
+    let fragmentTargets = HashMap<String, String>()
+    let usedHeadingSlugs = HashSet<String>()
+    var nextHeading: Int64 = 0
+
+    init(headingBase: Int64) { this.headingBase = headingBase }
+}
+
+private func collectMarkdownHeadings(node: MarkdownNode, anchorPrefix: String,
+    counts: HashMap<String, Int64>, context: HtmlMarkdownContext): Unit {
+    if (node.kind == "heading") {
+        let base = markdownFragmentSlug(markdownNodeText(node))
+        var occurrence = match (counts.get(base)) { case Some(value) => value case None => 0 }
+        var slug = if (occurrence == 0) { base } else { "${base}-${occurrence}" }
+        while (context.usedHeadingSlugs.contains(slug)) {
+            occurrence++
+            slug = "${base}-${occurrence}"
+        }
+        counts[base] = occurrence + 1
+        let _ = context.usedHeadingSlugs.add(slug)
+        let target = "${anchorPrefix}--doc-${slug}"
+        context.headingIds.add(target)
+        context.fragmentTargets["#${slug}"] = target
+    }
+    for (child in node.children) {
+        collectMarkdownHeadings(child, anchorPrefix, counts, context)
+    }
+}
+
+private func markdownHtmlContext(comment: DocComment, symbol: SymbolDoc,
+    headingBase: Int64): HtmlMarkdownContext {
+    let context = HtmlMarkdownContext(headingBase)
+    collectMarkdownHeadings(comment.markdown, symbolAnchor(symbol), HashMap<String, Int64>(), context)
+    context
+}
+
+private func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
+    assetLookup: HashMap<String, String>, rootPrefix: String, context: HtmlMarkdownContext,
+    tableHeader!: Bool = false, tightListItem!: Bool = false): Unit {
     match (node.kind) {
         case "document" => for (child in node.children) {
-            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
         }
         case "paragraph" =>
             out.append("<p>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
             }; out.append("</p>\n")
         case "heading" =>
-            out.append("<h3>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
-            }; out.append("</h3>\n")
+            let level = markdownHeadingLevel(node, context.headingBase)
+            let id = context.headingIds[context.nextHeading]
+            context.nextHeading++
+            out.append("<h${level} id=\"${escapeHtml(id)}\">"); for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
+            }; out.append("</h${level}>\n")
         case "text" => out.append(escapeHtml(node.literal))
         case "soft_break" => out.append("\n")
         case "hard_break" => out.append("<br>\n")
         case "emphasis" =>
             out.append("<em>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
             }; out.append("</em>")
         case "strong" =>
             out.append("<strong>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
             }; out.append("</strong>")
         case "strikethrough" =>
             out.append("<del>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
             }; out.append("</del>")
         case "code_span" => out.append("<code>${escapeHtml(node.literal)}</code>")
-        case "code_block" => out.append("<pre><code>${escapeHtml(node.literal)}</code></pre>\n")
+        case "code_block" =>
+            out.append("<pre><code")
+            if (let Some(metadata) <- node.metadata) {
+                if (metadata.kind == "code_block") {
+                    let language = metadata.language.getOrThrow()
+                    if (!language.isEmpty()) {
+                        out.append(" class=\"language-${htmlStableSlug(language)}\"")
+                        out.append(" data-language=\"${escapeHtml(language)}\"")
+                    }
+                    if (!metadata.attributesRaw.getOrThrow().isEmpty()) {
+                        out.append(" data-cjdoc-attributes=\"${escapeHtml(metadata.attributesRaw.getOrThrow())}\"")
+                    }
+                }
+            }
+            out.append(">${escapeHtml(node.literal)}</code></pre>\n")
         case "thematic_break" => out.append("<hr>\n")
         case "block_quote" =>
             out.append("<blockquote>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
             }; out.append("</blockquote>\n")
         case "list" =>
-            out.append("<ul>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
-            }; out.append("</ul>\n")
+            var ordered = false
+            var start: Int64 = 1
+            var tight = true
+            if (let Some(metadata) <- node.metadata) {
+                if (metadata.kind == "list") {
+                    ordered = metadata.listKind.getOrThrow() == "ordered"
+                    start = metadata.listStart.getOrThrow()
+                    tight = metadata.listTight.getOrThrow()
+                }
+            }
+            if (ordered) { out.append("<ol start=\"${start}\">") } else { out.append("<ul>") }
+            for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context,
+                    tightListItem: tight)
+            }
+            if (ordered) { out.append("</ol>\n") } else { out.append("</ul>\n") }
         case "list_item" =>
-            out.append("<li>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            out.append("<li>")
+            if (let Some(metadata) <- node.metadata) {
+                if (metadata.kind == "list_item") {
+                    match (metadata.taskState.getOrThrow()) {
+                        case "checked" => out.append("<input type=\"checkbox\" disabled checked> ")
+                        case "unchecked" => out.append("<input type=\"checkbox\" disabled> ")
+                        case _ => ()
+                    }
+                }
+            }
+            for (child in node.children) {
+                if (tightListItem && child.kind == "paragraph") {
+                    for (grandchild in child.children) {
+                        appendMarkdownNodeHtml(out, grandchild, assetLookup, rootPrefix, context)
+                    }
+                } else {
+                    appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
+                }
             }; out.append("</li>")
         case "link" =>
-            if (safeLinkDestination(node.literal)) {
-                out.append("<a href=\"${escapeHtml(node.literal)}\"")
-                if (node.literal.startsWith("http://") || node.literal.startsWith("https://")) {
+            let destination = match (context.fragmentTargets.get(node.literal)) {
+                case Some(target) => "#${target}"
+                case None => node.literal
+            }
+            if (safeLinkDestination(destination)) {
+                out.append("<a href=\"${escapeHtml(destination)}\"")
+                if (destination.startsWith("http://") || destination.startsWith("https://")) {
                     out.append(" rel=\"noopener noreferrer\"")
                 }
                 out.append(">")
                 for (child in node.children) {
-                    appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+                    appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
                 }
                 out.append("</a>")
             } else {
                 for (child in node.children) {
-                    appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+                    appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
                 }
             }
         case "image" =>
@@ -404,20 +1018,32 @@ private func appendMarkdownNodeHtml(out: StringBuilder, node: MarkdownNode,
             }
         case "table" =>
             out.append("<table>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
             }; out.append("</table>\n")
         case "table_row" =>
+            let header = match (node.metadata) {
+                case Some(metadata) => metadata.kind == "table_row" && metadata.tableHeader.getOrThrow()
+                case None => false
+            }
             out.append("<tr>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context,
+                    tableHeader: header)
             }; out.append("</tr>")
         case "table_cell" =>
-            out.append("<td>"); for (child in node.children) {
-                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
-            }; out.append("</td>")
+            let tag = if (tableHeader) { "th" } else { "td" }
+            out.append("<${tag}")
+            if (let Some(metadata) <- node.metadata) {
+                if (metadata.kind == "table_cell" && metadata.tableAlignment.getOrThrow() != "none") {
+                    out.append(" class=\"align-${metadata.tableAlignment.getOrThrow()}\"")
+                }
+            }
+            out.append(">"); for (child in node.children) {
+                appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
+            }; out.append("</${tag}>")
         case "html_block" => out.append("<pre>${escapeHtml(node.literal)}</pre>\n")
         case "html_inline" => out.append(escapeHtml(node.literal))
         case "custom_block" | "custom_inline" => for (child in node.children) {
-            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix)
+            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
         }
         case _ => out.append(escapeHtml(markdownNodeText(node)))
     }
@@ -437,6 +1063,7 @@ dt{font-weight:600;margin-top:.6rem}footer{margin-top:2rem;color:var(--muted);bo
 .search-results{position:absolute;z-index:10;right:1.25rem;top:4.25rem;width:min(40rem,calc(100% - 2.5rem));max-height:24rem;overflow:auto;margin:0;padding:.4rem;list-style:none;background:var(--bg);border:1px solid var(--line);border-radius:.4rem;box-shadow:0 .5rem 1.5rem #0003}
 .search-results:empty{display:none}.search-results a{display:block;padding:.45rem .55rem;text-decoration:none}.search-results a:hover,.search-results a:focus,.search-results [aria-selected=true] a{background:var(--panel)}.search-kind{color:var(--muted);font-size:.85rem}
 .declaration-list{display:grid;gap:.75rem}.summary>p:first-child,.description>p:first-child{margin-top:0}
+.align-left{text-align:left}.align-center{text-align:center}.align-right{text-align:right}
 @media(max-width:48rem){.site-search{margin-left:0;min-width:100%;grid-template-columns:1fr 1fr}.site-search input{grid-column:1/-1}.search-results{top:7.5rem}}
 """
 
@@ -451,6 +1078,8 @@ private let HTML_SEARCH_SCRIPT = """
   let entries = [];
   let visible = [];
   let selected = -1;
+  const ambiguousLabels = new Set();
+  const displayKey = (entry) => JSON.stringify([entry.packageName, entry.qualifiedName]);
   const rank = (entry, query) => {
     const name = entry.name.toLocaleLowerCase();
     const qualified = entry.qualifiedName.toLocaleLowerCase();
@@ -497,7 +1126,8 @@ private let HTML_SEARCH_SCRIPT = """
       link.href = root + entry.href;
       name.textContent = entry.qualifiedName;
       kind.className = "search-kind";
-      kind.textContent = " — " + entry.kind;
+      kind.textContent = " — " + entry.kind +
+        (ambiguousLabels.has(displayKey(entry)) ? " · " + entry.id : "");
       link.append(name, kind);
       item.append(link);
       results.append(item);
@@ -516,6 +1146,12 @@ private let HTML_SEARCH_SCRIPT = """
   const index = globalThis.__CJDOC_SEARCH_INDEX__;
   entries = index && index.schemaVersion === "cjdoc.search-index/3" && Array.isArray(index.entries)
     ? index.entries : [];
+  const firstIdsByLabel = new Map();
+  for (const entry of entries) {
+    const key = displayKey(entry);
+    if (firstIdsByLabel.has(key) && firstIdsByLabel.get(key) !== entry.id) ambiguousLabels.add(key);
+    else firstIdsByLabel.set(key, entry.id);
+  }
   addOptions(kindFilter, entries.map((entry) => entry.kind));
   addOptions(packageFilter, entries.map((entry) => entry.packageName));
   render();
@@ -524,7 +1160,7 @@ private let HTML_SEARCH_SCRIPT = """
   if (packageFilter) packageFilter.addEventListener("change", render);
   input.addEventListener("keydown", (event) => {
     if (event.key === "ArrowDown") { event.preventDefault(); select(selected + 1); }
-    else if (event.key === "ArrowUp") { event.preventDefault(); select(selected - 1); }
+    else if (event.key === "ArrowUp") { event.preventDefault(); select(selected < 0 ? visible.length - 1 : selected - 1); }
     else if (event.key === "Enter" && selected >= 0) { event.preventDefault(); results.children[selected].querySelector("a").click(); }
     else if (event.key === "Escape") { input.value = ""; render(); }
   });
@@ -588,8 +1224,7 @@ private func assetOutputPath(asset: AssetDoc): String {
 }
 
 private func isContainerDeclaration(symbol: SymbolDoc): Bool {
-    symbol.kind == "class" || symbol.kind == "struct" || symbol.kind == "interface" ||
-        symbol.kind == "enum" || symbol.kind == "extend"
+    isDocIrContainerKind(symbol.kind)
 }
 
 private func indexSymbols(documentation: DocumentationSet): HashMap<String, SymbolDoc> {
@@ -602,8 +1237,14 @@ private class ProjectedPackage {
     let source: PackageDoc
     let sourceFiles = ArrayList<String>()
     let symbols = ArrayList<SymbolDoc>()
+    private let sourceFileSet = HashSet<String>()
 
     init(source: PackageDoc) { this.source = source }
+
+    func addSymbol(symbol: SymbolDoc): Unit {
+        symbols.add(symbol)
+        if (sourceFileSet.add(symbol.source.path)) { sourceFiles.add(symbol.source.path) }
+    }
 }
 
 private class ProjectedModule {
@@ -622,30 +1263,46 @@ private class RenderProjection {
 
     init(documentation: DocumentationSet) {
         allIndex = indexSymbols(documentation)
+        let renderable = renderabilityIndex(documentation, allIndex)
         for (symbol in documentation.declarations) {
-            if (isRenderable(documentation, allIndex, symbol)) {
+            if (renderable[symbol.id]) {
                 visibleSymbols.add(symbol)
                 visibleIndex[symbol.id] = symbol
             }
         }
+
+        let packagesByRoute = HashMap<String, ProjectedPackage>()
         for (pkg in documentation.packages) {
             let projected = ProjectedPackage(pkg)
-            let files = HashSet<String>()
-            for (symbol in visibleSymbols) {
-                if (symbol.moduleId != pkg.moduleId || symbol.packageName != pkg.name) { continue }
-                projected.symbols.add(symbol)
-                if (files.add(symbol.source.path)) { projected.sourceFiles.add(symbol.source.path) }
+            packagesByRoute[routeKey(pkg.moduleId, pkg.name)] = projected
+        }
+        for (symbol in visibleSymbols) {
+            match (packagesByRoute.get(routeKey(symbol.moduleId, symbol.packageName))) {
+                case Some(projected) => projected.addSymbol(symbol)
+                case None => () // Typed-domain validation reports the package mismatch first.
             }
+        }
+        for (pkg in documentation.packages) {
+            let projected = packagesByRoute[routeKey(pkg.moduleId, pkg.name)]
             if (!projected.symbols.isEmpty()) {
                 sort(projected.sourceFiles)
                 packages.add(projected)
             }
         }
+
+        let modulesById = HashMap<String, ProjectedModule>()
         for (module in documentation.modules) {
             let projected = ProjectedModule(module)
-            for (pkg in packages) {
-                if (pkg.source.moduleId == module.id) { projected.packages.add(pkg) }
+            modulesById[module.id] = projected
+        }
+        for (pkg in packages) {
+            match (modulesById.get(pkg.source.moduleId)) {
+                case Some(projected) => projected.packages.add(pkg)
+                case None => () // Typed-domain validation reports the module mismatch first.
             }
+        }
+        for (module in documentation.modules) {
+            let projected = modulesById[module.id]
             if (!projected.packages.isEmpty()) { modules.add(projected) }
         }
     }
@@ -683,46 +1340,54 @@ private func findSymbol(index: HashMap<String, SymbolDoc>, id: String): ?SymbolD
     index.get(id)
 }
 
-private func isRenderable(documentation: DocumentationSet,
-    index: HashMap<String, SymbolDoc>, symbol: SymbolDoc): Bool {
-    if (!isVisibleForAudience(symbol, documentation.configuration.audience)) { return false }
-    var current = symbol
-    var remaining = documentation.declarations.size + 1
-    while (remaining > 0) {
-        match (current.ownerId) {
-            case Some(ownerId) =>
-                match (findSymbol(index, ownerId)) {
-                    case Some(owner) =>
-                        if (!isVisibleForAudience(owner, documentation.configuration.audience)) { return false }
-                        current = owner
-                    case None => return true
-                }
-            case None => return true
+private func renderabilityIndex(documentation: DocumentationSet,
+    index: HashMap<String, SymbolDoc>): HashMap<String, Bool> {
+    let results = HashMap<String, Bool>()
+    for (root in documentation.declarations) {
+        if (results.contains(root.id)) { continue }
+        let path = ArrayList<SymbolDoc>()
+        var current: ?SymbolDoc = Some(root)
+        var inherited = true
+        while (current.isSome()) {
+            let symbol = current.getOrThrow()
+            match (results.get(symbol.id)) {
+                case Some(value) =>
+                    inherited = value
+                    break
+                case None => ()
+            }
+            path.add(symbol)
+            if (!isVisibleForAudience(symbol, documentation.configuration.audience)) {
+                inherited = false
+                break
+            }
+            current = match (symbol.ownerId) {
+                case Some(ownerId) => index.get(ownerId)
+                case None => None
+            }
         }
-        remaining--
+        var position = path.size
+        while (position > 0) {
+            position--
+            let symbol = path[position]
+            inherited = inherited &&
+                isVisibleForAudience(symbol, documentation.configuration.audience)
+            results[symbol.id] = inherited
+        }
     }
-    false
+    results
 }
 
 private func containingPageSymbol(documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc): ?SymbolDoc {
     if (isContainerDeclaration(symbol)) { return Some(symbol) }
-    var current = symbol
-    var remaining = documentation.declarations.size + 1
-    while (remaining > 0) {
-        match (current.ownerId) {
-            case Some(ownerId) =>
-                match (findSymbol(index, ownerId)) {
-                    case Some(owner) =>
-                        if (isContainerDeclaration(owner)) { return Some(owner) }
-                        current = owner
-                    case None => return None
-                }
-            case None => return None
+    match (symbol.ownerId) {
+        case Some(ownerId) => match (findSymbol(index, ownerId)) {
+            case Some(owner) => if (isContainerDeclaration(owner)) { Some(owner) } else { None }
+            case None => None
         }
-        remaining--
+        case None => None
     }
-    None
 }
 
 private func symbolUrl(documentation: DocumentationSet, index: HashMap<String, SymbolDoc>,
@@ -735,9 +1400,9 @@ private func symbolUrl(documentation: DocumentationSet, index: HashMap<String, S
     }
 }
 
-private func buildAssetLookup(documentation: DocumentationSet): HashMap<String, String> {
+private func buildAssetLookup(assets: ArrayList<AssetDoc>): HashMap<String, String> {
     let lookup = HashMap<String, String>()
-    for (asset in documentation.assets) {
+    for (asset in assets) {
         let path = assetOutputPath(asset)
         lookup["id:${asset.id}"] = path
         lookup["path:${asset.sourcePath}"] = path
@@ -745,16 +1410,56 @@ private func buildAssetLookup(documentation: DocumentationSet): HashMap<String, 
     lookup
 }
 
-private func appendAssetArtifacts(artifacts: ArrayList<RenderArtifact>,
-    documentation: DocumentationSet, formatRoot: String): Unit {
+private func selectAsset(selected: HashSet<String>, assetId: String): Unit {
+    let _ = selected.add(assetId)
+}
+
+private func collectReferencedAssets(node: MarkdownNode,
+    references: HashMap<String, String>, selected: HashSet<String>): Unit {
+    if (node.kind == "image") {
+        var destination = node.literal
+        if (destination.startsWith("./")) { destination = destination[2..] }
+        match (references.get(destination)) {
+            case Some(assetId) => selectAsset(selected, assetId)
+            case None => ()
+        }
+    }
+    for (child in node.children) {
+        collectReferencedAssets(child, references, selected)
+    }
+}
+
+private func projectAssets(documentation: DocumentationSet,
+    projection: RenderProjection): ArrayList<AssetDoc> {
+    let references = HashMap<String, String>()
     for (asset in documentation.assets) {
-        artifacts.add(RenderArtifact("${formatRoot}/${assetOutputPath(asset)}",
-            asset.mediaType, decodeAssetBase64(asset.base64)))
+        references[asset.id] = asset.id
+        references[asset.sourcePath] = asset.id
+    }
+    let selected = HashSet<String>()
+    for (symbol in projection.visibleSymbols) {
+        match (symbol.documentation) {
+            case Some(comment) => collectReferencedAssets(comment.markdown, references, selected)
+            case None => ()
+        }
+    }
+    let assets = ArrayList<AssetDoc>()
+    for (asset in documentation.assets) {
+        if (selected.contains(asset.id)) { assets.add(asset) }
+    }
+    assets
+}
+
+private func appendAssetArtifacts(artifacts: RenderArtifactCollector,
+    assets: ArrayList<AssetDoc>, formatRoot: String): Unit {
+    for (asset in assets) {
+        artifacts.addOwnedBytes("${formatRoot}/${assetOutputPath(asset)}",
+            asset.mediaType, decodeAssetBase64(asset.base64))
     }
 }
 
 private func validateHtmlRouting(documentation: DocumentationSet,
-    projection: RenderProjection): Unit {
+    projection: RenderProjection, assets: ArrayList<AssetDoc>): Unit {
     let paths = HashSet<String>()
     for (path in ["index.html", "search-index.json", "search-index.js", "search.js", "style.css"]) {
         let _ = paths.add(path)
@@ -771,7 +1476,7 @@ private func validateHtmlRouting(documentation: DocumentationSet,
             throw IllegalArgumentException("HTML route collision for SymbolId '${symbol.id}'")
         }
     }
-    for (asset in documentation.assets) {
+    for (asset in assets) {
         let path = assetOutputPath(asset)
         if (!paths.add(path)) {
             throw IllegalArgumentException("HTML route collision for asset '${asset.id}'")
@@ -786,7 +1491,7 @@ private func validateHtmlRouting(documentation: DocumentationSet,
     }
 }
 
-private func appendPageStart(out: StringBuilder, title: String, rootPrefix: String): Unit {
+private func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: String): Unit {
     out.append("<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">")
     out.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
     out.append("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'\">")
@@ -801,7 +1506,7 @@ private func appendPageStart(out: StringBuilder, title: String, rootPrefix: Stri
     out.append("<ul id=\"cjdoc-search-results\" class=\"search-results\" role=\"listbox\" data-cjdoc-results aria-live=\"polite\"></ul></nav>\n<main>\n")
 }
 
-private func appendPageEnd(out: StringBuilder, documentation: DocumentationSet): Unit {
+private func appendPageEnd(out: RenderTextBuffer, documentation: DocumentationSet): Unit {
     out.append("</main><footer>Generated by cjdoc ${escapeHtml(documentation.generator.version)} from ${escapeHtml(documentation.schemaVersion)}.</footer></body></html>\n")
 }
 
@@ -821,9 +1526,16 @@ private func tagHeading(name: String): String {
     }
 }
 
-private func appendDocumentationHtml(out: StringBuilder, documentation: DocumentationSet,
+private func isUnitType(value: TypeRef): Bool {
+    match (value.semantic.canonical) {
+        case Some(canonical) => canonical == "Unit" || canonical == "std.core.Unit"
+        case None => value.spelling.trimAscii() == "Unit"
+    }
+}
+
+private func appendDocumentationHtml(out: RenderTextBuffer, documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
-    assetLookup: HashMap<String, String>): Unit {
+    assetLookup: HashMap<String, String>, headingBase!: Int64 = 3): Unit {
     match (symbol.documentation) {
         case Some(comment) =>
             match (findTag(comment, "deprecated")) {
@@ -834,7 +1546,8 @@ private func appendDocumentationHtml(out: StringBuilder, documentation: Document
                 case None => ()
             }
             out.append("<div class=\"description\">")
-            appendMarkdownNodeHtml(out, comment.markdown, assetLookup, rootPrefix)
+            appendMarkdownNodeHtml(out, comment.markdown, assetLookup, rootPrefix,
+                markdownHtmlContext(comment, symbol, headingBase))
             out.append("</div>\n")
             if (!symbol.parameters.isEmpty()) {
                 out.append("<h3>Parameters</h3><dl>\n")
@@ -852,12 +1565,13 @@ private func appendDocumentationHtml(out: StringBuilder, documentation: Document
                 out.append("</dl>\n")
             }
             match (symbol.returnType) {
-                case Some(returnType) =>
+                case Some(returnType) => if (!isUnitType(returnType)) {
                     out.append("<h3>Returns</h3><p><code>${escapeHtml(returnType.spelling)}</code></p>\n")
                     match (findTag(comment, "return")) {
                         case Some(tag) => appendStructuredTextHtml(out, tag.description)
                         case None => ()
                     }
+                }
                 case None => ()
             }
             var hasThrows = false
@@ -913,13 +1627,15 @@ private func appendDocumentationHtml(out: StringBuilder, documentation: Document
                 out.append("</dl>\n")
             }
             match (symbol.returnType) {
-                case Some(returnType) => out.append("<h3>Returns</h3><p><code>${escapeHtml(returnType.spelling)}</code></p>\n")
+                case Some(returnType) => if (!isUnitType(returnType)) {
+                    out.append("<h3>Returns</h3><p><code>${escapeHtml(returnType.spelling)}</code></p>\n")
+                }
                 case None => ()
             }
     }
 }
 
-private func appendSymbolMetadata(out: StringBuilder, documentation: DocumentationSet,
+private func appendSymbolMetadata(out: RenderTextBuffer, documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String): Unit {
     out.append("<p class=\"meta\"><span class=\"badge\">${escapeHtml(symbol.kind)}</span>")
     out.append("<span class=\"badge\">${escapeHtml(symbol.visibility)}</span>")
@@ -972,7 +1688,7 @@ private func appendSymbolMetadata(out: StringBuilder, documentation: Documentati
     out.append("<pre><code>${escapeHtml(symbol.headerSpelling)}</code></pre>\n")
 }
 
-private func appendSymbolArticle(out: StringBuilder, documentation: DocumentationSet,
+private func appendSymbolArticle(out: RenderTextBuffer, documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, linkTitle!: Bool = false): Unit {
     out.append("<article id=\"${symbolAnchor(symbol)}\"><h2>")
@@ -986,7 +1702,7 @@ private func appendSymbolArticle(out: StringBuilder, documentation: Documentatio
 }
 
 private func renderHtmlIndex(documentation: DocumentationSet, projection: RenderProjection): String {
-    let out = StringBuilder()
+    let out = RenderTextBuffer()
     appendPageStart(out, "${documentation.project.name} API documentation", "")
     out.append("<h1>${escapeHtml(documentation.project.name)} API documentation</h1>\n")
     out.append("<p class=\"meta\">${projection.modules.size} modules, ${projection.packages.size} packages, ${projection.visibleSymbols.size} visible declarations</p>\n")
@@ -1032,7 +1748,7 @@ private func renderPackagePage(documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, topLevelByPackage: HashMap<String, ArrayList<SymbolDoc>>,
     pkg: ProjectedPackage, assetLookup: HashMap<String, String>): String {
     let packageDoc = pkg.source
-    let out = StringBuilder()
+    let out = RenderTextBuffer()
     appendPageStart(out, "Package ${packageDoc.name}", "../")
     out.append("<nav class=\"breadcrumbs\" aria-label=\"Breadcrumb\"><ol><li><a href=\"../index.html\">Home</a></li><li aria-current=\"page\">Package <code>${escapeHtml(packageDoc.name)}</code></li></ol></nav>\n")
     out.append("<h1>Package <code>${escapeHtml(packageDoc.name)}</code></h1>\n")
@@ -1080,7 +1796,7 @@ private func memberSectionTitle(symbol: SymbolDoc): String {
     }
 }
 
-private func appendMemberSection(out: StringBuilder, documentation: DocumentationSet,
+private func appendMemberSection(out: RenderTextBuffer, documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
     owner: SymbolDoc, title: String, assetLookup: HashMap<String, String>): Unit {
     var opened = false
@@ -1098,14 +1814,15 @@ private func appendMemberSection(out: StringBuilder, documentation: Documentatio
 private func renderSymbolPage(documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
     symbol: SymbolDoc, assetLookup: HashMap<String, String>): String {
-    let out = StringBuilder()
+    let out = RenderTextBuffer()
     appendPageStart(out, symbol.qualifiedName, "../")
     out.append("<nav class=\"breadcrumbs\" aria-label=\"Breadcrumb\"><ol><li><a href=\"../index.html\">Home</a></li>")
     out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">Package <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     out.append("<li aria-current=\"page\"><code>${escapeHtml(symbol.name)}</code></li></ol></nav>\n")
     out.append("<h1><code>${escapeHtml(symbol.qualifiedName)}</code></h1>\n")
     appendSymbolMetadata(out, documentation, index, symbol, "../")
-    appendDocumentationHtml(out, documentation, index, symbol, "../", assetLookup)
+    appendDocumentationHtml(out, documentation, index, symbol, "../", assetLookup,
+        headingBase: 2)
     for (title in ["Constructors", "Properties", "Variables", "Functions", "Enum cases",
         "Nested classes", "Nested structs", "Nested interfaces", "Nested enums", "Nested extensions",
         "Other members"]) {
@@ -1115,9 +1832,38 @@ private func renderSymbolPage(documentation: DocumentationSet,
     out.toString()
 }
 
+private func appendSearchJsonString(out: RenderTextBuffer, value: String): Unit {
+    let digits = "0123456789abcdef"
+    out.append("\"")
+    for (rune in value.runes()) {
+        match (rune) {
+            case '"' => out.append("\\\"")
+            case '\\' => out.append("\\\\")
+            case '\u{0008}' => out.append("\\b")
+            case '\u{000c}' => out.append("\\f")
+            case '\n' => out.append("\\n")
+            case '\r' => out.append("\\r")
+            case '\t' => out.append("\\t")
+            case _ =>
+                let code = UInt32(rune)
+                if (code < 0x20u32) {
+                    out.append("\\u")
+                    out.append(digits[Int64((code >> 12) & 0xFu32)..
+                        Int64((code >> 12) & 0xFu32) + 1])
+                    out.append(digits[Int64((code >> 8) & 0xFu32)..
+                        Int64((code >> 8) & 0xFu32) + 1])
+                    out.append(digits[Int64((code >> 4) & 0xFu32)..
+                        Int64((code >> 4) & 0xFu32) + 1])
+                    out.append(digits[Int64(code & 0xFu32)..Int64(code & 0xFu32) + 1])
+                } else { out.append(rune) }
+        }
+    }
+    out.append("\"")
+}
+
 private func renderSearchIndex(documentation: DocumentationSet,
     projection: RenderProjection): String {
-    let out = StringBuilder()
+    let out = RenderTextBuffer()
     out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/3\",\n  \"entries\": [")
     var first = true
     let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
@@ -1125,14 +1871,20 @@ private func renderSearchIndex(documentation: DocumentationSet,
     for (declaration in visible) {
         if (!first) { out.append(",") }
         first = false
-        out.append("\n    {\"id\": ${escapeJsonString(declaration.id)}, \"name\": ${escapeJsonString(declaration.name)}, ")
-        out.append("\"qualifiedName\": ${escapeJsonString(declaration.qualifiedName)}, ")
-        out.append("\"kind\": ${escapeJsonString(declaration.kind)}, \"packageName\": ${escapeJsonString(declaration.packageName)}, ")
+        out.append("\n    {\"id\": "); appendSearchJsonString(out, declaration.id)
+        out.append(", \"name\": "); appendSearchJsonString(out, declaration.name)
+        out.append(", \"qualifiedName\": "); appendSearchJsonString(out, declaration.qualifiedName)
+        out.append(", \"kind\": "); appendSearchJsonString(out, declaration.kind)
+        out.append(", \"packageName\": "); appendSearchJsonString(out, declaration.packageName)
         let summary = match (declaration.documentation) {
             case Some(comment) => markdownNodeText(comment.markdown)
             case None => ""
         }
-        out.append("\"summary\": ${escapeJsonString(summary)}, \"href\": ${escapeJsonString(symbolUrl(documentation, projection.visibleIndex, declaration))}}")
+        out.append(", \"summary\": "); appendSearchJsonString(out, summary)
+        out.append(", \"href\": ")
+        appendSearchJsonString(out,
+            symbolUrl(documentation, projection.visibleIndex, declaration))
+        out.append("}")
     }
     if (!first) { out.append("\n  ") }
     out.append("]\n}\n")
@@ -1140,43 +1892,68 @@ private func renderSearchIndex(documentation: DocumentationSet,
 }
 
 private func renderSearchIndexScript(searchIndex: String): String {
-    "globalThis.__CJDOC_SEARCH_INDEX__ = ${searchIndex.trimAscii()};\n"
+    let out = RenderTextBuffer()
+    out.append("globalThis.__CJDOC_SEARCH_INDEX__ = ")
+    out.append(searchIndex.trimAscii())
+    out.append(";\n")
+    out.toString()
 }
 
 public class HtmlDocumentationRenderer <: DocumentationRenderer {
     public prop format: String { get() { "html" } }
 
     public func render(documentation: DocumentationSet): Array<RenderArtifact> {
-        validateDocumentationSet(documentation)
-        let artifacts = ArrayList<RenderArtifact>()
+        let artifacts = RenderArtifactCollector()
+        appendHtmlArtifacts(artifacts, documentation)
+        artifacts.toArray()
+    }
+}
+
+private func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
+    documentation: DocumentationSet): Unit {
+        validateTypedDocumentationSet(documentation)
         let projection = RenderProjection(documentation)
         let index = projection.visibleIndex
-        let assetLookup = buildAssetLookup(documentation)
-        validateHtmlRouting(documentation, projection)
+        let projectedAssets = projectAssets(documentation, projection)
+        let assetLookup = buildAssetLookup(projectedAssets)
+        validateHtmlRouting(documentation, projection, projectedAssets)
         let topLevelByPackage = groupTopLevelByPackage(projection)
         let membersByOwner = groupMembersByOwner(projection)
         let searchIndex = renderSearchIndex(documentation, projection)
-        artifacts.add(RenderArtifact("html/index.html", "text/html; charset=utf-8",
-            renderHtmlIndex(documentation, projection)))
-        artifacts.add(RenderArtifact("html/search-index.json", "application/json", searchIndex))
-        artifacts.add(RenderArtifact("html/search-index.js", "text/javascript; charset=utf-8",
-            renderSearchIndexScript(searchIndex)))
-        artifacts.add(RenderArtifact("html/search.js", "text/javascript; charset=utf-8", HTML_SEARCH_SCRIPT))
-        artifacts.add(RenderArtifact("html/style.css", "text/css; charset=utf-8", HTML_STYLE))
+        artifacts.addText("html/index.html", "text/html; charset=utf-8",
+            renderHtmlIndex(documentation, projection))
+        artifacts.addText("html/search-index.json", "application/json", searchIndex)
+        artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
+            renderSearchIndexScript(searchIndex))
+        artifacts.addText("html/search.js", "text/javascript; charset=utf-8", HTML_SEARCH_SCRIPT)
+        artifacts.addText("html/style.css", "text/css; charset=utf-8", HTML_STYLE)
         for (pkg in projection.packages) {
-            artifacts.add(RenderArtifact("html/${packagePagePath(pkg.source.moduleId, pkg.source.name)}",
+            artifacts.addText("html/${packagePagePath(pkg.source.moduleId, pkg.source.name)}",
                 "text/html; charset=utf-8",
-                renderPackagePage(documentation, index, topLevelByPackage, pkg, assetLookup)))
+                renderPackagePage(documentation, index, topLevelByPackage, pkg, assetLookup))
         }
         for (symbol in projection.visibleSymbols) {
             if (isContainerDeclaration(symbol)) {
-                artifacts.add(RenderArtifact("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
-                    renderSymbolPage(documentation, index, membersByOwner, symbol, assetLookup)))
+                artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
+                    renderSymbolPage(documentation, index, membersByOwner, symbol, assetLookup))
             }
         }
-        appendAssetArtifacts(artifacts, documentation, "html")
-        artifacts.toArray()
+        appendAssetArtifacts(artifacts, projectedAssets, "html")
+}
+
+public func renderDocumentationFormats(documentation: DocumentationSet,
+    formats: Array<String>): Array<RenderArtifact> {
+    let artifacts = RenderArtifactCollector()
+    for (format in formats) {
+        match (format) {
+            case "json" => appendJsonArtifacts(artifacts, documentation)
+            case "markdown" => appendMarkdownArtifacts(artifacts, documentation)
+            case "html" => appendHtmlArtifacts(artifacts, documentation)
+            case _ => throw IllegalArgumentException(
+                "unsupported documentation format '${format}'")
+        }
     }
+    artifacts.toArray()
 }
 
 public func rendererFor(format: String): DocumentationRenderer {

@@ -13,3 +13,10 @@ public func bundled(): Unit {}
  * ![missing](images/missing.png)
  */
 public func missing(): Unit {}
+
+/**
+ * A signature-only pseudo-image must be omitted.
+ *
+ * ![invalid](images/invalid.gif)
+ */
+public func invalidContainer(): Unit {}

@@ -73,7 +73,8 @@ type-alias|Name|14:1|14:26
 - 内部 source snapshot 保存 `superType` 和 `extensionTarget` spelling；v5 provider capability 将 relationships 标为 false，不会把它升级为 semantic inheritance/implementation 或自动生成类型链接。
 - 任何 0/invalid position 的生成节点都不作为 source declaration。
 - 20260829 daily 的 `parseProgram` 在 67 层连续 `BinaryExpr` 上可稳定触发 native
-  SIGSEGV；66 层 PASS。产品在 lexer 阶段按括号层级统计，达到 64 时跳过该文件并
-  产生可恢复的 `CJDOC1012`。普通 parser exception 保留为 `CJDOC1011`，该文件
-  被跳过，其他文件仍进入 partial Doc IR。v0.4 public facade 默认不启用 source cache
-  或额外 worker process。
+  SIGSEGV；66 层 PASS。产品在隔离 worker 中运行 parser；若 worker 因 SIGSEGV
+  退出，再以 lexer token 深度确认已知的连续二元表达式形状并产生可恢复的
+  `CJDOC1012`。因此 enum case 和嵌套泛型等可正常解析的标点不会被误判。普通
+  parser exception 保留为 `CJDOC1011`，该文件被跳过，其他文件仍进入 partial
+  Doc IR。

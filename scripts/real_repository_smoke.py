@@ -13,6 +13,17 @@ import sys
 import tempfile
 import time
 
+sys.dont_write_bytecode = True
+
+try:
+    from .safe_output_root import safe_output_file, safe_regular_file
+    from .source_identity import source_identity as capture_source_identity
+    from .strict_json import strict_dumps, strict_load
+except ImportError:  # Direct script execution.
+    from safe_output_root import safe_output_file, safe_regular_file
+    from source_identity import source_identity as capture_source_identity
+    from strict_json import strict_dumps, strict_load
+
 
 def file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -33,7 +44,10 @@ def tree_digests(root: Path) -> dict[str, str]:
 
 
 def run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
+    result = subprocess.run(
+        command, cwd=cwd, text=True, capture_output=True, check=False,
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+    )
     if result.returncode != 0:
         rendered = " ".join(command)
         raise RuntimeError(
@@ -43,23 +57,29 @@ def run(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return result
 
 
+def source_commit(repo: Path, *, allow_dirty: bool = False) -> str | None:
+    identity = capture_source_identity(repo, allow_dirty=allow_dirty)
+    return identity["headCommit"] if identity["trustedCommit"] else None
+
+
 def atomic_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent,
                                      prefix=f".{path.name}.", delete=False) as stream:
-        json.dump(value, stream, ensure_ascii=False, indent=2, sort_keys=True)
+        stream.write(strict_dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
         stream.write("\n")
         temporary = Path(stream.name)
     os.replace(temporary, path)
 
 
 def resolve_binary(value: Path) -> Path:
-    candidate = value.resolve()
-    if candidate.is_file():
-        return candidate
-    executable = Path(f"{candidate}.exe")
-    if executable.is_file():
-        return executable
+    candidate = Path(os.path.abspath(os.fspath(value)))
+    for executable in (candidate, Path(f"{candidate}.exe")):
+        try:
+            executable.lstat()
+        except FileNotFoundError:
+            continue
+        return safe_regular_file(executable, description="cjdoc binary")
     raise ValueError(f"cjdoc binary does not exist: {candidate}")
 
 
@@ -71,18 +91,33 @@ def main() -> int:
     parser.add_argument("--min-declarations", type=int, default=1)
     parser.add_argument("--evidence", type=Path,
                         default=repo / "target/release-evidence/real-repository.json")
+    parser.add_argument("--allow-dirty", action="store_true",
+                        help="emit explicitly untrusted dirty/unversioned source identities")
     args = parser.parse_args()
     try:
         binary = resolve_binary(args.binary)
-        projects = [path.resolve() for path in (args.project or [repo])]
+        projects = [
+            Path(os.path.abspath(os.fspath(path)))
+            for path in (args.project or [repo])
+        ]
         if args.min_declarations < 1:
             raise ValueError("--min-declarations must be positive")
         for project in projects:
             if not (project / "cjpm.toml").is_file():
                 raise ValueError(f"not a cjpm project/workspace: {project}")
 
-        evidence_root = args.evidence.resolve().parent
-        evidence_root.mkdir(parents=True, exist_ok=True)
+        repository_identity = capture_source_identity(repo, allow_dirty=args.allow_dirty)
+        project_identities = [
+            capture_source_identity(project, allow_dirty=args.allow_dirty)
+            for project in projects
+        ]
+        binary_sha256 = file_sha256(binary)
+
+        evidence_path = safe_output_file(
+            args.evidence, description="real-repository evidence"
+        )
+        evidence_path.unlink(missing_ok=True)
+        evidence_root = evidence_path.parent
         summaries: list[dict[str, object]] = []
         with tempfile.TemporaryDirectory(prefix="real-repository-", dir=evidence_root) as temporary:
             work = Path(temporary)
@@ -108,9 +143,11 @@ def main() -> int:
                     raise ValueError(
                         f"non-deterministic output for {project}: missing={missing}, changed={changed}"
                     )
-                document = json.loads((outputs[0] / "docs.json").read_text(encoding="utf-8"))
-                if document.get("schemaVersion") != "cjdoc.doc-ir/7":
-                    raise ValueError(f"real repository emitted non-v7 Doc IR: {project}")
+                document = strict_load(
+                    outputs[0] / "docs.json", description="real-repository Doc IR"
+                )
+                if document.get("schemaVersion") != "cjdoc.doc-ir/8":
+                    raise ValueError(f"real repository emitted non-v8 Doc IR: {project}")
                 declarations = document.get("declarations")
                 diagnostics = document.get("diagnostics")
                 if not isinstance(declarations, list) or len(declarations) < args.min_declarations:
@@ -129,13 +166,24 @@ def main() -> int:
                     "artifactCount": len(first),
                     "docsSha256": first.get("docs.json"),
                     "elapsedMs": round((time.perf_counter() - started) * 1000),
+                    "sourceIdentity": project_identities[index],
                 })
+        if capture_source_identity(repo, allow_dirty=args.allow_dirty) != repository_identity:
+            raise ValueError("cjdoc repository identity changed during real-repository smoke")
+        for project, expected_identity in zip(projects, project_identities):
+            if capture_source_identity(project, allow_dirty=args.allow_dirty) != expected_identity:
+                raise ValueError(f"project identity changed during real-repository smoke: {project}")
+        if file_sha256(binary) != binary_sha256:
+            raise ValueError("cjdoc binary changed during real-repository smoke")
         evidence = {
             "schemaVersion": "cjdoc.real-repository-smoke/1",
-            "binarySha256": file_sha256(binary),
+            "sourceCommit": repository_identity["headCommit"]
+                if repository_identity["trustedCommit"] else None,
+            "sourceIdentity": repository_identity,
+            "binarySha256": binary_sha256,
             "projects": summaries,
         }
-        atomic_json(args.evidence.resolve(), evidence)
+        atomic_json(evidence_path, evidence)
         print(json.dumps(evidence, ensure_ascii=False, sort_keys=True))
         return 0
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:

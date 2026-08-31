@@ -1,0 +1,457 @@
+{
+  "schemaVersion": "cjdoc.doc-ir/7",
+  "generator": {
+    "name": "cjdoc",
+    "version": "0.6.0"
+  },
+  "status": "complete",
+  "project": {
+    "name": "path_dependencies_fixture",
+    "kind": "package"
+  },
+  "configuration": {
+    "audience": "external",
+    "lintProfile": "standard",
+    "cfgProfile": "default"
+  },
+  "providers": [
+    {
+      "name": "ast",
+      "version": "1",
+      "moduleId": "cjdoc:module:v1:root",
+      "state": "partial",
+      "capabilities": {
+        "sourceBinding": true,
+        "ownership": true,
+        "visibility": true,
+        "canonicalTypes": false,
+        "canonicalSignatures": false,
+        "relationships": false,
+        "annotations": false
+      }
+    },
+    {
+      "name": "ast",
+      "version": "1",
+      "moduleId": "cjdoc:module:v1:path:path_dep_alpha",
+      "state": "partial",
+      "capabilities": {
+        "sourceBinding": true,
+        "ownership": true,
+        "visibility": true,
+        "canonicalTypes": false,
+        "canonicalSignatures": false,
+        "relationships": false,
+        "annotations": false
+      }
+    },
+    {
+      "name": "ast",
+      "version": "1",
+      "moduleId": "cjdoc:module:v1:path:path_dep_beta",
+      "state": "partial",
+      "capabilities": {
+        "sourceBinding": true,
+        "ownership": true,
+        "visibility": true,
+        "canonicalTypes": false,
+        "canonicalSignatures": false,
+        "relationships": false,
+        "annotations": false
+      }
+    }
+  ],
+  "modules": [
+    {
+      "id": "cjdoc:module:v1:root",
+      "name": "path_dependencies_fixture",
+      "role": "root",
+      "sourcePrefix": "",
+      "packageNames": [
+        "path_dependencies_fixture"
+      ],
+      "dependencyIds": [
+        "cjdoc:module:v1:path:path_dep_alpha",
+        "cjdoc:module:v1:path:path_dep_beta"
+      ]
+    },
+    {
+      "id": "cjdoc:module:v1:path:path_dep_alpha",
+      "name": "path_dep_alpha",
+      "role": "pathDependency",
+      "sourcePrefix": "dependencies/path_dep_alpha",
+      "packageNames": [
+        "path_dep_alpha"
+      ],
+      "dependencyIds": [
+        "cjdoc:module:v1:path:path_dep_beta"
+      ]
+    },
+    {
+      "id": "cjdoc:module:v1:path:path_dep_beta",
+      "name": "path_dep_beta",
+      "role": "pathDependency",
+      "sourcePrefix": "dependencies/path_dep_beta",
+      "packageNames": [
+        "path_dep_beta"
+      ],
+      "dependencyIds": [
+        
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "name": "path_dep_alpha",
+      "moduleId": "cjdoc:module:v1:path:path_dep_alpha",
+      "sourceFiles": [
+        "dependencies/path_dep_alpha/src/alpha.cj"
+      ],
+      "symbolIds": [
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Apath%3Apath_dep_alpha::path_dep_alpha::function:alphaApi#g0()"
+      ]
+    },
+    {
+      "name": "path_dep_beta",
+      "moduleId": "cjdoc:module:v1:path:path_dep_beta",
+      "sourceFiles": [
+        "dependencies/path_dep_beta/src/beta.cj"
+      ],
+      "symbolIds": [
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Apath%3Apath_dep_beta::path_dep_beta::function:betaApi#g0()"
+      ]
+    },
+    {
+      "name": "path_dependencies_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "sourceFiles": [
+        "src/root.cj"
+      ],
+      "symbolIds": [
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::path_dependencies_fixture::function:rootApi#g0()"
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "dependencies/path_dep_alpha/src/alpha.cj",
+      "moduleId": "cjdoc:module:v1:path:path_dep_alpha",
+      "packageName": "path_dep_alpha"
+    },
+    {
+      "path": "dependencies/path_dep_beta/src/beta.cj",
+      "moduleId": "cjdoc:module:v1:path:path_dep_beta",
+      "packageName": "path_dep_beta"
+    },
+    {
+      "path": "src/root.cj",
+      "moduleId": "cjdoc:module:v1:root",
+      "packageName": "path_dependencies_fixture"
+    }
+  ],
+  "declarations": [
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Apath%3Apath_dep_alpha::path_dep_alpha::function:alphaApi#g0()",
+      "kind": "function",
+      "name": "alphaApi",
+      "qualifiedName": "path_dep_alpha.alphaApi",
+      "packageName": "path_dep_alpha",
+      "moduleId": "cjdoc:module:v1:path:path_dep_alpha",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n * Alpha dependency API.\n * @see path_dep_beta.betaApi\n */",
+        "summary": "Alpha dependency API.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Alpha dependency API.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "see",
+            "subject": "path_dep_beta.betaApi",
+            "description": "",
+            "referenceState": "resolved",
+            "targetSymbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Apath%3Apath_dep_beta::path_dep_beta::function:betaApi#g0()"
+          }
+        ]
+      },
+      "source": {
+        "path": "dependencies/path_dep_alpha/src/alpha.cj",
+        "start": {
+          "line": 7,
+          "column": 1,
+          "byteOffset": 0
+        },
+        "end": {
+          "line": 7,
+          "column": 32,
+          "byteOffset": 0
+        }
+      },
+      "headerSpelling": "public func alphaApi(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Apath%3Apath_dep_beta::path_dep_beta::function:betaApi#g0()",
+      "kind": "function",
+      "name": "betaApi",
+      "qualifiedName": "path_dep_beta.betaApi",
+      "packageName": "path_dep_beta",
+      "moduleId": "cjdoc:module:v1:path:path_dep_beta",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Beta dependency API. */",
+        "summary": "Beta dependency API.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Beta dependency API.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "dependencies/path_dep_beta/src/beta.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 0
+        },
+        "end": {
+          "line": 4,
+          "column": 31,
+          "byteOffset": 0
+        }
+      },
+      "headerSpelling": "public func betaApi(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::path_dependencies_fixture::function:rootApi#g0()",
+      "kind": "function",
+      "name": "rootApi",
+      "qualifiedName": "path_dependencies_fixture.rootApi",
+      "packageName": "path_dependencies_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semantic": {
+          "state": "partial",
+          "canonical": null,
+          "provider": "ast"
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/**\n * Root API.\n * @see path_dep_alpha.alphaApi\n */",
+        "summary": "Root API.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Root API.",
+                  "source": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          {
+            "name": "see",
+            "subject": "path_dep_alpha.alphaApi",
+            "description": "",
+            "referenceState": "resolved",
+            "targetSymbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Apath%3Apath_dep_alpha::path_dep_alpha::function:alphaApi#g0()"
+          }
+        ]
+      },
+      "source": {
+        "path": "src/root.cj",
+        "start": {
+          "line": 7,
+          "column": 1,
+          "byteOffset": 88
+        },
+        "end": {
+          "line": 7,
+          "column": 31,
+          "byteOffset": 118
+        }
+      },
+      "headerSpelling": "public func rootApi(): Unit",
+      "semantic": {
+        "state": "partial",
+        "provider": "ast",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      }
+    }
+  ],
+  "assets": [
+    
+  ],
+  "orphanDocComments": [
+    
+  ],
+  "macroInvocations": [
+    
+  ],
+  "unsupportedDeclarations": [
+    
+  ],
+  "unboundSemanticDeclarations": [
+    
+  ],
+  "diagnostics": [
+    
+  ]
+}

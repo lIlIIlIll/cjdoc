@@ -1,6 +1,12 @@
-# cjdoc v0.6.0 implementation report
+# Historical cjdoc v0.6.0 implementation report
 
-报告日期：2026-08-30。当前版本：`0.6.0`。当前输出 schema：`cjdoc.doc-ir/7`。
+> **历史归档，不是当前证据。** 本文是仓库基线提交
+> `2e8c8ecc849ba77d5209f4546cdbb2129b7b17fb` 中保留的 v0.6.0 报告，记录的是
+> 2026-08-30 当时的本地结果。当前开发版本为 v0.7.0 / Doc IR v8；本文中的 PASS、
+> 二进制摘要、性能数字和复现命令均不得作为当前提交、GitHub CI 或 release 的证据。
+> 本轮变更的 GitHub-hosted stable、daily 和 tag-release workflow 均 **NOT RUN**。
+
+报告日期：2026-08-30。当时版本：`0.6.0`。当时输出 schema：`cjdoc.doc-ir/7`。
 
 本报告只陈述随报告提交的源码和本次实际运行得到的证据。v0.6.0 已通过 Linux 本机 release gate，但没有创建或推送 tag，也没有发布 release。GitHub-hosted stable、daily 和 tag-release workflow 对当前变更均未运行。
 
@@ -102,7 +108,7 @@ Doc IR v7 --> strict JSON --> Markdown / HTML / search
 - `MarkdownNode` 是 Markdown/HTML 正文的唯一语义来源；renderer 不重新解释 `rawText`。
 - audience projection 会重新计算 package、owner、relationship、search 与页面集合，不泄漏被过滤符号。
 - module/package/symbol 路由和 anchor 使用稳定 identity；生成前执行全局 collision 检查。
-- 本地图片只接受项目内、非 symlink、大小受限、media type 与 magic bytes 一致的普通文件。内容按摘要去重并写入 `assets/`。
+- 在本文所记录的 Linux/POSIX 环境，本地图片只接受项目内、非 symlink、大小受限、media type 与 magic bytes 一致的普通文件，内容按摘要去重并写入 `assets/`；这条历史 Linux 证据不证明 Windows 支持 asset embedding。
 - HTML 不插入用户 raw HTML，使用 CSP 和外部 JS/CSS。`search-index.js` 允许静态站点在 `file://` 下搜索。
 
 ### Release engineering
@@ -201,7 +207,7 @@ Linux x64 archive 使用当前 binary 独立构建两次，两个文件的 SHA-2
 
 CHIR capability 细节见 [`docs/research/api-capability-matrix.md`](docs/research/api-capability-matrix.md)。发布证据层级与 checklist 见 [`docs/release-process.md`](docs/release-process.md)。
 
-## 8. 复现命令
+## 8. 历史复现命令（仅适用于当时的 v0.6.0 快照）
 
 准备 SDK 环境后：
 
@@ -214,4 +220,6 @@ python3 scripts/perf_gate.py check
 CJDOC_RELEASE_TAG=v0.6.0 scripts/release_check.sh
 ```
 
-本机 release receipt 写入 `target/release-evidence/`。该目录是运行产物，不属于源码提交。
+这些命令和 `v0.6.0` tag 只描述历史快照，不验证当前 v0.7.0。当前 release receipt
+必须从目标提交的 clean checkout 重新生成到 `target/release-evidence/`；该目录是运行产物，
+不属于源码提交。

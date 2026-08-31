@@ -1,0 +1,12 @@
+version = 0
+notes = """
+[requires] # documentation example, not a table
+ghost = { version = "0.0.0" }
+"""
+
+[requires] # cached dependency metadata
+  cached_dep = {
+    git = "https://example.invalid/cached_dep.git",
+    commitId = "abc123",
+    output-type = "static"
+  }

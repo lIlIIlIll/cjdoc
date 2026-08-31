@@ -11,6 +11,6 @@ func validateGeneratedDocIr(documentation: public_model.DocumentationSet): Unit 
     let encoded = public_render.encodeDocIr(documentation)
     let migrated = decodeValidatedDocIr(encoded)
     if (migrated.schemaVersion != public_model.DOC_IR_SCHEMA_VERSION) {
-        throw IllegalStateException("generated Doc IR did not validate as v7")
+        throw IllegalStateException("generated Doc IR did not validate as v8")
     }
 }

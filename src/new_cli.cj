@@ -43,15 +43,19 @@ private func newUsage(): String {
     "                 [--cache-dir <dir>|--no-cache] [--force-owned]\n" +
     "  cjdoc check [--project <dir>] [--deny-warnings] [--lint-profile off|standard|strict]\n" +
     "  cjdoc render --input <docs.json> [--format json|markdown|html]... [--output <dir>|--stdout] [--force-owned]\n" +
-    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|diagnostics|cfg-matrix|search-index\n"
+    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|diagnostics|cfg-matrix|search-index\n"
 }
 
-private func splitNamedValue(value: String, option: String): (String, String) {
-    let parts = value.split("=")
+internal func splitNamedValue(value: String, option: String): (String, String) {
+    let parts = value.split("=", 2)
     if (parts.size != 2 || parts[0].trimAscii().isEmpty() || parts[1].trimAscii().isEmpty()) {
         throw IllegalArgumentException("${option} requires NAME=VALUE")
     }
     (parts[0].trimAscii(), parts[1].trimAscii())
+}
+
+internal func cliErrorText(message: String, includeUsage: Bool): String {
+    if (includeUsage) { "error: ${message}\n${newUsage()}" } else { "error: ${message}" }
 }
 
 private func addFormat(options: NewCliOptions, value: String): Unit {
@@ -68,6 +72,13 @@ private func parseNewCli(args: Array<String>): NewCliOptions {
     if (options.command == "schema") {
         if (args.size != 2) { throw IllegalArgumentException("schema requires exactly one schema name") }
         options.schemaName = args[1]
+        if (options.schemaName != "list" && options.schemaName != "doc-ir" &&
+            options.schemaName != "doc-ir-v6" && options.schemaName != "doc-ir-v7" &&
+            options.schemaName != "doc-ir-v8" &&
+            options.schemaName != "diagnostics" && options.schemaName != "cfg-matrix" &&
+            options.schemaName != "search-index") {
+            throw IllegalArgumentException("unknown schema '${options.schemaName}'")
+        }
         return options
     }
     if (options.command != "generate" && options.command != "check" && options.command != "render") {
@@ -186,11 +197,26 @@ private func orderedFormats(options: NewCliOptions): Array<String> {
 
 private func renderArtifacts(documentation: public_model.DocumentationSet,
     formats: Array<String>): Array<public_render.RenderArtifact> {
-    let result = ArrayList<public_render.RenderArtifact>()
-    for (format in formats) {
-        result.add(all: public_render.rendererFor(format).render(documentation))
+    public_render.renderDocumentationFormats(documentation, formats)
+}
+
+internal func renderArtifactsWithCommandFallback(documentation: public_model.DocumentationSet,
+    formats: Array<String>, generationRequest: ?GenerationRequest,
+    injectResourceLimitForTest!: Bool = false):
+        (public_model.DocumentationSet, Array<public_render.RenderArtifact>) {
+    try {
+        if (injectResourceLimitForTest) {
+            throw public_render.RenderResourceLimitException("injected renderer resource limit")
+        }
+        (documentation, renderArtifacts(documentation, formats))
+    } catch (error: public_render.RenderResourceLimitException) {
+        match (generationRequest) {
+            case Some(request) =>
+                let fallback = boundGeneratedDocumentation(documentation, request, force: true)
+                (fallback, renderArtifacts(fallback, formats))
+            case None => throw error
+        }
     }
-    result.toArray()
 }
 
 private func printPublicDiagnostics(documentation: public_model.DocumentationSet): Unit {
@@ -210,51 +236,67 @@ private func publicExitCode(documentation: public_model.DocumentationSet, denyWa
     0
 }
 
-private func runSchema(name: String): Int64 {
+internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => println("doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndiagnostics\ncfg-matrix\nsearch-index")
-        case "doc-ir" => print(DOC_IR_SCHEMA)
-        case "doc-ir-v6" => print(DOC_IR_V6_SCHEMA)
-        case "doc-ir-v7" => print(DOC_IR_SCHEMA)
-        case "diagnostics" => print(DIAGNOSTICS_SCHEMA)
-        case "cfg-matrix" => print(CFG_MATRIX_SCHEMA)
-        case "search-index" => print(SEARCH_INDEX_SCHEMA)
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndiagnostics\ncfg-matrix\nsearch-index\n"
+        case "doc-ir" => DOC_IR_SCHEMA
+        case "doc-ir-v6" => DOC_IR_V6_SCHEMA
+        case "doc-ir-v7" => DOC_IR_V7_SCHEMA
+        case "doc-ir-v8" => DOC_IR_V8_SCHEMA
+        case "diagnostics" => DIAGNOSTICS_SCHEMA
+        case "cfg-matrix" => CFG_MATRIX_SCHEMA
+        case "search-index" => SEARCH_INDEX_SCHEMA
         case _ => throw IllegalArgumentException("unknown schema '${name}'")
     }
+}
+
+private func runSchema(name: String): Int64 {
+    print(schemaTextForCli(name))
     0
 }
 
-private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String): Int64 {
-    let documentation = if (options.command == "render") {
-            let input = options.input.getOrThrow()
-            let bytes = File.readFrom(Path(input))
-            if (bytes.size > 64 * 1024 * 1024) {
-                throw IllegalArgumentException("Doc IR input exceeds 64 MiB")
-            }
-            decodeValidatedDocIr(String.fromUtf8(bytes))
-        } else {
-            let commandLine = getCommandLine()
-            let astPreflightExecutable: ?String = if (commandLine.isEmpty()) { None }
-                else { Some(commandLine[0]) }
-            DocumentationEngine().generate(GenerationRequest(options.project, jobs: options.jobs,
-                audience: options.audience, lintProfile: options.lintProfile,
-                includePathDependencies: options.includePathDependencies,
-                includeCachedDependencies: options.includeCachedDependencies,
-                dependencySources: options.dependencySources.toArray(),
-                cfgValues: options.cfgValues.toArray(),
-                cacheDirectory: selectedSourceCacheDirectory(options),
-                astPreflightExecutable: astPreflightExecutable,
-                cjpmCacheRoot: options.cjpmCacheRoot))
+private func readDocIrInput(path: Path): String {
+    let limit: Int64 = 64 * 1024 * 1024
+    readTextBounded(path, limit)
+}
+
+private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
+    selectedCache: ?String, outputLock: ?OutputLockHandle): Int64 {
+    let commandLine = getCommandLine()
+    let astPreflightExecutable: ?String = if (commandLine.isEmpty()) { None }
+        else { Some(commandLine[0]) }
+    let generationRequest: ?GenerationRequest = if (options.command == "render") {
+        None
+    } else {
+        Some(GenerationRequest(options.project, jobs: options.jobs,
+            audience: options.audience, lintProfile: options.lintProfile,
+            includePathDependencies: options.includePathDependencies,
+            includeCachedDependencies: options.includeCachedDependencies,
+            dependencySources: options.dependencySources.toArray(),
+            cfgValues: options.cfgValues.toArray(),
+            cacheDirectory: selectedCache,
+            astPreflightExecutable: astPreflightExecutable,
+            cjpmCacheRoot: options.cjpmCacheRoot))
+    }
+    var documentation = match (generationRequest) {
+        case Some(request) => DocumentationEngine().generate(request)
+        case None => decodeValidatedDocIr(readDocIrInput(Path(options.input.getOrThrow())))
+    }
+    var artifacts: Array<public_render.RenderArtifact> = []
+    if (options.command != "check") {
+        let (renderedDocumentation, renderedArtifacts) = renderArtifactsWithCommandFallback(documentation,
+            orderedFormats(options), generationRequest)
+        documentation = renderedDocumentation
+        artifacts = renderedArtifacts
     }
     printPublicDiagnostics(documentation)
     if (options.command != "check") {
-        let artifacts = renderArtifacts(documentation, orderedFormats(options))
         if (options.stdout) {
-            print(artifacts[0].content)
+            getStdOut().write(artifacts[0].content.toArray())
         } else {
             let output = lockedOutput.getOrThrow()
-            writeOwnedArtifactsWithLockHeld(output, artifacts, forceOwned: options.forceOwned)
-            println("generated ${output}")
+            writeOwnedArtifactsWithLockHeld(output, artifacts, outputLock.getOrThrow(),
+                forceOwned: options.forceOwned)
         }
     }
     publicExitCode(documentation, options.denyWarnings)
@@ -268,22 +310,41 @@ private func selectedOutputDirectory(options: NewCliOptions): String {
     }
 }
 
+internal func completeLockedOutputCommand(output: String,
+    action: (OutputLockHandle) -> Int64, announceSuccess: () -> Unit): Int64 {
+    let result = withOutputLockResultGuard(output, action)
+    announceSuccess()
+    result
+}
+
 func runCli(args: Array<String>): Int64 {
     if (args.size == 1 && (args[0] == "--help" || args[0] == "-h")) { print(newUsage()); return 0 }
-    if (args.size == 1 && args[0] == "--version") { println("cjdoc 0.6.0"); return 0 }
+    if (args.size == 1 && args[0] == "--version") { println("cjdoc 0.7.0"); return 0 }
+    let options = try {
+        parseNewCli(args)
+    } catch (error: Exception) {
+        eprintln(cliErrorText(error.message, true))
+        return 2
+    }
     try {
-        let options = parseNewCli(args)
         if (options.command == "schema") { return runSchema(options.schemaName) }
         if (options.command == "check" || options.stdout) {
-            return executeDocumentCommand(options, None)
+            let requestedCache: ?String = if (options.command == "render") { None }
+                else { selectedSourceCacheDirectory(options) }
+            let (_, selectedCache) = prepareOutputAndCacheDirectories(
+                selectedOutputDirectory(options), requestedCache)
+            return executeDocumentCommand(options, None<String>,
+                selectedCache, None<OutputLockHandle>)
         }
-        let output = selectedOutputDirectory(options)
-        withOutputLockResult(output, { =>
-            executeDocumentCommand(options, Some(output))
-        })
+        let requestedOutput = selectedOutputDirectory(options)
+        let requestedCache: ?String = if (options.command == "render") { None }
+            else { selectedSourceCacheDirectory(options) }
+        let (output, selectedCache) = prepareOutputAndCacheDirectories(requestedOutput, requestedCache)
+        completeLockedOutputCommand(output, { lock =>
+            executeDocumentCommand(options, Some(output), selectedCache, Some(lock))
+        }, { => println("generated ${selectedOutputDirectory(options)}") })
     } catch (error: Exception) {
-        eprintln("error: ${error.message}")
-        eprintln(newUsage())
+        eprintln(cliErrorText(error.message, false))
         2
     }
 }

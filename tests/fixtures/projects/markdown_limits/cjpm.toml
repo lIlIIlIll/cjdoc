@@ -1,0 +1,9 @@
+[package]
+  cjc-version = "1.1.0"
+  name = "markdown_limits"
+  organization = ""
+  description = "cjdoc generated Markdown resource-limit fixture"
+  version = "0.1.0"
+  output-type = "static"
+
+[dependencies]
