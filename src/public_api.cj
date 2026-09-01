@@ -1200,7 +1200,7 @@ protected func boundGeneratedDocumentation(candidate: public_model.Documentation
     // unexpectedly large source/provider field would exceed codec or output
     // transaction limits. Fixed strings keep this fallback independent of the
     // oversized input that caused it.
-    public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.0"), "partial",
+    public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.1"), "partial",
         public_model.ProjectInfo("resource-limited"),
         public_model.ConfigurationSnapshot(audience: request.audience, lintProfile: request.lintProfile,
             cfgProfile: if (request.cfgValues.isEmpty()) {
@@ -1376,7 +1376,7 @@ private func publicDocumentation(documentation: DocumentationSet, request: Gener
                     capabilities.visibility, capabilities.canonicalTypes, capabilities.canonicalSignatures,
                     relationships: capabilities.symbolRelationships, annotations: capabilities.annotations)))
     }
-    let candidate = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.0"),
+    let candidate = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.1"),
         if (hasError || hasIncompleteSource || hasIncompleteSemantic) {
             "partial"
         } else {
