@@ -19,7 +19,7 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "e7838207faac5e328ad720ebb2e4581f263bb71099d31dceb82ad7332a68785d"
+CANONICAL_SEARCH_JS_SHA256 = "11200c338c90301a903468eec71a9769cd446292aef5ba59b00dfae36db834d1"
 
 
 class PageParser(HTMLParser):

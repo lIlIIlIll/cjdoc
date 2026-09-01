@@ -86,6 +86,14 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             script,
         )
 
+    def test_canonical_script_exposes_all_theme_presets(self) -> None:
+        script = canonical_search_script()
+        for theme in ("system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"):
+            with self.subTest(theme=theme):
+                self.assertIn(f'["{theme}"', script)
+        self.assertIn("themeToggle.before(picker)", script)
+        self.assertIn('localStorage.setItem("cjdoc-theme", next)', script)
+
     def test_rejects_mismatched_real_tags(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
