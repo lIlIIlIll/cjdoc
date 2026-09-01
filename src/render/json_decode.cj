@@ -161,6 +161,11 @@ private func decodeRange(node: JsonNode, path: String): SourceRange {
         decodePosition(required(value, "end", path), "${path}.end"))
 }
 
+private func decodeSourceApiSignature(node: JsonNode, path: String): SourceApiSignature {
+    let value = strictObject(node, path, ["state", "tokens"])
+    SourceApiSignature(stringAt(value, "state", path), tokens: stringsAt(value, "tokens", path))
+}
+
 private func decodeCapabilities(node: JsonNode, path: String, legacy: Bool): SemanticCapabilities {
     let keys = if (legacy) { ["sourceBinding", "ownership", "visibility",
         "canonicalTypes", "canonicalSignatures", "relationships"] } else {
@@ -430,8 +435,8 @@ private func decodeSymbol(node: JsonNode, path: String, legacyV6: Bool, legacy: 
     } else {
         ["id", "kind", "name", "qualifiedName", "packageName", "moduleId", "ownerId", "visibility",
             "genericParameters", "parameters", "returnType", "annotations", "typeRelationships",
-            "symbolRelationships", "documentation", "source", "headerSpelling", "semantic", "origin",
-            "enumNonExhaustive"]
+            "symbolRelationships", "documentation", "source", "headerSpelling", "sourceApiSignature",
+            "semantic", "origin", "enumNonExhaustive"]
     }
     let value = strictObject(node, path, keys)
     let parameters = ArrayList<ParameterDoc>()
@@ -484,41 +489,88 @@ private func decodeSymbol(node: JsonNode, path: String, legacyV6: Bool, legacy: 
         symbolRelationships: symbolRelationships.toArray(), documentation: documentation,
         origin: DeclarationOrigin(kind: stringAt(origin, "kind", "${path}.origin"),
             macroSymbolId: migratedOptionalSymbolId(nullableStringAt(origin, "macroSymbolId",
-                "${path}.origin"), legacyV6, legacyIds, "${path}.origin.macroSymbolId")))
+                "${path}.origin"), legacyV6, legacyIds, "${path}.origin.macroSymbolId")),
+        sourceApiSignature: if (legacy) {
+            SourceApiSignature("unavailable")
+        } else {
+            decodeSourceApiSignature(required(value, "sourceApiSignature", path),
+                "${path}.sourceApiSignature")
+        })
 }
 
-private func decodeModules(root: JsonObjectValue): Array<ModuleDoc> {
+private func decodeModules(root: JsonObjectValue, legacy: Bool): Array<ModuleDoc> {
     let result = ArrayList<ModuleDoc>()
     var index: Int64 = 0
     for (node in arrayAt(root, "modules", "$" ).values()) {
         let path = "$.modules[${index}]"
-        let value = strictObject(node, path,
-            ["id", "name", "role", "sourcePrefix", "packageNames", "dependencyIds"])
+        let value = strictObject(node, path, if (legacy) {
+            ["id", "name", "role", "sourcePrefix", "packageNames", "dependencyIds"]
+        } else {
+            ["id", "name", "role", "sourcePrefix", "organization", "packageNames", "dependencyIds"]
+        })
         result.add(ModuleDoc(stringAt(value, "id", path), stringAt(value, "name", path),
             stringAt(value, "role", path), stringAt(value, "sourcePrefix", path),
             packageNames: stringsAt(value, "packageNames", path),
-            dependencyIds: stringsAt(value, "dependencyIds", path)))
+            dependencyIds: stringsAt(value, "dependencyIds", path),
+            organization: if (legacy) { None<String> } else {
+                nullableStringAt(value, "organization", path)
+            }))
         index++
     }
     result.toArray()
 }
 
-private func decodePackages(root: JsonObjectValue, legacy: Bool,
+private func decodePackages(root: JsonObjectValue, legacy: Bool, legacyV6: Bool,
     legacyIds: HashMap<String, String>): Array<PackageDoc> {
     let result = ArrayList<PackageDoc>()
     var index: Int64 = 0
     for (node in arrayAt(root, "packages", "$" ).values()) {
         let path = "$.packages[${index}]"
-        let value = strictObject(node, path, ["name", "moduleId", "sourceFiles", "symbolIds"])
+        let value = strictObject(node, path, if (legacy) {
+            ["name", "moduleId", "sourceFiles", "symbolIds"]
+        } else {
+            ["name", "moduleId", "sourceFiles", "symbolIds", "reExports"]
+        })
         let ids = ArrayList<String>()
         var symbolIndex: Int64 = 0
         for (id in stringsAt(value, "symbolIds", path)) {
-            ids.add(migratedSymbolId(id, legacy, legacyIds,
+            ids.add(migratedSymbolId(id, legacyV6, legacyIds,
                 "${path}.symbolIds[${symbolIndex}]"))
             symbolIndex++
         }
+        let reExports = ArrayList<ReExportDoc>()
+        if (!legacy) {
+            var reExportIndex: Int64 = 0
+            for (reExportNode in arrayAt(value, "reExports", path).values()) {
+                let reExportPath = "${path}.reExports[${reExportIndex}]"
+                let reExport = strictObject(reExportNode, reExportPath,
+                    ["id", "kind", "organization", "targetPackageName", "targetModuleId",
+                        "alias", "state", "source", "bindings"])
+                let bindings = ArrayList<ReExportBinding>()
+                var bindingIndex: Int64 = 0
+                for (bindingNode in arrayAt(reExport, "bindings", reExportPath).values()) {
+                    let bindingPath = "${reExportPath}.bindings[${bindingIndex}]"
+                    let binding = strictObject(bindingNode, bindingPath,
+                        ["exposedName", "targetSymbolIds"])
+                    bindings.add(ReExportBinding(stringAt(binding, "exposedName", bindingPath),
+                        targetSymbolIds: stringsAt(binding, "targetSymbolIds", bindingPath)))
+                    bindingIndex++
+                }
+                reExports.add(ReExportDoc(stringAt(reExport, "id", reExportPath),
+                    stringAt(reExport, "kind", reExportPath),
+                    stringAt(reExport, "targetPackageName", reExportPath),
+                    stringAt(reExport, "state", reExportPath),
+                    decodeRange(required(reExport, "source", reExportPath), "${reExportPath}.source"),
+                    organization: nullableStringAt(reExport, "organization", reExportPath),
+                    targetModuleId: nullableStringAt(reExport, "targetModuleId", reExportPath),
+                    alias: nullableStringAt(reExport, "alias", reExportPath),
+                    bindings: bindings.toArray()))
+                reExportIndex++
+            }
+        }
         result.add(PackageDoc(stringAt(value, "name", path), stringAt(value, "moduleId", path),
-            sourceFiles: stringsAt(value, "sourceFiles", path), symbolIds: ids.toArray()))
+            sourceFiles: stringsAt(value, "sourceFiles", path), symbolIds: ids.toArray(),
+            reExports: reExports.toArray()))
         index++
     }
     result.toArray()
@@ -778,7 +830,7 @@ public func decodeDocIr(text: String): DocumentationSet {
     let project = strictObject(required(root, "project", "$"), "$.project", ["name", "kind"])
     let configuration = strictObject(required(root, "configuration", "$"), "$.configuration",
         ["audience", "lintProfile", "cfgProfile"])
-    let modules = decodeModules(root)
+    let modules = decodeModules(root, legacy)
     let legacyModules = buildLegacyModuleIndex(modules)
     let legacyIds = if (legacyV6) { buildLegacySymbolIds(root, legacyModules) }
         else { HashMap<String, String>() }
@@ -790,7 +842,7 @@ public func decodeDocIr(text: String): DocumentationSet {
             lintProfile: stringAt(configuration, "lintProfile", "$.configuration"),
             cfgProfile: stringAt(configuration, "cfgProfile", "$.configuration")),
         providers: decodeProviders(root, modules, legacyV6, rawShape, text.size), modules: modules,
-        packages: decodePackages(root, legacyV6, legacyIds),
+        packages: decodePackages(root, legacy, legacyV6, legacyIds),
         files: decodeFiles(root), declarations: decodeDeclarations(root, legacyV6, legacy,
             legacyModules, legacyIds, decodedAssets.references),
         assets: decodedAssets.assets,

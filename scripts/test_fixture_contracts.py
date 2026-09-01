@@ -16,6 +16,7 @@ GOLDEN_OR_CHECK_FIXTURES = {
 CANGJIE_CONTRACT_FIXTURES = {
     "binary_punctuation", "cfg_owner", "frontend_gaps", "frontend_regressions", "lint",
     "local_assets", "manifest_headers", "markdown_limits", "private_file_scope", "recovery",
+    "reexports",
 }
 CLI_CONTRACT_FIXTURES = {
     "cached_dependencies", "conditional_complex", "deep_binary", "duplicate",
@@ -98,6 +99,69 @@ class FixtureContractTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertEqual(result.stdout, f"cjdoc {self.package_version}\n")
+
+    def test_public_imports_emit_canonical_reexport_bindings(self) -> None:
+        document, _ = self.generate(
+            "reexports", "--include-path-dependencies", expected_exit=0,
+        )
+        packages = {item["name"]: item for item in document["packages"]}
+        reexports = packages["reexport_root"]["reExports"]
+        ordinary = [
+            item for item in reexports
+            if item["targetPackageName"] not in {
+                "reexport_dep.conflict", "reexport_dep.alias_target",
+            }
+        ]
+        self.assertEqual({item["state"] for item in ordinary}, {"resolved"})
+        empty_wildcards = [
+            item for item in reexports
+            if item["kind"] == "all" and item["targetPackageName"] == "reexport_dep.empty"
+        ]
+        self.assertEqual(len(empty_wildcards), 1)
+        self.assertEqual(empty_wildcards[0]["bindings"], [])
+        package_aliases = [
+            item for item in reexports
+            if item["kind"] == "packageAlias" and item["alias"] == "emptyPackage"
+        ]
+        self.assertEqual(len(package_aliases), 1)
+        self.assertEqual(package_aliases[0]["state"], "resolved")
+        self.assertEqual(package_aliases[0]["bindings"], [])
+        alias_collisions = [
+            item for item in reexports
+            if item["alias"] == "ambiguousTarget"
+        ]
+        self.assertEqual(len(alias_collisions), 1)
+        self.assertEqual(alias_collisions[0]["state"], "ambiguous")
+        self.assertEqual(alias_collisions[0]["bindings"], [])
+        conflicts = [
+            item for item in reexports
+            if item["targetPackageName"] == "reexport_dep.conflict"
+        ]
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["state"], "ambiguous")
+        self.assertEqual(conflicts[0]["bindings"], [])
+        relay = packages["reexport_root.relay"]["reExports"]
+        self.assertEqual(len(relay), 1)
+        self.assertEqual(relay[0]["state"], "unavailable")
+        self.assertEqual(relay[0]["bindings"], [])
+        exposed = {
+            (binding["exposedName"], target)
+            for item in reexports
+            for binding in item["bindings"]
+            for target in binding["targetSymbolIds"]
+        }
+        self.assertTrue(any(name == "create" for name, _ in exposed))
+        self.assertTrue(any(name == "aliasName" for name, _ in exposed))
+        self.assertTrue(any(name == "overload" for name, _ in exposed))
+        self.assertTrue(any(name == "orgCreate" for name, _ in exposed))
+        self.assertTrue(any(item["organization"] == "acme" for item in reexports))
+        declaration_ids = {item["id"] for item in document["declarations"]}
+        self.assertTrue(all(target in declaration_ids for _, target in exposed))
+        hidden_ids = {
+            item["id"] for item in document["declarations"] if item["name"] == "hidden"
+        }
+        self.assertTrue(hidden_ids)
+        self.assertTrue(all(target not in hidden_ids for _, target in exposed))
 
     def test_cached_dependencies_use_only_the_selected_fixture_cache(self) -> None:
         document, _ = self.generate(

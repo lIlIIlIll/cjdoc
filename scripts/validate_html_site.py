@@ -19,7 +19,7 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "09781aa1da36e60de5485f9d6bf753007eb367e9fe23b0d7c5520781e18461b1"
+CANONICAL_SEARCH_JS_SHA256 = "e7838207faac5e328ad720ebb2e4581f263bb71099d31dceb82ad7332a68785d"
 
 
 class PageParser(HTMLParser):
@@ -211,15 +211,16 @@ def main() -> int:
     if embedded_search != search_text.strip() or \
             strict_loads(embedded_search, description="embedded HTML search index") != search:
         raise ValueError("search-index.js payload differs from search-index.json")
-    if search.get("schemaVersion") != "cjdoc.search-index/3":
+    if search.get("schemaVersion") != "cjdoc.search-index/4":
         raise ValueError("unexpected search index schemaVersion")
     entries = search.get("entries")
     if not isinstance(entries, list):
         raise ValueError("search index entries must be an array")
     ids = [entry.get("id") for entry in entries]
-    if ids != sorted(ids) or len(ids) != len(set(ids)):
-        raise ValueError("search index IDs must be sorted and unique")
-    expected = {"id", "name", "qualifiedName", "kind", "packageName", "summary", "href"}
+    if len(ids) != len(set(ids)):
+        raise ValueError("search index IDs must be unique")
+    expected = {"id", "canonicalId", "exposure", "name", "qualifiedName", "kind",
+                "packageName", "summary", "href"}
     for entry in entries:
         if set(entry) != expected:
             raise ValueError(f"invalid search entry fields for {entry.get('id')}")

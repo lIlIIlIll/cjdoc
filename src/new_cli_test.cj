@@ -41,6 +41,12 @@ class NewCliRegressionTest {
     }
 
     @TestCase
+    func checkRejectsRendererOnlyLocalizationOptions(): Unit {
+        @Expect(runCli(["check", "--locale", "en"]), 2)
+        @Expect(runCli(["check", "--markdown-layout", "single", "--locale", "en"]), 2)
+    }
+
+    @TestCase
     func docIrInputMustBeRegularAndWithinTheReadLimit(): Unit {
         let parent = createNewCliTestTempDirectory()
         try {

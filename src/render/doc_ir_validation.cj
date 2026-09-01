@@ -331,6 +331,15 @@ private func consumeSymbolEncoding(value: SymbolDoc, path: String,
     budget.consumeObject("${path}.origin")
     budget.consumeString(value.origin.kind, "${path}.origin.kind")
     budget.consumeOptionalString(value.origin.macroSymbolId, "${path}.origin.macroSymbolId")
+    budget.consumeObject("${path}.sourceApiSignature")
+    budget.consumeString(value.sourceApiSignature.state, "${path}.sourceApiSignature.state")
+    budget.consumeCollection(value.sourceApiSignature.tokens.size,
+        "${path}.sourceApiSignature.tokens")
+    var signatureIndex: Int64 = 0
+    for (token in value.sourceApiSignature.tokens) {
+        budget.consumeString(token, "${path}.sourceApiSignature.tokens[${signatureIndex}]")
+        signatureIndex++
+    }
     budget.consumeCollection(value.genericParameters.size, "${path}.genericParameters")
     var index: Int64 = 0
     for (parameter in value.genericParameters) {
@@ -425,6 +434,7 @@ private func validateDocIrEncodingBudget(documentation: DocumentationSet, limit:
         budget.consumeString(module.name, "${path}.name")
         budget.consumeString(module.role, "${path}.role")
         budget.consumeString(module.sourcePrefix, "${path}.sourcePrefix")
+        budget.consumeOptionalString(module.organization, "${path}.organization")
         budget.consumeCollection(module.packageNames.size, "${path}.packageNames")
         var itemIndex: Int64 = 0
         for (name in module.packageNames) {
@@ -453,6 +463,37 @@ private func validateDocIrEncodingBudget(documentation: DocumentationSet, limit:
         itemIndex = 0
         for (id in pkg.symbolIds) {
             budget.consumeString(id, "${path}.symbolIds[${itemIndex}]"); itemIndex++
+        }
+        budget.consumeCollection(pkg.reExports.size, "${path}.reExports")
+        itemIndex = 0
+        for (reExport in pkg.reExports) {
+            let reExportPath = "${path}.reExports[${itemIndex}]"
+            budget.consumeObject(reExportPath)
+            budget.consumeString(reExport.id, "${reExportPath}.id")
+            budget.consumeString(reExport.kind, "${reExportPath}.kind")
+            budget.consumeOptionalString(reExport.organization, "${reExportPath}.organization")
+            budget.consumeString(reExport.targetPackageName, "${reExportPath}.targetPackageName")
+            budget.consumeOptionalString(reExport.targetModuleId, "${reExportPath}.targetModuleId")
+            budget.consumeOptionalString(reExport.alias, "${reExportPath}.alias")
+            budget.consumeString(reExport.state, "${reExportPath}.state")
+            consumeRangeEncoding(reExport.source, "${reExportPath}.source", budget, jsonDepth: 3)
+            budget.consumeCollection(reExport.bindings.size, "${reExportPath}.bindings")
+            var bindingIndex: Int64 = 0
+            for (binding in reExport.bindings) {
+                let bindingPath = "${reExportPath}.bindings[${bindingIndex}]"
+                budget.consumeObject(bindingPath)
+                budget.consumeString(binding.exposedName, "${bindingPath}.exposedName")
+                budget.consumeCollection(binding.targetSymbolIds.size,
+                    "${bindingPath}.targetSymbolIds")
+                var targetIndex: Int64 = 0
+                for (targetId in binding.targetSymbolIds) {
+                    budget.consumeString(targetId,
+                        "${bindingPath}.targetSymbolIds[${targetIndex}]")
+                    targetIndex++
+                }
+                bindingIndex++
+            }
+            itemIndex++
         }
         index++
     }
@@ -946,6 +987,21 @@ private func validSha256AssetId(value: String): Bool {
     true
 }
 
+private func validReExportId(value: String): Bool {
+    let prefix = "cjdoc:reexport:v1:"
+    if (!value.startsWith(prefix) || value.size != prefix.size + 64) { return false }
+    let bytes = value.toArray()
+    var index = prefix.size
+    while (index < bytes.size) {
+        let byte = bytes[index]
+        if (!((byte >= b'0' && byte <= b'9') || (byte >= b'a' && byte <= b'f'))) {
+            return false
+        }
+        index++
+    }
+    true
+}
+
 public func validateDocumentationSet(documentation: DocumentationSet): Unit {
     if (documentation.schemaVersion != DOC_IR_SCHEMA_VERSION) {
         domainFail("$.schemaVersion", "typed documentation must be v8")
@@ -968,6 +1024,12 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         if (!module.sourcePrefix.isEmpty() && !safeRelativePath(module.sourcePrefix)) {
             domainFail("$.modules[${index}].sourcePrefix",
                 "must be empty or a portable relative logical path")
+        }
+        if (let Some(organization) <- module.organization) {
+            if (organization.trimAscii().isEmpty() || organization.size > 1024) {
+                domainFail("$.modules[${index}].organization",
+                    "must be null or a non-blank bounded organization identity")
+            }
         }
         modulesById[module.id] = module
         let packageNames = HashSet<String>()
@@ -1193,6 +1255,8 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
 
     let listedFileKeys = HashSet<String>()
     let listedSymbolIds = HashSet<String>()
+    let reExportIds = HashSet<String>()
+    var reExportEdges: Int64 = 0
     index = 0
     for (pkg in documentation.packages) {
         let sourceFiles = HashSet<String>()
@@ -1215,6 +1279,78 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
             if (!listedSymbolIds.add(id)) {
                 domainFail("$.packages[${index}].symbolIds", "symbol is listed more than once")
             }
+        }
+        var reExportIndex: Int64 = 0
+        for (reExport in pkg.reExports) {
+            let reExportPath = "$.packages[${index}].reExports[${reExportIndex}]"
+            if (!validReExportId(reExport.id) || !reExportIds.add(reExport.id)) {
+                domainFail("${reExportPath}.id", "invalid or duplicate re-export id")
+            }
+            validateRange(reExport.source, "${reExportPath}.source")
+            if (!fileKeys.contains(compositeKey(compositeKey(pkg.moduleId, pkg.name),
+                reExport.source.path))) {
+                domainFail("${reExportPath}.source",
+                    "re-export source file is not owned by exporting module/package")
+            }
+            if (reExport.kind == "packageAlias") {
+                if (reExport.alias.isNone() || !reExport.bindings.isEmpty()) {
+                    domainFail(reExportPath,
+                        "package alias requires an alias and cannot expose symbol bindings")
+                }
+            } else if (reExport.state != "resolved" && !reExport.bindings.isEmpty()) {
+                domainFail("${reExportPath}.bindings",
+                    "unresolved re-export cannot expose symbol bindings")
+            } else if (reExport.state == "resolved" && reExport.kind != "all" &&
+                reExport.bindings.isEmpty()) {
+                domainFail("${reExportPath}.bindings",
+                    "resolved symbol re-export requires at least one binding")
+            }
+            match (reExport.targetModuleId) {
+                case Some(targetModuleId) =>
+                    if (!moduleIds.contains(targetModuleId) ||
+                        !packageKeys.contains(compositeKey(targetModuleId,
+                            reExport.targetPackageName))) {
+                        domainFail(reExportPath, "unknown target module/package")
+                    }
+                case None => if (reExport.state == "resolved") {
+                    domainFail("${reExportPath}.targetModuleId",
+                        "resolved re-export is missing its target module")
+                }
+            }
+            let exposedNames = HashSet<String>()
+            var bindingIndex: Int64 = 0
+            for (binding in reExport.bindings) {
+                let bindingPath = "${reExportPath}.bindings[${bindingIndex}]"
+                if (!exposedNames.add(binding.exposedName)) {
+                    domainFail("${bindingPath}.exposedName",
+                        "duplicate exposed name in re-export")
+                }
+                let targetIds = HashSet<String>()
+                for (targetId in binding.targetSymbolIds) {
+                    if (!targetIds.add(targetId)) {
+                        domainFail("${bindingPath}.targetSymbolIds",
+                            "duplicate target SymbolId in re-export binding")
+                    }
+                    match (byId.get(targetId)) {
+                        case Some(target) =>
+                            if (target.ownerId.isSome() ||
+                                (target.visibility != "public" && target.visibility != "protected") ||
+                                reExport.targetModuleId.isNone() ||
+                                target.moduleId != reExport.targetModuleId.getOrThrow() ||
+                                target.packageName != reExport.targetPackageName) {
+                                domainFail(bindingPath,
+                                    "re-export target must be a visible top-level declaration in the target package")
+                            }
+                        case None => domainFail(bindingPath, "unknown target SymbolId")
+                    }
+                    if (reExportEdges >= DOC_IR_MAX_REEXPORT_EDGES) {
+                        domainFail("$.packages", "re-export edge limit exceeded")
+                    }
+                    reExportEdges++
+                }
+                bindingIndex++
+            }
+            reExportIndex++
         }
         index++
     }

@@ -48,7 +48,7 @@ YJSON_SOURCE_SHA256 = {
     "src/work_limits.cj": "52aa1b8fbd41deaa72c80028f1500fe6ff9bafbcf9f5b11d2569bbc61baaeb6c",
 }
 LEGACY_MIGRATION_RECEIPT_SHA256 = \
-    "60ea4875fc50bd158ae56c48b9f60b2121bfae532ab33ded2ff8125c0bed1d52"
+    "9e9ddc889a380f29abcf869471118e1bff92fc596055fad7cef0631a1ee5b40d"
 JSON_SCHEMA_DRAFT = "https://json-schema.org/draft/2020-12/schema"
 
 GOLDEN_NAMES = (
@@ -74,6 +74,8 @@ SCHEMA_NAMES = (
     "diagnostics",
     "cfg-matrix",
     "search-index",
+    "api-surface",
+    "documentation-coverage",
 )
 SCHEMA_CONTRACTS = {
     "doc-ir": (
@@ -118,7 +120,15 @@ SCHEMA_CONTRACTS = {
     ),
     "search-index": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index.schema.json",
-        "cjdoc.search-index/3", ("schemaVersion", "entries"),
+        "cjdoc.search-index/4", ("schemaVersion", "entries"),
+    ),
+    "api-surface": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface.schema.json",
+        "cjdoc.api-surface/1", ("schemaVersion", "project", "audience", "declarations", "exposures"),
+    ),
+    "documentation-coverage": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/documentation-coverage.schema.json",
+        "cjdoc.documentation-coverage/1", ("schemaVersion", "audience", "symbols", "parameters"),
     ),
 }
 DOC_IR_CORE_DEFS = {
@@ -289,7 +299,8 @@ def validate_schema_document(name: str, value: object) -> None:
         entries = properties["entries"]
         items = entries.get("items") if isinstance(entries, dict) else None
         expected_entry_fields = {
-            "id", "name", "qualifiedName", "kind", "packageName", "summary", "href"
+            "id", "canonicalId", "exposure", "name", "qualifiedName", "kind",
+            "packageName", "summary", "href"
         }
         if not isinstance(entries, dict) or entries.get("type") != "array" or \
                 not isinstance(items, dict) or \
@@ -298,6 +309,18 @@ def validate_schema_document(name: str, value: object) -> None:
                 set(items.get("required", [])) != expected_entry_fields or \
                 set(items.get("properties", {})) != expected_entry_fields:
             raise ValueError("search-index schema entry shape is invalid")
+    elif name == "api-surface":
+        definitions = value.get("$defs")
+        if not isinstance(definitions, dict) or not {
+            "declaration", "exposure", "sourceApiSignature", "symbolId", "moduleId"
+        }.issubset(definitions):
+            raise ValueError("api-surface schema definitions are incomplete")
+    elif name == "documentation-coverage":
+        definitions = value.get("$defs")
+        if not isinstance(definitions, dict) or "counts" not in definitions or \
+                properties.get("symbols") != {"$ref": "#/$defs/counts"} or \
+                properties.get("parameters") != {"$ref": "#/$defs/counts"}:
+            raise ValueError("documentation-coverage schema counts shape is invalid")
 
 
 def verify_schema_set(repo: Path) -> None:

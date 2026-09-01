@@ -52,6 +52,7 @@
       "name": "workspace_alpha",
       "role": "workspace",
       "sourcePrefix": "packages/alpha",
+      "organization": null,
       "packageNames": [
         "workspace_alpha"
       ],
@@ -64,6 +65,7 @@
       "name": "workspace_beta",
       "role": "workspace",
       "sourcePrefix": "packages/beta",
+      "organization": null,
       "packageNames": [
         "workspace_beta"
       ],
@@ -81,6 +83,9 @@
       ],
       "symbolIds": [
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aworkspace%3Apackages/alpha::workspace_alpha::function:alpha#g0()"
+      ],
+      "reExports": [
+        
       ]
     },
     {
@@ -91,6 +96,9 @@
       ],
       "symbolIds": [
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aworkspace%3Apackages/beta::workspace_beta::function:beta#g0()"
+      ],
+      "reExports": [
+        
       ]
     }
   ],
@@ -191,6 +199,18 @@
         }
       },
       "headerSpelling": "public func alpha(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:5:alpha",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -286,6 +306,18 @@
         }
       },
       "headerSpelling": "public func beta(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:4:beta",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",

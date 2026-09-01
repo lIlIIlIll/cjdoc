@@ -37,6 +37,7 @@
       "name": "source_edges_fixture",
       "role": "root",
       "sourcePrefix": "",
+      "organization": null,
       "packageNames": [
         "source_edges_fixture"
       ],
@@ -59,6 +60,9 @@
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::source_edges_fixture::file:src/fixture.cj::PrivateOwner::function:mustNotLeak#g0()",
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::source_edges_fixture::file:src/fixture.cj::class:PrivateOwner#g0()",
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::source_edges_fixture::function:解析#g0(String)"
+      ],
+      "reExports": [
+        
       ]
     }
   ],
@@ -122,6 +126,18 @@
         }
       },
       "headerSpelling": "private func hidden(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PRIVATE:7:private",
+          "FUNC:4:func",
+          "IDENTIFIER:6:hidden",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -217,6 +233,18 @@
         }
       },
       "headerSpelling": "protected func inherited(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PROTECTED:9:protected",
+          "FUNC:4:func",
+          "IDENTIFIER:9:inherited",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -300,6 +328,15 @@
         }
       },
       "headerSpelling": "public open class PublicOwner",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "OPEN:4:open",
+          "CLASS:5:class",
+          "IDENTIFIER:11:PublicOwner"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -363,6 +400,18 @@
         }
       },
       "headerSpelling": "public func mustNotLeak(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:11:mustNotLeak",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -414,6 +463,14 @@
         }
       },
       "headerSpelling": "private class PrivateOwner",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PRIVATE:7:private",
+          "CLASS:5:class",
+          "IDENTIFIER:12:PrivateOwner"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -526,6 +583,21 @@
         }
       },
       "headerSpelling": "public func 解析(文本: String): String",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:6:解析",
+          "LPAREN:1:(",
+          "IDENTIFIER:6:文本",
+          "COLON:1::",
+          "IDENTIFIER:6:String",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "IDENTIFIER:6:String"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",

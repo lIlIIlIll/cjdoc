@@ -1,25 +1,25 @@
 {
   "cycles": 1,
-  "method": "fixed-cpu repeated cold/warm hard ceiling; fresh output per sample; SHA-256 identity",
+  "method": "fixed-cpu mirrored cold/warm order; fresh output per sample; SHA-256 identity",
   "purpose": "hard-ceiling",
   "profiles": [
     {
       "minDeclarations": 1,
       "name": "basic",
       "project": "tests/fixtures/projects/basic",
-      "referenceDocsSha256": "b0f834fd227f55d1c56becde91d3a7c71103c5494bde7278ceae429f58bc73cf",
+      "referenceDocsSha256": "0165d92c593b684d925356eceed4dd49d1de6943cbef779439c80aa59043c9aa",
       "variants": {
         "cold": {
-          "baselineMedianElapsedMs": 323,
-          "baselineMedianPeakRssKiB": 94822,
-          "maxElapsedMs": 1056,
-          "maxPeakRssKiB": 189688
+          "baselineMedianElapsedMs": 1288,
+          "baselineMedianPeakRssKiB": 119604,
+          "maxElapsedMs": 4077,
+          "maxPeakRssKiB": 248024
         },
         "warm": {
-          "baselineMedianElapsedMs": 364,
-          "baselineMedianPeakRssKiB": 339072,
-          "maxElapsedMs": 1116,
-          "maxPeakRssKiB": 678184
+          "baselineMedianElapsedMs": 1538,
+          "baselineMedianPeakRssKiB": 338218,
+          "maxElapsedMs": 4692,
+          "maxPeakRssKiB": 676576
         }
       }
     },
@@ -27,19 +27,19 @@
       "minDeclarations": 1,
       "name": "self",
       "project": ".",
-      "referenceDocsSha256": "5cc9c789d2745fd90914e8a200323b74626e1113b6624527365a226a85cc8208",
+      "referenceDocsSha256": "206b825f43ec96160179add9aa140b121fad352427bba8a270f35cbd18eedd68",
       "variants": {
         "cold": {
-          "baselineMedianElapsedMs": 9718,
-          "baselineMedianPeakRssKiB": 235120,
-          "maxElapsedMs": 30267,
-          "maxPeakRssKiB": 484280
+          "baselineMedianElapsedMs": 55484,
+          "baselineMedianPeakRssKiB": 287040,
+          "maxElapsedMs": 169662,
+          "maxPeakRssKiB": 578216
         },
         "warm": {
-          "baselineMedianElapsedMs": 5530,
-          "baselineMedianPeakRssKiB": 339038,
-          "maxElapsedMs": 16683,
-          "maxPeakRssKiB": 678096
+          "baselineMedianElapsedMs": 48438,
+          "baselineMedianPeakRssKiB": 338134,
+          "maxElapsedMs": 151647,
+          "maxPeakRssKiB": 676352
         }
       }
     }
@@ -52,5 +52,5 @@
     "python": "3.14.7"
   },
   "schemaVersion": "cjdoc.perf-baseline/1",
-  "state": "candidate"
+  "state": "frozen"
 }

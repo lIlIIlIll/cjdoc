@@ -37,6 +37,7 @@
       "name": "unsupported_fixture",
       "role": "root",
       "sourcePrefix": "",
+      "organization": null,
       "packageNames": [
         "unsupported_fixture"
       ],
@@ -53,6 +54,9 @@
         "src/macro.cj"
       ],
       "symbolIds": [
+        
+      ],
+      "reExports": [
         
       ]
     }

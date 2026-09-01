@@ -9,7 +9,7 @@ import std.process.*
 import std.sort.*
 import std.sync.AtomicInt64
 
-private let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v7"
+private let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v8"
 private let MAX_SOURCE_FILE_BYTES: Int64 = 32 * 1024 * 1024
 private let MAX_SOURCE_CACHE_BYTES: Int64 = 64 * 1024 * 1024
 private let MAX_SOURCE_CACHE_ITEMS: Int64 = 100000
@@ -146,6 +146,19 @@ private func normalizedTokens(node: Node): String {
     return node.toTokens().toString().trimAscii()
 }
 
+private func sourceApiSignatureTokens(signature: String): Array<String> {
+    let result = ArrayList<String>()
+    try {
+        for (token in cangjieLex(signature)) {
+            if (token.kind == COMMENT || token.kind == NL || token.value.isEmpty()) { continue }
+            result.add("${token.kind}:${token.value.size}:${token.value}")
+        }
+    } catch (_: Exception) {
+        return []
+    }
+    result.toArray()
+}
+
 // One immutable source buffer is shared by declaration extraction and comment
 // binding. Line starts make source-position conversion logarithmic instead of
 // rescanning and reallocating the complete file for every declaration.
@@ -274,6 +287,74 @@ private func tokenEndPosition(token: Token): (Int64, Int64) {
     (endLine, endColumn)
 }
 
+private func importKindName(kind: ImportKind): String {
+    match (kind) {
+        case ImportKind.Single => "single"
+        case ImportKind.Alias => "alias"
+        case ImportKind.All => "all"
+        case ImportKind.Multi => "multi"
+    }
+}
+
+private func importAliasName(tokens: Tokens): ?String {
+    var index = tokens.size
+    while (index > 0) {
+        index--
+        let value = tokens[index].value
+        if (!value.isEmpty() && value != "as") { return Some(value) }
+    }
+    None
+}
+
+private func importPrefixPaths(tokens: Tokens): Array<String> {
+    let result = ArrayList<String>()
+    for (token in tokens) {
+        if (!token.value.isEmpty()) { result.add(token.value) }
+    }
+    result.toArray()
+}
+
+private func importLocation(path: String, value: ImportList): ?SourceLocation {
+    let tokens = value.toTokens()
+    if (tokens.size == 0) { return None }
+    var first: Int64 = 0
+    while (first < tokens.size && (tokens[first].value.isEmpty() || tokens[first].kind == NL)) { first++ }
+    if (first >= tokens.size || tokens[first].pos.line <= 0 || tokens[first].pos.column <= 0) { return None }
+    var last = tokens.size
+    while (last > first && (tokens[last - 1].value.isEmpty() || tokens[last - 1].kind == NL)) { last-- }
+    if (last <= first) { return None }
+    let endToken = tokens[last - 1]
+    if (endToken.pos.line <= 0 || endToken.pos.column <= 0) { return None }
+    let (endLine, endColumn) = tokenEndPosition(endToken)
+    Some(SourceLocation(path, Int64(tokens[first].pos.line), Int64(tokens[first].pos.column),
+        endLine, endColumn))
+}
+
+private func collectPublicReExports(program: Program, path: String, packageName: String,
+    moduleId: String): Array<SourceReExport> {
+    let result = ArrayList<SourceReExport>()
+    for (importList in program.importLists) {
+        if (importList.modifier.value != "public") { continue }
+        let location = match (importLocation(path, importList)) {
+            case Some(value) => value
+            case None => continue
+        }
+        let content = importList.content
+        let items = ArrayList<SourceImportItem>()
+        for (item in content.items) {
+            if (item.identifier.value.isEmpty()) { continue }
+            items.add(SourceImportItem(item.identifier.value,
+                alias: importAliasName(item.importAlias)))
+        }
+        result.add(SourceReExport(importKindName(content.importKind),
+            if (content.orgName.value.isEmpty()) { None } else { Some(content.orgName.value) },
+            content.identifier.value, importAliasName(content.importAlias), location,
+            importList.toTokens().toString().trimAscii(), packageName, moduleId,
+            prefixPaths: importPrefixPaths(content.prefixPaths), items: items.toArray()))
+    }
+    result.toArray()
+}
+
 private class PatternBinding {
     let name: String
 
@@ -327,10 +408,12 @@ private class AstDeclarationCollector <: Visitor {
         let endLine = if (decl.endPos.line > 0) { Int64(decl.endPos.line) } else { startLine }
         let endColumn = if (decl.endPos.column > 0) { Int64(decl.endPos.column) } else { startColumn }
         let location = SourceLocation(path, startLine, startColumn, endLine, endColumn)
+        let signature = declarationSignature(decl, source, location, hasBody)
         let symbol = SourceDeclaration(makeSourceDeclarationKey(location, kind, name), kind, name,
             packageName, moduleId, declarationVisibility(decl), location,
-            declarationSignature(decl, source, location, hasBody), isContainer: isContainer,
-            enumNonExhaustive: enumNonExhaustive)
+            signature, isContainer: isContainer,
+            enumNonExhaustive: enumNonExhaustive,
+            sourceApiSignatureTokens: sourceApiSignatureTokens(signature))
         addCommonAstData(symbol, decl)
         declarations.add(symbol)
         return symbol
@@ -369,13 +452,14 @@ private class AstDeclarationCollector <: Visitor {
         let location = SourceLocation(path, Int64(first.pos.line), Int64(first.pos.column),
             endLine, endColumn)
         let exact = source.slice(location)
+        let signature = if (exact.isEmpty()) {
+            normalizedTokens(parameter).trimAscii().trimEnd(",").trimAscii()
+        } else {
+            exact.trimAscii()
+        }
         let symbol = SourceDeclaration(makeSourceDeclarationKey(location, "variable", name),
             "variable", name, packageName, moduleId, declarationVisibility(parameter), location,
-            if (exact.isEmpty()) {
-                normalizedTokens(parameter).trimAscii().trimEnd(",").trimAscii()
-            } else {
-                exact.trimAscii()
-            })
+            signature, sourceApiSignatureTokens: sourceApiSignatureTokens(signature))
         addCommonAstData(symbol, parameter)
         let display = try { normalizedTokens(parameter.paramType) } catch (_: Exception) { "" }
         if (!display.isEmpty()) { symbol.returnTypeSpelling = Some(display) }
@@ -432,9 +516,14 @@ private class AstDeclarationCollector <: Visitor {
                     endLine, endColumn)
                 let exact = source.slice(location)
                 let name = constructor.identifier.value
+                let signature = if (exact.isEmpty()) {
+                    constructor.toTokens().toString().trimAscii()
+                } else {
+                    exact.trimAscii()
+                }
                 let symbol = SourceDeclaration(makeSourceDeclarationKey(location, "enumCase", name),
                     "enumCase", name, packageName, moduleId, owner.visibility, location,
-                    if (exact.isEmpty()) { constructor.toTokens().toString().trimAscii() } else { exact.trimAscii() })
+                    signature, sourceApiSignatureTokens: sourceApiSignatureTokens(signature))
                 var parameterIndex: Int64 = 0
                 for (argument in constructor.typeArguments) {
                     symbol.parameters.add(SourceParameter("_${parameterIndex}", normalizedTokens(argument)))
@@ -1274,7 +1363,7 @@ private func addExternalSourceModule(modules: ArrayList<SourceModuleRoot>,
         }
     }
     let moduleDoc = SourceModule(moduleId("externalDependency", input.name, prefix),
-        packageName, "externalDependency", prefix)
+        packageName, "externalDependency", prefix, organization: packageView.organization)
     let module = SourceModuleRoot(resolved, sourceRoot, prefix, moduleDoc)
     if (sourceModuleCollision(modules, module)) {
         diagnostics.add(Diagnostic("warning", "CJDOC1018",
@@ -1590,7 +1679,8 @@ private func addPathDependencies(modules: ArrayList<SourceModuleRoot>, seen: Has
         }
         let prefix = dependencyPrefix(dependencyName)
         let dependencyDoc = SourceModule(moduleId("pathDependency", dependencyName, prefix),
-            dependencyName, "pathDependency", prefix)
+            dependencyName, "pathDependency", prefix,
+            organization: dependencyPackage.organization)
         if (!budget.canAddModule(modules.size)) { break }
         let dependencyModule = SourceModuleRoot(resolved, dependencySourceRoot,
             prefix, dependencyDoc)
@@ -1673,7 +1763,8 @@ private func discoverSourceModules(root: String, manifest: String, includePathDe
                     continue
             }
         }
-        let moduleDoc = SourceModule(moduleId(role, name, prefix), name, role, prefix)
+        let moduleDoc = SourceModule(moduleId(role, name, prefix), name, role, prefix,
+            organization: packageView.organization)
         let module = SourceModuleRoot(moduleRoot, sourceRoot, prefix, moduleDoc)
         if (sourceModuleCollision(modules, module)) {
             diagnostics.add(Diagnostic("error", "CJDOC1010",
@@ -2083,6 +2174,7 @@ private func cacheAddDeclaration(writer: SourceCacheWriter, value: SourceDeclara
     writer.add(value.visibility)
     cacheAddLocation(writer, value.source)
     writer.add(value.sourceSignature)
+    cacheAddStrings(writer, value.sourceApiSignatureTokens)
     writer.add(value.isContainer)
     cacheAddOptionalBool(writer, value.enumNonExhaustive)
     cacheAddOptionalString(writer, value.ownerSourceKey)
@@ -2122,11 +2214,14 @@ private func cacheReadDeclaration(reader: SourceCacheReader, expectedModuleId: S
     let visibility = reader.next()
     let source = cacheReadLocation(reader)
     let signature = reader.next()
+    let signatureTokens = ArrayList<String>()
+    cacheReadStrings(reader, signatureTokens)
     let isContainer = reader.nextBool()
     let enumNonExhaustive = cacheReadOptionalBool(reader)
     let owner = cacheReadOptionalString(reader)
     let value = SourceDeclaration(sourceKey, kind, name, packageName, moduleId, visibility,
-        source, signature, isContainer: isContainer, enumNonExhaustive: enumNonExhaustive)
+        source, signature, isContainer: isContainer, enumNonExhaustive: enumNonExhaustive,
+        sourceApiSignatureTokens: signatureTokens.toArray())
     value.ownerSourceKey = owner
     cacheReadStrings(reader, value.genericParameters)
     let parameterCount = reader.nextCount()
@@ -2155,11 +2250,51 @@ private func cacheReadDeclaration(reader: SourceCacheReader, expectedModuleId: S
     return value
 }
 
+private func cacheAddReExport(writer: SourceCacheWriter, value: SourceReExport): Unit {
+    writer.add(value.kind)
+    cacheAddOptionalString(writer, value.organization)
+    cacheAddStrings(writer, value.prefixPaths)
+    writer.add(value.identifier)
+    cacheAddOptionalString(writer, value.alias)
+    cacheAddLocation(writer, value.source)
+    writer.add(value.normalizedSpec)
+    writer.add(value.packageName)
+    writer.add(value.moduleId)
+    if (!writer.addCount(value.items.size)) { return }
+    for (item in value.items) {
+        writer.add(item.name)
+        cacheAddOptionalString(writer, item.alias)
+    }
+}
+
+private func cacheReadReExport(reader: SourceCacheReader, expectedModuleId: String): SourceReExport {
+    let kind = reader.next()
+    let organization = cacheReadOptionalString(reader)
+    let prefixPaths = ArrayList<String>()
+    cacheReadStrings(reader, prefixPaths)
+    let identifier = reader.next()
+    let alias = cacheReadOptionalString(reader)
+    let source = cacheReadLocation(reader)
+    let normalizedSpec = reader.next()
+    let packageName = reader.next()
+    let moduleId = reader.next()
+    if (moduleId != expectedModuleId) { throw IllegalArgumentException("cache module mismatch") }
+    let items = ArrayList<SourceImportItem>()
+    var count = reader.nextCount()
+    while (count > 0) {
+        items.add(SourceImportItem(reader.next(), alias: cacheReadOptionalString(reader)))
+        count--
+    }
+    SourceReExport(kind, organization, identifier, alias, source, normalizedSpec,
+        packageName, moduleId, prefixPaths: prefixPaths.toArray(), items: items.toArray())
+}
+
 private class ParsedSourceFile {
     let input: SourceInputFile
     var packageName: ?String = None
     var capturedSourceIndex: ?CapturedSourceIndex = None
     let declarations = ArrayList<SourceDeclaration>()
+    let reExports = ArrayList<SourceReExport>()
     let orphanDocComments = ArrayList<OrphanDocComment>()
     let macroInvocations = ArrayList<MacroInvocation>()
     let unsupportedDeclarations = ArrayList<UnsupportedDeclaration>()
@@ -2251,6 +2386,11 @@ private func encodeParsedSource(cacheKey: String, parsed: ParsedSourceFile,
     if (!writer.addCount(parsed.declarations.size)) { return None }
     for (declaration in parsed.declarations) {
         cacheAddDeclaration(writer, declaration)
+        if (!writer.canContinue()) { return None }
+    }
+    if (!writer.addCount(parsed.reExports.size)) { return None }
+    for (reExport in parsed.reExports) {
+        cacheAddReExport(writer, reExport)
         if (!writer.canContinue()) { return None }
     }
     if (!writer.addCount(parsed.orphanDocComments.size)) { return None }
@@ -2511,6 +2651,13 @@ private func validateCachedDocComment(comment: ?DocComment): Unit {
 private func cachedSourceSignatureMatches(declaration: SourceDeclaration,
     source: IndexedSourceBuffer): Bool {
     if (declaration.sourceSignature.isEmpty()) { return false }
+    let expectedTokens = sourceApiSignatureTokens(declaration.sourceSignature)
+    if (expectedTokens.size != declaration.sourceApiSignatureTokens.size) { return false }
+    var tokenIndex: Int64 = 0
+    while (tokenIndex < expectedTokens.size) {
+        if (expectedTokens[tokenIndex] != declaration.sourceApiSignatureTokens[tokenIndex]) { return false }
+        tokenIndex++
+    }
     let end = source.byteOffset(declaration.source.endLine, declaration.source.endColumn)
     var cursor = source.byteOffset(declaration.source.startLine,
         declaration.source.startColumn)
@@ -2656,7 +2803,7 @@ private func validateDecodedSourceCache(parsed: ParsedSourceFile,
             if (value.isEmpty()) { throw IllegalArgumentException("empty cached package") }
             value
         case None =>
-            if (!parsed.declarations.isEmpty() || !parsed.orphanDocComments.isEmpty() ||
+            if (!parsed.declarations.isEmpty() || !parsed.reExports.isEmpty() || !parsed.orphanDocComments.isEmpty() ||
                 !parsed.macroInvocations.isEmpty() || !parsed.unsupportedDeclarations.isEmpty()) {
                 throw IllegalArgumentException("cached source facts require a package")
             }
@@ -2710,6 +2857,19 @@ private func validateDecodedSourceCache(parsed: ParsedSourceFile,
     // The shared validator uses three-state iterative DFS and memoized depth,
     // so every owner edge is visited once and total nesting is still capped.
     validateSourceCacheOwnerGraph(parsed.declarations)
+    for (reExport in parsed.reExports) {
+        if ((reExport.kind != "single" && reExport.kind != "alias" &&
+            reExport.kind != "all" && reExport.kind != "multi") ||
+            reExport.packageName != packageName || reExport.moduleId != parsed.input.module.id ||
+            reExport.normalizedSpec.isEmpty() ||
+            !sourceCacheLocationMatchesCaptured(reExport.source, expectedPath, capturedSourceIndex)) {
+            throw IllegalArgumentException("invalid cached public import")
+        }
+        let exact = sourceBuffer.slice(reExport.source)
+        if (exact.isEmpty() || cangjieLex(exact).toString().trimAscii() != reExport.normalizedSpec) {
+            throw IllegalArgumentException("cached public import does not match source")
+        }
+    }
     for (comment in parsed.orphanDocComments) {
         if (!comment.rawText.startsWith("/**") ||
             !sourceCacheLocationMatchesCaptured(comment.source, expectedPath,
@@ -2759,6 +2919,12 @@ private func decodeParsedSource(input: SourceInputFile, cacheKey: String,
     var index: Int64 = 0
     while (index < count) {
         parsed.declarations.add(cacheReadDeclaration(reader, input.module.id))
+        index++
+    }
+    count = checkedCacheCount(reader)
+    index = 0
+    while (index < count) {
+        parsed.reExports.add(cacheReadReExport(reader, input.module.id))
         index++
     }
     count = checkedCacheCount(reader)
@@ -2924,6 +3090,7 @@ private func parseSourceText(input: SourceInputFile, fallbackPackageName: String
         }
         result.packageName = Some(packageName)
         result.declarations.add(all: collector.declarations)
+        result.reExports.add(all: collectPublicReExports(program, relative, packageName, input.module.id))
         result.macroInvocations.add(all: collector.macroInvocations)
         result.unsupportedDeclarations.add(all: collector.unsupportedDeclarations)
         result.diagnostics.add(all: collector.diagnostics)
@@ -3155,6 +3322,7 @@ private func mergeParsedSource(sourceSnapshot: SourceSnapshot, parsed: ParsedSou
         aggregation.add(sourceSnapshot, parsed.input, packageName)
     }
     sourceSnapshot.declarations.add(all: parsed.declarations)
+    sourceSnapshot.reExports.add(all: parsed.reExports)
     sourceSnapshot.orphanDocComments.add(all: parsed.orphanDocComments)
     sourceSnapshot.macroInvocations.add(all: parsed.macroInvocations)
     sourceSnapshot.unsupportedDeclarations.add(all: parsed.unsupportedDeclarations)

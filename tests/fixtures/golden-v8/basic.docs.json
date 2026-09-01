@@ -37,6 +37,7 @@
       "name": "basic",
       "role": "root",
       "sourcePrefix": "",
+      "organization": null,
       "packageNames": [
         "basic"
       ],
@@ -78,6 +79,9 @@
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::interface:Reader#g0()",
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::struct:Box#g1()",
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::typeAlias:Name#g0()"
+      ],
+      "reExports": [
+        
       ]
     }
   ],
@@ -168,6 +172,18 @@
         }
       },
       "headerSpelling": "public init(value: T)",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "INIT:4:init",
+          "LPAREN:1:(",
+          "IDENTIFIER:5:value",
+          "COLON:1::",
+          "IDENTIFIER:1:T",
+          "RPAREN:1:)"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -231,6 +247,16 @@
         }
       },
       "headerSpelling": "public let value: T",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "LET:3:let",
+          "IDENTIFIER:5:value",
+          "COLON:1::",
+          "IDENTIFIER:1:T"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -326,6 +352,18 @@
         }
       },
       "headerSpelling": "public func length(): Int64",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:6:length",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "INT64:5:Int64"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -421,6 +459,18 @@
         }
       },
       "headerSpelling": "public func pretty(): String",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:6:pretty",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "IDENTIFIER:6:String"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -527,6 +577,18 @@
         }
       },
       "headerSpelling": "public init(value: T)",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "INIT:4:init",
+          "LPAREN:1:(",
+          "IDENTIFIER:5:value",
+          "COLON:1::",
+          "IDENTIFIER:1:T",
+          "RPAREN:1:)"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -590,6 +652,18 @@
         }
       },
       "headerSpelling": "private func hidden(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PRIVATE:7:private",
+          "FUNC:4:func",
+          "IDENTIFIER:6:hidden",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -691,6 +765,18 @@
         }
       },
       "headerSpelling": "public func read(): Int64",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:4:read",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "INT64:5:Int64"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -786,6 +872,16 @@
         }
       },
       "headerSpelling": "public prop size: Int64",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "PROP:4:prop",
+          "IDENTIFIER:4:size",
+          "COLON:1::",
+          "INT64:5:Int64"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -881,6 +977,16 @@
         }
       },
       "headerSpelling": "public let value: T",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "LET:3:let",
+          "IDENTIFIER:5:value",
+          "COLON:1::",
+          "IDENTIFIER:1:T"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -944,6 +1050,17 @@
         }
       },
       "headerSpelling": "func read(): Int64",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "FUNC:4:func",
+          "IDENTIFIER:4:read",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "INT64:5:Int64"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -1012,6 +1129,16 @@
         }
       },
       "headerSpelling": "| Failed(String)",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "BITOR:1:|",
+          "IDENTIFIER:6:Failed",
+          "LPAREN:1:(",
+          "IDENTIFIER:6:String",
+          "RPAREN:1:)"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -1063,6 +1190,13 @@
         }
       },
       "headerSpelling": "| Ready",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "BITOR:1:|",
+          "IDENTIFIER:5:Ready"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -1161,6 +1295,19 @@
         }
       },
       "headerSpelling": "public class Parser<T> <: Reader",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "CLASS:5:class",
+          "IDENTIFIER:6:Parser",
+          "LT:1:<",
+          "IDENTIFIER:1:T",
+          "GT:1:>",
+          "UPPERBOUND:2:<:",
+          "IDENTIFIER:6:Reader"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -1244,6 +1391,14 @@
         }
       },
       "headerSpelling": "public enum Status",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "ENUM:4:enum",
+          "IDENTIFIER:6:Status"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -1342,6 +1497,16 @@
         }
       },
       "headerSpelling": "extend Box<String>",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "EXTEND:6:extend",
+          "IDENTIFIER:3:Box",
+          "LT:1:<",
+          "IDENTIFIER:6:String",
+          "GT:1:>"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -1440,6 +1605,16 @@
         }
       },
       "headerSpelling": "extend Box<String>",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "EXTEND:6:extend",
+          "IDENTIFIER:3:Box",
+          "LT:1:<",
+          "IDENTIFIER:6:String",
+          "GT:1:>"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -1565,6 +1740,24 @@
         }
       },
       "headerSpelling": "public func identity<T>(value: T): T",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:8:identity",
+          "LT:1:<",
+          "IDENTIFIER:1:T",
+          "GT:1:>",
+          "LPAREN:1:(",
+          "IDENTIFIER:5:value",
+          "COLON:1::",
+          "IDENTIFIER:1:T",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "IDENTIFIER:1:T"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -1708,6 +1901,25 @@
         }
       },
       "headerSpelling": "public func multiline(\n    text: String,\n    strict: Bool\n): String",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:9:multiline",
+          "LPAREN:1:(",
+          "IDENTIFIER:4:text",
+          "COLON:1::",
+          "IDENTIFIER:6:String",
+          "COMMA:1:,",
+          "IDENTIFIER:6:strict",
+          "COLON:1::",
+          "BOOLEAN:4:Bool",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "IDENTIFIER:6:String"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -1837,6 +2049,28 @@
         }
       },
       "headerSpelling": "@Deprecated[message: \"Use parse instead.\"]\npublic func oldParse(text: String): Int64",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "AT:1:@",
+          "IDENTIFIER:10:Deprecated",
+          "LSQUARE:1:[",
+          "IDENTIFIER:7:message",
+          "COLON:1::",
+          "STRING_LITERAL:18:Use parse instead.",
+          "RSQUARE:1:]",
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:8:oldParse",
+          "LPAREN:1:(",
+          "IDENTIFIER:4:text",
+          "COLON:1::",
+          "IDENTIFIER:6:String",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "INT64:5:Int64"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -1962,6 +2196,24 @@
         }
       },
       "headerSpelling": "public func parse(data: Array<UInt8>): Int64",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:5:parse",
+          "LPAREN:1:(",
+          "IDENTIFIER:4:data",
+          "COLON:1::",
+          "IDENTIFIER:5:Array",
+          "LT:1:<",
+          "UINT8:5:UInt8",
+          "GT:1:>",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "INT64:5:Int64"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -2157,6 +2409,21 @@
         }
       },
       "headerSpelling": "public func parse(text: String): Int64",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:5:parse",
+          "LPAREN:1:(",
+          "IDENTIFIER:4:text",
+          "COLON:1::",
+          "IDENTIFIER:6:String",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "INT64:5:Int64"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -2282,6 +2549,21 @@
         }
       },
       "headerSpelling": "public func 解析(文本: String): String",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:6:解析",
+          "LPAREN:1:(",
+          "IDENTIFIER:6:文本",
+          "COLON:1::",
+          "IDENTIFIER:6:String",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "IDENTIFIER:6:String"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -2365,6 +2647,14 @@
         }
       },
       "headerSpelling": "public interface Reader",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "INTERFACE:9:interface",
+          "IDENTIFIER:6:Reader"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -2448,6 +2738,17 @@
         }
       },
       "headerSpelling": "public struct Box<T>",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "STRUCT:6:struct",
+          "IDENTIFIER:3:Box",
+          "LT:1:<",
+          "IDENTIFIER:1:T",
+          "GT:1:>"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -2531,6 +2832,16 @@
         }
       },
       "headerSpelling": "public type Name = String",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "TYPE:4:type",
+          "IDENTIFIER:4:Name",
+          "ASSIGN:1:=",
+          "IDENTIFIER:6:String"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",

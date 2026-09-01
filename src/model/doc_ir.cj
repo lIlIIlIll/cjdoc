@@ -23,6 +23,7 @@ protected let DOC_IR_MAX_MARKDOWN_OCCURRENCES: Int64 = 32768
 protected let DOC_IR_MAX_MARKDOWN_EDGES: Int64 = 32768
 protected let DOC_IR_MAX_PROVIDER_IDENTITY_BYTES: Int64 = 1024
 protected let DOC_IR_MAX_ORDERED_LIST_NUMBER: Int64 = 999999999
+protected let DOC_IR_MAX_REEXPORT_EDGES: Int64 = 100000
 
 public func isSemanticState(value: String): Bool {
     value == "resolved" || value == "partial" || value == "unavailable" || value == "ambiguous"
@@ -56,6 +57,28 @@ public class SourceRange {
         this.start = start
         this.end = end
     }
+}
+
+public class SourceApiSignature {
+    public let state: String
+    private let tokensStorage: ArrayList<String>
+
+    public init(state: String, tokens!: Array<String> = []) {
+        if (state != "available" && state != "unavailable") {
+            throw IllegalArgumentException("invalid source API signature state")
+        }
+        if ((state == "available" && tokens.isEmpty()) ||
+            (state == "unavailable" && !tokens.isEmpty())) {
+            throw IllegalArgumentException("source API signature state/tokens mismatch")
+        }
+        for (token in tokens) {
+            if (token.isEmpty()) { throw IllegalArgumentException("source API signature token cannot be empty") }
+        }
+        this.state = state
+        this.tokensStorage = ArrayList<String>(tokens)
+    }
+
+    public prop tokens: ReadOnlyList<String> { get() { tokensStorage } }
 }
 
 public class GeneratorInfo {
@@ -154,11 +177,13 @@ public class ModuleDoc {
     public let name: String
     public let role: String
     public let sourcePrefix: String
+    public let organization: ?String
     private let packageNamesStorage: ArrayList<String>
     private let dependencyIdsStorage: ArrayList<String>
 
     public init(id: String, name: String, role: String, sourcePrefix: String,
-        packageNames!: Array<String> = [], dependencyIds!: Array<String> = []) {
+        packageNames!: Array<String> = [], dependencyIds!: Array<String> = [],
+        organization!: ?String = None) {
         if (!portableModuleSourcePrefix(sourcePrefix)) {
             throw IllegalArgumentException(
                 "module sourcePrefix must be empty or a portable relative logical path")
@@ -167,6 +192,7 @@ public class ModuleDoc {
         this.name = name
         this.role = role
         this.sourcePrefix = sourcePrefix
+        this.organization = organization
         this.packageNamesStorage = ArrayList<String>(packageNames)
         this.dependencyIdsStorage = ArrayList<String>(dependencyIds)
     }
@@ -180,17 +206,76 @@ public class PackageDoc {
     public let moduleId: String
     private let sourceFilesStorage: ArrayList<String>
     private let symbolIdsStorage: ArrayList<String>
+    private let reExportsStorage: ArrayList<ReExportDoc>
 
     public init(name: String, moduleId: String, sourceFiles!: Array<String> = [],
-        symbolIds!: Array<String> = []) {
+        symbolIds!: Array<String> = [], reExports!: Array<ReExportDoc> = []) {
         this.name = name
         this.moduleId = moduleId
         this.sourceFilesStorage = ArrayList<String>(sourceFiles)
         this.symbolIdsStorage = ArrayList<String>(symbolIds)
+        this.reExportsStorage = ArrayList<ReExportDoc>(reExports)
     }
 
     public prop sourceFiles: ReadOnlyList<String> { get() { sourceFilesStorage } }
     public prop symbolIds: ReadOnlyList<String> { get() { symbolIdsStorage } }
+    public prop reExports: ReadOnlyList<ReExportDoc> { get() { reExportsStorage } }
+}
+
+public class ReExportBinding {
+    public let exposedName: String
+    private let targetSymbolIdsStorage: ArrayList<String>
+
+    public init(exposedName: String, targetSymbolIds!: Array<String> = []) {
+        if (exposedName.isEmpty() || targetSymbolIds.isEmpty()) {
+            throw IllegalArgumentException("re-export binding requires a name and target symbols")
+        }
+        this.exposedName = exposedName
+        this.targetSymbolIdsStorage = ArrayList<String>(targetSymbolIds)
+    }
+
+    public prop targetSymbolIds: ReadOnlyList<String> { get() { targetSymbolIdsStorage } }
+}
+
+public class ReExportDoc {
+    public let id: String
+    public let kind: String
+    public let organization: ?String
+    public let targetPackageName: String
+    public let targetModuleId: ?String
+    public let alias: ?String
+    public let state: String
+    public let source: SourceRange
+    private let bindingsStorage: ArrayList<ReExportBinding>
+
+    public init(id: String, kind: String, targetPackageName: String, state: String,
+        source: SourceRange, organization!: ?String = None, targetModuleId!: ?String = None,
+        alias!: ?String = None, bindings!: Array<ReExportBinding> = []) {
+        if (id.isEmpty() || targetPackageName.isEmpty() || !isSemanticState(state)) {
+            throw IllegalArgumentException("invalid re-export identity or state")
+        }
+        match (kind) {
+            case "single" | "alias" | "all" | "multi" | "packageAlias" => ()
+            case _ => throw IllegalArgumentException("invalid re-export kind")
+        }
+        if (kind == "packageAlias" && alias.isNone()) {
+            throw IllegalArgumentException("package alias re-export requires an alias")
+        }
+        if (state == "resolved" && targetModuleId.isNone()) {
+            throw IllegalArgumentException("resolved re-export requires a target module")
+        }
+        this.id = id
+        this.kind = kind
+        this.organization = organization
+        this.targetPackageName = targetPackageName
+        this.targetModuleId = targetModuleId
+        this.alias = alias
+        this.state = state
+        this.source = source
+        this.bindingsStorage = ArrayList<ReExportBinding>(bindings)
+    }
+
+    public prop bindings: ReadOnlyList<ReExportBinding> { get() { bindingsStorage } }
 }
 
 public class FileDoc {
@@ -488,6 +573,7 @@ public class SymbolDoc {
     public let documentation: ?DocComment
     public let source: SourceRange
     public let headerSpelling: String
+    public let sourceApiSignature: SourceApiSignature
     public let semantic: SemanticInfo
     public let origin: DeclarationOrigin
     public let enumNonExhaustive: ?Bool
@@ -504,7 +590,8 @@ public class SymbolDoc {
         parameters!: Array<ParameterDoc> = [], returnType!: ?TypeRef = None,
         annotations!: Array<AnnotationDoc> = [], typeRelationships!: Array<TypeRelationship> = [],
         symbolRelationships!: Array<SymbolRelationship> = [], documentation!: ?DocComment = None,
-        origin!: DeclarationOrigin = DeclarationOrigin()) {
+        origin!: DeclarationOrigin = DeclarationOrigin(),
+        sourceApiSignature!: SourceApiSignature = SourceApiSignature("unavailable")) {
         this.id = id
         this.kind = kind
         this.name = name
@@ -515,6 +602,7 @@ public class SymbolDoc {
         this.visibility = visibility
         this.source = source
         this.headerSpelling = headerSpelling
+        this.sourceApiSignature = sourceApiSignature
         this.semantic = semantic
         this.returnType = returnType
         this.documentation = documentation
@@ -534,7 +622,8 @@ public class SymbolDoc {
         parameters!: Array<ParameterDoc> = [], returnType!: ?TypeRef = None,
         annotations!: Array<AnnotationDoc> = [], typeRelationships!: Array<TypeRelationship> = [],
         symbolRelationships!: Array<SymbolRelationship> = [], documentation!: ?DocComment = None,
-        origin!: DeclarationOrigin = DeclarationOrigin()) {
+        origin!: DeclarationOrigin = DeclarationOrigin(),
+        sourceApiSignature!: SourceApiSignature = SourceApiSignature("unavailable")) {
         this.id = id
         this.kind = kind
         this.name = name
@@ -545,6 +634,7 @@ public class SymbolDoc {
         this.visibility = visibility
         this.source = source
         this.headerSpelling = headerSpelling
+        this.sourceApiSignature = sourceApiSignature
         this.semantic = semantic
         this.returnType = returnType
         this.documentation = documentation

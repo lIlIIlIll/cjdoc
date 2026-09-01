@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/documentation-coverage.schema.json",
+  "title": "cjdoc documentation coverage v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "audience", "symbols", "parameters"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.documentation-coverage/1"},
+    "audience": {"enum": ["external", "package", "all"]},
+    "symbols": {"$ref": "#/$defs/counts"},
+    "parameters": {"$ref": "#/$defs/counts"}
+  },
+  "$defs": {
+    "counts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["total", "documented", "percent"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0, "maximum": 100000},
+        "documented": {"type": "integer", "minimum": 0, "maximum": 100000},
+        "percent": {"type": "integer", "minimum": 0, "maximum": 100}
+      }
+    }
+  }
+}

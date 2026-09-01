@@ -640,10 +640,10 @@ private func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNod
 }
 
 private func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComment,
-    assetLookup: HashMap<String, String>): Unit {
+    assetLookup: HashMap<String, String>, locale!: String = "en"): Unit {
     for (tag in comment.tags) {
         if (tag.name == "deprecated") {
-            out.append("> **Deprecated.** ")
+            out.append("> **${label(locale, "Deprecated.", "已弃用。")}** ")
             appendEscapedMarkdownText(out, tag.description)
             out.append("\n\n")
             break
@@ -653,7 +653,7 @@ private func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComm
     var hasParameters = false
     for (tag in comment.tags) { if (tag.name == "param") { hasParameters = true; break } }
     if (hasParameters) {
-        out.append("#### Parameters\n\n")
+        out.append("#### ${label(locale, "Parameters", "参数")}\n\n")
         for (tag in comment.tags) {
             if (tag.name == "param") {
                 out.append("- "); appendMarkdownCodeSpan(out, tag.subject); out.append(" — ")
@@ -664,13 +664,13 @@ private func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComm
     }
     for (tag in comment.tags) {
         if (tag.name == "return") {
-            out.append("#### Returns\n\n"); appendEscapedMarkdownText(out, tag.description); out.append("\n\n")
+            out.append("#### ${label(locale, "Returns", "返回值")}\n\n"); appendEscapedMarkdownText(out, tag.description); out.append("\n\n")
         }
     }
     var hasThrows = false
     for (tag in comment.tags) { if (tag.name == "throws") { hasThrows = true; break } }
     if (hasThrows) {
-        out.append("#### Throws\n\n")
+        out.append("#### ${label(locale, "Throws", "异常")}\n\n")
         for (tag in comment.tags) {
             if (tag.name == "throws") {
                 out.append("- "); appendMarkdownCodeSpan(out, tag.subject); out.append(" — ")
@@ -682,7 +682,7 @@ private func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComm
     var hasSee = false
     for (tag in comment.tags) { if (tag.name == "see") { hasSee = true; break } }
     if (hasSee) {
-        out.append("#### See also\n\n")
+        out.append("#### ${label(locale, "See also", "另请参阅")}\n\n")
         for (tag in comment.tags) {
             if (tag.name == "see") { out.append("- "); appendMarkdownCodeSpan(out, tag.subject)
                 if (!tag.description.isEmpty()) {
@@ -696,7 +696,7 @@ private func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComm
         var opened = false
         for (tag in comment.tags) {
             if (tag.name != name) { continue }
-            if (!opened) { out.append("#### ${heading}\n\n"); opened = true }
+            if (!opened) { out.append("#### ${label(locale, heading, match (name) { case "since" => "自版本"; case "author" => "作者"; case _ => "版本" })}\n\n"); opened = true }
             out.append("- "); appendEscapedMarkdownText(out, tag.description); out.append("\n")
         }
         if (opened) { out.append("\n") }
@@ -1144,7 +1144,7 @@ private let HTML_SEARCH_SCRIPT = """
     }
   };
   const index = globalThis.__CJDOC_SEARCH_INDEX__;
-  entries = index && index.schemaVersion === "cjdoc.search-index/3" && Array.isArray(index.entries)
+  entries = index && index.schemaVersion === "cjdoc.search-index/4" && Array.isArray(index.entries)
     ? index.entries : [];
   const firstIdsByLabel = new Map();
   for (const entry of entries) {
@@ -1284,7 +1284,7 @@ private class RenderProjection {
         }
         for (pkg in documentation.packages) {
             let projected = packagesByRoute[routeKey(pkg.moduleId, pkg.name)]
-            if (!projected.symbols.isEmpty()) {
+            if (!projected.symbols.isEmpty() || !pkg.reExports.isEmpty()) {
                 sort(projected.sourceFiles)
                 packages.add(projected)
             }
@@ -1491,23 +1491,29 @@ private func validateHtmlRouting(documentation: DocumentationSet,
     }
 }
 
-private func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: String): Unit {
-    out.append("<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">")
+private func label(locale: String, english: String, chinese: String): String {
+    if (locale == "zh-CN") { chinese } else { english }
+}
+
+private func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: String,
+    locale!: String = "en"): Unit {
+    out.append("<!doctype html>\n<html lang=\"${locale}\"><head><meta charset=\"utf-8\">")
     out.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
     out.append("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'\">")
     out.append("<title>${escapeHtml(title)}</title><link rel=\"stylesheet\" href=\"${rootPrefix}style.css\">")
     out.append("<script defer src=\"${rootPrefix}search-index.js\"></script>")
     out.append("<script defer src=\"${rootPrefix}search.js\"></script></head><body>\n")
     out.append("<nav class=\"site-nav\"><a href=\"${rootPrefix}index.html\">cjdoc</a>")
-    out.append("<div class=\"site-search\"><label><span hidden>Search API</span>")
-    out.append("<input type=\"search\" placeholder=\"Search API (Ctrl+K)\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"cjdoc-search-results\" aria-expanded=\"false\" data-cjdoc-search data-root=\"${rootPrefix}\"></label>")
-    out.append("<label><span hidden>Filter by kind</span><select data-cjdoc-kind><option value=\"\">All kinds</option></select></label>")
-    out.append("<label><span hidden>Filter by package</span><select data-cjdoc-package><option value=\"\">All packages</option></select></label></div>")
+    out.append("<div class=\"site-search\"><label><span hidden>${label(locale, "Search API", "搜索 API")}</span>")
+    out.append("<input type=\"search\" placeholder=\"${label(locale, "Search API (Ctrl+K)", "搜索 API (Ctrl+K)")}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"cjdoc-search-results\" aria-expanded=\"false\" data-cjdoc-search data-root=\"${rootPrefix}\"></label>")
+    out.append("<label><span hidden>${label(locale, "Filter by kind", "按类别筛选")}</span><select data-cjdoc-kind><option value=\"\">${label(locale, "All kinds", "全部类别")}</option></select></label>")
+    out.append("<label><span hidden>${label(locale, "Filter by package", "按包筛选")}</span><select data-cjdoc-package><option value=\"\">${label(locale, "All packages", "全部包")}</option></select></label></div>")
     out.append("<ul id=\"cjdoc-search-results\" class=\"search-results\" role=\"listbox\" data-cjdoc-results aria-live=\"polite\"></ul></nav>\n<main>\n")
 }
 
-private func appendPageEnd(out: RenderTextBuffer, documentation: DocumentationSet): Unit {
-    out.append("</main><footer>Generated by cjdoc ${escapeHtml(documentation.generator.version)} from ${escapeHtml(documentation.schemaVersion)}.</footer></body></html>\n")
+private func appendPageEnd(out: RenderTextBuffer, documentation: DocumentationSet,
+    locale!: String = "en"): Unit {
+    out.append("</main><footer>${label(locale, "Generated by", "生成工具")} cjdoc ${escapeHtml(documentation.generator.version)} · ${escapeHtml(documentation.schemaVersion)}</footer></body></html>\n")
 }
 
 private func findTag(comment: DocComment, name: String, subject!: ?String = None): ?DocTag {
@@ -1535,12 +1541,13 @@ private func isUnitType(value: TypeRef): Bool {
 
 private func appendDocumentationHtml(out: RenderTextBuffer, documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
-    assetLookup: HashMap<String, String>, headingBase!: Int64 = 3): Unit {
+    assetLookup: HashMap<String, String>, headingBase!: Int64 = 3,
+    locale!: String = "en"): Unit {
     match (symbol.documentation) {
         case Some(comment) =>
             match (findTag(comment, "deprecated")) {
                 case Some(tag) =>
-                    out.append("<aside class=\"card\"><strong>Deprecated.</strong> ")
+                    out.append("<aside class=\"card\"><strong>${label(locale, "Deprecated.", "已弃用。")}</strong> ")
                     appendStructuredTextHtml(out, tag.description)
                     out.append("</aside>\n")
                 case None => ()
@@ -1550,7 +1557,7 @@ private func appendDocumentationHtml(out: RenderTextBuffer, documentation: Docum
                 markdownHtmlContext(comment, symbol, headingBase))
             out.append("</div>\n")
             if (!symbol.parameters.isEmpty()) {
-                out.append("<h3>Parameters</h3><dl>\n")
+                out.append("<h3>${label(locale, "Parameters", "参数")}</h3><dl>\n")
                 for (parameter in symbol.parameters) {
                     out.append("<dt><code>${escapeHtml(parameter.name)}</code>: <code>${escapeHtml(parameter.typeRef.spelling)}</code></dt><dd>")
                     match (parameter.documentation) {
@@ -1566,7 +1573,7 @@ private func appendDocumentationHtml(out: RenderTextBuffer, documentation: Docum
             }
             match (symbol.returnType) {
                 case Some(returnType) => if (!isUnitType(returnType)) {
-                    out.append("<h3>Returns</h3><p><code>${escapeHtml(returnType.spelling)}</code></p>\n")
+                    out.append("<h3>${label(locale, "Returns", "返回值")}</h3><p><code>${escapeHtml(returnType.spelling)}</code></p>\n")
                     match (findTag(comment, "return")) {
                         case Some(tag) => appendStructuredTextHtml(out, tag.description)
                         case None => ()
@@ -1577,7 +1584,7 @@ private func appendDocumentationHtml(out: RenderTextBuffer, documentation: Docum
             var hasThrows = false
             for (tag in comment.tags) { if (tag.name == "throws") { hasThrows = true; break } }
             if (hasThrows) {
-                out.append("<h3>Throws</h3><dl>\n")
+                out.append("<h3>${label(locale, "Throws", "异常")}</h3><dl>\n")
                 for (tag in comment.tags) {
                     if (tag.name == "throws") {
                         out.append("<dt><code>${escapeHtml(tag.subject)}</code></dt><dd>")
@@ -1590,7 +1597,7 @@ private func appendDocumentationHtml(out: RenderTextBuffer, documentation: Docum
             var hasSee = false
             for (tag in comment.tags) { if (tag.name == "see") { hasSee = true; break } }
             if (hasSee) {
-                out.append("<h3>See also</h3><ul>\n")
+                out.append("<h3>${label(locale, "See also", "另请参阅")}</h3><ul>\n")
                 for (tag in comment.tags) {
                     if (tag.name != "see") { continue }
                     out.append("<li>")
@@ -1613,14 +1620,14 @@ private func appendDocumentationHtml(out: RenderTextBuffer, documentation: Docum
                 var opened = false
                 for (tag in comment.tags) {
                     if (tag.name != name) { continue }
-                    if (!opened) { out.append("<h3>${escapeHtml(tagHeading(name))}</h3><ul>\n"); opened = true }
+                    if (!opened) { out.append("<h3>${escapeHtml(label(locale, tagHeading(name), match (name) { case "since" => "自版本"; case "author" => "作者"; case _ => "版本" }))}</h3><ul>\n"); opened = true }
                     out.append("<li>"); appendStructuredTextHtml(out, tag.description); out.append("</li>\n")
                 }
                 if (opened) { out.append("</ul>\n") }
             }
         case None =>
             if (!symbol.parameters.isEmpty()) {
-                out.append("<h3>Parameters</h3><dl>\n")
+                out.append("<h3>${label(locale, "Parameters", "参数")}</h3><dl>\n")
                 for (parameter in symbol.parameters) {
                     out.append("<dt><code>${escapeHtml(parameter.name)}</code>: <code>${escapeHtml(parameter.typeRef.spelling)}</code></dt><dd></dd>\n")
                 }
@@ -1628,7 +1635,7 @@ private func appendDocumentationHtml(out: RenderTextBuffer, documentation: Docum
             }
             match (symbol.returnType) {
                 case Some(returnType) => if (!isUnitType(returnType)) {
-                    out.append("<h3>Returns</h3><p><code>${escapeHtml(returnType.spelling)}</code></p>\n")
+                    out.append("<h3>${label(locale, "Returns", "返回值")}</h3><p><code>${escapeHtml(returnType.spelling)}</code></p>\n")
                 }
                 case None => ()
             }
@@ -1690,24 +1697,31 @@ private func appendSymbolMetadata(out: RenderTextBuffer, documentation: Document
 
 private func appendSymbolArticle(out: RenderTextBuffer, documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
-    assetLookup: HashMap<String, String>, linkTitle!: Bool = false): Unit {
+    assetLookup: HashMap<String, String>, linkTitle!: Bool = false,
+    locale!: String = "en"): Unit {
     out.append("<article id=\"${symbolAnchor(symbol)}\"><h2>")
     if (linkTitle) {
         out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(documentation, index, symbol))}\"><code>${escapeHtml(symbol.qualifiedName)}</code></a>")
     } else { out.append("<code>${escapeHtml(symbol.qualifiedName)}</code>") }
     out.append("</h2>\n")
     appendSymbolMetadata(out, documentation, index, symbol, rootPrefix)
-    appendDocumentationHtml(out, documentation, index, symbol, rootPrefix, assetLookup)
+    appendDocumentationHtml(out, documentation, index, symbol, rootPrefix, assetLookup,
+        locale: locale)
     out.append("</article>\n")
 }
 
-private func renderHtmlIndex(documentation: DocumentationSet, projection: RenderProjection): String {
+private func renderHtmlIndex(documentation: DocumentationSet, projection: RenderProjection,
+    locale!: String = "en"): String {
     let out = RenderTextBuffer()
-    appendPageStart(out, "${documentation.project.name} API documentation", "")
-    out.append("<h1>${escapeHtml(documentation.project.name)} API documentation</h1>\n")
-    out.append("<p class=\"meta\">${projection.modules.size} modules, ${projection.packages.size} packages, ${projection.visibleSymbols.size} visible declarations</p>\n")
+    appendPageStart(out, "${documentation.project.name} ${label(locale, "API documentation", "API 文档")}", "", locale: locale)
+    out.append("<h1>${escapeHtml(documentation.project.name)} ${label(locale, "API documentation", "API 文档")}</h1>\n")
+    if (locale == "zh-CN") {
+        out.append("<p class=\"meta\">${projection.modules.size} 个模块，${projection.packages.size} 个包，${projection.visibleSymbols.size} 个可见声明</p>\n")
+    } else {
+        out.append("<p class=\"meta\">${projection.modules.size} modules, ${projection.packages.size} packages, ${projection.visibleSymbols.size} visible declarations</p>\n")
+    }
     if (!projection.modules.isEmpty()) {
-        out.append("<h2>Modules</h2><div class=\"declaration-list\">\n")
+        out.append("<h2>${label(locale, "Modules", "模块")}</h2><div class=\"declaration-list\">\n")
         for (projected in projection.modules) {
             let module = projected.source
             out.append("<section class=\"card\"><h3><code>${escapeHtml(module.name)}</code> <span class=\"badge\">${escapeHtml(module.role)}</span></h3>")
@@ -1720,13 +1734,13 @@ private func renderHtmlIndex(documentation: DocumentationSet, projection: Render
         }
         out.append("</div>\n")
     }
-    out.append("<h2>Packages</h2><ul>\n")
+    out.append("<h2>${label(locale, "Packages", "包")}</h2><ul>\n")
     for (pkg in projection.packages) {
         out.append("<li><a href=\"${escapeHtml(packagePagePath(pkg.source.moduleId, pkg.source.name))}\"><code>${escapeHtml(pkg.source.name)}</code></a></li>\n")
     }
     out.append("</ul>\n")
     if (!documentation.diagnostics.isEmpty()) {
-        out.append("<h2>Diagnostics</h2><ul>\n")
+        out.append("<h2>${label(locale, "Diagnostics", "诊断")}</h2><ul>\n")
         for (diagnostic in documentation.diagnostics) {
             if (let Some(symbolId) <- diagnostic.symbolId) {
                 if (!projection.visibleIndex.contains(symbolId)) { continue }
@@ -1740,24 +1754,52 @@ private func renderHtmlIndex(documentation: DocumentationSet, projection: Render
         }
         out.append("</ul>\n")
     }
-    appendPageEnd(out, documentation)
+    appendPageEnd(out, documentation, locale: locale)
     out.toString()
 }
 
 private func renderPackagePage(documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, topLevelByPackage: HashMap<String, ArrayList<SymbolDoc>>,
-    pkg: ProjectedPackage, assetLookup: HashMap<String, String>): String {
+    pkg: ProjectedPackage, assetLookup: HashMap<String, String>, locale!: String = "en"): String {
     let packageDoc = pkg.source
     let out = RenderTextBuffer()
-    appendPageStart(out, "Package ${packageDoc.name}", "../")
-    out.append("<nav class=\"breadcrumbs\" aria-label=\"Breadcrumb\"><ol><li><a href=\"../index.html\">Home</a></li><li aria-current=\"page\">Package <code>${escapeHtml(packageDoc.name)}</code></li></ol></nav>\n")
-    out.append("<h1>Package <code>${escapeHtml(packageDoc.name)}</code></h1>\n")
+    appendPageStart(out, "${label(locale, "Package", "包")} ${packageDoc.name}", "../", locale: locale)
+    out.append("<nav class=\"breadcrumbs\" aria-label=\"Breadcrumb\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li><li aria-current=\"page\">${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></li></ol></nav>\n")
+    out.append("<h1>${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></h1>\n")
     if (!pkg.sourceFiles.isEmpty()) {
-        out.append("<h2>Sources</h2><ul>\n")
+        out.append("<h2>${label(locale, "Sources", "源文件")}</h2><ul>\n")
         for (path in pkg.sourceFiles) { out.append("<li><code>${escapeHtml(path)}</code></li>\n") }
         out.append("</ul>\n")
     }
-    out.append("<h2>Declarations</h2>\n")
+    if (!packageDoc.reExports.isEmpty()) {
+        out.append("<h2>${label(locale, "Re-exports", "公开重导出")}</h2><ul>\n")
+        for (reExport in packageDoc.reExports) {
+            if (reExport.kind == "packageAlias") {
+                out.append("<li><code>${escapeHtml(reExport.alias.getOrThrow())}</code>")
+                if (reExport.state == "resolved") { out.append(" → package") }
+                out.append(" <code>${escapeHtml(reExport.targetPackageName)}</code> <span class=\"badge\">${escapeHtml(reExport.kind)}</span> <span class=\"badge\">${escapeHtml(reExport.state)}</span></li>\n")
+                continue
+            }
+            if (reExport.bindings.isEmpty()) {
+                out.append("<li><code>${escapeHtml(reExport.targetPackageName)}</code> <span class=\"badge\">${escapeHtml(reExport.kind)}</span> <span class=\"badge\">${escapeHtml(reExport.state)}</span></li>\n")
+                continue
+            }
+            for (binding in reExport.bindings) {
+                out.append("<li><code>${escapeHtml(binding.exposedName)}</code> → ")
+                var firstTarget = true
+                for (targetId in binding.targetSymbolIds) {
+                    if (!firstTarget) { out.append(", ") }; firstTarget = false
+                    match (findSymbol(index, targetId)) {
+                        case Some(target) => out.append("<a href=\"../${escapeHtml(symbolUrl(documentation, index, target))}\"><code>${escapeHtml(target.qualifiedName)}</code></a>")
+                        case None => out.append("<code>${escapeHtml(targetId)}</code>")
+                    }
+                }
+                out.append(" <span class=\"badge\">${escapeHtml(reExport.state)}</span></li>\n")
+            }
+        }
+        out.append("</ul>\n")
+    }
+    out.append("<h2>${label(locale, "Declarations", "声明")}</h2>\n")
     var wroteDeclaration = false
     match (topLevelByPackage.get(routeKey(packageDoc.moduleId, packageDoc.name))) {
         case Some(symbols) => for (symbol in symbols) {
@@ -1770,13 +1812,14 @@ private func renderPackagePage(documentation: DocumentationSet,
                 }
                 out.append("</section>\n")
             } else {
-                appendSymbolArticle(out, documentation, index, symbol, "../", assetLookup)
+                appendSymbolArticle(out, documentation, index, symbol, "../", assetLookup,
+                    locale: locale)
             }
         }
         case None => ()
     }
-    if (!wroteDeclaration) { out.append("<p>No declarations are visible for this audience.</p>\n") }
-    appendPageEnd(out, documentation)
+    if (!wroteDeclaration) { out.append("<p>${label(locale, "No declarations are visible for this audience.", "此受众范围内没有直接声明。")}</p>\n") }
+    appendPageEnd(out, documentation, locale: locale)
     out.toString()
 }
 
@@ -1798,14 +1841,14 @@ private func memberSectionTitle(symbol: SymbolDoc): String {
 
 private func appendMemberSection(out: RenderTextBuffer, documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
-    owner: SymbolDoc, title: String, assetLookup: HashMap<String, String>): Unit {
+    owner: SymbolDoc, title: String, assetLookup: HashMap<String, String>, locale: String): Unit {
     var opened = false
     match (membersByOwner.get(owner.id)) {
         case Some(members) => for (member in members) {
             if (memberSectionTitle(member) != title) { continue }
-            if (!opened) { out.append("<h2>${escapeHtml(title)}</h2>\n"); opened = true }
+            if (!opened) { out.append("<h2>${escapeHtml(label(locale, title, match (title) { case "Constructors" => "构造器"; case "Properties" => "属性"; case "Variables" => "变量"; case "Functions" => "函数"; case "Enum cases" => "枚举项"; case "Nested classes" => "嵌套类"; case "Nested structs" => "嵌套结构体"; case "Nested interfaces" => "嵌套接口"; case "Nested enums" => "嵌套枚举"; case "Nested extensions" => "嵌套扩展"; case _ => "其他成员" }))}</h2>\n"); opened = true }
             appendSymbolArticle(out, documentation, index, member, "../", assetLookup,
-                linkTitle: isContainerDeclaration(member))
+                linkTitle: isContainerDeclaration(member), locale: locale)
         }
         case None => ()
     }
@@ -1813,22 +1856,23 @@ private func appendMemberSection(out: RenderTextBuffer, documentation: Documenta
 
 private func renderSymbolPage(documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
-    symbol: SymbolDoc, assetLookup: HashMap<String, String>): String {
+    symbol: SymbolDoc, assetLookup: HashMap<String, String>, locale!: String = "en"): String {
     let out = RenderTextBuffer()
-    appendPageStart(out, symbol.qualifiedName, "../")
-    out.append("<nav class=\"breadcrumbs\" aria-label=\"Breadcrumb\"><ol><li><a href=\"../index.html\">Home</a></li>")
-    out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">Package <code>${escapeHtml(symbol.packageName)}</code></a></li>")
+    appendPageStart(out, symbol.qualifiedName, "../", locale: locale)
+    out.append("<nav class=\"breadcrumbs\" aria-label=\"Breadcrumb\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li>")
+    out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">${label(locale, "Package", "包")} <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     out.append("<li aria-current=\"page\"><code>${escapeHtml(symbol.name)}</code></li></ol></nav>\n")
     out.append("<h1><code>${escapeHtml(symbol.qualifiedName)}</code></h1>\n")
     appendSymbolMetadata(out, documentation, index, symbol, "../")
     appendDocumentationHtml(out, documentation, index, symbol, "../", assetLookup,
-        headingBase: 2)
+        headingBase: 2, locale: locale)
     for (title in ["Constructors", "Properties", "Variables", "Functions", "Enum cases",
         "Nested classes", "Nested structs", "Nested interfaces", "Nested enums", "Nested extensions",
         "Other members"]) {
-        appendMemberSection(out, documentation, index, membersByOwner, symbol, title, assetLookup)
+        appendMemberSection(out, documentation, index, membersByOwner, symbol, title, assetLookup,
+            locale)
     }
-    appendPageEnd(out, documentation)
+    appendPageEnd(out, documentation, locale: locale)
     out.toString()
 }
 
@@ -1864,7 +1908,7 @@ private func appendSearchJsonString(out: RenderTextBuffer, value: String): Unit 
 private func renderSearchIndex(documentation: DocumentationSet,
     projection: RenderProjection): String {
     let out = RenderTextBuffer()
-    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/3\",\n  \"entries\": [")
+    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/4\",\n  \"entries\": [")
     var first = true
     let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(visible, lessThan: { left, right => left.id < right.id }, stable: true)
@@ -1872,6 +1916,8 @@ private func renderSearchIndex(documentation: DocumentationSet,
         if (!first) { out.append(",") }
         first = false
         out.append("\n    {\"id\": "); appendSearchJsonString(out, declaration.id)
+        out.append(", \"canonicalId\": "); appendSearchJsonString(out, declaration.id)
+        out.append(", \"exposure\": false")
         out.append(", \"name\": "); appendSearchJsonString(out, declaration.name)
         out.append(", \"qualifiedName\": "); appendSearchJsonString(out, declaration.qualifiedName)
         out.append(", \"kind\": "); appendSearchJsonString(out, declaration.kind)
@@ -1885,6 +1931,38 @@ private func renderSearchIndex(documentation: DocumentationSet,
         appendSearchJsonString(out,
             symbolUrl(documentation, projection.visibleIndex, declaration))
         out.append("}")
+    }
+    for (pkg in documentation.packages) {
+        for (reExport in pkg.reExports) {
+            for (binding in reExport.bindings) {
+                for (targetId in binding.targetSymbolIds) {
+                    match (projection.visibleIndex.get(targetId)) {
+                        case Some(target) =>
+                            if (!first) { out.append(",") }; first = false
+                            out.append("\n    {\"id\": ")
+                            appendSearchJsonString(out,
+                                "${reExport.id}:${binding.exposedName}:${target.id}")
+                            out.append(", \"canonicalId\": "); appendSearchJsonString(out, target.id)
+                            out.append(", \"exposure\": true, \"name\": ")
+                            appendSearchJsonString(out, binding.exposedName)
+                            out.append(", \"qualifiedName\": ")
+                            appendSearchJsonString(out, "${pkg.name}.${binding.exposedName}")
+                            out.append(", \"kind\": "); appendSearchJsonString(out, target.kind)
+                            out.append(", \"packageName\": "); appendSearchJsonString(out, pkg.name)
+                            let summary = match (target.documentation) {
+                                case Some(comment) => markdownNodeText(comment.markdown)
+                                case None => ""
+                            }
+                            out.append(", \"summary\": "); appendSearchJsonString(out, summary)
+                            out.append(", \"href\": ")
+                            appendSearchJsonString(out,
+                                symbolUrl(documentation, projection.visibleIndex, target))
+                            out.append("}")
+                        case None => ()
+                    }
+                }
+            }
+        }
     }
     if (!first) { out.append("\n  ") }
     out.append("]\n}\n")
@@ -1910,7 +1988,7 @@ public class HtmlDocumentationRenderer <: DocumentationRenderer {
 }
 
 private func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
-    documentation: DocumentationSet): Unit {
+    documentation: DocumentationSet, locale!: String = "en"): Unit {
         validateTypedDocumentationSet(documentation)
         let projection = RenderProjection(documentation)
         let index = projection.visibleIndex
@@ -1921,7 +1999,7 @@ private func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         let membersByOwner = groupMembersByOwner(projection)
         let searchIndex = renderSearchIndex(documentation, projection)
         artifacts.addText("html/index.html", "text/html; charset=utf-8",
-            renderHtmlIndex(documentation, projection))
+            renderHtmlIndex(documentation, projection, locale: locale))
         artifacts.addText("html/search-index.json", "application/json", searchIndex)
         artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
             renderSearchIndexScript(searchIndex))
@@ -1930,15 +2008,304 @@ private func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         for (pkg in projection.packages) {
             artifacts.addText("html/${packagePagePath(pkg.source.moduleId, pkg.source.name)}",
                 "text/html; charset=utf-8",
-                renderPackagePage(documentation, index, topLevelByPackage, pkg, assetLookup))
+                renderPackagePage(documentation, index, topLevelByPackage, pkg, assetLookup,
+                    locale: locale))
         }
         for (symbol in projection.visibleSymbols) {
             if (isContainerDeclaration(symbol)) {
                 artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
-                    renderSymbolPage(documentation, index, membersByOwner, symbol, assetLookup))
+                    renderSymbolPage(documentation, index, membersByOwner, symbol, assetLookup,
+                        locale: locale))
             }
         }
         appendAssetArtifacts(artifacts, projectedAssets, "html")
+}
+
+private func appendJsonStringArray(out: RenderTextBuffer, values: ReadOnlyList<String>): Unit {
+    out.append("[")
+    var first = true
+    for (value in values) {
+        if (!first) { out.append(",") }
+        first = false
+        appendSearchJsonString(out, value)
+    }
+    out.append("]")
+}
+
+private func appendApiSurfaceArtifacts(artifacts: RenderArtifactCollector,
+    documentation: DocumentationSet): Unit {
+    validateTypedDocumentationSet(documentation)
+    let projection = RenderProjection(documentation)
+    let out = RenderTextBuffer()
+    out.append("{\n  \"schemaVersion\": \"cjdoc.api-surface/1\",\n  \"project\": ")
+    appendSearchJsonString(out, documentation.project.name)
+    out.append(",\n  \"audience\": ")
+    appendSearchJsonString(out, documentation.configuration.audience)
+    out.append(",\n  \"declarations\": [")
+    var first = true
+    for (symbol in projection.visibleSymbols) {
+        if (!first) { out.append(",") }
+        first = false
+        out.append("\n    {\"id\": "); appendSearchJsonString(out, symbol.id)
+        out.append(", \"moduleId\": "); appendSearchJsonString(out, symbol.moduleId)
+        out.append(", \"packageName\": "); appendSearchJsonString(out, symbol.packageName)
+        out.append(", \"ownerId\": ")
+        match (symbol.ownerId) {
+            case Some(ownerId) => appendSearchJsonString(out, ownerId)
+            case None => out.append("null")
+        }
+        out.append(", \"kind\": "); appendSearchJsonString(out, symbol.kind)
+        out.append(", \"name\": "); appendSearchJsonString(out, symbol.name)
+        out.append(", \"visibility\": "); appendSearchJsonString(out, symbol.visibility)
+        out.append(", \"sourceApiSignature\": {\"state\": ")
+        appendSearchJsonString(out, symbol.sourceApiSignature.state)
+        out.append(", \"tokens\": ")
+        appendJsonStringArray(out, symbol.sourceApiSignature.tokens)
+        out.append("}}")
+    }
+    if (!first) { out.append("\n  ") }
+    out.append("],\n  \"exposures\": [")
+    first = true
+    for (pkg in documentation.packages) {
+        for (reExport in pkg.reExports) {
+            for (binding in reExport.bindings) {
+                if (!first) { out.append(",") }
+                first = false
+                out.append("\n    {\"reExportId\": "); appendSearchJsonString(out, reExport.id)
+                out.append(", \"moduleId\": "); appendSearchJsonString(out, pkg.moduleId)
+                out.append(", \"packageName\": "); appendSearchJsonString(out, pkg.name)
+                out.append(", \"exposedName\": "); appendSearchJsonString(out, binding.exposedName)
+                out.append(", \"targetSymbolIds\": ")
+                appendJsonStringArray(out, binding.targetSymbolIds)
+                out.append("}")
+            }
+        }
+    }
+    if (!first) { out.append("\n  ") }
+    out.append("]\n}\n")
+    artifacts.addText("api-surface/api-surface.json", "application/json", out.toString())
+}
+
+private func coveragePercent(documented: Int64, total: Int64): Int64 {
+    if (total == 0) { 100 } else { documented * 100 / total }
+}
+
+public func documentationCoverageCounts(documentation: DocumentationSet):
+    (Int64, Int64, Int64, Int64) {
+    validateTypedDocumentationSet(documentation)
+    let projection = RenderProjection(documentation)
+    var symbols: Int64 = 0
+    var documentedSymbols: Int64 = 0
+    var parameters: Int64 = 0
+    var documentedParameters: Int64 = 0
+    for (symbol in projection.visibleSymbols) {
+        symbols++
+        if (symbol.documentation.isSome()) { documentedSymbols++ }
+        for (parameter in symbol.parameters where !parameter.name.startsWith("_")) {
+            parameters++
+            if (parameter.documentation.isSome()) { documentedParameters++ }
+        }
+    }
+    (symbols, documentedSymbols, parameters, documentedParameters)
+}
+
+private func appendCoverageArtifacts(artifacts: RenderArtifactCollector,
+    documentation: DocumentationSet): Unit {
+    let (symbols, documentedSymbols, parameters, documentedParameters) =
+        documentationCoverageCounts(documentation)
+    let out = RenderTextBuffer()
+    out.append("{\n  \"schemaVersion\": \"cjdoc.documentation-coverage/1\",\n")
+    out.append("  \"audience\": "); appendSearchJsonString(out, documentation.configuration.audience)
+    out.append(",\n  \"symbols\": {\"total\": ${symbols}, \"documented\": ${documentedSymbols}, \"percent\": ${coveragePercent(documentedSymbols, symbols)}},\n")
+    out.append("  \"parameters\": {\"total\": ${parameters}, \"documented\": ${documentedParameters}, \"percent\": ${coveragePercent(documentedParameters, parameters)}}\n}\n")
+    artifacts.addText("coverage/coverage.json", "application/json", out.toString())
+}
+
+public class ApiSurfaceDocumentationRenderer <: DocumentationRenderer {
+    public prop format: String { get() { "api-surface" } }
+
+    public func render(documentation: DocumentationSet): Array<RenderArtifact> {
+        let artifacts = RenderArtifactCollector()
+        appendApiSurfaceArtifacts(artifacts, documentation)
+        artifacts.toArray()
+    }
+}
+
+public class DocumentationCoverageRenderer <: DocumentationRenderer {
+    public prop format: String { get() { "coverage" } }
+
+    public func render(documentation: DocumentationSet): Array<RenderArtifact> {
+        let artifacts = RenderArtifactCollector()
+        appendCoverageArtifacts(artifacts, documentation)
+        artifacts.toArray()
+    }
+}
+
+private func markdownPackagePagePath(moduleId: String, name: String): String {
+    "packages/package-${boundedHtmlSlug(routeKey(moduleId, name))}.md"
+}
+
+private func markdownSymbolPagePath(symbol: SymbolDoc): String {
+    "symbols/symbol-${boundedHtmlSlug(symbol.id)}.md"
+}
+
+private func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
+    assetLookup: HashMap<String, String>, heading: String, locale: String): Unit {
+    out.append("${heading} "); appendMarkdownCodeSpan(out, symbol.qualifiedName); out.append("\n\n")
+    appendMarkdownCodeBlock(out, symbol.headerSpelling, "cj", "`", 3)
+    match (symbol.documentation) {
+        case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup, locale: locale)
+        case None => ()
+    }
+    out.append("- "); appendEscapedMarkdownText(out, "${symbol.kind} · ${symbol.visibility}")
+    out.append("\n- "); appendMarkdownCodeSpan(out,
+        "${symbol.source.path}:${symbol.source.start.line}:${symbol.source.start.column}")
+    out.append("\n\n")
+}
+
+private func nestedAssetLookup(assets: ArrayList<AssetDoc>): HashMap<String, String> {
+    let lookup = HashMap<String, String>()
+    for (asset in assets) {
+        let path = "../${assetOutputPath(asset)}"
+        lookup["id:${asset.id}"] = path
+        lookup["path:${asset.sourcePath}"] = path
+    }
+    lookup
+}
+
+private func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
+    documentation: DocumentationSet, locale: String): Unit {
+    validateTypedDocumentationSet(documentation)
+    let projection = RenderProjection(documentation)
+    let projectedAssets = projectAssets(documentation, projection)
+    let assetLookup = nestedAssetLookup(projectedAssets)
+    let topLevelByPackage = groupTopLevelByPackage(projection)
+    let membersByOwner = groupMembersByOwner(projection)
+    let index = RenderTextBuffer()
+    index.append("# "); appendEscapedMarkdownText(index, documentation.project.name)
+    index.append(" "); appendEscapedMarkdownText(index, label(locale, "API documentation", "API 文档"))
+    index.append("\n\n## ${label(locale, "Packages", "包")}\n\n")
+    for (pkg in projection.packages) {
+        index.append("- ["); appendEscapedMarkdownText(index, pkg.source.name)
+        index.append("](${markdownPackagePagePath(pkg.source.moduleId, pkg.source.name)})\n")
+    }
+    artifacts.addText("markdown/index.md", "text/markdown; charset=utf-8", index.toString())
+    for (pkg in projection.packages) {
+        let out = RenderTextBuffer()
+        out.append("# ${label(locale, "Package", "包")} "); appendMarkdownCodeSpan(out, pkg.source.name)
+        out.append("\n\n[${label(locale, "Home", "首页")}](../index.md)\n\n")
+        if (!pkg.source.reExports.isEmpty()) {
+            out.append("## ${label(locale, "Re-exports", "公开重导出")}\n\n")
+            for (reExport in pkg.source.reExports) {
+                if (reExport.kind == "packageAlias") {
+                    out.append("- "); appendMarkdownCodeSpan(out, reExport.alias.getOrThrow())
+                    if (reExport.state == "resolved") {
+                        out.append(" → ${label(locale, "package", "包")} ")
+                    } else { out.append(" · ") }
+                    appendMarkdownCodeSpan(out, reExport.targetPackageName)
+                    out.append(" · "); appendEscapedMarkdownText(out,
+                        "${reExport.kind} · ${reExport.state}")
+                    out.append("\n")
+                    continue
+                }
+                if (reExport.bindings.isEmpty()) {
+                    out.append("- "); appendMarkdownCodeSpan(out, reExport.targetPackageName)
+                    out.append(" · "); appendEscapedMarkdownText(out,
+                        "${reExport.kind} · ${reExport.state}")
+                    out.append("\n")
+                    continue
+                }
+                for (binding in reExport.bindings) {
+                    out.append("- "); appendMarkdownCodeSpan(out, binding.exposedName)
+                    out.append(" → ")
+                    var firstTarget = true
+                    for (targetId in binding.targetSymbolIds) {
+                        if (!firstTarget) { out.append(", ") }; firstTarget = false
+                        match (projection.visibleIndex.get(targetId)) {
+                            case Some(target) =>
+                                out.append("["); appendMarkdownCodeSpan(out, target.qualifiedName)
+                                let targetPath = if (isContainerDeclaration(target)) {
+                                    "../${markdownSymbolPagePath(target)}"
+                                } else {
+                                    "../${markdownPackagePagePath(target.moduleId, target.packageName)}"
+                                }
+                                out.append("](${targetPath})")
+                            case None => appendMarkdownCodeSpan(out, targetId)
+                        }
+                    }
+                    out.append(" · "); appendEscapedMarkdownText(out, reExport.state)
+                    out.append("\n")
+                }
+            }
+            out.append("\n")
+        }
+        out.append("## ${label(locale, "Declarations", "声明")}\n\n")
+        match (topLevelByPackage.get(routeKey(pkg.source.moduleId, pkg.source.name))) {
+            case Some(symbols) => for (symbol in symbols) {
+                if (isContainerDeclaration(symbol)) {
+                    out.append("- ["); appendMarkdownCodeSpan(out, symbol.qualifiedName)
+                    out.append("](../${markdownSymbolPagePath(symbol)})\n")
+                } else {
+                    appendMarkdownSiteSymbol(out, symbol, assetLookup, "###", locale)
+                }
+            }
+            case None => out.append("${label(locale, "No direct declarations.", "没有直接声明。")}\n")
+        }
+        artifacts.addText("markdown/${markdownPackagePagePath(pkg.source.moduleId, pkg.source.name)}",
+            "text/markdown; charset=utf-8", out.toString())
+    }
+    for (symbol in projection.visibleSymbols where isContainerDeclaration(symbol)) {
+        let out = RenderTextBuffer()
+        out.append("# "); appendMarkdownCodeSpan(out, symbol.qualifiedName)
+        out.append("\n\n[${label(locale, "Package", "包")} ")
+        appendMarkdownCodeSpan(out, symbol.packageName)
+        out.append("](../${markdownPackagePagePath(symbol.moduleId, symbol.packageName)})\n\n")
+        appendMarkdownCodeBlock(out, symbol.headerSpelling, "cj", "`", 3)
+        match (symbol.documentation) {
+            case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup, locale: locale)
+            case None => ()
+        }
+        match (membersByOwner.get(symbol.id)) {
+            case Some(members) => if (!members.isEmpty()) {
+                out.append("## ${label(locale, "Members", "成员")}\n\n")
+                for (member in members) {
+                    appendMarkdownSiteSymbol(out, member, assetLookup, "###", locale)
+                }
+            }
+            case None => ()
+        }
+        artifacts.addText("markdown/${markdownSymbolPagePath(symbol)}",
+            "text/markdown; charset=utf-8", out.toString())
+    }
+    appendAssetArtifacts(artifacts, projectedAssets, "markdown")
+}
+
+public func renderDocumentationFormatsWithOptions(documentation: DocumentationSet,
+    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site"):
+    Array<RenderArtifact> {
+    if (locale != "zh-CN" && locale != "en") {
+        throw IllegalArgumentException("locale must be zh-CN or en")
+    }
+    if (markdownLayout != "site" && markdownLayout != "single") {
+        throw IllegalArgumentException("Markdown layout must be site or single")
+    }
+    let artifacts = RenderArtifactCollector()
+    for (format in formats) {
+        match (format) {
+            case "json" => appendJsonArtifacts(artifacts, documentation)
+            case "markdown" => if (markdownLayout == "single") {
+                appendMarkdownArtifacts(artifacts, documentation)
+            } else {
+                appendMarkdownSiteArtifacts(artifacts, documentation, locale)
+            }
+            case "html" => appendHtmlArtifacts(artifacts, documentation, locale: locale)
+            case "api-surface" => appendApiSurfaceArtifacts(artifacts, documentation)
+            case "coverage" => appendCoverageArtifacts(artifacts, documentation)
+            case _ => throw IllegalArgumentException(
+                "unsupported documentation format '${format}'")
+        }
+    }
+    artifacts.toArray()
 }
 
 public func renderDocumentationFormats(documentation: DocumentationSet,
@@ -1949,6 +2316,8 @@ public func renderDocumentationFormats(documentation: DocumentationSet,
             case "json" => appendJsonArtifacts(artifacts, documentation)
             case "markdown" => appendMarkdownArtifacts(artifacts, documentation)
             case "html" => appendHtmlArtifacts(artifacts, documentation)
+            case "api-surface" => appendApiSurfaceArtifacts(artifacts, documentation)
+            case "coverage" => appendCoverageArtifacts(artifacts, documentation)
             case _ => throw IllegalArgumentException(
                 "unsupported documentation format '${format}'")
         }
@@ -1961,6 +2330,8 @@ public func rendererFor(format: String): DocumentationRenderer {
         case "json" => JsonDocumentationRenderer()
         case "markdown" => MarkdownDocumentationRenderer()
         case "html" => HtmlDocumentationRenderer()
+        case "api-surface" => ApiSurfaceDocumentationRenderer()
+        case "coverage" => DocumentationCoverageRenderer()
         case _ => throw IllegalArgumentException("unsupported documentation format '${format}'")
     }
 }

@@ -67,6 +67,7 @@
       "name": "path_dependencies_fixture",
       "role": "root",
       "sourcePrefix": "",
+      "organization": null,
       "packageNames": [
         "path_dependencies_fixture"
       ],
@@ -80,6 +81,7 @@
       "name": "path_dep_alpha",
       "role": "pathDependency",
       "sourcePrefix": "dependencies/path_dep_alpha",
+      "organization": null,
       "packageNames": [
         "path_dep_alpha"
       ],
@@ -92,6 +94,7 @@
       "name": "path_dep_beta",
       "role": "pathDependency",
       "sourcePrefix": "dependencies/path_dep_beta",
+      "organization": null,
       "packageNames": [
         "path_dep_beta"
       ],
@@ -109,6 +112,9 @@
       ],
       "symbolIds": [
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Apath%3Apath_dep_alpha::path_dep_alpha::function:alphaApi#g0()"
+      ],
+      "reExports": [
+        
       ]
     },
     {
@@ -119,6 +125,9 @@
       ],
       "symbolIds": [
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Apath%3Apath_dep_beta::path_dep_beta::function:betaApi#g0()"
+      ],
+      "reExports": [
+        
       ]
     },
     {
@@ -129,6 +138,9 @@
       ],
       "symbolIds": [
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::path_dependencies_fixture::function:rootApi#g0()"
+      ],
+      "reExports": [
+        
       ]
     }
   ],
@@ -240,6 +252,18 @@
         }
       },
       "headerSpelling": "public func alphaApi(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:8:alphaApi",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -335,6 +359,18 @@
         }
       },
       "headerSpelling": "public func betaApi(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:7:betaApi",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -436,6 +472,18 @@
         }
       },
       "headerSpelling": "public func rootApi(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:7:rootApi",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
