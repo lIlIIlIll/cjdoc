@@ -109,6 +109,23 @@ func sortDocumentationDeterministically(documentation: DocumentationSet): Unit {
     for (pkg in documentation.packages) {
         sortStringList(pkg.sourceFiles)
         sortStringList(pkg.symbolIds)
+        sort(pkg.reExports, lessThan: { left, right =>
+            left.source.path < right.source.path ||
+                (left.source.path == right.source.path &&
+                    left.source.startLine < right.source.startLine) ||
+                (left.source.path == right.source.path &&
+                    left.source.startLine == right.source.startLine &&
+                    left.source.startColumn < right.source.startColumn) ||
+                (left.source.path == right.source.path &&
+                    left.source.startLine == right.source.startLine &&
+                    left.source.startColumn == right.source.startColumn && left.id < right.id)
+        }, stable: true)
+        for (reExport in pkg.reExports) {
+            sort(reExport.bindings, lessThan: { left, right =>
+                left.exposedName < right.exposedName
+            }, stable: true)
+            for (binding in reExport.bindings) { sortStringList(binding.targetSymbolIds) }
+        }
     }
     sort(documentation.symbols, lessThan: { left, right =>
         left.moduleId < right.moduleId ||

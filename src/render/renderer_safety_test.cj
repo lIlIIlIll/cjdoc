@@ -100,6 +100,23 @@ private func hiddenAssetDocumentation(): DocumentationSet {
 @Test
 class RendererSafetyTest {
     @TestCase
+    func rendererFactorySupportsEveryDocumentedFormat(): Unit {
+        let documentation = rendererSafetyDocumentation(MarkdownNode("document"))
+        let expectations = [
+            ("json", "docs.json"),
+            ("markdown", "markdown/docs.md"),
+            ("html", "html/index.html"),
+            ("api-surface", "api-surface/api-surface.json"),
+            ("coverage", "coverage/coverage.json")
+        ]
+        for ((format, path) in expectations) {
+            let renderer = rendererFor(format)
+            @Expect(renderer.format, format)
+            @Expect(renderer.render(documentation)[0].path, path)
+        }
+    }
+
+    @TestCase
     func audienceProjectionOmitsAssetsReferencedOnlyByHiddenDeclarations(): Unit {
         let documentation = hiddenAssetDocumentation()
         validateDocumentationSet(documentation)

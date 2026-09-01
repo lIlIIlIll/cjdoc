@@ -1218,14 +1218,27 @@ private func publicDocumentation(documentation: DocumentationSet, request: Gener
     for (module in documentation.modules) {
         modules.add(
             public_model.ModuleDoc(module.id, module.name, module.role, module.sourcePrefix,
-                packageNames: module.packageNames.toArray(), dependencyIds: module.dependencyIds.toArray()))
+                packageNames: module.packageNames.toArray(), dependencyIds: module.dependencyIds.toArray(),
+                organization: module.organization))
     }
     let packages = ArrayList<public_model.PackageDoc>()
     let files = ArrayList<public_model.FileDoc>()
     for (pkg in documentation.packages) {
+        let reExports = ArrayList<public_model.ReExportDoc>()
+        for (reExport in pkg.reExports) {
+            let bindings = ArrayList<public_model.ReExportBinding>()
+            for (binding in reExport.bindings) {
+                bindings.add(public_model.ReExportBinding(binding.exposedName,
+                    targetSymbolIds: binding.targetSymbolIds.toArray()))
+            }
+            reExports.add(public_model.ReExportDoc(reExport.id, reExport.kind,
+                reExport.targetPackageName, reExport.state, sourceMapper.range(reExport.source),
+                organization: reExport.organization, targetModuleId: reExport.targetModuleId,
+                alias: reExport.alias, bindings: bindings.toArray()))
+        }
         packages.add(
             public_model.PackageDoc(pkg.name, pkg.moduleId, sourceFiles: pkg.sourceFiles.toArray(),
-                symbolIds: pkg.symbolIds.toArray()))
+                symbolIds: pkg.symbolIds.toArray(), reExports: reExports.toArray()))
         for (path in pkg.sourceFiles) {
             files.add(public_model.FileDoc(path, pkg.moduleId, pkg.name))
         }
@@ -1290,7 +1303,13 @@ private func publicDocumentation(documentation: DocumentationSet, request: Gener
                     case None => None
                 },
                 origin: public_model.DeclarationOrigin(kind: symbol.origin.kind,
-                    macroSymbolId: symbol.origin.macroSymbolId)))
+                    macroSymbolId: symbol.origin.macroSymbolId),
+                sourceApiSignature: if (symbol.sourceApiSignatureTokens.isEmpty()) {
+                    public_model.SourceApiSignature("unavailable")
+                } else {
+                    public_model.SourceApiSignature("available",
+                        tokens: symbol.sourceApiSignatureTokens.toArray())
+                }))
     }
     let unsupported = ArrayList<public_model.UnsupportedDeclaration>()
     let orphanDocComments = ArrayList<public_model.OrphanDocComment>()

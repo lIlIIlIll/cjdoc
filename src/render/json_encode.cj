@@ -70,6 +70,12 @@ private func appendRange(out: StringBuilder, value: SourceRange): Unit {
     out.append("}")
 }
 
+private func appendSourceApiSignature(out: StringBuilder, value: SourceApiSignature): Unit {
+    out.append("{\"state\":${escapeJsonString(value.state)},\"tokens\":")
+    appendStrings(out, value.tokens)
+    out.append("}")
+}
+
 private func appendCapabilities(out: StringBuilder, value: SemanticCapabilities): Unit {
     out.append("{\"sourceBinding\":${value.sourceBinding},\"ownership\":${value.ownership},")
     out.append("\"visibility\":${value.visibility},\"canonicalTypes\":${value.canonicalTypes},")
@@ -236,7 +242,9 @@ private func appendSymbol(out: StringBuilder, value: SymbolDoc): Unit {
     match (value.documentation) { case Some(comment) => appendComment(out, comment) case None => out.append("null") }
     out.append(",\"source\":")
     appendRange(out, value.source)
-    out.append(",\"headerSpelling\":${escapeJsonString(value.headerSpelling)},\"semantic\":{")
+    out.append(",\"headerSpelling\":${escapeJsonString(value.headerSpelling)},\"sourceApiSignature\":")
+    appendSourceApiSignature(out, value.sourceApiSignature)
+    out.append(",\"semantic\":{")
     out.append("\"state\":${escapeJsonString(value.semantic.state)},")
     out.append("\"provider\":${escapeJsonString(value.semantic.provider)},")
     out.append("\"canonicalSignature\":${nullableString(value.semantic.canonicalSignature)}},\"origin\":")
@@ -248,6 +256,7 @@ private func appendSymbol(out: StringBuilder, value: SymbolDoc): Unit {
 private func appendModule(out: StringBuilder, value: ModuleDoc): Unit {
     out.append("{\"id\":${escapeJsonString(value.id)},\"name\":${escapeJsonString(value.name)},")
     out.append("\"role\":${escapeJsonString(value.role)},\"sourcePrefix\":${escapeJsonString(value.sourcePrefix)},")
+    out.append("\"organization\":${nullableString(value.organization)},")
     out.append("\"packageNames\":")
     appendStrings(out, value.packageNames)
     out.append(",\"dependencyIds\":")
@@ -261,6 +270,30 @@ private func appendPackage(out: StringBuilder, value: PackageDoc): Unit {
     appendStrings(out, value.sourceFiles)
     out.append(",\"symbolIds\":")
     appendStrings(out, value.symbolIds)
+    out.append(",\"reExports\":[")
+    var first = true
+    for (reExport in value.reExports) {
+        if (!first) { out.append(",") }
+        first = false
+        out.append("{\"id\":${escapeJsonString(reExport.id)},\"kind\":${escapeJsonString(reExport.kind)},")
+        out.append("\"organization\":${nullableString(reExport.organization)},")
+        out.append("\"targetPackageName\":${escapeJsonString(reExport.targetPackageName)},")
+        out.append("\"targetModuleId\":${nullableString(reExport.targetModuleId)},")
+        out.append("\"alias\":${nullableString(reExport.alias)},\"state\":${escapeJsonString(reExport.state)},")
+        out.append("\"source\":")
+        appendRange(out, reExport.source)
+        out.append(",\"bindings\":[")
+        var firstBinding = true
+        for (binding in reExport.bindings) {
+            if (!firstBinding) { out.append(",") }
+            firstBinding = false
+            out.append("{\"exposedName\":${escapeJsonString(binding.exposedName)},\"targetSymbolIds\":")
+            appendStrings(out, binding.targetSymbolIds)
+            out.append("}")
+        }
+        out.append("]}")
+    }
+    out.append("]")
     out.append("}")
 }
 

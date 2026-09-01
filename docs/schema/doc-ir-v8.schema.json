@@ -71,21 +71,45 @@
     },
     "module": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "name", "role", "sourcePrefix", "packageNames", "dependencyIds"],
+      "required": ["id", "name", "role", "sourcePrefix", "organization", "packageNames", "dependencyIds"],
       "properties": {
         "id": {"$ref": "#/$defs/moduleId"}, "name": {"type": "string", "minLength": 1},
         "role": {"enum": ["root", "workspace", "pathDependency", "externalDependency"]},
-        "sourcePrefix": {"anyOf": [{"const": ""}, {"$ref": "#/$defs/portablePath"}]}, "packageNames": {"$ref": "#/$defs/stringArray"},
+        "sourcePrefix": {"anyOf": [{"const": ""}, {"$ref": "#/$defs/portablePath"}]}, "organization": {"$ref": "#/$defs/nullableString"}, "packageNames": {"$ref": "#/$defs/stringArray"},
         "dependencyIds": {"type": "array", "items": {"$ref": "#/$defs/moduleId"}}
       }
     },
     "package": {
       "type": "object", "additionalProperties": false,
-      "required": ["name", "moduleId", "sourceFiles", "symbolIds"],
+      "required": ["name", "moduleId", "sourceFiles", "symbolIds", "reExports"],
       "properties": {
         "name": {"type": "string", "minLength": 1}, "moduleId": {"$ref": "#/$defs/moduleId"},
         "sourceFiles": {"type": "array", "items": {"$ref": "#/$defs/portablePath"}},
-        "symbolIds": {"type": "array", "items": {"$ref": "#/$defs/symbolId"}}
+        "symbolIds": {"type": "array", "items": {"$ref": "#/$defs/symbolId"}},
+        "reExports": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/reExport"}}
+      }
+    },
+    "reExportBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["exposedName", "targetSymbolIds"],
+      "properties": {
+        "exposedName": {"type": "string", "minLength": 1},
+        "targetSymbolIds": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/symbolId"}}
+      }
+    },
+    "reExport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "organization", "targetPackageName", "targetModuleId", "alias", "state", "source", "bindings"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^cjdoc:reexport:v1:[0-9a-f]{64}$"},
+        "kind": {"enum": ["single", "alias", "all", "multi", "packageAlias"]},
+        "organization": {"$ref": "#/$defs/nullableString"},
+        "targetPackageName": {"type": "string", "minLength": 1},
+        "targetModuleId": {"anyOf": [{"$ref": "#/$defs/moduleId"}, {"type": "null"}]},
+        "alias": {"$ref": "#/$defs/nullableString"},
+        "state": {"$ref": "#/$defs/semanticState"},
+        "source": {"$ref": "#/$defs/sourceRange"},
+        "bindings": {"type": "array", "items": {"$ref": "#/$defs/reExportBinding"}}
       }
     },
     "file": {
@@ -256,6 +280,20 @@
         "canonicalSignature": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1, "pattern": "\\S"}]}
       }
     },
+    "sourceApiSignature": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "tokens"],
+      "properties": {
+        "state": {"enum": ["available", "unavailable"]},
+        "tokens": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      },
+      "allOf": [
+        {"if": {"properties": {"state": {"const": "available"}}},
+          "then": {"properties": {"tokens": {"minItems": 1}}}},
+        {"if": {"properties": {"state": {"const": "unavailable"}}},
+          "then": {"properties": {"tokens": {"maxItems": 0}}}}
+      ]
+    },
     "origin": {
       "type": "object", "additionalProperties": false,
       "required": ["kind", "macroSymbolId"],
@@ -289,7 +327,7 @@
     },
     "declaration": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "kind", "name", "qualifiedName", "packageName", "moduleId", "ownerId", "visibility", "genericParameters", "parameters", "returnType", "annotations", "typeRelationships", "symbolRelationships", "documentation", "source", "headerSpelling", "semantic", "origin", "enumNonExhaustive"],
+      "required": ["id", "kind", "name", "qualifiedName", "packageName", "moduleId", "ownerId", "visibility", "genericParameters", "parameters", "returnType", "annotations", "typeRelationships", "symbolRelationships", "documentation", "source", "headerSpelling", "sourceApiSignature", "semantic", "origin", "enumNonExhaustive"],
       "properties": {
         "id": {"$ref": "#/$defs/symbolId"}, "kind": {"type": "string", "minLength": 1},
         "name": {"type": "string"}, "qualifiedName": {"type": "string", "minLength": 1},
@@ -304,6 +342,7 @@
         "symbolRelationships": {"type": "array", "items": {"$ref": "#/$defs/symbolRelationship"}},
         "documentation": {"anyOf": [{"$ref": "#/$defs/comment"}, {"type": "null"}]},
         "source": {"$ref": "#/$defs/sourceRange"}, "headerSpelling": {"type": "string"},
+        "sourceApiSignature": {"$ref": "#/$defs/sourceApiSignature"},
         "semantic": {"$ref": "#/$defs/semanticInfo"}, "origin": {"$ref": "#/$defs/origin"},
         "enumNonExhaustive": {"type": ["boolean", "null"]}
       }

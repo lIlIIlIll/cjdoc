@@ -53,7 +53,7 @@ for schema_name in doc-ir-v6 doc-ir-v7; do
         "${stage_dir}/${schema_name}.schema.json"
 done
 
-for schema_name in doc-ir doc-ir-v8 diagnostics cfg-matrix search-index; do
+for schema_name in doc-ir doc-ir-v8 diagnostics cfg-matrix search-index api-surface documentation-coverage; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${stage_dir}/${schema_name}.schema.json"
 done

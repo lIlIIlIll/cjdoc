@@ -1,6 +1,6 @@
 # cjdoc
 
-`cjdoc` 是使用仓颉编写的仓颉 API 文档生成器。当前版本从仓颉源码生成确定性的 `cjdoc.doc-ir/8` JSON，也可以从同一份 Doc IR 生成 Markdown、多页静态 HTML 和搜索索引。严格有效的 v6/v7 输入可只读迁移到 v8；生成器只写 v8。
+`cjdoc` 是使用仓颉编写的仓颉 API 文档生成器。当前版本从仓颉源码生成确定性的 `cjdoc.doc-ir/8` JSON，也可以从同一份 Doc IR 生成 Markdown、多页静态 HTML、搜索索引、API surface snapshot 和文档覆盖率报告。严格有效的 v6/v7 输入可只读迁移到 v8；生成器只写 v8。
 
 当前版本使用 `std.ast` 和 lexer 读取源码。CHIR 暂不接入，语义信息明确标为 `partial` 或 `unavailable`，不会把字符串推断伪装成已解析类型。
 
@@ -76,7 +76,9 @@ cjpm run -- generate \
 
 ```text
 target/example-doc/docs.json
-target/example-doc/markdown/docs.md
+target/example-doc/markdown/index.md
+target/example-doc/markdown/packages/*.md
+target/example-doc/markdown/symbols/*.md
 target/example-doc/html/index.html
 target/example-doc/html/packages/*.html
 target/example-doc/html/symbols/*.html
@@ -87,7 +89,7 @@ target/example-doc/html/style.css
 target/example-doc/html/assets/*
 ```
 
-HTML 和 Markdown renderer 只消费已清理的 Doc IR `MarkdownNode`，不会重新解释 `rawText`。站点包含 module/package 页面、type 页面、member section、交叉链接，以及带 kind/package filter 的浏览器端搜索；`search-index.js` 使搜索在 `file://` 下也可用。POSIX 上，安全的相对本地图片通过逐段 `openat` + `O_NOFOLLOW` 打开，验证普通文件、大小、media type 与 magic bytes 后才会内容寻址并复制到 `assets/`。当前 Windows SDK 没有可表达同等 no-follow/openat 语义的公开能力，因此 Windows **不支持本地 asset embedding**：生成器 fail closed，省略该 asset，发出 `CJDOC4026`，并把文档状态标为 `partial`。缺失、越界、symlink 或签名不匹配的图片同样只产生明确诊断。生成器不会执行文档中的代码或直接插入 raw HTML。
+HTML 和 Markdown renderer 只消费已清理的 Doc IR `MarkdownNode`，不会重新解释 `rawText`。默认输出是中文结构标题和 package/type/member 多页站点；用 `--locale en` 生成英文站点，用 `--locale en --markdown-layout single` 生成旧式单页 `markdown/docs.md`。站点包含 public import 重导出、交叉链接，以及带 kind/package filter 的浏览器端搜索；`search-index.js` 使搜索在 `file://` 下也可用。POSIX 上，安全的相对本地图片通过逐段 `openat` + `O_NOFOLLOW` 打开，验证普通文件、大小、media type 与 magic bytes 后才会内容寻址并复制到 `assets/`。当前 Windows SDK 没有可表达同等 no-follow/openat 语义的公开能力，因此 Windows **不支持本地 asset embedding**：生成器 fail closed，省略该 asset，发出 `CJDOC4026`，并把文档状态标为 `partial`。缺失、越界、symlink 或签名不匹配的图片同样只产生明确诊断。生成器不会执行文档中的代码或直接插入 raw HTML。
 
 ## CLI reference
 
@@ -95,7 +97,7 @@ HTML 和 Markdown renderer 只消费已清理的 Doc IR `MarkdownNode`，不会�
 cjdoc generate [options]
 cjdoc check [options]
 cjdoc render --input <docs.json> [options]
-cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|diagnostics|cfg-matrix|search-index
+cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|diagnostics|cfg-matrix|search-index|api-surface|documentation-coverage
 ```
 
 构建后可直接运行 `target/release/bin/main`。仓库根目录的 `./cjdoc` launcher 会在缺少 binary 时先执行 `cjpm build`。
@@ -107,17 +109,41 @@ cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|diagnostics|cfg-matrix|se
 | option | value | default | purpose |
 |---|---|---|---|
 | `--project` | directory | `.` | 包含 `cjpm.toml` 的项目或 workspace |
-| `--format` | `json`, `markdown`, `html` | `json` | 可重复指定 |
+| `--format` | `json`, `markdown`, `html`, `api-surface`, `coverage` | `json` | 可重复指定 |
 | `--output` | directory | `<project>/target/doc` | cjdoc 拥有的输出目录 |
 | `--stdout` | flag | off | 只输出单个 JSON artifact |
 | `--audience` | `external`, `package`, `all` | `external` | 控制 Markdown、HTML 和 search 可见性 |
 | `--lint-profile` | `off`, `standard`, `strict` | `standard` | 文档 lint 强度 |
 | `--jobs` | `1..64` | `1` | source frontend worker 数 |
-| `--cache-dir` | directory | `<project>/target/cjdoc/cache/source-v4` | 增量 source cache |
+| `--cache-dir` | directory | `<project>/target/cjdoc/cache/source-v8` | 增量 source cache |
 | `--no-cache` | flag | off | 禁用增量 source cache |
 | `--cfg` | `NAME=VALUE` | none | 可重复的条件编译输入 |
 | `--include-path-dependencies` | flag | off | 扫描 manifest 中的 path dependency |
 | `--include-cached-dependencies` | flag | off | 扫描可发现的 cjpm cache dependency source |
+| `--locale` | `zh-CN`, `en` | `zh-CN` | HTML 和多页 Markdown 的结构语言 |
+| `--markdown-layout` | `site`, `single` | `site` | Markdown 多页站点或兼容单页；`single` 需要 `--locale en` |
+| `--api-surface-baseline` | JSON file | none | 与 canonical API surface 做 byte-exact 对账，不一致时返回非零 |
+| `--min-symbol-coverage` | `0..100` | unset | 显式设置声明文档覆盖率门槛 |
+| `--min-parameter-coverage` | `0..100` | unset | 显式设置参数文档覆盖率门槛 |
+
+### 固定和检查公开 API
+
+先生成 canonical snapshot。它记录源码 token signature、稳定 SymbolId 和 public import 暴露关系：
+
+```bash
+cjdoc generate --project . --format api-surface --stdout > api/public-api.json
+```
+
+在 CI 中对账 snapshot，并按需要启用文档覆盖率门槛：
+
+```bash
+cjdoc check --project . \
+  --api-surface-baseline api/public-api.json \
+  --min-symbol-coverage 80 \
+  --min-parameter-coverage 90
+```
+
+成功时命令返回 `0`。snapshot 不一致或任一显式门槛未达到时返回非零；未设置门槛时，coverage 不会导致命令失败。单独运行 `--format coverage --stdout` 可读取 `cjdoc.documentation-coverage/1` JSON。
 | `--cjpm-cache` | directory | SDK/cjpm 默认位置 | 指定只读 cjpm cache root |
 | `--dependency-source` | `NAME=PATH` | none | 显式提供只读 dependency source |
 | `--force-owned` | flag | off | 覆盖 manifest 已声明但摘要已改变的 artifact，并显式采用 artifact 所需的既有目录 |
@@ -213,6 +239,8 @@ std.ast + lexer  ---> SourceSnapshot + RawDocComment
 - 当前输出 schema version 固定为 `cjdoc.doc-ir/8`。
 - 所有源码路径为 `/` 分隔的相对逻辑路径，不包含本机绝对路径。
 - declarations、packages、files、diagnostics 与 renderer artifacts 使用稳定顺序。
+- 每个 declaration 都带 lexer token 化的 `sourceApiSignature`；不可获得时显式标记为 `unavailable`。
+- package 的 `reExports` 记录 public import 的目标、别名、解析状态和 canonical target SymbolId。搜索索引同时保留 canonical declaration 与消费者 package exposure。
 - module identity 是 SymbolId 的组成部分；同名 package 可安全存在于不同 module。file-private 顶层声明额外使用逻辑文件作用域消歧，SymbolId 不使用源码行号。
 - semantic state 只能是 `resolved`、`partial`、`unavailable` 或 `ambiguous`。
 - type relationship 和 symbol relationship 是显式字段。resolved symbol relationship 必须带稳定 `targetSymbolId`。
@@ -232,6 +260,10 @@ JSON 兼容边界更窄：严格满足 v6 schema 且 package 到 module 映射�
 ## v0.7.0 compatibility
 
 v0.7.0 只生成 Doc IR v8。冻结的 v6/v7 document 仅作为严格的只读输入迁移到 v8；cjdoc 不会覆盖或重新生成 v6/v7 golden。调用方若持久化 Doc IR，应按 `schemaVersion` 分派，并把迁移后的 v8 document 视为新的输出身份。
+
+本版本补充 public import re-export/package API surface、基于源码 token stream 的 canonical API snapshot、声明/参数文档覆盖率门槛，以及默认中文的 package/type/member 多页 Markdown/HTML 输出。新的 `api-surface` 与 `coverage` artifact 都有独立、可查询的 published schema；解析不完整或冲突的 re-export 保持显式 `partial`/`ambiguous`/`unavailable`，不会伪装成已解析 API。
+
+GitHub release 同时发布 Linux x64、macOS arm64 和 Windows x64 的校验过 archive，以及可直接下载的单 executable 和对应 `.sha256` 文件。Windows executable 使用 `.exe` 后缀。
 
 ## 验证修改
 

@@ -37,6 +37,7 @@
       "name": "functions_fixture",
       "role": "root",
       "sourcePrefix": "",
+      "organization": null,
       "packageNames": [
         "functions_fixture"
       ],
@@ -58,6 +59,9 @@
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::functions_fixture::function:parse#g0(Array<UInt8>)",
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::functions_fixture::function:parse#g0(String)",
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::functions_fixture::function:解析#g0(String)"
+      ],
+      "reExports": [
+        
       ]
     }
   ],
@@ -183,6 +187,24 @@
         }
       },
       "headerSpelling": "public func identity<T>(value: T): T",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:8:identity",
+          "LT:1:<",
+          "IDENTIFIER:1:T",
+          "GT:1:>",
+          "LPAREN:1:(",
+          "IDENTIFIER:5:value",
+          "COLON:1::",
+          "IDENTIFIER:1:T",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "IDENTIFIER:1:T"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -333,6 +355,25 @@
         }
       },
       "headerSpelling": "public func multiline(\n    text: String,\n    strict: Bool\n): String",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:9:multiline",
+          "LPAREN:1:(",
+          "IDENTIFIER:4:text",
+          "COLON:1::",
+          "IDENTIFIER:6:String",
+          "COMMA:1:,",
+          "IDENTIFIER:6:strict",
+          "COLON:1::",
+          "BOOLEAN:4:Bool",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "IDENTIFIER:6:String"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -458,6 +499,24 @@
         }
       },
       "headerSpelling": "public func parse(data: Array<UInt8>): Int64",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:5:parse",
+          "LPAREN:1:(",
+          "IDENTIFIER:4:data",
+          "COLON:1::",
+          "IDENTIFIER:5:Array",
+          "LT:1:<",
+          "UINT8:5:UInt8",
+          "GT:1:>",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "INT64:5:Int64"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -583,6 +642,21 @@
         }
       },
       "headerSpelling": "public func parse(text: String): Int64",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:5:parse",
+          "LPAREN:1:(",
+          "IDENTIFIER:4:text",
+          "COLON:1::",
+          "IDENTIFIER:6:String",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "INT64:5:Int64"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -708,6 +782,21 @@
         }
       },
       "headerSpelling": "public func 解析(文本: String): String",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:6:解析",
+          "LPAREN:1:(",
+          "IDENTIFIER:6:文本",
+          "COLON:1::",
+          "IDENTIFIER:6:String",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "IDENTIFIER:6:String"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",

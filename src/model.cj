@@ -62,6 +62,44 @@ class SourceTypeRelationship {
     }
 }
 
+class SourceImportItem {
+    public let name: String
+    public let alias: ?String
+
+    public init(name: String, alias!: ?String = None) {
+        this.name = name
+        this.alias = alias
+    }
+}
+
+class SourceReExport {
+    public let kind: String
+    public let organization: ?String
+    public let prefixPaths = ArrayList<String>()
+    public let identifier: String
+    public let alias: ?String
+    public let items = ArrayList<SourceImportItem>()
+    public let source: SourceLocation
+    public let normalizedSpec: String
+    public let packageName: String
+    public let moduleId: String
+
+    public init(kind: String, organization: ?String, identifier: String, alias: ?String,
+        source: SourceLocation, normalizedSpec: String, packageName: String, moduleId: String,
+        prefixPaths!: Array<String> = [], items!: Array<SourceImportItem> = []) {
+        this.kind = kind
+        this.organization = organization
+        this.identifier = identifier
+        this.alias = alias
+        this.source = source
+        this.normalizedSpec = normalizedSpec
+        this.packageName = packageName
+        this.moduleId = moduleId
+        this.prefixPaths.add(all: prefixPaths)
+        this.items.add(all: items)
+    }
+}
+
 class SourceSymbolRelationship {
     public let kind: String
     public let targetDisplay: String
@@ -89,6 +127,7 @@ class SourceDeclaration {
     public var documentation: ?DocComment = None
     public let source: SourceLocation
     public let sourceSignature: String
+    public let sourceApiSignatureTokens = ArrayList<String>()
     public let isContainer: Bool
     // `Some(true)`/`Some(false)` is source truth for enum declarations.
     // Non-enum declarations use `None` so the fact cannot be mistaken for an
@@ -99,7 +138,8 @@ class SourceDeclaration {
 
     public init(sourceKey: String, kind: String, name: String, packageName: String, moduleId: String,
         visibility: String, source: SourceLocation, sourceSignature: String,
-        isContainer!: Bool = false, enumNonExhaustive!: ?Bool = None) {
+        isContainer!: Bool = false, enumNonExhaustive!: ?Bool = None,
+        sourceApiSignatureTokens!: Array<String> = []) {
         this.sourceKey = sourceKey
         this.kind = kind
         this.name = name
@@ -108,6 +148,7 @@ class SourceDeclaration {
         this.visibility = visibility
         this.source = source
         this.sourceSignature = sourceSignature
+        this.sourceApiSignatureTokens.add(all: sourceApiSignatureTokens)
         this.isContainer = isContainer
         this.enumNonExhaustive = enumNonExhaustive
     }
@@ -126,14 +167,17 @@ class SourceModule {
     public let name: String
     public let role: String
     public let sourcePrefix: String
+    public let organization: ?String
     public let packageNames = ArrayList<String>()
     public let dependencyIds = ArrayList<String>()
 
-    public init(id: String, name: String, role: String, sourcePrefix: String) {
+    public init(id: String, name: String, role: String, sourcePrefix: String,
+        organization!: ?String = None) {
         this.id = id
         this.name = name
         this.role = role
         this.sourcePrefix = sourcePrefix
+        this.organization = organization
     }
 }
 
@@ -263,6 +307,7 @@ class SourceSnapshot {
     public let modules = ArrayList<SourceModule>()
     public let packages = ArrayList<SourcePackage>()
     public let declarations = ArrayList<SourceDeclaration>()
+    public let reExports = ArrayList<SourceReExport>()
     public let sourceFileOrigins = ArrayList<SourceFileOrigin>()
     public let orphanDocComments = ArrayList<OrphanDocComment>()
     public let macroInvocations = ArrayList<MacroInvocation>()
@@ -545,6 +590,7 @@ class SymbolDoc {
     public var documentation: ?DocComment = None
     public let source: SourceLocation
     public let sourceSignature: String
+    public let sourceApiSignatureTokens = ArrayList<String>()
     public let semanticState: String
     public let semanticProvider: String
     public let canonicalSignature: ?String
@@ -557,7 +603,8 @@ class SymbolDoc {
         source: SourceLocation, sourceSignature: String, isContainer!: Bool = false,
         semanticState!: String = "partial", semanticProvider!: String = "ast",
         canonicalSignature!: ?String = None, enumNonExhaustive!: ?Bool = None,
-        origin!: DeclarationOrigin = DeclarationOrigin("source")) {
+        origin!: DeclarationOrigin = DeclarationOrigin("source"),
+        sourceApiSignatureTokens!: Array<String> = []) {
         this.kind = kind
         this.name = name
         this.packageName = packageName
@@ -565,6 +612,7 @@ class SymbolDoc {
         this.visibility = visibility
         this.source = source
         this.sourceSignature = sourceSignature
+        this.sourceApiSignatureTokens.add(all: sourceApiSignatureTokens)
         this.semanticState = semanticState
         this.semanticProvider = semanticProvider
         this.canonicalSignature = canonicalSignature
@@ -574,11 +622,48 @@ class SymbolDoc {
     }
 }
 
+class ReExportBinding {
+    public let exposedName: String
+    public let targetSymbolIds = ArrayList<String>()
+
+    public init(exposedName: String, targetSymbolIds!: Array<String> = []) {
+        this.exposedName = exposedName
+        this.targetSymbolIds.add(all: targetSymbolIds)
+    }
+}
+
+class ReExportDoc {
+    public let id: String
+    public let kind: String
+    public let organization: ?String
+    public let targetPackageName: String
+    public let targetModuleId: ?String
+    public let alias: ?String
+    public let state: String
+    public let source: SourceLocation
+    public let bindings = ArrayList<ReExportBinding>()
+
+    public init(id: String, kind: String, organization: ?String, targetPackageName: String,
+        targetModuleId: ?String, alias: ?String, state: String, source: SourceLocation,
+        bindings!: Array<ReExportBinding> = []) {
+        this.id = id
+        this.kind = kind
+        this.organization = organization
+        this.targetPackageName = targetPackageName
+        this.targetModuleId = targetModuleId
+        this.alias = alias
+        this.state = state
+        this.source = source
+        this.bindings.add(all: bindings)
+    }
+}
+
 class PackageDoc {
     public let name: String
     public let moduleId: String
     public let sourceFiles = ArrayList<String>()
     public let symbolIds = ArrayList<String>()
+    public let reExports = ArrayList<ReExportDoc>()
 
     public init(name: String, moduleId: String) { this.name = name; this.moduleId = moduleId }
 }
@@ -588,14 +673,17 @@ class ModuleDoc {
     public let name: String
     public let role: String
     public let sourcePrefix: String
+    public let organization: ?String
     public let packageNames = ArrayList<String>()
     public let dependencyIds = ArrayList<String>()
 
-    public init(id: String, name: String, role: String, sourcePrefix: String) {
+    public init(id: String, name: String, role: String, sourcePrefix: String,
+        organization!: ?String = None) {
         this.id = id
         this.name = name
         this.role = role
         this.sourcePrefix = sourcePrefix
+        this.organization = organization
     }
 }
 

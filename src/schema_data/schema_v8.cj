@@ -5,6 +5,49 @@ private let DOC_IR_V8_ID =
 private let DOC_IR_CURRENT_ID =
     "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json"
 
+private let REEXPORT_DEFINITIONS = """
+    "reExportBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["exposedName", "targetSymbolIds"],
+      "properties": {
+        "exposedName": {"type": "string", "minLength": 1},
+        "targetSymbolIds": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/symbolId"}}
+      }
+    },
+    "reExport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "organization", "targetPackageName", "targetModuleId", "alias", "state", "source", "bindings"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^cjdoc:reexport:v1:[0-9a-f]{64}$"},
+        "kind": {"enum": ["single", "alias", "all", "multi", "packageAlias"]},
+        "organization": {"$ref": "#/$defs/nullableString"},
+        "targetPackageName": {"type": "string", "minLength": 1},
+        "targetModuleId": {"anyOf": [{"$ref": "#/$defs/moduleId"}, {"type": "null"}]},
+        "alias": {"$ref": "#/$defs/nullableString"},
+        "state": {"$ref": "#/$defs/semanticState"},
+        "source": {"$ref": "#/$defs/sourceRange"},
+        "bindings": {"type": "array", "items": {"$ref": "#/$defs/reExportBinding"}}
+      }
+    },
+"""
+
+private let SOURCE_API_SIGNATURE_DEFINITION = """
+    "sourceApiSignature": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "tokens"],
+      "properties": {
+        "state": {"enum": ["available", "unavailable"]},
+        "tokens": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      },
+      "allOf": [
+        {"if": {"properties": {"state": {"const": "available"}}},
+          "then": {"properties": {"tokens": {"minItems": 1}}}},
+        {"if": {"properties": {"state": {"const": "unavailable"}}},
+          "then": {"properties": {"tokens": {"maxItems": 0}}}}
+      ]
+    },
+"""
+
 private func buildDocIrV8Schema(id: String): String {
     var schema = DOC_IR_V7_SCHEMA
         .replace("https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json", id)
@@ -159,6 +202,26 @@ private func buildDocIrV8Schema(id: String): String {
             "      }\n    },\n    \"comment\": {",
         "        \"children\": {\"type\": \"array\", \"maxItems\": 32767, \"items\": {\"$ref\": \"#/$defs/markdownNode\"}}\n" +
             "      },\n" + metadataConditions + "    },\n    \"comment\": {")
+    schema = schema
+        .replace("\"required\": [\"id\", \"name\", \"role\", \"sourcePrefix\", \"packageNames\", \"dependencyIds\"]",
+            "\"required\": [\"id\", \"name\", \"role\", \"sourcePrefix\", \"organization\", \"packageNames\", \"dependencyIds\"]")
+        .replace("\"sourcePrefix\": {\"anyOf\": [{\"const\": \"\"}, {\"$ref\": \"#/$defs/portablePath\"}]}, \"packageNames\":",
+            "\"sourcePrefix\": {\"anyOf\": [{\"const\": \"\"}, {\"$ref\": \"#/$defs/portablePath\"}]}, \"organization\": {\"$ref\": \"#/$defs/nullableString\"}, \"packageNames\":")
+        .replace("\"required\": [\"name\", \"moduleId\", \"sourceFiles\", \"symbolIds\"]",
+            "\"required\": [\"name\", \"moduleId\", \"sourceFiles\", \"symbolIds\", \"reExports\"]")
+        .replace("        \"symbolIds\": {\"type\": \"array\", \"items\": {\"$ref\": \"#/$defs/symbolId\"}}\n" +
+            "      }\n    },\n    \"file\": {",
+            "        \"symbolIds\": {\"type\": \"array\", \"items\": {\"$ref\": \"#/$defs/symbolId\"}},\n" +
+            "        \"reExports\": {\"type\": \"array\", \"maxItems\": 100000, \"items\": {\"$ref\": \"#/$defs/reExport\"}}\n" +
+            "      }\n    },\n" + REEXPORT_DEFINITIONS + "    \"file\": {")
+        .replace("\"source\", \"headerSpelling\", \"semantic\", \"origin\", \"enumNonExhaustive\"]",
+            "\"source\", \"headerSpelling\", \"sourceApiSignature\", \"semantic\", \"origin\", \"enumNonExhaustive\"]")
+        .replace("        \"source\": {\"$ref\": \"#/$defs/sourceRange\"}, \"headerSpelling\": {\"type\": \"string\"},\n" +
+            "        \"semantic\": {\"$ref\": \"#/$defs/semanticInfo\"}",
+            "        \"source\": {\"$ref\": \"#/$defs/sourceRange\"}, \"headerSpelling\": {\"type\": \"string\"},\n" +
+            "        \"sourceApiSignature\": {\"$ref\": \"#/$defs/sourceApiSignature\"},\n" +
+            "        \"semantic\": {\"$ref\": \"#/$defs/semanticInfo\"}")
+        .replace("    \"origin\": {", SOURCE_API_SIGNATURE_DEFINITION + "    \"origin\": {")
     schema
 }
 

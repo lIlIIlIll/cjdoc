@@ -37,6 +37,7 @@
       "name": "extend_visibility_fixture",
       "role": "root",
       "sourcePrefix": "",
+      "organization": null,
       "packageNames": [
         "extend_visibility_fixture"
       ],
@@ -65,6 +66,9 @@
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::file:src/fixture.cj::function:fileOnly#g0()",
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::function:oldApi#g0()",
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::function:packageOnly#g0()"
+      ],
+      "reExports": [
+        
       ]
     }
   ],
@@ -171,6 +175,18 @@
         }
       },
       "headerSpelling": "public init(value: T)",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "INIT:4:init",
+          "LPAREN:1:(",
+          "IDENTIFIER:5:value",
+          "COLON:1::",
+          "IDENTIFIER:1:T",
+          "RPAREN:1:)"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -234,6 +250,18 @@
         }
       },
       "headerSpelling": "private func hiddenMember(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PRIVATE:7:private",
+          "FUNC:4:func",
+          "IDENTIFIER:12:hiddenMember",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -329,6 +357,16 @@
         }
       },
       "headerSpelling": "public let value: T",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "LET:3:let",
+          "IDENTIFIER:5:value",
+          "COLON:1::",
+          "IDENTIFIER:1:T"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -392,6 +430,18 @@
         }
       },
       "headerSpelling": "private func hiddenExtensionMember(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PRIVATE:7:private",
+          "FUNC:4:func",
+          "IDENTIFIER:21:hiddenExtensionMember",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -487,6 +537,18 @@
         }
       },
       "headerSpelling": "public func length(): Int64",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:6:length",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "INT64:5:Int64"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -582,6 +644,18 @@
         }
       },
       "headerSpelling": "public func pretty(): String",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:6:pretty",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "IDENTIFIER:6:String"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -665,6 +739,17 @@
         }
       },
       "headerSpelling": "public class Box<T>",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "CLASS:5:class",
+          "IDENTIFIER:3:Box",
+          "LT:1:<",
+          "IDENTIFIER:1:T",
+          "GT:1:>"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -763,6 +848,16 @@
         }
       },
       "headerSpelling": "extend Box<String>",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "EXTEND:6:extend",
+          "IDENTIFIER:3:Box",
+          "LT:1:<",
+          "IDENTIFIER:6:String",
+          "GT:1:>"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -861,6 +956,16 @@
         }
       },
       "headerSpelling": "extend Box<String>",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "EXTEND:6:extend",
+          "IDENTIFIER:3:Box",
+          "LT:1:<",
+          "IDENTIFIER:6:String",
+          "GT:1:>"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -924,6 +1029,18 @@
         }
       },
       "headerSpelling": "private func fileOnly(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PRIVATE:7:private",
+          "FUNC:4:func",
+          "IDENTIFIER:8:fileOnly",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -1023,6 +1140,25 @@
         }
       },
       "headerSpelling": "@Deprecated[message: \"Use Box instead.\"]\npublic func oldApi(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "AT:1:@",
+          "IDENTIFIER:10:Deprecated",
+          "LSQUARE:1:[",
+          "IDENTIFIER:7:message",
+          "COLON:1::",
+          "STRING_LITERAL:16:Use Box instead.",
+          "RSQUARE:1:]",
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:6:oldApi",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",
@@ -1086,6 +1222,18 @@
         }
       },
       "headerSpelling": "internal func packageOnly(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "INTERNAL:8:internal",
+          "FUNC:4:func",
+          "IDENTIFIER:11:packageOnly",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
       "semantic": {
         "state": "partial",
         "provider": "ast",

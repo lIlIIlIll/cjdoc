@@ -30,20 +30,30 @@ private class NewCliOptions {
     var cacheDirectory: ?String = None
     var noCache = false
     var cjpmCacheRoot: ?String = None
+    var apiSurfaceBaseline: ?String = None
+    var minSymbolCoverage: ?Int64 = None
+    var minParameterCoverage: ?Int64 = None
+    var locale = "zh-CN"
+    var localeExplicit = false
+    var markdownLayout = "site"
+    var markdownLayoutExplicit = false
     let dependencySources = ArrayList<DependencySourceInput>()
     let cfgValues = ArrayList<CfgValue>()
 }
 
 private func newUsage(): String {
     "usage:\n" +
-    "  cjdoc generate [--project <dir>] [--format json|markdown|html]... [--output <dir>|--stdout]\n" +
+    "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout]\n" +
     "                 [--audience external|package|all] [--lint-profile off|standard|strict] [--jobs 1..64]\n" +
     "                 [--cfg NAME=VALUE] [--include-path-dependencies] [--include-cached-dependencies]\n" +
     "                 [--dependency-source NAME=PATH] [--cjpm-cache <dir>]\n" +
     "                 [--cache-dir <dir>|--no-cache] [--force-owned]\n" +
+    "                 [--locale zh-CN|en] [--markdown-layout site|single]\n" +
     "  cjdoc check [--project <dir>] [--deny-warnings] [--lint-profile off|standard|strict]\n" +
-    "  cjdoc render --input <docs.json> [--format json|markdown|html]... [--output <dir>|--stdout] [--force-owned]\n" +
-    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|diagnostics|cfg-matrix|search-index\n"
+    "              [--api-surface-baseline <file>] [--min-symbol-coverage 0..100] [--min-parameter-coverage 0..100]\n" +
+    "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout] [--force-owned]\n" +
+    "               [--locale zh-CN|en] [--markdown-layout site|single]\n" +
+    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|diagnostics|cfg-matrix|search-index|api-surface|documentation-coverage\n"
 }
 
 internal func splitNamedValue(value: String, option: String): (String, String) {
@@ -59,7 +69,8 @@ internal func cliErrorText(message: String, includeUsage: Bool): String {
 }
 
 private func addFormat(options: NewCliOptions, value: String): Unit {
-    if (value != "json" && value != "markdown" && value != "html") {
+    if (value != "json" && value != "markdown" && value != "html" &&
+        value != "api-surface" && value != "coverage") {
         throw IllegalArgumentException("unsupported format '${value}'")
     }
     if (!options.formats.contains(value)) { options.formats.add(value) }
@@ -76,7 +87,8 @@ private func parseNewCli(args: Array<String>): NewCliOptions {
             options.schemaName != "doc-ir-v6" && options.schemaName != "doc-ir-v7" &&
             options.schemaName != "doc-ir-v8" &&
             options.schemaName != "diagnostics" && options.schemaName != "cfg-matrix" &&
-            options.schemaName != "search-index") {
+            options.schemaName != "search-index" && options.schemaName != "api-surface" &&
+            options.schemaName != "documentation-coverage") {
             throw IllegalArgumentException("unknown schema '${options.schemaName}'")
         }
         return options
@@ -115,6 +127,30 @@ private func parseNewCli(args: Array<String>): NewCliOptions {
                     throw IllegalArgumentException("--cjpm-cache requires a value")
                 }
                 options.cjpmCacheRoot = Some(args[index + 1]); index += 2
+            case "--api-surface-baseline" =>
+                if (index + 1 >= args.size || args[index + 1].trimAscii().isEmpty()) {
+                    throw IllegalArgumentException("--api-surface-baseline requires a value")
+                }
+                options.apiSurfaceBaseline = Some(args[index + 1]); index += 2
+            case "--min-symbol-coverage" =>
+                if (index + 1 >= args.size) {
+                    throw IllegalArgumentException("--min-symbol-coverage requires a value")
+                }
+                options.minSymbolCoverage = Some(Int64.parse(args[index + 1])); index += 2
+            case "--min-parameter-coverage" =>
+                if (index + 1 >= args.size) {
+                    throw IllegalArgumentException("--min-parameter-coverage requires a value")
+                }
+                options.minParameterCoverage = Some(Int64.parse(args[index + 1])); index += 2
+            case "--locale" =>
+                if (index + 1 >= args.size) { throw IllegalArgumentException("--locale requires a value") }
+                options.locale = args[index + 1]; options.localeExplicit = true; index += 2
+            case "--markdown-layout" =>
+                if (index + 1 >= args.size) {
+                    throw IllegalArgumentException("--markdown-layout requires a value")
+                }
+                options.markdownLayout = args[index + 1]
+                options.markdownLayoutExplicit = true; index += 2
             case "--dependency-source" =>
                 if (index + 1 >= args.size) { throw IllegalArgumentException("--dependency-source requires a value") }
                 let (name, path) = splitNamedValue(args[index + 1], "--dependency-source")
@@ -142,12 +178,28 @@ private func parseNewCli(args: Array<String>): NewCliOptions {
     if (options.lintProfile != "off" && options.lintProfile != "standard" && options.lintProfile != "strict") {
         throw IllegalArgumentException("--lint-profile must be off, standard, or strict")
     }
+    for (threshold in [options.minSymbolCoverage, options.minParameterCoverage]) {
+        if (threshold.isSome() && (threshold.getOrThrow() < 0 || threshold.getOrThrow() > 100)) {
+            throw IllegalArgumentException("coverage thresholds must be in 0..100")
+        }
+    }
+    if (options.locale != "zh-CN" && options.locale != "en") {
+        throw IllegalArgumentException("--locale must be zh-CN or en")
+    }
+    if (options.markdownLayout != "site" && options.markdownLayout != "single") {
+        throw IllegalArgumentException("--markdown-layout must be site or single")
+    }
+    if (options.markdownLayout == "single" && options.locale != "en") {
+        throw IllegalArgumentException("legacy single-page Markdown requires --locale en")
+    }
     if (options.command == "render" && options.input.isNone()) {
         throw IllegalArgumentException("render requires --input")
     }
     if (options.command == "render" && (options.projectExplicit || options.denyWarnings ||
         options.includePathDependencies || options.includeCachedDependencies ||
         options.cacheDirectory.isSome() || options.noCache || options.cjpmCacheRoot.isSome() ||
+        options.apiSurfaceBaseline.isSome() || options.minSymbolCoverage.isSome() ||
+        options.minParameterCoverage.isSome() ||
         !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty() ||
         options.jobsExplicit || options.audienceExplicit || options.lintProfileExplicit)) {
         throw IllegalArgumentException(
@@ -159,6 +211,9 @@ private func parseNewCli(args: Array<String>): NewCliOptions {
     if (options.command == "check" && (!options.formats.isEmpty() || options.output.isSome() || options.stdout)) {
         throw IllegalArgumentException("check does not accept render output options")
     }
+    if (options.command == "check" && (options.localeExplicit || options.markdownLayoutExplicit)) {
+        throw IllegalArgumentException("check does not accept renderer localization options")
+    }
     if (options.command == "check" && options.forceOwned) {
         throw IllegalArgumentException("check does not accept --force-owned")
     }
@@ -169,8 +224,10 @@ private func parseNewCli(args: Array<String>): NewCliOptions {
         throw IllegalArgumentException("--stdout does not accept --force-owned")
     }
     if (options.formats.isEmpty() && options.command != "check") { options.formats.add("json") }
-    if (options.stdout && (options.formats.size != 1 || options.formats[0] != "json")) {
-        throw IllegalArgumentException("--stdout requires exactly one json format")
+    if (options.stdout && (options.formats.size != 1 ||
+        (options.formats[0] != "json" && options.formats[0] != "api-surface" &&
+            options.formats[0] != "coverage"))) {
+        throw IllegalArgumentException("--stdout requires exactly one JSON-producing format")
     }
     if (options.cjpmCacheRoot.isSome() && !options.includeCachedDependencies) {
         throw IllegalArgumentException("--cjpm-cache requires --include-cached-dependencies")
@@ -192,28 +249,35 @@ private func orderedFormats(options: NewCliOptions): Array<String> {
     if (options.formats.contains("json")) { result.add("json") }
     if (options.formats.contains("markdown")) { result.add("markdown") }
     if (options.formats.contains("html")) { result.add("html") }
+    if (options.formats.contains("api-surface")) { result.add("api-surface") }
+    if (options.formats.contains("coverage")) { result.add("coverage") }
     result.toArray()
 }
 
 private func renderArtifacts(documentation: public_model.DocumentationSet,
-    formats: Array<String>): Array<public_render.RenderArtifact> {
-    public_render.renderDocumentationFormats(documentation, formats)
+    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site"):
+    Array<public_render.RenderArtifact> {
+    public_render.renderDocumentationFormatsWithOptions(documentation, formats,
+        locale: locale, markdownLayout: markdownLayout)
 }
 
 internal func renderArtifactsWithCommandFallback(documentation: public_model.DocumentationSet,
     formats: Array<String>, generationRequest: ?GenerationRequest,
+    locale!: String = "zh-CN", markdownLayout!: String = "site",
     injectResourceLimitForTest!: Bool = false):
         (public_model.DocumentationSet, Array<public_render.RenderArtifact>) {
     try {
         if (injectResourceLimitForTest) {
             throw public_render.RenderResourceLimitException("injected renderer resource limit")
         }
-        (documentation, renderArtifacts(documentation, formats))
+        (documentation, renderArtifacts(documentation, formats, locale: locale,
+            markdownLayout: markdownLayout))
     } catch (error: public_render.RenderResourceLimitException) {
         match (generationRequest) {
             case Some(request) =>
                 let fallback = boundGeneratedDocumentation(documentation, request, force: true)
-                (fallback, renderArtifacts(fallback, formats))
+                (fallback, renderArtifacts(fallback, formats, locale: locale,
+                    markdownLayout: markdownLayout))
             case None => throw error
         }
     }
@@ -236,9 +300,50 @@ private func publicExitCode(documentation: public_model.DocumentationSet, denyWa
     0
 }
 
+private func coveragePercent(documented: Int64, total: Int64): Int64 {
+    if (total == 0) { 100 } else { documented * 100 / total }
+}
+
+private func contractGateExitCode(documentation: public_model.DocumentationSet,
+    options: NewCliOptions): Int64 {
+    var failed = false
+    if (options.minSymbolCoverage.isSome() || options.minParameterCoverage.isSome()) {
+        let (symbols, documentedSymbols, parameters, documentedParameters) =
+            public_render.documentationCoverageCounts(documentation)
+        let symbolPercent = coveragePercent(documentedSymbols, symbols)
+        let parameterPercent = coveragePercent(documentedParameters, parameters)
+        eprintln("documentation coverage: symbols ${documentedSymbols}/${symbols} (${symbolPercent}%), " +
+            "parameters ${documentedParameters}/${parameters} (${parameterPercent}%)")
+        if (options.minSymbolCoverage.isSome() &&
+            symbolPercent < options.minSymbolCoverage.getOrThrow()) {
+            eprintln("error: symbol documentation coverage ${symbolPercent}% is below " +
+                "${options.minSymbolCoverage.getOrThrow()}%")
+            failed = true
+        }
+        if (options.minParameterCoverage.isSome() &&
+            parameterPercent < options.minParameterCoverage.getOrThrow()) {
+            eprintln("error: parameter documentation coverage ${parameterPercent}% is below " +
+                "${options.minParameterCoverage.getOrThrow()}%")
+            failed = true
+        }
+    }
+    match (options.apiSurfaceBaseline) {
+        case Some(path) =>
+            let actual = public_render.renderDocumentationFormats(documentation,
+                ["api-surface"])[0].content
+            let expected = readTextBounded(Path(path), 64 * 1024 * 1024)
+            if (actual != expected) {
+                eprintln("error: API surface differs from baseline '${path}'")
+                failed = true
+            }
+        case None => ()
+    }
+    if (failed) { 1 } else { 0 }
+}
+
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndiagnostics\ncfg-matrix\nsearch-index\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndiagnostics\ncfg-matrix\nsearch-index\napi-surface\ndocumentation-coverage\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA
@@ -246,6 +351,8 @@ internal func schemaTextForCli(name: String): String {
         case "diagnostics" => DIAGNOSTICS_SCHEMA
         case "cfg-matrix" => CFG_MATRIX_SCHEMA
         case "search-index" => SEARCH_INDEX_SCHEMA
+        case "api-surface" => API_SURFACE_SCHEMA
+        case "documentation-coverage" => DOCUMENTATION_COVERAGE_SCHEMA
         case _ => throw IllegalArgumentException("unknown schema '${name}'")
     }
 }
@@ -285,11 +392,14 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
     var artifacts: Array<public_render.RenderArtifact> = []
     if (options.command != "check") {
         let (renderedDocumentation, renderedArtifacts) = renderArtifactsWithCommandFallback(documentation,
-            orderedFormats(options), generationRequest)
+            orderedFormats(options), generationRequest, locale: options.locale,
+            markdownLayout: options.markdownLayout)
         documentation = renderedDocumentation
         artifacts = renderedArtifacts
     }
     printPublicDiagnostics(documentation)
+    let diagnosticsExit = publicExitCode(documentation, options.denyWarnings)
+    let contractExit = contractGateExitCode(documentation, options)
     if (options.command != "check") {
         if (options.stdout) {
             getStdOut().write(artifacts[0].content.toArray())
@@ -299,7 +409,7 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
                 forceOwned: options.forceOwned)
         }
     }
-    publicExitCode(documentation, options.denyWarnings)
+    if (diagnosticsExit != 0 || contractExit != 0) { 1 } else { 0 }
 }
 
 private func selectedOutputDirectory(options: NewCliOptions): String {

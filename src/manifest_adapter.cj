@@ -55,13 +55,15 @@ class CjpmStringEntries {
 class CjpmPackageNameView {
     public let value: ?String
     public let sourceDirectory: ?String
+    public let organization: ?String
     public let limitReached: Bool
     public let invalid: Bool
 
     public init(value: ?String, limitReached: Bool, invalid: Bool,
-        sourceDirectory!: ?String = None) {
+        sourceDirectory!: ?String = None, organization!: ?String = None) {
         this.value = value
         this.sourceDirectory = sourceDirectory
+        this.organization = organization
         this.limitReached = limitReached
         this.invalid = invalid
     }
@@ -443,8 +445,10 @@ func parseCjpmWorkspaceMembers(manifest: String, maxEntries: Int64,
 private class CjpmPackageFields {
     var name: ?String = None
     var sourceDirectory: ?String = None
+    var organization: ?String = None
     var nameSeen = false
     var sourceDirectorySeen = false
+    var organizationSeen = false
     var invalid = false
 }
 
@@ -495,10 +499,14 @@ private func parseCjpmPackageMetadataWithBudget(manifest: String,
             "name"
         } else if (inPackage && key == "src-dir") {
             "src-dir"
+        } else if (inPackage && key == "organization") {
+            "organization"
         } else if (inRoot && key == "package.name") {
             "name"
         } else if (inRoot && key == "package.src-dir") {
             "src-dir"
+        } else if (inRoot && key == "package.organization") {
+            "organization"
         } else {
             continue
         }
@@ -515,13 +523,20 @@ private func parseCjpmPackageMetadataWithBudget(manifest: String,
             }
             fields.nameSeen = true
             fields.name = Some(value)
-        } else {
+        } else if (field == "src-dir") {
             if (fields.sourceDirectorySeen) {
                 fields.invalid = true
                 break
             }
             fields.sourceDirectorySeen = true
             fields.sourceDirectory = Some(value)
+        } else {
+            if (fields.organizationSeen) {
+                fields.invalid = true
+                break
+            }
+            fields.organizationSeen = true
+            fields.organization = if (value.isEmpty()) { None<String> } else { Some(value) }
         }
     }
     fields
@@ -543,6 +558,10 @@ func parseCjpmPackageNameChecked(manifest: String,
             NO_TOML_STRING
         } else {
             fields.sourceDirectory
+        }, organization: if (fields.invalid || budget.limitReached) {
+            NO_TOML_STRING
+        } else {
+            fields.organization
         })
 }
 

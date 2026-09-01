@@ -41,7 +41,7 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             canonical_search_script(), encoding="utf-8", newline="\n"
         )
         search_text = json.dumps(
-            {"schemaVersion": "cjdoc.search-index/3", "entries": []},
+            {"schemaVersion": "cjdoc.search-index/4", "entries": []},
             separators=(",", ":"),
         )
         (root / "search-index.json").write_text(
