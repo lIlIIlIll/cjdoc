@@ -80,7 +80,7 @@ Manual runs may supply the same two values as workflow inputs. Updating the URL 
 
 1. the full Linux release gate on stable Cangjie 1.1.3;
 2. stable Windows x64 and macOS ARM64 acceptance;
-3. configured daily Linux acceptance and real-repository smoke;
+3. configured daily Linux acceptance and real-repository smoke when both checksum-pinned daily SDK variables are present; otherwise this optional forward-compatibility job is explicitly skipped;
 4. deterministic packages for Linux x64, Windows x64 and macOS ARM64 in `contents: read` jobs, each with a SHA-256 sidecar and uploaded only as a digest-checked Actions artifact;
 5. one `contents: write` publisher downloads those artifacts, re-verifies the exact tag checkout, exact asset set, every SHA-256 sidecar, every internal package manifest and every repository-derived payload byte;
 6. only after verification, that publisher creates or confirms a draft, confirms it is still draft immediately before upload and again immediately before changing it to a public release.
@@ -97,7 +97,7 @@ Before creating a tag:
 
 1. Confirm `scripts/check.sh`, the real-repository smoke and `scripts/perf_gate.py check` passed on the intended source.
 2. From a clean checkout at the exact tag, run `CJDOC_RELEASE_TAG=vX.Y.Z CJDOC_RELEASE_COMMIT=$(git rev-parse HEAD) scripts/release_check.sh` and retain the transactionally promoted `target/release-evidence/`.
-3. Confirm the exact commit has successful required stable-platform CI and a successful configured daily run.
+3. Confirm the exact commit has successful required stable-platform CI. If the two daily SDK repository variables are configured, also require a successful daily run; otherwise confirm that the optional daily job is explicitly skipped rather than failed.
 4. Review public Cangjie compatibility and Doc IR/schema changes separately.
 5. Confirm the version and release notes describe breaking changes, migrations and known limitations.
 6. Create and push the exact signed or otherwise project-approved tag through the normal repository process.

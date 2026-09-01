@@ -633,8 +633,20 @@ class ReleaseToolsTest(unittest.TestCase):
         workflow = (PROJECT_ROOT / ".github/workflows/release.yml").read_text(
             encoding="utf-8"
         )
+        daily = workflow.split("\n  daily-acceptance:\n", 1)[1].split(
+            "\n  package:\n", 1
+        )[0]
         package = workflow.split("\n  package:\n", 1)[1].split("\n  publish:\n", 1)[0]
         publish = workflow.split("\n  publish:\n", 1)[1]
+        self.assertIn(
+            "if: ${{ vars.CANGJIE_DAILY_LINUX_X64_URL != '' && "
+            "vars.CANGJIE_DAILY_LINUX_X64_SHA256 != '' }}",
+            daily,
+        )
+        self.assertIn("needs.daily-acceptance.result == 'success'", package)
+        self.assertIn("needs.daily-acceptance.result == 'skipped'", package)
+        self.assertIn("needs.release-gate.result == 'success'", package)
+        self.assertIn("needs.platform-acceptance.result == 'success'", package)
         self.assertIn("contents: read", package)
         self.assertIn("persist-credentials: false", package)
         self.assertIn(

@@ -283,7 +283,7 @@ scripts/check.sh
 CJDOC_RELEASE_TAG=v0.7.0 scripts/release_check.sh
 ```
 
-它在本地验收之上验证稳定 SemVer、tag/HEAD/commit/tree/exact-worktree identity、tracked schema/golden、commit-pinned Git 依赖、完整 vendor inventory/provenance、frozen hard-ceiling 性能预算，以及仓库自身两次 JSON+HTML 确定性生成。只有 ceiling 实际通过后才写入 `verdict: passed`；candidate calibration 不能进入 release receipt。证据先写入 canonical `target/` 下的同文件系统 staging directory；任何 `target` 路径分量是 symlink/特殊文件都会在删除或创建输出前 fail closed，所有门通过后才整体发布到 `target/release-evidence/`。[`docs/release-process.md`](docs/release-process.md) 说明 authenticated SDK archive cache、TAR/ZIP 预检、stable/daily SDK、平台矩阵、package manifest 与 tag 发布边界。
+它在本地验收之上验证稳定 SemVer、tag/HEAD/commit/tree/exact-worktree identity、tracked schema/golden、commit-pinned Git 依赖、完整 vendor inventory/provenance、frozen hard-ceiling 性能预算，以及仓库自身两次 JSON+HTML 确定性生成。只有 ceiling 实际通过后才写入 `verdict: passed`；candidate calibration 不能进入 release receipt。证据先写入 canonical `target/` 下的同文件系统 staging directory；任何 `target` 路径分量是 symlink/特殊文件都会在删除或创建输出前 fail closed，所有门通过后才整体发布到 `target/release-evidence/`。[`docs/release-process.md`](docs/release-process.md) 说明 authenticated SDK archive cache、TAR/ZIP 预检、强制 stable 平台矩阵、仅在 checksum-pinned 仓库变量齐全时运行的可选 daily SDK 验收、package manifest 与 tag 发布边界。
 
 ## 当前限制
 
