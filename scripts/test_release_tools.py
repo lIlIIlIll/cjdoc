@@ -660,6 +660,9 @@ class ReleaseToolsTest(unittest.TestCase):
         self.assertLess(package.index("python scripts/verify_release.py"), build_offset)
         self.assertGreater(package.rindex("python scripts/verify_release.py"), build_offset)
         self.assertEqual(workflow.count("contents: write"), 1)
+        self.assertIn(
+            "if: ${{ always() && needs.package.result == 'success' }}", publish
+        )
         self.assertIn("persist-credentials: false", publish)
         self.assertIn(
             "actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3",
