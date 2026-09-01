@@ -429,7 +429,7 @@ internal func completeLockedOutputCommand(output: String,
 
 func runCli(args: Array<String>): Int64 {
     if (args.size == 1 && (args[0] == "--help" || args[0] == "-h")) { print(newUsage()); return 0 }
-    if (args.size == 1 && args[0] == "--version") { println("cjdoc 0.7.0"); return 0 }
+    if (args.size == 1 && args[0] == "--version") { println("cjdoc 0.7.1"); return 0 }
     let options = try {
         parseNewCli(args)
     } catch (error: Exception) {
