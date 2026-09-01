@@ -921,7 +921,11 @@ class ReleaseToolsTest(unittest.TestCase):
             self.git(repo, "add", ".gitattributes")
             self.git(repo, "commit", "-q", "-m", "declare CRLF checkout")
             status = self.git(repo, "status", "--porcelain=v1", "--", "fixture.cj")
-            self.assertIn("M fixture.cj", status)
+            # Git's EOL status classification depends on platform checkout
+            # configuration and its cached stat data. The release identity must
+            # accept the file in either case because its raw bytes still match
+            # the committed blob exactly.
+            self.assertIn(status, ("", "M fixture.cj"))
             self.assertEqual(
                 subprocess.run(
                     ["git", "-C", str(repo), "show", "HEAD:fixture.cj"],
