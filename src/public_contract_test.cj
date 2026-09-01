@@ -1405,6 +1405,8 @@ class PublicApiContractsTest {
         let searchScript = artifactContent(externalArtifacts, "html/search.js")
         @Expect(searchScript.contains("data-cjdoc-search"))
         @Expect(!searchScript.contains("fetch("))
+        @Expect(artifactContent(externalArtifacts, "html/theme-bootstrap.js").contains(
+            "globalThis.__CJDOC_THEME__"))
         @Expect(artifactContent(externalArtifacts, "html/search-index.js").startsWith(
             "globalThis.__CJDOC_SEARCH_INDEX__ ="))
         let searchIndex = artifactContent(externalArtifacts, "html/search-index.json")
@@ -1412,7 +1414,7 @@ class PublicApiContractsTest {
         @Expect(!searchIndex.contains("index.html#"))
         @Expect(!searchIndex.contains("basic.Parser.hidden"))
         @Expect(artifactContent(externalArtifacts, "html/index.html").contains(
-            "<script defer src=\"search-index.js\"></script><script defer src=\"search.js\""))
+            "<script src=\"theme-bootstrap.js\"></script><link rel=\"stylesheet\""))
         @Expect(externalHtml.contains("<h2>Functions</h2>"))
         @Expect(externalHtml.contains("Content-Security-Policy"))
     }

@@ -19,7 +19,8 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "e7838207faac5e328ad720ebb2e4581f263bb71099d31dceb82ad7332a68785d"
+CANONICAL_SEARCH_JS_SHA256 = "81090d635c3e3f087911ffd053a1c7cd047b333a0396e8e336301fd6bad3d908"
+CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "79fe532a96603bce52c49d9fd92cea58503875a0c61f5d3475f11c337f960642"
 
 
 class PageParser(HTMLParser):
@@ -57,7 +58,10 @@ class PageParser(HTMLParser):
                 self.script_sources.append(source)
             if not self.csp_policies:
                 self.errors.append("CSP must precede every script")
-            if (
+            if source and source.rsplit("/", 1)[-1] == "theme-bootstrap.js":
+                if len(attribute_names) != 1 or set(attribute_names) != {"src"}:
+                    self.errors.append("theme bootstrap script must have only src attribute")
+            elif (
                 len(attribute_names) != 2
                 or set(attribute_names) != {"defer", "src"}
                 or values.get("defer") is not None
@@ -166,7 +170,11 @@ def main() -> int:
             )
         relative = page.relative_to(root)
         prefix = "../" * len(relative.parent.parts)
-        expected_scripts = [prefix + "search-index.js", prefix + "search.js"]
+        expected_scripts = [
+            prefix + "theme-bootstrap.js",
+            prefix + "search-index.js",
+            prefix + "search.js",
+        ]
         if parser.script_sources != expected_scripts:
             raise ValueError(
                 f"{relative}: expected exact canonical script references"
@@ -190,15 +198,23 @@ def main() -> int:
     script_paths = {
         path.relative_to(root).as_posix() for path in root.rglob("*.js")
     }
-    if script_paths != {"search.js", "search-index.js"}:
+    if script_paths != {"search.js", "search-index.js", "theme-bootstrap.js"}:
         raise ValueError("site must contain only the canonical script set")
+    theme_bootstrap_bytes = (root / "theme-bootstrap.js").read_bytes()
+    if hashlib.sha256(theme_bootstrap_bytes).hexdigest() != CANONICAL_THEME_BOOTSTRAP_JS_SHA256:
+        raise ValueError("theme-bootstrap.js differs from the canonical renderer script")
+    theme_bootstrap = theme_bootstrap_bytes.decode("utf-8")
     script_bytes = (root / "search.js").read_bytes()
     if hashlib.sha256(script_bytes).hexdigest() != CANONICAL_SEARCH_JS_SHA256:
         raise ValueError("search.js differs from the canonical renderer script")
     script = script_bytes.decode("utf-8")
-    for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
-        if sink in script:
-            raise ValueError(f"unsafe browser search sink: {sink}")
+    for script_name, script_text in (
+        ("theme bootstrap", theme_bootstrap),
+        ("browser search", script),
+    ):
+        for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+            if sink in script_text:
+                raise ValueError(f"unsafe {script_name} sink: {sink}")
 
     search_text = (root / "search-index.json").read_text(encoding="utf-8")
     search = strict_loads(search_text, description="HTML search index")
