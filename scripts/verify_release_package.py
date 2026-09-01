@@ -505,21 +505,31 @@ def _inside(root: Path, candidate: Path) -> bool:
         return False
 
 
+def powershell_sdk_environment_invocation(setup: Path) -> tuple[list[str], dict[str, str]]:
+    script = (
+        "$ErrorActionPreference='Stop'; . $env:CJDOC_SDK_SETUP; $values=@{}; "
+        "Get-ChildItem Env: | ForEach-Object {$values[$_.Name]=$_.Value}; "
+        "$values | ConvertTo-Json -Compress"
+    )
+    return ([
+        "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+        "-Command", script,
+    ], {**os.environ, "CJDOC_SDK_SETUP": str(setup)})
+
+
 def declared_sdk_environment(root: Path) -> tuple[dict[str, str], dict[str, str]]:
     root = root.resolve()
     if os.name == "nt":
         powershell_setup = root / "envsetup.ps1"
         batch_setup = root / "envsetup.bat"
         if powershell_setup.is_file():
-            script = (
-                "$ErrorActionPreference='Stop'; . $args[0]; $values=@{}; "
-                "Get-ChildItem Env: | ForEach-Object {$values[$_.Name]=$_.Value}; "
-                "$values | ConvertTo-Json -Compress"
+            command, child_environment = powershell_sdk_environment_invocation(
+                powershell_setup
             )
             result = subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-                 "-Command", script, str(powershell_setup)],
+                command,
                 text=True, capture_output=True, check=False, timeout=30,
+                env=child_environment,
             )
             if result.returncode != 0:
                 raise ValueError(
@@ -560,7 +570,8 @@ def declared_sdk_environment(root: Path) -> tuple[dict[str, str], dict[str, str]
             raise ValueError("declared SDK root omits envsetup.sh")
         result = subprocess.run(
             ["bash", "--noprofile", "--norc", "-c",
-             'set -euo pipefail; source "$1"; env -0', "cjdoc-sdk-env", str(setup)],
+             'set -eo pipefail; source "$1"; set -u; env -0',
+             "cjdoc-sdk-env", str(setup)],
             capture_output=True, check=False, timeout=30,
         )
         if result.returncode != 0:
