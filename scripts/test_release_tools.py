@@ -485,6 +485,31 @@ class ReleaseToolsTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "outside the SDK root|cannot resolve"):
                 verify_release_package.declared_sdk_environment(root)
 
+    @unittest.skipIf(os.name == "nt", "fixture environment uses a POSIX shell")
+    def test_package_smoke_sources_sdk_setup_without_nounset(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self.make_fake_sdk(Path(temporary) / "sdk")
+            setup = root / "envsetup.sh"
+            original = setup.read_text(encoding="utf-8")
+            setup.write_text(
+                'export DYLD_FALLBACK_LIBRARY_PATH="${DYLD_FALLBACK_LIBRARY_PATH}:sdk"\n'
+                + original,
+                encoding="utf-8",
+            )
+            environment, tools = verify_release_package.declared_sdk_environment(root)
+            self.assertEqual(environment["CANGJIE_HOME"], str(root.resolve()))
+            self.assertEqual(tools, {"cjc": "tools/bin/cjc", "cjpm": "tools/bin/cjpm"})
+
+    def test_windows_sdk_setup_uses_environment_path_not_command_arguments(self) -> None:
+        setup = Path("sdk root") / "envsetup.ps1"
+        command, environment = (
+            verify_release_package.powershell_sdk_environment_invocation(setup)
+        )
+        script = command[command.index("-Command") + 1]
+        self.assertIn(". $env:CJDOC_SDK_SETUP", script)
+        self.assertNotIn("$args", script)
+        self.assertEqual(environment["CJDOC_SDK_SETUP"], str(setup))
+
     def test_packaging_rechecks_cleanliness_after_payload_collection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -921,7 +946,11 @@ class ReleaseToolsTest(unittest.TestCase):
             self.git(repo, "add", ".gitattributes")
             self.git(repo, "commit", "-q", "-m", "declare CRLF checkout")
             status = self.git(repo, "status", "--porcelain=v1", "--", "fixture.cj")
-            self.assertIn("M fixture.cj", status)
+            # Git's EOL status classification depends on platform checkout
+            # configuration and its cached stat data. The release identity must
+            # accept the file in either case because its raw bytes still match
+            # the committed blob exactly.
+            self.assertIn(status, ("", "M fixture.cj"))
             self.assertEqual(
                 subprocess.run(
                     ["git", "-C", str(repo), "show", "HEAD:fixture.cj"],
