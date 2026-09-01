@@ -1376,7 +1376,7 @@ private func publicDocumentation(documentation: DocumentationSet, request: Gener
                     capabilities.visibility, capabilities.canonicalTypes, capabilities.canonicalSignatures,
                     relationships: capabilities.symbolRelationships, annotations: capabilities.annotations)))
     }
-    let candidate = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.0"),
+    let candidate = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.1"),
         if (hasError || hasIncompleteSource || hasIncompleteSemantic) {
             "partial"
         } else {
