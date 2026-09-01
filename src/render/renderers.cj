@@ -1283,6 +1283,60 @@ pre{position:relative;margin:1rem 0;padding:1.1rem 3.3rem 1.1rem 1rem;overflow:a
 @media(max-width:760px){.symbol-entry dl.parameter-list{grid-template-columns:minmax(6rem,max-content) minmax(0,1fr);column-gap:.75rem;row-gap:0}.parameter-description{grid-column:2}}
 """
 
+private let HTML_THEME_BOOTSTRAP_SCRIPT = """
+(() => {
+  const themes = new Set(["system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"]);
+  const isKnownTheme = (value) => themes.has(value);
+  const readQueryTheme = () => {
+    try {
+      const value = new URLSearchParams(window.location.search).get("theme");
+      return isKnownTheme(value) ? value : null;
+    } catch (_) { return null; }
+  };
+  const readStoredTheme = () => {
+    try { return localStorage.getItem("cjdoc-theme"); } catch (_) { return null; }
+  };
+  const queryTheme = readQueryTheme();
+  const storedTheme = readStoredTheme();
+  const initialTheme = queryTheme || (isKnownTheme(storedTheme) ? storedTheme : "system");
+  if (initialTheme === "system") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = initialTheme;
+  const state = {navigationTheme: queryTheme, linkListenerInstalled: false};
+  const installLinkPropagation = () => {
+    if (!state.navigationTheme || state.linkListenerInstalled) return;
+    state.linkListenerInstalled = true;
+    document.addEventListener("click", (event) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const source = event.target;
+      const link = source && source.closest ? source.closest("a[href]") : null;
+      if (!link) return;
+      let target;
+      try { target = new URL(link.href, window.location.href); } catch (_) { return; }
+      if (target.protocol !== window.location.protocol || target.host !== window.location.host) return;
+      target.searchParams.set("theme", state.navigationTheme);
+      link.href = target.href;
+    }, true);
+  };
+  installLinkPropagation();
+  const updateNavigationUrl = (next) => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("theme", next);
+      window.history.replaceState(null, "", url.href);
+      state.navigationTheme = next;
+      installLinkPropagation();
+    } catch (_) { /* history can be unavailable */ }
+  };
+  globalThis.__CJDOC_THEME__ = {
+    persist(next) {
+      let saved = false;
+      try { localStorage.setItem("cjdoc-theme", next); saved = true; } catch (_) { /* optional */ }
+      if (!saved || state.navigationTheme) updateNavigationUrl(next);
+    }
+  };
+})();
+"""
+
 private let HTML_SEARCH_SCRIPT = """
 (() => {
   const input = document.querySelector("[data-cjdoc-search]");
@@ -1398,6 +1452,7 @@ private let HTML_SEARCH_SCRIPT = """
   ];
   const themeValues = new Set(themeOptions.slice(1).map((option) => option[0]));
   const darkThemes = new Set(["dark", "ocean", "terminal"]);
+  const themePersistence = globalThis.__CJDOC_THEME__;
   const isKnownTheme = (value) => themeValues.has(value);
   const createThemePicker = () => {
     if (!themeToggle) return null;
@@ -1443,15 +1498,18 @@ private let HTML_SEARCH_SCRIPT = """
     if (next === "system") delete document.documentElement.dataset.theme;
     else if (isKnownTheme(next)) document.documentElement.dataset.theme = next;
     else return;
-    try { localStorage.setItem("cjdoc-theme", next); } catch (_) { /* optional */ }
+    if (themePersistence && typeof themePersistence.persist === "function") themePersistence.persist(next);
+    else try { localStorage.setItem("cjdoc-theme", next); } catch (_) { /* optional */ }
     syncThemeControls();
   };
   if (themeToggle || themeSelect) {
-    try {
-      const storedTheme = localStorage.getItem("cjdoc-theme");
-      if (storedTheme === "system") delete document.documentElement.dataset.theme;
-      else if (isKnownTheme(storedTheme)) document.documentElement.dataset.theme = storedTheme;
-    } catch (_) { /* file:// storage can be unavailable */ }
+    if (!themePersistence) {
+      try {
+        const storedTheme = localStorage.getItem("cjdoc-theme");
+        if (storedTheme === "system") delete document.documentElement.dataset.theme;
+        else if (isKnownTheme(storedTheme)) document.documentElement.dataset.theme = storedTheme;
+      } catch (_) { /* file:// storage can be unavailable */ }
+    }
     syncThemeControls();
     if (themeToggle) {
       themeToggle.addEventListener("click", () => {
@@ -1828,7 +1886,7 @@ private func appendAssetArtifacts(artifacts: RenderArtifactCollector,
 private func validateHtmlRouting(documentation: DocumentationSet,
     projection: RenderProjection, assets: ArrayList<AssetDoc>): Unit {
     let paths = HashSet<String>()
-    for (path in ["index.html", "search-index.json", "search-index.js", "search.js", "style.css"]) {
+    for (path in ["index.html", "search-index.json", "search-index.js", "search.js", "theme-bootstrap.js", "style.css"]) {
         let _ = paths.add(path)
     }
     for (pkg in projection.packages) {
@@ -1889,13 +1947,13 @@ private func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: S
     out.append("<!doctype html>\n<html lang=\"${locale}\"><head><meta charset=\"utf-8\">")
     out.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
     out.append("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'\">")
-    out.append("<title>${escapeHtml(title)}</title><link rel=\"stylesheet\" href=\"${rootPrefix}style.css\">")
+    out.append("<title>${escapeHtml(title)}</title><script src=\"${rootPrefix}theme-bootstrap.js\"></script><link rel=\"stylesheet\" href=\"${rootPrefix}style.css\">")
     out.append("<script defer src=\"${rootPrefix}search-index.js\"></script>")
     out.append("<script defer src=\"${rootPrefix}search.js\"></script></head><body>\n")
     out.append("<header class=\"site-nav\"><div class=\"site-nav-inner\">")
     out.append("<a class=\"brand\" href=\"${rootPrefix}index.html\"><span class=\"brand-mark\" aria-hidden=\"true\">cj</span><span>cjdoc<span class=\"brand-subtitle\">${label(locale, "API docs", "API 文档")}</span></span></a>")
-    out.append("<div class=\"site-search\"><div class=\"search-area\"><div class=\"search-shell\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"></circle><path d=\"m20 20-4-4\"></path></svg><label class=\"sr-only\">${label(locale, "Search API", "搜索 API")}</label>")
-    out.append("<input type=\"search\" placeholder=\"${label(locale, "Search docs", "搜索文档")}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"cjdoc-search-results\" aria-expanded=\"false\" data-cjdoc-search data-root=\"${rootPrefix}\"><kbd>Ctrl K</kbd></div>")
+    out.append("<div class=\"site-search\"><div class=\"search-area\"><div class=\"search-shell\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"></circle><path d=\"m20 20-4-4\"></path></svg><label class=\"sr-only\" for=\"cjdoc-search-input\">${label(locale, "Search API", "搜索 API")}</label>")
+    out.append("<input id=\"cjdoc-search-input\" type=\"search\" placeholder=\"${label(locale, "Search docs", "搜索文档")}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"cjdoc-search-results\" aria-expanded=\"false\" data-cjdoc-search data-root=\"${rootPrefix}\"><kbd>Ctrl K</kbd></div>")
     out.append("<ul id=\"cjdoc-search-results\" class=\"search-results\" role=\"listbox\" data-cjdoc-results aria-live=\"polite\"></ul></div>")
     out.append("<div class=\"search-filters\"><label><span class=\"sr-only\">${label(locale, "Filter by kind", "按类别筛选")}</span><select data-cjdoc-kind aria-label=\"${label(locale, "Filter by kind", "按类别筛选")}\"><option value=\"\">${label(locale, "All kinds", "全部类别")}</option></select></label><label><span class=\"sr-only\">${label(locale, "Filter by package", "按包筛选")}</span><select data-cjdoc-package aria-label=\"${label(locale, "Filter by package", "按包筛选")}\"><option value=\"\">${label(locale, "All packages", "全部包")}</option></select></label></div></div>")
     out.append("<div class=\"top-actions\"><span class=\"version-label\" title=\"${label(locale, "Generated by cjdoc", "由 cjdoc 生成")}\">v${escapeHtml(documentation.generator.version)}</span><span class=\"top-source top-source-disabled\" aria-disabled=\"true\" title=\"${label(locale, "Repository URL is not included in this Doc IR", "此 Doc IR 未包含仓库地址")}\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M12 .7a11.3 11.3 0 0 0-3.57 22.02c.57.1.78-.25.78-.55v-2.1c-3.18.69-3.85-1.34-3.85-1.34-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.67 1.25 3.32.96.1-.74.4-1.25.72-1.54-2.54-.29-5.21-1.27-5.21-5.66 0-1.25.45-2.27 1.18-3.07-.12-.29-.51-1.45.11-3.03 0 0 .96-.31 3.12 1.17a10.85 10.85 0 0 1 5.68 0c2.16-1.48 3.12-1.17 3.12-1.17.62 1.58.23 2.74.11 3.03.73.8 1.18 1.82 1.18 3.07 0 4.4-2.68 5.36-5.23 5.64.41.36.77 1.07.77 2.16v3.2c0 .3.2.65.79.54A11.3 11.3 0 0 0 12 .7Z\"></path></svg><span>GitHub</span></span><button class=\"theme-toggle\" type=\"button\" data-cjdoc-theme-toggle aria-label=\"Switch theme\" aria-pressed=\"false\"><svg class=\"icon-sun\" width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><circle cx=\"12\" cy=\"12\" r=\"4\"></circle><path d=\"M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42\"></path></svg><svg class=\"icon-moon\" width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><path d=\"M20.5 14.7A8.5 8.5 0 0 1 9.3 3.5 8.5 8.5 0 1 0 20.5 14.7Z\"></path></svg></button></div>")
@@ -2403,6 +2461,7 @@ private func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         artifacts.addText("html/search-index.json", "application/json", searchIndex)
         artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
             renderSearchIndexScript(searchIndex))
+        artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8", HTML_THEME_BOOTSTRAP_SCRIPT)
         artifacts.addText("html/search.js", "text/javascript; charset=utf-8", HTML_SEARCH_SCRIPT)
         artifacts.addText("html/style.css", "text/css; charset=utf-8", HTML_STYLE)
         for (pkg in projection.packages) {

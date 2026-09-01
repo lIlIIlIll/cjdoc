@@ -27,16 +27,27 @@ def canonical_search_script() -> str:
     return literal.replace("\\\\", "\\") + "\n"
 
 
+def canonical_theme_bootstrap_script() -> str:
+    source = (SCRIPT.parent.parent / "src/render/renderers.cj").read_text(encoding="utf-8")
+    marker = 'private let HTML_THEME_BOOTSTRAP_SCRIPT = """\n'
+    literal = source.split(marker, 1)[1].split('\n"""', 1)[0]
+    return literal + "\n"
+
+
 class ValidateHtmlSiteTest(unittest.TestCase):
     def write_site(self, root: Path) -> None:
         index = (
             "<!doctype html><html><head>"
             f'<meta http-equiv="Content-Security-Policy" content="{CSP}">'
             "</head><body><main id=\"top\"><a href=\"#top\">top</a></main>"
+            '<script src="theme-bootstrap.js"></script>'
             '<script defer src="search-index.js"></script>'
             '<script defer src="search.js"></script></body></html>'
         )
         (root / "index.html").write_text(index, encoding="utf-8", newline="\n")
+        (root / "theme-bootstrap.js").write_text(
+            canonical_theme_bootstrap_script(), encoding="utf-8", newline="\n"
+        )
         (root / "search.js").write_text(
             canonical_search_script(), encoding="utf-8", newline="\n"
         )
@@ -93,6 +104,16 @@ class ValidateHtmlSiteTest(unittest.TestCase):
                 self.assertIn(f'["{theme}"', script)
         self.assertIn("themeToggle.before(picker)", script)
         self.assertIn('localStorage.setItem("cjdoc-theme", next)', script)
+
+    def test_theme_bootstrap_restores_and_propagates_theme(self) -> None:
+        script = canonical_theme_bootstrap_script()
+        for theme in ("system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"):
+            with self.subTest(theme=theme):
+                self.assertIn(f'"{theme}"', script)
+        self.assertIn('new URLSearchParams(window.location.search)', script)
+        self.assertIn('window.history.replaceState', script)
+        self.assertIn('target.searchParams.set("theme", state.navigationTheme)', script)
+        self.assertIn('globalThis.__CJDOC_THEME__', script)
 
     def test_rejects_mismatched_real_tags(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
