@@ -201,13 +201,11 @@ class RendererSafetyTest {
 
     @TestCase
     func structuredExamplesRenderAsSafeCodeBlocksInBothFormats(): Unit {
-        let example = DocTag("example", "Unsafe <input>", """
-            Explain the example with <script>alert(2)</script>.
-
-            ```cj
-            let value = "<script>alert(1)</script>"
-            ```
-            """)
+        let example = DocTag("example", "Unsafe <input>",
+            "Explain the example with <script>alert(2)</script>.\n\n" +
+            "```cj\n" +
+            "let value = \"<script>alert(1)</script>\"\n" +
+            "```")
         let plain = DocTag("example", "Plain text", "<img src=x>")
         let documentation = rendererSafetyDocumentation(MarkdownNode("document"), tags: [example, plain])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(documentation),
@@ -236,6 +234,25 @@ class RendererSafetyTest {
         var exampleCount: Int64 = 0
         for (tag in decodedComment.tags) { if (tag.name == "example") { exampleCount++ } }
         @Expect(exampleCount, 2)
+    }
+
+    @TestCase
+    func exampleFenceIndentationMatchesMarkdownRules(): Unit {
+        let valid = DocTag("example", "Three spaces", "   ```cj\nsafe()\n   ```")
+        let invalid = DocTag("example", "Four spaces",
+            "    ```cj\nsafe()\n<script>alert(3)</script>")
+        let documentation = rendererSafetyDocumentation(MarkdownNode("document"),
+            tags: [valid, invalid])
+        let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(documentation),
+            "markdown/docs.md")
+        let html = rendererSafetyText(HtmlDocumentationRenderer().render(documentation))
+
+        @Expect(markdown.contains("   ```cj"), true)
+        @Expect(markdown.contains("&lt;script&gt;alert(3)&lt;/script&gt;"), true)
+        @Expect(!markdown.contains("<script>alert(3)</script>"), true)
+        @Expect(html.contains("<pre><code"), true)
+        @Expect(html.contains("&lt;script&gt;alert(3)&lt;/script&gt;"), true)
+        @Expect(!html.contains("<script>alert(3)</script>"), true)
     }
 
     @TestCase

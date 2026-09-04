@@ -101,8 +101,21 @@ internal func trimExampleBlankLines(value: String): String {
     out.toString()
 }
 
+internal func exampleFenceLineValue(line: String): ?String {
+    var leadingSpaces: Int64 = 0
+    while (leadingSpaces < line.size && line[leadingSpaces] == b' ') {
+        leadingSpaces++
+    }
+    if (leadingSpaces > 3) { return None }
+    if (leadingSpaces < line.size && line[leadingSpaces] == b'\t') { return None }
+    Some(line[leadingSpaces..].trimAscii())
+}
+
 internal func exampleFenceOpening(line: String): ?ExampleFenceOpening {
-    let value = line.trimAsciiStart()
+    let value = match (exampleFenceLineValue(line)) {
+        case Some(candidate) => candidate
+        case None => return None
+    }
     if (value.isEmpty()) { return None }
     let marker = if (value[0] == b'`') {
         "`"
@@ -121,7 +134,10 @@ internal func exampleFenceOpening(line: String): ?ExampleFenceOpening {
 }
 
 internal func isExampleFenceClosing(line: String, fence: ExampleFenceOpening): Bool {
-    let value = line.trimAscii()
+    let value = match (exampleFenceLineValue(line)) {
+        case Some(candidate) => candidate
+        case None => return false
+    }
     if (!value.startsWith(fence.marker)) { return false }
     var length: Int64 = 0
     while (length < value.size && value[length] == fence.marker[0]) { length++ }
@@ -416,4 +432,3 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
         case _ => out.append(escapeHtml(markdownNodeText(node)))
     }
 }
-
