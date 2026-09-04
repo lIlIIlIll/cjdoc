@@ -85,7 +85,9 @@ internal class ExampleFenceOpening {
 }
 
 internal func trimExampleBlankLines(value: String): String {
-    let lines = value.split("\n")
+    // Fence tracking must use the same line boundaries as Markdown consumers.
+    let normalized = value.replace("\r\n", "\n").replace("\r", "\n")
+    let lines = normalized.split("\n")
     var first: Int64 = 0
     while (first < lines.size && lines[first].trimAscii().isEmpty()) { first++ }
     var last = lines.size

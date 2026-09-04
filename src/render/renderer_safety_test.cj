@@ -249,8 +249,11 @@ class RendererSafetyTest {
         let unterminated = DocTag("example", "Unterminated", "```cj\nsafe()")
         let hiddenWhitespace = DocTag("example", "Hidden whitespace",
             "\r\t```cj\nsafe()\n<script>alert(6)</script>")
+        let carriageReturnBoundary = DocTag("example", "CR boundary",
+            "```cj\nsafe()\n```\r<script>alert(7)</script>")
         let documentation = rendererSafetyDocumentation(MarkdownNode("document"),
             tags: [valid, invalid, invalidInfo, unterminated, hiddenWhitespace,
+                carriageReturnBoundary,
                 DocTag("param", "value", "parameter")])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(documentation),
             "markdown/docs.md")
@@ -264,10 +267,13 @@ class RendererSafetyTest {
         @Expect(markdown.contains("safe()\n```\n\n##### Hidden whitespace"), true)
         @Expect(markdown.contains("&lt;script&gt;alert\\(6\\)&lt;/script&gt;"), true)
         @Expect(!markdown.contains("<script>alert(6)</script>"), true)
+        @Expect(markdown.contains("&lt;script&gt;alert\\(7\\)&lt;/script&gt;"), true)
+        @Expect(!markdown.contains("<script>alert(7)</script>"), true)
         @Expect(html.contains("<pre><code"), true)
         @Expect(html.contains("&lt;script&gt;alert(3)&lt;/script&gt;"), true)
         @Expect(!html.contains("<script>alert(3)</script>"), true)
         @Expect(!html.contains("<script>alert(6)</script>"), true)
+        @Expect(!html.contains("<script>alert(7)</script>"), true)
     }
 
     @TestCase
