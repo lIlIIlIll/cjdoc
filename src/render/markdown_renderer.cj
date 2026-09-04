@@ -207,6 +207,38 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
     }
 }
 
+internal func appendEscapedMarkdownExampleProse(out: RenderTextBuffer, value: String): Unit {
+    for (rune in value.runes()) {
+        match (rune) {
+            case '<' => out.append("&lt;")
+            case '>' => out.append("&gt;")
+            case _ => out.append(rune)
+        }
+    }
+}
+
+internal func appendMarkdownExampleContent(out: RenderTextBuffer, value: String): Unit {
+    let content = trimExampleBlankLines(value)
+    if (content.isEmpty()) { return }
+    var activeFence: ?ExampleFenceOpening = None
+    for (line in content.split("\n")) {
+        match (activeFence) {
+            case Some(fence) =>
+                out.append(line); out.append("\n")
+                if (isExampleFenceClosing(line, fence)) { activeFence = None }
+            case None =>
+                match (exampleFenceOpening(line)) {
+                    case Some(fence) =>
+                        out.append(line); out.append("\n")
+                        activeFence = Some(fence)
+                    case None =>
+                        appendEscapedMarkdownExampleProse(out, line)
+                        out.append("\n")
+                }
+        }
+    }
+}
+
 internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComment,
     assetLookup: HashMap<String, String>, locale!: String = "en"): Unit {
     for (tag in comment.tags) {
@@ -231,8 +263,7 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
             }
             let content = trimExampleBlankLines(tag.description)
             if (!content.isEmpty()) {
-                out.append(content)
-                if (!content.endsWith("\n")) { out.append("\n") }
+                appendMarkdownExampleContent(out, content)
                 out.append("\n")
             }
         }
@@ -351,4 +382,3 @@ internal func appendMarkdownArtifacts(artifacts: RenderArtifactCollector,
         artifacts.addText("markdown/docs.md", "text/markdown; charset=utf-8", out.toString())
         appendAssetArtifacts(artifacts, projectedAssets, "markdown")
 }
-

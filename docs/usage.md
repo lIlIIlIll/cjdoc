@@ -39,7 +39,7 @@ target/doc/markdown/index.md
 public func parse(text: String): Int64 {
     return 42
 }
-```
+````
 
 正文的第一段是 summary，后面的段落是 description。当前支持的结构化标签如下：
 

@@ -202,7 +202,7 @@ class RendererSafetyTest {
     @TestCase
     func structuredExamplesRenderAsSafeCodeBlocksInBothFormats(): Unit {
         let example = DocTag("example", "Unsafe <input>", """
-            Explain the example.
+            Explain the example with <script>alert(2)</script>.
 
             ```cj
             let value = "<script>alert(1)</script>"
@@ -218,7 +218,11 @@ class RendererSafetyTest {
 
         @Expect(markdown.contains("#### Examples"), true)
         @Expect(markdown.contains("```cj"), true)
+        @Expect(markdown.contains(
+            "Explain the example with &lt;script&gt;alert(2)&lt;/script&gt;."), true)
         @Expect(markdown.contains("<script>alert(1)</script>"), true)
+        @Expect(!markdown.contains("<script>alert(2)</script>"), true)
+        @Expect(markdown.contains("&lt;img src=x&gt;"), true)
         @Expect(html.contains("<h3>Examples</h3>"), true)
         @Expect(html.contains("class=\"example-block\""), true)
         @Expect(html.contains("data-language=\"cj\""), true)
