@@ -1,4 +1,4 @@
-schema-version = "cjdoc.vendor-manifest/1"
+schema-version = "cjdoc.vendor-manifest/2"
 upstream = "https://github.com/lIlIIlIll/yjson.git"
 commit = "bf65cbecd99ac25e7485f8db60990e94a04e57bc"
 package-path = "packages/yjson_algorithms"
@@ -10,7 +10,10 @@ license-sha256 = "ff2bfac16f9884d002e66b1b2c75c20c626bc41ff31cdf411c5acdf2242882
 package-manifest-file = "cjpm.toml"
 package-manifest-sha256 = "21919a70642bee3eeb982c831192b046c0b5a2016f5f54f42234702f412e4f36"
 upstream-notice-file = "UPSTREAM.md"
-upstream-notice-sha256 = "cd0e4316071e629b97fabd41411e817ea48303e44947b1437dcb1e2000f55884"
+upstream-notice-sha256 = "c801496a3b6b3ce6a37105c5421eb8033aeaf0600694e1b3c09aa440c734514b"
+patches = [
+  { path = "src/lib_json_schema.cj", reason = "Avoid large RuneArray allocation while counting JSON Schema string length." },
+]
 
 [[files]]
 path = "src/lib_json_patch.cj"
@@ -22,7 +25,7 @@ sha256 = "972ce953184cb0e2b0c0d2b5da1589b376639f1d1d496331d435842c4d50d991"
 
 [[files]]
 path = "src/lib_json_schema.cj"
-sha256 = "ce169822d2d6c557ce3f62b0eed011b95469427524d8a763f4d1cf2d6c987c7c"
+sha256 = "bc6e110bb7b78807b26eb7c23e091c5fef2c02997f616a792fc5b70f81184a01"
 
 [[files]]
 path = "src/work_limits.cj"

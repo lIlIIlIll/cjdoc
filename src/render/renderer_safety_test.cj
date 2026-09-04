@@ -200,6 +200,95 @@ class RendererSafetyTest {
     }
 
     @TestCase
+    func structuredExamplesRenderAsSafeCodeBlocksInBothFormats(): Unit {
+        let example = DocTag("example", "Unsafe <input>", """
+            Explain the example.
+
+            ```cj
+            let value = "<script>alert(1)</script>"
+            ```
+            """)
+        let plain = DocTag("example", "Plain text", "<img src=x>")
+        let documentation = rendererSafetyDocumentation(MarkdownNode("document"), tags: [example, plain])
+        let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(documentation),
+            "markdown/docs.md")
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        let html = rendererSafetyText(artifacts)
+        let css = rendererSafetyContent(artifacts, "html/style.css")
+
+        @Expect(markdown.contains("#### Examples"), true)
+        @Expect(markdown.contains("```cj"), true)
+        @Expect(markdown.contains("<script>alert(1)</script>"), true)
+        @Expect(html.contains("<h3>Examples</h3>"), true)
+        @Expect(html.contains("class=\"example-block\""), true)
+        @Expect(html.contains("data-language=\"cj\""), true)
+        @Expect(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"), true)
+        @Expect(html.contains("&lt;img src=x&gt;"), true)
+        @Expect(!html.contains("<code><script>alert(1)"), true)
+        @Expect(css.contains(".example-list"), true)
+
+        let decoded = decodeDocIr(encodeDocIr(documentation))
+        let decodedComment = decoded.declarations[0].documentation.getOrThrow()
+        var exampleCount: Int64 = 0
+        for (tag in decodedComment.tags) { if (tag.name == "example") { exampleCount++ } }
+        @Expect(exampleCount, 2)
+    }
+
+    @TestCase
+    func htmlNavigationMarksCurrentPackageAndHidesEmptyToc(): Unit {
+        let documentation = rendererSafetyDocumentation(MarkdownNode("document"))
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        let packagePath = "html/${packagePagePath("cjdoc:module:v1:renderer-safety", "fixture")}"
+        let packageHtml = rendererSafetyContent(artifacts, packagePath)
+        let css = rendererSafetyContent(artifacts, "html/style.css")
+
+        @Expect(packageHtml.contains("<a class=\"sidebar-package is-current\""), true)
+        @Expect(packageHtml.contains("aria-current=\"page\""), true)
+        @Expect(packageHtml.contains(
+            "<aside class=\"toc-panel\" data-cjdoc-toc aria-label=\"On this page\" hidden>"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("toc.hidden = headings.length === 0;"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("semanticMode"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("aria-expanded"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("toc-children"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("setActive(link.dataset.tocTarget)"), true)
+        @Expect(css.contains(".sidebar-package.is-current"), true)
+        @Expect(css.contains(".toc-api-row"), true)
+        @Expect(css.contains(".toc-toggle"), true)
+        @Expect(css.contains(".toc-children"), true)
+        @Expect(css.contains(".parameter-row{padding:0;border-bottom:0}"), true)
+        @Expect(css.contains(".parameter-type{white-space:normal;overflow-wrap:anywhere}"), true)
+
+        @Expect(packageHtml.contains("data-cjdoc-toc-role=\"api\""), true)
+        @Expect(packageHtml.contains("data-cjdoc-toc-label=\"func api(): Unit\""), true)
+
+        let containerDocumentation = rendererOwnerDocumentation("class")
+        let containerArtifacts = HtmlDocumentationRenderer().render(containerDocumentation)
+        let symbolHtml = rendererSafetyContent(containerArtifacts,
+            "html/${symbolPagePath(containerDocumentation.declarations[0])}")
+        @Expect(symbolHtml.contains("<a class=\"sidebar-package is-current\""), true)
+        @Expect(symbolHtml.contains(
+            "<h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"class Owner\">"), true)
+        @Expect(symbolHtml.contains(
+            "<h3 class=\"symbol-title\" data-cjdoc-toc-role=\"member\" data-cjdoc-toc-label=\"func member(): Unit\">"), true)
+    }
+
+    @TestCase
+    func htmlChineseLabelsCoverBreadcrumbAndRuntimeControls(): Unit {
+        let documentation = rendererSafetyDocumentation(MarkdownNode("document"))
+        let collector = RenderArtifactCollector()
+        appendHtmlArtifacts(collector, documentation, locale: "zh-CN")
+        let packageHtml = rendererSafetyContent(collector.toArray(),
+            "html/${packagePagePath("cjdoc:module:v1:renderer-safety", "fixture")}")
+
+        @Expect(packageHtml.contains("aria-label=\"面包屑导航\""), true)
+        @Expect(packageHtml.contains("aria-label=\"切换主题\""), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("const isChinese"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("复制代码"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("已复制"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("themeSwitchLabel"), true)
+    }
+
+    @TestCase
     func markdownSerializerPreservesInlineAdjacencyAndEncodesLinkDestinations(): Unit {
         let paragraph = MarkdownNode("paragraph", children: [
             MarkdownNode("text", literal: "left"),

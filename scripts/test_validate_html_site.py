@@ -19,8 +19,8 @@ CSP = (
 
 
 def canonical_search_script() -> str:
-    source = (SCRIPT.parent.parent / "src/render/renderers.cj").read_text(encoding="utf-8")
-    marker = 'private let HTML_SEARCH_SCRIPT = """\n'
+    source = (SCRIPT.parent.parent / "src/render/html_scripts.cj").read_text(encoding="utf-8")
+    marker = 'internal let HTML_SEARCH_SCRIPT = """\n'
     literal = source.split(marker, 1)[1].split('\n"""', 1)[0]
     # The script's only Cangjie escape is the doubled backslash in /\s+/.
     # Decode it instead of treating source spelling as emitted bytes.
@@ -28,8 +28,8 @@ def canonical_search_script() -> str:
 
 
 def canonical_theme_bootstrap_script() -> str:
-    source = (SCRIPT.parent.parent / "src/render/renderers.cj").read_text(encoding="utf-8")
-    marker = 'private let HTML_THEME_BOOTSTRAP_SCRIPT = """\n'
+    source = (SCRIPT.parent.parent / "src/render/html_scripts.cj").read_text(encoding="utf-8")
+    marker = 'internal let HTML_THEME_BOOTSTRAP_SCRIPT = """\n'
     literal = source.split(marker, 1)[1].split('\n"""', 1)[0]
     return literal + "\n"
 

@@ -60,7 +60,9 @@ class UpdateToolsTest(unittest.TestCase):
         for name in (
             "fixture_snapshot.py", "update_goldens.sh", "update_schemas.sh",
             "verify_repository_inputs.py", "safe_output_root.py", "strict_json.py",
-            "worktree_identity.py",
+            "worktree_identity.py", "repository_input_contracts.py",
+            "repository_input_files.py", "repository_input_migrations.py",
+            "repository_input_vendor.py",
         ):
             shutil.copyfile(PROJECT_ROOT / "scripts" / name, scripts / name)
         for script in (scripts / "update_goldens.sh", scripts / "update_schemas.sh"):
