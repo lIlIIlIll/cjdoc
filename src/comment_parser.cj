@@ -66,6 +66,18 @@ private func splitReferenceSubject(rest: String): (String, String) {
     (value, "")
 }
 
+private func isStructuredDocTag(tagText: String): Bool {
+    tagText.startsWith("@param ") ||
+        tagText == "@return" || tagText.startsWith("@return ") ||
+        tagText.startsWith("@throws ") ||
+        tagText == "@see" || tagText.startsWith("@see ") ||
+        tagText.startsWith("@since ") ||
+        tagText == "@deprecated" || tagText.startsWith("@deprecated ") ||
+        tagText.startsWith("@author ") ||
+        tagText.startsWith("@version ") ||
+        tagText == "@example" || tagText.startsWith("@example ")
+}
+
 private func rawJoinLines(lines: ArrayList<String>): String {
     let builder = StringBuilder()
     var index: Int64 = 0
@@ -169,10 +181,10 @@ private func splitMarkdownBody(body: ArrayList<String>): (String, String) {
     (source, "")
 }
 
-func parseDocComment(raw: String): DocComment {
-    let lines = cleanDocLines(raw)
+private class DocCommentParseState {
     let body = ArrayList<String>()
     let params = ArrayList<DocTag>()
+    let examples = ArrayList<DocTag>()
     let throwsTags = ArrayList<DocTag>()
     let seeTags = ArrayList<DocTag>()
     let authors = ArrayList<String>()
@@ -182,80 +194,144 @@ func parseDocComment(raw: String): DocComment {
     var deprecated: ?String = None
     var version: ?String = None
     var currentTag: ?DocTag = None
-    let structure = markdownBlockStructure(rawJoinLines(lines))
-    let tagEligible = topLevelParagraphLines(lines, structure)
+    var currentExample: ?DocTag = None
 
-    var lineIndex: Int64 = 0
-    while (lineIndex < lines.size) {
-        let line = lines[lineIndex]
-        let tagText = line.trimAscii()
-        if (!tagEligible[lineIndex]) {
-            body.add(line)
-            currentTag = None
-            lineIndex++
-            continue
+    private func appendExampleText(example: DocTag, line: String): Unit {
+        example.description = if (example.description.isEmpty()) {
+            line
+        } else {
+            example.description + "\n" + line
         }
-        if (tagText.startsWith("@")) {
-            currentTag = None
-            if (tagText.startsWith("@param ")) {
-                let (subject, description) = splitSubject(tagText.removePrefix("@param "))
-                let tag = DocTag("param", subject, description)
-                params.add(tag)
-                currentTag = tag
-            } else if (tagText == "@return" || tagText.startsWith("@return ")) {
-                let description = if (tagText == "@return") { "" } else { tagText.removePrefix("@return ").trimAscii() }
-                let tag = DocTag("return", "", description)
-                returns = tag
-                returnTagCount++
-                currentTag = tag
-            } else if (tagText.startsWith("@throws ")) {
-                let (subject, description) = splitSubject(tagText.removePrefix("@throws "))
-                let tag = DocTag("throws", subject, description)
-                throwsTags.add(tag)
-                currentTag = tag
-            } else if (tagText == "@see" || tagText.startsWith("@see ")) {
-                let rest = if (tagText == "@see") { "" } else { tagText.removePrefix("@see ") }
-                let (subject, description) = splitReferenceSubject(rest)
-                let tag = DocTag("see", subject, description)
-                seeTags.add(tag)
-                currentTag = tag
-            } else if (tagText.startsWith("@since ")) {
-                since = tagText.removePrefix("@since ").trimAscii()
-            } else if (tagText == "@deprecated" || tagText.startsWith("@deprecated ")) {
-                deprecated = if (tagText == "@deprecated") { "" } else { tagText.removePrefix("@deprecated ").trimAscii() }
-            } else if (tagText.startsWith("@author ")) {
-                authors.add(tagText.removePrefix("@author ").trimAscii())
-            } else if (tagText.startsWith("@version ")) {
-                version = tagText.removePrefix("@version ").trimAscii()
+    }
+
+    func consumeExampleLine(line: String, tagEligible: Bool): Bool {
+        match (currentExample) {
+            case Some(example) =>
+                if (tagEligible && isStructuredDocTag(line.trimAscii())) {
+                    currentExample = None
+                    false
+                } else {
+                    appendExampleText(example, line)
+                    true
+                }
+            case None => false
+        }
+    }
+
+    func appendBodyLine(line: String): Unit {
+        body.add(line)
+        currentTag = None
+    }
+
+    func consumeStructuredTag(line: String, tagText: String): Bool {
+        if (!tagText.startsWith("@")) { return false }
+        currentTag = None
+        if (tagText.startsWith("@param ")) {
+            let (subject, description) = splitSubject(tagText.removePrefix("@param "))
+            let tag = DocTag("param", subject, description)
+            params.add(tag)
+            currentTag = tag
+        } else if (tagText == "@return" || tagText.startsWith("@return ")) {
+            let description = if (tagText == "@return") {
+                ""
             } else {
-                body.add(line)
+                tagText.removePrefix("@return ").trimAscii()
             }
-            lineIndex++
-            continue
+            let tag = DocTag("return", "", description)
+            returns = tag
+            returnTagCount++
+            currentTag = tag
+        } else if (tagText.startsWith("@throws ")) {
+            let (subject, description) = splitSubject(tagText.removePrefix("@throws "))
+            let tag = DocTag("throws", subject, description)
+            throwsTags.add(tag)
+            currentTag = tag
+        } else if (tagText == "@see" || tagText.startsWith("@see ")) {
+            let rest = if (tagText == "@see") { "" } else { tagText.removePrefix("@see ") }
+            let (subject, description) = splitReferenceSubject(rest)
+            let tag = DocTag("see", subject, description)
+            seeTags.add(tag)
+            currentTag = tag
+        } else if (tagText == "@example" || tagText.startsWith("@example ")) {
+            let title = tagText.removePrefix("@example").trimAscii()
+            let tag = DocTag("example", title, "")
+            examples.add(tag)
+            currentExample = Some(tag)
+        } else if (tagText.startsWith("@since ")) {
+            since = tagText.removePrefix("@since ").trimAscii()
+        } else if (tagText == "@deprecated" || tagText.startsWith("@deprecated ")) {
+            deprecated = if (tagText == "@deprecated") {
+                ""
+            } else {
+                tagText.removePrefix("@deprecated ").trimAscii()
+            }
+        } else if (tagText.startsWith("@author ")) {
+            authors.add(tagText.removePrefix("@author ").trimAscii())
+        } else if (tagText.startsWith("@version ")) {
+            version = tagText.removePrefix("@version ").trimAscii()
+        } else {
+            body.add(line)
         }
+        true
+    }
+
+    func consumeTagContinuation(line: String, tagText: String): Unit {
         match (currentTag) {
             case Some(tag) =>
                 if (!tagText.isEmpty()) {
-                    tag.description = if (tag.description.isEmpty()) { tagText } else { tag.description + "\n" + tagText }
+                    tag.description = if (tag.description.isEmpty()) {
+                        tagText
+                    } else {
+                        tag.description + "\n" + tagText
+                    }
                 } else {
-                    body.add(line)
-                    currentTag = None
+                    appendBodyLine(line)
                 }
             case None => body.add(line)
         }
-        lineIndex++
     }
 
-    let (summary, description) = splitMarkdownBody(body)
-    let parsed = DocComment(raw, summary, description)
-    parsed.params.add(all: params)
-    parsed.returns = returns
-    parsed.returnTagCount = returnTagCount
-    parsed.throwsTags.add(all: throwsTags)
-    parsed.see.add(all: seeTags)
-    parsed.since = since
-    parsed.deprecated = deprecated
-    parsed.authors.add(all: authors)
-    parsed.version = version
-    return parsed
+    func toDocComment(raw: String): DocComment {
+        let (summary, description) = splitMarkdownBody(body)
+        let parsed = DocComment(raw, summary, description)
+        parsed.params.add(all: params)
+        parsed.examples.add(all: examples)
+        parsed.returns = returns
+        parsed.returnTagCount = returnTagCount
+        parsed.throwsTags.add(all: throwsTags)
+        parsed.see.add(all: seeTags)
+        parsed.since = since
+        parsed.deprecated = deprecated
+        parsed.authors.add(all: authors)
+        parsed.version = version
+        parsed
+    }
+}
+
+func parseDocComment(raw: String): DocComment {
+    let lines = cleanDocLines(raw)
+    let state = DocCommentParseState()
+    let structure = markdownBlockStructure(rawJoinLines(lines))
+    let tagEligible = topLevelParagraphLines(lines, structure)
+    var lineIndex: Int64 = 0
+    while (lineIndex < lines.size) {
+        let line = lines[lineIndex]
+        if (state.consumeExampleLine(line, tagEligible[lineIndex])) {
+            lineIndex++
+            continue
+        }
+        if (!tagEligible[lineIndex]) {
+            state.appendBodyLine(line)
+            lineIndex++
+            continue
+        }
+        let tagText = line.trimAscii()
+        if (state.consumeStructuredTag(line, tagText)) {
+            lineIndex++
+            continue
+        }
+        state.consumeTagContinuation(line, tagText)
+        lineIndex++
+    }
+    state.toDocComment(raw)
 }

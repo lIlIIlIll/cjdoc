@@ -29,25 +29,17 @@ func defaultSemanticProvider(): SemanticProvider {
     AstSemanticProvider()
 }
 
-func generateDocumentation(projectRoot: String, includePathDependencies!: Bool = false,
-    dependencySources!: Array<DependencySourceInput> = [],
-    cfgValues!: Array<CfgValue> = [],
-    jobs!: Int64 = 1,
-    cacheDirectory!: ?String = None,
-    cacheFingerprint!: ?String = None,
-    astPreflightExecutable!: ?String = None,
-    includeCachedDependencies!: Bool = false,
-    cjpmCacheRoot!: ?String = None,
+func generateDocumentation(request: GenerationRequest,
     semanticProvider!: SemanticProvider = defaultSemanticProvider()): DocumentationSet {
-    let profile = CfgProfile(values: cfgValues)
+    let profile = CfgProfile(values: request.cfgValues.toArray())
     DocumentationDriver(
-        AstSourceProvider(includePathDependencies: includePathDependencies,
-            dependencySources: dependencySources, jobs: jobs,
-            cacheDirectory: cacheDirectory, cacheFingerprint: cacheFingerprint,
-            astPreflightExecutable: astPreflightExecutable,
-            includeCachedDependencies: includeCachedDependencies,
-            cjpmCacheRoot: cjpmCacheRoot),
+        AstSourceProvider(includePathDependencies: request.includePathDependencies,
+            dependencySources: request.dependencySources.toArray(), jobs: request.jobs,
+            cacheDirectory: request.cacheDirectory, cacheFingerprint: request.cacheFingerprint,
+            astPreflightExecutable: request.astPreflightExecutable,
+            includeCachedDependencies: request.includeCachedDependencies,
+            cjpmCacheRoot: request.cjpmCacheRoot),
         semanticProvider,
         cfgProfile: profile
-    ).generate(projectRoot)
+    ).generate(request.projectRoot)
 }

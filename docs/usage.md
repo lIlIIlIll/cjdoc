@@ -25,7 +25,7 @@ target/doc/markdown/index.md
 
 把 `/** ... */` 放在声明前面。普通的 `//` 和 `/* ... */` 注释不会绑定到声明。
 
-```cangjie
+````cangjie
 /**
  * 从文本中读取一个整数。
  *
@@ -39,7 +39,7 @@ target/doc/markdown/index.md
 public func parse(text: String): Int64 {
     return 42
 }
-```
+````
 
 正文的第一段是 summary，后面的段落是 description。当前支持的结构化标签如下：
 
@@ -53,6 +53,26 @@ public func parse(text: String): Int64 {
 | `@deprecated` | 标记不再建议使用的 API |
 | `@author` | 记录作者 |
 | `@version` | 记录 API 版本 |
+| `@example` | 添加带可选标题的代码示例 |
+
+`@example` 后可以写标题，随后使用 Markdown fenced code block 放置示例代码；示例会在 HTML 的“示例”区域单独渲染，在 Markdown 输出中保留代码围栏：
+
+````cangjie
+/**
+ * 计算两个整数的和。
+ *
+ * @example 基本用法
+ * ```cj
+ * let result = add(1, 2)
+ * ```
+ *
+ * @param left 左侧数值。
+ * @param right 右侧数值。
+ * @return 两数之和。
+ */
+````
+
+示例内容会持续到下一个顶层结构化标签（例如 `@param` 或 `@return`）；代码围栏内部出现的 `@param` 等文本会保持为示例代码，不会被误解析成文档标签。
 
 文档注释应紧邻它描述的声明。默认生成 external 文档，所以示例声明应为 `public` 或 `protected`。
 

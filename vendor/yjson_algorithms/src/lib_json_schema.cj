@@ -1001,7 +1001,15 @@ public class JsonSchemaValidator {
         match (instance) {
             case stringValue: JsonStringValue =>
                 let limit = requireSchemaNonNegativeInt(lengthSchema, schemaPath)
-                let actual = stringValue.value.toRuneArray().size
+                // Count Unicode scalar values from UTF-8 bytes without materializing a
+                // second array for large JSON strings. Schema validation is allowed to
+                // inspect strings up to the parser's configured limit, so an eager
+                // RuneArray or rune iterator can turn a valid boundary document into a
+                // heap allocation failure.
+                var actual: Int64 = 0
+                for (byte in unsafe { stringValue.value.rawData() }) {
+                    if (byte < 0x80u8 || byte >= 0xC0u8) { actual++ }
+                }
                 if (minimum && actual < limit) {
                     addError(errors, jsonPath, schemaPath, "string length must be >= ${limit}")
                 }

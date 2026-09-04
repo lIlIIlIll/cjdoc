@@ -47,7 +47,7 @@ cjdoc --version
 当前版本应看到类似下面的输出：
 
 ```text
-cjdoc 0.7.1
+cjdoc 0.7.2
 ```
 
 如果发布页没有对应平台的文件，请不要猜文件名或下载地址。源码构建说明位于 [`docs/advanced-usage.md`](docs/advanced-usage.md#从源码构建维护者用)。

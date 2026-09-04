@@ -22,10 +22,12 @@ Their license texts are distributed with every binary archive.
 ## yjson_algorithms 2.0.1
 
 The four `.cj` source files under `vendor/yjson_algorithms/src` are copied from
-`packages/yjson_algorithms` at the same yjson commit listed above. The adjacent
+`packages/yjson_algorithms` at the same yjson commit listed above, with one
+cjdoc-local memory-safety patch in `src/lib_json_schema.cj` that counts JSON
+Schema string length without materializing a large `RuneArray`. The adjacent
 `cjpm.toml` is a cjdoc-local package manifest that pins yjson at that commit.
-Both the exact source inventory and the adapted manifest are bound by
-`vendor/yjson_algorithms/vendor-manifest.toml`.
+The exact source inventory, local patch declaration, and adapted manifest are
+bound by `vendor/yjson_algorithms/vendor-manifest.toml`.
 
 - License: Apache-2.0
 - Repository license text: `vendor/yjson_algorithms/LICENSE`
