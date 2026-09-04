@@ -128,6 +128,7 @@ internal func exampleFenceOpening(line: String): ?ExampleFenceOpening {
     while (length < value.size && value[length] == marker[0]) { length++ }
     if (length < 3) { return None }
     let info = value[length..].trimAscii()
+    if (marker == "`" && info.contains("`")) { return None }
     let fields = info.split(" ", 2, removeEmpty: true)
     let language = if (fields.isEmpty()) { "" } else { fields[0] }
     Some(ExampleFenceOpening(marker, length, language))

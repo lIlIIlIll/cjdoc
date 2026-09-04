@@ -212,6 +212,9 @@ internal func appendEscapedMarkdownExampleProse(out: RenderTextBuffer, value: St
         match (rune) {
             case '<' => out.append("&lt;")
             case '>' => out.append("&gt;")
+            case '\\' | '`' | '*' | '_' | '{' | '}' | '[' | ']' | '(' | ')' |
+                '#' | '+' | '-' | '.' | '!' | '|' | '=' | '~' =>
+                out.append("\\"); out.append(rune)
             case _ => out.append(rune)
         }
     }

@@ -202,7 +202,8 @@ class RendererSafetyTest {
     @TestCase
     func structuredExamplesRenderAsSafeCodeBlocksInBothFormats(): Unit {
         let example = DocTag("example", "Unsafe <input>",
-            "Explain the example with <script>alert(2)</script>.\n\n" +
+            "Explain the example with <script>alert(2)</script> and " +
+            "[run](javascript:alert(5)).\n\n" +
             "```cj\n" +
             "let value = \"<script>alert(1)</script>\"\n" +
             "```")
@@ -217,10 +218,12 @@ class RendererSafetyTest {
         @Expect(markdown.contains("#### Examples"), true)
         @Expect(markdown.contains("```cj"), true)
         @Expect(markdown.contains(
-            "Explain the example with &lt;script&gt;alert(2)&lt;/script&gt;."), true)
+            "Explain the example with &lt;script&gt;alert\\(2\\)&lt;/script&gt; and"), true)
+        @Expect(markdown.contains("\\[run\\]\\(javascript:alert\\(5\\)\\)"), true)
+        @Expect(!markdown.contains("[run](javascript:"), true)
         @Expect(markdown.contains("<script>alert(1)</script>"), true)
         @Expect(!markdown.contains("<script>alert(2)</script>"), true)
-        @Expect(markdown.contains("&lt;img src=x&gt;"), true)
+        @Expect(markdown.contains("&lt;img src\\=x&gt;"), true)
         @Expect(html.contains("<h3>Examples</h3>"), true)
         @Expect(html.contains("class=\"example-block\""), true)
         @Expect(html.contains("data-language=\"cj\""), true)
@@ -241,15 +244,19 @@ class RendererSafetyTest {
         let valid = DocTag("example", "Three spaces", "   ```cj\nsafe()\n   ```")
         let invalid = DocTag("example", "Four spaces",
             "    ```cj\nsafe()\n<script>alert(3)</script>")
+        let invalidInfo = DocTag("example", "Backtick info",
+            "```cj`invalid\n<script>alert(4)</script>")
         let documentation = rendererSafetyDocumentation(MarkdownNode("document"),
-            tags: [valid, invalid])
+            tags: [valid, invalid, invalidInfo])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(documentation),
             "markdown/docs.md")
         let html = rendererSafetyText(HtmlDocumentationRenderer().render(documentation))
 
         @Expect(markdown.contains("   ```cj"), true)
-        @Expect(markdown.contains("&lt;script&gt;alert(3)&lt;/script&gt;"), true)
+        @Expect(markdown.contains("&lt;script&gt;alert\\(3\\)&lt;/script&gt;"), true)
         @Expect(!markdown.contains("<script>alert(3)</script>"), true)
+        @Expect(markdown.contains("&lt;script&gt;alert\\(4\\)&lt;/script&gt;"), true)
+        @Expect(!markdown.contains("<script>alert(4)</script>"), true)
         @Expect(html.contains("<pre><code"), true)
         @Expect(html.contains("&lt;script&gt;alert(3)&lt;/script&gt;"), true)
         @Expect(!html.contains("<script>alert(3)</script>"), true)
