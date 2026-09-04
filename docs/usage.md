@@ -57,7 +57,7 @@ public func parse(text: String): Int64 {
 
 `@example` 后可以写标题，随后使用 Markdown fenced code block 放置示例代码；示例会在 HTML 的“示例”区域单独渲染，在 Markdown 输出中保留代码围栏：
 
-```cangjie
+````cangjie
 /**
  * 计算两个整数的和。
  *

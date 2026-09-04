@@ -240,6 +240,12 @@ internal func appendMarkdownExampleContent(out: RenderTextBuffer, value: String)
                 }
         }
     }
+    match (activeFence) {
+        case Some(fence) =>
+            appendMarkdownMarks(out, fence.marker, fence.length)
+            out.append("\n")
+        case None => ()
+    }
 }
 
 internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComment,
