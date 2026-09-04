@@ -247,8 +247,10 @@ class RendererSafetyTest {
         let invalidInfo = DocTag("example", "Backtick info",
             "```cj`invalid\n<script>alert(4)</script>")
         let unterminated = DocTag("example", "Unterminated", "```cj\nsafe()")
+        let hiddenWhitespace = DocTag("example", "Hidden whitespace",
+            "\r\t```cj\nsafe()\n<script>alert(6)</script>")
         let documentation = rendererSafetyDocumentation(MarkdownNode("document"),
-            tags: [valid, invalid, invalidInfo, unterminated,
+            tags: [valid, invalid, invalidInfo, unterminated, hiddenWhitespace,
                 DocTag("param", "value", "parameter")])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(documentation),
             "markdown/docs.md")
@@ -259,10 +261,13 @@ class RendererSafetyTest {
         @Expect(!markdown.contains("<script>alert(3)</script>"), true)
         @Expect(markdown.contains("&lt;script&gt;alert\\(4\\)&lt;/script&gt;"), true)
         @Expect(!markdown.contains("<script>alert(4)</script>"), true)
-        @Expect(markdown.contains("safe()\n```\n\n#### Parameters"), true)
+        @Expect(markdown.contains("safe()\n```\n\n##### Hidden whitespace"), true)
+        @Expect(markdown.contains("&lt;script&gt;alert\\(6\\)&lt;/script&gt;"), true)
+        @Expect(!markdown.contains("<script>alert(6)</script>"), true)
         @Expect(html.contains("<pre><code"), true)
         @Expect(html.contains("&lt;script&gt;alert(3)&lt;/script&gt;"), true)
         @Expect(!html.contains("<script>alert(3)</script>"), true)
+        @Expect(!html.contains("<script>alert(6)</script>"), true)
     }
 
     @TestCase

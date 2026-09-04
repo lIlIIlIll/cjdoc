@@ -102,13 +102,17 @@ internal func trimExampleBlankLines(value: String): String {
 }
 
 internal func exampleFenceLineValue(line: String): ?String {
+    // CommonMark permits only up to three ASCII spaces before a fence.
     var leadingSpaces: Int64 = 0
     while (leadingSpaces < line.size && line[leadingSpaces] == b' ') {
         leadingSpaces++
     }
     if (leadingSpaces > 3) { return None }
-    if (leadingSpaces < line.size && line[leadingSpaces] == b'\t') { return None }
-    Some(line[leadingSpaces..].trimAscii())
+    let remainder = line[leadingSpaces..]
+    if (!remainder.isEmpty() && remainder[0] != b'`' && remainder[0] != b'~') {
+        return None
+    }
+    Some(remainder.trimAscii())
 }
 
 internal func exampleFenceOpening(line: String): ?ExampleFenceOpening {
