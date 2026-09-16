@@ -34,7 +34,7 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         artifacts.addText("html/search.js", "text/javascript; charset=utf-8", HTML_SEARCH_SCRIPT)
         artifacts.addText("html/style.css", "text/css; charset=utf-8",
             HTML_STYLE + HTML_RETURN_LAYOUT_STYLE + HTML_TYPE_LINK_STYLE + HTML_NAVIGATION_STYLE +
-                HTML_TOC_STYLE + HTML_LAYOUT_HARDENING_STYLE + HTML_EXAMPLE_STYLE)
+                HTML_TOC_STYLE + HTML_LAYOUT_HARDENING_STYLE + HTML_EXAMPLE_STYLE + HTML_REFERENCE_BROWSER_STYLE)
         for (pkg in projection.packages) {
             artifacts.addText("html/${packagePagePath(pkg.source.moduleId, pkg.source.name)}",
                 "text/html; charset=utf-8",
@@ -42,11 +42,9 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
                     typeLinkIndex, locale: locale))
         }
         for (symbol in projection.visibleSymbols) {
-            if (isContainerDeclaration(symbol)) {
-                artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
-                    renderSymbolPage(documentation, projection, index, membersByOwner, symbol, assetLookup,
-                        typeLinkIndex, locale: locale))
-            }
+            artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
+                renderSymbolPage(documentation, projection, index, membersByOwner, symbol, assetLookup,
+                    typeLinkIndex, locale: locale))
         }
         appendAssetArtifacts(artifacts, projectedAssets, "html")
 }

@@ -9,16 +9,27 @@ internal func label(locale: String, english: String, chinese: String): String {
 
 internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: DocumentationSet,
     projection: RenderProjection, rootPrefix: String, locale: String,
-    currentPackagePath!: ?String = None): Unit {
-    out.append("<aside class=\"docs-sidebar\" aria-label=\"${label(locale, "Documentation navigation", "文档导航")}\">")
+    currentPackagePath!: ?String = None, currentRoute!: String = "overview"): Unit {
+    out.append("<aside id=\"cjdoc-sidebar\" class=\"docs-sidebar\" aria-label=\"${label(locale, "Documentation navigation", "文档导航")}\">")
     out.append("<div class=\"sidebar-section\"><p class=\"sidebar-label\">${label(locale, "Documentation", "文档")}</p>")
-    out.append("<a class=\"sidebar-link\" data-cjdoc-nav-link href=\"${rootPrefix}index.html\">${label(locale, "Overview", "总览")}</a>")
-    out.append("<a class=\"sidebar-link is-current\" data-cjdoc-nav-link href=\"${rootPrefix}index.html#packages\">${label(locale, "API Reference", "API 参考")}</a></div>")
+    let overviewClass = if (currentRoute == "overview") { " is-current" } else { "" }
+    let overviewCurrent = if (currentRoute == "overview") { " aria-current=\"page\"" } else { "" }
+    let apiClass = if (currentRoute == "api") { " is-current" } else { "" }
+    let apiCurrent = if (currentRoute == "api") { " aria-current=\"page\"" } else { "" }
+    out.append("<a class=\"sidebar-link${overviewClass}\" data-cjdoc-nav-link${overviewCurrent} href=\"${rootPrefix}index.html\">${label(locale, "Overview", "总览")}</a>")
+    out.append("<a class=\"sidebar-link${apiClass}\" data-cjdoc-nav-link${apiCurrent} href=\"${rootPrefix}index.html#packages\">${label(locale, "API Reference", "API 参考")}</a></div>")
     if (!projection.modules.isEmpty()) {
         out.append("<div class=\"sidebar-section\"><p class=\"sidebar-label\">${label(locale, "Package reference", "包参考")}</p>")
+        out.append("<label class=\"sidebar-filter-label\"><span class=\"sr-only\">${label(locale, "Filter packages", "筛选包")}</span><input class=\"sidebar-filter\" type=\"search\" placeholder=\"${label(locale, "Filter packages", "筛选包")}\" data-cjdoc-sidebar-filter></label>")
         for (projected in projection.modules) {
             let module = projected.source
-            out.append("<details class=\"sidebar-group\" open><summary><span>${escapeHtml(module.name)}</span><span class=\"sidebar-count\">${projected.packages.size}</span></summary><div class=\"sidebar-packages\">")
+            var isCurrentModule = false
+            for (candidate in projected.packages) {
+                if (currentPackagePath.isSome() && currentPackagePath.getOrThrow() ==
+                    packagePagePath(candidate.source.moduleId, candidate.source.name)) { isCurrentModule = true }
+            }
+            let openAttribute = if (isCurrentModule) { " open" } else { "" }
+            out.append("<details class=\"sidebar-group\"${openAttribute}><summary><span>${escapeHtml(module.name)}</span><span class=\"sidebar-count\">${projected.packages.size}</span></summary><div class=\"sidebar-packages\">")
             for (pkg in projected.packages) {
                 let packagePath = packagePagePath(pkg.source.moduleId, pkg.source.name)
                 let isCurrent = match (currentPackagePath) {
@@ -38,7 +49,8 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
 
 internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: String,
     documentation: DocumentationSet, projection: RenderProjection,
-    locale!: String = "en", currentPackagePath!: ?String = None): Unit {
+    locale!: String = "en", currentPackagePath!: ?String = None,
+    currentRoute!: String = "overview"): Unit {
     out.append("<!doctype html>\n<html lang=\"${locale}\"><head><meta charset=\"utf-8\">")
     out.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
     out.append("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'\">")
@@ -46,15 +58,16 @@ internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: 
     out.append("<script defer src=\"${rootPrefix}search-index.js\"></script>")
     out.append("<script defer src=\"${rootPrefix}search.js\"></script></head><body>\n")
     out.append("<header class=\"site-nav\"><div class=\"site-nav-inner\">")
+    out.append("<button class=\"nav-menu\" type=\"button\" data-cjdoc-menu aria-expanded=\"false\" aria-controls=\"cjdoc-sidebar\" aria-label=\"${label(locale, "Open navigation", "打开导航")}\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M4 7h16M4 12h16M4 17h16\"></path></svg></button>")
     out.append("<a class=\"brand\" href=\"${rootPrefix}index.html\"><span class=\"brand-mark\" aria-hidden=\"true\">cj</span><span>cjdoc<span class=\"brand-subtitle\">${label(locale, "API docs", "API 文档")}</span></span></a>")
     out.append("<div class=\"site-search\"><div class=\"search-area\"><div class=\"search-shell\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"></circle><path d=\"m20 20-4-4\"></path></svg><label class=\"sr-only\" for=\"cjdoc-search-input\">${label(locale, "Search API", "搜索 API")}</label>")
     out.append("<input id=\"cjdoc-search-input\" type=\"search\" placeholder=\"${label(locale, "Search docs", "搜索文档")}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"cjdoc-search-results\" aria-expanded=\"false\" data-cjdoc-search data-root=\"${rootPrefix}\"><kbd>Ctrl K</kbd></div>")
     out.append("<ul id=\"cjdoc-search-results\" class=\"search-results\" role=\"listbox\" data-cjdoc-results aria-live=\"polite\"></ul></div>")
     out.append("<div class=\"search-filters\"><label><span class=\"sr-only\">${label(locale, "Filter by kind", "按类别筛选")}</span><select data-cjdoc-kind aria-label=\"${label(locale, "Filter by kind", "按类别筛选")}\"><option value=\"\">${label(locale, "All kinds", "全部类别")}</option></select></label><label><span class=\"sr-only\">${label(locale, "Filter by package", "按包筛选")}</span><select data-cjdoc-package aria-label=\"${label(locale, "Filter by package", "按包筛选")}\"><option value=\"\">${label(locale, "All packages", "全部包")}</option></select></label></div></div>")
-    out.append("<div class=\"top-actions\"><span class=\"version-label\" title=\"${label(locale, "Generated by cjdoc", "由 cjdoc 生成")}\">v${escapeHtml(documentation.generator.version)}</span><span class=\"top-source top-source-disabled\" aria-disabled=\"true\" title=\"${label(locale, "Repository URL is not included in this Doc IR", "此 Doc IR 未包含仓库地址")}\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M12 .7a11.3 11.3 0 0 0-3.57 22.02c.57.1.78-.25.78-.55v-2.1c-3.18.69-3.85-1.34-3.85-1.34-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.67 1.25 3.32.96.1-.74.4-1.25.72-1.54-2.54-.29-5.21-1.27-5.21-5.66 0-1.25.45-2.27 1.18-3.07-.12-.29-.51-1.45.11-3.03 0 0 .96-.31 3.12 1.17a10.85 10.85 0 0 1 5.68 0c2.16-1.48 3.12-1.17 3.12-1.17.62 1.58.23 2.74.11 3.03.73.8 1.18 1.82 1.18 3.07 0 4.4-2.68 5.36-5.23 5.64.41.36.77 1.07.77 2.16v3.2c0 .3.2.65.79.54A11.3 11.3 0 0 0 12 .7Z\"></path></svg><span>GitHub</span></span><button class=\"theme-toggle\" type=\"button\" data-cjdoc-theme-toggle aria-label=\"${label(locale, "Switch theme", "切换主题")}\" aria-pressed=\"false\"><svg class=\"icon-sun\" width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><circle cx=\"12\" cy=\"12\" r=\"4\"></circle><path d=\"M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42\"></path></svg><svg class=\"icon-moon\" width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><path d=\"M20.5 14.7A8.5 8.5 0 0 1 9.3 3.5 8.5 8.5 0 1 0 20.5 14.7Z\"></path></svg></button></div>")
+    out.append("<div class=\"top-actions\"><span class=\"version-label\" title=\"${label(locale, "Generated by cjdoc", "由 cjdoc 生成")}\">v${escapeHtml(documentation.generator.version)}</span><button class=\"theme-toggle\" type=\"button\" data-cjdoc-theme-toggle aria-label=\"${label(locale, "Switch theme", "切换主题")}\" aria-pressed=\"false\"><svg class=\"icon-sun\" width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><circle cx=\"12\" cy=\"12\" r=\"4\"></circle><path d=\"M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42\"></path></svg><svg class=\"icon-moon\" width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><path d=\"M20.5 14.7A8.5 8.5 0 0 1 9.3 3.5 8.5 8.5 0 1 0 20.5 14.7Z\"></path></svg></button></div>")
     out.append("</div></header>\n<div class=\"docs-layout\">")
     appendHtmlSidebar(out, documentation, projection, rootPrefix, locale,
-        currentPackagePath: currentPackagePath)
+        currentPackagePath: currentPackagePath, currentRoute: currentRoute)
     out.append("<main class=\"docs-main\" data-cjdoc-content tabindex=\"-1\"><div class=\"content-column\">\n")
 }
 
@@ -221,55 +234,52 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
 internal func appendSymbolMetadata(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     locale!: String = "en"): Unit {
-    out.append("<div class=\"symbol-meta\"><p class=\"meta\"><span class=\"badge\">${escapeHtml(symbol.kind)}</span>")
-    out.append("<span class=\"badge\">${escapeHtml(symbol.visibility)}</span>")
-    out.append("<span class=\"badge\" data-state=\"${escapeHtml(symbol.semantic.state)}\">semantic: ${escapeHtml(symbol.semantic.state)}</span>")
-    match (symbol.ownerId) {
-        case Some(ownerId) => match (findSymbol(index, ownerId)) {
-            case Some(owner) => out.append(" Owner: <a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, owner))}\"><code>${escapeHtml(owner.qualifiedName)}</code></a> ·")
-            case None => out.append(" Owner: <code>${escapeHtml(ownerId)}</code> ·")
+    out.append("<div class=\"symbol-meta\"><p class=\"symbol-kind\">${escapeHtml(symbol.kind)}")
+    if (symbol.visibility != "public") {
+        out.append(" <span class=\"badge\">${escapeHtml(symbol.visibility)}</span>")
+    }
+    if (symbol.semantic.state != "resolved") {
+        out.append(" <span class=\"badge\" data-state=\"${escapeHtml(symbol.semantic.state)}\">semantic: ${escapeHtml(symbol.semantic.state)}</span>")
+    }
+    out.append("</p>")
+    match (symbol.documentation) {
+        case Some(comment) => if (!comment.summary.isEmpty()) {
+            out.append("<p class=\"symbol-summary\">${escapeHtml(comment.summary)}</p>")
         }
         case None => ()
     }
-    out.append(" <code>${escapeHtml(symbol.source.path)}:${symbol.source.start.line}:${symbol.source.start.column}</code></p>\n")
-    if (!symbol.genericParameters.isEmpty()) {
-        out.append("<p class=\"meta\">Generic parameters: ")
-        var first = true
-        for (parameter in symbol.genericParameters) {
-            if (!first) { out.append(", ") }; first = false
-            out.append("<code>${escapeHtml(parameter)}</code>")
-        }
-        out.append("</p>\n")
-    }
-    if (!symbol.annotations.isEmpty()) {
-        out.append("<p class=\"meta\">Annotations: ")
-        var first = true
-        for (annotation in symbol.annotations) {
-            if (!first) { out.append(" ") }; first = false
-            out.append("<code>${escapeHtml(annotation.spelling)}</code>")
-        }
-        out.append("</p>\n")
-    }
-    if (!symbol.typeRelationships.isEmpty() || !symbol.symbolRelationships.isEmpty()) {
-        out.append("<dl class=\"relationships\">")
-        for (relationship in symbol.typeRelationships) {
-            out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd><code>${escapeHtml(relationship.target.spelling)}</code> <span class=\"badge\" data-state=\"${escapeHtml(relationship.target.semantic.state)}\">${escapeHtml(relationship.target.semantic.state)}</span></dd>")
-        }
-        for (relationship in symbol.symbolRelationships) {
-            out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd>")
-            match (relationship.targetSymbolId) {
-                case Some(targetId) => match (findSymbol(index, targetId)) {
-                    case Some(target) =>
-                        out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(relationship.targetDisplay)}</code></a>")
-                    case None => out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
-                }
-                case None => out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
+    out.append("<h2 class=\"signature-heading\">${label(locale, "Signature", "签名")}</h2><pre class=\"signature-block\"><code>${escapeHtml(symbol.headerSpelling)}</code></pre>")
+    if (symbol.ownerId.isSome() || !symbol.genericParameters.isEmpty() ||
+        !symbol.annotations.isEmpty() || !symbol.typeRelationships.isEmpty() ||
+        !symbol.symbolRelationships.isEmpty()) {
+        out.append("<details class=\"contextual-metadata\"><summary>${label(locale, "Declaration details", "声明详情")}</summary>")
+        match (symbol.ownerId) {
+            case Some(ownerId) => match (findSymbol(index, ownerId)) {
+                case Some(owner) => out.append("<p class=\"meta\">${label(locale, "Owner", "所属")}: <a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, owner))}\"><code>${escapeHtml(owner.qualifiedName)}</code></a></p>")
+                case None => ()
             }
-            out.append(" <span class=\"badge\" data-state=\"${escapeHtml(relationship.state)}\">${escapeHtml(relationship.state)}</span></dd>")
+            case None => ()
         }
-        out.append("</dl>\n")
+        if (!symbol.genericParameters.isEmpty()) {
+            out.append("<p class=\"meta\">${label(locale, "Generic parameters", "泛型参数")}: ")
+            var first = true
+            for (parameter in symbol.genericParameters) { if (!first) { out.append(", ") }; first = false; out.append("<code>${escapeHtml(parameter)}</code>") }
+            out.append("</p>")
+        }
+        if (!symbol.annotations.isEmpty()) {
+            out.append("<p class=\"meta\">${label(locale, "Annotations", "注解")}: ")
+            for (annotation in symbol.annotations) { out.append("<code>${escapeHtml(annotation.spelling)}</code> ") }
+            out.append("</p>")
+        }
+        if (!symbol.typeRelationships.isEmpty() || !symbol.symbolRelationships.isEmpty()) {
+            out.append("<dl class=\"relationships\">")
+            for (relationship in symbol.typeRelationships) { out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd><code>${escapeHtml(relationship.target.spelling)}</code></dd>") }
+            for (relationship in symbol.symbolRelationships) { out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd><code>${escapeHtml(relationship.targetDisplay)}</code></dd>") }
+            out.append("</dl>")
+        }
+        out.append("</details>")
     }
-    out.append("</div><h2 class=\"signature-heading\">${label(locale, "Signature", "签名")}</h2><pre class=\"signature-block\"><code>${escapeHtml(symbol.headerSpelling)}</code></pre>\n")
+    out.append("</div>\n")
 }
 
 internal func appendSymbolArticle(out: RenderTextBuffer,

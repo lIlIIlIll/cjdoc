@@ -114,17 +114,26 @@ internal let HTML_SEARCH_SCRIPT = """
     for (const entry of visible) {
       const item = document.createElement("li");
       const link = document.createElement("a");
-      const name = document.createElement("span");
+      const head = document.createElement("span");
+      const name = document.createElement("strong");
       const kind = document.createElement("span");
+      const context = document.createElement("span");
+      const summary = document.createElement("span");
       item.id = "cjdoc-search-result-" + results.children.length;
       item.setAttribute("role", "option");
       item.setAttribute("aria-selected", "false");
       link.href = root + entry.href;
-      name.textContent = entry.qualifiedName;
+      head.className = "search-result-head";
+      name.className = "search-result-name";
+      name.textContent = entry.name;
       kind.className = "search-kind";
-      kind.textContent = " — " + entry.kind +
+      kind.textContent = entry.kind;
+      context.className = "search-context";
+      context.textContent = entry.packageName + (entry.qualifiedName !== entry.name ? " · " + entry.qualifiedName : "") +
         (ambiguousLabels.has(displayKey(entry)) ? " · " + entry.id : "");
-      link.append(name, kind);
+      head.append(name, kind);
+      link.append(head, context);
+      if (entry.summary) { summary.className = "search-summary"; summary.textContent = entry.summary; link.append(summary); }
       item.append(link);
       results.append(item);
     }
@@ -244,6 +253,38 @@ internal let HTML_SEARCH_SCRIPT = """
     }
     if (themeSelect) themeSelect.addEventListener("change", () => setTheme(themeSelect.value));
   }
+  const menu = document.querySelector("[data-cjdoc-menu]");
+  const sidebar = document.querySelector("#cjdoc-sidebar");
+  const closeMenu = () => {
+    if (!menu || !sidebar) return;
+    menu.setAttribute("aria-expanded", "false");
+    sidebar.classList.remove("is-open");
+  };
+  if (menu && sidebar) {
+    menu.addEventListener("click", () => {
+      const open = menu.getAttribute("aria-expanded") !== "true";
+      menu.setAttribute("aria-expanded", open ? "true" : "false");
+      sidebar.classList.toggle("is-open", open);
+      if (open) { const target = sidebar.querySelector("input, summary, a"); if (target) target.focus(); }
+    });
+    sidebar.addEventListener("click", (event) => { if (event.target.closest("a")) closeMenu(); });
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeMenu(); menu.focus(); } });
+  }
+  const sidebarFilter = document.querySelector("[data-cjdoc-sidebar-filter]");
+  if (sidebarFilter) sidebarFilter.addEventListener("input", () => {
+    const query = sidebarFilter.value.trim().toLocaleLowerCase();
+    for (const group of document.querySelectorAll(".sidebar-group")) {
+      let matched = false;
+      for (const item of group.querySelectorAll(".sidebar-package")) {
+        const visible = !query || item.textContent.toLocaleLowerCase().includes(query);
+        item.hidden = !visible; matched = matched || visible;
+      }
+      group.hidden = !matched;
+      if (query && matched) group.open = true;
+    }
+  });
+  const activePackage = document.querySelector(".sidebar-package.is-current");
+  if (activePackage) activePackage.scrollIntoView({block: "nearest"});
   const toc = document.querySelector("[data-cjdoc-toc]");
   const content = document.querySelector("[data-cjdoc-content]");
   if (toc && content) {
@@ -423,8 +464,13 @@ internal let HTML_SEARCH_SCRIPT = """
     button.type = "button"; button.className = "code-copy";
     button.setAttribute("aria-label", copyLabels.copy);
     button.title = copyLabels.copy;
-    button.textContent = "⧉";
-    pre.append(button);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    const front = document.createElementNS(svg.namespaceURI, "rect");
+    const back = document.createElementNS(svg.namespaceURI, "path");
+    for (const [key, value] of Object.entries({width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "1.8", "aria-hidden": "true"})) svg.setAttribute(key, value);
+    for (const [key, value] of Object.entries({x: "8", y: "8", width: "11", height: "11", rx: "2"})) front.setAttribute(key, value);
+    back.setAttribute("d", "M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2");
+    svg.append(front, back); button.append(svg); pre.append(button);
     button.addEventListener("click", async () => {
       const copied = await copyText(code.textContent || "");
       button.dataset.copied = copied ? "true" : "false";

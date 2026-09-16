@@ -300,14 +300,21 @@ class RendererSafetyTest {
         @Expect(css.contains(".parameter-row{padding:0;border-bottom:0}"), true)
         @Expect(css.contains(".parameter-type{white-space:normal;overflow-wrap:anywhere}"), true)
 
-        @Expect(packageHtml.contains("data-cjdoc-toc-role=\"api\""), true)
-        @Expect(packageHtml.contains("data-cjdoc-toc-label=\"func api(): Unit\""), true)
+        @Expect(packageHtml.contains("class=\"declaration-group\""), true)
+        @Expect(packageHtml.contains("class=\"declaration-signature\">public func api(): Unit"), true)
+        @Expect(!packageHtml.contains("semantic: resolved"), true)
+        @Expect(!packageHtml.contains("src/fixture.cj:1:"), true)
+        @Expect(packageHtml.contains("data-cjdoc-sidebar-filter"), true)
+        @Expect(packageHtml.contains("data-cjdoc-menu"), true)
 
         let containerDocumentation = rendererOwnerDocumentation("class")
         let containerArtifacts = HtmlDocumentationRenderer().render(containerDocumentation)
         let symbolHtml = rendererSafetyContent(containerArtifacts,
             "html/${symbolPagePath(containerDocumentation.declarations[0])}")
         @Expect(symbolHtml.contains("<a class=\"sidebar-package is-current\""), true)
+        @Expect(symbolHtml.contains("class=\"symbol-kind\">class"), true)
+        @Expect(!symbolHtml.contains("semantic: resolved"), true)
+        @Expect(!symbolHtml.contains("top-source-disabled"), true)
         @Expect(symbolHtml.contains(
             "<h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"class Owner\">"), true)
         @Expect(symbolHtml.contains(
