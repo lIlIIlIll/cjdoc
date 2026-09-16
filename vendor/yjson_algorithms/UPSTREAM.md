@@ -11,7 +11,7 @@ memory-safety patch recorded in `vendor-manifest.toml`:
 Patch reason: Avoid large RuneArray allocation while counting JSON Schema string length.
 
 - Upstream: `https://github.com/lIlIIlIll/yjson`
-- Commit: `78b84e6e110bcc84adcc97e8ec24995c7272782e`
+- Commit: `bb22ec8195e842112c8f6abbd3e6ca256e52a2b5`
 - Package: `packages/yjson_algorithms`
 - Version: `2.0.1`
 - License: Apache-2.0

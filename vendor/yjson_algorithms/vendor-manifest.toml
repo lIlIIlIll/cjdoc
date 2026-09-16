@@ -1,6 +1,6 @@
 schema-version = "cjdoc.vendor-manifest/2"
 upstream = "https://github.com/lIlIIlIll/yjson.git"
-commit = "78b84e6e110bcc84adcc97e8ec24995c7272782e"
+commit = "bb22ec8195e842112c8f6abbd3e6ca256e52a2b5"
 package-path = "packages/yjson_algorithms"
 package-name = "yjson_algorithms"
 package-version = "2.0.1"

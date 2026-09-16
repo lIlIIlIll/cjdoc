@@ -29,7 +29,7 @@
 | host | `Linux-7.2.0-1-mainline-x86_64-with-glibc2.44` |
 | Python | `3.14.7` |
 | markdown | `db4f9527944b589db8436669f1d255192388cee2` |
-| yjson | `78b84e6e110bcc84adcc97e8ec24995c7272782e` |
+| yjson | `bb22ec8195e842112c8f6abbd3e6ca256e52a2b5` |
 
 `cjpm.toml` 与 `cjpm.lock` 使用相同的 40 位 commit ID，且没有 `branch` 或 `tag`。`vendor/yjson_algorithms/` 保存同一 yjson commit 的 `JsonSchema`、JSON Pointer、JSON Patch 和 work-limit 源码；`UPSTREAM.md` 记录的摘要已逐文件核对。
 

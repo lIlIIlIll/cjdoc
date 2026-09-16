@@ -14,7 +14,7 @@ Their license texts are distributed with every binary archive.
 ## yjson 2.0.1
 
 - Upstream: <https://github.com/lIlIIlIll/yjson>
-- Commit: `78b84e6e110bcc84adcc97e8ec24995c7272782e`
+- Commit: `bb22ec8195e842112c8f6abbd3e6ca256e52a2b5`
 - License: Apache-2.0
 - Repository license text: `vendor/yjson_algorithms/LICENSE`
 - Binary-archive license text: `licenses/yjson-Apache-2.0.txt`
