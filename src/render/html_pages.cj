@@ -62,7 +62,7 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
     let out = RenderTextBuffer()
     appendPageStart(out, "${label(locale, "Package", "包")} ${packageDoc.name}", "../",
         documentation, projection, locale: locale,
-        currentPackagePath: Some(packagePagePath(packageDoc.moduleId, packageDoc.name)))
+        currentPackagePath: Some(packagePagePath(packageDoc.moduleId, packageDoc.name)), currentRoute: "api")
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li><li aria-current=\"page\">${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></li></ol></nav>\n")
     out.append("<header class=\"page-header\"><h1>${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></h1></header>\n")
     if (!pkg.sourceFiles.isEmpty()) {
@@ -101,19 +101,41 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
     out.append("<h2 id=\"declarations\">${label(locale, "Declarations", "声明")}</h2>\n")
     var wroteDeclaration = false
     match (topLevelByPackage.get(routeKey(packageDoc.moduleId, packageDoc.name))) {
-        case Some(symbols) => for (symbol in symbols) {
-            wroteDeclaration = true
-            if (isContainerDeclaration(symbol)) {
-                out.append("<section class=\"declaration-summary\"><h3 data-cjdoc-toc-role=\"api\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><a href=\"../${escapeHtml(symbolPagePath(symbol))}\"><code>${escapeHtml(symbol.qualifiedName)}</code></a> <span class=\"badge\">${escapeHtml(symbol.kind)}</span></h3>")
+        case Some(symbols) => for (category in ["class", "struct", "interface", "enum", "typeAlias", "function", "property", "variable", "extend", "other"]) {
+            var opened = false
+            for (symbol in symbols) {
+                let symbolCategory = match (symbol.kind) {
+                    case "class" | "struct" | "interface" | "enum" | "typeAlias" |
+                        "function" | "property" | "variable" | "extend" => symbol.kind
+                    case _ => "other"
+                }
+                if (symbolCategory != category) { continue }
+                if (!opened) {
+                    let heading = match (category) {
+                        case "class" => label(locale, "Classes", "类")
+                        case "struct" => label(locale, "Structs", "结构体")
+                        case "interface" => label(locale, "Interfaces", "接口")
+                        case "enum" => label(locale, "Enums", "枚举")
+                        case "typeAlias" => label(locale, "Type aliases", "类型别名")
+                        case "function" => label(locale, "Functions", "函数")
+                        case "property" => label(locale, "Properties", "属性")
+                        case "variable" => label(locale, "Variables", "变量")
+                        case "extend" => label(locale, "Extensions", "扩展")
+                        case _ => label(locale, "Other declarations", "其他声明")
+                    }
+                    out.append("<section class=\"declaration-group\"><h3>${heading}</h3><div class=\"declaration-list\">")
+                    opened = true
+                }
+                wroteDeclaration = true
+                out.append("<article class=\"declaration-summary\"><div class=\"declaration-summary-head\"><a href=\"../${escapeHtml(symbolPagePath(symbol))}\"><code>${escapeHtml(symbol.name)}</code></a><span class=\"declaration-kind\">${escapeHtml(symbol.kind)}</span></div>")
                 match (symbol.documentation) {
-                    case Some(comment) => out.append("<p>${escapeHtml(markdownNodeText(comment.markdown))}</p>")
+                    case Some(comment) => if (!comment.summary.isEmpty()) { out.append("<p>${escapeHtml(comment.summary)}</p>") }
                     case None => ()
                 }
-                out.append("</section>\n")
-            } else {
-                appendSymbolArticle(out, index, symbol, "../", assetLookup,
-                    typeLinkIndex, locale: locale)
+                if (!symbol.headerSpelling.isEmpty()) { out.append("<code class=\"declaration-signature\">${escapeHtml(symbol.headerSpelling)}</code>") }
+                out.append("</article>")
             }
+            if (opened) { out.append("</div></section>\n") }
         }
         case None => ()
     }
@@ -160,11 +182,11 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     locale!: String = "en"): String {
     let out = RenderTextBuffer()
     appendPageStart(out, symbol.qualifiedName, "../", documentation, projection, locale: locale,
-        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)))
+        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)), currentRoute: "api")
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li>")
     out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">${label(locale, "Package", "包")} <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     out.append("<li aria-current=\"page\"><code>${escapeHtml(symbol.name)}</code></li></ol></nav>\n")
-    out.append("<header class=\"page-header\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(symbol.qualifiedName)}</code></h1>")
+    out.append("<header class=\"page-header\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(symbol.name)}</code></h1>")
     appendSymbolMetadata(out, index, symbol, "../", locale: locale)
     out.append("</header>\n")
     appendDocumentationHtml(out, index, symbol, "../", assetLookup,

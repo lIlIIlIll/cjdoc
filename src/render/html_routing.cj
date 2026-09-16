@@ -210,24 +210,10 @@ internal func renderabilityIndex(documentation: DocumentationSet,
     results
 }
 
-internal func containingPageSymbol(index: HashMap<String, SymbolDoc>, symbol: SymbolDoc): ?SymbolDoc {
-    if (isContainerDeclaration(symbol)) { return Some(symbol) }
-    match (symbol.ownerId) {
-        case Some(ownerId) => match (findSymbol(index, ownerId)) {
-            case Some(owner) => if (isContainerDeclaration(owner)) { Some(owner) } else { None }
-            case None => None
-        }
-        case None => None
-    }
-}
-
 internal func symbolUrl(index: HashMap<String, SymbolDoc>, symbol: SymbolDoc): String {
-    match (containingPageSymbol(index, symbol)) {
-        case Some(container) =>
-            let page = symbolPagePath(container)
-            if (container.id == symbol.id) { page } else { page + "#" + symbolAnchor(symbol) }
-        case None => packagePagePath(symbol.moduleId, symbol.packageName) + "#" + symbolAnchor(symbol)
-    }
+    // Every visible declaration has a stable detail page. Keeping routing uniform
+    // lets package pages remain indexes rather than mixing summaries and contracts.
+    symbolPagePath(symbol)
 }
 
 internal func isTypeDeclaration(symbol: SymbolDoc): Bool {
