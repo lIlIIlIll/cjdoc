@@ -8,9 +8,9 @@ license-spdx = "Apache-2.0"
 license-file = "LICENSE"
 license-sha256 = "ff2bfac16f9884d002e66b1b2c75c20c626bc41ff31cdf411c5acdf224288295"
 package-manifest-file = "cjpm.toml"
-package-manifest-sha256 = "21919a70642bee3eeb982c831192b046c0b5a2016f5f54f42234702f412e4f36"
+package-manifest-sha256 = "3fa30b7a7f48b50a44747c19d966c2105948bed0ee7b019ae254d524e8a0feab"
 upstream-notice-file = "UPSTREAM.md"
-upstream-notice-sha256 = "c801496a3b6b3ce6a37105c5421eb8033aeaf0600694e1b3c09aa440c734514b"
+upstream-notice-sha256 = "78c5a27f82199641cf1de729c73a28e293884aa26722e432767cfcbb7face43f"
 patches = [
   { path = "src/lib_json_schema.cj", reason = "Avoid large RuneArray allocation while counting JSON Schema string length." },
 ]
