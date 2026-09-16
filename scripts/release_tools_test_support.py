@@ -29,7 +29,7 @@ from scripts.verify_repository_inputs import GOLDEN_NAMES, SCHEMA_NAMES
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MARKDOWN_COMMIT = "db4f9527944b589db8436669f1d255192388cee2"
-YJSON_COMMIT = "bf65cbecd99ac25e7485f8db60990e94a04e57bc"
+YJSON_COMMIT = "78b84e6e110bcc84adcc97e8ec24995c7272782e"
 SDK_SHA256 = "1" * 64
 
 
