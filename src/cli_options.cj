@@ -9,6 +9,11 @@ internal class NewCliOptions {
     var projectExplicit = false
     var output: ?String = None
     var input: ?String = None
+    var baselineInput: ?String = None
+    var currentInput: ?String = None
+    var diffFormat = "text"
+    var denyBreakingApi = false
+    var denyPotentiallyBreakingApi = false
     let formats = ArrayList<String>()
     var stdout = false
     var denyWarnings = false
@@ -47,13 +52,15 @@ internal func newUsage(): String {
     "                 [--dependency-source NAME=PATH] [--cjpm-cache <dir>]\n" +
     "                 [--cache-dir <dir>|--no-cache] [--force-owned]\n" +
     "                 [--locale zh-CN|en] [--markdown-layout site|single]\n" +
-    "                 [--repository-url <url> --repository-revision <ref> [--repository-root <dir>]]\n" +
     "  cjdoc check [--project <dir>] [--deny-warnings] [--lint-profile off|standard|strict]\n" +
     "              [--api-surface-baseline <file>] [--min-symbol-coverage 0..100] [--min-parameter-coverage 0..100]\n" +
+    "  cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
+    "  cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout] [--force-owned]\n" +
     "               [--locale zh-CN|en] [--markdown-layout site|single]\n" +
-    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|diagnostics|cfg-matrix|search-index|api-surface|documentation-coverage\n"
+    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|doc-ir-v9|diagnostics|cfg-matrix|search-index|api-surface|api-surface-v1|api-diff|documentation-coverage\n"
 }
+
 
 internal func splitNamedValue(value: String, option: String): (String, String) {
     let parts = value.split("=", 2)
@@ -99,6 +106,12 @@ private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>,
         case "--input" =>
             options.input = Some(requireCliValue(args, index, "--input"))
             Some(index + 2)
+        case "--baseline" =>
+            options.baselineInput = Some(requireNonEmptyCliValue(args, index, "--baseline"))
+            Some(index + 2)
+        case "--current" =>
+            options.currentInput = Some(requireNonEmptyCliValue(args, index, "--current"))
+            Some(index + 2)
         case "--output" =>
             options.output = Some(requireCliValue(args, index, "--output"))
             Some(index + 2)
@@ -123,8 +136,7 @@ private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>,
             options.repositoryRoot = Some(requireNonEmptyCliValue(args, index, "--repository-root"))
             Some(index + 2)
         case "--api-surface-baseline" =>
-            options.apiSurfaceBaseline = Some(
-                requireNonEmptyCliValue(args, index, "--api-surface-baseline"))
+            options.apiSurfaceBaseline = Some(requireNonEmptyCliValue(args, index, "--api-surface-baseline"))
             Some(index + 2)
         case "--locale" =>
             options.locale = requireCliValue(args, index, "--locale")
@@ -141,11 +153,15 @@ private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>,
 private func parseCollectionOption(options: NewCliOptions, args: Array<String>, index: Int64): ?Int64 {
     match (args[index]) {
         case "--format" =>
-            addFormat(options, requireCliValue(args, index, "--format"))
+            let value = requireCliValue(args, index, "--format")
+            if (options.command == "diff") {
+                options.diffFormat = value
+            } else {
+                addFormat(options, value)
+            }
             Some(index + 2)
         case "--dependency-source" =>
-            let (name, path) = splitNamedValue(
-                requireCliValue(args, index, "--dependency-source"), "--dependency-source")
+            let (name, path) = splitNamedValue(requireCliValue(args, index, "--dependency-source"), "--dependency-source")
             options.dependencySources.add(DependencySourceInput(name, path))
             Some(index + 2)
         case "--cfg" =>
@@ -155,6 +171,7 @@ private func parseCollectionOption(options: NewCliOptions, args: Array<String>, 
         case _ => None<Int64>
     }
 }
+
 
 private func parseNumericOption(options: NewCliOptions, args: Array<String>, index: Int64): ?Int64 {
     match (args[index]) {
@@ -192,6 +209,8 @@ private func parseFlagOption(options: NewCliOptions, args: Array<String>, index:
     match (args[index]) {
         case "--stdout" => options.stdout = true; Some(index + 1)
         case "--deny-warnings" => options.denyWarnings = true; Some(index + 1)
+        case "--deny-breaking-api" => options.denyBreakingApi = true; Some(index + 1)
+        case "--deny-potentially-breaking-api" => options.denyPotentiallyBreakingApi = true; Some(index + 1)
         case "--force-owned" => options.forceOwned = true; Some(index + 1)
         case "--include-path-dependencies" => options.includePathDependencies = true; Some(index + 1)
         case "--include-cached-dependencies" => options.includeCachedDependencies = true; Some(index + 1)
@@ -208,7 +227,30 @@ private func parseCliOption(options: NewCliOptions, args: Array<String>, index: 
     throw IllegalArgumentException("unknown option '${args[index]}'")
 }
 
+private func validateDiffOptions(options: NewCliOptions): Unit {
+    if (options.diffFormat != "text" && options.diffFormat != "json") {
+        throw IllegalArgumentException("diff --format must be text or json")
+    }
+    let hasBaseline = options.baselineInput.isSome()
+    let hasCurrent = options.currentInput.isSome()
+    if (hasBaseline != hasCurrent) {
+        throw IllegalArgumentException("diff requires both baseline and current inputs")
+    }
+    if (!hasBaseline) { throw IllegalArgumentException("diff requires OLD NEW or --baseline/--current") }
+    if (options.output.isSome() || options.stdout || options.projectExplicit || options.input.isSome() ||
+        options.apiSurfaceBaseline.isSome() || options.minSymbolCoverage.isSome() ||
+        options.minParameterCoverage.isSome() || options.denyWarnings || options.forceOwned ||
+        options.jobsExplicit || options.audienceExplicit || options.lintProfileExplicit ||
+        options.includePathDependencies || options.includeCachedDependencies ||
+        options.cacheDirectory.isSome() || options.noCache || options.cjpmCacheRoot.isSome() ||
+        options.repositoryUrl.isSome() || options.repositoryRevision.isSome() || options.repositoryRoot.isSome() ||
+        !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty()) {
+        throw IllegalArgumentException("diff accepts only input paths, --format, and API deny flags")
+    }
+}
+
 private func validateCliOptions(options: NewCliOptions): Unit {
+    if (options.command == "diff") { validateDiffOptions(options); return }
     if (options.jobs < 1 || options.jobs > 64) { throw IllegalArgumentException("--jobs must be in 1..64") }
     if (options.audience != "external" && options.audience != "package" && options.audience != "all") {
         throw IllegalArgumentException("--audience must be external, package, or all")
@@ -293,7 +335,8 @@ private func parseSchemaCommand(args: Array<String>): NewCliOptions {
         options.schemaName != "doc-ir-v6" && options.schemaName != "doc-ir-v7" &&
         options.schemaName != "doc-ir-v8" && options.schemaName != "doc-ir-v9" && options.schemaName != "diagnostics" &&
         options.schemaName != "cfg-matrix" && options.schemaName != "search-index" &&
-        options.schemaName != "api-surface" && options.schemaName != "documentation-coverage") {
+        options.schemaName != "api-surface" && options.schemaName != "api-surface-v1" &&
+        options.schemaName != "api-diff" && options.schemaName != "documentation-coverage") {
         throw IllegalArgumentException("unknown schema '${options.schemaName}'")
     }
     options
@@ -304,6 +347,18 @@ private func parseDocumentOptions(args: Array<String>): NewCliOptions {
     options.command = args[0]
     var index: Int64 = 1
     while (index < args.size) {
+        if (options.command == "diff" && !args[index].startsWith("-")) {
+            if (options.baselineInput.isNone()) {
+                options.baselineInput = Some(args[index])
+                index++
+                continue
+            }
+            if (options.currentInput.isNone()) {
+                options.currentInput = Some(args[index])
+                index++
+                continue
+            }
+        }
         index = parseCliOption(options, args, index)
     }
     validateCliOptions(options)
@@ -313,8 +368,9 @@ private func parseDocumentOptions(args: Array<String>): NewCliOptions {
 internal func parseNewCli(args: Array<String>): NewCliOptions {
     if (args.isEmpty()) { throw IllegalArgumentException("missing command") }
     if (args[0] == "schema") { return parseSchemaCommand(args) }
-    if (args[0] != "generate" && args[0] != "check" && args[0] != "render") {
+    if (args[0] != "generate" && args[0] != "check" && args[0] != "render" && args[0] != "diff") {
         throw IllegalArgumentException("unknown command '${args[0]}'")
     }
     parseDocumentOptions(args)
 }
+
