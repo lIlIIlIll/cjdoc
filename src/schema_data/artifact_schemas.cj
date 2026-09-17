@@ -133,6 +133,55 @@ public let API_DIFF_SCHEMA = """
   }
 }
 """
+public let DOCTEST_RESULTS_SCHEMA = """
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doctest-results.schema.json",
+  "title": "cjdoc doctest results v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "mode", "timeoutMs", "memoryMb", "jobs", "summary", "results"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.doctest/1"},
+    "mode": {"enum": ["warn", "deny"]},
+    "timeoutMs": {"type": "integer", "minimum": 1, "maximum": 600000},
+    "memoryMb": {"type": "integer", "minimum": 16, "maximum": 16384},
+    "jobs": {"type": "integer", "minimum": 1, "maximum": 64},
+    "summary": {"$ref": "#/$defs/summary"},
+    "results": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/result"}}
+  },
+  "$defs": {
+    "nullableInteger": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+    "summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["passed", "failed", "timedOut", "skipped"],
+      "properties": {
+        "passed": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0},
+        "timedOut": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0}
+      }
+    },
+    "result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "symbolId", "qualifiedName", "title", "language", "status", "exitCode", "durationMs", "stdout", "stderr", "message"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "symbolId": {"type": "string", "minLength": 1},
+        "qualifiedName": {"type": "string", "minLength": 1},
+        "title": {"type": "string"},
+        "language": {"const": "cj"},
+        "status": {"enum": ["passed", "failed", "timeout", "skipped"]},
+        "exitCode": {"$ref": "#/$defs/nullableInteger"},
+        "durationMs": {"type": "integer", "minimum": 0},
+        "stdout": {"type": "string"}, "stderr": {"type": "string"},
+        "message": {"type": "string"}
+      }
+    }
+  }
+}
+"""
+
 
 public let DOCUMENTATION_COVERAGE_SCHEMA = """
 {

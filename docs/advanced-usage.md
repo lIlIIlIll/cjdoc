@@ -33,6 +33,7 @@ target/doc/
 ├── html/search.js
 ├── html/style.css
 ├── api-surface/api-surface.json
+├── doctest/results.json
 └── coverage/coverage.json
 ```
 
@@ -188,6 +189,11 @@ cjdoc diff --baseline api-surface.json --current api-surface-next.json --format 
 ```bash
 cjdoc generate --project . --format coverage --stdout > coverage.json
 ```
+
+
+## 在 CI 中执行 doctest
+
+需要把文档示例作为门禁时，在项目根 `cjdoc.toml` 启用 `mode = "deny"`，并保留 `timeout-ms`、`memory-mb` 和 `jobs` 的明确值。生成或 `check` 会为每个 fenced Cangjie block 创建独立工作目录，直接启动 `cjc` 和生成程序，禁止 shell 拼接；超时、非零退出码和编译失败都会产生 `CJDOC3010` 结果。生成模式把机器可读结果保存为 `doctest/results.json`，而 `check` 只使用退出码。
 
 在 GitHub Actions 或其他 CI 中，直接运行同一条命令即可。CI runner 需要先安装 cjdoc，并把它加入 `PATH`；不需要把仓库验收脚本当成工具用户的前置步骤。
 
