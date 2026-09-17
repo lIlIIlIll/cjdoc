@@ -5,11 +5,11 @@ import std.collection.*
 import yjson.*
 
 public func decodeDocIr(text: String): DocumentationSet {
-    let parsed = YJson.parse(text, config: JsonReadConfig(
+    let parsed = JsonNode.parse(text, config: JsonReadOptions(
         duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject,
-        limits: JsonReadLimits(maxDepth: DOC_IR_CODEC_MAX_NESTING_DEPTH,
-            maxStringBytes: DOC_IR_MAX_JSON_STRING_BYTES,
-            maxBytes: DOC_IR_MAX_JSON_DOCUMENT_BYTES)))
+        maxDepth: DOC_IR_CODEC_MAX_NESTING_DEPTH,
+        maxStringBytes: DOC_IR_MAX_JSON_STRING_BYTES,
+        maxInputBytes: DOC_IR_MAX_JSON_DOCUMENT_BYTES))
     let rawShape = validateRawSchemaShape(parsed)
     validateDeclarativeSchema(parsed)
     let root = strictObject(parsed, "$", ["schemaVersion", "generator", "status", "project",

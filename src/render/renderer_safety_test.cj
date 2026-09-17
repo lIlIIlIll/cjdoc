@@ -277,6 +277,20 @@ class RendererSafetyTest {
     }
 
     @TestCase
+    func htmlPromotesSummaryWithoutRepeatingTheOpeningParagraph(): Unit {
+        let markdown = MarkdownNode("document", children: [
+            MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "Unique summary text.")]),
+            MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "Additional details.")])
+        ])
+        let artifacts = HtmlDocumentationRenderer().render(rendererSafetyDocumentation(markdown))
+        let symbol = rendererSafetyDocumentation(markdown).declarations[0]
+        let html = rendererSafetyContent(artifacts, "html/${symbolPagePath(symbol)}")
+
+        @Expect(html.split("Unique summary text.").size, 2)
+        @Expect(html.contains("<p>Additional details.</p>"), true)
+    }
+
+    @TestCase
     func htmlNavigationMarksCurrentPackageAndHidesEmptyToc(): Unit {
         let documentation = rendererSafetyDocumentation(MarkdownNode("document"))
         let artifacts = HtmlDocumentationRenderer().render(documentation)
@@ -293,6 +307,7 @@ class RendererSafetyTest {
         @Expect(HTML_SEARCH_SCRIPT.contains("aria-expanded"), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("toc-children"), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("setActive(link.dataset.tocTarget)"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("menu.getAttribute(\"aria-expanded\") !== \"true\""), true)
         @Expect(css.contains(".sidebar-package.is-current"), true)
         @Expect(css.contains(".toc-api-row"), true)
         @Expect(css.contains(".toc-toggle"), true)
@@ -306,6 +321,9 @@ class RendererSafetyTest {
         @Expect(!packageHtml.contains("src/fixture.cj:1:"), true)
         @Expect(packageHtml.contains("data-cjdoc-sidebar-filter"), true)
         @Expect(packageHtml.contains("data-cjdoc-menu"), true)
+        @Expect(packageHtml.contains("data-cjdoc-menu-backdrop"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("event.key !== \"Tab\""), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("closeMenu(true)"), true)
 
         let containerDocumentation = rendererOwnerDocumentation("class")
         let containerArtifacts = HtmlDocumentationRenderer().render(containerDocumentation)

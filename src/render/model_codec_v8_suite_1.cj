@@ -77,9 +77,9 @@ class ModelCodecV8Suite1 {
     @TestCase
     func schemaStringLengthCountsUnicodeScalars(): Unit {
         let schema = JsonSchema.parse("{\"type\":\"string\",\"minLength\":2,\"maxLength\":2}")
-        @Expect(schema.validate(JsonStringValue("éa")).isEmpty())
-        @Expect(!schema.validate(JsonStringValue("é")).isEmpty())
-        @Expect(!schema.validate(JsonStringValue("éab")).isEmpty())
+        @Expect(schema.validate(JsonNode.string("éa")).isEmpty())
+        @Expect(!schema.validate(JsonNode.string("é")).isEmpty())
+        @Expect(!schema.validate(JsonNode.string("éab")).isEmpty())
     }
 
     @TestCase

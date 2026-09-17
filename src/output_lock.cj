@@ -47,10 +47,7 @@ internal func preparationMarkerContent(marker: OutputPreparationMarker): String 
 internal func readPreparationMarker(preparing: Path): OutputPreparationMarker {
     let text = readCappedRegularText(preparing.join(OUTPUT_PREPARATION_MARKER_NAME),
         "cjdoc output preparation marker", OUTPUT_PREPARATION_MARKER_LIMIT)
-    let parsed = YJson.parse(text, config: JsonReadConfig(
-        duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject,
-        limits: JsonReadLimits(maxDepth: 4, maxStringBytes: 16 * 1024,
-            maxBytes: OUTPUT_PREPARATION_MARKER_LIMIT)))
+    let parsed = JsonNode.parse(text, config: JsonReadOptions(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject, maxDepth: 4, maxStringBytes: 16 * 1024, maxInputBytes: OUTPUT_PREPARATION_MARKER_LIMIT))
     let object = try { parsed.asObject() } catch (_: Exception) {
         throw IllegalArgumentException("invalid cjdoc output preparation marker")
     }
@@ -61,13 +58,13 @@ internal func readPreparationMarker(preparing: Path): OutputPreparationMarker {
         object.get("transactionId").isNone()) {
         throw IllegalArgumentException("invalid cjdoc output preparation marker fields")
     }
-    let schema = try { object["schemaVersion"].string } catch (_: Exception) { "" }
-    let pid = try { Int64.parse(object["pid"].string) } catch (_: Exception) { -1 }
-    let startTime = try { object["startTime"].string } catch (_: Exception) { "" }
-    let rootName = try { object["rootName"].string } catch (_: Exception) { "" }
-    let parentDigest = try { object["parentSha256"].string } catch (_: Exception) { "" }
-    let planDigest = try { object["planSha256"].string } catch (_: Exception) { "" }
-    let transactionId = try { object["transactionId"].string } catch (_: Exception) { "" }
+    let schema = try { object["schemaVersion"].asString() } catch (_: Exception) { "" }
+    let pid = try { Int64.parse(object["pid"].asString()) } catch (_: Exception) { -1 }
+    let startTime = try { object["startTime"].asString() } catch (_: Exception) { "" }
+    let rootName = try { object["rootName"].asString() } catch (_: Exception) { "" }
+    let parentDigest = try { object["parentSha256"].asString() } catch (_: Exception) { "" }
+    let planDigest = try { object["planSha256"].asString() } catch (_: Exception) { "" }
+    let transactionId = try { object["transactionId"].asString() } catch (_: Exception) { "" }
     if (schema != OUTPUT_PREPARATION_MARKER_SCHEMA || pid <= 0 || startTime.isEmpty() ||
         !isSafeRootName(rootName) || collidesWithInternalSibling(rootName) ||
         !isSha256(parentDigest) || !isSha256(planDigest) ||
@@ -109,9 +106,7 @@ internal func outputLockOwnerContent(owner: OutputLockOwner): String {
 internal func readOutputLockOwner(lockPath: Path): OutputLockOwner {
     let ownerPath = lockPath.join("owner.json")
     let text = readCappedRegularText(ownerPath, "cjdoc output lock owner", OUTPUT_LOCK_OWNER_LIMIT)
-    let parsed = YJson.parse(text, config: JsonReadConfig(
-        duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject,
-        limits: JsonReadLimits(maxDepth: 4, maxStringBytes: 16 * 1024, maxBytes: 64 * 1024)))
+    let parsed = JsonNode.parse(text, config: JsonReadOptions(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject, maxDepth: 4, maxStringBytes: 16 * 1024, maxInputBytes: 64 * 1024))
     let object = try { parsed.asObject() } catch (_: Exception) {
         throw IllegalArgumentException("invalid cjdoc output lock owner")
     }
@@ -119,11 +114,11 @@ internal func readOutputLockOwner(lockPath: Path): OutputLockOwner {
         object.get("startTime").isNone() || object.get("token").isNone() || object.get("root").isNone()) {
         throw IllegalArgumentException("invalid cjdoc output lock owner fields")
     }
-    let schema = try { object["schemaVersion"].string } catch (_: Exception) { "" }
-    let pid = try { Int64.parse(object["pid"].string) } catch (_: Exception) { -1 }
-    let startTime = try { object["startTime"].string } catch (_: Exception) { "" }
-    let token = try { object["token"].string } catch (_: Exception) { "" }
-    let root = try { object["root"].string } catch (_: Exception) { "" }
+    let schema = try { object["schemaVersion"].asString() } catch (_: Exception) { "" }
+    let pid = try { Int64.parse(object["pid"].asString()) } catch (_: Exception) { -1 }
+    let startTime = try { object["startTime"].asString() } catch (_: Exception) { "" }
+    let token = try { object["token"].asString() } catch (_: Exception) { "" }
+    let root = try { object["root"].asString() } catch (_: Exception) { "" }
     if (schema != "cjdoc.output-lock/1" || pid <= 0 || startTime.isEmpty() ||
         token.isEmpty() || root.isEmpty()) {
         throw IllegalArgumentException("invalid cjdoc output lock owner values")

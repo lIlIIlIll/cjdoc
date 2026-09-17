@@ -34,6 +34,12 @@ internal class RawSchemaShape {
     }
 }
 
+internal func jsonArrayValues(value: JsonArray): ArrayList<JsonNode> {
+    let result = ArrayList<JsonNode>()
+    for (index in 0..value.size()) { result.add(value.get(index).getOrThrow()) }
+    result
+}
+
 internal func validateRawSchemaShape(root: JsonNode): RawSchemaShape {
     let pending = ArrayList<JsonNode>()
     pending.add(root)
@@ -42,14 +48,15 @@ internal func validateRawSchemaShape(root: JsonNode): RawSchemaShape {
     while (!pending.isEmpty()) {
         let node = pending.remove(at: pending.size - 1)
         match (node.kind()) {
-            case JsObject =>
+            case JsonKind.Object =>
                 objects++
                 if (objects > DOC_IR_MAX_SCHEMA_OBJECTS) {
                     fail("$", "JSON object occurrence budget exceeded")
                 }
-                for ((_, child) in node.asObject().entries()) { pending.add(child) }
-            case JsArray =>
-                let values = node.asArray().values()
+                let object = node.asObject()
+                for (index in 0..object.size()) { pending.add(object.valueAt(index)) }
+            case JsonKind.Array =>
+                let values = jsonArrayValues(node.asArray())
                 if (values.size > DOC_IR_MAX_SCHEMA_ARRAY_ITEMS - arrayItems) {
                     fail("$", "JSON array item occurrence budget exceeded")
                 }
@@ -63,7 +70,7 @@ internal func validateRawSchemaShape(root: JsonNode): RawSchemaShape {
 
 internal func validateDeclarativeSchema(root: JsonNode): Unit {
     let version = try {
-        root.asObject().get("schemaVersion").getOrThrow().string
+        root.asObject().get("schemaVersion").getOrThrow().asString()
     } catch (_: Exception) {
         fail("$.schemaVersion", "expected string")
     }
@@ -82,67 +89,68 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
     let errors = schema.validate(root)
     if (!errors.isEmpty()) {
         let first = errors[0]
-        throw IllegalArgumentException("invalid Doc IR schema at ${first.jsonPath} " +
+        throw IllegalArgumentException("invalid Doc IR schema at ${first.instancePath} " +
             "(${first.schemaPath}): ${first.message}")
     }
 }
 
-internal func strictObject(node: JsonNode, path: String, keys: Array<String>): JsonObjectValue {
+internal func strictObject(node: JsonNode, path: String, keys: Array<String>): JsonObject {
     let object = try { node.asObject() } catch (_: Exception) { fail(path, "expected object") }
     let allowed = HashSet<String>()
     for (key in keys) { let _ = allowed.add(key) }
-    for ((key, _) in object.entries()) {
+    for (index in 0..object.size()) {
+        let key = object.nameAt(index)
         if (!allowed.contains(key)) { fail(path, "unknown field '${key}'") }
     }
     object
 }
 
-internal func required(object: JsonObjectValue, key: String, path: String): JsonNode {
+internal func required(object: JsonObject, key: String, path: String): JsonNode {
     match (object.get(key)) {
         case Some(value) => value
         case None => fail(path, "missing required field '${key}'")
     }
 }
 
-internal func stringAt(object: JsonObjectValue, key: String, path: String): String {
-    try { required(object, key, path).string }
+internal func stringAt(object: JsonObject, key: String, path: String): String {
+    try { required(object, key, path).asString() }
     catch (_: Exception) { fail("${path}.${key}", "expected string") }
 }
 
-internal func boolAt(object: JsonObjectValue, key: String, path: String): Bool {
-    try { required(object, key, path).bool }
+internal func boolAt(object: JsonObject, key: String, path: String): Bool {
+    try { required(object, key, path).asBool() }
     catch (_: Exception) { fail("${path}.${key}", "expected boolean") }
 }
 
-internal func intAt(object: JsonObjectValue, key: String, path: String): Int64 {
-    try { required(object, key, path).int64 }
+internal func intAt(object: JsonObject, key: String, path: String): Int64 {
+    try { required(object, key, path).asInt64() }
     catch (_: Exception) { fail("${path}.${key}", "expected integer") }
 }
 
-internal func nullableStringAt(object: JsonObjectValue, key: String, path: String): ?String {
+internal func nullableStringAt(object: JsonObject, key: String, path: String): ?String {
     let value = required(object, key, path)
     if (value.isNull) { return None }
-    try { Some(value.string) }
+    try { Some(value.asString()) }
     catch (_: Exception) { fail("${path}.${key}", "expected string or null") }
 }
 
-internal func nullableBoolAt(object: JsonObjectValue, key: String, path: String): ?Bool {
+internal func nullableBoolAt(object: JsonObject, key: String, path: String): ?Bool {
     let value = required(object, key, path)
     if (value.isNull) { return None }
-    try { Some(value.bool) }
+    try { Some(value.asBool()) }
     catch (_: Exception) { fail("${path}.${key}", "expected boolean or null") }
 }
 
-internal func arrayAt(object: JsonObjectValue, key: String, path: String): JsonArrayValue {
+internal func arrayAt(object: JsonObject, key: String, path: String): JsonArray {
     try { required(object, key, path).asArray() }
     catch (_: Exception) { fail("${path}.${key}", "expected array") }
 }
 
-internal func stringsAt(object: JsonObjectValue, key: String, path: String): Array<String> {
+internal func stringsAt(object: JsonObject, key: String, path: String): Array<String> {
     let values = ArrayList<String>()
     var index: Int64 = 0
-    for (value in arrayAt(object, key, path).values()) {
-        try { values.add(value.string) }
+    for (value in jsonArrayValues(arrayAt(object, key, path))) {
+        try { values.add(value.asString()) }
         catch (_: Exception) { fail("${path}.${key}[${index}]", "expected string") }
         index++
     }
@@ -193,7 +201,7 @@ internal func decodeTypeRef(node: JsonNode, path: String, depth: Int64): TypeRef
     let value = strictObject(node, path, ["kind", "spelling", "nullable", "arguments", "semantic"])
     let arguments = ArrayList<TypeRef>()
     var index: Int64 = 0
-    for (argument in arrayAt(value, "arguments", path).values()) {
+    for (argument in jsonArrayValues(arrayAt(value, "arguments", path))) {
         arguments.add(decodeTypeRef(argument, "${path}.arguments[${index}]", depth + 1))
         index++
     }
@@ -287,7 +295,7 @@ internal func decodeMarkdown(node: JsonNode, path: String, depth: Int64, legacy:
         else { Some(decodeRange(sourceNode, "${path}.source")) }
     let children = ArrayList<MarkdownNode>()
     var index: Int64 = 0
-    for (child in arrayAt(value, "children", path).values()) {
+    for (child in jsonArrayValues(arrayAt(value, "children", path))) {
         children.add(decodeMarkdown(child, "${path}.children[${index}]", depth + 1,
             legacy, assetReferences))
         index++
@@ -312,7 +320,7 @@ internal func decodeComment(node: JsonNode, path: String, legacyIdsRequired: Boo
     let value = strictObject(node, path, ["rawText", "summary", "description", "markdown", "tags"])
     let tags = ArrayList<DocTag>()
     var index: Int64 = 0
-    for (tag in arrayAt(value, "tags", path).values()) {
+    for (tag in jsonArrayValues(arrayAt(value, "tags", path))) {
         tags.add(decodeTag(tag, "${path}.tags[${index}]", legacyIdsRequired, legacyIds)); index++
     }
     DocComment(stringAt(value, "rawText", path), stringAt(value, "summary", path),
@@ -381,12 +389,12 @@ internal func legacyModuleId(index: LegacyModuleIndex, packageName: String, path
     }
 }
 
-internal func buildLegacySymbolIds(root: JsonObjectValue,
+internal func buildLegacySymbolIds(root: JsonObject,
     modules: LegacyModuleIndex): HashMap<String, String> {
     let result = HashMap<String, String>()
     let migrated = HashSet<String>()
     var index: Int64 = 0
-    for (node in arrayAt(root, "declarations", "$" ).values()) {
+    for (node in jsonArrayValues(arrayAt(root, "declarations", "$" ))) {
         let path = "$.declarations[${index}]"
         let value = try { node.asObject() } catch (_: Exception) { fail(path, "expected object") }
         let oldId = stringAt(value, "id", path)
@@ -403,12 +411,12 @@ internal func buildLegacySymbolIds(root: JsonObjectValue,
     result
 }
 
-internal func decodeAnnotations(value: JsonObjectValue, path: String, legacy: Bool): Array<AnnotationDoc> {
+internal func decodeAnnotations(value: JsonObject, path: String, legacy: Bool): Array<AnnotationDoc> {
     let result = ArrayList<AnnotationDoc>()
     var index: Int64 = 0
-    for (node in arrayAt(value, "annotations", path).values()) {
+    for (node in jsonArrayValues(arrayAt(value, "annotations", path))) {
         if (legacy) {
-            try { result.add(AnnotationDoc(node.string)) }
+            try { result.add(AnnotationDoc(node.asString())) }
             catch (_: Exception) { fail("${path}.annotations[${index}]", "expected string") }
         } else {
             let annotationPath = "${path}.annotations[${index}]"
