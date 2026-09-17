@@ -2,4 +2,5 @@ version = 0
 
 [requires]
   markdown = {git = "https://github.com/lIlIIlIll/markdown.git", commitId = "db4f9527944b589db8436669f1d255192388cee2", output-type = "static"}
-  yjson = {git = "https://github.com/lIlIIlIll/yjson.git", commitId = "bf65cbecd99ac25e7485f8db60990e94a04e57bc", output-type = "static"}
+  yjson = {git = "https://github.com/lIlIIlIll/yjson.git", commitId = "54b4965dee0f0b96710cbc678ec5ec9a126b055c", output-type = "static"}
+  yjson_macros = {git = "https://github.com/lIlIIlIll/yjson_macros.git", commitId = "fec0adce41f73d037d876cbac7a28aee8108bb5c"}
