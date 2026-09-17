@@ -60,6 +60,8 @@ SCHEMA_NAMES = (
     "cfg-matrix",
     "search-index",
     "api-surface",
+    "api-surface-v1",
+    "api-diff",
     "documentation-coverage",
 )
 SCHEMA_CONTRACTS = {
@@ -117,7 +119,15 @@ SCHEMA_CONTRACTS = {
     ),
     "api-surface": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface.schema.json",
+        "cjdoc.api-surface/2", ("schemaVersion", "project", "audience", "cfgProfile", "collectionState", "declarations", "exposures"),
+    ),
+    "api-surface-v1": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface.schema.json",
         "cjdoc.api-surface/1", ("schemaVersion", "project", "audience", "declarations", "exposures"),
+    ),
+    "api-diff": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-diff.schema.json",
+        "cjdoc.api-diff/1", ("schemaVersion", "baseline", "current", "comparisonState", "summary", "entries"),
     ),
     "documentation-coverage": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/documentation-coverage.schema.json",

@@ -33,6 +33,8 @@ SCHEMA_NAMES = (
     "cfg-matrix",
     "search-index",
     "api-surface",
+    "api-surface-v1",
+    "api-diff",
     "documentation-coverage",
 )
 

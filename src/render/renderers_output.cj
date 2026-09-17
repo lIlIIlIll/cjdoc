@@ -61,56 +61,8 @@ internal func appendJsonStringArray(out: RenderTextBuffer, values: ReadOnlyList<
 
 internal func appendApiSurfaceArtifacts(artifacts: RenderArtifactCollector,
     documentation: DocumentationSet): Unit {
-    validateTypedDocumentationSet(documentation)
-    let projection = RenderProjection(documentation)
-    let out = RenderTextBuffer()
-    out.append("{\n  \"schemaVersion\": \"cjdoc.api-surface/1\",\n  \"project\": ")
-    appendSearchJsonString(out, documentation.project.name)
-    out.append(",\n  \"audience\": ")
-    appendSearchJsonString(out, documentation.configuration.audience)
-    out.append(",\n  \"declarations\": [")
-    var first = true
-    for (symbol in projection.visibleSymbols) {
-        if (!first) { out.append(",") }
-        first = false
-        out.append("\n    {\"id\": "); appendSearchJsonString(out, symbol.id)
-        out.append(", \"moduleId\": "); appendSearchJsonString(out, symbol.moduleId)
-        out.append(", \"packageName\": "); appendSearchJsonString(out, symbol.packageName)
-        out.append(", \"ownerId\": ")
-        match (symbol.ownerId) {
-            case Some(ownerId) => appendSearchJsonString(out, ownerId)
-            case None => out.append("null")
-        }
-        out.append(", \"kind\": "); appendSearchJsonString(out, symbol.kind)
-        out.append(", \"name\": "); appendSearchJsonString(out, symbol.name)
-        out.append(", \"visibility\": "); appendSearchJsonString(out, symbol.visibility)
-        out.append(", \"sourceApiSignature\": {\"state\": ")
-        appendSearchJsonString(out, symbol.sourceApiSignature.state)
-        out.append(", \"tokens\": ")
-        appendJsonStringArray(out, symbol.sourceApiSignature.tokens)
-        out.append("}}")
-    }
-    if (!first) { out.append("\n  ") }
-    out.append("],\n  \"exposures\": [")
-    first = true
-    for (pkg in documentation.packages) {
-        for (reExport in pkg.reExports) {
-            for (binding in reExport.bindings) {
-                if (!first) { out.append(",") }
-                first = false
-                out.append("\n    {\"reExportId\": "); appendSearchJsonString(out, reExport.id)
-                out.append(", \"moduleId\": "); appendSearchJsonString(out, pkg.moduleId)
-                out.append(", \"packageName\": "); appendSearchJsonString(out, pkg.name)
-                out.append(", \"exposedName\": "); appendSearchJsonString(out, binding.exposedName)
-                out.append(", \"targetSymbolIds\": ")
-                appendJsonStringArray(out, binding.targetSymbolIds)
-                out.append("}")
-            }
-        }
-    }
-    if (!first) { out.append("\n  ") }
-    out.append("]\n}\n")
-    artifacts.addText("api-surface/api-surface.json", "application/json", out.toString())
+    artifacts.addText("api-surface/api-surface.json", "application/json",
+        renderApiContractSnapshot(documentation))
 }
 
 internal func coveragePercent(documented: Int64, total: Int64): Int64 {

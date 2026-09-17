@@ -146,6 +146,14 @@ cjdoc generate --project . --format json --stdout > docs.json
 cjdoc generate --project . --format api-surface --stdout > api-surface.json
 ```
 
+用 `diff` 比较两个 API snapshot。它先按稳定 symbol id 匹配，再用模块、包、owner、kind、name 做唯一回退匹配；证据不足时报告 `potentially-breaking`，不会假装已经证明 breaking：
+
+```bash
+cjdoc diff --baseline api-surface.json --current api-surface-next.json --format text --deny-breaking-api --deny-potentially-breaking-api
+```
+
+默认只报告差异并返回 `0`。显式 deny 选项分别把 breaking 或证据不足的 potentially-breaking 变更变成失败；`--format json` 输出 `cjdoc.api-diff/1` 报告，适合 CI 采集。v1 API snapshot 仍可作为只读 baseline 输入；当前生成器只生成 v2。
+
 用 `coverage` 查看声明和参数的文档覆盖率：
 
 ```bash
