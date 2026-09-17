@@ -21,7 +21,7 @@ YJSON_UPSTREAM_NOTICE_SHA256 = "50bfbef6ef8be8369d247aac34cfb806a13f52ecd4a61cbd
 YJSON_SOURCE_SHA256 = {
     "src/lib_json_patch.cj": "82115f63f01807f3e7057518579cea4e058baf51c0e767e93e867a3a9c34a5de",
     "src/lib_json_pointer.cj": "ac5ffe300745a4123fbf0f6ecfb73aa2fc3743c89945dda4bc56c11d1fadf012",
-    "src/lib_json_schema.cj": "090446931f6b1838a56c21a56472833d0e926445558d7a2b4fc217c9918ddd94",
+    "src/lib_json_schema.cj": "bbaac0a63e4a28c57568a0d33bf7a9da7cdddb0457062ead6cc7649849326d21",
     "src/linear_regex.cj": "21a233eb8915bf9b78f4881093e30e007626e23c8be59bcac7282cf6ad62e3c5",
     "src/work_limits.cj": "6af3af0f970f47e87ab045ceaf9d9c4675ef7cdc23f27df2870a275b3f057e21",
 }

@@ -25,7 +25,7 @@ sha256 = "ac5ffe300745a4123fbf0f6ecfb73aa2fc3743c89945dda4bc56c11d1fadf012"
 
 [[files]]
 path = "src/lib_json_schema.cj"
-sha256 = "090446931f6b1838a56c21a56472833d0e926445558d7a2b4fc217c9918ddd94"
+sha256 = "bbaac0a63e4a28c57568a0d33bf7a9da7cdddb0457062ead6cc7649849326d21"
 
 [[files]]
 path = "src/linear_regex.cj"
