@@ -86,7 +86,29 @@ public func parse(text: String): Int64 {
 
 示例内容会持续到下一个顶层结构化标签（例如 `@param` 或 `@return`）；代码围栏内部出现的 `@param` 等文本会保持为示例代码，不会被误解析成文档标签。
 
-文档页的“声明详情”会把源码能够识别的继承、扩展和 `override` 关系投影为导航链接。目标在当前文档集中且匹配唯一时，JSON/HTML 使用稳定 `SymbolId`；目标缺失或不唯一时保留原始显示并标记 `unavailable` 或 `ambiguous`，不会生成猜测链接。AST fallback 也会生成同一模块内可证明的反向 `subType`、`extendedBy` 和 `overriddenBy` 关系。
+文档页的“声明详情”会把源码能够识别的继承、扩展和 `override` 关系投影为导航链接。目标在当前文档集且匹配唯一时，JSON/HTML 使用稳定 `SymbolId`；目标缺失或不唯一时保留原始显示并标记 `unavailable` 或 `ambiguous`，不会生成猜测链接。AST fallback 也会生成同一模块内可证明的反向 `subType`、`extendedBy` 和 `overriddenBy` 关系。
+
+行内 API 链接使用解析器拥有的语义节点，不要手写 HTML：
+
+````cangjie
+/**
+ * 参见 {@link basic.parse(String)}；外部类型使用 {@link vendor.Type}。
+ */
+public func use(value: String): Unit {}
+````
+
+链接会按当前 audience 解析本地包、类型、成员和重载。唯一目标为 `resolved`，重载无签名或多个匹配为 `ambiguous`，缺失目标为 `unresolved`；隐藏目标不会泄漏到 external 文档。Markdown 与 HTML 从同一个 Doc IR 语义节点渲染。
+
+外部文档只从显式、版本化的本地 symbol index 读取，不联网。配置必须同时给出安全的 HTTPS/HTTP base URL 和索引文件；索引可以使用 `entries`（cjdoc 产物）或 `symbols` 字段：
+
+````toml
+[external-docs.vendor]
+index = "vendor-symbol-index.json"
+base-url = "https://docs.example.test/api"
+version = "2026.1"
+````
+
+索引 schemaVersion 必须是 `cjdoc.symbol-index/1`，版本不匹配、文件缺失、路径不安全和重复冲突都会保留为 `unavailable`/`ambiguous` 诊断；本地 authoritative symbol 优先于外部索引。
 
 文档注释应紧邻它描述的声明。默认生成 external 文档，所以示例声明应为 `public` 或 `protected`。
 
@@ -185,7 +207,7 @@ cjdoc generate --project . --format coverage --stdout
 cjdoc generate --project . --format symbol-index --stdout > symbol-index.json
 ```
 
-输出版本为 `cjdoc.symbol-index/1`。每个可见声明包含稳定 `id`、源码范围、HTML 路由、语义关系和 `@see` 引用；无法唯一解析的目标保留状态而不伪造 `targetId`。索引也可与 HTML 一起生成，文件位于 `target/doc/symbol-index/symbol-index.json`。
+输出版本为 `cjdoc.symbol-index/1`。每个可见声明包含稳定 `id`、源码范围、HTML 路由、语义关系和 `@see` 引用；无法唯一解析的目标保留状态而不伪造 `targetId`。索引也可与 HTML 一起生成，文件位于 `target/doc/html/symbol-index.json`；单独生成仍位于 `target/doc/symbol-index/symbol-index.json`，后者适合作为外部文档 resolver 的本地输入。
 
 ## 查看已有 JSON
 

@@ -1,0 +1,194 @@
+package cjdoc
+
+import cjdoc.model as public_model
+import std.collection.*
+
+private func semanticLinkVisible(symbol: public_model.SymbolDoc, audience: String,
+    index: HashMap<String, public_model.SymbolDoc>): Bool {
+    var current: ?public_model.SymbolDoc = Some(symbol)
+    while (current.isSome()) {
+        let value = current.getOrThrow()
+        let visible = match (audience) {
+            case "external" => value.visibility == "public" || value.visibility == "protected"
+            case "package" => value.visibility != "private"
+            case _ => true
+        }
+        if (!visible) { return false }
+        current = match (value.ownerId) {
+            case Some(ownerId) => index.get(ownerId)
+            case None => None
+        }
+    }
+    true
+}
+
+private func semanticLinkBase(target: String): String {
+    match (target.indexOf("(")) {
+        case Some(index) => target[..index]
+        case None => target
+    }
+}
+
+private func semanticLinkSignature(target: String): String {
+    match (target.indexOf("(")) {
+        case Some(index) =>
+            let end = if (target.endsWith(")")) { target.size - 1 } else { target.size }
+            if (end <= index + 1) { "" } else { target[index + 1..end] }
+        case None => ""
+    }
+}
+
+private func semanticLinkCandidate(target: String, owner: public_model.SymbolDoc,
+    candidate: public_model.SymbolDoc): Bool {
+    if (candidate.moduleId != owner.moduleId) { return false }
+    if (target == candidate.id) { return true }
+    let base = semanticLinkBase(target)
+    let signature = semanticLinkSignature(target)
+    let baseMatches = base == candidate.qualifiedName || base == candidate.name ||
+        base == "${candidate.packageName}.${candidate.name}" ||
+        base == "${candidate.packageName}.${candidate.qualifiedName}" ||
+        base.endsWith(".${candidate.qualifiedName}") || base.endsWith(".${candidate.name}")
+    if (!baseMatches) { return false }
+    if (signature.isEmpty()) { return true }
+    candidate.headerSpelling.contains(": " + signature)
+}
+
+private func semanticLinkScore(target: String, owner: public_model.SymbolDoc,
+    candidate: public_model.SymbolDoc): Int64 {
+    var score: Int64 = if (candidate.packageName == owner.packageName) { 4 } else { 0 }
+    let base = semanticLinkBase(target)
+    let signature = semanticLinkSignature(target)
+    if (target == candidate.id) { score += 16 }
+    if (base == candidate.qualifiedName) { score += 12 }
+    if (base == "${candidate.packageName}.${candidate.qualifiedName}") { score += 10 }
+    if (base == candidate.name) { score += 4 }
+    if (!signature.isEmpty()) { score += 18 }
+    score
+}
+
+private func semanticLinkStableHash(value: String): String {
+    var first: Int64 = 0
+    var second: Int64 = 0
+    for (byte in value.toArray()) {
+        first = (first * 131 + Int64(byte)) % 2147483647
+        second = (second * 257 + Int64(byte)) % 2147483629
+    }
+    "${first}-${second}"
+}
+
+private func semanticLinkLocalUrl(symbolId: String): String {
+    let digits = "0123456789abcdef"
+    let out = StringBuilder()
+    for (byte in symbolId.toArray()) {
+        let high = Int64((byte >> 4) & 15)
+        let low = Int64(byte & 15)
+        out.append(digits[high..high + 1])
+        out.append(digits[low..low + 1])
+    }
+    let slug = out.toString()
+    let bounded = if (slug.size <= 96) { slug } else {
+        slug[..64] + "--" + semanticLinkStableHash(symbolId)
+    }
+    "symbols/symbol-${bounded}.html"
+}
+
+private func semanticLinkDiagnostic(symbol: public_model.SymbolDoc, code: String,
+    message: String): public_model.Diagnostic {
+    public_model.Diagnostic("warning", code, message, source: Some(symbol.source), symbolId: Some(symbol.id))
+}
+
+private func resolveExternalLink(target: String, resolvers: Array<ExternalDocResolver>): (String, String) {
+    var resolvedUrl = ""
+    var ambiguous = false
+    var unavailable = false
+    for (resolver in resolvers) {
+        if (resolver.state != "available") {
+            unavailable = true
+            continue
+        }
+        let (url, isAmbiguous) = resolver.matchTarget(target)
+        if (isAmbiguous) {
+            ambiguous = true
+        } else if (!url.isEmpty()) {
+            if (!resolvedUrl.isEmpty() && resolvedUrl != url) { ambiguous = true }
+            resolvedUrl = url
+        }
+    }
+    if (ambiguous) { return ("ambiguous", "") }
+    if (!resolvedUrl.isEmpty()) { return ("resolved", resolvedUrl) }
+    if (unavailable) { return ("unavailable", "") }
+    ("unresolved", "")
+}
+
+private func resolveSemanticLinkNode(node: public_model.MarkdownNode, owner: public_model.SymbolDoc,
+    declarations: Array<public_model.SymbolDoc>, index: HashMap<String, public_model.SymbolDoc>,
+    audience: String, resolvers: Array<ExternalDocResolver>,
+    diagnostics: ArrayList<public_model.Diagnostic>): Unit {
+    if (node.kind == "semantic_link") {
+        match (node.metadata) {
+            case Some(metadata) =>
+                let target = metadata.semanticTarget.getOrThrow()
+                var bestScore: Int64 = -1
+                let matches = ArrayList<public_model.SymbolDoc>()
+                for (candidate in declarations) {
+                    if (!semanticLinkVisible(candidate, audience, index) ||
+                        !semanticLinkCandidate(target, owner, candidate)) { continue }
+                    let score = semanticLinkScore(target, owner, candidate)
+                    if (score > bestScore) {
+                        bestScore = score
+                        matches.clear()
+                        matches.add(candidate)
+                    } else if (score == bestScore) {
+                        matches.add(candidate)
+                    }
+                }
+                if (matches.size == 1) {
+                    let resolved = matches[0]
+                    metadata.semanticState = "resolved"
+                    metadata.semanticTargetSymbolId = Some(resolved.id)
+                    metadata.semanticExternalUrl = Some(semanticLinkLocalUrl(resolved.id))
+                } else if (matches.size > 1) {
+                    metadata.semanticState = "ambiguous"
+                    metadata.semanticTargetSymbolId = None
+                    metadata.semanticExternalUrl = None
+                    diagnostics.add(semanticLinkDiagnostic(owner, "CJDOC1010",
+                        "semantic link target '${target}' is ambiguous"))
+                } else {
+                    let (state, url) = resolveExternalLink(target, resolvers)
+                    metadata.semanticState = state
+                    metadata.semanticTargetSymbolId = None
+                    metadata.semanticExternalUrl = if (state == "resolved") { Some(url) } else { None }
+                    let code = if (state == "ambiguous") { "CJDOC1010" }
+                        else if (state == "unavailable") { "CJDOC1012" } else { "CJDOC1009" }
+                    let message = if (state == "ambiguous") {
+                        "semantic link target '${target}' is ambiguous"
+                    } else if (state == "unavailable") {
+                        "semantic link target '${target}' is unavailable because an external index is stale or missing"
+                    } else {
+                        "semantic link target '${target}' could not be resolved"
+                    }
+                    diagnostics.add(semanticLinkDiagnostic(owner, code, message))
+                }
+            case None => ()
+        }
+    }
+    for (child in node.children) {
+        resolveSemanticLinkNode(child, owner, declarations, index, audience, resolvers, diagnostics)
+    }
+}
+
+internal func resolvePublicSemanticLinks(declarations: Array<public_model.SymbolDoc>, audience: String,
+    projectRoot: String): Array<public_model.Diagnostic> {
+    let index = HashMap<String, public_model.SymbolDoc>()
+    for (symbol in declarations) { index[symbol.id] = symbol }
+    let resolvers = loadExternalDocResolvers(projectRoot)
+    let diagnostics = ArrayList<public_model.Diagnostic>()
+    for (symbol in declarations) {
+        match (symbol.documentation) {
+            case Some(comment) => resolveSemanticLinkNode(comment.markdown, symbol, declarations, index,
+                audience, resolvers, diagnostics)
+            case None => ()
+        }
+    }
+    diagnostics.toArray()
+}
