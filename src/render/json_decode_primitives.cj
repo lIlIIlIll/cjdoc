@@ -345,6 +345,11 @@ internal func decodeMarkdownMetadata(node: JsonNode, kind: String,
         case "table_cell" =>
             let value = strictObject(node, path, ["alignment"])
             MarkdownNodeMetadata.forTableCell(stringAt(value, "alignment", path))
+        case "semantic_link" =>
+            let value = strictObject(node, path, ["target", "state", "targetSymbolId", "externalUrl"])
+            MarkdownNodeMetadata.forSemanticLink(stringAt(value, "target", path), stringAt(value, "state", path),
+                targetSymbolId: nullableStringAt(value, "targetSymbolId", path),
+                externalUrl: nullableStringAt(value, "externalUrl", path))
         case _ => fail(path, "metadata is not allowed for Markdown kind '${kind}'")
     }
 }

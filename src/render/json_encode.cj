@@ -140,6 +140,11 @@ private func appendMarkdownMetadata(out: StringBuilder, value: MarkdownNodeMetad
         case "table_row" => out.append("{\"header\":${value.tableHeader.getOrThrow()}}")
         case "table_cell" =>
             out.append("{\"alignment\":${escapeJsonString(value.tableAlignment.getOrThrow())}}")
+        case "semantic_link" =>
+            out.append("{\"target\":${escapeJsonString(value.semanticTarget.getOrThrow())},")
+            out.append("\"state\":${escapeJsonString(value.semanticState.getOrThrow())},")
+            out.append("\"targetSymbolId\":${nullableString(value.semanticTargetSymbolId)},")
+            out.append("\"externalUrl\":${nullableString(value.semanticExternalUrl)}}")
         case _ => throw IllegalArgumentException("invalid Markdown metadata kind '${value.kind}'")
     }
 }

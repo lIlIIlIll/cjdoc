@@ -250,12 +250,60 @@ internal func publicMarkdownNode(node: NodeRef, source: SourceBuffer, assetColle
             }
     }
     context.consumeText(literal)
+    match (node.kind) {
+        case NodeKind.Text => match (explicitSemanticLinkNodes(literal)) {
+            case Some(linkChildren) =>
+                return public_model.MarkdownNode("custom_inline", children: linkChildren)
+            case None => ()
+        }
+        case _ => ()
+    }
     match (publicMarkdownMetadata(node, context)) {
         case Some(metadata) => public_model.MarkdownNode(publicMarkdownKind(node.kind), metadata, literal: literal,
             children: children.toArray())
         case None => public_model.MarkdownNode(publicMarkdownKind(node.kind), literal: literal,
             children: children.toArray())
     }
+}
+
+private func explicitSemanticLinkNode(target: String): public_model.MarkdownNode {
+    public_model.MarkdownNode("semantic_link",
+        public_model.MarkdownNodeMetadata.forSemanticLink(target, "unresolved"),
+        literal: target, children: [public_model.MarkdownNode("text", literal: target)])
+}
+
+private func explicitSemanticLinkNodes(value: String): ?Array<public_model.MarkdownNode> {
+    let marker = "{@link "
+    let nodes = ArrayList<public_model.MarkdownNode>()
+    var cursor: Int64 = 0
+    var found = false
+    while (cursor < value.size) {
+        match (value[cursor..].indexOf(marker)) {
+            case None => break
+            case Some(relativeOpen) =>
+                let open = cursor + relativeOpen
+                let targetStart = open + marker.size
+                match (value[targetStart..].indexOf("}")) {
+                    case None => break
+                    case Some(relativeClose) =>
+                        let close = targetStart + relativeClose
+                        let target = value[targetStart..close].trimAscii()
+                        if (target.isEmpty() || target.contains("{") || target.contains("}")) {
+                            cursor = targetStart
+                            continue
+                        }
+                        if (open > cursor) {
+                            nodes.add(public_model.MarkdownNode("text", literal: value[cursor..open]))
+                        }
+                        nodes.add(explicitSemanticLinkNode(target))
+                        cursor = close + 1
+                        found = true
+                }
+        }
+    }
+    if (!found) { return None }
+    if (cursor < value.size) { nodes.add(public_model.MarkdownNode("text", literal: value[cursor..])) }
+    Some(nodes.toArray())
 }
 
 internal func publicMarkdown(body: String, assetCollector: LocalAssetCollector, sourcePath: String,

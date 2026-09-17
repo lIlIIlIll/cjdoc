@@ -61,7 +61,7 @@ private func appendSymbolIndexReferences(out: RenderTextBuffer, symbol: SymbolDo
     out.append("]")
 }
 
-internal func renderSymbolIndex(documentation: DocumentationSet): String {
+internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: String = "html/"): String {
     validateTypedDocumentationSet(documentation)
     let projection = RenderProjection(documentation)
     let symbols = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
@@ -104,7 +104,7 @@ internal func renderSymbolIndex(documentation: DocumentationSet): String {
         out.append(",\"source\":")
         appendSymbolIndexSource(out, symbol.source)
         out.append(",\"href\":")
-        appendSearchJsonString(out, "html/${symbolUrl(projection.visibleIndex, symbol)}")
+        appendSearchJsonString(out, hrefPrefix + symbolUrl(projection.visibleIndex, symbol))
         appendSymbolIndexRelations(out, symbol)
         appendSymbolIndexReferences(out, symbol)
         out.append("}")

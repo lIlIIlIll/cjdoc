@@ -35,6 +35,21 @@ internal func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode
                 case Some(destination) => out.append("(${destination})")
                 case None => ()
             }
+        case "semantic_link" =>
+            out.append("["); for (child in node.children) {
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+                    tableCell: tableCell)
+            }; out.append("]")
+            match (node.metadata) {
+                case Some(metadata) => match (metadata.semanticExternalUrl) {
+                    case Some(destination) => match (markdownLinkDestination(destination, allowRelative: true)) {
+                        case Some(encoded) => out.append("(${encoded})")
+                        case None => ()
+                    }
+                    case None => ()
+                }
+                case None => ()
+            }
         case "image" =>
             let alt = markdownNodeText(node)
             match (assetReference(assetLookup, node.literal)) {
