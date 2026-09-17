@@ -122,7 +122,7 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 }
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndiagnostics\ncfg-matrix\nsearch-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndiagnostics\ncfg-matrix\nsearch-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage\ndoctest-results\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA
@@ -135,6 +135,7 @@ internal func schemaTextForCli(name: String): String {
         case "api-surface-v1" => API_SURFACE_V1_SCHEMA
         case "api-diff" => API_DIFF_SCHEMA
         case "documentation-coverage" => DOCUMENTATION_COVERAGE_SCHEMA
+        case "doctest-results" => DOCTEST_RESULTS_SCHEMA
         case _ => throw IllegalArgumentException("unknown schema " + name)
     }
 }
@@ -189,17 +190,49 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
         case Some(request) => DocumentationEngine().generate(request)
         case None => decodeValidatedDocIr(readDocIrInput(Path(options.input.getOrThrow())))
     }
+    let doctestConfig = if (generationRequest.isSome()) {
+        loadDoctestConfig(options.project)
+    } else {
+        DoctestConfig()
+    }
+    var doctestReport: ?DoctestReport = None
+    if (generationRequest.isSome() && doctestConfig.mode != "off") {
+        if (options.stdout) {
+            throw IllegalArgumentException("--stdout cannot be combined with enabled doctests")
+        }
+        let report = runDoctests(documentation, doctestConfig,
+            Path(options.project).join("target").join("cjdoc"))
+        doctestReport = Some(report)
+        eprintln(doctestReportSummary(report))
+        if (doctestReportHasFailure(report)) {
+            let severity = if (doctestConfig.mode == "deny") { "error" } else { "warning" }
+            eprintln(severity + "[CJDOC3010]: doctest execution reported failures")
+        }
+    }
     var artifacts: Array<public_render.RenderArtifact> = []
     if (options.command != "check") {
         let (renderedDocumentation, renderedArtifacts) = renderArtifactsWithCommandFallback(documentation,
             orderedFormats(options), generationRequest, locale: options.locale,
             markdownLayout: options.markdownLayout)
         documentation = renderedDocumentation
-        artifacts = renderedArtifacts
+        let artifactList = ArrayList<public_render.RenderArtifact>()
+        artifactList.add(all: renderedArtifacts)
+        match (doctestReport) {
+            case Some(report) =>
+                artifactList.add(public_render.RenderArtifact(
+                    "doctest/results.json", "application/json", encodeDoctestReport(report)))
+            case None => ()
+        }
+        artifacts = artifactList.toArray()
     }
     printPublicDiagnostics(documentation)
     let diagnosticsExit = publicExitCode(documentation, options.denyWarnings)
     let contractExit = contractGateExitCode(documentation, options)
+    let doctestExit = match (doctestReport) {
+        case Some(report) =>
+            if (doctestConfig.mode == "deny" && doctestReportHasFailure(report)) { 1 } else { 0 }
+        case None => 0
+    }
     if (options.command != "check") {
         if (options.stdout) {
             getStdOut().write(artifacts[0].content.toArray())
@@ -209,7 +242,7 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
                 forceOwned: options.forceOwned)
         }
     }
-    if (diagnosticsExit != 0 || contractExit != 0) { 1 } else { 0 }
+    if (diagnosticsExit != 0 || contractExit != 0 || doctestExit != 0) { 1 } else { 0 }
 }
 
 private func runApiDiff(options: NewCliOptions): Int64 {

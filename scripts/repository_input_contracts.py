@@ -63,6 +63,7 @@ SCHEMA_NAMES = (
     "api-surface-v1",
     "api-diff",
     "documentation-coverage",
+    "doctest-results",
 )
 SCHEMA_CONTRACTS = {
     "doc-ir": (
@@ -132,6 +133,10 @@ SCHEMA_CONTRACTS = {
     "documentation-coverage": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/documentation-coverage.schema.json",
         "cjdoc.documentation-coverage/1", ("schemaVersion", "audience", "symbols", "parameters"),
+    ),
+    "doctest-results": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doctest-results.schema.json",
+        "cjdoc.doctest/1", ("schemaVersion", "mode", "timeoutMs", "memoryMb", "jobs", "summary", "results"),
     ),
 }
 DOC_IR_CORE_DEFS = {
