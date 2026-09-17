@@ -105,8 +105,16 @@ generated <你的项目目录>/target/doc
 | 生成 HTML | `cjdoc generate --project . --format html` | `target/doc/html/index.html` |
 | 生成 Markdown | `cjdoc generate --project . --format markdown` | `target/doc/markdown/index.md` |
 | 生成 JSON | `cjdoc generate --project . --format json` | `target/doc/docs.json` |
+| 生成 API snapshot | `cjdoc generate --project . --format api-surface --stdout > api-surface.json` | `api-surface.json` |
 | 检查文档问题 | `cjdoc check --project .` | 终端诊断，成功退出码为 `0` |
 
+比较 API snapshot 使用 `diff`：
+
+```bash
+cjdoc diff --baseline api-surface.json --current api-surface-next.json --format text --deny-breaking-api
+```
+
+`diff` 默认保留报告并返回 `0`；deny 选项让对应 breaking 分类返回 `1`，参数或 snapshot 错误返回 `2`。当前生成器输出 `cjdoc.api-surface/2`；v1 snapshot 仍可作为只读迁移输入，JSON diff 报告的版本是 `cjdoc.api-diff/1`。
 
 如果项目在 GitHub 上并希望声明页显示 `View source`，生成时显式提供仓库根和 revision：
 

@@ -175,6 +175,14 @@ cjdoc check --project . \
 
 `check` 默认使用 `external` audience。生成 snapshot 时也使用默认 audience，避免把内部声明混入对外 API 基线。snapshot 不一致，或覆盖率低于显式门槛时，命令返回非零退出码。
 
+`diff` 可以单独比较两个 snapshot，不需要扫描项目：
+
+```bash
+cjdoc diff --baseline api-surface.json --current api-surface-next.json --format json --deny-breaking-api
+```
+
+`diff` 默认返回 `0` 并保留报告；`--deny-breaking-api` 或 `--deny-potentially-breaking-api` 让对应分类返回 `1`，输入错误返回 `2`。v1 API snapshot 只作为严格迁移输入，当前输出为 v2；`--format json` 输出稳定的 `cjdoc.api-diff/1` 文档。
+
 只想读取覆盖率 JSON 时：
 
 ```bash
@@ -242,6 +250,7 @@ cjpm build
 ## 能力边界
 
 - 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/9`；输入严格兼容 v6、v7、v8。
+- API surface 当前输出 `cjdoc.api-surface/2`；`diff` 严格接受 v1/v2 snapshot，v1 仅用于迁移和基线比较。
 - CHIR 尚未接入，部分类型和语义关系会标为 `partial` 或 `unavailable`。
 - 宏调用和没有显式 `--cfg` 输入的条件编译不会被强行展开。
 - 单次扫描、单个源码文件和辅助输入都有大小及数量限制，超限时会保留 partial 结果并输出诊断。
@@ -269,7 +278,10 @@ cjpm build
 | `--no-cache` | `generate`, `check` | 关闭 | 禁用 source cache |
 | `--locale <name>` | `generate`, `render` | `zh-CN` | HTML/Markdown 结构语言 |
 | `--markdown-layout <name>` | `generate`, `render` | `site` | `site` 或英文 `single` |
-| `--api-surface-baseline <file>` | `generate`, `check` | 无 | 对账 API snapshot |
+| `--api-surface-baseline <file>` | `generate`, `check` | 无 | 对账 API snapshot；当前生成 v2，严格接受 v1/v2 输入 |
+| `--baseline <file>` / `--current <file>` | `diff` | 无 | 指定两个 API snapshot |
+| `--deny-breaking-api` / `--deny-potentially-breaking-api` | `diff` | 关闭 | 把对应 API diff 分类变成退出码 `1` |
+| `--format text` / `--format json` | `diff` | `text` | 选择人读文本或 `cjdoc.api-diff/1` JSON |
 | `--min-symbol-coverage <0..100>` | `generate`, `check` | 无 | 声明覆盖率门槛 |
 | `--min-parameter-coverage <0..100>` | `generate`, `check` | 无 | 参数覆盖率门槛 |
 | `--repository-url <url>` | `generate` | 无 | canonical GitHub HTTPS 仓库根，需与 revision 成对使用 |
