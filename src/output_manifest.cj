@@ -114,15 +114,15 @@ internal func ownedManifest(files: Array<OwnedOutputFile>): OwnedOutputManifest 
     OwnedOutputManifest(files, directories: ownedDirectoriesForFiles(files))
 }
 
-internal func parseOwnedDirectoryEntries(entries: JsonArrayValue): Array<String> {
+internal func parseOwnedDirectoryEntries(entries: JsonArray): Array<String> {
     let directories = ArrayList<String>()
     let seen = HashSet<String>()
-    for (node in entries.values()) {
+    for (node in jsonArrayValues(entries)) {
         if (directories.size >= OUTPUT_ENTRY_LIMIT) {
             throw IllegalArgumentException(
                 "output manifest directories exceed ${OUTPUT_ENTRY_LIMIT} entries")
         }
-        let path = try { node.string } catch (_: Exception) {
+        let path = try { node.asString() } catch (_: Exception) {
             throw IllegalArgumentException("invalid output manifest directory entry")
         }
         if (!isSafeOutputPath(path) || !seen.add(path)) {
@@ -144,10 +144,7 @@ internal func sameStringArray(first: Array<String>, second: Array<String>): Bool
 }
 
 internal func parseOwnedManifest(text: String): OwnedOutputManifest {
-    let parsed = YJson.parse(text, config: JsonReadConfig(
-        duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject,
-        limits: JsonReadLimits(maxDepth: 8, maxStringBytes: OUTPUT_MANIFEST_LIMIT,
-            maxBytes: OUTPUT_MANIFEST_LIMIT)))
+    let parsed = JsonNode.parse(text, config: JsonReadOptions(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject, maxDepth: 8, maxStringBytes: OUTPUT_MANIFEST_LIMIT, maxInputBytes: OUTPUT_MANIFEST_LIMIT))
     let object = try { parsed.asObject() } catch (_: Exception) {
         throw IllegalArgumentException("invalid cjdoc output manifest: expected object")
     }
@@ -155,7 +152,7 @@ internal func parseOwnedManifest(text: String): OwnedOutputManifest {
         object.get("digestAlgorithm").isNone() || object.get("files").isNone()) {
         throw IllegalArgumentException("invalid cjdoc output manifest fields")
     }
-    let schema = try { object["schemaVersion"].string } catch (_: Exception) {
+    let schema = try { object["schemaVersion"].asString() } catch (_: Exception) {
         throw IllegalArgumentException("invalid cjdoc output manifest schemaVersion")
     }
     if (schema != OUTPUT_MANIFEST_SCHEMA && schema != OUTPUT_LEGACY_MANIFEST_SCHEMA) {
@@ -166,7 +163,7 @@ internal func parseOwnedManifest(text: String): OwnedOutputManifest {
         (schema == OUTPUT_LEGACY_MANIFEST_SCHEMA && object.size() != 3)) {
         throw IllegalArgumentException("invalid cjdoc output manifest fields")
     }
-    let algorithm = try { object["digestAlgorithm"].string } catch (_: Exception) {
+    let algorithm = try { object["digestAlgorithm"].asString() } catch (_: Exception) {
         throw IllegalArgumentException("invalid cjdoc output manifest digestAlgorithm")
     }
     if (algorithm != OUTPUT_DIGEST_ALGORITHM) {
@@ -198,10 +195,10 @@ internal func readOwnedManifest(root: Path): OwnedOutputSnapshot {
     OwnedOutputSnapshot(parseOwnedManifest(text), text)
 }
 
-internal func parseOwnedFileEntries(entries: JsonArrayValue, description: String): Array<OwnedOutputFile> {
+internal func parseOwnedFileEntries(entries: JsonArray, description: String): Array<OwnedOutputFile> {
     let files = ArrayList<OwnedOutputFile>()
     let seen = HashSet<String>()
-    for (node in entries.values()) {
+    for (node in jsonArrayValues(entries)) {
         if (files.size >= OUTPUT_ENTRY_LIMIT) {
             throw IllegalArgumentException("${description} exceeds ${OUTPUT_ENTRY_LIMIT} entries")
         }
@@ -211,10 +208,10 @@ internal func parseOwnedFileEntries(entries: JsonArrayValue, description: String
         if (entry.size() != 2 || entry.get("path").isNone() || entry.get("sha256").isNone()) {
             throw IllegalArgumentException("invalid ${description} file entry fields")
         }
-        let path = try { entry["path"].string } catch (_: Exception) {
+        let path = try { entry["path"].asString() } catch (_: Exception) {
             throw IllegalArgumentException("invalid ${description} file path")
         }
-        let digest = try { entry["sha256"].string } catch (_: Exception) {
+        let digest = try { entry["sha256"].asString() } catch (_: Exception) {
             throw IllegalArgumentException("invalid ${description} file digest")
         }
         if (!isSafeOutputPath(path) || seen.contains(path) || !isSha256(digest)) {
@@ -342,10 +339,10 @@ internal func outputTransactionPlanContent(plan: OutputTransactionPlan): String 
     out.toString()
 }
 
-internal func parsePreviousFileEntries(entries: JsonArrayValue): Array<PreviousOutputFile> {
+internal func parsePreviousFileEntries(entries: JsonArray): Array<PreviousOutputFile> {
     let files = ArrayList<PreviousOutputFile>()
     let seen = HashSet<String>()
-    for (node in entries.values()) {
+    for (node in jsonArrayValues(entries)) {
         if (files.size >= OUTPUT_ENTRY_LIMIT) {
             throw IllegalArgumentException(
                 "output transaction previous files exceed ${OUTPUT_ENTRY_LIMIT} entries")
@@ -357,9 +354,9 @@ internal func parsePreviousFileEntries(entries: JsonArrayValue): Array<PreviousO
             entry.get("ownershipSha256").isNone() || entry.get("rollbackSha256").isNone()) {
             throw IllegalArgumentException("invalid output transaction previous file entry fields")
         }
-        let path = try { entry["path"].string } catch (_: Exception) { "" }
-        let ownership = try { entry["ownershipSha256"].string } catch (_: Exception) { "" }
-        let rollback = try { entry["rollbackSha256"].string } catch (_: Exception) { "" }
+        let path = try { entry["path"].asString() } catch (_: Exception) { "" }
+        let ownership = try { entry["ownershipSha256"].asString() } catch (_: Exception) { "" }
+        let rollback = try { entry["rollbackSha256"].asString() } catch (_: Exception) { "" }
         if (!isSafeOutputPath(path) || !seen.add(path) ||
             !isSha256(ownership) || !isSha256(rollback)) {
             throw IllegalArgumentException("invalid output transaction previous entry '${path}'")
@@ -396,10 +393,7 @@ internal func validatePreviousManifest(planFiles: Array<PreviousOutputFile>,
 internal func readOutputTransactionPlan(transaction: Path): OutputTransactionPlan {
     let text = readCappedRegularText(transaction.join(OUTPUT_TRANSACTION_PLAN_NAME),
         "cjdoc output transaction plan", OUTPUT_TRANSACTION_PLAN_LIMIT)
-    let parsed = YJson.parse(text, config: JsonReadConfig(
-        duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject,
-        limits: JsonReadLimits(maxDepth: 8, maxStringBytes: OUTPUT_TRANSACTION_PLAN_LIMIT,
-            maxBytes: OUTPUT_TRANSACTION_PLAN_LIMIT)))
+    let parsed = JsonNode.parse(text, config: JsonReadOptions(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject, maxDepth: 8, maxStringBytes: OUTPUT_TRANSACTION_PLAN_LIMIT, maxInputBytes: OUTPUT_TRANSACTION_PLAN_LIMIT))
     let object = try { parsed.asObject() } catch (_: Exception) {
         throw IllegalArgumentException("invalid cjdoc output transaction plan: expected object")
     }
@@ -410,13 +404,13 @@ internal func readOutputTransactionPlan(transaction: Path): OutputTransactionPla
         object.get("previous").isNone() || object.get("next").isNone()) {
         throw IllegalArgumentException("invalid cjdoc output transaction plan fields")
     }
-    let schema = try { object["schemaVersion"].string } catch (_: Exception) { "" }
-    let rootName = try { object["rootName"].string } catch (_: Exception) { "" }
-    let parentDigest = try { object["parentSha256"].string } catch (_: Exception) { "" }
-    let transactionId = try { object["transactionId"].string } catch (_: Exception) { "" }
-    let rootState = try { object["rootState"].string } catch (_: Exception) { "" }
-    let manifestDigest = try { object["previousManifestSha256"].string } catch (_: Exception) { "" }
-    let previousManifestText = try { object["previousManifest"].string } catch (_: Exception) { "" }
+    let schema = try { object["schemaVersion"].asString() } catch (_: Exception) { "" }
+    let rootName = try { object["rootName"].asString() } catch (_: Exception) { "" }
+    let parentDigest = try { object["parentSha256"].asString() } catch (_: Exception) { "" }
+    let transactionId = try { object["transactionId"].asString() } catch (_: Exception) { "" }
+    let rootState = try { object["rootState"].asString() } catch (_: Exception) { "" }
+    let manifestDigest = try { object["previousManifestSha256"].asString() } catch (_: Exception) { "" }
+    let previousManifestText = try { object["previousManifest"].asString() } catch (_: Exception) { "" }
     if (schema != OUTPUT_TRANSACTION_PLAN_SCHEMA || !isSafeRootName(rootName) ||
         collidesWithInternalSibling(rootName) ||
         !isSha256(parentDigest) || !isSha256(transactionId) || !isSha256(manifestDigest) ||

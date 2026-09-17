@@ -6,7 +6,8 @@ COMMIT = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 MARKDOWN_COMMIT = "db4f9527944b589db8436669f1d255192388cee2"
 MARKDOWN_LICENSE_SHA256 = "0d52dcdcb50af1bfd2c06821c888bdec9683830f79c78863173e3d0b12f2ac19"
-YJSON_COMMIT = "bf65cbecd99ac25e7485f8db60990e94a04e57bc"
+YJSON_UPSTREAM_NOTICE_SHA256 = "cfc7a25e02d8783e66b2ef0122ad7697770e2226526958be9e6c093ecd315f98"
+    "src/linear_regex.cj": "21a233eb8915bf9b78f4881093e30e007626e23c8be59bcac7282cf6ad62e3c5",
 MARKDOWN_UPSTREAM = "https://github.com/lIlIIlIll/markdown.git"
 YJSON_UPSTREAM = "https://github.com/lIlIIlIll/yjson.git"
 LEGACY_SCHEMA_SHA256 = {

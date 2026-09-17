@@ -24,18 +24,18 @@ internal func decodeSymbol(node: JsonNode, path: String, legacyV6: Bool, legacy:
     let value = strictObject(node, path, keys)
     let parameters = ArrayList<ParameterDoc>()
     var index: Int64 = 0
-    for (parameter in arrayAt(value, "parameters", path).values()) {
+    for (parameter in jsonArrayValues(arrayAt(value, "parameters", path))) {
         parameters.add(decodeParameter(parameter, "${path}.parameters[${index}]")); index++
     }
     let typeRelationships = ArrayList<TypeRelationship>()
     index = 0
-    for (relationship in arrayAt(value, "typeRelationships", path).values()) {
+    for (relationship in jsonArrayValues(arrayAt(value, "typeRelationships", path))) {
         typeRelationships.add(decodeTypeRelationship(relationship,
             "${path}.typeRelationships[${index}]")); index++
     }
     let symbolRelationships = ArrayList<SymbolRelationship>()
     index = 0
-    for (relationship in arrayAt(value, "symbolRelationships", path).values()) {
+    for (relationship in jsonArrayValues(arrayAt(value, "symbolRelationships", path))) {
         symbolRelationships.add(decodeSymbolRelationship(relationship,
             "${path}.symbolRelationships[${index}]", legacyV6, legacyIds)); index++
     }
@@ -81,10 +81,10 @@ internal func decodeSymbol(node: JsonNode, path: String, legacyV6: Bool, legacy:
         })
 }
 
-internal func decodeModules(root: JsonObjectValue, legacy: Bool): Array<ModuleDoc> {
+internal func decodeModules(root: JsonObject, legacy: Bool): Array<ModuleDoc> {
     let result = ArrayList<ModuleDoc>()
     var index: Int64 = 0
-    for (node in arrayAt(root, "modules", "$" ).values()) {
+    for (node in jsonArrayValues(arrayAt(root, "modules", "$" ))) {
         let path = "$.modules[${index}]"
         let value = strictObject(node, path, if (legacy) {
             ["id", "name", "role", "sourcePrefix", "packageNames", "dependencyIds"]
@@ -103,11 +103,11 @@ internal func decodeModules(root: JsonObjectValue, legacy: Bool): Array<ModuleDo
     result.toArray()
 }
 
-internal func decodePackages(root: JsonObjectValue, legacy: Bool, legacyV6: Bool,
+internal func decodePackages(root: JsonObject, legacy: Bool, legacyV6: Bool,
     legacyIds: HashMap<String, String>): Array<PackageDoc> {
     let result = ArrayList<PackageDoc>()
     var index: Int64 = 0
-    for (node in arrayAt(root, "packages", "$" ).values()) {
+    for (node in jsonArrayValues(arrayAt(root, "packages", "$" ))) {
         let path = "$.packages[${index}]"
         let value = strictObject(node, path, if (legacy) {
             ["name", "moduleId", "sourceFiles", "symbolIds"]
@@ -124,14 +124,14 @@ internal func decodePackages(root: JsonObjectValue, legacy: Bool, legacyV6: Bool
         let reExports = ArrayList<ReExportDoc>()
         if (!legacy) {
             var reExportIndex: Int64 = 0
-            for (reExportNode in arrayAt(value, "reExports", path).values()) {
+            for (reExportNode in jsonArrayValues(arrayAt(value, "reExports", path))) {
                 let reExportPath = "${path}.reExports[${reExportIndex}]"
                 let reExport = strictObject(reExportNode, reExportPath,
                     ["id", "kind", "organization", "targetPackageName", "targetModuleId",
                         "alias", "state", "source", "bindings"])
                 let bindings = ArrayList<ReExportBinding>()
                 var bindingIndex: Int64 = 0
-                for (bindingNode in arrayAt(reExport, "bindings", reExportPath).values()) {
+                for (bindingNode in jsonArrayValues(arrayAt(reExport, "bindings", reExportPath))) {
                     let bindingPath = "${reExportPath}.bindings[${bindingIndex}]"
                     let binding = strictObject(bindingNode, bindingPath,
                         ["exposedName", "targetSymbolIds"])
@@ -159,10 +159,10 @@ internal func decodePackages(root: JsonObjectValue, legacy: Bool, legacyV6: Bool
     result.toArray()
 }
 
-internal func decodeFiles(root: JsonObjectValue): Array<FileDoc> {
+internal func decodeFiles(root: JsonObject): Array<FileDoc> {
     let result = ArrayList<FileDoc>()
     var index: Int64 = 0
-    for (node in arrayAt(root, "files", "$" ).values()) {
+    for (node in jsonArrayValues(arrayAt(root, "files", "$" ))) {
         let path = "$.files[${index}]"
         let value = strictObject(node, path, ["path", "moduleId", "packageName"])
         result.add(FileDoc(stringAt(value, "path", path), stringAt(value, "moduleId", path),
@@ -200,7 +200,7 @@ internal func preflightLegacyProviderMigration(providerCount: Int64, moduleCount
     }
 }
 
-internal func decodeProviders(root: JsonObjectValue, modules: Array<ModuleDoc>, legacy: Bool,
+internal func decodeProviders(root: JsonObject, modules: Array<ModuleDoc>, legacy: Bool,
     rawShape: RawSchemaShape, sourceBytes: Int64): Array<ProviderInfo> {
     let result = ArrayList<ProviderInfo>()
     let providerNodes = arrayAt(root, "providers", "$" )
@@ -209,7 +209,7 @@ internal func decodeProviders(root: JsonObjectValue, modules: Array<ModuleDoc>, 
             rawShape, sourceBytes)
     }
     var index: Int64 = 0
-    for (node in providerNodes.values()) {
+    for (node in jsonArrayValues(providerNodes)) {
         let path = "$.providers[${index}]"
         let keys = if (legacy) { ["name", "version", "state", "capabilities"] }
             else { ["name", "version", "moduleId", "state", "capabilities"] }
@@ -233,12 +233,12 @@ internal func decodeProviders(root: JsonObjectValue, modules: Array<ModuleDoc>, 
     result.toArray()
 }
 
-internal func decodeDeclarations(root: JsonObjectValue, legacyV6: Bool, legacy: Bool,
+internal func decodeDeclarations(root: JsonObject, legacyV6: Bool, legacy: Bool,
     modules: LegacyModuleIndex, legacyIds: HashMap<String, String>,
     assetReferences: HashMap<String, String>): Array<SymbolDoc> {
     let result = ArrayList<SymbolDoc>()
     var index: Int64 = 0
-    for (node in arrayAt(root, "declarations", "$" ).values()) {
+    for (node in jsonArrayValues(arrayAt(root, "declarations", "$" ))) {
         result.add(decodeSymbol(node, "$.declarations[${index}]", legacyV6, legacy,
             modules, legacyIds, assetReferences)); index++
     }
@@ -265,7 +265,7 @@ internal func addLegacyAssetReference(references: HashMap<String, String>, refer
     }
 }
 
-internal func decodeAssets(root: JsonObjectValue, legacy: Bool): DecodedAssets {
+internal func decodeAssets(root: JsonObject, legacy: Bool): DecodedAssets {
     let result = ArrayList<AssetDoc>()
     let references = HashMap<String, String>()
     let oldIds = HashSet<String>()
@@ -274,7 +274,7 @@ internal func decodeAssets(root: JsonObjectValue, legacy: Bool): DecodedAssets {
     var totalBytes: Int64 = 0
     var totalPixels: Int64 = 0
     var index: Int64 = 0
-    for (node in arrayAt(root, "assets", "$" ).values()) {
+    for (node in jsonArrayValues(arrayAt(root, "assets", "$" ))) {
         let path = "$.assets[${index}]"
         let value = strictObject(node, path, ["id", "mediaType", "sourcePath", "base64"])
         let oldId = stringAt(value, "id", path)
@@ -319,10 +319,10 @@ internal func decodeAssets(root: JsonObjectValue, legacy: Bool): DecodedAssets {
     DecodedAssets(result.toArray(), references)
 }
 
-internal func decodeOrphans(root: JsonObjectValue): Array<OrphanDocComment> {
+internal func decodeOrphans(root: JsonObject): Array<OrphanDocComment> {
     let result = ArrayList<OrphanDocComment>()
     var index: Int64 = 0
-    for (node in arrayAt(root, "orphanDocComments", "$" ).values()) {
+    for (node in jsonArrayValues(arrayAt(root, "orphanDocComments", "$" ))) {
         let path = "$.orphanDocComments[${index}]"
         let value = strictObject(node, path, ["rawText", "source"])
         result.add(OrphanDocComment(stringAt(value, "rawText", path),
@@ -332,10 +332,10 @@ internal func decodeOrphans(root: JsonObjectValue): Array<OrphanDocComment> {
     result.toArray()
 }
 
-internal func decodeMacros(root: JsonObjectValue): Array<MacroInvocation> {
+internal func decodeMacros(root: JsonObject): Array<MacroInvocation> {
     let result = ArrayList<MacroInvocation>()
     var index: Int64 = 0
-    for (node in arrayAt(root, "macroInvocations", "$" ).values()) {
+    for (node in jsonArrayValues(arrayAt(root, "macroInvocations", "$" ))) {
         let path = "$.macroInvocations[${index}]"
         let value = strictObject(node, path, ["name", "source"])
         result.add(MacroInvocation(stringAt(value, "name", path),
@@ -345,10 +345,10 @@ internal func decodeMacros(root: JsonObjectValue): Array<MacroInvocation> {
     result.toArray()
 }
 
-internal func decodeUnsupported(root: JsonObjectValue): Array<UnsupportedDeclaration> {
+internal func decodeUnsupported(root: JsonObject): Array<UnsupportedDeclaration> {
     let result = ArrayList<UnsupportedDeclaration>()
     var index: Int64 = 0
-    for (node in arrayAt(root, "unsupportedDeclarations", "$" ).values()) {
+    for (node in jsonArrayValues(arrayAt(root, "unsupportedDeclarations", "$" ))) {
         let path = "$.unsupportedDeclarations[${index}]"
         let value = strictObject(node, path, ["kind", "name", "reason", "source"])
         result.add(UnsupportedDeclaration(stringAt(value, "kind", path), stringAt(value, "name", path),
@@ -358,10 +358,10 @@ internal func decodeUnsupported(root: JsonObjectValue): Array<UnsupportedDeclara
     result.toArray()
 }
 
-internal func decodeUnbound(root: JsonObjectValue): Array<UnboundSemanticDeclaration> {
+internal func decodeUnbound(root: JsonObject): Array<UnboundSemanticDeclaration> {
     let result = ArrayList<UnboundSemanticDeclaration>()
     var index: Int64 = 0
-    for (node in arrayAt(root, "unboundSemanticDeclarations", "$" ).values()) {
+    for (node in jsonArrayValues(arrayAt(root, "unboundSemanticDeclarations", "$" ))) {
         let path = "$.unboundSemanticDeclarations[${index}]"
         let value = strictObject(node, path, ["provider", "display", "reason"])
         result.add(UnboundSemanticDeclaration(stringAt(value, "provider", path),
@@ -371,11 +371,11 @@ internal func decodeUnbound(root: JsonObjectValue): Array<UnboundSemanticDeclara
     result.toArray()
 }
 
-internal func decodeDiagnostics(root: JsonObjectValue, legacy: Bool,
+internal func decodeDiagnostics(root: JsonObject, legacy: Bool,
     legacyIds: HashMap<String, String>): Array<Diagnostic> {
     let result = ArrayList<Diagnostic>()
     var index: Int64 = 0
-    for (node in arrayAt(root, "diagnostics", "$" ).values()) {
+    for (node in jsonArrayValues(arrayAt(root, "diagnostics", "$" ))) {
         let path = "$.diagnostics[${index}]"
         let value = strictObject(node, path, ["severity", "code", "message", "source", "symbolId"])
         let sourceNode = required(value, "source", path)

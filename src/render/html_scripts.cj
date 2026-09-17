@@ -255,20 +255,38 @@ internal let HTML_SEARCH_SCRIPT = """
   }
   const menu = document.querySelector("[data-cjdoc-menu]");
   const sidebar = document.querySelector("#cjdoc-sidebar");
-  const closeMenu = () => {
+  const menuBackdrop = document.querySelector("[data-cjdoc-menu-backdrop]");
+  const closeMenu = (restoreFocus = false) => {
     if (!menu || !sidebar) return;
+    const wasOpen = menu.getAttribute("aria-expanded") === "true";
     menu.setAttribute("aria-expanded", "false");
     sidebar.classList.remove("is-open");
+    document.documentElement.classList.remove("nav-is-open");
+    if (menuBackdrop) menuBackdrop.hidden = true;
+    if (restoreFocus && wasOpen) menu.focus();
   };
   if (menu && sidebar) {
     menu.addEventListener("click", () => {
       const open = menu.getAttribute("aria-expanded") !== "true";
       menu.setAttribute("aria-expanded", open ? "true" : "false");
       sidebar.classList.toggle("is-open", open);
+      document.documentElement.classList.toggle("nav-is-open", open);
+      if (menuBackdrop) menuBackdrop.hidden = !open;
       if (open) { const target = sidebar.querySelector("input, summary, a"); if (target) target.focus(); }
     });
     sidebar.addEventListener("click", (event) => { if (event.target.closest("a")) closeMenu(); });
-    document.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeMenu(); menu.focus(); } });
+    if (menuBackdrop) menuBackdrop.addEventListener("click", () => closeMenu(true));
+    document.addEventListener("keydown", (event) => {
+      if (menu.getAttribute("aria-expanded") !== "true") return;
+      if (event.key === "Escape") { closeMenu(true); return; }
+      if (event.key !== "Tab") return;
+      const focusable = [...sidebar.querySelectorAll("a, button, input, summary, select, [tabindex]")]
+        .filter((item) => !item.hidden && item.getAttribute("tabindex") !== "-1");
+      if (!focusable.length) { event.preventDefault(); return; }
+      const first = focusable[0]; const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    });
   }
   const sidebarFilter = document.querySelector("[data-cjdoc-sidebar-filter]");
   if (sidebarFilter) sidebarFilter.addEventListener("input", () => {
