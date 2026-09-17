@@ -21,6 +21,7 @@ SCHEMA_PAYLOAD = {
     "docs/schema/diagnostics.schema.json",
     "docs/schema/cfg-matrix.schema.json",
     "docs/schema/search-index.schema.json",
+    "docs/schema/symbol-index.schema.json",
     "docs/schema/api-surface.schema.json",
     "docs/schema/api-surface-v1.schema.json",
     "docs/schema/api-diff.schema.json",

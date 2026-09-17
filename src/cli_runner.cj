@@ -23,6 +23,7 @@ private func orderedFormats(options: NewCliOptions): Array<String> {
     if (options.formats.contains("html")) { result.add("html") }
     if (options.formats.contains("api-surface")) { result.add("api-surface") }
     if (options.formats.contains("coverage")) { result.add("coverage") }
+    if (options.formats.contains("symbol-index")) { result.add("symbol-index") }
     result.toArray()
 }
 
@@ -122,7 +123,7 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 }
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndiagnostics\ncfg-matrix\nsearch-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage\ndoctest-results\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage\ndoctest-results\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA
@@ -131,6 +132,7 @@ internal func schemaTextForCli(name: String): String {
         case "diagnostics" => DIAGNOSTICS_SCHEMA
         case "cfg-matrix" => CFG_MATRIX_SCHEMA
         case "search-index" => SEARCH_INDEX_SCHEMA
+        case "symbol-index" => SYMBOL_INDEX_SCHEMA
         case "api-surface" => API_SURFACE_SCHEMA
         case "api-surface-v1" => API_SURFACE_V1_SCHEMA
         case "api-diff" => API_DIFF_SCHEMA

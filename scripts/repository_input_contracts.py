@@ -59,6 +59,7 @@ SCHEMA_NAMES = (
     "diagnostics",
     "cfg-matrix",
     "search-index",
+    "symbol-index",
     "api-surface",
     "api-surface-v1",
     "api-diff",
@@ -117,6 +118,10 @@ SCHEMA_CONTRACTS = {
     "search-index": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index.schema.json",
         "cjdoc.search-index/4", ("schemaVersion", "entries"),
+    ),
+    "symbol-index": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/symbol-index.schema.json",
+        "cjdoc.symbol-index/1", ("schemaVersion", "project", "entries"),
     ),
     "api-surface": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface-v2.schema.json",
