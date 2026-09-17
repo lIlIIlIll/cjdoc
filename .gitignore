@@ -1,6 +1,9 @@
 /target/
 **/target/
 **/build-script-cache/
+/tests/browser/node_modules/
+/tests/browser/test-results/
+/tests/browser/playwright-report/
 *.cjo
 *.chir
 *.chirtxt
@@ -18,3 +21,4 @@
 !/tests/fixtures/golden-v8/*.json
 !/tests/fixtures/legacy-migration-v8.json
 !/tests/perf/*.json
+!/tests/fixtures/golden-v9/*.json

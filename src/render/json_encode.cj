@@ -47,6 +47,13 @@ private func nullableBool(value: ?Bool): String {
     match (value) { case Some(item) => item.toString() case None => "null" }
 }
 
+private func nullableRepository(value: ?RepositoryInfo): String {
+    match (value) {
+        case None => "null"
+        case Some(repository) => "{\"url\":${escapeJsonString(repository.url)},\"revision\":${escapeJsonString(repository.revision)}}"
+    }
+}
+
 private func appendStrings(out: StringBuilder, values: ReadOnlyList<String>): Unit {
     out.append("[")
     var first = true
@@ -257,6 +264,7 @@ private func appendModule(out: StringBuilder, value: ModuleDoc): Unit {
     out.append("{\"id\":${escapeJsonString(value.id)},\"name\":${escapeJsonString(value.name)},")
     out.append("\"role\":${escapeJsonString(value.role)},\"sourcePrefix\":${escapeJsonString(value.sourcePrefix)},")
     out.append("\"organization\":${nullableString(value.organization)},")
+    out.append("\"repositoryPath\":${nullableString(value.repositoryPath)},")
     out.append("\"packageNames\":")
     appendStrings(out, value.packageNames)
     out.append(",\"dependencyIds\":")
@@ -311,7 +319,9 @@ private func compactDocIr(documentation: DocumentationSet): String {
     out.append("\"version\":${escapeJsonString(documentation.generator.version)}},")
     out.append("\"status\":${escapeJsonString(documentation.status)},")
     out.append("\"project\":{\"name\":${escapeJsonString(documentation.project.name)},")
-    out.append("\"kind\":${escapeJsonString(documentation.project.kind)}},")
+    out.append("\"kind\":${escapeJsonString(documentation.project.kind)},\"repository\":")
+    out.append(nullableRepository(documentation.project.repository))
+    out.append("},")
     out.append("\"configuration\":{\"audience\":${escapeJsonString(documentation.configuration.audience)},")
     out.append("\"lintProfile\":${escapeJsonString(documentation.configuration.lintProfile)},")
     out.append("\"cfgProfile\":${escapeJsonString(documentation.configuration.cfgProfile)}},")

@@ -40,6 +40,66 @@ internal func jsonArrayValues(value: JsonArray): ArrayList<JsonNode> {
     result
 }
 
+internal func compatibleSchemaText(schemaText: String): String {
+    let portablePathPattern = "\"pattern\": \"^[^/]+(?:/[^/]+)*$\""
+    let legacyPattern = "\"pattern\": \"^(?!/)(?![A-Za-z]:)(?!.*\\\\\\\\).+$\""
+    let currentPattern = "\"pattern\": \"^(?![A-Za-z]:)(?!.*\\\\\\\\)(?!\\\\.{1,2}(?:/|$))(?!.*/\\\\.{1,2}(?:/|$))[^/]+(?:/[^/]+)*$\""
+    schemaText.replace(legacyPattern, portablePathPattern).replace(currentPattern, portablePathPattern)
+}
+
+internal func validatePortablePathValue(value: String, path: String): Unit {
+    if (value.isEmpty() || value.startsWith("/") || value.endsWith("/") ||
+        value.contains("//") || value.contains("\\")) {
+        throw IllegalArgumentException("invalid Doc IR schema at ${path}: invalid portable path")
+    }
+    let segments = value.split("/")
+    for (segment in segments) {
+        if (segment.isEmpty() || segment == "." || segment == "..") {
+            throw IllegalArgumentException("invalid Doc IR schema at ${path}: invalid portable path")
+        }
+    }
+    let first = segments[0].toArray()
+    if (first.size >= 2 && first[1] == b':' &&
+        ((first[0] >= b'A' && first[0] <= b'Z') ||
+        (first[0] >= b'a' && first[0] <= b'z'))) {
+        throw IllegalArgumentException("invalid Doc IR schema at ${path}: invalid portable path")
+    }
+}
+
+internal func validatePortablePathFields(node: JsonNode, path: String): Unit {
+    match (node.kind()) {
+        case JsonKind.Object =>
+            let object = node.asObject()
+            for (index in 0..object.size()) {
+                let key = object.nameAt(index)
+                let child = object.valueAt(index)
+                if ((key == "sourcePrefix" || key == "repositoryPath") && child.kind() == JsonKind.String) {
+                    let value = child.asString()
+                    if (!value.isEmpty()) { validatePortablePathValue(value, "${path}.${key}") }
+                } else if (key == "sourceFiles" && child.kind() == JsonKind.Array) {
+                    var itemIndex: Int64 = 0
+                    for (item in jsonArrayValues(child.asArray())) {
+                        if (item.kind() == JsonKind.String) {
+                            validatePortablePathValue(item.asString(), "${path}.${key}[${itemIndex}]")
+                        }
+                        itemIndex++
+                    }
+                } else if ((key == "path" || key == "sourcePath") &&
+                    child.kind() == JsonKind.String) {
+                    validatePortablePathValue(child.asString(), "${path}.${key}")
+                }
+                validatePortablePathFields(child, "${path}.${key}")
+            }
+        case JsonKind.Array =>
+            var index: Int64 = 0
+            for (item in jsonArrayValues(node.asArray())) {
+                validatePortablePathFields(item, "${path}[${index}]")
+                index++
+            }
+        case _ => ()
+    }
+}
+
 internal func validateRawSchemaShape(root: JsonNode): RawSchemaShape {
     let pending = ArrayList<JsonNode>()
     pending.add(root)
@@ -75,16 +135,17 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
         fail("$.schemaVersion", "expected string")
     }
     let schemaText = if (version == DOC_IR_SCHEMA_VERSION) { DOC_IR_SCHEMA }
+        else if (version == DOC_IR_V8_SCHEMA_VERSION) { DOC_IR_V8_SCHEMA }
         else if (version == DOC_IR_V7_SCHEMA_VERSION) { DOC_IR_V7_SCHEMA }
         else if (version == DOC_IR_V6_SCHEMA_VERSION) { DOC_IR_V6_SCHEMA }
         else {
             fail("$.schemaVersion",
-                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V7_SCHEMA_VERSION}', " +
-                "or '${DOC_IR_V6_SCHEMA_VERSION}'")
+                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V8_SCHEMA_VERSION}', " +
+                "'${DOC_IR_V7_SCHEMA_VERSION}', or '${DOC_IR_V6_SCHEMA_VERSION}'")
         }
-    let schema = JsonSchema.parse(schemaText, config: JsonSchemaConfig(
+    let schema = JsonSchema.parse(compatibleSchemaText(schemaText), config: JsonSchemaConfig(
         limits: JsonSchemaLimits(maxEvaluations: DOC_IR_SCHEMA_MAX_WORK,
-            maxRefResolutions: DOC_IR_SCHEMA_MAX_WORK,
+            maxRefResolutions: DOC_IR_SCHEMA_MAX_WORK, maxRegexSteps: DOC_IR_SCHEMA_MAX_WORK,
             maxErrors: 20, maxDepth: DOC_IR_CODEC_MAX_NESTING_DEPTH)))
     let errors = schema.validate(root)
     if (!errors.isEmpty()) {
@@ -132,6 +193,22 @@ internal func nullableStringAt(object: JsonObject, key: String, path: String): ?
     if (value.isNull) { return None }
     try { Some(value.asString()) }
     catch (_: Exception) { fail("${path}.${key}", "expected string or null") }
+}
+
+
+internal func repositoryAt(node: JsonNode, path: String): RepositoryInfo {
+    let value = strictObject(node, path, ["url", "revision"])
+    try {
+        RepositoryInfo(stringAt(value, "url", path), stringAt(value, "revision", path))
+    } catch (error: IllegalArgumentException) {
+        throw IllegalArgumentException("invalid Doc IR schema at ${path}: ${error.message}")
+    }
+}
+
+internal func nullableRepositoryAt(object: JsonObject, key: String, path: String): ?RepositoryInfo {
+    let value = required(object, key, path)
+    if (value.isNull) { return None }
+    Some(repositoryAt(value, "${path}.${key}"))
 }
 
 internal func nullableBoolAt(object: JsonObject, key: String, path: String): ?Bool {

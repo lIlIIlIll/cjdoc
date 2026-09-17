@@ -23,6 +23,12 @@ cleanup() {
 trap cleanup EXIT
 
 cd "${repo_root}"
+"${python_cmd}" - "${schema_parent}" <<'PY'
+from pathlib import Path
+import sys
+from scripts.safe_output_root import verify_directory_chain
+verify_directory_chain(Path(sys.argv[1]))
+PY
 if [[ -x "${binary}" || ( -f "${binary}" && ( "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ) ) ]]; then
     :
 elif [[ -f "${binary}.exe" ]]; then
@@ -31,7 +37,13 @@ else
     echo "cjdoc binary is missing or not executable: ${binary}" >&2
     exit 1
 fi
-"${python_cmd}" -c 'from pathlib import Path; from scripts.verify_repository_inputs import verify_schema_set; verify_schema_set(Path.cwd())'
+"${python_cmd}" - <<'PY'
+from pathlib import Path
+from scripts.verify_repository_inputs import validate_schema_document
+from scripts.strict_json import strict_load
+for name in ("doc-ir-v6", "doc-ir-v7", "doc-ir-v8"):
+    validate_schema_document(name, strict_load(Path("docs/schema") / f"{name}.schema.json", description=name))
+PY
 "${python_cmd}" scripts/safe_output_root.py \
     --repo "${repo_root}" --directory "${repo_root}/target" --create >/dev/null
 target_root="${repo_root}/target"
@@ -44,7 +56,7 @@ rm -rf "${update_dir}"
 test -d "${schema_dir}"
 stage_dir="$(mktemp -d "${schema_parent}/.schema.XXXXXX")"
 
-for schema_name in doc-ir-v6 doc-ir-v7; do
+for schema_name in doc-ir-v6 doc-ir-v7 doc-ir-v8; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${update_dir}/${schema_name}.schema.json"
     cmp "${schema_dir}/${schema_name}.schema.json" \
@@ -53,7 +65,7 @@ for schema_name in doc-ir-v6 doc-ir-v7; do
         "${stage_dir}/${schema_name}.schema.json"
 done
 
-for schema_name in doc-ir doc-ir-v8 diagnostics cfg-matrix search-index api-surface documentation-coverage; do
+for schema_name in doc-ir doc-ir-v9 diagnostics cfg-matrix search-index api-surface documentation-coverage; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${stage_dir}/${schema_name}.schema.json"
 done
@@ -77,7 +89,6 @@ for name in SCHEMA_NAMES:
     validate_schema_document(name, value)
 PY
 
-"${python_cmd}" -c 'from pathlib import Path; from scripts.verify_repository_inputs import verify_schema_set; verify_schema_set(Path.cwd())'
 backup_dir="${schema_parent}/.schema.backup.$$"
 test ! -e "${backup_dir}"
 mv "${schema_dir}" "${backup_dir}"
@@ -92,5 +103,7 @@ else
 fi
 
 trap - EXIT
+
+"${python_cmd}" -c 'from pathlib import Path; from scripts.verify_repository_inputs import verify_schema_set; verify_schema_set(Path.cwd())'
 
 echo "updated embedded schema copies"

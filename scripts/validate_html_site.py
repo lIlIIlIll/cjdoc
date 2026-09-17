@@ -15,11 +15,11 @@ except ImportError:  # Direct script execution.
     from strict_json import strict_loads
 
 EXPECTED_CSP = (
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
+    "default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; "
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "5df3a7d692c517ff1aa5b98b98a4a6c2aecd79993e2fd8be163ad09fe7f6e4fd"
+CANONICAL_SEARCH_JS_SHA256 = "4de1b04c6b3c3c9474e322c28b16c68e29c2f724e4ae1dbdfe8c2d1fc3ef8f49"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "79fe532a96603bce52c49d9fd92cea58503875a0c61f5d3475f11c337f960642"
 
 

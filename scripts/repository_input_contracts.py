@@ -6,22 +6,24 @@ COMMIT = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 MARKDOWN_COMMIT = "db4f9527944b589db8436669f1d255192388cee2"
 MARKDOWN_LICENSE_SHA256 = "0d52dcdcb50af1bfd2c06821c888bdec9683830f79c78863173e3d0b12f2ac19"
-YJSON_UPSTREAM_NOTICE_SHA256 = "cfc7a25e02d8783e66b2ef0122ad7697770e2226526958be9e6c093ecd315f98"
-    "src/linear_regex.cj": "21a233eb8915bf9b78f4881093e30e007626e23c8be59bcac7282cf6ad62e3c5",
 MARKDOWN_UPSTREAM = "https://github.com/lIlIIlIll/markdown.git"
 YJSON_UPSTREAM = "https://github.com/lIlIIlIll/yjson.git"
+YJSON_COMMIT = "54b4965dee0f0b96710cbc678ec5ec9a126b055c"
+YJSON_MACROS_COMMIT = "fec0adce41f73d037d876cbac7a28aee8108bb5c"
 LEGACY_SCHEMA_SHA256 = {
     6: "a8db4442d6587b7d93108109730b6c2840a13eb031c07632bcd59b8488033a0a",
     7: "814eae6a9145f986608795cca731874b54c6cafd05f6bbbed19053640c1b6943",
+    8: "95c5c707c8dcadd2bf67ffe5f88b6365f10c8499701dc2979338cad5df404b5c",
 }
 YJSON_LICENSE_SHA256 = "ff2bfac16f9884d002e66b1b2c75c20c626bc41ff31cdf411c5acdf224288295"
-YJSON_PACKAGE_MANIFEST_SHA256 = "21919a70642bee3eeb982c831192b046c0b5a2016f5f54f42234702f412e4f36"
-YJSON_UPSTREAM_NOTICE_SHA256 = "c801496a3b6b3ce6a37105c5421eb8033aeaf0600694e1b3c09aa440c734514b"
+YJSON_PACKAGE_MANIFEST_SHA256 = "b5500422a100a4bbfa44ec2bd93494a1b8ca545c51ebff37fce1719d484f1e95"
+YJSON_UPSTREAM_NOTICE_SHA256 = "50bfbef6ef8be8369d247aac34cfb806a13f52ecd4a61cbd5384640ce12f424a"
 YJSON_SOURCE_SHA256 = {
-    "src/lib_json_patch.cj": "32848edf1826af8b8b6816a7244ab6ffd370485f21e6ecbda0baa20fa4495492",
-    "src/lib_json_pointer.cj": "972ce953184cb0e2b0c0d2b5da1589b376639f1d1d496331d435842c4d50d991",
-    "src/lib_json_schema.cj": "bc6e110bb7b78807b26eb7c23e091c5fef2c02997f616a792fc5b70f81184a01",
-    "src/work_limits.cj": "52aa1b8fbd41deaa72c80028f1500fe6ff9bafbcf9f5b11d2569bbc61baaeb6c",
+    "src/lib_json_patch.cj": "82115f63f01807f3e7057518579cea4e058baf51c0e767e93e867a3a9c34a5de",
+    "src/lib_json_pointer.cj": "ac5ffe300745a4123fbf0f6ecfb73aa2fc3743c89945dda4bc56c11d1fadf012",
+    "src/lib_json_schema.cj": "090446931f6b1838a56c21a56472833d0e926445558d7a2b4fc217c9918ddd94",
+    "src/linear_regex.cj": "21a233eb8915bf9b78f4881093e30e007626e23c8be59bcac7282cf6ad62e3c5",
+    "src/work_limits.cj": "6af3af0f970f47e87ab045ceaf9d9c4675ef7cdc23f27df2870a275b3f057e21",
 }
 YJSON_VENDOR_PATCHES = (
     {
@@ -45,14 +47,15 @@ GOLDEN_NAMES = (
     "path-dependencies",
 )
 
-CURRENT_GOLDEN_VERSION = 8
-LEGACY_GOLDEN_VERSIONS = (6, 7)
+CURRENT_GOLDEN_VERSION = 9
+LEGACY_GOLDEN_VERSIONS = (6, 7, 8)
 
 SCHEMA_NAMES = (
     "doc-ir",
     "doc-ir-v6",
     "doc-ir-v7",
     "doc-ir-v8",
+    "doc-ir-v9",
     "diagnostics",
     "cfg-matrix",
     "search-index",
@@ -62,7 +65,7 @@ SCHEMA_NAMES = (
 SCHEMA_CONTRACTS = {
     "doc-ir": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-        "cjdoc.doc-ir/8",
+        "cjdoc.doc-ir/9",
         ("schemaVersion", "generator", "status", "project", "configuration", "providers",
          "modules", "packages", "files", "declarations", "assets", "orphanDocComments",
          "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations",
@@ -87,6 +90,14 @@ SCHEMA_CONTRACTS = {
     "doc-ir-v8": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v8.schema.json",
         "cjdoc.doc-ir/8",
+        ("schemaVersion", "generator", "status", "project", "configuration", "providers",
+         "modules", "packages", "files", "declarations", "assets", "orphanDocComments",
+         "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations",
+         "diagnostics"),
+    ),
+    "doc-ir-v9": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v9.schema.json",
+        "cjdoc.doc-ir/9",
         ("schemaVersion", "generator", "status", "project", "configuration", "providers",
          "modules", "packages", "files", "declarations", "assets", "orphanDocComments",
          "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations",

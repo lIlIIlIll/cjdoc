@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import subprocess
 import tempfile
@@ -56,8 +57,8 @@ def run_doc_ir_render(binary: Path, source: Path) -> bytes:
         value = strict_loads(result.stdout, description=f"migration output for {source}")
     except ValueError as error:
         raise ValueError(f"Doc IR render emitted invalid JSON for {source}: {error}") from error
-    if not isinstance(value, dict) or value.get("schemaVersion") != "cjdoc.doc-ir/8":
-        raise ValueError(f"Doc IR render did not emit Doc IR v8: {source}")
+    if not isinstance(value, dict) or value.get("schemaVersion") != f"cjdoc.doc-ir/{CURRENT_GOLDEN_VERSION}":
+        raise ValueError(f"Doc IR render did not emit current Doc IR: {source}")
     return result.stdout
 
 
@@ -66,25 +67,25 @@ def run_legacy_render(binary: Path, source: Path) -> bytes:
 
 
 def verify_current_goldens(repo: Path, binary_value: Path) -> list[str]:
-    """Exercise the repository's real yjson-backed Doc IR decoder on every v8 golden."""
+    """Exercise the repository's real yjson-backed Doc IR decoder on every current golden."""
     binary = resolve_binary(binary_value)
     verified: list[str] = []
     with tempfile.TemporaryDirectory(prefix="cjdoc-current-golden-") as temporary:
         work = Path(temporary)
         for name in GOLDEN_NAMES:
-            relative = f"tests/fixtures/golden-v8/{name}.docs.json"
+            relative = f"tests/fixtures/golden-v{CURRENT_GOLDEN_VERSION}/{name}.docs.json"
             source = repo / relative
             output = run_doc_ir_render(binary, source)
             if output != source.read_bytes():
-                raise ValueError(f"v8 golden is not an exact strict round-trip: {relative}")
+                raise ValueError(f"current golden is not an exact strict round-trip: {relative}")
             verified.append(relative)
 
         corrupted = strict_load(
-            repo / "tests/fixtures/golden-v8/basic.docs.json",
-            description="v8 corruption regression source",
+            repo / f"tests/fixtures/golden-v{CURRENT_GOLDEN_VERSION}/basic.docs.json",
+            description="current corruption regression source",
         )
         if not isinstance(corrupted, dict) or "generator" not in corrupted:
-            raise ValueError("v8 corruption regression source is malformed")
+            raise ValueError("current corruption regression source is malformed")
         del corrupted["generator"]
         corrupt_path = work / "missing-generator.docs.json"
         corrupt_path.write_text(
@@ -98,7 +99,7 @@ def verify_current_goldens(repo: Path, binary_value: Path) -> list[str]:
                 capture_output=True, check=False, timeout=30,
             )
         except subprocess.TimeoutExpired as error:
-            raise ValueError("corrupt v8 Doc IR rejection timed out") from error
+            raise ValueError("corrupt current Doc IR rejection timed out") from error
         if result.returncode == 0:
             raise ValueError("yjson-backed Doc IR validation accepted a missing required field")
     return verified
@@ -125,7 +126,7 @@ def verify_legacy_receipts(repo: Path) -> dict[str, dict[str, dict[str, object]]
     if not isinstance(migrations, dict) or set(migrations) != {"6", "7"}:
         raise ValueError("legacy migration receipt versions are incomplete")
     expected_names = set(GOLDEN_NAMES)
-    for version in LEGACY_GOLDEN_VERSIONS:
+    for version in (6, 7):
         entries = migrations.get(str(version))
         if not isinstance(entries, dict) or set(entries) != expected_names:
             raise ValueError(f"v{version} legacy migration receipts are incomplete")
@@ -159,23 +160,40 @@ def verify_legacy_migrations(repo: Path, binary_value: Path) -> list[str]:
                 migrated_value = strict_loads(
                     output, description=f"migrated Doc IR for {relative}"
                 )
-                receipt = receipts[str(version)][name]
-                actual = {
-                    "v8SemanticSha256": semantic_digest(migrated_value),
-                    "declarations": len(migrated_value.get("declarations", [])),
-                    "modules": len(migrated_value.get("modules", [])),
-                    "diagnostics": len(migrated_value.get("diagnostics", [])),
-                    "unsupportedDeclarations": len(
-                        migrated_value.get("unsupportedDeclarations", [])
-                    ),
-                }
-                expected = {key: receipt[key] for key in actual}
-                if actual != expected:
-                    raise ValueError(f"legacy migration semantic receipt mismatch: {relative}")
+                if version in (6, 7):
+                    receipt = receipts[str(version)][name]
+                    legacy_projection = copy.deepcopy(migrated_value)
+                    legacy_projection["schemaVersion"] = "cjdoc.doc-ir/8"
+                    project = legacy_projection.get("project")
+                    if isinstance(project, dict):
+                        project.pop("repository", None)
+                    for module in legacy_projection.get("modules", []):
+                        if isinstance(module, dict):
+                            module.pop("repositoryPath", None)
+                    actual = {
+                        "v8SemanticSha256": semantic_digest(legacy_projection),
+                        "declarations": len(migrated_value.get("declarations", [])),
+                        "modules": len(migrated_value.get("modules", [])),
+                        "diagnostics": len(migrated_value.get("diagnostics", [])),
+                        "unsupportedDeclarations": len(
+                            migrated_value.get("unsupportedDeclarations", [])
+                        ),
+                    }
+                    expected = {key: receipt[key] for key in actual}
+                    if actual != expected:
+                        raise ValueError(f"legacy migration semantic receipt mismatch: {relative}")
+                else:
+                    project = migrated_value.get("project")
+                    if not isinstance(project, dict) or project.get("repository") is not None:
+                        raise ValueError(f"v8 migration unexpectedly gained repository metadata: {relative}")
+                    if any(module.get("repositoryPath") is not None
+                           for module in migrated_value.get("modules", [])
+                           if isinstance(module, dict)):
+                        raise ValueError(f"v8 migration unexpectedly gained module metadata: {relative}")
                 migrated.write_bytes(output)
-                roundtrip = run_legacy_render(binary, migrated)
+                roundtrip = run_doc_ir_render(binary, migrated)
                 if roundtrip != output:
-                    raise ValueError(f"legacy migration is not a stable v8 round-trip: {relative}")
+                    raise ValueError(f"legacy migration is not a stable v9 round-trip: {relative}")
                 verified.append(relative)
     return verified
 

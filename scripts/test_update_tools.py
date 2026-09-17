@@ -25,6 +25,7 @@ GOLDEN_NAMES = (
 )
 SCHEMA_NAMES = (
     "doc-ir",
+    "doc-ir-v9",
     "doc-ir-v6",
     "doc-ir-v7",
     "doc-ir-v8",
@@ -51,10 +52,11 @@ class UpdateToolsTest(unittest.TestCase):
         schemas = root / "docs/schema"
         legacy_v6 = root / "tests/fixtures/golden-v6"
         legacy_v7 = root / "tests/fixtures/golden-v7"
+        legacy_v8 = root / "tests/fixtures/golden-v8"
         fixture = root / "tests/fixtures/projects/basic/src"
         # This is a Git Bash shebang wrapper, not a Windows PE executable.
         binary = root / "target/release/bin/main"
-        for directory in (scripts, schemas, legacy_v6, legacy_v7, fixture, binary.parent,
+        for directory in (scripts, schemas, legacy_v6, legacy_v7, legacy_v8, fixture, binary.parent,
                           root / "fake-schemas"):
             directory.mkdir(parents=True, exist_ok=True)
         for name in (
@@ -69,7 +71,7 @@ class UpdateToolsTest(unittest.TestCase):
             script.chmod(0o755)
 
         for name in SCHEMA_NAMES:
-            if name in ("doc-ir-v6", "doc-ir-v7"):
+            if name in ("doc-ir-v6", "doc-ir-v7", "doc-ir-v8"):
                 shutil.copyfile(
                     PROJECT_ROOT / "docs/schema" / f"{name}.schema.json",
                     schemas / f"{name}.schema.json",
@@ -91,7 +93,7 @@ class UpdateToolsTest(unittest.TestCase):
             (root / "fake-schemas" / f"{name}.schema.json").write_text(
                 json.dumps(generated, sort_keys=True) + "\n", encoding="utf-8"
             )
-        for version, legacy in ((6, legacy_v6), (7, legacy_v7)):
+        for version, legacy in ((6, legacy_v6), (7, legacy_v7), (8, legacy_v8)):
             for name in GOLDEN_NAMES:
                 (legacy / f"{name}.docs.json").write_text(
                     f'{{"schemaVersion":"cjdoc.doc-ir/{version}"}}\n', encoding="utf-8"
@@ -105,12 +107,12 @@ class UpdateToolsTest(unittest.TestCase):
             "repo=Path(__file__).resolve().parents[3]\n"
             "args=sys.argv[1:]\n"
             "if args[:2] == ['schema','list']:\n"
-            " print('doc-ir\\ndoc-ir-v6\\ndoc-ir-v7\\ndoc-ir-v8\\ndiagnostics\\ncfg-matrix\\nsearch-index\\napi-surface\\ndocumentation-coverage')\n"
+            " print('doc-ir\\ndoc-ir-v9\\ndoc-ir-v6\\ndoc-ir-v7\\ndoc-ir-v8\\ndiagnostics\\ncfg-matrix\\nsearch-index\\napi-surface\\ndocumentation-coverage')\n"
             "elif args and args[0] == 'schema':\n"
             " print((repo/'fake-schemas'/f'{args[1]}.schema.json').read_text(encoding='utf-8'),end='')\n"
             "elif args and args[0] == 'generate':\n"
             " out=Path(args[args.index('--output')+1]); out.mkdir(parents=True,exist_ok=True)\n"
-            " (out/'docs.json').write_text(json.dumps({'schemaVersion':'cjdoc.doc-ir/8'})+'\\n',encoding='utf-8')\n"
+            " (out/'docs.json').write_text(json.dumps({'schemaVersion':'cjdoc.doc-ir/9'})+'\\n',encoding='utf-8')\n"
             "else:\n"
             " raise SystemExit(2)\n",
             encoding="utf-8",
@@ -173,7 +175,7 @@ class UpdateToolsTest(unittest.TestCase):
                 {path.name for path in (repo / "docs/schema").iterdir()},
                 {f"{name}.schema.json" for name in SCHEMA_NAMES},
             )
-            current = json.loads((repo / "docs/schema/doc-ir-v8.schema.json").read_text())
+            current = json.loads((repo / "docs/schema/doc-ir-v9.schema.json").read_text())
             self.assertEqual(current["generation"], "new")
             self.assertEqual(list((repo / "docs").glob(".schema.*")), [])
 
@@ -205,8 +207,8 @@ class UpdateToolsTest(unittest.TestCase):
             result = self.run_script(repo, "update_goldens.sh")
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("dirty repository fixture inputs", result.stderr)
-            self.assertFalse((repo / "tests/fixtures/golden-v8").exists())
-            self.assertEqual(list((repo / "tests/fixtures").glob(".golden-v8.*")), [])
+            self.assertFalse((repo / "tests/fixtures/golden-v9").exists())
+            self.assertEqual(list((repo / "tests/fixtures").glob(".golden-v9.*")), [])
 
     def test_golden_update_requires_complete_frozen_v6_and_v7_sets(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -216,22 +218,22 @@ class UpdateToolsTest(unittest.TestCase):
             result = self.run_script(repo, "update_goldens.sh")
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("v6 golden set mismatch", result.stderr)
-            self.assertFalse((repo / "tests/fixtures/golden-v8").exists())
+            self.assertFalse((repo / "tests/fixtures/golden-v9").exists())
 
-    def test_golden_update_publishes_only_a_complete_v8_set(self) -> None:
+    def test_golden_update_publishes_only_a_complete_v9_set(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)
             self.make_repo(repo)
             result = self.run_script(repo, "update_goldens.sh")
             self.assertEqual(result.returncode, 0, msg=result.stderr)
-            golden = repo / "tests/fixtures/golden-v8"
+            golden = repo / "tests/fixtures/golden-v9"
             self.assertEqual(
                 {path.name for path in golden.iterdir()},
                 {f"{name}.docs.json" for name in GOLDEN_NAMES},
             )
             for path in golden.iterdir():
-                self.assertEqual(json.loads(path.read_text())["schemaVersion"], "cjdoc.doc-ir/8")
-            self.assertEqual(list((repo / "tests/fixtures").glob(".golden-v8.*")), [])
+                self.assertEqual(json.loads(path.read_text())["schemaVersion"], "cjdoc.doc-ir/9")
+            self.assertEqual(list((repo / "tests/fixtures").glob(".golden-v9.*")), [])
 
     def test_update_tools_reject_a_symlinked_target_root(self) -> None:
         for script in ("update_goldens.sh", "update_schemas.sh"):
@@ -285,7 +287,7 @@ class UpdateToolsTest(unittest.TestCase):
             result = self.run_script(repo, "update_goldens.sh", environment)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("requires expected commit and subtree tree ids", result.stderr)
-            self.assertFalse((repo / "tests/fixtures/golden-v8").exists())
+            self.assertFalse((repo / "tests/fixtures/golden-v9").exists())
 
     def test_golden_update_accepts_clean_commit_bound_override(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

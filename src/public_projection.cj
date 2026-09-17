@@ -3,19 +3,82 @@ package cjdoc
 import cjdoc.model as public_model
 import std.collection.*
 import std.sort.*
+import std.fs.*
+
+
+private func repositoryRootForRequest(request: GenerationRequest): ?String {
+    if (request.repository.isNone()) { return None }
+    match (request.repositoryRoot) {
+        case Some(path) => Some(path)
+        case None => try { Some(canonicalize(request.projectRoot).toString()) } catch (_: Exception) { None }
+    }
+}
+
+private func originForLogicalPath(origins: Array<SourceFileOrigin>, logicalPath: String): ?SourceFileOrigin {
+    var found: ?SourceFileOrigin = None
+    for (origin in origins) {
+        if (origin.logicalPath == logicalPath) {
+            if (found.isSome()) { return None }
+            found = Some(origin)
+        }
+    }
+    found
+}
+
+private func expectedLogicalPath(module: ModuleDoc, origin: SourceFileOrigin): ?String {
+    let relative = relativePathFromResolved(origin.actualRoot, origin.actualPath)
+    match (relative) {
+        case None => None
+        case Some(path) => if (module.sourcePrefix.isEmpty()) { Some(path) }
+            else if (path.isEmpty()) { None }
+            else { Some("${module.sourcePrefix}/${path}") }
+    }
+}
+
+private func repositoryPathForModule(documentation: DocumentationSet, module: ModuleDoc,
+    repositoryRoot: ?String): ?String {
+    let root = match (repositoryRoot) {
+        case Some(value) => value
+        case None => return None
+    }
+    let origins = documentation.sourceFileOrigins.toArray()
+    var actualRoot: ?String = None
+    var sourceCount: Int64 = 0
+    for (pkg in documentation.packages where pkg.moduleId == module.id) {
+        for (logicalPath in pkg.sourceFiles) {
+            sourceCount++
+            let origin = match (originForLogicalPath(origins, logicalPath)) {
+                case Some(value) => value
+                case None => return None
+            }
+            if (expectedLogicalPath(module, origin) != Some(logicalPath)) { return None }
+            match (actualRoot) {
+                case Some(value) => if (value != origin.actualRoot) { return None }
+                case None => actualRoot = Some(origin.actualRoot)
+            }
+            if (!hostPathIsWithin(origin.actualRoot, origin.actualPath)) { return None }
+        }
+    }
+    if (sourceCount == 0 || actualRoot.isNone()) { return None }
+    let resolvedRoot = actualRoot.getOrThrow()
+    if (!hostPathIsWithin(root, resolvedRoot)) { return None }
+    relativePathFromResolved(root, resolvedRoot)
+}
 
 internal class PublicModuleProjection {
     let modules: Array<public_model.ModuleDoc>
     let packages: Array<public_model.PackageDoc>
     let files: Array<public_model.FileDoc>
 
-    init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper) {
+    init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
+        repositoryRoot!: ?String = None) {
         let modules = ArrayList<public_model.ModuleDoc>()
         for (module in documentation.modules) {
             modules.add(
                 public_model.ModuleDoc(module.id, module.name, module.role, module.sourcePrefix,
                     packageNames: module.packageNames.toArray(), dependencyIds: module.dependencyIds.toArray(),
-                    organization: module.organization))
+                    organization: module.organization,
+                    repositoryPath: repositoryPathForModule(documentation, module, repositoryRoot)))
         }
         let packages = ArrayList<public_model.PackageDoc>()
         let files = ArrayList<public_model.FileDoc>()
@@ -240,7 +303,9 @@ internal class PublicDiagnosticProjection {
 internal func publicDocumentation(documentation: DocumentationSet,
     request: GenerationRequest): public_model.DocumentationSet {
     let sourceMapper = PublicSourceMapper(origins: documentation.sourceFileOrigins.toArray())
-    let moduleProjection = PublicModuleProjection(documentation, sourceMapper)
+    let repositoryRoot = repositoryRootForRequest(request)
+    let moduleProjection = PublicModuleProjection(documentation, sourceMapper,
+        repositoryRoot: repositoryRoot)
     let providerProjection = PublicProviderProjection(documentation)
     let declarationProjection = PublicDeclarationProjection(documentation, sourceMapper,
         providerProjection.statesByModule)
@@ -254,7 +319,7 @@ internal func publicDocumentation(documentation: DocumentationSet,
         "complete"
     }
     let candidate = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.2"), status,
-        public_model.ProjectInfo(documentation.projectName),
+        public_model.ProjectInfo(documentation.projectName, repository: request.repository),
         public_model.ConfigurationSnapshot(audience: request.audience, lintProfile: request.lintProfile,
             cfgProfile: if (request.cfgValues.isEmpty()) { "default" } else { "custom" }),
         providers: providerProjection.providers, modules: moduleProjection.modules,

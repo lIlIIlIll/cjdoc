@@ -5,18 +5,15 @@ import yjson.*
 import std.collection.*
 import std.convert.Parsable
 
-public class JsonPointerException <: JsonException {
-    public let pointer: String
-
-    public init(message: String, pointer: String, code!: String = "invalid_json_pointer") {
-        super(message, code: code, path: pointer)
-        this.pointer = pointer
-    }
-
-    protected override func getClassName(): String { "JsonPointerException" }
+func jsonPointerError(message: String, pointer: String,
+    code!: String = "invalid_json_pointer"): JsonException {
+    let path = if (pointer.isEmpty() || pointer.startsWith("/")) { pointer } else { "" }
+    JsonException(message, code: code, path: path)
 }
 
-/// An immutable RFC 6901 JSON Pointer.
+/**
+ * An immutable RFC 6901 JSON Pointer.
+ */
 public class JsonPointer <: ToString {
     private let source: String
     private let segments: Array<String>
@@ -32,7 +29,7 @@ public class JsonPointer <: ToString {
 
     public static func parseUriFragment(fragment: String): JsonPointer {
         if (!fragment.startsWith("#")) {
-            throw JsonPointerException("JSON Pointer URI fragment must start with '#'", fragment)
+            throw jsonPointerError("JSON Pointer URI fragment must start with '#'", fragment)
         }
         let decoded = decodeJsonPointerFragment(fragment[1..fragment.size], fragment)
         JsonPointer(decoded, parseJsonPointerSegments(decoded))
@@ -65,32 +62,36 @@ public class JsonPointer <: ToString {
         builder.toString()
     }
 
-    public func find(root: JsonNode): Option<JsonNode> {
-        var current = root
+    public func find(root: JsonValueView): Option<JsonValueView> {
+        var current: JsonValueView = root
         for (segment in segments) {
-            match (current) {
-                case objectValue: JsonObjectValue =>
-                    match (objectValue.get(segment)) {
+            match (current.kind()) {
+                case JsonKind.Object =>
+                    match (current.member(segment)) {
                         case Some(next) => current = next
-                        case None => return None<JsonNode>
+                        case None => return None<JsonValueView>
                     }
-                case arrayValue: JsonArrayValue =>
-                    match (parseJsonPointerArrayIndex(segment, arrayValue.size(), false)) {
-                        case Some(index) => current = arrayValue[index]
-                        case None => return None<JsonNode>
+                case JsonKind.Array =>
+                    match (parseJsonPointerArrayIndex(segment, current.size(), false)) {
+                        case Some(index) => current = current.element(index).getOrThrow()
+                        case None => return None<JsonValueView>
                     }
-                case _ => return None<JsonNode>
+                case _ => return None<JsonValueView>
             }
         }
         Some(current)
     }
 
-    public func evaluate(root: JsonNode): JsonNode {
+    public func find(document: JsonDocument): Option<JsonValueView> { find(document.root()) }
+
+    public func evaluate(root: JsonValueView): JsonValueView {
         find(root).getOrThrow({ =>
-            JsonPointerException("JSON Pointer target does not exist: ${source}", source,
+            jsonPointerError("JSON Pointer target does not exist: ${source}", source,
                 code: "json_pointer_not_found")
         })
     }
+
+    public func evaluate(document: JsonDocument): JsonValueView { evaluate(document.root()) }
 
     func rawTokens(): Array<String> { segments }
 }
@@ -98,7 +99,7 @@ public class JsonPointer <: ToString {
 private func parseJsonPointerSegments(pointer: String): Array<String> {
     if (pointer.isEmpty()) { return Array<String>() }
     if (!pointer.startsWith("/")) {
-        throw JsonPointerException("JSON Pointer must be empty or start with '/'", pointer)
+        throw jsonPointerError("JSON Pointer must be empty or start with '/'", pointer)
     }
     let result = ArrayList<String>()
     var start: Int64 = 1
@@ -119,12 +120,12 @@ private func unescapeJsonPointerToken(token: String, pointer: String): String {
         if (token[index] == b'~') {
             if (start < index) { builder.append(token[start..index]) }
             if (index + 1 >= token.size) {
-                throw JsonPointerException("Incomplete '~' escape in JSON Pointer", pointer)
+                throw jsonPointerError("Incomplete '~' escape in JSON Pointer", pointer)
             }
             match (token[index + 1]) {
                 case b'0' => builder.append("~")
                 case b'1' => builder.append("/")
-                case _ => throw JsonPointerException("Invalid '~' escape in JSON Pointer", pointer)
+                case _ => throw jsonPointerError("Invalid '~' escape in JSON Pointer", pointer)
             }
             index += 2
             start = index
@@ -143,12 +144,12 @@ private func decodeJsonPointerFragment(encoded: String, original: String): Strin
     while (index < bytes.size) {
         if (bytes[index] == b'%') {
             if (index + 2 >= bytes.size) {
-                throw JsonPointerException("Incomplete percent escape in JSON Pointer URI fragment", original)
+                throw jsonPointerError("Incomplete percent escape in JSON Pointer URI fragment", original)
             }
             let high = jsonPointerHexValue(bytes[index + 1])
             let low = jsonPointerHexValue(bytes[index + 2])
             if (high < 0 || low < 0) {
-                throw JsonPointerException("Invalid percent escape in JSON Pointer URI fragment", original)
+                throw jsonPointerError("Invalid percent escape in JSON Pointer URI fragment", original)
             }
             result.add(UInt8(high * 16 + low))
             index += 3
@@ -160,7 +161,7 @@ private func decodeJsonPointerFragment(encoded: String, original: String): Strin
     try {
         String.fromUtf8(result.toArray())
     } catch (_: Exception) {
-        throw JsonPointerException("JSON Pointer URI fragment is not valid UTF-8", original)
+        throw jsonPointerError("JSON Pointer URI fragment is not valid UTF-8", original)
     }
 }
 
@@ -205,25 +206,25 @@ func parseJsonPointerArrayIndex(token: String, size: Int64, allowAppend: Bool): 
 func jsonPointerParent(root: JsonNode, pointer: JsonPointer): (JsonNode, String) {
     let segments = pointer.rawTokens()
     if (segments.isEmpty()) {
-        throw JsonPointerException("Root JSON Pointer has no parent", pointer.toString(),
+        throw jsonPointerError("Root JSON Pointer has no parent", pointer.toString(),
             code: "json_pointer_not_found")
     }
     var current = root
     for (index in 0..segments.size - 1) {
         let token = segments[index]
         match (current) {
-            case objectValue: JsonObjectValue =>
+            case objectValue: JsonObject =>
                 current = objectValue.get(token).getOrThrow({ =>
-                    JsonPointerException("JSON Pointer parent does not exist", pointer.toString(),
+                    jsonPointerError("JSON Pointer parent does not exist", pointer.toString(),
                         code: "json_pointer_not_found")
                 })
-            case arrayValue: JsonArrayValue =>
+            case arrayValue: JsonArray =>
                 let childIndex = parseJsonPointerArrayIndex(token, arrayValue.size(), false).getOrThrow({ =>
-                    JsonPointerException("Invalid JSON Pointer array index '${token}'", pointer.toString(),
+                    jsonPointerError("Invalid JSON Pointer array index '${token}'", pointer.toString(),
                         code: "json_pointer_not_found")
                 })
                 current = arrayValue[childIndex]
-            case _ => throw JsonPointerException("JSON Pointer parent is not a container", pointer.toString(),
+            case _ => throw jsonPointerError("JSON Pointer parent is not a container", pointer.toString(),
                 code: "json_pointer_not_found")
         }
     }

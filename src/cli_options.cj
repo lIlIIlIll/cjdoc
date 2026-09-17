@@ -25,6 +25,9 @@ internal class NewCliOptions {
     var cacheDirectory: ?String = None
     var noCache = false
     var cjpmCacheRoot: ?String = None
+    var repositoryUrl: ?String = None
+    var repositoryRevision: ?String = None
+    var repositoryRoot: ?String = None
     var apiSurfaceBaseline: ?String = None
     var minSymbolCoverage: ?Int64 = None
     var minParameterCoverage: ?Int64 = None
@@ -44,6 +47,7 @@ internal func newUsage(): String {
     "                 [--dependency-source NAME=PATH] [--cjpm-cache <dir>]\n" +
     "                 [--cache-dir <dir>|--no-cache] [--force-owned]\n" +
     "                 [--locale zh-CN|en] [--markdown-layout site|single]\n" +
+    "                 [--repository-url <url> --repository-revision <ref> [--repository-root <dir>]]\n" +
     "  cjdoc check [--project <dir>] [--deny-warnings] [--lint-profile off|standard|strict]\n" +
     "              [--api-surface-baseline <file>] [--min-symbol-coverage 0..100] [--min-parameter-coverage 0..100]\n" +
     "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout] [--force-owned]\n" +
@@ -108,6 +112,15 @@ private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>,
             Some(index + 1)
         case "--cjpm-cache" =>
             options.cjpmCacheRoot = Some(requireNonEmptyCliValue(args, index, "--cjpm-cache"))
+            Some(index + 2)
+        case "--repository-url" =>
+            options.repositoryUrl = Some(requireNonEmptyCliValue(args, index, "--repository-url"))
+            Some(index + 2)
+        case "--repository-revision" =>
+            options.repositoryRevision = Some(requireNonEmptyCliValue(args, index, "--repository-revision"))
+            Some(index + 2)
+        case "--repository-root" =>
+            options.repositoryRoot = Some(requireNonEmptyCliValue(args, index, "--repository-root"))
             Some(index + 2)
         case "--api-surface-baseline" =>
             options.apiSurfaceBaseline = Some(
@@ -254,6 +267,18 @@ private func validateCliOptions(options: NewCliOptions): Unit {
             options.formats[0] != "coverage"))) {
         throw IllegalArgumentException("--stdout requires exactly one JSON-producing format")
     }
+    let hasRepositoryUrl = options.repositoryUrl.isSome()
+    let hasRepositoryRevision = options.repositoryRevision.isSome()
+    if (hasRepositoryUrl != hasRepositoryRevision) {
+        throw IllegalArgumentException("--repository-url and --repository-revision must be provided together")
+    }
+    if (options.repositoryRoot.isSome() && !hasRepositoryUrl) {
+        throw IllegalArgumentException("--repository-root requires --repository-url and --repository-revision")
+    }
+    if (options.command != "generate" &&
+        (hasRepositoryUrl || hasRepositoryRevision || options.repositoryRoot.isSome())) {
+        throw IllegalArgumentException("repository options are only valid for generate")
+    }
     if (options.cjpmCacheRoot.isSome() && !options.includeCachedDependencies) {
         throw IllegalArgumentException("--cjpm-cache requires --include-cached-dependencies")
     }
@@ -266,7 +291,7 @@ private func parseSchemaCommand(args: Array<String>): NewCliOptions {
     options.schemaName = args[1]
     if (options.schemaName != "list" && options.schemaName != "doc-ir" &&
         options.schemaName != "doc-ir-v6" && options.schemaName != "doc-ir-v7" &&
-        options.schemaName != "doc-ir-v8" && options.schemaName != "diagnostics" &&
+        options.schemaName != "doc-ir-v8" && options.schemaName != "doc-ir-v9" && options.schemaName != "diagnostics" &&
         options.schemaName != "cfg-matrix" && options.schemaName != "search-index" &&
         options.schemaName != "api-surface" && options.schemaName != "documentation-coverage") {
         throw IllegalArgumentException("unknown schema '${options.schemaName}'")

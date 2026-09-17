@@ -81,13 +81,15 @@ internal func decodeSymbol(node: JsonNode, path: String, legacyV6: Bool, legacy:
         })
 }
 
-internal func decodeModules(root: JsonObject, legacy: Bool): Array<ModuleDoc> {
+internal func decodeModules(root: JsonObject, legacy: Bool, repositoryMetadata: Bool): Array<ModuleDoc> {
     let result = ArrayList<ModuleDoc>()
     var index: Int64 = 0
     for (node in jsonArrayValues(arrayAt(root, "modules", "$" ))) {
         let path = "$.modules[${index}]"
         let value = strictObject(node, path, if (legacy) {
             ["id", "name", "role", "sourcePrefix", "packageNames", "dependencyIds"]
+        } else if (repositoryMetadata) {
+            ["id", "name", "role", "sourcePrefix", "organization", "repositoryPath", "packageNames", "dependencyIds"]
         } else {
             ["id", "name", "role", "sourcePrefix", "organization", "packageNames", "dependencyIds"]
         })
@@ -97,7 +99,9 @@ internal func decodeModules(root: JsonObject, legacy: Bool): Array<ModuleDoc> {
             dependencyIds: stringsAt(value, "dependencyIds", path),
             organization: if (legacy) { None<String> } else {
                 nullableStringAt(value, "organization", path)
-            }))
+            }, repositoryPath: if (repositoryMetadata) {
+                nullableStringAt(value, "repositoryPath", path)
+            } else { None }))
         index++
     }
     result.toArray()

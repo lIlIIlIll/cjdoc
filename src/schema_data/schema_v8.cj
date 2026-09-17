@@ -2,9 +2,6 @@ package cjdoc.schema_data
 
 private let DOC_IR_V8_ID =
     "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v8.schema.json"
-private let DOC_IR_CURRENT_ID =
-    "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json"
-
 private let REEXPORT_DEFINITIONS = """
     "reExportBinding": {
       "type": "object", "additionalProperties": false,
@@ -226,4 +223,4 @@ private func buildDocIrV8Schema(id: String): String {
 }
 
 public let DOC_IR_V8_SCHEMA = buildDocIrV8Schema(DOC_IR_V8_ID)
-public let DOC_IR_SCHEMA = buildDocIrV8Schema(DOC_IR_CURRENT_ID)
+// Current schema alias is defined by schema_v9.cj.

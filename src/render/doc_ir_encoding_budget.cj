@@ -311,6 +311,13 @@ internal func validateDocIrEncodingBudget(documentation: DocumentationSet, limit
     budget.consumeObject("$.project")
     budget.consumeString(documentation.project.name, "$.project.name")
     budget.consumeString(documentation.project.kind, "$.project.kind")
+    match (documentation.project.repository) {
+        case Some(repository) =>
+            budget.consumeObject("$.project.repository", fields: 2)
+            budget.consumeString(repository.url, "$.project.repository.url")
+            budget.consumeString(repository.revision, "$.project.repository.revision")
+        case None => budget.consumeBytes(4, "$.project.repository")
+    }
     budget.consumeObject("$.configuration")
     budget.consumeString(documentation.configuration.audience, "$.configuration.audience")
     budget.consumeString(documentation.configuration.lintProfile, "$.configuration.lintProfile")
@@ -338,6 +345,7 @@ internal func validateDocIrEncodingBudget(documentation: DocumentationSet, limit
         budget.consumeString(module.role, "${path}.role")
         budget.consumeString(module.sourcePrefix, "${path}.sourcePrefix")
         budget.consumeOptionalString(module.organization, "${path}.organization")
+        budget.consumeOptionalString(module.repositoryPath, "${path}.repositoryPath")
         budget.consumeCollection(module.packageNames.size, "${path}.packageNames")
         var itemIndex: Int64 = 0
         for (name in module.packageNames) {

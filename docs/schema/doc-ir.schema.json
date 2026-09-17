@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-  "title": "cjdoc Doc IR v8",
+  "title": "cjdoc Doc IR v9",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "generator", "status", "project", "configuration", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/8"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/9"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "project": {"$ref": "#/$defs/project"},
@@ -24,13 +24,22 @@
     "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}}
   },
   "$defs": {
+    "repository": {
+      "type": "object", "additionalProperties": false,
+      "required": ["url", "revision"],
+      "properties": {
+        "url": {"type": "string", "minLength": 1,
+          "pattern": "^https://github.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$"},
+        "revision": {"type": "string", "minLength": 1}
+      }
+    },
     "semanticState": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
     "nullableString": {"type": ["string", "null"]},
     "moduleId": {"type": "string", "pattern": "^cjdoc:module:v1:.+$"},
     "symbolId": {"type": "string", "pattern": "^cjdoc:v2:.+$"},
     "nullableSymbolId": {"anyOf": [{"$ref": "#/$defs/symbolId"}, {"type": "null"}]},
     "stringArray": {"type": "array", "items": {"type": "string"}},
-    "portablePath": {"type": "string", "minLength": 1, "pattern": "^(?![A-Za-z]:)(?!.*\\\\)(?!\\.{1,2}(?:/|$))(?!.*/\\.{1,2}(?:/|$))[^/]+(?:/[^/]+)*$"},
+    "portablePath": {"type": "string", "minLength": 1, "pattern": "^[^/]+(?:/[^/]+)*$"},
     "generator": {
       "type": "object", "additionalProperties": false,
       "required": ["name", "version"],
@@ -38,8 +47,8 @@
     },
     "project": {
       "type": "object", "additionalProperties": false,
-      "required": ["name", "kind"],
-      "properties": {"name": {"type": "string", "minLength": 1}, "kind": {"type": "string", "minLength": 1}}
+      "required": ["name", "kind", "repository"],
+      "properties": {"name": {"type": "string", "minLength": 1}, "kind": {"type": "string", "minLength": 1}, "repository": {"anyOf": [{"$ref": "#/$defs/repository"}, {"type": "null"}]}}
     },
     "configuration": {
       "type": "object", "additionalProperties": false,
@@ -71,12 +80,12 @@
     },
     "module": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "name", "role", "sourcePrefix", "organization", "packageNames", "dependencyIds"],
+      "required": ["id", "name", "role", "sourcePrefix", "organization", "repositoryPath", "packageNames", "dependencyIds"],
       "properties": {
         "id": {"$ref": "#/$defs/moduleId"}, "name": {"type": "string", "minLength": 1},
         "role": {"enum": ["root", "workspace", "pathDependency", "externalDependency"]},
         "sourcePrefix": {"anyOf": [{"const": ""}, {"$ref": "#/$defs/portablePath"}]}, "organization": {"$ref": "#/$defs/nullableString"}, "packageNames": {"$ref": "#/$defs/stringArray"},
-        "dependencyIds": {"type": "array", "items": {"$ref": "#/$defs/moduleId"}}
+        "dependencyIds": {"type": "array", "items": {"$ref": "#/$defs/moduleId"}}, "repositoryPath": {"anyOf": [{"type": "null"}, {"const": ""}, {"$ref": "#/$defs/portablePath"}]}
       }
     },
     "package": {

@@ -6,6 +6,14 @@ import std.fs.*
 import std.sort.*
 import yjson.*
 
+private func jsonArrayValues(value: JsonArray): Array<JsonNode> {
+    let result = ArrayList<JsonNode>()
+    for (index in 0..value.size()) {
+        result.add(value.get(index).getOrThrow())
+    }
+    result.toArray()
+}
+
 internal func digestRegularFile(path: Path, description: String,
     budget: OutputHashBudget): String {
     ensureNoSymbolicLinkAncestors(path, description)
@@ -144,7 +152,7 @@ internal func sameStringArray(first: Array<String>, second: Array<String>): Bool
 }
 
 internal func parseOwnedManifest(text: String): OwnedOutputManifest {
-    let parsed = JsonNode.parse(text, config: JsonReadOptions(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject, maxDepth: 8, maxStringBytes: OUTPUT_MANIFEST_LIMIT, maxInputBytes: OUTPUT_MANIFEST_LIMIT))
+    let parsed = JsonNode.parse(text, config: JsonReadOptions(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject, maxDepth: 8, maxStringBytes: OUTPUT_MANIFEST_LIMIT, maxBufferedValueBytes: OUTPUT_MANIFEST_LIMIT, maxInputBytes: OUTPUT_MANIFEST_LIMIT))
     let object = try { parsed.asObject() } catch (_: Exception) {
         throw IllegalArgumentException("invalid cjdoc output manifest: expected object")
     }
@@ -393,7 +401,7 @@ internal func validatePreviousManifest(planFiles: Array<PreviousOutputFile>,
 internal func readOutputTransactionPlan(transaction: Path): OutputTransactionPlan {
     let text = readCappedRegularText(transaction.join(OUTPUT_TRANSACTION_PLAN_NAME),
         "cjdoc output transaction plan", OUTPUT_TRANSACTION_PLAN_LIMIT)
-    let parsed = JsonNode.parse(text, config: JsonReadOptions(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject, maxDepth: 8, maxStringBytes: OUTPUT_TRANSACTION_PLAN_LIMIT, maxInputBytes: OUTPUT_TRANSACTION_PLAN_LIMIT))
+    let parsed = JsonNode.parse(text, config: JsonReadOptions(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject, maxDepth: 8, maxStringBytes: OUTPUT_TRANSACTION_PLAN_LIMIT, maxBufferedValueBytes: OUTPUT_TRANSACTION_PLAN_LIMIT, maxInputBytes: OUTPUT_TRANSACTION_PLAN_LIMIT))
     let object = try { parsed.asObject() } catch (_: Exception) {
         throw IllegalArgumentException("invalid cjdoc output transaction plan: expected object")
     }

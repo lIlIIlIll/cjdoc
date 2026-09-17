@@ -307,7 +307,7 @@ class ReleaseEvidenceTest(ReleaseToolsTestSupport, unittest.TestCase):
             self.assertFalse((scripts / "__pycache__").exists())
 
     @unittest.skipIf(os.name == "nt", "fake validator uses a POSIX shebang")
-    def test_real_binary_path_round_trips_all_v8_goldens_and_rejects_corruption(self) -> None:
+    def test_real_binary_path_round_trips_all_v9_goldens_and_rejects_corruption(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             repo, _ = self.make_release_repo(root / "repo")

@@ -3,6 +3,7 @@ package cjdoc
 import cjdoc.model as public_model
 import cjdoc.provider as public_provider
 import std.collection.*
+import std.fs.*
 
 public class GenerationRequest {
     public let projectRoot: String
@@ -11,6 +12,8 @@ public class GenerationRequest {
     public let jobs: Int64
     public let audience: String
     public let lintProfile: String
+    public let repository: ?public_model.RepositoryInfo
+    public let repositoryRoot: ?String
     public let cacheDirectory: ?String
     public let cacheFingerprint: ?String
     public let astPreflightExecutable: ?String
@@ -21,6 +24,7 @@ public class GenerationRequest {
 
     public init(projectRoot: String, includePathDependencies!: Bool = false, includeCachedDependencies!: Bool = false,
         jobs!: Int64 = 1, audience!: String = "external", lintProfile!: String = "standard",
+        repository!: ?public_model.RepositoryInfo = None, repositoryRoot!: ?String = None,
         dependencySources!: Array<DependencySourceInput> = [], cfgValues!: Array<CfgValue> = [],
         providerFactories!: Array<public_provider.SemanticProviderFactory> = [], cacheDirectory!: ?String = None,
         cacheFingerprint!: ?String = None, astPreflightExecutable!: ?String = None, cjpmCacheRoot!: ?String = None) {
@@ -45,6 +49,25 @@ public class GenerationRequest {
         this.jobs = jobs
         this.audience = audience
         this.lintProfile = lintProfile
+        if (repositoryRoot.isSome() && repository.isNone()) {
+            throw IllegalArgumentException("repositoryRoot requires repository URL and revision")
+        }
+        let validatedRepositoryRoot: ?String = match (repositoryRoot) {
+            case None => None
+            case Some(path) => try {
+                let resolved = canonicalize(path).toString()
+                if (!FileInfo(resolved).isDirectory()) {
+                    throw IllegalArgumentException("repositoryRoot must be a directory")
+                }
+                Some(resolved)
+            } catch (error: IllegalArgumentException) {
+                throw error
+            } catch (_: Exception) {
+                throw IllegalArgumentException("repositoryRoot must resolve to a directory")
+            }
+        }
+        this.repository = repository
+        this.repositoryRoot = validatedRepositoryRoot
         this.cacheDirectory = cacheDirectory
         this.cacheFingerprint = cacheFingerprint
         this.astPreflightExecutable = astPreflightExecutable

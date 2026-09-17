@@ -168,6 +168,13 @@ internal func groupMembersByOwner(projection: RenderProjection):
     groups
 }
 
+internal func findProjectedModule(projection: RenderProjection, id: String): ?ModuleDoc {
+    for (module in projection.modules) {
+        if (module.source.id == id) { return Some(module.source) }
+    }
+    None
+}
+
 internal func findSymbol(index: HashMap<String, SymbolDoc>, id: String): ?SymbolDoc {
     index.get(id)
 }
@@ -208,6 +215,69 @@ internal func renderabilityIndex(documentation: DocumentationSet,
         }
     }
     results
+}
+
+
+private func sourceUrlByteIsUnreserved(value: Byte): Bool {
+    (value >= b'a' && value <= b'z') || (value >= b'A' && value <= b'Z') ||
+        (value >= b'0' && value <= b'9') || value == b'-' || value == b'.' ||
+        value == b'_' || value == b'~'
+}
+
+private func appendSourceUrlSegment(out: RenderTextBuffer, value: String): Unit {
+    for (byte in value.toArray()) {
+        if (sourceUrlByteIsUnreserved(byte)) {
+            out.append(String.fromUtf8([byte]))
+        } else {
+            appendMarkdownPercentByte(out, byte)
+        }
+    }
+}
+
+private func sourceRelativePath(module: ModuleDoc, source: SourceRange): ?String {
+    if (module.sourcePrefix.isEmpty()) { return Some(source.path) }
+    let prefix = module.sourcePrefix + "/"
+    if (!source.path.startsWith(prefix)) { return None }
+    Some(source.path[prefix.size..])
+}
+
+internal func sourceUrl(project: ProjectInfo, module: ModuleDoc, source: SourceRange): ?String {
+    let repository = match (project.repository) {
+        case Some(value) => value
+        case None => return None
+    }
+    let repositoryPath = match (module.repositoryPath) {
+        case Some(value) => value
+        case None => return None
+    }
+    let relative = match (sourceRelativePath(module, source)) {
+        case Some(value) => if (value.isEmpty()) { return None } else { value }
+        case None => return None
+    }
+    let out = RenderTextBuffer()
+    out.append(repository.url)
+    out.append("/blob/")
+    appendSourceUrlSegment(out, repository.revision)
+    out.append("/")
+    if (!repositoryPath.isEmpty()) {
+        appendSourceUrlSegment(out, repositoryPath)
+        out.append("/")
+    }
+    var firstSegment = true
+    for (segment in relative.split("/")) {
+        if (!firstSegment) { out.append("/") }
+        firstSegment = false
+        appendSourceUrlSegment(out, segment)
+    }
+    let endLine = if (source.end.line > source.start.line && source.end.column == 1) {
+        source.end.line - 1
+    } else {
+        source.end.line
+    }
+    if (endLine < source.start.line) { return None }
+    out.append("#L${source.start.line}")
+    if (endLine != source.start.line) { out.append("-L${endLine}") }
+    Some(out.toString())
 }
 
 internal func symbolUrl(index: HashMap<String, SymbolDoc>, symbol: SymbolDoc): String {

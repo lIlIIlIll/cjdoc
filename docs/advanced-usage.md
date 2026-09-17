@@ -208,7 +208,9 @@ cjdoc render \
 
 `render` 会先验证输入的 schema 和引用关系。它不读取项目源码，因此源码注释或声明有变化时，应重新运行 `generate`。
 
-v6/v7 只能作为严格的只读输入迁移到当前 v8 输出；cjdoc 不会重新生成旧版本格式。
+v6/v7/v8 只能作为严格的只读输入迁移到当前 v9 输出；cjdoc 不会重新生成旧版本格式。
+
+需要在 HTML 声明页显示 GitHub 源码链接时，`generate` 必须同时接收 `--repository-url` 和 `--repository-revision`，并可用 `--repository-root` 指定仓库根目录。URL 只支持 canonical GitHub HTTPS 仓库根；缺少真实 source-origin 映射、仓库外依赖或符号链接越界时，链接会被省略。`render` 只使用 JSON 中已经保存的 metadata，不接受这些生成参数。
 
 ## 查看内嵌 schema
 
@@ -239,7 +241,7 @@ cjpm build
 
 ## 能力边界
 
-- 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/8`。
+- 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/9`；输入严格兼容 v6、v7、v8。
 - CHIR 尚未接入，部分类型和语义关系会标为 `partial` 或 `unavailable`。
 - 宏调用和没有显式 `--cfg` 输入的条件编译不会被强行展开。
 - 单次扫描、单个源码文件和辅助输入都有大小及数量限制，超限时会保留 partial 结果并输出诊断。
@@ -270,4 +272,7 @@ cjpm build
 | `--api-surface-baseline <file>` | `generate`, `check` | 无 | 对账 API snapshot |
 | `--min-symbol-coverage <0..100>` | `generate`, `check` | 无 | 声明覆盖率门槛 |
 | `--min-parameter-coverage <0..100>` | `generate`, `check` | 无 | 参数覆盖率门槛 |
+| `--repository-url <url>` | `generate` | 无 | canonical GitHub HTTPS 仓库根，需与 revision 成对使用 |
+| `--repository-revision <ref>` | `generate` | 无 | GitHub blob URL 使用的 revision，需与 URL 成对使用 |
+| `--repository-root <dir>` | `generate` | 项目根 | 限制真实 source origin 的仓库映射范围 |
 | `--force-owned` | `generate`, `render` | 关闭 | 显式采用已有输出目录内容 |

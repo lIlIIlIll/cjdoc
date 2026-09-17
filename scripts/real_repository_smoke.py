@@ -146,8 +146,8 @@ def main() -> int:
                 document = strict_load(
                     outputs[0] / "docs.json", description="real-repository Doc IR"
                 )
-                if document.get("schemaVersion") != "cjdoc.doc-ir/8":
-                    raise ValueError(f"real repository emitted non-v8 Doc IR: {project}")
+                if document.get("schemaVersion") != "cjdoc.doc-ir/9":
+                    raise ValueError(f"real repository emitted non-v9 Doc IR: {project}")
                 declarations = document.get("declarations")
                 diagnostics = document.get("diagnostics")
                 if not isinstance(declarations, list) or len(declarations) < args.min_declarations:

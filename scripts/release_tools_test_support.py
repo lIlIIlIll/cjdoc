@@ -24,12 +24,12 @@ from scripts import verify_release_package
 from scripts import verify_remote_tag
 from scripts import verify_repository_inputs
 from scripts import worktree_identity
-from scripts.verify_repository_inputs import GOLDEN_NAMES, SCHEMA_NAMES
+from scripts.verify_repository_inputs import CURRENT_GOLDEN_VERSION, GOLDEN_NAMES, SCHEMA_NAMES
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MARKDOWN_COMMIT = "db4f9527944b589db8436669f1d255192388cee2"
-YJSON_COMMIT = "bf65cbecd99ac25e7485f8db60990e94a04e57bc"
+YJSON_COMMIT = "54b4965dee0f0b96710cbc678ec5ec9a126b055c"
 SDK_SHA256 = "1" * 64
 
 
@@ -79,7 +79,8 @@ class ReleaseToolsTestSupport:
         (root / "cjpm.lock").write_text(
             "version=0\n[requires]\n"
             f"markdown={{git=\"https://github.com/lIlIIlIll/markdown.git\",commitId=\"{MARKDOWN_COMMIT}\",output-type=\"static\"}}\n"
-            f"yjson={{git=\"https://github.com/lIlIIlIll/yjson.git\",commitId=\"{YJSON_COMMIT}\",output-type=\"static\"}}\n",
+            f"yjson={{git=\"https://github.com/lIlIIlIll/yjson.git\",commitId=\"{YJSON_COMMIT}\",output-type=\"static\"}}\n"
+            "yjson_macros={git=\"https://github.com/lIlIIlIll/yjson_macros.git\",commitId=\"fec0adce41f73d037d876cbac7a28aee8108bb5c\"}\n",
             encoding="utf-8",
         )
         for name in SCHEMA_NAMES:
@@ -87,7 +88,7 @@ class ReleaseToolsTestSupport:
                 PROJECT_ROOT / "docs/schema" / f"{name}.schema.json",
                 root / "docs/schema" / f"{name}.schema.json",
             )
-        for version in (6, 7, 8):
+        for version in (*range(6, 9), CURRENT_GOLDEN_VERSION):
             directory = root / f"tests/fixtures/golden-v{version}"
             directory.mkdir(parents=True)
             for name in GOLDEN_NAMES:

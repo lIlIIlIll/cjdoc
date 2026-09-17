@@ -69,13 +69,21 @@ internal let HTML_SEARCH_SCRIPT = """
     return "切换到" + (next === "light" ? "浅色" : "深色") + "主题";
   };
   const root = input.dataset.root || "";
-  const kindFilter = document.querySelector("[data-cjdoc-kind]");
+  const searchArea = input.closest(".search-area");
   const packageFilter = document.querySelector("[data-cjdoc-package]");
+  const categoryTabs = [...document.querySelectorAll("[data-cjdoc-category]")];
+  const searchStatus = document.querySelector("[data-cjdoc-search-status]");
   let entries = [];
   let visible = [];
   let selected = -1;
+  let activeCategory = "all";
   const ambiguousLabels = new Set();
   const displayKey = (entry) => JSON.stringify([entry.packageName, entry.qualifiedName]);
+  const categoryFor = (kind) => {
+    if (["class", "struct", "interface", "enum", "typeAlias"].includes(kind)) return "classes";
+    if (["function", "constructor"].includes(kind)) return "functions";
+    return "other";
+  };
   const rank = (entry, query) => {
     const name = entry.name.toLocaleLowerCase();
     const qualified = entry.qualifiedName.toLocaleLowerCase();
@@ -84,7 +92,16 @@ internal let HTML_SEARCH_SCRIPT = """
     if (name.startsWith(query)) return 2;
     if (qualified.startsWith(query)) return 3;
     const haystack = (entry.qualifiedName + " " + entry.kind + " " + entry.packageName + " " + entry.summary).toLocaleLowerCase();
-    return query.split(/\\s+/).filter(Boolean).every((token) => haystack.includes(token)) ? 4 : -1;
+    return query.split(" ").filter(Boolean).every((token) => haystack.includes(token)) ? 4 : -1;
+  };
+  const setCategory = (next) => {
+    activeCategory = next;
+    for (const tab of categoryTabs) {
+      const active = tab.dataset.cjdocCategory === next;
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+      tab.setAttribute("aria-pressed", active ? "true" : "false");
+    }
+    render();
   };
   const select = (next) => {
     if (!visible.length) return;
@@ -101,12 +118,12 @@ internal let HTML_SEARCH_SCRIPT = """
     visible = [];
     selected = -1;
     input.removeAttribute("aria-activedescendant");
+    if (searchStatus) searchStatus.hidden = true;
     const query = input.value.trim().toLocaleLowerCase();
     if (!query) { input.setAttribute("aria-expanded", "false"); return; }
-    const selectedKind = kindFilter ? kindFilter.value : "";
     const selectedPackage = packageFilter ? packageFilter.value : "";
     visible = entries.map((entry) => ({entry, rank: rank(entry, query)}))
-      .filter((item) => item.rank >= 0 && (!selectedKind || item.entry.kind === selectedKind) &&
+      .filter((item) => item.rank >= 0 && (activeCategory === "all" || categoryFor(item.entry.kind) === activeCategory) &&
         (!selectedPackage || item.entry.packageName === selectedPackage))
       .sort((left, right) => left.rank - right.rank ||
         left.entry.qualifiedName.localeCompare(right.entry.qualifiedName) || left.entry.id.localeCompare(right.entry.id))
@@ -137,6 +154,10 @@ internal let HTML_SEARCH_SCRIPT = """
       item.append(link);
       results.append(item);
     }
+    if (!visible.length && searchStatus) {
+      searchStatus.textContent = isChinese ? "没有匹配的声明" : "No matching declarations";
+      searchStatus.hidden = false;
+    }
     input.setAttribute("aria-expanded", visible.length ? "true" : "false");
   };
   const addOptions = (selectElement, values) => {
@@ -157,152 +178,189 @@ internal let HTML_SEARCH_SCRIPT = """
     if (firstIdsByLabel.has(key) && firstIdsByLabel.get(key) !== entry.id) ambiguousLabels.add(key);
     else firstIdsByLabel.set(key, entry.id);
   }
-  addOptions(kindFilter, entries.map((entry) => entry.kind));
   addOptions(packageFilter, entries.map((entry) => entry.packageName));
   render();
   input.addEventListener("input", render);
-  if (kindFilter) kindFilter.addEventListener("change", render);
+  for (const tab of categoryTabs) tab.addEventListener("click", () => setCategory(tab.dataset.cjdocCategory));
   if (packageFilter) packageFilter.addEventListener("change", render);
   input.addEventListener("keydown", (event) => {
     if (event.key === "ArrowDown") { event.preventDefault(); select(selected + 1); }
     else if (event.key === "ArrowUp") { event.preventDefault(); select(selected < 0 ? visible.length - 1 : selected - 1); }
     else if (event.key === "Enter" && selected >= 0) { event.preventDefault(); results.children[selected].querySelector("a").click(); }
-    else if (event.key === "Escape") { input.value = ""; render(); }
+    else if (event.key === "Escape") { input.value = ""; render(); input.blur(); }
+  });
+  document.addEventListener("click", (event) => {
+    if (searchArea && !searchArea.contains(event.target) && !event.target.closest(".search-filters")) {
+      results.replaceChildren();
+      input.removeAttribute("aria-activedescendant");
+      input.setAttribute("aria-expanded", "false");
+    }
   });
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
-      event.preventDefault(); input.focus();
+      event.preventDefault();
+      if (typeof closeMenu === "function") closeMenu(false);
+      input.focus();
     }
   });
   const themeToggle = document.querySelector("[data-cjdoc-theme-toggle]");
-  const themeOptions = [
-    ["system", "System", "跟随系统"],
-    ["light", "Light", "浅色"],
-    ["dark", "Dark", "深色"],
-    ["paper", "Paper", "纸张"],
-    ["ocean", "Ocean", "深海"],
-    ["forest", "Forest", "松林"],
-    ["terminal", "Terminal", "终端"],
-    ["violet", "Violet", "紫墨"]
-  ];
-  const themeValues = new Set(themeOptions.slice(1).map((option) => option[0]));
+  const themePopover = document.querySelector("[data-cjdoc-theme-popover]");
+  const themeButtons = [...document.querySelectorAll("[data-cjdoc-theme-value]")];
+  const themeValues = new Set(["system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"]);
   const darkThemes = new Set(["dark", "ocean", "terminal"]);
   const themePersistence = globalThis.__CJDOC_THEME__;
   const isKnownTheme = (value) => themeValues.has(value);
-  const createThemePicker = () => {
-    if (!themeToggle) return null;
-    const picker = document.createElement("label");
-    const pickerText = document.createElement("span");
-    const select = document.createElement("select");
-    const isChinese = (document.documentElement.lang || "").toLocaleLowerCase().startsWith("zh");
-    picker.className = "theme-picker";
-    pickerText.className = "sr-only";
-    pickerText.textContent = isChinese ? "主题" : "Theme";
-    select.setAttribute("aria-label", pickerText.textContent);
-    select.dataset.cjdocThemeSelect = "";
-    for (const optionData of themeOptions) {
-      const option = document.createElement("option");
-      option.value = optionData[0];
-      option.textContent = isChinese ? optionData[2] : optionData[1];
-      select.append(option);
-    }
-    picker.append(pickerText, select);
-    themeToggle.before(picker);
-    return select;
-  };
-  const themeSelect = createThemePicker();
   const readTheme = () => {
     const explicit = document.documentElement.dataset.theme;
-    if (isKnownTheme(explicit)) return explicit;
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark" : "light";
+    if (isKnownTheme(explicit) && explicit !== "system") return explicit;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   };
   const syncThemeControls = () => {
     const explicit = document.documentElement.dataset.theme;
-    if (themeSelect) themeSelect.value = isKnownTheme(explicit) ? explicit : "system";
-    if (!themeToggle) return;
-    const current = readTheme();
-    const isDark = darkThemes.has(current);
-    const next = isDark ? "light" : "dark";
-    themeToggle.dataset.mode = isDark ? "dark" : "light";
-    themeToggle.setAttribute("aria-pressed", isDark ? "true" : "false");
-    themeToggle.setAttribute("aria-label", themeSwitchLabel(next));
-    themeToggle.title = themeSwitchLabel(next);
+    const selectedTheme = isKnownTheme(explicit) ? explicit : "system";
+    for (const button of themeButtons) {
+      const active = button.dataset.cjdocThemeValue === selectedTheme;
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+    }
+    if (themeToggle) themeToggle.dataset.mode = darkThemes.has(readTheme()) ? "dark" : "light";
+  };
+  const closeTheme = (restoreFocus = false) => {
+    if (!themePopover || themePopover.hidden) return;
+    themePopover.hidden = true;
+    if (themeToggle) {
+      themeToggle.setAttribute("aria-expanded", "false");
+      if (restoreFocus) themeToggle.focus();
+    }
   };
   const setTheme = (next) => {
+    if (!isKnownTheme(next)) return;
     if (next === "system") delete document.documentElement.dataset.theme;
-    else if (isKnownTheme(next)) document.documentElement.dataset.theme = next;
-    else return;
+    else document.documentElement.dataset.theme = next;
     if (themePersistence && typeof themePersistence.persist === "function") themePersistence.persist(next);
     else try { localStorage.setItem("cjdoc-theme", next); } catch (_) { /* optional */ }
     syncThemeControls();
+    closeTheme(false);
   };
-  if (themeToggle || themeSelect) {
-    if (!themePersistence) {
-      try {
-        const storedTheme = localStorage.getItem("cjdoc-theme");
-        if (storedTheme === "system") delete document.documentElement.dataset.theme;
-        else if (isKnownTheme(storedTheme)) document.documentElement.dataset.theme = storedTheme;
-      } catch (_) { /* file:// storage can be unavailable */ }
-    }
+  if (themeToggle && themePopover) {
     syncThemeControls();
-    if (themeToggle) {
-      themeToggle.addEventListener("click", () => {
-        setTheme(darkThemes.has(readTheme()) ? "light" : "dark");
-      });
-    }
-    if (themeSelect) themeSelect.addEventListener("change", () => setTheme(themeSelect.value));
+    themeToggle.addEventListener("click", () => {
+      const open = themePopover.hidden;
+      themePopover.hidden = !open;
+      themeToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) { const first = themePopover.querySelector("button"); if (first) first.focus(); }
+    });
+    for (const button of themeButtons) button.addEventListener("click", () => setTheme(button.dataset.cjdocThemeValue));
+    document.addEventListener("click", (event) => {
+      if (!themePopover.hidden && !themePopover.contains(event.target) && event.target !== themeToggle) closeTheme(false);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !themePopover.hidden) { event.stopPropagation(); closeTheme(true); }
+    }, true);
   }
   const menu = document.querySelector("[data-cjdoc-menu]");
   const sidebar = document.querySelector("#cjdoc-sidebar");
+  const sidebarClose = document.querySelector("[data-cjdoc-sidebar-close]");
   const menuBackdrop = document.querySelector("[data-cjdoc-menu-backdrop]");
+  let opener = null;
+  let previousBodyOverflow = "";
+  const drawerSurfaces = () => [...document.querySelectorAll(".site-nav, .docs-main, .toc-panel, .site-footer")];
+  const setDrawerInert = (value) => {
+    for (const surface of drawerSurfaces()) {
+      if (value) surface.setAttribute("inert", ""); else surface.removeAttribute("inert");
+    }
+  };
+  const isMobileDrawer = () => window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
   const closeMenu = (restoreFocus = false) => {
     if (!menu || !sidebar) return;
     const wasOpen = menu.getAttribute("aria-expanded") === "true";
     menu.setAttribute("aria-expanded", "false");
+    menu.setAttribute("aria-label", isChinese ? "打开导航" : "Open navigation");
     sidebar.classList.remove("is-open");
+    sidebar.removeAttribute("role");
+    sidebar.removeAttribute("aria-modal");
     document.documentElement.classList.remove("nav-is-open");
+    setDrawerInert(false);
+    document.body.style.overflow = previousBodyOverflow;
     if (menuBackdrop) menuBackdrop.hidden = true;
-    if (restoreFocus && wasOpen) menu.focus();
+    if (restoreFocus && wasOpen && opener && typeof opener.focus === "function") opener.focus();
+    opener = null;
+  };
+  const openMenu = () => {
+    if (!menu || !sidebar) return;
+    opener = document.activeElement;
+    menu.setAttribute("aria-expanded", "true");
+    menu.setAttribute("aria-label", isChinese ? "关闭导航" : "Close navigation");
+    sidebar.classList.add("is-open");
+    sidebar.setAttribute("role", "dialog");
+    sidebar.setAttribute("aria-modal", "true");
+    document.documentElement.classList.add("nav-is-open");
+    setDrawerInert(true);
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    if (menuBackdrop) menuBackdrop.hidden = false;
+    const target = sidebar.querySelector("[data-cjdoc-sidebar-filter], [data-cjdoc-sidebar-close], a, summary");
+    if (target) window.setTimeout(() => target.focus(), 0); else window.setTimeout(() => sidebar.focus(), 0);
   };
   if (menu && sidebar) {
     menu.addEventListener("click", () => {
-      const open = menu.getAttribute("aria-expanded") !== "true";
-      menu.setAttribute("aria-expanded", open ? "true" : "false");
-      sidebar.classList.toggle("is-open", open);
-      document.documentElement.classList.toggle("nav-is-open", open);
-      if (menuBackdrop) menuBackdrop.hidden = !open;
-      if (open) { const target = sidebar.querySelector("input, summary, a"); if (target) target.focus(); }
+      if (menu.getAttribute("aria-expanded") === "true") closeMenu(true); else openMenu();
     });
-    sidebar.addEventListener("click", (event) => { if (event.target.closest("a")) closeMenu(); });
+    if (sidebarClose) sidebarClose.addEventListener("click", () => closeMenu(true));
+    sidebar.addEventListener("click", (event) => { if (event.target.closest("a")) closeMenu(false); });
     if (menuBackdrop) menuBackdrop.addEventListener("click", () => closeMenu(true));
     document.addEventListener("keydown", (event) => {
       if (menu.getAttribute("aria-expanded") !== "true") return;
       if (event.key === "Escape") { closeMenu(true); return; }
       if (event.key !== "Tab") return;
       const focusable = [...sidebar.querySelectorAll("a, button, input, summary, select, [tabindex]")]
-        .filter((item) => !item.hidden && item.getAttribute("tabindex") !== "-1");
-      if (!focusable.length) { event.preventDefault(); return; }
+        .filter((item) => !item.hidden && !item.disabled && item.tabIndex >= 0 && item.getClientRects().length > 0);
+      if (!focusable.length) { event.preventDefault(); sidebar.focus(); return; }
       const first = focusable[0]; const last = focusable[focusable.length - 1];
       if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     });
+    window.addEventListener("resize", () => { if (!isMobileDrawer() && menu.getAttribute("aria-expanded") === "true") closeMenu(false); });
   }
   const sidebarFilter = document.querySelector("[data-cjdoc-sidebar-filter]");
-  if (sidebarFilter) sidebarFilter.addEventListener("input", () => {
+  const sidebarNoResults = document.querySelector("[data-cjdoc-sidebar-no-results]");
+  let savedSidebarState = null;
+  const filterSidebar = () => {
+    if (!sidebarFilter) return;
     const query = sidebarFilter.value.trim().toLocaleLowerCase();
-    for (const group of document.querySelectorAll(".sidebar-group")) {
-      let matched = false;
+    const groups = [...document.querySelectorAll(".sidebar-group")];
+    if (query && !savedSidebarState) savedSidebarState = groups.map((group) => group.open);
+    let total = 0;
+    groups.forEach((group, groupIndex) => {
+      let matched = 0;
       for (const item of group.querySelectorAll(".sidebar-package")) {
-        const visible = !query || item.textContent.toLocaleLowerCase().includes(query);
-        item.hidden = !visible; matched = matched || visible;
+        const name = item.querySelector("span")?.textContent || "";
+        const visible = !query || name.toLocaleLowerCase().includes(query);
+        item.hidden = !visible;
+        if (visible) matched += 1;
       }
-      group.hidden = !matched;
+      total += matched;
+      group.hidden = matched === 0;
       if (query && matched) group.open = true;
-    }
-  });
+      if (!query && savedSidebarState) group.open = savedSidebarState[groupIndex];
+    });
+    if (!query) savedSidebarState = null;
+    if (sidebarNoResults) sidebarNoResults.hidden = !query || total > 0;
+  };
+  if (sidebarFilter) sidebarFilter.addEventListener("input", filterSidebar);
   const activePackage = document.querySelector(".sidebar-package.is-current");
-  if (activePackage) activePackage.scrollIntoView({block: "nearest"});
+  if (activePackage && sidebar) sidebar.scrollTop = Math.max(0, activePackage.offsetTop - sidebar.clientHeight / 3);
+  const syncRouteState = () => {
+    const overview = document.querySelector(".sidebar-link[href$='index.html']");
+    const api = document.querySelector(".sidebar-link[href*='#packages']");
+    if (!overview || !api) return;
+    const onApi = window.location.pathname.endsWith("/index.html") && window.location.hash === "#packages";
+    overview.classList.toggle("is-current", !onApi);
+    overview.toggleAttribute("aria-current", !onApi);
+    api.classList.toggle("is-current", onApi);
+    api.toggleAttribute("aria-current", onApi);
+  };
+  syncRouteState();
+  window.addEventListener("hashchange", syncRouteState);
   const toc = document.querySelector("[data-cjdoc-toc]");
   const content = document.querySelector("[data-cjdoc-content]");
   if (toc && content) {
@@ -312,9 +370,13 @@ internal let HTML_SEARCH_SCRIPT = """
       const role = heading.dataset.cjdocTocRole;
       return role === "api-root" || role === "api" || role === "member";
     });
-    const semanticMode = semanticHeadings.length > 0;
-    const headings = semanticMode
-      ? semanticHeadings : allHeadings.filter((heading) => heading.tagName === "H2" || heading.tagName === "H3");
+    const semanticMode = false;
+    const headings = allHeadings.filter((heading) => {
+      const role = heading.dataset.cjdocTocRole;
+      return (role === "api-root" || role === "api" || role === "member" ||
+        heading.tagName === "H2" || heading.tagName === "H3") &&
+        !heading.classList.contains("signature-heading");
+    });
     const usedIds = new Set();
     const slug = (value, index) => {
       const normalized = value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-")
@@ -466,6 +528,7 @@ internal let HTML_SEARCH_SCRIPT = """
     if (navigator.clipboard && window.isSecureContext) {
       try { await navigator.clipboard.writeText(value); return true; } catch (_) { /* fallback */ }
     }
+    const previousFocus = document.activeElement;
     const area = document.createElement("textarea");
     area.value = value; area.setAttribute("readonly", "");
     area.style.position = "fixed"; area.style.opacity = "0";
@@ -473,6 +536,7 @@ internal let HTML_SEARCH_SCRIPT = """
     let copied = false;
     try { copied = document.execCommand("copy"); } catch (_) { copied = false; }
     area.remove();
+    if (previousFocus && typeof previousFocus.focus === "function") previousFocus.focus();
     return copied;
   };
   for (const code of document.querySelectorAll("pre > code")) {
