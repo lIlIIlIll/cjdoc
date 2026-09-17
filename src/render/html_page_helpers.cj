@@ -299,6 +299,16 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
     }
 }
 
+private func hasResolvedSymbolRelationship(symbol: SymbolDoc, kind: String, display: String): Bool {
+    for (relationship in symbol.symbolRelationships) {
+        if (relationship.kind == kind && relationship.targetDisplay == display &&
+            relationship.state == "resolved" && relationship.targetSymbolId.isSome()) {
+            return true
+        }
+    }
+    false
+}
+
 internal func appendSymbolMetadata(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, locale!: String = "en"): Unit {
@@ -340,6 +350,9 @@ internal func appendSymbolMetadata(out: RenderTextBuffer,
         if (!symbol.typeRelationships.isEmpty() || !symbol.symbolRelationships.isEmpty()) {
             out.append("<dl class=\"relationships\">")
             for (relationship in symbol.typeRelationships) {
+                if (hasResolvedSymbolRelationship(symbol, relationship.kind, relationship.target.spelling)) {
+                    continue
+                }
                 out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd><code>${escapeHtml(relationship.target.spelling)}</code>")
                 if (relationship.target.semantic.state != "resolved") {
                     out.append(" <span class=\"badge\" data-state=\"${escapeHtml(relationship.target.semantic.state)}\">${escapeHtml(relationship.target.semantic.state)}</span>")

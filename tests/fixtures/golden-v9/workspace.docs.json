@@ -27,7 +27,7 @@
         "visibility": true,
         "canonicalTypes": false,
         "canonicalSignatures": false,
-        "relationships": false,
+        "relationships": true,
         "annotations": false
       }
     },
@@ -42,7 +42,7 @@
         "visibility": true,
         "canonicalTypes": false,
         "canonicalSignatures": false,
-        "relationships": false,
+        "relationships": true,
         "annotations": false
       }
     }

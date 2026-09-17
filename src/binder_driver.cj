@@ -69,7 +69,7 @@ class DocumentationBinder {
                         case None => "unavailable"
                     }
                     let fallback = ModuleSemanticResult(module.id, provider, "unknown",
-                        SemanticCapabilities(false, false, false, false, false))
+                        SemanticCapabilities(false, false, false, false, false, symbolRelationships: true))
                     fallback
                         .diagnostics
                         .add(
@@ -184,6 +184,7 @@ class DocumentationBinder {
         let (idsBySourceKey, survivingIds, moduleBySymbolId) = survivingIdentityMaps(source, documentation.symbols,
             omittedIndices)
         resolveSymbolRelationshipSourceKeys(documentation.symbols, omittedIndices, idsBySourceKey)
+        resolveNavigationRelations(source, documentation, idsBySourceKey)
         sanitizeDanglingReferences(documentation, omittedIndices, survivingIds)
         appendProviderDiagnostics(documentation, pendingProviderDiagnostics, moduleBySymbolId)
         removeOmittedSymbols(documentation, omittedIndices)
