@@ -32,6 +32,7 @@ SCHEMA_NAMES = (
     "diagnostics",
     "cfg-matrix",
     "search-index",
+    "symbol-index",
     "api-surface",
     "api-surface-v1",
     "api-diff",

@@ -46,7 +46,7 @@ internal class NewCliOptions {
 
 internal func newUsage(): String {
     "usage:\n" +
-    "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout]\n" +
+    "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout]\n" +
     "                 [--audience external|package|all] [--lint-profile off|standard|strict] [--jobs 1..64]\n" +
     "                 [--cfg NAME=VALUE] [--include-path-dependencies] [--include-cached-dependencies]\n" +
     "                 [--dependency-source NAME=PATH] [--cjpm-cache <dir>]\n" +
@@ -56,9 +56,9 @@ internal func newUsage(): String {
     "              [--api-surface-baseline <file>] [--min-symbol-coverage 0..100] [--min-parameter-coverage 0..100]\n" +
     "  cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
-    "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout] [--force-owned]\n" +
+    "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout] [--force-owned]\n" +
     "               [--locale zh-CN|en] [--markdown-layout site|single]\n" +
-    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|doc-ir-v9|diagnostics|cfg-matrix|search-index|api-surface|api-surface-v1|api-diff|documentation-coverage|doctest-results\n"
+    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|doc-ir-v9|diagnostics|cfg-matrix|search-index|symbol-index|api-surface|api-surface-v1|api-diff|documentation-coverage|doctest-results\n"
 }
 
 
@@ -76,7 +76,7 @@ internal func cliErrorText(message: String, includeUsage: Bool): String {
 
 private func addFormat(options: NewCliOptions, value: String): Unit {
     if (value != "json" && value != "markdown" && value != "html" &&
-        value != "api-surface" && value != "coverage") {
+        value != "api-surface" && value != "coverage" && value != "symbol-index") {
         throw IllegalArgumentException("unsupported format '${value}'")
     }
     if (!options.formats.contains(value)) { options.formats.add(value) }
@@ -306,7 +306,7 @@ private func validateCliOptions(options: NewCliOptions): Unit {
     if (options.formats.isEmpty() && options.command != "check") { options.formats.add("json") }
     if (options.stdout && (options.formats.size != 1 ||
         (options.formats[0] != "json" && options.formats[0] != "api-surface" &&
-            options.formats[0] != "coverage"))) {
+            options.formats[0] != "coverage" && options.formats[0] != "symbol-index"))) {
         throw IllegalArgumentException("--stdout requires exactly one JSON-producing format")
     }
     let hasRepositoryUrl = options.repositoryUrl.isSome()
@@ -335,6 +335,7 @@ private func parseSchemaCommand(args: Array<String>): NewCliOptions {
         options.schemaName != "doc-ir-v6" && options.schemaName != "doc-ir-v7" &&
         options.schemaName != "doc-ir-v8" && options.schemaName != "doc-ir-v9" && options.schemaName != "diagnostics" &&
         options.schemaName != "cfg-matrix" && options.schemaName != "search-index" &&
+        options.schemaName != "symbol-index" &&
         options.schemaName != "api-surface" && options.schemaName != "api-surface-v1" &&
         options.schemaName != "api-diff" && options.schemaName != "documentation-coverage" &&
         options.schemaName != "doctest-results") {

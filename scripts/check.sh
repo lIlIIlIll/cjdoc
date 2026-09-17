@@ -36,7 +36,7 @@ cjpm test
 rm -rf "${check_dir}"
 mkdir -p "${check_dir}/schemas"
 
-for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 diagnostics cfg-matrix search-index api-surface documentation-coverage; do
+for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 diagnostics cfg-matrix search-index symbol-index api-surface documentation-coverage; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${check_dir}/schemas/${schema_name}.schema.json"
 done
@@ -48,6 +48,7 @@ cmp docs/schema/doc-ir-v9.schema.json "${check_dir}/schemas/doc-ir-v9.schema.jso
 cmp docs/schema/diagnostics.schema.json "${check_dir}/schemas/diagnostics.schema.json"
 cmp docs/schema/cfg-matrix.schema.json "${check_dir}/schemas/cfg-matrix.schema.json"
 cmp docs/schema/search-index.schema.json "${check_dir}/schemas/search-index.schema.json"
+cmp docs/schema/symbol-index.schema.json "${check_dir}/schemas/symbol-index.schema.json"
 cmp docs/schema/api-surface.schema.json "${check_dir}/schemas/api-surface.schema.json"
 cmp docs/schema/documentation-coverage.schema.json "${check_dir}/schemas/documentation-coverage.schema.json"
 
