@@ -30,9 +30,10 @@ internal func stableFileHash(value: String): String {
 }
 
 internal func boundedHtmlSlug(value: String): String {
+    // Keep staged Windows paths below MAX_PATH after the transaction prefix.
     let slug = htmlStableSlug(value)
-    if (slug.size <= 160) { return slug }
-    slug[..120] + "--" + stableFileHash(value)
+    if (slug.size <= 96) { return slug }
+    slug[..64] + "--" + stableFileHash(value)
 }
 
 internal func routeKey(moduleId: String, packageName: String): String {
