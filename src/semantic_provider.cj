@@ -18,7 +18,7 @@ class AstSemanticProvider <: SemanticProvider {
         let result = SemanticResult()
         for (module in source.modules) {
             let moduleResult = ModuleSemanticResult(module.id, providerName(), providerVersion(),
-                SemanticCapabilities(true, true, true, false, false))
+                SemanticCapabilities(true, true, true, false, false, symbolRelationships: true))
             for (declaration in source.declarations) {
                 if (declaration.moduleId != module.id) { continue }
                 let semantic = SemanticDeclaration(

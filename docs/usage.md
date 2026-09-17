@@ -86,6 +86,8 @@ public func parse(text: String): Int64 {
 
 示例内容会持续到下一个顶层结构化标签（例如 `@param` 或 `@return`）；代码围栏内部出现的 `@param` 等文本会保持为示例代码，不会被误解析成文档标签。
 
+文档页的“声明详情”会把源码能够识别的继承、扩展和 `override` 关系投影为导航链接。目标在当前文档集中且匹配唯一时，JSON/HTML 使用稳定 `SymbolId`；目标缺失或不唯一时保留原始显示并标记 `unavailable` 或 `ambiguous`，不会生成猜测链接。AST fallback 也会生成同一模块内可证明的反向 `subType`、`extendedBy` 和 `overriddenBy` 关系。
+
 文档注释应紧邻它描述的声明。默认生成 external 文档，所以示例声明应为 `public` 或 `protected`。
 
 ## 重新生成文档
