@@ -211,7 +211,12 @@ def validate_schema_document(name: str, value: object) -> None:
                 properties.get("symbols") != {"$ref": "#/$defs/counts"} or \
                 properties.get("parameters") != {"$ref": "#/$defs/counts"}:
             raise ValueError("documentation-coverage schema counts shape is invalid")
-
+    elif name == "doctest-results":
+        definitions = value.get("$defs")
+        if not isinstance(definitions, dict) or not {"nullableInteger", "summary", "result"}.issubset(definitions) or \
+                properties.get("summary") != {"$ref": "#/$defs/summary"} or \
+                properties.get("results", {}).get("items") != {"$ref": "#/$defs/result"}:
+            raise ValueError("doctest-results schema shape is invalid")
 
 def verify_schema_set(repo: Path) -> None:
     directory = lexical_absolute(repo / "docs/schema")

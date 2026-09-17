@@ -58,7 +58,7 @@ internal func newUsage(): String {
     "  cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout] [--force-owned]\n" +
     "               [--locale zh-CN|en] [--markdown-layout site|single]\n" +
-    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|doc-ir-v9|diagnostics|cfg-matrix|search-index|api-surface|api-surface-v1|api-diff|documentation-coverage\n"
+    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|doc-ir-v9|diagnostics|cfg-matrix|search-index|api-surface|api-surface-v1|api-diff|documentation-coverage|doctest-results\n"
 }
 
 
@@ -336,7 +336,8 @@ private func parseSchemaCommand(args: Array<String>): NewCliOptions {
         options.schemaName != "doc-ir-v8" && options.schemaName != "doc-ir-v9" && options.schemaName != "diagnostics" &&
         options.schemaName != "cfg-matrix" && options.schemaName != "search-index" &&
         options.schemaName != "api-surface" && options.schemaName != "api-surface-v1" &&
-        options.schemaName != "api-diff" && options.schemaName != "documentation-coverage") {
+        options.schemaName != "api-diff" && options.schemaName != "documentation-coverage" &&
+        options.schemaName != "doctest-results") {
         throw IllegalArgumentException("unknown schema '${options.schemaName}'")
     }
     options
