@@ -53,7 +53,7 @@ internal func symbolAnchor(symbol: SymbolDoc): String {
 }
 
 internal func assetOutputPath(asset: AssetDoc): String {
-    "assets/asset-${boundedHtmlSlug(asset.id)}.${assetMediaExtension(asset.mediaType)}"
+    "assets/asset-${htmlStableSlug(asset.id)}.${assetMediaExtension(asset.mediaType)}"
 }
 
 internal func isContainerDeclaration(symbol: SymbolDoc): Bool {
