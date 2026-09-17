@@ -10,7 +10,7 @@ license-sha256 = "ff2bfac16f9884d002e66b1b2c75c20c626bc41ff31cdf411c5acdf2242882
 package-manifest-file = "cjpm.toml"
 package-manifest-sha256 = "b5500422a100a4bbfa44ec2bd93494a1b8ca545c51ebff37fce1719d484f1e95"
 upstream-notice-file = "UPSTREAM.md"
-upstream-notice-sha256 = "50bfbef6ef8be8369d247aac34cfb806a13f52ecd4a61cbd5384640ce12f424a"
+upstream-notice-sha256 = "bb2c645eed19b9243804ba40ca1b23161dbe7f2692d946e189f96866213628eb"
 patches = [
   { path = "src/lib_json_schema.cj", reason = "Avoid large RuneArray allocation while counting JSON Schema string length." },
 ]
