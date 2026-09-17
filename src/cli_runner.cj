@@ -115,11 +115,12 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndiagnostics\ncfg-matrix\nsearch-index\napi-surface\ndocumentation-coverage\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndiagnostics\ncfg-matrix\nsearch-index\napi-surface\ndocumentation-coverage\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA
         case "doc-ir-v8" => DOC_IR_V8_SCHEMA
+        case "doc-ir-v9" => DOC_IR_V9_SCHEMA
         case "diagnostics" => DIAGNOSTICS_SCHEMA
         case "cfg-matrix" => CFG_MATRIX_SCHEMA
         case "search-index" => SEARCH_INDEX_SCHEMA
@@ -139,6 +140,22 @@ private func readDocIrInput(path: Path): String {
     readTextBounded(path, limit)
 }
 
+
+private func repositoryForOptions(options: NewCliOptions): ?public_model.RepositoryInfo {
+    match ((options.repositoryUrl, options.repositoryRevision)) {
+        case (Some(url), Some(revision)) => Some(public_model.RepositoryInfo(url, revision))
+        case _ => None
+    }
+}
+
+private func repositoryRootForOptions(options: NewCliOptions, repository: ?public_model.RepositoryInfo): ?String {
+    if (repository.isNone()) { return None }
+    match (options.repositoryRoot) {
+        case Some(path) => Some(path)
+        case None => Some(options.project)
+    }
+}
+
 private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
     selectedCache: ?String, outputLock: ?OutputLockHandle): Int64 {
     let commandLine = getCommandLine()
@@ -147,8 +164,10 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
     let generationRequest: ?GenerationRequest = if (options.command == "render") {
         None
     } else {
+        let repository = repositoryForOptions(options)
         Some(GenerationRequest(options.project, jobs: options.jobs,
             audience: options.audience, lintProfile: options.lintProfile,
+            repository: repository, repositoryRoot: repositoryRootForOptions(options, repository),
             includePathDependencies: options.includePathDependencies,
             includeCachedDependencies: options.includeCachedDependencies,
             dependencySources: options.dependencySources.toArray(),

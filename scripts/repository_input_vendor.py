@@ -11,6 +11,7 @@ try:
         MARKDOWN_UPSTREAM,
         SHA256,
         YJSON_COMMIT,
+        YJSON_MACROS_COMMIT,
         YJSON_LICENSE_SHA256,
         YJSON_PACKAGE_MANIFEST_SHA256,
         YJSON_SOURCE_SHA256,
@@ -27,6 +28,7 @@ except ImportError:  # Direct module execution.
         MARKDOWN_UPSTREAM,
         SHA256,
         YJSON_COMMIT,
+        YJSON_MACROS_COMMIT,
         YJSON_LICENSE_SHA256,
         YJSON_PACKAGE_MANIFEST_SHA256,
         YJSON_SOURCE_SHA256,
@@ -87,12 +89,17 @@ def verify_vendor(repo: Path) -> dict[str, object]:
     locked = lock.get("requires")
     if not isinstance(locked, dict):
         raise ValueError("cjpm.lock requires must be a TOML table")
-    if set(locked) != {"markdown", "yjson"}:
+    if set(locked) != {"markdown", "yjson", "yjson_macros"}:
         raise ValueError("cjpm.lock dependency inventory does not match audited provenance")
     for name, dependency in (("markdown", markdown), ("yjson", yjson)):
         entry = locked.get(name)
         if entry != dependency:
             raise ValueError(f"cjpm.lock does not match audited dependency {name}")
+    if locked.get("yjson_macros") != {
+        "git": "https://github.com/lIlIIlIll/yjson_macros.git",
+        "commitId": YJSON_MACROS_COMMIT,
+    }:
+        raise ValueError("cjpm.lock does not match the audited yjson macro dependency")
 
     vendor_root = repo / "vendor/yjson_algorithms"
     if vendor_root.is_symlink() or not vendor_root.is_dir():
@@ -151,7 +158,7 @@ def verify_vendor(repo: Path) -> dict[str, object]:
         "name": "yjson_algorithms",
         "organization": "",
         "description": "Vendored yjson JSON Schema algorithms",
-        "version": "2.0.1",
+        "version": "0.1.0",
         "output-type": "static",
         "compile-option": "-O2",
     }

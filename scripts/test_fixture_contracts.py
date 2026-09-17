@@ -11,6 +11,7 @@ REPO = Path(__file__).resolve().parent.parent
 GOLDEN_OR_CHECK_FIXTURES = {
     "basic", "conditional", "extend_visibility", "functions", "html_security",
     "path_dependencies", "provider_plugin", "source_edges", "types", "unsupported",
+    "html_reference",
     "workspace",
 }
 CANGJIE_CONTRACT_FIXTURES = {
@@ -48,7 +49,7 @@ class FixtureContractTest(unittest.TestCase):
             document = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             self.fail(f"{fixture} did not emit one valid JSON document: {error}; stderr={result.stderr}")
-        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/8")
+        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/9")
         self.assertEqual(document.get("generator"), {
             "name": "cjdoc", "version": self.package_version,
         })

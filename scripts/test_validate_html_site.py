@@ -13,7 +13,7 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("validate_html_site.py")
 CSP = (
-    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
+    "default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; "
     "base-uri 'none'; form-action 'none'"
 )
 
@@ -101,8 +101,9 @@ class ValidateHtmlSiteTest(unittest.TestCase):
         script = canonical_search_script()
         for theme in ("system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"):
             with self.subTest(theme=theme):
-                self.assertIn(f'["{theme}"', script)
-        self.assertIn("themeToggle.before(picker)", script)
+                self.assertIn(f'"{theme}"', script)
+        self.assertIn("const themeValues = new Set", script)
+        self.assertIn("data-cjdoc-theme-popover", script)
         self.assertIn('localStorage.setItem("cjdoc-theme", next)', script)
 
     def test_theme_bootstrap_restores_and_propagates_theme(self) -> None:

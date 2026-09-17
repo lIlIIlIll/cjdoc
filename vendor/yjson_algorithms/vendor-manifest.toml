@@ -1,36 +1,36 @@
 schema-version = "cjdoc.vendor-manifest/2"
 upstream = "https://github.com/lIlIIlIll/yjson.git"
-upstream-notice-sha256 = "cfc7a25e02d8783e66b2ef0122ad7697770e2226526958be9e6c093ecd315f98"
-[[files]]
-path = "src/linear_regex.cj"
-sha256 = "21a233eb8915bf9b78f4881093e30e007626e23c8be59bcac7282cf6ad62e3c5"
-
+commit = "54b4965dee0f0b96710cbc678ec5ec9a126b055c"
 package-path = "packages/yjson_algorithms"
 package-name = "yjson_algorithms"
-package-version = "2.0.1"
+package-version = "0.1.0"
 license-spdx = "Apache-2.0"
 license-file = "LICENSE"
 license-sha256 = "ff2bfac16f9884d002e66b1b2c75c20c626bc41ff31cdf411c5acdf224288295"
 package-manifest-file = "cjpm.toml"
-package-manifest-sha256 = "21919a70642bee3eeb982c831192b046c0b5a2016f5f54f42234702f412e4f36"
+package-manifest-sha256 = "b5500422a100a4bbfa44ec2bd93494a1b8ca545c51ebff37fce1719d484f1e95"
 upstream-notice-file = "UPSTREAM.md"
-upstream-notice-sha256 = "c801496a3b6b3ce6a37105c5421eb8033aeaf0600694e1b3c09aa440c734514b"
+upstream-notice-sha256 = "50bfbef6ef8be8369d247aac34cfb806a13f52ecd4a61cbd5384640ce12f424a"
 patches = [
   { path = "src/lib_json_schema.cj", reason = "Avoid large RuneArray allocation while counting JSON Schema string length." },
 ]
 
 [[files]]
 path = "src/lib_json_patch.cj"
-sha256 = "32848edf1826af8b8b6816a7244ab6ffd370485f21e6ecbda0baa20fa4495492"
+sha256 = "82115f63f01807f3e7057518579cea4e058baf51c0e767e93e867a3a9c34a5de"
 
 [[files]]
 path = "src/lib_json_pointer.cj"
-sha256 = "972ce953184cb0e2b0c0d2b5da1589b376639f1d1d496331d435842c4d50d991"
+sha256 = "ac5ffe300745a4123fbf0f6ecfb73aa2fc3743c89945dda4bc56c11d1fadf012"
 
 [[files]]
 path = "src/lib_json_schema.cj"
-sha256 = "bc6e110bb7b78807b26eb7c23e091c5fef2c02997f616a792fc5b70f81184a01"
+sha256 = "090446931f6b1838a56c21a56472833d0e926445558d7a2b4fc217c9918ddd94"
+
+[[files]]
+path = "src/linear_regex.cj"
+sha256 = "21a233eb8915bf9b78f4881093e30e007626e23c8be59bcac7282cf6ad62e3c5"
 
 [[files]]
 path = "src/work_limits.cj"
-sha256 = "52aa1b8fbd41deaa72c80028f1500fe6ff9bafbcf9f5b11d2569bbc61baaeb6c"
+sha256 = "6af3af0f970f47e87ab045ceaf9d9c4675ef7cdc23f27df2870a275b3f057e21"

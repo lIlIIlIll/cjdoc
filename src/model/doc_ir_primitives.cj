@@ -2,7 +2,8 @@ package cjdoc.model
 
 import std.collection.*
 
-public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/8"
+public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/9"
+public let DOC_IR_V8_SCHEMA_VERSION = "cjdoc.doc-ir/8"
 public let DOC_IR_V7_SCHEMA_VERSION = "cjdoc.doc-ir/7"
 public let DOC_IR_V6_SCHEMA_VERSION = "cjdoc.doc-ir/6"
 public let DOC_IR_MAX_TYPE_DEPTH: Int64 = 64
@@ -91,13 +92,57 @@ public class GeneratorInfo {
     }
 }
 
+private func validRepositorySegment(value: String): Bool {
+    if (value.isEmpty() || value == "." || value == "..") { return false }
+    for (byte in value.toArray()) {
+        let allowed = (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') ||
+            (byte >= b'0' && byte <= b'9') || byte == b'.' || byte == b'_' || byte == b'-'
+        if (!allowed) { return false }
+    }
+    true
+}
+
+private func validRepositoryUrl(value: String): Bool {
+    let parts = value.split("/")
+    parts.size == 5 && parts[0] == "https:" && parts[1].isEmpty() &&
+        parts[2] == "github.com" && validRepositorySegment(parts[3]) &&
+        validRepositorySegment(parts[4])
+}
+
+private func validRepositoryRevision(value: String): Bool {
+    if (value.isEmpty()) { return false }
+    for (byte in value.toArray()) {
+        if (byte <= 0x20u8 || byte == 0x7Fu8) { return false }
+    }
+    true
+}
+
+public class RepositoryInfo {
+    public let url: String
+    public let revision: String
+
+    public init(url: String, revision: String) {
+        if (!validRepositoryUrl(url)) {
+            throw IllegalArgumentException(
+                "repository URL must be a canonical GitHub HTTPS repository root")
+        }
+        if (!validRepositoryRevision(revision)) {
+            throw IllegalArgumentException("repository revision must be non-empty without whitespace or controls")
+        }
+        this.url = url
+        this.revision = revision
+    }
+}
+
 public class ProjectInfo {
     public let name: String
     public let kind: String
+    public let repository: ?RepositoryInfo
 
-    public init(name: String, kind!: String = "package") {
+    public init(name: String, kind!: String = "package", repository!: ?RepositoryInfo = None) {
         this.name = name
         this.kind = kind
+        this.repository = repository
     }
 }
 
@@ -177,21 +222,27 @@ public class ModuleDoc {
     public let name: String
     public let role: String
     public let sourcePrefix: String
+    public let repositoryPath: ?String
     public let organization: ?String
     private let packageNamesStorage: ArrayList<String>
     private let dependencyIdsStorage: ArrayList<String>
 
     public init(id: String, name: String, role: String, sourcePrefix: String,
         packageNames!: Array<String> = [], dependencyIds!: Array<String> = [],
-        organization!: ?String = None) {
+        organization!: ?String = None, repositoryPath!: ?String = None) {
         if (!portableModuleSourcePrefix(sourcePrefix)) {
             throw IllegalArgumentException(
                 "module sourcePrefix must be empty or a portable relative logical path")
+        }
+        if (repositoryPath.isSome() && !portableModuleSourcePrefix(repositoryPath.getOrThrow())) {
+            throw IllegalArgumentException(
+                "module repositoryPath must be null, empty, or a portable relative path")
         }
         this.id = id
         this.name = name
         this.role = role
         this.sourcePrefix = sourcePrefix
+        this.repositoryPath = repositoryPath
         this.organization = organization
         this.packageNamesStorage = ArrayList<String>(packageNames)
         this.dependencyIdsStorage = ArrayList<String>(dependencyIds)

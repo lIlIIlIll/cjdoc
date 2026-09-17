@@ -174,8 +174,8 @@ def validate_document(path: Path, minimum: int) -> str:
     document = strict_load(path, description="performance Doc IR")
     declarations = document.get("declarations")
     diagnostics = document.get("diagnostics")
-    if document.get("schemaVersion") != "cjdoc.doc-ir/8":
-        raise ValueError("performance run emitted non-v8 Doc IR")
+    if document.get("schemaVersion") != "cjdoc.doc-ir/9":
+        raise ValueError("performance run emitted non-v9 Doc IR")
     if not isinstance(declarations, list) or len(declarations) < minimum:
         raise ValueError("performance run did not meet its declaration floor")
     if not isinstance(diagnostics, list) or any(

@@ -107,6 +107,16 @@ generated <你的项目目录>/target/doc
 | 生成 JSON | `cjdoc generate --project . --format json` | `target/doc/docs.json` |
 | 检查文档问题 | `cjdoc check --project .` | 终端诊断，成功退出码为 `0` |
 
+
+如果项目在 GitHub 上并希望声明页显示 `View source`，生成时显式提供仓库根和 revision：
+
+```bash
+cjdoc generate --project . --format html --repository-url https://github.com/<owner>/<repo> \
+  --repository-revision <commit-or-ref> --repository-root .
+```
+
+URL 只接受 canonical GitHub HTTPS 仓库根；缺少可证明的源码映射时不会生成假链接。生成后的 HTML 是离线静态站点，支持包/声明索引、参数与返回值目录、键盘搜索、主题选择和移动端导航抽屉。
+
 一次生成多个格式：
 
 ```bash
@@ -146,7 +156,7 @@ cjdoc generate --project . --format html --audience all
 
 ## 当前边界
 
-- 当前输出版本是 `cjdoc.doc-ir/8`。普通用户不需要直接编辑这个 JSON。
+- 当前输出版本是 `cjdoc.doc-ir/9`。输入端严格兼容已发布的 v6、v7、v8；普通用户不需要直接编辑这个 JSON。
 - 无法展开的宏、没有提供的条件编译输入和部分不支持的源码会产生诊断，并可能使结果标为 `partial`。
 - cjdoc 不会替你下载依赖源码。需要把依赖纳入文档时，按 [`docs/advanced-usage.md`](docs/advanced-usage.md) 的说明提供路径或 cache。
 

@@ -21,6 +21,18 @@ target/doc/markdown/index.md
 
 打开 `target/doc/html/index.html` 就能查看 HTML 站点。它是静态文件，不需要启动服务器。
 
+## GitHub 源码链接与 HTML 站点
+
+生成源码链接需要显式提供 canonical GitHub HTTPS 仓库根、revision 和可选仓库根目录：
+
+```bash
+cjdoc generate --project . --format html \
+  --repository-url https://github.com/<owner>/<repo> \
+  --repository-revision <commit-or-ref> --repository-root .
+```
+
+`repository-url` 与 `repository-revision` 必须成对出现；`repository-root` 只能用于 `generate`，不能用于 `render` 或 `check`。不能证明源码文件位于仓库内时，页面省略 View source action，不生成猜测链接。HTML 站点可直接通过 `file://` 打开，包索引、声明页、搜索类别、主题和移动端抽屉均使用本地资源。
+
 ## 写文档注释
 
 把 `/** ... */` 放在声明前面。普通的 `//` 和 `/* ... */` 注释不会绑定到声明。

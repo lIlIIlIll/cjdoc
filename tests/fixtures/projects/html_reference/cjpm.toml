@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "packages/core",
+    "packages/extra"
+]
+build-members = ["packages/core", "packages/extra"]
+test-members = ["packages/core", "packages/extra"]

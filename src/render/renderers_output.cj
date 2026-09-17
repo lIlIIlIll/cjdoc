@@ -38,8 +38,7 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         for (pkg in projection.packages) {
             artifacts.addText("html/${packagePagePath(pkg.source.moduleId, pkg.source.name)}",
                 "text/html; charset=utf-8",
-                renderPackagePage(documentation, projection, index, topLevelByPackage, pkg, assetLookup,
-                    typeLinkIndex, locale: locale))
+                renderPackagePage(documentation, projection, index, topLevelByPackage, pkg, locale: locale))
         }
         for (symbol in projection.visibleSymbols) {
             artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",

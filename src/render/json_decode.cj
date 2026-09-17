@@ -9,8 +9,10 @@ public func decodeDocIr(text: String): DocumentationSet {
         duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject,
         maxDepth: DOC_IR_CODEC_MAX_NESTING_DEPTH,
         maxStringBytes: DOC_IR_MAX_JSON_STRING_BYTES,
+        maxBufferedValueBytes: DOC_IR_MAX_JSON_DOCUMENT_BYTES,
         maxInputBytes: DOC_IR_MAX_JSON_DOCUMENT_BYTES))
     let rawShape = validateRawSchemaShape(parsed)
+    validatePortablePathFields(parsed, "$")
     validateDeclarativeSchema(parsed)
     let root = strictObject(parsed, "$", ["schemaVersion", "generator", "status", "project",
         "configuration", "providers", "modules", "packages", "files", "declarations", "assets",
@@ -19,22 +21,29 @@ public func decodeDocIr(text: String): DocumentationSet {
     let version = stringAt(root, "schemaVersion", "$")
     let legacyV6 = version == DOC_IR_V6_SCHEMA_VERSION
     let legacy = legacyV6 || version == DOC_IR_V7_SCHEMA_VERSION
-    if (!legacy && version != DOC_IR_SCHEMA_VERSION) {
+    let legacyV8 = version == DOC_IR_V8_SCHEMA_VERSION
+    if (!legacy && !legacyV8 && version != DOC_IR_SCHEMA_VERSION) {
         fail("$.schemaVersion", "expected '${DOC_IR_SCHEMA_VERSION}', " +
-            "'${DOC_IR_V7_SCHEMA_VERSION}', or '${DOC_IR_V6_SCHEMA_VERSION}'")
+            "'${DOC_IR_V8_SCHEMA_VERSION}', '${DOC_IR_V7_SCHEMA_VERSION}', or " +
+            "'${DOC_IR_V6_SCHEMA_VERSION}'")
     }
     let generator = strictObject(required(root, "generator", "$"), "$.generator", ["name", "version"])
-    let project = strictObject(required(root, "project", "$"), "$.project", ["name", "kind"])
+    let project = strictObject(required(root, "project", "$.project"), "$.project",
+        if (version == DOC_IR_SCHEMA_VERSION) { ["name", "kind", "repository"] }
+        else { ["name", "kind"] })
     let configuration = strictObject(required(root, "configuration", "$"), "$.configuration",
         ["audience", "lintProfile", "cfgProfile"])
-    let modules = decodeModules(root, legacy)
+    let modules = decodeModules(root, legacy, version == DOC_IR_SCHEMA_VERSION)
     let legacyModules = buildLegacyModuleIndex(modules)
     let legacyIds = if (legacyV6) { buildLegacySymbolIds(root, legacyModules) }
         else { HashMap<String, String>() }
     let decodedAssets = decodeAssets(root, legacy)
     let documentation = DocumentationSet(GeneratorInfo(stringAt(generator, "name", "$.generator"),
         stringAt(generator, "version", "$.generator")), stringAt(root, "status", "$"),
-        ProjectInfo(stringAt(project, "name", "$.project"), kind: stringAt(project, "kind", "$.project")),
+        ProjectInfo(stringAt(project, "name", "$.project"), kind: stringAt(project, "kind", "$.project"),
+            repository: if (version == DOC_IR_SCHEMA_VERSION) {
+                nullableRepositoryAt(project, "repository", "$.project")
+            } else { None }),
         ConfigurationSnapshot(audience: stringAt(configuration, "audience", "$.configuration"),
             lintProfile: stringAt(configuration, "lintProfile", "$.configuration"),
             cfgProfile: stringAt(configuration, "cfgProfile", "$.configuration")),

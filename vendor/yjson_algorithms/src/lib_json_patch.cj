@@ -3,28 +3,19 @@ package yjson_algorithms
 import yjson.*
 
 import std.collection.*
+import std.deriving.Derive
 import std.math.numeric.*
 
-public class JsonPatchException <: JsonException {
-    public let operationIndex: Int64
-
-    public init(message: String, operationIndex!: Int64 = -1,
-        code!: String = "invalid_json_patch", path!: String = "") {
-        super(message, code: code, path: path)
-        this.operationIndex = operationIndex
-    }
-
-    protected override func getClassName(): String { "JsonPatchException" }
+private func jsonPatchError(message: String, operationIndex!: Int64 = -1,
+    code!: String = "invalid_json_patch", path!: String = ""): JsonException {
+    let resolvedPath = if (!path.isEmpty() || operationIndex < 0) { path }
+        else { "/${operationIndex}" }
+    JsonException(message, code: code, path: resolvedPath)
 }
 
-public enum JsonPatchOperationKind <: Equatable<JsonPatchOperationKind> & ToString {
+@Derive[Equatable]
+public enum JsonPatchOperationKind <: ToString {
     Add | Remove | Replace | Move | Copy | Test
-
-    public operator func ==(other: JsonPatchOperationKind): Bool {
-        this.toString() == other.toString()
-    }
-
-    public operator func !=(other: JsonPatchOperationKind): Bool { !(this == other) }
 
     public func toString(): String {
         match (this) {
@@ -71,15 +62,17 @@ public class JsonPatch {
     }
 
     public static func parse(text: String,
-        config!: JsonReadConfig = JsonReadConfig(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject)): JsonPatch {
-        fromValue(YJson.parse(text, config: config))
+        config!: JsonReadOptions = JsonReadOptions(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject)): JsonPatch {
+        fromValue(JsonNode.parse(text, config: config))
     }
 
-    public static func fromValue(value: JsonNode): JsonPatch {
-        let array = value.asArray()
-        let operations = ArrayList<JsonPatchOperation>(array.size())
-        for (index in 0..array.size()) {
-            operations.add(parseJsonPatchOperation(array[index], index))
+    public static func fromValue(value: JsonValueView): JsonPatch {
+        if (value.kind() != JsonKind.Array) {
+            throw JsonException("JSON Patch document must be an array", code: "invalid_json_patch")
+        }
+        let operations = ArrayList<JsonPatchOperation>(value.size())
+        for (index in 0..value.size()) {
+            operations.add(parseJsonPatchOperation(value.element(index).getOrThrow().materialize(), index))
         }
         JsonPatch(operations.toArray())
     }
@@ -93,8 +86,10 @@ public class JsonPatch {
         result.toArray()
     }
 
-    /// Applies atomically to a detached copy. The input is never changed.
-    public func apply(target: JsonNode, limits!: JsonPatchLimits = JsonPatchLimits.defaults): JsonNode {
+    /**
+     * Applies atomically to a detached copy. The input is never changed.
+     */
+    public func apply(target: JsonValueView, limits!: JsonPatchLimits = JsonPatchLimits.defaults): JsonNode {
         enforceWorkLimit(patchOperations.size, limits.maxOperations, "patch operations")
         for (operation in patchOperations) {
             enforceWorkLimit(operation.path.rawTokens().size, limits.maxPointerSegments, "pointer segments")
@@ -104,11 +99,13 @@ public class JsonPatch {
         }
         let copyWork = JsonPatchCopyWork(limits.maxCopiedNodes)
         copyWork.charge(target)
-        applyJsonPatchOperations(target.deepCopy(), patchOperations, copyWork)
+        applyJsonPatchOperations(target.materialize(), patchOperations, copyWork)
     }
 
-    /// Applies atomically and commits into the original root container when
-    /// its kind is unchanged. Callers must always use the returned root.
+    /**
+     * Applies atomically and commits into the original root container when
+     * its kind is unchanged. Callers must always use the returned root.
+     */
     public func applyInPlace(target: JsonNode,
         limits!: JsonPatchLimits = JsonPatchLimits.defaults): JsonNode {
         let result = apply(target, limits: limits)
@@ -117,11 +114,11 @@ public class JsonPatch {
 }
 
 public class JsonMergePatch {
-    public static func apply(target: JsonNode, patch: JsonNode,
+    public static func apply(target: JsonValueView, patch: JsonValueView,
         limits!: JsonPatchLimits = JsonPatchLimits.defaults): JsonNode {
         enforceWorkLimit(jsonPatchNodeCount(target) + jsonPatchNodeCount(patch),
             limits.maxCopiedNodes, "copied nodes")
-        let result = applyJsonMergePatch(target.deepCopy(), patch)
+        let result = applyJsonMergePatch(target.materialize(), patch.materialize())
         enforceWorkLimit(jsonPatchNodeCount(result), limits.maxCopiedNodes, "copied nodes")
         result
     }
@@ -132,15 +129,17 @@ public class JsonMergePatch {
     }
 }
 
-private func jsonPatchNodeCount(value: JsonNode): Int64 {
-    match (value) {
-        case arrayValue: JsonArrayValue =>
+private func jsonPatchNodeCount(value: JsonValueView): Int64 {
+    match (value.kind()) {
+        case JsonKind.Array =>
             var total: Int64 = 1
-            for (item in arrayValue.values()) { total += jsonPatchNodeCount(item) }
+            for (index in 0..value.size()) {
+                total += jsonPatchNodeCount(value.element(index).getOrThrow())
+            }
             total
-        case objectValue: JsonObjectValue =>
+        case JsonKind.Object =>
             var total: Int64 = 1
-            for ((_, item) in objectValue.entries()) { total += jsonPatchNodeCount(item) }
+            for (index in 0..value.size()) { total += jsonPatchNodeCount(value.memberValue(index)) }
             total
         case _ => 1
     }
@@ -152,10 +151,12 @@ private class JsonPatchCopyWork {
 
     init(limit: Int64) { this.limit = limit }
 
-    func charge(value: JsonNode): Unit {
+    func charge(value: JsonValueView): Unit {
         let count = jsonPatchNodeCount(value)
         if (limit > 0 && (count > limit || copiedNodes > limit - count)) {
-            throw JsonWorkLimitException("JSON algorithm copied nodes budget exceeded (${limit})")
+            throw JsonException(
+                "JSON algorithm copied nodes budget exceeded: limit=${limit}, consumed=${copiedNodes + count}",
+                code: "work_limit_exceeded")
         }
         copiedNodes += count
     }
@@ -172,10 +173,10 @@ private func parseJsonPatchOperation(value: JsonNode, index: Int64): JsonPatchOp
         case "move" => JsonPatchOperationKind.Move
         case "copy" => JsonPatchOperationKind.Copy
         case "test" => JsonPatchOperationKind.Test
-        case _ => throw JsonPatchException("Unknown JSON Patch operation '${opText}'", operationIndex: index)
+        case _ => throw jsonPatchError("Unknown JSON Patch operation '${opText}'", operationIndex: index)
     }
     let source = match (objectValue.get("from")) {
-        case Some(fromValue) => Some(JsonPointer.parse(fromValue.asString().value))
+        case Some(fromValue) => Some(JsonPointer.parse(fromValue.asString()))
         case None => None<JsonPointer>
     }
     let patchValue = match (objectValue.get("value")) {
@@ -187,21 +188,21 @@ private func parseJsonPatchOperation(value: JsonNode, index: Int64): JsonPatchOp
     operation
 }
 
-private func requireJsonPatchString(objectValue: JsonObjectValue, name: String, index: Int64): String {
+private func requireJsonPatchString(objectValue: JsonObject, name: String, index: Int64): String {
     objectValue.get(name).getOrThrow({ =>
-        JsonPatchException("JSON Patch operation ${index} is missing '${name}'", operationIndex: index)
-    }).asString().value
+        jsonPatchError("JSON Patch operation ${index} is missing '${name}'", operationIndex: index)
+    }).asString()
 }
 
 private func validateJsonPatchOperation(operation: JsonPatchOperation, index: Int64): Unit {
     match (operation.kind) {
         case Add | Replace | Test =>
             if (operation.value.isNone()) {
-                throw JsonPatchException("JSON Patch '${operation.kind}' requires 'value'", operationIndex: index)
+                throw jsonPatchError("JSON Patch '${operation.kind}' requires 'value'", operationIndex: index)
             }
         case Move | Copy =>
             if (operation.source.isNone()) {
-                throw JsonPatchException("JSON Patch '${operation.kind}' requires 'from'", operationIndex: index)
+                throw jsonPatchError("JSON Patch '${operation.kind}' requires 'from'", operationIndex: index)
             }
         case Remove => ()
     }
@@ -213,16 +214,11 @@ private func applyJsonPatchOperations(initial: JsonNode, operations: Array<JsonP
     for (index in 0..operations.size) {
         try {
             root = applyJsonPatchOperation(root, operations[index], copyWork)
-        } catch (error: JsonWorkLimitException) {
-            throw error
-        } catch (error: JsonPatchException) {
-            throw JsonPatchException(error.message, operationIndex: index, code: error.code, path: error.path)
-        } catch (error: JsonPointerException) {
-            throw JsonPatchException(error.message, operationIndex: index,
-                code: "json_patch_path", path: error.pointer)
         } catch (error: JsonException) {
-            throw JsonPatchException(error.message, operationIndex: index,
-                code: "json_patch_path", path: error.path)
+            if (error.code == "work_limit_exceeded") { throw error }
+            let code = if (error.code.startsWith("json_patch")) { error.code } else { "json_patch_path" }
+            throw jsonPatchError(error.message, operationIndex: index,
+                code: code, path: error.path)
         }
     }
     root
@@ -244,15 +240,16 @@ private func applyJsonPatchOperation(root: JsonNode, operation: JsonPatchOperati
             jsonPatchReplace(root, operation.path, value.deepCopy())
         case Copy =>
             let sourceValue = operation.source.getOrThrow().evaluate(root)
-            copyWork.charge(sourceValue)
-            jsonPatchAdd(root, operation.path, sourceValue.deepCopy())
+            let copied = sourceValue.materialize()
+            copyWork.charge(copied)
+            jsonPatchAdd(root, operation.path, copied)
         case Move => jsonPatchMove(root, operation.source.getOrThrow(), operation.path)
         case Test =>
             let expected = operation.value.getOrThrow()
             copyWork.charge(expected)
             let actual = operation.path.evaluate(root)
-            if (!actual.equivalentTo(expected)) {
-                throw JsonPatchException("JSON Patch test operation failed", code: "json_patch_test_failed",
+            if (!jsonNodesEquivalent(actual, expected)) {
+                throw jsonPatchError("JSON Patch test operation failed", code: "json_patch_test_failed",
                     path: operation.path.toString())
             }
             root
@@ -263,39 +260,39 @@ private func jsonPatchAdd(root: JsonNode, pointer: JsonPointer, value: JsonNode)
     if (pointer.isRoot()) { return value }
     let (parent, token) = jsonPointerParent(root, pointer)
     match (parent) {
-        case objectValue: JsonObjectValue => objectValue.put(token, value); root
-        case arrayValue: JsonArrayValue =>
+        case objectValue: JsonObject => objectValue.put(token, value); root
+        case arrayValue: JsonArray =>
             let index = parseJsonPointerArrayIndex(token, arrayValue.size(), true).getOrThrow({ =>
-                JsonPointerException("Invalid JSON Patch add array index '${token}'", pointer.toString(),
+                jsonPointerError("Invalid JSON Patch add array index '${token}'", pointer.toString(),
                     code: "json_pointer_not_found")
             })
             arrayValue.insert(index, value)
             root
-        case _ => throw JsonPointerException("JSON Patch add parent is not a container", pointer.toString(),
+        case _ => throw jsonPointerError("JSON Patch add parent is not a container", pointer.toString(),
             code: "json_pointer_not_found")
     }
 }
 
 private func jsonPatchRemove(root: JsonNode, pointer: JsonPointer): (JsonNode, JsonNode) {
     if (pointer.isRoot()) {
-        throw JsonPatchException("Removing the complete JSON document has no JsonNode result",
+        throw jsonPatchError("Removing the complete JSON document has no JsonNode result",
             code: "json_patch_path", path: pointer.toString())
     }
     let (parent, token) = jsonPointerParent(root, pointer)
     match (parent) {
-        case objectValue: JsonObjectValue =>
+        case objectValue: JsonObject =>
             let removed = objectValue.remove(token).getOrThrow({ =>
-                JsonPointerException("JSON Patch remove target does not exist", pointer.toString(),
+                jsonPointerError("JSON Patch remove target does not exist", pointer.toString(),
                     code: "json_pointer_not_found")
             })
             (root, removed)
-        case arrayValue: JsonArrayValue =>
+        case arrayValue: JsonArray =>
             let index = parseJsonPointerArrayIndex(token, arrayValue.size(), false).getOrThrow({ =>
-                JsonPointerException("Invalid JSON Patch remove array index '${token}'", pointer.toString(),
+                jsonPointerError("Invalid JSON Patch remove array index '${token}'", pointer.toString(),
                     code: "json_pointer_not_found")
             })
             (root, arrayValue.removeAt(index))
-        case _ => throw JsonPointerException("JSON Patch remove parent is not a container", pointer.toString(),
+        case _ => throw jsonPointerError("JSON Patch remove parent is not a container", pointer.toString(),
             code: "json_pointer_not_found")
     }
 }
@@ -305,15 +302,15 @@ private func jsonPatchReplace(root: JsonNode, pointer: JsonPointer, value: JsonN
     let _ = pointer.evaluate(root)
     let (parent, token) = jsonPointerParent(root, pointer)
     match (parent) {
-        case objectValue: JsonObjectValue => objectValue.put(token, value); root
-        case arrayValue: JsonArrayValue =>
+        case objectValue: JsonObject => objectValue.put(token, value); root
+        case arrayValue: JsonArray =>
             let index = parseJsonPointerArrayIndex(token, arrayValue.size(), false).getOrThrow({ =>
-                JsonPointerException("Invalid JSON Patch replace array index '${token}'", pointer.toString(),
+                jsonPointerError("Invalid JSON Patch replace array index '${token}'", pointer.toString(),
                     code: "json_pointer_not_found")
             })
             arrayValue.set(index, value)
             root
-        case _ => throw JsonPointerException("JSON Patch replace parent is not a container", pointer.toString(),
+        case _ => throw jsonPointerError("JSON Patch replace parent is not a container", pointer.toString(),
             code: "json_pointer_not_found")
     }
 }
@@ -321,12 +318,12 @@ private func jsonPatchReplace(root: JsonNode, pointer: JsonPointer, value: JsonN
 private func jsonPatchMove(root: JsonNode, source: JsonPointer, destination: JsonPointer): JsonNode {
     if (source.toString() == destination.toString()) { return root }
     if (!source.isRoot() && destination.toString().startsWith(source.toString() + "/")) {
-        throw JsonPatchException("JSON Patch move destination is inside the source", code: "json_patch_path",
+        throw jsonPatchError("JSON Patch move destination is inside the source", code: "json_patch_path",
             path: destination.toString())
     }
     if (source.isRoot()) {
         if (destination.isRoot()) { return root }
-        throw JsonPatchException("Cannot move the document root into one of its descendants",
+        throw jsonPatchError("Cannot move the document root into one of its descendants",
             code: "json_patch_path", path: destination.toString())
     }
     let (withoutSource, moved) = jsonPatchRemove(root, source)
@@ -335,18 +332,20 @@ private func jsonPatchMove(root: JsonNode, source: JsonPointer, destination: Jso
 
 private func applyJsonMergePatch(target: JsonNode, patch: JsonNode): JsonNode {
     match (patch) {
-        case patchObject: JsonObjectValue =>
+        case patchObject: JsonObject =>
             let targetObject = match (target) {
-                case objectValue: JsonObjectValue => objectValue
-                case _ => JsonObjectValue()
+                case objectValue: JsonObject => objectValue
+                case _ => JsonObject()
             }
-            for ((name, patchValue) in patchObject.entries()) {
+            for (index in 0..patchObject.size()) {
+                let name = patchObject.nameAt(index)
+                let patchValue = patchObject.valueAt(index)
                 if (patchValue.isNull) {
                     let _ = targetObject.remove(name)
                 } else {
                     let current = match (targetObject.get(name)) {
                         case Some(value) => value
-                        case None => JsonNullValue()
+                        case None => JsonNode.nullValue
                     }
                     targetObject.put(name, applyJsonMergePatch(current, patchValue))
                 }
@@ -358,77 +357,64 @@ private func applyJsonMergePatch(target: JsonNode, patch: JsonNode): JsonNode {
 
 private func commitJsonRoot(target: JsonNode, result: JsonNode): JsonNode {
     match ((target, result)) {
-        case (targetObject: JsonObjectValue, resultObject: JsonObjectValue) =>
-            targetObject.entries().clear()
-            for ((key, value) in resultObject.entries()) { targetObject.put(key, value) }
+        case (targetObject: JsonObject, resultObject: JsonObject) =>
+            while (targetObject.size() > 0) {
+                let _ = targetObject.remove(targetObject.nameAt(targetObject.size() - 1))
+            }
+            for (index in 0..resultObject.size()) {
+                targetObject.put(resultObject.nameAt(index), resultObject.valueAt(index))
+            }
             targetObject
-        case (targetArray: JsonArrayValue, resultArray: JsonArrayValue) =>
-            targetArray.values().clear()
-            for (value in resultArray.values()) { targetArray.add(value) }
+        case (targetArray: JsonArray, resultArray: JsonArray) =>
+            while (targetArray.size() > 0) { let _ = targetArray.removeAt(targetArray.size() - 1) }
+            for (index in 0..resultArray.size()) { targetArray.add(resultArray[index]) }
             targetArray
         case _ => result
     }
 }
 
 func deepCopyJsonNode(value: JsonNode): JsonNode {
-    match (value) {
-        case _: JsonNullValue => JsonNullValue()
-        case boolValue: JsonBoolValue => JsonBoolValue(boolValue.value)
-        case intValue: JsonIntValue => JsonIntValue(intValue.value)
-        case floatValue: JsonFloatValue => JsonFloatValue(floatValue.value)
-        case numberValue: JsonNumberLiteralValue => JsonNumberLiteralValue(numberValue.literal)
-        case stringValue: JsonStringValue => JsonStringValue(stringValue.value)
-        case arrayValue: JsonArrayValue =>
-            let result = JsonArrayValue()
-            for (item in arrayValue.values()) { result.add(deepCopyJsonNode(item)) }
-            result
-        case objectValue: JsonObjectValue =>
-            let result = JsonObjectValue()
-            for ((key, item) in objectValue.entries()) { result.put(key, deepCopyJsonNode(item)) }
-            result
-        case _ => throw JsonException("Unsupported JsonNode implementation", code: "json_node_type")
-    }
+    value.materialize()
 }
 
-func jsonNodesEquivalent(left: JsonNode, right: JsonNode): Bool {
-    match ((left, right)) {
-        case (_: JsonNullValue, _: JsonNullValue) => true
-        case (a: JsonBoolValue, b: JsonBoolValue) => a.value == b.value
-        case (a: JsonStringValue, b: JsonStringValue) => a.value == b.value
-        case (a: JsonArrayValue, b: JsonArrayValue) =>
-            if (a.size() != b.size()) { return false }
-            for (index in 0..a.size()) {
-                if (!jsonNodesEquivalent(a[index], b[index])) { return false }
+func jsonNodesEquivalent(left: JsonValueView, right: JsonValueView): Bool {
+    if (left.kind() != right.kind()) { return false }
+    match (left.kind()) {
+        case JsonKind.Null => true
+        case JsonKind.Boolean => left.asBool() == right.asBool()
+        case JsonKind.String => left.asString() == right.asString()
+        case JsonKind.Number => jsonNumbersEquivalent(left, right)
+        case JsonKind.Array =>
+            if (left.size() != right.size()) { return false }
+            for (index in 0..left.size()) {
+                if (!jsonNodesEquivalent(left.element(index).getOrThrow(),
+                    right.element(index).getOrThrow())) { return false }
             }
             true
-        case (a: JsonObjectValue, b: JsonObjectValue) =>
-            if (a.size() != b.size()) { return false }
-            for ((key, value) in a.entries()) {
-                match (b.get(key)) {
-                    case Some(other) => if (!jsonNodesEquivalent(value, other)) { return false }
+        case JsonKind.Object =>
+            if (left.size() != right.size()) { return false }
+            for (index in 0..left.size()) {
+                let key = left.memberName(index)
+                match (right.member(key)) {
+                    case Some(other) => if (!jsonNodesEquivalent(left.memberValue(index), other)) { return false }
                     case None => return false
                 }
             }
             true
-        case _ => jsonNumbersEquivalent(left, right)
     }
 }
 
-private func jsonNumbersEquivalent(left: JsonNode, right: JsonNode): Bool {
+private func jsonNumbersEquivalent(left: JsonValueView, right: JsonValueView): Bool {
     match ((jsonNodeAsDecimal(left), jsonNodeAsDecimal(right))) {
         case (Some(a), Some(b)) => a == b
         case _ => false
     }
 }
 
-func jsonNodeAsDecimal(value: JsonNode): Option<Decimal> {
+func jsonNodeAsDecimal(value: JsonValueView): Option<Decimal> {
     try {
-        match (value) {
-            case intValue: JsonIntValue => Some(Decimal(intValue.value))
-            case floatValue: JsonFloatValue => Some(Decimal.parse(floatValue.value.toString()))
-            case numberValue: JsonNumberLiteralValue => Some(Decimal.parse(numberValue.literal))
-            case _ => None<Decimal>
-        }
+        if (value.kind() == JsonKind.Number) { Some(Decimal.parse(value.asNumberText())) }
+        else { None<Decimal> }
     } catch (_: Exception) {
         None<Decimal>
     }

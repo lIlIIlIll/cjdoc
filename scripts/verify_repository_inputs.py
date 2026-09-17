@@ -145,8 +145,8 @@ def main() -> int:
     except (OSError, ValueError, tomllib.TOMLDecodeError, json.JSONDecodeError) as error:
         parser.error(str(error))
     print(
-        f"repository inputs verified: {len(evidence['goldens'])} v8 goldens, "
-        f"{len(evidence['legacyGoldens'])} frozen v6/v7 inputs, "
+        f"repository inputs verified: {len(evidence['goldens'])} v{CURRENT_GOLDEN_VERSION} goldens, "
+        f"{len(evidence['legacyGoldens'])} frozen legacy inputs, "
         f"{len(evidence['vendor']['sourceSha256'])} vendored sources"
     )
     return 0
