@@ -280,6 +280,7 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
             case "html" => appendHtmlArtifacts(artifacts, documentation, locale: locale)
             case "api-surface" => appendApiSurfaceArtifacts(artifacts, documentation)
             case "coverage" => appendCoverageArtifacts(artifacts, documentation)
+            case "symbol-index" => appendSymbolIndexArtifacts(artifacts, documentation)
             case _ => throw IllegalArgumentException(
                 "unsupported documentation format '${format}'")
         }
@@ -297,6 +298,7 @@ public func renderDocumentationFormats(documentation: DocumentationSet,
             case "html" => appendHtmlArtifacts(artifacts, documentation)
             case "api-surface" => appendApiSurfaceArtifacts(artifacts, documentation)
             case "coverage" => appendCoverageArtifacts(artifacts, documentation)
+            case "symbol-index" => appendSymbolIndexArtifacts(artifacts, documentation)
             case _ => throw IllegalArgumentException(
                 "unsupported documentation format '${format}'")
         }
@@ -311,6 +313,7 @@ public func rendererFor(format: String): DocumentationRenderer {
         case "html" => HtmlDocumentationRenderer()
         case "api-surface" => ApiSurfaceDocumentationRenderer()
         case "coverage" => DocumentationCoverageRenderer()
+        case "symbol-index" => SymbolIndexDocumentationRenderer()
         case _ => throw IllegalArgumentException("unsupported documentation format '${format}'")
     }
 }

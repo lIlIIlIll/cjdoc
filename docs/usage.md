@@ -179,6 +179,14 @@ cjdoc generate --project . --format coverage --stdout
 
 这两个命令默认使用 `external` audience。需要把它们接入 CI 时，见 [`docs/advanced-usage.md`](advanced-usage.md#在-ci-中检查-api-和文档覆盖率)。
 
+用 `symbol-index` 导出面向工具和 agent 的稳定导航索引：
+
+```bash
+cjdoc generate --project . --format symbol-index --stdout > symbol-index.json
+```
+
+输出版本为 `cjdoc.symbol-index/1`。每个可见声明包含稳定 `id`、源码范围、HTML 路由、语义关系和 `@see` 引用；无法唯一解析的目标保留状态而不伪造 `targetId`。索引也可与 HTML 一起生成，文件位于 `target/doc/symbol-index/symbol-index.json`。
+
 ## 查看已有 JSON
 
 如果已经有 `docs.json`，可以只重新生成 HTML 或 Markdown，不重新扫描源码：

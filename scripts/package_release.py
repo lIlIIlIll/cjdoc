@@ -44,6 +44,7 @@ SCHEMA_FILES = (
     "diagnostics.schema.json",
     "cfg-matrix.schema.json",
     "search-index.schema.json",
+    "symbol-index.schema.json",
     "api-surface.schema.json",
     "documentation-coverage.schema.json",
 )

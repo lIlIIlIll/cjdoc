@@ -192,6 +192,20 @@ def validate_schema_document(name: str, value: object) -> None:
                 set(items.get("required", [])) != expected_entry_fields or \
                 set(items.get("properties", {})) != expected_entry_fields:
             raise ValueError("search-index schema entry shape is invalid")
+    elif name == "symbol-index":
+        entries = properties["entries"]
+        items = entries.get("items") if isinstance(entries, dict) else None
+        expected_entry_fields = {
+            "id", "canonicalId", "name", "qualifiedName", "kind", "moduleId",
+            "packageName", "ownerId", "visibility", "semanticState", "summary",
+            "source", "href", "relations", "references"
+        }
+        if not isinstance(entries, dict) or entries.get("type") != "array" or \
+                not isinstance(items, dict) or items.get("type") != "object" or \
+                items.get("additionalProperties") is not False or \
+                set(items.get("required", [])) != expected_entry_fields or \
+                set(items.get("properties", {})) != expected_entry_fields:
+            raise ValueError("symbol-index schema entry shape is invalid")
     elif name in ("api-surface", "api-surface-v1", "api-diff"):
         definitions = value.get("$defs")
         if not isinstance(definitions, dict):
