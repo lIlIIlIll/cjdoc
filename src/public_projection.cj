@@ -263,7 +263,8 @@ internal class PublicDiagnosticProjection {
     let incompleteSource: Bool
 
     init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
-        assetCollector: LocalAssetCollector, markdownContext: MarkdownGenerationContext) {
+        assetCollector: LocalAssetCollector, markdownContext: MarkdownGenerationContext,
+        semanticLinkDiagnostics!: Array<public_model.Diagnostic> = []) {
         let diagnostics = ArrayList<public_model.Diagnostic>()
         var hasError = false
         var incompleteSource = !documentation.orphanDocComments.isEmpty() ||
@@ -291,6 +292,7 @@ internal class PublicDiagnosticProjection {
             incompleteSource = true
         }
         diagnostics.add(all: markdownContext.diagnostics())
+        diagnostics.add(all: semanticLinkDiagnostics)
         sort(diagnostics, lessThan: {
             left, right => comparePublicDiagnostic(left, right) < 0
         }, stable: true)
@@ -309,9 +311,12 @@ internal func publicDocumentation(documentation: DocumentationSet,
     let providerProjection = PublicProviderProjection(documentation)
     let declarationProjection = PublicDeclarationProjection(documentation, sourceMapper,
         providerProjection.statesByModule)
+    let semanticLinkDiagnostics = resolvePublicSemanticLinks(declarationProjection.declarations, request.audience,
+        request.projectRoot)
     let sourceProjection = PublicSourceProjection(documentation, sourceMapper)
     let diagnosticProjection = PublicDiagnosticProjection(documentation, sourceMapper,
-        declarationProjection.assetCollector, declarationProjection.markdownContext)
+        declarationProjection.assetCollector, declarationProjection.markdownContext,
+        semanticLinkDiagnostics: semanticLinkDiagnostics)
     let status = if (diagnosticProjection.hasError || diagnosticProjection.incompleteSource ||
         providerProjection.incomplete) {
         "partial"

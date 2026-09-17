@@ -185,7 +185,7 @@ cjdoc generate --project . --format coverage --stdout
 cjdoc generate --project . --format symbol-index --stdout > symbol-index.json
 ```
 
-输出版本为 `cjdoc.symbol-index/1`。每个可见声明包含稳定 `id`、源码范围、HTML 路由、语义关系和 `@see` 引用；无法唯一解析的目标保留状态而不伪造 `targetId`。索引也可与 HTML 一起生成，文件位于 `target/doc/symbol-index/symbol-index.json`。
+输出版本为 `cjdoc.symbol-index/1`。每个可见声明包含稳定 `id`、源码范围、HTML 路由、语义关系和 `@see` 引用；无法唯一解析的目标保留状态而不伪造 `targetId`。索引也可与 HTML 一起生成，文件位于 `target/doc/html/symbol-index.json`；单独生成仍位于 `target/doc/symbol-index/symbol-index.json`，后者适合作为外部文档 resolver 的本地输入。
 
 ## 查看已有 JSON
 

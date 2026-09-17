@@ -130,6 +130,32 @@ class RendererSafetyTest {
     }
 
     @TestCase
+    func semanticLinkMetadataRendersConsistentlyAndHtmlPublishesIndex(): Unit {
+        let target = MarkdownNode("semantic_link", MarkdownNodeMetadata.forSemanticLink(
+            "fixture.api", "resolved", targetSymbolId: Some(
+                "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arenderer-safety::fixture::function:api#g0()"),
+            externalUrl: Some("symbols/target-id.html")),
+            literal: "fixture.api", children: [MarkdownNode("text", literal: "API")])
+        let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
+            rendererSafetyDocumentation(MarkdownNode("document", children: [
+                MarkdownNode("paragraph", children: [target])
+            ]))), "markdown/docs.md")
+        let htmlPages = rendererSafetyText(HtmlDocumentationRenderer().render(
+            rendererSafetyDocumentation(MarkdownNode("document", children: [
+                MarkdownNode("paragraph", children: [target])
+            ]))))
+        let html = rendererSafetyContent(HtmlDocumentationRenderer().render(
+            rendererSafetyDocumentation(MarkdownNode("document", children: [
+                MarkdownNode("paragraph", children: [target])
+            ]))), "html/symbol-index.json")
+        @Expect(htmlPages.contains("<a href=\"../symbols/target-id.html\">API</a>"), true)
+        @Expect(markdown.contains("[API](symbols/target-id.html)"), true)
+        @Expect(html.contains("\"href\":\"symbols/"), true)
+        @Expect(rendererSafetyContent(HtmlDocumentationRenderer().render(
+            rendererSafetyDocumentation(MarkdownNode("document"))),
+            "html/search-index.json").contains("cjdoc"), true)
+    }
+    @TestCase
     func audienceProjectionOmitsAssetsReferencedOnlyByHiddenDeclarations(): Unit {
         let documentation = hiddenAssetDocumentation()
         validateDocumentationSet(documentation)

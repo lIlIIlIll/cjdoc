@@ -20,8 +20,29 @@ private func buildDocIrV9Schema(source: String): String {
       }
     },
 """
-    schema = schema.replace("  \"$defs\": {\n", "  \"$defs\": {\n" + repositoryDefinition)
+    let semanticLinkDefinition = """
+    "semanticLinkMetadata": {
+      "type": "object", "additionalProperties": false,
+      "required": ["target", "state", "targetSymbolId", "externalUrl"],
+      "properties": {
+        "target": {"type": "string", "minLength": 1},
+        "state": {"enum": ["resolved", "unresolved", "ambiguous", "unavailable"]},
+        "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"},
+        "externalUrl": {"$ref": "#/$defs/nullableString"}
+      }
+    },
+"""
+    schema = schema.replace("  \"$defs\": {\n", "  \"$defs\": {\n" + repositoryDefinition + semanticLinkDefinition)
     schema = schema
+        .replace("\"$ref\": \"#/$defs/tableCellMetadata\"}]},\n        \"children\"",
+            "\"$ref\": \"#/$defs/tableCellMetadata\"}, {\"$ref\": \"#/$defs/semanticLinkMetadata\"}]},\n        \"children\"")
+        .replace("\n      ]\n    },\n    \"comment\": {",
+            ",\n" +
+            "        {\"if\": {\"properties\": {\"kind\": {\"const\": \"semantic_link\"}}}, " +
+            "\"then\": {\"properties\": {\"metadata\": {\"$ref\": \"#/$defs/semanticLinkMetadata\"}}}}\n" +
+            "      ]\n    },\n    \"comment\": {")
+    schema = schema.replace("\"html_inline\", \"custom_inline\"]}, \"literal\"",
+        "\"html_inline\", \"custom_inline\", \"semantic_link\"]}, \"literal\"")
         .replace("\"required\": [\"name\", \"kind\"]",
             "\"required\": [\"name\", \"kind\", \"repository\"]")
         .replace("\"kind\": {\"type\": \"string\", \"minLength\": 1}}",

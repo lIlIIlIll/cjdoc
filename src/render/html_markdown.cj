@@ -401,6 +401,36 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
                     appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
                 }
             }
+        case "semantic_link" =>
+            let destination: ?String = match (node.metadata) {
+                case Some(metadata) => metadata.semanticExternalUrl
+                case None => None
+            }
+            match (destination) {
+                case Some(value) =>
+                    let href = if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("#")) {
+                        value
+                    } else {
+                        rootPrefix + value
+                    }
+                    if (((value.startsWith("http://") || value.startsWith("https://") || value.startsWith("#")) &&
+                        safeLinkDestination(href)) ||
+                        (!(value.startsWith("http://") || value.startsWith("https://") || value.startsWith("#")) &&
+                            safeRelativeLinkDestination(value))) {
+                        out.append("<a href=\"${escapeHtml(href)}\">")
+                        for (child in node.children) {
+                            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
+                        }
+                        out.append("</a>")
+                    } else {
+                        for (child in node.children) {
+                            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
+                        }
+                    }
+                case None => for (child in node.children) {
+                    appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
+                }
+            }
         case "image" =>
             let alt = markdownNodeText(node)
             match (assetReference(assetLookup, node.literal)) {
