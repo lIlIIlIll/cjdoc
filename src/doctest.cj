@@ -109,6 +109,16 @@ private class DoctestProcessResult {
         this.outputLimit = outputLimit
     }
 }
+private class DoctestProjectContext {
+    public let packageName: String
+    public let artifactRoot: Path
+
+    init(packageName: String, artifactRoot: Path) {
+        this.packageName = packageName
+        this.artifactRoot = artifactRoot
+    }
+}
+
 
 private func readProcessPipe(stream: InputStream, maxBytes: Int64): Array<Byte> {
     let output = ArrayList<Byte>()
@@ -177,7 +187,10 @@ private func fenceOpening(line: String): ?DoctestFence {
     if (language != "cj" && language != "cangjie") {
         return None
     }
-    Some(DoctestFence(marker, length, language))
+    // cangjie is an accepted Markdown alias, but cj is the frozen
+    // doctest-results wire value. Keep the parser permissive and the output
+    // canonical so every emitted result validates against the schema.
+    Some(DoctestFence(marker, length, "cj"))
 }
 
 private func fenceClosing(line: String, fence: DoctestFence): Bool {
@@ -250,13 +263,17 @@ private func collectSnippets(documentation: public_model.DocumentationSet): Arra
     snippets.toArray()
 }
 
-private func doctestProgram(code: String): String {
+private func doctestProgram(code: String, projectPackageName!: ?String = None): String {
     let trimmed = code.trimAscii()
     if (trimmed.startsWith("package ") || trimmed.startsWith("import ") ||
         trimmed.contains("main(")) {
         trimmed + "\n"
     } else {
-        "package cjdoc_doctest\n\nmain() {\n" + code + "\n}\n"
+        let projectImport = match (projectPackageName) {
+            case Some(name) => "import " + name + ".*\n\n"
+            case None => ""
+        }
+        "package cjdoc_doctest\n" + projectImport + "main() {\n" + code + "\n}\n"
     }
 }
 
@@ -275,11 +292,59 @@ private func memoryBoundedCommand(command: String, arguments: Array<String>, mem
         wrapped.add(all: arguments)
         return (candidate, wrapped.toArray())
     }
-    (command, arguments)
+    // Running without an enforceable bound is not a safe fallback. In
+    // particular, macOS and Windows do not provide Linux's prlimit paths;
+    // report the unavailable limiter and let the command fail closed instead
+    // of executing unbounded user code.
+    throw IllegalStateException("doctest memory limit is unavailable on this platform")
+}
+private func projectPackageName(documentation: public_model.DocumentationSet): ?String {
+    if (documentation.packages.isEmpty()) { return None }
+    Some(documentation.packages[0].name)
 }
 
+private func prepareProjectContext(documentation: public_model.DocumentationSet,
+    projectRoot: Path, config: DoctestConfig, workRoot: Path,
+    cfgValues: Array<CfgValue>): ?DoctestProjectContext {
+    let packageName = match (projectPackageName(documentation)) {
+        case Some(name) => name
+        case None => return None
+    }
+    let sourceRoot = projectRoot.join("src")
+    if (!exists(sourceRoot)) {
+        throw IllegalStateException("doctest project source directory is unavailable")
+    }
+    let artifactRoot = workRoot.join("project")
+    Directory.create(artifactRoot, recursive: true)
+    let arguments = ArrayList<String>()
+    arguments.add("-p")
+    arguments.add(sourceRoot.toString())
+    arguments.add("--output-type")
+    arguments.add("staticlib")
+    arguments.add("--output-dir")
+    arguments.add(artifactRoot.toString())
+    for (cfg in cfgValues) {
+        arguments.add("--cfg")
+        arguments.add(cfg.name + "=" + cfg.value)
+    }
+    let (command, boundedArguments) = memoryBoundedCommand("cjc", arguments.toArray(), config.memoryMb)
+    let result = runBoundedProcess(command, boundedArguments, projectRoot, config.timeoutMs,
+        DOCTEST_MAX_OUTPUT_BYTES)
+    if (result.timedOut) {
+        throw IllegalStateException("doctest project package compilation timed out")
+    }
+    if (result.outputLimit) {
+        throw IllegalStateException("doctest project package compilation exceeded the output limit")
+    }
+    if (result.exitCode != 0) {
+        throw IllegalStateException("doctest project package compilation failed: " + result.stderr)
+    }
+    Some(DoctestProjectContext(packageName, artifactRoot))
+}
+
+
 private func executeSnippet(snippet: DoctestSnippet, config: DoctestConfig,
-    workRoot: Path, index: Int64): DoctestCaseResult {
+    workRoot: Path, index: Int64, projectContext: ?DoctestProjectContext): DoctestCaseResult {
     if (snippet.code.trimAscii().isEmpty()) {
         return skippedResult(snippet, "no executable Cangjie fence")
     }
@@ -287,11 +352,33 @@ private func executeSnippet(snippet: DoctestSnippet, config: DoctestConfig,
     Directory.create(caseRoot, recursive: true)
     let source = caseRoot.join("example.cj")
     let executable = caseRoot.join("example")
-    File.writeTo(source, doctestProgram(snippet.code).toArray())
+    let projectPackageName = match (projectContext) {
+        case Some(context) => Some(context.packageName)
+        case None => None<String>
+    }
+    File.writeTo(source, doctestProgram(snippet.code,
+        projectPackageName: projectPackageName).toArray())
+    let compileArguments = ArrayList<String>()
+    compileArguments.add(source.toString())
+    compileArguments.add("-o")
+    compileArguments.add(executable.toString())
+    compileArguments.add("--static")
+    match (projectContext) {
+        case Some(context) =>
+            compileArguments.add("--import-path")
+            compileArguments.add(context.artifactRoot.toString())
+            compileArguments.add("--library-path")
+            compileArguments.add(context.artifactRoot.toString())
+            compileArguments.add("--library")
+            compileArguments.add(context.packageName)
+        case None => ()
+    }
+    let (compileCommand, boundedCompileArguments) = memoryBoundedCommand(
+        "cjc", compileArguments.toArray(), config.memoryMb)
     let started = MonoTime.now()
     let compile = try {
-        runBoundedProcess("cjc", [source.toString(), "-o", executable.toString()],
-            caseRoot, config.timeoutMs, DOCTEST_MAX_OUTPUT_BYTES)
+        runBoundedProcess(compileCommand, boundedCompileArguments, caseRoot,
+            config.timeoutMs, DOCTEST_MAX_OUTPUT_BYTES)
     } catch (_: Exception) {
         return DoctestCaseResult(snippet, "failed", message: "compiler unavailable")
     }
@@ -334,7 +421,7 @@ private func executeSnippet(snippet: DoctestSnippet, config: DoctestConfig,
 }
 
 private func runSnippetBatch(snippets: Array<DoctestSnippet>, config: DoctestConfig,
-    workRoot: Path): Array<DoctestCaseResult> {
+    workRoot: Path, projectContext: ?DoctestProjectContext): Array<DoctestCaseResult> {
     let results = ArrayList<DoctestCaseResult>()
     var index: Int64 = 0
     while (index < snippets.size) {
@@ -343,7 +430,7 @@ private func runSnippetBatch(snippets: Array<DoctestSnippet>, config: DoctestCon
         while (offset < config.jobs && index + offset < snippets.size) {
             let snippet = snippets[index + offset]
             let caseIndex = index + offset
-            futures.add(spawn { executeSnippet(snippet, config, workRoot, caseIndex) })
+            futures.add(spawn { executeSnippet(snippet, config, workRoot, caseIndex, projectContext) })
             offset++
         }
         for (future in futures) {
@@ -355,12 +442,18 @@ private func runSnippetBatch(snippets: Array<DoctestSnippet>, config: DoctestCon
 }
 
 internal func runDoctests(documentation: public_model.DocumentationSet, config: DoctestConfig,
-    outputRoot: Path): DoctestReport {
+    outputRoot: Path, projectRoot!: Path = Path("."),
+    cfgValues!: Array<CfgValue> = []): DoctestReport {
     let snippets = collectSnippets(documentation)
     if (!exists(outputRoot)) { Directory.create(outputRoot, recursive: true) }
     let workRoot = Directory.createTemp(outputRoot)
     try {
-        let results = runSnippetBatch(snippets, config, workRoot)
+        let projectContext = if (snippets.isEmpty()) {
+            None<DoctestProjectContext>
+        } else {
+            prepareProjectContext(documentation, projectRoot, config, workRoot, cfgValues)
+        }
+        let results = runSnippetBatch(snippets, config, workRoot, projectContext)
         return DoctestReport(config, results)
     } finally {
         let _ = removeIfExists(workRoot, recursive: true)
