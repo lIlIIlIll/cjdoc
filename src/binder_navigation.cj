@@ -217,7 +217,7 @@ private func ownerSymbol(symbols: ArrayList<SymbolDoc>, symbol: SymbolDoc): ?Sym
 
 private func resolveOverrideRelations(documentation: DocumentationSet): Unit {
     for (symbol in documentation.symbols) {
-        if (!supportsNavigation(documentation, symbol.moduleId)) { continue }
+        if (symbol.semanticProvider == "ast" || !supportsNavigation(documentation, symbol.moduleId)) { continue }
         for (relationship in symbol.symbolRelationships) {
             if (relationship.kind != "override" || relationship.targetSymbolId.isSome()) { continue }
             let owner = match (ownerSymbol(documentation.symbols, symbol)) {
