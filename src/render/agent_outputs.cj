@@ -140,19 +140,29 @@ private func agentNavigationPages(documentation: DocumentationSet,
     pages
 }
 
-private func renderAgentNavigationPage(page: AgentNavigationPage): String {
-    let out = RenderTextBuffer(limit: AGENT_NAVIGATION_LIMIT)
-    out.append("{\"id\":"); appendAgentJsonText(out, page.id)
-    out.append(",\"kind\":"); appendAgentJsonText(out, page.kind)
-    out.append(",\"title\":"); appendAgentJsonText(out, page.title)
-    out.append(",\"href\":"); appendAgentJsonText(out, page.href)
-    out.append(",\"summary\":"); appendAgentJsonNullable(out, page.summary)
-    out.append(",\"symbolId\":"); appendAgentJsonNullable(out, page.symbolId)
-    out.append(",\"moduleId\":"); appendAgentJsonNullable(out, page.moduleId)
-    out.append(",\"packageName\":"); appendAgentJsonNullable(out, page.packageName)
-    out.append(",\"semanticState\":"); appendAgentJsonNullable(out, page.semanticState)
-    out.append("}")
-    out.toString()
+private func agentJsonStringBound(value: String, limit: Int64): Int64 {
+    let selected = agentTruncate(value, limit)
+    2 + 6 * selected.size
+}
+
+private func agentJsonNullableBound(value: ?String): Int64 {
+    match (value) {
+        case Some(text) => agentJsonStringBound(text, AGENT_FIELD_LIMIT)
+        case None => 4
+    }
+}
+
+private func agentNavigationPageBound(page: AgentNavigationPage): Int64 {
+    "{\"id\":".size + agentJsonStringBound(page.id, AGENT_FIELD_LIMIT) +
+        ",\"kind\":".size + agentJsonStringBound(page.kind, AGENT_FIELD_LIMIT) +
+        ",\"title\":".size + agentJsonStringBound(page.title, AGENT_FIELD_LIMIT) +
+        ",\"href\":".size + agentJsonStringBound(page.href, AGENT_FIELD_LIMIT) +
+        ",\"summary\":".size + agentJsonNullableBound(page.summary) +
+        ",\"symbolId\":".size + agentJsonNullableBound(page.symbolId) +
+        ",\"moduleId\":".size + agentJsonNullableBound(page.moduleId) +
+        ",\"packageName\":".size + agentJsonNullableBound(page.packageName) +
+        ",\"semanticState\":".size + agentJsonNullableBound(page.semanticState) +
+        1
 }
 
 private func renderAgentNavigationIndex(documentation: DocumentationSet,
@@ -166,11 +176,20 @@ private func renderAgentNavigationIndex(documentation: DocumentationSet,
     let closing = "\n  ]\n}\n"
     var first = true
     for (page in pages) {
-        let pageJson = renderAgentNavigationPage(page)
         let separator = if (first) { "\n    " } else { ",\n    " }
-        if (out.size + separator.size + pageJson.size + closing.size > AGENT_NAVIGATION_LIMIT) { break }
+        if (out.size + separator.size + agentNavigationPageBound(page) + closing.size >
+            AGENT_NAVIGATION_LIMIT) { break }
         out.append(separator)
-        out.append(pageJson)
+        out.append("{\"id\":"); appendAgentJsonText(out, page.id)
+        out.append(",\"kind\":"); appendAgentJsonText(out, page.kind)
+        out.append(",\"title\":"); appendAgentJsonText(out, page.title)
+        out.append(",\"href\":"); appendAgentJsonText(out, page.href)
+        out.append(",\"summary\":"); appendAgentJsonNullable(out, page.summary)
+        out.append(",\"symbolId\":"); appendAgentJsonNullable(out, page.symbolId)
+        out.append(",\"moduleId\":"); appendAgentJsonNullable(out, page.moduleId)
+        out.append(",\"packageName\":"); appendAgentJsonNullable(out, page.packageName)
+        out.append(",\"semanticState\":"); appendAgentJsonNullable(out, page.semanticState)
+        out.append("}")
         first = false
     }
     out.append(closing)
