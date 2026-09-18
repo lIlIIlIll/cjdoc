@@ -201,7 +201,8 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
             throw IllegalArgumentException("--stdout cannot be combined with enabled doctests")
         }
         let report = runDoctests(documentation, doctestConfig,
-            Path(options.project).join("target").join("cjdoc"))
+            Path(options.project).join("target").join("cjdoc"),
+            projectRoot: Path(options.project), cfgValues: options.cfgValues.toArray())
         doctestReport = Some(report)
         eprintln(doctestReportSummary(report))
         if (doctestReportHasFailure(report)) {

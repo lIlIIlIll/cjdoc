@@ -2,6 +2,8 @@ package cjdoc
 
 import std.unittest.*
 import std.unittest.testmacro.*
+import std.env.*
+import std.fs.*
 
 @Test
 class DoctestConfigSuite {
@@ -33,5 +35,18 @@ class DoctestConfigSuite {
         @ExpectThrows[IllegalArgumentException](DoctestConfig(timeoutMs: 0))
         @ExpectThrows[IllegalArgumentException](DoctestConfig(memoryMb: 1))
         @ExpectThrows[IllegalArgumentException](DoctestConfig(jobs: 0))
+    }
+
+    @TestCase
+    func trailingCommentsAfterHeadersAreAccepted(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            File.writeTo(root.join("cjdoc.toml"),
+                "[doctest] # enable the CI gate\nmode = \"deny\" # keep this explicit\n".toArray())
+            let config = loadDoctestConfig(root.toString())
+            @Expect(config.mode, "deny")
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
     }
 }
