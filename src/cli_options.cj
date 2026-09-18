@@ -40,6 +40,7 @@ internal class NewCliOptions {
     var localeExplicit = false
     var markdownLayout = "site"
     var markdownLayoutExplicit = false
+    var docVersion: ?String = None
     let dependencySources = ArrayList<DependencySourceInput>()
     let cfgValues = ArrayList<CfgValue>()
 }
@@ -139,6 +140,9 @@ private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>,
             Some(index + 2)
         case "--api-surface-baseline" =>
             options.apiSurfaceBaseline = Some(requireNonEmptyCliValue(args, index, "--api-surface-baseline"))
+            Some(index + 2)
+        case "--doc-version" =>
+            options.docVersion = Some(requireNonEmptyCliValue(args, index, "--doc-version"))
             Some(index + 2)
         case "--locale" =>
             options.locale = requireCliValue(args, index, "--locale")
@@ -246,7 +250,8 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
         options.includePathDependencies || options.includeCachedDependencies ||
         options.cacheDirectory.isSome() || options.noCache || options.cjpmCacheRoot.isSome() ||
         options.repositoryUrl.isSome() || options.repositoryRevision.isSome() || options.repositoryRoot.isSome() ||
-        !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty()) {
+        !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty() ||
+        options.docVersion.isSome()) {
         throw IllegalArgumentException("diff accepts only input paths, --format, and API deny flags")
     }
 }
@@ -306,6 +311,12 @@ private func validateCliOptions(options: NewCliOptions): Unit {
         throw IllegalArgumentException("--stdout does not accept --force-owned")
     }
     if (options.formats.isEmpty() && options.command != "check") { options.formats.add("json") }
+    if (options.docVersion.isSome() && options.command != "generate" && options.command != "render") {
+        throw IllegalArgumentException("--doc-version is only valid for generate or render")
+    }
+    if (options.docVersion.isSome() && !options.formats.contains("html")) {
+        throw IllegalArgumentException("--doc-version requires --format html")
+    }
     if (options.stdout && (options.formats.size != 1 ||
         (options.formats[0] != "json" && options.formats[0] != "api-surface" &&
             options.formats[0] != "coverage" && options.formats[0] != "symbol-index"))) {
