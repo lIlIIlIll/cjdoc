@@ -24,7 +24,12 @@ from scripts import verify_release_package
 from scripts import verify_remote_tag
 from scripts import verify_repository_inputs
 from scripts import worktree_identity
-from scripts.verify_repository_inputs import CURRENT_GOLDEN_VERSION, GOLDEN_NAMES, SCHEMA_NAMES
+from scripts.verify_repository_inputs import (
+    CURRENT_GOLDEN_VERSION,
+    GOLDEN_NAMES,
+    LEGACY_GOLDEN_VERSIONS,
+    SCHEMA_NAMES,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -88,7 +93,7 @@ class ReleaseToolsTestSupport:
                 PROJECT_ROOT / "docs/schema" / f"{name}.schema.json",
                 root / "docs/schema" / f"{name}.schema.json",
             )
-        for version in (*range(6, 9), CURRENT_GOLDEN_VERSION):
+        for version in (*LEGACY_GOLDEN_VERSIONS, CURRENT_GOLDEN_VERSION):
             directory = root / f"tests/fixtures/golden-v{version}"
             directory.mkdir(parents=True)
             for name in GOLDEN_NAMES:
