@@ -80,6 +80,13 @@ private func conceptualSafeRelative(value: String): Bool {
         value.contains("\\") || value.contains("..") || value.contains(":")) { return false }
     true
 }
+private func conceptualSafeRoute(value: String): Bool {
+    if (!conceptualSafeRelative(value) || value.contains("?") || value.contains("#")) { return false }
+    for (byte in value.toArray()) {
+        if (byte < 0x20 || byte == 0x7F) { return false }
+    }
+    true
+}
 
 private func conceptualPathFromValue(value: String, setting: String): String {
     let path = conceptualValue(value)
@@ -98,7 +105,7 @@ private func finishConceptualPage(config: ConceptualDocsConfig, current: ?Concep
             if (!conceptualSafeRelative(page.source) || !page.source.endsWith(".md")) {
                 throw IllegalArgumentException("[[docs.pages]] source must be a safe relative Markdown path")
             }
-            if (!page.route.isEmpty() && !conceptualSafeRelative(page.route)) {
+            if (!page.route.isEmpty() && !conceptualSafeRoute(page.route)) {
                 throw IllegalArgumentException("[[docs.pages]] route must be a safe relative path")
             }
             config.pages.add(page)
@@ -197,7 +204,7 @@ private func conceptualSlug(value: String): String {
 private func conceptualRoute(route: String, fallback: String): String {
     let selected = if (route.isEmpty()) { fallback } else { route }
     let normalized = if (selected.endsWith(".html")) { selected } else { "${selected}.html" }
-    if (!conceptualSafeRelative(normalized) || !normalized.startsWith("concepts/")) {
+    if (!conceptualSafeRoute(normalized) || !normalized.startsWith("concepts/")) {
         throw IllegalArgumentException("conceptual page route must stay under concepts/")
     }
     normalized

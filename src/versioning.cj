@@ -155,8 +155,12 @@ private func versionSafeId(value: String): Bool {
     true
 }
 
+private func versionPathContainsLatest(value: String): Bool {
+    value == "latest" || value.startsWith("latest/") || value.endsWith("/latest") ||
+        value.contains("/latest/")
+}
 private func versionSafeBasePath(value: String): Bool {
-    value != "latest" && isSafeOutputPath(value) && !value.startsWith(".") &&
+    !versionPathContainsLatest(value) && isSafeOutputPath(value) && !value.startsWith(".") &&
         !value.contains("#") && !value.contains("?")
 }
 private func versionJsonStringField(object: JsonObject, key: String): ?String {

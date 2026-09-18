@@ -292,6 +292,9 @@ internal class PublicDiagnosticProjection {
             incompleteSource = true
         }
         diagnostics.add(all: markdownContext.diagnostics())
+        for (diagnostic in semanticLinkDiagnostics) {
+            if (diagnostic.severity == "error") { hasError = true }
+        }
         diagnostics.add(all: semanticLinkDiagnostics)
         sort(diagnostics, lessThan: {
             left, right => comparePublicDiagnostic(left, right) < 0
