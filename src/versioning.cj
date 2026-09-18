@@ -28,6 +28,33 @@ private class VersionComposeBudget {
         totalFiles++
         totalBytes += bytes
     }
+    func reserveArtifact(path: String, bytes: Int64): Unit {
+        if (bytes > VERSION_TOTAL_MAX_BYTES - totalBytes) {
+            throw IllegalArgumentException("version artifact '${path}' exceeds composition memory budget")
+        }
+        totalBytes += bytes
+    }
+    func remainingBytes(): Int64 { VERSION_TOTAL_MAX_BYTES - totalBytes }
+}
+private class VersionTextBuffer {
+    let storage = StringBuilder()
+    let limit: Int64
+    var written: Int64 = 0
+
+    init(limit: Int64) {
+        if (limit < 0) { throw IllegalArgumentException("invalid version selector limit") }
+        this.limit = limit
+    }
+
+    func append(value: String): Unit {
+        if (value.size > limit - written) {
+            throw IllegalArgumentException("version selector exceeds composition memory budget")
+        }
+        storage.append(value)
+        written += value.size
+    }
+
+    func toString(): String { storage.toString() }
 }
 internal class VersionSourceFile {
     let path: String
@@ -165,8 +192,12 @@ private func collectVersionFilesInDirectory(directory: Path, relative: String,
         if (!seen.add(child)) {
             throw IllegalArgumentException("version source contains duplicate path '${child}'")
         }
+        let expectedSize = info.size
+        budget.reserve(child, expectedSize)
         let bytes = readFileBounded(info.path, VERSION_FILE_MAX_BYTES)
-        budget.reserve(child, bytes.size)
+        if (bytes.size != expectedSize) {
+            throw IllegalArgumentException("version source changed while reading '${child}'")
+        }
         files.add(VersionSourceFile(child, versionMediaType(child), bytes))
     }
 }
@@ -216,7 +247,7 @@ private func loadVersionSymbols(files: ArrayList<VersionSourceFile>): VersionSym
     }
     result
 }
-private func loadVersionApiDiff(spec: VersionComposeSpec): VersionSourceFile {
+private func loadVersionApiDiff(spec: VersionComposeSpec, budget: VersionComposeBudget): VersionSourceFile {
     let source = match (spec.apiDiffSource) {
         case Some(value) => value
         case None => throw IllegalArgumentException("version API diff source is missing")
@@ -227,7 +258,12 @@ private func loadVersionApiDiff(spec: VersionComposeSpec): VersionSourceFile {
     if (info.isSymbolicLink() || !info.isRegular()) {
         throw IllegalArgumentException("version API diff must be a regular file '${source}'")
     }
+    let expectedSize = info.size
+    budget.reserve("api-diff.json", expectedSize)
     let bytes = readFileBounded(path, VERSION_DIFF_MAX_BYTES)
+    if (bytes.size != expectedSize) {
+        throw IllegalArgumentException("version API diff changed while reading '${source}'")
+    }
     let text = try { String.fromUtf8(bytes) } catch (_: Exception) {
         throw IllegalArgumentException("version API diff is not UTF-8 '${source}'")
     }
@@ -276,8 +312,7 @@ private func loadVersionSite(spec: VersionComposeSpec, budget: VersionComposeBud
             if (!site.paths.add("api-diff.json")) {
                 throw IllegalArgumentException("version source already contains api-diff.json")
             }
-            let apiDiff = loadVersionApiDiff(spec)
-            budget.reserve("api-diff.json", apiDiff.bytes.size)
+            let apiDiff = loadVersionApiDiff(spec, budget)
             site.files.add(apiDiff)
             sort(site.files, lessThan: { left, right => left.path < right.path }, stable: true)
         case None => ()
@@ -397,8 +432,8 @@ private func versionTargetRoute(current: VersionSite, relative: String, target: 
 }
 
 private func versionSelector(current: VersionSite, currentOutputPath: String,
-    relative: String, sites: ArrayList<VersionSite>): String {
-    let out = StringBuilder()
+    relative: String, sites: ArrayList<VersionSite>, limit!: Int64 = VERSION_FILE_MAX_BYTES): String {
+    let out = VersionTextBuffer(limit)
     out.append("<nav class=\"cjdoc-version-selector\" aria-label=\"Documentation version\"><span>Version</span>")
     for (target in sites) {
         let (route, unavailable) = versionTargetRoute(current, relative, target)
@@ -423,10 +458,7 @@ private func versionSelector(current: VersionSite, currentOutputPath: String,
     out.toString()
 }
 
-private func injectVersionSelector(html: String, current: VersionSite, relative: String,
-    sites: ArrayList<VersionSite>): String {
-    let outputPath = versionOutputPath(current, relative)
-    let selector = versionSelector(current, outputPath, relative, sites)
+private func injectVersionSelector(html: String, selector: String): String {
     match (html.indexOf("</body>")) {
         case Some(index) => html[..index] + selector + html[index..]
         case None => html + selector
@@ -489,28 +521,44 @@ private func versionLatestIndex(sites: ArrayList<VersionSite>, latest: String): 
 }
 
 private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: String,
-    latestPolicy: String): Array<public_render.RenderArtifact> {
+    latestPolicy: String, budget: VersionComposeBudget): Array<public_render.RenderArtifact> {
     let artifacts = ArrayList<public_render.RenderArtifact>()
     for (site in sites) {
         for (file in site.files) {
             let outputPath = versionOutputPath(site, file.path)
-            let bytes = if (file.path.endsWith(".html")) {
+            if (file.path.endsWith(".html")) {
+                let remaining = budget.remainingBytes()
+                if (file.bytes.size >= remaining) {
+                    throw IllegalArgumentException("version artifact '${outputPath}' exceeds composition memory budget")
+                }
+                let selectorAvailable = remaining - file.bytes.size
+                let selectorLimit = if (selectorAvailable < VERSION_FILE_MAX_BYTES) {
+                    selectorAvailable
+                } else {
+                    VERSION_FILE_MAX_BYTES
+                }
+                let selector = versionSelector(site, outputPath, file.path, sites, limit: selectorLimit)
+                budget.reserveArtifact(outputPath, file.bytes.size + selector.size)
                 let html = try { String.fromUtf8(file.bytes) } catch (_: Exception) {
                     throw IllegalArgumentException("version HTML is not UTF-8 '${file.path}'")
                 }
-                injectVersionSelector(html, site, file.path, sites).toArray()
+                let content = injectVersionSelector(html, selector)
+                artifacts.add(public_render.RenderArtifact(outputPath, file.mediaType, content))
             } else {
-                file.bytes
+                budget.reserveArtifact(outputPath, file.bytes.size)
+                artifacts.add(public_render.RenderArtifact(outputPath, file.mediaType, file.bytes))
             }
-            artifacts.add(public_render.RenderArtifact(outputPath, file.mediaType, bytes))
         }
     }
-    artifacts.add(public_render.RenderArtifact("versions.json", "application/json",
-        versionManifest(sites, latest, latestPolicy)))
-    artifacts.add(public_render.RenderArtifact("index.html", "text/html; charset=utf-8",
-        versionRootIndex(sites, latest)))
-    artifacts.add(public_render.RenderArtifact("latest/index.html", "text/html; charset=utf-8",
-        versionLatestIndex(sites, latest)))
+    let manifest = versionManifest(sites, latest, latestPolicy)
+    budget.reserveArtifact("versions.json", manifest.size)
+    artifacts.add(public_render.RenderArtifact("versions.json", "application/json", manifest))
+    let rootIndex = versionRootIndex(sites, latest)
+    budget.reserveArtifact("index.html", rootIndex.size)
+    artifacts.add(public_render.RenderArtifact("index.html", "text/html; charset=utf-8", rootIndex))
+    let latestIndex = versionLatestIndex(sites, latest)
+    budget.reserveArtifact("latest/index.html", latestIndex.size)
+    artifacts.add(public_render.RenderArtifact("latest/index.html", "text/html; charset=utf-8", latestIndex))
     artifacts.toArray()
 }
 
@@ -547,7 +595,7 @@ internal func runVersionsCompose(options: NewCliOptions): Int64 {
             case None => ()
         }
     }
-    let artifacts = composeVersionArtifacts(sites, latest, latestPolicy)
+    let artifacts = composeVersionArtifacts(sites, latest, latestPolicy, budget)
     let (prepared, _) = prepareOutputAndCacheDirectories(output, None<String>)
     completeLockedOutputCommand(prepared, { lock =>
         writeOwnedArtifactsWithLockHeld(prepared, artifacts, lock, forceOwned: options.forceOwned)

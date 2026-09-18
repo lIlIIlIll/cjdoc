@@ -203,8 +203,17 @@ private func renderAgentNavigationIndex(documentation: DocumentationSet,
     out.toString()
 }
 
+private func agentMarkdownLabel(value: String): String {
+    agentOneLine(value).replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+}
+
+private func agentMarkdownDestination(value: String): String {
+    let selected = agentTruncate(value, AGENT_FIELD_LIMIT)
+    let safe = selected.replace("\\", "%5C").replace("<", "%3C").replace(">", "%3E")
+    "<${safe}>"
+}
 private func agentLinkText(title: String, href: String): String {
-    "- [${agentOneLine(title)}](${agentTruncate(href, AGENT_FIELD_LIMIT)})\n"
+    "- [${agentMarkdownLabel(title)}](${agentMarkdownDestination(href)})\n"
 }
 
 private func renderAgentLlms(documentation: DocumentationSet,
