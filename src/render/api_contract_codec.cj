@@ -138,12 +138,92 @@ private func typeValue(value: TypeRef): ?String {
     if (value.semantic.state == "resolved") { Some(value.spelling) } else { None }
 }
 
-private func documentationValue(symbol: SymbolDoc): String {
-    let value = match (symbol.documentation) {
-        case Some(comment) => comment.summary
-        case None => ""
+private func appendFingerprintPart(out: StringBuilder, label: String, value: String): Unit {
+    out.append(label)
+    out.append("#")
+    out.append(value.toArray().size.toString())
+    out.append(":")
+    out.append(value)
+    out.append(";")
+}
+
+private func appendOptionalFingerprintString(out: StringBuilder, label: String, value: ?String): Unit {
+    match (value) {
+        case Some(text) => appendFingerprintPart(out, label + ":some", text)
+        case None => appendFingerprintPart(out, label + ":none", "")
     }
-    contractFingerprint(value)
+}
+
+private func appendOptionalFingerprintInt(out: StringBuilder, label: String, value: ?Int64): Unit {
+    match (value) {
+        case Some(number) => appendFingerprintPart(out, label + ":some", number.toString())
+        case None => appendFingerprintPart(out, label + ":none", "")
+    }
+}
+
+private func appendOptionalFingerprintBool(out: StringBuilder, label: String, value: ?Bool): Unit {
+    match (value) {
+        case Some(flag) => appendFingerprintPart(out, label + ":some", if (flag) { "true" } else { "false" })
+        case None => appendFingerprintPart(out, label + ":none", "")
+    }
+}
+
+private func appendDocumentationMetadataFingerprint(out: StringBuilder, value: MarkdownNodeMetadata): Unit {
+    appendFingerprintPart(out, "kind", value.kind)
+    appendOptionalFingerprintInt(out, "headingLevel", value.headingLevel)
+    appendOptionalFingerprintString(out, "listKind", value.listKind)
+    appendOptionalFingerprintInt(out, "listStart", value.listStart)
+    appendOptionalFingerprintString(out, "listDelimiter", value.listDelimiter)
+    appendOptionalFingerprintBool(out, "listTight", value.listTight)
+    appendOptionalFingerprintString(out, "taskState", value.taskState)
+    appendOptionalFingerprintString(out, "codeKind", value.codeKind)
+    appendOptionalFingerprintString(out, "fenceCharacter", value.fenceCharacter)
+    appendOptionalFingerprintInt(out, "fenceLength", value.fenceLength)
+    appendOptionalFingerprintString(out, "infoRaw", value.infoRaw)
+    appendOptionalFingerprintString(out, "language", value.language)
+    appendOptionalFingerprintString(out, "attributesRaw", value.attributesRaw)
+    appendOptionalFingerprintBool(out, "tableHeader", value.tableHeader)
+    appendOptionalFingerprintString(out, "tableAlignment", value.tableAlignment)
+    appendFingerprintPart(out, "tableAlignments-count", value.tableAlignments.size.toString())
+    for (alignment in value.tableAlignments) {
+        appendFingerprintPart(out, "tableAlignment", alignment)
+    }
+}
+
+private func appendDocumentationMarkdownFingerprint(out: StringBuilder, value: MarkdownNode): Unit {
+    appendFingerprintPart(out, "node-kind", value.kind)
+    appendFingerprintPart(out, "node-literal", value.literal)
+    match (value.metadata) {
+        case Some(metadata) =>
+            appendFingerprintPart(out, "metadata", "some")
+            appendDocumentationMetadataFingerprint(out, metadata)
+        case None => appendFingerprintPart(out, "metadata", "none")
+    }
+    appendFingerprintPart(out, "children-count", value.children.size.toString())
+    for (child in value.children) {
+        appendDocumentationMarkdownFingerprint(out, child)
+    }
+}
+
+private func documentationValue(symbol: SymbolDoc): String {
+    let out = StringBuilder()
+    match (symbol.documentation) {
+        case Some(comment) =>
+            appendFingerprintPart(out, "rawText", comment.rawText)
+            appendFingerprintPart(out, "summary", comment.summary)
+            appendFingerprintPart(out, "description", comment.description)
+            appendDocumentationMarkdownFingerprint(out, comment.markdown)
+            appendFingerprintPart(out, "tag-count", comment.tags.size.toString())
+            for (tag in comment.tags) {
+                appendFingerprintPart(out, "tag-name", tag.name)
+                appendFingerprintPart(out, "tag-subject", tag.subject)
+                appendFingerprintPart(out, "tag-description", tag.description)
+                appendFingerprintPart(out, "tag-reference-state", tag.referenceState)
+                appendOptionalFingerprintString(out, "tag-target", tag.targetSymbolId)
+            }
+        case None => appendFingerprintPart(out, "documentation", "none")
+    }
+    contractFingerprint(out.toString())
 }
 
 private func sourceValue(symbol: SymbolDoc): String {
@@ -347,6 +427,17 @@ private func decodeContractExposure(node: JsonNode, path: String): ApiContractEx
         contractStringArray(object, "targetIds", path), state: contractString(object, "state", path))
 }
 
+private func decodeLegacyContractExposure(node: JsonNode, path: String): ApiContractExposure {
+    let object = try { node.asObject() } catch (_: Exception) {
+        throw IllegalArgumentException("invalid legacy API surface at " + path + ": expected exposure object")
+    }
+    if (object.size() != 5) { throw IllegalArgumentException("invalid legacy API surface at " + path + ": unknown field") }
+    ApiContractExposure(contractString(object, "reExportId", path),
+        contractString(object, "moduleId", path), contractString(object, "packageName", path),
+        contractString(object, "exposedName", path),
+        contractStringArray(object, "targetSymbolIds", path), state: "unavailable")
+}
+
 public func decodeApiContractSnapshot(text: String): ApiContractSnapshot {
     if (text.toArray().size > API_CONTRACT_MAX_INPUT) {
         throw IllegalArgumentException("API surface exceeds ${API_CONTRACT_MAX_INPUT} bytes")
@@ -408,7 +499,11 @@ public func decodeApiContractSnapshot(text: String): ApiContractSnapshot {
     let exposures = ArrayList<ApiContractExposure>()
     index = 0
     for (node in jsonArrayValues(exposuresNode)) {
-        exposures.add(decodeContractExposure(node, "$.exposures[${index}]"))
+        if (legacy) {
+            exposures.add(decodeLegacyContractExposure(node, "$.exposures[" + index.toString() + "]"))
+        } else {
+            exposures.add(decodeContractExposure(node, "$.exposures[" + index.toString() + "]"))
+        }
         index++
     }
     ApiContractSnapshot(contractString(object, "project", "$") , contractString(object, "audience", "$"),
