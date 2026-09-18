@@ -104,6 +104,17 @@ class ApiDiffSuite {
         @Expect(report.summary.unchanged, 2)
         @Expect(report.summary.breaking, 0)
     }
+    @TestCase
+    func overloadExposuresMatchByBindingIdentity(): Unit {
+        let baseline = apiTestSnapshot([], exposures: [
+            apiTestExposure("overload-a", "call", "target-a"),
+            apiTestExposure("overload-b", "call", "target-b")])
+        let report = compareApiContracts(baseline, baseline)
+        @Expect(report.summary.unchanged, 2)
+        @Expect(report.summary.potentiallyBreaking, 0)
+        @Expect(report.entries[0].matchState, "exact")
+        @Expect(report.entries[1].matchState, "exact")
+    }
 
     @TestCase
     func renamedExposureUsesUniquePackageFallback(): Unit {

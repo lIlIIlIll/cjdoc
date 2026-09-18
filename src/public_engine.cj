@@ -3,6 +3,32 @@ package cjdoc
 import cjdoc.model as public_model
 import std.collection.*
 
+internal class GeneratedDocumentation {
+    public let internalDocumentation: DocumentationSet
+    public let publicDocumentation: public_model.DocumentationSet
+
+    init(internalDocumentation: DocumentationSet,
+        publicDocumentation: public_model.DocumentationSet) {
+        this.internalDocumentation = internalDocumentation
+        this.publicDocumentation = publicDocumentation
+    }
+}
+
+internal func generateDocumentationWithSource(request: GenerationRequest,
+    semanticProvider: SemanticProvider): GeneratedDocumentation {
+    let documentation = generateDocumentation(request, semanticProvider: semanticProvider)
+    match (request.lintProfile) {
+        case "off" => resolveDocumentationReferences(documentation)
+        case "standard" => lintDocumentation(documentation, false)
+        case "strict" => lintDocumentation(documentation, true, missingSymbolDocs: true)
+        case _ => ()
+    }
+    sortDocumentationDeterministically(documentation)
+    let result = publicDocumentation(documentation, request)
+    validateGeneratedDocIr(result)
+    GeneratedDocumentation(documentation, result)
+}
+
 public class DocumentationEngine {
     public func generate(request: GenerationRequest): public_model.DocumentationSet {
         let semanticProvider: SemanticProvider = if (request.providerFactories.isEmpty()) {
@@ -10,17 +36,7 @@ public class DocumentationEngine {
         } else {
             FactorySemanticProviderAdapter(request.providerFactories[0])
         }
-        let documentation = generateDocumentation(request, semanticProvider: semanticProvider)
-        match (request.lintProfile) {
-            case "off" => resolveDocumentationReferences(documentation)
-            case "standard" => lintDocumentation(documentation, false)
-            case "strict" => lintDocumentation(documentation, true, missingSymbolDocs: true)
-            case _ => ()
-        }
-        sortDocumentationDeterministically(documentation)
-        let result = publicDocumentation(documentation, request)
-        validateGeneratedDocIr(result)
-        result
+        generateDocumentationWithSource(request, semanticProvider).publicDocumentation
     }
 
     public func generateMatrix(requests: Array<GenerationRequest>): Array<public_model.DocumentationSet> {

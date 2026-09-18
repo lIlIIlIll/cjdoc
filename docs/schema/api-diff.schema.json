@@ -8,7 +8,7 @@
     "schemaVersion": {"const": "cjdoc.api-diff/1"},
     "baseline": {"$ref": "#/$defs/identity"}, "current": {"$ref": "#/$defs/identity"},
     "comparisonState": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
-    "summary": {"$ref": "#/$defs/summary"}, "entries": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/entry"}}
+    "summary": {"$ref": "#/$defs/summary"}, "entries": {"type": "array", "maxItems": 400000, "items": {"$ref": "#/$defs/entry"}}
   },
   "$defs": {
     "nullableString": {"anyOf": [{"type": "string"}, {"type": "null"}]},

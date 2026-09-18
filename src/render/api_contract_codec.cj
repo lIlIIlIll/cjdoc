@@ -329,6 +329,21 @@ private func contractString(object: JsonObject, key: String, path: String): Stri
     try { requiredNode(object, key, path).asString() }
     catch (_: Exception) { throw IllegalArgumentException("invalid API surface at ${path}.${key}: expected string") }
 }
+private func contractFingerprint(object: JsonObject, key: String, path: String): String {
+    let value = contractString(object, key, path)
+    if (value.size != 64) {
+        throw IllegalArgumentException("invalid API surface at ${path}.${key}: expected lowercase SHA-256 fingerprint")
+    }
+    for (byte in value.toArray()) {
+        let isHex = (byte >= b'0' && byte <= b'9') ||
+            (byte >= b'a' && byte <= b'f')
+        if (!isHex) {
+            throw IllegalArgumentException(
+                "invalid API surface at ${path}.${key}: expected lowercase SHA-256 fingerprint")
+        }
+    }
+    value
+}
 
 private func contractNullableString(object: JsonObject, key: String, path: String): ?String {
     let node = requiredNode(object, key, path)
@@ -411,9 +426,9 @@ private func decodeContractDeclaration(node: JsonNode, path: String): ApiContrac
         returnType: contractNullableString(returnObject, "type", "${path}.return"),
         relationships: contractStringArray(object, "relationships", path),
         enumNonExhaustive: contractNullableBool(object, "enumNonExhaustive", path),
-        documentationFingerprint: contractString(object, "documentationFingerprint", path),
-        sourceFingerprint: contractString(object, "sourceFingerprint", path),
-        metadataFingerprint: contractString(object, "metadataFingerprint", path),
+        documentationFingerprint: contractFingerprint(object, "documentationFingerprint", path),
+        sourceFingerprint: contractFingerprint(object, "sourceFingerprint", path),
+        metadataFingerprint: contractFingerprint(object, "metadataFingerprint", path),
         collectionState: contractString(object, "collectionState", path))
 }
 

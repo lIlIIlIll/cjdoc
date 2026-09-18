@@ -113,10 +113,14 @@ private class DoctestProcessResult {
 }
 private class DoctestPackageContext {
     public let packageName: String
+    public let moduleId: String
+    public let dependencyIds: Array<String>
     public let artifactRoot: Path
 
-    init(packageName: String, artifactRoot: Path) {
+    init(packageName: String, moduleId: String, dependencyIds: Array<String>, artifactRoot: Path) {
         this.packageName = packageName
+        this.moduleId = moduleId
+        this.dependencyIds = dependencyIds
         this.artifactRoot = artifactRoot
     }
 }
@@ -141,6 +145,40 @@ private class DoctestProjectContext {
             arguments.add(packageContext.artifactRoot.toString())
             arguments.add("--library-path")
             arguments.add(packageContext.artifactRoot.toString())
+        }
+    }
+
+    private func appendModuleLibraries(moduleId: String, visited: HashSet<String>,
+        arguments: ArrayList<String>): Unit {
+        if (!visited.add(moduleId)) { return }
+        var moduleContext: ?DoctestPackageContext = None
+        for (packageContext in packagesStorage) {
+            if (packageContext.moduleId == moduleId) {
+                moduleContext = Some(packageContext)
+                break
+            }
+        }
+        match (moduleContext) {
+            case None => return
+            case Some(packageContext) =>
+                for (dependencyId in packageContext.dependencyIds) {
+                    appendModuleLibraries(dependencyId, visited, arguments)
+                }
+        }
+        for (packageContext in packagesStorage where packageContext.moduleId == moduleId) {
+            arguments.add("--library")
+            arguments.add(packageContext.packageName)
+        }
+    }
+    func appendLibraries(arguments: ArrayList<String>, selected: DoctestPackageContext): Unit {
+        // Static linkers resolve references from left to right: the selected
+        // package must precede every library it calls.
+        arguments.add("--library")
+        arguments.add(selected.packageName)
+        let visited = HashSet<String>()
+        let _ = visited.add(selected.moduleId)
+        for (dependencyId in selected.dependencyIds) {
+            appendModuleLibraries(dependencyId, visited, arguments)
         }
     }
 }
@@ -341,8 +379,44 @@ private func memoryBoundedCommand(command: String, arguments: Array<String>, mem
     // of executing unbounded user code.
     throw IllegalStateException("doctest memory limit is unavailable on this platform")
 }
+private func doctestOriginForLogicalPath(origins: Array<SourceFileOrigin>, logicalPath: String): ?SourceFileOrigin {
+    var found: ?SourceFileOrigin = None
+    for (origin in origins where origin.logicalPath == logicalPath) {
+        if (found.isSome()) { return None }
+        found = Some(origin)
+    }
+    found
+}
+
+private func discoveredModuleRoot(module: public_model.ModuleDoc,
+    packageDoc: public_model.PackageDoc, origins: Array<SourceFileOrigin>): ?String {
+    if (packageDoc.sourceFiles.isEmpty()) { return None }
+    var actualRoot: ?String = None
+    for (logicalPath in packageDoc.sourceFiles) {
+        let origin = match (doctestOriginForLogicalPath(origins, logicalPath)) {
+            case Some(value) => value
+            case None => return None
+        }
+        if (origin.logicalPrefix != module.sourcePrefix ||
+            !hostPathIsWithin(origin.actualRoot, origin.actualPath)) { return None }
+        let relative = match (relativePathFromResolved(origin.actualRoot, origin.actualPath)) {
+            case Some(value) => value
+            case None => return None
+        }
+        let expected = if (module.sourcePrefix.isEmpty()) { relative }
+            else { module.sourcePrefix + "/" + relative }
+        if (expected != logicalPath) { return None }
+        match (actualRoot) {
+            case Some(value) => if (value != origin.actualRoot) { return None }
+            case None => actualRoot = Some(origin.actualRoot)
+        }
+    }
+    actualRoot
+}
+
 private func packageSourceRoot(documentation: public_model.DocumentationSet,
-    packageDoc: public_model.PackageDoc, projectRoot: Path): Path {
+    packageDoc: public_model.PackageDoc, projectRoot: Path,
+    sourceOrigins: Array<SourceFileOrigin>): Path {
     var module: ?public_model.ModuleDoc = None
     for (candidate in documentation.modules) {
         if (candidate.id == packageDoc.moduleId) { module = Some(candidate); break }
@@ -351,15 +425,26 @@ private func packageSourceRoot(documentation: public_model.DocumentationSet,
         case Some(value) => value
         case None => throw IllegalStateException("doctest package module is unavailable")
     }
-    let modulePath = if (resolvedModule.sourcePrefix.isEmpty()) {
-        projectRoot
+    let moduleRoot = if (!sourceOrigins.isEmpty()) {
+        let discovered = match (discoveredModuleRoot(resolvedModule, packageDoc, sourceOrigins)) {
+            case Some(value) => value
+            case None => throw IllegalStateException(
+                "doctest package root is unavailable from source discovery: " + packageDoc.name)
+        }
+        try { canonicalize(discovered).toString() } catch (_: Exception) {
+            throw IllegalStateException("doctest package root is unavailable")
+        }
     } else {
-        projectRoot.join(resolvedModule.sourcePrefix)
-    }
-    let moduleRoot = try {
-        canonicalize(modulePath.toString()).toString()
-    } catch (_: Exception) {
-        throw IllegalStateException("doctest package root is unavailable")
+        let modulePath = if (resolvedModule.sourcePrefix.isEmpty()) {
+            projectRoot
+        } else {
+            projectRoot.join(resolvedModule.sourcePrefix)
+        }
+        try {
+            canonicalize(modulePath.toString()).toString()
+        } catch (_: Exception) {
+            throw IllegalStateException("doctest package root is unavailable")
+        }
     }
     let manifest = try {
         readTextBounded(Path(moduleRoot).join("cjpm.toml"), 256 * 1024)
@@ -372,8 +457,35 @@ private func packageSourceRoot(documentation: public_model.DocumentationSet,
     }
 }
 
-private func compileProjectPackage(packageDoc: public_model.PackageDoc, sourceRoot: Path,
-    config: DoctestConfig, workRoot: Path, cfgValues: Array<CfgValue>, packageIndex: Int64,
+private func orderedDoctestModules(documentation: public_model.DocumentationSet): Array<public_model.ModuleDoc> {
+    let ordered = ArrayList<public_model.ModuleDoc>()
+    let compiled = HashSet<String>()
+    while (ordered.size < documentation.modules.size) {
+        var progressed = false
+        for (module in documentation.modules where !compiled.contains(module.id)) {
+            var ready = true
+            for (dependencyId in module.dependencyIds) {
+                var known = false
+                for (candidate in documentation.modules) {
+                    if (candidate.id == dependencyId) { known = true; break }
+                }
+                if (known && !compiled.contains(dependencyId)) { ready = false; break }
+            }
+            if (!ready) { continue }
+            ordered.add(module)
+            let _ = compiled.add(module.id)
+            progressed = true
+        }
+        if (!progressed) {
+            throw IllegalStateException("doctest module dependency graph contains a cycle")
+        }
+    }
+    ordered.toArray()
+}
+
+private func compileProjectPackage(packageDoc: public_model.PackageDoc,
+    module: public_model.ModuleDoc, sourceRoot: Path, config: DoctestConfig,
+    workRoot: Path, cfgValues: Array<CfgValue>, packageIndex: Int64,
     previousPackages: ArrayList<DoctestPackageContext>): DoctestPackageContext {
     let artifactRoot = workRoot.join("project-" + packageIndex.toString())
     Directory.create(artifactRoot, recursive: true)
@@ -406,21 +518,23 @@ private func compileProjectPackage(packageDoc: public_model.PackageDoc, sourceRo
     if (result.exitCode != 0) {
         throw IllegalStateException("doctest project package compilation failed: " + result.stderr)
     }
-    DoctestPackageContext(packageDoc.name, artifactRoot)
+    DoctestPackageContext(packageDoc.name, module.id, module.dependencyIds.toArray(), artifactRoot)
 }
 
 private func prepareProjectContext(documentation: public_model.DocumentationSet,
-    projectRoot: Path, config: DoctestConfig, workRoot: Path,
-    cfgValues: Array<CfgValue>): ?DoctestProjectContext {
+    projectRoot: Path, sourceOrigins: Array<SourceFileOrigin>, config: DoctestConfig,
+    workRoot: Path, cfgValues: Array<CfgValue>): ?DoctestProjectContext {
     if (documentation.packages.isEmpty()) { return None }
     let packages = ArrayList<DoctestPackageContext>()
     var packageIndex: Int64 = 0
-    for (packageDoc in documentation.packages) {
-        let sourceRoot = packageSourceRoot(documentation, packageDoc, projectRoot)
-        let packageContext = compileProjectPackage(packageDoc, sourceRoot, config, workRoot,
-            cfgValues, packageIndex, packages)
-        packages.add(packageContext)
-        packageIndex++
+    for (module in orderedDoctestModules(documentation)) {
+        for (packageDoc in documentation.packages where packageDoc.moduleId == module.id) {
+            let sourceRoot = packageSourceRoot(documentation, packageDoc, projectRoot, sourceOrigins)
+            let packageContext = compileProjectPackage(packageDoc, module, sourceRoot, config,
+                workRoot, cfgValues, packageIndex, packages)
+            packages.add(packageContext)
+            packageIndex++
+        }
     }
     Some(DoctestProjectContext(packages.toArray()))
 }
@@ -458,8 +572,7 @@ private func executeSnippet(snippet: DoctestSnippet, config: DoctestConfig,
     match ((projectContext, selectedPackage)) {
         case (Some(context), Some(packageContext)) =>
             context.appendLibraryPaths(compileArguments)
-            compileArguments.add("--library")
-            compileArguments.add(packageContext.packageName)
+            context.appendLibraries(compileArguments, packageContext)
         case _ => ()
     }
     let (compileCommand, boundedCompileArguments) = memoryBoundedCommand(
@@ -529,9 +642,9 @@ private func runSnippetBatch(snippets: Array<DoctestSnippet>, config: DoctestCon
     }
     results.toArray()
 }
-
 internal func runDoctests(documentation: public_model.DocumentationSet, config: DoctestConfig,
     outputRoot: Path, projectRoot!: Path = Path("."),
+    sourceOrigins!: Array<SourceFileOrigin> = [],
     cfgValues!: Array<CfgValue> = []): DoctestReport {
     let snippets = collectSnippets(documentation)
     if (!exists(outputRoot)) { Directory.create(outputRoot, recursive: true) }
@@ -540,7 +653,7 @@ internal func runDoctests(documentation: public_model.DocumentationSet, config: 
         let projectContext = if (snippets.isEmpty()) {
             None<DoctestProjectContext>
         } else {
-            prepareProjectContext(documentation, projectRoot, config, workRoot, cfgValues)
+            prepareProjectContext(documentation, projectRoot, sourceOrigins, config, workRoot, cfgValues)
         }
         let results = runSnippetBatch(snippets, config, workRoot, projectContext)
         return DoctestReport(config, results)

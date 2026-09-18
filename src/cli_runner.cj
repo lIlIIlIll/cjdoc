@@ -186,8 +186,12 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
             astPreflightExecutable: astPreflightExecutable,
             cjpmCacheRoot: options.cjpmCacheRoot))
     }
+    var sourceOrigins: Array<SourceFileOrigin> = []
     var documentation = match (generationRequest) {
-        case Some(request) => DocumentationEngine().generate(request)
+        case Some(request) =>
+            let generated = generateDocumentationWithSource(request, defaultSemanticProvider())
+            sourceOrigins = generated.internalDocumentation.sourceFileOrigins.toArray()
+            generated.publicDocumentation
         case None => decodeValidatedDocIr(readDocIrInput(Path(options.input.getOrThrow())))
     }
     let doctestConfig = if (generationRequest.isSome()) {
@@ -202,7 +206,8 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
         }
         let report = runDoctests(documentation, doctestConfig,
             Path(options.project).join("target").join("cjdoc"),
-            projectRoot: Path(options.project), cfgValues: options.cfgValues.toArray())
+            projectRoot: Path(options.project), sourceOrigins: sourceOrigins,
+            cfgValues: options.cfgValues.toArray())
         doctestReport = Some(report)
         eprintln(doctestReportSummary(report))
         if (doctestReportHasFailure(report)) {

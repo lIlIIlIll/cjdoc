@@ -5,8 +5,7 @@ import std.unittest.*
 import std.unittest.testmacro.*
 
 private let CODEC_TEST_MODULE = "cjdoc:module:v1:codec-test"
-
-private func codecTestDeclaration(documentationFingerprint!: String = "a"): ApiContractDeclaration {
+private func codecTestDeclaration(documentationFingerprint!: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"): ApiContractDeclaration {
     ApiContractDeclaration("cjdoc:v2:codec-test", CODEC_TEST_MODULE, "fixture", "function", "api",
         "fixture.api", "public", "resolved", sourceApiSignature: ["public", "func", "api"],
         returnState: "resolved", returnType: Some("String"),
@@ -38,6 +37,18 @@ class ApiContractCodecTest {
         @Expect(decoded.declarations[0].returnType, Some("String"))
     }
 
+    @TestCase
+    func rejectsInvalidFingerprintValues(): Unit {
+        let encoded = encodeApiContractSnapshot(codecTestSnapshot(
+            declarations: [codecTestDeclaration()]))
+        let empty = encoded.replace(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "")
+        @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(empty))
+        let nonHex = encoded.replace(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg")
+        @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(nonHex))
+    }
     @TestCase
     func legacyExposureNamesMigrateToV2Fields(): Unit {
         let legacy = """

@@ -208,6 +208,10 @@ private func exposureKey(value: ApiContractExposure): String {
     value.moduleId + "\n" + value.packageName + "\n" + value.exposedName
 }
 
+private func exposureIdentity(value: ApiContractExposure): String {
+    value.moduleId + "\n" + value.packageName + "\n" + value.id + "\n" + value.exposedName
+}
+
 private func exposurePackageKey(value: ApiContractExposure): String {
     value.moduleId + "\n" + value.packageName
 }
@@ -216,6 +220,17 @@ private func exposureBuckets(snapshot: ApiContractSnapshot): HashMap<String, Arr
     let buckets = HashMap<String, ArrayList<ApiContractExposure>>()
     for (exposure in snapshot.exposures) {
         let key = exposureKey(exposure)
+        match (buckets.get(key)) {
+            case Some(values) => values.add(exposure)
+            case None => buckets[key] = ArrayList<ApiContractExposure>([exposure])
+        }
+    }
+    buckets
+}
+private func exposureIdentityBuckets(snapshot: ApiContractSnapshot): HashMap<String, ArrayList<ApiContractExposure>> {
+    let buckets = HashMap<String, ArrayList<ApiContractExposure>>()
+    for (exposure in snapshot.exposures) {
+        let key = exposureIdentity(exposure)
         match (buckets.get(key)) {
             case Some(values) => values.add(exposure)
             case None => buckets[key] = ArrayList<ApiContractExposure>([exposure])
@@ -435,47 +450,69 @@ public func compareApiContracts(baseline: ApiContractSnapshot, current: ApiContr
     let matchedCurrentExposures = HashSet<String>()
     let oldExposureBuckets = exposureBuckets(baseline)
     let currentExposureBuckets = exposureBuckets(current)
+    let currentExposureIdentityBuckets = exposureIdentityBuckets(current)
     let oldExposurePackageBuckets = exposurePackageBuckets(baseline)
     let currentExposurePackageBuckets = exposurePackageBuckets(current)
-    for (old in baseline.exposures where !matchedOldExposures.contains(exposureKey(old))) {
-        let key = exposureKey(old)
-        match (currentExposureBuckets.get(key)) {
+    // Re-export IDs identify a declaration, while exposedName distinguishes
+    // bindings that share one re-export statement. Match this identity before
+    // falling back to package/name buckets, which may contain overloads.
+    for (old in baseline.exposures where !matchedOldExposures.contains(exposureIdentity(old))) {
+        let identity = exposureIdentity(old)
+        match (currentExposureIdentityBuckets.get(identity)) {
             case Some(values) =>
-                if (values.size == 1 && !matchedCurrentExposures.contains(exposureKey(values[0]))) {
+                if (values.size == 1 && !matchedCurrentExposures.contains(exposureIdentity(values[0]))) {
                     let value = values[0]
-                    let matchState = if (old.id == value.id) { "exact" } else { "fallback" }
-                    entries.add(compareExposure(old, value, matchState))
-                    let _ = matchedOldExposures.add(key)
-                    let _ = matchedCurrentExposures.add(exposureKey(value))
+                    entries.add(compareExposure(old, value, "exact"))
+                    let _ = matchedOldExposures.add(identity)
+                    let _ = matchedCurrentExposures.add(exposureIdentity(value))
                 } else if (values.size > 1) {
                     entries.add(ApiDiffEntry("exposure", "potentially-breaking", "ambiguous",
-                        oldId: Some(old.id), reasons: ["exposure fallback match is ambiguous"],
+                        oldId: Some(old.id), reasons: ["exposure identity match is ambiguous"],
                         evidence: [ApiDiffEvidence("matching", before: Some(old.exposedName), state: "ambiguous")]))
-                    let _ = matchedOldExposures.add(key)
-                    let _ = matchedCurrentExposures.add(key)
+                    let _ = matchedOldExposures.add(identity)
+                    for (value in values) { let _ = matchedCurrentExposures.add(exposureIdentity(value)) }
                 }
             case None => ()
         }
     }
-    for (old in baseline.exposures where !matchedOldExposures.contains(exposureKey(old))) {
+    for (old in baseline.exposures where !matchedOldExposures.contains(exposureIdentity(old))) {
+        let key = exposureKey(old)
+        match (currentExposureBuckets.get(key)) {
+            case Some(values) =>
+                if (values.size == 1 && !matchedCurrentExposures.contains(exposureIdentity(values[0]))) {
+                    let value = values[0]
+                    entries.add(compareExposure(old, value, "fallback"))
+                    let _ = matchedOldExposures.add(exposureIdentity(old))
+                    let _ = matchedCurrentExposures.add(exposureIdentity(value))
+                } else if (values.size > 1) {
+                    entries.add(ApiDiffEntry("exposure", "potentially-breaking", "ambiguous",
+                        oldId: Some(old.id), reasons: ["exposure fallback match is ambiguous"],
+                        evidence: [ApiDiffEvidence("matching", before: Some(old.exposedName), state: "ambiguous")]))
+                    let _ = matchedOldExposures.add(exposureIdentity(old))
+                    for (value in values) { let _ = matchedCurrentExposures.add(exposureIdentity(value)) }
+                }
+            case None => ()
+        }
+    }
+    for (old in baseline.exposures where !matchedOldExposures.contains(exposureIdentity(old))) {
         let key = exposurePackageKey(old)
         match ((oldExposurePackageBuckets.get(key), currentExposurePackageBuckets.get(key))) {
             case (Some(oldValues), Some(currentValues)) =>
                 if (oldValues.size == 1 && currentValues.size == 1 &&
-                    !matchedCurrentExposures.contains(exposureKey(currentValues[0]))) {
+                    !matchedCurrentExposures.contains(exposureIdentity(currentValues[0]))) {
                     let value = currentValues[0]
                     entries.add(compareExposure(old, value, "fallback"))
-                    let _ = matchedOldExposures.add(exposureKey(old))
-                    let _ = matchedCurrentExposures.add(exposureKey(value))
+                    let _ = matchedOldExposures.add(exposureIdentity(old))
+                    let _ = matchedCurrentExposures.add(exposureIdentity(value))
                 }
             case _ => ()
         }
     }
-    for (old in baseline.exposures where !matchedOldExposures.contains(exposureKey(old))) {
+    for (old in baseline.exposures where !matchedOldExposures.contains(exposureIdentity(old))) {
         entries.add(unmatchedExposureEntry(Some(old), None<ApiContractExposure>, "removed", current.collectionState))
-        let _ = matchedOldExposures.add(exposureKey(old))
+        let _ = matchedOldExposures.add(exposureIdentity(old))
     }
-    for (value in current.exposures where !matchedCurrentExposures.contains(exposureKey(value))) {
+    for (value in current.exposures where !matchedCurrentExposures.contains(exposureIdentity(value))) {
         let key = exposureKey(value)
         match (oldExposureBuckets.get(key)) {
             case Some(values) =>
@@ -489,7 +526,7 @@ public func compareApiContracts(baseline: ApiContractSnapshot, current: ApiContr
             case None =>
                 entries.add(unmatchedExposureEntry(None<ApiContractExposure>, Some(value), "added", current.collectionState))
         }
-        let _ = matchedCurrentExposures.add(key)
+        let _ = matchedCurrentExposures.add(exposureIdentity(value))
     }
     sort(entries, lessThan: { left, right =>
         let leftKey = "${optionText(left.oldId, "")}\n${optionText(left.newId, "")}\n${left.kind}"
