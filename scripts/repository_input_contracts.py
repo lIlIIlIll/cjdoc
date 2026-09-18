@@ -153,6 +153,9 @@ SCHEMA_CONTRACTS = {
         "cjdoc.doctest/1", ("schemaVersion", "mode", "timeoutMs", "memoryMb", "jobs", "summary", "results"),
     ),
 }
+SCHEMA_OPTIONAL_PROPERTIES = {
+    "symbol-index": ("version",),
+}
 DOC_IR_CORE_DEFS = {
     "asset", "comment", "configuration", "declaration", "diagnostic", "file",
     "generator", "macroInvocation", "markdownNode", "module", "orphanComment",

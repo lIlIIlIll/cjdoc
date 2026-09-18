@@ -3,45 +3,85 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
-private func markdownSemanticLinkDestination(destination: String, pagePath: String): ?String {
+private func markdownRelativeDestination(destination: String, pagePath: String): String {
+    if (pagePath.startsWith("symbols/") && destination.startsWith("symbols/")) {
+        destination["symbols/".size..]
+    } else if (pagePath.startsWith("packages/") || pagePath.startsWith("symbols/")) {
+        "../" + destination
+    } else { destination }
+}
+
+private func markdownTargetPagePath(target: SymbolDoc,
+    symbolIndex: HashMap<String, SymbolDoc>): String {
+    if (isContainerDeclaration(target)) {
+        markdownSymbolPagePath(target)
+    } else {
+        match (target.ownerId) {
+            case Some(ownerId) => match (symbolIndex.get(ownerId)) {
+                case Some(owner) => markdownSymbolPagePath(owner)
+                case None => markdownPackagePagePath(target.moduleId, target.packageName)
+            }
+            case None => markdownPackagePagePath(target.moduleId, target.packageName)
+        }
+    }
+}
+
+private func markdownSemanticLinkDestination(destination: String, pagePath: String,
+    targetSymbolId!: ?String = None,
+    symbolIndex!: ?HashMap<String, SymbolDoc> = None): ?String {
+    match ((targetSymbolId, symbolIndex)) {
+        case (Some(targetId), Some(index)) => match (index.get(targetId)) {
+            case Some(target) =>
+                let targetPage = if (pagePath.isEmpty()) {
+                    "#${symbolAnchor(target)}"
+                } else {
+                    let page = markdownTargetPagePath(target, index)
+                    if (page == pagePath) {
+                        "#${symbolAnchor(target)}"
+                    } else {
+                        "${markdownRelativeDestination(page, pagePath)}#${symbolAnchor(target)}"
+                    }
+                }
+                return markdownLinkDestination(targetPage, allowRelative: true)
+            case None => ()
+        }
+        case _ => ()
+    }
     let localDestination = if (!pagePath.isEmpty() && destination.startsWith("symbols/") &&
         destination.endsWith(".html")) {
         destination[..destination.size - 5] + ".md"
     } else { destination }
-    let relativeDestination = if (pagePath.startsWith("symbols/") && localDestination.startsWith("symbols/")) {
-        localDestination["symbols/".size..]
-    } else if (pagePath.startsWith("packages/") || pagePath.startsWith("symbols/")) {
-        "../" + localDestination
-    } else { localDestination }
+    let relativeDestination = markdownRelativeDestination(localDestination, pagePath)
     markdownLinkDestination(relativeDestination, allowRelative: true)
 }
 
 internal func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode,
     assetLookup: HashMap<String, String>, headingBase: Int64,
-    pagePath!: String = "", tableCell!: Bool = false): Unit {
+    pagePath!: String = "", symbolIndex!: ?HashMap<String, SymbolDoc> = None,
+    tableCell!: Bool = false): Unit {
     match (node.kind) {
         case "text" => appendEscapedMarkdownText(out, node.literal)
         case "soft_break" => out.append(if (tableCell) { "<br>" } else { "\n" })
         case "hard_break" => out.append(if (tableCell) { "<br>" } else { "  \n" })
         case "emphasis" =>
             out.append("*"); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex,
                     tableCell: tableCell)
             }; out.append("*")
         case "strong" =>
             out.append("**"); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex,
                     tableCell: tableCell)
             }; out.append("**")
         case "strikethrough" =>
             out.append("~~"); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex,
                     tableCell: tableCell)
             }; out.append("~~")
         case "code_span" => appendMarkdownCodeSpan(out, node.literal, tableCell: tableCell)
         case "link" =>
             out.append("["); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex,
                     tableCell: tableCell)
             }; out.append("]")
             match (markdownLinkDestination(node.literal)) {
@@ -50,12 +90,13 @@ internal func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode
             }
         case "semantic_link" =>
             out.append("["); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex,
                     tableCell: tableCell)
             }; out.append("]")
             match (node.metadata) {
                 case Some(metadata) => match (metadata.semanticExternalUrl) {
-                    case Some(destination) => match (markdownSemanticLinkDestination(destination, pagePath)) {
+                    case Some(destination) => match (markdownSemanticLinkDestination(destination, pagePath,
+                        targetSymbolId: metadata.semanticTargetSymbolId, symbolIndex: symbolIndex)) {
                         case Some(encoded) => out.append("(${encoded})")
                         case None => ()
                     }
@@ -76,7 +117,7 @@ internal func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode
             }
         case "html_inline" | "html_block" => appendEscapedMarkdownText(out, node.literal)
         case _ => for (child in node.children) {
-            appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
+            appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex,
                 tableCell: tableCell)
         }
     }
@@ -102,14 +143,15 @@ internal func appendMarkdownPrefixedBlock(out: RenderTextBuffer, content: String
 }
 
 internal func appendMarkdownTableMarkdown(out: RenderTextBuffer, node: MarkdownNode,
-    assetLookup: HashMap<String, String>, headingBase: Int64, pagePath!: String = ""): Unit {
+    assetLookup: HashMap<String, String>, headingBase: Int64, pagePath!: String = "",
+    symbolIndex!: ?HashMap<String, SymbolDoc> = None): Unit {
     var rowIndex: Int64 = 0
     for (row in node.children) {
         out.append("|")
         for (cell in row.children) {
             out.append(" ")
             for (child in cell.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex,
                     tableCell: true)
             }
             out.append(" |")
@@ -142,25 +184,25 @@ internal func appendMarkdownTableMarkdown(out: RenderTextBuffer, node: MarkdownN
 
 internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNode,
     assetLookup: HashMap<String, String>, headingBase: Int64,
-    pagePath!: String = ""): Unit {
+    pagePath!: String = "", symbolIndex!: ?HashMap<String, SymbolDoc> = None): Unit {
     match (node.kind) {
         case "document" => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath)
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex)
         }
         case "paragraph" =>
             for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath)
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex)
             }
             out.append("\n\n")
         case "heading" =>
             appendMarkdownMarks(out, "#", markdownHeadingLevel(node, headingBase)); out.append(" ")
             for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath)
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex)
             }
             out.append("\n\n")
         case "text" | "soft_break" | "hard_break" | "emphasis" | "strong" |
             "strikethrough" | "code_span" | "link" | "image" | "html_inline" =>
-            appendMarkdownInlineNode(out, node, assetLookup, headingBase, pagePath: pagePath)
+            appendMarkdownInlineNode(out, node, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex)
         case "code_block" =>
             match (node.metadata) {
                 case Some(metadata) => if (metadata.kind == "code_block" &&
@@ -178,7 +220,7 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
         case "block_quote" =>
             let nested = RenderTextBuffer()
             for (child in node.children) {
-                appendMarkdownNodeMarkdown(nested, child, assetLookup, headingBase, pagePath: pagePath)
+                appendMarkdownNodeMarkdown(nested, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex)
             }
             appendMarkdownPrefixedBlock(out, nested.toString(), "> ", "> ")
             out.append("\n")
@@ -210,7 +252,7 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
                 }
                 let nested = RenderTextBuffer()
                 for (itemChild in child.children) {
-                    appendMarkdownNodeMarkdown(nested, itemChild, assetLookup, headingBase, pagePath: pagePath)
+                    appendMarkdownNodeMarkdown(nested, itemChild, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex)
                 }
                 let continuation = RenderTextBuffer()
                 appendMarkdownMarks(continuation, " ", firstPrefix.toString().size)
@@ -222,16 +264,16 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
             out.append("\n")
         case "list_item" =>
             for (child in node.children) {
-                appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath)
+                appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex)
             }
-        case "table" => appendMarkdownTableMarkdown(out, node, assetLookup, headingBase, pagePath: pagePath)
+        case "table" => appendMarkdownTableMarkdown(out, node, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex)
         case "table_row" | "table_cell" | "custom_block" => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath)
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex)
         }
-        case "custom_inline" => appendMarkdownInlineNode(out, node, assetLookup, headingBase, pagePath: pagePath)
+        case "custom_inline" => appendMarkdownInlineNode(out, node, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex)
         case "html_block" => appendEscapedMarkdownText(out, node.literal); out.append("\n\n")
         case _ => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath)
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex)
         }
     }
 }
@@ -278,7 +320,8 @@ internal func appendMarkdownExampleContent(out: RenderTextBuffer, value: String)
 }
 
 internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComment,
-    assetLookup: HashMap<String, String>, locale!: String = "en", pagePath!: String = ""): Unit {
+    assetLookup: HashMap<String, String>, locale!: String = "en", pagePath!: String = "",
+    symbolIndex!: ?HashMap<String, SymbolDoc> = None): Unit {
     for (tag in comment.tags) {
         if (tag.name == "deprecated") {
             out.append("> **${label(locale, "Deprecated.", "已弃用。")}** ")
@@ -287,7 +330,7 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
             break
         }
     }
-    appendMarkdownNodeMarkdown(out, comment.markdown, assetLookup, 4, pagePath: pagePath)
+    appendMarkdownNodeMarkdown(out, comment.markdown, assetLookup, 4, pagePath: pagePath, symbolIndex: symbolIndex)
     var hasExamples = false
     for (tag in comment.tags) { if (tag.name == "example") { hasExamples = true; break } }
     if (hasExamples) {
@@ -382,11 +425,13 @@ internal func appendMarkdownArtifacts(artifacts: RenderArtifactCollector,
         appendMarkdownCodeSpan(out, documentation.schemaVersion); out.append(".\n\n")
         out.append("## API\n\n")
         for (declaration in projection.visibleSymbols) {
+            out.append("<a id=\"${symbolAnchor(declaration)}\"></a>\n")
             out.append("### "); appendMarkdownCodeSpan(out, declaration.qualifiedName)
             out.append("\n\n")
             appendMarkdownCodeBlock(out, declaration.headerSpelling, "cj", "`", 3)
             match (declaration.documentation) {
-                case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup)
+                case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
+                    symbolIndex: Some(projection.visibleIndex))
                 case None => ()
             }
             out.append("- Kind: "); appendMarkdownCodeSpan(out, declaration.kind); out.append("\n")

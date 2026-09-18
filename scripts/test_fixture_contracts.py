@@ -49,7 +49,7 @@ class FixtureContractTest(unittest.TestCase):
             document = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             self.fail(f"{fixture} did not emit one valid JSON document: {error}; stderr={result.stderr}")
-        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/9")
+        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/10")
         self.assertEqual(document.get("generator"), {
             "name": "cjdoc", "version": self.package_version,
         })

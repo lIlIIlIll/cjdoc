@@ -222,7 +222,7 @@ cjdoc render \
 
 `render` 会先验证输入的 schema 和引用关系。它不读取项目源码，因此源码注释或声明有变化时，应重新运行 `generate`。
 
-v6/v7/v8 只能作为严格的只读输入迁移到当前 v9 输出；cjdoc 不会重新生成旧版本格式。
+v6/v7/v8/v9 只能作为严格的只读输入迁移到当前 v10 输出；cjdoc 不会重新生成旧版本格式。
 
 需要在 HTML 声明页显示 GitHub 源码链接时，`generate` 必须同时接收 `--repository-url` 和 `--repository-revision`，并可用 `--repository-root` 指定仓库根目录。URL 只支持 canonical GitHub HTTPS 仓库根；缺少真实 source-origin 映射、仓库外依赖或符号链接越界时，链接会被省略。`render` 只使用 JSON 中已经保存的 metadata，不接受这些生成参数。
 
@@ -255,7 +255,7 @@ cjpm build
 
 ## 能力边界
 
-- 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/9`；输入严格兼容 v6、v7、v8。
+- 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/10`；输入严格兼容 v6、v7、v8、v9。
 - API surface 当前输出 `cjdoc.api-surface/2`；`diff` 严格接受 v1/v2 snapshot，v1 仅用于迁移和基线比较。
 - CHIR 尚未接入，部分类型和语义关系会标为 `partial` 或 `unavailable`。
 - 宏调用和没有显式 `--cfg` 输入的条件编译不会被强行展开。

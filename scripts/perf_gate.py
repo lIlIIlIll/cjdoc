@@ -20,14 +20,15 @@ from typing import Any
 sys.dont_write_bytecode = True
 
 try:
+    from .repository_input_contracts import CURRENT_GOLDEN_VERSION
     from .safe_output_root import safe_output_file, safe_regular_file
     from .source_identity import source_identity as capture_source_identity
     from .strict_json import strict_dumps, strict_load, strict_loads
 except ImportError:  # Direct script execution.
+    from repository_input_contracts import CURRENT_GOLDEN_VERSION
     from safe_output_root import safe_output_file, safe_regular_file
     from source_identity import source_identity as capture_source_identity
     from strict_json import strict_dumps, strict_load, strict_loads
-
 
 PROFILE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
@@ -174,8 +175,8 @@ def validate_document(path: Path, minimum: int) -> str:
     document = strict_load(path, description="performance Doc IR")
     declarations = document.get("declarations")
     diagnostics = document.get("diagnostics")
-    if document.get("schemaVersion") != "cjdoc.doc-ir/9":
-        raise ValueError("performance run emitted non-v9 Doc IR")
+    if document.get("schemaVersion") != f"cjdoc.doc-ir/{CURRENT_GOLDEN_VERSION}":
+        raise ValueError("performance run emitted a non-current Doc IR")
     if not isinstance(declarations, list) or len(declarations) < minimum:
         raise ValueError("performance run did not meet its declaration floor")
     if not isinstance(diagnostics, list) or any(

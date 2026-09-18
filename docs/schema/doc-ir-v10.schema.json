@@ -24,15 +24,6 @@
     "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}}
   },
   "$defs": {
-    "repository": {
-      "type": "object", "additionalProperties": false,
-      "required": ["url", "revision"],
-      "properties": {
-        "url": {"type": "string", "minLength": 1,
-          "pattern": "^https://github.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$"},
-        "revision": {"type": "string", "minLength": 1}
-      }
-    },
     "semanticLinkMetadata": {
       "type": "object", "additionalProperties": false,
       "required": ["target", "state", "targetSymbolId", "externalUrl"],
@@ -41,6 +32,15 @@
         "state": {"enum": ["resolved", "unresolved", "ambiguous", "unavailable"]},
         "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"},
         "externalUrl": {"$ref": "#/$defs/nullableString"}
+      }
+    },
+    "repository": {
+      "type": "object", "additionalProperties": false,
+      "required": ["url", "revision"],
+      "properties": {
+        "url": {"type": "string", "minLength": 1,
+          "pattern": "^https://github.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$"},
+        "revision": {"type": "string", "minLength": 1}
       }
     },
     "semanticState": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},

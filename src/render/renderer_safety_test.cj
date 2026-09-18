@@ -131,9 +131,9 @@ class RendererSafetyTest {
 
     @TestCase
     func semanticLinkMetadataRendersConsistentlyAndHtmlPublishesIndex(): Unit {
+        let targetId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arenderer-safety::fixture::function:api#g0()"
         let target = MarkdownNode("semantic_link", MarkdownNodeMetadata.forSemanticLink(
-            "fixture.api", "resolved", targetSymbolId: Some(
-                "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arenderer-safety::fixture::function:api#g0()"),
+            "fixture.api", "resolved", targetSymbolId: Some(targetId),
             externalUrl: Some("symbols/target-id.html")),
             literal: "fixture.api", children: [MarkdownNode("text", literal: "API")])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
@@ -149,7 +149,8 @@ class RendererSafetyTest {
                 MarkdownNode("paragraph", children: [target])
             ]))), "html/symbol-index.json")
         @Expect(htmlPages.contains("<a href=\"../symbols/target-id.html\">API</a>"), true)
-        @Expect(markdown.contains("[API](symbols/target-id.html)"), true)
+        @Expect(markdown.contains("<a id=\"symbol-${htmlStableSlug(targetId)}\"></a>"), true)
+        @Expect(markdown.contains("[API](#symbol-${htmlStableSlug(targetId)})"), true)
         @Expect(html.contains("\"href\":\"symbols/"), true)
         @Expect(rendererSafetyContent(HtmlDocumentationRenderer().render(
             rendererSafetyDocumentation(MarkdownNode("document"))),

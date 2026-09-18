@@ -348,6 +348,7 @@ public let SYMBOL_INDEX_SCHEMA = """
   "required": ["schemaVersion", "project", "entries"],
   "properties": {
     "schemaVersion": {"const": "cjdoc.symbol-index/1"},
+    "version": {"type": "string", "minLength": 1},
     "project": {
       "type": "object", "additionalProperties": false,
       "required": ["name", "audience"],
@@ -368,7 +369,7 @@ public let SYMBOL_INDEX_SCHEMA = """
           "semanticState": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
           "summary": {"type": "string"},
           "source": {"$ref": "#/$defs/source"},
-          "href": {"type": "string", "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\).+$"},
+          "href": {"type": "string", "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\\\\\).+$"},
           "relations": {"type": "array", "items": {"$ref": "#/$defs/link"}},
           "references": {"type": "array", "items": {"$ref": "#/$defs/reference"}}
         }
