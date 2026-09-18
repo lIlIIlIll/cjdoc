@@ -37,6 +37,59 @@ private func semanticLinkSignature(target: String): String {
         case None => ""
     }
 }
+private func semanticLinkTypeKey(value: String): String {
+    value.trimAscii().replace(" ", "").replace("\t", "")
+}
+
+private func semanticLinkParameterTypeParts(signature: String): Array<String> {
+    let parts = ArrayList<String>()
+    let value = signature.trimAscii()
+    if (value.isEmpty()) { return parts.toArray() }
+    var start: Int64 = 0
+    var angleDepth: Int64 = 0
+    var roundDepth: Int64 = 0
+    var squareDepth: Int64 = 0
+    var index: Int64 = 0
+    while (index < value.size) {
+        match (value[index]) {
+            case b'<' => angleDepth++
+            case b'>' => if (angleDepth > 0) { angleDepth-- }
+            case b'(' => roundDepth++
+            case b')' => if (roundDepth > 0) { roundDepth-- }
+            case b'[' => squareDepth++
+            case b']' => if (squareDepth > 0) { squareDepth-- }
+            case b',' =>
+                if (angleDepth == 0 && roundDepth == 0 && squareDepth == 0) {
+                    parts.add(value[start..index].trimAscii())
+                    start = index + 1
+                }
+            case _ => ()
+        }
+        index++
+    }
+    parts.add(value[start..value.size].trimAscii())
+    parts.toArray()
+}
+
+private func semanticLinkStructuredSignatureMatches(signature: String,
+    candidate: public_model.SymbolDoc): Bool {
+    if (signature.isEmpty()) { return candidate.parameters.isEmpty() }
+    let expected = semanticLinkParameterTypeParts(signature)
+    if (expected.size != candidate.parameters.size) { return false }
+    var index: Int64 = 0
+    while (index < expected.size) {
+        let actual = candidate.parameters[index].typeRef
+        let wanted = semanticLinkTypeKey(expected[index])
+        let spellingMatches = wanted == semanticLinkTypeKey(actual.spelling)
+        let canonicalMatches = match (actual.semantic.canonical) {
+            case Some(canonical) => wanted == semanticLinkTypeKey(canonical)
+            case None => false
+        }
+        if (!spellingMatches && !canonicalMatches) { return false }
+        index++
+    }
+    true
+}
 
 private func semanticLinkCandidate(target: String, owner: public_model.SymbolDoc,
     candidate: public_model.SymbolDoc): Bool {
@@ -50,7 +103,7 @@ private func semanticLinkCandidate(target: String, owner: public_model.SymbolDoc
         base.endsWith(".${candidate.qualifiedName}") || base.endsWith(".${candidate.name}")
     if (!baseMatches) { return false }
     if (signature.isEmpty()) { return true }
-    candidate.headerSpelling.contains(": " + signature)
+    semanticLinkStructuredSignatureMatches(signature, candidate)
 }
 
 private func semanticLinkScore(target: String, owner: public_model.SymbolDoc,
@@ -151,21 +204,31 @@ private func resolveSemanticLinkNode(node: public_model.MarkdownNode, owner: pub
                     metadata.semanticState = "ambiguous"
                     metadata.semanticTargetSymbolId = None
                     metadata.semanticExternalUrl = None
-                    diagnostics.add(semanticLinkDiagnostic(owner, "CJDOC1010",
-                        "semantic link target '${target}' is ambiguous"))
+                    match (semanticLinkSeverity(config, "ambiguous-link")) {
+                        case Some(severity) => diagnostics.add(semanticLinkDiagnostic(owner, severity, "CJDOC2030",
+                            "semantic link target '${target}' is ambiguous"))
+                        case None => ()
+                    }
                 } else {
                     let (state, url) = resolveExternalLink(target, resolvers)
                     metadata.semanticState = state
                     metadata.semanticTargetSymbolId = None
                     metadata.semanticExternalUrl = if (state == "resolved") { Some(url) } else { None }
-                    let code = if (state == "ambiguous") { "CJDOC1010" }
-                        else if (state == "unavailable") { "CJDOC1012" } else { "CJDOC1009" }
-                    let message = if (state == "ambiguous") {
-                        "semantic link target '${target}' is ambiguous"
-                    } else if (state == "unavailable") {
-                        "semantic link target '${target}' is unavailable because an external index is stale or missing"
-                    } else {
-                        "semantic link target '${target}' could not be resolved"
+                    if (state != "resolved") {
+                        let code = if (state == "ambiguous") { "CJDOC2030" }
+                            else if (state == "unavailable") { "CJDOC2031" } else { "CJDOC2032" }
+                        let message = if (state == "ambiguous") {
+                            "semantic link target '${target}' is ambiguous"
+                        } else if (state == "unavailable") {
+                            "semantic link target '${target}' is unavailable because an external index is stale or missing"
+                        } else {
+                            "semantic link target '${target}' could not be resolved"
+                        }
+                        let rule = if (state == "ambiguous") { "ambiguous-link" } else { "unresolved-type-link" }
+                        match (semanticLinkSeverity(config, rule)) {
+                            case Some(severity) => diagnostics.add(semanticLinkDiagnostic(owner, severity, code, message))
+                            case None => ()
+                        }
                     }
                     diagnostics.add(semanticLinkDiagnostic(owner, code, message))
                 }
