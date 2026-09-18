@@ -15,6 +15,7 @@ try:
         LEGACY_GOLDEN_VERSIONS,
         LEGACY_SCHEMA_SHA256,
         SCHEMA_CONTRACTS,
+        SCHEMA_OPTIONAL_PROPERTIES,
         SCHEMA_NAMES,
     )
     from .safe_output_root import lexical_absolute, verify_directory_chain
@@ -29,6 +30,7 @@ except ImportError:  # Direct module execution.
         LEGACY_GOLDEN_VERSIONS,
         LEGACY_SCHEMA_SHA256,
         SCHEMA_CONTRACTS,
+        SCHEMA_OPTIONAL_PROPERTIES,
         SCHEMA_NAMES,
     )
     from safe_output_root import lexical_absolute, verify_directory_chain
@@ -112,9 +114,10 @@ def validate_schema_document(name: str, value: object) -> None:
         raise ValueError(f"{name} schema root shape is invalid")
     properties = value.get("properties")
     required = value.get("required")
+    expected_properties = set(expected_required) | set(SCHEMA_OPTIONAL_PROPERTIES.get(name, ()))
     if not isinstance(properties, dict) or not isinstance(required, list) or \
             any(not isinstance(item, str) for item in required) or \
-            tuple(required) != expected_required or set(properties) != set(expected_required):
+            tuple(required) != expected_required or set(properties) != expected_properties:
         raise ValueError(f"{name} schema required/property contract is invalid")
     actual_version = properties.get("schemaVersion", {}).get("const") \
         if isinstance(properties.get("schemaVersion"), dict) else None

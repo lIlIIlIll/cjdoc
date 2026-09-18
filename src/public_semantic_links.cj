@@ -29,12 +29,12 @@ private func semanticLinkBase(target: String): String {
     }
 }
 
-private func semanticLinkSignature(target: String): String {
+private func semanticLinkSignature(target: String): ?String {
     match (target.indexOf("(")) {
         case Some(index) =>
             let end = if (target.endsWith(")")) { target.size - 1 } else { target.size }
-            if (end <= index + 1) { "" } else { target[index + 1..end] }
-        case None => ""
+            if (end <= index + 1) { Some("") } else { Some(target[index + 1..end]) }
+        case None => None
     }
 }
 private func semanticLinkTypeKey(value: String): String {
@@ -99,11 +99,12 @@ private func semanticLinkCandidate(target: String, owner: public_model.SymbolDoc
     let signature = semanticLinkSignature(target)
     let baseMatches = base == candidate.qualifiedName || base == candidate.name ||
         base == "${candidate.packageName}.${candidate.name}" ||
-        base == "${candidate.packageName}.${candidate.qualifiedName}" ||
-        base.endsWith(".${candidate.qualifiedName}") || base.endsWith(".${candidate.name}")
+        base == "${candidate.packageName}.${candidate.qualifiedName}"
     if (!baseMatches) { return false }
-    if (signature.isEmpty()) { return true }
-    semanticLinkStructuredSignatureMatches(signature, candidate)
+    match (signature) {
+        case Some(value) => semanticLinkStructuredSignatureMatches(value, candidate)
+        case None => true
+    }
 }
 
 private func semanticLinkScore(target: String, owner: public_model.SymbolDoc,
@@ -115,7 +116,10 @@ private func semanticLinkScore(target: String, owner: public_model.SymbolDoc,
     if (base == candidate.qualifiedName) { score += 12 }
     if (base == "${candidate.packageName}.${candidate.qualifiedName}") { score += 10 }
     if (base == candidate.name) { score += 4 }
-    if (!signature.isEmpty()) { score += 18 }
+    match (signature) {
+        case Some(_) => score += 18
+        case None => ()
+    }
     score
 }
 

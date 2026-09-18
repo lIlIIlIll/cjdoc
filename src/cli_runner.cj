@@ -28,29 +28,29 @@ private func orderedFormats(options: NewCliOptions): Array<String> {
 }
 
 private func renderArtifacts(documentation: public_model.DocumentationSet,
-    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site"):
+    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site", docVersion!: ?String = None):
     Array<public_render.RenderArtifact> {
     public_render.renderDocumentationFormatsWithOptions(documentation, formats,
-        locale: locale, markdownLayout: markdownLayout)
+        locale: locale, markdownLayout: markdownLayout, docVersion: docVersion)
 }
 
 internal func renderArtifactsWithCommandFallback(documentation: public_model.DocumentationSet,
     formats: Array<String>, generationRequest: ?GenerationRequest,
     locale!: String = "zh-CN", markdownLayout!: String = "site",
-    injectResourceLimitForTest!: Bool = false):
+    docVersion!: ?String = None, injectResourceLimitForTest!: Bool = false):
         (public_model.DocumentationSet, Array<public_render.RenderArtifact>) {
     try {
         if (injectResourceLimitForTest) {
             throw public_render.RenderResourceLimitException("injected renderer resource limit")
         }
         (documentation, renderArtifacts(documentation, formats, locale: locale,
-            markdownLayout: markdownLayout))
+            markdownLayout: markdownLayout, docVersion: docVersion))
     } catch (error: public_render.RenderResourceLimitException) {
         match (generationRequest) {
             case Some(request) =>
                 let fallback = boundGeneratedDocumentation(documentation, request, force: true)
                 (fallback, renderArtifacts(fallback, formats, locale: locale,
-                    markdownLayout: markdownLayout))
+                    markdownLayout: markdownLayout, docVersion: docVersion))
             case None => throw error
         }
     }
@@ -217,7 +217,7 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
     if (options.command != "check") {
         let (renderedDocumentation, renderedArtifacts) = renderArtifactsWithCommandFallback(documentation,
             orderedFormats(options), generationRequest, locale: options.locale,
-            markdownLayout: options.markdownLayout)
+            markdownLayout: options.markdownLayout, docVersion: options.docVersion)
         documentation = renderedDocumentation
         let artifactList = ArrayList<public_render.RenderArtifact>()
         artifactList.add(all: renderedArtifacts)

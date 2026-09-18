@@ -16,10 +16,12 @@ import time
 sys.dont_write_bytecode = True
 
 try:
+    from .repository_input_contracts import CURRENT_GOLDEN_VERSION
     from .safe_output_root import safe_output_file, safe_regular_file
     from .source_identity import source_identity as capture_source_identity
     from .strict_json import strict_dumps, strict_load
 except ImportError:  # Direct script execution.
+    from repository_input_contracts import CURRENT_GOLDEN_VERSION
     from safe_output_root import safe_output_file, safe_regular_file
     from source_identity import source_identity as capture_source_identity
     from strict_json import strict_dumps, strict_load
@@ -146,8 +148,8 @@ def main() -> int:
                 document = strict_load(
                     outputs[0] / "docs.json", description="real-repository Doc IR"
                 )
-                if document.get("schemaVersion") != "cjdoc.doc-ir/9":
-                    raise ValueError(f"real repository emitted non-v9 Doc IR: {project}")
+                if document.get("schemaVersion") != f"cjdoc.doc-ir/{CURRENT_GOLDEN_VERSION}":
+                    raise ValueError(f"real repository emitted non-current Doc IR: {project}")
                 declarations = document.get("declarations")
                 diagnostics = document.get("diagnostics")
                 if not isinstance(declarations, list) or len(declarations) < args.min_declarations:

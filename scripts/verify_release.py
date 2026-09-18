@@ -19,11 +19,13 @@ sys.dont_write_bytecode = True
 try:
     from .safe_output_root import lexical_absolute, safe_output_file, verify_directory_chain
     from .strict_json import strict_dumps, strict_load
+    from .repository_input_contracts import CURRENT_GOLDEN_VERSION
     from .verify_repository_inputs import required_repository_paths, verify_repository_inputs
     from .worktree_identity import exact_worktree_identity
 except ImportError:  # Direct script execution.
     from safe_output_root import lexical_absolute, safe_output_file, verify_directory_chain
     from strict_json import strict_dumps, strict_load
+    from repository_input_contracts import CURRENT_GOLDEN_VERSION
     from verify_repository_inputs import required_repository_paths, verify_repository_inputs
     from worktree_identity import exact_worktree_identity
 
@@ -96,11 +98,12 @@ def verify_repository(repo: Path, tag: str | None,
         raise ValueError("release repository must be a canonical regular directory")
     manifest_path = repo / "cjpm.toml"
     lock_path = repo / "cjpm.lock"
-    schema_path = repo / "docs/schema/doc-ir-v9.schema.json"
+    schema_path = repo / "docs/schema/doc-ir-v10.schema.json"
     legacy_schema_paths = {
         6: repo / "docs/schema/doc-ir-v6.schema.json",
         7: repo / "docs/schema/doc-ir-v7.schema.json",
         8: repo / "docs/schema/doc-ir-v8.schema.json",
+        9: repo / "docs/schema/doc-ir-v9.schema.json",
     }
     alias_schema_path = repo / "docs/schema/doc-ir.schema.json"
     baseline_path = repo / "tests/perf/baseline.json"
@@ -149,14 +152,14 @@ def verify_repository(repo: Path, tag: str | None,
         if "branch" in entry or "tag" in entry:
             raise ValueError(f"cjpm.lock dependency {name!r} contains a floating branch/tag")
 
-    v8_schema = strict_load(schema_path)
+    current_schema = strict_load(schema_path)
     legacy_schemas = {
         legacy_version: strict_load(path)
         for legacy_version, path in legacy_schema_paths.items()
     }
     alias_schema = strict_load(alias_schema_path)
-    expected = "cjdoc.doc-ir/9"
-    for name, schema in (("doc-ir-v9", v8_schema), ("doc-ir", alias_schema)):
+    expected = f"cjdoc.doc-ir/{CURRENT_GOLDEN_VERSION}"
+    for name, schema in (("doc-ir-v10", current_schema), ("doc-ir", alias_schema)):
         actual = schema.get("properties", {}).get("schemaVersion", {}).get("const")
         if actual != expected:
             raise ValueError(f"{name} schema does not declare {expected}")

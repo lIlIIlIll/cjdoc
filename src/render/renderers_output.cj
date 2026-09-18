@@ -14,7 +14,7 @@ public class HtmlDocumentationRenderer <: DocumentationRenderer {
 }
 
 internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
-    documentation: DocumentationSet, locale!: String = "en"): Unit {
+    documentation: DocumentationSet, locale!: String = "en", docVersion!: ?String = None): Unit {
         validateTypedDocumentationSet(documentation)
         let projection = RenderProjection(documentation)
         let index = projection.visibleIndex
@@ -28,6 +28,8 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         artifacts.addText("html/index.html", "text/html; charset=utf-8",
             renderHtmlIndex(documentation, projection, locale: locale))
         artifacts.addText("html/search-index.json", "application/json", searchIndex)
+        artifacts.addText("html/symbol-index.json", "application/json",
+            renderSymbolIndex(documentation, hrefPrefix: "", version: docVersion))
         artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
             renderSearchIndexScript(searchIndex))
         artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8", HTML_THEME_BOOTSTRAP_SCRIPT)
@@ -130,12 +132,13 @@ internal func markdownSymbolPagePath(symbol: SymbolDoc): String {
 
 internal func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
     assetLookup: HashMap<String, String>, heading: String, locale: String,
-    pagePath: String): Unit {
+    pagePath: String, symbolIndex: HashMap<String, SymbolDoc>): Unit {
+    out.append("<a id=\"${symbolAnchor(symbol)}\"></a>\n")
     out.append("${heading} "); appendMarkdownCodeSpan(out, symbol.qualifiedName); out.append("\n\n")
     appendMarkdownCodeBlock(out, symbol.headerSpelling, "cj", "`", 3)
     match (symbol.documentation) {
         case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
-            locale: locale, pagePath: pagePath)
+            locale: locale, pagePath: pagePath, symbolIndex: Some(symbolIndex))
         case None => ()
     }
     out.append("- "); appendEscapedMarkdownText(out, "${symbol.kind} · ${symbol.visibility}")
@@ -228,7 +231,8 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                     out.append("](../${markdownSymbolPagePath(symbol)})\n")
                 } else {
                     appendMarkdownSiteSymbol(out, symbol, assetLookup, "###", locale,
-                        markdownPackagePagePath(pkg.source.moduleId, pkg.source.name))
+                        markdownPackagePagePath(pkg.source.moduleId, pkg.source.name),
+                        projection.visibleIndex)
                 }
             }
             case None => out.append("${label(locale, "No direct declarations.", "没有直接声明。")}\n")
@@ -238,6 +242,7 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
     }
     for (symbol in projection.visibleSymbols where isContainerDeclaration(symbol)) {
         let out = RenderTextBuffer()
+        out.append("<a id=\"${symbolAnchor(symbol)}\"></a>\n")
         out.append("# "); appendMarkdownCodeSpan(out, symbol.qualifiedName)
         out.append("\n\n[${label(locale, "Package", "包")} ")
         appendMarkdownCodeSpan(out, symbol.packageName)
@@ -245,7 +250,8 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
         appendMarkdownCodeBlock(out, symbol.headerSpelling, "cj", "`", 3)
         match (symbol.documentation) {
             case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
-                locale: locale, pagePath: markdownSymbolPagePath(symbol))
+                locale: locale, pagePath: markdownSymbolPagePath(symbol),
+                symbolIndex: Some(projection.visibleIndex))
             case None => ()
         }
         match (membersByOwner.get(symbol.id)) {
@@ -253,7 +259,7 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                 out.append("## ${label(locale, "Members", "成员")}\n\n")
                 for (member in members) {
                     appendMarkdownSiteSymbol(out, member, assetLookup, "###", locale,
-                        markdownSymbolPagePath(symbol))
+                        markdownSymbolPagePath(symbol), projection.visibleIndex)
                 }
             }
             case None => ()
@@ -265,7 +271,7 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
 }
 
 public func renderDocumentationFormatsWithOptions(documentation: DocumentationSet,
-    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site"):
+    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site", docVersion!: ?String = None):
     Array<RenderArtifact> {
     if (locale != "zh-CN" && locale != "en") {
         throw IllegalArgumentException("locale must be zh-CN or en")
@@ -282,10 +288,10 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
             } else {
                 appendMarkdownSiteArtifacts(artifacts, documentation, locale)
             }
-            case "html" => appendHtmlArtifacts(artifacts, documentation, locale: locale)
+            case "html" => appendHtmlArtifacts(artifacts, documentation, locale: locale, docVersion: docVersion)
             case "api-surface" => appendApiSurfaceArtifacts(artifacts, documentation)
             case "coverage" => appendCoverageArtifacts(artifacts, documentation)
-            case "symbol-index" => appendSymbolIndexArtifacts(artifacts, documentation)
+            case "symbol-index" => appendSymbolIndexArtifacts(artifacts, documentation, version: docVersion)
             case _ => throw IllegalArgumentException(
                 "unsupported documentation format '${format}'")
         }

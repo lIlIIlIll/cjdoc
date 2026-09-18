@@ -61,7 +61,7 @@ private func appendSymbolIndexReferences(out: RenderTextBuffer, symbol: SymbolDo
     out.append("]")
 }
 
-internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: String = "html/"): String {
+internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: String = "html/", version!: ?String = None): String {
     validateTypedDocumentationSet(documentation)
     let projection = RenderProjection(documentation)
     let symbols = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
@@ -71,7 +71,14 @@ internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: St
     appendSearchJsonString(out, documentation.project.name)
     out.append(", \"audience\": ")
     appendSearchJsonString(out, documentation.configuration.audience)
-    out.append("},\n  \"entries\": [")
+    out.append("}")
+    match (version) {
+        case Some(value) =>
+            out.append(",\n  \"version\": ")
+            appendSearchJsonString(out, value)
+        case None => ()
+    }
+    out.append(",\n  \"entries\": [")
     var first = true
     for (symbol in symbols) {
         if (!first) { out.append(",") }
@@ -115,9 +122,9 @@ internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: St
 }
 
 internal func appendSymbolIndexArtifacts(artifacts: RenderArtifactCollector,
-    documentation: DocumentationSet): Unit {
+    documentation: DocumentationSet, version!: ?String = None): Unit {
     artifacts.addText("symbol-index/symbol-index.json", "application/json",
-        renderSymbolIndex(documentation))
+        renderSymbolIndex(documentation, version: version))
 }
 
 public class SymbolIndexDocumentationRenderer <: DocumentationRenderer {
