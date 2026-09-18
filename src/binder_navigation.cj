@@ -131,6 +131,29 @@ private func hasRelationship(symbol: SymbolDoc, kind: String, display: String): 
     }
     false
 }
+private func setNavigationRelationship(symbol: SymbolDoc, kind: String, display: String,
+    target: NavigationTarget): Unit {
+    for (relationship in symbol.symbolRelationships) {
+        if (relationship.kind != kind || relationship.targetDisplay != display) { continue }
+        match (target.symbolId) {
+            case Some(id) =>
+                relationship.state = "resolved"
+                relationship.targetSymbolId = Some(id)
+            case None => if (target.ambiguous) {
+                relationship.state = "ambiguous"
+                relationship.targetSymbolId = None
+            }
+        }
+        return
+    }
+    match (target.symbolId) {
+        case Some(id) => symbol.symbolRelationships.add(
+            SymbolRelationship(kind, display, "resolved", targetSymbolId: Some(id)))
+        case None => if (target.ambiguous) {
+            symbol.symbolRelationships.add(SymbolRelationship(kind, display, "ambiguous"))
+        }
+    }
+}
 
 private func setNavigationRelationship(symbol: SymbolDoc, kind: String, display: String,
     target: NavigationTarget): Unit {
