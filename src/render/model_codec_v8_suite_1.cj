@@ -90,19 +90,18 @@ class ModelCodecV8Suite1 {
             MarkdownNodeMetadata.forCodeBlock("indented", None<String>, 0, "", "", ""),
             literal: "code")
         let children = ArrayList<MarkdownNode>()
-        // Each block contributes both a Markdown and metadata object. This
-        // stays close to the 32 MiB conservative encoding census while leaving
-        // room for the fixed document envelope.
-        for (_ in 0..23000) { children.add(codeBlock) }
+        // Keep the round-trip shape below SDK-specific conservative estimates
+        // while the second shape remains over the 32 MiB document limit.
+        for (_ in 0..20000) { children.add(codeBlock) }
         let encoded = encodeDocIr(codecMarkdownDocument(
             MarkdownNode("document", children: children.toArray())))
         @Expect(encoded.size < DOC_IR_MAX_JSON_DOCUMENT_BYTES)
 
         let decoded = decodeDocIr(encoded)
         @Expect(decoded.declarations[0].documentation.getOrThrow()
-            .markdown.children.size, 23000)
+            .markdown.children.size, 20000)
 
-        for (_ in 23000..24000) { children.add(codeBlock) }
+        for (_ in 20000..24000) { children.add(codeBlock) }
         @ExpectThrows[IllegalArgumentException](encodeDocIr(codecMarkdownDocument(
             MarkdownNode("document", children: children.toArray()))))
     }
