@@ -403,20 +403,7 @@ private func conceptualMarkdownPage(page: ConceptualPage, pages: ArrayList<Conce
 }
 
 private func conceptualJsonString(value: String): String {
-    let out = StringBuilder()
-    out.append("\"")
-    for (rune in value.runes()) {
-        match (rune) {
-            case r'\\' => out.append("\\\\")
-            case r'"' => out.append("\\\"")
-            case r'\n' => out.append("\\n")
-            case r'\r' => out.append("\\r")
-            case r'\t' => out.append("\\t")
-            case _ => out.append(rune)
-        }
-    }
-    out.append("\"")
-    out.toString()
+    public_render.escapeJsonString(value)
 }
 
 private func conceptualSearchIndex(base: String, pages: ArrayList<ConceptualPage>): String {

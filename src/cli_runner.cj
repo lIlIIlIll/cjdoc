@@ -122,7 +122,9 @@ private func configuredCoverageGate(documentation: public_model.DocumentationSet
         }
     }
     for (override in config.packageOverrides) {
+        var matched = false
         for (group in report.packages where group.name == override.packageName) {
+            matched = true
             for (metric in metrics) {
                 match (config.packageThreshold(group.name, metric)) {
                     case Some(threshold) =>
@@ -130,6 +132,10 @@ private func configuredCoverageGate(documentation: public_model.DocumentationSet
                     case None => ()
                 }
             }
+        }
+        if (!matched) {
+            eprintln("error: package coverage override '${override.packageName}' does not match any selected package")
+            passed = false
         }
     }
     passed

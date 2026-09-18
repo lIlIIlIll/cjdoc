@@ -84,6 +84,12 @@ private func coverageV2Symbol(symbol: SymbolDoc, counts: DocumentationCoverageCo
                     if (!tag.description.trimAscii().isEmpty()) { counts.documentedDeprecated++ }
                 }
             }
+            for (tag in comment.tags) {
+                if (tag.name == "see") {
+                    counts.semanticLinks++
+                    if (tag.referenceState == "resolved") { counts.resolvedSemanticLinks++ }
+                }
+            }
             coverageV2Node(comment.markdown, counts)
         case None =>
             counts.examples++
