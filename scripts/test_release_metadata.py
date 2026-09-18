@@ -31,7 +31,12 @@ from scripts.release_tools_test_support import (
     SDK_SHA256,
     YJSON_COMMIT,
 )
-from scripts.verify_repository_inputs import CURRENT_GOLDEN_VERSION, GOLDEN_NAMES, SCHEMA_NAMES
+from scripts.verify_repository_inputs import (
+    CURRENT_GOLDEN_VERSION,
+    GOLDEN_NAMES,
+    LEGACY_GOLDEN_VERSIONS,
+    SCHEMA_NAMES,
+)
 
 class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
     def test_release_metadata_binds_tag_commit_tree_and_clean_state(self) -> None:
@@ -42,7 +47,7 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
             self.assertEqual(evidence["commit"], commit)
             self.assertEqual(evidence["tagCommit"], commit)
             self.assertFalse(evidence["dirty"])
-            self.assertEqual(evidence["docIrSchemaVersion"], "cjdoc.doc-ir/9")
+            self.assertEqual(evidence["docIrSchemaVersion"], f"cjdoc.doc-ir/{CURRENT_GOLDEN_VERSION}")
             self.assertEqual(evidence["performanceGateKind"], "hard-ceiling")
             self.assertIn(
                 "vendor/yjson_algorithms/src/work_limits.cj", evidence["inputSha256"]
@@ -66,7 +71,7 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
                 verify_release.verify_repository(gitless, "v0.7.0")
 
     def test_repository_inputs_require_every_generated_file_to_be_tracked(self) -> None:
-        for version in (*range(6, 9), CURRENT_GOLDEN_VERSION):
+        for version in (*LEGACY_GOLDEN_VERSIONS, CURRENT_GOLDEN_VERSION):
             with self.subTest(version=version), tempfile.TemporaryDirectory() as temporary:
                 repo, _ = self.make_release_repo(Path(temporary))
                 missing = f"tests/fixtures/golden-v{version}/basic.docs.json"
@@ -196,7 +201,7 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
                 "p=sys.argv[sys.argv.index('--input')+1]\n"
                 "v=json.load(open(p,encoding='utf-8'))\n"
                 "if v.get('corrupt'): raise SystemExit(2)\n"
-                "print(json.dumps({'schemaVersion':'cjdoc.doc-ir/9'}))\n",
+                "print(json.dumps({'schemaVersion':'cjdoc.doc-ir/" + str(CURRENT_GOLDEN_VERSION) + "'}))\n",
                 encoding="utf-8",
             )
             binary.chmod(0o755)
