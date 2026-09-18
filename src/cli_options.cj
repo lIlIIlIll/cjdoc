@@ -274,7 +274,9 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
         options.includePathDependencies || options.includeCachedDependencies ||
         options.cacheDirectory.isSome() || options.noCache || options.cjpmCacheRoot.isSome() ||
         options.repositoryUrl.isSome() || options.repositoryRevision.isSome() || options.repositoryRoot.isSome() ||
-        !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty()) {
+        !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty() ||
+        options.docVersion.isSome() || options.agentFull || options.servePortExplicit ||
+        options.serveOpenExplicit) {
         throw IllegalArgumentException("diff accepts only input paths, --format, and API deny flags")
     }
 }

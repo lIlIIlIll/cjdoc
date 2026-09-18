@@ -258,13 +258,31 @@ private func serveBuild(options: NewCliOptions, output: String, cache: ?String,
     }
 }
 
+@When[os == "Linux"]
+private func serveBrowserCommand(url: String): (String, Array<String>) {
+    ("xdg-open", [url])
+}
+
+@When[os == "macOS"]
+private func serveBrowserCommand(url: String): (String, Array<String>) {
+    ("open", [url])
+}
+
+@When[os == "Windows"]
+private func serveBrowserCommand(url: String): (String, Array<String>) {
+    ("cmd.exe", ["/c", "start", "", url])
+}
+
 private func launchServeBrowser(port: Int64): Unit {
+    let url = "http://127.0.0.1:${port}/"
     try {
-        let _ = launch("xdg-open", ["http://127.0.0.1:${port}/"])
+        let (command, arguments) = serveBrowserCommand(url)
+        let _ = launch(command, arguments)
     } catch (_: Exception) {
-        eprintln("serve: unable to open a browser; visit http://127.0.0.1:${port}/")
+        eprintln("serve: unable to open a browser; visit ${url}")
     }
 }
+
 
 private func serveSnapshotExclusions(output: String, cache: ?String): ArrayList<String> {
     let exclusions = ArrayList<String>()

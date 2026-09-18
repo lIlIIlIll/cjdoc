@@ -103,20 +103,7 @@ internal class VersionSite {
 }
 
 private func versionJsonEscape(value: String): String {
-    let out = StringBuilder()
-    out.append("\"")
-    for (rune in value.runes()) {
-        match (rune) {
-            case r'\\' => out.append("\\\\")
-            case r'"' => out.append("\\\"")
-            case r'\n' => out.append("\\n")
-            case r'\r' => out.append("\\r")
-            case r'\t' => out.append("\\t")
-            case _ => out.append(rune)
-        }
-    }
-    out.append("\"")
-    out.toString()
+    public_render.escapeJsonString(value)
 }
 
 private func versionMediaType(path: String): String {
@@ -142,9 +129,9 @@ private func versionSafeId(value: String): Bool {
 }
 
 private func versionSafeBasePath(value: String): Bool {
-    value != "latest" && isSafeOutputPath(value) && !value.startsWith(".")
+    value != "latest" && isSafeOutputPath(value) && !value.startsWith(".") &&
+        !value.contains("#") && !value.contains("?")
 }
-
 private func versionJsonStringField(object: JsonObject, key: String): ?String {
     match (object.get(key)) {
         case Some(value) => try { Some(value.asString()) } catch (_: Exception) { None }

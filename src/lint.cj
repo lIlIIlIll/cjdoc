@@ -164,7 +164,7 @@ private func lintQualityRules(documentation: DocumentationSet,
                         addQualityDiagnostic(documentation, symbol, config, "unresolved-type-link", "CJDOC1008",
                             "unresolved semantic reference '${tag.subject}'")
                     } else if (tag.referenceState == "ambiguous") {
-                        addQualityDiagnostic(documentation, symbol, config, "ambiguous-link", "CJDOC1043",
+                        addQualityDiagnostic(documentation, symbol, config, "ambiguous-link", "CJDOC1008",
                             "ambiguous semantic reference '${tag.subject}'")
                     }
                 }
