@@ -230,6 +230,15 @@ private func repositoryRootForOptions(options: NewCliOptions, repository: ?publi
     }
 }
 
+private func doctestFailureSeverity(doctestConfig: DoctestConfig,
+    qualityConfig: DocumentationQualityConfig): String {
+    match (qualityConfig.ruleSeverity("example-not-compiling")) {
+        case Some(value) => value
+        case None => if (doctestConfig.mode == "deny") { "error" }
+            else { qualityConfig.severity("example-not-compiling") }
+    }
+}
+
 internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
     selectedCache: ?String, outputLock: ?OutputLockHandle, writeOnFailure!: Bool = true): Int64 {
     let commandLine = getCommandLine()
@@ -258,6 +267,11 @@ internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Stri
             generated.publicDocumentation
         case None => decodeValidatedDocIr(readDocIrInput(Path(options.input.getOrThrow())))
     }
+    let qualityConfig = if (generationRequest.isSome()) {
+        loadDocumentationQualityConfig(options.project)
+    } else {
+        DocumentationQualityConfig()
+    }
     let doctestConfig = if (generationRequest.isSome()) {
         loadDoctestConfig(options.project)
     } else {
@@ -275,8 +289,10 @@ internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Stri
         doctestReport = Some(report)
         eprintln(doctestReportSummary(report))
         if (doctestReportHasFailure(report)) {
-            let severity = if (doctestConfig.mode == "deny") { "error" } else { "warning" }
-            eprintln(severity + "[CJDOC3010]: doctest execution reported failures")
+            let severity = doctestFailureSeverity(doctestConfig, qualityConfig)
+            if (severity != "off") {
+                eprintln(severity + "[CJDOC3010]: doctest execution reported failures")
+            }
         }
     }
     var artifacts: Array<public_render.RenderArtifact> = []
@@ -319,7 +335,8 @@ internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Stri
     let contractExit = contractGateExitCode(documentation, options)
     let doctestExit = match (doctestReport) {
         case Some(report) =>
-            if (doctestConfig.mode == "deny" && doctestReportHasFailure(report)) { 1 } else { 0 }
+            if (doctestFailureSeverity(doctestConfig, qualityConfig) == "error" &&
+                doctestReportHasFailure(report)) { 1 } else { 0 }
         case None => 0
     }
     if (options.command != "check" &&

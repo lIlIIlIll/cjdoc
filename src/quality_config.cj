@@ -81,6 +81,13 @@ internal class DocumentationQualityConfig {
         defaultSeverity
     }
 
+    func ruleSeverity(rule: String): ?String {
+        for (entry in ruleSeverities) {
+            if (entry.rule == rule) { return Some(entry.severityValue) }
+        }
+        None
+    }
+
     func packageThreshold(packageName: String, metric: String): ?Int64 {
         for (override in packageOverrides) {
             if (override.packageName == packageName) {

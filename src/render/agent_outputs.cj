@@ -140,6 +140,21 @@ private func agentNavigationPages(documentation: DocumentationSet,
     pages
 }
 
+private func renderAgentNavigationPage(page: AgentNavigationPage): String {
+    let out = RenderTextBuffer(limit: AGENT_NAVIGATION_LIMIT)
+    out.append("{\"id\":"); appendAgentJsonText(out, page.id)
+    out.append(",\"kind\":"); appendAgentJsonText(out, page.kind)
+    out.append(",\"title\":"); appendAgentJsonText(out, page.title)
+    out.append(",\"href\":"); appendAgentJsonText(out, page.href)
+    out.append(",\"summary\":"); appendAgentJsonNullable(out, page.summary)
+    out.append(",\"symbolId\":"); appendAgentJsonNullable(out, page.symbolId)
+    out.append(",\"moduleId\":"); appendAgentJsonNullable(out, page.moduleId)
+    out.append(",\"packageName\":"); appendAgentJsonNullable(out, page.packageName)
+    out.append(",\"semanticState\":"); appendAgentJsonNullable(out, page.semanticState)
+    out.append("}")
+    out.toString()
+}
+
 private func renderAgentNavigationIndex(documentation: DocumentationSet,
     pages: ArrayList<AgentNavigationPage>, version: ?String): String {
     let out = RenderTextBuffer(limit: AGENT_NAVIGATION_LIMIT)
@@ -148,23 +163,17 @@ private func renderAgentNavigationIndex(documentation: DocumentationSet,
     out.append(",\"audience\":"); appendAgentJsonText(out, documentation.configuration.audience)
     out.append(",\"version\":"); appendAgentJsonNullable(out, version)
     out.append("},\n  \"pages\":[")
+    let closing = "\n  ]\n}\n"
     var first = true
     for (page in pages) {
-        if (!first) { out.append(",") }
+        let pageJson = renderAgentNavigationPage(page)
+        let separator = if (first) { "\n    " } else { ",\n    " }
+        if (out.size + separator.size + pageJson.size + closing.size > AGENT_NAVIGATION_LIMIT) { break }
+        out.append(separator)
+        out.append(pageJson)
         first = false
-        out.append("\n    {\"id\":"); appendAgentJsonText(out, page.id)
-        out.append(",\"kind\":"); appendAgentJsonText(out, page.kind)
-        out.append(",\"title\":"); appendAgentJsonText(out, page.title)
-        out.append(",\"href\":"); appendAgentJsonText(out, page.href)
-        out.append(",\"summary\":"); appendAgentJsonNullable(out, page.summary)
-        out.append(",\"symbolId\":"); appendAgentJsonNullable(out, page.symbolId)
-        out.append(",\"moduleId\":"); appendAgentJsonNullable(out, page.moduleId)
-        out.append(",\"packageName\":"); appendAgentJsonNullable(out, page.packageName)
-        out.append(",\"semanticState\":"); appendAgentJsonNullable(out, page.semanticState)
-        out.append("}")
     }
-    if (!first) { out.append("\n  ") }
-    out.append("]\n}\n")
+    out.append(closing)
     out.toString()
 }
 

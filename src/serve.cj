@@ -146,6 +146,36 @@ private func readServeRequest(socket: TcpSocket): String {
     request
 }
 
+private func serveHexDigit(value: Byte): Int64 {
+    if (value >= b'0' && value <= b'9') { return Int64(value - b'0') }
+    if (value >= b'a' && value <= b'f') { return Int64(value - b'a') + 10 }
+    if (value >= b'A' && value <= b'F') { return Int64(value - b'A') + 10 }
+    -1
+}
+
+private func servePercentDecode(value: String): String {
+    let source = value.toArray()
+    let decoded = ArrayList<Byte>()
+    var index: Int64 = 0
+    while (index < source.size) {
+        let byte = source[index]
+        if (byte != b'%') {
+            decoded.add(byte)
+            index++
+            continue
+        }
+        if (index + 2 >= source.size) { throw IllegalArgumentException("invalid URL path encoding") }
+        let high = serveHexDigit(source[index + 1])
+        let low = serveHexDigit(source[index + 2])
+        if (high < 0 || low < 0) { throw IllegalArgumentException("invalid URL path encoding") }
+        decoded.add(UInt8(high * 16 + low))
+        index += 3
+    }
+    try { String.fromUtf8(decoded.toArray()) } catch (_: Exception) {
+        throw IllegalArgumentException("invalid URL path encoding")
+    }
+}
+
 private func serveRequestPath(request: String): (String, Bool, Bool) {
     let lines = request.split("\r\n")
     if (lines.isEmpty()) { throw IllegalArgumentException("empty HTTP request") }
@@ -153,8 +183,13 @@ private func serveRequestPath(request: String): (String, Bool, Bool) {
     if (fields.size != 3 || (fields[0] != "GET" && fields[0] != "HEAD") || fields[2] != "HTTP/1.1") {
         throw IllegalArgumentException("unsupported HTTP request")
     }
-    let rawPath = fields[1].split("?")[0]
-    if (!rawPath.startsWith("/") || rawPath.contains("%") || rawPath.contains("\\") ||
+    let encodedPath = fields[1].split("?")[0]
+    if (!encodedPath.startsWith("/") || encodedPath.contains("\\") ||
+        encodedPath.contains("\u{0000}")) {
+        throw IllegalArgumentException("unsafe HTTP path")
+    }
+    let rawPath = servePercentDecode(encodedPath)
+    if (!rawPath.startsWith("/") || rawPath.contains("\\") ||
         rawPath.contains("..") || rawPath.contains("\u{0000}")) {
         throw IllegalArgumentException("unsafe HTTP path")
     }
