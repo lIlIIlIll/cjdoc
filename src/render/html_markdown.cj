@@ -391,7 +391,9 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
                 case None => node.literal
             }
             let isRemote = destination.startsWith("http://") || destination.startsWith("https://")
-            if (safeLinkDestination(destination) && (context.allowExternalLinks || !isRemote)) {
+            let safeDestination = safeLinkDestination(destination) ||
+                safeRelativeLinkDestination(destination)
+            if (safeDestination && (context.allowExternalLinks || !isRemote)) {
                 out.append("<a href=\"${escapeHtml(destination)}\"")
                 if (destination.startsWith("http://") || destination.startsWith("https://")) {
                     out.append(" rel=\"noopener noreferrer\"")

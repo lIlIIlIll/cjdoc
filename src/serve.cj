@@ -46,14 +46,22 @@ private func serveWatchedFile(info: FileInfo): Bool {
     info.name == "cjpm.toml" || info.name == "cjpm.lock" || info.name == "cjdoc.toml" ||
         info.path.extensionName == "cj" || info.path.extensionName == "md"
 }
+private func servePathMatchesExclusion(path: Path, excludedDirectories: ArrayList<String>): Bool {
+    let candidate = canonicalize(path).toString()
+    for (excluded in excludedDirectories) {
+        if (candidate == excluded) { return true }
+    }
+    false
+}
 
 private func collectServeSnapshotInDirectory(directory: Path, entries: HashMap<String, String>,
-    paths: ArrayList<String>): Unit {
+    paths: ArrayList<String>, excludedDirectories: ArrayList<String>): Unit {
     for (info in Directory.readFrom(directory)) {
         if (info.isSymbolicLink() || info.isHidden()) { continue }
         if (info.isDirectory()) {
-            if (info.name != "target" && info.name != ".git") {
-                collectServeSnapshotInDirectory(info.path, entries, paths)
+            if (info.name != "target" && info.name != ".git" &&
+                !servePathMatchesExclusion(info.path, excludedDirectories)) {
+                collectServeSnapshotInDirectory(info.path, entries, paths, excludedDirectories)
             }
             continue
         }
@@ -65,10 +73,11 @@ private func collectServeSnapshotInDirectory(directory: Path, entries: HashMap<S
     }
 }
 
-private func collectServeSnapshot(root: Path): ServeSnapshot {
+
+private func collectServeSnapshot(root: Path, excludedDirectories: ArrayList<String>): ServeSnapshot {
     let entries = HashMap<String, String>()
     let paths = ArrayList<String>()
-    collectServeSnapshotInDirectory(root, entries, paths)
+    collectServeSnapshotInDirectory(root, entries, paths, excludedDirectories)
     ServeSnapshot(entries, paths)
 }
 
@@ -257,6 +266,16 @@ private func launchServeBrowser(port: Int64): Unit {
     }
 }
 
+private func serveSnapshotExclusions(output: String, cache: ?String): ArrayList<String> {
+    let exclusions = ArrayList<String>()
+    exclusions.add(canonicalize(Path(output)).toString())
+    match (cache) {
+        case Some(path) => exclusions.add(canonicalize(Path(path)).toString())
+        case None => ()
+    }
+    exclusions
+}
+
 internal func runServeCommand(options: NewCliOptions): Int64 {
     let originalCommand = options.command
     options.command = "generate"
@@ -273,10 +292,11 @@ internal func runServeCommand(options: NewCliOptions): Int64 {
     eprintln("serve: http://127.0.0.1:${port}/")
     serveBuild(options, preparedOutput, selectedCache, state)
     if (options.serveOpen) { launchServeBrowser(port) }
-    var snapshot = collectServeSnapshot(Path(options.project))
+    let excludedDirectories = serveSnapshotExclusions(preparedOutput, selectedCache)
+    var snapshot = collectServeSnapshot(canonicalize(Path(options.project)), excludedDirectories)
     try {
         while (true) {
-            let current = collectServeSnapshot(Path(options.project))
+            let current = collectServeSnapshot(canonicalize(Path(options.project)), excludedDirectories)
             if (!serveSnapshotsEqual(snapshot, current)) {
                 serveBuild(options, preparedOutput, selectedCache, state)
                 snapshot = current
