@@ -12,6 +12,13 @@ private func apiTestDeclaration(id: String, name: String, visibility!: String = 
         sourceFingerprint: contractFingerprint("source"),
         metadataFingerprint: contractFingerprint("metadata"))
 }
+private func apiTestDeclarationWithSignature(id: String, name: String, signature: String): ApiContractDeclaration {
+    ApiContractDeclaration(id, "cjdoc:module:v1:test", "test", "function", name,
+        "test." + name, "public", "resolved", sourceApiSignature: [signature],
+        documentationFingerprint: contractFingerprint("doc"),
+        sourceFingerprint: contractFingerprint("source"),
+        metadataFingerprint: contractFingerprint("metadata"))
+}
 
 private func apiTestSnapshot(declarations: Array<ApiContractDeclaration>,
     exposures!: Array<ApiContractExposure> = []): ApiContractSnapshot {
