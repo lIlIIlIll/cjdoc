@@ -230,7 +230,6 @@ private func resolveSemanticLinkNode(node: public_model.MarkdownNode, owner: pub
                             case None => ()
                         }
                     }
-                    diagnostics.add(semanticLinkDiagnostic(owner, code, message))
                 }
             case None => ()
         }
