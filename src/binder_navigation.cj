@@ -85,17 +85,46 @@ private func supportsNavigation(documentation: DocumentationSet, moduleId: Strin
     false
 }
 
-private func hasRelationship(symbol: SymbolDoc, kind: String, display: String): Bool {
-    for (relationship in symbol.symbolRelationships) {
-        if (relationship.kind == kind && relationship.targetDisplay == display) { return true }
+private func targetSupportsNavigation(documentation: DocumentationSet, targetId: String): Bool {
+    for (target in documentation.symbols) {
+        if (target.id == targetId) {
+            return supportsNavigation(documentation, target.moduleId)
+        }
     }
     false
 }
 
+private func hasReverseRelationship(symbol: SymbolDoc, kind: String, display: String,
+    sourceId: String): Bool {
+    for (relationship in symbol.symbolRelationships) {
+        if (relationship.kind == kind && relationship.targetDisplay == display &&
+            relationship.targetSymbolId == Some(sourceId)) { return true }
+    }
+    false
+}
 private func setNavigationRelationship(symbol: SymbolDoc, kind: String, display: String,
     target: NavigationTarget): Unit {
+    var unavailableIndex: Int64 = -1
+    var found = false
+    var index: Int64 = 0
     for (relationship in symbol.symbolRelationships) {
-        if (relationship.kind != kind || relationship.targetDisplay != display) { continue }
+        if (relationship.kind != kind || relationship.targetDisplay != display) {
+            index++
+            continue
+        }
+        found = true
+        if (relationship.state == "resolved" || relationship.targetSymbolId.isSome()) {
+            // A provider-supplied identity, including a non-resolved one, is
+            // authoritative. AST name matching must not redirect it.
+            return
+        }
+        if (relationship.state == "unavailable") {
+            unavailableIndex = index
+        }
+        index++
+    }
+    if (unavailableIndex >= 0) {
+        let relationship = symbol.symbolRelationships[unavailableIndex]
         match (target.symbolId) {
             case Some(id) =>
                 relationship.state = "resolved"
@@ -107,6 +136,7 @@ private func setNavigationRelationship(symbol: SymbolDoc, kind: String, display:
         }
         return
     }
+    if (found) { return }
     match (target.symbolId) {
         case Some(id) => symbol.symbolRelationships.add(
             SymbolRelationship(kind, display, "resolved", targetSymbolId: Some(id)))
@@ -127,14 +157,28 @@ private func reverseKind(kind: String): ?String {
 }
 
 private func addReverseRelationship(symbols: ArrayList<SymbolDoc>, targetId: String,
-    kind: String, display: String, sourceId: String): Unit {
+    kind: String, display: String, sourceId: String, documentation: DocumentationSet): Unit {
+    if (!targetSupportsNavigation(documentation, targetId)) { return }
     for (target in symbols) {
         if (target.id != targetId) { continue }
-        if (!hasRelationship(target, kind, display)) {
+        if (!hasReverseRelationship(target, kind, display, sourceId)) {
             target.symbolRelationships.add(
                 SymbolRelationship(kind, display, "resolved", targetSymbolId: Some(sourceId)))
         }
         return
+    }
+}
+
+private func addResolvedReverseRelationships(documentation: DocumentationSet, symbol: SymbolDoc,
+    kind: String, display: String, reverse: String): Unit {
+    for (relationship in symbol.symbolRelationships) {
+        if (relationship.kind != kind || relationship.targetDisplay != display ||
+            relationship.state != "resolved") { continue }
+        match (relationship.targetSymbolId) {
+            case Some(targetId) => addReverseRelationship(documentation.symbols, targetId, reverse,
+                symbol.qualifiedName, symbol.id, documentation)
+            case None => ()
+        }
     }
 }
 
@@ -149,12 +193,9 @@ private func resolveSourceTypeRelations(source: SourceSnapshot, documentation: D
                 let target = findNavigationTarget(relationship.targetSpelling, sourceDeclaration, source,
                     idsBySourceKey)
                 setNavigationRelationship(symbol, relationship.kind, relationship.targetSpelling, target)
-                match (target.symbolId) {
-                    case Some(targetId) => match (reverseKind(relationship.kind)) {
-                        case Some(reverse) => addReverseRelationship(documentation.symbols, targetId, reverse,
-                            symbol.qualifiedName, symbol.id)
-                        case None => ()
-                    }
+                match (reverseKind(relationship.kind)) {
+                    case Some(reverse) => addResolvedReverseRelationships(documentation, symbol,
+                        relationship.kind, relationship.targetSpelling, reverse)
                     case None => ()
                 }
             }
@@ -176,6 +217,7 @@ private func ownerSymbol(symbols: ArrayList<SymbolDoc>, symbol: SymbolDoc): ?Sym
 
 private func resolveOverrideRelations(documentation: DocumentationSet): Unit {
     for (symbol in documentation.symbols) {
+        if (!supportsNavigation(documentation, symbol.moduleId)) { continue }
         for (relationship in symbol.symbolRelationships) {
             if (relationship.kind != "override" || relationship.targetSymbolId.isSome()) { continue }
             let owner = match (ownerSymbol(documentation.symbols, symbol)) {
@@ -185,6 +227,7 @@ private func resolveOverrideRelations(documentation: DocumentationSet): Unit {
             let matches = ArrayList<SymbolDoc>()
             for (parent in owner.symbolRelationships) {
                 if (parent.kind != "superType" && parent.kind != "extensionTarget") { continue }
+                if (parent.state != "resolved") { continue }
                 match (parent.targetSymbolId) {
                     case Some(parentId) =>
                         for (candidate in documentation.symbols) {
@@ -201,7 +244,7 @@ private func resolveOverrideRelations(documentation: DocumentationSet): Unit {
                 relationship.state = "resolved"
                 relationship.targetSymbolId = Some(matches[0].id)
                 addReverseRelationship(documentation.symbols, matches[0].id, "overriddenBy",
-                    symbol.qualifiedName, symbol.id)
+                    symbol.qualifiedName, symbol.id, documentation)
             } else if (matches.size > 1) {
                 relationship.state = "ambiguous"
                 relationship.targetSymbolId = None
@@ -212,11 +255,13 @@ private func resolveOverrideRelations(documentation: DocumentationSet): Unit {
 
 private func resolveProviderReverseRelations(documentation: DocumentationSet): Unit {
     for (symbol in documentation.symbols) {
+        if (!supportsNavigation(documentation, symbol.moduleId)) { continue }
         for (relationship in symbol.symbolRelationships) {
+            if (relationship.state != "resolved") { continue }
             match (relationship.targetSymbolId) {
                 case Some(targetId) => match (reverseKind(relationship.kind)) {
                     case Some(reverse) => addReverseRelationship(documentation.symbols, targetId, reverse,
-                        symbol.qualifiedName, symbol.id)
+                        symbol.qualifiedName, symbol.id, documentation)
                     case None => ()
                 }
                 case None => ()
