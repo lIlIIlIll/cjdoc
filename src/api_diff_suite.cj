@@ -96,6 +96,16 @@ class ApiDiffSuite {
     }
 
     @TestCase
+    func sharedReExportIdsMatchBindingNames(): Unit {
+        let baseline = apiTestSnapshot([], exposures: [
+            apiTestExposure("shared", "foo", "target-foo"),
+            apiTestExposure("shared", "bar", "target-bar")])
+        let report = compareApiContracts(baseline, baseline)
+        @Expect(report.summary.unchanged, 2)
+        @Expect(report.summary.breaking, 0)
+    }
+
+    @TestCase
     func renamedExposureUsesUniquePackageFallback(): Unit {
         let report = compareApiContracts(
             apiTestSnapshot([], exposures: [apiTestExposure("old", "OldName", "target")]),

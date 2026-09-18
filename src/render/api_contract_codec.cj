@@ -477,6 +477,10 @@ public func decodeApiContractSnapshot(text: String): ApiContractSnapshot {
             let source = try { requiredNode(item, "sourceApiSignature", "$.declarations[${index}]").asObject() }
                 catch (_: Exception) { throw IllegalArgumentException("invalid legacy API surface signature") }
             let state = contractString(source, "state", "$.declarations[${index}].sourceApiSignature")
+            if (state != "available" && state != "unavailable") {
+                throw IllegalArgumentException(
+                    "invalid legacy API surface signature state at $.declarations[${index}].sourceApiSignature.state")
+            }
             let tokens = contractStringArray(source, "tokens", "$.declarations[${index}].sourceApiSignature")
             declarations.add(ApiContractDeclaration(contractString(item, "id", "$.declarations[${index}]"),
                 contractString(item, "moduleId", "$.declarations[${index}]"),

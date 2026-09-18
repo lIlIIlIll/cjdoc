@@ -48,6 +48,8 @@ class ApiContractCodecTest {
         @Expect(decoded.exposures[0].id, "exp")
         @Expect(decoded.exposures[0].targetIds[0], "decl")
         @Expect(decoded.exposures[0].state, "unavailable")
+        let invalidSignature = legacy.replace("\"available\"", "\"partial\"")
+        @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(invalidSignature))
     }
 
     @TestCase

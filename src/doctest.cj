@@ -17,15 +17,17 @@ internal let DOCTEST_PIPE_CHUNK_BYTES: Int64 = 64 * 1024
 internal class DoctestSnippet {
     public let id: String
     public let symbolId: String
+    public let packageName: String
     public let qualifiedName: String
     public let title: String
     public let language: String
     public let code: String
 
-    init(id: String, symbolId: String, qualifiedName: String, title: String,
+    init(id: String, symbolId: String, packageName: String, qualifiedName: String, title: String,
         language: String, code: String) {
         this.id = id
         this.symbolId = symbolId
+        this.packageName = packageName
         this.qualifiedName = qualifiedName
         this.title = title
         this.language = language
@@ -109,13 +111,37 @@ private class DoctestProcessResult {
         this.outputLimit = outputLimit
     }
 }
-private class DoctestProjectContext {
+private class DoctestPackageContext {
     public let packageName: String
     public let artifactRoot: Path
 
     init(packageName: String, artifactRoot: Path) {
         this.packageName = packageName
         this.artifactRoot = artifactRoot
+    }
+}
+
+private class DoctestProjectContext {
+    private let packagesStorage: ArrayList<DoctestPackageContext>
+
+    init(packages: Array<DoctestPackageContext>) {
+        this.packagesStorage = ArrayList<DoctestPackageContext>(packages)
+    }
+
+    func packageFor(name: String): ?DoctestPackageContext {
+        for (packageContext in packagesStorage) {
+            if (packageContext.packageName == name) { return Some(packageContext) }
+        }
+        None
+    }
+
+    func appendLibraryPaths(arguments: ArrayList<String>): Unit {
+        for (packageContext in packagesStorage) {
+            arguments.add("--import-path")
+            arguments.add(packageContext.artifactRoot.toString())
+            arguments.add("--library-path")
+            arguments.add(packageContext.artifactRoot.toString())
+        }
     }
 }
 
@@ -228,7 +254,7 @@ private func extractSnippets(symbol: public_model.SymbolDoc, tag: public_model.D
                     let code = snippetCode(body)
                     snippets.add(DoctestSnippet(
                         symbol.id + ":example:" + exampleIndex.toString() + ":" + blockIndex.toString(),
-                        symbol.id, symbol.qualifiedName, tag.subject, active.language, code))
+                        symbol.id, symbol.packageName, symbol.qualifiedName, tag.subject, active.language, code))
                     blockIndex++
                     body.clear()
                     fence = None
@@ -257,7 +283,7 @@ private func collectSnippets(documentation: public_model.DocumentationSet): Arra
                     if (found.isEmpty()) {
                         snippets.add(DoctestSnippet(
                             symbol.id + ":example:" + exampleIndex.toString() + ":skipped",
-                            symbol.id, symbol.qualifiedName, tag.subject, "cj", ""))
+                            symbol.id, symbol.packageName, symbol.qualifiedName, tag.subject, "cj", ""))
                     } else {
                         snippets.add(all: found)
                     }
@@ -315,27 +341,51 @@ private func memoryBoundedCommand(command: String, arguments: Array<String>, mem
     // of executing unbounded user code.
     throw IllegalStateException("doctest memory limit is unavailable on this platform")
 }
-private func projectPackageName(documentation: public_model.DocumentationSet): ?String {
-    if (documentation.packages.isEmpty()) { return None }
-    Some(documentation.packages[0].name)
+private func packageSourceRoot(documentation: public_model.DocumentationSet,
+    packageDoc: public_model.PackageDoc, projectRoot: Path): Path {
+    var module: ?public_model.ModuleDoc = None
+    for (candidate in documentation.modules) {
+        if (candidate.id == packageDoc.moduleId) { module = Some(candidate); break }
+    }
+    let resolvedModule = match (module) {
+        case Some(value) => value
+        case None => throw IllegalStateException("doctest package module is unavailable")
+    }
+    let modulePath = if (resolvedModule.sourcePrefix.isEmpty()) {
+        projectRoot
+    } else {
+        projectRoot.join(resolvedModule.sourcePrefix)
+    }
+    let moduleRoot = try {
+        canonicalize(modulePath.toString()).toString()
+    } catch (_: Exception) {
+        throw IllegalStateException("doctest package root is unavailable")
+    }
+    let manifest = try {
+        readTextBounded(Path(moduleRoot).join("cjpm.toml"), 256 * 1024)
+    } catch (_: Exception) { "" }
+    let packageView = parseCjpmPackageNameChecked(manifest)
+    match (resolvedPackageSourceRoot(moduleRoot, packageView.sourceDirectory)) {
+        case Some(sourceRoot) => Path(sourceRoot)
+        case None => throw IllegalStateException(
+            "doctest package source directory is unavailable: " + packageDoc.name)
+    }
 }
 
-private func prepareProjectContext(documentation: public_model.DocumentationSet,
-    projectRoot: Path, config: DoctestConfig, workRoot: Path,
-    cfgValues: Array<CfgValue>): ?DoctestProjectContext {
-    let packageName = match (projectPackageName(documentation)) {
-        case Some(name) => name
-        case None => return None
-    }
-    let sourceRoot = projectRoot.join("src")
-    if (!exists(sourceRoot)) {
-        throw IllegalStateException("doctest project source directory is unavailable")
-    }
-    let artifactRoot = workRoot.join("project")
+private func compileProjectPackage(packageDoc: public_model.PackageDoc, sourceRoot: Path,
+    config: DoctestConfig, workRoot: Path, cfgValues: Array<CfgValue>, packageIndex: Int64,
+    previousPackages: ArrayList<DoctestPackageContext>): DoctestPackageContext {
+    let artifactRoot = workRoot.join("project-" + packageIndex.toString())
     Directory.create(artifactRoot, recursive: true)
     let arguments = ArrayList<String>()
     arguments.add("-p")
     arguments.add(sourceRoot.toString())
+    for (packageContext in previousPackages) {
+        arguments.add("--import-path")
+        arguments.add(packageContext.artifactRoot.toString())
+        arguments.add("--library-path")
+        arguments.add(packageContext.artifactRoot.toString())
+    }
     arguments.add("--output-type")
     arguments.add("staticlib")
     arguments.add("--output-dir")
@@ -345,7 +395,7 @@ private func prepareProjectContext(documentation: public_model.DocumentationSet,
         arguments.add(cfg.name + "=" + cfg.value)
     }
     let (command, boundedArguments) = memoryBoundedCommand("cjc", arguments.toArray(), config.memoryMb)
-    let result = runBoundedProcess(command, boundedArguments, projectRoot, config.timeoutMs,
+    let result = runBoundedProcess(command, boundedArguments, sourceRoot, config.timeoutMs,
         DOCTEST_MAX_OUTPUT_BYTES)
     if (result.timedOut) {
         throw IllegalStateException("doctest project package compilation timed out")
@@ -356,7 +406,23 @@ private func prepareProjectContext(documentation: public_model.DocumentationSet,
     if (result.exitCode != 0) {
         throw IllegalStateException("doctest project package compilation failed: " + result.stderr)
     }
-    Some(DoctestProjectContext(packageName, artifactRoot))
+    DoctestPackageContext(packageDoc.name, artifactRoot)
+}
+
+private func prepareProjectContext(documentation: public_model.DocumentationSet,
+    projectRoot: Path, config: DoctestConfig, workRoot: Path,
+    cfgValues: Array<CfgValue>): ?DoctestProjectContext {
+    if (documentation.packages.isEmpty()) { return None }
+    let packages = ArrayList<DoctestPackageContext>()
+    var packageIndex: Int64 = 0
+    for (packageDoc in documentation.packages) {
+        let sourceRoot = packageSourceRoot(documentation, packageDoc, projectRoot)
+        let packageContext = compileProjectPackage(packageDoc, sourceRoot, config, workRoot,
+            cfgValues, packageIndex, packages)
+        packages.add(packageContext)
+        packageIndex++
+    }
+    Some(DoctestProjectContext(packages.toArray()))
 }
 
 
@@ -369,8 +435,17 @@ private func executeSnippet(snippet: DoctestSnippet, config: DoctestConfig,
     Directory.create(caseRoot, recursive: true)
     let source = caseRoot.join("example.cj")
     let executable = caseRoot.join("example")
-    let projectPackageName = match (projectContext) {
-        case Some(context) => Some(context.packageName)
+    let selectedPackage = match (projectContext) {
+        case Some(context) =>
+            match (context.packageFor(snippet.packageName)) {
+                case Some(value) => Some(value)
+                case None => return DoctestCaseResult(snippet, "failed",
+                    message: "documented package context is unavailable")
+            }
+        case None => None<DoctestPackageContext>
+    }
+    let projectPackageName = match (selectedPackage) {
+        case Some(packageContext) => Some(packageContext.packageName)
         case None => None<String>
     }
     File.writeTo(source, doctestProgram(snippet.code,
@@ -380,15 +455,12 @@ private func executeSnippet(snippet: DoctestSnippet, config: DoctestConfig,
     compileArguments.add("-o")
     compileArguments.add(executable.toString())
     compileArguments.add("--static")
-    match (projectContext) {
-        case Some(context) =>
-            compileArguments.add("--import-path")
-            compileArguments.add(context.artifactRoot.toString())
-            compileArguments.add("--library-path")
-            compileArguments.add(context.artifactRoot.toString())
+    match ((projectContext, selectedPackage)) {
+        case (Some(context), Some(packageContext)) =>
+            context.appendLibraryPaths(compileArguments)
             compileArguments.add("--library")
-            compileArguments.add(context.packageName)
-        case None => ()
+            compileArguments.add(packageContext.packageName)
+        case _ => ()
     }
     let (compileCommand, boundedCompileArguments) = memoryBoundedCommand(
         "cjc", compileArguments.toArray(), config.memoryMb)
