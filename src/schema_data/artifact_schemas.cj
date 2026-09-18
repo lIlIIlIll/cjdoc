@@ -82,6 +82,10 @@ public let API_SURFACE_SCHEMA = """
       "type": "object", "additionalProperties": false, "required": ["state", "value"],
       "properties": {"state": {"$ref": "#/$defs/state"}, "value": {"$ref": "#/$defs/nullableString"}}
     },
+    "returnEvidence": {
+      "type": "object", "additionalProperties": false, "required": ["state", "type"],
+      "properties": {"state": {"$ref": "#/$defs/state"}, "type": {"$ref": "#/$defs/nullableString"}}
+    },
     "parameter": {
       "type": "object", "additionalProperties": false, "required": ["name", "type", "default"],
       "properties": {"name": {"type": "string", "minLength": 1}, "type": {"$ref": "#/$defs/evidence"}, "default": {"$ref": "#/$defs/evidence"}}
@@ -97,7 +101,7 @@ public let API_SURFACE_SCHEMA = """
         "sourceApiSignature": {"$ref": "#/$defs/sourceApiSignature"},
         "genericParameters": {"type": "array", "items": {"type": "string"}},
         "parameters": {"type": "array", "items": {"$ref": "#/$defs/parameter"}},
-        "return": {"$ref": "#/$defs/evidence"}, "relationships": {"type": "array", "items": {"type": "string"}},
+        "return": {"$ref": "#/$defs/returnEvidence"}, "relationships": {"type": "array", "items": {"type": "string"}},
         "enumNonExhaustive": {"$ref": "#/$defs/nullableBool"},
         "documentationFingerprint": {"$ref": "#/$defs/fingerprint"}, "sourceFingerprint": {"$ref": "#/$defs/fingerprint"},
         "metadataFingerprint": {"$ref": "#/$defs/fingerprint"}, "collectionState": {"$ref": "#/$defs/state"}
