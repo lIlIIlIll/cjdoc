@@ -50,6 +50,11 @@ class ApiContractCodecTest {
         @Expect(decoded.exposures[0].state, "unavailable")
         let invalidSignature = legacy.replace("\"available\"", "\"partial\"")
         @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(invalidSignature))
+        let invalidDeclaration = legacy.replace("\"kind\":\"function\"", "\"kind\":\"function\",\"extra\":true")
+        @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(invalidDeclaration))
+        let invalidSignatureFields = legacy.replace("\"tokens\":[\"public\",\"func\"]}",
+            "\"tokens\":[\"public\",\"func\"],\"extra\":true}")
+        @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(invalidSignatureFields))
     }
 
     @TestCase

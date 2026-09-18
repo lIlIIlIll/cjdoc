@@ -251,6 +251,9 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
 
 private func validateCliOptions(options: NewCliOptions): Unit {
     if (options.command == "diff") { validateDiffOptions(options); return }
+    if (options.denyBreakingApi || options.denyPotentiallyBreakingApi) {
+        throw IllegalArgumentException("API deny flags are only valid for diff")
+    }
     if (options.jobs < 1 || options.jobs > 64) { throw IllegalArgumentException("--jobs must be in 1..64") }
     if (options.audience != "external" && options.audience != "package" && options.audience != "all") {
         throw IllegalArgumentException("--audience must be external, package, or all")

@@ -184,7 +184,7 @@ class DocumentationBinder {
         let (idsBySourceKey, survivingIds, moduleBySymbolId) = survivingIdentityMaps(source, documentation.symbols,
             omittedIndices)
         resolveSymbolRelationshipSourceKeys(documentation.symbols, omittedIndices, idsBySourceKey)
-        resolveNavigationRelations(source, documentation, idsBySourceKey)
+        resolveNavigationRelations(source, documentation, idsBySourceKey, omittedIndices)
         sanitizeDanglingReferences(documentation, omittedIndices, survivingIds)
         appendProviderDiagnostics(documentation, pendingProviderDiagnostics, moduleBySymbolId)
         removeOmittedSymbols(documentation, omittedIndices)

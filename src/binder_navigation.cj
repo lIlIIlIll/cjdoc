@@ -32,8 +32,7 @@ private func matchesNavigationTarget(spelling: String, owner: SourceDeclaration,
     if (candidate.sourceKey == owner.sourceKey || candidate.moduleId != owner.moduleId ||
         !typeTargetCandidate(candidate)) { return false }
     let head = navigationHead(spelling)
-    if (head == candidate.name || head == "${candidate.packageName}.${candidate.name}") { return true }
-    head.endsWith(".${candidate.name}") && candidate.packageName == owner.packageName
+    head == candidate.name || head == "${candidate.packageName}.${candidate.name}"
 }
 
 private func navigationScore(spelling: String, owner: SourceDeclaration,
@@ -85,15 +84,17 @@ private func supportsNavigation(documentation: DocumentationSet, moduleId: Strin
     false
 }
 
-private func targetSupportsNavigation(documentation: DocumentationSet, targetId: String): Bool {
+private func targetSupportsNavigation(documentation: DocumentationSet, targetId: String,
+    omittedIndices: HashSet<Int64>): Bool {
+    var index: Int64 = 0
     for (target in documentation.symbols) {
-        if (target.id == targetId) {
+        if (!omittedIndices.contains(index) && target.id == targetId) {
             return supportsNavigation(documentation, target.moduleId)
         }
+        index++
     }
     false
 }
-
 private func hasReverseRelationship(symbol: SymbolDoc, kind: String, display: String,
     sourceId: String): Bool {
     for (relationship in symbol.symbolRelationships) {
@@ -157,35 +158,43 @@ private func reverseKind(kind: String): ?String {
 }
 
 private func addReverseRelationship(symbols: ArrayList<SymbolDoc>, targetId: String,
-    kind: String, display: String, sourceId: String, documentation: DocumentationSet): Unit {
-    if (!targetSupportsNavigation(documentation, targetId)) { return }
+    kind: String, display: String, sourceId: String, documentation: DocumentationSet,
+    omittedIndices: HashSet<Int64>): Unit {
+    if (!targetSupportsNavigation(documentation, targetId, omittedIndices)) { return }
+    var index: Int64 = 0
     for (target in symbols) {
-        if (target.id != targetId) { continue }
-        if (!hasReverseRelationship(target, kind, display, sourceId)) {
-            target.symbolRelationships.add(
-                SymbolRelationship(kind, display, "resolved", targetSymbolId: Some(sourceId)))
+        if (!omittedIndices.contains(index) && target.id == targetId) {
+            if (!hasReverseRelationship(target, kind, display, sourceId)) {
+                target.symbolRelationships.add(
+                    SymbolRelationship(kind, display, "resolved", targetSymbolId: Some(sourceId)))
+            }
+            return
         }
-        return
+        index++
     }
 }
 
 private func addResolvedReverseRelationships(documentation: DocumentationSet, symbol: SymbolDoc,
-    kind: String, display: String, reverse: String): Unit {
+    kind: String, display: String, reverse: String, omittedIndices: HashSet<Int64>): Unit {
     for (relationship in symbol.symbolRelationships) {
         if (relationship.kind != kind || relationship.targetDisplay != display ||
             relationship.state != "resolved") { continue }
         match (relationship.targetSymbolId) {
             case Some(targetId) => addReverseRelationship(documentation.symbols, targetId, reverse,
-                symbol.qualifiedName, symbol.id, documentation)
+                symbol.qualifiedName, symbol.id, documentation, omittedIndices)
             case None => ()
         }
     }
 }
 
 private func resolveSourceTypeRelations(source: SourceSnapshot, documentation: DocumentationSet,
-    idsBySourceKey: HashMap<String, String>): Unit {
+    idsBySourceKey: HashMap<String, String>, omittedIndices: HashSet<Int64>): Unit {
     var index: Int64 = 0
     while (index < source.declarations.size && index < documentation.symbols.size) {
+        if (omittedIndices.contains(index)) {
+            index++
+            continue
+        }
         let sourceDeclaration = source.declarations[index]
         let symbol = documentation.symbols[index]
         if (supportsNavigation(documentation, symbol.moduleId)) {
@@ -195,7 +204,7 @@ private func resolveSourceTypeRelations(source: SourceSnapshot, documentation: D
                 setNavigationRelationship(symbol, relationship.kind, relationship.targetSpelling, target)
                 match (reverseKind(relationship.kind)) {
                     case Some(reverse) => addResolvedReverseRelationships(documentation, symbol,
-                        relationship.kind, relationship.targetSpelling, reverse)
+                        relationship.kind, relationship.targetSpelling, reverse, omittedIndices)
                     case None => ()
                 }
             }
@@ -215,9 +224,19 @@ private func ownerSymbol(symbols: ArrayList<SymbolDoc>, symbol: SymbolDoc): ?Sym
     }
 }
 
-private func resolveOverrideRelations(documentation: DocumentationSet): Unit {
-    for (symbol in documentation.symbols) {
-        if (symbol.semanticProvider == "ast" || !supportsNavigation(documentation, symbol.moduleId)) { continue }
+private func resolveOverrideRelations(documentation: DocumentationSet,
+    omittedIndices: HashSet<Int64>): Unit {
+    var symbolIndex: Int64 = 0
+    while (symbolIndex < documentation.symbols.size) {
+        let symbol = documentation.symbols[symbolIndex]
+        if (omittedIndices.contains(symbolIndex)) {
+            symbolIndex++
+            continue
+        }
+        if (symbol.semanticProvider == "ast" || !supportsNavigation(documentation, symbol.moduleId)) {
+            symbolIndex++
+            continue
+        }
         for (relationship in symbol.symbolRelationships) {
             if (relationship.kind != "override" || relationship.targetSymbolId.isSome()) { continue }
             let owner = match (ownerSymbol(documentation.symbols, symbol)) {
@@ -244,35 +263,47 @@ private func resolveOverrideRelations(documentation: DocumentationSet): Unit {
                 relationship.state = "resolved"
                 relationship.targetSymbolId = Some(matches[0].id)
                 addReverseRelationship(documentation.symbols, matches[0].id, "overriddenBy",
-                    symbol.qualifiedName, symbol.id, documentation)
+                    symbol.qualifiedName, symbol.id, documentation, omittedIndices)
             } else if (matches.size > 1) {
                 relationship.state = "ambiguous"
                 relationship.targetSymbolId = None
             }
         }
+        symbolIndex++
     }
 }
 
-private func resolveProviderReverseRelations(documentation: DocumentationSet): Unit {
-    for (symbol in documentation.symbols) {
-        if (!supportsNavigation(documentation, symbol.moduleId)) { continue }
+private func resolveProviderReverseRelations(documentation: DocumentationSet,
+    omittedIndices: HashSet<Int64>): Unit {
+    var symbolIndex: Int64 = 0
+    while (symbolIndex < documentation.symbols.size) {
+        let symbol = documentation.symbols[symbolIndex]
+        if (omittedIndices.contains(symbolIndex)) {
+            symbolIndex++
+            continue
+        }
+        if (!supportsNavigation(documentation, symbol.moduleId)) {
+            symbolIndex++
+            continue
+        }
         for (relationship in symbol.symbolRelationships) {
             if (relationship.state != "resolved") { continue }
             match (relationship.targetSymbolId) {
                 case Some(targetId) => match (reverseKind(relationship.kind)) {
                     case Some(reverse) => addReverseRelationship(documentation.symbols, targetId, reverse,
-                        symbol.qualifiedName, symbol.id, documentation)
+                        symbol.qualifiedName, symbol.id, documentation, omittedIndices)
                     case None => ()
                 }
                 case None => ()
             }
         }
+        symbolIndex++
     }
 }
 
 internal func resolveNavigationRelations(source: SourceSnapshot, documentation: DocumentationSet,
-    idsBySourceKey: HashMap<String, String>): Unit {
-    resolveSourceTypeRelations(source, documentation, idsBySourceKey)
-    resolveOverrideRelations(documentation)
-    resolveProviderReverseRelations(documentation)
+    idsBySourceKey: HashMap<String, String>, omittedIndices: HashSet<Int64>): Unit {
+    resolveSourceTypeRelations(source, documentation, idsBySourceKey, omittedIndices)
+    resolveOverrideRelations(documentation, omittedIndices)
+    resolveProviderReverseRelations(documentation, omittedIndices)
 }
