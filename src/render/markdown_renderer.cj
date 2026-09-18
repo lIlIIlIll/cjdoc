@@ -3,32 +3,45 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
+private func markdownSemanticLinkDestination(destination: String, pagePath: String): ?String {
+    let localDestination = if (!pagePath.isEmpty() && destination.startsWith("symbols/") &&
+        destination.endsWith(".html")) {
+        destination[..destination.size - 5] + ".md"
+    } else { destination }
+    let relativeDestination = if (pagePath.startsWith("symbols/") && localDestination.startsWith("symbols/")) {
+        localDestination["symbols/".size..]
+    } else if (pagePath.startsWith("packages/") || pagePath.startsWith("symbols/")) {
+        "../" + localDestination
+    } else { localDestination }
+    markdownLinkDestination(relativeDestination, allowRelative: true)
+}
+
 internal func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode,
     assetLookup: HashMap<String, String>, headingBase: Int64,
-    tableCell!: Bool = false): Unit {
+    pagePath!: String = "", tableCell!: Bool = false): Unit {
     match (node.kind) {
         case "text" => appendEscapedMarkdownText(out, node.literal)
         case "soft_break" => out.append(if (tableCell) { "<br>" } else { "\n" })
         case "hard_break" => out.append(if (tableCell) { "<br>" } else { "  \n" })
         case "emphasis" =>
             out.append("*"); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
                     tableCell: tableCell)
             }; out.append("*")
         case "strong" =>
             out.append("**"); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
                     tableCell: tableCell)
             }; out.append("**")
         case "strikethrough" =>
             out.append("~~"); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
                     tableCell: tableCell)
             }; out.append("~~")
         case "code_span" => appendMarkdownCodeSpan(out, node.literal, tableCell: tableCell)
         case "link" =>
             out.append("["); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
                     tableCell: tableCell)
             }; out.append("]")
             match (markdownLinkDestination(node.literal)) {
@@ -37,12 +50,12 @@ internal func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode
             }
         case "semantic_link" =>
             out.append("["); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
                     tableCell: tableCell)
             }; out.append("]")
             match (node.metadata) {
                 case Some(metadata) => match (metadata.semanticExternalUrl) {
-                    case Some(destination) => match (markdownLinkDestination(destination, allowRelative: true)) {
+                    case Some(destination) => match (markdownSemanticLinkDestination(destination, pagePath)) {
                         case Some(encoded) => out.append("(${encoded})")
                         case None => ()
                     }
@@ -63,7 +76,7 @@ internal func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode
             }
         case "html_inline" | "html_block" => appendEscapedMarkdownText(out, node.literal)
         case _ => for (child in node.children) {
-            appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+            appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
                 tableCell: tableCell)
         }
     }
@@ -89,14 +102,14 @@ internal func appendMarkdownPrefixedBlock(out: RenderTextBuffer, content: String
 }
 
 internal func appendMarkdownTableMarkdown(out: RenderTextBuffer, node: MarkdownNode,
-    assetLookup: HashMap<String, String>, headingBase: Int64): Unit {
+    assetLookup: HashMap<String, String>, headingBase: Int64, pagePath!: String = ""): Unit {
     var rowIndex: Int64 = 0
     for (row in node.children) {
         out.append("|")
         for (cell in row.children) {
             out.append(" ")
             for (child in cell.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath,
                     tableCell: true)
             }
             out.append(" |")
@@ -128,25 +141,26 @@ internal func appendMarkdownTableMarkdown(out: RenderTextBuffer, node: MarkdownN
 }
 
 internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNode,
-    assetLookup: HashMap<String, String>, headingBase: Int64): Unit {
+    assetLookup: HashMap<String, String>, headingBase: Int64,
+    pagePath!: String = ""): Unit {
     match (node.kind) {
         case "document" => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase)
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath)
         }
         case "paragraph" =>
             for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase)
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath)
             }
             out.append("\n\n")
         case "heading" =>
             appendMarkdownMarks(out, "#", markdownHeadingLevel(node, headingBase)); out.append(" ")
             for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase)
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath)
             }
             out.append("\n\n")
         case "text" | "soft_break" | "hard_break" | "emphasis" | "strong" |
             "strikethrough" | "code_span" | "link" | "image" | "html_inline" =>
-            appendMarkdownInlineNode(out, node, assetLookup, headingBase)
+            appendMarkdownInlineNode(out, node, assetLookup, headingBase, pagePath: pagePath)
         case "code_block" =>
             match (node.metadata) {
                 case Some(metadata) => if (metadata.kind == "code_block" &&
@@ -164,7 +178,7 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
         case "block_quote" =>
             let nested = RenderTextBuffer()
             for (child in node.children) {
-                appendMarkdownNodeMarkdown(nested, child, assetLookup, headingBase)
+                appendMarkdownNodeMarkdown(nested, child, assetLookup, headingBase, pagePath: pagePath)
             }
             appendMarkdownPrefixedBlock(out, nested.toString(), "> ", "> ")
             out.append("\n")
@@ -196,7 +210,7 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
                 }
                 let nested = RenderTextBuffer()
                 for (itemChild in child.children) {
-                    appendMarkdownNodeMarkdown(nested, itemChild, assetLookup, headingBase)
+                    appendMarkdownNodeMarkdown(nested, itemChild, assetLookup, headingBase, pagePath: pagePath)
                 }
                 let continuation = RenderTextBuffer()
                 appendMarkdownMarks(continuation, " ", firstPrefix.toString().size)
@@ -208,16 +222,16 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
             out.append("\n")
         case "list_item" =>
             for (child in node.children) {
-                appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase)
+                appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath)
             }
-        case "table" => appendMarkdownTableMarkdown(out, node, assetLookup, headingBase)
+        case "table" => appendMarkdownTableMarkdown(out, node, assetLookup, headingBase, pagePath: pagePath)
         case "table_row" | "table_cell" | "custom_block" => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase)
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath)
         }
-        case "custom_inline" => appendMarkdownInlineNode(out, node, assetLookup, headingBase)
+        case "custom_inline" => appendMarkdownInlineNode(out, node, assetLookup, headingBase, pagePath: pagePath)
         case "html_block" => appendEscapedMarkdownText(out, node.literal); out.append("\n\n")
         case _ => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase)
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath)
         }
     }
 }
@@ -264,7 +278,7 @@ internal func appendMarkdownExampleContent(out: RenderTextBuffer, value: String)
 }
 
 internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComment,
-    assetLookup: HashMap<String, String>, locale!: String = "en"): Unit {
+    assetLookup: HashMap<String, String>, locale!: String = "en", pagePath!: String = ""): Unit {
     for (tag in comment.tags) {
         if (tag.name == "deprecated") {
             out.append("> **${label(locale, "Deprecated.", "已弃用。")}** ")
@@ -273,7 +287,7 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
             break
         }
     }
-    appendMarkdownNodeMarkdown(out, comment.markdown, assetLookup, 4)
+    appendMarkdownNodeMarkdown(out, comment.markdown, assetLookup, 4, pagePath: pagePath)
     var hasExamples = false
     for (tag in comment.tags) { if (tag.name == "example") { hasExamples = true; break } }
     if (hasExamples) {

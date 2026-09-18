@@ -129,11 +129,13 @@ internal func markdownSymbolPagePath(symbol: SymbolDoc): String {
 }
 
 internal func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
-    assetLookup: HashMap<String, String>, heading: String, locale: String): Unit {
+    assetLookup: HashMap<String, String>, heading: String, locale: String,
+    pagePath: String): Unit {
     out.append("${heading} "); appendMarkdownCodeSpan(out, symbol.qualifiedName); out.append("\n\n")
     appendMarkdownCodeBlock(out, symbol.headerSpelling, "cj", "`", 3)
     match (symbol.documentation) {
-        case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup, locale: locale)
+        case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
+            locale: locale, pagePath: pagePath)
         case None => ()
     }
     out.append("- "); appendEscapedMarkdownText(out, "${symbol.kind} · ${symbol.visibility}")
@@ -225,7 +227,8 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                     out.append("- ["); appendMarkdownCodeSpan(out, symbol.qualifiedName)
                     out.append("](../${markdownSymbolPagePath(symbol)})\n")
                 } else {
-                    appendMarkdownSiteSymbol(out, symbol, assetLookup, "###", locale)
+                    appendMarkdownSiteSymbol(out, symbol, assetLookup, "###", locale,
+                        markdownPackagePagePath(pkg.source.moduleId, pkg.source.name))
                 }
             }
             case None => out.append("${label(locale, "No direct declarations.", "没有直接声明。")}\n")
@@ -241,14 +244,16 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
         out.append("](../${markdownPackagePagePath(symbol.moduleId, symbol.packageName)})\n\n")
         appendMarkdownCodeBlock(out, symbol.headerSpelling, "cj", "`", 3)
         match (symbol.documentation) {
-            case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup, locale: locale)
+            case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
+                locale: locale, pagePath: markdownSymbolPagePath(symbol))
             case None => ()
         }
         match (membersByOwner.get(symbol.id)) {
             case Some(members) => if (!members.isEmpty()) {
                 out.append("## ${label(locale, "Members", "成员")}\n\n")
                 for (member in members) {
-                    appendMarkdownSiteSymbol(out, member, assetLookup, "###", locale)
+                    appendMarkdownSiteSymbol(out, member, assetLookup, "###", locale,
+                        markdownSymbolPagePath(symbol))
                 }
             }
             case None => ()

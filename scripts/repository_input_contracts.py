@@ -47,8 +47,8 @@ GOLDEN_NAMES = (
     "path-dependencies",
 )
 
-CURRENT_GOLDEN_VERSION = 9
-LEGACY_GOLDEN_VERSIONS = (6, 7, 8)
+CURRENT_GOLDEN_VERSION = 10
+LEGACY_GOLDEN_VERSIONS = (6, 7, 8, 9)
 
 SCHEMA_NAMES = (
     "doc-ir",
@@ -56,6 +56,7 @@ SCHEMA_NAMES = (
     "doc-ir-v7",
     "doc-ir-v8",
     "doc-ir-v9",
+    "doc-ir-v10",
     "diagnostics",
     "cfg-matrix",
     "search-index",
@@ -69,7 +70,7 @@ SCHEMA_NAMES = (
 SCHEMA_CONTRACTS = {
     "doc-ir": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-        "cjdoc.doc-ir/9",
+        "cjdoc.doc-ir/10",
         ("schemaVersion", "generator", "status", "project", "configuration", "providers",
          "modules", "packages", "files", "declarations", "assets", "orphanDocComments",
          "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations",
@@ -102,6 +103,14 @@ SCHEMA_CONTRACTS = {
     "doc-ir-v9": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v9.schema.json",
         "cjdoc.doc-ir/9",
+        ("schemaVersion", "generator", "status", "project", "configuration", "providers",
+         "modules", "packages", "files", "declarations", "assets", "orphanDocComments",
+         "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations",
+         "diagnostics"),
+    ),
+    "doc-ir-v10": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v10.schema.json",
+        "cjdoc.doc-ir/10",
         ("schemaVersion", "generator", "status", "project", "configuration", "providers",
          "modules", "packages", "files", "declarations", "assets", "orphanDocComments",
          "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations",

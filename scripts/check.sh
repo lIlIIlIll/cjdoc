@@ -36,7 +36,7 @@ cjpm test
 rm -rf "${check_dir}"
 mkdir -p "${check_dir}/schemas"
 
-for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 diagnostics cfg-matrix search-index symbol-index api-surface documentation-coverage; do
+for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage doctest-results versions; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${check_dir}/schemas/${schema_name}.schema.json"
 done
@@ -45,6 +45,7 @@ cmp docs/schema/doc-ir-v6.schema.json "${check_dir}/schemas/doc-ir-v6.schema.jso
 cmp docs/schema/doc-ir-v7.schema.json "${check_dir}/schemas/doc-ir-v7.schema.json"
 cmp docs/schema/doc-ir-v8.schema.json "${check_dir}/schemas/doc-ir-v8.schema.json"
 cmp docs/schema/doc-ir-v9.schema.json "${check_dir}/schemas/doc-ir-v9.schema.json"
+cmp docs/schema/doc-ir-v10.schema.json "${check_dir}/schemas/doc-ir-v10.schema.json"
 cmp docs/schema/diagnostics.schema.json "${check_dir}/schemas/diagnostics.schema.json"
 cmp docs/schema/cfg-matrix.schema.json "${check_dir}/schemas/cfg-matrix.schema.json"
 cmp docs/schema/search-index.schema.json "${check_dir}/schemas/search-index.schema.json"

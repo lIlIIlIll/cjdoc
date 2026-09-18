@@ -135,13 +135,15 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
         fail("$.schemaVersion", "expected string")
     }
     let schemaText = if (version == DOC_IR_SCHEMA_VERSION) { DOC_IR_SCHEMA }
+        else if (version == DOC_IR_V9_SCHEMA_VERSION) { DOC_IR_V9_SCHEMA }
         else if (version == DOC_IR_V8_SCHEMA_VERSION) { DOC_IR_V8_SCHEMA }
         else if (version == DOC_IR_V7_SCHEMA_VERSION) { DOC_IR_V7_SCHEMA }
         else if (version == DOC_IR_V6_SCHEMA_VERSION) { DOC_IR_V6_SCHEMA }
         else {
             fail("$.schemaVersion",
-                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V8_SCHEMA_VERSION}', " +
-                "'${DOC_IR_V7_SCHEMA_VERSION}', or '${DOC_IR_V6_SCHEMA_VERSION}'")
+                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
+                "'${DOC_IR_V8_SCHEMA_VERSION}', '${DOC_IR_V7_SCHEMA_VERSION}', or " +
+                "'${DOC_IR_V6_SCHEMA_VERSION}'")
         }
     let schema = JsonSchema.parse(compatibleSchemaText(schemaText), config: JsonSchemaConfig(
         limits: JsonSchemaLimits(maxEvaluations: DOC_IR_SCHEMA_MAX_WORK,
