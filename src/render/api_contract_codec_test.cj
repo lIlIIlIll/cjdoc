@@ -78,6 +78,9 @@ class ApiContractCodecTest {
 {"schemaVersion":"cjdoc.api-surface/2","schemaVersion":"cjdoc.api-surface/2","project":"codec-test","audience":"external","cfgProfile":"default","collectionState":"resolved","declarations":[],"exposures":[]}
 """
         @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(duplicate))
+        let invalidAudience = unknown.replace("external", "team").replace(",\"extra\":true", "")
+        @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(invalidAudience))
+
         let deep = StringBuilder()
         deep.append("{\"schemaVersion\":\"cjdoc.api-surface/2\",\"project\":\"codec-test\",\"audience\":\"external\",\"cfgProfile\":\"default\",\"collectionState\":\"resolved\",\"declarations\":")
         var depth: Int64 = 0

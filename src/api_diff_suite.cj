@@ -19,6 +19,23 @@ private func apiTestDeclarationWithSignature(id: String, name: String, signature
         sourceFingerprint: contractFingerprint("source"),
         metadataFingerprint: contractFingerprint("metadata"))
 }
+private func apiTestOverloadDeclaration(id: String, parameterType: String): ApiContractDeclaration {
+    ApiContractDeclaration(id, "cjdoc:module:v1:test", "test", "function", "call",
+        "test.call", "public", "resolved", sourceApiSignature: ["public", "func", "call", parameterType],
+        parameters: [ApiContractParameter("value", typeState: "resolved", `type`: Some(parameterType))],
+        returnState: "resolved", returnType: Some("Unit"),
+        documentationFingerprint: contractFingerprint("doc"),
+        sourceFingerprint: contractFingerprint("source"),
+        metadataFingerprint: contractFingerprint("metadata"))
+}
+
+private func apiTestRelationshipDeclaration(id: String, relationships: Array<String>): ApiContractDeclaration {
+    ApiContractDeclaration(id, "cjdoc:module:v1:test", "test", "class", "Widget",
+        "test.Widget", "public", "resolved", sourceApiSignature: ["public", "class", "Widget"],
+        relationships: relationships, documentationFingerprint: contractFingerprint("doc"),
+        sourceFingerprint: contractFingerprint("source"),
+        metadataFingerprint: contractFingerprint("metadata"))
+}
 
 private func apiTestSnapshot(declarations: Array<ApiContractDeclaration>,
     exposures!: Array<ApiContractExposure> = []): ApiContractSnapshot {
@@ -81,6 +98,31 @@ class ApiDiffSuite {
         @Expect(report.summary.potentiallyBreaking > 0, true)
         @Expect(apiDiffExitCode(report, false, true), 1)
     }
+    @TestCase
+    func overloadFallbackIgnoresMatchedCandidates(): Unit {
+        let baseline = apiTestSnapshot([
+            apiTestOverloadDeclaration("call-int", "Int64"),
+            apiTestOverloadDeclaration("call-string", "String")])
+        let current = apiTestSnapshot([
+            apiTestOverloadDeclaration("call-int", "Int64"),
+            apiTestOverloadDeclaration("call-bool", "Bool")])
+        let report = compareApiContracts(baseline, current)
+        @Expect(report.summary.breaking, 1)
+        @Expect(report.summary.potentiallyBreaking, 0)
+        @Expect(apiDiffExitCode(report, true, false), 1)
+    }
+
+    @TestCase
+    func resolvedRelationshipReplacementIsBreaking(): Unit {
+        let baseline = apiTestSnapshot([
+            apiTestRelationshipDeclaration("widget", ["extends:OldBase"])])
+        let current = apiTestSnapshot([
+            apiTestRelationshipDeclaration("widget", ["extends:NewBase"])])
+        let report = compareApiContracts(baseline, current)
+        @Expect(report.summary.breaking, 1)
+        @Expect(apiDiffExitCode(report, true, false), 1)
+    }
+
     @TestCase
     func exposureRemovalAndRetargetAreReported(): Unit {
         let baselineExposure = apiTestExposure("exp", "PublicName", "target-old")

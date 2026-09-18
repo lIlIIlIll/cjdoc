@@ -82,6 +82,32 @@ private func addReason(reasons: ArrayList<String>, evidence: ArrayList<ApiDiffEv
     evidence.add(ApiDiffEvidence(field, before: before, after: after, state: state))
 }
 
+private func relationshipIsResolved(value: String): Bool {
+    let parts = value.split(":")
+    if (parts.size < 3) { return true }
+    parts[1] == "resolved"
+}
+
+private func removedResolvedRelationship(old: ApiContractDeclaration,
+    current: ApiContractDeclaration): Bool {
+    if (old.collectionState != "resolved" || current.collectionState != "resolved") {
+        return false
+    }
+    for (relationship in old.relationships) {
+        if (!containsRelationship(current.relationships, relationship) && relationshipIsResolved(relationship)) {
+            return true
+        }
+    }
+    false
+}
+
+private func containsRelationship(values: ReadOnlyList<String>, target: String): Bool {
+    for (value in values) {
+        if (value == target) { return true }
+    }
+    false
+}
+
 private func compareDeclaration(old: ApiContractDeclaration, current: ApiContractDeclaration,
     matchState: String): ApiDiffEntry {
     let reasons = ArrayList<String>()
@@ -154,11 +180,12 @@ private func compareDeclaration(old: ApiContractDeclaration, current: ApiContrac
             state: "partial")
     }
     if (joinedStrings(old.relationships) != joinedStrings(current.relationships)) {
-        if (old.relationships.size > current.relationships.size) { classification = "breaking" }
-        else if (classification != "breaking") { classification = "potentially-breaking" }
+        if (removedResolvedRelationship(old, current) || old.relationships.size > current.relationships.size) {
+            classification = "breaking"
+        } else if (classification != "breaking") { classification = "potentially-breaking" }
         addReason(reasons, evidence, "relationships", "type or symbol relationships changed",
             before: Some(joinedStrings(old.relationships)), after: Some(joinedStrings(current.relationships)),
-            state: "partial")
+            state: if (old.collectionState == "resolved" && current.collectionState == "resolved") { "resolved" } else { "partial" })
     }
     if (!optionalBoolEqual(old.enumNonExhaustive, current.enumNonExhaustive)) {
         if (classification != "breaking") { classification = "potentially-breaking" }
@@ -413,12 +440,16 @@ public func compareApiContracts(baseline: ApiContractSnapshot, current: ApiContr
         let key = declarationKey(old)
         match (currentBuckets.get(key)) {
             case Some(values) =>
-                if (values.size == 1 && !matchedCurrent.contains(values[0].id)) {
-                    let value = values[0]
+                let candidates = ArrayList<ApiContractDeclaration>()
+                for (value in values where !matchedCurrent.contains(value.id)) {
+                    candidates.add(value)
+                }
+                if (candidates.size == 1) {
+                    let value = candidates[0]
                     entries.add(compareDeclaration(old, value, "fallback"))
                     let _ = matchedOld.add(old.id)
                     let _ = matchedCurrent.add(value.id)
-                } else if (values.size > 1) {
+                } else if (candidates.size > 1) {
                     entries.add(ApiDiffEntry(old.kind, "potentially-breaking", "ambiguous",
                         oldId: Some(old.id), reasons: ["fallback match is ambiguous"],
                         evidence: [ApiDiffEvidence("matching", before: Some(old.qualifiedName), state: "ambiguous")]))

@@ -333,9 +333,20 @@ private func collectSnippets(documentation: public_model.DocumentationSet): Arra
     snippets.toArray()
 }
 
+private func containsDoctestEntryPoint(code: String): Bool {
+    for (line in code.split("\n")) {
+        let candidate = line.trimAscii()
+        if (candidate.startsWith("main(") || candidate.startsWith("func main(") ||
+            candidate.startsWith("public func main(") || candidate.startsWith("private func main(")) {
+            return true
+        }
+    }
+    false
+}
+
 private func doctestProgram(code: String, projectPackageName!: ?String = None): String {
     let trimmed = code.trimAscii()
-    if (trimmed.startsWith("package ") || trimmed.contains("main(")) {
+    if (trimmed.startsWith("package ") || containsDoctestEntryPoint(trimmed)) {
         trimmed + "\n"
     } else {
         var body = trimmed

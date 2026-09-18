@@ -329,6 +329,14 @@ private func contractString(object: JsonObject, key: String, path: String): Stri
     try { requiredNode(object, key, path).asString() }
     catch (_: Exception) { throw IllegalArgumentException("invalid API surface at ${path}.${key}: expected string") }
 }
+private func contractAudience(object: JsonObject, path: String): String {
+    let value = contractString(object, "audience", path)
+    if (value != "external" && value != "package" && value != "all") {
+        throw IllegalArgumentException("invalid API surface at ${path}.audience: expected external, package, or all")
+    }
+    value
+}
+
 private func contractFingerprint(object: JsonObject, key: String, path: String): String {
     let value = contractString(object, key, path)
     if (value.size != 64) {
@@ -532,12 +540,12 @@ public func decodeApiContractSnapshot(text: String): ApiContractSnapshot {
         }
         index++
     }
-    ApiContractSnapshot(contractString(object, "project", "$") , contractString(object, "audience", "$"),
+    ApiContractSnapshot(contractString(object, "project", "$") , contractAudience(object, "$") ,
         if (legacy) { "unknown" } else { contractString(object, "cfgProfile", "$") },
         collectionState: if (legacy) { "unavailable" } else { contractString(object, "collectionState", "$") },
         declarations: declarations.toArray(), exposures: exposures.toArray(), schemaVersion: version)
-}
 
+}
 public func encodeApiDiffReport(report: ApiDiffReport): String {
     let out = RenderTextBuffer()
     out.append("{\"schemaVersion\":"); appendSearchJsonString(out, report.schemaVersion)
