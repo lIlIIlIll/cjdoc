@@ -262,6 +262,7 @@ private func resolveSourceTypeRelations(source: SourceSnapshot, documentation: D
         let symbol = documentation.symbols[index]
         if (supportsNavigation(documentation, symbol.moduleId)) {
             for (relationship in sourceDeclaration.relationships) {
+                if (relationship.kind != "superType" && relationship.kind != "extensionTarget") { continue }
                 let target = findNavigationTarget(relationship.targetSpelling, sourceDeclaration, source,
                     idsBySourceKey)
                 setNavigationRelationship(symbol, relationship.kind, relationship.targetSpelling, target)
