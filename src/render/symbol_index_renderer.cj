@@ -105,7 +105,7 @@ internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: St
         appendSearchJsonString(out, symbol.semantic.state)
         out.append(",\"summary\":")
         match (symbol.documentation) {
-            case Some(comment) => appendSearchJsonString(out, comment.summary)
+            case Some(comment) => appendSearchJsonString(out, summaryPlainText(comment))
             case None => out.append("\"\"")
         }
         out.append(",\"source\":")

@@ -134,10 +134,7 @@ internal func topLevelParagraphIndex(comment: DocComment): Int64 {
 internal func summaryPlainText(comment: DocComment): String {
     match (summaryParagraph(comment)) {
         case Some(paragraph) => markdownNodeText(paragraph)
-        case None =>
-            if (comment.markdown.children.isEmpty() && comment.markdown.literal.isEmpty()) {
-                comment.summary.trimAscii()
-            } else { "" }
+        case None => ""
     }
 }
 
@@ -150,14 +147,7 @@ internal func appendSummaryHtml(out: RenderTextBuffer, comment: DocComment,
             appendMarkdownNodeHtml(out, paragraph, assetLookup, rootPrefix, context)
             out.append("</div>\n")
             ()
-        case None =>
-            if (comment.markdown.children.isEmpty() && comment.markdown.literal.isEmpty() &&
-                !comment.summary.trimAscii().isEmpty()) {
-                out.append("<div class=\"symbol-summary\"><p>")
-                out.append(escapeHtml(comment.summary.trimAscii()))
-                out.append("</p></div>\n")
-                ()
-            } else { () }
+        case None => ()
     }
 }
 
