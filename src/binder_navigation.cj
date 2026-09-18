@@ -147,6 +147,16 @@ private func setNavigationRelationship(symbol: SymbolDoc, kind: String, display:
         return
     }
     match (target.symbolId) {
+        case Some(id) =>
+            for (relationship in symbol.symbolRelationships) {
+                match (relationship.targetSymbolId) {
+                    case Some(existingId) => if (existingId == id) { return }
+                    case None => ()
+                }
+            }
+        case None => ()
+    }
+    match (target.symbolId) {
         case Some(id) => symbol.symbolRelationships.add(
             SymbolRelationship(kind, display, "resolved", targetSymbolId: Some(id)))
         case None => if (target.ambiguous) {
