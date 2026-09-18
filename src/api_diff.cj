@@ -13,7 +13,7 @@ private func optionText(value: ?String, fallback: String): String {
 }
 
 private func declarationKey(value: ApiContractDeclaration): String {
-    "${value.moduleId}\n${value.packageName}\n${optionText(value.ownerId, "")}\n${value.kind}\n${value.name}"
+    "${value.moduleId}\n${value.packageName}\n${optionText(value.ownerId, "")}\n${value.kind}\n${value.name}\n${joinedStrings(value.sourceApiSignature)}"
 }
 
 

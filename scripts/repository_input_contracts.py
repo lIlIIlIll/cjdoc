@@ -61,11 +61,14 @@ SCHEMA_NAMES = (
     "cfg-matrix",
     "search-index",
     "symbol-index",
+    "navigation-index",
     "api-surface",
     "api-surface-v1",
     "api-diff",
+    "documentation-coverage-v1",
     "documentation-coverage",
     "doctest-results",
+    "versions",
 )
 SCHEMA_CONTRACTS = {
     "doc-ir": (
@@ -132,6 +135,10 @@ SCHEMA_CONTRACTS = {
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/symbol-index.schema.json",
         "cjdoc.symbol-index/1", ("schemaVersion", "project", "entries"),
     ),
+    "navigation-index": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/navigation-index.schema.json",
+        "cjdoc.navigation-index/1", ("schemaVersion", "project", "pages"),
+    ),
     "api-surface": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface-v2.schema.json",
         "cjdoc.api-surface/2", ("schemaVersion", "project", "audience", "cfgProfile", "collectionState", "declarations", "exposures"),
@@ -144,13 +151,21 @@ SCHEMA_CONTRACTS = {
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-diff.schema.json",
         "cjdoc.api-diff/1", ("schemaVersion", "baseline", "current", "comparisonState", "summary", "entries"),
     ),
+    "documentation-coverage-v1": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/documentation-coverage-v1.schema.json",
+        "cjdoc.documentation-coverage/1", ("schemaVersion", "audience", "symbols", "parameters"),
+    ),
     "documentation-coverage": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/documentation-coverage.schema.json",
-        "cjdoc.documentation-coverage/1", ("schemaVersion", "audience", "symbols", "parameters"),
+        "cjdoc.documentation-coverage/2", ("schemaVersion", "audience", "metrics", "packages", "modules"),
     ),
     "doctest-results": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doctest-results.schema.json",
         "cjdoc.doctest/1", ("schemaVersion", "mode", "timeoutMs", "memoryMb", "jobs", "summary", "results"),
+    ),
+    "versions": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/versions.schema.json",
+        "cjdoc.versions/1", ("schemaVersion", "project", "latest", "latestPolicy", "versions"),
     ),
 }
 SCHEMA_OPTIONAL_PROPERTIES = {

@@ -46,7 +46,7 @@ internal class DocIrEncodingBudget {
             domainFail(path, "JSON object occurrence budget exceeded")
         }
         schemaObjects++
-        consumeBytes(512, path)
+        consumeBytes(448, path)
         consumePrettyContainer(depth, fields, true, path)
     }
 

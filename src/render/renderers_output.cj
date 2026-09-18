@@ -92,14 +92,8 @@ public func documentationCoverageCounts(documentation: DocumentationSet):
 
 internal func appendCoverageArtifacts(artifacts: RenderArtifactCollector,
     documentation: DocumentationSet): Unit {
-    let (symbols, documentedSymbols, parameters, documentedParameters) =
-        documentationCoverageCounts(documentation)
-    let out = RenderTextBuffer()
-    out.append("{\n  \"schemaVersion\": \"cjdoc.documentation-coverage/1\",\n")
-    out.append("  \"audience\": "); appendSearchJsonString(out, documentation.configuration.audience)
-    out.append(",\n  \"symbols\": {\"total\": ${symbols}, \"documented\": ${documentedSymbols}, \"percent\": ${coveragePercent(documentedSymbols, symbols)}},\n")
-    out.append("  \"parameters\": {\"total\": ${parameters}, \"documented\": ${documentedParameters}, \"percent\": ${coveragePercent(documentedParameters, parameters)}}\n}\n")
-    artifacts.addText("coverage/coverage.json", "application/json", out.toString())
+    artifacts.addText("coverage/coverage.json", "application/json",
+        renderDocumentationCoverageV2(documentation))
 }
 
 public class ApiSurfaceDocumentationRenderer <: DocumentationRenderer {

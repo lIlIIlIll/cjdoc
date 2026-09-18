@@ -360,11 +360,15 @@ internal func appendSymbolMetadata(out: RenderTextBuffer,
                 out.append("</dd>")
             }
             for (relationship in symbol.symbolRelationships) {
+                match (relationship.targetSymbolId) {
+                    case Some(targetId) => if (!index.contains(targetId)) { continue }
+                    case None => ()
+                }
                 out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd>")
                 match (relationship.targetSymbolId) {
                     case Some(targetId) => match (findSymbol(index, targetId)) {
                         case Some(target) => out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(relationship.targetDisplay)}</code></a>")
-                        case None => out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
+                        case None => ()
                     }
                     case None => out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
                 }

@@ -149,9 +149,14 @@ private func semanticLinkLocalUrl(symbolId: String): String {
     "symbols/symbol-${bounded}.html"
 }
 
-private func semanticLinkDiagnostic(symbol: public_model.SymbolDoc, code: String,
+private func semanticLinkSeverity(config: DocumentationQualityConfig, rule: String): ?String {
+    let value = config.severity(rule)
+    if (value == "off") { None } else { Some(value) }
+}
+
+private func semanticLinkDiagnostic(symbol: public_model.SymbolDoc, severity: String, code: String,
     message: String): public_model.Diagnostic {
-    public_model.Diagnostic("warning", code, message, source: Some(symbol.source), symbolId: Some(symbol.id))
+    public_model.Diagnostic(severity, code, message, source: Some(symbol.source), symbolId: Some(symbol.id))
 }
 
 private func resolveExternalLink(target: String, resolvers: Array<ExternalDocResolver>): (String, String) {
@@ -179,7 +184,7 @@ private func resolveExternalLink(target: String, resolvers: Array<ExternalDocRes
 
 private func resolveSemanticLinkNode(node: public_model.MarkdownNode, owner: public_model.SymbolDoc,
     declarations: Array<public_model.SymbolDoc>, index: HashMap<String, public_model.SymbolDoc>,
-    audience: String, resolvers: Array<ExternalDocResolver>,
+    audience: String, resolvers: Array<ExternalDocResolver>, config: DocumentationQualityConfig,
     diagnostics: ArrayList<public_model.Diagnostic>): Unit {
     if (node.kind == "semantic_link") {
         match (node.metadata) {
@@ -234,12 +239,13 @@ private func resolveSemanticLinkNode(node: public_model.MarkdownNode, owner: pub
                             case None => ()
                         }
                     }
+
                 }
             case None => ()
         }
     }
     for (child in node.children) {
-        resolveSemanticLinkNode(child, owner, declarations, index, audience, resolvers, diagnostics)
+        resolveSemanticLinkNode(child, owner, declarations, index, audience, resolvers, config, diagnostics)
     }
 }
 
@@ -248,11 +254,12 @@ internal func resolvePublicSemanticLinks(declarations: Array<public_model.Symbol
     let index = HashMap<String, public_model.SymbolDoc>()
     for (symbol in declarations) { index[symbol.id] = symbol }
     let resolvers = loadExternalDocResolvers(projectRoot)
+    let config = loadDocumentationQualityConfig(projectRoot)
     let diagnostics = ArrayList<public_model.Diagnostic>()
     for (symbol in declarations) {
         match (symbol.documentation) {
             case Some(comment) => resolveSemanticLinkNode(comment.markdown, symbol, declarations, index,
-                audience, resolvers, diagnostics)
+                audience, resolvers, config, diagnostics)
             case None => ()
         }
     }

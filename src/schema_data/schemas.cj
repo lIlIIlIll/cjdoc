@@ -326,7 +326,7 @@ public let SEARCH_INDEX_SCHEMA = """
         "required": ["id", "canonicalId", "exposure", "name", "qualifiedName", "kind", "packageName", "summary", "href"],
         "properties": {
           "id": {"type": "string", "minLength": 1},
-          "canonicalId": {"type": "string", "pattern": "^cjdoc:v2:.+$"},
+          "canonicalId": {"type": "string", "pattern": "^(cjdoc:v2:|cjdoc:concept:).+$"},
           "exposure": {"type": "boolean"}, "name": {"type": "string"},
           "qualifiedName": {"type": "string", "minLength": 1}, "kind": {"type": "string", "minLength": 1},
           "packageName": {"type": "string", "minLength": 1}, "summary": {"type": "string"},

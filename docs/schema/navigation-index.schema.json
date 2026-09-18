@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/navigation-index.schema.json",
+  "title": "cjdoc agent navigation index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "project", "pages"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.navigation-index/1"},
+    "project": {"$ref": "#/$defs/project"},
+    "pages": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/page"}}
+  },
+  "$defs": {
+    "safePath": {
+      "type": "string", "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\)(?!.*(^|/)[.][.]?(/|$)).+$"
+    },
+    "project": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "audience", "version"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "audience": {"type": "string", "minLength": 1},
+        "version": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]}
+      }
+    },
+    "page": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "title", "href", "summary", "symbolId", "moduleId", "packageName", "semanticState"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["project", "machine", "concept", "package", "symbol"]},
+        "title": {"type": "string", "minLength": 1},
+        "href": {"$ref": "#/$defs/safePath"},
+        "summary": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "symbolId": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "moduleId": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "packageName": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "semanticState": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+      }
+    }
+  }
+}

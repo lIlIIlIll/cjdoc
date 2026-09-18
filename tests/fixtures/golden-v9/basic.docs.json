@@ -1248,12 +1248,7 @@
         }
       ],
       "symbolRelationships": [
-        {
-          "kind": "superType",
-          "targetDisplay": "Reader",
-          "state": "resolved",
-          "targetSymbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::interface:Reader#g0()"
-        }
+        
       ],
       "documentation": {
         "rawText": "/** Generic parser. */",
@@ -1455,12 +1450,7 @@
         }
       ],
       "symbolRelationships": [
-        {
-          "kind": "extensionTarget",
-          "targetDisplay": "Box < String >",
-          "state": "resolved",
-          "targetSymbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::struct:Box#g1()"
-        }
+        
       ],
       "documentation": {
         "rawText": "/** Additional string box helpers. */",
@@ -1568,12 +1558,7 @@
         }
       ],
       "symbolRelationships": [
-        {
-          "kind": "extensionTarget",
-          "targetDisplay": "Box < String >",
-          "state": "resolved",
-          "targetSymbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::struct:Box#g1()"
-        }
+        
       ],
       "documentation": {
         "rawText": "/** String box helpers. */",
@@ -2615,12 +2600,7 @@
         
       ],
       "symbolRelationships": [
-        {
-          "kind": "subType",
-          "targetDisplay": "basic.Parser",
-          "state": "resolved",
-          "targetSymbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::class:Parser#g1()"
-        }
+        
       ],
       "documentation": {
         "rawText": "/** A readable value. */",
@@ -2903,6 +2883,1088 @@
     
   ],
   "diagnostics": [
-    
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 20,
+          "column": 1,
+          "byteOffset": 370
+        },
+        "end": {
+          "line": 22,
+          "column": 2,
+          "byteOffset": 426
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(String)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "parameter 'text' has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 20,
+          "column": 1,
+          "byteOffset": 370
+        },
+        "end": {
+          "line": 22,
+          "column": 2,
+          "byteOffset": 426
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(String)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 20,
+          "column": 1,
+          "byteOffset": 370
+        },
+        "end": {
+          "line": 22,
+          "column": 2,
+          "byteOffset": 426
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(String)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 29,
+          "column": 1,
+          "byteOffset": 504
+        },
+        "end": {
+          "line": 31,
+          "column": 2,
+          "byteOffset": 580
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(Array<UInt8>)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 29,
+          "column": 1,
+          "byteOffset": 504
+        },
+        "end": {
+          "line": 31,
+          "column": 2,
+          "byteOffset": 580
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(Array<UInt8>)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "parameter 'data' has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 29,
+          "column": 1,
+          "byteOffset": 504
+        },
+        "end": {
+          "line": 31,
+          "column": 2,
+          "byteOffset": 580
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(Array<UInt8>)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 29,
+          "column": 1,
+          "byteOffset": 504
+        },
+        "end": {
+          "line": 31,
+          "column": 2,
+          "byteOffset": 580
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(Array<UInt8>)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 34,
+          "column": 1,
+          "byteOffset": 607
+        },
+        "end": {
+          "line": 36,
+          "column": 2,
+          "byteOffset": 657
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::interface:Reader#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 34,
+          "column": 1,
+          "byteOffset": 607
+        },
+        "end": {
+          "line": 36,
+          "column": 2,
+          "byteOffset": 657
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::interface:Reader#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3034",
+      "message": "undocumented public symbol 'basic.Reader.read'",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 35,
+          "column": 5,
+          "byteOffset": 637
+        },
+        "end": {
+          "line": 35,
+          "column": 23,
+          "byteOffset": 655
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Reader::function:read#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 39,
+          "column": 1,
+          "byteOffset": 682
+        },
+        "end": {
+          "line": 61,
+          "column": 2,
+          "byteOffset": 1116
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::class:Parser#g1()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 39,
+          "column": 1,
+          "byteOffset": 682
+        },
+        "end": {
+          "line": 61,
+          "column": 2,
+          "byteOffset": 1116
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::class:Parser#g1()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 41,
+          "column": 5,
+          "byteOffset": 746
+        },
+        "end": {
+          "line": 41,
+          "column": 24,
+          "byteOffset": 765
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::variable:value#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3037",
+      "message": "value-returning symbol is missing @return documentation",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 41,
+          "column": 5,
+          "byteOffset": 746
+        },
+        "end": {
+          "line": 41,
+          "column": 24,
+          "byteOffset": 765
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::variable:value#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 41,
+          "column": 5,
+          "byteOffset": 746
+        },
+        "end": {
+          "line": 41,
+          "column": 24,
+          "byteOffset": 765
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::variable:value#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 41,
+          "column": 5,
+          "byteOffset": 746
+        },
+        "end": {
+          "line": 41,
+          "column": 24,
+          "byteOffset": 765
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::variable:value#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 47,
+          "column": 5,
+          "byteOffset": 846
+        },
+        "end": {
+          "line": 49,
+          "column": 6,
+          "byteOffset": 902
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::constructor:init#g0(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 47,
+          "column": 5,
+          "byteOffset": 846
+        },
+        "end": {
+          "line": 49,
+          "column": 6,
+          "byteOffset": 902
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::constructor:init#g0(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "parameter 'value' has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 47,
+          "column": 5,
+          "byteOffset": 846
+        },
+        "end": {
+          "line": 49,
+          "column": 6,
+          "byteOffset": 902
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::constructor:init#g0(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 55,
+          "column": 5,
+          "byteOffset": 977
+        },
+        "end": {
+          "line": 55,
+          "column": 36,
+          "byteOffset": 1008
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::function:read#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 55,
+          "column": 5,
+          "byteOffset": 977
+        },
+        "end": {
+          "line": 55,
+          "column": 36,
+          "byteOffset": 1008
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::function:read#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 55,
+          "column": 5,
+          "byteOffset": 977
+        },
+        "end": {
+          "line": 55,
+          "column": 36,
+          "byteOffset": 1008
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::function:read#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 58,
+          "column": 5,
+          "byteOffset": 1039
+        },
+        "end": {
+          "line": 58,
+          "column": 44,
+          "byteOffset": 1078
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::property:size#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3037",
+      "message": "value-returning symbol is missing @return documentation",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 58,
+          "column": 5,
+          "byteOffset": 1039
+        },
+        "end": {
+          "line": 58,
+          "column": 44,
+          "byteOffset": 1078
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::property:size#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 58,
+          "column": 5,
+          "byteOffset": 1039
+        },
+        "end": {
+          "line": 58,
+          "column": 44,
+          "byteOffset": 1078
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::property:size#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 58,
+          "column": 5,
+          "byteOffset": 1039
+        },
+        "end": {
+          "line": 58,
+          "column": 44,
+          "byteOffset": 1078
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::property:size#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 64,
+          "column": 1,
+          "byteOffset": 1138
+        },
+        "end": {
+          "line": 68,
+          "column": 2,
+          "byteOffset": 1270
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::struct:Box#g1()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 64,
+          "column": 1,
+          "byteOffset": 1138
+        },
+        "end": {
+          "line": 68,
+          "column": 2,
+          "byteOffset": 1270
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::struct:Box#g1()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3034",
+      "message": "undocumented public symbol 'basic.Box.value'",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 65,
+          "column": 5,
+          "byteOffset": 1165
+        },
+        "end": {
+          "line": 65,
+          "column": 24,
+          "byteOffset": 1184
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Box::variable:value#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3035",
+      "message": "documentation summary is missing",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 67,
+          "column": 5,
+          "byteOffset": 1224
+        },
+        "end": {
+          "line": 67,
+          "column": 49,
+          "byteOffset": 1268
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Box::constructor:init#g0(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 67,
+          "column": 5,
+          "byteOffset": 1224
+        },
+        "end": {
+          "line": 67,
+          "column": 49,
+          "byteOffset": 1268
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Box::constructor:init#g0(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 67,
+          "column": 5,
+          "byteOffset": 1224
+        },
+        "end": {
+          "line": 67,
+          "column": 49,
+          "byteOffset": 1268
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Box::constructor:init#g0(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "parameter 'value' has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 67,
+          "column": 5,
+          "byteOffset": 1224
+        },
+        "end": {
+          "line": 67,
+          "column": 49,
+          "byteOffset": 1268
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Box::constructor:init#g0(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 71,
+          "column": 1,
+          "byteOffset": 1294
+        },
+        "end": {
+          "line": 74,
+          "column": 2,
+          "byteOffset": 1349
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::enum:Status#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 71,
+          "column": 1,
+          "byteOffset": 1294
+        },
+        "end": {
+          "line": 74,
+          "column": 2,
+          "byteOffset": 1349
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::enum:Status#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3034",
+      "message": "undocumented public symbol 'basic.Status.Ready'",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 72,
+          "column": 5,
+          "byteOffset": 1319
+        },
+        "end": {
+          "line": 72,
+          "column": 12,
+          "byteOffset": 1326
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Status::enumCase:Ready#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3034",
+      "message": "undocumented public symbol 'basic.Status.Failed'",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 73,
+          "column": 5,
+          "byteOffset": 1331
+        },
+        "end": {
+          "line": 73,
+          "column": 21,
+          "byteOffset": 1347
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Status::enumCase:Failed#g0(String)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 93,
+          "column": 1,
+          "byteOffset": 1692
+        },
+        "end": {
+          "line": 93,
+          "column": 47,
+          "byteOffset": 1738
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:identity#g1(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 93,
+          "column": 1,
+          "byteOffset": 1692
+        },
+        "end": {
+          "line": 93,
+          "column": 47,
+          "byteOffset": 1738
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:identity#g1(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "parameter 'value' has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 93,
+          "column": 1,
+          "byteOffset": 1692
+        },
+        "end": {
+          "line": 93,
+          "column": 47,
+          "byteOffset": 1738
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:identity#g1(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 93,
+          "column": 1,
+          "byteOffset": 1692
+        },
+        "end": {
+          "line": 93,
+          "column": 47,
+          "byteOffset": 1738
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:identity#g1(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 96,
+          "column": 1,
+          "byteOffset": 1768
+        },
+        "end": {
+          "line": 96,
+          "column": 26,
+          "byteOffset": 1793
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::typeAlias:Name#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 96,
+          "column": 1,
+          "byteOffset": 1768
+        },
+        "end": {
+          "line": 96,
+          "column": 26,
+          "byteOffset": 1793
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::typeAlias:Name#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 103,
+          "column": 1,
+          "byteOffset": 1874
+        },
+        "end": {
+          "line": 104,
+          "column": 58,
+          "byteOffset": 1974
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:oldParse#g0(String)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 103,
+          "column": 1,
+          "byteOffset": 1874
+        },
+        "end": {
+          "line": 104,
+          "column": 58,
+          "byteOffset": 1974
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:oldParse#g0(String)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "parameter 'text' has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 103,
+          "column": 1,
+          "byteOffset": 1874
+        },
+        "end": {
+          "line": 104,
+          "column": 58,
+          "byteOffset": 1974
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:oldParse#g0(String)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 103,
+          "column": 1,
+          "byteOffset": 1874
+        },
+        "end": {
+          "line": 104,
+          "column": 58,
+          "byteOffset": 1974
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:oldParse#g0(String)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 111,
+          "column": 1,
+          "byteOffset": 2060
+        },
+        "end": {
+          "line": 111,
+          "column": 54,
+          "byteOffset": 2113
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:解析#g0(String)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 111,
+          "column": 1,
+          "byteOffset": 2060
+        },
+        "end": {
+          "line": 111,
+          "column": 54,
+          "byteOffset": 2113
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:解析#g0(String)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "parameter '文本' has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 111,
+          "column": 1,
+          "byteOffset": 2060
+        },
+        "end": {
+          "line": 111,
+          "column": 54,
+          "byteOffset": 2113
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:解析#g0(String)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 111,
+          "column": 1,
+          "byteOffset": 2060
+        },
+        "end": {
+          "line": 111,
+          "column": 54,
+          "byteOffset": 2113
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:解析#g0(String)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 118,
+          "column": 1,
+          "byteOffset": 2200
+        },
+        "end": {
+          "line": 123,
+          "column": 2,
+          "byteOffset": 2308
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3037",
+      "message": "value-returning symbol is missing @return documentation",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 118,
+          "column": 1,
+          "byteOffset": 2200
+        },
+        "end": {
+          "line": 123,
+          "column": 2,
+          "byteOffset": 2308
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 118,
+          "column": 1,
+          "byteOffset": 2200
+        },
+        "end": {
+          "line": 123,
+          "column": 2,
+          "byteOffset": 2308
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "parameter 'strict' has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 118,
+          "column": 1,
+          "byteOffset": 2200
+        },
+        "end": {
+          "line": 123,
+          "column": 2,
+          "byteOffset": 2308
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "parameter 'text' has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 118,
+          "column": 1,
+          "byteOffset": 2200
+        },
+        "end": {
+          "line": 123,
+          "column": 2,
+          "byteOffset": 2308
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 118,
+          "column": 1,
+          "byteOffset": 2200
+        },
+        "end": {
+          "line": 123,
+          "column": 2,
+          "byteOffset": 2308
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"
+    }
   ]
 }

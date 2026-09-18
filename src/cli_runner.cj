@@ -7,7 +7,7 @@ import std.collection.*
 import std.env.*
 import std.fs.*
 
-private func selectedSourceCacheDirectory(options: NewCliOptions): ?String {
+internal func selectedSourceCacheDirectory(options: NewCliOptions): ?String {
     if (options.noCache) { return None }
     match (options.cacheDirectory) {
         case Some(path) => Some(path)
@@ -16,7 +16,7 @@ private func selectedSourceCacheDirectory(options: NewCliOptions): ?String {
     }
 }
 
-private func orderedFormats(options: NewCliOptions): Array<String> {
+internal func orderedFormats(options: NewCliOptions): Array<String> {
     let result = ArrayList<String>()
     if (options.formats.contains("json")) { result.add("json") }
     if (options.formats.contains("markdown")) { result.add("markdown") }
@@ -77,6 +77,63 @@ private func coveragePercent(documented: Int64, total: Int64): Int64 {
     if (total == 0) { 100 } else { documented * 100 / total }
 }
 
+private func coverageMetric(counts: public_render.DocumentationCoverageCounts, metric: String): (Int64, Int64) {
+    match (metric) {
+        case "symbols" => (counts.symbols, counts.documentedSymbols)
+        case "parameters" => (counts.parameters, counts.documentedParameters)
+        case "returns" => (counts.returns, counts.documentedReturns)
+        case "throws" => (counts.throwsDocs, counts.documentedThrows)
+        case "examples" => (counts.examples, counts.documentedExamples)
+        case "deprecated" => (counts.deprecated, counts.documentedDeprecated)
+        case "semantic-links" => (counts.semanticLinks, counts.resolvedSemanticLinks)
+        case _ => (0, 0)
+    }
+}
+
+private func checkCoverageThreshold(scope: String, metric: String,
+    counts: public_render.DocumentationCoverageCounts, threshold: Int64): Bool {
+    let (total, documented) = coverageMetric(counts, metric)
+    let percent = coveragePercent(documented, total)
+    if (percent < threshold) {
+        eprintln("error: ${scope} ${metric} coverage ${percent}% is below ${threshold}%")
+        return false
+    }
+    true
+}
+
+private func hasCoverageThresholds(config: DocumentationQualityConfig): Bool {
+    !config.packageOverrides.isEmpty() || config.coverage.symbols.isSome() ||
+        config.coverage.parameters.isSome() || config.coverage.returns.isSome() ||
+        config.coverage.throwsDocs.isSome() || config.coverage.examples.isSome() ||
+        config.coverage.deprecated.isSome() || config.coverage.semanticLinks.isSome()
+}
+
+private func configuredCoverageGate(documentation: public_model.DocumentationSet,
+    projectRoot: String): Bool {
+    let config = loadDocumentationQualityConfig(projectRoot)
+    if (!hasCoverageThresholds(config)) { return true }
+    let report = public_render.documentationCoverageReport(documentation)
+    let metrics = ["symbols", "parameters", "returns", "throws", "examples", "deprecated", "semantic-links"]
+    var passed = true
+    for (metric in metrics) {
+        match (config.coverage.value(metric)) {
+            case Some(threshold) => passed = checkCoverageThreshold("global", metric, report.metrics, threshold) && passed
+            case None => ()
+        }
+    }
+    for (override in config.packageOverrides) {
+        for (group in report.packages where group.name == override.packageName) {
+            for (metric in metrics) {
+                match (override.thresholds.value(metric)) {
+                    case Some(threshold) =>
+                        passed = checkCoverageThreshold("package ${group.name}", metric, group.metrics, threshold) && passed
+                    case None => ()
+                }
+            }
+        }
+    }
+    passed
+}
 private func apiSurfaceBaselineGate(documentation: public_model.DocumentationSet, path: String): Bool {
     let baseline = readApiContractSnapshot(path)
     let current = public_render.apiContractSnapshotForDocumentation(documentation)
@@ -97,6 +154,7 @@ private func apiSurfaceBaselineGate(documentation: public_model.DocumentationSet
 private func contractGateExitCode(documentation: public_model.DocumentationSet,
     options: NewCliOptions): Int64 {
     var failed = false
+    if (!configuredCoverageGate(documentation, options.project)) { failed = true }
     if (options.minSymbolCoverage.isSome() || options.minParameterCoverage.isSome()) {
         let (symbols, documentedSymbols, parameters, documentedParameters) =
             public_render.documentationCoverageCounts(documentation)
@@ -134,10 +192,13 @@ internal func schemaTextForCli(name: String): String {
         case "cfg-matrix" => CFG_MATRIX_SCHEMA
         case "search-index" => SEARCH_INDEX_SCHEMA
         case "symbol-index" => SYMBOL_INDEX_SCHEMA
+        case "navigation-index" => NAVIGATION_INDEX_SCHEMA
         case "api-surface" => API_SURFACE_SCHEMA
         case "api-surface-v1" => API_SURFACE_V1_SCHEMA
         case "api-diff" => API_DIFF_SCHEMA
+        case "documentation-coverage-v1" => DOCUMENTATION_COVERAGE_V1_SCHEMA
         case "documentation-coverage" => DOCUMENTATION_COVERAGE_SCHEMA
+        case "versions" => VERSIONS_SCHEMA
         case "doctest-results" => DOCTEST_RESULTS_SCHEMA
         case _ => throw IllegalArgumentException("unknown schema " + name)
     }
@@ -169,8 +230,8 @@ private func repositoryRootForOptions(options: NewCliOptions, repository: ?publi
     }
 }
 
-private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
-    selectedCache: ?String, outputLock: ?OutputLockHandle): Int64 {
+internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
+    selectedCache: ?String, outputLock: ?OutputLockHandle, writeOnFailure!: Bool = true): Int64 {
     let commandLine = getCommandLine()
     let astPreflightExecutable: ?String = if (commandLine.isEmpty()) { None }
         else { Some(commandLine[0]) }
@@ -225,7 +286,26 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
             markdownLayout: options.markdownLayout, docVersion: options.docVersion)
         documentation = renderedDocumentation
         let artifactList = ArrayList<public_render.RenderArtifact>()
-        artifactList.add(all: renderedArtifacts)
+        if (generationRequest.isSome()) {
+            artifactList.add(all: appendConceptualArtifacts(options.project, documentation,
+                orderedFormats(options), renderedArtifacts))
+        } else {
+            artifactList.add(all: renderedArtifacts)
+        }
+        if (options.formats.contains("html")) {
+            let agentConceptualPages: Array<public_render.AgentConceptualPage> = if (generationRequest.isSome()) {
+                conceptualAgentPages(options.project, documentation)
+            } else {
+                []
+            }
+            artifactList.add(all: public_render.renderAgentReadableArtifacts(documentation,
+                conceptualPages: agentConceptualPages,
+                includeFull: options.agentFull, version: options.docVersion))
+        }
+        match (options.docVersion) {
+            case Some(version) => appendDocumentVersionArtifact(artifactList, version, documentation.project.name)
+            case None => ()
+        }
         match (doctestReport) {
             case Some(report) =>
                 artifactList.add(public_render.RenderArtifact(
@@ -242,7 +322,8 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
             if (doctestConfig.mode == "deny" && doctestReportHasFailure(report)) { 1 } else { 0 }
         case None => 0
     }
-    if (options.command != "check") {
+    if (options.command != "check" &&
+        (writeOnFailure || (diagnosticsExit == 0 && contractExit == 0 && doctestExit == 0))) {
         if (options.stdout) {
             getStdOut().write(artifacts[0].content.toArray())
         } else {
@@ -266,7 +347,7 @@ private func runApiDiff(options: NewCliOptions): Int64 {
     apiDiffExitCode(report, options.denyBreakingApi, options.denyPotentiallyBreakingApi)
 }
 
- private func selectedOutputDirectory(options: NewCliOptions): String {
+internal func selectedOutputDirectory(options: NewCliOptions): String {
     match (options.output) {
         case Some(path) => path
         case None => if (options.command == "render") { "target/doc" }
@@ -293,6 +374,8 @@ func runCli(args: Array<String>): Int64 {
     try {
         if (options.command == "schema") { return runSchema(options.schemaName) }
         if (options.command == "diff") { return runApiDiff(options) }
+        if (options.command == "versions") { return runVersionsCompose(options) }
+        if (options.command == "serve") { return runServeCommand(options) }
         if (options.command == "check" || options.stdout) {
             let requestedCache: ?String = if (options.command == "render") { None }
                 else { selectedSourceCacheDirectory(options) }

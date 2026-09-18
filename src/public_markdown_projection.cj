@@ -315,6 +315,13 @@ internal func publicMarkdown(body: String, assetCollector: LocalAssetCollector, 
     publicMarkdownNode(result.document.root(), result.source, assetCollector, sourcePath, declarationSource, symbolId,
         context, 0)
 }
+public func parseStandaloneMarkdown(body: String): public_model.MarkdownNode {
+    let source = public_model.SourceRange("conceptual.md", public_model.SourcePosition(1, 1, 0),
+        public_model.SourcePosition(1, 1, 0))
+    let assets = LocalAssetCollector(ArrayList<SourceFileOrigin>())
+    let context = MarkdownGenerationContext()
+    publicMarkdown(body, assets, "conceptual.md", source, "cjdoc:conceptual", context)
+}
 
 internal func publicComment(value: DocComment, assetCollector: LocalAssetCollector, sourcePath: String,
     declarationSource: public_model.SourceRange, symbolId: String, context: MarkdownGenerationContext): public_model.DocComment {

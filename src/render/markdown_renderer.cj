@@ -451,9 +451,22 @@ internal func appendMarkdownArtifacts(artifacts: RenderArtifactCollector,
                 }
                 out.append("\n")
             }
-            if (!declaration.symbolRelationships.isEmpty()) {
+            var hasVisibleSymbolRelationships = false
+            for (relationship in declaration.symbolRelationships) {
+                match (relationship.targetSymbolId) {
+                    case Some(targetId) => if (projection.visibleIndex.contains(targetId)) {
+                        hasVisibleSymbolRelationships = true
+                    }
+                    case None => hasVisibleSymbolRelationships = true
+                }
+            }
+            if (hasVisibleSymbolRelationships) {
                 out.append("#### Symbol relationships\n\n")
                 for (relationship in declaration.symbolRelationships) {
+                    match (relationship.targetSymbolId) {
+                        case Some(targetId) => if (!projection.visibleIndex.contains(targetId)) { continue }
+                        case None => ()
+                    }
                     out.append("- "); appendMarkdownCodeSpan(out, relationship.kind)
                     out.append(" → "); appendMarkdownCodeSpan(out, relationship.targetDisplay)
                     out.append(" ("); appendMarkdownCodeSpan(out, relationship.state)

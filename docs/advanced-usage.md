@@ -29,6 +29,8 @@ target/doc/
 ├── docs.json
 ├── markdown/index.md
 ├── html/index.html
+├── html/navigation-index.json
+├── html/llms.txt
 ├── html/search-index.js
 ├── html/search.js
 ├── html/style.css
@@ -38,6 +40,52 @@ target/doc/
 ```
 
 HTML 和 Markdown 使用同一份生成结果。HTML 是静态站点，可以直接打开 `html/index.html`；`search-index.js` 让浏览器在 `file://` 下也能使用搜索。
+
+## 概念文档与本地预览
+
+项目配置了 `[docs]` 或 `[[docs.pages]]` 后，概念页面会与 API 站点一起生成到 `html/concepts/` 和 `markdown/concepts/`。`docs/index.md`、模块/包概览以及显式配置的 guides 页面共享安全的 Markdown 投影；概念页会被加入搜索索引。
+
+开发时使用 loopback-only watcher：
+
+```bash
+cjdoc serve --project . --port 8080 --open
+```
+
+它递归监视 `.cj`、`.md`、`cjpm.toml`、`cjpm.lock` 和 `cjdoc.toml`，变更后重新生成站点。`GET /__cjdoc/status.json` 可供编辑器或脚本读取构建状态；失败重建不会删除最近一次成功的文件。
+
+`--port` 和 `--open` 只适用于 `serve`；服务不会暴露项目目录之外的文件。
+
+## 本地多版本发布
+
+版本发布不读取 Git 或网络。先分别生成带版本元数据的 HTML 目录，再组合：
+
+```bash
+cjdoc generate --project . --format html --doc-version 1.2.0 --output target/docs-1.2
+cjdoc generate --project . --format html --doc-version 1.3.0 --output target/docs-1.3
+cjdoc versions compose \
+  --version 1.2.0=target/docs-1.2/html \
+  --version 1.3.0=target/docs-1.3/html \
+  --channel 1.2.0=stable --channel 1.3.0=preview \
+  --latest 1.3.0 --output public/docs
+```
+
+组合器输出 `versions.json`、根选择页和 `latest/` 静态别名。版本页面的 selector 使用稳定 symbol ID 跨版本导航；目标不存在时回退到版本首页并保留 unavailable 标记。未显式指定 latest 时使用第一个命令行版本；channel/status 不做内置策略判断。
+
+已有 `cjdoc.api-diff/1` 报告时，可用 `--diff VERSION=FILE` 绑定到目标版本。报告会原样复制到该版本的 `api-diff.json`，并通过 manifest 的 `apiDiff` 字段和 selector 的 Changes 链接暴露；不会改写 Doc IR。
+
+`versions.json` 遵循 `cjdoc.versions/1`，每个版本目录可独立通过 `file://` 打开。
+
+## Agent-readable navigation and context
+
+HTML 产物同时包含 `html/navigation-index.json` 和 `html/llms.txt`。它们由 Doc IR 直接生成，分别提供稳定的页面/声明目录和有界的 agent 摘要；消费者不需要解析 HTML。导航记录保留当前 audience 可见的 `symbolId`、package/module、路由和 semantic state，概念页也使用同一目录。
+
+默认只生成短索引。需要签名、参数、返回值、throws、示例和概念 Markdown 时，在 `generate`、`render` 或 `serve` 上加 `--agent-full`，生成有界的 `html/llms-full.txt`：
+
+```bash
+cjdoc generate --project . --format html --agent-full
+```
+
+这些产物保持确定性、使用相对链接并可离线通过 `file://` 消费；private 或被 audience 过滤的声明不会出现在索引中，partial/unavailable 状态不被升级为 resolved。对应 schema 是 `cjdoc.navigation-index/1`，可用 `cjdoc schema navigation-index` 导出。
 
 ## 管理输出目录
 
@@ -190,6 +238,24 @@ cjdoc diff --baseline api-surface.json --current api-surface-next.json --format 
 cjdoc generate --project . --format coverage --stdout > coverage.json
 ```
 
+coverage artifact 当前为 `cjdoc.documentation-coverage/2`，包含七类 metric 和按 package/module 的分组；旧的 `documentation-coverage-v1` schema 以独立只读文件保留。门禁可以在同一个项目配置中声明：
+
+```toml
+[lint]
+severity = "warning"
+missing-example = "off"
+broken-link = "error"
+
+[coverage]
+symbols = 90
+parameters = 95
+
+[coverage.package.basic]
+symbols = 100
+```
+
+CLI 的 `--min-symbol-coverage` 和 `--min-parameter-coverage` 仍可作为一次性更高门槛；配置中的 returns、throws、examples、deprecated、semantic-links 以及 package 覆盖率会由 `check` 一并执行。
+
 
 ## 在 CI 中执行 doctest
 
@@ -293,4 +359,6 @@ cjpm build
 | `--repository-url <url>` | `generate` | 无 | canonical GitHub HTTPS 仓库根，需与 revision 成对使用 |
 | `--repository-revision <ref>` | `generate` | 无 | GitHub blob URL 使用的 revision，需与 URL 成对使用 |
 | `--repository-root <dir>` | `generate` | 项目根 | 限制真实 source origin 的仓库映射范围 |
+| `--agent-full` | `generate`, `render`, `serve` | 关闭 | 生成完整但有界的 `html/llms-full.txt` |
+| `--doc-version <id>` | `generate`, `render` | 无 | 把版本上下文写入 HTML agent 产物和 `html/version.json` |
 | `--force-owned` | `generate`, `render` | 关闭 | 显式采用已有输出目录内容 |

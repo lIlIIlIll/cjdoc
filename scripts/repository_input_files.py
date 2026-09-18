@@ -209,6 +209,24 @@ def validate_schema_document(name: str, value: object) -> None:
                 set(items.get("required", [])) != expected_entry_fields or \
                 set(items.get("properties", {})) != expected_entry_fields:
             raise ValueError("symbol-index schema entry shape is invalid")
+    elif name == "navigation-index":
+        definitions = value.get("$defs")
+        pages = properties["pages"]
+        page = definitions.get("page") if isinstance(definitions, dict) else None
+        expected_page_fields = {
+            "id", "kind", "title", "href", "summary", "symbolId", "moduleId",
+            "packageName", "semanticState"
+        }
+        if (not isinstance(definitions, dict) or
+                not {"project", "page", "safePath"}.issubset(definitions) or
+                not isinstance(pages, dict) or
+                pages != {"type": "array", "maxItems": 100000,
+                          "items": {"$ref": "#/$defs/page"}} or
+                not isinstance(page, dict) or page.get("type") != "object" or
+                page.get("additionalProperties") is not False or
+                set(page.get("required", [])) != expected_page_fields or
+                set(page.get("properties", {})) != expected_page_fields):
+            raise ValueError("navigation-index schema page shape is invalid")
     elif name in ("api-surface", "api-surface-v1", "api-diff"):
         definitions = value.get("$defs")
         if not isinstance(definitions, dict):
@@ -222,19 +240,33 @@ def validate_schema_document(name: str, value: object) -> None:
         }
         if not required.issubset(definitions):
             raise ValueError(f"{name} schema definitions are incomplete")
-    elif name == "documentation-coverage":
+    elif name == "documentation-coverage-v1":
         definitions = value.get("$defs")
         if not isinstance(definitions, dict) or "counts" not in definitions or \
                 properties.get("symbols") != {"$ref": "#/$defs/counts"} or \
                 properties.get("parameters") != {"$ref": "#/$defs/counts"}:
-            raise ValueError("documentation-coverage schema counts shape is invalid")
+            raise ValueError("documentation-coverage-v1 schema counts shape is invalid")
+    elif name == "documentation-coverage":
+        definitions = value.get("$defs")
+        if not isinstance(definitions, dict) or not {"metric", "metrics", "group"}.issubset(definitions) or \
+                properties.get("metrics") != {"$ref": "#/$defs/metrics"} or \
+                properties.get("packages", {}).get("items") != {"$ref": "#/$defs/group"} or \
+                properties.get("modules", {}).get("items") != {"$ref": "#/$defs/group"}:
+            raise ValueError("documentation-coverage schema metrics shape is invalid")
     elif name == "doctest-results":
         definitions = value.get("$defs")
         if not isinstance(definitions, dict) or not {"nullableInteger", "summary", "result"}.issubset(definitions) or \
                 properties.get("summary") != {"$ref": "#/$defs/summary"} or \
                 properties.get("results", {}).get("items") != {"$ref": "#/$defs/result"}:
             raise ValueError("doctest-results schema shape is invalid")
-
+    elif name == "versions":
+        definitions = value.get("$defs")
+        versions = properties["versions"]
+        if (not isinstance(definitions, dict) or
+                not {"safePath", "version"}.issubset(definitions) or
+                versions != {"type": "array", "minItems": 1, "maxItems": 64,
+                             "items": {"$ref": "#/$defs/version"}}):
+            raise ValueError("versions schema manifest shape is invalid")
 def verify_schema_set(repo: Path) -> None:
     directory = lexical_absolute(repo / "docs/schema")
     verified = verify_directory_chain(directory)

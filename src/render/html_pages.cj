@@ -140,10 +140,11 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
                 out.append("<li><code>${escapeHtml(binding.exposedName)}</code> → ")
                 var firstTarget = true
                 for (targetId in binding.targetSymbolIds) {
-                    if (!firstTarget) { out.append(", ") }; firstTarget = false
                     match (findSymbol(index, targetId)) {
-                        case Some(target) => out.append("<a href=\"../${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(target.qualifiedName)}</code></a>")
-                        case None => out.append("<code>${escapeHtml(targetId)}</code>")
+                        case Some(target) =>
+                            if (!firstTarget) { out.append(", ") }; firstTarget = false
+                            out.append("<a href=\"../${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(target.qualifiedName)}</code></a>")
+                        case None => ()
                     }
                 }
                 out.append(" <span class=\"badge\">${escapeHtml(reExport.state)}</span></li>\n")

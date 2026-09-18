@@ -247,7 +247,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["kind", "literal", "source", "metadata", "children"],
       "properties": {
-        "kind": {"enum": ["document", "block_quote", "list", "list_item", "paragraph", "heading", "thematic_break", "code_block", "html_block", "table", "table_row", "table_cell", "custom_block", "text", "soft_break", "hard_break", "code_span", "emphasis", "strong", "strikethrough", "link", "image", "html_inline", "custom_inline"]}, "literal": {"type": "string"},
+        "kind": {"enum": ["document", "block_quote", "list", "list_item", "paragraph", "heading", "thematic_break", "code_block", "html_block", "table", "table_row", "table_cell", "custom_block", "text", "soft_break", "hard_break", "code_span", "emphasis", "strong", "strikethrough", "link", "image", "html_inline", "custom_inline", "semantic_link"]}, "literal": {"type": "string"},
         "source": {"anyOf": [{"$ref": "#/$defs/sourceRange"}, {"type": "null"}]},
         "metadata": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/headingMetadata"}, {"$ref": "#/$defs/listMetadata"}, {"$ref": "#/$defs/listItemMetadata"}, {"$ref": "#/$defs/codeBlockMetadata"}, {"$ref": "#/$defs/tableMetadata"}, {"$ref": "#/$defs/tableRowMetadata"}, {"$ref": "#/$defs/tableCellMetadata"}]},
         "children": {"type": "array", "maxItems": 32767, "items": {"$ref": "#/$defs/markdownNode"}}

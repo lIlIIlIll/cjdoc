@@ -18,10 +18,15 @@ private func appendSymbolIndexSource(out: RenderTextBuffer, source: SourceRange)
     out.append(",\"end\":{\"line\":${source.end.line},\"column\":${source.end.column},\"byteOffset\":${source.end.byteOffset}}}")
 }
 
-private func appendSymbolIndexRelations(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
+private func appendSymbolIndexRelations(out: RenderTextBuffer, symbol: SymbolDoc,
+    visibleIndex: HashMap<String, SymbolDoc>): Unit {
     out.append(",\"relations\":[")
     var first = true
     for (relation in symbol.symbolRelationships) {
+        match (relation.targetSymbolId) {
+            case Some(targetId) => if (!visibleIndex.contains(targetId)) { continue }
+            case None => ()
+        }
         if (!first) { out.append(",") }
         first = false
         out.append("{\"kind\":")
@@ -37,13 +42,18 @@ private func appendSymbolIndexRelations(out: RenderTextBuffer, symbol: SymbolDoc
     out.append("]")
 }
 
-private func appendSymbolIndexReferences(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
+private func appendSymbolIndexReferences(out: RenderTextBuffer, symbol: SymbolDoc,
+    visibleIndex: HashMap<String, SymbolDoc>): Unit {
     out.append(",\"references\":[")
     var first = true
     match (symbol.documentation) {
         case Some(comment) =>
             for (tag in comment.tags) {
                 if (tag.name != "see") { continue }
+                match (tag.targetSymbolId) {
+                    case Some(targetId) => if (!visibleIndex.contains(targetId)) { continue }
+                    case None => ()
+                }
                 if (!first) { out.append(",") }
                 first = false
                 out.append("{\"subject\":")
@@ -105,15 +115,15 @@ internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: St
         appendSearchJsonString(out, symbol.semantic.state)
         out.append(",\"summary\":")
         match (symbol.documentation) {
-            case Some(comment) => appendSearchJsonString(out, comment.summary)
+            case Some(comment) => appendSearchJsonString(out, summaryPlainText(comment))
             case None => out.append("\"\"")
         }
         out.append(",\"source\":")
         appendSymbolIndexSource(out, symbol.source)
         out.append(",\"href\":")
         appendSearchJsonString(out, hrefPrefix + symbolUrl(projection.visibleIndex, symbol))
-        appendSymbolIndexRelations(out, symbol)
-        appendSymbolIndexReferences(out, symbol)
+        appendSymbolIndexRelations(out, symbol, projection.visibleIndex)
+        appendSymbolIndexReferences(out, symbol, projection.visibleIndex)
         out.append("}")
     }
     if (!first) { out.append("\n  ") }
