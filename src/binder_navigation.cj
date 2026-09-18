@@ -32,6 +32,7 @@ private func matchesNavigationTarget(spelling: String, owner: SourceDeclaration,
     if (candidate.sourceKey == owner.sourceKey || candidate.moduleId != owner.moduleId ||
         !typeTargetCandidate(candidate)) { return false }
     let head = navigationHead(spelling)
+    if (!head.contains(".") && candidate.packageName != owner.packageName) { return false }
     head == candidate.name || head == "${candidate.packageName}.${candidate.name}"
 }
 

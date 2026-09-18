@@ -108,6 +108,24 @@ private func containsRelationship(values: ReadOnlyList<String>, target: String):
     false
 }
 
+private func sourceSignatureOnlyVisibilityChange(old: ApiContractDeclaration,
+    current: ApiContractDeclaration): Bool {
+    if (old.sourceApiSignature.size != current.sourceApiSignature.size) { return false }
+    var changed = false
+    var index: Int64 = 0
+    while (index < old.sourceApiSignature.size) {
+        if (old.sourceApiSignature[index] != current.sourceApiSignature[index]) {
+            if (old.sourceApiSignature[index] != old.visibility ||
+                current.sourceApiSignature[index] != current.visibility) {
+                return false
+            }
+            changed = true
+        }
+        index++
+    }
+    changed
+}
+
 private func compareDeclaration(old: ApiContractDeclaration, current: ApiContractDeclaration,
     matchState: String): ApiDiffEntry {
     let reasons = ArrayList<String>()
@@ -115,14 +133,16 @@ private func compareDeclaration(old: ApiContractDeclaration, current: ApiContrac
     var classification = "unchanged"
     let oldVisibility = visibilityRank(old.visibility)
     let currentVisibility = visibilityRank(current.visibility)
+    let visibilityWidened = oldVisibility >= 0 && currentVisibility > oldVisibility
     if (oldVisibility >= 0 && currentVisibility >= 0 && currentVisibility < oldVisibility) {
         classification = "breaking"
         addReason(reasons, evidence, "visibility", "visibility narrowed",
             before: Some(old.visibility), after: Some(current.visibility))
     } else if (old.visibility != current.visibility) {
-        if (classification == "unchanged") { classification = "potentially-breaking" }
+        if (!visibilityWidened && classification == "unchanged") { classification = "potentially-breaking" }
         addReason(reasons, evidence, "visibility", "visibility changed",
-            before: Some(old.visibility), after: Some(current.visibility), state: "partial")
+            before: Some(old.visibility), after: Some(current.visibility),
+            state: if (visibilityWidened) { "resolved" } else { "partial" })
     }
     if (old.parameters.size != current.parameters.size) {
         if (old.collectionState == "resolved" && current.collectionState == "resolved") {
@@ -172,12 +192,14 @@ private func compareDeclaration(old: ApiContractDeclaration, current: ApiContrac
             after: current.returnType,
             state: if (old.returnState == "resolved" && current.returnState == "resolved") { "resolved" } else { "partial" })
     }
-    if (old.genericParameters.size != current.genericParameters.size ||
-        joinedStrings(old.genericParameters) != joinedStrings(current.genericParameters)) {
-        if (classification != "breaking") { classification = "potentially-breaking" }
+    let genericArityChanged = old.genericParameters.size != current.genericParameters.size
+    if (genericArityChanged || joinedStrings(old.genericParameters) != joinedStrings(current.genericParameters)) {
+        let resolvedCollection = old.collectionState == "resolved" && current.collectionState == "resolved"
+        if (genericArityChanged && resolvedCollection) { classification = "breaking" }
+        else if (classification != "breaking") { classification = "potentially-breaking" }
         addReason(reasons, evidence, "genericParameters", "generic contract changed",
             before: Some(joinedStrings(old.genericParameters)), after: Some(joinedStrings(current.genericParameters)),
-            state: "partial")
+            state: if (genericArityChanged && resolvedCollection) { "resolved" } else { "partial" })
     }
     if (joinedStrings(old.relationships) != joinedStrings(current.relationships)) {
         if (removedResolvedRelationship(old, current) || old.relationships.size > current.relationships.size) {
@@ -192,8 +214,9 @@ private func compareDeclaration(old: ApiContractDeclaration, current: ApiContrac
         addReason(reasons, evidence, "enumNonExhaustive", "enum exhaustiveness evidence changed",
             before: None<String>, after: None<String>, state: "partial")
     }
-    if (old.sourceApiSignatureState != current.sourceApiSignatureState ||
-        joinedStrings(old.sourceApiSignature) != joinedStrings(current.sourceApiSignature)) {
+    if ((old.sourceApiSignatureState != current.sourceApiSignatureState ||
+        joinedStrings(old.sourceApiSignature) != joinedStrings(current.sourceApiSignature)) &&
+        !(visibilityWidened && sourceSignatureOnlyVisibilityChange(old, current))) {
         if (classification != "breaking") { classification = "potentially-breaking" }
         addReason(reasons, evidence, "sourceApiSignature", "source API signature changed",
             before: Some(joinedStrings(old.sourceApiSignature)), after: Some(joinedStrings(current.sourceApiSignature)),
@@ -333,12 +356,13 @@ private func unmatchedExposureEntry(old: ?ApiContractExposure, current: ?ApiCont
 }
 
 private func addedDeclarationEntry(value: ApiContractDeclaration,
-    baseline: ApiContractSnapshot, collectionState: String): ApiDiffEntry {
+    baseline: ApiContractSnapshot, current: ApiContractSnapshot, collectionState: String): ApiDiffEntry {
     var classification = "additive"
     var reason = "declaration added"
     var state = "resolved"
     if (value.kind == "enumCase") {
         var ownerFound = false
+        var ownerInCurrent = false
         var ownerExhaustiveness: ?Bool = None
         match (value.ownerId) {
             case Some(ownerId) =>
@@ -346,6 +370,11 @@ private func addedDeclarationEntry(value: ApiContractDeclaration,
                     if (owner.id == ownerId && owner.kind == "enum") {
                         ownerFound = true
                         ownerExhaustiveness = owner.enumNonExhaustive
+                    }
+                }
+                for (owner in current.declarations) {
+                    if (owner.id == ownerId && owner.kind == "enum") {
+                        ownerInCurrent = true
                     }
                 }
             case None => ()
@@ -375,6 +404,11 @@ private func addedDeclarationEntry(value: ApiContractDeclaration,
             classification = "potentially-breaking"
             reason = "enum case owner is unavailable"
             state = "partial"
+        }
+        if (!ownerFound && ownerInCurrent) {
+            classification = "additive"
+            reason = "enum case added with new enum"
+            state = "resolved"
         }
     }
     ApiDiffEntry(value.kind, classification, "added", newId: Some(value.id), reasons: [reason],
@@ -471,9 +505,9 @@ public func compareApiContracts(baseline: ApiContractSnapshot, current: ApiContr
                         newId: Some(value.id), reasons: ["fallback match is ambiguous"],
                         evidence: [ApiDiffEvidence("matching", after: Some(value.qualifiedName), state: "ambiguous")]))
                 } else {
-                    entries.add(addedDeclarationEntry(value, baseline, current.collectionState))
+                    entries.add(addedDeclarationEntry(value, baseline, current, current.collectionState))
                 }
-            case None => entries.add(addedDeclarationEntry(value, baseline, current.collectionState))
+            case None => entries.add(addedDeclarationEntry(value, baseline, current, current.collectionState))
         }
         let _ = matchedCurrent.add(value.id)
     }

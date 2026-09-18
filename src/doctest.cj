@@ -11,6 +11,8 @@ import std.time.*
 import std.unicode.*
 
 internal let DOCTEST_SCHEMA_VERSION = "cjdoc.doctest/1"
+internal let DOCTEST_MAX_RESULTS: Int64 = 100000
+internal let DOCTEST_MIN_ADDRESS_SPACE_MB: Int64 = 2048
 internal let DOCTEST_MAX_OUTPUT_BYTES: Int64 = 8 * 1024 * 1024
 internal let DOCTEST_PIPE_CHUNK_BYTES: Int64 = 64 * 1024
 
@@ -306,6 +308,14 @@ private func extractSnippets(symbol: public_model.SymbolDoc, tag: public_model.D
                 }
         }
     }
+    match (fence) {
+        case Some(active) =>
+            let code = snippetCode(body)
+            snippets.add(DoctestSnippet(
+                symbol.id + ":example:" + exampleIndex.toString() + ":" + blockIndex.toString(),
+                symbol.id, symbol.packageName, symbol.qualifiedName, tag.subject, active.language, code))
+        case None => ()
+    }
     snippets.toArray()
 }
 
@@ -325,7 +335,9 @@ private func collectSnippets(documentation: public_model.DocumentationSet): Arra
                     } else {
                         snippets.add(all: found)
                     }
-                    exampleIndex++
+                    if (snippets.size > DOCTEST_MAX_RESULTS) {
+                        throw IllegalArgumentException("doctest result limit exceeded")
+                    }
                 }
             case None => ()
         }
@@ -374,11 +386,19 @@ private func skippedResult(snippet: DoctestSnippet, message: String): DoctestCas
 }
 
 private func memoryBoundedCommand(command: String, arguments: Array<String>, memoryMb: Int64): (String, Array<String>) {
-    let limit = memoryMb * 1024 * 1024
+    // The Cangjie compiler and runtime reserve more virtual address space than
+    // the configured budget. Keep a platform floor so a bounded doctest does
+    // not fail during startup; configured budgets above it remain exact.
+    let effectiveMemoryMb = if (memoryMb < DOCTEST_MIN_ADDRESS_SPACE_MB) {
+        DOCTEST_MIN_ADDRESS_SPACE_MB
+    } else {
+        memoryMb
+    }
+    let limit = effectiveMemoryMb * 1024 * 1024
     for (candidate in ["/usr/bin/prlimit", "/bin/prlimit"]) {
         if (!exists(Path(candidate))) { continue }
         let wrapped = ArrayList<String>()
-        wrapped.add("--rss=" + limit.toString())
+        wrapped.add("--as=" + limit.toString())
         wrapped.add("--")
         wrapped.add(command)
         wrapped.add(all: arguments)
@@ -399,10 +419,11 @@ private func doctestOriginForLogicalPath(origins: Array<SourceFileOrigin>, logic
     found
 }
 
-private func discoveredModuleRoot(module: public_model.ModuleDoc,
+private func discoveredPackageSourceRoot(module: public_model.ModuleDoc,
     packageDoc: public_model.PackageDoc, origins: Array<SourceFileOrigin>): ?String {
     if (packageDoc.sourceFiles.isEmpty()) { return None }
     var actualRoot: ?String = None
+    var packageRoot: ?String = None
     for (logicalPath in packageDoc.sourceFiles) {
         let origin = match (doctestOriginForLogicalPath(origins, logicalPath)) {
             case Some(value) => value
@@ -421,8 +442,34 @@ private func discoveredModuleRoot(module: public_model.ModuleDoc,
             case Some(value) => if (value != origin.actualRoot) { return None }
             case None => actualRoot = Some(origin.actualRoot)
         }
+        let candidate = try {
+            canonicalize(Path(origin.actualPath).parent.toString()).toString()
+        } catch (_: Exception) { return None }
+        match (packageRoot) {
+            case None => packageRoot = Some(candidate)
+            case Some(value) =>
+                var common = value
+                if (hostPathIsWithin(common, candidate)) {
+                    ()
+                } else if (hostPathIsWithin(candidate, common)) {
+                    common = candidate
+                } else {
+                    var found = false
+                    while (true) {
+                        let parent = Path(common).parent.normalize().toString()
+                        if (parent == common) { break }
+                        common = parent
+                        if (hostPathIsWithin(common, candidate)) {
+                            found = true
+                            break
+                        }
+                    }
+                    if (!found) { return None }
+                }
+                packageRoot = Some(common)
+        }
     }
-    actualRoot
+    packageRoot
 }
 
 private func packageSourceRoot(documentation: public_model.DocumentationSet,
@@ -436,26 +483,25 @@ private func packageSourceRoot(documentation: public_model.DocumentationSet,
         case Some(value) => value
         case None => throw IllegalStateException("doctest package module is unavailable")
     }
-    let moduleRoot = if (!sourceOrigins.isEmpty()) {
-        let discovered = match (discoveredModuleRoot(resolvedModule, packageDoc, sourceOrigins)) {
+    if (!sourceOrigins.isEmpty()) {
+        let discovered = match (discoveredPackageSourceRoot(resolvedModule, packageDoc, sourceOrigins)) {
             case Some(value) => value
             case None => throw IllegalStateException(
                 "doctest package root is unavailable from source discovery: " + packageDoc.name)
         }
-        try { canonicalize(discovered).toString() } catch (_: Exception) {
+        return try { Path(canonicalize(discovered).toString()) } catch (_: Exception) {
             throw IllegalStateException("doctest package root is unavailable")
         }
+    }
+    let modulePath = if (resolvedModule.sourcePrefix.isEmpty()) {
+        projectRoot
     } else {
-        let modulePath = if (resolvedModule.sourcePrefix.isEmpty()) {
-            projectRoot
-        } else {
-            projectRoot.join(resolvedModule.sourcePrefix)
-        }
-        try {
-            canonicalize(modulePath.toString()).toString()
-        } catch (_: Exception) {
-            throw IllegalStateException("doctest package root is unavailable")
-        }
+        projectRoot.join(resolvedModule.sourcePrefix)
+    }
+    let moduleRoot = try {
+        canonicalize(modulePath.toString()).toString()
+    } catch (_: Exception) {
+        throw IllegalStateException("doctest package root is unavailable")
     }
     let manifest = try {
         readTextBounded(Path(moduleRoot).join("cjpm.toml"), 256 * 1024)

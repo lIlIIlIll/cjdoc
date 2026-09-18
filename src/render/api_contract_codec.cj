@@ -533,6 +533,9 @@ public func decodeApiContractSnapshot(text: String): ApiContractSnapshot {
     let exposures = ArrayList<ApiContractExposure>()
     index = 0
     for (node in jsonArrayValues(exposuresNode)) {
+        if (exposures.size >= API_CONTRACT_MAX_ENTRIES) {
+            throw IllegalArgumentException("API surface exceeds ${API_CONTRACT_MAX_ENTRIES} exposures")
+        }
         if (legacy) {
             exposures.add(decodeLegacyContractExposure(node, "$.exposures[" + index.toString() + "]"))
         } else {

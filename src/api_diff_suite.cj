@@ -36,6 +36,21 @@ private func apiTestRelationshipDeclaration(id: String, relationships: Array<Str
         sourceFingerprint: contractFingerprint("source"),
         metadataFingerprint: contractFingerprint("metadata"))
 }
+private func apiTestGenericDeclaration(id: String, genericParameters: Array<String>): ApiContractDeclaration {
+    ApiContractDeclaration(id, "cjdoc:module:v1:test", "test", "class", "Box",
+        "test.Box", "public", "resolved", sourceApiSignature: ["public", "class", "Box"],
+        genericParameters: genericParameters, documentationFingerprint: contractFingerprint("doc"),
+        sourceFingerprint: contractFingerprint("source"),
+        metadataFingerprint: contractFingerprint("metadata"))
+}
+
+private func apiTestVisibilityDeclaration(id: String, visibility: String): ApiContractDeclaration {
+    ApiContractDeclaration(id, "cjdoc:module:v1:test", "test", "function", "visible",
+        "test.visible", visibility, "resolved", sourceApiSignature: [visibility, "func", "visible"],
+        documentationFingerprint: contractFingerprint("doc"),
+        sourceFingerprint: contractFingerprint("source"),
+        metadataFingerprint: contractFingerprint("metadata"))
+}
 
 private func apiTestSnapshot(declarations: Array<ApiContractDeclaration>,
     exposures!: Array<ApiContractExposure> = []): ApiContractSnapshot {
@@ -121,6 +136,36 @@ class ApiDiffSuite {
         let report = compareApiContracts(baseline, current)
         @Expect(report.summary.breaking, 1)
         @Expect(apiDiffExitCode(report, true, false), 1)
+    }
+
+    @TestCase
+    func resolvedGenericArityRemovalIsBreaking(): Unit {
+        let baseline = apiTestSnapshot([apiTestGenericDeclaration("box", ["T"])])
+        let current = apiTestSnapshot([apiTestGenericDeclaration("box", [])])
+        let report = compareApiContracts(baseline, current)
+        @Expect(report.summary.breaking, 1)
+        @Expect(apiDiffExitCode(report, true, false), 1)
+    }
+
+    @TestCase
+    func visibilityWideningIsNotPotentiallyBreaking(): Unit {
+        let baseline = apiTestSnapshot([apiTestVisibilityDeclaration("visible", "protected")])
+        let current = apiTestSnapshot([apiTestVisibilityDeclaration("visible", "public")])
+        let report = compareApiContracts(baseline, current)
+        @Expect(report.summary.breaking, 0)
+        @Expect(report.summary.potentiallyBreaking, 0)
+        @Expect(apiDiffExitCode(report, true, true), 0)
+    }
+
+    @TestCase
+    func newEnumAndCasesAreAdditive(): Unit {
+        let enumDeclaration = apiTestEnumDeclaration("enum", "enum", "Choice", enumNonExhaustive: Some(false))
+        let caseDeclaration = apiTestEnumDeclaration("case", "enumCase", "Ready", ownerId: Some("enum"))
+        let report = compareApiContracts(apiTestSnapshot([]),
+            apiTestSnapshot([enumDeclaration, caseDeclaration]))
+        @Expect(report.summary.additive, 2)
+        @Expect(report.summary.potentiallyBreaking, 0)
+        @Expect(apiDiffExitCode(report, true, true), 0)
     }
 
     @TestCase
