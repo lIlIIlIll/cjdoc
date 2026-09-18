@@ -83,7 +83,10 @@ internal func loadDoctestConfig(projectRoot: String): DoctestConfig {
     var jobs = DOCTEST_DEFAULT_JOBS
     let seen = HashSet<String>()
     for (rawLine in text.split("\n")) {
-        let line = rawLine.trimAscii()
+        // TOML permits comments after table headers as well as values. Strip
+        // the comment before classifying the line so a documented
+        // '[doctest] # ...' table still owns the following settings.
+        let line = stripTomlComment(rawLine.trimAscii())
         if (line.isEmpty() || line.startsWith("#")) { continue }
         if (line.startsWith("[") && line.endsWith("]")) {
             section = line.removePrefix("[").removeSuffix("]").trimAscii()
