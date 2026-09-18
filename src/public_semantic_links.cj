@@ -149,9 +149,12 @@ private func semanticLinkLocalUrl(symbolId: String): String {
     "symbols/symbol-${bounded}.html"
 }
 
-private func semanticLinkDiagnostic(symbol: public_model.SymbolDoc, code: String,
+private func semanticLinkDiagnostic(symbol: public_model.SymbolDoc, severity: String, code: String,
     message: String): public_model.Diagnostic {
-    public_model.Diagnostic("warning", code, message, source: Some(symbol.source), symbolId: Some(symbol.id))
+    public_model.Diagnostic(severity, code, message, source: Some(symbol.source), symbolId: Some(symbol.id))
+}
+private func semanticLinkSeverity(rule: String): ?String {
+    Some("warning")
 }
 
 private func resolveExternalLink(target: String, resolvers: Array<ExternalDocResolver>): (String, String) {
@@ -208,7 +211,7 @@ private func resolveSemanticLinkNode(node: public_model.MarkdownNode, owner: pub
                     metadata.semanticState = "ambiguous"
                     metadata.semanticTargetSymbolId = None
                     metadata.semanticExternalUrl = None
-                    match (semanticLinkSeverity(config, "ambiguous-link")) {
+                    match (semanticLinkSeverity("ambiguous-link")) {
                         case Some(severity) => diagnostics.add(semanticLinkDiagnostic(owner, severity, "CJDOC2030",
                             "semantic link target '${target}' is ambiguous"))
                         case None => ()
@@ -229,7 +232,7 @@ private func resolveSemanticLinkNode(node: public_model.MarkdownNode, owner: pub
                             "semantic link target '${target}' could not be resolved"
                         }
                         let rule = if (state == "ambiguous") { "ambiguous-link" } else { "unresolved-type-link" }
-                        match (semanticLinkSeverity(config, rule)) {
+                        match (semanticLinkSeverity(rule)) {
                             case Some(severity) => diagnostics.add(semanticLinkDiagnostic(owner, severity, code, message))
                             case None => ()
                         }
