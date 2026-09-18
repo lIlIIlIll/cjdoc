@@ -192,19 +192,31 @@ def validate_schema_document(name: str, value: object) -> None:
                 set(items.get("required", [])) != expected_entry_fields or \
                 set(items.get("properties", {})) != expected_entry_fields:
             raise ValueError("search-index schema entry shape is invalid")
-    elif name == "api-surface":
+    elif name in ("api-surface", "api-surface-v1", "api-diff"):
         definitions = value.get("$defs")
-        if not isinstance(definitions, dict) or not {
-            "declaration", "exposure", "sourceApiSignature", "symbolId", "moduleId"
-        }.issubset(definitions):
-            raise ValueError("api-surface schema definitions are incomplete")
+        if not isinstance(definitions, dict):
+            raise ValueError(f"{name} schema definitions are missing")
+        required = {
+            "declaration", "exposure", "sourceApiSignature", "fingerprint"
+        } if name == "api-surface" else {
+            "declaration", "exposure", "sourceApiSignature"
+        } if name == "api-surface-v1" else {
+            "identity", "summary", "evidence", "entry", "nullableString"
+        }
+        if not required.issubset(definitions):
+            raise ValueError(f"{name} schema definitions are incomplete")
     elif name == "documentation-coverage":
         definitions = value.get("$defs")
         if not isinstance(definitions, dict) or "counts" not in definitions or \
                 properties.get("symbols") != {"$ref": "#/$defs/counts"} or \
                 properties.get("parameters") != {"$ref": "#/$defs/counts"}:
             raise ValueError("documentation-coverage schema counts shape is invalid")
-
+    elif name == "doctest-results":
+        definitions = value.get("$defs")
+        if not isinstance(definitions, dict) or not {"nullableInteger", "summary", "result"}.issubset(definitions) or \
+                properties.get("summary") != {"$ref": "#/$defs/summary"} or \
+                properties.get("results", {}).get("items") != {"$ref": "#/$defs/result"}:
+            raise ValueError("doctest-results schema shape is invalid")
 
 def verify_schema_set(repo: Path) -> None:
     directory = lexical_absolute(repo / "docs/schema")

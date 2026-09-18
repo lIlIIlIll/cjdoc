@@ -105,8 +105,28 @@ generated <你的项目目录>/target/doc
 | 生成 HTML | `cjdoc generate --project . --format html` | `target/doc/html/index.html` |
 | 生成 Markdown | `cjdoc generate --project . --format markdown` | `target/doc/markdown/index.md` |
 | 生成 JSON | `cjdoc generate --project . --format json` | `target/doc/docs.json` |
+| 生成 API snapshot | `cjdoc generate --project . --format api-surface --stdout > api-surface.json` | `api-surface.json` |
 | 检查文档问题 | `cjdoc check --project .` | 终端诊断，成功退出码为 `0` |
 
+启用可执行的 `@example` Cangjie 代码块，在项目根的 `cjdoc.toml` 中加入：
+
+```toml
+[doctest]
+mode = "warn"       # off（默认）、warn 或 deny
+timeout-ms = 2000
+memory-mb = 2048    # Cangjie native backend requires at least 2048 MiB
+jobs = 1
+```
+
+`generate` 会把结果写入 `target/doc/doctest/results.json`；`warn` 只报告失败，`deny` 返回退出码 `1`。每个示例在独立临时工作目录中通过参数数组启动编译器和程序，不经过 shell；`--stdout` 不能与启用的 doctest 同时使用。结果 schema 是 `cjdoc.doctest/1`。
+
+比较 API snapshot 使用 `diff`：
+
+```bash
+cjdoc diff --baseline api-surface.json --current api-surface-next.json --format text --deny-breaking-api
+```
+
+`diff` 默认保留报告并返回 `0`；deny 选项让对应 breaking 分类返回 `1`，参数或 snapshot 错误返回 `2`。当前生成器输出 `cjdoc.api-surface/2`；v1 snapshot 仍可作为只读迁移输入，JSON diff 报告的版本是 `cjdoc.api-diff/1`。
 
 如果项目在 GitHub 上并希望声明页显示 `View source`，生成时显式提供仓库根和 revision：
 

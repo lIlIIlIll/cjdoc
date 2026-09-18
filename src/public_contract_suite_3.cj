@@ -53,18 +53,27 @@ class PublicApiContractsSuite3 {
         let related = DocumentationEngine().generate(
             GenerationRequest(PUBLIC_FIXTURE_PROJECTS + "basic", lintProfile: "off",
                 providerFactories: [RelationshipFactory()], astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
-        var verifiedRelationship = false
+        var verifiedProviderRelationship = false
+        var verifiedAstRelationship = false
         for (declaration in related.declarations) {
             if (declaration.kind == "class" && declaration.name == "Parser") {
                 @Expect(declaration.typeRelationships.size, 1)
                 @Expect(declaration.typeRelationships[0].target.semantic.state, "resolved")
-                @Expect(declaration.symbolRelationships.size, 1)
-                @Expect(declaration.symbolRelationships[0].state, "resolved")
-                @Expect(declaration.symbolRelationships[0].targetSymbolId.isSome())
-                verifiedRelationship = true
+                @Expect(declaration.symbolRelationships.size, 2)
+                for (relationship in declaration.symbolRelationships) {
+                    if (relationship.kind == "implements" && relationship.state == "resolved" &&
+                        relationship.targetSymbolId.isSome()) {
+                        verifiedProviderRelationship = true
+                    }
+                    if (relationship.kind == "superType" && relationship.state == "resolved" &&
+                        relationship.targetSymbolId.isSome()) {
+                        verifiedAstRelationship = true
+                    }
+                }
             }
         }
-        @Expect(verifiedRelationship)
+        @Expect(verifiedProviderRelationship)
+        @Expect(verifiedAstRelationship)
     }
 
     @TestCase

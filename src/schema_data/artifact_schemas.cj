@@ -1,6 +1,6 @@
 package cjdoc.schema_data
 
-public let API_SURFACE_SCHEMA = """
+public let API_SURFACE_V1_SCHEMA = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface.schema.json",
@@ -52,6 +52,140 @@ public let API_SURFACE_SCHEMA = """
   }
 }
 """
+
+public let API_SURFACE_SCHEMA = """
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface-v2.schema.json",
+  "title": "cjdoc API surface v2",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "project", "audience", "cfgProfile", "collectionState", "declarations", "exposures"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.api-surface/2"},
+    "project": {"type": "string", "minLength": 1},
+    "audience": {"enum": ["external", "package", "all"]},
+    "cfgProfile": {"type": "string", "minLength": 1},
+    "collectionState": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
+    "declarations": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/declaration"}},
+    "exposures": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/exposure"}}
+  },
+  "$defs": {
+    "state": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
+    "nullableString": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+    "nullableBool": {"anyOf": [{"type": "boolean"}, {"type": "null"}]},
+    "fingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "sourceApiSignature": {
+      "type": "object", "additionalProperties": false, "required": ["state", "tokens"],
+      "properties": {"state": {"$ref": "#/$defs/state"}, "tokens": {"type": "array", "items": {"type": "string"}}}
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false, "required": ["state", "value"],
+      "properties": {"state": {"$ref": "#/$defs/state"}, "value": {"$ref": "#/$defs/nullableString"}}
+    },
+    "returnEvidence": {
+      "type": "object", "additionalProperties": false, "required": ["state", "type"],
+      "properties": {"state": {"$ref": "#/$defs/state"}, "type": {"$ref": "#/$defs/nullableString"}}
+    },
+    "parameter": {
+      "type": "object", "additionalProperties": false, "required": ["name", "type", "default"],
+      "properties": {"name": {"type": "string", "minLength": 1}, "type": {"$ref": "#/$defs/evidence"}, "default": {"$ref": "#/$defs/evidence"}}
+    },
+    "declaration": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "moduleId", "packageName", "ownerId", "kind", "name", "qualifiedName", "visibility", "sourceApiSignature", "genericParameters", "parameters", "return", "relationships", "enumNonExhaustive", "documentationFingerprint", "sourceFingerprint", "metadataFingerprint", "collectionState"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1}, "moduleId": {"type": "string", "minLength": 1},
+        "packageName": {"type": "string", "minLength": 1}, "ownerId": {"$ref": "#/$defs/nullableString"},
+        "kind": {"type": "string", "minLength": 1}, "name": {"type": "string", "minLength": 1},
+        "qualifiedName": {"type": "string", "minLength": 1}, "visibility": {"type": "string", "minLength": 1},
+        "sourceApiSignature": {"$ref": "#/$defs/sourceApiSignature"},
+        "genericParameters": {"type": "array", "items": {"type": "string"}},
+        "parameters": {"type": "array", "items": {"$ref": "#/$defs/parameter"}},
+        "return": {"$ref": "#/$defs/returnEvidence"}, "relationships": {"type": "array", "items": {"type": "string"}},
+        "enumNonExhaustive": {"$ref": "#/$defs/nullableBool"},
+        "documentationFingerprint": {"$ref": "#/$defs/fingerprint"}, "sourceFingerprint": {"$ref": "#/$defs/fingerprint"},
+        "metadataFingerprint": {"$ref": "#/$defs/fingerprint"}, "collectionState": {"$ref": "#/$defs/state"}
+      }
+    },
+    "exposure": {
+      "type": "object", "additionalProperties": false, "required": ["id", "moduleId", "packageName", "exposedName", "targetIds", "state"],
+      "properties": {"id": {"type": "string", "minLength": 1}, "moduleId": {"type": "string", "minLength": 1}, "packageName": {"type": "string", "minLength": 1}, "exposedName": {"type": "string", "minLength": 1}, "targetIds": {"type": "array", "minItems": 1, "items": {"type": "string"}}, "state": {"$ref": "#/$defs/state"}}
+    }
+  }
+}
+"""
+
+public let API_DIFF_SCHEMA = """
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-diff.schema.json",
+  "title": "cjdoc API diff v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["schemaVersion", "baseline", "current", "comparisonState", "summary", "entries"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.api-diff/1"},
+    "baseline": {"$ref": "#/$defs/identity"}, "current": {"$ref": "#/$defs/identity"},
+    "comparisonState": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
+    "summary": {"$ref": "#/$defs/summary"}, "entries": {"type": "array", "maxItems": 400000, "items": {"$ref": "#/$defs/entry"}}
+  },
+  "$defs": {
+    "nullableString": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+    "identity": {"type": "object", "additionalProperties": false, "required": ["project", "audience", "cfgProfile", "schemaVersion", "collectionState"], "properties": {"project": {"type": "string", "minLength": 1}, "audience": {"type": "string", "minLength": 1}, "cfgProfile": {"type": "string", "minLength": 1}, "schemaVersion": {"type": "string", "minLength": 1}, "collectionState": {"type": "string", "minLength": 1}}},
+    "summary": {"type": "object", "additionalProperties": false, "required": ["breaking", "potentiallyBreaking", "additive", "documentationOnly", "metadataOnly", "unchanged"], "properties": {"breaking": {"type": "integer", "minimum": 0}, "potentiallyBreaking": {"type": "integer", "minimum": 0}, "additive": {"type": "integer", "minimum": 0}, "documentationOnly": {"type": "integer", "minimum": 0}, "metadataOnly": {"type": "integer", "minimum": 0}, "unchanged": {"type": "integer", "minimum": 0}}},
+    "evidence": {"type": "object", "additionalProperties": false, "required": ["field", "before", "after", "state"], "properties": {"field": {"type": "string", "minLength": 1}, "before": {"$ref": "#/$defs/nullableString"}, "after": {"$ref": "#/$defs/nullableString"}, "state": {"type": "string", "minLength": 1}}},
+    "entry": {"type": "object", "additionalProperties": false, "required": ["oldId", "newId", "kind", "classification", "matchState", "reasons", "evidence"], "properties": {"oldId": {"$ref": "#/$defs/nullableString"}, "newId": {"$ref": "#/$defs/nullableString"}, "kind": {"type": "string", "minLength": 1}, "classification": {"enum": ["breaking", "potentially-breaking", "additive", "documentation-only", "metadata-only", "unchanged"]}, "matchState": {"type": "string", "minLength": 1}, "reasons": {"type": "array", "items": {"type": "string"}}, "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}}}}
+  }
+}
+"""
+public let DOCTEST_RESULTS_SCHEMA = """
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doctest-results.schema.json",
+  "title": "cjdoc doctest results v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "mode", "timeoutMs", "memoryMb", "jobs", "summary", "results"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.doctest/1"},
+    "mode": {"enum": ["warn", "deny"]},
+    "timeoutMs": {"type": "integer", "minimum": 1, "maximum": 600000},
+    "memoryMb": {"type": "integer", "minimum": 2048, "maximum": 16384},
+    "jobs": {"type": "integer", "minimum": 1, "maximum": 64},
+    "summary": {"$ref": "#/$defs/summary"},
+    "results": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/result"}}
+  },
+  "$defs": {
+    "nullableInteger": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+    "summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["passed", "failed", "timedOut", "skipped"],
+      "properties": {
+        "passed": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0},
+        "timedOut": {"type": "integer", "minimum": 0},
+        "skipped": {"type": "integer", "minimum": 0}
+      }
+    },
+    "result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "symbolId", "qualifiedName", "title", "language", "status", "exitCode", "durationMs", "stdout", "stderr", "message"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "symbolId": {"type": "string", "minLength": 1},
+        "qualifiedName": {"type": "string", "minLength": 1},
+        "title": {"type": "string"},
+        "language": {"const": "cj"},
+        "status": {"enum": ["passed", "failed", "timeout", "skipped"]},
+        "exitCode": {"$ref": "#/$defs/nullableInteger"},
+        "durationMs": {"type": "integer", "minimum": 0},
+        "stdout": {"type": "string"}, "stderr": {"type": "string"},
+        "message": {"type": "string"}
+      }
+    }
+  }
+}
+"""
+
 
 public let DOCUMENTATION_COVERAGE_SCHEMA = """
 {

@@ -76,6 +76,23 @@ private func coveragePercent(documented: Int64, total: Int64): Int64 {
     if (total == 0) { 100 } else { documented * 100 / total }
 }
 
+private func apiSurfaceBaselineGate(documentation: public_model.DocumentationSet, path: String): Bool {
+    let baseline = readApiContractSnapshot(path)
+    let current = public_render.apiContractSnapshotForDocumentation(documentation)
+    let report = compareApiContracts(baseline, current)
+    for (entry in report.entries) {
+        if (entry.classification != "unchanged") {
+            let id = match (entry.newId) {
+                case Some(value) => value
+                case None => match (entry.oldId) { case Some(value) => value case None => "<unknown>" }
+            }
+            eprintln("error: API surface " + entry.classification + " at " + entry.kind + " " + id)
+            return false
+        }
+    }
+    true
+}
+
 private func contractGateExitCode(documentation: public_model.DocumentationSet,
     options: NewCliOptions): Int64 {
     var failed = false
@@ -84,38 +101,28 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
             public_render.documentationCoverageCounts(documentation)
         let symbolPercent = coveragePercent(documentedSymbols, symbols)
         let parameterPercent = coveragePercent(documentedParameters, parameters)
-        eprintln("documentation coverage: symbols ${documentedSymbols}/${symbols} (${symbolPercent}%), " +
-            "parameters ${documentedParameters}/${parameters} (${parameterPercent}%)")
-        if (options.minSymbolCoverage.isSome() &&
-            symbolPercent < options.minSymbolCoverage.getOrThrow()) {
-            eprintln("error: symbol documentation coverage ${symbolPercent}% is below " +
-                "${options.minSymbolCoverage.getOrThrow()}%")
+        eprintln("documentation coverage: symbols " + documentedSymbols.toString() + "/" + symbols.toString() +
+            " (" + symbolPercent.toString() + "%), parameters " + documentedParameters.toString() + "/" +
+            parameters.toString() + " (" + parameterPercent.toString() + "%)")
+        if (options.minSymbolCoverage.isSome() && symbolPercent < options.minSymbolCoverage.getOrThrow()) {
+            eprintln("error: symbol documentation coverage is below the configured threshold")
             failed = true
         }
-        if (options.minParameterCoverage.isSome() &&
-            parameterPercent < options.minParameterCoverage.getOrThrow()) {
-            eprintln("error: parameter documentation coverage ${parameterPercent}% is below " +
-                "${options.minParameterCoverage.getOrThrow()}%")
+        if (options.minParameterCoverage.isSome() && parameterPercent < options.minParameterCoverage.getOrThrow()) {
+            eprintln("error: parameter documentation coverage is below the configured threshold")
             failed = true
         }
     }
     match (options.apiSurfaceBaseline) {
         case Some(path) =>
-            let actual = public_render.renderDocumentationFormats(documentation,
-                ["api-surface"])[0].content
-            let expected = readTextBounded(Path(path), 64 * 1024 * 1024)
-            if (actual != expected) {
-                eprintln("error: API surface differs from baseline '${path}'")
-                failed = true
-            }
+            if (!apiSurfaceBaselineGate(documentation, path)) { failed = true }
         case None => ()
     }
     if (failed) { 1 } else { 0 }
 }
-
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndiagnostics\ncfg-matrix\nsearch-index\napi-surface\ndocumentation-coverage\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndiagnostics\ncfg-matrix\nsearch-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage\ndoctest-results\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA
@@ -125,8 +132,11 @@ internal func schemaTextForCli(name: String): String {
         case "cfg-matrix" => CFG_MATRIX_SCHEMA
         case "search-index" => SEARCH_INDEX_SCHEMA
         case "api-surface" => API_SURFACE_SCHEMA
+        case "api-surface-v1" => API_SURFACE_V1_SCHEMA
+        case "api-diff" => API_DIFF_SCHEMA
         case "documentation-coverage" => DOCUMENTATION_COVERAGE_SCHEMA
-        case _ => throw IllegalArgumentException("unknown schema '${name}'")
+        case "doctest-results" => DOCTEST_RESULTS_SCHEMA
+        case _ => throw IllegalArgumentException("unknown schema " + name)
     }
 }
 
@@ -176,9 +186,34 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
             astPreflightExecutable: astPreflightExecutable,
             cjpmCacheRoot: options.cjpmCacheRoot))
     }
+    var sourceOrigins: Array<SourceFileOrigin> = []
     var documentation = match (generationRequest) {
-        case Some(request) => DocumentationEngine().generate(request)
+        case Some(request) =>
+            let generated = generateDocumentationWithSource(request, defaultSemanticProvider())
+            sourceOrigins = generated.internalDocumentation.sourceFileOrigins.toArray()
+            generated.publicDocumentation
         case None => decodeValidatedDocIr(readDocIrInput(Path(options.input.getOrThrow())))
+    }
+    let doctestConfig = if (generationRequest.isSome()) {
+        loadDoctestConfig(options.project)
+    } else {
+        DoctestConfig()
+    }
+    var doctestReport: ?DoctestReport = None
+    if (generationRequest.isSome() && doctestConfig.mode != "off") {
+        if (options.stdout) {
+            throw IllegalArgumentException("--stdout cannot be combined with enabled doctests")
+        }
+        let report = runDoctests(documentation, doctestConfig,
+            Path(options.project).join("target").join("cjdoc"),
+            projectRoot: Path(options.project), sourceOrigins: sourceOrigins,
+            cfgValues: options.cfgValues.toArray())
+        doctestReport = Some(report)
+        eprintln(doctestReportSummary(report))
+        if (doctestReportHasFailure(report)) {
+            let severity = if (doctestConfig.mode == "deny") { "error" } else { "warning" }
+            eprintln(severity + "[CJDOC3010]: doctest execution reported failures")
+        }
     }
     var artifacts: Array<public_render.RenderArtifact> = []
     if (options.command != "check") {
@@ -186,11 +221,24 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
             orderedFormats(options), generationRequest, locale: options.locale,
             markdownLayout: options.markdownLayout)
         documentation = renderedDocumentation
-        artifacts = renderedArtifacts
+        let artifactList = ArrayList<public_render.RenderArtifact>()
+        artifactList.add(all: renderedArtifacts)
+        match (doctestReport) {
+            case Some(report) =>
+                artifactList.add(public_render.RenderArtifact(
+                    "doctest/results.json", "application/json", encodeDoctestReport(report)))
+            case None => ()
+        }
+        artifacts = artifactList.toArray()
     }
     printPublicDiagnostics(documentation)
     let diagnosticsExit = publicExitCode(documentation, options.denyWarnings)
     let contractExit = contractGateExitCode(documentation, options)
+    let doctestExit = match (doctestReport) {
+        case Some(report) =>
+            if (doctestConfig.mode == "deny" && doctestReportHasFailure(report)) { 1 } else { 0 }
+        case None => 0
+    }
     if (options.command != "check") {
         if (options.stdout) {
             getStdOut().write(artifacts[0].content.toArray())
@@ -200,10 +248,22 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
                 forceOwned: options.forceOwned)
         }
     }
-    if (diagnosticsExit != 0 || contractExit != 0) { 1 } else { 0 }
+    if (diagnosticsExit != 0 || contractExit != 0 || doctestExit != 0) { 1 } else { 0 }
 }
 
-private func selectedOutputDirectory(options: NewCliOptions): String {
+private func runApiDiff(options: NewCliOptions): Int64 {
+    let baseline = readApiContractSnapshot(options.baselineInput.getOrThrow())
+    let current = readApiContractSnapshot(options.currentInput.getOrThrow())
+    let report = compareApiContracts(baseline, current)
+    if (options.diffFormat == "json") {
+        getStdOut().write(public_render.encodeApiDiffReport(report).toArray())
+    } else {
+        print(renderApiDiffText(report))
+    }
+    apiDiffExitCode(report, options.denyBreakingApi, options.denyPotentiallyBreakingApi)
+}
+
+ private func selectedOutputDirectory(options: NewCliOptions): String {
     match (options.output) {
         case Some(path) => path
         case None => if (options.command == "render") { "target/doc" }
@@ -229,6 +289,7 @@ func runCli(args: Array<String>): Int64 {
     }
     try {
         if (options.command == "schema") { return runSchema(options.schemaName) }
+        if (options.command == "diff") { return runApiDiff(options) }
         if (options.command == "check" || options.stdout) {
             let requestedCache: ?String = if (options.command == "render") { None }
                 else { selectedSourceCacheDirectory(options) }

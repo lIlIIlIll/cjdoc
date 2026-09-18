@@ -86,6 +86,8 @@ public func parse(text: String): Int64 {
 
 示例内容会持续到下一个顶层结构化标签（例如 `@param` 或 `@return`）；代码围栏内部出现的 `@param` 等文本会保持为示例代码，不会被误解析成文档标签。
 
+文档页的“声明详情”会把源码能够识别的继承、扩展和 `override` 关系投影为导航链接。目标在当前文档集中且匹配唯一时，JSON/HTML 使用稳定 `SymbolId`；目标缺失或不唯一时保留原始显示并标记 `unavailable` 或 `ambiguous`，不会生成猜测链接。AST fallback 只生成同一模块内可证明的反向 `subType`、`extendedBy` 关系；没有 provider 可靠目标时，AST fallback 的 `override` 保持 `unavailable`。
+
 文档注释应紧邻它描述的声明。默认生成 external 文档，所以示例声明应为 `public` 或 `protected`。
 
 ## 重新生成文档
@@ -136,7 +138,22 @@ cjdoc generate --project . --format json
 cjdoc generate --project . --format json --stdout > docs.json
 ```
 
+
 `--stdout` 只能与一个 JSON 格式一起使用。诊断写入 stderr，所以重定向后的 `docs.json` 仍是单个 JSON 文档。
+
+## 运行 doctest
+
+`@example` 标签中的 ` ```cj ` 或 ` ```cangjie ` fenced code 可以选择性执行。项目根的 `cjdoc.toml` 使用独立的 `[doctest]` 表：
+
+```toml
+[doctest]
+mode = "warn"       # off（默认）、warn 或 deny
+timeout-ms = 2000
+memory-mb = 2048    # Cangjie native backend requires at least 2048 MiB
+jobs = 1
+```
+
+`warn` 会继续生成并返回 `0`，`deny` 在编译失败、运行失败或超时后返回 `1`。生成目录会增加 `doctest/results.json`，其版本为 `cjdoc.doctest/1`；`check` 会执行检查但不写 artifact。每个代码块在独立工作目录编译和运行，命令通过参数数组传递，不经过 shell。启用 doctest 时不能使用 `--stdout`，因为该选项必须保持单一 JSON 输出。
 
 ## 生成 API surface 和 coverage
 
@@ -145,6 +162,14 @@ cjdoc generate --project . --format json --stdout > docs.json
 ```bash
 cjdoc generate --project . --format api-surface --stdout > api-surface.json
 ```
+
+用 `diff` 比较两个 API snapshot。它先按稳定 symbol id 匹配，再用模块、包、owner、kind、name 做唯一回退匹配；证据不足时报告 `potentially-breaking`，不会假装已经证明 breaking：
+
+```bash
+cjdoc diff --baseline api-surface.json --current api-surface-next.json --format text --deny-breaking-api --deny-potentially-breaking-api
+```
+
+默认只报告差异并返回 `0`。显式 deny 选项分别把 breaking 或证据不足的 potentially-breaking 变更变成失败；`--format json` 输出 `cjdoc.api-diff/1` 报告，适合 CI 采集。v1 API snapshot 仍可作为只读 baseline 输入；当前生成器只生成 v2。
 
 用 `coverage` 查看声明和参数的文档覆盖率：
 

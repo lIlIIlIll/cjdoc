@@ -45,6 +45,12 @@ class NewCliRegressionTest {
         @Expect(runCli(["check", "--locale", "en"]), 2)
         @Expect(runCli(["check", "--markdown-layout", "single", "--locale", "en"]), 2)
     }
+    @TestCase
+    func nonDiffCommandsRejectApiDenyFlags(): Unit {
+        @Expect(runCli(["check", "--deny-breaking-api"]), 2)
+        @Expect(runCli(["generate", "--deny-potentially-breaking-api"]), 2)
+        @Expect(runCli(["render", "--input", "missing.json", "--deny-breaking-api"]), 2)
+    }
 
     @TestCase
     func docIrInputMustBeRegularAndWithinTheReadLimit(): Unit {
