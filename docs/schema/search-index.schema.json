@@ -17,7 +17,7 @@
           "canonicalId": {"type": "string", "pattern": "^(cjdoc:v2:|cjdoc:concept:).+$"},
           "exposure": {"type": "boolean"}, "name": {"type": "string"},
           "qualifiedName": {"type": "string", "minLength": 1}, "kind": {"type": "string", "minLength": 1},
-          "packageName": {"type": "string", "minLength": 1}, "summary": {"type": "string"},
+          "packageName": {"anyOf": [{"type": "string", "minLength": 1}, {"const": ""}]}, "summary": {"type": "string"},
           "href": {"type": "string", "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\).+$"}
         }
       }

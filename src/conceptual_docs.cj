@@ -203,6 +203,23 @@ private func conceptualRoute(route: String, fallback: String): String {
     normalized
 }
 
+private func conceptualPathWithinRoot(root: Path, path: Path): Bool {
+    let canonicalRoot = canonicalize(root).toString()
+    let canonicalPath = canonicalize(path).toString()
+    if (canonicalPath == canonicalRoot) { return false }
+    canonicalPath.startsWith(canonicalRoot + "/") || canonicalPath.startsWith(canonicalRoot + "\\")
+}
+
+private func conceptualRejectSymlinkComponents(root: Path, source: String): Unit {
+    var candidate = root
+    for (segment in source.split("/")) {
+        candidate = candidate.join(segment)
+        if (exists(candidate) && FileInfo(candidate).isSymbolicLink()) {
+            throw IllegalArgumentException("conceptual Markdown source must not use a symbolic link: ${source}")
+        }
+    }
+}
+
 private func conceptualRead(root: Path, source: String): String {
     if (!conceptualSafeRelative(source)) {
         throw IllegalArgumentException("conceptual source path is unsafe")
@@ -210,6 +227,10 @@ private func conceptualRead(root: Path, source: String): String {
     let path = root.join(source)
     if (!exists(path)) {
         throw IllegalArgumentException("conceptual Markdown source does not exist: ${source}")
+    }
+    conceptualRejectSymlinkComponents(root, source)
+    if (!conceptualPathWithinRoot(root, path)) {
+        throw IllegalArgumentException("conceptual Markdown source escapes the project root: ${source}")
     }
     readTextBounded(path, CONCEPTUAL_PAGE_MAX_BYTES)
 }
@@ -342,7 +363,7 @@ private func conceptualRelativePrefix(route: String): String {
 }
 
 private func conceptualIndexHref(route: String): String {
-    if (route == "concepts/index.html") { "index.html" } else { "../index.html" }
+    conceptualRelativePrefix(route) + "index.html"
 }
 
 private func conceptualHtmlPage(page: ConceptualPage, body: String): String {

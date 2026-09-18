@@ -15,7 +15,7 @@
   "$defs": {
     "safePath": {
       "type": "string", "minLength": 1,
-      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\)(?!.*(^|/)[.][.]?(/|$))(?!.*(^|/)latest(/|$)).+$"
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(^|/)[.][.]?(/|$))(?!.*(^|/)latest(/|$)).+$"
     },
     "version": {
       "type": "object", "additionalProperties": false,

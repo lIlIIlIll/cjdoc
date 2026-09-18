@@ -124,7 +124,7 @@ private func configuredCoverageGate(documentation: public_model.DocumentationSet
     for (override in config.packageOverrides) {
         for (group in report.packages where group.name == override.packageName) {
             for (metric in metrics) {
-                match (override.thresholds.value(metric)) {
+                match (config.packageThreshold(group.name, metric)) {
                     case Some(threshold) =>
                         passed = checkCoverageThreshold("package ${group.name}", metric, group.metrics, threshold) && passed
                     case None => ()
@@ -154,7 +154,7 @@ private func apiSurfaceBaselineGate(documentation: public_model.DocumentationSet
 private func contractGateExitCode(documentation: public_model.DocumentationSet,
     options: NewCliOptions): Int64 {
     var failed = false
-    if (!configuredCoverageGate(documentation, options.project)) { failed = true }
+    if (options.command != "render" && !configuredCoverageGate(documentation, options.project)) { failed = true }
     if (options.minSymbolCoverage.isSome() || options.minParameterCoverage.isSome()) {
         let (symbols, documentedSymbols, parameters, documentedParameters) =
             public_render.documentationCoverageCounts(documentation)

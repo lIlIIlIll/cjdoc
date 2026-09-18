@@ -283,7 +283,7 @@ public let VERSIONS_SCHEMA = """
   "$defs": {
     "safePath": {
       "type": "string", "minLength": 1,
-      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(^|/)[.][.]?(/|$))(?!.*(^|/)latest(/|$)).+$"
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\\\\\)(?!.*(^|/)[.][.]?(/|$))(?!.*(^|/)latest(/|$)).+$"
     },
     "version": {
       "type": "object", "additionalProperties": false,
@@ -320,7 +320,7 @@ public let NAVIGATION_INDEX_SCHEMA = """
   "$defs": {
     "safePath": {
       "type": "string", "minLength": 1,
-      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(^|/)[.][.]?(/|$)).+$"
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\\\\\)(?!.*(^|/)[.][.]?(/|$)).+$"
     },
     "project": {
       "type": "object", "additionalProperties": false,

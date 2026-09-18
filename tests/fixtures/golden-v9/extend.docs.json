@@ -812,7 +812,12 @@
         }
       ],
       "symbolRelationships": [
-        
+        {
+          "kind": "extensionTarget",
+          "targetDisplay": "Box < String >",
+          "state": "resolved",
+          "targetSymbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::class:Box#g1()"
+        }
       ],
       "documentation": {
         "rawText": "/** First extension. */",
@@ -920,7 +925,12 @@
         }
       ],
       "symbolRelationships": [
-        
+        {
+          "kind": "extensionTarget",
+          "targetDisplay": "Box < String >",
+          "state": "resolved",
+          "targetSymbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::class:Box#g1()"
+        }
       ],
       "documentation": {
         "rawText": "/** Second extension. */",

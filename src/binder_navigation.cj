@@ -254,6 +254,31 @@ private func resolveSourceTypeRelations(source: SourceSnapshot, documentation: D
     }
 }
 
+private func resolveSourceTypeRelations(source: SourceSnapshot, documentation: DocumentationSet,
+    idsBySourceKey: HashMap<String, String>): Unit {
+    var index: Int64 = 0
+    while (index < source.declarations.size && index < documentation.symbols.size) {
+        let sourceDeclaration = source.declarations[index]
+        let symbol = documentation.symbols[index]
+        if (supportsNavigation(documentation, symbol.moduleId)) {
+            for (relationship in sourceDeclaration.relationships) {
+                let target = findNavigationTarget(relationship.targetSpelling, sourceDeclaration, source,
+                    idsBySourceKey)
+                setNavigationRelationship(symbol, relationship.kind, relationship.targetSpelling, target)
+                match (target.symbolId) {
+                    case Some(targetId) => match (reverseKind(relationship.kind)) {
+                        case Some(reverse) => addReverseRelationship(documentation.symbols, targetId, reverse,
+                            symbol.qualifiedName, symbol.id)
+                        case None => ()
+                    }
+                    case None => ()
+                }
+            }
+        }
+        index++
+    }
+}
+
 private func ownerSymbol(symbols: ArrayList<SymbolDoc>, symbol: SymbolDoc): ?SymbolDoc {
     match (symbol.ownerId) {
         case Some(ownerId) =>

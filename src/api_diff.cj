@@ -12,8 +12,13 @@ private func optionText(value: ?String, fallback: String): String {
     match (value) { case Some(text) => text case None => fallback }
 }
 
-private func declarationKey(value: ApiContractDeclaration): String {
-    "${value.moduleId}\n${value.packageName}\n${optionText(value.ownerId, "")}\n${value.kind}\n${value.name}\n${joinedStrings(value.sourceApiSignature)}"
+private func declarationBucketKey(value: ApiContractDeclaration): String {
+    value.moduleId + "\n" + value.packageName + "\n" + optionText(value.ownerId, "") +
+        "\n" + value.kind + "\n" + value.name + "\n" + value.genericParameters.size.toString()
+}
+
+private func declarationSignatureKey(value: ApiContractDeclaration): String {
+    declarationBucketKey(value) + "\n" + joinedStrings(value.sourceApiSignature)
 }
 
 
@@ -455,7 +460,7 @@ private func declarationBuckets(snapshot: ApiContractSnapshot):
     HashMap<String, ArrayList<ApiContractDeclaration>> {
     let buckets = HashMap<String, ArrayList<ApiContractDeclaration>>()
     for (declaration in snapshot.declarations) {
-        let key = declarationKey(declaration)
+        let key = declarationBucketKey(declaration)
         match (buckets.get(key)) {
             case Some(values) => values.add(declaration)
             case None => buckets[key] = ArrayList<ApiContractDeclaration>([declaration])
@@ -463,7 +468,18 @@ private func declarationBuckets(snapshot: ApiContractSnapshot):
     }
     buckets
 }
-
+private func declarationSignatureBuckets(snapshot: ApiContractSnapshot):
+    HashMap<String, ArrayList<ApiContractDeclaration>> {
+    let buckets = HashMap<String, ArrayList<ApiContractDeclaration>>()
+    for (declaration in snapshot.declarations) {
+        let key = declarationSignatureKey(declaration)
+        match (buckets.get(key)) {
+            case Some(values) => values.add(declaration)
+            case None => buckets[key] = ArrayList<ApiContractDeclaration>([declaration])
+        }
+    }
+    buckets
+}
 private func validateIdentity(baseline: ApiContractSnapshot, current: ApiContractSnapshot): Unit {
     if (baseline.project != current.project || baseline.audience != current.audience ||
         (baseline.cfgProfile != "unknown" && current.cfgProfile != "unknown" &&
@@ -490,8 +506,24 @@ public func compareApiContracts(baseline: ApiContractSnapshot, current: ApiContr
     }
     let oldBuckets = declarationBuckets(baseline)
     let currentBuckets = declarationBuckets(current)
+    let currentSignatureBuckets = declarationSignatureBuckets(current)
     for (old in baseline.declarations where !matchedOld.contains(old.id)) {
-        let key = declarationKey(old)
+        let key = declarationSignatureKey(old)
+        match (currentSignatureBuckets.get(key)) {
+            case Some(values) =>
+                let candidates = ArrayList<ApiContractDeclaration>()
+                for (value in values where !matchedCurrent.contains(value.id)) { candidates.add(value) }
+                if (candidates.size == 1) {
+                    let value = candidates[0]
+                    entries.add(compareDeclaration(old, value, "fallback"))
+                    let _ = matchedOld.add(old.id)
+                    let _ = matchedCurrent.add(value.id)
+                }
+            case None => ()
+        }
+    }
+    for (old in baseline.declarations where !matchedOld.contains(old.id)) {
+        let key = declarationBucketKey(old)
         match (currentBuckets.get(key)) {
             case Some(values) =>
                 let candidates = ArrayList<ApiContractDeclaration>()
@@ -517,7 +549,7 @@ public func compareApiContracts(baseline: ApiContractSnapshot, current: ApiContr
         let _ = matchedOld.add(old.id)
     }
     for (value in current.declarations where !matchedCurrent.contains(value.id)) {
-        let key = declarationKey(value)
+        let key = declarationBucketKey(value)
         match (oldBuckets.get(key)) {
             case Some(values) =>
                 if (values.size > 1) {
