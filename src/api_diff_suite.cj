@@ -13,8 +13,24 @@ private func apiTestDeclaration(id: String, name: String, visibility!: String = 
         metadataFingerprint: contractFingerprint("metadata"))
 }
 
-private func apiTestSnapshot(declarations: Array<ApiContractDeclaration>): ApiContractSnapshot {
-    ApiContractSnapshot("api-diff-test", "external", "default", declarations: declarations)
+private func apiTestSnapshot(declarations: Array<ApiContractDeclaration>,
+    exposures!: Array<ApiContractExposure> = []): ApiContractSnapshot {
+    ApiContractSnapshot("api-diff-test", "external", "default", declarations: declarations,
+        exposures: exposures)
+}
+
+private func apiTestExposure(id: String, exposedName: String, targetId: String): ApiContractExposure {
+    ApiContractExposure(id, "cjdoc:module:v1:test", "test", exposedName, [targetId], state: "resolved")
+}
+
+private func apiTestEnumDeclaration(id: String, kind: String, name: String,
+    ownerId!: ?String = None, enumNonExhaustive!: ?Bool = None): ApiContractDeclaration {
+    ApiContractDeclaration(id, "cjdoc:module:v1:test", "test", kind, name,
+        "test." + name, "public", "unavailable", ownerId: ownerId,
+        enumNonExhaustive: enumNonExhaustive,
+        documentationFingerprint: contractFingerprint("doc"),
+        sourceFingerprint: contractFingerprint("source"),
+        metadataFingerprint: contractFingerprint("metadata"))
 }
 
 @Test
@@ -58,4 +74,47 @@ class ApiDiffSuite {
         @Expect(report.summary.potentiallyBreaking > 0, true)
         @Expect(apiDiffExitCode(report, false, true), 1)
     }
+    @TestCase
+    func exposureRemovalAndRetargetAreReported(): Unit {
+        let baselineExposure = apiTestExposure("exp", "PublicName", "target-old")
+        let removed = compareApiContracts(
+            apiTestSnapshot([], exposures: [baselineExposure]), apiTestSnapshot([]))
+        @Expect(removed.summary.breaking, 1)
+        @Expect(apiDiffExitCode(removed, true, false), 1)
+        let retargeted = compareApiContracts(
+            apiTestSnapshot([], exposures: [baselineExposure]),
+            apiTestSnapshot([], exposures: [apiTestExposure("exp", "PublicName", "target-new")]))
+        @Expect(retargeted.summary.breaking, 1)
+        @Expect(retargeted.entries[0].kind, "exposure")
+    }
+
+    @TestCase
+    func renamedExposureUsesUniquePackageFallback(): Unit {
+        let report = compareApiContracts(
+            apiTestSnapshot([], exposures: [apiTestExposure("old", "OldName", "target")]),
+            apiTestSnapshot([], exposures: [apiTestExposure("new", "NewName", "target")]))
+        @Expect(report.summary.breaking, 1)
+        @Expect(report.entries[0].matchState, "fallback")
+    }
+
+    @TestCase
+    func exhaustiveEnumCaseAdditionIsBreaking(): Unit {
+        let owner = apiTestEnumDeclaration("enum", "enum", "Choice", enumNonExhaustive: Some(false))
+        let addedCase = apiTestEnumDeclaration("case", "enumCase", "NewCase", ownerId: Some("enum"))
+        let report = compareApiContracts(apiTestSnapshot([owner]), apiTestSnapshot([owner, addedCase]))
+        @Expect(report.summary.breaking, 1)
+        @Expect(apiDiffExitCode(report, true, false), 1)
+    }
+
+    @TestCase
+    func unknownLegacyFingerprintsDoNotCreateFalseChanges(): Unit {
+        let legacy = ApiContractDeclaration("cjdoc:test:one", "cjdoc:module:v1:test", "test",
+            "function", "one", "test.one", "public", "unavailable")
+        let current = apiTestDeclaration("cjdoc:test:one", "one", documentation: "new docs")
+        let report = compareApiContracts(apiTestSnapshot([legacy]), apiTestSnapshot([current]))
+        @Expect(report.summary.unchanged, 1)
+        @Expect(report.summary.documentationOnly, 0)
+        @Expect(report.summary.metadataOnly, 0)
+    }
+
 }
