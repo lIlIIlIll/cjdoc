@@ -363,7 +363,14 @@ private func conceptualRelativePrefix(route: String): String {
 }
 
 private func conceptualIndexHref(route: String): String {
-    conceptualRelativePrefix(route) + "index.html"
+    let segments = route.split("/")
+    var prefix = ""
+    var index: Int64 = 1
+    while (index + 1 < segments.size) {
+        prefix += "../"
+        index++
+    }
+    prefix + "index.html"
 }
 
 private func conceptualHtmlPage(page: ConceptualPage, body: String): String {

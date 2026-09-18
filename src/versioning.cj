@@ -12,7 +12,23 @@ internal let VERSION_FILE_MAX_BYTES: Int64 = 32 * 1024 * 1024
 internal let VERSION_DIFF_MAX_BYTES: Int64 = 32 * 1024 * 1024
 internal let VERSION_TOTAL_MAX_BYTES: Int64 = 256 * 1024 * 1024
 internal let VERSION_MAX_SITES: Int64 = 64
-internal let VERSION_MAX_FILES: Int64 = 100000
+internal let VERSION_COMPOSE_MAX_FILES: Int64 = 65533
+
+private class VersionComposeBudget {
+    var totalBytes: Int64 = 0
+    var totalFiles: Int64 = 0
+
+    func reserve(path: String, bytes: Int64): Unit {
+        if (totalFiles >= VERSION_COMPOSE_MAX_FILES) {
+            throw IllegalArgumentException("version composition exceeds ${VERSION_COMPOSE_MAX_FILES} files")
+        }
+        if (bytes > VERSION_TOTAL_MAX_BYTES - totalBytes) {
+            throw IllegalArgumentException("version composition exceeds ${VERSION_TOTAL_MAX_BYTES} bytes")
+        }
+        totalFiles++
+        totalBytes += bytes
+    }
+}
 internal class VersionSourceFile {
     let path: String
     let mediaType: String
@@ -143,7 +159,7 @@ private func versionJsonArrayValues(value: JsonArray): Array<JsonNode> {
 }
 
 private func collectVersionFilesInDirectory(directory: Path, relative: String,
-    files: ArrayList<VersionSourceFile>, seen: HashSet<String>, total: ArrayList<Int64>): Unit {
+    files: ArrayList<VersionSourceFile>, seen: HashSet<String>, budget: VersionComposeBudget): Unit {
     for (info in Directory.readFrom(directory)) {
         if (info.isSymbolicLink()) {
             throw IllegalArgumentException("version source contains a symbolic link '${info.path}'")
@@ -153,7 +169,7 @@ private func collectVersionFilesInDirectory(directory: Path, relative: String,
             throw IllegalArgumentException("version source contains an unsafe path '${child}'")
         }
         if (info.isDirectory()) {
-            collectVersionFilesInDirectory(info.path, child, files, seen, total)
+            collectVersionFilesInDirectory(info.path, child, files, seen, budget)
             continue
         }
         if (!info.isRegular()) {
@@ -162,15 +178,8 @@ private func collectVersionFilesInDirectory(directory: Path, relative: String,
         if (!seen.add(child)) {
             throw IllegalArgumentException("version source contains duplicate path '${child}'")
         }
-        if (files.size >= VERSION_MAX_FILES) {
-            throw IllegalArgumentException("version source exceeds ${VERSION_MAX_FILES} files")
-        }
         let bytes = readFileBounded(info.path, VERSION_FILE_MAX_BYTES)
-        let nextTotal = total[0] + bytes.size
-        if (nextTotal > VERSION_TOTAL_MAX_BYTES) {
-            throw IllegalArgumentException("version source exceeds ${VERSION_TOTAL_MAX_BYTES} bytes")
-        }
-        total[0] = nextTotal
+        budget.reserve(child, bytes.size)
         files.add(VersionSourceFile(child, versionMediaType(child), bytes))
     }
 }
@@ -256,7 +265,7 @@ private func loadVersionApiDiff(spec: VersionComposeSpec): VersionSourceFile {
     VersionSourceFile("api-diff.json", "application/json", bytes)
 }
 
-private func loadVersionSite(spec: VersionComposeSpec): VersionSite {
+private func loadVersionSite(spec: VersionComposeSpec, budget: VersionComposeBudget): VersionSite {
     let root = Path(spec.source)
     if (!exists(root)) { throw IllegalArgumentException("version source is missing '${spec.source}'") }
     let info = FileInfo(root)
@@ -265,8 +274,7 @@ private func loadVersionSite(spec: VersionComposeSpec): VersionSite {
     }
     let files = ArrayList<VersionSourceFile>()
     let seen = HashSet<String>()
-    let total = ArrayList<Int64>([0])
-    collectVersionFilesInDirectory(root, "", files, seen, total)
+    collectVersionFilesInDirectory(root, "", files, seen, budget)
     sort(files, lessThan: { left, right => left.path < right.path }, stable: true)
     if (!seen.contains("index.html")) {
         throw IllegalArgumentException("version source has no index.html '${spec.source}'")
@@ -281,7 +289,9 @@ private func loadVersionSite(spec: VersionComposeSpec): VersionSite {
             if (!site.paths.add("api-diff.json")) {
                 throw IllegalArgumentException("version source already contains api-diff.json")
             }
-            site.files.add(loadVersionApiDiff(spec))
+            let apiDiff = loadVersionApiDiff(spec)
+            budget.reserve("api-diff.json", apiDiff.bytes.size)
+            site.files.add(apiDiff)
             sort(site.files, lessThan: { left, right => left.path < right.path }, stable: true)
         case None => ()
     }
@@ -334,6 +344,11 @@ private func buildVersionSpecs(options: NewCliOptions): (ArrayList<VersionCompos
             throw IllegalArgumentException("unsafe version base path '${spec.basePath}'")
         }
         specs.add(spec)
+    }
+    for (assignmentId in options.versionAssignmentIds) {
+        if (!ids.contains(assignmentId)) {
+            throw IllegalArgumentException("version metadata assignment names unknown version '${assignmentId}'")
+        }
     }
     let seenPaths = HashSet<String>()
     for (spec in specs) {
@@ -528,7 +543,8 @@ internal func runVersionsCompose(options: NewCliOptions): Int64 {
     }
     let (specs, latest, latestPolicy) = buildVersionSpecs(options)
     let sites = ArrayList<VersionSite>()
-    for (spec in specs) { sites.add(loadVersionSite(spec)) }
+    let budget = VersionComposeBudget()
+    for (spec in specs) { sites.add(loadVersionSite(spec, budget)) }
     let outputPath = canonicalForWrite(Path(output), "version composition output")
     for (site in sites) {
         let source = canonicalize(Path(site.spec.source))

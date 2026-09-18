@@ -14,7 +14,7 @@ private func optionText(value: ?String, fallback: String): String {
 
 private func declarationBucketKey(value: ApiContractDeclaration): String {
     value.moduleId + "\n" + value.packageName + "\n" + optionText(value.ownerId, "") +
-        "\n" + value.kind + "\n" + value.name + "\n" + value.genericParameters.size.toString()
+        "\n" + value.kind + "\n" + value.name
 }
 
 private func declarationSignatureKey(value: ApiContractDeclaration): String {
