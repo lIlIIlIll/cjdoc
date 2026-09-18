@@ -114,7 +114,7 @@ generated <你的项目目录>/target/doc
 [doctest]
 mode = "warn"       # off（默认）、warn 或 deny
 timeout-ms = 2000
-memory-mb = 256
+memory-mb = 2048    # Cangjie native backend requires at least 2048 MiB
 jobs = 1
 ```
 

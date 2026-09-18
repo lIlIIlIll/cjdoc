@@ -119,7 +119,7 @@ SCHEMA_CONTRACTS = {
         "cjdoc.search-index/4", ("schemaVersion", "entries"),
     ),
     "api-surface": (
-        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface.schema.json",
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface-v2.schema.json",
         "cjdoc.api-surface/2", ("schemaVersion", "project", "audience", "cfgProfile", "collectionState", "declarations", "exposures"),
     ),
     "api-surface-v1": (

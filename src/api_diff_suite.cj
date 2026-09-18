@@ -51,7 +51,25 @@ private func apiTestVisibilityDeclaration(id: String, visibility: String): ApiCo
         sourceFingerprint: contractFingerprint("source"),
         metadataFingerprint: contractFingerprint("metadata"))
 }
-
+private func apiTestOptionalParameterDeclaration(id: String, withOptionalParameter: Bool): ApiContractDeclaration {
+    let parameters: Array<ApiContractParameter> = if (withOptionalParameter) {
+        [ApiContractParameter("value", typeState: "resolved", `type`: Some("Int64"),
+            defaultState: "resolved", defaultValue: Some("0"))]
+    } else {
+        []
+    }
+    let signature = if (withOptionalParameter) {
+        ["public", "func", "optional", "value", "=", "0"]
+    } else {
+        ["public", "func", "optional"]
+    }
+    ApiContractDeclaration(id, "cjdoc:module:v1:test", "test", "function", "optional",
+        "test.optional", "public", "resolved", sourceApiSignature: signature,
+        parameters: parameters, returnState: "resolved", returnType: Some("Unit"),
+        documentationFingerprint: contractFingerprint("doc"),
+        sourceFingerprint: contractFingerprint("source"),
+        metadataFingerprint: contractFingerprint("metadata"))
+}
 private func apiTestSnapshot(declarations: Array<ApiContractDeclaration>,
     exposures!: Array<ApiContractExposure> = []): ApiContractSnapshot {
     ApiContractSnapshot("api-diff-test", "external", "default", declarations: declarations,
@@ -165,6 +183,17 @@ class ApiDiffSuite {
             apiTestSnapshot([enumDeclaration, caseDeclaration]))
         @Expect(report.summary.additive, 2)
         @Expect(report.summary.potentiallyBreaking, 0)
+        @Expect(apiDiffExitCode(report, true, true), 0)
+    }
+
+    @TestCase
+    func resolvedDefaultedParameterAdditionIsAdditive(): Unit {
+        let baseline = apiTestSnapshot([apiTestOptionalParameterDeclaration("optional", false)])
+        let current = apiTestSnapshot([apiTestOptionalParameterDeclaration("optional", true)])
+        let report = compareApiContracts(baseline, current)
+        @Expect(report.summary.breaking, 0)
+        @Expect(report.summary.potentiallyBreaking, 0)
+        @Expect(report.summary.additive, 1)
         @Expect(apiDiffExitCode(report, true, true), 0)
     }
 

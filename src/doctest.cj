@@ -12,7 +12,6 @@ import std.unicode.*
 
 internal let DOCTEST_SCHEMA_VERSION = "cjdoc.doctest/1"
 internal let DOCTEST_MAX_RESULTS: Int64 = 100000
-internal let DOCTEST_MIN_ADDRESS_SPACE_MB: Int64 = 2048
 internal let DOCTEST_MAX_OUTPUT_BYTES: Int64 = 8 * 1024 * 1024
 internal let DOCTEST_PIPE_CHUNK_BYTES: Int64 = 64 * 1024
 
@@ -179,6 +178,13 @@ private class DoctestProjectContext {
         arguments.add(selected.packageName)
         let visited = HashSet<String>()
         let _ = visited.add(selected.moduleId)
+        // Packages in one module can still import one another; compilation
+        // order is dependency-aware, so preserve it for static linking too.
+        for (packageContext in packagesStorage where packageContext.moduleId == selected.moduleId &&
+            packageContext.packageName != selected.packageName) {
+            arguments.add("--library")
+            arguments.add(packageContext.packageName)
+        }
         for (dependencyId in selected.dependencyIds) {
             appendModuleLibraries(dependencyId, visited, arguments)
         }
@@ -386,15 +392,7 @@ private func skippedResult(snippet: DoctestSnippet, message: String): DoctestCas
 }
 
 private func memoryBoundedCommand(command: String, arguments: Array<String>, memoryMb: Int64): (String, Array<String>) {
-    // The Cangjie compiler and runtime reserve more virtual address space than
-    // the configured budget. Keep a platform floor so a bounded doctest does
-    // not fail during startup; configured budgets above it remain exact.
-    let effectiveMemoryMb = if (memoryMb < DOCTEST_MIN_ADDRESS_SPACE_MB) {
-        DOCTEST_MIN_ADDRESS_SPACE_MB
-    } else {
-        memoryMb
-    }
-    let limit = effectiveMemoryMb * 1024 * 1024
+    let limit = memoryMb * 1024 * 1024
     for (candidate in ["/usr/bin/prlimit", "/bin/prlimit"]) {
         if (!exists(Path(candidate))) { continue }
         let wrapped = ArrayList<String>()
@@ -578,6 +576,46 @@ private func compileProjectPackage(packageDoc: public_model.PackageDoc,
     DoctestPackageContext(packageDoc.name, module.id, module.dependencyIds.toArray(), artifactRoot)
 }
 
+private func compileModulePackages(documentation: public_model.DocumentationSet,
+    module: public_model.ModuleDoc, projectRoot: Path, sourceOrigins: Array<SourceFileOrigin>,
+    config: DoctestConfig, workRoot: Path, cfgValues: Array<CfgValue>,
+    packages: ArrayList<DoctestPackageContext>, packageIndex: Int64): Int64 {
+    var nextPackageIndex = packageIndex
+    let pending = ArrayList<public_model.PackageDoc>()
+    for (packageDoc in documentation.packages where packageDoc.moduleId == module.id) {
+        pending.add(packageDoc)
+    }
+    while (!pending.isEmpty()) {
+        let deferred = ArrayList<public_model.PackageDoc>()
+        var compiledAny = false
+        var firstFailure: ?String = None
+        for (packageDoc in pending) {
+            try {
+                let sourceRoot = packageSourceRoot(documentation, packageDoc, projectRoot, sourceOrigins)
+                let attemptIndex = nextPackageIndex
+                nextPackageIndex++
+                let packageContext = compileProjectPackage(packageDoc, module, sourceRoot, config,
+                    workRoot, cfgValues, attemptIndex, packages)
+                packages.add(packageContext)
+                compiledAny = true
+            } catch (error: Exception) {
+                deferred.add(packageDoc)
+                if (firstFailure.isNone()) { firstFailure = Some(error.message) }
+            }
+        }
+        if (!compiledAny) {
+            let message = match (firstFailure) {
+                case Some(value) => value
+                case None => "doctest package compilation made no progress"
+            }
+            throw IllegalStateException(message)
+        }
+        pending.clear()
+        pending.add(all: deferred.toArray())
+    }
+    nextPackageIndex
+}
+
 private func prepareProjectContext(documentation: public_model.DocumentationSet,
     projectRoot: Path, sourceOrigins: Array<SourceFileOrigin>, config: DoctestConfig,
     workRoot: Path, cfgValues: Array<CfgValue>): ?DoctestProjectContext {
@@ -585,13 +623,8 @@ private func prepareProjectContext(documentation: public_model.DocumentationSet,
     let packages = ArrayList<DoctestPackageContext>()
     var packageIndex: Int64 = 0
     for (module in orderedDoctestModules(documentation)) {
-        for (packageDoc in documentation.packages where packageDoc.moduleId == module.id) {
-            let sourceRoot = packageSourceRoot(documentation, packageDoc, projectRoot, sourceOrigins)
-            let packageContext = compileProjectPackage(packageDoc, module, sourceRoot, config,
-                workRoot, cfgValues, packageIndex, packages)
-            packages.add(packageContext)
-            packageIndex++
-        }
+        packageIndex = compileModulePackages(documentation, module, projectRoot, sourceOrigins,
+            config, workRoot, cfgValues, packages, packageIndex)
     }
     Some(DoctestProjectContext(packages.toArray()))
 }

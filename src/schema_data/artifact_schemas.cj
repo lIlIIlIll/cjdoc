@@ -56,7 +56,7 @@ public let API_SURFACE_V1_SCHEMA = """
 public let API_SURFACE_SCHEMA = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface.schema.json",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface-v2.schema.json",
   "title": "cjdoc API surface v2",
   "type": "object", "additionalProperties": false,
   "required": ["schemaVersion", "project", "audience", "cfgProfile", "collectionState", "declarations", "exposures"],
@@ -149,7 +149,7 @@ public let DOCTEST_RESULTS_SCHEMA = """
     "schemaVersion": {"const": "cjdoc.doctest/1"},
     "mode": {"enum": ["warn", "deny"]},
     "timeoutMs": {"type": "integer", "minimum": 1, "maximum": 600000},
-    "memoryMb": {"type": "integer", "minimum": 16, "maximum": 16384},
+    "memoryMb": {"type": "integer", "minimum": 2048, "maximum": 16384},
     "jobs": {"type": "integer", "minimum": 1, "maximum": 64},
     "summary": {"$ref": "#/$defs/summary"},
     "results": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/result"}}

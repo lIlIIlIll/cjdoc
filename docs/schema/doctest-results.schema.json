@@ -9,7 +9,7 @@
     "schemaVersion": {"const": "cjdoc.doctest/1"},
     "mode": {"enum": ["warn", "deny"]},
     "timeoutMs": {"type": "integer", "minimum": 1, "maximum": 600000},
-    "memoryMb": {"type": "integer", "minimum": 16, "maximum": 16384},
+    "memoryMb": {"type": "integer", "minimum": 2048, "maximum": 16384},
     "jobs": {"type": "integer", "minimum": 1, "maximum": 64},
     "summary": {"$ref": "#/$defs/summary"},
     "results": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/result"}}

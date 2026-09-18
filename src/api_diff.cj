@@ -126,6 +126,17 @@ private func sourceSignatureOnlyVisibilityChange(old: ApiContractDeclaration,
     changed
 }
 
+private func appendedParametersAreDefaulted(old: ApiContractDeclaration,
+    current: ApiContractDeclaration): Bool {
+    if (current.parameters.size <= old.parameters.size) { return false }
+    var index = old.parameters.size
+    while (index < current.parameters.size) {
+        if (current.parameters[index].defaultState != "resolved") { return false }
+        index++
+    }
+    true
+}
+
 private func compareDeclaration(old: ApiContractDeclaration, current: ApiContractDeclaration,
     matchState: String): ApiDiffEntry {
     let reasons = ArrayList<String>()
@@ -144,15 +155,23 @@ private func compareDeclaration(old: ApiContractDeclaration, current: ApiContrac
             before: Some(old.visibility), after: Some(current.visibility),
             state: if (visibilityWidened) { "resolved" } else { "partial" })
     }
+    let appendedDefaultedParameters = appendedParametersAreDefaulted(old, current)
     if (old.parameters.size != current.parameters.size) {
-        if (old.collectionState == "resolved" && current.collectionState == "resolved") {
+        let resolvedCollection = old.collectionState == "resolved" && current.collectionState == "resolved"
+        if (resolvedCollection && appendedDefaultedParameters) {
+            if (classification == "unchanged") { classification = "additive" }
+        } else if (resolvedCollection) {
             classification = "breaking"
         } else if (classification != "breaking") {
             classification = "potentially-breaking"
         }
-        addReason(reasons, evidence, "parameters", "parameter count changed",
+        addReason(reasons, evidence, "parameters", if (appendedDefaultedParameters) {
+                "optional parameters added"
+            } else {
+                "parameter count changed"
+            },
             before: Some(parametersValue(old.parameters)), after: Some(parametersValue(current.parameters)),
-            state: if (old.collectionState == "resolved" && current.collectionState == "resolved") { "resolved" } else { "partial" })
+            state: if (resolvedCollection) { "resolved" } else { "partial" })
     } else {
         var index: Int64 = 0
         while (index < old.parameters.size) {
@@ -216,7 +235,8 @@ private func compareDeclaration(old: ApiContractDeclaration, current: ApiContrac
     }
     if ((old.sourceApiSignatureState != current.sourceApiSignatureState ||
         joinedStrings(old.sourceApiSignature) != joinedStrings(current.sourceApiSignature)) &&
-        !(visibilityWidened && sourceSignatureOnlyVisibilityChange(old, current))) {
+        !(visibilityWidened && sourceSignatureOnlyVisibilityChange(old, current)) &&
+        !appendedDefaultedParameters) {
         if (classification != "breaking") { classification = "potentially-breaking" }
         addReason(reasons, evidence, "sourceApiSignature", "source API signature changed",
             before: Some(joinedStrings(old.sourceApiSignature)), after: Some(joinedStrings(current.sourceApiSignature)),

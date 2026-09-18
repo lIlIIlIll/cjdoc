@@ -5,7 +5,8 @@ import std.convert.Parsable
 import std.fs.*
 internal let DOCTEST_CONFIG_MAX_BYTES: Int64 = 64 * 1024
 internal let DOCTEST_DEFAULT_TIMEOUT_MS: Int64 = 2000
-internal let DOCTEST_DEFAULT_MEMORY_MB: Int64 = 256
+internal let DOCTEST_MIN_MEMORY_MB: Int64 = 2048
+internal let DOCTEST_DEFAULT_MEMORY_MB: Int64 = DOCTEST_MIN_MEMORY_MB
 internal let DOCTEST_DEFAULT_JOBS: Int64 = 1
 
 internal class DoctestConfig {
@@ -22,8 +23,8 @@ internal class DoctestConfig {
         if (timeoutMs < 1 || timeoutMs > 600000) {
             throw IllegalArgumentException("[doctest].timeout-ms must be in 1..600000")
         }
-        if (memoryMb < 16 || memoryMb > 16384) {
-            throw IllegalArgumentException("[doctest].memory-mb must be in 16..16384")
+        if (memoryMb < DOCTEST_MIN_MEMORY_MB || memoryMb > 16384) {
+            throw IllegalArgumentException("[doctest].memory-mb must be in 2048..16384")
         }
         if (jobs < 1 || jobs > 64) {
             throw IllegalArgumentException("[doctest].jobs must be in 1..64")
