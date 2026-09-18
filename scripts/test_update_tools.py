@@ -26,6 +26,7 @@ GOLDEN_NAMES = (
 SCHEMA_NAMES = (
     "doc-ir",
     "doc-ir-v9",
+    "doc-ir-v10",
     "doc-ir-v6",
     "doc-ir-v7",
     "doc-ir-v8",
@@ -111,12 +112,12 @@ class UpdateToolsTest(unittest.TestCase):
             "repo=Path(__file__).resolve().parents[3]\n"
             "args=sys.argv[1:]\n"
             "if args[:2] == ['schema','list']:\n"
-            " print('doc-ir\\ndoc-ir-v9\\ndoc-ir-v6\\ndoc-ir-v7\\ndoc-ir-v8\\ndiagnostics\\ncfg-matrix\\nsearch-index\\napi-surface\\napi-surface-v1\\napi-diff\\ndocumentation-coverage\\ndoctest-results')\n"
+            " print('doc-ir\ndoc-ir-v9\ndoc-ir-v10\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndoctest-results\nversions')\n"
             "elif args and args[0] == 'schema':\n"
             " print((repo/'fake-schemas'/f'{args[1]}.schema.json').read_text(encoding='utf-8'),end='')\n"
             "elif args and args[0] == 'generate':\n"
             " out=Path(args[args.index('--output')+1]); out.mkdir(parents=True,exist_ok=True)\n"
-            " (out/'docs.json').write_text(json.dumps({'schemaVersion':'cjdoc.doc-ir/9'})+'\\n',encoding='utf-8')\n"
+            " (out/'docs.json').write_text(json.dumps({'schemaVersion':'cjdoc.doc-ir/10'})+'\\n',encoding='utf-8')\n"
             "else:\n"
             " raise SystemExit(2)\n",
             encoding="utf-8",
@@ -179,7 +180,7 @@ class UpdateToolsTest(unittest.TestCase):
                 {path.name for path in (repo / "docs/schema").iterdir()},
                 {f"{name}.schema.json" for name in SCHEMA_NAMES},
             )
-            current = json.loads((repo / "docs/schema/doc-ir-v9.schema.json").read_text())
+            current = json.loads((repo / "docs/schema/doc-ir-v10.schema.json").read_text())
             self.assertEqual(current["generation"], "new")
             self.assertEqual(list((repo / "docs").glob(".schema.*")), [])
 

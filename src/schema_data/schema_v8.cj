@@ -223,4 +223,4 @@ private func buildDocIrV8Schema(id: String): String {
 }
 
 public let DOC_IR_V8_SCHEMA = buildDocIrV8Schema(DOC_IR_V8_ID)
-// Current schema alias is defined by schema_v9.cj.
+// Current schema alias is defined by schema_v10.cj.

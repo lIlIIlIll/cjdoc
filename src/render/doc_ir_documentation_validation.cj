@@ -5,7 +5,7 @@ import std.collection.*
 
 public func validateDocumentationSet(documentation: DocumentationSet): Unit {
     if (documentation.schemaVersion != DOC_IR_SCHEMA_VERSION) {
-        domainFail("$.schemaVersion", "typed documentation must be v8")
+        domainFail("$.schemaVersion", "typed documentation must be current Doc IR")
     }
     // This occurrence-based preflight deliberately walks shared references once
     // per encoded occurrence. It bounds all recursive validation and the later

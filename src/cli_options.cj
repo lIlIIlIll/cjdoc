@@ -58,7 +58,9 @@ internal func newUsage(): String {
     "  cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout] [--force-owned]\n" +
     "               [--locale zh-CN|en] [--markdown-layout site|single]\n" +
-    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|doc-ir-v9|diagnostics|cfg-matrix|search-index|symbol-index|api-surface|api-surface-v1|api-diff|documentation-coverage|doctest-results\n"
+    "  cjdoc versions compose --version ID=HTML_DIR... [--diff ID=API_DIFF_JSON] --output DIR [--latest ID]\\n" +
+    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|doc-ir-v9|doc-ir-v10|diagnostics|cfg-matrix|search-index|symbol-index|navigation-index|api-surface|api-surface-v1|api-diff|documentation-coverage-v1|documentation-coverage|doctest-results|versions\n" +
+    "  cjdoc serve [--project <dir>] [--port 1..65535] [--open] [generation options]\n"
 }
 
 
@@ -333,7 +335,8 @@ private func parseSchemaCommand(args: Array<String>): NewCliOptions {
     options.schemaName = args[1]
     if (options.schemaName != "list" && options.schemaName != "doc-ir" &&
         options.schemaName != "doc-ir-v6" && options.schemaName != "doc-ir-v7" &&
-        options.schemaName != "doc-ir-v8" && options.schemaName != "doc-ir-v9" && options.schemaName != "diagnostics" &&
+        options.schemaName != "doc-ir-v8" && options.schemaName != "doc-ir-v9" &&
+        options.schemaName != "doc-ir-v10" && options.schemaName != "diagnostics" &&
         options.schemaName != "cfg-matrix" && options.schemaName != "search-index" &&
         options.schemaName != "symbol-index" &&
         options.schemaName != "api-surface" && options.schemaName != "api-surface-v1" &&
