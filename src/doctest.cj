@@ -162,8 +162,14 @@ private func runBoundedProcess(command: String, arguments: Array<String>, workin
     }
     var stdout = Array<Byte>()
     var stderr = Array<Byte>()
-    try { stdout = stdoutFuture.get() } catch (_: Exception) { outputLimit = true }
-    try { stderr = stderrFuture.get() } catch (_: Exception) { outputLimit = true }
+    try { stdout = stdoutFuture.get(Duration.millisecond * timeoutMs) } catch (_: Exception) {
+        outputLimit = true
+        stdoutFuture.cancel()
+    }
+    try { stderr = stderrFuture.get(Duration.millisecond * timeoutMs) } catch (_: Exception) {
+        outputLimit = true
+        stderrFuture.cancel()
+    }
     DoctestProcessResult(exitCode, processText(stdout), processText(stderr), timedOut, outputLimit)
 }
 
@@ -265,15 +271,26 @@ private func collectSnippets(documentation: public_model.DocumentationSet): Arra
 
 private func doctestProgram(code: String, projectPackageName!: ?String = None): String {
     let trimmed = code.trimAscii()
-    if (trimmed.startsWith("package ") || trimmed.startsWith("import ") ||
-        trimmed.contains("main(")) {
+    if (trimmed.startsWith("package ") || trimmed.contains("main(")) {
         trimmed + "\n"
     } else {
+        var body = trimmed
+        let imports = StringBuilder()
+        while (body.startsWith("import ")) {
+            let end = match (body.indexOf("\n")) {
+                case Some(index) => index
+                case None => body.size
+            }
+            imports.append(body[..end])
+            imports.append("\n")
+            body = if (end < body.size) { body[end + 1..].trimAscii() } else { "" }
+        }
         let projectImport = match (projectPackageName) {
             case Some(name) => "import " + name + ".*\n\n"
             case None => ""
         }
-        "package cjdoc_doctest\n" + projectImport + "main() {\n" + code + "\n}\n"
+        "package cjdoc_doctest\n" + projectImport + imports.toString() +
+            "\nmain() {\n" + body + "\n}\n"
     }
 }
 

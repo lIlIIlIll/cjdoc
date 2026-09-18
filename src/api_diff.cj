@@ -99,9 +99,11 @@ private func compareDeclaration(old: ApiContractDeclaration, current: ApiContrac
             before: Some(old.visibility), after: Some(current.visibility), state: "partial")
     }
     if (old.parameters.size != current.parameters.size) {
-        classification = if (old.collectionState == "resolved" && current.collectionState == "resolved") {
-            "breaking"
-        } else { "potentially-breaking" }
+        if (old.collectionState == "resolved" && current.collectionState == "resolved") {
+            classification = "breaking"
+        } else if (classification != "breaking") {
+            classification = "potentially-breaking"
+        }
         addReason(reasons, evidence, "parameters", "parameter count changed",
             before: Some(parametersValue(old.parameters)), after: Some(parametersValue(current.parameters)),
             state: if (old.collectionState == "resolved" && current.collectionState == "resolved") { "resolved" } else { "partial" })
@@ -411,7 +413,7 @@ public func compareApiContracts(baseline: ApiContractSnapshot, current: ApiContr
         }
     }
     for (old in baseline.declarations where !matchedOld.contains(old.id)) {
-        entries.add(unmatchedEntry(Some(old), None<ApiContractDeclaration>, "removed", baseline.collectionState))
+        entries.add(unmatchedEntry(Some(old), None<ApiContractDeclaration>, "removed", current.collectionState))
         let _ = matchedOld.add(old.id)
     }
     for (value in current.declarations where !matchedCurrent.contains(value.id)) {
@@ -479,7 +481,7 @@ public func compareApiContracts(baseline: ApiContractSnapshot, current: ApiContr
         }
     }
     for (old in baseline.exposures where !matchedOldExposures.contains(old.id)) {
-        entries.add(unmatchedExposureEntry(Some(old), None<ApiContractExposure>, "removed", baseline.collectionState))
+        entries.add(unmatchedExposureEntry(Some(old), None<ApiContractExposure>, "removed", current.collectionState))
         let _ = matchedOldExposures.add(old.id)
     }
     for (value in current.exposures where !matchedCurrentExposures.contains(value.id)) {

@@ -22,7 +22,10 @@ SCHEMA_PAYLOAD = {
     "docs/schema/cfg-matrix.schema.json",
     "docs/schema/search-index.schema.json",
     "docs/schema/api-surface.schema.json",
+    "docs/schema/api-surface-v1.schema.json",
+    "docs/schema/api-diff.schema.json",
     "docs/schema/documentation-coverage.schema.json",
+    "docs/schema/doctest-results.schema.json",
 }
 REPOSITORY_PAYLOAD = {
     "README.md": "README.md",
