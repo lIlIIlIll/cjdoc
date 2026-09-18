@@ -22,3 +22,4 @@
 !/tests/fixtures/legacy-migration-v8.json
 !/tests/perf/*.json
 !/tests/fixtures/golden-v9/*.json
+!/tests/fixtures/golden-v10/*.json
