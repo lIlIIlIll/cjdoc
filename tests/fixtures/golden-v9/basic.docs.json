@@ -2715,6 +2715,12 @@
           "kind": "extendedBy",
           "targetDisplay": "basic.Box < String >",
           "state": "resolved",
+          "targetSymbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::extend:Box<String>{function%3Alength%23g0%28%29}#g0()"
+        },
+        {
+          "kind": "extendedBy",
+          "targetDisplay": "basic.Box < String >",
+          "state": "resolved",
           "targetSymbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::extend:Box<String>{function%3Apretty%23g0%28%29}#g0()"
         }
       ],
