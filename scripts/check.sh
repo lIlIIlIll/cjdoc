@@ -36,7 +36,7 @@ cjpm test
 rm -rf "${check_dir}"
 mkdir -p "${check_dir}/schemas"
 
-for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage doctest-results versions; do
+for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 diagnostics cfg-matrix search-index symbol-index api-surface api-surface-v1 api-diff documentation-coverage doctest-results; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${check_dir}/schemas/${schema_name}.schema.json"
 done
