@@ -123,7 +123,7 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 }
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndoctest-results\nversions\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage\ndoctest-results\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA

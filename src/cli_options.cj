@@ -60,7 +60,7 @@ internal func newUsage(): String {
     "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout] [--force-owned]\n" +
     "               [--locale zh-CN|en] [--markdown-layout site|single]\n" +
     "  cjdoc versions compose --version ID=HTML_DIR... [--diff ID=API_DIFF_JSON] --output DIR [--latest ID]\\n" +
-    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|doc-ir-v9|doc-ir-v10|diagnostics|cfg-matrix|search-index|symbol-index|navigation-index|api-surface|api-surface-v1|api-diff|documentation-coverage-v1|documentation-coverage|doctest-results|versions\n" +
+    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|doc-ir-v9|doc-ir-v10|diagnostics|cfg-matrix|search-index|symbol-index|api-surface|api-surface-v1|api-diff|documentation-coverage|doctest-results\n" +
     "  cjdoc serve [--project <dir>] [--port 1..65535] [--open] [generation options]\n"
 }
 
