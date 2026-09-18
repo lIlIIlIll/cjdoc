@@ -69,17 +69,17 @@ run_golden() {
     cmp "${check_dir}/${name}/first/docs.json" "${check_dir}/${name}/validated.json"
 }
 
-run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v9/basic.docs.json
-run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v9/functions.docs.json
-run_golden types tests/fixtures/projects/types tests/fixtures/golden-v9/types.docs.json
-run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v9/extend.docs.json
-run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v9/source-edges.docs.json
-run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v9/unsupported.docs.json
-run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v9/workspace.docs.json
+run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v10/basic.docs.json
+run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v10/functions.docs.json
+run_golden types tests/fixtures/projects/types tests/fixtures/golden-v10/types.docs.json
+run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v10/extend.docs.json
+run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v10/source-edges.docs.json
+run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v10/unsupported.docs.json
+run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v10/workspace.docs.json
 run_golden conditional-linux tests/fixtures/projects/conditional \
-    tests/fixtures/golden-v9/conditional-linux.docs.json --cfg os=Linux
+    tests/fixtures/golden-v10/conditional-linux.docs.json --cfg os=Linux
 run_golden path-dependencies tests/fixtures/projects/path_dependencies \
-    tests/fixtures/golden-v9/path-dependencies.docs.json --include-path-dependencies
+    tests/fixtures/golden-v10/path-dependencies.docs.json --include-path-dependencies
 
 "${binary}" generate --project tests/fixtures/projects/basic \
     --format json --format markdown --format html --output "${check_dir}/all/first" \
@@ -100,7 +100,7 @@ diff -qr "${check_dir}/all/first/html" "${check_dir}/roundtrip/html"
 
 "${binary}" generate --project tests/fixtures/projects/basic --format json --stdout \
     --cache-dir "${check_dir}/cache/stdout" >"${check_dir}/stdout.json"
-"${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/9" and len(value["declarations"]) == 25' \
+"${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/10" and len(value["declarations"]) == 25' \
     "${check_dir}/stdout.json"
 
 set +e
