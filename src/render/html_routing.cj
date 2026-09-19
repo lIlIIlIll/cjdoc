@@ -311,12 +311,23 @@ internal func packageRelativeTypeName(symbol: SymbolDoc): String {
     ""
 }
 
+internal class HtmlTypeUsage {
+    let source: SymbolDoc
+    let kind: String
+
+    init(source: SymbolDoc, kind: String) {
+        this.source = source
+        this.kind = kind
+    }
+}
+
 internal class HtmlTypeLinkIndex {
     // Canonical semantic names and direct SymbolIds are lookup keys. The final
     // href is always derived from the matched SymbolId through the existing
     // routing layer.
     private let symbolIdByCanonical = HashMap<String, String>()
     private let urlBySymbolId = HashMap<String, String>()
+    private let reverseUsagesByTarget = HashMap<String, ArrayList<HtmlTypeUsage>>()
 
     init(documentation: DocumentationSet, projection: RenderProjection) {
         let moduleNameById = HashMap<String, String>()
@@ -337,17 +348,80 @@ internal class HtmlTypeLinkIndex {
                 case None => ()
             }
         }
+        for (symbol in projection.visibleSymbols) {
+            for (parameter in symbol.parameters) {
+                registerTypeUsage(symbol, parameter.typeRef, "parameter")
+            }
+            match (symbol.returnType) {
+                case Some(returnType) =>
+                    let kind = if (symbol.kind == "property" || symbol.kind == "variable") {
+                        "field"
+                    } else { "return" }
+                    registerTypeUsage(symbol, returnType, kind)
+                case None => ()
+            }
+            for (relationship in symbol.typeRelationships) {
+                registerTypeUsage(symbol, relationship.target, relationship.kind)
+            }
+        }
+        for (usages in reverseUsagesByTarget.values()) {
+            sort(usages, lessThan: { left, right =>
+                let leftKey = "${left.source.qualifiedName}|${left.source.id}|${left.kind}"
+                let rightKey = "${right.source.qualifiedName}|${right.source.id}|${right.kind}"
+                leftKey < rightKey
+            }, stable: true)
+        }
     }
 
-    func targetUrl(typeRef: TypeRef): ?String {
+    private func targetSymbolId(typeRef: TypeRef): ?String {
         if (typeRef.semantic.state != "resolved") { return None }
         match (typeRef.semantic.canonical) {
             case Some(canonical) => match (symbolIdByCanonical.get(canonical)) {
-                case Some(symbolId) =>
-                    if (symbolId.isEmpty()) { None } else { urlBySymbolId.get(symbolId) }
+                case Some(symbolId) => if (symbolId.isEmpty()) { None } else { Some(symbolId) }
                 case None => None
             }
             case None => None
+        }
+    }
+
+    private func registerTypeUsage(source: SymbolDoc, typeRef: TypeRef, kind: String): Unit {
+        match (targetSymbolId(typeRef)) {
+            case Some(targetId) =>
+                if (targetId != source.id) {
+                    match (reverseUsagesByTarget.get(targetId)) {
+                        case Some(usages) =>
+                            var duplicate = false
+                            for (existing in usages) {
+                                if (existing.source.id == source.id && existing.kind == kind) {
+                                    duplicate = true
+                                    break
+                                }
+                            }
+                            if (!duplicate) { usages.add(HtmlTypeUsage(source, kind)) }
+                        case None =>
+                            reverseUsagesByTarget[targetId] = ArrayList<HtmlTypeUsage>([HtmlTypeUsage(source, kind)])
+                    }
+                }
+            case None => ()
+        }
+        for (argument in typeRef.arguments) { registerTypeUsage(source, argument, kind) }
+    }
+
+    func targetUrl(typeRef: TypeRef): ?String {
+        match (targetSymbolId(typeRef)) {
+            case Some(symbolId) => urlBySymbolId.get(symbolId)
+            case None => None
+        }
+    }
+
+    func targetUrlForSymbolId(symbolId: String): ?String {
+        urlBySymbolId.get(symbolId)
+    }
+
+    func reverseUsages(symbolId: String): ArrayList<HtmlTypeUsage> {
+        match (reverseUsagesByTarget.get(symbolId)) {
+            case Some(usages) => usages
+            case None => ArrayList<HtmlTypeUsage>()
         }
     }
 

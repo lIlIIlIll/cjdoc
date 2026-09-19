@@ -184,16 +184,22 @@ def validate_schema_document(name: str, value: object) -> None:
     elif name == "search-index":
         entries = properties["entries"]
         items = entries.get("items") if isinstance(entries, dict) else None
-        expected_entry_fields = {
+        expected_required_fields = {
             "id", "canonicalId", "exposure", "name", "qualifiedName", "kind",
             "packageName", "summary", "href"
         }
-        if not isinstance(entries, dict) or entries.get("type") != "array" or \
-                not isinstance(items, dict) or \
-                items.get("type") != "object" or \
-                items.get("additionalProperties") is not False or \
-                set(items.get("required", [])) != expected_entry_fields or \
-                set(items.get("properties", {})) != expected_entry_fields:
+        expected_property_fields = expected_required_fields | {
+            "ownerName", "parameterTypes", "returnType", "returnCanonical", "bindings", "externalDocs"
+        }
+        if (
+                not isinstance(entries, dict)
+                or entries.get("type") != "array"
+                or not isinstance(items, dict)
+                or items.get("type") != "object"
+                or items.get("additionalProperties") is not False
+                or set(items.get("required", [])) != expected_required_fields
+                or set(items.get("properties", {})) != expected_property_fields
+        ):
             raise ValueError("search-index schema entry shape is invalid")
     elif name == "symbol-index":
         entries = properties["entries"]

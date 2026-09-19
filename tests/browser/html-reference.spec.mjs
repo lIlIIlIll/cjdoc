@@ -86,6 +86,11 @@ test.describe('generated HTML reference', () => {
     await search.fill('no-such-declaration');
     await expect(results).toHaveCount(0);
     await expect(search).not.toHaveAttribute('aria-activedescendant');
+    await search.fill('param:Int64');
+    await expect(results).not.toHaveCount(0);
+    await expect(results.filter({ hasText: 'normalize' })).not.toHaveCount(0);
+    await search.fill('wat:foo');
+    await expect(page.locator('[data-cjdoc-search-status]')).toContainText('Invalid filter');
     await search.fill('ReferenceBox');
     await clickOutside(page);
     await expect(results).toHaveCount(0);
@@ -128,6 +133,16 @@ test.describe('generated HTML reference', () => {
     const classUrl = new URL(classHref, packageUrl).href;
     await gotoFile(page, classUrl);
     await expect(page.locator('.breadcrumbs')).toContainText('Package');
+    await expect(page.locator('.api-usages')).toContainText('Getting started');
+    await expect(page.locator('.external-documentation a')).toHaveAttribute('href', 'https://docs.example.test/1.1.3/libs/std/core/reference-box.html#referencebox');
+    await expect(page.locator('.external-documentation')).toContainText('version: 1.1.3');
+    await expect(page.locator('.external-documentation')).toContainText('format: cjdoc.symbol-index/1');
+    await expect(page.locator('.external-documentation')).toContainText('index: docs/std-symbol-index.json');
+    const memberFilter = page.locator('[data-cjdoc-member-filter]');
+    await memberFilter.fill('normalize');
+    await expect(page.locator('[data-cjdoc-member][data-member-name="normalize"]')).toBeVisible();
+    await expect(page.locator('[data-cjdoc-member][data-member-name="label"]')).toBeHidden();
+    await memberFilter.fill('');
     await expect(page.locator('.source-action')).not.toHaveCount(0);
     await expect(page.locator('.source-action a')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
     const memberHref = await page.locator('.declaration-row-link').filter({ hasText: 'normalize' }).getAttribute('href');
@@ -159,9 +174,24 @@ test.describe('generated HTML reference', () => {
     await gotoFile(page, guideUrl);
     await expect(page.locator('.page-header h1')).toContainText('Getting started');
     await expect(page.locator('.breadcrumbs')).toContainText('Concepts');
-    await expect(page.locator('.code-copy')).toHaveCount(1);
+    await expect(page.locator('.conceptual-bindings')).toContainText('resolved');
+    await expect(page.locator('.conceptual-bindings a[href*="symbols/symbol-"]')).toHaveCount(1);
     await expectStable(page);
   });
+
+  test('validation page states unavailable evidence without inferring success', async ({ page }) => {
+    await openIndex(page);
+    const validationUrl = new URL('validation.html', indexUrl).href;
+    await gotoFile(page, validationUrl);
+    await expect(page.locator('.validation-page h1')).toContainText('Validation results');
+    await expect(page.locator('.validation-page')).toContainText('not run');
+    await expect(page.locator('.validation-page')).toContainText('API diff: not attached');
+    await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveCount(1);
+    await expect(page.locator('script[src="theme-bootstrap.js"]')).toHaveCount(1);
+    await expect(page.locator('script[src="search-index.js"]')).toHaveCount(1);
+    await expect(page.locator('script[src="search.js"]')).toHaveCount(1);
+  });
+
 
   test('mobile drawer, narrow TOC, filters, and zoom remain usable', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });

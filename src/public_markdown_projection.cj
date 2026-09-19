@@ -347,6 +347,9 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
         for (tag in value.see) {
             tags.add(publicTag(tag))
         }
+        for (tag in value.contracts) {
+            tags.add(publicTag(tag))
+        }
         match (value.since) {
             case Some(text) => tags.add(public_model.DocTag("since", "", text))
             case None => ()

@@ -19,7 +19,7 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "a790bdcaaeab3166cae3f048ea94f4beb352a6f284f9e6f5bb7fc1da4e6497d7"
+CANONICAL_SEARCH_JS_SHA256 = "e14f845b5bab2e857049b1715a8aeb548eaf8adc801e15c98e1e52a61c9901c0"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "79fe532a96603bce52c49d9fd92cea58503875a0c61f5d3475f11c337f960642"
 
 
@@ -240,9 +240,12 @@ def main() -> int:
         if not search_script.endswith(suffix):
             raise ValueError("search-index.js must contain only the generated search assignment")
         embedded_search = search_script[len(prefix) : -len(suffix)]
-    if embedded_search != search_text.strip() or \
-            strict_loads(embedded_search, description="embedded HTML search index") != search:
+    if (
+        embedded_search != search_text.strip()
+        or strict_loads(embedded_search, description="embedded HTML search index") != search
+    ):
         raise ValueError("search-index.js payload differs from search-index.json")
+    if search.get("schemaVersion") != "cjdoc.search-index/6":
         raise ValueError("unexpected search index schemaVersion")
     entries = search.get("entries")
     if not isinstance(entries, list):
@@ -250,10 +253,12 @@ def main() -> int:
     ids = [entry.get("id") for entry in entries]
     if len(ids) != len(set(ids)):
         raise ValueError("search index IDs must be unique")
-    expected = {"id", "canonicalId", "exposure", "name", "qualifiedName", "kind",
+    required = {"id", "canonicalId", "exposure", "name", "qualifiedName", "kind",
                 "packageName", "summary", "href"}
+    allowed = required | {"ownerName", "parameterTypes", "returnType", "returnCanonical", "bindings", "externalDocs"}
     for entry in entries:
-        if set(entry) != expected:
+        fields = set(entry)
+        if not required.issubset(fields) or not fields.issubset(allowed):
             raise ValueError(f"invalid search entry fields for {entry.get('id')}")
         target, fragment = resolve_local(root, root / "search-index.json", entry["href"])
         target_parser = pages.get(target.resolve()) if target is not None else None

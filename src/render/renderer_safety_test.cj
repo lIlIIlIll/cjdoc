@@ -376,7 +376,7 @@ class RendererSafetyTest {
         @Expect(symbolHtml.contains(
             "<h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"class Owner\">"), true)
         @Expect(symbolHtml.contains(
-            "<article class=\"declaration-summary\"><a class=\"declaration-row-link\" href=\""), true)
+            "<article class=\"declaration-summary\" data-cjdoc-member"), true)
     }
 
     @TestCase

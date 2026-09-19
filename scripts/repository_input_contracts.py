@@ -129,7 +129,7 @@ SCHEMA_CONTRACTS = {
     ),
     "search-index": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index.schema.json",
-        "cjdoc.search-index/4", ("schemaVersion", "entries"),
+        "cjdoc.search-index/6", ("schemaVersion", "entries"),
     ),
     "symbol-index": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/symbol-index.schema.json",

@@ -184,6 +184,7 @@ class DocComment {
     public var returnTagCount: Int64 = 0
     public let throwsTags = ArrayList<DocTag>()
     public let see = ArrayList<DocTag>()
+    public let contracts = ArrayList<DocTag>()
     public var since: ?String = None
     public var deprecated: ?String = None
     public let authors = ArrayList<String>()

@@ -78,14 +78,39 @@ internal let HTML_SEARCH_SCRIPT = """
     if (["function", "constructor"].includes(kind)) return "functions";
     return "other";
   };
-  const rank = (entry, query) => {
+  const fieldNames = new Set(["name", "owner", "param", "return", "package", "kind"]);
+  const parseQuery = (raw) => {
+    const filters = [];
+    const terms = [];
+    const errors = [];
+    for (const token of raw.trim().split(/\\s+/).filter(Boolean)) {
+      const colon = token.indexOf(":");
+      if (colon <= 0) { terms.push(token); continue; }
+      const field = token.slice(0, colon).toLocaleLowerCase();
+      const value = token.slice(colon + 1).toLocaleLowerCase();
+      if (!fieldNames.has(field) || !value) errors.push(token);
+      else filters.push({field, value});
+    }
+    return {filters, terms, errors};
+  };
+  const fieldValue = (entry, field) => {
+    if (field === "param") return (entry.parameterTypes || []).join(" ").toLocaleLowerCase();
+    if (field === "return") return [entry.returnType, entry.returnCanonical].filter(Boolean).join(" ").toLocaleLowerCase();
+    if (field === "owner") return (entry.ownerName || "").toLocaleLowerCase();
+    if (field === "package") return (entry.packageName || "").toLocaleLowerCase();
+    return (entry[field] || "").toLocaleLowerCase();
+  };
+  const rank = (entry, parsed) => {
+    if (parsed.filters.some((filter) => !fieldValue(entry, filter.field).includes(filter.value))) return -1;
+    const query = parsed.terms.join(" ");
+    if (!query) return 0;
     const name = entry.name.toLocaleLowerCase();
     const qualified = entry.qualifiedName.toLocaleLowerCase();
     if (name === query) return 0;
     if (qualified === query) return 1;
     if (name.startsWith(query)) return 2;
     if (qualified.startsWith(query)) return 3;
-    const haystack = (entry.qualifiedName + " " + entry.kind + " " + entry.packageName + " " + entry.summary).toLocaleLowerCase();
+    const haystack = (entry.qualifiedName + " " + entry.kind + " " + entry.packageName + " " + (entry.ownerName || "") + " " + (entry.parameterTypes || []).join(" ") + " " + (entry.returnType || "") + " " + entry.summary).toLocaleLowerCase();
     return query.split(" ").filter(Boolean).every((token) => haystack.includes(token)) ? 4 : -1;
   };
   const setCategory = (next) => {
@@ -114,10 +139,19 @@ internal let HTML_SEARCH_SCRIPT = """
     selected = -1;
     input.removeAttribute("aria-activedescendant");
     if (searchStatus) searchStatus.hidden = true;
-    const query = input.value.trim().toLocaleLowerCase();
-    if (!query) { input.setAttribute("aria-expanded", "false"); return; }
+    const rawQuery = input.value.trim().toLocaleLowerCase();
+    if (!rawQuery) { input.setAttribute("aria-expanded", "false"); return; }
+    const parsedQuery = parseQuery(rawQuery);
+    if (parsedQuery.errors.length) {
+      if (searchStatus) {
+        searchStatus.textContent = isChinese ? "筛选语法错误：支持 name:、owner:、param:、return:、package:、kind:" : "Invalid filter; use name:, owner:, param:, return:, package:, or kind:";
+        searchStatus.hidden = false;
+      }
+      input.setAttribute("aria-expanded", "false");
+      return;
+    }
     const selectedPackage = packageFilter ? packageFilter.value : "";
-    const matches = entries.map((entry) => ({entry, rank: rank(entry, query)}))
+    const matches = entries.map((entry) => ({entry, rank: rank(entry, parsedQuery)}))
       .filter((item) => item.rank >= 0 && (activeCategory === "all" || categoryFor(item.entry.kind) === activeCategory) &&
         (!selectedPackage || item.entry.packageName === selectedPackage))
       .sort((left, right) => left.rank - right.rank ||
@@ -143,7 +177,7 @@ internal let HTML_SEARCH_SCRIPT = """
       kind.className = "search-kind";
       kind.textContent = entry.kind;
       context.className = "search-context";
-      context.textContent = entry.packageName + (entry.qualifiedName !== entry.name ? " · " + entry.qualifiedName : "");
+      context.textContent = entry.packageName + (entry.qualifiedName !== entry.name ? " · " + entry.qualifiedName : "") + (entry.ownerName ? " · owner: " + entry.ownerName : "");
       head.append(name, kind);
       link.append(head, context);
       const signatureText = signatures[entry.id] || signatures[entry.canonicalId] || "";
@@ -174,7 +208,7 @@ internal let HTML_SEARCH_SCRIPT = """
     }
   };
   const index = globalThis.__CJDOC_SEARCH_INDEX__;
-  entries = index && index.schemaVersion === "cjdoc.search-index/4" && Array.isArray(index.entries)
+  entries = index && index.schemaVersion === "cjdoc.search-index/6" && Array.isArray(index.entries)
     ? index.entries : [];
   addOptions(packageFilter, entries.map((entry) => entry.packageName));
   const closeSearch = () => {
@@ -605,6 +639,23 @@ internal let HTML_SEARCH_SCRIPT = """
         button.title = copyLabels.copy;
       }, 1400);
     });
+  }
+  const memberFilter = document.querySelector("[data-cjdoc-member-filter]");
+  if (memberFilter) {
+    const memberRows = [...document.querySelectorAll("[data-cjdoc-member]")];
+    const memberStatus = document.querySelector("[data-cjdoc-member-filter-status]");
+    const applyMemberFilter = () => {
+      const query = memberFilter.value.trim().toLocaleLowerCase();
+      let visible = 0;
+      for (const row of memberRows) {
+        const haystack = (row.dataset.memberName || "") + " " + (row.dataset.memberKind || "") + " " + (row.textContent || "");
+        const matches = !query || haystack.toLocaleLowerCase().includes(query);
+        row.hidden = !matches;
+        if (matches) visible += 1;
+      }
+      if (memberStatus) memberStatus.hidden = !query || visible !== 0;
+    };
+    memberFilter.addEventListener("input", applyMemberFilter);
   }
 })();
 """

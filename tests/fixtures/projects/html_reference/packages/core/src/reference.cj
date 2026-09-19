@@ -30,6 +30,9 @@ public class ReferenceBox<T> {
      * @param value Input value.
      * @return A stable integer for the example.
      * @throws IllegalArgumentException when the value is invalid.
+     * @precondition value is a valid numeric input.
+     * @postcondition the normalized value is stable.
+     * @performance linear in the input size.
      * @example
      * let result = normalize(value: 42)
      */

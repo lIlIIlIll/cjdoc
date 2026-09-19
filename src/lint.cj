@@ -85,6 +85,12 @@ private func validVersion(value: String): Bool {
 }
 
 
+private func isBehaviorContractTagName(name: String): Bool {
+    name == "precondition" || name == "postcondition" || name == "invariant" ||
+        name == "performance" || name == "state" || name == "concurrency" ||
+        name == "platform" || name == "compatibility" || name == "error"
+}
+
 private func lintQualityRules(documentation: DocumentationSet,
     config: ?DocumentationQualityConfig, audience: String,
     strictMissingSymbolDocs!: Bool = false): Unit {
@@ -154,6 +160,13 @@ private func lintQualityRules(documentation: DocumentationSet,
                     if (tag.description.trimAscii().isEmpty()) {
                         addQualityDiagnostic(documentation, symbol, config, "missing-throws", "CJDOC1042",
                             "@throws '${tag.subject}' is missing a description")
+                    }
+                }
+                for (tag in doc.contracts) {
+                    if (!isBehaviorContractTagName(tag.name)) { continue }
+                    if (tag.description.trimAscii().isEmpty()) {
+                        addQualityDiagnostic(documentation, symbol, config, "incomplete-contract", "CJDOC1043",
+                            "behavior contract '${tag.name}' is missing a description")
                     }
                 }
                 for (tag in doc.see) {

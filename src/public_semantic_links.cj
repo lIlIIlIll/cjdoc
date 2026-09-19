@@ -93,8 +93,8 @@ private func semanticLinkStructuredSignatureMatches(signature: String,
 
 private func semanticLinkCandidate(target: String, owner: public_model.SymbolDoc,
     candidate: public_model.SymbolDoc): Bool {
-    if (candidate.moduleId != owner.moduleId) { return false }
     if (target == candidate.id) { return true }
+    if (candidate.moduleId != owner.moduleId) { return false }
     let base = semanticLinkBase(target)
     let signature = semanticLinkSignature(target)
     let baseMatches = base == candidate.qualifiedName || base == candidate.name ||

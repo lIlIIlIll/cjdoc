@@ -23,3 +23,4 @@
 !/tests/perf/*.json
 !/tests/fixtures/golden-v9/*.json
 !/tests/fixtures/golden-v10/*.json
+!/tests/fixtures/projects/html_reference/docs/std-symbol-index.json

@@ -3,6 +3,7 @@ package cjdoc
 import std.collection.*
 import std.fs.*
 import yjson.*
+import cjdoc.model.*
 
 internal let EXTERNAL_DOC_INDEX_MAX_BYTES: Int64 = 8 * 1024 * 1024
 internal let EXTERNAL_DOC_CONFIG_MAX_BYTES: Int64 = 64 * 1024
@@ -10,13 +11,22 @@ internal let EXTERNAL_DOC_CONFIG_MAX_BYTES: Int64 = 64 * 1024
 internal class ExternalDocResolver {
     public let name: String
     public let baseUrl: String
-    public let state: String
-    public let reason: String
+    public let version: ?String
+    public let indexPath: String
+    public var fingerprint: String
+    public var format: String
+    public var state: String
+    public var reason: String
     private let targets = HashMap<String, String>()
 
-    init(name: String, baseUrl: String, state!: String = "available", reason!: String = "") {
+    init(name: String, baseUrl: String, state!: String = "available", reason!: String = "",
+        version!: ?String = None, indexPath!: String = "", fingerprint!: String = "", format!: String = "") {
         this.name = name
         this.baseUrl = baseUrl
+        this.version = version
+        this.indexPath = indexPath
+        this.fingerprint = fingerprint
+        this.format = format
         this.state = state
         this.reason = reason
     }
@@ -62,9 +72,27 @@ private func safeExternalHref(baseUrl: String, href: String): ?String {
     }
     var relative = href.trimAscii()
     while (relative.startsWith("/")) { relative = relative.removePrefix("/") }
+    var anchor = ""
+    match (relative.indexOf("#")) {
+        case Some(index) =>
+            anchor = relative[index + 1..]
+            relative = relative[..index]
+        case None => ()
+    }
     if (relative.isEmpty() || relative.contains("..") || relative.contains("\\") ||
-        relative.contains(" ") || relative.contains("#") || relative.contains("?")) { return None }
-    Some(baseUrl + "/" + relative)
+        relative.contains(" ") || relative.contains("?") || anchor.contains("#") ||
+        anchor.contains("\\") || anchor.contains(" ") || anchor.contains("?")) { return None }
+    let suffix = if (anchor.isEmpty()) { "" } else { "#" + anchor }
+    Some(baseUrl + "/" + relative + suffix)
+}
+
+private func externalIndexLabel(value: String): String {
+    if (value.startsWith("/") || value.contains(":")) { return "configured index" }
+    value
+}
+
+private func externalDocFingerprint(value: String): String {
+    contractFingerprint(value)
 }
 
 private func jsonObjectField(object: JsonObject, key: String): ?JsonNode {
@@ -103,9 +131,11 @@ private func addExternalEntry(resolver: ExternalDocResolver, object: JsonObject)
 
 private func loadExternalIndex(projectRoot: String, name: String, indexPath: String,
     baseUrl: String, expectedVersion: ?String): ExternalDocResolver {
-    let resolver = ExternalDocResolver(name, baseUrl)
+    let indexLabel = externalIndexLabel(indexPath)
+    let resolver = ExternalDocResolver(name, baseUrl, version: expectedVersion, indexPath: indexLabel)
     if (!safeExternalBaseUrl(baseUrl)) {
-        return ExternalDocResolver(name, baseUrl, state: "unavailable", reason: "external documentation base URL is unsafe")
+        return ExternalDocResolver(name, baseUrl, version: expectedVersion, indexPath: indexLabel,
+            state: "unavailable", reason: "external documentation base URL is unsafe")
     }
     let path = if (indexPath.startsWith("/") || indexPath.contains(":")) {
         Path(indexPath)
@@ -113,10 +143,13 @@ private func loadExternalIndex(projectRoot: String, name: String, indexPath: Str
         Path(projectRoot).join(indexPath)
     }
     if (!exists(path)) {
-        return ExternalDocResolver(name, baseUrl, state: "unavailable", reason: "external documentation index is missing")
+        return ExternalDocResolver(name, baseUrl, version: expectedVersion, indexPath: indexLabel,
+            state: "unavailable", reason: "external documentation index is missing")
     }
     try {
-        let parsed = JsonNode.parse(readTextBounded(path, EXTERNAL_DOC_INDEX_MAX_BYTES),
+        let indexText = readTextBounded(path, EXTERNAL_DOC_INDEX_MAX_BYTES)
+        resolver.fingerprint = externalDocFingerprint(indexText)
+        let parsed = JsonNode.parse(indexText,
             config: JsonReadOptions(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject,
                 maxDepth: 32, maxStringBytes: EXTERNAL_DOC_INDEX_MAX_BYTES,
                 maxBufferedValueBytes: EXTERNAL_DOC_INDEX_MAX_BYTES,
@@ -126,13 +159,18 @@ private func loadExternalIndex(projectRoot: String, name: String, indexPath: Str
             case Some(value) => value
             case None => ""
         }
+        resolver.format = schemaVersion
         if (schemaVersion != "cjdoc.symbol-index/1") {
-            return ExternalDocResolver(name, baseUrl, state: "unavailable", reason: "external documentation index schema is stale")
+            resolver.state = "unavailable"
+            resolver.reason = "external documentation index schema is stale"
+            return resolver
         }
         match (expectedVersion) {
             case Some(version) =>
                 if (jsonStringField(object, "version") != Some(version)) {
-                    return ExternalDocResolver(name, baseUrl, state: "unavailable", reason: "external documentation index version is stale")
+                    resolver.state = "unavailable"
+                    resolver.reason = "external documentation index version is stale"
+                    return resolver
                 }
             case None => ()
         }
@@ -148,7 +186,9 @@ private func loadExternalIndex(projectRoot: String, name: String, indexPath: Str
         }
         resolver
     } catch (_: Exception) {
-        ExternalDocResolver(name, baseUrl, state: "unavailable", reason: "external documentation index is invalid")
+        resolver.state = "unavailable"
+        resolver.reason = "external documentation index is invalid"
+        resolver
     }
 }
 
@@ -156,12 +196,13 @@ private func appendExternalResolver(result: ArrayList<ExternalDocResolver>, proj
     name: String, indexPath: String, baseUrl: String, version: ?String): Unit {
     if (name.isEmpty()) { return }
     if (indexPath.isEmpty() || baseUrl.isEmpty()) {
-        result.add(ExternalDocResolver(name, baseUrl, state: "unavailable", reason: "external documentation configuration is incomplete"))
+        result.add(ExternalDocResolver(name, baseUrl, version: version,
+            indexPath: externalIndexLabel(indexPath), state: "unavailable",
+            reason: "external documentation configuration is incomplete"))
     } else {
         result.add(loadExternalIndex(projectRoot, name, indexPath, baseUrl, version))
     }
 }
-
 internal func loadExternalDocResolvers(projectRoot: String): Array<ExternalDocResolver> {
     let path = Path(projectRoot).join("cjdoc.toml")
     if (!exists(path)) { return [] }

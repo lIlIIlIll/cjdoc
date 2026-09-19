@@ -75,7 +75,7 @@ internal func renderHtmlIndex(documentation: DocumentationSet, projection: Rende
 
 internal func appendDeclarationRow(out: RenderTextBuffer, symbol: SymbolDoc,
     rootPrefix: String): Unit {
-    out.append("<article class=\"declaration-summary\"><a class=\"declaration-row-link\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(symbol))}\">")
+    out.append("<article class=\"declaration-summary\" data-cjdoc-member data-member-name=\"${escapeHtml(symbol.name)}\" data-member-kind=\"${escapeHtml(symbol.kind)}\"><a class=\"declaration-row-link\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(symbol))}\">")
     out.append("<div class=\"declaration-summary-head\"><code>${escapeHtml(symbol.name)}</code><span class=\"declaration-kind\">${escapeHtml(symbol.kind)}</span></div>")
     match (symbol.documentation) {
         case Some(comment) =>
@@ -233,13 +233,49 @@ internal func memberSectionTitle(symbol: SymbolDoc): String {
 internal func appendMemberSection(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
     owner: SymbolDoc, title: String, locale: String): Unit {
+    let sectionLabel = match (title) {
+        case "Constructors" => "构造器"
+        case "Properties" => "属性"
+        case "Variables" => "变量"
+        case "Functions" => "函数"
+        case "Enum cases" => "枚举项"
+        case "Nested classes" => "嵌套类"
+        case "Nested structs" => "嵌套结构体"
+        case "Nested interfaces" => "嵌套接口"
+        case "Nested enums" => "嵌套枚举"
+        case "Nested extensions" => "嵌套扩展"
+        case _ => "其他成员"
+    }
+    let overloadLabel = label(locale, "Overloads", "重载")
     var opened = false
     match (membersByOwner.get(owner.id)) {
-        case Some(members) => for (member in members) {
-            if (memberSectionTitle(member) != title) { continue }
-            if (!opened) { out.append("<h2>${escapeHtml(label(locale, title, match (title) { case "Constructors" => "构造器"; case "Properties" => "属性"; case "Variables" => "变量"; case "Functions" => "函数"; case "Enum cases" => "枚举项"; case "Nested classes" => "嵌套类"; case "Nested structs" => "嵌套结构体"; case "Nested interfaces" => "嵌套接口"; case "Nested enums" => "嵌套枚举"; case "Nested extensions" => "嵌套扩展"; case _ => "其他成员" }))}</h2>\n"); opened = true }
-            appendDeclarationRow(out, member, "../")
-        }
+        case Some(members) =>
+            let overloadCounts = HashMap<String, Int64>()
+            for (member in members) {
+                if (memberSectionTitle(member) != title) { continue }
+                let count = match (overloadCounts.get(member.name)) {
+                    case Some(value) => value + 1
+                    case None => 1
+                }
+                overloadCounts[member.name] = count
+            }
+            var previousName = ""
+            for (member in members) {
+                if (memberSectionTitle(member) != title) { continue }
+                if (!opened) {
+                    out.append("<h2>" + escapeHtml(label(locale, title, sectionLabel)) + "</h2>\n")
+                    opened = true
+                }
+                let count = match (overloadCounts.get(member.name)) {
+                    case Some(value) => value
+                    case None => 0
+                }
+                if (count > 1 && previousName != member.name) {
+                    out.append("<p class=\"overload-group-label\"><span>" + escapeHtml(overloadLabel) + "</span> <code>" + escapeHtml(member.name) + "</code></p>\n")
+                }
+                previousName = member.name
+                appendDeclarationRow(out, member, "../")
+            }
         case None => ()
     }
 }
@@ -274,7 +310,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     appendOwnerBreadcrumbs(out, index, symbol, "../", locale)
     out.append("<li aria-current=\"page\"><code>${escapeHtml(symbol.name)}</code></li></ol></nav>\n")
     out.append("<header class=\"page-header\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(symbol.name)}</code></h1>")
-    appendSymbolMetadata(out, index, symbol, "../", assetLookup, locale: locale)
+    appendSymbolMetadata(out, index, symbol, "../", assetLookup, typeLinkIndex, locale: locale)
     match (findProjectedModule(projection, symbol.moduleId)) {
         case Some(module) => match (sourceUrl(documentation.project, module, symbol.source)) {
             case Some(url) => out.append("<p class=\"source-action\"><a href=\"${escapeHtml(url)}\" rel=\"noreferrer\">${label(locale, "View source", "查看源码")}</a></p>\n")
@@ -285,11 +321,22 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     out.append("</header>\n")
     appendDocumentationHtml(out, index, symbol, "../", assetLookup,
         typeLinkIndex, headingBase: 2, locale: locale)
+    if (isTypeDeclaration(symbol)) {
+        appendReverseTypeUsageSection(out, symbol, typeLinkIndex, "../", locale)
+    }
+    if (isTypeDeclaration(symbol)) {
+        let filterLabel = label(locale, "Filter members", "筛选成员")
+        let noResultsLabel = label(locale, "No matching members.", "没有匹配的成员。")
+        out.append("<section class=\"member-browser\" data-cjdoc-member-browser>")
+        out.append("<div class=\"member-browser-toolbar\"><label for=\"cjdoc-member-filter\">" + filterLabel + "</label><input id=\"cjdoc-member-filter\" type=\"search\" data-cjdoc-member-filter placeholder=\"" + filterLabel + "\" autocomplete=\"off\"></div>")
+        out.append("<p class=\"member-filter-status\" data-cjdoc-member-filter-status role=\"status\" hidden>" + noResultsLabel + "</p>")
+    }
     for (title in ["Constructors", "Properties", "Variables", "Functions", "Enum cases",
         "Nested classes", "Nested structs", "Nested interfaces", "Nested enums", "Nested extensions",
         "Other members"]) {
         appendMemberSection(out, index, membersByOwner, symbol, title, locale)
     }
+    if (isTypeDeclaration(symbol)) { out.append("</section>\n") }
     appendPageEnd(out, documentation, locale: locale)
     out.toString()
 }
@@ -323,10 +370,59 @@ internal func appendSearchJsonString(out: RenderTextBuffer, value: String): Unit
     out.append("\"")
 }
 
+private func collectSearchTypeFacts(values: ArrayList<String>, typeRef: TypeRef): Unit {
+    if (!typeRef.spelling.isEmpty()) { values.add(typeRef.spelling) }
+    match (typeRef.semantic.canonical) {
+        case Some(canonical) => if (!canonical.isEmpty() && canonical != typeRef.spelling) { values.add(canonical) }
+        case None => ()
+    }
+    for (argument in typeRef.arguments) { collectSearchTypeFacts(values, argument) }
+}
+
+private func appendSearchTypeFacts(out: RenderTextBuffer, values: ArrayList<String>): Unit {
+    out.append("[")
+    var first = true
+    for (value in values) {
+        if (!first) { out.append(",") }
+        first = false
+        appendSearchJsonString(out, value)
+    }
+    out.append("]")
+}
+
+private func appendSearchStructuredFacts(out: RenderTextBuffer,
+    projection: RenderProjection, symbol: SymbolDoc): Unit {
+    out.append(", \"ownerName\": ")
+    match (symbol.ownerId) {
+        case Some(ownerId) => match (projection.visibleIndex.get(ownerId)) {
+            case Some(owner) => appendSearchJsonString(out, owner.qualifiedName)
+            case None => out.append("null")
+        }
+        case None => out.append("null")
+    }
+    let parameterTypes = ArrayList<String>()
+    for (parameter in symbol.parameters) { collectSearchTypeFacts(parameterTypes, parameter.typeRef) }
+    out.append(", \"parameterTypes\": ")
+    appendSearchTypeFacts(out, parameterTypes)
+    out.append(", \"returnType\": ")
+    match (symbol.returnType) {
+        case Some(returnType) => appendSearchJsonString(out, returnType.spelling)
+        case None => out.append("null")
+    }
+    out.append(", \"returnCanonical\": ")
+    match (symbol.returnType) {
+        case Some(returnType) => match (returnType.semantic.canonical) {
+            case Some(canonical) => appendSearchJsonString(out, canonical)
+            case None => out.append("null")
+        }
+        case None => out.append("null")
+    }
+}
+
 internal func renderSearchIndex(documentation: DocumentationSet,
     projection: RenderProjection): String {
     let out = RenderTextBuffer()
-    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/4\",\n  \"entries\": [")
+    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/6\",\n  \"entries\": [")
     var first = true
     let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(visible, lessThan: { left, right => left.id < right.id }, stable: true)
@@ -340,6 +436,7 @@ internal func renderSearchIndex(documentation: DocumentationSet,
         out.append(", \"qualifiedName\": "); appendSearchJsonString(out, declaration.qualifiedName)
         out.append(", \"kind\": "); appendSearchJsonString(out, declaration.kind)
         out.append(", \"packageName\": "); appendSearchJsonString(out, declaration.packageName)
+        appendSearchStructuredFacts(out, projection, declaration)
         let summary = match (declaration.documentation) {
             case Some(comment) => summaryPlainText(comment)
             case None => ""
@@ -367,6 +464,7 @@ internal func renderSearchIndex(documentation: DocumentationSet,
                             appendSearchJsonString(out, "${pkg.name}.${binding.exposedName}")
                             out.append(", \"kind\": "); appendSearchJsonString(out, target.kind)
                             out.append(", \"packageName\": "); appendSearchJsonString(out, pkg.name)
+                            appendSearchStructuredFacts(out, projection, target)
                             let summary = match (target.documentation) {
                                 case Some(comment) => summaryPlainText(comment)
                                 case None => ""

@@ -29,12 +29,34 @@ internal class ConceptualDocsConfig {
     let packageSources = HashMap<String, String>()
 }
 
+internal class ConceptualApiBinding {
+    let target: String
+    let selector: String
+    let provenance: String
+    let version: String
+    let sourceLine: Int64
+    let language: String
+    var state = "unresolved"
+    var targetSymbolId: ?String = None
+
+    init(target: String, selector: String, provenance: String, version: String,
+        sourceLine: Int64, language: String) {
+        this.target = target
+        this.selector = selector
+        this.provenance = provenance
+        this.version = version
+        this.sourceLine = sourceLine
+        this.language = language
+    }
+}
+
 internal class ConceptualPage {
     let source: String
     let route: String
     let title: String
     let kind: String
     let markdown: String
+    let bindings = ArrayList<ConceptualApiBinding>()
 
     init(source: String, route: String, title: String, kind: String, markdown: String) {
         this.source = source
@@ -44,7 +66,6 @@ internal class ConceptualPage {
         this.markdown = markdown
     }
 }
-
 private func conceptualValue(value: String): String {
     var cleaned = value.trimAscii()
     var quoted = false
@@ -86,6 +107,87 @@ private func conceptualSafeRoute(value: String): Bool {
         if (byte < 0x20 || byte == 0x7F) { return false }
     }
     true
+}
+
+private func conceptualBindingAttribute(line: String, key: String): String {
+    let marker = key + "=\""
+    match (line.indexOf(marker)) {
+        case Some(start) =>
+            let valueStart = start + marker.size
+            match (line[valueStart..].indexOf("\"")) {
+                case Some(end) => line[valueStart..valueStart + end]
+                case None => ""
+            }
+        case None => ""
+    }
+}
+
+private func conceptualCollectBindings(page: ConceptualPage): Unit {
+    var count: Int64 = 0
+    var lineNumber: Int64 = 1
+    for (rawLine in page.markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n")) {
+        let sourceLine = lineNumber
+        lineNumber++
+        let line = rawLine.trimAscii()
+        if (!line.startsWith("<!-- cjdoc-bind ") || !line.endsWith(" -->")) { continue }
+        if (count >= 32) { break }
+        let target = conceptualBindingAttribute(line, "target")
+        if (target.isEmpty()) { continue }
+        var language = conceptualBindingAttribute(line, "language")
+        if (language.isEmpty()) { language = "markdown" }
+        let selector = conceptualBindingAttribute(line, "selector")
+        var duplicate = false
+        for (existing in page.bindings) {
+            if (existing.target == target && existing.selector == selector) { duplicate = true; break }
+        }
+        let binding = ConceptualApiBinding(target, selector,
+            conceptualBindingAttribute(line, "provenance"),
+            conceptualBindingAttribute(line, "version"),
+            sourceLine, language)
+        if (duplicate) {
+            binding.state = "conflict"
+            eprintln("warning[CJDOC4053]: duplicate conceptual API binding '${target}' in ${page.source}")
+        }
+        page.bindings.add(binding)
+        count++
+    }
+}
+
+private func conceptualMarkdownWithoutBindings(markdown: String): String {
+    let out = StringBuilder()
+    for (rawLine in markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n")) {
+        let line = rawLine.trimAscii()
+        if (line.startsWith("<!-- cjdoc-bind ") && line.endsWith(" -->")) { continue }
+        out.append(rawLine)
+        out.append("\n")
+    }
+    out.toString()
+}
+
+private func conceptualResolveBindings(page: ConceptualPage,
+    documentation: public_model.DocumentationSet): Unit {
+    for (binding in page.bindings) {
+        if (binding.state == "conflict") { continue }
+        var matches = ArrayList<public_model.SymbolDoc>()
+        for (symbol in documentation.declarations) {
+            let matchesTarget = if (binding.target.startsWith("id:")) {
+                symbol.id == binding.target.removePrefix("id:")
+            } else {
+                symbol.qualifiedName == binding.target
+            }
+            if (matchesTarget) { matches.add(symbol) }
+        }
+        if (matches.size == 1) {
+            binding.state = "resolved"
+            binding.targetSymbolId = Some(matches[0].id)
+        } else if (matches.size > 1) {
+            binding.state = "ambiguous"
+            eprintln("warning[CJDOC4052]: ambiguous conceptual API binding '${binding.target}' in ${page.source}")
+        } else {
+            binding.state = "unresolved"
+            eprintln("warning[CJDOC4051]: unresolved conceptual API binding '${binding.target}' in ${page.source}")
+        }
+    }
 }
 
 private func conceptualPathFromValue(value: String, setting: String): String {
@@ -199,6 +301,37 @@ private func conceptualSlug(value: String): String {
     while (slug.endsWith("-")) { slug = slug.removeSuffix("-") }
     if (slug.isEmpty()) { slug = "page" }
     slug
+}
+
+private func conceptualSymbolSlug(value: String): String {
+    let digits = "0123456789abcdef"
+    let out = StringBuilder()
+    if (value.isEmpty()) { return "root" }
+    for (byte in value.toArray()) {
+        let high = Int64((byte >> 4) & 0x0Fu8)
+        let low = Int64(byte & 0x0Fu8)
+        out.append(digits[high..high + 1])
+        out.append(digits[low..low + 1])
+    }
+    out.toString()
+}
+
+private func conceptualStableHash(value: String): String {
+    var first: Int64 = 0
+    var second: Int64 = 0
+    for (byte in value.toArray()) {
+        first = (first * 131 + Int64(byte)) % 2147483647
+        second = (second * 257 + Int64(byte)) % 2147483629
+    }
+    "${first}-${second}"
+}
+
+private func conceptualSymbolPath(symbolId: String): String {
+    let slug = conceptualSymbolSlug(symbolId)
+    let bounded = if (slug.size <= 96) { slug } else {
+        slug[..64] + "--" + conceptualStableHash(symbolId)
+    }
+    "symbols/symbol-${bounded}.html"
 }
 
 private func conceptualRoute(route: String, fallback: String): String {
@@ -342,6 +475,10 @@ private func conceptualPages(root: Path, documentation: public_model.Documentati
         let page = conceptualPageFromSource(root, spec.source, route, spec.title, "guide", spec.source)
         conceptualAddPage(pages, routes, page)
     }
+    for (page in pages) {
+        conceptualCollectBindings(page)
+        conceptualResolveBindings(page, documentation)
+    }
     pages
 }
 
@@ -386,20 +523,161 @@ private func conceptualHtmlPage(documentation: public_model.DocumentationSet, pa
     public_render.renderConceptualHtmlPage(documentation, page.title, body, prefix,
         source: Some(page.source), locale: locale, docVersion: docVersion)
 }
-private func conceptualMarkdownPage(page: ConceptualPage, pages: ArrayList<ConceptualPage>): String {
+private func conceptualBindingsMarkdown(page: ConceptualPage,
+    documentation: public_model.DocumentationSet): String {
+    if (page.bindings.isEmpty()) { return "" }
+    let prefix = conceptualRelativePrefix(page.route)
+    let out = StringBuilder()
+    out.append("\n## API associations\n\n")
+    for (binding in page.bindings) {
+        out.append("- [")
+        out.append(binding.state)
+        out.append("] ")
+        match (binding.targetSymbolId) {
+            case Some(targetId) =>
+                var found: ?public_model.SymbolDoc = None
+                for (symbol in documentation.declarations) {
+                    if (symbol.id == targetId) { found = Some(symbol); break }
+                }
+                match (found) {
+                    case Some(symbol) =>
+                        let href = prefix + conceptualSymbolPath(symbol.id).removeSuffix(".html") + ".md"
+                        out.append("[")
+                        out.append(public_render.escapeStandaloneHtml(symbol.qualifiedName))
+                        out.append("](")
+                        out.append(href)
+                        out.append(")")
+                    case None =>
+                        out.append(public_render.escapeStandaloneHtml(binding.target))
+                }
+            case None => out.append(public_render.escapeStandaloneHtml(binding.target))
+        }
+        out.append(" — ")
+        out.append(binding.language)
+        out.append(" line ")
+        out.append(binding.sourceLine.toString())
+        if (!binding.provenance.isEmpty()) {
+            out.append("; source: ")
+            out.append(public_render.escapeStandaloneHtml(binding.provenance))
+        }
+        out.append("\n")
+    }
+    out.toString()
+}
+
+private func conceptualMarkdownPage(page: ConceptualPage, pages: ArrayList<ConceptualPage>,
+    documentation: public_model.DocumentationSet): String {
     let prefix = conceptualRelativePrefix(page.route)
     let conceptsHref = conceptualIndexHref(page.route).removeSuffix(".html") + ".md"
     let out = StringBuilder()
     out.append("[API reference](${prefix}index.md) · [Concepts](${conceptsHref})\n\n")
     out.append("<!-- source: ${page.source} -->\n\n")
-    out.append(page.markdown)
-    if (!page.markdown.endsWith("\n")) { out.append("\n") }
+    let markdown = conceptualMarkdownWithoutBindings(page.markdown)
+    out.append(markdown)
+    if (!markdown.endsWith("\n")) { out.append("\n") }
+    out.append(conceptualBindingsMarkdown(page, documentation))
     if (page.kind == "project") { out.append(conceptualProjectMarkdownNavigation(pages)) }
     out.toString()
 }
 
 private func conceptualJsonString(value: String): String {
     public_render.escapeJsonString(value)
+}
+
+private func externalSearchObjectEnd(value: String, start: Int64): ?Int64 {
+    var quoted = false
+    var escaped = false
+    var index = start
+    while (index < value.size) {
+        let byte = value[index]
+        if (quoted) {
+            if (escaped) {
+                escaped = false
+            } else if (byte == b'\\') {
+                escaped = true
+            } else if (byte == b'"') {
+                quoted = false
+            }
+        } else if (byte == b'"') {
+            quoted = true
+        } else if (byte == b'}') {
+            return Some(index)
+        }
+        index++
+    }
+    None
+}
+
+private func externalSearchJson(value: String): String {
+    public_render.escapeJsonString(value)
+}
+
+private func externalSearchDocJson(resolver: ExternalDocResolver, state: String, url: String): String {
+    let version = match (resolver.version) {
+        case Some(value) => value
+        case None => ""
+    }
+    let out = StringBuilder()
+    out.append("{\"name\":")
+    out.append(externalSearchJson(resolver.name))
+    out.append(",\"state\":")
+    out.append(externalSearchJson(state))
+    out.append(",\"url\":")
+    out.append(externalSearchJson(url))
+    out.append(",\"reason\":")
+    out.append(externalSearchJson(resolver.reason))
+    out.append(",\"version\":")
+    out.append(externalSearchJson(version))
+    out.append(",\"index\":")
+    out.append(externalSearchJson(resolver.indexPath))
+    out.append(",\"format\":")
+    out.append(externalSearchJson(resolver.format))
+    out.append(",\"fingerprint\":")
+    out.append(externalSearchJson(resolver.fingerprint))
+    out.append("}")
+    out.toString()
+}
+
+private func externalSearchBindings(symbol: public_model.SymbolDoc,
+    resolvers: Array<ExternalDocResolver>): String {
+    let values = ArrayList<String>()
+    for (resolver in resolvers) {
+        let (idUrl, idAmbiguous) = resolver.matchTarget(symbol.id)
+        let (url, ambiguous) = if (idUrl.isEmpty() && !idAmbiguous) {
+            resolver.matchTarget(symbol.qualifiedName)
+        } else { (idUrl, idAmbiguous) }
+        if (url.isEmpty() && !ambiguous && resolver.state == "available") { continue }
+        let state = if (ambiguous) { "ambiguous" } else { resolver.state }
+        values.add(externalSearchDocJson(resolver, state, url))
+    }
+    if (values.isEmpty()) { return "" }
+    let out = StringBuilder()
+    for (index in 0..values.size) {
+        if (index > 0) { out.append(",") }
+        out.append(values[index])
+    }
+    out.toString()
+}
+
+private func externalSearchIndex(base: String, documentation: public_model.DocumentationSet,
+    resolvers: Array<ExternalDocResolver>): String {
+    if (base.isEmpty() || resolvers.isEmpty()) { return base }
+    var result = base
+    for (symbol in documentation.declarations) {
+        let bindings = externalSearchBindings(symbol, resolvers)
+        let marker = "\"canonicalId\": " + externalSearchJson(symbol.id)
+        if (bindings.isEmpty()) { continue }
+        match (result.indexOf(marker)) {
+            case Some(index) =>
+                match (externalSearchObjectEnd(result, index + marker.size)) {
+                    case Some(end) =>
+                        result = result[..end] + ",\"externalDocs\":[" + bindings + "]" + result[end..]
+                    case None => ()
+                }
+            case None => ()
+        }
+    }
+    result
 }
 
 private func conceptualSearchIndex(base: String, pages: ArrayList<ConceptualPage>): String {
@@ -423,6 +701,33 @@ private func conceptualSearchIndex(base: String, pages: ArrayList<ConceptualPage
         out.append(conceptualJsonString(page.route))
         out.append(",\"kind\":\"concept\",\"packageName\":\"\",\"summary\":\"\",\"href\":")
         out.append(conceptualJsonString(page.route))
+        out.append(",\"bindings\":[")
+        var firstBinding = true
+        for (binding in page.bindings) {
+            if (!firstBinding) { out.append(",") }
+            firstBinding = false
+            out.append("{\"target\":")
+            out.append(conceptualJsonString(binding.target))
+            out.append(",\"state\":")
+            out.append(conceptualJsonString(binding.state))
+            out.append(",\"selector\":")
+            out.append(conceptualJsonString(binding.selector))
+            out.append(",\"provenance\":")
+            out.append(conceptualJsonString(binding.provenance))
+            out.append(",\"version\":")
+            out.append(conceptualJsonString(binding.version))
+            out.append(",\"language\":")
+            out.append(conceptualJsonString(binding.language))
+            out.append(",\"sourceLine\":")
+            out.append(binding.sourceLine.toString())
+            out.append(",\"targetSymbolId\":")
+            match (binding.targetSymbolId) {
+                case Some(value) => out.append(conceptualJsonString(value))
+                case None => out.append("null")
+            }
+            out.append("}")
+        }
+        out.append("]")
         out.append("}")
     }
     out.append(suffix)
@@ -474,6 +779,65 @@ private func conceptualProjectMarkdownNavigation(pages: ArrayList<ConceptualPage
     out.toString()
 }
 
+private func conceptualBindingLabel(locale: String, english: String, chinese: String): String {
+    if (locale == "zh-CN") { chinese } else { english }
+}
+
+private func conceptualBindingsHtml(page: ConceptualPage,
+    documentation: public_model.DocumentationSet, locale: String): String {
+    if (page.bindings.isEmpty()) { return "" }
+    let out = StringBuilder()
+    let prefix = conceptualRelativePrefix(page.route)
+    out.append("<section class=\"conceptual-bindings\" aria-labelledby=\"conceptual-bindings-heading\"><h2 id=\"conceptual-bindings-heading\">")
+    out.append(conceptualBindingLabel(locale, "API associations", "API 关联"))
+    out.append("</h2><p class=\"binding-scope\">")
+    out.append(conceptualBindingLabel(locale, "Explicit bindings from this Markdown page; no name guessing or network lookup is used.", "此 Markdown 页的显式关联；不猜测名称，也不联网获取。"))
+    out.append("</p><ul>")
+    for (binding in page.bindings) {
+        out.append("<li><span class=\"binding-state\" data-state=\"")
+        out.append(public_render.escapeStandaloneHtml(binding.state))
+        out.append("\">")
+        out.append(public_render.escapeStandaloneHtml(binding.state))
+        out.append("</span> ")
+        match (binding.targetSymbolId) {
+            case Some(targetId) =>
+                var found: ?public_model.SymbolDoc = None
+                for (symbol in documentation.declarations) {
+                    if (symbol.id == targetId) { found = Some(symbol); break }
+                }
+                match (found) {
+                    case Some(symbol) =>
+                        out.append("<a href=\"")
+                        out.append(prefix + conceptualSymbolPath(symbol.id))
+                        out.append("\"><code>")
+                        out.append(public_render.escapeStandaloneHtml(symbol.qualifiedName))
+                        out.append("</code></a>")
+                    case None => out.append("<code>" + public_render.escapeStandaloneHtml(binding.target) + "</code>")
+                }
+            case None => out.append("<code>" + public_render.escapeStandaloneHtml(binding.target) + "</code>")
+        }
+        if (!binding.selector.isEmpty()) {
+            out.append(" <span class=\"binding-meta\">selector: ")
+            out.append(public_render.escapeStandaloneHtml(binding.selector))
+            out.append("</span>")
+        }
+        if (!binding.version.isEmpty()) {
+            out.append(" <span class=\"binding-meta\">version: ")
+            out.append(public_render.escapeStandaloneHtml(binding.version))
+            out.append("</span>")
+        }
+        if (!binding.provenance.isEmpty()) {
+            out.append(" <span class=\"binding-meta\">source: ")
+            out.append(public_render.escapeStandaloneHtml(binding.provenance))
+            out.append("</span>")
+        }
+        out.append(" <span class=\"binding-meta\">language: ${binding.language}; line: ${binding.sourceLine}</span>")
+        out.append("</li>")
+    }
+    out.append("</ul></section>\n")
+    out.toString()
+}
+
 internal func renderConceptualDocumentationArtifacts(projectRoot: String,
     documentation: public_model.DocumentationSet, formats: Array<String>, locale!: String = "en", docVersion!: ?String = None): Array<public_render.RenderArtifact> {
     let config = loadConceptualDocsConfig(projectRoot)
@@ -484,11 +848,13 @@ internal func renderConceptualDocumentationArtifacts(projectRoot: String,
     for (format in formats) {
         if (format == "html") {
             for (page in pages) {
-                let body = public_render.renderStandaloneMarkdownHtml(parseStandaloneMarkdown(page.markdown))
+                let markdown = conceptualMarkdownWithoutBindings(page.markdown)
+                let body = public_render.renderStandaloneMarkdownHtml(parseStandaloneMarkdown(markdown))
+                let bindings = conceptualBindingsHtml(page, documentation, locale)
                 let pageBody = if (page.kind == "project") {
-                    body + conceptualProjectHtmlNavigation(pages)
+                    body + conceptualProjectHtmlNavigation(pages) + bindings
                 } else {
-                    body
+                    body + bindings
                 }
                 artifacts.add(public_render.RenderArtifact("html/${page.route}", "text/html; charset=utf-8",
                     conceptualHtmlPage(documentation, page, pageBody, locale: locale, docVersion: docVersion)))
@@ -497,21 +863,13 @@ internal func renderConceptualDocumentationArtifacts(projectRoot: String,
             for (page in pages) {
                 let path = page.route.removePrefix("concepts/").removeSuffix(".html")
                 artifacts.add(public_render.RenderArtifact("markdown/concepts/${path}.md",
-                    "text/markdown; charset=utf-8", conceptualMarkdownPage(page, pages)))
+                    "text/markdown; charset=utf-8", conceptualMarkdownPage(page, pages, documentation)))
             }
         }
     }
     artifacts.toArray()
 }
 
-internal func conceptualSearchAugmentation(projectRoot: String, documentation: public_model.DocumentationSet,
-    formats: Array<String>, baseSearch: String): String {
-    let config = loadConceptualDocsConfig(projectRoot)
-    var hasHtml = false
-    for (format in formats) { if (format == "html") { hasHtml = true } }
-    if (!config.enabled || !hasHtml) { return baseSearch }
-    conceptualSearchIndex(baseSearch, conceptualPages(Path(projectRoot), documentation, config))
-}
 private func injectConceptualNavigation(content: String, locale: String): String {
     let marker = "</header>\n<section class=\"quick-start\""
     match (content.indexOf(marker)) {
@@ -524,12 +882,183 @@ private func injectConceptualNavigation(content: String, locale: String): String
             }
     }
 }
-internal func conceptualIndexNavigation(projectRoot: String, documentation: public_model.DocumentationSet,
+internal func conceptualIndexNavigation(projectRoot: String,
     format: String, content: String, locale!: String = "en"): String {
     let config = loadConceptualDocsConfig(projectRoot)
     if (!config.enabled) { return content }
     if (format == "html") { return injectConceptualNavigation(content, locale) }
     if (format == "markdown") { return content + conceptualNavigationMarkdown() }
+    content
+}
+
+private func conceptualBindingPages(pages: ArrayList<ConceptualPage>, symbolId: String): ArrayList<ConceptualPage> {
+    let result = ArrayList<ConceptualPage>()
+    for (page in pages) {
+        for (binding in page.bindings) {
+            if (binding.state == "resolved" && binding.targetSymbolId == Some(symbolId)) {
+                result.add(page)
+                break
+            }
+        }
+    }
+    result
+}
+
+private func conceptualApiUsageHtml(pages: ArrayList<ConceptualPage>,
+    symbolId: String, locale: String): String {
+    let usages = conceptualBindingPages(pages, symbolId)
+    if (usages.isEmpty()) { return "" }
+    let out = StringBuilder()
+    out.append("<section class=\"conceptual-bindings api-usages\" aria-labelledby=\"conceptual-api-usages-heading\"><h2 id=\"conceptual-api-usages-heading\">")
+    out.append(conceptualBindingLabel(locale, "Related guides and examples", "相关指南和示例"))
+    out.append("</h2><ul>")
+    for (page in usages) {
+        out.append("<li><a href=\"../")
+        out.append(page.route)
+        out.append("\">")
+        out.append(public_render.escapeStandaloneHtml(page.title))
+        out.append("</a> <span class=\"binding-meta\">")
+        out.append(public_render.escapeStandaloneHtml(page.source))
+        out.append("</span></li>")
+    }
+    out.append("</ul></section>\n")
+    out.toString()
+}
+
+private func conceptualApiUsageMarkdown(pages: ArrayList<ConceptualPage>, symbolId: String): String {
+    let usages = conceptualBindingPages(pages, symbolId)
+    if (usages.isEmpty()) { return "" }
+    let out = StringBuilder()
+    out.append("\n## Related guides and examples\n\n")
+    for (page in usages) {
+        let route = page.route.removeSuffix(".html") + ".md"
+        out.append("- [")
+        out.append(public_render.escapeStandaloneHtml(page.title))
+        out.append("](" + "../" + route + ") — ")
+        out.append(public_render.escapeStandaloneHtml(page.source))
+        out.append("\n")
+    }
+    out.toString()
+}
+
+private func conceptualExternalUsageHtml(symbol: public_model.SymbolDoc,
+    resolvers: Array<ExternalDocResolver>, locale: String): String {
+    if (resolvers.isEmpty()) { return "" }
+    let out = StringBuilder()
+    var count: Int64 = 0
+    for (resolver in resolvers) {
+        let (url, ambiguous) = resolver.matchTarget(symbol.id)
+        let (qualifiedUrl, qualifiedAmbiguous) = if (url.isEmpty() && !ambiguous) {
+            resolver.matchTarget(symbol.qualifiedName)
+        } else { (url, ambiguous) }
+        if (qualifiedUrl.isEmpty() && !qualifiedAmbiguous && resolver.state == "available") { continue }
+        if (count == 0) {
+            out.append("<section class=\"external-documentation\" aria-labelledby=\"external-documentation-heading\"><h2 id=\"external-documentation-heading\">")
+            out.append(conceptualBindingLabel(locale, "External documentation", "外部文档"))
+            out.append("</h2><ul>")
+        }
+        count++
+        out.append("<li><strong>")
+        out.append(public_render.escapeStandaloneHtml(resolver.name))
+        out.append("</strong> ")
+        if (!qualifiedUrl.isEmpty()) {
+            out.append("<a rel=\"noreferrer\" href=\"")
+            out.append(public_render.escapeStandaloneHtml(qualifiedUrl))
+            out.append("\">")
+            out.append(conceptualBindingLabel(locale, "Open official reference", "打开官方参考"))
+            out.append("</a>")
+        } else if (qualifiedAmbiguous) {
+            out.append("<span class=\"badge\" data-state=\"ambiguous\">ambiguous</span>")
+        } else {
+            out.append("<span class=\"badge\" data-state=\"unavailable\">")
+            out.append(public_render.escapeStandaloneHtml(resolver.state))
+            out.append("</span> ")
+            out.append(public_render.escapeStandaloneHtml(resolver.reason))
+        }
+        match (resolver.version) {
+            case Some(value) => out.append(" <span class=\"binding-meta\">version: " + public_render.escapeStandaloneHtml(value) + "</span>")
+            case None => ()
+        }
+        if (!resolver.indexPath.isEmpty()) {
+            out.append(" <span class=\"binding-meta\">index: " + public_render.escapeStandaloneHtml(resolver.indexPath) + "</span>")
+        }
+        if (!resolver.format.isEmpty()) {
+            out.append(" <span class=\"binding-meta\">format: " + public_render.escapeStandaloneHtml(resolver.format) + "</span>")
+        }
+        if (!resolver.fingerprint.isEmpty()) {
+            out.append(" <span class=\"binding-meta\">fingerprint: " + public_render.escapeStandaloneHtml(resolver.fingerprint) + "</span>")
+        }
+        out.append("</li>")
+    }
+    if (count > 0) { out.append("</ul></section>\n") }
+    out.toString()
+}
+
+private func conceptualExternalUsageMarkdown(symbol: public_model.SymbolDoc,
+    resolvers: Array<ExternalDocResolver>): String {
+    if (resolvers.isEmpty()) { return "" }
+    let out = StringBuilder()
+    var count: Int64 = 0
+    for (resolver in resolvers) {
+        let (url, ambiguous) = resolver.matchTarget(symbol.id)
+        let (qualifiedUrl, qualifiedAmbiguous) = if (url.isEmpty() && !ambiguous) {
+            resolver.matchTarget(symbol.qualifiedName)
+        } else { (url, ambiguous) }
+        if (qualifiedUrl.isEmpty() && !qualifiedAmbiguous && resolver.state == "available") { continue }
+        if (count == 0) { out.append("\n## External documentation\n\n") }
+        count++
+        out.append("- **" + public_render.escapeStandaloneHtml(resolver.name) + "** ")
+        if (!qualifiedUrl.isEmpty()) {
+            out.append("[Open official reference](" + public_render.escapeStandaloneHtml(qualifiedUrl) + ")")
+        } else if (qualifiedAmbiguous) {
+            out.append("ambiguous")
+        } else {
+            out.append(resolver.state + " — " + public_render.escapeStandaloneHtml(resolver.reason))
+        }
+        match (resolver.version) {
+            case Some(value) => out.append(" — version: " + public_render.escapeStandaloneHtml(value))
+            case None => ()
+        }
+        if (!resolver.indexPath.isEmpty()) {
+            out.append("; index: " + public_render.escapeStandaloneHtml(resolver.indexPath))
+        }
+        if (!resolver.format.isEmpty()) {
+            out.append("; format: " + public_render.escapeStandaloneHtml(resolver.format))
+        }
+        if (!resolver.fingerprint.isEmpty()) {
+            out.append("; fingerprint: " + public_render.escapeStandaloneHtml(resolver.fingerprint))
+        }
+        out.append("\n")
+    }
+    if (count == 0) { return "" }
+    out.toString()
+}
+
+private func conceptualAugmentApiArtifact(path: String, content: String,
+    documentation: public_model.DocumentationSet, pages: ArrayList<ConceptualPage>,
+    resolvers: Array<ExternalDocResolver>, locale: String): String {
+    let isHtml = path.startsWith("html/")
+    let relative = if (isHtml) { path.removePrefix("html/") } else { path.removePrefix("markdown/") }
+    for (symbol in documentation.declarations) {
+        let matches = if (isHtml) {
+            relative == conceptualSymbolPath(symbol.id)
+        } else {
+            relative == conceptualSymbolPath(symbol.id).removeSuffix(".html") + ".md"
+        }
+        if (!matches) { continue }
+        let section = if (isHtml) {
+            conceptualApiUsageHtml(pages, symbol.id, locale) + conceptualExternalUsageHtml(symbol, resolvers, locale)
+        } else {
+            conceptualApiUsageMarkdown(pages, symbol.id) + conceptualExternalUsageMarkdown(symbol, resolvers)
+        }
+        if (section.isEmpty()) { return content }
+        if (!isHtml) { return content + section }
+        let marker = "</main>"
+        match (content.indexOf(marker)) {
+            case Some(index) => return content[..index] + section + content[index..]
+            case None => return content + section
+        }
+    }
     content
 }
 
@@ -540,15 +1069,35 @@ internal func appendConceptualArtifacts(projectRoot: String,
     for (artifact in baseArtifacts) {
         if (artifact.path == "html/search-index.json") { search = artifact.content }
     }
-    let augmentedSearch = conceptualSearchAugmentation(projectRoot, documentation, formats, search)
+    var hasHtml = false
+    var hasMarkdown = false
+    for (format in formats) {
+        if (format == "html") { hasHtml = true }
+        if (format == "markdown") { hasMarkdown = true }
+    }
+    let config = loadConceptualDocsConfig(projectRoot)
+    let pages = if (config.enabled) {
+        conceptualPages(Path(projectRoot), documentation, config)
+    } else {
+        ArrayList<ConceptualPage>()
+    }
+    let resolvers = if (hasHtml || hasMarkdown) {
+        loadExternalDocResolvers(projectRoot)
+    } else { Array<ExternalDocResolver>() }
+    let conceptualSearch = if (config.enabled && hasHtml) {
+        conceptualSearchIndex(search, pages)
+    } else { search }
+    let augmentedSearch = if (hasHtml) {
+        externalSearchIndex(conceptualSearch, documentation, resolvers)
+    } else { conceptualSearch }
     let result = ArrayList<public_render.RenderArtifact>()
     for (artifact in baseArtifacts) {
         if (artifact.path == "html/index.html") {
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
-                conceptualIndexNavigation(projectRoot, documentation, "html", artifact.content, locale: locale)))
+                conceptualIndexNavigation(projectRoot, "html", artifact.content, locale: locale)))
         } else if (artifact.path == "markdown/index.md") {
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
-                conceptualIndexNavigation(projectRoot, documentation, "markdown", artifact.content, locale: locale)))
+                conceptualIndexNavigation(projectRoot, "markdown", artifact.content, locale: locale)))
         } else if (artifact.path == "html/search-index.json") {
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, augmentedSearch))
         } else if (artifact.path == "html/search-index.js") {
@@ -558,6 +1107,10 @@ internal func appendConceptualArtifacts(projectRoot: String,
             }
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
                 searchScript))
+        } else if (artifact.path.startsWith("html/symbols/") || artifact.path.startsWith("markdown/symbols/")) {
+            let content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
+                documentation, pages, resolvers, locale)
+            result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, content))
         } else {
             result.add(artifact)
         }

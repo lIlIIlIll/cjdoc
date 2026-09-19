@@ -245,7 +245,64 @@ private func doctestFailureSeverity(doctestConfig: DoctestConfig,
     }
 }
 
-internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
+private func validationDocVersion(docVersion: ?String): String {
+    match (docVersion) {
+        case Some(value) => value
+        case None => "not provided"
+    }
+}
+
+private func appendValidationResultRow(out: StringBuilder, result: DoctestCaseResult): Unit {
+    out.append("<tr><td><span class=\"badge\" data-state=\"")
+    out.append(public_render.escapeStandaloneHtml(result.status))
+    out.append("\">")
+    out.append(public_render.escapeStandaloneHtml(result.status))
+    out.append("</span></td><td><code>")
+    out.append(public_render.escapeStandaloneHtml(result.qualifiedName))
+    out.append("</code></td><td>")
+    out.append(public_render.escapeStandaloneHtml(result.title))
+    out.append("</td><td>")
+    out.append(result.durationMs.toString())
+    out.append(" ms")
+    if (!result.message.isEmpty()) {
+        out.append("<br><span class=\"validation-message\">")
+        out.append(public_render.escapeStandaloneHtml(result.message))
+        out.append("</span>")
+    }
+    out.append("</td></tr>")
+}
+
+private func renderValidationHtml(documentation: public_model.DocumentationSet,
+    report: ?DoctestReport, docVersion: ?String): String {
+    let out = StringBuilder()
+    out.append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Validation results · ")
+    out.append(public_render.escapeStandaloneHtml(documentation.project.name))
+    out.append("</title><script src=\"theme-bootstrap.js\"></script><link rel=\"stylesheet\" href=\"style.css\"><script defer src=\"search-index.js\"></script><script defer src=\"search.js\"></script></head><body><main class=\"docs-main validation-page\"><p><a href=\"index.html\">API documentation</a></p><h1>Validation results</h1><p class=\"reference-context\">Documentation version: ")
+    out.append(public_render.escapeStandaloneHtml(validationDocVersion(docVersion)))
+    out.append(" · Diagnostics: ")
+    out.append(documentation.diagnostics.size.toString())
+    out.append(" · API diff: not attached to this generation</p><section><h2>Doctest evidence</h2>")
+    match (report) {
+        case Some(value) =>
+            out.append("<p>Mode: <code>")
+            out.append(public_render.escapeStandaloneHtml(value.mode))
+            out.append("</code>; timeout: ")
+            out.append(value.timeoutMs.toString())
+            out.append(" ms; memory: ")
+            out.append(value.memoryMb.toString())
+            out.append(" MiB; jobs: ")
+            out.append(value.jobs.toString())
+            out.append(". Raw evidence: <a href=\"../doctest/results.json\">doctest/results.json</a></p><table><thead><tr><th>Status</th><th>API</th><th>Example</th><th>Duration</th></tr></thead><tbody>")
+            for (result in value.results) { appendValidationResultRow(out, result) }
+            out.append("</tbody></table>")
+        case None =>
+            out.append("<p><span class=\"badge\" data-state=\"unavailable\">not run</span> Doctest execution was not enabled for this generation. This page does not infer verification from documentation presence.</p>")
+    }
+    out.append("</section><section><h2>API diff evidence</h2><p>No comparison report was attached to this generation. Run the explicit <code>cjdoc diff</code> command to inspect version-to-version changes; this page does not infer compatibility.</p></section></main></body></html>")
+    out.toString()
+}
+
+ internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
     selectedCache: ?String, outputLock: ?OutputLockHandle, writeOnFailure!: Bool = true): Int64 {
     let commandLine = getCommandLine()
     let astPreflightExecutable: ?String = if (commandLine.isEmpty()) { None }
@@ -333,6 +390,13 @@ internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Stri
                 artifactList.add(public_render.RenderArtifact(
                     "doctest/results.json", "application/json", encodeDoctestReport(report)))
             case None => ()
+        }
+        var wantsHtml = false
+        for (format in options.formats) { if (format == "html") { wantsHtml = true } }
+        if (wantsHtml) {
+            artifactList.add(public_render.RenderArtifact(
+                "html/validation.html", "text/html; charset=utf-8",
+                renderValidationHtml(documentation, doctestReport, options.docVersion)))
         }
         artifacts = artifactList.toArray()
     }
