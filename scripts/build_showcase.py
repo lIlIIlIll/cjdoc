@@ -174,6 +174,13 @@ def main() -> int:
 
         static_source = repo / "site"
         copy_tree(static_source, output)
+        pages_name = repository_url.rstrip("/").rsplit("/", 1)[-1]
+        pages_base = f"/{pages_name}/"
+        not_found = output / "404.html"
+        not_found.write_text(
+            not_found.read_text(encoding="utf-8").replace("__PAGES_BASE__", pages_base),
+            encoding="utf-8",
+        )
         copy_tree(current / "html", output / "api")
         copy_tree(current / "markdown", output / "markdown")
         copy_tree(demo / "html", output / "demo")
