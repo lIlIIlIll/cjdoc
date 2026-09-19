@@ -165,7 +165,7 @@ private func lintQualityRules(documentation: DocumentationSet,
                 for (tag in doc.contracts) {
                     if (!isBehaviorContractTagName(tag.name)) { continue }
                     if (tag.description.trimAscii().isEmpty()) {
-                        addQualityDiagnostic(documentation, symbol, config, "incomplete-contract", "CJDOC1043",
+                        addQualityDiagnostic(documentation, symbol, config, "incomplete-contract", "CJDOC3043",
                             "behavior contract '${tag.name}' is missing a description")
                     }
                 }

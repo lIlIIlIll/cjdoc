@@ -461,6 +461,33 @@ private func signatureSpanBoundary(value: String, start: Int64, end: Int64): Boo
     true
 }
 
+private func signatureTypeStartAfterReturnDelimiter(raw: String): Int64 {
+    var parenthesisDepth: Int64 = 0
+    var bracketDepth: Int64 = 0
+    var braceDepth: Int64 = 0
+    var index: Int64 = 0
+    while (index < raw.size) {
+        let byte = raw[index]
+        if (byte == b'(') {
+            parenthesisDepth++
+        } else if (byte == b')' && parenthesisDepth > 0) {
+            parenthesisDepth--
+        } else if (byte == b'[') {
+            bracketDepth++
+        } else if (byte == b']' && bracketDepth > 0) {
+            bracketDepth--
+        } else if (byte == b'{') {
+            braceDepth++
+        } else if (byte == b'}' && braceDepth > 0) {
+            braceDepth--
+        } else if (byte == b':' && parenthesisDepth == 0 && bracketDepth == 0 && braceDepth == 0) {
+            return index + 1
+        }
+        index++
+    }
+    0
+}
+
 private func collectSignatureTypeSpans(spans: ArrayList<HtmlSignatureLinkSpan>, raw: String,
     typeRef: TypeRef, typeLinkIndex: HtmlTypeLinkIndex, cursor: Int64): Int64 {
     let spelling = if (typeRef.arguments.isEmpty()) { typeRef.spelling } else {
@@ -508,7 +535,10 @@ internal func appendLinkedSignatureHtml(out: RenderTextBuffer, symbol: SymbolDoc
         cursor = collectSignatureTypeSpans(spans, raw, parameter.typeRef, typeLinkIndex, cursor)
     }
     match (symbol.returnType) {
-        case Some(returnType) => cursor = collectSignatureTypeSpans(spans, raw, returnType, typeLinkIndex, cursor)
+        case Some(returnType) =>
+            let delimiterCursor = signatureTypeStartAfterReturnDelimiter(raw)
+            let returnCursor = if (delimiterCursor > cursor) { delimiterCursor } else { cursor }
+            cursor = collectSignatureTypeSpans(spans, raw, returnType, typeLinkIndex, returnCursor)
         case None => ()
     }
     for (relationship in symbol.typeRelationships) {

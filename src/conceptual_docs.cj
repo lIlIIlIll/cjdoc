@@ -151,7 +151,7 @@ private func conceptualCollectBindings(page: ConceptualPage): Unit {
         if (!line.startsWith("<!-- cjdoc-bind ") || !line.endsWith(" -->")) { continue }
         if (count >= 32) {
             if (!overflowReported) {
-                eprintln("warning[CJDOC4054]: conceptual API binding limit exceeded in ${page.source}; additional bindings were omitted")
+                eprintln("warning[CJDOC2054]: conceptual API binding limit exceeded in ${page.source}; additional bindings were omitted")
                 overflowReported = true
             }
             continue
@@ -171,7 +171,7 @@ private func conceptualCollectBindings(page: ConceptualPage): Unit {
             sourceLine, language)
         if (duplicate) {
             binding.state = "conflict"
-            eprintln("warning[CJDOC4053]: duplicate conceptual API binding '${target}' in ${page.source}")
+            eprintln("warning[CJDOC2053]: duplicate conceptual API binding '${target}' in ${page.source}")
         }
         page.bindings.add(binding)
         count++
@@ -226,10 +226,10 @@ private func conceptualResolveBindings(page: ConceptualPage,
             binding.targetSymbolId = Some(matches[0].id)
         } else if (matches.size > 1) {
             binding.state = "ambiguous"
-            eprintln("warning[CJDOC4052]: ambiguous conceptual API binding '${binding.target}' in ${page.source}")
+            eprintln("warning[CJDOC2052]: ambiguous conceptual API binding '${binding.target}' in ${page.source}")
         } else {
             binding.state = "unresolved"
-            eprintln("warning[CJDOC4051]: unresolved conceptual API binding '${binding.target}' in ${page.source}")
+            eprintln("warning[CJDOC2051]: unresolved conceptual API binding '${binding.target}' in ${page.source}")
         }
     }
 }
@@ -597,7 +597,7 @@ private func conceptualBindingsMarkdown(page: ConceptualPage,
             case None => out.append(public_render.escapeStandaloneHtml(binding.target))
         }
         out.append(" — ")
-        out.append(binding.language)
+        out.append(public_render.escapeStandaloneHtml(binding.language))
         out.append(" line ")
         out.append(binding.sourceLine.toString())
         if (!binding.provenance.isEmpty()) {
@@ -875,7 +875,7 @@ private func conceptualBindingsHtml(page: ConceptualPage,
             out.append(public_render.escapeStandaloneHtml(binding.provenance))
             out.append("</span>")
         }
-        out.append(" <span class=\"binding-meta\">language: ${binding.language}; line: ${binding.sourceLine}</span>")
+        out.append(" <span class=\"binding-meta\">language: " + public_render.escapeStandaloneHtml(binding.language) + "; line: " + binding.sourceLine.toString() + "</span>")
         out.append("</li>")
     }
     out.append("</ul></section>\n")
