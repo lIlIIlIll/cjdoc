@@ -176,7 +176,7 @@ cjdoc generate --project . --format html --audience all
 
 ## 当前边界
 
-- 当前输出版本是 `cjdoc.doc-ir/9`。输入端严格兼容已发布的 v6、v7、v8；普通用户不需要直接编辑这个 JSON。
+- 当前输出版本是 `cjdoc.doc-ir/10`。输入端严格兼容已发布的 v6、v7、v8、v9；普通用户不需要直接编辑这个 JSON。
 - 无法展开的宏、没有提供的条件编译输入和部分不支持的源码会产生诊断，并可能使结果标为 `partial`。
 - cjdoc 不会替你下载依赖源码。需要把依赖纳入文档时，按 [`docs/advanced-usage.md`](docs/advanced-usage.md) 的说明提供路径或 cache。
 

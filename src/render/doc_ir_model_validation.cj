@@ -115,11 +115,10 @@ internal func markdownInlineKind(kind: String): Bool {
     match (kind) {
         case "text" | "soft_break" | "hard_break" | "code_span" | "emphasis" |
             "strong" | "strikethrough" | "link" | "image" | "html_inline" |
-            "custom_inline" => true
+            "custom_inline" | "semantic_link" => true
         case _ => false
     }
 }
-
 internal func validMarkdownChild(parent: String, child: String): Bool {
     match (parent) {
         case "document" | "block_quote" | "list_item" | "custom_block" =>
@@ -128,7 +127,7 @@ internal func validMarkdownChild(parent: String, child: String): Bool {
         case "table" => child == "table_row"
         case "table_row" => child == "table_cell"
         case "paragraph" | "heading" | "table_cell" | "emphasis" | "strong" |
-            "strikethrough" | "link" | "image" | "custom_inline" =>
+            "strikethrough" | "link" | "image" | "custom_inline" | "semantic_link" =>
             markdownInlineKind(child)
         case _ => false
     }
@@ -208,6 +207,13 @@ internal func validateMarkdownMetadata(node: MarkdownNode, path: String): Unit {
                 case "table_cell" => if (!validMarkdownAlignment(value.tableAlignment.getOrThrow())) {
                     domainFail("${path}.metadata.alignment", "invalid table-cell alignment")
                 }
+                case "semantic_link" =>
+                    let target = value.semanticTarget.getOrThrow()
+                    let state = value.semanticState.getOrThrow()
+                    if (target.isEmpty() || (state != "resolved" && state != "unresolved" &&
+                        state != "ambiguous" && state != "unavailable")) {
+                        domainFail("${path}.metadata", "invalid semantic-link metadata")
+                    }
                 case _ => domainFail("${path}.metadata", "metadata is not allowed for this Markdown kind")
             }
     }
@@ -271,7 +277,7 @@ internal func validateMarkdown(value: MarkdownNode, path: String, depth: Int64):
             "thematic_break" | "code_block" | "html_block" | "table" | "table_row" |
             "table_cell" | "custom_block" | "text" | "soft_break" | "hard_break" |
             "code_span" | "emphasis" | "strong" | "strikethrough" | "link" | "image" |
-            "html_inline" | "custom_inline" => ()
+            "html_inline" | "custom_inline" | "semantic_link" => ()
         case _ => domainFail("${path}.kind", "unknown Markdown node kind")
     }
     validateMarkdownMetadata(value, path)

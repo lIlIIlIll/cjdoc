@@ -5,10 +5,10 @@ import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
 
-@When[os != "Windows"]
+@When[os == "Linux"]
 import std.posix.*
 
-@When[os != "Windows"]
+@When[os == "Linux"]
 @Test
 class CachedDependencyContainmentTest {
     @TestCase

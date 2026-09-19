@@ -1285,6 +1285,233 @@
     
   ],
   "diagnostics": [
-    
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 54
+        },
+        "end": {
+          "line": 17,
+          "column": 2,
+          "byteOffset": 300
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::class:Box#g1()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 54
+        },
+        "end": {
+          "line": 17,
+          "column": 2,
+          "byteOffset": 300
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::class:Box#g1()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 6,
+          "column": 5,
+          "byteOffset": 105
+        },
+        "end": {
+          "line": 6,
+          "column": 24,
+          "byteOffset": 124
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box::variable:value#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3037",
+      "message": "value-returning symbol is missing @return documentation",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 6,
+          "column": 5,
+          "byteOffset": 105
+        },
+        "end": {
+          "line": 6,
+          "column": 24,
+          "byteOffset": 124
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box::variable:value#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 6,
+          "column": 5,
+          "byteOffset": 105
+        },
+        "end": {
+          "line": 6,
+          "column": 24,
+          "byteOffset": 124
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box::variable:value#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 6,
+          "column": 5,
+          "byteOffset": 105
+        },
+        "end": {
+          "line": 6,
+          "column": 24,
+          "byteOffset": 124
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box::variable:value#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 12,
+          "column": 5,
+          "byteOffset": 200
+        },
+        "end": {
+          "line": 14,
+          "column": 6,
+          "byteOffset": 256
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box::constructor:init#g0(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 12,
+          "column": 5,
+          "byteOffset": 200
+        },
+        "end": {
+          "line": 14,
+          "column": 6,
+          "byteOffset": 256
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box::constructor:init#g0(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "parameter 'value' has an unresolved type link",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 12,
+          "column": 5,
+          "byteOffset": 200
+        },
+        "end": {
+          "line": 14,
+          "column": 6,
+          "byteOffset": 256
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box::constructor:init#g0(@g0)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 33,
+          "column": 1,
+          "byteOffset": 612
+        },
+        "end": {
+          "line": 34,
+          "column": 30,
+          "byteOffset": 682
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::function:oldApi#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 33,
+          "column": 1,
+          "byteOffset": 612
+        },
+        "end": {
+          "line": 34,
+          "column": 30,
+          "byteOffset": 682
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::function:oldApi#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 33,
+          "column": 1,
+          "byteOffset": 612
+        },
+        "end": {
+          "line": 34,
+          "column": 30,
+          "byteOffset": 682
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::function:oldApi#g0()"
+    }
   ]
 }

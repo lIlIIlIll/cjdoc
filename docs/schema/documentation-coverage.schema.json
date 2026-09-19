@@ -1,24 +1,46 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/documentation-coverage.schema.json",
-  "title": "cjdoc documentation coverage v1",
+  "title": "cjdoc documentation coverage v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "audience", "symbols", "parameters"],
+  "required": ["schemaVersion", "audience", "metrics", "packages", "modules"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.documentation-coverage/1"},
+    "schemaVersion": {"const": "cjdoc.documentation-coverage/2"},
     "audience": {"enum": ["external", "package", "all"]},
-    "symbols": {"$ref": "#/$defs/counts"},
-    "parameters": {"$ref": "#/$defs/counts"}
+    "metrics": {"$ref": "#/$defs/metrics"},
+    "packages": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/group"}},
+    "modules": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/group"}}
   },
   "$defs": {
-    "counts": {
+    "metric": {
       "type": "object", "additionalProperties": false,
       "required": ["total", "documented", "percent"],
       "properties": {
-        "total": {"type": "integer", "minimum": 0, "maximum": 100000},
-        "documented": {"type": "integer", "minimum": 0, "maximum": 100000},
+        "total": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "documented": {"type": "integer", "minimum": 0, "maximum": 1000000},
         "percent": {"type": "integer", "minimum": 0, "maximum": 100}
+      }
+    },
+    "metrics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["symbols", "parameters", "returns", "throws", "examples", "deprecated", "semanticLinks"],
+      "properties": {
+        "symbols": {"$ref": "#/$defs/metric"},
+        "parameters": {"$ref": "#/$defs/metric"},
+        "returns": {"$ref": "#/$defs/metric"},
+        "throws": {"$ref": "#/$defs/metric"},
+        "examples": {"$ref": "#/$defs/metric"},
+        "deprecated": {"$ref": "#/$defs/metric"},
+        "semanticLinks": {"$ref": "#/$defs/metric"}
+      }
+    },
+    "group": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "metrics"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "metrics": {"$ref": "#/$defs/metrics"}
       }
     }
   }

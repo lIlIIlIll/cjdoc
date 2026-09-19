@@ -22,18 +22,21 @@ public func decodeDocIr(text: String): DocumentationSet {
     let legacyV6 = version == DOC_IR_V6_SCHEMA_VERSION
     let legacy = legacyV6 || version == DOC_IR_V7_SCHEMA_VERSION
     let legacyV8 = version == DOC_IR_V8_SCHEMA_VERSION
-    if (!legacy && !legacyV8 && version != DOC_IR_SCHEMA_VERSION) {
-        fail("$.schemaVersion", "expected '${DOC_IR_SCHEMA_VERSION}', " +
+    let legacyV9 = version == DOC_IR_V9_SCHEMA_VERSION
+    let current = version == DOC_IR_SCHEMA_VERSION
+    let modern = legacyV9 || current
+    if (!legacy && !legacyV8 && !modern) {
+        fail("$.schemaVersion", "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
             "'${DOC_IR_V8_SCHEMA_VERSION}', '${DOC_IR_V7_SCHEMA_VERSION}', or " +
             "'${DOC_IR_V6_SCHEMA_VERSION}'")
     }
-    let generator = strictObject(required(root, "generator", "$"), "$.generator", ["name", "version"])
+    let generator = strictObject(required(root, "generator", "$") , "$.generator", ["name", "version"])
     let project = strictObject(required(root, "project", "$.project"), "$.project",
-        if (version == DOC_IR_SCHEMA_VERSION) { ["name", "kind", "repository"] }
+        if (modern) { ["name", "kind", "repository"] }
         else { ["name", "kind"] })
-    let configuration = strictObject(required(root, "configuration", "$"), "$.configuration",
-        ["audience", "lintProfile", "cfgProfile"])
-    let modules = decodeModules(root, legacy, version == DOC_IR_SCHEMA_VERSION)
+    let configuration = strictObject(required(root, "configuration", "$") ,
+        "$.configuration", ["audience", "lintProfile", "cfgProfile"])
+    let modules = decodeModules(root, legacy, modern)
     let legacyModules = buildLegacyModuleIndex(modules)
     let legacyIds = if (legacyV6) { buildLegacySymbolIds(root, legacyModules) }
         else { HashMap<String, String>() }
@@ -41,7 +44,7 @@ public func decodeDocIr(text: String): DocumentationSet {
     let documentation = DocumentationSet(GeneratorInfo(stringAt(generator, "name", "$.generator"),
         stringAt(generator, "version", "$.generator")), stringAt(root, "status", "$"),
         ProjectInfo(stringAt(project, "name", "$.project"), kind: stringAt(project, "kind", "$.project"),
-            repository: if (version == DOC_IR_SCHEMA_VERSION) {
+            repository: if (modern) {
                 nullableRepositoryAt(project, "repository", "$.project")
             } else { None }),
         ConfigurationSnapshot(audience: stringAt(configuration, "audience", "$.configuration"),

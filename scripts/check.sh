@@ -36,7 +36,7 @@ cjpm test
 rm -rf "${check_dir}"
 mkdir -p "${check_dir}/schemas"
 
-for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 diagnostics cfg-matrix search-index api-surface documentation-coverage; do
+for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage doctest-results versions; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${check_dir}/schemas/${schema_name}.schema.json"
 done
@@ -45,11 +45,19 @@ cmp docs/schema/doc-ir-v6.schema.json "${check_dir}/schemas/doc-ir-v6.schema.jso
 cmp docs/schema/doc-ir-v7.schema.json "${check_dir}/schemas/doc-ir-v7.schema.json"
 cmp docs/schema/doc-ir-v8.schema.json "${check_dir}/schemas/doc-ir-v8.schema.json"
 cmp docs/schema/doc-ir-v9.schema.json "${check_dir}/schemas/doc-ir-v9.schema.json"
+cmp docs/schema/doc-ir-v10.schema.json "${check_dir}/schemas/doc-ir-v10.schema.json"
 cmp docs/schema/diagnostics.schema.json "${check_dir}/schemas/diagnostics.schema.json"
 cmp docs/schema/cfg-matrix.schema.json "${check_dir}/schemas/cfg-matrix.schema.json"
 cmp docs/schema/search-index.schema.json "${check_dir}/schemas/search-index.schema.json"
+cmp docs/schema/symbol-index.schema.json "${check_dir}/schemas/symbol-index.schema.json"
+cmp docs/schema/navigation-index.schema.json "${check_dir}/schemas/navigation-index.schema.json"
 cmp docs/schema/api-surface.schema.json "${check_dir}/schemas/api-surface.schema.json"
+cmp docs/schema/api-surface-v1.schema.json "${check_dir}/schemas/api-surface-v1.schema.json"
+cmp docs/schema/api-diff.schema.json "${check_dir}/schemas/api-diff.schema.json"
+cmp docs/schema/documentation-coverage-v1.schema.json "${check_dir}/schemas/documentation-coverage-v1.schema.json"
 cmp docs/schema/documentation-coverage.schema.json "${check_dir}/schemas/documentation-coverage.schema.json"
+cmp docs/schema/doctest-results.schema.json "${check_dir}/schemas/doctest-results.schema.json"
+cmp docs/schema/versions.schema.json "${check_dir}/schemas/versions.schema.json"
 
 run_golden() {
     local name="$1"
@@ -67,17 +75,17 @@ run_golden() {
     cmp "${check_dir}/${name}/first/docs.json" "${check_dir}/${name}/validated.json"
 }
 
-run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v9/basic.docs.json
-run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v9/functions.docs.json
-run_golden types tests/fixtures/projects/types tests/fixtures/golden-v9/types.docs.json
-run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v9/extend.docs.json
-run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v9/source-edges.docs.json
-run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v9/unsupported.docs.json
-run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v9/workspace.docs.json
+run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v10/basic.docs.json
+run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v10/functions.docs.json
+run_golden types tests/fixtures/projects/types tests/fixtures/golden-v10/types.docs.json
+run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v10/extend.docs.json
+run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v10/source-edges.docs.json
+run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v10/unsupported.docs.json
+run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v10/workspace.docs.json
 run_golden conditional-linux tests/fixtures/projects/conditional \
-    tests/fixtures/golden-v9/conditional-linux.docs.json --cfg os=Linux
+    tests/fixtures/golden-v10/conditional-linux.docs.json --cfg os=Linux
 run_golden path-dependencies tests/fixtures/projects/path_dependencies \
-    tests/fixtures/golden-v9/path-dependencies.docs.json --include-path-dependencies
+    tests/fixtures/golden-v10/path-dependencies.docs.json --include-path-dependencies
 
 "${binary}" generate --project tests/fixtures/projects/basic \
     --format json --format markdown --format html --output "${check_dir}/all/first" \
@@ -95,10 +103,29 @@ diff -qr "${check_dir}/all/first/html" "${check_dir}/all/second/html"
 cmp "${check_dir}/all/first/docs.json" "${check_dir}/roundtrip/docs.json"
 diff -qr "${check_dir}/all/first/markdown" "${check_dir}/roundtrip/markdown"
 diff -qr "${check_dir}/all/first/html" "${check_dir}/roundtrip/html"
-
+rm -rf "${check_dir}/agent" "${check_dir}/agent-second" "${check_dir}/versions" "${check_dir}/versions-second"
+"${binary}" generate --project tests/fixtures/projects/basic --format html --format api-surface --agent-full --doc-version 1.3.0 --output "${check_dir}/agent" --cache-dir "${check_dir}/cache/agent" >/dev/null
+"${binary}" generate --project tests/fixtures/projects/basic --format html --format api-surface --agent-full --doc-version 1.3.0 --output "${check_dir}/agent-second" --cache-dir "${check_dir}/cache/agent" >/dev/null
+diff -qr "${check_dir}/agent/html" "${check_dir}/agent-second/html"
+test -f "${check_dir}/agent/html/navigation-index.json"
+test -f "${check_dir}/agent/html/llms.txt"
+test -f "${check_dir}/agent/html/llms-full.txt"
+"${python_cmd}" scripts/validate_html_site.py "${check_dir}/agent/html"
+"${python_cmd}" -c 'import json,sys; root=sys.argv[1]; nav=json.load(open(root+"/navigation-index.json", encoding="utf-8")); assert nav["schemaVersion"]=="cjdoc.navigation-index/1" and nav["project"]["version"]=="1.3.0" and any(page["kind"]=="symbol" for page in nav["pages"]); assert "1.3.0" in open(root+"/llms.txt", encoding="utf-8").read() and len(open(root+"/llms-full.txt", encoding="utf-8").read().encode()) <= 16*1024*1024' "${check_dir}/agent/html"
+"${binary}" diff --baseline "${check_dir}/agent/api-surface/api-surface.json" --current "${check_dir}/agent-second/api-surface/api-surface.json" --format json >"${check_dir}/agent/api-diff.json"
+"${binary}" versions compose --version 1.2.0="${check_dir}/all/first/html" --version 1.3.0="${check_dir}/agent/html" --diff 1.3.0="${check_dir}/agent/api-diff.json" --latest 1.3.0 --output "${check_dir}/versions" >/dev/null
+"${binary}" versions compose --version 1.2.0="${check_dir}/all/first/html" --version 1.3.0="${check_dir}/agent/html" --diff 1.3.0="${check_dir}/agent/api-diff.json" --latest 1.3.0 --output "${check_dir}/versions-second" >/dev/null
+diff -qr "${check_dir}/versions" "${check_dir}/versions-second"
+"${python_cmd}" -c 'import json,sys; root=sys.argv[1]; value=json.load(open(root+"/versions.json", encoding="utf-8")); assert value["schemaVersion"]=="cjdoc.versions/1" and value["latest"]=="1.3.0" and value["versions"][1]["apiDiff"]=="1.3.0/api-diff.json"; assert json.load(open(root+"/1.3.0/navigation-index.json", encoding="utf-8"))["schemaVersion"]=="cjdoc.navigation-index/1"; assert json.load(open(root+"/1.3.0/api-diff.json", encoding="utf-8"))["schemaVersion"]=="cjdoc.api-diff/1"' "${check_dir}/versions"
+set +e
+"${binary}" versions compose --version ../bad="${check_dir}/all/first/html" --output "${check_dir}/versions-bad" >/dev/null 2>"${check_dir}/versions-bad.stderr"
+version_traversal_code=$?
+set -e
+test "${version_traversal_code}" -eq 2
+test -s "${check_dir}/versions-bad.stderr"
 "${binary}" generate --project tests/fixtures/projects/basic --format json --stdout \
     --cache-dir "${check_dir}/cache/stdout" >"${check_dir}/stdout.json"
-"${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/9" and len(value["declarations"]) == 25' \
+"${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/10" and len(value["declarations"]) == 25' \
     "${check_dir}/stdout.json"
 
 set +e

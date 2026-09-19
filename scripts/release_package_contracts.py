@@ -15,12 +15,16 @@ MAX_MANIFEST_SIZE = 1024 * 1024
 STREAM_CHUNK_SIZE = 1024 * 1024
 SCHEMA_PAYLOAD = {
     "docs/schema/doc-ir.schema.json",
+    "docs/schema/doc-ir-v9.schema.json",
+    "docs/schema/doc-ir-v10.schema.json",
     "docs/schema/doc-ir-v6.schema.json",
     "docs/schema/doc-ir-v7.schema.json",
     "docs/schema/doc-ir-v8.schema.json",
     "docs/schema/diagnostics.schema.json",
     "docs/schema/cfg-matrix.schema.json",
     "docs/schema/search-index.schema.json",
+    "docs/schema/symbol-index.schema.json",
+    "docs/schema/navigation-index.schema.json",
     "docs/schema/api-surface.schema.json",
     "docs/schema/api-surface-v1.schema.json",
     "docs/schema/api-diff.schema.json",

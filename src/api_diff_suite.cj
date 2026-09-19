@@ -121,6 +121,23 @@ class ApiDiffSuite {
         @Expect(apiDiffExitCode(report, true, true), 0)
     }
 
+
+    @TestCase
+    func overloadsUseSourceSignatureForFallbackMatching(): Unit {
+        let baseline = apiTestSnapshot([
+            apiTestDeclarationWithSignature("cjdoc:test:old-int", "overloaded", "Int64"),
+            apiTestDeclarationWithSignature("cjdoc:test:old-string", "overloaded", "String")])
+        let current = apiTestSnapshot([
+            apiTestDeclarationWithSignature("cjdoc:test:new-int", "overloaded", "Int64"),
+            apiTestDeclarationWithSignature("cjdoc:test:new-string", "overloaded", "String")])
+        let report = compareApiContracts(baseline, current)
+        var fallbackMatches: Int64 = 0
+        for (entry in report.entries) {
+            if (entry.matchState == "fallback") { fallbackMatches++ }
+        }
+        @Expect(fallbackMatches, 2)
+        @Expect(report.summary.unchanged, 2)
+    }
     @TestCase
     func ambiguousFallbackIsPotentiallyBreaking(): Unit {
         let baseline = apiTestSnapshot([apiTestDeclaration("cjdoc:test:old", "one")])

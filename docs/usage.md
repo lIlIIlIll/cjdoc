@@ -171,13 +171,109 @@ cjdoc diff --baseline api-surface.json --current api-surface-next.json --format 
 
 默认只报告差异并返回 `0`。显式 deny 选项分别把 breaking 或证据不足的 potentially-breaking 变更变成失败；`--format json` 输出 `cjdoc.api-diff/1` 报告，适合 CI 采集。v1 API snapshot 仍可作为只读 baseline 输入；当前生成器只生成 v2。
 
-用 `coverage` 查看声明和参数的文档覆盖率：
+用 `coverage` 查看当前版本的文档覆盖率。输出版本为 `cjdoc.documentation-coverage/2`，包含 symbols、parameters、returns、throws、examples、deprecated、semanticLinks 七类总览，并按 package/module 给出确定性分组：
 
 ```bash
 cjdoc generate --project . --format coverage --stdout
 ```
 
-这两个命令默认使用 `external` audience。需要把它们接入 CI 时，见 [`docs/advanced-usage.md`](advanced-usage.md#在-ci-中检查-api-和文档覆盖率)。
+兼容读取旧 coverage artifact 时使用 `cjdoc schema documentation-coverage-v1`；生成器不会覆盖或重写 v1 schema。当前 coverage 默认使用 `external` audience。需要把它们接入 CI 时，见 [`docs/advanced-usage.md`](advanced-usage.md#在-ci-中检查-api-和文档覆盖率)。
+
+质量规则和覆盖率门禁写在项目根的 `cjdoc.toml`：
+
+```toml
+[lint]
+severity = "warning"
+missing-example = "off"
+broken-link = "error"
+
+[coverage]
+symbols = 90
+parameters = 95
+semantic-links = 100
+
+[coverage.package.basic]
+symbols = 100
+```
+
+规则支持 `off`、`warning`、`error`；覆盖率阈值为 0–100，package 表只覆盖同名包，未设置的指标继承全局阈值。
+
+用 `symbol-index` 导出面向工具和 agent 的稳定导航索引：
+
+```bash
+cjdoc generate --project . --format symbol-index --stdout > symbol-index.json
+```
+
+输出版本为 `cjdoc.symbol-index/1`。每个可见声明包含稳定 `id`、源码范围、HTML 路由、语义关系和 `@see` 引用；无法唯一解析的目标保留状态而不伪造 `targetId`。索引也可与 HTML 一起生成，文件位于 `target/doc/html/symbol-index.json`；单独生成仍位于 `target/doc/symbol-index/symbol-index.json`，后者适合作为外部文档 resolver 的本地输入。
+
+## Agent-readable navigation and context
+
+生成 HTML 时，站点会同时写入两个不依赖 HTML 解析的机器入口：
+
+- `html/navigation-index.json`：项目、包、声明和概念页的稳定页面目录，版本为 `cjdoc.navigation-index/1`；每条声明记录 `symbolId`、HTML 路由、package/module 和显式 semantic state。
+- `html/llms.txt`：有界的摘要索引，使用相对链接指向页面，适合 agent 先枚举再读取。
+
+需要包含签名、参数、返回值、throws、示例和概念 Markdown 时，显式启用完整索引：
+
+```bash
+cjdoc generate --project . --format html --agent-full
+```
+
+这会额外生成 `html/llms-full.txt`。两个文本文件、导航 JSON 和 symbol index 都由同一份 Doc IR 直接生成，按当前 audience 过滤，不会把 private 声明或猜测的摘要暴露给工具。缺失、partial 和 unavailable 语义状态会原样保留；输出有固定大小和条数上限，并且重复生成保持确定性。
+
+`navigation-index.json` 的 schema 可用下面的命令读取：
+
+```bash
+cjdoc schema navigation-index > navigation-index.schema.json
+```
+
+`llms.txt` 和 `llms-full.txt` 的链接是相对路径，版本组合器复制它们后仍可通过 `file://` 使用。
+
+## Conceptual documentation
+
+项目根目录下存在 `docs/`，或配置了 `cjdoc.toml` 的 `[docs]` / `[[docs.pages]]` 时，cjdoc 会把面向用户的概念文档发布到 `concepts/`。`docs/index.md` 是项目指南；模块和包页面会从当前 Doc IR 生成。额外页面使用受限的相对路径配置：
+
+```toml
+[docs]
+index = "docs/index.md"
+
+[[docs.pages]]
+source = "docs/guides/start.md"
+route = "concepts/guides/start"
+title = "Getting started"
+```
+
+HTML 和 Markdown 概念页都会链接回 API 参考；HTML 会转义原始 HTML，并默认不把远程 Markdown 链接变成可点击的外链。概念页也会加入 `html/search-index.json`，类型为 `concept`。
+
+## 本地 serve/watch
+
+开发时可以启动 loopback-only 静态服务，并在源码、Markdown 或配置变更后自动重新生成：
+
+```bash
+cjdoc serve --project . --port 8080
+```
+
+服务只绑定 `127.0.0.1`。使用 `--open` 请求系统默认浏览器打开站点；`/__cjdoc/status.json` 返回构建次数、成功构建次数和最近一次错误。构建失败时服务继续提供最近一次成功的站点，直到进程退出。
+
+## 发布多个本地文档版本
+
+先为每个版本生成独立、可复制的 HTML 目录，并用 `--doc-version` 写入版本元数据：
+
+```bash
+cjdoc generate --project . --format html --doc-version 1.3.0 --output target/docs-1.3
+```
+
+然后只用本地目录组合静态站点：
+
+```bash
+cjdoc versions compose --version 1.2.0=target/docs-1.2/html --version 1.3.0=target/docs-1.3/html --label 1.3.0=Current --channel 1.2.0=stable --channel 1.3.0=stable --status 1.2.0=published --status 1.3.0=latest --latest 1.3.0 --output public/docs
+```
+
+组合结果包含 `versions.json`、根版本选择页和 `latest/` 别名；每个版本目录自包含，可直接通过 `file://` 打开。页面选择器优先使用 `html/symbol-index.json` 中的稳定 symbol ID 跨版本定位；删除或新增的声明会明确回退到该版本首页并标记 unavailable。channel、status 和 latest 只记录命令行显式值，不连接网络，也不启动服务。
+
+如果已有 `cjdoc.api-diff/1` 报告，可以用 `--diff VERSION=FILE` 把它绑定到目标版本。组合器会原样复制报告到目标版本的 `api-diff.json`，在 `versions.json` 写入 `apiDiff`，并在版本 selector 显示 Changes 链接；它不会改写 API diff 或 Doc IR。
+
+`versions.json` 的 schema 是 `cjdoc.versions/1`，源文件位于 `docs/schema/versions.schema.json`。
 
 ## 查看已有 JSON
 

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/symbol-index.schema.json",
+  "title": "cjdoc symbol index v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "project", "entries"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.symbol-index/1"},
+    "version": {"type": "string", "minLength": 1},
+    "project": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "audience"],
+      "properties": {"name": {"type": "string"}, "audience": {"type": "string"}}
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "canonicalId", "name", "qualifiedName", "kind", "moduleId", "packageName", "ownerId", "visibility", "semanticState", "summary", "source", "href", "relations", "references"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^cjdoc:v2:.+$"},
+          "canonicalId": {"type": "string", "pattern": "^cjdoc:v2:.+$"},
+          "name": {"type": "string"}, "qualifiedName": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1}, "moduleId": {"type": "string", "minLength": 1},
+          "packageName": {"type": "string", "minLength": 1},
+          "ownerId": {"type": ["string", "null"]}, "visibility": {"type": "string"},
+          "semanticState": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
+          "summary": {"type": "string"},
+          "source": {"$ref": "#/$defs/source"},
+          "href": {"type": "string", "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\).+$"},
+          "relations": {"type": "array", "items": {"$ref": "#/$defs/link"}},
+          "references": {"type": "array", "items": {"$ref": "#/$defs/reference"}}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "position": {
+      "type": "object", "additionalProperties": false,
+      "required": ["line", "column", "byteOffset"],
+      "properties": {"line": {"type": "integer", "minimum": 1}, "column": {"type": "integer", "minimum": 1}, "byteOffset": {"type": "integer", "minimum": 0}}
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "start", "end"],
+      "properties": {"path": {"type": "string", "minLength": 1}, "start": {"$ref": "#/$defs/position"}, "end": {"$ref": "#/$defs/position"}}
+    },
+    "link": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "display", "state", "targetId"],
+      "properties": {"kind": {"type": "string", "minLength": 1}, "display": {"type": "string"}, "state": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]}, "targetId": {"type": ["string", "null"]}}
+    },
+    "reference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["subject", "description", "state", "targetId"],
+      "properties": {"subject": {"type": "string"}, "description": {"type": "string"}, "state": {"enum": ["resolved", "partial", "unavailable", "ambiguous", "unresolved", "broken"]}, "targetId": {"type": ["string", "null"]}}
+    }
+  }
+}

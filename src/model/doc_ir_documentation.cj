@@ -18,6 +18,10 @@ public class MarkdownNodeMetadata {
     public let attributesRaw: ?String
     public let tableHeader: ?Bool
     public let tableAlignment: ?String
+    public var semanticTarget: ?String
+    public var semanticState: ?String
+    public var semanticTargetSymbolId: ?String
+    public var semanticExternalUrl: ?String
     private let tableAlignmentsStorage: ArrayList<String>
 
     private init(kind: String, headingLevel!: ?Int64 = None, listKind!: ?String = None,
@@ -26,7 +30,9 @@ public class MarkdownNodeMetadata {
         fenceCharacter!: ?String = None, fenceLength!: ?Int64 = None,
         infoRaw!: ?String = None, language!: ?String = None, attributesRaw!: ?String = None,
         tableAlignments!: Array<String> = [], tableHeader!: ?Bool = None,
-        tableAlignment!: ?String = None) {
+        tableAlignment!: ?String = None, semanticTarget!: ?String = None,
+        semanticState!: ?String = None, semanticTargetSymbolId!: ?String = None,
+        semanticExternalUrl!: ?String = None) {
         this.kind = kind
         this.headingLevel = headingLevel
         this.listKind = listKind
@@ -43,6 +49,10 @@ public class MarkdownNodeMetadata {
         this.tableAlignmentsStorage = ArrayList<String>(tableAlignments)
         this.tableHeader = tableHeader
         this.tableAlignment = tableAlignment
+        this.semanticTarget = semanticTarget
+        this.semanticState = semanticState
+        this.semanticTargetSymbolId = semanticTargetSymbolId
+        this.semanticExternalUrl = semanticExternalUrl
     }
 
     public static func forHeading(level: Int64): MarkdownNodeMetadata {
@@ -77,6 +87,16 @@ public class MarkdownNodeMetadata {
 
     public static func forTableCell(alignment: String): MarkdownNodeMetadata {
         MarkdownNodeMetadata("table_cell", tableAlignment: Some(alignment))
+    }
+
+    public static func forSemanticLink(target: String, state: String,
+        targetSymbolId!: ?String = None, externalUrl!: ?String = None): MarkdownNodeMetadata {
+        if (target.isEmpty()) { throw IllegalArgumentException("semantic link target cannot be empty") }
+        if (state != "resolved" && state != "unresolved" && state != "ambiguous" && state != "unavailable") {
+            throw IllegalArgumentException("invalid semantic link state")
+        }
+        MarkdownNodeMetadata("semantic_link", semanticTarget: Some(target), semanticState: Some(state),
+            semanticTargetSymbolId: targetSymbolId, semanticExternalUrl: externalUrl)
     }
 
     public prop tableAlignments: ReadOnlyList<String> { get() { tableAlignmentsStorage } }

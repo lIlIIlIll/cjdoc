@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/versions.schema.json",
+  "title": "cjdoc composed documentation versions",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "project", "latest", "latestPolicy", "versions"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.versions/1"},
+    "project": {"type": "string", "minLength": 1},
+    "latest": {"type": "string", "minLength": 1},
+    "latestPolicy": {"enum": ["explicit", "first-listed"]},
+    "versions": {"type": "array", "minItems": 1, "maxItems": 64, "items": {"$ref": "#/$defs/version"}}
+  },
+  "$defs": {
+    "safePath": {
+      "type": "string", "minLength": 1,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(^|/)[.][.]?(/|$))(?!.*(^|/)latest(/|$)).+$"
+    },
+    "version": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "label", "basePath", "channel", "status", "index", "symbolIndex", "apiDiff"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "label": {"type": "string", "minLength": 1},
+        "basePath": {"$ref": "#/$defs/safePath"},
+        "channel": {"type": "string", "minLength": 1},
+        "status": {"type": "string", "minLength": 1},
+        "index": {"$ref": "#/$defs/safePath"},
+        "symbolIndex": {"anyOf": [{"$ref": "#/$defs/safePath"}, {"type": "null"}]},
+        "apiDiff": {"anyOf": [{"$ref": "#/$defs/safePath"}, {"type": "null"}]},
+        "release": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

@@ -7,7 +7,7 @@ import std.collection.*
 import std.env.*
 import std.fs.*
 
-private func selectedSourceCacheDirectory(options: NewCliOptions): ?String {
+internal func selectedSourceCacheDirectory(options: NewCliOptions): ?String {
     if (options.noCache) { return None }
     match (options.cacheDirectory) {
         case Some(path) => Some(path)
@@ -16,40 +16,41 @@ private func selectedSourceCacheDirectory(options: NewCliOptions): ?String {
     }
 }
 
-private func orderedFormats(options: NewCliOptions): Array<String> {
+internal func orderedFormats(options: NewCliOptions): Array<String> {
     let result = ArrayList<String>()
     if (options.formats.contains("json")) { result.add("json") }
     if (options.formats.contains("markdown")) { result.add("markdown") }
     if (options.formats.contains("html")) { result.add("html") }
     if (options.formats.contains("api-surface")) { result.add("api-surface") }
     if (options.formats.contains("coverage")) { result.add("coverage") }
+    if (options.formats.contains("symbol-index")) { result.add("symbol-index") }
     result.toArray()
 }
 
 private func renderArtifacts(documentation: public_model.DocumentationSet,
-    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site"):
+    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site", docVersion!: ?String = None):
     Array<public_render.RenderArtifact> {
     public_render.renderDocumentationFormatsWithOptions(documentation, formats,
-        locale: locale, markdownLayout: markdownLayout)
+        locale: locale, markdownLayout: markdownLayout, docVersion: docVersion)
 }
 
 internal func renderArtifactsWithCommandFallback(documentation: public_model.DocumentationSet,
     formats: Array<String>, generationRequest: ?GenerationRequest,
     locale!: String = "zh-CN", markdownLayout!: String = "site",
-    injectResourceLimitForTest!: Bool = false):
+    docVersion!: ?String = None, injectResourceLimitForTest!: Bool = false):
         (public_model.DocumentationSet, Array<public_render.RenderArtifact>) {
     try {
         if (injectResourceLimitForTest) {
             throw public_render.RenderResourceLimitException("injected renderer resource limit")
         }
         (documentation, renderArtifacts(documentation, formats, locale: locale,
-            markdownLayout: markdownLayout))
+            markdownLayout: markdownLayout, docVersion: docVersion))
     } catch (error: public_render.RenderResourceLimitException) {
         match (generationRequest) {
             case Some(request) =>
                 let fallback = boundGeneratedDocumentation(documentation, request, force: true)
                 (fallback, renderArtifacts(fallback, formats, locale: locale,
-                    markdownLayout: markdownLayout))
+                    markdownLayout: markdownLayout, docVersion: docVersion))
             case None => throw error
         }
     }
@@ -76,6 +77,69 @@ private func coveragePercent(documented: Int64, total: Int64): Int64 {
     if (total == 0) { 100 } else { documented * 100 / total }
 }
 
+private func coverageMetric(counts: public_render.DocumentationCoverageCounts, metric: String): (Int64, Int64) {
+    match (metric) {
+        case "symbols" => (counts.symbols, counts.documentedSymbols)
+        case "parameters" => (counts.parameters, counts.documentedParameters)
+        case "returns" => (counts.returns, counts.documentedReturns)
+        case "throws" => (counts.throwsDocs, counts.documentedThrows)
+        case "examples" => (counts.examples, counts.documentedExamples)
+        case "deprecated" => (counts.deprecated, counts.documentedDeprecated)
+        case "semantic-links" => (counts.semanticLinks, counts.resolvedSemanticLinks)
+        case _ => (0, 0)
+    }
+}
+
+private func checkCoverageThreshold(scope: String, metric: String,
+    counts: public_render.DocumentationCoverageCounts, threshold: Int64): Bool {
+    let (total, documented) = coverageMetric(counts, metric)
+    let percent = coveragePercent(documented, total)
+    if (percent < threshold) {
+        eprintln("error: ${scope} ${metric} coverage ${percent}% is below ${threshold}%")
+        return false
+    }
+    true
+}
+
+private func hasCoverageThresholds(config: DocumentationQualityConfig): Bool {
+    !config.packageOverrides.isEmpty() || config.coverage.symbols.isSome() ||
+        config.coverage.parameters.isSome() || config.coverage.returns.isSome() ||
+        config.coverage.throwsDocs.isSome() || config.coverage.examples.isSome() ||
+        config.coverage.deprecated.isSome() || config.coverage.semanticLinks.isSome()
+}
+
+private func configuredCoverageGate(documentation: public_model.DocumentationSet,
+    projectRoot: String): Bool {
+    let config = loadDocumentationQualityConfig(projectRoot)
+    if (!hasCoverageThresholds(config)) { return true }
+    let report = public_render.documentationCoverageReport(documentation)
+    let metrics = ["symbols", "parameters", "returns", "throws", "examples", "deprecated", "semantic-links"]
+    var passed = true
+    for (metric in metrics) {
+        match (config.coverage.value(metric)) {
+            case Some(threshold) => passed = checkCoverageThreshold("global", metric, report.metrics, threshold) && passed
+            case None => ()
+        }
+    }
+    for (override in config.packageOverrides) {
+        var matched = false
+        for (group in report.packages where group.name == override.packageName) {
+            matched = true
+            for (metric in metrics) {
+                match (config.packageThreshold(group.name, metric)) {
+                    case Some(threshold) =>
+                        passed = checkCoverageThreshold("package ${group.name}", metric, group.metrics, threshold) && passed
+                    case None => ()
+                }
+            }
+        }
+        if (!matched) {
+            eprintln("error: package coverage override '${override.packageName}' does not match any selected package")
+            passed = false
+        }
+    }
+    passed
+}
 private func apiSurfaceBaselineGate(documentation: public_model.DocumentationSet, path: String): Bool {
     let baseline = readApiContractSnapshot(path)
     let current = public_render.apiContractSnapshotForDocumentation(documentation)
@@ -96,6 +160,7 @@ private func apiSurfaceBaselineGate(documentation: public_model.DocumentationSet
 private func contractGateExitCode(documentation: public_model.DocumentationSet,
     options: NewCliOptions): Int64 {
     var failed = false
+    if (options.command != "render" && !configuredCoverageGate(documentation, options.project)) { failed = true }
     if (options.minSymbolCoverage.isSome() || options.minParameterCoverage.isSome()) {
         let (symbols, documentedSymbols, parameters, documentedParameters) =
             public_render.documentationCoverageCounts(documentation)
@@ -122,19 +187,24 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 }
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndiagnostics\ncfg-matrix\nsearch-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage\ndoctest-results\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndoctest-results\nversions\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA
         case "doc-ir-v8" => DOC_IR_V8_SCHEMA
         case "doc-ir-v9" => DOC_IR_V9_SCHEMA
+        case "doc-ir-v10" => DOC_IR_V10_SCHEMA
         case "diagnostics" => DIAGNOSTICS_SCHEMA
         case "cfg-matrix" => CFG_MATRIX_SCHEMA
         case "search-index" => SEARCH_INDEX_SCHEMA
+        case "symbol-index" => SYMBOL_INDEX_SCHEMA
+        case "navigation-index" => NAVIGATION_INDEX_SCHEMA
         case "api-surface" => API_SURFACE_SCHEMA
         case "api-surface-v1" => API_SURFACE_V1_SCHEMA
         case "api-diff" => API_DIFF_SCHEMA
+        case "documentation-coverage-v1" => DOCUMENTATION_COVERAGE_V1_SCHEMA
         case "documentation-coverage" => DOCUMENTATION_COVERAGE_SCHEMA
+        case "versions" => VERSIONS_SCHEMA
         case "doctest-results" => DOCTEST_RESULTS_SCHEMA
         case _ => throw IllegalArgumentException("unknown schema " + name)
     }
@@ -166,8 +236,17 @@ private func repositoryRootForOptions(options: NewCliOptions, repository: ?publi
     }
 }
 
-private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
-    selectedCache: ?String, outputLock: ?OutputLockHandle): Int64 {
+private func doctestFailureSeverity(doctestConfig: DoctestConfig,
+    qualityConfig: DocumentationQualityConfig): String {
+    match (qualityConfig.ruleSeverity("example-not-compiling")) {
+        case Some(value) => value
+        case None => if (doctestConfig.mode == "deny") { "error" }
+            else { qualityConfig.severity("example-not-compiling") }
+    }
+}
+
+internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
+    selectedCache: ?String, outputLock: ?OutputLockHandle, writeOnFailure!: Bool = true): Int64 {
     let commandLine = getCommandLine()
     let astPreflightExecutable: ?String = if (commandLine.isEmpty()) { None }
         else { Some(commandLine[0]) }
@@ -194,6 +273,11 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
             generated.publicDocumentation
         case None => decodeValidatedDocIr(readDocIrInput(Path(options.input.getOrThrow())))
     }
+    let qualityConfig = if (generationRequest.isSome()) {
+        loadDocumentationQualityConfig(options.project)
+    } else {
+        DocumentationQualityConfig()
+    }
     let doctestConfig = if (generationRequest.isSome()) {
         loadDoctestConfig(options.project)
     } else {
@@ -211,18 +295,39 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
         doctestReport = Some(report)
         eprintln(doctestReportSummary(report))
         if (doctestReportHasFailure(report)) {
-            let severity = if (doctestConfig.mode == "deny") { "error" } else { "warning" }
-            eprintln(severity + "[CJDOC3010]: doctest execution reported failures")
+            let severity = doctestFailureSeverity(doctestConfig, qualityConfig)
+            if (severity != "off") {
+                eprintln(severity + "[CJDOC3010]: doctest execution reported failures")
+            }
         }
     }
     var artifacts: Array<public_render.RenderArtifact> = []
     if (options.command != "check") {
         let (renderedDocumentation, renderedArtifacts) = renderArtifactsWithCommandFallback(documentation,
             orderedFormats(options), generationRequest, locale: options.locale,
-            markdownLayout: options.markdownLayout)
+            markdownLayout: options.markdownLayout, docVersion: options.docVersion)
         documentation = renderedDocumentation
         let artifactList = ArrayList<public_render.RenderArtifact>()
-        artifactList.add(all: renderedArtifacts)
+        if (generationRequest.isSome()) {
+            artifactList.add(all: appendConceptualArtifacts(options.project, documentation,
+                orderedFormats(options), renderedArtifacts))
+        } else {
+            artifactList.add(all: renderedArtifacts)
+        }
+        if (options.formats.contains("html")) {
+            let agentConceptualPages: Array<public_render.AgentConceptualPage> = if (generationRequest.isSome()) {
+                conceptualAgentPages(options.project, documentation)
+            } else {
+                []
+            }
+            artifactList.add(all: public_render.renderAgentReadableArtifacts(documentation,
+                conceptualPages: agentConceptualPages,
+                includeFull: options.agentFull, version: options.docVersion))
+        }
+        match (options.docVersion) {
+            case Some(version) => appendDocumentVersionArtifact(artifactList, version, documentation.project.name)
+            case None => ()
+        }
         match (doctestReport) {
             case Some(report) =>
                 artifactList.add(public_render.RenderArtifact(
@@ -236,10 +341,12 @@ private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Strin
     let contractExit = contractGateExitCode(documentation, options)
     let doctestExit = match (doctestReport) {
         case Some(report) =>
-            if (doctestConfig.mode == "deny" && doctestReportHasFailure(report)) { 1 } else { 0 }
+            if (doctestFailureSeverity(doctestConfig, qualityConfig) == "error" &&
+                doctestReportHasFailure(report)) { 1 } else { 0 }
         case None => 0
     }
-    if (options.command != "check") {
+    if (options.command != "check" &&
+        (writeOnFailure || (diagnosticsExit == 0 && contractExit == 0 && doctestExit == 0))) {
         if (options.stdout) {
             getStdOut().write(artifacts[0].content.toArray())
         } else {
@@ -263,7 +370,7 @@ private func runApiDiff(options: NewCliOptions): Int64 {
     apiDiffExitCode(report, options.denyBreakingApi, options.denyPotentiallyBreakingApi)
 }
 
- private func selectedOutputDirectory(options: NewCliOptions): String {
+internal func selectedOutputDirectory(options: NewCliOptions): String {
     match (options.output) {
         case Some(path) => path
         case None => if (options.command == "render") { "target/doc" }
@@ -290,6 +397,8 @@ func runCli(args: Array<String>): Int64 {
     try {
         if (options.command == "schema") { return runSchema(options.schemaName) }
         if (options.command == "diff") { return runApiDiff(options) }
+        if (options.command == "versions") { return runVersionsCompose(options) }
+        if (options.command == "serve") { return runServeCommand(options) }
         if (options.command == "check" || options.stdout) {
             let requestedCache: ?String = if (options.command == "render") { None }
                 else { selectedSourceCacheDirectory(options) }

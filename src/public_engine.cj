@@ -17,10 +17,13 @@ internal class GeneratedDocumentation {
 internal func generateDocumentationWithSource(request: GenerationRequest,
     semanticProvider: SemanticProvider): GeneratedDocumentation {
     let documentation = generateDocumentation(request, semanticProvider: semanticProvider)
+    let qualityConfig = loadDocumentationQualityConfig(request.projectRoot)
     match (request.lintProfile) {
         case "off" => resolveDocumentationReferences(documentation)
-        case "standard" => lintDocumentation(documentation, false)
-        case "strict" => lintDocumentation(documentation, true, missingSymbolDocs: true)
+        case "standard" => lintDocumentation(documentation, false,
+            qualityConfig: Some(qualityConfig), audience: request.audience)
+        case "strict" => lintDocumentation(documentation, true, missingSymbolDocs: true,
+            qualityConfig: Some(qualityConfig), audience: request.audience)
         case _ => ()
     }
     sortDocumentationDeterministically(documentation)

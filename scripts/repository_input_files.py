@@ -15,6 +15,7 @@ try:
         LEGACY_GOLDEN_VERSIONS,
         LEGACY_SCHEMA_SHA256,
         SCHEMA_CONTRACTS,
+        SCHEMA_OPTIONAL_PROPERTIES,
         SCHEMA_NAMES,
     )
     from .safe_output_root import lexical_absolute, verify_directory_chain
@@ -29,6 +30,7 @@ except ImportError:  # Direct module execution.
         LEGACY_GOLDEN_VERSIONS,
         LEGACY_SCHEMA_SHA256,
         SCHEMA_CONTRACTS,
+        SCHEMA_OPTIONAL_PROPERTIES,
         SCHEMA_NAMES,
     )
     from safe_output_root import lexical_absolute, verify_directory_chain
@@ -112,9 +114,10 @@ def validate_schema_document(name: str, value: object) -> None:
         raise ValueError(f"{name} schema root shape is invalid")
     properties = value.get("properties")
     required = value.get("required")
+    expected_properties = set(expected_required) | set(SCHEMA_OPTIONAL_PROPERTIES.get(name, ()))
     if not isinstance(properties, dict) or not isinstance(required, list) or \
             any(not isinstance(item, str) for item in required) or \
-            tuple(required) != expected_required or set(properties) != set(expected_required):
+            tuple(required) != expected_required or set(properties) != expected_properties:
         raise ValueError(f"{name} schema required/property contract is invalid")
     actual_version = properties.get("schemaVersion", {}).get("const") \
         if isinstance(properties.get("schemaVersion"), dict) else None
@@ -142,8 +145,8 @@ def validate_schema_document(name: str, value: object) -> None:
                 )
         if properties["status"] != {"enum": ["complete", "partial"]}:
             raise ValueError(f"{name} schema status shape is invalid")
-        if name in ("doc-ir", "doc-ir-v8", "doc-ir-v9"):
-            if name in ("doc-ir", "doc-ir-v9") and "repository" not in definitions:
+        if name in ("doc-ir", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10"):
+            if name in ("doc-ir", "doc-ir-v9", "doc-ir-v10") and "repository" not in definitions:
                 raise ValueError(f"{name} repository definition is missing")
             if not {
                 "codeBlockMetadata", "headingMetadata", "listMetadata",
@@ -192,6 +195,38 @@ def validate_schema_document(name: str, value: object) -> None:
                 set(items.get("required", [])) != expected_entry_fields or \
                 set(items.get("properties", {})) != expected_entry_fields:
             raise ValueError("search-index schema entry shape is invalid")
+    elif name == "symbol-index":
+        entries = properties["entries"]
+        items = entries.get("items") if isinstance(entries, dict) else None
+        expected_entry_fields = {
+            "id", "canonicalId", "name", "qualifiedName", "kind", "moduleId",
+            "packageName", "ownerId", "visibility", "semanticState", "summary",
+            "source", "href", "relations", "references"
+        }
+        if not isinstance(entries, dict) or entries.get("type") != "array" or \
+                not isinstance(items, dict) or items.get("type") != "object" or \
+                items.get("additionalProperties") is not False or \
+                set(items.get("required", [])) != expected_entry_fields or \
+                set(items.get("properties", {})) != expected_entry_fields:
+            raise ValueError("symbol-index schema entry shape is invalid")
+    elif name == "navigation-index":
+        definitions = value.get("$defs")
+        pages = properties["pages"]
+        page = definitions.get("page") if isinstance(definitions, dict) else None
+        expected_page_fields = {
+            "id", "kind", "title", "href", "summary", "symbolId", "moduleId",
+            "packageName", "semanticState"
+        }
+        if (not isinstance(definitions, dict) or
+                not {"project", "page", "safePath"}.issubset(definitions) or
+                not isinstance(pages, dict) or
+                pages != {"type": "array", "maxItems": 100000,
+                          "items": {"$ref": "#/$defs/page"}} or
+                not isinstance(page, dict) or page.get("type") != "object" or
+                page.get("additionalProperties") is not False or
+                set(page.get("required", [])) != expected_page_fields or
+                set(page.get("properties", {})) != expected_page_fields):
+            raise ValueError("navigation-index schema page shape is invalid")
     elif name in ("api-surface", "api-surface-v1", "api-diff"):
         definitions = value.get("$defs")
         if not isinstance(definitions, dict):
@@ -205,19 +240,33 @@ def validate_schema_document(name: str, value: object) -> None:
         }
         if not required.issubset(definitions):
             raise ValueError(f"{name} schema definitions are incomplete")
-    elif name == "documentation-coverage":
+    elif name == "documentation-coverage-v1":
         definitions = value.get("$defs")
         if not isinstance(definitions, dict) or "counts" not in definitions or \
                 properties.get("symbols") != {"$ref": "#/$defs/counts"} or \
                 properties.get("parameters") != {"$ref": "#/$defs/counts"}:
-            raise ValueError("documentation-coverage schema counts shape is invalid")
+            raise ValueError("documentation-coverage-v1 schema counts shape is invalid")
+    elif name == "documentation-coverage":
+        definitions = value.get("$defs")
+        if not isinstance(definitions, dict) or not {"metric", "metrics", "group"}.issubset(definitions) or \
+                properties.get("metrics") != {"$ref": "#/$defs/metrics"} or \
+                properties.get("packages", {}).get("items") != {"$ref": "#/$defs/group"} or \
+                properties.get("modules", {}).get("items") != {"$ref": "#/$defs/group"}:
+            raise ValueError("documentation-coverage schema metrics shape is invalid")
     elif name == "doctest-results":
         definitions = value.get("$defs")
         if not isinstance(definitions, dict) or not {"nullableInteger", "summary", "result"}.issubset(definitions) or \
                 properties.get("summary") != {"$ref": "#/$defs/summary"} or \
                 properties.get("results", {}).get("items") != {"$ref": "#/$defs/result"}:
             raise ValueError("doctest-results schema shape is invalid")
-
+    elif name == "versions":
+        definitions = value.get("$defs")
+        versions = properties["versions"]
+        if (not isinstance(definitions, dict) or
+                not {"safePath", "version"}.issubset(definitions) or
+                versions != {"type": "array", "minItems": 1, "maxItems": 64,
+                             "items": {"$ref": "#/$defs/version"}}):
+            raise ValueError("versions schema manifest shape is invalid")
 def verify_schema_set(repo: Path) -> None:
     directory = lexical_absolute(repo / "docs/schema")
     verified = verify_directory_chain(directory)

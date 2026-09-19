@@ -21,6 +21,46 @@ private func navigationHead(spelling: String): String {
     if (head.endsWith("?")) { head = head[..head.size - 1].trimAscii() }
     head
 }
+private func navigationTypeKey(value: String): String {
+    value.trimAscii().replace(" ", "").replace("\t", "")
+}
+
+private func navigationTypeMatches(left: TypeRef, right: TypeRef): Bool {
+    if (left.kind != right.kind || left.nullable != right.nullable ||
+        left.arguments.size != right.arguments.size) { return false }
+    let spellingMatches = navigationTypeKey(left.display) == navigationTypeKey(right.display)
+    let canonicalMatches = match ((left.canonical, right.canonical)) {
+        case (Some(leftCanonical), Some(rightCanonical)) =>
+            navigationTypeKey(leftCanonical) == navigationTypeKey(rightCanonical)
+        case _ => false
+    }
+    if (!spellingMatches && !canonicalMatches) { return false }
+    var index: Int64 = 0
+    while (index < left.arguments.size) {
+        if (!navigationTypeMatches(left.arguments[index], right.arguments[index])) { return false }
+        index++
+    }
+    true
+}
+
+private func navigationParameterSignaturesMatch(left: SymbolDoc, right: SymbolDoc): Bool {
+    if (left.parameters.size != right.parameters.size) { return false }
+    var index: Int64 = 0
+    while (index < left.parameters.size) {
+        if (!navigationTypeMatches(left.parameters[index].typeRef, right.parameters[index].typeRef)) {
+            return false
+        }
+        index++
+    }
+    true
+}
+
+private func navigationRelationshipName(display: String): String {
+    match (display.indexOf("(")) {
+        case Some(index) => display[..index].trimAscii()
+        case None => display.trimAscii()
+    }
+}
 
 private func typeTargetCandidate(candidate: SourceDeclaration): Bool {
     candidate.kind == "class" || candidate.kind == "struct" ||
@@ -214,6 +254,7 @@ private func resolveSourceTypeRelations(source: SourceSnapshot, documentation: D
     }
 }
 
+
 private func ownerSymbol(symbols: ArrayList<SymbolDoc>, symbol: SymbolDoc): ?SymbolDoc {
     match (symbol.ownerId) {
         case Some(ownerId) =>
@@ -252,8 +293,10 @@ private func resolveOverrideRelations(documentation: DocumentationSet,
                     case Some(parentId) =>
                         for (candidate in documentation.symbols) {
                             match (candidate.ownerId) {
-                                case Some(ownerId) => if (ownerId == parentId &&
-                                    candidate.name == relationship.targetDisplay) { matches.add(candidate) }
+                                case Some(ownerId) =>
+                                    if (ownerId == parentId &&
+                                        candidate.name == navigationRelationshipName(relationship.targetDisplay) &&
+                                        navigationParameterSignaturesMatch(symbol, candidate)) { matches.add(candidate) }
                                 case None => ()
                             }
                         }

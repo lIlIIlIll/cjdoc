@@ -107,7 +107,8 @@ class RendererSafetyTest {
             ("markdown", "markdown/docs.md"),
             ("html", "html/index.html"),
             ("api-surface", "api-surface/api-surface.json"),
-            ("coverage", "coverage/coverage.json")
+            ("coverage", "coverage/coverage.json"),
+            ("symbol-index", "symbol-index/symbol-index.json")
         ]
         for ((format, path) in expectations) {
             let renderer = rendererFor(format)
@@ -116,6 +117,45 @@ class RendererSafetyTest {
         }
     }
 
+    @TestCase
+    func symbolIndexPublishesStableReferenceTargets(): Unit {
+        let targetId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arenderer-safety::fixture::function:api#g0()"
+        let tags = [DocTag("see", "fixture.api", "", referenceState: "resolved",
+            targetSymbolId: Some(targetId))]
+        let documentation = rendererSafetyDocumentation(MarkdownNode("document"), tags: tags)
+        let artifact = SymbolIndexDocumentationRenderer().render(documentation)[0]
+        @Expect(artifact.path, "symbol-index/symbol-index.json")
+        @Expect(artifact.content.contains("cjdoc.symbol-index/1"), true)
+        @Expect(artifact.content.contains("\"targetId\":\"${targetId}\""), true)
+    }
+
+    @TestCase
+    func semanticLinkMetadataRendersConsistentlyAndHtmlPublishesIndex(): Unit {
+        let targetId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arenderer-safety::fixture::function:api#g0()"
+        let target = MarkdownNode("semantic_link", MarkdownNodeMetadata.forSemanticLink(
+            "fixture.api", "resolved", targetSymbolId: Some(targetId),
+            externalUrl: Some("symbols/target-id.html")),
+            literal: "fixture.api", children: [MarkdownNode("text", literal: "API")])
+        let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
+            rendererSafetyDocumentation(MarkdownNode("document", children: [
+                MarkdownNode("paragraph", children: [target])
+            ]))), "markdown/docs.md")
+        let htmlPages = rendererSafetyText(HtmlDocumentationRenderer().render(
+            rendererSafetyDocumentation(MarkdownNode("document", children: [
+                MarkdownNode("paragraph", children: [target])
+            ]))))
+        let html = rendererSafetyContent(HtmlDocumentationRenderer().render(
+            rendererSafetyDocumentation(MarkdownNode("document", children: [
+                MarkdownNode("paragraph", children: [target])
+            ]))), "html/symbol-index.json")
+        @Expect(htmlPages.contains("<a href=\"../symbols/target-id.html\">API</a>"), true)
+        @Expect(markdown.contains("<a id=\"symbol-${htmlStableSlug(targetId)}\"></a>"), true)
+        @Expect(markdown.contains("[API](#symbol-${htmlStableSlug(targetId)})"), true)
+        @Expect(html.contains("\"href\":\"symbols/"), true)
+        @Expect(rendererSafetyContent(HtmlDocumentationRenderer().render(
+            rendererSafetyDocumentation(MarkdownNode("document"))),
+            "html/search-index.json").contains("cjdoc"), true)
+    }
     @TestCase
     func audienceProjectionOmitsAssetsReferencedOnlyByHiddenDeclarations(): Unit {
         let documentation = hiddenAssetDocumentation()

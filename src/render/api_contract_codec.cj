@@ -240,7 +240,8 @@ private func metadataValue(symbol: SymbolDoc): String {
     contractFingerprint(out.toString())
 }
 
-private func apiDeclarationForSymbol(symbol: SymbolDoc): ApiContractDeclaration {
+private func apiDeclarationForSymbol(symbol: SymbolDoc,
+    visibleIndex: HashMap<String, SymbolDoc>): ApiContractDeclaration {
     let parameters = ArrayList<ApiContractParameter>()
     for (parameter in symbol.parameters) {
         let defaultState = match (parameter.defaultExpression) {
@@ -264,11 +265,13 @@ private func apiDeclarationForSymbol(symbol: SymbolDoc): ApiContractDeclaration 
         relationships.add("${relationship.kind}:${relationship.target.spelling}")
     }
     for (relationship in symbol.symbolRelationships) {
-        let target = match (relationship.targetSymbolId) {
-            case Some(id) => id
-            case None => relationship.targetDisplay
+        match (relationship.targetSymbolId) {
+            case Some(id) => if (visibleIndex.contains(id)) {
+                relationships.add("${relationship.kind}:${relationship.state}:${id}")
+            }
+            case None => relationships.add(
+                "${relationship.kind}:${relationship.state}:${relationship.targetDisplay}")
         }
-        relationships.add("${relationship.kind}:${relationship.state}:${target}")
     }
     let signatureState = if (symbol.sourceApiSignature.state == "available") { "resolved" } else { "unavailable" }
     ApiContractDeclaration(symbol.id, symbol.moduleId, symbol.packageName, symbol.kind, symbol.name,
@@ -289,7 +292,7 @@ public func apiContractSnapshotForDocumentation(documentation: DocumentationSet)
         if (declarations.size >= API_CONTRACT_MAX_ENTRIES) {
             throw IllegalArgumentException("API surface declaration limit exceeded")
         }
-        declarations.add(apiDeclarationForSymbol(symbol))
+        declarations.add(apiDeclarationForSymbol(symbol, projection.visibleIndex))
     }
     sort(declarations, lessThan: { left, right =>
         if (left.qualifiedName != right.qualifiedName) { return left.qualifiedName < right.qualifiedName }
@@ -300,8 +303,12 @@ public func apiContractSnapshotForDocumentation(documentation: DocumentationSet)
     for (pkg in documentation.packages) {
         for (reExport in pkg.reExports) {
             for (binding in reExport.bindings) {
+                let visibleTargetIds = ArrayList<String>()
+                for (targetId in binding.targetSymbolIds) {
+                    if (projection.visibleIndex.contains(targetId)) { visibleTargetIds.add(targetId) }
+                }
                 exposures.add(ApiContractExposure(reExport.id, pkg.moduleId, pkg.name,
-                    binding.exposedName, binding.targetSymbolIds.toArray(), state: reExport.state))
+                    binding.exposedName, visibleTargetIds.toArray(), state: reExport.state))
             }
         }
     }

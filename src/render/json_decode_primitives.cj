@@ -14,11 +14,12 @@ import yjson_algorithms.*
 internal let DOC_IR_CODEC_MAX_NESTING_DEPTH: Int64 = 512
 
 // The schema corpus needs fewer than sixty-four evaluations per JSON object and
-// four per array item. Both the typed encoding census and the raw pre-schema
-// census enforce these occurrence ceilings, so this is a shared domain/schema
-// upper bound rather than an unrelated validator knob.
+// regex validation also traverses each constrained string. Keep its finite budget
+// separate from structural evaluation work so large real repositories remain
+// valid without weakening object, array, or parser limits.
 internal let DOC_IR_SCHEMA_MAX_WORK: Int64 =
     DOC_IR_MAX_SCHEMA_OBJECTS * 64 + DOC_IR_MAX_SCHEMA_ARRAY_ITEMS * 4
+internal let DOC_IR_SCHEMA_MAX_REGEX_STEPS: Int64 = DOC_IR_SCHEMA_MAX_WORK * 4
 
 internal func fail(path: String, message: String): Nothing {
     throw IllegalArgumentException("invalid Doc IR at ${path}: ${message}")
@@ -41,7 +42,7 @@ internal func jsonArrayValues(value: JsonArray): ArrayList<JsonNode> {
 }
 
 internal func compatibleSchemaText(schemaText: String): String {
-    let portablePathPattern = "\"pattern\": \"^[^/]+(?:/[^/]+)*$\""
+    let portablePathPattern = "\"pattern\": \"^.+$\""
     let legacyPattern = "\"pattern\": \"^(?!/)(?![A-Za-z]:)(?!.*\\\\\\\\).+$\""
     let currentPattern = "\"pattern\": \"^(?![A-Za-z]:)(?!.*\\\\\\\\)(?!\\\\.{1,2}(?:/|$))(?!.*/\\\\.{1,2}(?:/|$))[^/]+(?:/[^/]+)*$\""
     schemaText.replace(legacyPattern, portablePathPattern).replace(currentPattern, portablePathPattern)
@@ -135,17 +136,19 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
         fail("$.schemaVersion", "expected string")
     }
     let schemaText = if (version == DOC_IR_SCHEMA_VERSION) { DOC_IR_SCHEMA }
+        else if (version == DOC_IR_V9_SCHEMA_VERSION) { DOC_IR_V9_SCHEMA }
         else if (version == DOC_IR_V8_SCHEMA_VERSION) { DOC_IR_V8_SCHEMA }
         else if (version == DOC_IR_V7_SCHEMA_VERSION) { DOC_IR_V7_SCHEMA }
         else if (version == DOC_IR_V6_SCHEMA_VERSION) { DOC_IR_V6_SCHEMA }
         else {
             fail("$.schemaVersion",
-                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V8_SCHEMA_VERSION}', " +
-                "'${DOC_IR_V7_SCHEMA_VERSION}', or '${DOC_IR_V6_SCHEMA_VERSION}'")
+                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
+                "'${DOC_IR_V8_SCHEMA_VERSION}', '${DOC_IR_V7_SCHEMA_VERSION}', or " +
+                "'${DOC_IR_V6_SCHEMA_VERSION}'")
         }
     let schema = JsonSchema.parse(compatibleSchemaText(schemaText), config: JsonSchemaConfig(
         limits: JsonSchemaLimits(maxEvaluations: DOC_IR_SCHEMA_MAX_WORK,
-            maxRefResolutions: DOC_IR_SCHEMA_MAX_WORK, maxRegexSteps: DOC_IR_SCHEMA_MAX_WORK,
+            maxRefResolutions: DOC_IR_SCHEMA_MAX_WORK, maxRegexSteps: DOC_IR_SCHEMA_MAX_REGEX_STEPS,
             maxErrors: 20, maxDepth: DOC_IR_CODEC_MAX_NESTING_DEPTH)))
     let errors = schema.validate(root)
     if (!errors.isEmpty()) {
@@ -345,6 +348,11 @@ internal func decodeMarkdownMetadata(node: JsonNode, kind: String,
         case "table_cell" =>
             let value = strictObject(node, path, ["alignment"])
             MarkdownNodeMetadata.forTableCell(stringAt(value, "alignment", path))
+        case "semantic_link" =>
+            let value = strictObject(node, path, ["target", "state", "targetSymbolId", "externalUrl"])
+            MarkdownNodeMetadata.forSemanticLink(stringAt(value, "target", path), stringAt(value, "state", path),
+                targetSymbolId: nullableStringAt(value, "targetSymbolId", path),
+                externalUrl: nullableStringAt(value, "externalUrl", path))
         case _ => fail(path, "metadata is not allowed for Markdown kind '${kind}'")
     }
 }

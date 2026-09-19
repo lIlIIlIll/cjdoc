@@ -47,8 +47,8 @@ GOLDEN_NAMES = (
     "path-dependencies",
 )
 
-CURRENT_GOLDEN_VERSION = 9
-LEGACY_GOLDEN_VERSIONS = (6, 7, 8)
+CURRENT_GOLDEN_VERSION = 10
+LEGACY_GOLDEN_VERSIONS = (6, 7, 8, 9)
 
 SCHEMA_NAMES = (
     "doc-ir",
@@ -56,19 +56,24 @@ SCHEMA_NAMES = (
     "doc-ir-v7",
     "doc-ir-v8",
     "doc-ir-v9",
+    "doc-ir-v10",
     "diagnostics",
     "cfg-matrix",
     "search-index",
+    "symbol-index",
+    "navigation-index",
     "api-surface",
     "api-surface-v1",
     "api-diff",
+    "documentation-coverage-v1",
     "documentation-coverage",
     "doctest-results",
+    "versions",
 )
 SCHEMA_CONTRACTS = {
     "doc-ir": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-        "cjdoc.doc-ir/9",
+        "cjdoc.doc-ir/10",
         ("schemaVersion", "generator", "status", "project", "configuration", "providers",
          "modules", "packages", "files", "declarations", "assets", "orphanDocComments",
          "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations",
@@ -106,6 +111,14 @@ SCHEMA_CONTRACTS = {
          "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations",
          "diagnostics"),
     ),
+    "doc-ir-v10": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v10.schema.json",
+        "cjdoc.doc-ir/10",
+        ("schemaVersion", "generator", "status", "project", "configuration", "providers",
+         "modules", "packages", "files", "declarations", "assets", "orphanDocComments",
+         "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations",
+         "diagnostics"),
+    ),
     "diagnostics": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/diagnostics.schema.json",
         "cjdoc.diagnostics/2", ("schemaVersion", "diagnostics"),
@@ -117,6 +130,14 @@ SCHEMA_CONTRACTS = {
     "search-index": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index.schema.json",
         "cjdoc.search-index/4", ("schemaVersion", "entries"),
+    ),
+    "symbol-index": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/symbol-index.schema.json",
+        "cjdoc.symbol-index/1", ("schemaVersion", "project", "entries"),
+    ),
+    "navigation-index": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/navigation-index.schema.json",
+        "cjdoc.navigation-index/1", ("schemaVersion", "project", "pages"),
     ),
     "api-surface": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface-v2.schema.json",
@@ -130,14 +151,25 @@ SCHEMA_CONTRACTS = {
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-diff.schema.json",
         "cjdoc.api-diff/1", ("schemaVersion", "baseline", "current", "comparisonState", "summary", "entries"),
     ),
+    "documentation-coverage-v1": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/documentation-coverage-v1.schema.json",
+        "cjdoc.documentation-coverage/1", ("schemaVersion", "audience", "symbols", "parameters"),
+    ),
     "documentation-coverage": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/documentation-coverage.schema.json",
-        "cjdoc.documentation-coverage/1", ("schemaVersion", "audience", "symbols", "parameters"),
+        "cjdoc.documentation-coverage/2", ("schemaVersion", "audience", "metrics", "packages", "modules"),
     ),
     "doctest-results": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doctest-results.schema.json",
         "cjdoc.doctest/1", ("schemaVersion", "mode", "timeoutMs", "memoryMb", "jobs", "summary", "results"),
     ),
+    "versions": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/versions.schema.json",
+        "cjdoc.versions/1", ("schemaVersion", "project", "latest", "latestPolicy", "versions"),
+    ),
+}
+SCHEMA_OPTIONAL_PROPERTIES = {
+    "symbol-index": ("version",),
 }
 DOC_IR_CORE_DEFS = {
     "asset", "comment", "configuration", "declaration", "diagnostic", "file",

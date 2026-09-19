@@ -46,7 +46,7 @@ internal class DocIrEncodingBudget {
             domainFail(path, "JSON object occurrence budget exceeded")
         }
         schemaObjects++
-        consumeBytes(512, path)
+        consumeBytes(448, path)
         consumePrettyContainer(depth, fields, true, path)
     }
 
@@ -143,7 +143,7 @@ internal func consumeTypeEncoding(value: TypeRef, path: String, depth: Int64,
 
 internal func consumeMarkdownMetadataEncoding(value: MarkdownNodeMetadata, path: String,
     jsonDepth: Int64, budget: DocIrEncodingBudget): Unit {
-    budget.consumeObject(path, depth: jsonDepth, fields: 8)
+    budget.consumeObject(path, depth: jsonDepth, fields: 12)
     budget.consumeOptionalString(value.listKind, "${path}.listKind")
     budget.consumeOptionalString(value.listDelimiter, "${path}.delimiter")
     budget.consumeOptionalString(value.taskState, "${path}.taskState")
@@ -153,6 +153,10 @@ internal func consumeMarkdownMetadataEncoding(value: MarkdownNodeMetadata, path:
     budget.consumeOptionalString(value.language, "${path}.language")
     budget.consumeOptionalString(value.attributesRaw, "${path}.attributesRaw")
     budget.consumeOptionalString(value.tableAlignment, "${path}.alignment")
+    budget.consumeOptionalString(value.semanticTarget, "${path}.target")
+    budget.consumeOptionalString(value.semanticState, "${path}.state")
+    budget.consumeOptionalString(value.semanticTargetSymbolId, "${path}.targetSymbolId")
+    budget.consumeOptionalString(value.semanticExternalUrl, "${path}.externalUrl")
     budget.consumeCollection(value.tableAlignments.size, "${path}.alignments",
         depth: jsonDepth + 1)
     var index: Int64 = 0

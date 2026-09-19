@@ -275,8 +275,19 @@ internal func appendMarkdownPercentByte(out: RenderTextBuffer, value: Byte): Uni
     out.append(digits[low..low + 1])
 }
 
-internal func markdownLinkDestination(value: String): ?String {
-    if (!safeLinkDestination(value)) { return None }
+internal func safeRelativeLinkDestination(value: String): Bool {
+    if (value.isEmpty() || value.startsWith("//") || value.startsWith("/") ||
+        value.contains("..") || value.contains("\\") || value.contains("#") ||
+        value.contains("?") || value.contains(":") || value.contains(" ") ||
+        value.contains("\n") || value.contains("\r")) { return false }
+    for (byte in value.toArray()) {
+        if (byte < 0x20 || byte == 0x7F) { return false }
+    }
+    true
+}
+
+internal func markdownLinkDestination(value: String, allowRelative!: Bool = false): ?String {
+    if (!safeLinkDestination(value) && (!allowRelative || !safeRelativeLinkDestination(value))) { return None }
     let bytes = value.toArray()
     let out = RenderTextBuffer()
     var index: Int64 = 0

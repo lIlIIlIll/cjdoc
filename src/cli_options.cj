@@ -40,25 +40,45 @@ internal class NewCliOptions {
     var localeExplicit = false
     var markdownLayout = "site"
     var markdownLayoutExplicit = false
+    var docVersion: ?String = None
+    var agentFull = false
+    var versionSubcommand = ""
+
+    let versionInputs = ArrayList<String>()
+    let versionLabels = HashMap<String, String>()
+    let versionChannels = HashMap<String, String>()
+    let versionStatuses = HashMap<String, String>()
+    let versionBasePaths = HashMap<String, String>()
+    let versionReleases = HashMap<String, String>()
+    let versionDiffs = HashMap<String, String>()
+    let versionAssignmentIds = ArrayList<String>()
+    var latestVersion: ?String = None
+    var servePort: Int64 = 8080
+    var servePortExplicit = false
+    var serveOpen = false
+    var serveOpenExplicit = false
     let dependencySources = ArrayList<DependencySourceInput>()
     let cfgValues = ArrayList<CfgValue>()
 }
-
 internal func newUsage(): String {
     "usage:\n" +
-    "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout]\n" +
+    "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout]\n" +
     "                 [--audience external|package|all] [--lint-profile off|standard|strict] [--jobs 1..64]\n" +
     "                 [--cfg NAME=VALUE] [--include-path-dependencies] [--include-cached-dependencies]\n" +
     "                 [--dependency-source NAME=PATH] [--cjpm-cache <dir>]\n" +
     "                 [--cache-dir <dir>|--no-cache] [--force-owned]\n" +
     "                 [--locale zh-CN|en] [--markdown-layout site|single]\n" +
+    "                 [--doc-version SAFE_ID]\n" +
+    "                 [--agent-full]\n" +
     "  cjdoc check [--project <dir>] [--deny-warnings] [--lint-profile off|standard|strict]\n" +
     "              [--api-surface-baseline <file>] [--min-symbol-coverage 0..100] [--min-parameter-coverage 0..100]\n" +
     "  cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
-    "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout] [--force-owned]\n" +
+    "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout] [--force-owned]\n" +
     "               [--locale zh-CN|en] [--markdown-layout site|single]\n" +
-    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|doc-ir-v9|diagnostics|cfg-matrix|search-index|api-surface|api-surface-v1|api-diff|documentation-coverage|doctest-results\n"
+    "  cjdoc versions compose --version ID=HTML_DIR... [--diff ID=API_DIFF_JSON] --output DIR [--latest ID]\\n" +
+    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|doc-ir-v9|doc-ir-v10|diagnostics|cfg-matrix|search-index|symbol-index|navigation-index|api-surface|api-surface-v1|api-diff|documentation-coverage-v1|documentation-coverage|doctest-results|versions\n" +
+    "  cjdoc serve [--project <dir>] [--port 1..65535] [--open] [generation options]\n"
 }
 
 
@@ -76,7 +96,7 @@ internal func cliErrorText(message: String, includeUsage: Bool): String {
 
 private func addFormat(options: NewCliOptions, value: String): Unit {
     if (value != "json" && value != "markdown" && value != "html" &&
-        value != "api-surface" && value != "coverage") {
+        value != "api-surface" && value != "coverage" && value != "symbol-index") {
         throw IllegalArgumentException("unsupported format '${value}'")
     }
     if (!options.formats.contains(value)) { options.formats.add(value) }
@@ -138,6 +158,9 @@ private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>,
         case "--api-surface-baseline" =>
             options.apiSurfaceBaseline = Some(requireNonEmptyCliValue(args, index, "--api-surface-baseline"))
             Some(index + 2)
+        case "--doc-version" =>
+            options.docVersion = Some(requireNonEmptyCliValue(args, index, "--doc-version"))
+            Some(index + 2)
         case "--locale" =>
             options.locale = requireCliValue(args, index, "--locale")
             options.localeExplicit = true
@@ -187,6 +210,10 @@ private func parseNumericOption(options: NewCliOptions, args: Array<String>, ind
             options.jobs = Int64.parse(requireCliValue(args, index, "--jobs"))
             options.jobsExplicit = true
             Some(index + 2)
+        case "--port" =>
+            options.servePort = Int64.parse(requireCliValue(args, index, "--port"))
+            options.servePortExplicit = true
+            Some(index + 2)
         case _ => None<Int64>
     }
 }
@@ -214,6 +241,9 @@ private func parseFlagOption(options: NewCliOptions, args: Array<String>, index:
         case "--force-owned" => options.forceOwned = true; Some(index + 1)
         case "--include-path-dependencies" => options.includePathDependencies = true; Some(index + 1)
         case "--include-cached-dependencies" => options.includeCachedDependencies = true; Some(index + 1)
+        case "--open" => options.serveOpen = true; options.serveOpenExplicit = true; Some(index + 1)
+        case "--agent-full" => options.agentFull = true; Some(index + 1)
+
         case _ => None<Int64>
     }
 }
@@ -244,7 +274,9 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
         options.includePathDependencies || options.includeCachedDependencies ||
         options.cacheDirectory.isSome() || options.noCache || options.cjpmCacheRoot.isSome() ||
         options.repositoryUrl.isSome() || options.repositoryRevision.isSome() || options.repositoryRoot.isSome() ||
-        !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty()) {
+        !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty() ||
+        options.docVersion.isSome() || options.agentFull || options.servePortExplicit ||
+        options.serveOpenExplicit) {
         throw IllegalArgumentException("diff accepts only input paths, --format, and API deny flags")
     }
 }
@@ -307,9 +339,23 @@ private func validateCliOptions(options: NewCliOptions): Unit {
         throw IllegalArgumentException("--stdout does not accept --force-owned")
     }
     if (options.formats.isEmpty() && options.command != "check") { options.formats.add("json") }
+    if (options.docVersion.isSome() && options.command != "generate" && options.command != "render") {
+        throw IllegalArgumentException("--doc-version is only valid for generate or render")
+    }
+    if (options.docVersion.isSome() && !options.formats.contains("html")) {
+        throw IllegalArgumentException("--doc-version requires --format html")
+    }
+    if (options.agentFull && options.command != "generate" && options.command != "render" &&
+        options.command != "serve") {
+        throw IllegalArgumentException("--agent-full is only valid for generate, render, or serve")
+    }
+    if (options.agentFull && options.command != "serve" && !options.formats.contains("html")) {
+        throw IllegalArgumentException("--agent-full requires --format html")
+    }
+
     if (options.stdout && (options.formats.size != 1 ||
         (options.formats[0] != "json" && options.formats[0] != "api-surface" &&
-            options.formats[0] != "coverage"))) {
+            options.formats[0] != "coverage" && options.formats[0] != "symbol-index"))) {
         throw IllegalArgumentException("--stdout requires exactly one JSON-producing format")
     }
     let hasRepositoryUrl = options.repositoryUrl.isSome()
@@ -320,13 +366,62 @@ private func validateCliOptions(options: NewCliOptions): Unit {
     if (options.repositoryRoot.isSome() && !hasRepositoryUrl) {
         throw IllegalArgumentException("--repository-root requires --repository-url and --repository-revision")
     }
-    if (options.command != "generate" &&
+    if (options.command != "generate" && options.command != "serve" &&
         (hasRepositoryUrl || hasRepositoryRevision || options.repositoryRoot.isSome())) {
         throw IllegalArgumentException("repository options are only valid for generate")
     }
     if (options.cjpmCacheRoot.isSome() && !options.includeCachedDependencies) {
         throw IllegalArgumentException("--cjpm-cache requires --include-cached-dependencies")
     }
+}
+private func parseVersionAssignment(options: NewCliOptions, args: Array<String>, index: Int64,
+    option: String, target: HashMap<String, String>, assignmentIds: ArrayList<String>): Int64 {
+    let (id, value) = splitNamedValue(requireNonEmptyCliValue(args, index, option), option)
+    if (target.contains(id)) { throw IllegalArgumentException("duplicate versions assignment") }
+    target[id] = value
+    assignmentIds.add(id)
+    index + 2
+}
+
+private func parseVersionsCommand(args: Array<String>): NewCliOptions {
+    if (args.size < 3 || args[1] != "compose") {
+        throw IllegalArgumentException("versions requires the compose subcommand")
+    }
+    let options = NewCliOptions()
+    options.command = "versions"
+    options.versionSubcommand = "compose"
+    var index: Int64 = 2
+    while (index < args.size) {
+        match (args[index]) {
+            case "--version" =>
+                let (id, path) = splitNamedValue(requireNonEmptyCliValue(args, index, "--version"), "--version")
+                options.versionInputs.add(id + "=" + path)
+                index += 2
+            case "--label" => index = parseVersionAssignment(options, args, index, "--label", options.versionLabels, options.versionAssignmentIds)
+            case "--channel" => index = parseVersionAssignment(options, args, index, "--channel", options.versionChannels, options.versionAssignmentIds)
+            case "--status" => index = parseVersionAssignment(options, args, index, "--status", options.versionStatuses, options.versionAssignmentIds)
+            case "--base-path" => index = parseVersionAssignment(options, args, index, "--base-path", options.versionBasePaths, options.versionAssignmentIds)
+            case "--release" => index = parseVersionAssignment(options, args, index, "--release", options.versionReleases, options.versionAssignmentIds)
+            case "--diff" => index = parseVersionAssignment(options, args, index, "--diff", options.versionDiffs, options.versionAssignmentIds)
+            case "--latest" =>
+                options.latestVersion = Some(requireNonEmptyCliValue(args, index, "--latest"))
+                index += 2
+            case "--output" =>
+                options.output = Some(requireNonEmptyCliValue(args, index, "--output"))
+                index += 2
+            case "--force-owned" =>
+                options.forceOwned = true
+                index++
+            case _ => throw IllegalArgumentException("unsupported versions compose option")
+        }
+    }
+    if (options.versionInputs.isEmpty()) {
+        throw IllegalArgumentException("versions compose requires --version ID=PATH")
+    }
+    if (options.output.isNone()) {
+        throw IllegalArgumentException("versions compose requires --output")
+    }
+    options
 }
 
 private func parseSchemaCommand(args: Array<String>): NewCliOptions {
@@ -336,10 +431,15 @@ private func parseSchemaCommand(args: Array<String>): NewCliOptions {
     options.schemaName = args[1]
     if (options.schemaName != "list" && options.schemaName != "doc-ir" &&
         options.schemaName != "doc-ir-v6" && options.schemaName != "doc-ir-v7" &&
-        options.schemaName != "doc-ir-v8" && options.schemaName != "doc-ir-v9" && options.schemaName != "diagnostics" &&
+        options.schemaName != "doc-ir-v8" && options.schemaName != "doc-ir-v9" &&
+        options.schemaName != "doc-ir-v10" && options.schemaName != "diagnostics" &&
         options.schemaName != "cfg-matrix" && options.schemaName != "search-index" &&
+        options.schemaName != "symbol-index" &&
         options.schemaName != "api-surface" && options.schemaName != "api-surface-v1" &&
-        options.schemaName != "api-diff" && options.schemaName != "documentation-coverage" &&
+        options.schemaName != "api-diff" && options.schemaName != "documentation-coverage-v1" &&
+        options.schemaName != "documentation-coverage" &&
+        options.schemaName != "navigation-index" &&
+        options.schemaName != "versions" &&
         options.schemaName != "doctest-results") {
         throw IllegalArgumentException("unknown schema '${options.schemaName}'")
     }
@@ -372,7 +472,9 @@ private func parseDocumentOptions(args: Array<String>): NewCliOptions {
 internal func parseNewCli(args: Array<String>): NewCliOptions {
     if (args.isEmpty()) { throw IllegalArgumentException("missing command") }
     if (args[0] == "schema") { return parseSchemaCommand(args) }
-    if (args[0] != "generate" && args[0] != "check" && args[0] != "render" && args[0] != "diff") {
+    if (args[0] == "versions") { return parseVersionsCommand(args) }
+    if (args[0] != "generate" && args[0] != "check" && args[0] != "render" &&
+        args[0] != "diff" && args[0] != "serve") {
         throw IllegalArgumentException("unknown command '${args[0]}'")
     }
     parseDocumentOptions(args)

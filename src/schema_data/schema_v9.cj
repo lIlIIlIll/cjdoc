@@ -40,8 +40,6 @@ private func buildDocIrV9Schema(source: String): String {
     schema
 }
 
-private let DOC_IR_CURRENT_ID =
-    "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json"
 
 public let DOC_IR_V9_SCHEMA = buildDocIrV9Schema(DOC_IR_V8_SCHEMA)
-public let DOC_IR_SCHEMA = DOC_IR_V9_SCHEMA.replace(DOC_IR_V9_ID, DOC_IR_CURRENT_ID)
+// Current schema alias is defined by schema_v10.cj.

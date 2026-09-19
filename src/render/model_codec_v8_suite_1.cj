@@ -28,7 +28,7 @@ class ModelCodecV8Suite1 {
         @Expect(comment.markdown.children[0].metadata.isNone())
         @Expect(migrated.declarations[0].enumNonExhaustive.isNone())
         let encoded = encodeDocIr(migrated)
-        @Expect(encoded.contains("\"schemaVersion\": \"cjdoc.doc-ir/9\""))
+        @Expect(encoded.contains("\"schemaVersion\": \"cjdoc.doc-ir/10\""))
         @Expect(encoded.contains("\"metadata\": null"))
         @Expect(encoded.contains("\"repository\": null"))
         @Expect(encoded.contains("\"repositoryPath\": null"))

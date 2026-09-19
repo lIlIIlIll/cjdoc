@@ -254,12 +254,16 @@ internal func markdownFragmentSlug(value: String): String {
 
 internal class HtmlMarkdownContext {
     let headingBase: Int64
+    let allowExternalLinks: Bool
     let headingIds = ArrayList<String>()
     let fragmentTargets = HashMap<String, String>()
     let usedHeadingSlugs = HashSet<String>()
     var nextHeading: Int64 = 0
 
-    init(headingBase: Int64) { this.headingBase = headingBase }
+    init(headingBase: Int64, allowExternalLinks!: Bool = true) {
+        this.headingBase = headingBase
+        this.allowExternalLinks = allowExternalLinks
+    }
 }
 
 internal func collectMarkdownHeadings(node: MarkdownNode, anchorPrefix: String,
@@ -386,7 +390,10 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
                 case Some(target) => "#${target}"
                 case None => node.literal
             }
-            if (safeLinkDestination(destination)) {
+            let isRemote = destination.startsWith("http://") || destination.startsWith("https://")
+            let safeDestination = safeLinkDestination(destination) ||
+                safeRelativeLinkDestination(destination)
+            if (safeDestination && (context.allowExternalLinks || !isRemote)) {
                 out.append("<a href=\"${escapeHtml(destination)}\"")
                 if (destination.startsWith("http://") || destination.startsWith("https://")) {
                     out.append(" rel=\"noopener noreferrer\"")
@@ -398,6 +405,42 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
                 out.append("</a>")
             } else {
                 for (child in node.children) {
+                    appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
+                }
+            }
+        case "semantic_link" =>
+            let destination: ?String = match (node.metadata) {
+                case Some(metadata) => metadata.semanticExternalUrl
+                case None => None
+            }
+            match (destination) {
+                case Some(value) =>
+                    let href = if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("#")) {
+                        value
+                    } else {
+                        rootPrefix + value
+                    }
+                    let isRemote = value.startsWith("http://") || value.startsWith("https://")
+                    let isFragment = value.startsWith("#")
+                    let permitted = if (isRemote) {
+                        context.allowExternalLinks && safeLinkDestination(href)
+                    } else if (isFragment) {
+                        safeLinkDestination(href)
+                    } else {
+                        safeRelativeLinkDestination(value)
+                    }
+                    if (permitted) {
+                        out.append("<a href=\"${escapeHtml(href)}\">")
+                        for (child in node.children) {
+                            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
+                        }
+                        out.append("</a>")
+                    } else {
+                        for (child in node.children) {
+                            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
+                        }
+                    }
+                case None => for (child in node.children) {
                     appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
                 }
             }
@@ -438,4 +481,16 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
         }
         case _ => out.append(escapeHtml(markdownNodeText(node)))
     }
+}
+public func renderStandaloneMarkdownHtml(source: MarkdownNode, allowExternalLinks!: Bool = false): String {
+    let parsed = source
+    let context = HtmlMarkdownContext(1, allowExternalLinks: allowExternalLinks)
+    collectMarkdownHeadings(parsed, "concept", HashMap<String, Int64>(), context)
+    let out = RenderTextBuffer()
+    appendMarkdownNodeHtml(out, parsed, HashMap<String, String>(), "", context)
+    out.toString()
+}
+
+public func escapeStandaloneHtml(value: String): String {
+    escapeHtml(value)
 }
