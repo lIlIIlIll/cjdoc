@@ -47,6 +47,7 @@ SCHEMA_FILES = (
     "cfg-matrix.schema.json",
     "search-index.schema.json",
     "symbol-index.schema.json",
+    "navigation-index.schema.json",
     "api-surface.schema.json",
     "api-surface-v1.schema.json",
     "api-diff.schema.json",
