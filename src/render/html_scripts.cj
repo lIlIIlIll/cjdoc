@@ -59,15 +59,11 @@ internal let HTML_SEARCH_SCRIPT = """
 (() => {
   const input = document.querySelector("[data-cjdoc-search]");
   const results = document.querySelector("[data-cjdoc-results]");
-  if (!input || !results) return;
   const isChinese = (document.documentElement.lang || "").toLocaleLowerCase().startsWith("zh");
   const copyLabels = isChinese
     ? {copy: "复制代码", copied: "已复制"}
     : {copy: "Copy code", copied: "Copied"};
-  const themeSwitchLabel = (next) => {
-    if (!isChinese) return "Switch to " + next + " theme";
-    return "切换到" + (next === "light" ? "浅色" : "深色") + "主题";
-  };
+  if (input && results) {
   const root = input.dataset.root || "";
   const searchArea = input.closest(".search-area");
   const packageFilter = document.querySelector("[data-cjdoc-package]");
@@ -77,8 +73,6 @@ internal let HTML_SEARCH_SCRIPT = """
   let visible = [];
   let selected = -1;
   let activeCategory = "all";
-  const ambiguousLabels = new Set();
-  const displayKey = (entry) => JSON.stringify([entry.packageName, entry.qualifiedName]);
   const categoryFor = (kind) => {
     if (["class", "struct", "interface", "enum", "typeAlias"].includes(kind)) return "classes";
     if (["function", "constructor"].includes(kind)) return "functions";
@@ -110,6 +104,7 @@ internal let HTML_SEARCH_SCRIPT = """
       results.children[i].setAttribute("aria-selected", i === selected ? "true" : "false");
     }
     const active = results.children[selected];
+    if (!active) { input.removeAttribute("aria-activedescendant"); return; }
     input.setAttribute("aria-activedescendant", active.id);
     active.scrollIntoView({block: "nearest"});
   };
@@ -122,12 +117,13 @@ internal let HTML_SEARCH_SCRIPT = """
     const query = input.value.trim().toLocaleLowerCase();
     if (!query) { input.setAttribute("aria-expanded", "false"); return; }
     const selectedPackage = packageFilter ? packageFilter.value : "";
-    visible = entries.map((entry) => ({entry, rank: rank(entry, query)}))
+    const matches = entries.map((entry) => ({entry, rank: rank(entry, query)}))
       .filter((item) => item.rank >= 0 && (activeCategory === "all" || categoryFor(item.entry.kind) === activeCategory) &&
         (!selectedPackage || item.entry.packageName === selectedPackage))
       .sort((left, right) => left.rank - right.rank ||
-        left.entry.qualifiedName.localeCompare(right.entry.qualifiedName) || left.entry.id.localeCompare(right.entry.id))
-      .slice(0, 20).map((item) => item.entry);
+        left.entry.qualifiedName.localeCompare(right.entry.qualifiedName) || left.entry.id.localeCompare(right.entry.id));
+    visible = matches.slice(0, 20).map((item) => item.entry);
+    const signatures = globalThis.__CJDOC_SEARCH_SIGNATURES__ || {};
     for (const entry of visible) {
       const item = document.createElement("li");
       const link = document.createElement("a");
@@ -135,6 +131,7 @@ internal let HTML_SEARCH_SCRIPT = """
       const name = document.createElement("strong");
       const kind = document.createElement("span");
       const context = document.createElement("span");
+      const signature = document.createElement("code");
       const summary = document.createElement("span");
       item.id = "cjdoc-search-result-" + results.children.length;
       item.setAttribute("role", "option");
@@ -146,10 +143,11 @@ internal let HTML_SEARCH_SCRIPT = """
       kind.className = "search-kind";
       kind.textContent = entry.kind;
       context.className = "search-context";
-      context.textContent = entry.packageName + (entry.qualifiedName !== entry.name ? " · " + entry.qualifiedName : "") +
-        (ambiguousLabels.has(displayKey(entry)) ? " · " + entry.id : "");
+      context.textContent = entry.packageName + (entry.qualifiedName !== entry.name ? " · " + entry.qualifiedName : "");
       head.append(name, kind);
       link.append(head, context);
+      const signatureText = signatures[entry.id] || signatures[entry.canonicalId] || "";
+      if (signatureText) { signature.className = "search-result-signature"; signature.textContent = signatureText; link.append(signature); }
       if (entry.summary) { summary.className = "search-summary"; summary.textContent = entry.summary; link.append(summary); }
       item.append(link);
       results.append(item);
@@ -157,9 +155,15 @@ internal let HTML_SEARCH_SCRIPT = """
     if (!visible.length && searchStatus) {
       searchStatus.textContent = isChinese ? "没有匹配的声明" : "No matching declarations";
       searchStatus.hidden = false;
+    } else if (matches.length > visible.length && searchStatus) {
+      searchStatus.textContent = isChinese
+        ? "显示前 " + visible.length + " 项，共 " + matches.length + " 项；请缩小查询范围。"
+        : "Showing " + visible.length + " of " + matches.length + " matches; narrow your query for more.";
+      searchStatus.hidden = false;
     }
     input.setAttribute("aria-expanded", visible.length ? "true" : "false");
   };
+
   const addOptions = (selectElement, values) => {
     if (!selectElement) return;
     for (const value of [...new Set(values)].sort((a, b) => a.localeCompare(b))) {
@@ -172,37 +176,59 @@ internal let HTML_SEARCH_SCRIPT = """
   const index = globalThis.__CJDOC_SEARCH_INDEX__;
   entries = index && index.schemaVersion === "cjdoc.search-index/4" && Array.isArray(index.entries)
     ? index.entries : [];
-  const firstIdsByLabel = new Map();
-  for (const entry of entries) {
-    const key = displayKey(entry);
-    if (firstIdsByLabel.has(key) && firstIdsByLabel.get(key) !== entry.id) ambiguousLabels.add(key);
-    else firstIdsByLabel.set(key, entry.id);
-  }
   addOptions(packageFilter, entries.map((entry) => entry.packageName));
+  const closeSearch = () => {
+    visible = [];
+    selected = -1;
+    results.replaceChildren();
+    input.removeAttribute("aria-activedescendant");
+    input.setAttribute("aria-expanded", "false");
+    if (searchStatus) searchStatus.hidden = true;
+  };
   render();
+  input.addEventListener("focus", () => { if (input.value.trim()) render(); });
   input.addEventListener("input", render);
   for (const tab of categoryTabs) tab.addEventListener("click", () => setCategory(tab.dataset.cjdocCategory));
   if (packageFilter) packageFilter.addEventListener("change", render);
   input.addEventListener("keydown", (event) => {
     if (event.key === "ArrowDown") { event.preventDefault(); select(selected + 1); }
     else if (event.key === "ArrowUp") { event.preventDefault(); select(selected < 0 ? visible.length - 1 : selected - 1); }
-    else if (event.key === "Enter" && selected >= 0) { event.preventDefault(); results.children[selected].querySelector("a").click(); }
+    else if (event.key === "Enter" && selected >= 0) { const active = results.children[selected]; const link = active && active.querySelector("a"); if (link) { event.preventDefault(); link.click(); } }
     else if (event.key === "Escape") { input.value = ""; render(); input.blur(); }
   });
   document.addEventListener("click", (event) => {
-    if (searchArea && !searchArea.contains(event.target) && !event.target.closest(".search-filters")) {
-      results.replaceChildren();
-      input.removeAttribute("aria-activedescendant");
-      input.setAttribute("aria-expanded", "false");
-    }
+    if (searchArea && !searchArea.contains(event.target) && !event.target.closest(".search-filters") && !event.target.closest("[data-cjdoc-filter-toggle]")) closeSearch();
   });
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
       event.preventDefault();
       if (typeof closeMenu === "function") closeMenu(false);
       input.focus();
+      render();
     }
   });
+  }
+  const filterToggle = document.querySelector("[data-cjdoc-filter-toggle]");
+  const filterPanel = document.querySelector("#cjdoc-search-filters");
+  const filterArea = filterToggle && filterToggle.closest(".site-search");
+  const closeFilters = () => {
+    if (!filterToggle || !filterPanel) return;
+    filterPanel.classList.remove("is-open");
+    filterToggle.setAttribute("aria-expanded", "false");
+  };
+  if (filterToggle && filterPanel) {
+    filterToggle.addEventListener("click", () => {
+      const open = !filterPanel.classList.contains("is-open");
+      filterPanel.classList.toggle("is-open", open);
+      filterToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    document.addEventListener("click", (event) => {
+      if (filterArea && !filterArea.contains(event.target)) closeFilters();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeFilters();
+    });
+  }
   const themeToggle = document.querySelector("[data-cjdoc-theme-toggle]");
   const themePopover = document.querySelector("[data-cjdoc-theme-popover]");
   const themeButtons = [...document.querySelectorAll("[data-cjdoc-theme-value]")];
@@ -353,14 +379,17 @@ internal let HTML_SEARCH_SCRIPT = """
     const overview = document.querySelector(".sidebar-link[href$='index.html']");
     const api = document.querySelector(".sidebar-link[href*='#packages']");
     if (!overview || !api) return;
-    const onApi = window.location.pathname.endsWith("/index.html") && window.location.hash === "#packages";
-    overview.classList.toggle("is-current", !onApi);
-    overview.toggleAttribute("aria-current", !onApi);
+    const declaredRoute = document.body.dataset.cjdocRoute || "overview";
+    const onApi = declaredRoute === "api" || (declaredRoute === "overview" && window.location.hash === "#packages");
+    const onOverview = declaredRoute === "overview" && !onApi;
+    overview.classList.toggle("is-current", onOverview);
+    overview.toggleAttribute("aria-current", onOverview);
     api.classList.toggle("is-current", onApi);
     api.toggleAttribute("aria-current", onApi);
   };
   syncRouteState();
   window.addEventListener("hashchange", syncRouteState);
+  window.addEventListener("popstate", syncRouteState);
   const toc = document.querySelector("[data-cjdoc-toc]");
   const content = document.querySelector("[data-cjdoc-content]");
   if (toc && content) {
@@ -488,7 +517,19 @@ internal let HTML_SEARCH_SCRIPT = """
       }
     }
     toc.hidden = headings.length === 0;
+    const mobileToc = document.querySelector("[data-cjdoc-mobile-toc]");
+    const mobileTocList = mobileToc && mobileToc.querySelector("ol");
+    if (mobileToc && mobileTocList) {
+      mobileTocList.replaceChildren();
+      for (const heading of headings) {
+        const item = document.createElement("li");
+        item.append(createLink(heading, "toc-mobile-link"));
+        mobileTocList.append(item);
+      }
+      mobileToc.hidden = headings.length === 0;
+    }
     if (headings.length && "IntersectionObserver" in window) {
+
       const links = [...tocList.querySelectorAll("a")];
       const byId = new Map(links.map((link) => [link.dataset.tocTarget, link]));
       const setActive = (targetId) => {

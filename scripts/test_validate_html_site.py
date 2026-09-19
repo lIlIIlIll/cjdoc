@@ -86,17 +86,12 @@ class ValidateHtmlSiteTest(unittest.TestCase):
         )
         self.assertNotIn("select(selected - 1)", script)
 
-    def test_canonical_search_disambiguates_duplicate_visible_labels(self) -> None:
+    def test_canonical_search_displays_context_and_signatures(self) -> None:
         script = canonical_search_script()
-        self.assertIn(
-            "JSON.stringify([entry.packageName, entry.qualifiedName])", script
-        )
-        self.assertIn("ambiguousLabels.add(key)", script)
-        self.assertIn(
-            'ambiguousLabels.has(displayKey(entry)) ? " · " + entry.id : ""',
-            script,
-        )
-
+        self.assertIn("context.textContent = entry.packageName", script)
+        self.assertIn("const signatures = globalThis.__CJDOC_SEARCH_SIGNATURES__ || {}", script)
+        self.assertIn("signatures[entry.id] || signatures[entry.canonicalId]", script)
+        self.assertIn('signature.className = "search-result-signature"', script)
     def test_canonical_script_exposes_all_theme_presets(self) -> None:
         script = canonical_search_script()
         for theme in ("system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"):

@@ -117,14 +117,27 @@ jobs:
         env:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
           CJDOC_HTML_FIXTURE: ${{ github.workspace }}/target/html-reference/html
+          CJDOC_VERSION_FIXTURE: ${{ github.workspace }}/target/html-versions
         run: |
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           target/release/bin/main generate \
             --project tests/fixtures/projects/html_reference \
+            --format html --format json --locale en --doc-version 1.2.0 --no-cache \
+            --repository-url https://github.com/example/reference \
+            --repository-revision 0123456789012345678901234567890123456789 \
+            --output target/html-reference-previous
+          target/release/bin/main generate \
+            --project tests/fixtures/projects/html_reference \
             --format html --format json --locale en --no-cache \
+            --doc-version 1.3.0 \
             --repository-url https://github.com/example/reference \
             --repository-revision 0123456789012345678901234567890123456789 \
             --output target/html-reference
+          target/release/bin/main versions compose \
+            --version 1.2.0=target/html-reference-previous/html \
+            --version 1.3.0=target/html-reference/html \
+            --latest 1.3.0 \
+            --output target/html-versions
           npm --prefix tests/browser test
 
       - name: Upload browser screenshots

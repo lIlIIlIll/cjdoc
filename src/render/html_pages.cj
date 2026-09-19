@@ -5,38 +5,57 @@ import std.collection.*
 import std.sort.*
 
 internal func renderHtmlIndex(documentation: DocumentationSet, projection: RenderProjection,
-    locale!: String = "en"): String {
+    locale!: String = "en", docVersion!: ?String = None): String {
+    let apiDocumentationLabel = label(locale, "API documentation", "API 文档")
+    let startHereLabel = label(locale, "Start here", "从这里开始")
+    let startHereCopy = label(locale, "Choose a module or package to begin with the generated API reference.", "选择模块或包，开始阅读生成的 API 参考。")
+    let browseApiLabel = label(locale, "Browse the API index", "浏览 API 索引")
+    let modulesLabel = label(locale, "Modules", "模块")
+    let packagesLabel = label(locale, "Packages", "包")
+    let packageCountLabel = label(locale, "packages", "个包")
+    let diagnosticsLabel = label(locale, "Build status and diagnostics", "构建状态与诊断")
+    let pageTitle = documentation.project.name + " " + apiDocumentationLabel
     let out = RenderTextBuffer()
-    appendPageStart(out, "${documentation.project.name} ${label(locale, "API documentation", "API 文档")}", "",
-        documentation, projection, locale: locale)
-    out.append("<header class=\"page-header\"><h1>${escapeHtml(documentation.project.name)} ${label(locale, "API documentation", "API 文档")}</h1>")
+    appendPageStart(out, pageTitle, "",
+        documentation, projection, locale: locale, docVersion: docVersion)
+    out.append("<header class=\"page-header\"><h1>${escapeHtml(documentation.project.name)} ${apiDocumentationLabel}</h1>")
     if (locale == "zh-CN") {
         out.append("<p class=\"page-lead\">${projection.modules.size} 个模块，${projection.packages.size} 个包，${projection.visibleSymbols.size} 个可见声明</p>\n")
     } else {
         out.append("<p class=\"page-lead\">${projection.modules.size} modules, ${projection.packages.size} packages, ${projection.visibleSymbols.size} visible declarations</p>\n")
     }
-    out.append("</header>\n")
+    out.append("</header>\n<section class=\"quick-start\" aria-labelledby=\"quick-start-title\"><h2 id=\"quick-start-title\">")
+    out.append(startHereLabel)
+    out.append("</h2><p>")
+    out.append(startHereCopy)
+    out.append("</p><a href=\"#packages\">")
+    out.append(browseApiLabel)
+    out.append("</a></section>\n")
     if (!projection.modules.isEmpty()) {
-        out.append("<h2 id=\"modules\">${label(locale, "Modules", "模块")}</h2><div class=\"module-list\">\n")
+        out.append("<h2 id=\"modules\">")
+        out.append(modulesLabel)
+        out.append("</h2><div class=\"module-list\">\n")
         for (projected in projection.modules) {
             let module = projected.source
             out.append("<section class=\"module-record\"><h3><code>${escapeHtml(module.name)}</code> <span class=\"badge\">${escapeHtml(module.role)}</span></h3>")
             let prefix = if (module.sourcePrefix.isEmpty()) { "." } else { module.sourcePrefix }
-            out.append("<p class=\"meta\">Source prefix: <code>${escapeHtml(prefix)}</code></p><ul class=\"package-links\">\n")
-            for (pkg in projected.packages) {
-                out.append("<li><a href=\"${escapeHtml(packagePagePath(module.id, pkg.source.name))}\"><code>${escapeHtml(pkg.source.name)}</code></a></li>\n")
-            }
-            out.append("</ul></section>\n")
+            out.append("<p class=\"meta\">Source prefix: <code>${escapeHtml(prefix)}</code> · ${projected.packages.size} ")
+            out.append(packageCountLabel)
+            out.append("</p></section>\n")
         }
         out.append("</div>\n")
     }
-    out.append("<h2 id=\"packages\">${label(locale, "Packages", "包")}</h2><ul class=\"package-index\">\n")
+    out.append("<h2 id=\"packages\">")
+    out.append(packagesLabel)
+    out.append("</h2><ul class=\"package-index\">\n")
     for (pkg in projection.packages) {
         out.append("<li><a href=\"${escapeHtml(packagePagePath(pkg.source.moduleId, pkg.source.name))}\"><code>${escapeHtml(pkg.source.name)}</code></a></li>\n")
     }
     out.append("</ul>\n")
     if (!documentation.diagnostics.isEmpty()) {
-        out.append("<h2 id=\"diagnostics\">${label(locale, "Diagnostics", "诊断")}</h2><ul class=\"diagnostics-list\">\n")
+        out.append("<details id=\"diagnostics\" class=\"build-details\"><summary>")
+        out.append(diagnosticsLabel)
+        out.append("</summary><ul class=\"diagnostics-list\">\n")
         for (diagnostic in documentation.diagnostics) {
             if (let Some(symbolId) <- diagnostic.symbolId) {
                 if (!projection.visibleIndex.contains(symbolId)) { continue }
@@ -48,7 +67,7 @@ internal func renderHtmlIndex(documentation: DocumentationSet, projection: Rende
             }
             out.append("</li>\n")
         }
-        out.append("</ul>\n")
+        out.append("</ul></details>\n")
     }
     appendPageEnd(out, documentation, locale: locale)
     out.toString()
@@ -72,13 +91,52 @@ internal func appendDeclarationRow(out: RenderTextBuffer, symbol: SymbolDoc,
     out.append("</a></article>\n")
 }
 
+public func renderConceptualHtmlPage(documentation: DocumentationSet, title: String, body: String,
+    rootPrefix: String, source!: ?String = None, locale!: String = "en",
+    docVersion!: ?String = None): String {
+    let projection = RenderProjection(documentation)
+    let out = RenderTextBuffer()
+    let breadcrumbLabel = label(locale, "Breadcrumb", "面包屑导航")
+    let apiReferenceLabel = label(locale, "API reference", "API 参考")
+    let conceptsLabel = label(locale, "Concepts", "概念文档")
+    let sourceLabel = label(locale, "Source", "来源")
+    appendPageStart(out, title, rootPrefix, documentation, projection, locale: locale,
+        currentRoute: "concept", docVersion: docVersion)
+    out.append("<nav class=\"breadcrumbs\" aria-label=\"")
+    out.append(breadcrumbLabel)
+    out.append("\"><ol><li><a href=\"")
+    out.append(rootPrefix)
+    out.append("index.html\">")
+    out.append(apiReferenceLabel)
+    out.append("</a></li><li><a href=\"")
+    out.append(rootPrefix)
+    out.append("concepts/index.html\">")
+    out.append(conceptsLabel)
+    out.append("</a></li><li aria-current=\"page\">")
+    out.append(escapeHtml(title))
+    out.append("</li></ol></nav>")
+    out.append("<header class=\"page-header\"><h1>${escapeHtml(title)}</h1>")
+    match (source) {
+        case Some(value) => out.append("<p class=\"page-meta\"><span class=\"page-meta-item\">")
+            out.append(sourceLabel)
+            out.append(": <code>")
+            out.append(escapeHtml(value))
+            out.append("</code></span></p>")
+        case None => ()
+    }
+    out.append("</header>\n")
+    out.append(body)
+    appendPageEnd(out, documentation, locale: locale)
+    out.toString()
+}
+
 internal func renderPackagePage(documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, topLevelByPackage: HashMap<String, ArrayList<SymbolDoc>>,
-    pkg: ProjectedPackage, locale!: String = "en"): String {
+    pkg: ProjectedPackage, locale!: String = "en", docVersion!: ?String = None): String {
     let packageDoc = pkg.source
     let out = RenderTextBuffer()
     appendPageStart(out, "${label(locale, "Package", "包")} ${packageDoc.name}", "../",
-        documentation, projection, locale: locale,
+        documentation, projection, locale: locale, docVersion: docVersion,
         currentPackagePath: Some(packagePagePath(packageDoc.moduleId, packageDoc.name)), currentRoute: "api")
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li><li aria-current=\"page\">${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></li></ol></nav>\n")
     out.append("<header class=\"page-header\"><h1>${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></h1></header>\n")
@@ -207,10 +265,10 @@ internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<Strin
 internal func renderSymbolPage(documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
     symbol: SymbolDoc, assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    locale!: String = "en"): String {
+    locale!: String = "en", docVersion!: ?String = None): String {
     let out = RenderTextBuffer()
     appendPageStart(out, symbol.qualifiedName, "../", documentation, projection, locale: locale,
-        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)), currentRoute: "api")
+        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)), currentRoute: "api", docVersion: docVersion)
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li>")
     out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">${label(locale, "Package", "包")} <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     appendOwnerBreadcrumbs(out, index, symbol, "../", locale)
@@ -329,10 +387,23 @@ internal func renderSearchIndex(documentation: DocumentationSet,
     out.toString()
 }
 
-internal func renderSearchIndexScript(searchIndex: String): String {
+internal func renderSearchIndexScript(searchIndex: String, projection: RenderProjection): String {
     let out = RenderTextBuffer()
     out.append("globalThis.__CJDOC_SEARCH_INDEX__ = ")
     out.append(searchIndex.trimAscii())
-    out.append(";\n")
+    out.append(";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = {")
+    let symbols = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
+    sort(symbols, lessThan: { left, right => left.id < right.id }, stable: true)
+    var first = true
+    for (symbol in symbols) {
+        let signature = symbol.headerSpelling.trimAscii()
+        if (signature.isEmpty()) { continue }
+        if (!first) { out.append(",") }
+        first = false
+        appendSearchJsonString(out, symbol.id)
+        out.append(":")
+        appendSearchJsonString(out, signature)
+    }
+    out.append("};\n")
     out.toString()
 }

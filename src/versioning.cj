@@ -463,12 +463,18 @@ private func versionSelector(current: VersionSite, currentOutputPath: String,
 }
 
 private func injectVersionSelector(html: String, selector: String): String {
-    match (html.indexOf("</body>")) {
+    let shellMarker = "<div class=\"docs-layout\">"
+    match (html.indexOf(shellMarker)) {
         case Some(index) => html[..index] + selector + html[index..]
-        case None => html + selector
+        case None =>
+            match (html.indexOf("</header>")) {
+                case Some(index) =>
+                    let end = index + "</header>".size
+                    html[..end] + selector + html[end..]
+                case None => html + selector
+            }
     }
 }
-
 private func versionManifest(sites: ArrayList<VersionSite>, latest: String,
     latestPolicy: String): String {
     let out = StringBuilder()
@@ -505,15 +511,33 @@ private func versionManifest(sites: ArrayList<VersionSite>, latest: String,
 
 private func versionRootIndex(sites: ArrayList<VersionSite>, latest: String): String {
     let out = StringBuilder()
-    out.append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Versioned documentation</title></head><body><main><h1>Versioned documentation</h1><p>Choose a documentation version.</p><ul>")
+    out.append("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta name=\"color-scheme\" content=\"light dark\"><title>Documentation versions</title><style>")
+    out.append(":root{color-scheme:light;--ink:#17212b;--muted:#536071;--surface:#f5f7fa;--surface-raised:#fff;--line:#d7dee8;--accent:#176b5d;--accent-soft:#dff4ef;--shadow:0 18px 48px rgba(23,33,43,.12);font:16px/1.6 system-ui,-apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif}*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--ink)}.site-nav{border-bottom:1px solid var(--line);background:var(--surface-raised)}.site-nav-inner{max-width:1080px;margin:0 auto;padding:1rem 1.5rem;display:flex;align-items:center;justify-content:space-between;gap:1rem}.brand{color:inherit;text-decoration:none;display:flex;align-items:center;gap:.7rem}.brand-mark{display:grid;place-items:center;width:2rem;height:2rem;border-radius:7px;background:#176b5d;color:#fff;font:700 .95rem/1 ui-monospace,SFMono-Regular,Menlo,monospace}.brand-copy{display:flex;flex-direction:column;line-height:1.15}.brand-project{font-size:.98rem}.brand-subtitle,.version-root-meta{color:var(--muted);font-size:.8rem}.version-root{max-width:900px;margin:0 auto;padding:clamp(3rem,8vw,7rem) 1.5rem}.eyebrow{margin:0 0 .75rem;color:var(--accent);font:700 .75rem/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase}.version-root h1{max-width:12ch;margin:0;font-size:clamp(2.4rem,7vw,5.2rem);line-height:.98;letter-spacing:-.06em}.page-lead{max-width:44rem;margin:1.4rem 0 2.5rem;color:var(--muted);font-size:1.08rem}.version-list{display:grid;gap:.75rem}.version-card{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1.1rem 1.2rem;border:1px solid var(--line);border-radius:10px;background:var(--surface-raised);box-shadow:var(--shadow);color:inherit;text-decoration:none}.version-card:hover,.version-card:focus-visible{border-color:var(--accent);outline:2px solid var(--accent-soft);outline-offset:2px}.version-card-main{display:flex;flex-direction:column}.version-card-main strong{font-size:1.08rem}.version-card-main span,.version-card-meta{color:var(--muted);font-size:.85rem}.site-footer{max-width:900px;margin:0 auto;padding:1.5rem;color:var(--muted);font-size:.8rem}@media(prefers-color-scheme:dark){:root{color-scheme:dark;--ink:#e8eef5;--muted:#aab7c7;--surface:#111820;--surface-raised:#18222d;--line:#2b3948;--accent:#5ed6bd;--accent-soft:#123b34;--shadow:0 18px 48px rgba(0,0,0,.3)}}@media(max-width:600px){.site-nav-inner{padding:.8rem 1rem}.version-root{padding:3rem 1rem}.version-card{align-items:flex-start;flex-direction:column}.version-root h1{font-size:3.3rem}.version-root-meta{display:none}}</style></head><body data-cjdoc-route=\"version-root\"><header class=\"site-nav\"><div class=\"site-nav-inner\"><a class=\"brand\" href=\"latest/index.html\"><span class=\"brand-mark\" aria-hidden=\"true\">cj</span><span class=\"brand-copy\"><strong class=\"brand-project\">Documentation</strong><span class=\"brand-subtitle\">Version index</span></span></a><span class=\"version-root-meta\">Composed by cjdoc</span></div></header><main class=\"version-root\"><p class=\"eyebrow\">Documentation versions</p><h1>Choose a version.</h1><p class=\"page-lead\">Select the project and document version that matches the API reference you want to read.</p><nav class=\"version-list\" aria-label=\"Documentation versions\">")
     for (site in sites) {
-        let marker = if (site.spec.id == latest) { " (latest)" } else { "" }
-        out.append("<li><a href=\"${public_render.escapeStandaloneHtml(versionOutputPath(site, "index.html"))}\">${public_render.escapeStandaloneHtml(site.spec.label + marker)}</a> <small>${public_render.escapeStandaloneHtml(site.spec.channel)}</small></li>")
+        let href = public_render.escapeStandaloneHtml(versionOutputPath(site, "index.html"))
+        let label = public_render.escapeStandaloneHtml(site.spec.label)
+        let channel = public_render.escapeStandaloneHtml(site.spec.channel)
+        let latestText = if (site.spec.id == latest) { "Latest" } else { "" }
+        out.append("<a class=\"version-card\" href=\"")
+        out.append(href)
+        out.append("\"><span class=\"version-card-main\"><strong>")
+        out.append(label)
+        out.append("</strong><span>")
+        out.append(channel)
+        out.append("</span></span><span class=\"version-card-meta\">")
+        out.append(latestText)
+        match (site.spec.release) {
+            case Some(value) =>
+                if (!latestText.isEmpty()) { out.append(" · ") }
+                out.append("Released ")
+                out.append(public_render.escapeStandaloneHtml(value))
+            case None => ()
+        }
+        out.append("</span></a>\n")
     }
-    out.append("</ul><p><a href=\"versions.json\">Machine-readable version manifest</a></p></main></body></html>\n")
+    out.append("</nav></main><footer class=\"site-footer\"><span>cjdoc · Version manifest: </span><a href=\"versions.json\">versions.json</a></footer></body></html>\n")
     out.toString()
 }
-
 private func versionLatestIndex(sites: ArrayList<VersionSite>, latest: String): String {
     for (site in sites) {
         if (site.spec.id == latest) {

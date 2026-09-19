@@ -159,7 +159,7 @@ def main() -> int:
         demo_project = work / "workspace-demo"
         copy_tree(repo / "tests/fixtures/projects/html_reference", demo_project)
         (demo_project / "cjdoc.toml").write_text(
-            "[doctest]\nmode = \"warn\"\ntimeout-ms = 2000\nmemory-mb = 2048\njobs = 1\n",
+            "[doctest]\nmode = \"warn\"\ntimeout-ms = 2000\nmemory-mb = 2048\njobs = 1\n\n[docs]\nindex = \"docs/index.md\"\n\n[[docs.pages]]\nsource = \"docs/guide.md\"\nroute = \"concepts/guides/getting-started\"\ntitle = \"Getting started\"\n",
             encoding="utf-8",
         )
         demo = work / "demo"

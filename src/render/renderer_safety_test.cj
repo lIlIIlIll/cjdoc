@@ -392,7 +392,7 @@ class RendererSafetyTest {
         @Expect(HTML_SEARCH_SCRIPT.contains("const isChinese"), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("复制代码"), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("已复制"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("themeSwitchLabel"), true)
+        @Expect(packageHtml.contains("aria-label=\"主题\""), true)
     }
 
     @TestCase

@@ -1,0 +1,7 @@
+[docs]
+index = "docs/index.md"
+
+[[docs.pages]]
+source = "docs/guide.md"
+route = "concepts/guides/getting-started"
+title = "Getting started"

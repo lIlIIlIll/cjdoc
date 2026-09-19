@@ -310,7 +310,7 @@ internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Stri
         let artifactList = ArrayList<public_render.RenderArtifact>()
         if (generationRequest.isSome()) {
             artifactList.add(all: appendConceptualArtifacts(options.project, documentation,
-                orderedFormats(options), renderedArtifacts))
+                orderedFormats(options), renderedArtifacts, locale: options.locale, docVersion: options.docVersion))
         } else {
             artifactList.add(all: renderedArtifacts)
         }
