@@ -122,15 +122,40 @@ private func conceptualBindingAttribute(line: String, key: String): String {
     }
 }
 
+private func conceptualFenceMarker(line: String): String {
+    let trimmed = line.trimAscii()
+    if (trimmed.startsWith("```")) { return "```" }
+    if (trimmed.startsWith("~~~")) { return "~~~" }
+    ""
+}
+
 private func conceptualCollectBindings(page: ConceptualPage): Unit {
     var count: Int64 = 0
     var lineNumber: Int64 = 1
+    var fence = ""
+    var overflowReported = false
     for (rawLine in page.markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n")) {
         let sourceLine = lineNumber
         lineNumber++
         let line = rawLine.trimAscii()
+        if (!fence.isEmpty()) {
+            if (line.startsWith(fence)) { fence = "" }
+            continue
+        }
+        let opening = conceptualFenceMarker(rawLine)
+        if (!opening.isEmpty()) {
+            fence = opening
+            continue
+        }
+        if (rawLine.startsWith("    ") || rawLine.startsWith("\t")) { continue }
         if (!line.startsWith("<!-- cjdoc-bind ") || !line.endsWith(" -->")) { continue }
-        if (count >= 32) { break }
+        if (count >= 32) {
+            if (!overflowReported) {
+                eprintln("warning[CJDOC4054]: conceptual API binding limit exceeded in ${page.source}; additional bindings were omitted")
+                overflowReported = true
+            }
+            continue
+        }
         let target = conceptualBindingAttribute(line, "target")
         if (target.isEmpty()) { continue }
         var language = conceptualBindingAttribute(line, "language")
@@ -155,8 +180,27 @@ private func conceptualCollectBindings(page: ConceptualPage): Unit {
 
 private func conceptualMarkdownWithoutBindings(markdown: String): String {
     let out = StringBuilder()
+    var fence = ""
     for (rawLine in markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n")) {
         let line = rawLine.trimAscii()
+        if (!fence.isEmpty()) {
+            if (line.startsWith(fence)) { fence = "" }
+            out.append(rawLine)
+            out.append("\n")
+            continue
+        }
+        let opening = conceptualFenceMarker(rawLine)
+        if (!opening.isEmpty()) {
+            fence = opening
+            out.append(rawLine)
+            out.append("\n")
+            continue
+        }
+        if (rawLine.startsWith("    ") || rawLine.startsWith("\t")) {
+            out.append(rawLine)
+            out.append("\n")
+            continue
+        }
         if (line.startsWith("<!-- cjdoc-bind ") && line.endsWith(" -->")) { continue }
         out.append(rawLine)
         out.append("\n")

@@ -292,6 +292,22 @@ private func loadVersionApiDiff(spec: VersionComposeSpec, budget: VersionCompose
     VersionSourceFile("api-diff.json", "application/json", bytes)
 }
 
+private func loadVersionDoctestEvidence(root: Path, budget: VersionComposeBudget): ?VersionSourceFile {
+    let path = root.parent.join("doctest/results.json")
+    if (!exists(path)) { return None }
+    let info = FileInfo(path)
+    if (info.isSymbolicLink() || !info.isRegular()) {
+        throw IllegalArgumentException("version doctest evidence is not a regular file '" + path.toString() + "'")
+    }
+    let expectedSize = info.size
+    budget.reserve("doctest/results.json", expectedSize)
+    let bytes = readFileBounded(path, VERSION_FILE_MAX_BYTES)
+    if (bytes.size != expectedSize) {
+        throw IllegalArgumentException("version doctest evidence changed while reading '" + path.toString() + "'")
+    }
+    Some(VersionSourceFile("doctest/results.json", "application/json", bytes))
+}
+
 private func loadVersionSite(spec: VersionComposeSpec, budget: VersionComposeBudget): VersionSite {
     let root = Path(spec.source)
     if (!exists(root)) { throw IllegalArgumentException("version source is missing '${spec.source}'") }
@@ -302,6 +318,11 @@ private func loadVersionSite(spec: VersionComposeSpec, budget: VersionComposeBud
     let files = ArrayList<VersionSourceFile>()
     let seen = HashSet<String>()
     collectVersionFilesInDirectory(root, "", files, seen, budget)
+    match (loadVersionDoctestEvidence(root, budget)) {
+        case Some(evidence) =>
+            if (seen.add(evidence.path)) { files.add(evidence) }
+        case None => ()
+    }
     sort(files, lessThan: { left, right => left.path < right.path }, stable: true)
     if (!seen.contains("index.html")) {
         throw IllegalArgumentException("version source has no index.html '${spec.source}'")
@@ -471,7 +492,11 @@ private func injectVersionSelector(html: String, selector: String): String {
                 case Some(index) =>
                     let end = index + "</header>".size
                     html[..end] + selector + html[end..]
-                case None => html + selector
+                case None =>
+                    match (html.indexOf("</body>")) {
+                        case Some(index) => html[..index] + selector + html[index..]
+                        case None => html + selector
+                    }
             }
     }
 }
@@ -548,6 +573,11 @@ private func versionLatestIndex(sites: ArrayList<VersionSite>, latest: String): 
     throw IllegalArgumentException("latest version disappeared during composition")
 }
 
+private func rewriteComposedDoctestEvidence(html: String, site: VersionSite): String {
+    if (!site.hasPath("doctest/results.json")) { return html }
+    html.replace("href=\"../doctest/results.json\"", "href=\"doctest/results.json\"")
+}
+
 private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: String,
     latestPolicy: String, budget: VersionComposeBudget): Array<public_render.RenderArtifact> {
     let artifacts = ArrayList<public_render.RenderArtifact>()
@@ -570,7 +600,7 @@ private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: Stri
                 let html = try { String.fromUtf8(file.bytes) } catch (_: Exception) {
                     throw IllegalArgumentException("version HTML is not UTF-8 '${file.path}'")
                 }
-                let content = injectVersionSelector(html, selector)
+                let content = injectVersionSelector(rewriteComposedDoctestEvidence(html, site), selector)
                 artifacts.add(public_render.RenderArtifact(outputPath, file.mediaType, content))
             } else {
                 budget.reserveArtifact(outputPath, file.bytes.size)

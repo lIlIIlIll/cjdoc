@@ -6,4 +6,5 @@ Choose a package from the API index, then use the symbol page for signatures, pa
 
 ```cangjie
 let answer = referenceBox(42)
+<!-- cjdoc-bind target="html_reference_extra.ExtraBox" selector="type" -->
 ```
