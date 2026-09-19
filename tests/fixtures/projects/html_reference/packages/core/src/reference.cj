@@ -50,3 +50,4 @@ public enum ReferenceState {
 
 /** An alias with a stable package index row. */
 public type ReferenceName = String
+private class HiddenGuideTarget {}

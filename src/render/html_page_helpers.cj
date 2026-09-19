@@ -320,11 +320,11 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                     out.append("<div class=\"parameter-row\"><dt><code>${escapeHtml(parameter.name)}</code></dt><dd class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
                     appendTypeRefCodeHtml(out, parameter.typeRef, typeLinkIndex, rootPrefix, locale,
                         className: "parameter-type-code")
-                    out.append("</dd>")
                     match (parameter.defaultExpression) {
                         case Some(defaultExpression) => out.append(" <span class=\"parameter-default\">= <code>" + escapeHtml(defaultExpression) + "</code></span>")
                         case None => ()
                     }
+                    out.append("</dd>")
                     out.append("<dd class=\"parameter-description\">")
                     match (parameter.documentation) {
                         case Some(value) => appendStructuredTextHtml(out, value)
@@ -416,11 +416,11 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                     out.append("<div class=\"parameter-row\"><dt><code>${escapeHtml(parameter.name)}</code></dt><dd class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
                     appendTypeRefCodeHtml(out, parameter.typeRef, typeLinkIndex, rootPrefix, locale,
                         className: "parameter-type-code")
-                    out.append("</dd>")
                     match (parameter.defaultExpression) {
                         case Some(defaultExpression) => out.append(" <span class=\"parameter-default\">= <code>" + escapeHtml(defaultExpression) + "</code></span>")
                         case None => ()
                     }
+                    out.append("</dd>")
                     out.append("<dd class=\"parameter-description\"></dd></div>\n")
                 }
                 out.append("</dl>\n")

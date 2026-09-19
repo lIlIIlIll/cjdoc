@@ -124,9 +124,22 @@ private func conceptualBindingAttribute(line: String, key: String): String {
 
 private func conceptualFenceMarker(line: String): String {
     let trimmed = line.trimAscii()
-    if (trimmed.startsWith("```")) { return "```" }
-    if (trimmed.startsWith("~~~")) { return "~~~" }
-    ""
+    if (trimmed.isEmpty()) { return "" }
+    let marker = trimmed[0]
+    if (marker != b'`' && marker != b'~') { return "" }
+    var count: Int64 = 0
+    while (count < trimmed.size && trimmed[count] == marker) { count++ }
+    if (count < 3) { return "" }
+    trimmed[..count]
+}
+
+private func conceptualFenceCloses(line: String, fence: String): Bool {
+    let trimmed = line.trimAscii()
+    if (!trimmed.startsWith(fence)) { return false }
+    let marker = fence[0]
+    var count: Int64 = 0
+    while (count < trimmed.size && trimmed[count] == marker) { count++ }
+    count >= fence.size && trimmed[count..].trimAscii().isEmpty()
 }
 
 private func conceptualCollectBindings(page: ConceptualPage): Unit {
@@ -139,7 +152,7 @@ private func conceptualCollectBindings(page: ConceptualPage): Unit {
         lineNumber++
         let line = rawLine.trimAscii()
         if (!fence.isEmpty()) {
-            if (line.startsWith(fence)) { fence = "" }
+            if (conceptualFenceCloses(line, fence)) { fence = "" }
             continue
         }
         let opening = conceptualFenceMarker(rawLine)
@@ -184,7 +197,7 @@ private func conceptualMarkdownWithoutBindings(markdown: String): String {
     for (rawLine in markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n")) {
         let line = rawLine.trimAscii()
         if (!fence.isEmpty()) {
-            if (line.startsWith(fence)) { fence = "" }
+            if (conceptualFenceCloses(line, fence)) { fence = "" }
             out.append(rawLine)
             out.append("\n")
             continue
@@ -208,18 +221,49 @@ private func conceptualMarkdownWithoutBindings(markdown: String): String {
     out.toString()
 }
 
+private func conceptualVisibleForAudience(symbol: public_model.SymbolDoc,
+    documentation: public_model.DocumentationSet): Bool {
+    var current: ?public_model.SymbolDoc = Some(symbol)
+    while (current.isSome()) {
+        let value = current.getOrThrow()
+        let visible = match (documentation.configuration.audience) {
+            case "external" => value.visibility == "public" || value.visibility == "protected"
+            case "package" => value.visibility != "private"
+            case "all" => true
+            case _ => false
+        }
+        if (!visible) { return false }
+        current = match (value.ownerId) {
+            case Some(ownerId) =>
+                var owner: ?public_model.SymbolDoc = None
+                for (candidate in documentation.declarations) {
+                    if (candidate.id == ownerId) { owner = Some(candidate); break }
+                }
+                owner
+            case None => None
+        }
+    }
+    true
+}
+
 private func conceptualResolveBindings(page: ConceptualPage,
     documentation: public_model.DocumentationSet): Unit {
     for (binding in page.bindings) {
         if (binding.state == "conflict") { continue }
         var matches = ArrayList<public_model.SymbolDoc>()
+        var allMatches = ArrayList<public_model.SymbolDoc>()
         for (symbol in documentation.declarations) {
             let matchesTarget = if (binding.target.startsWith("id:")) {
                 symbol.id == binding.target.removePrefix("id:")
             } else {
                 symbol.qualifiedName == binding.target
             }
-            if (matchesTarget) { matches.add(symbol) }
+            if (matchesTarget) {
+                allMatches.add(symbol)
+                if (conceptualVisibleForAudience(symbol, documentation)) {
+                    matches.add(symbol)
+                }
+            }
         }
         if (matches.size == 1) {
             binding.state = "resolved"
@@ -227,6 +271,9 @@ private func conceptualResolveBindings(page: ConceptualPage,
         } else if (matches.size > 1) {
             binding.state = "ambiguous"
             eprintln("warning[CJDOC2052]: ambiguous conceptual API binding '${binding.target}' in ${page.source}")
+        } else if (!allMatches.isEmpty()) {
+            binding.state = "unavailable"
+            eprintln("warning[CJDOC2055]: conceptual API binding '${binding.target}' is unavailable for audience '" + documentation.configuration.audience + "' in ${page.source}")
         } else {
             binding.state = "unresolved"
             eprintln("warning[CJDOC2051]: unresolved conceptual API binding '${binding.target}' in ${page.source}")

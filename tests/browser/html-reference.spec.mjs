@@ -178,6 +178,7 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('.conceptual-bindings a[href*="symbols/symbol-"]')).toHaveCount(1);
     await expect(page.locator('.conceptual-bindings')).toContainText('</span><a href=phish>click</a>');
     await expect(page.locator('.conceptual-bindings a[href="phish"]')).toHaveCount(0);
+    await expect(page.locator('.conceptual-bindings')).toContainText('unavailable');
     await expect(page.locator('pre')).toContainText('cjdoc-bind target="html_reference_extra.ExtraBox"');
     await expectStable(page);
   });
