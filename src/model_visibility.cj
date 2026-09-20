@@ -55,59 +55,34 @@ func retainPublicApi(documentation: DocumentationSet): Unit {
     resolveDocumentationReferences(documentation)
 }
 
+private func visibleForAudience(symbol: SymbolDoc, audience: String): Bool {
+    match (audience) {
+        case "external" => symbol.visibility == "public" || symbol.visibility == "protected"
+        case "package" => symbol.visibility != "private"
+        case "all" => true
+        case _ => false
+    }
+}
+
 func renderableSymbolIds(documentation: DocumentationSet, audience: String): HashSet<String> {
     let index = HashMap<String, SymbolDoc>()
     for (symbol in documentation.symbols) { index[symbol.id] = symbol }
-    let results = HashMap<String, Bool>()
-    for (root in documentation.symbols) {
-        if (results.contains(root.id)) { continue }
-        let path = ArrayList<SymbolDoc>()
-        var current: ?SymbolDoc = Some(root)
-        var inherited = true
+    let visible = HashSet<String>()
+    for (symbol in documentation.symbols) {
+        var current: ?SymbolDoc = Some(symbol)
+        var renderable = true
         while (current.isSome()) {
-            let symbol = current.getOrThrow()
-            match (results.get(symbol.id)) {
-                case Some(value) =>
-                    inherited = value
-                    break
-                case None => ()
-            }
-            path.add(symbol)
-            let visible = match (audience) {
-                case "external" => symbol.visibility == "public" || symbol.visibility == "protected"
-                case "package" => symbol.visibility != "private"
-                case "all" => true
-                case _ => false
-            }
-            if (!visible) {
-                inherited = false
+            let currentSymbol = current.getOrThrow()
+            if (!visibleForAudience(currentSymbol, audience)) {
+                renderable = false
                 break
             }
-            current = match (symbol.ownerId) {
+            current = match (currentSymbol.ownerId) {
                 case Some(ownerId) => index.get(ownerId)
                 case None => None
             }
         }
-        var position = path.size
-        while (position > 0) {
-            position--
-            let symbol = path[position]
-            let visible = match (audience) {
-                case "external" => symbol.visibility == "public" || symbol.visibility == "protected"
-                case "package" => symbol.visibility != "private"
-                case "all" => true
-                case _ => false
-            }
-            inherited = inherited && visible
-            results[symbol.id] = inherited
-        }
-    }
-    let visible = HashSet<String>()
-    for (symbol in documentation.symbols) {
-        match (results.get(symbol.id)) {
-            case Some(value) => if (value) { let _ = visible.add(symbol.id) }
-            case None => ()
-        }
+        if (renderable) { let _ = visible.add(symbol.id) }
     }
     visible
 }
