@@ -52,7 +52,7 @@ internal class ConceptualApiBinding {
 
 internal class ConceptualPage {
     let source: String
-    let route: String
+    var route: String
     let title: String
     let kind: String
     let markdown: String
@@ -440,18 +440,6 @@ private func conceptualRoute(route: String, fallback: String): String {
     }
     normalized
 }
-private func conceptualUniqueRoute(routes: HashSet<String>, base: String, identity: String): String {
-    if (!routes.contains(base)) { return base }
-    let stem = base.removeSuffix(".html")
-    let suffix = conceptualStableHash(identity)
-    var candidate = stem + "--" + suffix + ".html"
-    var serial: Int64 = 2
-    while (routes.contains(candidate)) {
-        candidate = stem + "--" + suffix + "-" + serial.toString() + ".html"
-        serial++
-    }
-    candidate
-}
 
 private func conceptualMarkdownLinkText(value: String): String {
     let out = StringBuilder()
@@ -550,8 +538,15 @@ private func conceptualPageFromSource(root: Path, source: String, route: String,
 
 private func conceptualAddPage(pages: ArrayList<ConceptualPage>, routes: HashSet<String>, page: ConceptualPage): Unit {
     if (!routes.add(page.route)) {
-        eprintln("warning[CJDOC4060]: conceptual route collision at ${page.route}")
-        return
+        let stem = page.route.removeSuffix(".html")
+        let suffix = conceptualStableHash(page.kind + ":" + page.source + ":" + page.route)
+        var candidate = stem + "--" + suffix + ".html"
+        var serial: Int64 = 2
+        while (!routes.add(candidate)) {
+            candidate = stem + "--" + suffix + "-" + serial.toString() + ".html"
+            serial++
+        }
+        page.route = candidate
     }
     if (pages.size >= CONCEPTUAL_MAX_PAGES) {
         throw IllegalArgumentException("conceptual documentation exceeds ${CONCEPTUAL_MAX_PAGES} pages")
@@ -581,9 +576,7 @@ private func conceptualPages(root: Path, documentation: public_model.Documentati
         } else {
             conceptualDefaultModuleMarkdown(module)
         }
-        let route = conceptualUniqueRoute(routes,
-            conceptualRoute("concepts/modules/${conceptualSlug(module.name)}", "concepts/modules/module"),
-            "module:" + module.name)
+        let route = conceptualRoute("concepts/modules/${conceptualSlug(module.name)}", "concepts/modules/module")
         conceptualAddPage(pages, routes,
             ConceptualPage(source, route, conceptualTitle(markdown, module.name), "module", markdown))
     }
@@ -599,15 +592,12 @@ private func conceptualPages(root: Path, documentation: public_model.Documentati
         } else {
             conceptualDefaultPackageMarkdown(pkg)
         }
-        let route = conceptualUniqueRoute(routes,
-            conceptualRoute("concepts/packages/${conceptualSlug(pkg.name)}", "concepts/packages/package"),
-            "package:" + pkg.name)
+        let route = conceptualRoute("concepts/packages/${conceptualSlug(pkg.name)}", "concepts/packages/package")
         conceptualAddPage(pages, routes,
             ConceptualPage(source, route, conceptualTitle(markdown, pkg.name), "package", markdown))
     }
     for (spec in config.pages) {
-        let baseRoute = conceptualRoute(spec.route, "concepts/guides/${conceptualSlug(spec.source.removeSuffix(".md"))}")
-        let route = conceptualUniqueRoute(routes, baseRoute, "guide:" + spec.source + ":" + spec.route)
+        let route = conceptualRoute(spec.route, "concepts/guides/${conceptualSlug(spec.source.removeSuffix(".md"))}")
         let page = conceptualPageFromSource(root, spec.source, route, spec.title, "guide", spec.source)
         conceptualAddPage(pages, routes, page)
     }
