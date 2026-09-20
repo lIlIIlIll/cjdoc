@@ -52,7 +52,7 @@ internal class ConceptualApiBinding {
 
 internal class ConceptualPage {
     let source: String
-    var route: String
+    let route: String
     let title: String
     let kind: String
     let markdown: String
@@ -442,6 +442,7 @@ private func conceptualRoute(route: String, fallback: String): String {
 }
 
 private func conceptualMarkdownLinkText(value: String): String {
+    if (!value.contains("\\") && !value.contains("[") && !value.contains("]")) { return value }
     let out = StringBuilder()
     for (rune in value.runes()) {
         if (rune == r'\\' || rune == r'[' || rune == r']') {
@@ -537,21 +538,26 @@ private func conceptualPageFromSource(root: Path, source: String, route: String,
 }
 
 private func conceptualAddPage(pages: ArrayList<ConceptualPage>, routes: HashSet<String>, page: ConceptualPage): Unit {
-    if (!routes.add(page.route)) {
-        let stem = page.route.removeSuffix(".html")
-        let suffix = conceptualStableHash(page.kind + ":" + page.source + ":" + page.route)
-        var candidate = stem + "--" + suffix + ".html"
-        var serial: Int64 = 2
-        while (!routes.add(candidate)) {
-            candidate = stem + "--" + suffix + "-" + serial.toString() + ".html"
-            serial++
+    if (routes.add(page.route)) {
+        if (pages.size >= CONCEPTUAL_MAX_PAGES) {
+            throw IllegalArgumentException("conceptual documentation exceeds ${CONCEPTUAL_MAX_PAGES} pages")
         }
-        page.route = candidate
+        pages.add(page)
+        return
     }
+    let stem = page.route.removeSuffix(".html")
+    let suffix = conceptualStableHash(page.kind + ":" + page.source + ":" + page.route)
+    var candidate = stem + "--" + suffix + ".html"
+    var serial: Int64 = 2
+    while (!routes.add(candidate)) {
+        candidate = stem + "--" + suffix + "-" + serial.toString() + ".html"
+        serial++
+    }
+    let routedPage = ConceptualPage(page.source, candidate, page.title, page.kind, page.markdown)
     if (pages.size >= CONCEPTUAL_MAX_PAGES) {
         throw IllegalArgumentException("conceptual documentation exceeds ${CONCEPTUAL_MAX_PAGES} pages")
     }
-    pages.add(page)
+    pages.add(routedPage)
 }
 
 private func conceptualPages(root: Path, documentation: public_model.DocumentationSet,
