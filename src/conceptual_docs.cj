@@ -126,6 +126,7 @@ private func conceptualBindingAttribute(line: String, key: String): String {
 }
 
 private func conceptualFenceMarker(line: String): String {
+    if (line.startsWith("    ") || line.startsWith("\t")) { return "" }
     let trimmed = line.trimAscii()
     if (trimmed.isEmpty()) { return "" }
     let marker = trimmed[0]
@@ -137,6 +138,7 @@ private func conceptualFenceMarker(line: String): String {
 }
 
 private func conceptualFenceCloses(line: String, fence: String): Bool {
+    if (line.startsWith("    ") || line.startsWith("\t")) { return false }
     let trimmed = line.trimAscii()
     if (!trimmed.startsWith(fence)) { return false }
     let marker = fence[0]
@@ -145,7 +147,8 @@ private func conceptualFenceCloses(line: String, fence: String): Bool {
     count >= fence.size && trimmed[count..].trimAscii().isEmpty()
 }
 
-private func conceptualCollectBindings(page: ConceptualPage): Unit {
+private func conceptualCollectBindings(page: ConceptualPage,
+    documentation: public_model.DocumentationSet): Unit {
     var count: Int64 = 0
     var lineNumber: Int64 = 1
     var fence = ""
@@ -155,7 +158,7 @@ private func conceptualCollectBindings(page: ConceptualPage): Unit {
         lineNumber++
         let line = rawLine.trimAscii()
         if (!fence.isEmpty()) {
-            if (conceptualFenceCloses(line, fence)) { fence = "" }
+            if (conceptualFenceCloses(rawLine, fence)) { fence = "" }
             continue
         }
         let opening = conceptualFenceMarker(rawLine)
@@ -167,14 +170,16 @@ private func conceptualCollectBindings(page: ConceptualPage): Unit {
         if (!line.startsWith("<!-- cjdoc-bind ") || !line.endsWith(" -->")) { continue }
         if (count >= 32) {
             if (!overflowReported) {
-                eprintln("warning[CJDOC2054]: conceptual API binding limit exceeded in ${page.source}; additional bindings were omitted")
+                documentation.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC2054",
+                    "conceptual API binding limit exceeded in ${page.source}; additional bindings were omitted"))
                 overflowReported = true
             }
             continue
         }
         let target = conceptualBindingAttribute(line, "target")
         if (target.isEmpty()) {
-            eprintln("warning[CJDOC2056]: conceptual API binding marker is missing a valid target in ${page.source}")
+            documentation.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC2056",
+                "conceptual API binding marker is missing a valid target in ${page.source}"))
             continue
         }
         var language = conceptualBindingAttribute(line, "language")
@@ -190,7 +195,8 @@ private func conceptualCollectBindings(page: ConceptualPage): Unit {
             sourceLine, language)
         if (duplicate) {
             binding.state = "conflict"
-            eprintln("warning[CJDOC2053]: duplicate conceptual API binding '${target}' in ${page.source}")
+            documentation.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC2053",
+                "duplicate conceptual API binding '${target}' in ${page.source}"))
         }
         page.bindings.add(binding)
         count++
@@ -203,7 +209,7 @@ private func conceptualMarkdownWithoutBindings(markdown: String): String {
     for (rawLine in markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n")) {
         let line = rawLine.trimAscii()
         if (!fence.isEmpty()) {
-            if (conceptualFenceCloses(line, fence)) { fence = "" }
+            if (conceptualFenceCloses(rawLine, fence)) { fence = "" }
             out.append(rawLine)
             out.append("\n")
             continue
@@ -277,13 +283,17 @@ private func conceptualResolveBindings(page: ConceptualPage,
             binding.targetSymbolId = Some(matches[0].id)
         } else if (matches.size > 1) {
             binding.state = "ambiguous"
-            eprintln("warning[CJDOC2052]: ambiguous conceptual API binding '${binding.target}' in ${page.source}")
+            documentation.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC2052",
+                "ambiguous conceptual API binding '${binding.target}' in ${page.source}"))
         } else if (!allMatches.isEmpty()) {
             binding.state = "unavailable"
-            eprintln("warning[CJDOC2055]: conceptual API binding '${binding.target}' is unavailable for audience '" + documentation.configuration.audience + "' in ${page.source}")
+            documentation.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC2055",
+                "conceptual API binding '${binding.target}' is unavailable for audience '" +
+                    documentation.configuration.audience + "' in ${page.source}"))
         } else {
             binding.state = "unresolved"
-            eprintln("warning[CJDOC2051]: unresolved conceptual API binding '${binding.target}' in ${page.source}")
+            documentation.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC2051",
+                "unresolved conceptual API binding '${binding.target}' in ${page.source}"))
         }
     }
 }
@@ -489,7 +499,7 @@ private func conceptualTitle(markdown: String, fallback: String): String {
     for (rawLine in markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n")) {
         let text = rawLine.trimAscii()
         if (!fence.isEmpty()) {
-            if (conceptualFenceCloses(text, fence)) { fence = "" }
+            if (conceptualFenceCloses(rawLine, fence)) { fence = "" }
             continue
         }
         let opening = conceptualFenceMarker(rawLine)
@@ -608,17 +618,18 @@ private func conceptualPages(root: Path, documentation: public_model.Documentati
         conceptualAddPage(pages, routes, page)
     }
     for (page in pages) {
-        conceptualCollectBindings(page)
+        conceptualCollectBindings(page, documentation)
         conceptualResolveBindings(page, documentation)
     }
     pages
 }
-
-internal func conceptualAgentPages(projectRoot: String,
-    documentation: public_model.DocumentationSet): Array<public_render.AgentConceptualPage> {
+internal func conceptualPagesForProject(projectRoot: String,
+    documentation: public_model.DocumentationSet): ArrayList<ConceptualPage> {
     let config = loadConceptualDocsConfig(projectRoot)
-    if (!config.enabled) { return [] }
-    let pages = conceptualPages(Path(projectRoot), documentation, config)
+    if (!config.enabled) { return ArrayList<ConceptualPage>() }
+    conceptualPages(Path(projectRoot), documentation, config)
+}
+internal func conceptualAgentPages(pages: ArrayList<ConceptualPage>): Array<public_render.AgentConceptualPage> {
     let result = ArrayList<public_render.AgentConceptualPage>()
     for (page in pages) {
         result.add(public_render.AgentConceptualPage(page.route, page.title, page.kind,
@@ -972,12 +983,7 @@ private func conceptualBindingsHtml(page: ConceptualPage,
     out.toString()
 }
 
-internal func renderConceptualDocumentationArtifacts(projectRoot: String,
-    documentation: public_model.DocumentationSet, formats: Array<String>, locale!: String = "en", docVersion!: ?String = None): Array<public_render.RenderArtifact> {
-    let config = loadConceptualDocsConfig(projectRoot)
-    if (!config.enabled) { return [] }
-    let root = Path(projectRoot)
-    let pages = conceptualPages(root, documentation, config)
+internal func renderConceptualDocumentationArtifacts(documentation: public_model.DocumentationSet, formats: Array<String>, pages: ArrayList<ConceptualPage>, locale!: String = "en", docVersion!: ?String = None): Array<public_render.RenderArtifact> {
     let artifacts = ArrayList<public_render.RenderArtifact>()
     for (format in formats) {
         if (format == "html") {
@@ -1128,6 +1134,10 @@ private func conceptualExternalUsageHtml(symbol: public_model.SymbolDoc,
     out.toString()
 }
 
+private func conceptualMarkdownDestination(value: String): String {
+    "<" + value.replace("\\", "\\\\").replace("<", "\\<").replace(">", "\\>") + ">"
+}
+
 private func conceptualExternalUsageMarkdown(symbol: public_model.SymbolDoc,
     resolvers: Array<ExternalDocResolver>): String {
     if (resolvers.isEmpty()) { return "" }
@@ -1143,7 +1153,7 @@ private func conceptualExternalUsageMarkdown(symbol: public_model.SymbolDoc,
         count++
         out.append("- **" + public_render.escapeStandaloneHtml(resolver.name) + "** ")
         if (!qualifiedUrl.isEmpty()) {
-            out.append("[Open official reference](" + public_render.escapeStandaloneHtml(qualifiedUrl) + ")")
+            out.append("[Open official reference](" + conceptualMarkdownDestination(qualifiedUrl) + ")")
         } else if (qualifiedAmbiguous) {
             out.append("ambiguous")
         } else {
@@ -1198,7 +1208,8 @@ private func conceptualAugmentApiArtifact(path: String, content: String,
 
 internal func appendConceptualArtifacts(projectRoot: String,
     documentation: public_model.DocumentationSet, formats: Array<String>,
-    baseArtifacts: Array<public_render.RenderArtifact>, locale!: String = "en", docVersion!: ?String = None): Array<public_render.RenderArtifact> {
+    baseArtifacts: Array<public_render.RenderArtifact>, pages: ArrayList<ConceptualPage>,
+    locale!: String = "en", docVersion!: ?String = None): Array<public_render.RenderArtifact> {
     var search = ""
     for (artifact in baseArtifacts) {
         if (artifact.path == "html/search-index.json") { search = artifact.content }
@@ -1210,11 +1221,6 @@ internal func appendConceptualArtifacts(projectRoot: String,
         if (format == "markdown") { hasMarkdown = true }
     }
     let config = loadConceptualDocsConfig(projectRoot)
-    let pages = if (config.enabled) {
-        conceptualPages(Path(projectRoot), documentation, config)
-    } else {
-        ArrayList<ConceptualPage>()
-    }
     let resolvers = if (hasHtml || hasMarkdown) {
         loadExternalDocResolvers(projectRoot)
     } else { Array<ExternalDocResolver>() }
@@ -1249,6 +1255,6 @@ internal func appendConceptualArtifacts(projectRoot: String,
             result.add(artifact)
         }
     }
-    result.add(all: renderConceptualDocumentationArtifacts(projectRoot, documentation, formats, locale: locale, docVersion: docVersion))
+    result.add(all: renderConceptualDocumentationArtifacts(documentation, formats, pages, locale: locale, docVersion: docVersion))
     result.toArray()
 }

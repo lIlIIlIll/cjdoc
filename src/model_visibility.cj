@@ -64,15 +64,15 @@ private func visibleForAudience(symbol: SymbolDoc, audience: String): Bool {
     }
 }
 
-private func findSymbolById(documentation: DocumentationSet, id: String): ?SymbolDoc {
-    for (symbol in documentation.symbols) {
-        if (symbol.id == id) { return Some(symbol) }
-    }
-    None
+private func indexSymbolsById(documentation: DocumentationSet): HashMap<String, SymbolDoc> {
+    let result = HashMap<String, SymbolDoc>()
+    for (symbol in documentation.symbols) { result[symbol.id] = symbol }
+    result
 }
 
 func renderableSymbolIds(documentation: DocumentationSet, audience: String): HashSet<String> {
     let visible = HashSet<String>()
+    let symbolsById = indexSymbolsById(documentation)
     for (symbol in documentation.symbols) {
         var current: ?SymbolDoc = Some(symbol)
         var renderable = true
@@ -83,7 +83,7 @@ func renderableSymbolIds(documentation: DocumentationSet, audience: String): Has
                 break
             }
             current = match (currentSymbol.ownerId) {
-                case Some(ownerId) => findSymbolById(documentation, ownerId)
+                case Some(ownerId) => symbolsById.get(ownerId)
                 case None => None
             }
         }

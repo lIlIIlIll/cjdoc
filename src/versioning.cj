@@ -573,9 +573,26 @@ private func versionLatestIndex(sites: ArrayList<VersionSite>, latest: String): 
     throw IllegalArgumentException("latest version disappeared during composition")
 }
 
-private func rewriteComposedDoctestEvidence(html: String, site: VersionSite): String {
-    if (!site.hasPath("doctest/results.json")) { return html }
-    html.replace("href=\"../doctest/results.json\"", "href=\"doctest/results.json\"")
+private func rewriteComposedDoctestEvidence(html: String, site: VersionSite,
+    outputPath: String, filePath: String): String {
+    if (!site.hasPath("doctest/results.json") || filePath != "validation.html") { return html }
+    let evidencePath = versionOutputPath(site, "doctest/results.json")
+    let href = versionRelativeHref(outputPath, evidencePath)
+    html.replace("href=\"../doctest/results.json\"", "href=\"" + public_render.escapeStandaloneHtml(href) + "\"")
+}
+
+private func attachComposedApiDiffEvidence(html: String, site: VersionSite,
+    outputPath: String, filePath: String): String {
+    if (site.spec.apiDiffSource.isNone() || filePath != "validation.html") { return html }
+    let diffPath = versionOutputPath(site, "api-diff.json")
+    let href = versionRelativeHref(outputPath, diffPath)
+    let link = "<a href=\"" + public_render.escapeStandaloneHtml(href) + "\">api-diff.json</a>"
+    var result = html
+    result = result.replace("API diff: not attached to this generation", "API diff: attached: " + link)
+    result = result.replace("API diff：本次生成未附带", "API diff：已附带：" + link)
+    result = result.replace("No comparison report was attached to this generation. Run the explicit cjdoc diff command to inspect version-to-version changes; this page does not infer compatibility.", "Attached comparison report: " + link + ".")
+    result = result.replace("本次生成未附带比较报告。请显式运行 cjdoc diff 命令检查版本间变化；本页面不会推断兼容性。", "已附带比较报告：" + link + "。")
+    result
 }
 
 private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: String,
@@ -600,7 +617,8 @@ private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: Stri
                 let html = try { String.fromUtf8(file.bytes) } catch (_: Exception) {
                     throw IllegalArgumentException("version HTML is not UTF-8 '${file.path}'")
                 }
-                let content = injectVersionSelector(rewriteComposedDoctestEvidence(html, site), selector)
+                let withEvidence = rewriteComposedDoctestEvidence(html, site, outputPath, file.path)
+                let content = injectVersionSelector(attachComposedApiDiffEvidence(withEvidence, site, outputPath, file.path), selector)
                 artifacts.add(public_render.RenderArtifact(outputPath, file.mediaType, content))
             } else {
                 budget.reserveArtifact(outputPath, file.bytes.size)

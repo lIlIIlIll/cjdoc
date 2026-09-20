@@ -406,6 +406,9 @@ public class DocumentationSet {
         this.unboundSemanticDeclarationsStorage = ArrayList<UnboundSemanticDeclaration>(unboundSemanticDeclarations)
         this.diagnosticsStorage = ArrayList<Diagnostic>(diagnostics)
     }
+    public func appendDiagnostic(diagnostic: Diagnostic): Unit {
+        diagnosticsStorage.add(diagnostic)
+    }
 
     public prop providers: ReadOnlyList<ProviderInfo> { get() { providersStorage } }
     public prop modules: ReadOnlyList<ModuleDoc> { get() { modulesStorage } }

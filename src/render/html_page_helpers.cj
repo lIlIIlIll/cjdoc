@@ -617,15 +617,18 @@ internal func appendSymbolRelationshipSection(out: RenderTextBuffer,
     }
     for (relationship in symbol.symbolRelationships) {
         out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd>")
+        var renderedState = relationship.state
         match (relationship.targetSymbolId) {
             case Some(targetId) => match (findSymbol(index, targetId)) {
                 case Some(target) => out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(relationship.targetDisplay)}</code></a>")
-                case None => out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
+                case None =>
+                    renderedState = "unavailable"
+                    out.append("<code>unavailable</code>")
             }
             case None => out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
         }
-        if (relationship.state != "resolved") {
-            out.append(" <span class=\"badge\" data-state=\"${escapeHtml(relationship.state)}\">${escapeHtml(relationship.state)}</span>")
+        if (renderedState != "resolved") {
+            out.append(" <span class=\"badge\" data-state=\"${escapeHtml(renderedState)}\">${escapeHtml(renderedState)}</span>")
         }
         out.append("</dd>")
     }

@@ -485,6 +485,26 @@ internal func renderSearchIndex(documentation: DocumentationSet,
     out.toString()
 }
 
+private func exposedSearchSignature(target: SymbolDoc, exposedName: String): String {
+    let raw = target.headerSpelling.trimAscii()
+    match (raw.indexOf(target.name)) {
+        case Some(start) =>
+            let end = start + target.name.size
+            if (start == 0 || !searchSignatureIdentifier(raw[start - 1])) {
+                if (end >= raw.size || !searchSignatureIdentifier(raw[end])) {
+                    return raw[..start] + exposedName + raw[end..]
+                }
+            }
+            raw
+        case None => raw
+    }
+}
+
+private func searchSignatureIdentifier(value: Byte): Bool {
+    (value >= b'a' && value <= b'z') || (value >= b'A' && value <= b'Z') ||
+        (value >= b'0' && value <= b'9') || value == b'_' || value >= 0x80u8
+}
+
 internal func renderSearchIndexScript(searchIndex: String, projection: RenderProjection): String {
     let out = RenderTextBuffer()
     out.append("globalThis.__CJDOC_SEARCH_INDEX__ = ")
@@ -501,6 +521,26 @@ internal func renderSearchIndexScript(searchIndex: String, projection: RenderPro
         appendSearchJsonString(out, symbol.id)
         out.append(":")
         appendSearchJsonString(out, signature)
+    }
+    for (projected in projection.packages) {
+        for (reExport in projected.source.reExports) {
+            for (binding in reExport.bindings) {
+                for (targetId in binding.targetSymbolIds) {
+                    match (projection.visibleIndex.get(targetId)) {
+                        case Some(target) =>
+                            let signature = exposedSearchSignature(target, binding.exposedName)
+                            if (signature.isEmpty()) { continue }
+                            if (!first) { out.append(",") }
+                            first = false
+                            appendSearchJsonString(out,
+                                reExport.id + ":" + binding.exposedName + ":" + target.id)
+                            out.append(":")
+                            appendSearchJsonString(out, signature)
+                        case None => ()
+                    }
+                }
+            }
+        }
     }
     out.append("};\n")
     out.toString()
