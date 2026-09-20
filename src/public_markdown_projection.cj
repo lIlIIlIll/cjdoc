@@ -25,16 +25,29 @@ internal func publicType(value: TypeRef, provider: String, providerState: String
         nullable: value.nullable, arguments: arguments.toArray())
 }
 
-internal func publicTag(value: DocTag): public_model.DocTag {
-    let state = match (value.referenceState) {
-        case "resolved" => "resolved"
-        case "ambiguous" => "ambiguous"
-        case "unresolved" => "unavailable"
-        case "broken" => "unavailable"
-        case _ => "unavailable"
+internal func publicTag(value: DocTag, targetVisible!: Bool = true): public_model.DocTag {
+    let state = if (!targetVisible) {
+        "unavailable"
+    } else {
+        match (value.referenceState) {
+            case "resolved" => "resolved"
+            case "ambiguous" => "ambiguous"
+            case "unresolved" => "unavailable"
+            case "broken" => "unavailable"
+            case _ => "unavailable"
+        }
     }
+    let targetSymbolId: ?String = if (state == "resolved") { value.targetSymbolId } else { None }
     public_model.DocTag(value.name, value.subject, value.description, referenceState: state,
-        targetSymbolId: value.targetSymbolId)
+        targetSymbolId: targetSymbolId)
+}
+
+private func publicTagForAudience(value: DocTag, renderableIds: HashSet<String>): public_model.DocTag {
+    let targetVisible = match (value.targetSymbolId) {
+        case Some(targetId) => renderableIds.contains(targetId)
+        case None => true
+    }
+    publicTag(value, targetVisible: targetVisible)
 }
 
 internal let MAX_GENERATED_MARKDOWN_DEPTH: Int64 = 48
@@ -324,7 +337,8 @@ public func parseStandaloneMarkdown(body: String): public_model.MarkdownNode {
 }
 
 internal func publicComment(value: DocComment, assetCollector: LocalAssetCollector, sourcePath: String,
-    declarationSource: public_model.SourceRange, symbolId: String, context: MarkdownGenerationContext): public_model.DocComment {
+    declarationSource: public_model.SourceRange, symbolId: String, context: MarkdownGenerationContext,
+    renderableIds: HashSet<String>): public_model.DocComment {
     try {
         context.consumeText(value.raw)
         context.consumeText(value.summaryMarkdown)
@@ -332,23 +346,23 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
         context.requireBodySize(value.summaryMarkdown, value.descriptionMarkdown)
         let tags = ArrayList<public_model.DocTag>()
         for (tag in value.params) {
-            tags.add(publicTag(tag))
+            tags.add(publicTagForAudience(tag, renderableIds))
         }
         for (tag in value.examples) {
-            tags.add(publicTag(tag))
+            tags.add(publicTagForAudience(tag, renderableIds))
         }
         match (value.returns) {
-            case Some(tag) => tags.add(publicTag(tag))
+            case Some(tag) => tags.add(publicTagForAudience(tag, renderableIds))
             case None => ()
         }
         for (tag in value.throwsTags) {
-            tags.add(publicTag(tag))
+            tags.add(publicTagForAudience(tag, renderableIds))
         }
         for (tag in value.see) {
-            tags.add(publicTag(tag))
+            tags.add(publicTagForAudience(tag, renderableIds))
         }
         for (tag in value.contracts) {
-            tags.add(publicTag(tag))
+            tags.add(publicTagForAudience(tag, renderableIds))
         }
         match (value.since) {
             case Some(text) => tags.add(public_model.DocTag("since", "", text))

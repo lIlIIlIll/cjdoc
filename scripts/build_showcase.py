@@ -184,6 +184,7 @@ def main() -> int:
         copy_tree(current / "html", output / "api")
         copy_tree(current / "markdown", output / "markdown")
         copy_tree(demo / "html", output / "demo")
+        copy_file(demo / "doctest/results.json", output / "demo/doctest/results.json")
 
         artifacts = output / "artifacts"
         artifact_sources = {

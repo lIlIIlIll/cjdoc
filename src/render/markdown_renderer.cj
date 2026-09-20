@@ -319,6 +319,28 @@ internal func appendMarkdownExampleContent(out: RenderTextBuffer, value: String)
     }
 }
 
+private func markdownBehaviorContractTag(name: String): Bool {
+    name == "precondition" || name == "postcondition" || name == "invariant" ||
+        name == "performance" || name == "state" || name == "concurrency" ||
+        name == "platform" || name == "compatibility" || name == "error"
+}
+
+private func markdownBehaviorContractLabel(name: String, locale: String): String {
+    if (locale != "zh-CN") { return name }
+    match (name) {
+        case "precondition" => "前置条件"
+        case "postcondition" => "后置条件"
+        case "invariant" => "不变量"
+        case "performance" => "性能"
+        case "state" => "状态"
+        case "concurrency" => "并发"
+        case "platform" => "平台"
+        case "compatibility" => "兼容性"
+        case "error" => "错误行为"
+        case _ => name
+    }
+}
+
 internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComment,
     assetLookup: HashMap<String, String>, locale!: String = "en", pagePath!: String = "",
     symbolIndex!: ?HashMap<String, SymbolDoc> = None): Unit {
@@ -375,6 +397,32 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
                 out.append("- "); appendMarkdownCodeSpan(out, tag.subject); out.append(" — ")
                 appendEscapedMarkdownText(out, tag.description); out.append("\n")
             }
+        }
+        out.append("\n")
+    }
+    var hasContracts = false
+    for (tag in comment.tags) {
+        if (markdownBehaviorContractTag(tag.name)) { hasContracts = true; break }
+    }
+    if (hasContracts) {
+        out.append("#### " + label(locale, "Behavior contracts", "行为契约") + "\n\n")
+        for (tag in comment.tags) {
+            if (!markdownBehaviorContractTag(tag.name)) { continue }
+            out.append("- **")
+            appendEscapedMarkdownText(out, markdownBehaviorContractLabel(tag.name, locale))
+            out.append("**")
+            if (!tag.subject.isEmpty()) {
+                out.append(" (")
+                appendMarkdownCodeSpan(out, tag.subject)
+                out.append(")")
+            }
+            out.append(" — ")
+            if (tag.description.trimAscii().isEmpty()) {
+                out.append("**incomplete**")
+            } else {
+                appendEscapedMarkdownText(out, tag.description)
+            }
+            out.append("\n")
         }
         out.append("\n")
     }

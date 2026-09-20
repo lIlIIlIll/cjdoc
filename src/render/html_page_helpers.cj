@@ -488,6 +488,33 @@ private func signatureTypeStartAfterReturnDelimiter(raw: String): Int64 {
     0
 }
 
+private func signatureTypeStartAfterParameterDelimiter(raw: String, parameterName: String,
+    cursor: Int64): Int64 {
+    if (parameterName.isEmpty()) { return cursor }
+    var searchCursor = cursor
+    while (searchCursor < raw.size) {
+        match (raw[searchCursor..].indexOf(parameterName)) {
+            case None => return cursor
+            case Some(relative) =>
+                let start = searchCursor + relative
+                let end = start + parameterName.size
+                if (signatureSpanBoundary(raw, start, end)) {
+                    var delimiter = end
+                    while (delimiter < raw.size &&
+                        (raw[delimiter] == b' ' || raw[delimiter] == b'\t' ||
+                            raw[delimiter] == b'\r' || raw[delimiter] == b'\n')) {
+                        delimiter++
+                    }
+                    if (delimiter < raw.size && raw[delimiter] == b':') {
+                        return delimiter + 1
+                    }
+                }
+                searchCursor = end
+        }
+    }
+    cursor
+}
+
 private func collectSignatureTypeSpans(spans: ArrayList<HtmlSignatureLinkSpan>, raw: String,
     typeRef: TypeRef, typeLinkIndex: HtmlTypeLinkIndex, cursor: Int64): Int64 {
     let spelling = if (typeRef.arguments.isEmpty()) { typeRef.spelling } else {
@@ -532,7 +559,8 @@ internal func appendLinkedSignatureHtml(out: RenderTextBuffer, symbol: SymbolDoc
     let spans = ArrayList<HtmlSignatureLinkSpan>()
     var cursor: Int64 = 0
     for (parameter in symbol.parameters) {
-        cursor = collectSignatureTypeSpans(spans, raw, parameter.typeRef, typeLinkIndex, cursor)
+        let parameterTypeCursor = signatureTypeStartAfterParameterDelimiter(raw, parameter.name, cursor)
+        cursor = collectSignatureTypeSpans(spans, raw, parameter.typeRef, typeLinkIndex, parameterTypeCursor)
     }
     match (symbol.returnType) {
         case Some(returnType) =>

@@ -149,6 +149,9 @@ test.describe('generated HTML reference', () => {
     const memberUrl = new URL(memberHref, classUrl).href;
     await gotoFile(page, memberUrl);
     await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
+    await expect(page.locator('.behavior-contracts')).toContainText('precondition');
+    await expect(page.locator('.behavior-contracts')).toContainText('performance');
+    await expect(page.locator('dt').filter({ hasText: 'HiddenGuideTarget' })).toContainText('unavailable');
     await expect(page.locator('.toc-panel')).toContainText('Parameters');
     await expect(page.locator('.toc-panel')).toContainText('Returns');
     const copyButton = page.locator('.code-copy').first();
