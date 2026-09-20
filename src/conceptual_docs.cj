@@ -687,9 +687,7 @@ private func conceptualBindingsMarkdown(page: ConceptualPage,
                         let href = prefix + conceptualSymbolPath(symbol.id).removeSuffix(".html") + ".md"
                         out.append("[")
                         out.append(public_render.escapeStandaloneHtml(symbol.qualifiedName))
-                        out.append("](")
-                        out.append(href)
-                        out.append(")")
+                        out.append("](" + conceptualMarkdownDestination(href) + ")")
                     case None =>
                         out.append(public_render.escapeStandaloneHtml(binding.target))
                 }
@@ -713,7 +711,7 @@ private func conceptualMarkdownPage(page: ConceptualPage, pages: ArrayList<Conce
     let prefix = conceptualRelativePrefix(page.route)
     let conceptsHref = conceptualIndexHref(page.route).removeSuffix(".html") + ".md"
     let out = StringBuilder()
-    out.append("[API reference](${prefix}index.md) · [Concepts](${conceptsHref})\n\n")
+    out.append("[API reference](" + conceptualMarkdownDestination(prefix + "index.md") + ") · [Concepts](" + conceptualMarkdownDestination(conceptsHref) + ")\n\n")
     out.append("<!-- source: ${page.source} -->\n\n")
     let markdown = conceptualMarkdownWithoutBindings(page.markdown)
     out.append(markdown)
@@ -918,7 +916,7 @@ private func conceptualProjectMarkdownNavigation(pages: ArrayList<ConceptualPage
             let path = entry.route.removePrefix("concepts/").removeSuffix(".html") + ".md"
             out.append("- [")
             out.append(conceptualMarkdownLinkText(entry.title))
-            out.append("](" + path + ")\n")
+            out.append("](" + conceptualMarkdownDestination(path) + ")\n")
         }
     }
     out.toString()
@@ -983,13 +981,27 @@ private func conceptualBindingsHtml(page: ConceptualPage,
     out.toString()
 }
 
+private func conceptualMarkdownBodyHtml(documentation: public_model.DocumentationSet,
+    page: ConceptualPage, markdown: String): String {
+    try {
+        public_render.renderStandaloneMarkdownHtml(parseStandaloneMarkdown(markdown))
+    } catch (_: Exception) {
+        let source = public_model.SourceRange(page.source, public_model.SourcePosition(1, 1, 0),
+            public_model.SourcePosition(1, 1, 0))
+        documentation.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC3026",
+            "conceptual Markdown was replaced by a bounded fallback after parsing or resource-limit failure",
+            source: Some(source)))
+        public_render.renderStandaloneMarkdownHtml(fallbackPublicMarkdown())
+    }
+}
+
 internal func renderConceptualDocumentationArtifacts(documentation: public_model.DocumentationSet, formats: Array<String>, pages: ArrayList<ConceptualPage>, locale!: String = "en", docVersion!: ?String = None): Array<public_render.RenderArtifact> {
     let artifacts = ArrayList<public_render.RenderArtifact>()
     for (format in formats) {
         if (format == "html") {
             for (page in pages) {
                 let markdown = conceptualMarkdownWithoutBindings(page.markdown)
-                let body = public_render.renderStandaloneMarkdownHtml(parseStandaloneMarkdown(markdown))
+                let body = conceptualMarkdownBodyHtml(documentation, page, markdown)
                 let bindings = conceptualBindingsHtml(page, documentation, locale)
                 let pageBody = if (page.kind == "project") {
                     body + conceptualProjectHtmlNavigation(pages) + bindings
@@ -1074,7 +1086,7 @@ private func conceptualApiUsageMarkdown(pages: ArrayList<ConceptualPage>, symbol
         let route = page.route.removeSuffix(".html") + ".md"
         out.append("- [")
         out.append(conceptualMarkdownLinkText(page.title))
-        out.append("](" + "../" + route + ") — ")
+        out.append("](" + conceptualMarkdownDestination("../" + route) + ") — ")
         out.append(public_render.escapeStandaloneHtml(page.source))
         out.append("\n")
     }
@@ -1178,32 +1190,37 @@ private func conceptualExternalUsageMarkdown(symbol: public_model.SymbolDoc,
     out.toString()
 }
 
+private func conceptualArtifactSymbolIndex(documentation: public_model.DocumentationSet): HashMap<String, public_model.SymbolDoc> {
+    let result = HashMap<String, public_model.SymbolDoc>()
+    for (symbol in documentation.declarations) {
+        let symbolPath = conceptualSymbolPath(symbol.id)
+        result["html/" + symbolPath] = symbol
+        result["markdown/" + symbolPath.removeSuffix(".html") + ".md"] = symbol
+    }
+    result
+}
+
 private func conceptualAugmentApiArtifact(path: String, content: String,
-    documentation: public_model.DocumentationSet, pages: ArrayList<ConceptualPage>,
+    symbolIndex: HashMap<String, public_model.SymbolDoc>,
+    pages: ArrayList<ConceptualPage>,
     resolvers: Array<ExternalDocResolver>, locale: String): String {
     let isHtml = path.startsWith("html/")
-    let relative = if (isHtml) { path.removePrefix("html/") } else { path.removePrefix("markdown/") }
-    for (symbol in documentation.declarations) {
-        let matches = if (isHtml) {
-            relative == conceptualSymbolPath(symbol.id)
-        } else {
-            relative == conceptualSymbolPath(symbol.id).removeSuffix(".html") + ".md"
-        }
-        if (!matches) { continue }
-        let section = if (isHtml) {
-            conceptualApiUsageHtml(pages, symbol.id, locale) + conceptualExternalUsageHtml(symbol, resolvers, locale)
-        } else {
-            conceptualApiUsageMarkdown(pages, symbol.id) + conceptualExternalUsageMarkdown(symbol, resolvers)
-        }
-        if (section.isEmpty()) { return content }
-        if (!isHtml) { return content + section }
-        let marker = "</main>"
-        match (content.indexOf(marker)) {
-            case Some(index) => return content[..index] + section + content[index..]
-            case None => return content + section
-        }
+    let symbol = match (symbolIndex.get(path)) {
+        case Some(value) => value
+        case None => return content
     }
-    content
+    let section = if (isHtml) {
+        conceptualApiUsageHtml(pages, symbol.id, locale) + conceptualExternalUsageHtml(symbol, resolvers, locale)
+    } else {
+        conceptualApiUsageMarkdown(pages, symbol.id) + conceptualExternalUsageMarkdown(symbol, resolvers)
+    }
+    if (section.isEmpty()) { return content }
+    if (!isHtml) { return content + section }
+    let marker = "</main>"
+    match (content.indexOf(marker)) {
+        case Some(index) => content[..index] + section + content[index..]
+        case None => content + section
+    }
 }
 
 internal func appendConceptualArtifacts(projectRoot: String,
@@ -1224,6 +1241,7 @@ internal func appendConceptualArtifacts(projectRoot: String,
     let resolvers = if (hasHtml || hasMarkdown) {
         loadExternalDocResolvers(projectRoot)
     } else { Array<ExternalDocResolver>() }
+    let symbolIndex = conceptualArtifactSymbolIndex(documentation)
     let conceptualSearch = if (config.enabled && hasHtml) {
         conceptualSearchIndex(search, pages)
     } else { search }
@@ -1249,7 +1267,7 @@ internal func appendConceptualArtifacts(projectRoot: String,
                 searchScript))
         } else if (artifact.path.startsWith("html/symbols/") || artifact.path.startsWith("markdown/symbols/")) {
             let content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
-                documentation, pages, resolvers, locale)
+                symbolIndex, pages, resolvers, locale)
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, content))
         } else {
             result.add(artifact)
