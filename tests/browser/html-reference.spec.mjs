@@ -182,7 +182,7 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('.conceptual-bindings')).toContainText('</span><a href=phish>click</a>');
     await expect(page.locator('.conceptual-bindings a[href="phish"]')).toHaveCount(0);
     await expect(page.locator('.conceptual-bindings')).toContainText('unavailable');
-    await expect(page.locator('pre')).toContainText('cjdoc-bind target="html_reference_extra.ExtraBox"');
+    await expect(page.locator('pre').filter({ hasText: 'cjdoc-bind target="html_reference_extra.ExtraBox"' })).toHaveCount(1);
     await expectStable(page);
   });
 
@@ -216,16 +216,16 @@ test.describe('generated HTML reference', () => {
 
     await page.setViewportSize({ width: 1180, height: 1000 });
     await openIndex(page);
-    await expect(page.locator('[data-cjdoc-mobile-toc]')).toBeVisible();
+    await expect(page.locator('[data-cjdoc-mobile-toc]')).toBeHidden();
     await expect(page.locator('[data-cjdoc-filter-toggle]')).toBeVisible();
     await page.locator('[data-cjdoc-filter-toggle]').click();
     await expect(page.locator('#cjdoc-search-filters')).toBeVisible();
     await clickOutside(page);
     await expect(page.locator('#cjdoc-search-filters')).toBeHidden();
-    await expect(page.locator('[data-cjdoc-mobile-toc] a')).not.toHaveCount(0);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await openIndex(page);
+    await expect(page.locator('[data-cjdoc-mobile-toc]')).toBeVisible();
     await page.evaluate(() => { document.documentElement.style.zoom = '2'; });
     const zoomMetrics = await page.evaluate(() => {
       const toggle = document.querySelector('[data-cjdoc-theme-toggle]');

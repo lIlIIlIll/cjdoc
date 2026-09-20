@@ -269,7 +269,8 @@ private class DocCommentParseState {
             currentExample = Some(tag)
         } else if (let Some(name) <- behaviorContractName(tagText)) {
             let rest = tagText.removePrefix("@" + name).trimAscii()
-            let (subject, description) = splitSubject(rest)
+            let subject = ""
+            let description = rest
             let tag = DocTag(name, subject, description)
             contracts.add(tag)
             currentTag = tag

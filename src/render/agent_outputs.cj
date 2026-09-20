@@ -125,6 +125,8 @@ private func agentNavigationPages(documentation: DocumentationSet,
         "Symbol index", "symbol-index.json"))
     pages.add(AgentNavigationPage("cjdoc:page:search-index", "machine",
         "Search index", "search-index.json"))
+    pages.add(AgentNavigationPage("cjdoc:page:validation", "validation",
+        "Validation results", "validation.html"))
     for (page in conceptualPages) {
         pages.add(AgentNavigationPage("cjdoc:concept:${page.route}", "concept", page.title,
             page.route))

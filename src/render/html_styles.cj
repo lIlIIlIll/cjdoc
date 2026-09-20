@@ -274,4 +274,6 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
 @media(max-width:760px){.docs-layout{display:flex;flex-direction:column}.docs-sidebar{order:0}.mobile-toc{order:0}.docs-main{order:1;display:block}.toc-panel{order:2;display:none}.site-nav-inner{grid-template-columns:auto minmax(0,1fr) auto;gap:.65rem;padding:.65rem .8rem}.site-search{grid-column:1/-1;grid-row:2}.search-filter-toggle{flex:0 0 auto}.search-filters{left:0;right:auto;max-width:calc(100vw - 1.6rem)}}
 @media(max-width:760px){.site-nav-inner{min-width:0}.brand{min-width:0;max-width:calc(100% - 2.5rem)}.brand-copy{min-width:0}.brand-subtitle{max-width:11rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.top-actions{min-width:0}.version-label{display:none}.docs-main,.content-column{width:100%;min-width:0}.content-column{overflow:hidden}.site-search{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:.55rem}.search-area{grid-column:1;min-width:0}.search-filter-toggle{grid-column:2}.top-actions{grid-column:1/-1;justify-content:flex-end}}
 @media(max-width:760px){.search-shell kbd{display:none}}
+@media(min-width:761px) and (max-width:1180px){.mobile-toc{display:none}}
+@media(max-width:760px){.mobile-toc{display:block}}
 """

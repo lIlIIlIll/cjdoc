@@ -110,16 +110,19 @@ private func conceptualSafeRoute(value: String): Bool {
 }
 
 private func conceptualBindingAttribute(line: String, key: String): String {
-    let marker = key + "=\""
-    match (line.indexOf(marker)) {
-        case Some(start) =>
-            let valueStart = start + marker.size
-            match (line[valueStart..].indexOf("\"")) {
-                case Some(end) => line[valueStart..valueStart + end]
-                case None => ""
-            }
-        case None => ""
+    let markers = [" " + key + "=\"", "\t" + key + "=\""]
+    for (marker in markers) {
+        match (line.indexOf(marker)) {
+            case Some(start) =>
+                let valueStart = start + marker.size
+                match (line[valueStart..].indexOf("\"")) {
+                    case Some(end) => return line[valueStart..valueStart + end]
+                    case None => return ""
+                }
+            case None => ()
+        }
     }
+    ""
 }
 
 private func conceptualFenceMarker(line: String): String {
@@ -170,7 +173,10 @@ private func conceptualCollectBindings(page: ConceptualPage): Unit {
             continue
         }
         let target = conceptualBindingAttribute(line, "target")
-        if (target.isEmpty()) { continue }
+        if (target.isEmpty()) {
+            eprintln("warning[CJDOC2056]: conceptual API binding marker is missing a valid target in ${page.source}")
+            continue
+        }
         var language = conceptualBindingAttribute(line, "language")
         if (language.isEmpty()) { language = "markdown" }
         let selector = conceptualBindingAttribute(line, "selector")
@@ -214,7 +220,8 @@ private func conceptualMarkdownWithoutBindings(markdown: String): String {
             out.append("\n")
             continue
         }
-        if (line.startsWith("<!-- cjdoc-bind ") && line.endsWith(" -->")) { continue }
+        if (line.startsWith("<!-- cjdoc-bind ") && line.endsWith(" -->") &&
+            !conceptualBindingAttribute(line, "target").isEmpty()) { continue }
         out.append(rawLine)
         out.append("\n")
     }
@@ -467,8 +474,19 @@ private func conceptualRead(root: Path, source: String): String {
 }
 
 private func conceptualTitle(markdown: String, fallback: String): String {
-    for (line in markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n")) {
-        let text = line.trimAscii()
+    var fence = ""
+    for (rawLine in markdown.replace("\r\n", "\n").replace("\r", "\n").split("\n")) {
+        let text = rawLine.trimAscii()
+        if (!fence.isEmpty()) {
+            if (conceptualFenceCloses(text, fence)) { fence = "" }
+            continue
+        }
+        let opening = conceptualFenceMarker(rawLine)
+        if (!opening.isEmpty()) {
+            fence = opening
+            continue
+        }
+        if (rawLine.startsWith("    ") || rawLine.startsWith("\t")) { continue }
         if (text.startsWith("# ")) { return text.removePrefix("# ").trimAscii() }
     }
     fallback
