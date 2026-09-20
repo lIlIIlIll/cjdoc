@@ -440,7 +440,29 @@ private func conceptualRoute(route: String, fallback: String): String {
     }
     normalized
 }
+private func conceptualUniqueRoute(routes: HashSet<String>, base: String, identity: String): String {
+    if (!routes.contains(base)) { return base }
+    let stem = base.removeSuffix(".html")
+    let suffix = conceptualStableHash(identity)
+    var candidate = stem + "--" + suffix + ".html"
+    var serial: Int64 = 2
+    while (routes.contains(candidate)) {
+        candidate = stem + "--" + suffix + "-" + serial.toString() + ".html"
+        serial++
+    }
+    candidate
+}
 
+private func conceptualMarkdownLinkText(value: String): String {
+    let out = StringBuilder()
+    for (rune in value.runes()) {
+        if (rune == r'\\' || rune == r'[' || rune == r']') {
+            out.append("\\")
+        }
+        out.append(rune)
+    }
+    out.toString()
+}
 private func conceptualPathWithinRoot(root: Path, path: Path): Bool {
     let canonicalRoot = canonicalize(root).toString()
     let canonicalPath = canonicalize(path).toString()
@@ -559,9 +581,11 @@ private func conceptualPages(root: Path, documentation: public_model.Documentati
         } else {
             conceptualDefaultModuleMarkdown(module)
         }
+        let route = conceptualUniqueRoute(routes,
+            conceptualRoute("concepts/modules/${conceptualSlug(module.name)}", "concepts/modules/module"),
+            "module:" + module.name)
         conceptualAddPage(pages, routes,
-            ConceptualPage(source, conceptualRoute("concepts/modules/${conceptualSlug(module.name)}", "concepts/modules/module"),
-                conceptualTitle(markdown, module.name), "module", markdown))
+            ConceptualPage(source, route, conceptualTitle(markdown, module.name), "module", markdown))
     }
     for (pkg in documentation.packages) {
         var source = "docs/packages/${conceptualSlug(pkg.name)}.md"
@@ -575,12 +599,15 @@ private func conceptualPages(root: Path, documentation: public_model.Documentati
         } else {
             conceptualDefaultPackageMarkdown(pkg)
         }
+        let route = conceptualUniqueRoute(routes,
+            conceptualRoute("concepts/packages/${conceptualSlug(pkg.name)}", "concepts/packages/package"),
+            "package:" + pkg.name)
         conceptualAddPage(pages, routes,
-            ConceptualPage(source, conceptualRoute("concepts/packages/${conceptualSlug(pkg.name)}", "concepts/packages/package"),
-                conceptualTitle(markdown, pkg.name), "package", markdown))
+            ConceptualPage(source, route, conceptualTitle(markdown, pkg.name), "package", markdown))
     }
     for (spec in config.pages) {
-        let route = conceptualRoute(spec.route, "concepts/guides/${conceptualSlug(spec.source.removeSuffix(".md"))}")
+        let baseRoute = conceptualRoute(spec.route, "concepts/guides/${conceptualSlug(spec.source.removeSuffix(".md"))}")
+        let route = conceptualUniqueRoute(routes, baseRoute, "guide:" + spec.source + ":" + spec.route)
         let page = conceptualPageFromSource(root, spec.source, route, spec.title, "guide", spec.source)
         conceptualAddPage(pages, routes, page)
     }
@@ -882,7 +909,9 @@ private func conceptualProjectMarkdownNavigation(pages: ArrayList<ConceptualPage
     for (entry in pages) {
         if (entry.kind != "project") {
             let path = entry.route.removePrefix("concepts/").removeSuffix(".html") + ".md"
-            out.append("- [${entry.title}](${path})\n")
+            out.append("- [")
+            out.append(conceptualMarkdownLinkText(entry.title))
+            out.append("](" + path + ")\n")
         }
     }
     out.toString()
@@ -1042,7 +1071,7 @@ private func conceptualApiUsageMarkdown(pages: ArrayList<ConceptualPage>, symbol
     for (page in usages) {
         let route = page.route.removeSuffix(".html") + ".md"
         out.append("- [")
-        out.append(public_render.escapeStandaloneHtml(page.title))
+        out.append(conceptualMarkdownLinkText(page.title))
         out.append("](" + "../" + route + ") — ")
         out.append(public_render.escapeStandaloneHtml(page.source))
         out.append("\n")
