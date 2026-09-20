@@ -687,7 +687,9 @@ private func conceptualBindingsMarkdown(page: ConceptualPage,
                         let href = prefix + conceptualSymbolPath(symbol.id).removeSuffix(".html") + ".md"
                         out.append("[")
                         out.append(public_render.escapeStandaloneHtml(symbol.qualifiedName))
-                        out.append("](" + conceptualMarkdownDestination(href) + ")")
+                        out.append("](<")
+                        out.append(href)
+                        out.append(">)")
                     case None =>
                         out.append(public_render.escapeStandaloneHtml(binding.target))
                 }
@@ -711,7 +713,11 @@ private func conceptualMarkdownPage(page: ConceptualPage, pages: ArrayList<Conce
     let prefix = conceptualRelativePrefix(page.route)
     let conceptsHref = conceptualIndexHref(page.route).removeSuffix(".html") + ".md"
     let out = StringBuilder()
-    out.append("[API reference](" + conceptualMarkdownDestination(prefix + "index.md") + ") · [Concepts](" + conceptualMarkdownDestination(conceptsHref) + ")\n\n")
+    out.append("[API reference](<")
+    out.append(prefix)
+    out.append("index.md>) · [Concepts](<")
+    out.append(conceptsHref)
+    out.append(">)\n\n")
     out.append("<!-- source: ${page.source} -->\n\n")
     let markdown = conceptualMarkdownWithoutBindings(page.markdown)
     out.append(markdown)
@@ -916,7 +922,9 @@ private func conceptualProjectMarkdownNavigation(pages: ArrayList<ConceptualPage
             let path = entry.route.removePrefix("concepts/").removeSuffix(".html") + ".md"
             out.append("- [")
             out.append(conceptualMarkdownLinkText(entry.title))
-            out.append("](" + conceptualMarkdownDestination(path) + ")\n")
+            out.append("](<")
+            out.append(path)
+            out.append(">)\n")
         }
     }
     out.toString()
@@ -1086,7 +1094,10 @@ private func conceptualApiUsageMarkdown(pages: ArrayList<ConceptualPage>, symbol
         let route = page.route.removeSuffix(".html") + ".md"
         out.append("- [")
         out.append(conceptualMarkdownLinkText(page.title))
-        out.append("](" + conceptualMarkdownDestination("../" + route) + ") — ")
+        out.append("](<")
+        out.append("../")
+        out.append(route)
+        out.append(">) — ")
         out.append(public_render.escapeStandaloneHtml(page.source))
         out.append("\n")
     }
@@ -1223,6 +1234,30 @@ private func conceptualAugmentApiArtifact(path: String, content: String,
     }
 }
 
+private func conceptualDecorateBaseArtifact(projectRoot: String,
+    artifact: public_render.RenderArtifact, augmentedSearch: String,
+    locale: String): public_render.RenderArtifact {
+    if (artifact.path == "html/index.html") {
+        return public_render.RenderArtifact(artifact.path, artifact.mediaType,
+            conceptualIndexNavigation(projectRoot, "html", artifact.content, locale: locale))
+    }
+    if (artifact.path == "markdown/index.md") {
+        return public_render.RenderArtifact(artifact.path, artifact.mediaType,
+            conceptualIndexNavigation(projectRoot, "markdown", artifact.content, locale: locale))
+    }
+    if (artifact.path == "html/search-index.json") {
+        return public_render.RenderArtifact(artifact.path, artifact.mediaType, augmentedSearch)
+    }
+    if (artifact.path == "html/search-index.js") {
+        let searchScript = match (artifact.content.indexOf(";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = ")) {
+            case Some(index) => "globalThis.__CJDOC_SEARCH_INDEX__ = ${augmentedSearch.trimAscii()}" + artifact.content[index..]
+            case None => "globalThis.__CJDOC_SEARCH_INDEX__ = ${augmentedSearch.trimAscii()};\n"
+        }
+        return public_render.RenderArtifact(artifact.path, artifact.mediaType, searchScript)
+    }
+    artifact
+}
+
 internal func appendConceptualArtifacts(projectRoot: String,
     documentation: public_model.DocumentationSet, formats: Array<String>,
     baseArtifacts: Array<public_render.RenderArtifact>, pages: ArrayList<ConceptualPage>,
@@ -1241,38 +1276,42 @@ internal func appendConceptualArtifacts(projectRoot: String,
     let resolvers = if (hasHtml || hasMarkdown) {
         loadExternalDocResolvers(projectRoot)
     } else { Array<ExternalDocResolver>() }
-    let symbolIndex = conceptualArtifactSymbolIndex(documentation)
+    var shouldAugmentApiArtifacts = resolvers.size > 0
+    if (!shouldAugmentApiArtifacts) {
+        for (page in pages) {
+            if (page.bindings.size > 0) {
+                shouldAugmentApiArtifacts = true
+                break
+            }
+        }
+    }
     let conceptualSearch = if (config.enabled && hasHtml) {
         conceptualSearchIndex(search, pages)
     } else { search }
     let augmentedSearch = if (hasHtml) {
         externalSearchIndex(conceptualSearch, documentation, resolvers)
     } else { conceptualSearch }
+    if (!shouldAugmentApiArtifacts) {
+        let result = ArrayList<public_render.RenderArtifact>()
+        for (artifact in baseArtifacts) {
+            result.add(conceptualDecorateBaseArtifact(projectRoot, artifact, augmentedSearch, locale))
+        }
+        result.add(all: renderConceptualDocumentationArtifacts(documentation, formats, pages,
+            locale: locale, docVersion: docVersion))
+        return result.toArray()
+    }
+    let symbolIndex = conceptualArtifactSymbolIndex(documentation)
     let result = ArrayList<public_render.RenderArtifact>()
     for (artifact in baseArtifacts) {
-        if (artifact.path == "html/index.html") {
-            result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
-                conceptualIndexNavigation(projectRoot, "html", artifact.content, locale: locale)))
-        } else if (artifact.path == "markdown/index.md") {
-            result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
-                conceptualIndexNavigation(projectRoot, "markdown", artifact.content, locale: locale)))
-        } else if (artifact.path == "html/search-index.json") {
-            result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, augmentedSearch))
-        } else if (artifact.path == "html/search-index.js") {
-            let searchScript = match (artifact.content.indexOf(";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = ")) {
-                case Some(index) => "globalThis.__CJDOC_SEARCH_INDEX__ = ${augmentedSearch.trimAscii()}" + artifact.content[index..]
-                case None => "globalThis.__CJDOC_SEARCH_INDEX__ = ${augmentedSearch.trimAscii()};\n"
-            }
-            result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
-                searchScript))
-        } else if (artifact.path.startsWith("html/symbols/") || artifact.path.startsWith("markdown/symbols/")) {
+        if (artifact.path.startsWith("html/symbols/") || artifact.path.startsWith("markdown/symbols/")) {
             let content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
                 symbolIndex, pages, resolvers, locale)
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, content))
         } else {
-            result.add(artifact)
+            result.add(conceptualDecorateBaseArtifact(projectRoot, artifact, augmentedSearch, locale))
         }
     }
-    result.add(all: renderConceptualDocumentationArtifacts(documentation, formats, pages, locale: locale, docVersion: docVersion))
+    result.add(all: renderConceptualDocumentationArtifacts(documentation, formats, pages,
+        locale: locale, docVersion: docVersion))
     result.toArray()
 }
