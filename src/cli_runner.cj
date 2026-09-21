@@ -18,9 +18,9 @@ internal func selectedSourceCacheDirectory(options: NewCliOptions): ?String {
 
 internal func orderedFormats(options: NewCliOptions): Array<String> {
     let result = ArrayList<String>()
+    if (options.formats.contains("html")) { result.add("html") }
     if (options.formats.contains("json")) { result.add("json") }
     if (options.formats.contains("markdown")) { result.add("markdown") }
-    if (options.formats.contains("html")) { result.add("html") }
     if (options.formats.contains("api-surface")) { result.add("api-surface") }
     if (options.formats.contains("coverage")) { result.add("coverage") }
     if (options.formats.contains("symbol-index")) { result.add("symbol-index") }

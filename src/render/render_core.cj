@@ -75,7 +75,7 @@ public class RenderArtifact {
         this.path = path
         this.mediaType = mediaType
         this.content = content
-        this.bytesStorage = content.toArray()
+        this.bytesStorage = Array<Byte>()
     }
 
     public init(path: String, mediaType: String, bytes: Array<Byte>) {
@@ -102,8 +102,14 @@ public class RenderArtifact {
         this.bytesStorage = ownedBytes
     }
 
-    public prop bytes: Array<Byte> { get() { bytesStorage.clone() } }
-    public prop byteSize: Int64 { get() { bytesStorage.size } }
+    public prop bytes: Array<Byte> { get() {
+        if (!content.isEmpty()) { return content.toArray() }
+        bytesStorage.clone()
+    } }
+    public prop byteSize: Int64 { get() {
+        if (!content.isEmpty()) { return content.size }
+        bytesStorage.size
+    } }
     public prop isBinary: Bool { get() { content.isEmpty() && !bytesStorage.isEmpty() } }
 }
 
