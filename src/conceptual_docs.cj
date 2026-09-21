@@ -1275,20 +1275,22 @@ internal func appendConceptualArtifacts(projectRoot: String,
     externalResolvers!: Array<ExternalDocResolver> = [],
     apiAugmentationRequired!: Bool = false,
     locale!: String = "en", docVersion!: ?String = None): Array<public_render.RenderArtifact> {
-    var search = ""
-    for (artifact in baseArtifacts) {
-        if (artifact.path == "html/search-index.json") { search = artifact.content }
-    }
     var hasHtml = false
     var hasMarkdown = false
     for (format in formats) {
         if (format == "html") { hasHtml = true }
         if (format == "markdown") { hasMarkdown = true }
     }
+    if (!hasHtml && !hasMarkdown) { return baseArtifacts }
     let config = loadConceptualDocsConfig(projectRoot)
-    let resolvers = if (hasHtml || hasMarkdown) {
-        externalResolvers
-    } else { Array<ExternalDocResolver>() }
+    let resolvers = externalResolvers
+    if (!config.enabled && pages.isEmpty() && resolvers.isEmpty() && !apiAugmentationRequired) {
+        return baseArtifacts
+    }
+    var search = ""
+    for (artifact in baseArtifacts) {
+        if (artifact.path == "html/search-index.json") { search = artifact.content }
+    }
     var shouldAugmentApiArtifacts = false
     if (hasHtml || hasMarkdown) {
         shouldAugmentApiArtifacts = apiAugmentationRequired
