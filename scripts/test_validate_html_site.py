@@ -88,7 +88,8 @@ class ValidateHtmlSiteTest(unittest.TestCase):
 
     def test_canonical_search_displays_context_and_signatures(self) -> None:
         script = canonical_search_script()
-        self.assertIn("context.textContent = entry.packageName", script)
+        self.assertIn("const moduleLabel = entry.moduleId", script)
+        self.assertIn("context.textContent = [entry.packageName, moduleLabel,", script)
         self.assertIn("const signatures = globalThis.__CJDOC_SEARCH_SIGNATURES__ || {}", script)
         self.assertIn("signatures[entry.id] || signatures[entry.canonicalId]", script)
         self.assertIn('signature.className = "search-result-signature"', script)
