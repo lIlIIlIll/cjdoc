@@ -57,7 +57,6 @@ internal class ConceptualPage {
     let kind: String
     let markdown: String
     let bindings = ArrayList<ConceptualApiBinding>()
-    var apiAugmentationRequired = false
 
     init(source: String, route: String, title: String, kind: String, markdown: String) {
         this.source = source
@@ -65,6 +64,20 @@ internal class ConceptualPage {
         this.title = title
         this.kind = kind
         this.markdown = markdown
+    }
+}
+
+internal class ConceptualPageSet {
+    let pages: ArrayList<ConceptualPage>
+    let externalResolvers: Array<ExternalDocResolver>
+    let apiAugmentationRequired: Bool
+
+    init(pages: ArrayList<ConceptualPage>,
+        externalResolvers!: Array<ExternalDocResolver> = [],
+        apiAugmentationRequired!: Bool = false) {
+        this.pages = pages
+        this.externalResolvers = externalResolvers
+        this.apiAugmentationRequired = apiAugmentationRequired
     }
 }
 private func conceptualValue(value: String): String {
@@ -625,15 +638,18 @@ private func conceptualPages(root: Path, documentation: public_model.Documentati
     pages
 }
 internal func conceptualPagesForProject(projectRoot: String,
-    documentation: public_model.DocumentationSet): ArrayList<ConceptualPage> {
+    documentation: public_model.DocumentationSet): ConceptualPageSet {
     let config = loadConceptualDocsConfig(projectRoot)
-    if (!config.enabled) { return ArrayList<ConceptualPage>() }
-    let pages = conceptualPages(Path(projectRoot), documentation, config)
     let resolvers = loadExternalDocResolvers(projectRoot)
-    if (!resolvers.isEmpty()) {
-        for (page in pages) { page.apiAugmentationRequired = true }
+    let augmentationRequired = !resolvers.isEmpty()
+    if (!config.enabled) {
+        return ConceptualPageSet(ArrayList<ConceptualPage>(),
+            externalResolvers: resolvers,
+            apiAugmentationRequired: augmentationRequired)
     }
-    pages
+    let pages = conceptualPages(Path(projectRoot), documentation, config)
+    ConceptualPageSet(pages, externalResolvers: resolvers,
+        apiAugmentationRequired: augmentationRequired)
 }
 internal func conceptualAgentPages(pages: ArrayList<ConceptualPage>): Array<public_render.AgentConceptualPage> {
     let result = ArrayList<public_render.AgentConceptualPage>()
@@ -1207,25 +1223,38 @@ private func conceptualExternalUsageMarkdown(symbol: public_model.SymbolDoc,
     out.toString()
 }
 
-private func conceptualArtifactSymbolIndex(documentation: public_model.DocumentationSet): HashMap<String, public_model.SymbolDoc> {
-    let result = HashMap<String, public_model.SymbolDoc>()
+private func conceptualArtifactSymbolIndex(documentation: public_model.DocumentationSet): HashMap<String, Int64> {
+    let result = HashMap<String, Int64>()
+    var index: Int64 = 0
     for (symbol in documentation.declarations) {
-        let symbolPath = conceptualSymbolPath(symbol.id)
-        result["html/" + symbolPath] = symbol
-        result["markdown/" + symbolPath.removeSuffix(".html") + ".md"] = symbol
+        result[conceptualSymbolPath(symbol.id)] = index
+        index++
     }
     result
 }
 
 private func conceptualAugmentApiArtifact(path: String, content: String,
-    symbolIndex: HashMap<String, public_model.SymbolDoc>,
+    documentation: public_model.DocumentationSet,
+    symbolIndex: HashMap<String, Int64>,
     pages: ArrayList<ConceptualPage>,
     resolvers: Array<ExternalDocResolver>, locale: String): String {
     let isHtml = path.startsWith("html/")
-    let symbol = match (symbolIndex.get(path)) {
+    let relative = if (isHtml) {
+        path.removePrefix("html/")
+    } else {
+        path.removePrefix("markdown/")
+    }
+    let symbolPath = if (isHtml) {
+        relative
+    } else {
+        if (!relative.endsWith(".md")) { return content }
+        relative.removeSuffix(".md") + ".html"
+    }
+    let symbolIndexValue = match (symbolIndex.get(symbolPath)) {
         case Some(value) => value
         case None => return content
     }
+    let symbol = documentation.declarations[symbolIndexValue]
     let section = if (isHtml) {
         conceptualApiUsageHtml(pages, symbol.id, locale) + conceptualExternalUsageHtml(symbol, resolvers, locale)
     } else {
@@ -1243,6 +1272,8 @@ private func conceptualAugmentApiArtifact(path: String, content: String,
 internal func appendConceptualArtifacts(projectRoot: String,
     documentation: public_model.DocumentationSet, formats: Array<String>,
     baseArtifacts: Array<public_render.RenderArtifact>, pages: ArrayList<ConceptualPage>,
+    externalResolvers!: Array<ExternalDocResolver> = [],
+    apiAugmentationRequired!: Bool = false,
     locale!: String = "en", docVersion!: ?String = None): Array<public_render.RenderArtifact> {
     var search = ""
     for (artifact in baseArtifacts) {
@@ -1256,21 +1287,24 @@ internal func appendConceptualArtifacts(projectRoot: String,
     }
     let config = loadConceptualDocsConfig(projectRoot)
     let resolvers = if (hasHtml || hasMarkdown) {
-        loadExternalDocResolvers(projectRoot)
+        externalResolvers
     } else { Array<ExternalDocResolver>() }
     var shouldAugmentApiArtifacts = false
-    if (!shouldAugmentApiArtifacts) {
-        for (page in pages) {
-            if (!page.bindings.isEmpty() || page.apiAugmentationRequired) {
-                shouldAugmentApiArtifacts = true
-                break
+    if (hasHtml || hasMarkdown) {
+        shouldAugmentApiArtifacts = apiAugmentationRequired
+        if (!shouldAugmentApiArtifacts) {
+            for (page in pages) {
+                if (!page.bindings.isEmpty()) {
+                    shouldAugmentApiArtifacts = true
+                    break
+                }
             }
         }
     }
     let symbolIndex = if (shouldAugmentApiArtifacts) {
         conceptualArtifactSymbolIndex(documentation)
     } else {
-        HashMap<String, public_model.SymbolDoc>()
+        HashMap<String, Int64>()
     }
     let conceptualSearch = if (config.enabled && hasHtml) {
         conceptualSearchIndex(search, pages)
@@ -1297,7 +1331,7 @@ internal func appendConceptualArtifacts(projectRoot: String,
                 searchScript))
         } else if (shouldAugmentApiArtifacts && (artifact.path.startsWith("html/symbols/") || artifact.path.startsWith("markdown/symbols/"))) {
             let content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
-                symbolIndex, pages, resolvers, locale)
+                documentation, symbolIndex, pages, resolvers, locale)
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, content))
         } else {
             result.add(artifact)

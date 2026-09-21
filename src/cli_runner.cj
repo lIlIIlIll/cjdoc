@@ -411,10 +411,10 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
     } else {
         DoctestConfig()
     }
-    let conceptualPages = if (generationRequest.isSome()) {
+    let conceptualPageSet = if (generationRequest.isSome()) {
         conceptualPagesForProject(options.project, documentation)
     } else {
-        ArrayList<ConceptualPage>()
+        ConceptualPageSet(ArrayList<ConceptualPage>())
     }
     var doctestReport: ?DoctestReport = None
     if (generationRequest.isSome() && doctestConfig.mode != "off") {
@@ -443,14 +443,16 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
         let artifactList = ArrayList<public_render.RenderArtifact>()
         if (generationRequest.isSome()) {
             artifactList.add(all: appendConceptualArtifacts(options.project, documentation,
-                orderedFormats(options), renderedArtifacts, conceptualPages,
+                orderedFormats(options), renderedArtifacts, conceptualPageSet.pages,
+                externalResolvers: conceptualPageSet.externalResolvers,
+                apiAugmentationRequired: conceptualPageSet.apiAugmentationRequired,
                 locale: options.locale, docVersion: options.docVersion))
         } else {
             artifactList.add(all: renderedArtifacts)
         }
         if (options.formats.contains("html")) {
             let agentConceptualPages: Array<public_render.AgentConceptualPage> = if (generationRequest.isSome()) {
-                conceptualAgentPages(conceptualPages)
+                conceptualAgentPages(conceptualPageSet.pages)
             } else {
                 []
             }
