@@ -67,19 +67,6 @@ internal class ConceptualPage {
     }
 }
 
-internal class ConceptualPageSet {
-    let pages: ArrayList<ConceptualPage>
-    let externalResolvers: Array<ExternalDocResolver>
-    let apiAugmentationRequired: Bool
-
-    init(pages: ArrayList<ConceptualPage>,
-        externalResolvers!: Array<ExternalDocResolver> = [],
-        apiAugmentationRequired!: Bool = false) {
-        this.pages = pages
-        this.externalResolvers = externalResolvers
-        this.apiAugmentationRequired = apiAugmentationRequired
-    }
-}
 private func conceptualValue(value: String): String {
     var cleaned = value.trimAscii()
     var quoted = false
@@ -636,18 +623,10 @@ private func conceptualPages(root: Path, documentation: public_model.Documentati
     pages
 }
 internal func conceptualPagesForProject(projectRoot: String,
-    documentation: public_model.DocumentationSet): ConceptualPageSet {
+    documentation: public_model.DocumentationSet): ArrayList<ConceptualPage> {
     let config = loadConceptualDocsConfig(projectRoot)
-    let resolvers = loadExternalDocResolvers(projectRoot)
-    let augmentationRequired = !resolvers.isEmpty()
-    if (!config.enabled) {
-        return ConceptualPageSet(ArrayList<ConceptualPage>(),
-            externalResolvers: resolvers,
-            apiAugmentationRequired: augmentationRequired)
-    }
-    let pages = conceptualPages(Path(projectRoot), documentation, config)
-    ConceptualPageSet(pages, externalResolvers: resolvers,
-        apiAugmentationRequired: augmentationRequired)
+    if (!config.enabled) { return ArrayList<ConceptualPage>() }
+    conceptualPages(Path(projectRoot), documentation, config)
 }
 internal func conceptualAgentPages(pages: ArrayList<ConceptualPage>): Array<public_render.AgentConceptualPage> {
     let result = ArrayList<public_render.AgentConceptualPage>()
@@ -1270,8 +1249,6 @@ private func conceptualAugmentApiArtifact(path: String, content: String,
 internal func appendConceptualArtifacts(projectRoot: String,
     documentation: public_model.DocumentationSet, formats: Array<String>,
     baseArtifacts: Array<public_render.RenderArtifact>, pages: ArrayList<ConceptualPage>,
-    externalResolvers!: Array<ExternalDocResolver> = [],
-    apiAugmentationRequired!: Bool = false,
     locale!: String = "en", docVersion!: ?String = None): Array<public_render.RenderArtifact> {
     var hasHtml = false
     var hasMarkdown = false
@@ -1281,8 +1258,10 @@ internal func appendConceptualArtifacts(projectRoot: String,
     }
     if (!hasHtml && !hasMarkdown) { return baseArtifacts }
     let config = loadConceptualDocsConfig(projectRoot)
-    let resolvers = externalResolvers
-    if (!config.enabled && pages.isEmpty() && resolvers.isEmpty() && !apiAugmentationRequired) {
+    let resolvers = if (hasHtml || hasMarkdown) {
+        loadExternalDocResolvers(projectRoot)
+    } else { Array<ExternalDocResolver>() }
+    if (!config.enabled && pages.isEmpty() && resolvers.isEmpty()) {
         return baseArtifacts
     }
     var search = ""
@@ -1291,7 +1270,7 @@ internal func appendConceptualArtifacts(projectRoot: String,
     }
     var shouldAugmentApiArtifacts = false
     if (hasHtml || hasMarkdown) {
-        shouldAugmentApiArtifacts = apiAugmentationRequired
+        shouldAugmentApiArtifacts = !resolvers.isEmpty()
         if (!shouldAugmentApiArtifacts) {
             for (page in pages) {
                 if (!page.bindings.isEmpty()) {
