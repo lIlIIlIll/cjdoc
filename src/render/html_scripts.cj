@@ -177,7 +177,12 @@ internal let HTML_SEARCH_SCRIPT = """
       kind.className = "search-kind";
       kind.textContent = entry.kind;
       context.className = "search-context";
-      context.textContent = entry.packageName + (entry.qualifiedName !== entry.name ? " · " + entry.qualifiedName : "") + (entry.ownerName ? " · owner: " + entry.ownerName : "");
+      const moduleLabel = entry.moduleId
+        ? (entry.moduleName ? entry.moduleName + " · " : "") + "module: " + entry.moduleId
+        : "";
+      context.textContent = [entry.packageName, moduleLabel,
+        entry.qualifiedName !== entry.name ? entry.qualifiedName : "",
+        entry.ownerName ? "owner: " + entry.ownerName : ""].filter(Boolean).join(" · ");
       head.append(name, kind);
       link.append(head, context);
       const signatureText = signatures[entry.id] || signatures[entry.canonicalId] || "";

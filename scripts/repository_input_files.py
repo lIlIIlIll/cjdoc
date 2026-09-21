@@ -189,7 +189,7 @@ def validate_schema_document(name: str, value: object) -> None:
             "packageName", "summary", "href"
         }
         expected_property_fields = expected_required_fields | {
-            "ownerName", "parameterTypes", "returnType", "returnCanonical", "bindings", "externalDocs"
+            "moduleId", "moduleName", "ownerName", "parameterTypes", "returnType", "returnCanonical", "bindings", "externalDocs"
         }
         if (
                 not isinstance(entries, dict)

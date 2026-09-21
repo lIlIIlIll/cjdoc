@@ -440,7 +440,45 @@ private func conceptualSymbolPath(symbolId: String): String {
     }
     "symbols/symbol-${bounded}.html"
 }
+private func conceptualMarkdownSymbolPath(symbolId: String): String {
+    conceptualSymbolPath(symbolId).removeSuffix(".html") + ".md"
+}
 
+private func conceptualMarkdownPackagePath(moduleId: String, packageName: String): String {
+    let route = moduleId.size.toString() + ":" + moduleId + packageName
+    let slug = conceptualSymbolSlug(route)
+    let bounded = if (slug.size <= 96) { slug } else {
+        slug[..64] + "--" + conceptualStableHash(route)
+    }
+    "packages/package-" + bounded + ".md"
+}
+
+private func conceptualMarkdownContainer(kind: String): Bool {
+    kind == "class" || kind == "struct" || kind == "interface" || kind == "enum" ||
+        kind == "extend"
+}
+
+private func conceptualMarkdownBindingPath(symbol: public_model.SymbolDoc,
+    documentation: public_model.DocumentationSet): String {
+    var page = if (conceptualMarkdownContainer(symbol.kind)) {
+        conceptualMarkdownSymbolPath(symbol.id)
+    } else {
+        conceptualMarkdownPackagePath(symbol.moduleId, symbol.packageName)
+    }
+    if (!conceptualMarkdownContainer(symbol.kind)) {
+        match (symbol.ownerId) {
+            case Some(ownerId) =>
+                for (owner in documentation.declarations) {
+                    if (owner.id == ownerId) {
+                        page = conceptualMarkdownSymbolPath(owner.id)
+                        break
+                    }
+                }
+            case None => ()
+        }
+    }
+    page + "#symbol-" + conceptualSymbolSlug(symbol.id)
+}
 private func conceptualRoute(route: String, fallback: String): String {
     let selected = if (route.isEmpty()) { fallback } else { route }
     let normalized = if (selected.endsWith(".html")) { selected } else { "${selected}.html" }
@@ -546,7 +584,8 @@ private func conceptualPageFromSource(root: Path, source: String, route: String,
     ConceptualPage(source, route, selectedTitle, kind, markdown)
 }
 
-private func conceptualAddPage(pages: ArrayList<ConceptualPage>, routes: HashSet<String>, page: ConceptualPage): Unit {
+private func conceptualAddPage(documentation: public_model.DocumentationSet,
+    pages: ArrayList<ConceptualPage>, routes: HashSet<String>, page: ConceptualPage): Unit {
     if (routes.add(page.route)) {
         if (pages.size >= CONCEPTUAL_MAX_PAGES) {
             throw IllegalArgumentException("conceptual documentation exceeds ${CONCEPTUAL_MAX_PAGES} pages")
@@ -562,6 +601,8 @@ private func conceptualAddPage(pages: ArrayList<ConceptualPage>, routes: HashSet
         candidate = stem + "--" + suffix + "-" + serial.toString() + ".html"
         serial++
     }
+    documentation.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC4060",
+        "conceptual route collision at ${page.route}; emitted ${candidate}"))
     let routedPage = ConceptualPage(page.source, candidate, page.title, page.kind, page.markdown)
     if (pages.size >= CONCEPTUAL_MAX_PAGES) {
         throw IllegalArgumentException("conceptual documentation exceeds ${CONCEPTUAL_MAX_PAGES} pages")
@@ -577,9 +618,9 @@ private func conceptualPages(root: Path, documentation: public_model.Documentati
     if (exists(indexPath)) {
         let page = conceptualPageFromSource(root, config.indexSource, "concepts/index.html", "", "project",
             documentation.project.name)
-        conceptualAddPage(pages, routes, page)
+        conceptualAddPage(documentation, pages, routes, page)
     } else if (config.enabled) {
-        conceptualAddPage(pages, routes,
+        conceptualAddPage(documentation, pages, routes,
             ConceptualPage(config.indexSource, "concepts/index.html", documentation.project.name, "project",
                 conceptualDefaultProjectMarkdown(documentation)))
     }
@@ -592,7 +633,7 @@ private func conceptualPages(root: Path, documentation: public_model.Documentati
             conceptualDefaultModuleMarkdown(module)
         }
         let route = conceptualRoute("concepts/modules/${conceptualSlug(module.name)}", "concepts/modules/module")
-        conceptualAddPage(pages, routes,
+        conceptualAddPage(documentation, pages, routes,
             ConceptualPage(source, route, conceptualTitle(markdown, module.name), "module", markdown))
     }
     for (pkg in documentation.packages) {
@@ -608,13 +649,13 @@ private func conceptualPages(root: Path, documentation: public_model.Documentati
             conceptualDefaultPackageMarkdown(pkg)
         }
         let route = conceptualRoute("concepts/packages/${conceptualSlug(pkg.name)}", "concepts/packages/package")
-        conceptualAddPage(pages, routes,
+        conceptualAddPage(documentation, pages, routes,
             ConceptualPage(source, route, conceptualTitle(markdown, pkg.name), "package", markdown))
     }
     for (spec in config.pages) {
         let route = conceptualRoute(spec.route, "concepts/guides/${conceptualSlug(spec.source.removeSuffix(".md"))}")
         let page = conceptualPageFromSource(root, spec.source, route, spec.title, "guide", spec.source)
-        conceptualAddPage(pages, routes, page)
+        conceptualAddPage(documentation, pages, routes, page)
     }
     for (page in pages) {
         conceptualCollectBindings(page, documentation)
@@ -683,7 +724,7 @@ private func conceptualBindingsMarkdown(page: ConceptualPage,
                 }
                 match (found) {
                     case Some(symbol) =>
-                        let href = prefix + conceptualSymbolPath(symbol.id).removeSuffix(".html") + ".md"
+                        let href = prefix + conceptualMarkdownBindingPath(symbol, documentation)
                         out.append("[")
                         out.append(public_render.escapeStandaloneHtml(symbol.qualifiedName))
                         out.append("](<")
@@ -731,6 +772,8 @@ private func conceptualJsonString(value: String): String {
 }
 
 private func externalSearchObjectEnd(value: String, start: Int64): ?Int64 {
+    if (start >= value.size || value[start] != b'{') { return None }
+    var depth: Int64 = 0
     var quoted = false
     var escaped = false
     var index = start
@@ -746,8 +789,11 @@ private func externalSearchObjectEnd(value: String, start: Int64): ?Int64 {
             }
         } else if (byte == b'"') {
             quoted = true
+        } else if (byte == b'{') {
+            depth++
         } else if (byte == b'}') {
-            return Some(index)
+            depth--
+            if (depth == 0) { return Some(index) }
         }
         index++
     }
@@ -805,25 +851,84 @@ private func externalSearchBindings(symbol: public_model.SymbolDoc,
     out.toString()
 }
 
+private func externalSearchCanonicalValue(value: String, objectStart: Int64,
+    objectEnd: Int64): ?String {
+    let marker = "\"canonicalId\": "
+    match (value[objectStart..objectEnd].indexOf(marker)) {
+        case None => None
+        case Some(relative) =>
+            let stringStart = objectStart + relative + marker.size
+            if (stringStart >= objectEnd || value[stringStart] != b'\"') { return None }
+            var index = stringStart + 1
+            var escaped = false
+            while (index < objectEnd) {
+                let byte = value[index]
+                if (escaped) {
+                    escaped = false
+                } else if (byte == b'\\') {
+                    escaped = true
+                } else if (byte == b'\"') {
+                    return Some(value[stringStart..index + 1])
+                }
+                index++
+            }
+            None
+    }
+}
+
+private func externalSearchAugmentations(documentation: public_model.DocumentationSet,
+    resolvers: Array<ExternalDocResolver>): HashMap<String, String> {
+    let additions = HashMap<String, String>()
+    for (symbol in documentation.declarations) {
+        let bindings = externalSearchBindings(symbol, resolvers)
+        if (!bindings.isEmpty()) {
+            additions[externalSearchJson(symbol.id)] = bindings
+        }
+    }
+    additions
+}
+
 private func externalSearchIndex(base: String, documentation: public_model.DocumentationSet,
     resolvers: Array<ExternalDocResolver>): String {
     if (base.isEmpty() || resolvers.isEmpty()) { return base }
-    var result = base
-    for (symbol in documentation.declarations) {
-        let bindings = externalSearchBindings(symbol, resolvers)
-        let marker = "\"canonicalId\": " + externalSearchJson(symbol.id)
-        if (bindings.isEmpty()) { continue }
-        match (result.indexOf(marker)) {
-            case Some(index) =>
-                match (externalSearchObjectEnd(result, index + marker.size)) {
-                    case Some(end) =>
-                        result = result[..end] + ",\"externalDocs\":[" + bindings + "]" + result[end..]
+    let additions = externalSearchAugmentations(documentation, resolvers)
+    if (additions.isEmpty()) { return base }
+    let marker = "\"entries\": ["
+    match (base.indexOf(marker)) {
+        case None => base
+        case Some(markerStart) =>
+            let arrayStart = markerStart + marker.size
+            let out = StringBuilder()
+            out.append(base[..arrayStart])
+            var cursor = arrayStart
+            while (cursor < base.size) {
+                var objectStart = cursor
+                while (objectStart < base.size &&
+                    (base[objectStart] == b' ' || base[objectStart] == b'\n' ||
+                        base[objectStart] == b'\r' || base[objectStart] == b'\t' ||
+                        base[objectStart] == b',')) { objectStart++ }
+                if (objectStart >= base.size || base[objectStart] == b']') {
+                    out.append(base[cursor..])
+                    return out.toString()
+                }
+                if (base[objectStart] != b'{') { return base }
+                let objectEnd = match (externalSearchObjectEnd(base, objectStart)) {
+                    case Some(value) => value
+                    case None => return base
+                }
+                out.append(base[cursor..objectEnd])
+                match (externalSearchCanonicalValue(base, objectStart, objectEnd)) {
+                    case Some(key) => match (additions.get(key)) {
+                        case Some(bindings) => out.append(",\"externalDocs\":[" + bindings + "]")
+                        case None => ()
+                    }
                     case None => ()
                 }
-            case None => ()
-        }
+                out.append("}")
+                cursor = objectEnd + 1
+            }
+            out.toString()
     }
-    result
 }
 
 private func conceptualSearchIndex(base: String, pages: ArrayList<ConceptualPage>): String {

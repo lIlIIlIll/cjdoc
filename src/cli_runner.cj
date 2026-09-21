@@ -456,7 +456,8 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
             }
             artifactList.add(all: public_render.renderAgentReadableArtifacts(documentation,
                 conceptualPages: agentConceptualPages,
-                includeFull: options.agentFull, version: options.docVersion))
+                includeFull: options.agentFull, version: options.docVersion,
+                includeValidation: true))
         }
         match (options.docVersion) {
             case Some(version) => appendDocumentVersionArtifact(artifactList, version, documentation.project.name)

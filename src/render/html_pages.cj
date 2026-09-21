@@ -392,6 +392,20 @@ private func appendSearchTypeFacts(out: RenderTextBuffer, values: ArrayList<Stri
 
 private func appendSearchStructuredFacts(out: RenderTextBuffer,
     projection: RenderProjection, symbol: SymbolDoc): Unit {
+    out.append(", \"moduleId\": ")
+    appendSearchJsonString(out, symbol.moduleId)
+    out.append(", \"moduleName\": ")
+    var moduleName: ?String = None
+    for (module in projection.modules) {
+        if (module.source.id == symbol.moduleId) {
+            moduleName = Some(module.source.name)
+            break
+        }
+    }
+    match (moduleName) {
+        case Some(value) => appendSearchJsonString(out, value)
+        case None => out.append("null")
+    }
     out.append(", \"ownerName\": ")
     match (symbol.ownerId) {
         case Some(ownerId) => match (projection.visibleIndex.get(ownerId)) {
@@ -485,19 +499,65 @@ internal func renderSearchIndex(documentation: DocumentationSet,
     out.toString()
 }
 
+private func searchSignaturePreviousWord(value: String, start: Int64): String {
+    var cursor = start
+    while (cursor > 0 && (value[cursor - 1] == b' ' || value[cursor - 1] == b'\n' ||
+        value[cursor - 1] == b'\r' || value[cursor - 1] == b'\t')) { cursor-- }
+    var wordStart = cursor
+    while (wordStart > 0 && searchSignatureIdentifier(value[wordStart - 1])) { wordStart-- }
+    if (wordStart == cursor) { return "" }
+    value[wordStart..cursor]
+}
+
+private func searchSignatureNextNonSpace(value: String, start: Int64): Int64 {
+    var cursor = start
+    while (cursor < value.size && (value[cursor] == b' ' || value[cursor] == b'\n' ||
+        value[cursor] == b'\r' || value[cursor] == b'\t')) { cursor++ }
+    cursor
+}
+
+private func searchSignatureDeclarationToken(value: String, start: Int64, end: Int64,
+    kind: String): Bool {
+    let previous = searchSignaturePreviousWord(value, start)
+    match (kind) {
+        case "function" => previous == "func"
+        case "constructor" =>
+            let next = searchSignatureNextNonSpace(value, end)
+            (previous == "" || previous == "public" || previous == "protected" ||
+                previous == "internal" || previous == "private") && next < value.size &&
+                value[next] == b'('
+        case "property" => previous == "prop"
+        case "variable" => previous == "let" || previous == "var"
+        case "class" => previous == "class"
+        case "struct" => previous == "struct"
+        case "interface" => previous == "interface"
+        case "enum" => previous == "enum"
+        case "extend" => previous == "extend"
+        case "typeAlias" => previous == "type" || previous == "typealias"
+        case _ => previous == kind
+    }
+}
+
 private func exposedSearchSignature(target: SymbolDoc, exposedName: String): String {
     let raw = target.headerSpelling.trimAscii()
-    match (raw.indexOf(target.name)) {
-        case Some(start) =>
-            let end = start + target.name.size
-            if (start == 0 || !searchSignatureIdentifier(raw[start - 1])) {
-                if (end >= raw.size || !searchSignatureIdentifier(raw[end])) {
+    if (target.name.isEmpty()) { return raw }
+    var searchFrom: Int64 = 0
+    while (searchFrom <= raw.size - target.name.size) {
+        match (raw[searchFrom..].indexOf(target.name)) {
+            case None => return raw
+            case Some(relative) =>
+                let start = searchFrom + relative
+                let end = start + target.name.size
+                let leftBoundary = start == 0 || !searchSignatureIdentifier(raw[start - 1])
+                let rightBoundary = end >= raw.size || !searchSignatureIdentifier(raw[end])
+                if (leftBoundary && rightBoundary &&
+                    searchSignatureDeclarationToken(raw, start, end, target.kind)) {
                     return raw[..start] + exposedName + raw[end..]
                 }
-            }
-            raw
-        case None => raw
+                searchFrom = if (end > searchFrom) { end } else { searchFrom + 1 }
+        }
     }
+    raw
 }
 
 private func searchSignatureIdentifier(value: Byte): Bool {

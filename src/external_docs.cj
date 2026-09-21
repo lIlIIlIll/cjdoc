@@ -80,7 +80,8 @@ private func safeExternalHref(baseUrl: String, href: String): ?String {
         case None => ()
     }
     if (relative.isEmpty() || relative.contains("..") || relative.contains("\\") ||
-        relative.contains(" ") || relative.contains("?") || anchor.contains("#") ||
+        relative.contains("%") || relative.contains(" ") || relative.contains("?") ||
+        anchor.contains("#") || anchor.contains("%") ||
         anchor.contains("\\") || anchor.contains(" ") || anchor.contains("?")) { return None }
     let suffix = if (anchor.isEmpty()) { "" } else { "#" + anchor }
     Some(baseUrl + "/" + relative + suffix)

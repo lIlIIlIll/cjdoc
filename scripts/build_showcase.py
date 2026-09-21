@@ -37,6 +37,17 @@ def copy_tree(source: Path, destination: Path) -> None:
         shutil.rmtree(destination)
     shutil.copytree(source, destination)
 
+def rewrite_demo_validation_evidence(output: Path) -> None:
+    validation = output / "demo/validation.html"
+    if not validation.is_file():
+        return
+    content = validation.read_text(encoding="utf-8")
+    expected = 'href="../doctest/results.json"'
+    if expected not in content:
+        raise RuntimeError("demo validation page is missing its doctest evidence link")
+    validation.write_text(
+        content.replace(expected, 'href="doctest/results.json"'), encoding="utf-8"
+    )
 
 def generate(
     binary: Path,
@@ -185,7 +196,7 @@ def main() -> int:
         copy_tree(current / "markdown", output / "markdown")
         copy_tree(demo / "html", output / "demo")
         copy_file(demo / "doctest/results.json", output / "demo/doctest/results.json")
-
+        rewrite_demo_validation_evidence(output)
         artifacts = output / "artifacts"
         artifact_sources = {
             "docs.json": current / "docs.json",
