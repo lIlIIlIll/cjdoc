@@ -340,8 +340,6 @@ private func finishConceptualPage(config: ConceptualDocsConfig, current: ?Concep
 private func loadConceptualDocsConfig(projectRoot: String): ConceptualDocsConfig {
     let config = ConceptualDocsConfig()
     let root = Path(projectRoot)
-    let docsRoot = root.join("docs")
-    if (exists(docsRoot)) { config.enabled = true }
     let configPath = root.join("cjdoc.toml")
     if (!exists(configPath)) { return config }
     let text = readTextBounded(configPath, CONCEPTUAL_CONFIG_MAX_BYTES)
