@@ -57,6 +57,7 @@ internal class ConceptualPage {
     let kind: String
     let markdown: String
     let bindings = ArrayList<ConceptualApiBinding>()
+    var apiAugmentationRequired = false
 
     init(source: String, route: String, title: String, kind: String, markdown: String) {
         this.source = source
@@ -627,7 +628,12 @@ internal func conceptualPagesForProject(projectRoot: String,
     documentation: public_model.DocumentationSet): ArrayList<ConceptualPage> {
     let config = loadConceptualDocsConfig(projectRoot)
     if (!config.enabled) { return ArrayList<ConceptualPage>() }
-    conceptualPages(Path(projectRoot), documentation, config)
+    let pages = conceptualPages(Path(projectRoot), documentation, config)
+    let resolvers = loadExternalDocResolvers(projectRoot)
+    if (!resolvers.isEmpty()) {
+        for (page in pages) { page.apiAugmentationRequired = true }
+    }
+    pages
 }
 internal func conceptualAgentPages(pages: ArrayList<ConceptualPage>): Array<public_render.AgentConceptualPage> {
     let result = ArrayList<public_render.AgentConceptualPage>()
@@ -1234,30 +1240,6 @@ private func conceptualAugmentApiArtifact(path: String, content: String,
     }
 }
 
-private func conceptualDecorateBaseArtifact(projectRoot: String,
-    artifact: public_render.RenderArtifact, augmentedSearch: String,
-    locale: String): public_render.RenderArtifact {
-    if (artifact.path == "html/index.html") {
-        return public_render.RenderArtifact(artifact.path, artifact.mediaType,
-            conceptualIndexNavigation(projectRoot, "html", artifact.content, locale: locale))
-    }
-    if (artifact.path == "markdown/index.md") {
-        return public_render.RenderArtifact(artifact.path, artifact.mediaType,
-            conceptualIndexNavigation(projectRoot, "markdown", artifact.content, locale: locale))
-    }
-    if (artifact.path == "html/search-index.json") {
-        return public_render.RenderArtifact(artifact.path, artifact.mediaType, augmentedSearch)
-    }
-    if (artifact.path == "html/search-index.js") {
-        let searchScript = match (artifact.content.indexOf(";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = ")) {
-            case Some(index) => "globalThis.__CJDOC_SEARCH_INDEX__ = ${augmentedSearch.trimAscii()}" + artifact.content[index..]
-            case None => "globalThis.__CJDOC_SEARCH_INDEX__ = ${augmentedSearch.trimAscii()};\n"
-        }
-        return public_render.RenderArtifact(artifact.path, artifact.mediaType, searchScript)
-    }
-    artifact
-}
-
 internal func appendConceptualArtifacts(projectRoot: String,
     documentation: public_model.DocumentationSet, formats: Array<String>,
     baseArtifacts: Array<public_render.RenderArtifact>, pages: ArrayList<ConceptualPage>,
@@ -1276,14 +1258,19 @@ internal func appendConceptualArtifacts(projectRoot: String,
     let resolvers = if (hasHtml || hasMarkdown) {
         loadExternalDocResolvers(projectRoot)
     } else { Array<ExternalDocResolver>() }
-    var shouldAugmentApiArtifacts = resolvers.size > 0
+    var shouldAugmentApiArtifacts = false
     if (!shouldAugmentApiArtifacts) {
         for (page in pages) {
-            if (page.bindings.size > 0) {
+            if (!page.bindings.isEmpty() || page.apiAugmentationRequired) {
                 shouldAugmentApiArtifacts = true
                 break
             }
         }
+    }
+    let symbolIndex = if (shouldAugmentApiArtifacts) {
+        conceptualArtifactSymbolIndex(documentation)
+    } else {
+        HashMap<String, public_model.SymbolDoc>()
     }
     let conceptualSearch = if (config.enabled && hasHtml) {
         conceptualSearchIndex(search, pages)
@@ -1291,27 +1278,31 @@ internal func appendConceptualArtifacts(projectRoot: String,
     let augmentedSearch = if (hasHtml) {
         externalSearchIndex(conceptualSearch, documentation, resolvers)
     } else { conceptualSearch }
-    if (!shouldAugmentApiArtifacts) {
-        let result = ArrayList<public_render.RenderArtifact>()
-        for (artifact in baseArtifacts) {
-            result.add(conceptualDecorateBaseArtifact(projectRoot, artifact, augmentedSearch, locale))
-        }
-        result.add(all: renderConceptualDocumentationArtifacts(documentation, formats, pages,
-            locale: locale, docVersion: docVersion))
-        return result.toArray()
-    }
-    let symbolIndex = conceptualArtifactSymbolIndex(documentation)
     let result = ArrayList<public_render.RenderArtifact>()
     for (artifact in baseArtifacts) {
-        if (artifact.path.startsWith("html/symbols/") || artifact.path.startsWith("markdown/symbols/")) {
+        if (artifact.path == "html/index.html") {
+            result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
+                conceptualIndexNavigation(projectRoot, "html", artifact.content, locale: locale)))
+        } else if (artifact.path == "markdown/index.md") {
+            result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
+                conceptualIndexNavigation(projectRoot, "markdown", artifact.content, locale: locale)))
+        } else if (artifact.path == "html/search-index.json") {
+            result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, augmentedSearch))
+        } else if (artifact.path == "html/search-index.js") {
+            let searchScript = match (artifact.content.indexOf(";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = ")) {
+                case Some(index) => "globalThis.__CJDOC_SEARCH_INDEX__ = ${augmentedSearch.trimAscii()}" + artifact.content[index..]
+                case None => "globalThis.__CJDOC_SEARCH_INDEX__ = ${augmentedSearch.trimAscii()};\n"
+            }
+            result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
+                searchScript))
+        } else if (shouldAugmentApiArtifacts && (artifact.path.startsWith("html/symbols/") || artifact.path.startsWith("markdown/symbols/"))) {
             let content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
                 symbolIndex, pages, resolvers, locale)
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, content))
         } else {
-            result.add(conceptualDecorateBaseArtifact(projectRoot, artifact, augmentedSearch, locale))
+            result.add(artifact)
         }
     }
-    result.add(all: renderConceptualDocumentationArtifacts(documentation, formats, pages,
-        locale: locale, docVersion: docVersion))
+    result.add(all: renderConceptualDocumentationArtifacts(documentation, formats, pages, locale: locale, docVersion: docVersion))
     result.toArray()
 }
