@@ -678,6 +678,51 @@ internal let HTML_SEARCH_SCRIPT = """
     };
     memberFilter.addEventListener("input", applyMemberFilter);
   }
+  const memberStateKey = (() => {
+    const project = document.body.dataset.cjdocProject || "";
+    const version = document.body.dataset.cjdocDocVersion || "";
+    const audience = document.body.dataset.cjdocAudience || "";
+    const cfg = document.body.dataset.cjdocCfg || "";
+    return "cjdoc-member-state:" + [project, version, audience, cfg, location.pathname].join("|");
+  })();
+  const saveMemberState = () => {
+    try {
+      const open = [...document.querySelectorAll("details[data-cjdoc-member][open]")]
+        .map((item) => item.id).filter(Boolean);
+      sessionStorage.setItem(memberStateKey, JSON.stringify({
+        open,
+        filter: memberFilter ? memberFilter.value : ""
+      }));
+    } catch (_) {}
+  };
+  const restoreMemberState = () => {
+    if (window.location.hash) return;
+    try {
+      const raw = sessionStorage.getItem(memberStateKey);
+      if (!raw) return;
+      const state = JSON.parse(raw);
+      if (memberFilter && typeof state.filter === "string") {
+        memberFilter.value = state.filter;
+        memberFilter.dispatchEvent(new Event("input", {bubbles: true}));
+      }
+      if (Array.isArray(state.open)) {
+        for (const id of state.open) {
+          const item = document.getElementById(id);
+          if (item && item.matches("details[data-cjdoc-member]")) {
+            item.hidden = false;
+            item.open = true;
+            const group = item.closest("[data-cjdoc-member-group]");
+            if (group) group.hidden = false;
+          }
+        }
+      }
+    } catch (_) {}
+  };
+  for (const member of document.querySelectorAll("details[data-cjdoc-member]")) {
+    member.addEventListener("toggle", saveMemberState);
+  }
+  if (memberFilter) memberFilter.addEventListener("input", saveMemberState);
+  restoreMemberState();
   const revealHashTarget = () => {
     if (!window.location.hash || window.location.hash.length <= 1) return;
     let id = window.location.hash.slice(1);
