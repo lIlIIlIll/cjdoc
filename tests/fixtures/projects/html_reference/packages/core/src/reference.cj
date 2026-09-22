@@ -49,6 +49,57 @@ public class ReferenceBox<T> {
      */
     public func use(label!: String = "Token", item!: Token): Unit {}
 
+    /** Compact density member 01. */
+    public func member01(): Unit {}
+
+    /** Compact density member 02. */
+    public func member02(): Unit {}
+
+    /** Compact density member 03. */
+    public func member03(): Unit {}
+
+    /** Compact density member 04. */
+    public func member04(): Unit {}
+
+    /** Compact density member 05. */
+    public func member05(): Unit {}
+
+    /** Compact density member 06. */
+    public func member06(): Unit {}
+
+    /** Compact density member 07. */
+    public func member07(): Unit {}
+
+    /** Compact density member 08. */
+    public func member08(): Unit {}
+
+    /** Compact density member 09. */
+    public func member09(): Unit {}
+
+    /** Compact density member 10. */
+    public func member10(): Unit {}
+
+    /** Compact density member 11. */
+    public func member11(): Unit {}
+
+    /** Compact density member 12. */
+    public func member12(): Unit {}
+
+    /** Compact density member 13. */
+    public func member13(): Unit {}
+
+    /** Compact density member 14. */
+    public func member14(): Unit {}
+
+    /** Compact density member 15. */
+    public func member15(): Unit {}
+
+    /** First overload used for same-page comparison. */
+    public func ping(value: Int64): Unit {}
+
+    /** Second overload used for same-page comparison. */
+    public func ping(value: String): Unit {}
+
     /** A documented property. */
     public prop label: String { get() { "reference" } }
 }
