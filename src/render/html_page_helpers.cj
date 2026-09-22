@@ -612,7 +612,8 @@ internal func appendReverseTypeUsageSection(out: RenderTextBuffer, symbol: Symbo
 
 internal func appendSymbolMetadata(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
-    assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex, locale!: String = "en"): Unit {
+    assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
+    locale!: String = "en", includeSummary!: Bool = true): Unit {
     out.append("<div class=\"symbol-meta\"><p class=\"symbol-kind\">${escapeHtml(symbol.kind)}")
     if (symbol.visibility != "public") {
         out.append(" <span class=\"badge\">${escapeHtml(symbol.visibility)}</span>")
@@ -621,9 +622,11 @@ internal func appendSymbolMetadata(out: RenderTextBuffer,
         out.append(" <span class=\"badge\" data-state=\"${escapeHtml(symbol.semantic.state)}\">semantic: ${escapeHtml(symbol.semantic.state)}</span>")
     }
     out.append("</p>")
-    match (symbol.documentation) {
-        case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, rootPrefix)
-        case None => ()
+    if (includeSummary) {
+        match (symbol.documentation) {
+            case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, rootPrefix)
+            case None => ()
+        }
     }
     out.append("<h2 class=\"signature-heading\">${label(locale, "Signature", "签名")}</h2><pre class=\"signature-block\"><code>")
     appendLinkedSignatureHtml(out, symbol, typeLinkIndex, rootPrefix)
