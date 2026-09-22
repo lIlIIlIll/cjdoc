@@ -91,6 +91,19 @@ internal func appendDeclarationRow(out: RenderTextBuffer, symbol: SymbolDoc,
     out.append("</a></article>\n")
 }
 
+public func renderUtilityHtmlPage(documentation: DocumentationSet, title: String, body: String,
+    rootPrefix: String, locale!: String = "en", docVersion!: ?String = None): String {
+    let projection = RenderProjection(documentation)
+    let out = RenderTextBuffer()
+    appendPageStart(out, title, rootPrefix, documentation, projection, locale: locale,
+        currentRoute: "utility", docVersion: docVersion)
+    out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"${rootPrefix}index.html\">${label(locale, "Home", "首页")}</a></li><li aria-current=\"page\">${escapeHtml(title)}</li></ol></nav>")
+    out.append("<header class=\"page-header\"><h1>${escapeHtml(title)}</h1></header>\n")
+    out.append(body)
+    appendPageEnd(out, documentation, locale: locale)
+    out.toString()
+}
+
 public func renderConceptualHtmlPage(documentation: DocumentationSet, title: String, body: String,
     rootPrefix: String, source!: ?String = None, locale!: String = "en",
     docVersion!: ?String = None): String {
