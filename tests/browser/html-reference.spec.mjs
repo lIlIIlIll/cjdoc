@@ -45,6 +45,10 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('.quick-start')).toContainText('Browse the API index');
     await expect(page.locator('.package-index a')).toHaveCount(2);
     await expect(page.locator('.sidebar-link[aria-current="page"]')).toContainText('Overview');
+    await gotoFile(page, indexUrl + '#packages');
+    await expect(page.locator('.sidebar-link[href*="#packages"]')).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('.sidebar-link[href$="index.html"]')).not.toHaveAttribute('aria-current');
+    await gotoFile(page, indexUrl);
 
     const fontMetrics = await page.evaluate(() => {
       const body = getComputedStyle(document.body);
@@ -150,9 +154,34 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-member][data-member-name="normalize"]')).toBeVisible();
     await expect(page.locator('[data-cjdoc-member][data-member-name="label"]')).toBeHidden();
     await memberFilter.fill('');
+    const normalizeDetail = page.locator('details[data-cjdoc-member][data-member-name="normalize"]');
+    const labelDetail = page.locator('details[data-cjdoc-member][data-member-name="label"]');
+    await expect(normalizeDetail).not.toHaveAttribute('open', '');
+    const typePageUrl = page.url();
+    await normalizeDetail.locator('summary').click();
+    await expect(normalizeDetail).toHaveAttribute('open', '');
+    await expect(normalizeDetail.locator('.member-detail-body')).toContainText('Parameters');
+    await expect(normalizeDetail.locator('.member-detail-body')).toContainText('Returns');
+    await expect(normalizeDetail.locator('.member-detail-body')).toContainText('precondition');
+    expect(page.url()).toBe(typePageUrl);
+    await labelDetail.locator('summary').click();
+    await expect(labelDetail).toHaveAttribute('open', '');
+    await expect(normalizeDetail).toHaveAttribute('open', '');
+    const normalizeAnchor = await normalizeDetail.getAttribute('id');
+    expect(normalizeAnchor).toBeTruthy();
+    await gotoFile(page, typePageUrl + '#' + normalizeAnchor);
+    await expect(page.locator('#' + normalizeAnchor)).toHaveAttribute('open', '');
+
+    const useDetail = page.locator('details[data-cjdoc-member][data-member-name="use"]');
+    await useDetail.locator('summary').click();
+    const linkedSignatureHtml = await useDetail.locator('.compact-signature code').innerHTML();
+    expect(linkedSignatureHtml).toContain('&quot;Token&quot;');
+    expect(linkedSignatureHtml).toMatch(/item!:\s*<a[^>]*>Token<\/a>/);
+    expect(linkedSignatureHtml).not.toMatch(/&quot;<a[^>]*>Token<\/a>&quot;/);
+
     await expect(page.locator('.source-action')).not.toHaveCount(0);
     await expect(page.locator('.source-action a')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
-    const memberHref = await page.locator('.declaration-row-link').filter({ hasText: 'normalize' }).getAttribute('href');
+    const memberHref = await normalizeDetail.locator('.member-permalink').getAttribute('href');
     const memberUrl = new URL(memberHref, classUrl).href;
     await gotoFile(page, memberUrl);
     await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
@@ -165,6 +194,12 @@ test.describe('generated HTML reference', () => {
     await expect(copyButton).toHaveCount(1);
     await copyButton.click();
     await expect(copyButton).toHaveAttribute('data-copied', 'true');
+
+    await gotoFile(page, classUrl);
+    const labelHref = await page.locator('details[data-cjdoc-member][data-member-name="label"] .member-permalink').getAttribute('href');
+    expect(labelHref).toBeTruthy();
+    await gotoFile(page, new URL(labelHref, classUrl).href);
+    await expect(page.locator('.api-usages')).toContainText('Getting started');
     await expectStable(page);
   });
 
@@ -242,6 +277,20 @@ test.describe('generated HTML reference', () => {
     expect(zoomMetrics.scrollWidth).toBeLessThanOrEqual(zoomMetrics.clientWidth + 1);
     expect(zoomMetrics.buttonWidth).toBeGreaterThanOrEqual(zoomMetrics.buttonScrollWidth);
     await expectStable(page);
+  });
+
+  test('tablet reference content is visible without a viewport-sized blank row', async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await openIndex(page);
+    const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+    const packageUrl = new URL(packageHref, indexUrl).href;
+    await gotoFile(page, packageUrl);
+    const classHref = await page.locator('.declaration-row-link').filter({ hasText: 'ReferenceBox' }).getAttribute('href');
+    const classUrl = new URL(classHref, packageUrl).href;
+    await gotoFile(page, classUrl);
+    const top = await page.locator('.docs-main .breadcrumbs').evaluate(element => element.getBoundingClientRect().top);
+    expect(top).toBeLessThan(768);
+    await expect(page.locator('.docs-main h1')).toBeVisible();
   });
 
   test('breakpoint layouts stay inside the viewport', async ({ page }) => {
