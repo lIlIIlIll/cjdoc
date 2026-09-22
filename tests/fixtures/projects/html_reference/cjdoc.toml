@@ -1,0 +1,12 @@
+[docs]
+index = "docs/index.md"
+
+[[docs.pages]]
+source = "docs/guide.md"
+route = "concepts/guides/getting-started"
+title = "Getting started"
+
+[external-docs.std]
+index = "docs/std-symbol-index.json"
+base-url = "https://docs.example.test/1.1.3"
+version = "1.1.3"

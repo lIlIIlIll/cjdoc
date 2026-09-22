@@ -154,7 +154,7 @@ internal class PublicProviderProjection {
 
 internal func publicSymbol(value: SymbolDoc, sourceMapper: PublicSourceMapper,
     providerStatesByModule: HashMap<String, String>, assetCollector: LocalAssetCollector,
-    markdownContext: MarkdownGenerationContext): public_model.SymbolDoc {
+    markdownContext: MarkdownGenerationContext, renderableIds: HashSet<String>): public_model.SymbolDoc {
     let providerState = match (providerStatesByModule.get(value.moduleId)) {
         case Some(state) => state
         case None => "unavailable"
@@ -197,7 +197,7 @@ internal func publicSymbol(value: SymbolDoc, sourceMapper: PublicSourceMapper,
         symbolRelationships: symbolRelationships.toArray(), documentation: match (value.documentation) {
             case Some(comment) => Some(
                 publicComment(comment, assetCollector, value.source.path, declarationSource, value.id,
-                    markdownContext))
+                    markdownContext, renderableIds))
             case None => None
         },
         origin: public_model.DeclarationOrigin(kind: value.origin.kind,
@@ -215,13 +215,14 @@ internal class PublicDeclarationProjection {
     let markdownContext: MarkdownGenerationContext
 
     init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
-        providerStatesByModule: HashMap<String, String>) {
+        providerStatesByModule: HashMap<String, String>, audience: String) {
         let declarations = ArrayList<public_model.SymbolDoc>()
         let assetCollector = LocalAssetCollector(documentation.sourceFileOrigins)
         let markdownContext = MarkdownGenerationContext()
+        let renderableIds = renderableSymbolIds(documentation, audience)
         for (symbol in documentation.symbols) {
             declarations.add(publicSymbol(symbol, sourceMapper, providerStatesByModule,
-                assetCollector, markdownContext))
+                assetCollector, markdownContext, renderableIds))
         }
         this.declarations = declarations.toArray()
         this.assetCollector = assetCollector
@@ -313,7 +314,7 @@ internal func publicDocumentation(documentation: DocumentationSet,
         repositoryRoot: repositoryRoot)
     let providerProjection = PublicProviderProjection(documentation)
     let declarationProjection = PublicDeclarationProjection(documentation, sourceMapper,
-        providerProjection.statesByModule)
+        providerProjection.statesByModule, request.audience)
     let semanticLinkDiagnostics = resolvePublicSemanticLinks(declarationProjection.declarations, request.audience,
         request.projectRoot)
     let sourceProjection = PublicSourceProjection(documentation, sourceMapper)

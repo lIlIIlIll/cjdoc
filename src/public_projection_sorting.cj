@@ -27,7 +27,6 @@ internal func remapDiagnosticCode(code: String): String {
         case "CJDOC1040" => "CJDOC3040"
         case "CJDOC1041" => "CJDOC3041"
         case "CJDOC1042" => "CJDOC3042"
-        case "CJDOC1043" => "CJDOC3043"
         case "CJDOC1044" => "CJDOC3044"
         case "CJDOC1045" => "CJDOC3045"
         case "CJDOC1046" => "CJDOC3046"

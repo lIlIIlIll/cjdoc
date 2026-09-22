@@ -19,7 +19,7 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "4de1b04c6b3c3c9474e322c28b16c68e29c2f724e4ae1dbdfe8c2d1fc3ef8f49"
+CANONICAL_SEARCH_JS_SHA256 = "8e6db8510df949c52b3e5f0c39f87203e0a3cf3dedbad3c3585bbdab5968f076"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "79fe532a96603bce52c49d9fd92cea58503875a0c61f5d3475f11c337f960642"
 
 
@@ -221,13 +221,31 @@ def main() -> int:
     search_script = (root / "search-index.js").read_text(encoding="utf-8")
     prefix = "globalThis.__CJDOC_SEARCH_INDEX__ = "
     suffix = ";\n"
-    if not search_script.startswith(prefix) or not search_script.endswith(suffix):
-        raise ValueError("search-index.js must contain only the generated search assignment")
-    embedded_search = search_script[len(prefix) : -len(suffix)]
-    if embedded_search != search_text.strip() or \
-            strict_loads(embedded_search, description="embedded HTML search index") != search:
+    signature_marker = ";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = "
+    if not search_script.startswith(prefix):
+        raise ValueError("search-index.js must start with the generated search assignment")
+    marker_index = search_script.find(signature_marker, len(prefix))
+    if marker_index >= 0:
+        if not search_script.endswith(suffix):
+            raise ValueError("search-index.js signature assignment must end with a newline")
+        embedded_search = search_script[len(prefix) : marker_index]
+        signature_text = search_script[marker_index + len(signature_marker) : -len(suffix)]
+        signatures = strict_loads(signature_text, description="embedded search signatures")
+        if not isinstance(signatures, dict) or any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in signatures.items()
+        ):
+            raise ValueError("embedded search signatures must be a string map")
+    else:
+        if not search_script.endswith(suffix):
+            raise ValueError("search-index.js must contain only the generated search assignment")
+        embedded_search = search_script[len(prefix) : -len(suffix)]
+    if (
+        embedded_search != search_text.strip()
+        or strict_loads(embedded_search, description="embedded HTML search index") != search
+    ):
         raise ValueError("search-index.js payload differs from search-index.json")
-    if search.get("schemaVersion") != "cjdoc.search-index/4":
+    if search.get("schemaVersion") != "cjdoc.search-index/6":
         raise ValueError("unexpected search index schemaVersion")
     entries = search.get("entries")
     if not isinstance(entries, list):
@@ -235,10 +253,12 @@ def main() -> int:
     ids = [entry.get("id") for entry in entries]
     if len(ids) != len(set(ids)):
         raise ValueError("search index IDs must be unique")
-    expected = {"id", "canonicalId", "exposure", "name", "qualifiedName", "kind",
+    required = {"id", "canonicalId", "exposure", "name", "qualifiedName", "kind",
                 "packageName", "summary", "href"}
+    allowed = required | {"moduleId", "moduleName", "ownerName", "parameterTypes", "returnType", "returnCanonical", "bindings", "externalDocs"}
     for entry in entries:
-        if set(entry) != expected:
+        fields = set(entry)
+        if not required.issubset(fields) or not fields.issubset(allowed):
             raise ValueError(f"invalid search entry fields for {entry.get('id')}")
         target, fragment = resolve_local(root, root / "search-index.json", entry["href"])
         target_parser = pages.get(target.resolve()) if target is not None else None

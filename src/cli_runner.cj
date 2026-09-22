@@ -18,9 +18,9 @@ internal func selectedSourceCacheDirectory(options: NewCliOptions): ?String {
 
 internal func orderedFormats(options: NewCliOptions): Array<String> {
     let result = ArrayList<String>()
+    if (options.formats.contains("html")) { result.add("html") }
     if (options.formats.contains("json")) { result.add("json") }
     if (options.formats.contains("markdown")) { result.add("markdown") }
-    if (options.formats.contains("html")) { result.add("html") }
     if (options.formats.contains("api-surface")) { result.add("api-surface") }
     if (options.formats.contains("coverage")) { result.add("coverage") }
     if (options.formats.contains("symbol-index")) { result.add("symbol-index") }
@@ -245,7 +245,135 @@ private func doctestFailureSeverity(doctestConfig: DoctestConfig,
     }
 }
 
-internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
+private func validationLabel(locale: String, english: String, chinese: String): String {
+    if (locale == "zh-CN") { chinese } else { english }
+}
+
+private func validationDocVersion(docVersion: ?String, locale: String): String {
+    match (docVersion) {
+        case Some(value) => value
+        case None => validationLabel(locale, "not provided", "未提供")
+    }
+}
+
+private func appendValidationResultRow(out: StringBuilder, result: DoctestCaseResult): Unit {
+    out.append("<tr><td><span class=\"badge\" data-state=\"")
+    out.append(public_render.escapeStandaloneHtml(result.status))
+    out.append("\">")
+    out.append(public_render.escapeStandaloneHtml(result.status))
+    out.append("</span></td><td><code>")
+    out.append(public_render.escapeStandaloneHtml(result.qualifiedName))
+    out.append("</code></td><td>")
+    out.append(public_render.escapeStandaloneHtml(result.title))
+    out.append("</td><td>")
+    out.append(result.durationMs.toString())
+    out.append(" ms")
+    if (!result.message.isEmpty()) {
+        out.append("<br><span class=\"validation-message\">")
+        out.append(public_render.escapeStandaloneHtml(result.message))
+        out.append("</span>")
+    }
+    out.append("</td></tr>")
+}
+
+private func renderValidationHtml(documentation: public_model.DocumentationSet,
+    report: ?DoctestReport, docVersion: ?String, locale: String): String {
+    let language = if (locale == "zh-CN") { "zh-CN" } else { "en" }
+    let apiDocumentation = validationLabel(locale, "API documentation", "API 文档")
+    let validationTitle = validationLabel(locale, "Validation results", "验证结果")
+    let documentationVersion = validationLabel(locale, "Documentation version", "文档版本")
+    let diagnostics = validationLabel(locale, "Diagnostics", "诊断")
+    let apiDiffUnavailable = validationLabel(locale,
+        "API diff: not attached to this generation", "API diff：本次生成未附带")
+    let doctestEvidence = validationLabel(locale, "Doctest evidence", "Doctest 证据")
+    let mode = validationLabel(locale, "Mode", "模式")
+    let timeout = validationLabel(locale, "timeout", "超时")
+    let memory = validationLabel(locale, "memory", "内存")
+    let jobs = validationLabel(locale, "jobs", "作业")
+    let rawEvidence = validationLabel(locale, "Raw evidence", "原始证据")
+    let status = validationLabel(locale, "Status", "状态")
+    let api = validationLabel(locale, "API", "API")
+    let example = validationLabel(locale, "Example", "示例")
+    let duration = validationLabel(locale, "Duration", "耗时")
+    let notRun = validationLabel(locale, "not run", "未运行")
+    let doctestNotRun = validationLabel(locale,
+        "Doctest execution was not enabled for this generation. This page does not infer verification from documentation presence.",
+        "本次生成未启用 Doctest 执行。本页面不会根据文档是否存在推断验证成功。")
+    let apiDiffEvidence = validationLabel(locale, "API diff evidence", "API diff 证据")
+    let apiDiffNotAttached = validationLabel(locale,
+        "No comparison report was attached to this generation. Run the explicit cjdoc diff command to inspect version-to-version changes; this page does not infer compatibility.",
+        "本次生成未附带比较报告。请显式运行 cjdoc diff 命令检查版本间变化；本页面不会推断兼容性。")
+    let out = StringBuilder()
+    out.append("<!doctype html><html lang=\"")
+    out.append(language)
+    out.append("\"><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>")
+    out.append(validationTitle)
+    out.append(" · ")
+    out.append(public_render.escapeStandaloneHtml(documentation.project.name))
+    out.append("</title><script src=\"theme-bootstrap.js\"></script><link rel=\"stylesheet\" href=\"style.css\"><script defer src=\"search-index.js\"></script><script defer src=\"search.js\"></script></head><body><main class=\"docs-main validation-page\"><p><a href=\"index.html\">")
+    out.append(apiDocumentation)
+    out.append("</a></p><h1>")
+    out.append(validationTitle)
+    out.append("</h1><p class=\"reference-context\">")
+    out.append(documentationVersion)
+    out.append(": ")
+    out.append(public_render.escapeStandaloneHtml(validationDocVersion(docVersion, locale)))
+    out.append(" · ")
+    out.append(diagnostics)
+    out.append(": ")
+    out.append(documentation.diagnostics.size.toString())
+    out.append(" · ")
+    out.append(apiDiffUnavailable)
+    out.append("</p><section><h2>")
+    out.append(doctestEvidence)
+    out.append("</h2>")
+    match (report) {
+        case Some(value) =>
+            out.append("<p>")
+            out.append(mode)
+            out.append(": <code>")
+            out.append(public_render.escapeStandaloneHtml(value.mode))
+            out.append("</code>; ")
+            out.append(timeout)
+            out.append(": ")
+            out.append(value.timeoutMs.toString())
+            out.append(" ms; ")
+            out.append(memory)
+            out.append(": ")
+            out.append(value.memoryMb.toString())
+            out.append(" MiB; ")
+            out.append(jobs)
+            out.append(": ")
+            out.append(value.jobs.toString())
+            out.append(". ")
+            out.append(rawEvidence)
+            out.append(": <a href=\"../doctest/results.json\">doctest/results.json</a></p><table><thead><tr><th>")
+            out.append(status)
+            out.append("</th><th>")
+            out.append(api)
+            out.append("</th><th>")
+            out.append(example)
+            out.append("</th><th>")
+            out.append(duration)
+            out.append("</th></tr></thead><tbody>")
+            for (result in value.results) { appendValidationResultRow(out, result) }
+            out.append("</tbody></table>")
+        case None =>
+            out.append("<p><span class=\"badge\" data-state=\"unavailable\">")
+            out.append(notRun)
+            out.append("</span> ")
+            out.append(doctestNotRun)
+            out.append("</p>")
+    }
+    out.append("</section><section><h2>")
+    out.append(apiDiffEvidence)
+    out.append("</h2><p>")
+    out.append(apiDiffNotAttached)
+    out.append("</p></section></main></body></html>")
+    out.toString()
+}
+
+ internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
     selectedCache: ?String, outputLock: ?OutputLockHandle, writeOnFailure!: Bool = true): Int64 {
     let commandLine = getCommandLine()
     let astPreflightExecutable: ?String = if (commandLine.isEmpty()) { None }
@@ -268,9 +396,10 @@ internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Stri
     var sourceOrigins: Array<SourceFileOrigin> = []
     var documentation = match (generationRequest) {
         case Some(request) =>
-            let generated = generateDocumentationWithSource(request, defaultSemanticProvider())
-            sourceOrigins = generated.internalDocumentation.sourceFileOrigins.toArray()
-            generated.publicDocumentation
+            let (generatedDocumentation, generatedOrigins) = generatePublicDocumentationWithSource(request,
+                defaultSemanticProvider())
+            sourceOrigins = generatedOrigins
+            generatedDocumentation
         case None => decodeValidatedDocIr(readDocIrInput(Path(options.input.getOrThrow())))
     }
     let qualityConfig = if (generationRequest.isSome()) {
@@ -282,6 +411,11 @@ internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Stri
         loadDoctestConfig(options.project)
     } else {
         DoctestConfig()
+    }
+    let conceptualPages = if (generationRequest.isSome()) {
+        conceptualPagesForProject(options.project, documentation)
+    } else {
+        ArrayList<ConceptualPage>()
     }
     var doctestReport: ?DoctestReport = None
     if (generationRequest.isSome() && doctestConfig.mode != "off") {
@@ -310,19 +444,22 @@ internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Stri
         let artifactList = ArrayList<public_render.RenderArtifact>()
         if (generationRequest.isSome()) {
             artifactList.add(all: appendConceptualArtifacts(options.project, documentation,
-                orderedFormats(options), renderedArtifacts))
+                orderedFormats(options), renderedArtifacts, conceptualPages,
+                locale: options.locale, docVersion: options.docVersion,
+                markdownLayout: options.markdownLayout))
         } else {
             artifactList.add(all: renderedArtifacts)
         }
         if (options.formats.contains("html")) {
             let agentConceptualPages: Array<public_render.AgentConceptualPage> = if (generationRequest.isSome()) {
-                conceptualAgentPages(options.project, documentation)
+                conceptualAgentPages(conceptualPages)
             } else {
                 []
             }
             artifactList.add(all: public_render.renderAgentReadableArtifacts(documentation,
                 conceptualPages: agentConceptualPages,
-                includeFull: options.agentFull, version: options.docVersion))
+                includeFull: options.agentFull, version: options.docVersion,
+                includeValidation: true))
         }
         match (options.docVersion) {
             case Some(version) => appendDocumentVersionArtifact(artifactList, version, documentation.project.name)
@@ -333,6 +470,13 @@ internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?Stri
                 artifactList.add(public_render.RenderArtifact(
                     "doctest/results.json", "application/json", encodeDoctestReport(report)))
             case None => ()
+        }
+        var wantsHtml = false
+        for (format in options.formats) { if (format == "html") { wantsHtml = true } }
+        if (wantsHtml) {
+            artifactList.add(public_render.RenderArtifact(
+                "html/validation.html", "text/html; charset=utf-8",
+                renderValidationHtml(documentation, doctestReport, options.docVersion, options.locale)))
         }
         artifacts = artifactList.toArray()
     }

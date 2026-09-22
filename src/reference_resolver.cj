@@ -164,26 +164,31 @@ func resolveDocReference(documentation: DocumentationSet, reference: String): ?S
     if (matches.size == 1) { Some(matches[0]) } else { None }
 }
 
+private func resolveDocTagReferences(tags: ArrayList<DocTag>, index: DeclarationIndex): Unit {
+    for (reference in tags) {
+        reference.targetSymbolId = None
+        if (reference.subject.isEmpty()) {
+            reference.referenceState = "broken"
+            continue
+        }
+        let matches = index.matches(reference.subject)
+        if (matches.size == 1) {
+            reference.referenceState = "resolved"
+            reference.targetSymbolId = Some(matches[0].id)
+        } else if (matches.isEmpty()) {
+            reference.referenceState = "unresolved"
+        } else {
+            reference.referenceState = "ambiguous"
+        }
+    }
+}
+
 func resolveDocumentationReferences(documentation: DocumentationSet): Unit {
     let index = DeclarationIndex(documentation)
     for (symbol in documentation.symbols) {
         if (let Some(comment) <- symbol.documentation) {
-            for (reference in comment.see) {
-                reference.targetSymbolId = None
-                if (reference.subject.isEmpty()) {
-                    reference.referenceState = "broken"
-                    continue
-                }
-                let matches = index.matches(reference.subject)
-                if (matches.size == 1) {
-                    reference.referenceState = "resolved"
-                    reference.targetSymbolId = Some(matches[0].id)
-                } else if (matches.isEmpty()) {
-                    reference.referenceState = "unresolved"
-                } else {
-                    reference.referenceState = "ambiguous"
-                }
-            }
+            resolveDocTagReferences(comment.see, index)
+            resolveDocTagReferences(comment.throwsTags, index)
         }
     }
 }

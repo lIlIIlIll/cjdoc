@@ -31,6 +31,12 @@ internal func generateDocumentationWithSource(request: GenerationRequest,
     validateGeneratedDocIr(result)
     GeneratedDocumentation(documentation, result)
 }
+internal func generatePublicDocumentationWithSource(request: GenerationRequest,
+    semanticProvider: SemanticProvider): (public_model.DocumentationSet, Array<SourceFileOrigin>) {
+    let generated = generateDocumentationWithSource(request, semanticProvider)
+    let origins = generated.internalDocumentation.sourceFileOrigins.toArray()
+    (generated.publicDocumentation, origins)
+}
 
 public class DocumentationEngine {
     public func generate(request: GenerationRequest): public_model.DocumentationSet {

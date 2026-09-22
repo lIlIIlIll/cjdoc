@@ -26,12 +26,12 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         let membersByOwner = groupMembersByOwner(projection)
         let searchIndex = renderSearchIndex(documentation, projection)
         artifacts.addText("html/index.html", "text/html; charset=utf-8",
-            renderHtmlIndex(documentation, projection, locale: locale))
+            renderHtmlIndex(documentation, projection, locale: locale, docVersion: docVersion))
         artifacts.addText("html/search-index.json", "application/json", searchIndex)
         artifacts.addText("html/symbol-index.json", "application/json",
             renderSymbolIndex(documentation, hrefPrefix: "", version: docVersion))
         artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
-            renderSearchIndexScript(searchIndex))
+            renderSearchIndexScript(searchIndex, projection))
         artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8", HTML_THEME_BOOTSTRAP_SCRIPT)
         artifacts.addText("html/search.js", "text/javascript; charset=utf-8", HTML_SEARCH_SCRIPT)
         artifacts.addText("html/style.css", "text/css; charset=utf-8",
@@ -40,12 +40,12 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         for (pkg in projection.packages) {
             artifacts.addText("html/${packagePagePath(pkg.source.moduleId, pkg.source.name)}",
                 "text/html; charset=utf-8",
-                renderPackagePage(documentation, projection, index, topLevelByPackage, pkg, locale: locale))
+                renderPackagePage(documentation, projection, index, topLevelByPackage, pkg, locale: locale, docVersion: docVersion))
         }
         for (symbol in projection.visibleSymbols) {
             artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
                 renderSymbolPage(documentation, projection, index, membersByOwner, symbol, assetLookup,
-                    typeLinkIndex, locale: locale))
+                    typeLinkIndex, locale: locale, docVersion: docVersion))
         }
         appendAssetArtifacts(artifacts, projectedAssets, "html")
 }

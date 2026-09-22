@@ -37,6 +37,17 @@ def copy_tree(source: Path, destination: Path) -> None:
         shutil.rmtree(destination)
     shutil.copytree(source, destination)
 
+def rewrite_demo_validation_evidence(output: Path) -> None:
+    validation = output / "demo/validation.html"
+    if not validation.is_file():
+        return
+    content = validation.read_text(encoding="utf-8")
+    expected = 'href="../doctest/results.json"'
+    if expected not in content:
+        raise RuntimeError("demo validation page is missing its doctest evidence link")
+    validation.write_text(
+        content.replace(expected, 'href="doctest/results.json"'), encoding="utf-8"
+    )
 
 def generate(
     binary: Path,
@@ -159,7 +170,7 @@ def main() -> int:
         demo_project = work / "workspace-demo"
         copy_tree(repo / "tests/fixtures/projects/html_reference", demo_project)
         (demo_project / "cjdoc.toml").write_text(
-            "[doctest]\nmode = \"warn\"\ntimeout-ms = 2000\nmemory-mb = 2048\njobs = 1\n",
+            "[doctest]\nmode = \"warn\"\ntimeout-ms = 2000\nmemory-mb = 2048\njobs = 1\n\n[docs]\nindex = \"docs/index.md\"\n\n[[docs.pages]]\nsource = \"docs/guide.md\"\nroute = \"concepts/guides/getting-started\"\ntitle = \"Getting started\"\n",
             encoding="utf-8",
         )
         demo = work / "demo"
@@ -184,7 +195,8 @@ def main() -> int:
         copy_tree(current / "html", output / "api")
         copy_tree(current / "markdown", output / "markdown")
         copy_tree(demo / "html", output / "demo")
-
+        copy_file(demo / "doctest/results.json", output / "demo/doctest/results.json")
+        rewrite_demo_validation_evidence(output)
         artifacts = output / "artifacts"
         artifact_sources = {
             "docs.json": current / "docs.json",

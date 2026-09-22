@@ -2,6 +2,7 @@ package cjdoc.render
 
 import cjdoc.model.*
 import std.collection.*
+import std.sort.*
 
 internal func label(locale: String, english: String, chinese: String): String {
     if (locale == "zh-CN") { chinese } else { english }
@@ -52,32 +53,147 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
 internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: String,
     documentation: DocumentationSet, projection: RenderProjection,
     locale!: String = "en", currentPackagePath!: ?String = None,
-    currentRoute!: String = "overview"): Unit {
+    currentRoute!: String = "overview", docVersion!: ?String = None): Unit {
+    let projectLabel = escapeHtml(documentation.project.name)
+    let documentVersionLabel = match (docVersion) {
+        case Some(value) => escapeHtml(value)
+        case None => label(locale, "Document version not set", "未设置文档版本")
+    }
+    let documentationVersionContextLabel = label(locale, "Documentation version", "文档版本")
+    let audienceContextLabel = label(locale, "Audience", "受众")
+    let configurationContextLabel = label(locale, "Target configuration", "目标配置")
+    let generatorContextLabel = label(locale, "Generator", "生成器")
+    let filtersLabel = label(locale, "Filters", "筛选")
+    let searchCategoriesLabel = label(locale, "Search categories", "搜索类别")
+    let allLabel = label(locale, "All", "全部")
+    let classesLabel = label(locale, "Classes", "类")
+    let functionsLabel = label(locale, "Functions", "函数")
+    let otherLabel = label(locale, "Other", "其他")
+    let filterPackageLabel = label(locale, "Filter by package", "按包筛选")
+    let allPackagesLabel = label(locale, "All packages", "全部包")
+    let chooseThemeLabel = label(locale, "Choose theme", "切换主题")
+    let themeLabel = label(locale, "Theme", "主题")
+    let themeModeLabel = label(locale, "Theme mode", "主题模式")
+    let systemThemeLabel = label(locale, "System", "系统")
+    let lightThemeLabel = label(locale, "Light", "浅色")
+    let darkThemeLabel = label(locale, "Dark", "深色")
+    let paperThemeLabel = label(locale, "Paper", "纸张")
+    let oceanThemeLabel = label(locale, "Ocean", "海洋")
+    let forestThemeLabel = label(locale, "Forest", "森林")
+    let terminalThemeLabel = label(locale, "Terminal", "终端")
+    let violetThemeLabel = label(locale, "Violet", "紫罗兰")
+    let openNavigationLabel = label(locale, "Open navigation", "打开导航")
+    let searchApiLabel = label(locale, "Search API", "搜索 API")
+    let searchSyntaxLabel = label(locale, "Filters: name:, owner:, param:, return:, package:, kind:", "筛选：name:、owner:、param:、return:、package:、kind:")
+    let searchDocsLabel = label(locale, "Search docs", "搜索文档")
+    let closeNavigationLabel = label(locale, "Close navigation", "关闭导航")
+    let onThisPageLabel = label(locale, "On this page", "本页目录")
     out.append("<!doctype html>\n<html lang=\"${locale}\"><head><meta charset=\"utf-8\">")
     out.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
     out.append("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'\">")
-    out.append("<title>${escapeHtml(title)}</title><script src=\"${rootPrefix}theme-bootstrap.js\"></script><link rel=\"stylesheet\" href=\"${rootPrefix}style.css\">")
+    out.append("<title>${projectLabel} · ${escapeHtml(title)}</title><script src=\"${rootPrefix}theme-bootstrap.js\"></script><link rel=\"stylesheet\" href=\"${rootPrefix}style.css\">")
     out.append("<script defer src=\"${rootPrefix}search-index.js\"></script>")
-    out.append("<script defer src=\"${rootPrefix}search.js\"></script></head><body>\n")
+    out.append("<script defer src=\"${rootPrefix}search.js\"></script></head><body data-cjdoc-route=\"${escapeHtml(currentRoute)}\" data-cjdoc-project=\"${projectLabel}\"")
+    match (docVersion) {
+        case Some(value) => out.append(" data-cjdoc-doc-version=\"${escapeHtml(value)}\"")
+        case None => ()
+    }
+    out.append(" data-cjdoc-audience=\"${escapeHtml(documentation.configuration.audience)}\" data-cjdoc-cfg=\"${escapeHtml(documentation.configuration.cfgProfile)}\">\n")
     out.append("<header class=\"site-nav\"><div class=\"site-nav-inner\">")
-    out.append("<button class=\"nav-menu\" type=\"button\" data-cjdoc-menu aria-expanded=\"false\" aria-controls=\"cjdoc-sidebar\" aria-label=\"${label(locale, "Open navigation", "打开导航")}\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M4 7h16M4 12h16M4 17h16\"></path></svg></button>")
-    out.append("<a class=\"brand\" href=\"${rootPrefix}index.html\"><span class=\"brand-mark\" aria-hidden=\"true\">cj</span><span>cjdoc<span class=\"brand-subtitle\">${label(locale, "API docs", "API 文档")}</span></span></a>")
-    out.append("<div class=\"site-search\"><div class=\"search-area\"><div class=\"search-shell\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"></circle><path d=\"m20 20-4-4\"></path></svg><label class=\"sr-only\" for=\"cjdoc-search-input\">${label(locale, "Search API", "搜索 API")}</label>")
-    out.append("<input id=\"cjdoc-search-input\" type=\"search\" placeholder=\"${label(locale, "Search docs", "搜索文档")}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"cjdoc-search-results\" aria-expanded=\"false\" data-cjdoc-search data-root=\"${rootPrefix}\"><kbd>Ctrl K</kbd></div>")
+    out.append("<button class=\"nav-menu\" type=\"button\" data-cjdoc-menu aria-expanded=\"false\" aria-controls=\"cjdoc-sidebar\" aria-label=\"")
+    out.append(openNavigationLabel)
+    out.append("\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M4 7h16M4 12h16M4 17h16\"></path></svg></button>")
+    out.append("<a class=\"brand\" href=\"${rootPrefix}index.html\"><span class=\"brand-mark\" aria-hidden=\"true\">cj</span><span class=\"brand-copy\"><strong class=\"brand-project\">${projectLabel}</strong><span class=\"brand-subtitle\">${documentVersionLabel}</span></span></a>")
+    out.append("<div class=\"site-search\"><div class=\"search-area\"><div class=\"search-shell\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"></circle><path d=\"m20 20-4-4\"></path></svg><label class=\"sr-only\" for=\"cjdoc-search-input\">")
+    out.append(searchApiLabel)
+    out.append("</label>")
+    out.append("<input id=\"cjdoc-search-input\" type=\"search\" placeholder=\"")
+    out.append(searchDocsLabel)
+    out.append("\" autocomplete=\"off\" title=\"${escapeHtml(searchSyntaxLabel)}\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"cjdoc-search-results\" aria-expanded=\"false\" data-cjdoc-search data-root=\"")
+    out.append(rootPrefix)
+    out.append("\"><kbd>Ctrl K</kbd></div>")
     out.append("<ul id=\"cjdoc-search-results\" class=\"search-results\" role=\"listbox\" data-cjdoc-results aria-live=\"polite\"></ul><p class=\"search-status\" data-cjdoc-search-status role=\"status\" hidden></p></div>")
-    out.append("<div class=\"search-filters\"><div class=\"search-tabs\" role=\"tablist\" aria-label=\"${label(locale, "Search categories", "搜索类别")}\"><button type=\"button\" role=\"tab\" aria-selected=\"true\" aria-pressed=\"true\" data-cjdoc-category=\"all\">${label(locale, "All", "全部")}</button><button type=\"button\" role=\"tab\" aria-selected=\"false\" aria-pressed=\"false\" data-cjdoc-category=\"classes\">${label(locale, "Classes", "类")}</button><button type=\"button\" role=\"tab\" aria-selected=\"false\" aria-pressed=\"false\" data-cjdoc-category=\"functions\">${label(locale, "Functions", "函数")}</button><button type=\"button\" role=\"tab\" aria-selected=\"false\" aria-pressed=\"false\" data-cjdoc-category=\"other\">${label(locale, "Other", "其他")}</button></div><label><span class=\"sr-only\">${label(locale, "Filter by package", "按包筛选")}</span><select data-cjdoc-package aria-label=\"${label(locale, "Filter by package", "按包筛选")}\"><option value=\"\">${label(locale, "All packages", "全部包")}</option></select></label></div></div>")
-    out.append("<div class=\"top-actions\"><span class=\"version-label\" title=\"${label(locale, "Generated by cjdoc", "由 cjdoc 生成")}\">v${escapeHtml(documentation.generator.version)}</span><div class=\"theme-control\" data-cjdoc-theme-control><button class=\"theme-toggle\" type=\"button\" data-cjdoc-theme-toggle aria-haspopup=\"dialog\" aria-expanded=\"false\" aria-label=\"${label(locale, "Choose theme", "切换主题")}\">${label(locale, "Theme", "主题")}</button><div class=\"theme-popover\" data-cjdoc-theme-popover role=\"dialog\" aria-label=\"${label(locale, "Theme", "主题")}\" hidden><div class=\"theme-options\" role=\"group\" aria-label=\"${label(locale, "Theme mode", "主题模式")}\"><button type=\"button\" data-cjdoc-theme-value=\"system\">${label(locale, "System", "系统")}</button><button type=\"button\" data-cjdoc-theme-value=\"light\">${label(locale, "Light", "浅色")}</button><button type=\"button\" data-cjdoc-theme-value=\"dark\">${label(locale, "Dark", "深色")}</button></div><details><summary>${label(locale, "More themes", "更多主题")}</summary><div class=\"theme-options theme-presets\" role=\"group\"><button type=\"button\" data-cjdoc-theme-value=\"paper\">${label(locale, "Paper", "纸张")}</button><button type=\"button\" data-cjdoc-theme-value=\"ocean\">${label(locale, "Ocean", "深海")}</button><button type=\"button\" data-cjdoc-theme-value=\"forest\">${label(locale, "Forest", "松林")}</button><button type=\"button\" data-cjdoc-theme-value=\"terminal\">${label(locale, "Terminal", "终端")}</button><button type=\"button\" data-cjdoc-theme-value=\"violet\">${label(locale, "Violet", "紫墨")}</button></div></details></div></div></div>")
-    out.append("</div></header>\n<div class=\"docs-layout\">")
-    out.append("<button class=\"nav-backdrop\" type=\"button\" data-cjdoc-menu-backdrop aria-label=\"${label(locale, "Close navigation", "关闭导航")}\" hidden></button>")
+    out.append("<button class=\"search-filter-toggle\" type=\"button\" data-cjdoc-filter-toggle aria-expanded=\"false\" aria-controls=\"cjdoc-search-filters\">${filtersLabel}</button>")
+    out.append("<div id=\"cjdoc-search-filters\" class=\"search-filters\"><div class=\"search-tabs\" role=\"tablist\" aria-label=\"")
+    out.append(searchCategoriesLabel)
+    out.append("\"><button type=\"button\" role=\"tab\" aria-selected=\"true\" aria-pressed=\"true\" data-cjdoc-category=\"all\">")
+    out.append(allLabel)
+    out.append("</button><button type=\"button\" role=\"tab\" aria-selected=\"false\" aria-pressed=\"false\" data-cjdoc-category=\"classes\">")
+    out.append(classesLabel)
+    out.append("</button><button type=\"button\" role=\"tab\" aria-selected=\"false\" aria-pressed=\"false\" data-cjdoc-category=\"functions\">")
+    out.append(functionsLabel)
+    out.append("</button><button type=\"button\" role=\"tab\" aria-selected=\"false\" aria-pressed=\"false\" data-cjdoc-category=\"other\">")
+    out.append(otherLabel)
+    out.append("</button></div><label><span class=\"sr-only\">")
+    out.append(filterPackageLabel)
+    out.append("</span><select data-cjdoc-package aria-label=\"")
+    out.append(filterPackageLabel)
+    out.append("\"><option value=\"\">")
+    out.append(allPackagesLabel)
+    out.append("</option></select></label></div>")
+    out.append("<div class=\"top-actions\"><span class=\"version-label\" title=\"")
+    out.append(label(locale, "Generated by cjdoc", "由 cjdoc 生成"))
+    out.append("\">cjdoc ")
+    out.append(escapeHtml(documentation.generator.version))
+    out.append("</span><div class=\"theme-control\" data-cjdoc-theme-control><button class=\"theme-toggle\" type=\"button\" data-cjdoc-theme-toggle aria-haspopup=\"dialog\" aria-expanded=\"false\" aria-label=\"")
+    out.append(chooseThemeLabel)
+    out.append("\">")
+    out.append(themeLabel)
+    out.append("</button><div class=\"theme-popover\" data-cjdoc-theme-popover role=\"dialog\" aria-label=\"")
+    out.append(themeLabel)
+    out.append("\" hidden><div class=\"theme-options\" role=\"group\" aria-label=\"")
+    out.append(themeModeLabel)
+    out.append("\">")
+    out.append("<button type=\"button\" data-cjdoc-theme-value=\"system\">")
+    out.append(systemThemeLabel)
+    out.append("</button><button type=\"button\" data-cjdoc-theme-value=\"light\">")
+    out.append(lightThemeLabel)
+    out.append("</button><button type=\"button\" data-cjdoc-theme-value=\"dark\">")
+    out.append(darkThemeLabel)
+    out.append("</button><button type=\"button\" data-cjdoc-theme-value=\"paper\">")
+    out.append(paperThemeLabel)
+    out.append("</button><button type=\"button\" data-cjdoc-theme-value=\"ocean\">")
+    out.append(oceanThemeLabel)
+    out.append("</button><button type=\"button\" data-cjdoc-theme-value=\"forest\">")
+    out.append(forestThemeLabel)
+    out.append("</button><button type=\"button\" data-cjdoc-theme-value=\"terminal\">")
+    out.append(terminalThemeLabel)
+    out.append("</button><button type=\"button\" data-cjdoc-theme-value=\"violet\">")
+    out.append(violetThemeLabel)
+    out.append("</button></div></div></div></div>")
+    out.append("</div></div></header>\n<div class=\"reference-context\" data-cjdoc-reference-context>")
+    out.append("<span><strong>" + documentationVersionContextLabel + "</strong> " + documentVersionLabel + "</span>")
+    out.append("<span><strong>" + audienceContextLabel + "</strong> " + escapeHtml(documentation.configuration.audience) + "</span>")
+    out.append("<span><strong>" + label(locale, "Library version", "库版本") + "</strong> " + label(locale, "not provided", "未提供") + "</span>")
+    out.append("<span><strong>" + label(locale, "Target platform", "目标平台") + "</strong> " + label(locale, "unknown", "未知") + "</span>")
+    out.append("<span><strong>" + configurationContextLabel + "</strong> " + escapeHtml(documentation.configuration.cfgProfile) + "</span>")
+    out.append("<span><strong>" + generatorContextLabel + "</strong> " + escapeHtml(documentation.generator.name) + " " + escapeHtml(documentation.generator.version) + "</span></div>\n<div class=\"docs-layout\">")
+    out.append("<button class=\"nav-backdrop\" type=\"button\" data-cjdoc-menu-backdrop aria-label=\"")
+    out.append(closeNavigationLabel)
+    out.append("\" hidden></button>")
     appendHtmlSidebar(out, documentation, projection, rootPrefix, locale,
         currentPackagePath: currentPackagePath, currentRoute: currentRoute)
-    out.append("<main class=\"docs-main\" data-cjdoc-content tabindex=\"-1\"><div class=\"content-column\">\n")
+    out.append("<main class=\"docs-main\" data-cjdoc-content tabindex=\"-1\"><div class=\"content-column\"><details class=\"mobile-toc\" data-cjdoc-mobile-toc hidden><summary>")
+    out.append(onThisPageLabel)
+    out.append("</summary><nav><ol></ol></nav></details>\n")
 }
 
 internal func appendPageEnd(out: RenderTextBuffer, documentation: DocumentationSet,
     locale!: String = "en"): Unit {
-    out.append("</div></main><aside class=\"toc-panel\" data-cjdoc-toc aria-label=\"${label(locale, "On this page", "本页目录")}\" hidden><p class=\"toc-title\">${label(locale, "On this page", "本页目录")}</p><nav><ol></ol></nav></aside></div>")
-    out.append("<footer class=\"site-footer\"><div class=\"footer-inner\"><span><span class=\"footer-mark\">cjdoc</span> · ${label(locale, "Generated from Doc IR", "由 Doc IR 生成")}</span><span>${escapeHtml(documentation.generator.version)} · ${escapeHtml(documentation.schemaVersion)}</span></div></footer></body></html>\n")
+    let onThisPageLabel = label(locale, "On this page", "本页目录")
+    let generatedFromLabel = label(locale, "Generated from Doc IR", "由 Doc IR 生成")
+    out.append("</div></main><aside class=\"toc-panel\" data-cjdoc-toc aria-label=\"")
+    out.append(onThisPageLabel)
+    out.append("\" hidden><p class=\"toc-title\">")
+    out.append(onThisPageLabel)
+    out.append("</p><nav><ol></ol></nav></aside></div>")
+    out.append("<footer class=\"site-footer\"><div class=\"footer-inner\"><span><span class=\"footer-mark\">cjdoc</span> · ")
+    out.append(generatedFromLabel)
+    out.append("</span><span>")
+    out.append(escapeHtml(documentation.generator.version))
+    out.append(" · ")
+    out.append(escapeHtml(documentation.schemaVersion))
+    out.append("</span></div></footer></body></html>\n")
 }
 
 internal func htmlTocLabel(symbol: SymbolDoc): String {
@@ -197,13 +313,19 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             }
             }
             appendDocumentationExamplesHtml(out, comment, locale)
+            appendDocumentationContractsHtml(out, comment, locale)
             if (!symbol.parameters.isEmpty()) {
                 out.append("<h3>${label(locale, "Parameters", "参数")}</h3><dl class=\"parameter-list\">\n")
                 for (parameter in symbol.parameters) {
                     out.append("<div class=\"parameter-row\"><dt><code>${escapeHtml(parameter.name)}</code></dt><dd class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
                     appendTypeRefCodeHtml(out, parameter.typeRef, typeLinkIndex, rootPrefix, locale,
                         className: "parameter-type-code")
-                    out.append("</dd><dd class=\"parameter-description\">")
+                    match (parameter.defaultExpression) {
+                        case Some(defaultExpression) => out.append(" <span class=\"parameter-default\">= <code>" + escapeHtml(defaultExpression) + "</code></span>")
+                        case None => ()
+                    }
+                    out.append("</dd>")
+                    out.append("<dd class=\"parameter-description\">")
                     match (parameter.documentation) {
                         case Some(value) => appendStructuredTextHtml(out, value)
                         case None => match (findTag(comment, "param", subject: Some(parameter.name))) {
@@ -237,7 +359,18 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                 out.append("<h3>${label(locale, "Throws", "异常")}</h3><dl>\n")
                 for (tag in comment.tags) {
                     if (tag.name == "throws") {
-                        out.append("<dt><code>${escapeHtml(tag.subject)}</code></dt><dd>")
+                        out.append("<dt>")
+                        match (tag.targetSymbolId) {
+                            case Some(targetId) => match (findSymbol(index, targetId)) {
+                                case Some(target) => out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(tag.subject)}</code></a>")
+                                case None => out.append("<code>${escapeHtml(tag.subject)}</code>")
+                            }
+                            case None => out.append("<code>${escapeHtml(tag.subject)}</code>")
+                        }
+                        if (tag.referenceState != "resolved") {
+                            out.append(" <span class=\"badge\" data-state=\"${escapeHtml(tag.referenceState)}\">${escapeHtml(tag.referenceState)}</span>")
+                        }
+                        out.append("</dt><dd>")
                         appendStructuredTextHtml(out, tag.description)
                         out.append("</dd>\n")
                     }
@@ -283,7 +416,12 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                     out.append("<div class=\"parameter-row\"><dt><code>${escapeHtml(parameter.name)}</code></dt><dd class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
                     appendTypeRefCodeHtml(out, parameter.typeRef, typeLinkIndex, rootPrefix, locale,
                         className: "parameter-type-code")
-                    out.append("</dd><dd class=\"parameter-description\"></dd></div>\n")
+                    match (parameter.defaultExpression) {
+                        case Some(defaultExpression) => out.append(" <span class=\"parameter-default\">= <code>" + escapeHtml(defaultExpression) + "</code></span>")
+                        case None => ()
+                    }
+                    out.append("</dd>")
+                    out.append("<dd class=\"parameter-description\"></dd></div>\n")
                 }
                 out.append("</dl>\n")
             }
@@ -298,6 +436,158 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             }
     }
 }
+internal class HtmlSignatureLinkSpan {
+    let start: Int64
+    let end: Int64
+    let url: String
+
+    init(start: Int64, end: Int64, url: String) {
+        this.start = start
+        this.end = end
+        this.url = url
+    }
+}
+
+private func signatureIdentifierByte(value: Byte): Bool {
+    (value >= b'a' && value <= b'z') || (value >= b'A' && value <= b'Z') ||
+        (value >= b'0' && value <= b'9') || value == b'_' || value >= 0x80u8
+}
+
+private func signatureSpanBoundary(value: String, start: Int64, end: Int64): Bool {
+    let firstIdentifier = !value.isEmpty() && signatureIdentifierByte(value[0])
+    let lastIdentifier = !value.isEmpty() && signatureIdentifierByte(value[value.size - 1])
+    if (firstIdentifier && start > 0 && signatureIdentifierByte(value[start - 1])) { return false }
+    if (lastIdentifier && end < value.size && signatureIdentifierByte(value[end])) { return false }
+    true
+}
+
+private func signatureTypeStartAfterReturnDelimiter(raw: String): Int64 {
+    var parenthesisDepth: Int64 = 0
+    var bracketDepth: Int64 = 0
+    var braceDepth: Int64 = 0
+    var index: Int64 = 0
+    while (index < raw.size) {
+        let byte = raw[index]
+        if (byte == b'(') {
+            parenthesisDepth++
+        } else if (byte == b')' && parenthesisDepth > 0) {
+            parenthesisDepth--
+        } else if (byte == b'[') {
+            bracketDepth++
+        } else if (byte == b']' && bracketDepth > 0) {
+            bracketDepth--
+        } else if (byte == b'{') {
+            braceDepth++
+        } else if (byte == b'}' && braceDepth > 0) {
+            braceDepth--
+        } else if (byte == b':' && parenthesisDepth == 0 && bracketDepth == 0 && braceDepth == 0) {
+            return index + 1
+        }
+        index++
+    }
+    0
+}
+
+private func signatureTypeStartAfterParameterDelimiter(raw: String, parameterName: String,
+    cursor: Int64): Int64 {
+    if (parameterName.isEmpty()) { return cursor }
+    var searchCursor = cursor
+    while (searchCursor < raw.size) {
+        match (raw[searchCursor..].indexOf(parameterName)) {
+            case None => return cursor
+            case Some(relative) =>
+                let start = searchCursor + relative
+                let end = start + parameterName.size
+                if (signatureSpanBoundary(raw, start, end)) {
+                    var delimiter = end
+                    while (delimiter < raw.size &&
+                        (raw[delimiter] == b' ' || raw[delimiter] == b'\t' ||
+                            raw[delimiter] == b'\r' || raw[delimiter] == b'\n')) {
+                        delimiter++
+                    }
+                    if (delimiter < raw.size && raw[delimiter] == b':') {
+                        return delimiter + 1
+                    }
+                }
+                searchCursor = end
+        }
+    }
+    cursor
+}
+
+private func collectSignatureTypeSpans(spans: ArrayList<HtmlSignatureLinkSpan>, raw: String,
+    typeRef: TypeRef, typeLinkIndex: HtmlTypeLinkIndex, cursor: Int64): Int64 {
+    let spelling = if (typeRef.arguments.isEmpty()) { typeRef.spelling } else {
+        typeHeadSpelling(typeRef.spelling)
+    }
+    var nextCursor = cursor
+    if (!spelling.isEmpty() && cursor < raw.size) {
+        var searchCursor = cursor
+        while (searchCursor < raw.size) {
+            match (raw[searchCursor..].indexOf(spelling)) {
+                case Some(relative) =>
+                    let start = searchCursor + relative
+                    let end = start + spelling.size
+                    if (!signatureSpanBoundary(raw, start, end)) {
+                        searchCursor = end
+                        continue
+                    }
+                    nextCursor = end
+                    match (typeLinkIndex.targetUrl(typeRef)) {
+                        case Some(url) => spans.add(HtmlSignatureLinkSpan(start, end, url))
+                        case None => ()
+                    }
+                    break
+                case None => break
+            }
+        }
+    }
+    for (argument in typeRef.arguments) {
+        nextCursor = collectSignatureTypeSpans(spans, raw, argument, typeLinkIndex, nextCursor)
+    }
+    nextCursor
+}
+
+internal func appendLinkedSignatureHtml(out: RenderTextBuffer, symbol: SymbolDoc,
+    typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String): Unit {
+    let raw = symbol.headerSpelling
+    if (raw.isEmpty() || symbol.sourceApiSignature.state != "available" ||
+        symbol.sourceApiSignature.tokens.isEmpty()) {
+        out.append(escapeHtml(raw))
+        return
+    }
+    let spans = ArrayList<HtmlSignatureLinkSpan>()
+    var cursor: Int64 = 0
+    for (parameter in symbol.parameters) {
+        let parameterTypeCursor = signatureTypeStartAfterParameterDelimiter(raw, parameter.name, cursor)
+        cursor = collectSignatureTypeSpans(spans, raw, parameter.typeRef, typeLinkIndex, parameterTypeCursor)
+    }
+    match (symbol.returnType) {
+        case Some(returnType) =>
+            let delimiterCursor = signatureTypeStartAfterReturnDelimiter(raw)
+            let returnCursor = if (delimiterCursor > cursor) { delimiterCursor } else { cursor }
+            cursor = collectSignatureTypeSpans(spans, raw, returnType, typeLinkIndex, returnCursor)
+        case None => ()
+    }
+    for (relationship in symbol.typeRelationships) {
+        cursor = collectSignatureTypeSpans(spans, raw, relationship.target, typeLinkIndex, cursor)
+    }
+    if (spans.isEmpty()) {
+        out.append(escapeHtml(raw))
+        return
+    }
+    sort(spans, lessThan: { left, right => left.start < right.start }, stable: true)
+    var position: Int64 = 0
+    for (span in spans) {
+        if (span.start < position) { continue }
+        out.append(escapeHtml(raw[position..span.start]))
+        out.append("<a class=\"type-link signature-type-link\" href=\"" + rootPrefix + escapeHtml(span.url) + "\">")
+        out.append(escapeHtml(raw[span.start..span.end]))
+        out.append("</a>")
+        position = span.end
+    }
+    if (position < raw.size) { out.append(escapeHtml(raw[position..raw.size])) }
+}
 
 private func hasResolvedSymbolRelationship(symbol: SymbolDoc, kind: String, display: String): Bool {
     for (relationship in symbol.symbolRelationships) {
@@ -309,9 +599,77 @@ private func hasResolvedSymbolRelationship(symbol: SymbolDoc, kind: String, disp
     false
 }
 
+internal func appendSymbolRelationshipSection(out: RenderTextBuffer,
+    index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
+    typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
+    if (symbol.typeRelationships.isEmpty() && symbol.symbolRelationships.isEmpty()) { return }
+    out.append("<section class=\"symbol-relationships\" aria-labelledby=\"symbol-relationships-heading\">")
+    out.append("<h2 id=\"symbol-relationships-heading\">${label(locale, "Relationships", "关系")}</h2><dl class=\"relationships\">")
+    for (relationship in symbol.typeRelationships) {
+        if (hasResolvedSymbolRelationship(symbol, relationship.kind, relationship.target.spelling)) { continue }
+        out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd>")
+        appendTypeRefCodeHtml(out, relationship.target, typeLinkIndex, rootPrefix, locale,
+            className: "relationship-type")
+        if (relationship.target.semantic.state != "resolved") {
+            out.append(" <span class=\"badge\" data-state=\"${escapeHtml(relationship.target.semantic.state)}\">${escapeHtml(relationship.target.semantic.state)}</span>")
+        }
+        out.append("</dd>")
+    }
+    for (relationship in symbol.symbolRelationships) {
+        out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd>")
+        var renderedState = relationship.state
+        match (relationship.targetSymbolId) {
+            case Some(targetId) => match (findSymbol(index, targetId)) {
+                case Some(target) => out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(relationship.targetDisplay)}</code></a>")
+                case None =>
+                    renderedState = "unavailable"
+                    out.append("<code>unavailable</code>")
+            }
+            case None => out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
+        }
+        if (renderedState != "resolved") {
+            out.append(" <span class=\"badge\" data-state=\"${escapeHtml(renderedState)}\">${escapeHtml(renderedState)}</span>")
+        }
+        out.append("</dd>")
+    }
+    out.append("</dl></section>\n")
+}
+
+internal func appendReverseTypeUsageSection(out: RenderTextBuffer, symbol: SymbolDoc,
+    typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String, locale: String): Unit {
+    let usages = typeLinkIndex.reverseUsages(symbol.id)
+    if (usages.isEmpty()) { return }
+    let heading = label(locale, "Known uses", "已知使用")
+    let scope = label(locale, "Known references in this documentation set and audience.", "当前文档集和受众中的已知引用。")
+    out.append("<section class=\"reverse-type-usages\" aria-labelledby=\"reverse-type-usages-heading\">")
+    out.append("<h2 id=\"reverse-type-usages-heading\">" + heading + "</h2><p class=\"relation-scope\">" + scope + "</p><ol>")
+    let maximum: Int64 = 40
+    var shown: Int64 = 0
+    for (usage in usages) {
+        if (shown >= maximum) { break }
+        let kindLabel = match (usage.kind) {
+            case "parameter" => label(locale, "parameter", "参数")
+            case "return" => label(locale, "return value", "返回值")
+            case "field" => label(locale, "field/property", "字段/属性")
+            case _ => escapeHtml(usage.kind)
+        }
+        out.append("<li><span class=\"usage-kind\">" + kindLabel + "</span> <a href=\"" + rootPrefix + escapeHtml(symbolPagePath(usage.source)) + "\"><code>" + escapeHtml(usage.source.qualifiedName) + "</code></a>")
+        if (!usage.source.headerSpelling.trimAscii().isEmpty()) {
+            out.append(" <code class=\"usage-signature\">" + escapeHtml(usage.source.headerSpelling) + "</code>")
+        }
+        out.append("</li>\n")
+        shown++
+    }
+    if (usages.size > maximum) {
+        let more = label(locale, "More references are omitted by the fixed page limit.", "受固定页面上限限制，更多引用未显示。")
+        out.append("<li class=\"relation-more\">" + more + "</li>")
+    }
+    out.append("</ol></section>\n")
+}
+
 internal func appendSymbolMetadata(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
-    assetLookup: HashMap<String, String>, locale!: String = "en"): Unit {
+    assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex, locale!: String = "en"): Unit {
     out.append("<div class=\"symbol-meta\"><p class=\"symbol-kind\">${escapeHtml(symbol.kind)}")
     if (symbol.visibility != "public") {
         out.append(" <span class=\"badge\">${escapeHtml(symbol.visibility)}</span>")
@@ -324,10 +682,12 @@ internal func appendSymbolMetadata(out: RenderTextBuffer,
         case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, rootPrefix)
         case None => ()
     }
-    out.append("<h2 class=\"signature-heading\">${label(locale, "Signature", "签名")}</h2><pre class=\"signature-block\"><code>${escapeHtml(symbol.headerSpelling)}</code></pre>")
-    if (symbol.ownerId.isSome() || !symbol.genericParameters.isEmpty() ||
-        !symbol.annotations.isEmpty() || !symbol.typeRelationships.isEmpty() ||
-        !symbol.symbolRelationships.isEmpty()) {
+    out.append("<h2 class=\"signature-heading\">${label(locale, "Signature", "签名")}</h2><pre class=\"signature-block\"><code>")
+    appendLinkedSignatureHtml(out, symbol, typeLinkIndex, rootPrefix)
+    out.append("</code></pre>")
+    out.append("<p class=\"signature-context\"><span>" + label(locale, "Source signature", "源码签名") + "</span> <span class=\"badge\" data-state=\"" + escapeHtml(symbol.sourceApiSignature.state) + "\">" + escapeHtml(symbol.sourceApiSignature.state) + "</span></p>\n")
+    appendSymbolRelationshipSection(out, index, symbol, rootPrefix, typeLinkIndex, locale)
+    if (symbol.ownerId.isSome() || !symbol.genericParameters.isEmpty() || !symbol.annotations.isEmpty()) {
         out.append("<details class=\"contextual-metadata\"><summary>${label(locale, "Declaration details", "声明详情")}</summary>")
         match (symbol.ownerId) {
             case Some(ownerId) => match (findSymbol(index, ownerId)) {
@@ -346,38 +706,6 @@ internal func appendSymbolMetadata(out: RenderTextBuffer,
             out.append("<p class=\"meta\">${label(locale, "Annotations", "注解")}: ")
             for (annotation in symbol.annotations) { out.append("<code>${escapeHtml(annotation.spelling)}</code> ") }
             out.append("</p>")
-        }
-        if (!symbol.typeRelationships.isEmpty() || !symbol.symbolRelationships.isEmpty()) {
-            out.append("<dl class=\"relationships\">")
-            for (relationship in symbol.typeRelationships) {
-                if (hasResolvedSymbolRelationship(symbol, relationship.kind, relationship.target.spelling)) {
-                    continue
-                }
-                out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd><code>${escapeHtml(relationship.target.spelling)}</code>")
-                if (relationship.target.semantic.state != "resolved") {
-                    out.append(" <span class=\"badge\" data-state=\"${escapeHtml(relationship.target.semantic.state)}\">${escapeHtml(relationship.target.semantic.state)}</span>")
-                }
-                out.append("</dd>")
-            }
-            for (relationship in symbol.symbolRelationships) {
-                match (relationship.targetSymbolId) {
-                    case Some(targetId) => if (!index.contains(targetId)) { continue }
-                    case None => ()
-                }
-                out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd>")
-                match (relationship.targetSymbolId) {
-                    case Some(targetId) => match (findSymbol(index, targetId)) {
-                        case Some(target) => out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(relationship.targetDisplay)}</code></a>")
-                        case None => ()
-                    }
-                    case None => out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
-                }
-                if (relationship.state != "resolved") {
-                    out.append(" <span class=\"badge\" data-state=\"${escapeHtml(relationship.state)}\">${escapeHtml(relationship.state)}</span>")
-                }
-                out.append("</dd>")
-            }
-            out.append("</dl>")
         }
         out.append("</details>")
     }

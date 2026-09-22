@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index.schema.json",
-  "title": "cjdoc search index v4",
+  "title": "cjdoc search index v6",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "entries"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.search-index/4"},
+    "schemaVersion": {"const": "cjdoc.search-index/6"},
     "entries": {
       "type": "array",
       "items": {
@@ -17,8 +17,10 @@
           "canonicalId": {"type": "string", "pattern": "^(cjdoc:v2:|cjdoc:concept:).+$"},
           "exposure": {"type": "boolean"}, "name": {"type": "string"},
           "qualifiedName": {"type": "string", "minLength": 1}, "kind": {"type": "string", "minLength": 1},
-          "packageName": {"anyOf": [{"type": "string", "minLength": 1}, {"const": ""}]}, "summary": {"type": "string"},
-          "href": {"type": "string", "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\).+$"}
+          "packageName": {"anyOf": [{"type": "string", "minLength": 1}, {"const": ""}]}, "moduleId": {"type": "string", "minLength": 1}, "moduleName": {"type": ["string", "null"]}, "ownerName": {"type": ["string", "null"]}, "parameterTypes": {"type": "array", "items": {"type": "string"}}, "returnType": {"type": ["string", "null"]}, "returnCanonical": {"type": ["string", "null"]}, "summary": {"type": "string"},
+          "href": {"type": "string", "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\).+$"},
+          "bindings": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["target", "state", "selector", "provenance", "version", "language", "sourceLine", "targetSymbolId"], "properties": {"target": {"type": "string", "minLength": 1}, "state": {"type": "string", "minLength": 1}, "selector": {"type": "string"}, "provenance": {"type": "string"}, "version": {"type": "string"}, "language": {"type": "string", "minLength": 1}, "sourceLine": {"type": "integer", "minimum": 1}, "targetSymbolId": {"type": ["string", "null"]}}}},
+          "externalDocs": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["name", "state", "url", "reason", "version", "index", "format", "fingerprint"], "properties": {"name": {"type": "string", "minLength": 1}, "state": {"type": "string", "minLength": 1}, "url": {"type": "string"}, "reason": {"type": "string"}, "version": {"type": "string"}, "index": {"type": "string"}, "format": {"type": "string"}, "fingerprint": {"type": "string"}}}}
         }
       }
     }

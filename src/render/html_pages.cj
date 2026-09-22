@@ -5,38 +5,57 @@ import std.collection.*
 import std.sort.*
 
 internal func renderHtmlIndex(documentation: DocumentationSet, projection: RenderProjection,
-    locale!: String = "en"): String {
+    locale!: String = "en", docVersion!: ?String = None): String {
+    let apiDocumentationLabel = label(locale, "API documentation", "API 文档")
+    let startHereLabel = label(locale, "Start here", "从这里开始")
+    let startHereCopy = label(locale, "Choose a module or package to begin with the generated API reference.", "选择模块或包，开始阅读生成的 API 参考。")
+    let browseApiLabel = label(locale, "Browse the API index", "浏览 API 索引")
+    let modulesLabel = label(locale, "Modules", "模块")
+    let packagesLabel = label(locale, "Packages", "包")
+    let packageCountLabel = label(locale, "packages", "个包")
+    let diagnosticsLabel = label(locale, "Build status and diagnostics", "构建状态与诊断")
+    let pageTitle = documentation.project.name + " " + apiDocumentationLabel
     let out = RenderTextBuffer()
-    appendPageStart(out, "${documentation.project.name} ${label(locale, "API documentation", "API 文档")}", "",
-        documentation, projection, locale: locale)
-    out.append("<header class=\"page-header\"><h1>${escapeHtml(documentation.project.name)} ${label(locale, "API documentation", "API 文档")}</h1>")
+    appendPageStart(out, pageTitle, "",
+        documentation, projection, locale: locale, docVersion: docVersion)
+    out.append("<header class=\"page-header\"><h1>${escapeHtml(documentation.project.name)} ${apiDocumentationLabel}</h1>")
     if (locale == "zh-CN") {
         out.append("<p class=\"page-lead\">${projection.modules.size} 个模块，${projection.packages.size} 个包，${projection.visibleSymbols.size} 个可见声明</p>\n")
     } else {
         out.append("<p class=\"page-lead\">${projection.modules.size} modules, ${projection.packages.size} packages, ${projection.visibleSymbols.size} visible declarations</p>\n")
     }
-    out.append("</header>\n")
+    out.append("</header>\n<section class=\"quick-start\" aria-labelledby=\"quick-start-title\"><h2 id=\"quick-start-title\">")
+    out.append(startHereLabel)
+    out.append("</h2><p>")
+    out.append(startHereCopy)
+    out.append("</p><a href=\"#packages\">")
+    out.append(browseApiLabel)
+    out.append("</a></section>\n")
     if (!projection.modules.isEmpty()) {
-        out.append("<h2 id=\"modules\">${label(locale, "Modules", "模块")}</h2><div class=\"module-list\">\n")
+        out.append("<h2 id=\"modules\">")
+        out.append(modulesLabel)
+        out.append("</h2><div class=\"module-list\">\n")
         for (projected in projection.modules) {
             let module = projected.source
             out.append("<section class=\"module-record\"><h3><code>${escapeHtml(module.name)}</code> <span class=\"badge\">${escapeHtml(module.role)}</span></h3>")
             let prefix = if (module.sourcePrefix.isEmpty()) { "." } else { module.sourcePrefix }
-            out.append("<p class=\"meta\">Source prefix: <code>${escapeHtml(prefix)}</code></p><ul class=\"package-links\">\n")
-            for (pkg in projected.packages) {
-                out.append("<li><a href=\"${escapeHtml(packagePagePath(module.id, pkg.source.name))}\"><code>${escapeHtml(pkg.source.name)}</code></a></li>\n")
-            }
-            out.append("</ul></section>\n")
+            out.append("<p class=\"meta\">Source prefix: <code>${escapeHtml(prefix)}</code> · ${projected.packages.size} ")
+            out.append(packageCountLabel)
+            out.append("</p></section>\n")
         }
         out.append("</div>\n")
     }
-    out.append("<h2 id=\"packages\">${label(locale, "Packages", "包")}</h2><ul class=\"package-index\">\n")
+    out.append("<h2 id=\"packages\">")
+    out.append(packagesLabel)
+    out.append("</h2><ul class=\"package-index\">\n")
     for (pkg in projection.packages) {
         out.append("<li><a href=\"${escapeHtml(packagePagePath(pkg.source.moduleId, pkg.source.name))}\"><code>${escapeHtml(pkg.source.name)}</code></a></li>\n")
     }
     out.append("</ul>\n")
     if (!documentation.diagnostics.isEmpty()) {
-        out.append("<h2 id=\"diagnostics\">${label(locale, "Diagnostics", "诊断")}</h2><ul class=\"diagnostics-list\">\n")
+        out.append("<details id=\"diagnostics\" class=\"build-details\"><summary>")
+        out.append(diagnosticsLabel)
+        out.append("</summary><ul class=\"diagnostics-list\">\n")
         for (diagnostic in documentation.diagnostics) {
             if (let Some(symbolId) <- diagnostic.symbolId) {
                 if (!projection.visibleIndex.contains(symbolId)) { continue }
@@ -48,7 +67,7 @@ internal func renderHtmlIndex(documentation: DocumentationSet, projection: Rende
             }
             out.append("</li>\n")
         }
-        out.append("</ul>\n")
+        out.append("</ul></details>\n")
     }
     appendPageEnd(out, documentation, locale: locale)
     out.toString()
@@ -56,7 +75,7 @@ internal func renderHtmlIndex(documentation: DocumentationSet, projection: Rende
 
 internal func appendDeclarationRow(out: RenderTextBuffer, symbol: SymbolDoc,
     rootPrefix: String): Unit {
-    out.append("<article class=\"declaration-summary\"><a class=\"declaration-row-link\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(symbol))}\">")
+    out.append("<article class=\"declaration-summary\" data-cjdoc-member data-member-name=\"${escapeHtml(symbol.name)}\" data-member-kind=\"${escapeHtml(symbol.kind)}\"><a class=\"declaration-row-link\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(symbol))}\">")
     out.append("<div class=\"declaration-summary-head\"><code>${escapeHtml(symbol.name)}</code><span class=\"declaration-kind\">${escapeHtml(symbol.kind)}</span></div>")
     match (symbol.documentation) {
         case Some(comment) =>
@@ -72,13 +91,52 @@ internal func appendDeclarationRow(out: RenderTextBuffer, symbol: SymbolDoc,
     out.append("</a></article>\n")
 }
 
+public func renderConceptualHtmlPage(documentation: DocumentationSet, title: String, body: String,
+    rootPrefix: String, source!: ?String = None, locale!: String = "en",
+    docVersion!: ?String = None): String {
+    let projection = RenderProjection(documentation)
+    let out = RenderTextBuffer()
+    let breadcrumbLabel = label(locale, "Breadcrumb", "面包屑导航")
+    let apiReferenceLabel = label(locale, "API reference", "API 参考")
+    let conceptsLabel = label(locale, "Concepts", "概念文档")
+    let sourceLabel = label(locale, "Source", "来源")
+    appendPageStart(out, title, rootPrefix, documentation, projection, locale: locale,
+        currentRoute: "concept", docVersion: docVersion)
+    out.append("<nav class=\"breadcrumbs\" aria-label=\"")
+    out.append(breadcrumbLabel)
+    out.append("\"><ol><li><a href=\"")
+    out.append(rootPrefix)
+    out.append("index.html\">")
+    out.append(apiReferenceLabel)
+    out.append("</a></li><li><a href=\"")
+    out.append(rootPrefix)
+    out.append("concepts/index.html\">")
+    out.append(conceptsLabel)
+    out.append("</a></li><li aria-current=\"page\">")
+    out.append(escapeHtml(title))
+    out.append("</li></ol></nav>")
+    out.append("<header class=\"page-header\"><h1>${escapeHtml(title)}</h1>")
+    match (source) {
+        case Some(value) => out.append("<p class=\"page-meta\"><span class=\"page-meta-item\">")
+            out.append(sourceLabel)
+            out.append(": <code>")
+            out.append(escapeHtml(value))
+            out.append("</code></span></p>")
+        case None => ()
+    }
+    out.append("</header>\n")
+    out.append(body)
+    appendPageEnd(out, documentation, locale: locale)
+    out.toString()
+}
+
 internal func renderPackagePage(documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, topLevelByPackage: HashMap<String, ArrayList<SymbolDoc>>,
-    pkg: ProjectedPackage, locale!: String = "en"): String {
+    pkg: ProjectedPackage, locale!: String = "en", docVersion!: ?String = None): String {
     let packageDoc = pkg.source
     let out = RenderTextBuffer()
     appendPageStart(out, "${label(locale, "Package", "包")} ${packageDoc.name}", "../",
-        documentation, projection, locale: locale,
+        documentation, projection, locale: locale, docVersion: docVersion,
         currentPackagePath: Some(packagePagePath(packageDoc.moduleId, packageDoc.name)), currentRoute: "api")
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li><li aria-current=\"page\">${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></li></ol></nav>\n")
     out.append("<header class=\"page-header\"><h1>${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></h1></header>\n")
@@ -175,13 +233,49 @@ internal func memberSectionTitle(symbol: SymbolDoc): String {
 internal func appendMemberSection(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
     owner: SymbolDoc, title: String, locale: String): Unit {
+    let sectionLabel = match (title) {
+        case "Constructors" => "构造器"
+        case "Properties" => "属性"
+        case "Variables" => "变量"
+        case "Functions" => "函数"
+        case "Enum cases" => "枚举项"
+        case "Nested classes" => "嵌套类"
+        case "Nested structs" => "嵌套结构体"
+        case "Nested interfaces" => "嵌套接口"
+        case "Nested enums" => "嵌套枚举"
+        case "Nested extensions" => "嵌套扩展"
+        case _ => "其他成员"
+    }
+    let overloadLabel = label(locale, "Overloads", "重载")
     var opened = false
     match (membersByOwner.get(owner.id)) {
-        case Some(members) => for (member in members) {
-            if (memberSectionTitle(member) != title) { continue }
-            if (!opened) { out.append("<h2>${escapeHtml(label(locale, title, match (title) { case "Constructors" => "构造器"; case "Properties" => "属性"; case "Variables" => "变量"; case "Functions" => "函数"; case "Enum cases" => "枚举项"; case "Nested classes" => "嵌套类"; case "Nested structs" => "嵌套结构体"; case "Nested interfaces" => "嵌套接口"; case "Nested enums" => "嵌套枚举"; case "Nested extensions" => "嵌套扩展"; case _ => "其他成员" }))}</h2>\n"); opened = true }
-            appendDeclarationRow(out, member, "../")
-        }
+        case Some(members) =>
+            let overloadCounts = HashMap<String, Int64>()
+            for (member in members) {
+                if (memberSectionTitle(member) != title) { continue }
+                let count = match (overloadCounts.get(member.name)) {
+                    case Some(value) => value + 1
+                    case None => 1
+                }
+                overloadCounts[member.name] = count
+            }
+            var previousName = ""
+            for (member in members) {
+                if (memberSectionTitle(member) != title) { continue }
+                if (!opened) {
+                    out.append("<h2>" + escapeHtml(label(locale, title, sectionLabel)) + "</h2>\n")
+                    opened = true
+                }
+                let count = match (overloadCounts.get(member.name)) {
+                    case Some(value) => value
+                    case None => 0
+                }
+                if (count > 1 && previousName != member.name) {
+                    out.append("<p class=\"overload-group-label\"><span>" + escapeHtml(overloadLabel) + "</span> <code>" + escapeHtml(member.name) + "</code></p>\n")
+                }
+                previousName = member.name
+                appendDeclarationRow(out, member, "../")
+            }
         case None => ()
     }
 }
@@ -207,16 +301,16 @@ internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<Strin
 internal func renderSymbolPage(documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
     symbol: SymbolDoc, assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    locale!: String = "en"): String {
+    locale!: String = "en", docVersion!: ?String = None): String {
     let out = RenderTextBuffer()
     appendPageStart(out, symbol.qualifiedName, "../", documentation, projection, locale: locale,
-        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)), currentRoute: "api")
+        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)), currentRoute: "api", docVersion: docVersion)
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li>")
     out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">${label(locale, "Package", "包")} <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     appendOwnerBreadcrumbs(out, index, symbol, "../", locale)
     out.append("<li aria-current=\"page\"><code>${escapeHtml(symbol.name)}</code></li></ol></nav>\n")
     out.append("<header class=\"page-header\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(symbol.name)}</code></h1>")
-    appendSymbolMetadata(out, index, symbol, "../", assetLookup, locale: locale)
+    appendSymbolMetadata(out, index, symbol, "../", assetLookup, typeLinkIndex, locale: locale)
     match (findProjectedModule(projection, symbol.moduleId)) {
         case Some(module) => match (sourceUrl(documentation.project, module, symbol.source)) {
             case Some(url) => out.append("<p class=\"source-action\"><a href=\"${escapeHtml(url)}\" rel=\"noreferrer\">${label(locale, "View source", "查看源码")}</a></p>\n")
@@ -227,11 +321,22 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     out.append("</header>\n")
     appendDocumentationHtml(out, index, symbol, "../", assetLookup,
         typeLinkIndex, headingBase: 2, locale: locale)
+    if (isTypeDeclaration(symbol)) {
+        appendReverseTypeUsageSection(out, symbol, typeLinkIndex, "../", locale)
+    }
+    if (isTypeDeclaration(symbol)) {
+        let filterLabel = label(locale, "Filter members", "筛选成员")
+        let noResultsLabel = label(locale, "No matching members.", "没有匹配的成员。")
+        out.append("<section class=\"member-browser\" data-cjdoc-member-browser>")
+        out.append("<div class=\"member-browser-toolbar\"><label for=\"cjdoc-member-filter\">" + filterLabel + "</label><input id=\"cjdoc-member-filter\" type=\"search\" data-cjdoc-member-filter placeholder=\"" + filterLabel + "\" autocomplete=\"off\"></div>")
+        out.append("<p class=\"member-filter-status\" data-cjdoc-member-filter-status role=\"status\" hidden>" + noResultsLabel + "</p>")
+    }
     for (title in ["Constructors", "Properties", "Variables", "Functions", "Enum cases",
         "Nested classes", "Nested structs", "Nested interfaces", "Nested enums", "Nested extensions",
         "Other members"]) {
         appendMemberSection(out, index, membersByOwner, symbol, title, locale)
     }
+    if (isTypeDeclaration(symbol)) { out.append("</section>\n") }
     appendPageEnd(out, documentation, locale: locale)
     out.toString()
 }
@@ -265,13 +370,78 @@ internal func appendSearchJsonString(out: RenderTextBuffer, value: String): Unit
     out.append("\"")
 }
 
+private func collectSearchTypeFacts(values: ArrayList<String>, typeRef: TypeRef): Unit {
+    if (!typeRef.spelling.isEmpty()) { values.add(typeRef.spelling) }
+    match (typeRef.semantic.canonical) {
+        case Some(canonical) => if (!canonical.isEmpty() && canonical != typeRef.spelling) { values.add(canonical) }
+        case None => ()
+    }
+    for (argument in typeRef.arguments) { collectSearchTypeFacts(values, argument) }
+}
+
+private func appendSearchTypeFacts(out: RenderTextBuffer, values: ArrayList<String>): Unit {
+    out.append("[")
+    var first = true
+    for (value in values) {
+        if (!first) { out.append(",") }
+        first = false
+        appendSearchJsonString(out, value)
+    }
+    out.append("]")
+}
+
+private func searchModuleNames(projection: RenderProjection): HashMap<String, String> {
+    let result = HashMap<String, String>()
+    for (module in projection.modules) {
+        result[module.source.id] = module.source.name
+    }
+    result
+}
+
+private func appendSearchStructuredFacts(out: RenderTextBuffer,
+    projection: RenderProjection, moduleNames: HashMap<String, String>, symbol: SymbolDoc): Unit {
+    out.append(", \"moduleId\": ")
+    appendSearchJsonString(out, symbol.moduleId)
+    out.append(", \"moduleName\": ")
+    match (moduleNames.get(symbol.moduleId)) {
+        case Some(value) => appendSearchJsonString(out, value)
+        case None => out.append("null")
+    }
+    out.append(", \"ownerName\": ")
+    match (symbol.ownerId) {
+        case Some(ownerId) => match (projection.visibleIndex.get(ownerId)) {
+            case Some(owner) => appendSearchJsonString(out, owner.qualifiedName)
+            case None => out.append("null")
+        }
+        case None => out.append("null")
+    }
+    let parameterTypes = ArrayList<String>()
+    for (parameter in symbol.parameters) { collectSearchTypeFacts(parameterTypes, parameter.typeRef) }
+    out.append(", \"parameterTypes\": ")
+    appendSearchTypeFacts(out, parameterTypes)
+    out.append(", \"returnType\": ")
+    match (symbol.returnType) {
+        case Some(returnType) => appendSearchJsonString(out, returnType.spelling)
+        case None => out.append("null")
+    }
+    out.append(", \"returnCanonical\": ")
+    match (symbol.returnType) {
+        case Some(returnType) => match (returnType.semantic.canonical) {
+            case Some(canonical) => appendSearchJsonString(out, canonical)
+            case None => out.append("null")
+        }
+        case None => out.append("null")
+    }
+}
+
 internal func renderSearchIndex(documentation: DocumentationSet,
     projection: RenderProjection): String {
     let out = RenderTextBuffer()
-    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/4\",\n  \"entries\": [")
+    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/6\",\n  \"entries\": [")
     var first = true
     let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(visible, lessThan: { left, right => left.id < right.id }, stable: true)
+    let moduleNames = searchModuleNames(projection)
     for (declaration in visible) {
         if (!first) { out.append(",") }
         first = false
@@ -282,6 +452,7 @@ internal func renderSearchIndex(documentation: DocumentationSet,
         out.append(", \"qualifiedName\": "); appendSearchJsonString(out, declaration.qualifiedName)
         out.append(", \"kind\": "); appendSearchJsonString(out, declaration.kind)
         out.append(", \"packageName\": "); appendSearchJsonString(out, declaration.packageName)
+        appendSearchStructuredFacts(out, projection, moduleNames, declaration)
         let summary = match (declaration.documentation) {
             case Some(comment) => summaryPlainText(comment)
             case None => ""
@@ -309,6 +480,7 @@ internal func renderSearchIndex(documentation: DocumentationSet,
                             appendSearchJsonString(out, "${pkg.name}.${binding.exposedName}")
                             out.append(", \"kind\": "); appendSearchJsonString(out, target.kind)
                             out.append(", \"packageName\": "); appendSearchJsonString(out, pkg.name)
+                            appendSearchStructuredFacts(out, projection, moduleNames, target)
                             let summary = match (target.documentation) {
                                 case Some(comment) => summaryPlainText(comment)
                                 case None => ""
@@ -329,10 +501,109 @@ internal func renderSearchIndex(documentation: DocumentationSet,
     out.toString()
 }
 
-internal func renderSearchIndexScript(searchIndex: String): String {
+private func searchSignaturePreviousWord(value: String, start: Int64): String {
+    var cursor = start
+    while (cursor > 0 && (value[cursor - 1] == b' ' || value[cursor - 1] == b'\n' ||
+        value[cursor - 1] == b'\r' || value[cursor - 1] == b'\t')) { cursor-- }
+    var wordStart = cursor
+    while (wordStart > 0 && searchSignatureIdentifier(value[wordStart - 1])) { wordStart-- }
+    if (wordStart == cursor) { return "" }
+    value[wordStart..cursor]
+}
+
+private func searchSignatureNextNonSpace(value: String, start: Int64): Int64 {
+    var cursor = start
+    while (cursor < value.size && (value[cursor] == b' ' || value[cursor] == b'\n' ||
+        value[cursor] == b'\r' || value[cursor] == b'\t')) { cursor++ }
+    cursor
+}
+
+private func searchSignatureDeclarationToken(value: String, start: Int64, end: Int64,
+    kind: String): Bool {
+    let previous = searchSignaturePreviousWord(value, start)
+    match (kind) {
+        case "function" => previous == "func"
+        case "constructor" =>
+            let next = searchSignatureNextNonSpace(value, end)
+            (previous == "" || previous == "public" || previous == "protected" ||
+                previous == "internal" || previous == "private") && next < value.size &&
+                value[next] == b'('
+        case "property" => previous == "prop"
+        case "variable" => previous == "let" || previous == "var"
+        case "class" => previous == "class"
+        case "struct" => previous == "struct"
+        case "interface" => previous == "interface"
+        case "enum" => previous == "enum"
+        case "extend" => previous == "extend"
+        case "typeAlias" => previous == "type" || previous == "typealias"
+        case _ => previous == kind
+    }
+}
+
+private func exposedSearchSignature(target: SymbolDoc, exposedName: String): String {
+    let raw = target.headerSpelling.trimAscii()
+    if (target.name.isEmpty()) { return raw }
+    var searchFrom: Int64 = 0
+    while (searchFrom <= raw.size - target.name.size) {
+        match (raw[searchFrom..].indexOf(target.name)) {
+            case None => return raw
+            case Some(relative) =>
+                let start = searchFrom + relative
+                let end = start + target.name.size
+                let leftBoundary = start == 0 || !searchSignatureIdentifier(raw[start - 1])
+                let rightBoundary = end >= raw.size || !searchSignatureIdentifier(raw[end])
+                if (leftBoundary && rightBoundary &&
+                    searchSignatureDeclarationToken(raw, start, end, target.kind)) {
+                    return raw[..start] + exposedName + raw[end..]
+                }
+                searchFrom = if (end > searchFrom) { end } else { searchFrom + 1 }
+        }
+    }
+    raw
+}
+
+private func searchSignatureIdentifier(value: Byte): Bool {
+    (value >= b'a' && value <= b'z') || (value >= b'A' && value <= b'Z') ||
+        (value >= b'0' && value <= b'9') || value == b'_' || value >= 0x80u8
+}
+
+internal func renderSearchIndexScript(searchIndex: String, projection: RenderProjection): String {
     let out = RenderTextBuffer()
     out.append("globalThis.__CJDOC_SEARCH_INDEX__ = ")
     out.append(searchIndex.trimAscii())
-    out.append(";\n")
+    out.append(";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = {")
+    let symbols = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
+    sort(symbols, lessThan: { left, right => left.id < right.id }, stable: true)
+    var first = true
+    for (symbol in symbols) {
+        let signature = symbol.headerSpelling.trimAscii()
+        if (signature.isEmpty()) { continue }
+        if (!first) { out.append(",") }
+        first = false
+        appendSearchJsonString(out, symbol.id)
+        out.append(":")
+        appendSearchJsonString(out, signature)
+    }
+    for (projected in projection.packages) {
+        for (reExport in projected.source.reExports) {
+            for (binding in reExport.bindings) {
+                for (targetId in binding.targetSymbolIds) {
+                    match (projection.visibleIndex.get(targetId)) {
+                        case Some(target) =>
+                            let signature = exposedSearchSignature(target, binding.exposedName)
+                            if (signature.isEmpty()) { continue }
+                            if (!first) { out.append(",") }
+                            first = false
+                            appendSearchJsonString(out,
+                                reExport.id + ":" + binding.exposedName + ":" + target.id)
+                            out.append(":")
+                            appendSearchJsonString(out, signature)
+                        case None => ()
+                    }
+                }
+            }
+        }
+    }
+    out.append("};\n")
     out.toString()
 }

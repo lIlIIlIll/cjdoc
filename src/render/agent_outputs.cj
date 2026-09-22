@@ -113,7 +113,7 @@ private func agentSymbolSummary(symbol: SymbolDoc): ?String {
 }
 
 private func agentNavigationPages(documentation: DocumentationSet,
-    conceptualPages: Array<AgentConceptualPage>): ArrayList<AgentNavigationPage> {
+    conceptualPages: Array<AgentConceptualPage>, includeValidation: Bool): ArrayList<AgentNavigationPage> {
     validateTypedDocumentationSet(documentation)
     let projection = RenderProjection(documentation)
     let pages = ArrayList<AgentNavigationPage>()
@@ -125,6 +125,10 @@ private func agentNavigationPages(documentation: DocumentationSet,
         "Symbol index", "symbol-index.json"))
     pages.add(AgentNavigationPage("cjdoc:page:search-index", "machine",
         "Search index", "search-index.json"))
+    if (includeValidation) {
+        pages.add(AgentNavigationPage("cjdoc:page:validation", "validation",
+            "Validation results", "validation.html"))
+    }
     for (page in conceptualPages) {
         pages.add(AgentNavigationPage("cjdoc:concept:${page.route}", "concept", page.title,
             page.route))
@@ -418,8 +422,8 @@ private func renderAgentFull(documentation: DocumentationSet,
 }
 public func renderAgentReadableArtifacts(documentation: DocumentationSet,
     conceptualPages!: Array<AgentConceptualPage> = [], includeFull!: Bool = false,
-    version!: ?String = None): Array<RenderArtifact> {
-    let pages = agentNavigationPages(documentation, conceptualPages)
+    version!: ?String = None, includeValidation!: Bool = false): Array<RenderArtifact> {
+    let pages = agentNavigationPages(documentation, conceptualPages, includeValidation)
     let artifacts = ArrayList<RenderArtifact>()
     artifacts.add(RenderArtifact("html/navigation-index.json", "application/json",
         renderAgentNavigationIndex(documentation, pages, version)))

@@ -202,6 +202,53 @@ internal func appendExampleHtml(out: RenderTextBuffer, value: String): Unit {
     appendStructuredTextHtml(out, trimExampleBlankLines(prose.toString()))
 }
 
+private func isBehaviorContractTag(name: String): Bool {
+    name == "precondition" || name == "postcondition" || name == "invariant" ||
+        name == "performance" || name == "state" || name == "concurrency" ||
+        name == "platform" || name == "compatibility" || name == "error"
+}
+
+private func behaviorContractLabel(name: String, locale: String): String {
+    if (locale == "zh-CN") {
+        match (name) {
+            case "precondition" => "前置条件"
+            case "postcondition" => "后置条件"
+            case "invariant" => "不变量"
+            case "performance" => "性能"
+            case "state" => "状态"
+            case "concurrency" => "并发"
+            case "platform" => "平台"
+            case "compatibility" => "兼容性"
+            case "error" => "错误行为"
+            case _ => name
+        }
+    } else { name }
+}
+
+internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: DocComment,
+    locale: String): Unit {
+    var hasContracts = false
+    for (tag in comment.tags) {
+        if (isBehaviorContractTag(tag.name)) { hasContracts = true; break }
+    }
+    if (!hasContracts) { return }
+    out.append("<section class=\"behavior-contracts\" aria-labelledby=\"behavior-contracts-heading\">\n")
+    out.append("<h3 id=\"behavior-contracts-heading\">" + label(locale, "Behavior contracts", "行为契约") + "</h3><dl>\n")
+    for (tag in comment.tags) {
+        if (!isBehaviorContractTag(tag.name)) { continue }
+        out.append("<dt><code>" + escapeHtml(behaviorContractLabel(tag.name, locale)) + "</code>")
+        if (!tag.subject.isEmpty()) { out.append(" <code>" + escapeHtml(tag.subject) + "</code>") }
+        out.append("</dt><dd>")
+        if (tag.description.trimAscii().isEmpty()) {
+            out.append("<span class=\"badge\" data-state=\"incomplete\">" + label(locale, "incomplete", "不完整") + "</span>")
+        } else {
+            appendStructuredTextHtml(out, tag.description)
+        }
+        out.append("</dd>\n")
+    }
+    out.append("</dl></section>\n")
+}
+
 internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: DocComment,
     locale: String): Unit {
     var hasExamples = false

@@ -66,6 +66,14 @@ private func splitReferenceSubject(rest: String): (String, String) {
     (value, "")
 }
 
+private func behaviorContractName(tagText: String): ?String {
+    for (name in ["precondition", "postcondition", "invariant", "performance", "state", "concurrency", "platform", "compatibility", "error"]) {
+        let prefix = "@" + name
+        if (tagText == prefix || tagText.startsWith(prefix + " ")) { return Some(name) }
+    }
+    None
+}
+
 private func isStructuredDocTag(tagText: String): Bool {
     tagText.startsWith("@param ") ||
         tagText == "@return" || tagText.startsWith("@return ") ||
@@ -75,7 +83,8 @@ private func isStructuredDocTag(tagText: String): Bool {
         tagText == "@deprecated" || tagText.startsWith("@deprecated ") ||
         tagText.startsWith("@author ") ||
         tagText.startsWith("@version ") ||
-        tagText == "@example" || tagText.startsWith("@example ")
+        tagText == "@example" || tagText.startsWith("@example ") ||
+        behaviorContractName(tagText).isSome()
 }
 
 private func rawJoinLines(lines: ArrayList<String>): String {
@@ -185,6 +194,7 @@ private class DocCommentParseState {
     let body = ArrayList<String>()
     let params = ArrayList<DocTag>()
     let examples = ArrayList<DocTag>()
+    let contracts = ArrayList<DocTag>()
     let throwsTags = ArrayList<DocTag>()
     let seeTags = ArrayList<DocTag>()
     let authors = ArrayList<String>()
@@ -257,6 +267,13 @@ private class DocCommentParseState {
             let tag = DocTag("example", title, "")
             examples.add(tag)
             currentExample = Some(tag)
+        } else if (let Some(name) <- behaviorContractName(tagText)) {
+            let rest = tagText.removePrefix("@" + name).trimAscii()
+            let subject = ""
+            let description = rest
+            let tag = DocTag(name, subject, description)
+            contracts.add(tag)
+            currentTag = tag
         } else if (tagText.startsWith("@since ")) {
             since = tagText.removePrefix("@since ").trimAscii()
         } else if (tagText == "@deprecated" || tagText.startsWith("@deprecated ")) {
@@ -300,6 +317,7 @@ private class DocCommentParseState {
         parsed.returnTagCount = returnTagCount
         parsed.throwsTags.add(all: throwsTags)
         parsed.see.add(all: seeTags)
+        parsed.contracts.add(all: contracts)
         parsed.since = since
         parsed.deprecated = deprecated
         parsed.authors.add(all: authors)

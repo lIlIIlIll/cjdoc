@@ -376,7 +376,7 @@ class RendererSafetyTest {
         @Expect(symbolHtml.contains(
             "<h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"class Owner\">"), true)
         @Expect(symbolHtml.contains(
-            "<article class=\"declaration-summary\"><a class=\"declaration-row-link\" href=\""), true)
+            "<article class=\"declaration-summary\" data-cjdoc-member"), true)
     }
 
     @TestCase
@@ -392,7 +392,7 @@ class RendererSafetyTest {
         @Expect(HTML_SEARCH_SCRIPT.contains("const isChinese"), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("复制代码"), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("已复制"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("themeSwitchLabel"), true)
+        @Expect(packageHtml.contains("aria-label=\"主题\""), true)
     }
 
     @TestCase
