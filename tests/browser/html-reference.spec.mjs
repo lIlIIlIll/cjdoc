@@ -245,7 +245,10 @@ test.describe('generated HTML reference', () => {
     await openIndex(page);
     const validationUrl = new URL('validation.html', indexUrl).href;
     await gotoFile(page, validationUrl);
-    await expect(page.locator('.validation-page h1')).toContainText('Validation results');
+    await expect(page.locator('.page-header h1')).toContainText('Validation results');
+    await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'concept');
+    await expect(page.locator('.validation-page')).toBeVisible();
+    await expect(page.locator('#cjdoc-sidebar')).toHaveCount(1);
     await expect(page.locator('.validation-page')).toContainText('not run');
     await expect(page.locator('.validation-page')).toContainText('API diff: not attached');
     await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveCount(1);
