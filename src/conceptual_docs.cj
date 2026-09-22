@@ -135,9 +135,9 @@ private func conceptualFenceMarker(line: String): String {
     var count: Int64 = 0
     while (count < trimmed.size && trimmed[count] == marker) { count++ }
     if (count < 3) { return "" }
+    if (marker == b'`' && trimmed[count..].contains("`")) { return "" }
     trimmed[..count]
 }
-
 private func conceptualFenceCloses(line: String, fence: String): Bool {
     if (line.startsWith("    ") || line.startsWith("\t")) { return false }
     let trimmed = line.trimAscii()
