@@ -173,8 +173,10 @@ test.describe('generated HTML reference', () => {
     await expect(labelDetail.locator('.api-usages')).toContainText('Getting started');
     await expect(labelDetail.locator('.member-source-link')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
     await expect(normalizeDetail).toHaveAttribute('open', '');
+    await expect(page.locator('.overload-group-label')).toHaveCount(2);
     const pingDetails = page.locator('details[data-cjdoc-member][data-member-name="ping"]');
     await expect(pingDetails).toHaveCount(2);
+    await expect(page.locator('details[data-cjdoc-member][data-member-name="convert"]')).toHaveCount(2);
     await pingDetails.nth(0).locator('summary').click();
     await pingDetails.nth(1).locator('summary').click();
     await expect(pingDetails.nth(0)).toHaveAttribute('open', '');
