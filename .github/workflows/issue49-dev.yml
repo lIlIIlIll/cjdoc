@@ -12,18 +12,15 @@ jobs:
   inputs:
     runs-on: ubuntu-22.04
     timeout-minutes: 25
+    env:
+      cjHeapSize: "512MB"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Archive tracked source without credentials or Git metadata
-        run: git archive HEAD | gzip > "${RUNNER_TEMP}/issue49-source.tar.gz"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
-          name: issue49-source
-          path: ${{ runner.temp }}/issue49-source.tar.gz
-          retention-days: 1
-          compression-level: 0
+          python-version: "3.12"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ runner.temp }}/cangjie-sdk-1.1.3
@@ -31,16 +28,32 @@ jobs:
       - name: Install the repository's checksum-pinned SDK
         id: sdk
         run: |
-          python3 scripts/install_cangjie_sdk.py \
+          python scripts/install_cangjie_sdk.py \
             --url 'https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.1.3.tar.gz&objectKey=6a19349d21f5a8178d6fd22b' \
             --sha256 2b68905afc466e665ae181595c63f96c18d75fd2c1fb6c6f0cb64e179c28d61a \
             --destination "${RUNNER_TEMP}/cangjie-sdk-1.1.3" \
             --github-output "${GITHUB_OUTPUT}"
+      - name: Build baseline and preserve only its public dependency inputs
+        env:
+          SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          source "${SDK_ROOT}/envsetup.sh"
+          cjpm build
+          find "${HOME}/.cjpm" -maxdepth 4 -type d
+          tar -czf "${RUNNER_TEMP}/issue49-dependencies.tar.gz" -C "${HOME}/.cjpm" git
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: issue49-dependencies
+          path: ${{ runner.temp }}/issue49-dependencies.tar.gz
+          retention-days: 1
+          compression-level: 0
       - name: Archive verified compiler for the isolated development environment
+        if: always() && steps.sdk.outcome == 'success'
         env:
           SDK_ROOT: ${{ steps.sdk.outputs.root }}
         run: tar -czf "${RUNNER_TEMP}/issue49-sdk.tar.gz" -C "${SDK_ROOT}" .
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always() && steps.sdk.outcome == 'success'
         with:
           name: issue49-sdk
           path: ${{ runner.temp }}/issue49-sdk.tar.gz
