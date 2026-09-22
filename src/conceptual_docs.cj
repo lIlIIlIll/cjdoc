@@ -468,8 +468,11 @@ private func conceptualHtmlPackagePath(moduleId: String, packageName: String): S
 }
 
 private func conceptualArtifactPath(symbol: public_model.SymbolDoc, htmlLayout: Bool): String {
+    // HTML emits a stable detail page for every visible declaration. Keep conceptual
+    // reverse associations on the declaration that was actually bound instead of
+    // redirecting member/top-level associations to an owner or package aggregate.
+    if (htmlLayout) { return conceptualSymbolPath(symbol.id) }
     if (conceptualMarkdownContainer(symbol.kind)) {
-        if (htmlLayout) { return conceptualSymbolPath(symbol.id) }
         return conceptualMarkdownSymbolPath(symbol.id)
     }
     match (symbol.ownerId) {
