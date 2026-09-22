@@ -285,14 +285,10 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
         case None => ()
     }
     out.append("</div>")
-    if (!member.headerSpelling.isEmpty()) {
-        out.append("<pre class=\"signature-block compact-signature\"><code>")
-        appendLinkedSignatureHtml(out, member, typeLinkIndex, rootPrefix)
-        out.append("</code></pre>")
-    }
+    appendSymbolMetadata(out, index, member, rootPrefix, assetLookup, typeLinkIndex,
+        locale: locale, includeSummary: false)
     appendDocumentationHtml(out, index, member, rootPrefix, assetLookup, typeLinkIndex,
         headingBase: 3, locale: locale)
-    appendSymbolRelationshipSection(out, index, member, rootPrefix, typeLinkIndex, locale)
     out.append("</div></details>\n")
 }
 
