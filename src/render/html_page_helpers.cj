@@ -614,8 +614,9 @@ internal func appendSymbolRelationshipSection(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
     if (symbol.typeRelationships.isEmpty() && symbol.symbolRelationships.isEmpty()) { return }
-    out.append("<section class=\"symbol-relationships\" aria-labelledby=\"symbol-relationships-heading\">")
-    out.append("<h2 id=\"symbol-relationships-heading\">${label(locale, "Relationships", "关系")}</h2><dl class=\"relationships\">")
+    let headingId = "symbol-relationships-heading-" + htmlStableSlug(symbol.id)
+    out.append("<section class=\"symbol-relationships\" aria-labelledby=\"" + headingId + "\">")
+    out.append("<h2 id=\"" + headingId + "\">${label(locale, "Relationships", "关系")}</h2><dl class=\"relationships\">")
     for (relationship in symbol.typeRelationships) {
         if (hasResolvedSymbolRelationship(symbol, relationship.kind, relationship.target.spelling)) { continue }
         out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd>")
