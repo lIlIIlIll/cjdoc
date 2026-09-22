@@ -100,6 +100,22 @@ public class ReferenceBox<T> {
     /** Second overload used for same-page comparison. */
     public func ping(value: String): Unit {}
 
+    /**
+     * 将整数转换为文本，验证中文契约在紧凑成员中的可读性。
+     *
+     * @param value 要转换的整数。
+     * @return 转换后的文本。
+     */
+    public func convert(value: Int64): String { value.toString() }
+
+    /**
+     * 直接返回文本，作为第二个重载组的另一个签名。
+     *
+     * @param value 输入文本。
+     * @return 原始文本。
+     */
+    public func convert(value: String): String { value }
+
     /** A documented property. */
     public prop label: String { get() { "reference" } }
 }
@@ -113,3 +129,9 @@ public enum ReferenceState {
 /** An alias with a stable package index row. */
 public type ReferenceName = String
 private class HiddenGuideTarget {}
+
+/** Extension container used to verify member-source presentation. */
+extend<T> ReferenceBox<T> {
+    /** Member supplied by an extension. */
+    public func extensionMarker(): String { "extended" }
+}
