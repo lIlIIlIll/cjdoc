@@ -665,7 +665,16 @@ internal let HTML_SEARCH_SCRIPT = """
       for (const group of memberGroups) {
         group.hidden = query && !group.querySelector("[data-cjdoc-member]:not([hidden])");
       }
-      if (memberStatus) memberStatus.hidden = !query || visible !== 0;
+      if (memberStatus) {
+        if (!query) {
+          memberStatus.hidden = true;
+        } else {
+          memberStatus.textContent = isChinese
+            ? "匹配成员：" + visible
+            : visible + " matching member" + (visible === 1 ? "" : "s");
+          memberStatus.hidden = false;
+        }
+      }
     };
     memberFilter.addEventListener("input", applyMemberFilter);
   }
