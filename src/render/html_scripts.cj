@@ -649,35 +649,41 @@ internal let HTML_SEARCH_SCRIPT = """
     });
   }
   const memberFilter = document.querySelector("[data-cjdoc-member-filter]");
-  if (memberFilter) {
-    const memberRows = [...document.querySelectorAll("[data-cjdoc-member]")];
-    const memberGroups = [...document.querySelectorAll("[data-cjdoc-member-group]")];
-    const memberStatus = document.querySelector("[data-cjdoc-member-filter-status]");
-    const applyMemberFilter = () => {
-      const query = memberFilter.value.trim().toLocaleLowerCase();
-      let visible = 0;
-      for (const row of memberRows) {
-        const haystack = (row.dataset.memberName || "") + " " + (row.dataset.memberKind || "") + " " + (row.textContent || "");
-        const matches = !query || haystack.toLocaleLowerCase().includes(query);
-        row.hidden = !matches;
-        if (matches) visible += 1;
+  const originFilter = document.querySelector("[data-cjdoc-member-origin]");
+  const memberRows = [...document.querySelectorAll("[data-cjdoc-member]")];
+  const memberGroups = [...document.querySelectorAll("[data-cjdoc-member-group]")];
+  const memberStatus = document.querySelector("[data-cjdoc-member-filter-status]");
+  const applyMemberFilter = () => {
+    const query = memberFilter ? memberFilter.value.trim().toLocaleLowerCase() : "";
+    const origin = originFilter ? originFilter.value : "";
+    let visible = 0;
+    for (const row of memberRows) {
+      const haystack = (row.dataset.memberName || "") + " " +
+        (row.dataset.memberKind || "") + " " + (row.textContent || "");
+      const queryMatches = !query || haystack.toLocaleLowerCase().includes(query);
+      const originMatches = !origin || row.dataset.memberOrigin === origin;
+      const matches = queryMatches && originMatches;
+      row.hidden = !matches;
+      if (matches) visible += 1;
+    }
+    for (const group of memberGroups) {
+      group.hidden = !group.querySelector("[data-cjdoc-member]:not([hidden])");
+    }
+    if (memberStatus) {
+      const active = Boolean(query || origin);
+      if (!active) {
+        memberStatus.hidden = true;
+      } else {
+        memberStatus.textContent = isChinese
+          ? "匹配成员：" + visible
+          : visible + " matching member" + (visible === 1 ? "" : "s");
+        memberStatus.hidden = false;
       }
-      for (const group of memberGroups) {
-        group.hidden = query && !group.querySelector("[data-cjdoc-member]:not([hidden])");
-      }
-      if (memberStatus) {
-        if (!query) {
-          memberStatus.hidden = true;
-        } else {
-          memberStatus.textContent = isChinese
-            ? "匹配成员：" + visible
-            : visible + " matching member" + (visible === 1 ? "" : "s");
-          memberStatus.hidden = false;
-        }
-      }
-    };
-    memberFilter.addEventListener("input", applyMemberFilter);
-  }
+    }
+  };
+  if (memberFilter) memberFilter.addEventListener("input", applyMemberFilter);
+  if (originFilter) originFilter.addEventListener("change", applyMemberFilter);
+
   const memberStateKey = (() => {
     const project = document.body.dataset.cjdocProject || "";
     const version = document.body.dataset.cjdocDocVersion || "";
@@ -685,63 +691,81 @@ internal let HTML_SEARCH_SCRIPT = """
     const cfg = document.body.dataset.cjdocCfg || "";
     return "cjdoc-member-state:" + [project, version, audience, cfg, location.pathname].join("|");
   })();
+  const sidebar = document.querySelector("#cjdoc-sidebar");
   const saveMemberState = () => {
     try {
       const open = [...document.querySelectorAll("details[data-cjdoc-member][open]")]
         .map((item) => item.id).filter(Boolean);
       sessionStorage.setItem(memberStateKey, JSON.stringify({
         open,
-        filter: memberFilter ? memberFilter.value : ""
+        filter: memberFilter ? memberFilter.value : "",
+        origin: originFilter ? originFilter.value : "",
+        scroll: [window.scrollX, window.scrollY],
+        sidebar: sidebar ? sidebar.scrollTop : 0
       }));
     } catch (_) {}
   };
+  let savedMemberState = null;
+  try {
+    const raw = sessionStorage.getItem(memberStateKey);
+    if (raw) savedMemberState = JSON.parse(raw);
+  } catch (_) {}
   const restoreMemberState = () => {
-    if (window.location.hash) return;
-    try {
-      const raw = sessionStorage.getItem(memberStateKey);
-      if (!raw) return;
-      const state = JSON.parse(raw);
-      if (memberFilter && typeof state.filter === "string") {
-        memberFilter.value = state.filter;
-        memberFilter.dispatchEvent(new Event("input", {bubbles: true}));
+    if (window.location.hash || !savedMemberState) return;
+    const state = savedMemberState;
+    if (memberFilter && typeof state.filter === "string") memberFilter.value = state.filter;
+    if (originFilter && typeof state.origin === "string") originFilter.value = state.origin;
+    applyMemberFilter();
+    if (Array.isArray(state.open)) {
+      for (const id of state.open) {
+        const item = document.getElementById(id);
+        if (item && item.matches("details[data-cjdoc-member]") && !item.hidden) item.open = true;
       }
-      if (Array.isArray(state.open)) {
-        for (const id of state.open) {
-          const item = document.getElementById(id);
-          if (item && item.matches("details[data-cjdoc-member]")) {
-            item.hidden = false;
-            item.open = true;
-            const group = item.closest("[data-cjdoc-member-group]");
-            if (group) group.hidden = false;
-          }
-        }
-      }
-    } catch (_) {}
+    }
   };
-  for (const member of document.querySelectorAll("details[data-cjdoc-member]")) {
-    member.addEventListener("toggle", saveMemberState);
-  }
+  for (const member of memberRows) member.addEventListener("toggle", saveMemberState);
   if (memberFilter) memberFilter.addEventListener("input", saveMemberState);
+  if (originFilter) originFilter.addEventListener("change", saveMemberState);
   restoreMemberState();
-  const revealHashTarget = () => {
+
+  const revealHashTarget = (scroll = false) => {
     if (!window.location.hash || window.location.hash.length <= 1) return;
     let id = window.location.hash.slice(1);
     try { id = decodeURIComponent(id); } catch (_) {}
     const target = document.getElementById(id);
     if (!target) return;
-    const member = target.matches("[data-cjdoc-member]") ? target : target.closest("[data-cjdoc-member]");
+    const member = target.matches("[data-cjdoc-member]")
+      ? target : target.closest("[data-cjdoc-member]");
     if (member && member.tagName === "DETAILS") {
+      if (member.hidden) {
+        if (memberFilter) memberFilter.value = "";
+        if (originFilter) originFilter.value = "";
+        applyMemberFilter();
+      }
       member.hidden = false;
       member.open = true;
       const group = member.closest("[data-cjdoc-member-group]");
       if (group) group.hidden = false;
-      if (memberFilter && memberFilter.value) {
-        memberFilter.value = "";
-        memberFilter.dispatchEvent(new Event("input", {bubbles: true}));
-      }
+      if (scroll) requestAnimationFrame(() => member.scrollIntoView({block: "start"}));
     }
+    saveMemberState();
   };
   revealHashTarget();
-  window.addEventListener("hashchange", revealHashTarget);
+  window.addEventListener("hashchange", () => revealHashTarget(true));
+  window.addEventListener("pagehide", saveMemberState);
+
+  const navigationEntry = performance.getEntriesByType("navigation")[0];
+  const isHistoryNavigation = navigationEntry && navigationEntry.type === "back_forward";
+  if (isHistoryNavigation && savedMemberState) {
+    requestAnimationFrame(() => {
+      if (Array.isArray(savedMemberState.scroll) && savedMemberState.scroll.length === 2 &&
+          savedMemberState.scroll.every((value) => Number.isFinite(value) && value >= 0)) {
+        window.scrollTo(savedMemberState.scroll[0], savedMemberState.scroll[1]);
+      }
+      if (sidebar && Number.isFinite(savedMemberState.sidebar) && savedMemberState.sidebar >= 0) {
+        sidebar.scrollTop = savedMemberState.sidebar;
+      }
+    });
+  }
 })();
 """
