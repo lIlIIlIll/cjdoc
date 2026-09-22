@@ -1373,23 +1373,13 @@ private func conceptualArtifactSymbolIndex(documentation: public_model.Documenta
     result
 }
 
-private func conceptualInlineMemberIndex(documentation: public_model.DocumentationSet):
-    HashMap<String, ArrayList<Int64>> {
-    let result = HashMap<String, ArrayList<Int64>>()
+private func conceptualInlineMemberAnchorIndex(documentation: public_model.DocumentationSet):
+    HashMap<String, Int64> {
+    let result = HashMap<String, Int64>()
     var index: Int64 = 0
     for (symbol in documentation.declarations) {
-        if (!conceptualVisibleForAudience(symbol, documentation)) {
-            index++
-            continue
-        }
-        match (symbol.ownerId) {
-            case Some(ownerId) =>
-                let path = conceptualSymbolPath(ownerId)
-                match (result.get(path)) {
-                    case Some(indices) => indices.add(index)
-                    case None => result[path] = ArrayList<Int64>([index])
-                }
-            case None => ()
+        if (conceptualVisibleForAudience(symbol, documentation)) {
+            result["symbol-" + conceptualSymbolSlug(symbol.id)] = index
         }
         index++
     }
@@ -1398,35 +1388,52 @@ private func conceptualInlineMemberIndex(documentation: public_model.Documentati
 
 private func conceptualAugmentInlineMembers(path: String, content: String,
     documentation: public_model.DocumentationSet,
-    memberIndex: HashMap<String, ArrayList<Int64>>,
+    anchorIndex: HashMap<String, Int64>,
     pages: ArrayList<ConceptualPage>, resolvers: Array<ExternalDocResolver>,
     locale: String): String {
     if (!path.startsWith("html/symbols/")) { return content }
-    let relative = path.removePrefix("html/")
-    let memberIndexes = match (memberIndex.get(relative)) {
-        case Some(value) => value
-        case None => return content
+    let insertions = ArrayList<(Int64, String)>()
+    let marker = "id=\"symbol-"
+    let closing = "</div></details>"
+    var cursor: Int64 = 0
+    while (cursor < content.size) {
+        let markerStart = match (content[cursor..].indexOf(marker)) {
+            case Some(relative) => cursor + relative
+            case None => break
+        }
+        let anchorStart = markerStart + "id=\"".size
+        let anchorEnd = match (content[anchorStart..].indexOf("\"")) {
+            case Some(relative) => anchorStart + relative
+            case None => break
+        }
+        let anchor = content[anchorStart..anchorEnd]
+        let symbolIndexValue = match (anchorIndex.get(anchor)) {
+            case Some(value) => value
+            case None =>
+                cursor = anchorEnd + 1
+                continue
+        }
+        let closeStart = match (content[anchorEnd..].indexOf(closing)) {
+            case Some(relative) => anchorEnd + relative
+            case None =>
+                cursor = anchorEnd + 1
+                continue
+        }
+        let symbol = documentation.declarations[symbolIndexValue]
+        let suffix = "-inline-" + conceptualSymbolSlug(symbol.id)
+        let section = conceptualApiUsageHtml(pages, symbol.id, locale,
+            headingSuffix: suffix) +
+            conceptualExternalUsageHtml(symbol, resolvers, locale,
+                headingSuffix: suffix)
+        if (!section.isEmpty()) { insertions.add((closeStart, section)) }
+        cursor = closeStart + closing.size
     }
     var result = content
-    for (memberIndexValue in memberIndexes) {
-        let symbol = documentation.declarations[memberIndexValue]
-        let section = conceptualApiUsageHtml(pages, symbol.id, locale,
-            headingSuffix: "-inline-" + memberIndexValue.toString()) +
-            conceptualExternalUsageHtml(symbol, resolvers, locale,
-                headingSuffix: "-inline-" + memberIndexValue.toString())
-        if (section.isEmpty()) { continue }
-        let marker = "id=\"symbol-" + conceptualSymbolSlug(symbol.id) + "\""
-        let start = match (result.indexOf(marker)) {
-            case Some(value) => value
-            case None => continue
-        }
-        let closing = "</div></details>"
-        match (result[start..].indexOf(closing)) {
-            case Some(relativeClosing) =>
-                let insertAt = start + relativeClosing
-                result = result[..insertAt] + section + result[insertAt..]
-            case None => ()
-        }
+    var position = insertions.size
+    while (position > 0) {
+        position--
+        let (insertAt, section) = insertions[position]
+        result = result[..insertAt] + section + result[insertAt..]
     }
     result
 }
@@ -1514,9 +1521,9 @@ internal func appendConceptualArtifacts(projectRoot: String,
         HashMap<String, ArrayList<Int64>>()
     }
     let htmlInlineMemberIndex = if (shouldAugmentApiArtifacts) {
-        conceptualInlineMemberIndex(documentation)
+        conceptualInlineMemberAnchorIndex(documentation)
     } else {
-        HashMap<String, ArrayList<Int64>>()
+        HashMap<String, Int64>()
     }
     let conceptualSearch = if (config.enabled && hasHtml) {
         conceptualSearchIndex(search, pages)
