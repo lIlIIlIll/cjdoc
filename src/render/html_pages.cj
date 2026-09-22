@@ -433,8 +433,8 @@ internal func appendSiblingMemberNavigation(out: RenderTextBuffer,
     }
 }
 internal func renderSymbolPage(documentation: DocumentationSet, projection: RenderProjection,
-    index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
-    symbol: SymbolDoc, assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
+    index: HashMap<String, SymbolDoc>, symbol: SymbolDoc,
+    assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
     locale!: String = "en", docVersion!: ?String = None): String {
     let out = RenderTextBuffer()
     appendPageStart(out, symbol.qualifiedName, "../", documentation, projection, locale: locale,
