@@ -215,6 +215,7 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
 }
 
 internal func appendInlineMemberDetail(out: RenderTextBuffer,
+    documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, member: SymbolDoc, assetLookup: HashMap<String, String>,
     typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String, locale: String): Unit {
     let anchor = symbolAnchor(member)
@@ -236,7 +237,17 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
         case None => ()
     }
     out.append("</summary><div class=\"member-detail-body\">")
-    out.append("<div class=\"member-detail-actions\"><a class=\"member-permalink\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(member))}\">${standaloneLabel}</a></div>")
+    out.append("<div class=\"member-detail-actions\"><a class=\"member-permalink\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(member))}\">${standaloneLabel}</a>")
+    match (findProjectedModule(projection, member.moduleId)) {
+        case Some(module) => match (sourceUrl(documentation.project, module, member.source)) {
+            case Some(url) => out.append("<a class=\"member-source-link\" href=\"" +
+                escapeHtml(url) + "\" rel=\"noreferrer\">" +
+                label(locale, "View source", "查看源码") + "</a>")
+            case None => ()
+        }
+        case None => ()
+    }
+    out.append("</div>")
     if (!member.headerSpelling.isEmpty()) {
         out.append("<pre class=\"signature-block compact-signature\"><code>")
         appendLinkedSignatureHtml(out, member, typeLinkIndex, rootPrefix)
@@ -264,6 +275,7 @@ internal func memberSectionTitle(symbol: SymbolDoc): String {
 }
 
 internal func appendMemberSection(out: RenderTextBuffer,
+    documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
     owner: SymbolDoc, title: String, assetLookup: HashMap<String, String>,
     typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
@@ -311,7 +323,8 @@ internal func appendMemberSection(out: RenderTextBuffer,
                         escapeHtml(member.name) + "</code></p>\n")
                 }
                 previousName = member.name
-                appendInlineMemberDetail(out, index, member, assetLookup, typeLinkIndex, "../", locale)
+                appendInlineMemberDetail(out, documentation, projection, index, member,
+                    assetLookup, typeLinkIndex, "../", locale)
             }
             if (opened) { out.append("</section>\n") }
         case None => ()
@@ -401,8 +414,8 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     for (title in ["Constructors", "Properties", "Variables", "Functions", "Enum cases",
         "Nested classes", "Nested structs", "Nested interfaces", "Nested enums", "Nested extensions",
         "Other members"]) {
-        appendMemberSection(out, index, membersByOwner, symbol, title, assetLookup,
-            typeLinkIndex, locale)
+        appendMemberSection(out, documentation, projection, index, membersByOwner, symbol,
+            title, assetLookup, typeLinkIndex, locale)
     }
     if (isTypeDeclaration(symbol)) { out.append("</section>\n") }
     appendPageEnd(out, documentation, locale: locale)
