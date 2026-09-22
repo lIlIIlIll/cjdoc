@@ -1,0 +1,48 @@
+name: Issue 49 development inputs
+
+on:
+  push:
+    branches: [fix/issue-49-compact-reference]
+    paths: [.github/workflows/issue49-dev.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  inputs:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Archive tracked source without credentials or Git metadata
+        run: git archive HEAD | gzip > "${RUNNER_TEMP}/issue49-source.tar.gz"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: issue49-source
+          path: ${{ runner.temp }}/issue49-source.tar.gz
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ${{ runner.temp }}/cangjie-sdk-1.1.3
+          key: cangjie-sdk-linux-x64-2b68905afc466e665ae181595c63f96c18d75fd2c1fb6c6f0cb64e179c28d61a-v3-authenticated-archive
+      - name: Install the repository's checksum-pinned SDK
+        id: sdk
+        run: |
+          python3 scripts/install_cangjie_sdk.py \
+            --url 'https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.1.3.tar.gz&objectKey=6a19349d21f5a8178d6fd22b' \
+            --sha256 2b68905afc466e665ae181595c63f96c18d75fd2c1fb6c6f0cb64e179c28d61a \
+            --destination "${RUNNER_TEMP}/cangjie-sdk-1.1.3" \
+            --github-output "${GITHUB_OUTPUT}"
+      - name: Archive verified compiler for the isolated development environment
+        env:
+          SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: tar -czf "${RUNNER_TEMP}/issue49-sdk.tar.gz" -C "${SDK_ROOT}" .
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: issue49-sdk
+          path: ${{ runner.temp }}/issue49-sdk.tar.gz
+          retention-days: 1
+          compression-level: 0
