@@ -442,7 +442,8 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     locale!: String = "en", docVersion!: ?String = None): String {
     let out = RenderTextBuffer()
     appendPageStart(out, symbol.qualifiedName, "../", documentation, projection, locale: locale,
-        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)), currentRoute: "api", docVersion: docVersion)
+        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)),
+        currentRoute: "api", docVersion: docVersion, currentSymbol: Some(symbol))
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li>")
     out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">${label(locale, "Package", "包")} <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     appendOwnerBreadcrumbs(out, index, symbol, "../", locale)
