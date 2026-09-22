@@ -412,6 +412,20 @@ internal let HTML_SEARCH_SCRIPT = """
     if (sidebarNoResults) sidebarNoResults.hidden = !query || total > 0;
   };
   if (sidebarFilter) sidebarFilter.addEventListener("input", filterSidebar);
+  const contextFilter = document.querySelector("[data-cjdoc-context-filter]");
+  const contextEmpty = document.querySelector("[data-cjdoc-context-empty]");
+  const filterContext = () => {
+    if (!contextFilter) return;
+    const query = contextFilter.value.trim().toLocaleLowerCase();
+    let visible = 0;
+    for (const item of document.querySelectorAll("[data-cjdoc-context-item]")) {
+      const matches = !query || (item.textContent || "").toLocaleLowerCase().includes(query);
+      item.hidden = !matches;
+      if (matches) visible += 1;
+    }
+    if (contextEmpty) contextEmpty.hidden = !query || visible > 0;
+  };
+  if (contextFilter) contextFilter.addEventListener("input", filterContext);
   const activePackage = document.querySelector(".sidebar-package.is-current");
   if (activePackage && sidebar) sidebar.scrollTop = Math.max(0, activePackage.offsetTop - sidebar.clientHeight / 3);
   const syncRouteState = () => {
