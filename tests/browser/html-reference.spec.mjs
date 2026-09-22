@@ -169,6 +169,8 @@ test.describe('generated HTML reference', () => {
     expect(page.url()).toBe(typePageUrl);
     await labelDetail.locator('summary').click();
     await expect(labelDetail).toHaveAttribute('open', '');
+    await expect(labelDetail.locator('.api-usages')).toContainText('Getting started');
+    await expect(labelDetail.locator('.member-source-link')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
     await expect(normalizeDetail).toHaveAttribute('open', '');
     const pingDetails = page.locator('details[data-cjdoc-member][data-member-name="ping"]');
     await expect(pingDetails).toHaveCount(2);
