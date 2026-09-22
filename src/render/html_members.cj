@@ -32,7 +32,7 @@ internal class HtmlMemberBrowser {
             if (relation.kind == "extendedBy" && target.kind == "extend") {
                 addOwner(target, "extension", projection)
             } else if (relation.kind == "inheritedMember" || relation.kind == "inherits-member") {
-                let parent = match (target.ownerId) {
+                let parent: ?SymbolDoc = match (target.ownerId) {
                     case Some(ownerId) => projection.visibleIndex.get(ownerId)
                     case None => None
                 }

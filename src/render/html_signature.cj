@@ -3,6 +3,7 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 import std.sort.*
+import std.convert.*
 
 // Token values come from SourceApiSignature, not a second declaration lexer.
 // Alignment accepts only exact token values separated by source trivia. A stale
@@ -25,14 +26,14 @@ private func skipSignatureTrivia(raw: String, from: Int64): Int64 {
     var cursor = from
     while (cursor < raw.size) {
         if (signatureSpace(raw[cursor])) { cursor++; continue }
-        if (raw[cursor..].startsWith("//")) {
+        if ((cursor + 1 < raw.size && raw[cursor] == b'/' && raw[cursor + 1] == b'/')) {
             while (cursor < raw.size && raw[cursor] != b'\n') { cursor++ }
-        } else if (raw[cursor..].startsWith("/*")) {
+        } else if ((cursor + 1 < raw.size && raw[cursor] == b'/' && raw[cursor + 1] == b'*')) {
             var depth: Int64 = 1
             cursor += 2
             while (cursor < raw.size && depth > 0) {
-                if (raw[cursor..].startsWith("/*")) { depth++; cursor += 2 }
-                else if (raw[cursor..].startsWith("*/")) { depth--; cursor += 2 }
+                if ((cursor + 1 < raw.size && raw[cursor] == b'/' && raw[cursor + 1] == b'*')) { depth++; cursor += 2 }
+                else if ((cursor + 1 < raw.size && raw[cursor] == b'*' && raw[cursor + 1] == b'/')) { depth--; cursor += 2 }
                 else { cursor++ }
             }
             if (depth != 0) { return -1 }
