@@ -349,27 +349,50 @@ internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<Strin
 }
 
 internal func appendSiblingMemberNavigation(out: RenderTextBuffer,
-    membersByOwner: HashMap<String, ArrayList<SymbolDoc>>, symbol: SymbolDoc,
-    rootPrefix: String, locale: String): Unit {
+    index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
+    symbol: SymbolDoc, rootPrefix: String, locale: String): Unit {
     match (symbol.ownerId) {
         case Some(ownerId) => match (membersByOwner.get(ownerId)) {
             case Some(members) =>
                 if (members.size <= 1) { return }
+                let overloadCounts = HashMap<String, Int64>()
+                for (member in members) {
+                    overloadCounts[member.name] = match (overloadCounts.get(member.name)) {
+                        case Some(value) => value + 1
+                        case None => 1
+                    }
+                }
                 out.append("<nav class=\"sibling-members\" aria-label=\"" +
                     label(locale, "Other members of this type", "同类型的其他成员") + "\"><span>" +
                     label(locale, "Members", "成员") + "</span><div>")
                 var shown: Int64 = 0
                 for (member in members) {
                     if (shown >= 24) { break }
+                    let overloadCount = match (overloadCounts.get(member.name)) {
+                        case Some(value) => value
+                        case None => 0
+                    }
+                    let display = if (overloadCount > 1 && !member.headerSpelling.isEmpty()) {
+                        member.headerSpelling
+                    } else { member.name }
                     let current = member.id == symbol.id
                     if (current) {
                         out.append("<span class=\"is-current\" aria-current=\"page\"><code>" +
-                            escapeHtml(member.name) + "</code></span>")
+                            escapeHtml(display) + "</code></span>")
                     } else {
                         out.append("<a href=\"" + rootPrefix + escapeHtml(symbolPagePath(member)) +
-                            "\"><code>" + escapeHtml(member.name) + "</code></a>")
+                            "\"><code>" + escapeHtml(display) + "</code></a>")
                     }
                     shown++
+                }
+                if (members.size > 24) {
+                    match (findSymbol(index, ownerId)) {
+                        case Some(owner) =>
+                            out.append("<a class=\"sibling-members-all\" href=\"" + rootPrefix +
+                                escapeHtml(symbolPagePath(owner)) + "\">" +
+                                label(locale, "All members", "全部成员") + "</a>")
+                        case None => ()
+                    }
                 }
                 out.append("</div></nav>\n")
             case None => ()
@@ -388,7 +411,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">${label(locale, "Package", "包")} <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     appendOwnerBreadcrumbs(out, index, symbol, "../", locale)
     out.append("<li aria-current=\"page\"><code>${escapeHtml(symbol.name)}</code></li></ol></nav>\n")
-    appendSiblingMemberNavigation(out, membersByOwner, symbol, "../", locale)
+    appendSiblingMemberNavigation(out, index, membersByOwner, symbol, "../", locale)
     out.append("<header class=\"page-header\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(symbol.name)}</code></h1>")
     appendSymbolMetadata(out, index, symbol, "../", assetLookup, typeLinkIndex, locale: locale)
     match (findProjectedModule(projection, symbol.moduleId)) {
