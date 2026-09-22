@@ -15,6 +15,9 @@ package html_reference_core
  * let answer = 42
  * ```
  */
+/** A type used to verify signature link placement. */
+public class Token {}
+
 public class ReferenceBox<T> {
     /** Stored generic value. */
     public let value: T
@@ -38,6 +41,13 @@ public class ReferenceBox<T> {
      * let result = normalize(value: 42)
      */
     public func normalize(value: Int64): Int64 { value }
+
+    /**
+     * Exercise named parameters with a default string that matches a type name.
+     * @param label Display label.
+     * @param item Token value.
+     */
+    public func use(label!: String = "Token", item!: Token): Unit {}
 
     /** A documented property. */
     public prop label: String { get() { "reference" } }
