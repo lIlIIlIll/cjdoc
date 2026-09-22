@@ -152,7 +152,13 @@ test.describe('generated HTML reference', () => {
     await memberFilter.fill('');
     await expect(page.locator('.source-action')).not.toHaveCount(0);
     await expect(page.locator('.source-action a')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
-    const memberHref = await page.locator('.declaration-row-link').filter({ hasText: 'normalize' }).getAttribute('href');
+    const member = page.locator('details[data-cjdoc-member][data-member-name="normalize"]');
+    const beforeExpand = page.url();
+    await member.locator(':scope > summary').click();
+    await expect(member).toHaveAttribute('open', '');
+    expect(page.url()).toBe(beforeExpand);
+    await expect(member.locator('.behavior-contracts')).toContainText('precondition');
+    const memberHref = await member.locator('.member-permalink').getAttribute('href');
     const memberUrl = new URL(memberHref, classUrl).href;
     await gotoFile(page, memberUrl);
     await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
@@ -197,7 +203,7 @@ test.describe('generated HTML reference', () => {
     await openIndex(page);
     const validationUrl = new URL('validation.html', indexUrl).href;
     await gotoFile(page, validationUrl);
-    await expect(page.locator('.validation-page h1')).toContainText('Validation results');
+    await expect(page.locator('.page-header h1')).toContainText('Validation results');
     await expect(page.locator('.validation-page')).toContainText('not run');
     await expect(page.locator('.validation-page')).toContainText('API diff: not attached');
     await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveCount(1);
@@ -223,7 +229,7 @@ test.describe('generated HTML reference', () => {
 
     await page.setViewportSize({ width: 1180, height: 1000 });
     await openIndex(page);
-    await expect(page.locator('[data-cjdoc-mobile-toc]')).toBeHidden();
+    await expect(page.locator('[data-cjdoc-mobile-toc]')).toBeVisible();
     await expect(page.locator('[data-cjdoc-filter-toggle]')).toBeVisible();
     await page.locator('[data-cjdoc-filter-toggle]').click();
     await expect(page.locator('#cjdoc-search-filters')).toBeVisible();

@@ -75,25 +75,21 @@ internal func renderHtmlIndex(documentation: DocumentationSet, projection: Rende
 
 internal func appendDeclarationRow(out: RenderTextBuffer, symbol: SymbolDoc,
     rootPrefix: String): Unit {
-    out.append("<article class=\"declaration-summary\" data-cjdoc-member data-member-name=\"${escapeHtml(symbol.name)}\" data-member-kind=\"${escapeHtml(symbol.kind)}\"><a class=\"declaration-row-link\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(symbol))}\">")
-    out.append("<div class=\"declaration-summary-head\"><code>${escapeHtml(symbol.name)}</code><span class=\"declaration-kind\">${escapeHtml(symbol.kind)}</span></div>")
+    out.append("<article class=\"declaration-summary\" data-cjdoc-member data-member-name=\"${escapeHtml(symbol.name)}\" data-member-kind=\"${escapeHtml(symbol.kind)}\"><a class=\"declaration-row-link\" href=\"${escapeHtml(rootPrefix + symbolPagePath(symbol))}\">")
+    let signature = if (symbol.headerSpelling.isEmpty()) { "${symbol.kind} ${symbol.name}" } else { symbol.headerSpelling }
+    out.append("<code class=\"declaration-signature\">" + escapeHtml(signature) + "</code>")
     match (symbol.documentation) {
         case Some(comment) =>
             let summary = summaryPlainText(comment)
-            if (!summary.isEmpty()) { out.append("<p>"); out.append(escapeHtml(summary)); out.append("</p>") }
+            if (!summary.isEmpty()) { out.append("<p>" + escapeHtml(summary) + "</p>") }
         case None => ()
-    }
-    if (!symbol.headerSpelling.isEmpty()) {
-        out.append("<code class=\"declaration-signature\">")
-        out.append(escapeHtml(symbol.headerSpelling))
-        out.append("</code>")
     }
     out.append("</a></article>\n")
 }
 
 public func renderConceptualHtmlPage(documentation: DocumentationSet, title: String, body: String,
     rootPrefix: String, source!: ?String = None, locale!: String = "en",
-    docVersion!: ?String = None): String {
+    docVersion!: ?String = None, currentRoute!: String = "concept"): String {
     let projection = RenderProjection(documentation)
     let out = RenderTextBuffer()
     let breadcrumbLabel = label(locale, "Breadcrumb", "面包屑导航")
@@ -101,18 +97,18 @@ public func renderConceptualHtmlPage(documentation: DocumentationSet, title: Str
     let conceptsLabel = label(locale, "Concepts", "概念文档")
     let sourceLabel = label(locale, "Source", "来源")
     appendPageStart(out, title, rootPrefix, documentation, projection, locale: locale,
-        currentRoute: "concept", docVersion: docVersion)
+        currentRoute: currentRoute, docVersion: docVersion)
     out.append("<nav class=\"breadcrumbs\" aria-label=\"")
     out.append(breadcrumbLabel)
     out.append("\"><ol><li><a href=\"")
     out.append(rootPrefix)
     out.append("index.html\">")
     out.append(apiReferenceLabel)
-    out.append("</a></li><li><a href=\"")
-    out.append(rootPrefix)
-    out.append("concepts/index.html\">")
-    out.append(conceptsLabel)
-    out.append("</a></li><li aria-current=\"page\">")
+    out.append("</a></li>")
+    if (currentRoute == "concept") {
+        out.append("<li><a href=\"" + rootPrefix + "concepts/index.html\">" + conceptsLabel + "</a></li>")
+    }
+    out.append("<li aria-current=\"page\">")
     out.append(escapeHtml(title))
     out.append("</li></ol></nav>")
     out.append("<header class=\"page-header\"><h1>${escapeHtml(title)}</h1>")
@@ -230,56 +226,6 @@ internal func memberSectionTitle(symbol: SymbolDoc): String {
     }
 }
 
-internal func appendMemberSection(out: RenderTextBuffer,
-    index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
-    owner: SymbolDoc, title: String, locale: String): Unit {
-    let sectionLabel = match (title) {
-        case "Constructors" => "构造器"
-        case "Properties" => "属性"
-        case "Variables" => "变量"
-        case "Functions" => "函数"
-        case "Enum cases" => "枚举项"
-        case "Nested classes" => "嵌套类"
-        case "Nested structs" => "嵌套结构体"
-        case "Nested interfaces" => "嵌套接口"
-        case "Nested enums" => "嵌套枚举"
-        case "Nested extensions" => "嵌套扩展"
-        case _ => "其他成员"
-    }
-    let overloadLabel = label(locale, "Overloads", "重载")
-    var opened = false
-    match (membersByOwner.get(owner.id)) {
-        case Some(members) =>
-            let overloadCounts = HashMap<String, Int64>()
-            for (member in members) {
-                if (memberSectionTitle(member) != title) { continue }
-                let count = match (overloadCounts.get(member.name)) {
-                    case Some(value) => value + 1
-                    case None => 1
-                }
-                overloadCounts[member.name] = count
-            }
-            var previousName = ""
-            for (member in members) {
-                if (memberSectionTitle(member) != title) { continue }
-                if (!opened) {
-                    out.append("<h2>" + escapeHtml(label(locale, title, sectionLabel)) + "</h2>\n")
-                    opened = true
-                }
-                let count = match (overloadCounts.get(member.name)) {
-                    case Some(value) => value
-                    case None => 0
-                }
-                if (count > 1 && previousName != member.name) {
-                    out.append("<p class=\"overload-group-label\"><span>" + escapeHtml(overloadLabel) + "</span> <code>" + escapeHtml(member.name) + "</code></p>\n")
-                }
-                previousName = member.name
-                appendDeclarationRow(out, member, "../")
-            }
-        case None => ()
-    }
-}
-
 internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<String, SymbolDoc>,
     symbol: SymbolDoc, rootPrefix: String, locale: String): Unit {
     let owners = ArrayList<SymbolDoc>()
@@ -304,39 +250,17 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     locale!: String = "en", docVersion!: ?String = None): String {
     let out = RenderTextBuffer()
     appendPageStart(out, symbol.qualifiedName, "../", documentation, projection, locale: locale,
-        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)), currentRoute: "api", docVersion: docVersion)
+        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)), currentRoute: "api", docVersion: docVersion, currentSymbol: Some(symbol))
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li>")
     out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">${label(locale, "Package", "包")} <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     appendOwnerBreadcrumbs(out, index, symbol, "../", locale)
     out.append("<li aria-current=\"page\"><code>${escapeHtml(symbol.name)}</code></li></ol></nav>\n")
-    out.append("<header class=\"page-header\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(symbol.name)}</code></h1>")
-    appendSymbolMetadata(out, index, symbol, "../", assetLookup, typeLinkIndex, locale: locale)
-    match (findProjectedModule(projection, symbol.moduleId)) {
-        case Some(module) => match (sourceUrl(documentation.project, module, symbol.source)) {
-            case Some(url) => out.append("<p class=\"source-action\"><a href=\"${escapeHtml(url)}\" rel=\"noreferrer\">${label(locale, "View source", "查看源码")}</a></p>\n")
-            case None => ()
-        }
-        case None => ()
-    }
-    out.append("</header>\n")
-    appendDocumentationHtml(out, index, symbol, "../", assetLookup,
-        typeLinkIndex, headingBase: 2, locale: locale)
+    out.append("<header class=\"page-header\"><h1 id=\"" + symbolAnchor(symbol) + "\" data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(symbol.name)}</code></h1></header>\n")
+    appendMemberDetail(out, documentation, projection, symbol, assetLookup, typeLinkIndex, "../", locale)
+    appendMemberBrowser(out, documentation, projection, symbol, assetLookup, typeLinkIndex, locale)
     if (isTypeDeclaration(symbol)) {
         appendReverseTypeUsageSection(out, symbol, typeLinkIndex, "../", locale)
     }
-    if (isTypeDeclaration(symbol)) {
-        let filterLabel = label(locale, "Filter members", "筛选成员")
-        let noResultsLabel = label(locale, "No matching members.", "没有匹配的成员。")
-        out.append("<section class=\"member-browser\" data-cjdoc-member-browser>")
-        out.append("<div class=\"member-browser-toolbar\"><label for=\"cjdoc-member-filter\">" + filterLabel + "</label><input id=\"cjdoc-member-filter\" type=\"search\" data-cjdoc-member-filter placeholder=\"" + filterLabel + "\" autocomplete=\"off\"></div>")
-        out.append("<p class=\"member-filter-status\" data-cjdoc-member-filter-status role=\"status\" hidden>" + noResultsLabel + "</p>")
-    }
-    for (title in ["Constructors", "Properties", "Variables", "Functions", "Enum cases",
-        "Nested classes", "Nested structs", "Nested interfaces", "Nested enums", "Nested extensions",
-        "Other members"]) {
-        appendMemberSection(out, index, membersByOwner, symbol, title, locale)
-    }
-    if (isTypeDeclaration(symbol)) { out.append("</section>\n") }
     appendPageEnd(out, documentation, locale: locale)
     out.toString()
 }

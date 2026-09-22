@@ -343,17 +343,17 @@ class RendererSafetyTest {
         @Expect(packageHtml.contains(
             "<aside class=\"toc-panel\" data-cjdoc-toc aria-label=\"On this page\" hidden>"), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("toc.hidden = headings.length === 0;"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("semanticMode"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("heading.closest(\".member-entry, .contextual-metadata\")"), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("aria-expanded"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("toc-children"), true)
-        @Expect(HTML_SEARCH_SCRIPT.contains("setActive(link.dataset.tocTarget)"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("activateFragment"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("setAttribute(\"aria-current\", \"page\")"), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("menu.getAttribute(\"aria-expanded\") !== \"true\""), true)
         @Expect(css.contains(".sidebar-package.is-current"), true)
-        @Expect(css.contains(".toc-api-row"), true)
-        @Expect(css.contains(".toc-toggle"), true)
-        @Expect(css.contains(".toc-children"), true)
-        @Expect(css.contains(".parameter-row{padding:0;border-bottom:0}"), true)
-        @Expect(css.contains(".parameter-type{white-space:normal;overflow-wrap:anywhere}"), true)
+        @Expect(css.contains(".member-entry"), true)
+        @Expect(css.contains(".member-entry>summary"), true)
+        @Expect(css.contains(".mobile-toc"), true)
+        @Expect(css.contains(".parameter-row"), true)
+        @Expect(css.contains(".parameter-type"), true)
 
         @Expect(packageHtml.contains("class=\"declaration-group\""), true)
         @Expect(packageHtml.contains("class=\"declaration-signature\">public func api(): Unit"), true)
@@ -374,9 +374,9 @@ class RendererSafetyTest {
         @Expect(!symbolHtml.contains("semantic: resolved"), true)
         @Expect(!symbolHtml.contains("top-source-disabled"), true)
         @Expect(symbolHtml.contains(
-            "<h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"class Owner\">"), true)
+            "data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"class Owner\">"), true)
         @Expect(symbolHtml.contains(
-            "<article class=\"declaration-summary\" data-cjdoc-member"), true)
+            "<details class=\"member-entry\""), true)
     }
 
     @TestCase

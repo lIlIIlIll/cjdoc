@@ -117,7 +117,6 @@ internal let HTML_SEARCH_SCRIPT = """
     activeCategory = next;
     for (const tab of categoryTabs) {
       const active = tab.dataset.cjdocCategory === next;
-      tab.setAttribute("aria-selected", active ? "true" : "false");
       tab.setAttribute("aria-pressed", active ? "true" : "false");
     }
     render();
@@ -413,7 +412,9 @@ internal let HTML_SEARCH_SCRIPT = """
   };
   if (sidebarFilter) sidebarFilter.addEventListener("input", filterSidebar);
   const activePackage = document.querySelector(".sidebar-package.is-current");
-  if (activePackage && sidebar) sidebar.scrollTop = Math.max(0, activePackage.offsetTop - sidebar.clientHeight / 3);
+  const activeContext = document.querySelector(".context-item.is-current");
+  const initialNavigationTarget = activeContext || (!document.querySelector(".sidebar-context") && activePackage);
+  if (initialNavigationTarget && sidebar) sidebar.scrollTop = Math.max(0, initialNavigationTarget.offsetTop - sidebar.clientHeight / 3);
   const syncRouteState = () => {
     const overview = document.querySelector(".sidebar-link[href$='index.html']");
     const api = document.querySelector(".sidebar-link[href*='#packages']");
@@ -422,9 +423,9 @@ internal let HTML_SEARCH_SCRIPT = """
     const onApi = declaredRoute === "api" || (declaredRoute === "overview" && window.location.hash === "#packages");
     const onOverview = declaredRoute === "overview" && !onApi;
     overview.classList.toggle("is-current", onOverview);
-    overview.toggleAttribute("aria-current", onOverview);
+    if (onOverview) overview.setAttribute("aria-current", "page"); else overview.removeAttribute("aria-current");
     api.classList.toggle("is-current", onApi);
-    api.toggleAttribute("aria-current", onApi);
+    if (onApi) api.setAttribute("aria-current", "page"); else api.removeAttribute("aria-current");
   };
   syncRouteState();
   window.addEventListener("hashchange", syncRouteState);
@@ -433,175 +434,47 @@ internal let HTML_SEARCH_SCRIPT = """
   const content = document.querySelector("[data-cjdoc-content]");
   if (toc && content) {
     const tocList = toc.querySelector("ol");
-    const allHeadings = [...content.querySelectorAll("h1, h2, h3, h4")];
-    const semanticHeadings = allHeadings.filter((heading) => {
-      const role = heading.dataset.cjdocTocRole;
-      return role === "api-root" || role === "api" || role === "member";
-    });
-    const semanticMode = false;
-    const headings = allHeadings.filter((heading) => {
-      const role = heading.dataset.cjdocTocRole;
-      return (role === "api-root" || role === "api" || role === "member" ||
-        heading.tagName === "H2" || heading.tagName === "H3") &&
-        !heading.classList.contains("signature-heading");
-    });
-    const usedIds = new Set();
-    const slug = (value, index) => {
-      const normalized = value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-      return normalized || "section-" + index;
-    };
-    const ensureHeadingId = (heading, index) => {
-      let id = heading.id || slug(heading.textContent.trim(), index);
-      const base = id;
-      let suffix = 2;
-      while (usedIds.has(id)) { id = base + "-" + suffix; suffix += 1; }
+    // Members have their own contextual navigator. Do not flood the page outline
+    // with headings belonging to closed member disclosures.
+    const headings = [...content.querySelectorAll("h1, h2, h3")]
+      .filter(heading => !heading.closest(".member-entry, .contextual-metadata") &&
+        !heading.classList.contains("signature-heading"));
+    const usedIds = new Set([...document.querySelectorAll("[id]")].map(node => node.id));
+    headings.forEach((heading, index) => {
+      if (heading.id) return;
+      const base = heading.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "section-" + index;
+      let id = base;
+      for (let suffix = 2; usedIds.has(id); suffix += 1) id = base + "-" + suffix;
       heading.id = id;
       usedIds.add(id);
-    };
-    const headingLabel = (heading) => {
-      const explicit = heading.dataset.cjdocTocLabel;
-      return (explicit || heading.textContent).trim().replace(/\\s+/g, " ");
-    };
-    const createLink = (heading, className) => {
+    });
+    const createLink = heading => {
+      const item = document.createElement("li");
       const link = document.createElement("a");
-      const sourceLink = heading.querySelector("a[href]");
-      const target = sourceLink ? sourceLink.getAttribute("href") : null;
-      link.className = "toc-link " + className;
-      link.setAttribute("href", target || "#" + heading.id);
+      item.dataset.depth = heading.tagName.slice(1);
+      link.className = "toc-link";
+      link.href = "#" + heading.id;
       link.dataset.tocTarget = heading.id;
-      link.textContent = headingLabel(heading);
-      return link;
-    };
-    const appendFlatItem = (heading, index) => {
-      const item = document.createElement("li");
-      item.dataset.depth = heading.tagName === "H3" ? "3" : "2";
-      item.append(createLink(heading, "toc-flat-link"));
-      tocList.append(item);
-    };
-    const isChinese = (document.documentElement.lang || "").toLocaleLowerCase().startsWith("zh");
-    const createToggle = (labelText, children, initiallyExpanded) => {
-      const button = document.createElement("button");
-      const icon = document.createElement("span");
-      const setExpanded = (expanded) => {
-        button.setAttribute("aria-expanded", expanded ? "true" : "false");
-        button.setAttribute("aria-label", (expanded
-          ? (isChinese ? "收起 " : "Collapse ") : (isChinese ? "展开 " : "Expand ")) + labelText);
-        icon.textContent = expanded ? "▾" : "▸";
-        children.hidden = !expanded;
-      };
-      button.type = "button";
-      button.className = "toc-toggle";
-      button.setAttribute("aria-controls", children.id);
-      icon.className = "toc-toggle-icon";
-      icon.setAttribute("aria-hidden", "true");
-      button.append(icon);
-      button.addEventListener("click", () => {
-        setExpanded(button.getAttribute("aria-expanded") !== "true");
-      });
-      setExpanded(initiallyExpanded);
-      return {button, setExpanded};
-    };
-    const parentByLink = new Map();
-    const apiNodes = [];
-    const createApiNode = (heading, index) => {
-      const item = document.createElement("li");
-      const row = document.createElement("div");
-      const link = createLink(heading, "toc-api-link");
-      item.className = "toc-api-item";
-      row.className = "toc-api-row";
-      row.append(link);
-      item.append(row);
-      const node = {heading, item, row, link, children: null, setExpanded: null, index};
-      apiNodes.push(node);
-      return node;
-    };
-    const appendMember = (parent, heading) => {
-      if (!parent.children) {
-        const children = document.createElement("ol");
-        children.className = "toc-children";
-        children.id = "toc-children-" + parent.index;
-        const toggle = createToggle(headingLabel(parent.heading), children,
-          parent.heading.dataset.cjdocTocRole === "api-root");
-        parent.children = children;
-        parent.setExpanded = toggle.setExpanded;
-        parent.row.insertBefore(toggle.button, parent.row.firstChild);
-        parent.item.append(children);
-      }
-      const item = document.createElement("li");
-      const link = createLink(heading, "toc-member-link");
-      item.className = "toc-member-item";
+      link.textContent = (heading.dataset.cjdocTocLabel || heading.textContent).trim();
       item.append(link);
-      parent.children.append(item);
-      parentByLink.set(link, parent);
+      return item;
     };
-    for (let index = 0; index < headings.length; index += 1) {
-      ensureHeadingId(headings[index], index);
-    }
-    tocList.replaceChildren();
-    if (semanticMode) {
-      let currentApi = null;
-      for (const heading of headings) {
-        const role = heading.dataset.cjdocTocRole;
-        if (role === "api-root" || role === "api") {
-          currentApi = createApiNode(heading, apiNodes.length);
-          tocList.append(currentApi.item);
-        } else if (role === "member" && currentApi) {
-          appendMember(currentApi, heading);
-        }
-      }
-    } else {
-      for (let index = 0; index < headings.length; index += 1) {
-        appendFlatItem(headings[index], index);
-      }
-    }
+    tocList.replaceChildren(...headings.map(createLink));
     toc.hidden = headings.length === 0;
     const mobileToc = document.querySelector("[data-cjdoc-mobile-toc]");
-    const mobileTocList = mobileToc && mobileToc.querySelector("ol");
-    if (mobileToc && mobileTocList) {
-      mobileTocList.replaceChildren();
-      for (const heading of headings) {
-        const item = document.createElement("li");
-        item.append(createLink(heading, "toc-mobile-link"));
-        mobileTocList.append(item);
-      }
+    if (mobileToc) {
+      mobileToc.querySelector("ol").replaceChildren(...headings.map(createLink));
       mobileToc.hidden = headings.length === 0;
     }
     if (headings.length && "IntersectionObserver" in window) {
-
       const links = [...tocList.querySelectorAll("a")];
-      const byId = new Map(links.map((link) => [link.dataset.tocTarget, link]));
-      const setActive = (targetId) => {
-        for (const link of links) {
-          link.classList.remove("is-active", "is-parent-active");
-        }
-        const active = byId.get(targetId);
-        if (!active) return;
-        active.classList.add("is-active");
-        const parent = parentByLink.get(active);
-        if (parent) {
-          parent.link.classList.add("is-parent-active");
-          parent.setExpanded(true);
-        }
-      };
-      for (const link of links) {
-        link.addEventListener("click", () => {
-          const parent = parentByLink.get(link);
-          if (parent) parent.setExpanded(true);
-          setActive(link.dataset.tocTarget);
-        });
-      }
-      const observer = new IntersectionObserver((entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          setActive(entry.target.id);
-        }
-      }, {rootMargin: "-18% 0px -68% 0px", threshold: 0});
+      const observer = new IntersectionObserver(entries => {
+        const visible = entries.find(entry => entry.isIntersecting);
+        if (!visible) return;
+        for (const link of links) link.classList.toggle("is-active", link.dataset.tocTarget === visible.target.id);
+      }, {rootMargin: "-10% 0px -70% 0px", threshold: 0});
       for (const heading of headings) observer.observe(heading);
-      setActive(headings[0].id);
-    } else if (headings.length) {
-      const firstLink = tocList.querySelector("a");
-      if (firstLink) firstLink.classList.add("is-active");
     }
   }
   const copyText = async (value) => {
@@ -645,22 +518,137 @@ internal let HTML_SEARCH_SCRIPT = """
       }, 1400);
     });
   }
+  // State is a bounded, optional enhancement. Static disclosures and permalink
+  // navigation still work with storage unavailable or JavaScript disabled.
   const memberFilter = document.querySelector("[data-cjdoc-member-filter]");
-  if (memberFilter) {
-    const memberRows = [...document.querySelectorAll("[data-cjdoc-member]")];
-    const memberStatus = document.querySelector("[data-cjdoc-member-filter-status]");
-    const applyMemberFilter = () => {
-      const query = memberFilter.value.trim().toLocaleLowerCase();
-      let visible = 0;
-      for (const row of memberRows) {
-        const haystack = (row.dataset.memberName || "") + " " + (row.dataset.memberKind || "") + " " + (row.textContent || "");
-        const matches = !query || haystack.toLocaleLowerCase().includes(query);
-        row.hidden = !matches;
-        if (matches) visible += 1;
-      }
-      if (memberStatus) memberStatus.hidden = !query || visible !== 0;
-    };
-    memberFilter.addEventListener("input", applyMemberFilter);
+  const originFilter = document.querySelector("[data-cjdoc-member-origin]");
+  const memberStatus = document.querySelector("[data-cjdoc-member-filter-status]");
+  const contextFilter = document.querySelector("[data-cjdoc-context-filter]");
+  const contextEmpty = document.querySelector("[data-cjdoc-context-empty]");
+  const contextItems = [...document.querySelectorAll(".context-item")];
+  const memberRows = [...document.querySelectorAll("details[data-cjdoc-member]")];
+  const memberGroups = [...document.querySelectorAll("[data-cjdoc-member-group], [data-cjdoc-overload-group]")];
+  const memberTexts = new Map(memberRows.map(row => [row,
+    ((row.querySelector("summary")?.textContent || "") + " " + row.dataset.memberKind).toLocaleLowerCase()]));
+  const stateKey = "cjdoc-reading/1:" + JSON.stringify([
+    document.body.dataset.cjdocProject || "", document.body.dataset.cjdocDocVersion || "",
+    document.body.dataset.cjdocAudience || "", document.body.dataset.cjdocCfg || "", location.pathname
+  ]);
+  let restoring = true;
+  let targetNotice = "";
+  const applyMemberFilter = () => {
+    const query = (memberFilter?.value || "").trim().toLocaleLowerCase();
+    const origin = originFilter?.value || "";
+    let visible = 0;
+    for (const row of memberRows) {
+      const match = (!query || memberTexts.get(row).includes(query)) && (!origin || row.dataset.memberOrigin === origin);
+      row.hidden = !match;
+      if (match) visible += 1;
+    }
+    for (const group of memberGroups) group.hidden = ![...group.querySelectorAll("details[data-cjdoc-member]")].some(row => !row.hidden);
+    if (memberStatus) memberStatus.textContent = (isChinese
+      ? "显示 " + visible + " / " + memberRows.length + " 个成员。"
+      : "Showing " + visible + " of " + memberRows.length + " members.") + targetNotice;
+  };
+  const applyContextFilter = () => {
+    const query = (contextFilter?.value || "").trim().toLocaleLowerCase();
+    let visible = 0;
+    for (const item of contextItems) {
+      item.hidden = !!query && !item.textContent.toLocaleLowerCase().includes(query);
+      if (!item.hidden) visible += 1;
+    }
+    if (contextEmpty) contextEmpty.hidden = !query || visible > 0;
+  };
+  const snapshotReading = () => ({
+    open: memberRows.filter(row => row.open).map(row => row.id).slice(0, 4096),
+    filter: (memberFilter?.value || "").slice(0, 512), origin: originFilter?.value || "",
+    context: (contextFilter?.value || "").slice(0, 512),
+    scroll: [window.scrollX, window.scrollY], sidebar: sidebar?.scrollTop || 0
+  });
+  const saveReading = () => {
+    if (restoring) return;
+    try {
+      const text = JSON.stringify(snapshotReading());
+      if (text.length <= 512 * 1024) sessionStorage.setItem(stateKey, text);
+    } catch (_) { /* storage is optional, including file:// restrictions */ }
+  };
+  let saved = null;
+  try {
+    const text = sessionStorage.getItem(stateKey);
+    if (text && text.length <= 512 * 1024) saved = JSON.parse(text);
+  } catch (_) { /* malformed or unavailable storage must not break navigation */ }
+  if (saved && typeof saved === "object") {
+    const ids = new Set(Array.isArray(saved.open) ? saved.open.filter(id => typeof id === "string").slice(0, 4096) : []);
+    for (const row of memberRows) row.open = ids.has(row.id);
+    if (memberFilter && typeof saved.filter === "string") memberFilter.value = saved.filter.slice(0, 512);
+    if (originFilter && ["", "declared", "inherited", "extension"].includes(saved.origin)) originFilter.value = saved.origin;
+    if (contextFilter && typeof saved.context === "string") contextFilter.value = saved.context.slice(0, 512);
   }
+  applyMemberFilter();
+  applyContextFilter();
+  restoring = false;
+  const activateFragment = (scroll = true) => {
+    let id;
+    try { id = decodeURIComponent(location.hash.slice(1)); } catch (_) { return; }
+    const target = id && document.getElementById(id);
+    if (!target) return;
+    const member = target.closest("details[data-cjdoc-member]");
+    if (member && member.hidden) {
+      if (memberFilter) memberFilter.value = "";
+      if (originFilter) originFilter.value = "";
+      targetNotice = isChinese ? " 已清除筛选以显示链接目标。" : " Filters cleared to reveal the linked member.";
+      applyMemberFilter();
+    }
+    let disclosure = target.closest("details");
+    while (disclosure) { disclosure.open = true; disclosure = disclosure.parentElement?.closest("details"); }
+    for (const item of contextItems) {
+      if (!item.getAttribute("href").startsWith("#")) continue;
+      const active = item.getAttribute("href") === "#" + (member ? member.id : id);
+      item.classList.toggle("is-current", active);
+      if (active) item.setAttribute("aria-current", "location"); else item.removeAttribute("aria-current");
+    }
+    if (scroll && member) requestAnimationFrame(() => {
+      const focus = target === member ? member.querySelector("summary") : target;
+      if (focus) {
+        if (!focus.matches("a, button, input, summary, select, [tabindex]")) focus.setAttribute("tabindex", "-1");
+        focus.focus({preventScroll: true});
+      }
+      target.scrollIntoView({block: "start", behavior: "instant"});
+    });
+    saveReading();
+  };
+  for (const control of [memberFilter, originFilter, contextFilter].filter(Boolean)) {
+    control.addEventListener("input", () => {
+      targetNotice = ""; applyMemberFilter(); applyContextFilter(); saveReading();
+    });
+    control.addEventListener("change", () => {
+      targetNotice = ""; applyMemberFilter(); applyContextFilter(); saveReading();
+    });
+  }
+  for (const row of memberRows) row.addEventListener("toggle", saveReading);
+  document.addEventListener("click", event => {
+    const link = event.target.closest && event.target.closest("a[href]");
+    if (!link) return;
+    saveReading();
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    let destination;
+    try { destination = new URL(link.href, location.href); } catch (_) { return; }
+    if (destination.origin === location.origin && destination.pathname === location.pathname && destination.hash && destination.hash === location.hash) activateFragment();
+  });
+  window.addEventListener("hashchange", () => activateFragment());
+  window.addEventListener("pagehide", saveReading);
+  const navigation = performance.getEntriesByType("navigation")[0];
+  const isHistoryNavigation = navigation && navigation.type === "back_forward";
+  activateFragment(!isHistoryNavigation);
+  if (isHistoryNavigation && saved) requestAnimationFrame(() => {
+    // Restore layout before allowing the browser's normal history scroll. This
+    // fallback does not set scrollRestoration=manual or affect other pages.
+    if (Array.isArray(saved.scroll) && saved.scroll.length === 2 && saved.scroll.every(value => Number.isFinite(value) && value >= 0)) window.scrollTo(saved.scroll[0], saved.scroll[1]);
+    if (sidebar && Number.isFinite(saved.sidebar) && saved.sidebar >= 0) sidebar.scrollTop = saved.sidebar;
+  });
+  window.addEventListener("pageshow", event => {
+    if (event.persisted) { applyMemberFilter(); applyContextFilter(); }
+  });
+
 })();
 """

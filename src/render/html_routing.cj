@@ -45,11 +45,24 @@ internal func packagePagePath(moduleId: String, name: String): String {
 }
 
 internal func symbolPagePath(symbol: SymbolDoc): String {
-    "symbols/symbol-${boundedHtmlSlug(symbol.id)}.html"
+    htmlSymbolPagePath(symbol.id)
 }
 
 internal func symbolAnchor(symbol: SymbolDoc): String {
-    "symbol-${htmlStableSlug(symbol.id)}"
+    htmlSymbolAnchor(symbol.id)
+}
+
+public func htmlSymbolPagePath(symbolId: String): String {
+    "symbols/symbol-${boundedHtmlSlug(symbolId)}.html"
+}
+
+public func htmlSymbolAnchor(symbolId: String): String {
+    "symbol-${htmlStableSlug(symbolId)}"
+}
+
+// Placeholder bytes cannot be injected by Markdown: user content is escaped.
+public func htmlRelatedContentMarker(symbolId: String, headingLevel!: Int64 = 2): String {
+    "<!--cjdoc-related:${htmlStableSlug(symbolId)}:${headingLevel}-->"
 }
 
 internal func assetOutputPath(asset: AssetDoc): String {
@@ -93,6 +106,19 @@ internal class RenderProjection {
     let visibleSymbols = ArrayList<SymbolDoc>()
     let packages = ArrayList<ProjectedPackage>()
     let modules = ArrayList<ProjectedModule>()
+    let membersByOwner = HashMap<String, ArrayList<SymbolDoc>>()
+    let topLevelByPackage = HashMap<String, ArrayList<SymbolDoc>>()
+    private let memberBrowsers = HashMap<String, HtmlMemberBrowser>()
+
+    func members(owner: SymbolDoc): HtmlMemberBrowser {
+        match (memberBrowsers.get(owner.id)) {
+            case Some(value) => value
+            case None =>
+                let value = HtmlMemberBrowser(owner, this)
+                memberBrowsers[owner.id] = value
+                value
+        }
+    }
 
     init(documentation: DocumentationSet) {
         allIndex = indexSymbols(documentation)
@@ -104,6 +130,15 @@ internal class RenderProjection {
             }
         }
 
+        for (symbol in visibleSymbols) {
+            let groups = if (symbol.ownerId.isSome()) { membersByOwner } else { topLevelByPackage }
+            let key = if (symbol.ownerId.isSome()) { symbol.ownerId.getOrThrow() }
+                else { routeKey(symbol.moduleId, symbol.packageName) }
+            match (groups.get(key)) {
+                case Some(values) => values.add(symbol)
+                case None => groups[key] = ArrayList<SymbolDoc>([symbol])
+            }
+        }
         let packagesByRoute = HashMap<String, ProjectedPackage>()
         for (pkg in documentation.packages) {
             let projected = ProjectedPackage(pkg)

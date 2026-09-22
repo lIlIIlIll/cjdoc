@@ -226,14 +226,14 @@ private func behaviorContractLabel(name: String, locale: String): String {
 }
 
 internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: DocComment,
-    locale: String): Unit {
+    locale: String, headingBase!: Int64 = 3, anchor!: String = "doc"): Unit {
     var hasContracts = false
     for (tag in comment.tags) {
         if (isBehaviorContractTag(tag.name)) { hasContracts = true; break }
     }
     if (!hasContracts) { return }
     out.append("<section class=\"behavior-contracts\" aria-labelledby=\"behavior-contracts-heading\">\n")
-    out.append("<h3 id=\"behavior-contracts-heading\">" + label(locale, "Behavior contracts", "行为契约") + "</h3><dl>\n")
+    out.append("<h3 id=\"behavior-contracts-heading\">" + label(locale, "Behavior contracts", "行为契约") + "</h${headingBase}><dl>\n")
     for (tag in comment.tags) {
         if (!isBehaviorContractTag(tag.name)) { continue }
         out.append("<dt><code>" + escapeHtml(behaviorContractLabel(tag.name, locale)) + "</code>")
@@ -250,16 +250,16 @@ internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: D
 }
 
 internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: DocComment,
-    locale: String): Unit {
+    locale: String, headingBase!: Int64 = 3, anchor!: String = "doc"): Unit {
     var hasExamples = false
     for (tag in comment.tags) { if (tag.name == "example") { hasExamples = true; break } }
     if (!hasExamples) { return }
-    out.append("<h3>${label(locale, "Examples", "示例")}</h3><div class=\"example-list\">\n")
+    out.append("<h${headingBase} id=\"${anchor}--examples\">${label(locale, "Examples", "示例")}</h${headingBase}><div class=\"example-list\">\n")
     for (tag in comment.tags) {
         if (tag.name != "example") { continue }
         out.append("<div class=\"example-block\">")
         if (!tag.subject.isEmpty()) {
-            out.append("<h4 class=\"example-title\">${escapeHtml(tag.subject)}</h4>")
+            out.append("<h${headingBase + 1} class=\"example-title\">${escapeHtml(tag.subject)}</h${headingBase + 1}>")
         }
         if (trimExampleBlankLines(tag.description).isEmpty()) {
             let emptyLabel = label(locale, "No example content.", "示例内容为空。")

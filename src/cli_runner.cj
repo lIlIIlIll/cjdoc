@@ -304,17 +304,7 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
         "No comparison report was attached to this generation. Run the explicit cjdoc diff command to inspect version-to-version changes; this page does not infer compatibility.",
         "本次生成未附带比较报告。请显式运行 cjdoc diff 命令检查版本间变化；本页面不会推断兼容性。")
     let out = StringBuilder()
-    out.append("<!doctype html><html lang=\"")
-    out.append(language)
-    out.append("\"><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>")
-    out.append(validationTitle)
-    out.append(" · ")
-    out.append(public_render.escapeStandaloneHtml(documentation.project.name))
-    out.append("</title><script src=\"theme-bootstrap.js\"></script><link rel=\"stylesheet\" href=\"style.css\"><script defer src=\"search-index.js\"></script><script defer src=\"search.js\"></script></head><body><main class=\"docs-main validation-page\"><p><a href=\"index.html\">")
-    out.append(apiDocumentation)
-    out.append("</a></p><h1>")
-    out.append(validationTitle)
-    out.append("</h1><p class=\"reference-context\">")
+    out.append("<div class=\"validation-page\"><p class=\"validation-context\">")
     out.append(documentationVersion)
     out.append(": ")
     out.append(public_render.escapeStandaloneHtml(validationDocVersion(docVersion, locale)))
@@ -369,8 +359,10 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
     out.append(apiDiffEvidence)
     out.append("</h2><p>")
     out.append(apiDiffNotAttached)
-    out.append("</p></section></main></body></html>")
-    out.toString()
+    out.append("</p></section></div>")
+    public_render.renderConceptualHtmlPage(documentation, validationTitle, out.toString(), "",
+        locale: locale, docVersion: docVersion, currentRoute: "validation")
+
 }
 
  internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,

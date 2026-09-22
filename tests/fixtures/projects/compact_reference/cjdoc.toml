@@ -1,0 +1,12 @@
+[docs]
+index = "docs/index.md"
+
+[[docs.pages]]
+source = "docs/member-guide.md"
+route = "concepts/guides/member-guide"
+title = "成员操作指南 / Member guide"
+
+[[docs.pages]]
+source = "docs/type-guide.md"
+route = "concepts/guides/type-guide"
+title = "集合概览 / Collection overview"
