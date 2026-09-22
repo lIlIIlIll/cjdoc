@@ -138,6 +138,12 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('.external-documentation')).toContainText('version: 1.1.3');
     await expect(page.locator('.external-documentation')).toContainText('format: cjdoc.symbol-index/1');
     await expect(page.locator('.external-documentation')).toContainText('index: docs/std-symbol-index.json');
+    const stateHref = await page.locator('.declaration-row-link').filter({ hasText: 'ReferenceState' }).getAttribute('href');
+    expect(stateHref).toBeTruthy();
+    const stateUrl = new URL(stateHref, packageUrl).href;
+    await gotoFile(page, stateUrl);
+    await expect(page.locator('.external-documentation')).toHaveCount(0);
+    await gotoFile(page, classUrl);
     const memberFilter = page.locator('[data-cjdoc-member-filter]');
     await memberFilter.fill('normalize');
     await expect(page.locator('[data-cjdoc-member][data-member-name="normalize"]')).toBeVisible();

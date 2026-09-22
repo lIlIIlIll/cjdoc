@@ -396,9 +396,10 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
     var sourceOrigins: Array<SourceFileOrigin> = []
     var documentation = match (generationRequest) {
         case Some(request) =>
-            let generated = generateDocumentationWithSource(request, defaultSemanticProvider())
-            sourceOrigins = generated.internalDocumentation.sourceFileOrigins.toArray()
-            generated.publicDocumentation
+            let (generatedDocumentation, generatedOrigins) = generatePublicDocumentationWithSource(request,
+                defaultSemanticProvider())
+            sourceOrigins = generatedOrigins
+            generatedDocumentation
         case None => decodeValidatedDocIr(readDocIrInput(Path(options.input.getOrThrow())))
     }
     let qualityConfig = if (generationRequest.isSome()) {
@@ -444,7 +445,8 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
         if (generationRequest.isSome()) {
             artifactList.add(all: appendConceptualArtifacts(options.project, documentation,
                 orderedFormats(options), renderedArtifacts, conceptualPages,
-                locale: options.locale, docVersion: options.docVersion))
+                locale: options.locale, docVersion: options.docVersion,
+                markdownLayout: options.markdownLayout))
         } else {
             artifactList.add(all: renderedArtifacts)
         }

@@ -59,13 +59,21 @@ private func externalTomlValue(value: String): String {
     cleaned
 }
 
+private func externalHrefHasAsciiControlOrWhitespace(value: String): Bool {
+    for (byte in value.toArray()) {
+        if (byte <= 0x20 || byte == 0x7F) { return true }
+    }
+    false
+}
+
 private func safeExternalBaseUrl(value: String): Bool {
     (value.startsWith("https://") || value.startsWith("http://")) &&
-        !value.contains(" ") && !value.contains("\t") && !value.contains("\n") &&
+        !externalHrefHasAsciiControlOrWhitespace(value) &&
         !value.contains("#") && !value.contains("?")
 }
 
 private func safeExternalHref(baseUrl: String, href: String): ?String {
+    if (externalHrefHasAsciiControlOrWhitespace(href)) { return None }
     if (href.startsWith("http://") || href.startsWith("https://")) {
         if (!safeExternalBaseUrl(href)) { return None }
         return Some(href)
@@ -80,9 +88,9 @@ private func safeExternalHref(baseUrl: String, href: String): ?String {
         case None => ()
     }
     if (relative.isEmpty() || relative.contains("..") || relative.contains("\\") ||
-        relative.contains("%") || relative.contains(" ") || relative.contains("?") ||
+        relative.contains("%") || relative.contains("?") ||
         anchor.contains("#") || anchor.contains("%") ||
-        anchor.contains("\\") || anchor.contains(" ") || anchor.contains("?")) { return None }
+        anchor.contains("\\") || anchor.contains("?")) { return None }
     let suffix = if (anchor.isEmpty()) { "" } else { "#" + anchor }
     Some(baseUrl + "/" + relative + suffix)
 }

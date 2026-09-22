@@ -1109,7 +1109,9 @@ private func conceptualMarkdownBodyHtml(documentation: public_model.Documentatio
     }
 }
 
-internal func renderConceptualDocumentationArtifacts(documentation: public_model.DocumentationSet, formats: Array<String>, pages: ArrayList<ConceptualPage>, locale!: String = "en", docVersion!: ?String = None): Array<public_render.RenderArtifact> {
+internal func renderConceptualDocumentationArtifacts(documentation: public_model.DocumentationSet,
+    formats: Array<String>, pages: ArrayList<ConceptualPage>, locale!: String = "en",
+    docVersion!: ?String = None, markdownLayout!: String = "site"): Array<public_render.RenderArtifact> {
     let artifacts = ArrayList<public_render.RenderArtifact>()
     for (format in formats) {
         if (format == "html") {
@@ -1125,7 +1127,7 @@ internal func renderConceptualDocumentationArtifacts(documentation: public_model
                 artifacts.add(public_render.RenderArtifact("html/${page.route}", "text/html; charset=utf-8",
                     conceptualHtmlPage(documentation, page, pageBody, locale: locale, docVersion: docVersion)))
             }
-        } else if (format == "markdown") {
+        } else if (format == "markdown" && markdownLayout != "single") {
             for (page in pages) {
                 let path = page.route.removePrefix("concepts/").removeSuffix(".html")
                 artifacts.add(public_render.RenderArtifact("markdown/concepts/${path}.md",
@@ -1356,12 +1358,13 @@ private func conceptualAugmentApiArtifact(path: String, content: String,
 internal func appendConceptualArtifacts(projectRoot: String,
     documentation: public_model.DocumentationSet, formats: Array<String>,
     baseArtifacts: Array<public_render.RenderArtifact>, pages: ArrayList<ConceptualPage>,
-    locale!: String = "en", docVersion!: ?String = None): Array<public_render.RenderArtifact> {
+    locale!: String = "en", docVersion!: ?String = None,
+    markdownLayout!: String = "site"): Array<public_render.RenderArtifact> {
     var hasHtml = false
     var hasMarkdown = false
     for (format in formats) {
         if (format == "html") { hasHtml = true }
-        if (format == "markdown") { hasMarkdown = true }
+        if (format == "markdown" && markdownLayout != "single") { hasMarkdown = true }
     }
     if (!hasHtml && !hasMarkdown) { return baseArtifacts }
     let config = loadConceptualDocsConfig(projectRoot)
@@ -1423,6 +1426,7 @@ internal func appendConceptualArtifacts(projectRoot: String,
             result.add(artifact)
         }
     }
-    result.add(all: renderConceptualDocumentationArtifacts(documentation, formats, pages, locale: locale, docVersion: docVersion))
+    result.add(all: renderConceptualDocumentationArtifacts(documentation, formats, pages,
+        locale: locale, docVersion: docVersion, markdownLayout: markdownLayout))
     result.toArray()
 }
