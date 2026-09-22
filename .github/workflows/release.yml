@@ -16,6 +16,7 @@ env:
   CJDOC_PYTHON: python
   PYTHONDONTWRITEBYTECODE: "1"
   PYTHONUTF8: "1"
+  cjHeapSize: "512MB"
 
 jobs:
   release-gate:
