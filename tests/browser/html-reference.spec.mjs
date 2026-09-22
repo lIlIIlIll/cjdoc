@@ -153,6 +153,7 @@ test.describe('generated HTML reference', () => {
     await memberFilter.fill('normalize');
     await expect(page.locator('[data-cjdoc-member][data-member-name="normalize"]')).toBeVisible();
     await expect(page.locator('[data-cjdoc-member][data-member-name="label"]')).toBeHidden();
+    await expect(page.locator('[data-cjdoc-member-filter-status]')).toContainText('matching member');
     await memberFilter.fill('');
     const allMemberDetails = page.locator('details[data-cjdoc-member]');
     await expect(allMemberDetails).not.toHaveCount(0);
