@@ -1,6 +1,7 @@
 package cjdoc.render
 
 import cjdoc.model.*
+import std.ast.*
 import std.collection.*
 import std.sort.*
 
@@ -451,6 +452,32 @@ internal class HtmlSignatureLinkSpan {
     }
 }
 
+private class HtmlSignatureSourceToken {
+    let kind: String
+    let value: String
+    let start: Int64
+    let end: Int64
+
+    init(kind: String, value: String, start: Int64, end: Int64) {
+        this.kind = kind
+        this.value = value
+        this.start = start
+        this.end = end
+    }
+}
+
+private class HtmlSignatureTypeWindow {
+    let start: Int64
+    let end: Int64
+    let nextToken: Int64
+
+    init(start: Int64, end: Int64, nextToken: Int64) {
+        this.start = start
+        this.end = end
+        this.nextToken = nextToken
+    }
+}
+
 private func signatureIdentifierByte(value: Byte): Bool {
     (value >= b'a' && value <= b'z') || (value >= b'A' && value <= b'Z') ||
         (value >= b'0' && value <= b'9') || value == b'_' || value >= 0x80u8
@@ -464,81 +491,158 @@ private func signatureSpanBoundary(value: String, start: Int64, end: Int64): Boo
     true
 }
 
-private func signatureTypeStartAfterReturnDelimiter(raw: String): Int64 {
-    var parenthesisDepth: Int64 = 0
-    var bracketDepth: Int64 = 0
+private func signatureLexedTokens(raw: String, expected: ReadOnlyList<String>):
+    ?ArrayList<HtmlSignatureSourceToken> {
+    let lineStarts = ArrayList<Int64>()
+    lineStarts.add(0)
+    let bytes = raw.toArray()
+    var byteIndex: Int64 = 0
+    while (byteIndex < bytes.size) {
+        if (bytes[byteIndex] == b'\n') { lineStarts.add(byteIndex + 1) }
+        byteIndex++
+    }
+
+    let result = ArrayList<HtmlSignatureSourceToken>()
+    var expectedIndex: Int64 = 0
+    try {
+        for (token in cangjieLex(raw)) {
+            if (token.kind == COMMENT || token.kind == NL || token.value.isEmpty()) { continue }
+            if (expectedIndex >= expected.size) { return None }
+            let descriptor = "${token.kind}:${token.value.size}:${token.value}"
+            if (descriptor != expected[expectedIndex]) { return None }
+            let lineIndex = Int64(token.pos.line) - 1
+            let column = Int64(token.pos.column)
+            if (lineIndex < 0 || lineIndex >= lineStarts.size || column < 1) { return None }
+            let tokenStart = lineStarts[lineIndex] + column - 1
+            let tokenEnd = tokenStart + token.value.size
+            if (tokenStart < 0 || tokenEnd > raw.size ||
+                raw[tokenStart..tokenEnd] != token.value) { return None }
+            result.add(HtmlSignatureSourceToken("${token.kind}", token.value, tokenStart, tokenEnd))
+            expectedIndex++
+        }
+    } catch (_: Exception) {
+        return None
+    }
+    if (expectedIndex != expected.size) { return None }
+    Some(result)
+}
+
+private func signatureTypeWindowEnd(tokens: ArrayList<HtmlSignatureSourceToken>,
+    first: Int64): (Int64, Int64) {
+    var roundDepth: Int64 = 0
+    var squareDepth: Int64 = 0
+    var angleDepth: Int64 = 0
     var braceDepth: Int64 = 0
-    var index: Int64 = 0
-    while (index < raw.size) {
-        let byte = raw[index]
-        if (byte == b'(') {
-            parenthesisDepth++
-        } else if (byte == b')' && parenthesisDepth > 0) {
-            parenthesisDepth--
-        } else if (byte == b'[') {
-            bracketDepth++
-        } else if (byte == b']' && bracketDepth > 0) {
-            bracketDepth--
-        } else if (byte == b'{') {
+    var index = first
+    while (index < tokens.size) {
+        let value = tokens[index].value
+        if (roundDepth == 0 && squareDepth == 0 && angleDepth == 0 && braceDepth == 0 &&
+            (value == "=" || value == "," || value == ")" || value == "where" || value == "{")) {
+            return (tokens[index].start, index + 1)
+        }
+        if (value == "(") {
+            roundDepth++
+        } else if (value == ")") {
+            if (roundDepth > 0) { roundDepth-- }
+        } else if (value == "[") {
+            squareDepth++
+        } else if (value == "]") {
+            if (squareDepth > 0) { squareDepth-- }
+        } else if (value == "<") {
+            angleDepth++
+        } else if (value == ">") {
+            if (angleDepth > 0) { angleDepth-- }
+        } else if (value == "{") {
             braceDepth++
-        } else if (byte == b'}' && braceDepth > 0) {
-            braceDepth--
-        } else if (byte == b':' && parenthesisDepth == 0 && bracketDepth == 0 && braceDepth == 0) {
-            return index + 1
+        } else if (value == "}") {
+            if (braceDepth > 0) { braceDepth-- }
         }
         index++
     }
-    0
+    let end = if (tokens.isEmpty()) { 0 } else { tokens[tokens.size - 1].end }
+    (end, index)
 }
 
-private func signatureTypeStartAfterParameterDelimiter(raw: String, parameterName: String,
-    cursor: Int64): Int64 {
-    if (parameterName.isEmpty()) { return cursor }
-    var searchCursor = cursor
-    while (searchCursor < raw.size) {
-        match (raw[searchCursor..].indexOf(parameterName)) {
-            case None => return cursor
-            case Some(relative) =>
-                let start = searchCursor + relative
-                let end = start + parameterName.size
-                if (signatureSpanBoundary(raw, start, end)) {
-                    var delimiter = end
-                    while (delimiter < raw.size &&
-                        (raw[delimiter] == b' ' || raw[delimiter] == b'\t' ||
-                            raw[delimiter] == b'\r' || raw[delimiter] == b'\n')) {
-                        delimiter++
-                    }
-                    if (delimiter < raw.size && raw[delimiter] == b'!') {
-                        delimiter++
-                        while (delimiter < raw.size &&
-                            (raw[delimiter] == b' ' || raw[delimiter] == b'\t' ||
-                                raw[delimiter] == b'\r' || raw[delimiter] == b'\n')) {
-                            delimiter++
-                        }
-                    }
-                    if (delimiter < raw.size && raw[delimiter] == b':') {
-                        return delimiter + 1
-                    }
-                }
-                searchCursor = end
+private func signatureParameterTypeWindow(tokens: ArrayList<HtmlSignatureSourceToken>,
+    parameterName: String, cursor: Int64): ?HtmlSignatureTypeWindow {
+    if (parameterName.isEmpty()) { return None }
+    var nameIndex = cursor
+    while (nameIndex < tokens.size) {
+        if (tokens[nameIndex].kind == "IDENTIFIER" && tokens[nameIndex].value == parameterName) {
+            break
         }
+        nameIndex++
     }
-    cursor
+    if (nameIndex >= tokens.size) { return None }
+
+    var colonIndex = nameIndex + 1
+    while (colonIndex < tokens.size) {
+        let value = tokens[colonIndex].value
+        if (value == ":") { break }
+        if (value == "," || value == ")") { return None }
+        colonIndex++
+    }
+    if (colonIndex + 1 >= tokens.size || tokens[colonIndex].value != ":") { return None }
+    let first = colonIndex + 1
+    let (end, nextToken) = signatureTypeWindowEnd(tokens, first)
+    if (tokens[first].start >= end) { return None }
+    Some(HtmlSignatureTypeWindow(tokens[first].start, end, nextToken))
 }
 
-private func collectSignatureTypeSpans(spans: ArrayList<HtmlSignatureLinkSpan>, raw: String,
-    typeRef: TypeRef, typeLinkIndex: HtmlTypeLinkIndex, cursor: Int64): Int64 {
+private func signatureTopLevelTypeWindow(tokens: ArrayList<HtmlSignatureSourceToken>):
+    ?HtmlSignatureTypeWindow {
+    var roundDepth: Int64 = 0
+    var squareDepth: Int64 = 0
+    var angleDepth: Int64 = 0
+    var braceDepth: Int64 = 0
+    var index: Int64 = 0
+    while (index < tokens.size) {
+        let value = tokens[index].value
+        if (value == "(") {
+            roundDepth++
+        } else if (value == ")") {
+            if (roundDepth > 0) { roundDepth-- }
+        } else if (value == "[") {
+            squareDepth++
+        } else if (value == "]") {
+            if (squareDepth > 0) { squareDepth-- }
+        } else if (value == "<") {
+            angleDepth++
+        } else if (value == ">") {
+            if (angleDepth > 0) { angleDepth-- }
+        } else if (value == "{") {
+            braceDepth++
+        } else if (value == "}") {
+            if (braceDepth > 0) { braceDepth-- }
+        } else if (value == ":" && roundDepth == 0 && squareDepth == 0 &&
+            angleDepth == 0 && braceDepth == 0) {
+            let first = index + 1
+            if (first >= tokens.size) { return None }
+            let (end, nextToken) = signatureTypeWindowEnd(tokens, first)
+            if (tokens[first].start >= end) { return None }
+            return Some(HtmlSignatureTypeWindow(tokens[first].start, end, nextToken))
+        }
+        index++
+    }
+    None
+}
+
+private func collectSignatureTypeSpansBounded(spans: ArrayList<HtmlSignatureLinkSpan>,
+    raw: String, typeRef: TypeRef, typeLinkIndex: HtmlTypeLinkIndex,
+    cursor: Int64, limit: Int64): Int64 {
+    if (cursor >= limit || limit > raw.size) { return cursor }
     let spelling = if (typeRef.arguments.isEmpty()) { typeRef.spelling } else {
         typeHeadSpelling(typeRef.spelling)
     }
     var nextCursor = cursor
-    if (!spelling.isEmpty() && cursor < raw.size) {
+    if (!spelling.isEmpty()) {
         var searchCursor = cursor
-        while (searchCursor < raw.size) {
-            match (raw[searchCursor..].indexOf(spelling)) {
+        while (searchCursor < limit) {
+            match (raw[searchCursor..limit].indexOf(spelling)) {
                 case Some(relative) =>
                     let start = searchCursor + relative
                     let end = start + spelling.size
+                    if (end > limit) { break }
                     if (!signatureSpanBoundary(raw, start, end)) {
                         searchCursor = end
                         continue
@@ -554,9 +658,18 @@ private func collectSignatureTypeSpans(spans: ArrayList<HtmlSignatureLinkSpan>, 
         }
     }
     for (argument in typeRef.arguments) {
-        nextCursor = collectSignatureTypeSpans(spans, raw, argument, typeLinkIndex, nextCursor)
+        nextCursor = collectSignatureTypeSpansBounded(spans, raw, argument,
+            typeLinkIndex, nextCursor, limit)
     }
     nextCursor
+}
+
+private func signatureDeclarationNameEnd(tokens: ArrayList<HtmlSignatureSourceToken>,
+    symbolName: String): Int64 {
+    for (token in tokens) {
+        if (token.kind == "IDENTIFIER" && token.value == symbolName) { return token.end }
+    }
+    0
 }
 
 internal func appendLinkedSignatureHtml(out: RenderTextBuffer, symbol: SymbolDoc,
@@ -567,21 +680,44 @@ internal func appendLinkedSignatureHtml(out: RenderTextBuffer, symbol: SymbolDoc
         out.append(escapeHtml(raw))
         return
     }
+    let tokens = match (signatureLexedTokens(raw, symbol.sourceApiSignature.tokens)) {
+        case Some(value) => value
+        case None =>
+            out.append(escapeHtml(raw))
+            return
+    }
+
     let spans = ArrayList<HtmlSignatureLinkSpan>()
-    var cursor: Int64 = 0
+    var tokenCursor: Int64 = 0
+    var rawCursor: Int64 = 0
     for (parameter in symbol.parameters) {
-        let parameterTypeCursor = signatureTypeStartAfterParameterDelimiter(raw, parameter.name, cursor)
-        cursor = collectSignatureTypeSpans(spans, raw, parameter.typeRef, typeLinkIndex, parameterTypeCursor)
+        match (signatureParameterTypeWindow(tokens, parameter.name, tokenCursor)) {
+            case Some(window) =>
+                rawCursor = collectSignatureTypeSpansBounded(spans, raw, parameter.typeRef,
+                    typeLinkIndex, window.start, window.end)
+                tokenCursor = window.nextToken
+            case None =>
+                out.append(escapeHtml(raw))
+                return
+        }
     }
     match (symbol.returnType) {
-        case Some(returnType) =>
-            let delimiterCursor = signatureTypeStartAfterReturnDelimiter(raw)
-            let returnCursor = if (delimiterCursor > cursor) { delimiterCursor } else { cursor }
-            cursor = collectSignatureTypeSpans(spans, raw, returnType, typeLinkIndex, returnCursor)
+        case Some(returnType) => match (signatureTopLevelTypeWindow(tokens)) {
+            case Some(window) =>
+                rawCursor = collectSignatureTypeSpansBounded(spans, raw, returnType,
+                    typeLinkIndex, window.start, window.end)
+            case None => ()
+        }
         case None => ()
     }
+
+    var relationshipCursor = rawCursor
+    if (relationshipCursor == 0) {
+        relationshipCursor = signatureDeclarationNameEnd(tokens, symbol.name)
+    }
     for (relationship in symbol.typeRelationships) {
-        cursor = collectSignatureTypeSpans(spans, raw, relationship.target, typeLinkIndex, cursor)
+        relationshipCursor = collectSignatureTypeSpansBounded(spans, raw, relationship.target,
+            typeLinkIndex, relationshipCursor, raw.size)
     }
     if (spans.isEmpty()) {
         out.append(escapeHtml(raw))
@@ -592,7 +728,8 @@ internal func appendLinkedSignatureHtml(out: RenderTextBuffer, symbol: SymbolDoc
     for (span in spans) {
         if (span.start < position) { continue }
         out.append(escapeHtml(raw[position..span.start]))
-        out.append("<a class=\"type-link signature-type-link\" href=\"" + rootPrefix + escapeHtml(span.url) + "\">")
+        out.append("<a class=\"type-link signature-type-link\" href=\"" +
+            rootPrefix + escapeHtml(span.url) + "\">")
         out.append(escapeHtml(raw[span.start..span.end]))
         out.append("</a>")
         position = span.end
