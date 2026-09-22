@@ -164,10 +164,13 @@ internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: 
     out.append("</div></div></header>\n<div class=\"reference-context\" data-cjdoc-reference-context>")
     out.append("<span><strong>" + documentationVersionContextLabel + "</strong> " + documentVersionLabel + "</span>")
     out.append("<span><strong>" + audienceContextLabel + "</strong> " + escapeHtml(documentation.configuration.audience) + "</span>")
+    out.append("<details class=\"reference-build-details\"><summary>" +
+        label(locale, "Build details", "构建详情") + "</summary><div>")
     out.append("<span><strong>" + label(locale, "Library version", "库版本") + "</strong> " + label(locale, "not provided", "未提供") + "</span>")
     out.append("<span><strong>" + label(locale, "Target platform", "目标平台") + "</strong> " + label(locale, "unknown", "未知") + "</span>")
     out.append("<span><strong>" + configurationContextLabel + "</strong> " + escapeHtml(documentation.configuration.cfgProfile) + "</span>")
-    out.append("<span><strong>" + generatorContextLabel + "</strong> " + escapeHtml(documentation.generator.name) + " " + escapeHtml(documentation.generator.version) + "</span></div>\n<div class=\"docs-layout\">")
+    out.append("<span><strong>" + generatorContextLabel + "</strong> " + escapeHtml(documentation.generator.name) + " " + escapeHtml(documentation.generator.version) + "</span>")
+    out.append("</div></details></div>\n<div class=\"docs-layout\">")
     out.append("<button class=\"nav-backdrop\" type=\"button\" data-cjdoc-menu-backdrop aria-label=\"")
     out.append(closeNavigationLabel)
     out.append("\" hidden></button>")
@@ -504,6 +507,14 @@ private func signatureTypeStartAfterParameterDelimiter(raw: String, parameterNam
                         (raw[delimiter] == b' ' || raw[delimiter] == b'\t' ||
                             raw[delimiter] == b'\r' || raw[delimiter] == b'\n')) {
                         delimiter++
+                    }
+                    if (delimiter < raw.size && raw[delimiter] == b'!') {
+                        delimiter++
+                        while (delimiter < raw.size &&
+                            (raw[delimiter] == b' ' || raw[delimiter] == b'\t' ||
+                                raw[delimiter] == b'\r' || raw[delimiter] == b'\n')) {
+                            delimiter++
+                        }
                     }
                     if (delimiter < raw.size && raw[delimiter] == b':') {
                         return delimiter + 1
