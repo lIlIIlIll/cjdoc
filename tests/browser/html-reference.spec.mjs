@@ -138,6 +138,7 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('.external-documentation')).toContainText('version: 1.1.3');
     await expect(page.locator('.external-documentation')).toContainText('format: cjdoc.symbol-index/1');
     await expect(page.locator('.external-documentation')).toContainText('index: docs/std-symbol-index.json');
+    await gotoFile(page, packageUrl);
     const stateHref = await page.locator('.declaration-row-link').filter({ hasText: 'ReferenceState' }).getAttribute('href');
     expect(stateHref).toBeTruthy();
     const stateUrl = new URL(stateHref, packageUrl).href;
