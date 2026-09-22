@@ -358,7 +358,7 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
     out.append("</h2><p>")
     out.append(apiDiffNotAttached)
     out.append("</p></section></div>")
-    public_render.renderConceptualHtmlPage(documentation, validationTitle, out.toString(), "",
+    public_render.renderUtilityHtmlPage(documentation, validationTitle, out.toString(), "",
         locale: locale, docVersion: docVersion)
 }
 
