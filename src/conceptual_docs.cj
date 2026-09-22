@@ -452,7 +452,31 @@ private func conceptualMarkdownPackagePath(moduleId: String, packageName: String
     }
     "packages/package-" + bounded + ".md"
 }
+private func conceptualHtmlPackagePath(moduleId: String, packageName: String): String {
+    let route = moduleId.size.toString() + ":" + moduleId + packageName
+    let slug = conceptualSymbolSlug(route)
+    let bounded = if (slug.size <= 96) { slug } else {
+        slug[..64] + "--" + conceptualStableHash(route)
+    }
+    "packages/package-${bounded}.html"
+}
 
+private func conceptualArtifactPath(symbol: public_model.SymbolDoc, htmlLayout: Bool): String {
+    if (conceptualMarkdownContainer(symbol.kind)) {
+        if (htmlLayout) { return conceptualSymbolPath(symbol.id) }
+        return conceptualMarkdownSymbolPath(symbol.id)
+    }
+    match (symbol.ownerId) {
+        case Some(ownerId) =>
+            if (htmlLayout) { conceptualSymbolPath(ownerId) } else { conceptualMarkdownSymbolPath(ownerId) }
+        case None =>
+            if (htmlLayout) {
+                conceptualHtmlPackagePath(symbol.moduleId, symbol.packageName)
+            } else {
+                conceptualMarkdownPackagePath(symbol.moduleId, symbol.packageName)
+            }
+    }
+}
 private func conceptualMarkdownContainer(kind: String): Bool {
     kind == "class" || kind == "struct" || kind == "interface" || kind == "enum" ||
         kind == "extend"
@@ -935,11 +959,20 @@ private func externalSearchIndex(base: String, documentation: public_model.Docum
 
 private func conceptualSearchIndex(base: String, pages: ArrayList<ConceptualPage>): String {
     let suffix = "\n  ]\n}\n"
-    if (!base.endsWith(suffix)) { return base }
-    let prefix = base.removeSuffix(suffix)
+    let emptySuffix = "\"entries\": []\n}\n"
+    var prefix = ""
+    var hasEntries = false
+    if (base.endsWith(suffix)) {
+        prefix = base.removeSuffix(suffix)
+        hasEntries = true
+    } else if (base.endsWith(emptySuffix)) {
+        let index = base.size - emptySuffix.size
+        prefix = base[..index] + "\"entries\": ["
+    } else {
+        return base
+    }
     let out = StringBuilder()
     out.append(prefix)
-    let hasEntries = base.contains("\n    {")
     var conceptIndex: Int64 = 0
     for (page in pages) {
         if (hasEntries || conceptIndex > 0) { out.append(",") }
@@ -1173,11 +1206,11 @@ private func conceptualBindingPages(pages: ArrayList<ConceptualPage>, symbolId: 
 }
 
 private func conceptualApiUsageHtml(pages: ArrayList<ConceptualPage>,
-    symbolId: String, locale: String): String {
+    symbolId: String, locale: String, headingSuffix!: String = ""): String {
     let usages = conceptualBindingPages(pages, symbolId)
     if (usages.isEmpty()) { return "" }
     let out = StringBuilder()
-    out.append("<section class=\"conceptual-bindings api-usages\" aria-labelledby=\"conceptual-api-usages-heading\"><h2 id=\"conceptual-api-usages-heading\">")
+    out.append("<section class=\"conceptual-bindings api-usages\" aria-labelledby=\"conceptual-api-usages-heading" + headingSuffix + "\"><h2 id=\"conceptual-api-usages-heading" + headingSuffix + "\">")
     out.append(conceptualBindingLabel(locale, "Related guides and examples", "相关指南和示例"))
     out.append("</h2><ul>")
     for (page in usages) {
@@ -1213,7 +1246,7 @@ private func conceptualApiUsageMarkdown(pages: ArrayList<ConceptualPage>, symbol
 }
 
 private func conceptualExternalUsageHtml(symbol: public_model.SymbolDoc,
-    resolvers: Array<ExternalDocResolver>, locale: String): String {
+    resolvers: Array<ExternalDocResolver>, locale: String, headingSuffix!: String = ""): String {
     if (resolvers.isEmpty()) { return "" }
     let out = StringBuilder()
     var count: Int64 = 0
@@ -1224,7 +1257,7 @@ private func conceptualExternalUsageHtml(symbol: public_model.SymbolDoc,
         } else { (url, ambiguous) }
         if (qualifiedUrl.isEmpty() && !qualifiedAmbiguous && resolver.state == "available") { continue }
         if (count == 0) {
-            out.append("<section class=\"external-documentation\" aria-labelledby=\"external-documentation-heading\"><h2 id=\"external-documentation-heading\">")
+            out.append("<section class=\"external-documentation\" aria-labelledby=\"external-documentation-heading" + headingSuffix + "\"><h2 id=\"external-documentation-heading" + headingSuffix + "\">")
             out.append(conceptualBindingLabel(locale, "External documentation", "外部文档"))
             out.append("</h2><ul>")
         }
@@ -1309,11 +1342,23 @@ private func conceptualExternalUsageMarkdown(symbol: public_model.SymbolDoc,
     out.toString()
 }
 
-private func conceptualArtifactSymbolIndex(documentation: public_model.DocumentationSet): HashMap<String, Int64> {
-    let result = HashMap<String, Int64>()
+private func conceptualArtifactSymbolIndex(documentation: public_model.DocumentationSet,
+    htmlLayout: Bool): HashMap<String, ArrayList<Int64>> {
+    let result = HashMap<String, ArrayList<Int64>>()
     var index: Int64 = 0
     for (symbol in documentation.declarations) {
-        result[conceptualSymbolPath(symbol.id)] = index
+        if (!conceptualVisibleForAudience(symbol, documentation)) {
+            index++
+            continue
+        }
+        let path = conceptualArtifactPath(symbol, htmlLayout)
+        match (result.get(path)) {
+            case Some(indices) => indices.add(index)
+            case None =>
+                let indices = ArrayList<Int64>()
+                indices.add(index)
+                result[path] = indices
+        }
         index++
     }
     result
@@ -1321,7 +1366,7 @@ private func conceptualArtifactSymbolIndex(documentation: public_model.Documenta
 
 private func conceptualAugmentApiArtifact(path: String, content: String,
     documentation: public_model.DocumentationSet,
-    symbolIndex: HashMap<String, Int64>,
+    symbolIndex: HashMap<String, ArrayList<Int64>>,
     pages: ArrayList<ConceptualPage>,
     resolvers: Array<ExternalDocResolver>, locale: String): String {
     let isHtml = path.startsWith("html/")
@@ -1330,22 +1375,23 @@ private func conceptualAugmentApiArtifact(path: String, content: String,
     } else {
         path.removePrefix("markdown/")
     }
-    let symbolPath = if (isHtml) {
-        relative
-    } else {
-        if (!relative.endsWith(".md")) { return content }
-        relative.removeSuffix(".md") + ".html"
-    }
-    let symbolIndexValue = match (symbolIndex.get(symbolPath)) {
+    let symbolIndexes = match (symbolIndex.get(relative)) {
         case Some(value) => value
         case None => return content
     }
-    let symbol = documentation.declarations[symbolIndexValue]
-    let section = if (isHtml) {
-        conceptualApiUsageHtml(pages, symbol.id, locale) + conceptualExternalUsageHtml(symbol, resolvers, locale)
-    } else {
-        conceptualApiUsageMarkdown(pages, symbol.id) + conceptualExternalUsageMarkdown(symbol, resolvers)
+    let sections = StringBuilder()
+    for (symbolIndexValue in symbolIndexes) {
+        let symbol = documentation.declarations[symbolIndexValue]
+        let headingSuffix = "-" + symbolIndexValue.toString()
+        let section = if (isHtml) {
+            conceptualApiUsageHtml(pages, symbol.id, locale, headingSuffix: headingSuffix) +
+                conceptualExternalUsageHtml(symbol, resolvers, locale, headingSuffix: headingSuffix)
+        } else {
+            conceptualApiUsageMarkdown(pages, symbol.id) + conceptualExternalUsageMarkdown(symbol, resolvers)
+        }
+        if (!section.isEmpty()) { sections.append(section) }
     }
+    let section = sections.toString()
     if (section.isEmpty()) { return content }
     if (!isHtml) { return content + section }
     let marker = "</main>"
@@ -1390,10 +1436,15 @@ internal func appendConceptualArtifacts(projectRoot: String,
             }
         }
     }
-    let symbolIndex = if (shouldAugmentApiArtifacts) {
-        conceptualArtifactSymbolIndex(documentation)
+    let htmlSymbolIndex = if (shouldAugmentApiArtifacts) {
+        conceptualArtifactSymbolIndex(documentation, true)
     } else {
-        HashMap<String, Int64>()
+        HashMap<String, ArrayList<Int64>>()
+    }
+    let markdownSymbolIndex = if (shouldAugmentApiArtifacts) {
+        conceptualArtifactSymbolIndex(documentation, false)
+    } else {
+        HashMap<String, ArrayList<Int64>>()
     }
     let conceptualSearch = if (config.enabled && hasHtml) {
         conceptualSearchIndex(search, pages)
@@ -1418,9 +1469,13 @@ internal func appendConceptualArtifacts(projectRoot: String,
             }
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
                 searchScript))
-        } else if (shouldAugmentApiArtifacts && (artifact.path.startsWith("html/symbols/") || artifact.path.startsWith("markdown/symbols/"))) {
+        } else if (shouldAugmentApiArtifacts && (artifact.path.startsWith("html/symbols/") || artifact.path.startsWith("html/packages/"))) {
             let content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
-                documentation, symbolIndex, pages, resolvers, locale)
+                documentation, htmlSymbolIndex, pages, resolvers, locale)
+            result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, content))
+        } else if (shouldAugmentApiArtifacts && (artifact.path.startsWith("markdown/symbols/") || artifact.path.startsWith("markdown/packages/"))) {
+            let content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
+                documentation, markdownSymbolIndex, pages, resolvers, locale)
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, content))
         } else {
             result.add(artifact)

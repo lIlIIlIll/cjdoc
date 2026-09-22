@@ -390,19 +390,20 @@ private func appendSearchTypeFacts(out: RenderTextBuffer, values: ArrayList<Stri
     out.append("]")
 }
 
+private func searchModuleNames(projection: RenderProjection): HashMap<String, String> {
+    let result = HashMap<String, String>()
+    for (module in projection.modules) {
+        result[module.source.id] = module.source.name
+    }
+    result
+}
+
 private func appendSearchStructuredFacts(out: RenderTextBuffer,
-    projection: RenderProjection, symbol: SymbolDoc): Unit {
+    projection: RenderProjection, moduleNames: HashMap<String, String>, symbol: SymbolDoc): Unit {
     out.append(", \"moduleId\": ")
     appendSearchJsonString(out, symbol.moduleId)
     out.append(", \"moduleName\": ")
-    var moduleName: ?String = None
-    for (module in projection.modules) {
-        if (module.source.id == symbol.moduleId) {
-            moduleName = Some(module.source.name)
-            break
-        }
-    }
-    match (moduleName) {
+    match (moduleNames.get(symbol.moduleId)) {
         case Some(value) => appendSearchJsonString(out, value)
         case None => out.append("null")
     }
@@ -440,6 +441,7 @@ internal func renderSearchIndex(documentation: DocumentationSet,
     var first = true
     let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(visible, lessThan: { left, right => left.id < right.id }, stable: true)
+    let moduleNames = searchModuleNames(projection)
     for (declaration in visible) {
         if (!first) { out.append(",") }
         first = false
@@ -450,7 +452,7 @@ internal func renderSearchIndex(documentation: DocumentationSet,
         out.append(", \"qualifiedName\": "); appendSearchJsonString(out, declaration.qualifiedName)
         out.append(", \"kind\": "); appendSearchJsonString(out, declaration.kind)
         out.append(", \"packageName\": "); appendSearchJsonString(out, declaration.packageName)
-        appendSearchStructuredFacts(out, projection, declaration)
+        appendSearchStructuredFacts(out, projection, moduleNames, declaration)
         let summary = match (declaration.documentation) {
             case Some(comment) => summaryPlainText(comment)
             case None => ""
@@ -478,7 +480,7 @@ internal func renderSearchIndex(documentation: DocumentationSet,
                             appendSearchJsonString(out, "${pkg.name}.${binding.exposedName}")
                             out.append(", \"kind\": "); appendSearchJsonString(out, target.kind)
                             out.append(", \"packageName\": "); appendSearchJsonString(out, pkg.name)
-                            appendSearchStructuredFacts(out, projection, target)
+                            appendSearchStructuredFacts(out, projection, moduleNames, target)
                             let summary = match (target.documentation) {
                                 case Some(comment) => summaryPlainText(comment)
                                 case None => ""
