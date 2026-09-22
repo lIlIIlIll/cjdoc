@@ -203,7 +203,7 @@ test.describe('generated HTML reference', () => {
 
     const useDetail = page.locator('details[data-cjdoc-member][data-member-name="use"]');
     await useDetail.locator('summary').click();
-    const linkedSignatureHtml = await useDetail.locator('.compact-signature code').innerHTML();
+    const linkedSignatureHtml = await useDetail.locator('.signature-block code').innerHTML();
     expect(linkedSignatureHtml).toContain('&quot;Token&quot;');
     expect(linkedSignatureHtml).toMatch(/item!:\s*<a[^>]*>Token<\/a>/);
     expect(linkedSignatureHtml).not.toMatch(/&quot;<a[^>]*>Token<\/a>&quot;/);
