@@ -435,7 +435,8 @@ internal let HTML_SEARCH_SCRIPT = """
   const content = document.querySelector("[data-cjdoc-content]");
   if (toc && content) {
     const tocList = toc.querySelector("ol");
-    const allHeadings = [...content.querySelectorAll("h1, h2, h3, h4")];
+    const allHeadings = [...content.querySelectorAll("h1, h2, h3, h4")]
+      .filter((heading) => !heading.closest(".member-detail"));
     const semanticHeadings = allHeadings.filter((heading) => {
       const role = heading.dataset.cjdocTocRole;
       return role === "api-root" || role === "api" || role === "member";
