@@ -135,7 +135,13 @@ private func conceptualFenceMarker(line: String): String {
     var count: Int64 = 0
     while (count < trimmed.size && trimmed[count] == marker) { count++ }
     if (count < 3) { return "" }
-    if (marker == b'`' && trimmed[count..].contains("`")) { return "" }
+    if (marker == b'`') {
+        var infoIndex: Int64 = count
+        while (infoIndex < trimmed.size) {
+            if (trimmed[infoIndex] == b'`') { return "" }
+            infoIndex++
+        }
+    }
     trimmed[..count]
 }
 private func conceptualFenceCloses(line: String, fence: String): Bool {
