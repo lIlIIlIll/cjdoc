@@ -10,7 +10,8 @@ internal func label(locale: String, english: String, chinese: String): String {
 
 internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: DocumentationSet,
     projection: RenderProjection, rootPrefix: String, locale: String,
-    currentPackagePath!: ?String = None, currentRoute!: String = "overview"): Unit {
+    currentPackagePath!: ?String = None, currentRoute!: String = "overview",
+    currentSymbol!: ?SymbolDoc = None): Unit {
     out.append("<aside id=\"cjdoc-sidebar\" class=\"docs-sidebar\" aria-label=\"${label(locale, "Documentation navigation", "文档导航")}\" tabindex=\"-1\">")
     out.append("<button class=\"sidebar-close\" type=\"button\" data-cjdoc-sidebar-close aria-label=\"${label(locale, "Close navigation", "关闭导航")}\">${label(locale, "Close", "关闭")}</button>")
     out.append("<div class=\"sidebar-section\"><p class=\"sidebar-label\">${label(locale, "Documentation", "文档")}</p>")
@@ -20,6 +21,7 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
     let apiCurrent = if (currentRoute == "api") { " aria-current=\"page\"" } else { "" }
     out.append("<a class=\"sidebar-link${overviewClass}\" data-cjdoc-nav-link${overviewCurrent} href=\"${rootPrefix}index.html\">${label(locale, "Overview", "总览")}</a>")
     out.append("<a class=\"sidebar-link${apiClass}\" data-cjdoc-nav-link${apiCurrent} href=\"${rootPrefix}index.html#packages\">${label(locale, "API Reference", "API 参考")}</a></div>")
+    appendContextSidebar(out, projection, rootPrefix, locale, currentPackagePath, currentSymbol)
     if (!projection.modules.isEmpty()) {
         out.append("<div class=\"sidebar-section\"><p class=\"sidebar-label\">${label(locale, "Package reference", "包参考")}</p>")
         out.append("<label class=\"sidebar-filter-label\"><span class=\"sr-only\">${label(locale, "Filter packages", "筛选包")}</span><input class=\"sidebar-filter\" type=\"search\" placeholder=\"${label(locale, "Filter packages", "筛选包")}\" data-cjdoc-sidebar-filter></label>")
@@ -50,10 +52,99 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
     out.append("<p class=\"sidebar-note\">${label(locale, "Generated from", "生成自")}<code>${escapeHtml(documentation.schemaVersion)}</code></p></aside>")
 }
 
+internal func appendContextSidebar(out: RenderTextBuffer, projection: RenderProjection,
+    rootPrefix: String, locale: String, currentPackagePath: ?String,
+    currentSymbol: ?SymbolDoc): Unit {
+    var owner: ?SymbolDoc = None
+    match (currentSymbol) {
+        case Some(symbol) =>
+            if (isTypeDeclaration(symbol)) {
+                owner = Some(symbol)
+            } else {
+                match (symbol.ownerId) {
+                    case Some(ownerId) => owner = projection.visibleIndex.get(ownerId)
+                    case None => ()
+                }
+            }
+        case None => ()
+    }
+
+    let targets = ArrayList<SymbolDoc>()
+    var localMembers = false
+    var contextTitle = label(locale, "In this package", "当前包")
+    var moreHref = ""
+    match (owner) {
+        case Some(value) =>
+            contextTitle = value.name
+            localMembers = match (currentSymbol) {
+                case Some(symbol) => symbol.id == value.id
+                case None => false
+            }
+            for (entry in projection.members(value).entries) { targets.add(entry.symbol) }
+            moreHref = rootPrefix + symbolPagePath(value)
+        case None => match (currentPackagePath) {
+            case Some(route) =>
+                for (pkg in projection.packages) {
+                    if (packagePagePath(pkg.source.moduleId, pkg.source.name) != route) { continue }
+                    match (projection.topLevelByPackage.get(
+                        routeKey(pkg.source.moduleId, pkg.source.name))) {
+                        case Some(values) => targets.add(all: values)
+                        case None => ()
+                    }
+                    moreHref = rootPrefix + route
+                }
+            case None => ()
+        }
+    }
+    if (targets.isEmpty()) { return }
+
+    out.append("<section class=\"sidebar-section sidebar-context\" aria-label=\"" +
+        escapeHtml(contextTitle) + "\"><p class=\"sidebar-label\">" +
+        escapeHtml(contextTitle) + "</p>")
+    out.append("<label class=\"sidebar-filter-label\"><span class=\"sr-only\">" +
+        label(locale, "Filter this context", "筛选当前条目") +
+        "</span><input type=\"search\" class=\"sidebar-filter\" data-cjdoc-context-filter placeholder=\"" +
+        label(locale, "Filter declarations", "筛选声明") + "\"></label>")
+    out.append("<nav class=\"context-links\">")
+    let maximum: Int64 = 256
+    var shown: Int64 = 0
+    for (symbol in targets) {
+        if (shown >= maximum) { break }
+        let href = if (localMembers) {
+            "#" + symbolAnchor(symbol)
+        } else {
+            rootPrefix + symbolPagePath(symbol)
+        }
+        let active = match (currentSymbol) {
+            case Some(value) => value.id == symbol.id
+            case None => false
+        }
+        out.append("<a class=\"context-item")
+        if (active) { out.append(" is-current") }
+        out.append("\" data-cjdoc-context-item href=\"" + escapeHtml(href) + "\"")
+        if (active) { out.append(" aria-current=\"page\"") }
+        let text = if (symbol.headerSpelling.isEmpty()) { symbol.name } else {
+            htmlTocLabel(symbol)
+        }
+        out.append("><code>" + escapeHtml(text) + "</code></a>")
+        shown++
+    }
+    out.append("</nav><p class=\"sidebar-no-results\" data-cjdoc-context-empty role=\"status\" hidden>" +
+        label(locale, "No matching declarations.", "没有匹配的声明。") + "</p>")
+    if (targets.size > maximum) {
+        out.append("<p class=\"sidebar-limit\">" +
+            label(locale, "Showing the first 256 entries.", "显示前 256 个条目。") +
+            " <a href=\"" + escapeHtml(moreHref) + "\">" +
+            label(locale, "Full index", "完整索引") + "</a></p>")
+    }
+    out.append("</section>")
+}
+
 internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: String,
     documentation: DocumentationSet, projection: RenderProjection,
     locale!: String = "en", currentPackagePath!: ?String = None,
-    currentRoute!: String = "overview", docVersion!: ?String = None): Unit {
+    currentRoute!: String = "overview", docVersion!: ?String = None,
+    currentSymbol!: ?SymbolDoc = None): Unit {
     let projectLabel = escapeHtml(documentation.project.name)
     let documentVersionLabel = match (docVersion) {
         case Some(value) => escapeHtml(value)
@@ -175,7 +266,8 @@ internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: 
     out.append(closeNavigationLabel)
     out.append("\" hidden></button>")
     appendHtmlSidebar(out, documentation, projection, rootPrefix, locale,
-        currentPackagePath: currentPackagePath, currentRoute: currentRoute)
+        currentPackagePath: currentPackagePath, currentRoute: currentRoute,
+        currentSymbol: currentSymbol)
     out.append("<main class=\"docs-main\" data-cjdoc-content tabindex=\"-1\"><div class=\"content-column\"><details class=\"mobile-toc\" data-cjdoc-mobile-toc hidden><summary>")
     out.append(onThisPageLabel)
     out.append("</summary><nav><ol></ol></nav></details>\n")
