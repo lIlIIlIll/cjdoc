@@ -1373,6 +1373,64 @@ private func conceptualArtifactSymbolIndex(documentation: public_model.Documenta
     result
 }
 
+private func conceptualInlineMemberIndex(documentation: public_model.DocumentationSet):
+    HashMap<String, ArrayList<Int64>> {
+    let result = HashMap<String, ArrayList<Int64>>()
+    var index: Int64 = 0
+    for (symbol in documentation.declarations) {
+        if (!conceptualVisibleForAudience(symbol, documentation)) {
+            index++
+            continue
+        }
+        match (symbol.ownerId) {
+            case Some(ownerId) =>
+                let path = conceptualSymbolPath(ownerId)
+                match (result.get(path)) {
+                    case Some(indices) => indices.add(index)
+                    case None => result[path] = ArrayList<Int64>([index])
+                }
+            case None => ()
+        }
+        index++
+    }
+    result
+}
+
+private func conceptualAugmentInlineMembers(path: String, content: String,
+    documentation: public_model.DocumentationSet,
+    memberIndex: HashMap<String, ArrayList<Int64>>,
+    pages: ArrayList<ConceptualPage>, resolvers: Array<ExternalDocResolver>,
+    locale: String): String {
+    if (!path.startsWith("html/symbols/")) { return content }
+    let relative = path.removePrefix("html/")
+    let memberIndexes = match (memberIndex.get(relative)) {
+        case Some(value) => value
+        case None => return content
+    }
+    var result = content
+    for (memberIndexValue in memberIndexes) {
+        let symbol = documentation.declarations[memberIndexValue]
+        let section = conceptualApiUsageHtml(pages, symbol.id, locale,
+            headingSuffix: "-inline-" + memberIndexValue.toString()) +
+            conceptualExternalUsageHtml(symbol, resolvers, locale,
+                headingSuffix: "-inline-" + memberIndexValue.toString())
+        if (section.isEmpty()) { continue }
+        let marker = "id=\"symbol-" + conceptualSymbolSlug(symbol.id) + "\""
+        let start = match (result.indexOf(marker)) {
+            case Some(value) => value
+            case None => continue
+        }
+        let closing = "</div></details>"
+        match (result[start..].indexOf(closing)) {
+            case Some(relativeClosing) =>
+                let insertAt = start + relativeClosing
+                result = result[..insertAt] + section + result[insertAt..]
+            case None => ()
+        }
+    }
+    result
+}
+
 private func conceptualAugmentApiArtifact(path: String, content: String,
     documentation: public_model.DocumentationSet,
     symbolIndex: HashMap<String, ArrayList<Int64>>,
@@ -1455,6 +1513,11 @@ internal func appendConceptualArtifacts(projectRoot: String,
     } else {
         HashMap<String, ArrayList<Int64>>()
     }
+    let htmlInlineMemberIndex = if (shouldAugmentApiArtifacts) {
+        conceptualInlineMemberIndex(documentation)
+    } else {
+        HashMap<String, ArrayList<Int64>>()
+    }
     let conceptualSearch = if (config.enabled && hasHtml) {
         conceptualSearchIndex(search, pages)
     } else { search }
@@ -1479,8 +1542,10 @@ internal func appendConceptualArtifacts(projectRoot: String,
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
                 searchScript))
         } else if (shouldAugmentApiArtifacts && (artifact.path.startsWith("html/symbols/") || artifact.path.startsWith("html/packages/"))) {
-            let content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
+            var content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
                 documentation, htmlSymbolIndex, pages, resolvers, locale)
+            content = conceptualAugmentInlineMembers(artifact.path, content, documentation,
+                htmlInlineMemberIndex, pages, resolvers, locale)
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, content))
         } else if (shouldAugmentApiArtifacts && (artifact.path.startsWith("markdown/symbols/") || artifact.path.startsWith("markdown/packages/"))) {
             let content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
