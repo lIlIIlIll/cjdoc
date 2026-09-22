@@ -154,6 +154,9 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-member][data-member-name="normalize"]')).toBeVisible();
     await expect(page.locator('[data-cjdoc-member][data-member-name="label"]')).toBeHidden();
     await memberFilter.fill('');
+    const allMemberDetails = page.locator('details[data-cjdoc-member]');
+    await expect(allMemberDetails).not.toHaveCount(0);
+    expect(await allMemberDetails.count()).toBeGreaterThanOrEqual(20);
     const normalizeDetail = page.locator('details[data-cjdoc-member][data-member-name="normalize"]');
     const labelDetail = page.locator('details[data-cjdoc-member][data-member-name="label"]');
     await expect(normalizeDetail).not.toHaveAttribute('open', '');
@@ -167,6 +170,12 @@ test.describe('generated HTML reference', () => {
     await labelDetail.locator('summary').click();
     await expect(labelDetail).toHaveAttribute('open', '');
     await expect(normalizeDetail).toHaveAttribute('open', '');
+    const pingDetails = page.locator('details[data-cjdoc-member][data-member-name="ping"]');
+    await expect(pingDetails).toHaveCount(2);
+    await pingDetails.nth(0).locator('summary').click();
+    await pingDetails.nth(1).locator('summary').click();
+    await expect(pingDetails.nth(0)).toHaveAttribute('open', '');
+    await expect(pingDetails.nth(1)).toHaveAttribute('open', '');
     const normalizeAnchor = await normalizeDetail.getAttribute('id');
     expect(normalizeAnchor).toBeTruthy();
     await gotoFile(page, typePageUrl + '#' + normalizeAnchor);
@@ -185,6 +194,8 @@ test.describe('generated HTML reference', () => {
     const memberUrl = new URL(memberHref, classUrl).href;
     await gotoFile(page, memberUrl);
     await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
+    await expect(page.locator('.sibling-members')).toContainText('label');
+    await expect(page.locator('.sibling-members [aria-current="page"]')).toContainText('normalize');
     await expect(page.locator('.behavior-contracts')).toContainText('precondition');
     await expect(page.locator('.behavior-contracts')).toContainText('performance');
     await expect(page.locator('dt').filter({ hasText: 'HiddenGuideTarget' })).toContainText('unavailable');
@@ -277,6 +288,26 @@ test.describe('generated HTML reference', () => {
     expect(zoomMetrics.scrollWidth).toBeLessThanOrEqual(zoomMetrics.clientWidth + 1);
     expect(zoomMetrics.buttonWidth).toBeGreaterThanOrEqual(zoomMetrics.buttonScrollWidth);
     await expectStable(page);
+  });
+
+  test('dense type member browser keeps collapsed API rows compact', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openIndex(page);
+    const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+    const packageUrl = new URL(packageHref, indexUrl).href;
+    await gotoFile(page, packageUrl);
+    const classHref = await page.locator('.declaration-row-link').filter({ hasText: 'ReferenceBox' }).getAttribute('href');
+    const classUrl = new URL(classHref, packageUrl).href;
+    await gotoFile(page, classUrl);
+    const browser = page.locator('[data-cjdoc-member-browser]');
+    await browser.scrollIntoViewIfNeeded();
+    const metrics = await page.locator('details[data-cjdoc-member] > summary').evaluateAll(nodes => {
+      const heights = nodes.map(node => node.getBoundingClientRect().height);
+      return { count: heights.length, max: Math.max(...heights), average: heights.reduce((a, b) => a + b, 0) / heights.length };
+    });
+    expect(metrics.count).toBeGreaterThanOrEqual(20);
+    expect(metrics.max).toBeLessThan(90);
+    expect(metrics.average).toBeLessThan(72);
   });
 
   test('tablet reference content is visible without a viewport-sized blank row', async ({ page }) => {
