@@ -422,9 +422,11 @@ internal let HTML_SEARCH_SCRIPT = """
     const onApi = declaredRoute === "api" || (declaredRoute === "overview" && window.location.hash === "#packages");
     const onOverview = declaredRoute === "overview" && !onApi;
     overview.classList.toggle("is-current", onOverview);
-    overview.toggleAttribute("aria-current", onOverview);
+    if (onOverview) overview.setAttribute("aria-current", "page");
+    else overview.removeAttribute("aria-current");
     api.classList.toggle("is-current", onApi);
-    api.toggleAttribute("aria-current", onApi);
+    if (onApi) api.setAttribute("aria-current", "page");
+    else api.removeAttribute("aria-current");
   };
   syncRouteState();
   window.addEventListener("hashchange", syncRouteState);
@@ -648,6 +650,7 @@ internal let HTML_SEARCH_SCRIPT = """
   const memberFilter = document.querySelector("[data-cjdoc-member-filter]");
   if (memberFilter) {
     const memberRows = [...document.querySelectorAll("[data-cjdoc-member]")];
+    const memberGroups = [...document.querySelectorAll("[data-cjdoc-member-group]")];
     const memberStatus = document.querySelector("[data-cjdoc-member-filter-status]");
     const applyMemberFilter = () => {
       const query = memberFilter.value.trim().toLocaleLowerCase();
@@ -658,9 +661,32 @@ internal let HTML_SEARCH_SCRIPT = """
         row.hidden = !matches;
         if (matches) visible += 1;
       }
+      for (const group of memberGroups) {
+        group.hidden = query && !group.querySelector("[data-cjdoc-member]:not([hidden])");
+      }
       if (memberStatus) memberStatus.hidden = !query || visible !== 0;
     };
     memberFilter.addEventListener("input", applyMemberFilter);
   }
+  const revealHashTarget = () => {
+    if (!window.location.hash || window.location.hash.length <= 1) return;
+    let id = window.location.hash.slice(1);
+    try { id = decodeURIComponent(id); } catch (_) {}
+    const target = document.getElementById(id);
+    if (!target) return;
+    const member = target.matches("[data-cjdoc-member]") ? target : target.closest("[data-cjdoc-member]");
+    if (member && member.tagName === "DETAILS") {
+      member.hidden = false;
+      member.open = true;
+      const group = member.closest("[data-cjdoc-member-group]");
+      if (group) group.hidden = false;
+      if (memberFilter && memberFilter.value) {
+        memberFilter.value = "";
+        memberFilter.dispatchEvent(new Event("input", {bubbles: true}));
+      }
+    }
+  };
+  revealHashTarget();
+  window.addEventListener("hashchange", revealHashTarget);
 })();
 """
