@@ -93,6 +93,19 @@ internal class RenderProjection {
     let visibleSymbols = ArrayList<SymbolDoc>()
     let packages = ArrayList<ProjectedPackage>()
     let modules = ArrayList<ProjectedModule>()
+    let membersByOwner = HashMap<String, ArrayList<SymbolDoc>>()
+    let topLevelByPackage = HashMap<String, ArrayList<SymbolDoc>>()
+    private let memberBrowsers = HashMap<String, HtmlMemberBrowser>()
+
+    func members(owner: SymbolDoc): HtmlMemberBrowser {
+        match (memberBrowsers.get(owner.id)) {
+            case Some(value) => value
+            case None =>
+                let value = HtmlMemberBrowser(owner, this)
+                memberBrowsers[owner.id] = value
+                value
+        }
+    }
 
     init(documentation: DocumentationSet) {
         allIndex = indexSymbols(documentation)
@@ -101,6 +114,19 @@ internal class RenderProjection {
             if (renderable[symbol.id]) {
                 visibleSymbols.add(symbol)
                 visibleIndex[symbol.id] = symbol
+            }
+        }
+
+        for (symbol in visibleSymbols) {
+            let groups = if (symbol.ownerId.isSome()) { membersByOwner } else { topLevelByPackage }
+            let key = if (symbol.ownerId.isSome()) {
+                symbol.ownerId.getOrThrow()
+            } else {
+                routeKey(symbol.moduleId, symbol.packageName)
+            }
+            match (groups.get(key)) {
+                case Some(values) => values.add(symbol)
+                case None => groups[key] = ArrayList<SymbolDoc>([symbol])
             }
         }
 
@@ -143,30 +169,12 @@ internal class RenderProjection {
 
 internal func groupTopLevelByPackage(projection: RenderProjection):
     HashMap<String, ArrayList<SymbolDoc>> {
-    let groups = HashMap<String, ArrayList<SymbolDoc>>()
-    for (symbol in projection.visibleSymbols where symbol.ownerId.isNone()) {
-        let key = routeKey(symbol.moduleId, symbol.packageName)
-        match (groups.get(key)) {
-            case Some(values) => values.add(symbol)
-            case None => groups[key] = ArrayList<SymbolDoc>([symbol])
-        }
-    }
-    groups
+    projection.topLevelByPackage
 }
 
 internal func groupMembersByOwner(projection: RenderProjection):
     HashMap<String, ArrayList<SymbolDoc>> {
-    let groups = HashMap<String, ArrayList<SymbolDoc>>()
-    for (symbol in projection.visibleSymbols) {
-        match (symbol.ownerId) {
-            case Some(ownerId) => match (groups.get(ownerId)) {
-                case Some(values) => values.add(symbol)
-                case None => groups[ownerId] = ArrayList<SymbolDoc>([symbol])
-            }
-            case None => ()
-        }
-    }
-    groups
+    projection.membersByOwner
 }
 
 internal func findProjectedModule(projection: RenderProjection, id: String): ?ModuleDoc {
