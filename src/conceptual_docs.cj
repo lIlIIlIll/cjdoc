@@ -876,23 +876,21 @@ private func externalSearchCanonicalValue(value: String, objectStart: Int64,
     }
 }
 
-private func externalSearchAugmentations(documentation: public_model.DocumentationSet,
-    resolvers: Array<ExternalDocResolver>): HashMap<String, String> {
-    let additions = HashMap<String, String>()
+private func externalSearchSymbolIndex(documentation: public_model.DocumentationSet): HashMap<String, Int64> {
+    let result = HashMap<String, Int64>()
+    var index: Int64 = 0
     for (symbol in documentation.declarations) {
-        let bindings = externalSearchBindings(symbol, resolvers)
-        if (!bindings.isEmpty()) {
-            additions[externalSearchJson(symbol.id)] = bindings
-        }
+        result[externalSearchJson(symbol.id)] = index
+        index++
     }
-    additions
+    result
 }
 
 private func externalSearchIndex(base: String, documentation: public_model.DocumentationSet,
     resolvers: Array<ExternalDocResolver>): String {
     if (base.isEmpty() || resolvers.isEmpty()) { return base }
-    let additions = externalSearchAugmentations(documentation, resolvers)
-    if (additions.isEmpty()) { return base }
+    let symbolIndex = externalSearchSymbolIndex(documentation)
+    if (symbolIndex.isEmpty()) { return base }
     let marker = "\"entries\": ["
     match (base.indexOf(marker)) {
         case None => base
@@ -918,8 +916,12 @@ private func externalSearchIndex(base: String, documentation: public_model.Docum
                 }
                 out.append(base[cursor..objectEnd])
                 match (externalSearchCanonicalValue(base, objectStart, objectEnd)) {
-                    case Some(key) => match (additions.get(key)) {
-                        case Some(bindings) => out.append(",\"externalDocs\":[" + bindings + "]")
+                    case Some(key) => match (symbolIndex.get(key)) {
+                        case Some(index) =>
+                            let bindings = externalSearchBindings(documentation.declarations[index], resolvers)
+                            if (!bindings.isEmpty()) {
+                                out.append(",\"externalDocs\":[" + bindings + "]")
+                            }
                         case None => ()
                     }
                     case None => ()
