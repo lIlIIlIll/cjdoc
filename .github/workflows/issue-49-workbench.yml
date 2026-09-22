@@ -13,10 +13,8 @@ jobs:
     if: github.ref == 'refs/heads/codex/issue-49-compact-reference'
     runs-on: ubuntu-22.04
     timeout-minutes: 45
-    permissions:
-      contents: write
     env:
-      CJDOC_PYTHON: python3
+      CJDOC_PYTHON: python
       PYTHONDONTWRITEBYTECODE: '1'
       PYTHONUTF8: '1'
       cjHeapSize: '512MB'
@@ -24,52 +22,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Apply reviewed, checksum-verified source changes
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import base64, hashlib, json, lzma, os, pathlib, subprocess, urllib.request
-          repository = 'lIlIIlIll/cjdoc'
-          assert os.environ['GITHUB_REPOSITORY'] == repository
-          assert os.environ['GITHUB_REF'] == 'refs/heads/codex/issue-49-compact-reference'
-          blobs = ['dfab051246a3dad6bb963389fd61f85d3679b82f', 'c62e566df2f2a7630700a8cd8882be728f7b1ecb', '600a509b9c87bd254757771fb0a73a52e1077a6a']
-          compressed = bytearray()
-          for sha in blobs:
-              request = urllib.request.Request(f'https://api.github.com/repos/{repository}/git/blobs/{sha}', headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  blob = json.load(response)
-              compressed.extend(base64.b64decode(blob['content']))
-          assert hashlib.sha256(compressed).hexdigest() == '0d3495cf2050dcd7c8eb4a0747b3a8f7e0c89e02c273b8f34ec1cf862e7cb030'
-          decoder = lzma.LZMADecompressor(memlimit=128*1024*1024)
-          decoded = decoder.decompress(compressed, max_length=4*1024*1024)
-          assert decoder.eof and not decoder.unused_data
-          payload = json.loads(decoded)
-          assert payload['base'] == 'c0ec28b6698e16da4e02cf7f59ff08d8e20fadf0'
-          pending = []
-          for change in payload['changes']:
-              path = pathlib.Path(change['path'])
-              assert not path.is_absolute() and '..' not in path.parts and path.parts[0] in ('src', 'scripts', 'tests', 'docs')
-              assert not path.is_symlink()
-              before = path.read_bytes() if path.exists() else b''
-              assert hashlib.sha256(before).hexdigest() == change['before'], str(path)
-              lines = before.decode('utf-8').splitlines(keepends=True)
-              for start, end, replacement in reversed(change['edits']):
-                  assert 0 <= start <= end <= len(lines)
-                  lines[start:end] = [replacement]
-              after = ''.join(lines).encode('utf-8')
-              assert hashlib.sha256(after).hexdigest() == change['after'], str(path)
-              pending.append((path, after))
-          for path, after in pending:
-              path.parent.mkdir(parents=True, exist_ok=True)
-              path.write_bytes(after)
-          subprocess.run(['git', 'add', '--'] + [str(path) for path, _ in pending], check=True)
-          subprocess.run(['git', '-c', 'user.name=Codex', '-c', 'user.email=noreply@openai.com', 'commit', '-m', 'feat(html): implement compact inline member reference for #49'], check=True)
-          authorization = base64.b64encode(('x-access-token:' + os.environ['GH_TOKEN']).encode()).decode()
-          print('::add-mask::' + authorization, flush=True)
-          subprocess.run(['git', '-c', 'http.https://github.com/.extraheader=AUTHORIZATION: basic ' + authorization, 'push', 'origin', 'HEAD:refs/heads/codex/issue-49-compact-reference'], check=True)
-          PY
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: ${{ runner.temp }}/cangjie-sdk-1.1.3
@@ -77,7 +32,7 @@ jobs:
       - name: Install pinned SDK
         id: sdk
         run: |
-          python3 scripts/install_cangjie_sdk.py \
+          python scripts/install_cangjie_sdk.py \
             --url 'https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.1.3.tar.gz&objectKey=6a19349d21f5a8178d6fd22b' \
             --sha256 2b68905afc466e665ae181595c63f96c18d75fd2c1fb6c6f0cb64e179c28d61a \
             --destination "$RUNNER_TEMP/cangjie-sdk-1.1.3" --github-output "$GITHUB_OUTPUT"
@@ -91,11 +46,11 @@ jobs:
           cjc -v | tee target/issue-49-evidence/sdk.log
           cjpm build 2>&1 | tee target/issue-49-evidence/build.log
           cjpm test 2>&1 | tee target/issue-49-evidence/unit.log
-          python3 -m unittest discover -s scripts -p 'test_*.py' 2>&1 | tee target/issue-49-evidence/python.log
+          python -m unittest discover -s scripts -p 'test_*.py' 2>&1 | tee target/issue-49-evidence/python.log
           target/release/bin/main generate --project tests/fixtures/projects/compact_reference --format html --format json --locale en --doc-version 1.0.0 --no-cache --output target/compact-en
           target/release/bin/main generate --project tests/fixtures/projects/compact_reference --format html --format json --locale zh-CN --doc-version 1.0.0 --no-cache --output target/compact-zh
-          python3 scripts/validate_html_site.py target/compact-en/html
-          python3 scripts/validate_html_site.py target/compact-zh/html
+          python scripts/validate_html_site.py target/compact-en/html
+          python scripts/validate_html_site.py target/compact-zh/html
       - name: Upload native evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
