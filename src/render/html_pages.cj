@@ -214,6 +214,39 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
     out.toString()
 }
 
+internal func appendInlineMemberDetail(out: RenderTextBuffer,
+    index: HashMap<String, SymbolDoc>, member: SymbolDoc, assetLookup: HashMap<String, String>,
+    typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String, locale: String): Unit {
+    let anchor = symbolAnchor(member)
+    let standaloneLabel = label(locale, "Open standalone page", "打开独立页面")
+    out.append("<details class=\"declaration-summary member-detail\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\">")
+    out.append("<summary class=\"member-detail-summary\"><span class=\"member-summary-main\">")
+    if (!member.headerSpelling.isEmpty()) {
+        out.append("<code class=\"declaration-signature\">${escapeHtml(member.headerSpelling)}</code>")
+    } else {
+        out.append("<code class=\"declaration-signature\">${escapeHtml(member.name)}</code>")
+    }
+    out.append("</span><span class=\"declaration-kind\">${escapeHtml(member.kind)}</span>")
+    match (member.documentation) {
+        case Some(comment) =>
+            let summary = summaryPlainText(comment)
+            if (!summary.isEmpty()) {
+                out.append("<span class=\"member-summary-description\">${escapeHtml(summary)}</span>")
+            }
+        case None => ()
+    }
+    out.append("</summary><div class=\"member-detail-body\">")
+    out.append("<div class=\"member-detail-actions\"><a class=\"member-permalink\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(member))}\">${standaloneLabel}</a></div>")
+    if (!member.headerSpelling.isEmpty()) {
+        out.append("<pre class=\"signature-block compact-signature\"><code>")
+        appendLinkedSignatureHtml(out, member, typeLinkIndex, rootPrefix)
+        out.append("</code></pre>")
+    }
+    appendDocumentationHtml(out, index, member, rootPrefix, assetLookup, typeLinkIndex,
+        headingBase: 3, locale: locale)
+    appendSymbolRelationshipSection(out, index, member, rootPrefix, typeLinkIndex, locale)
+    out.append("</div></details>\n")
+}
 internal func memberSectionTitle(symbol: SymbolDoc): String {
     match (symbol.kind) {
         case "constructor" => "Constructors"
@@ -232,7 +265,8 @@ internal func memberSectionTitle(symbol: SymbolDoc): String {
 
 internal func appendMemberSection(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
-    owner: SymbolDoc, title: String, locale: String): Unit {
+    owner: SymbolDoc, title: String, assetLookup: HashMap<String, String>,
+    typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
     let sectionLabel = match (title) {
         case "Constructors" => "构造器"
         case "Properties" => "属性"
@@ -263,7 +297,8 @@ internal func appendMemberSection(out: RenderTextBuffer,
             for (member in members) {
                 if (memberSectionTitle(member) != title) { continue }
                 if (!opened) {
-                    out.append("<h2>" + escapeHtml(label(locale, title, sectionLabel)) + "</h2>\n")
+                    out.append("<section class=\"member-group\" data-cjdoc-member-group><h2>" +
+                        escapeHtml(label(locale, title, sectionLabel)) + "</h2>\n")
                     opened = true
                 }
                 let count = match (overloadCounts.get(member.name)) {
@@ -271,15 +306,17 @@ internal func appendMemberSection(out: RenderTextBuffer,
                     case None => 0
                 }
                 if (count > 1 && previousName != member.name) {
-                    out.append("<p class=\"overload-group-label\"><span>" + escapeHtml(overloadLabel) + "</span> <code>" + escapeHtml(member.name) + "</code></p>\n")
+                    out.append("<p class=\"overload-group-label\"><span>" +
+                        escapeHtml(overloadLabel) + "</span> <code>" +
+                        escapeHtml(member.name) + "</code></p>\n")
                 }
                 previousName = member.name
-                appendDeclarationRow(out, member, "../")
+                appendInlineMemberDetail(out, index, member, assetLookup, typeLinkIndex, "../", locale)
             }
+            if (opened) { out.append("</section>\n") }
         case None => ()
     }
 }
-
 internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<String, SymbolDoc>,
     symbol: SymbolDoc, rootPrefix: String, locale: String): Unit {
     let owners = ArrayList<SymbolDoc>()
@@ -298,6 +335,35 @@ internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<Strin
     }
 }
 
+internal func appendSiblingMemberNavigation(out: RenderTextBuffer,
+    membersByOwner: HashMap<String, ArrayList<SymbolDoc>>, symbol: SymbolDoc,
+    rootPrefix: String, locale: String): Unit {
+    match (symbol.ownerId) {
+        case Some(ownerId) => match (membersByOwner.get(ownerId)) {
+            case Some(members) =>
+                if (members.size <= 1) { return }
+                out.append("<nav class=\"sibling-members\" aria-label=\"" +
+                    label(locale, "Other members of this type", "同类型的其他成员") + "\"><span>" +
+                    label(locale, "Members", "成员") + "</span><div>")
+                var shown: Int64 = 0
+                for (member in members) {
+                    if (shown >= 24) { break }
+                    let current = member.id == symbol.id
+                    if (current) {
+                        out.append("<span class=\"is-current\" aria-current=\"page\"><code>" +
+                            escapeHtml(member.name) + "</code></span>")
+                    } else {
+                        out.append("<a href=\"" + rootPrefix + escapeHtml(symbolPagePath(member)) +
+                            "\"><code>" + escapeHtml(member.name) + "</code></a>")
+                    }
+                    shown++
+                }
+                out.append("</div></nav>\n")
+            case None => ()
+        }
+        case None => ()
+    }
+}
 internal func renderSymbolPage(documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
     symbol: SymbolDoc, assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
@@ -309,6 +375,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">${label(locale, "Package", "包")} <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     appendOwnerBreadcrumbs(out, index, symbol, "../", locale)
     out.append("<li aria-current=\"page\"><code>${escapeHtml(symbol.name)}</code></li></ol></nav>\n")
+    appendSiblingMemberNavigation(out, membersByOwner, symbol, "../", locale)
     out.append("<header class=\"page-header\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(symbol.name)}</code></h1>")
     appendSymbolMetadata(out, index, symbol, "../", assetLookup, typeLinkIndex, locale: locale)
     match (findProjectedModule(projection, symbol.moduleId)) {
@@ -334,7 +401,8 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     for (title in ["Constructors", "Properties", "Variables", "Functions", "Enum cases",
         "Nested classes", "Nested structs", "Nested interfaces", "Nested enums", "Nested extensions",
         "Other members"]) {
-        appendMemberSection(out, index, membersByOwner, symbol, title, locale)
+        appendMemberSection(out, index, membersByOwner, symbol, title, assetLookup,
+            typeLinkIndex, locale)
     }
     if (isTypeDeclaration(symbol)) { out.append("</section>\n") }
     appendPageEnd(out, documentation, locale: locale)
