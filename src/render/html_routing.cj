@@ -204,6 +204,10 @@ private func visibleThroughOwners(symbol: SymbolDoc, audience: String,
     true
 }
 
+private func addVisibleOwnerId(values: HashSet<String>, ownerId: String): Unit {
+    let _ = values.add(ownerId)
+}
+
 internal func visibleExtensionContainerIds(documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>): HashSet<String> {
     let audience = documentation.configuration.audience
@@ -211,8 +215,7 @@ internal func visibleExtensionContainerIds(documentation: DocumentationSet,
     for (member in documentation.declarations) {
         if (!isVisibleForAudience(member, audience)) { continue }
         match (member.ownerId) {
-            case Some(ownerId) =>
-                let _ = ownersWithVisibleMembers.add(ownerId)
+            case Some(ownerId) => addVisibleOwnerId(ownersWithVisibleMembers, ownerId)
             case None => ()
         }
     }
