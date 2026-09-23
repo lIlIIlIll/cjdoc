@@ -178,7 +178,8 @@ jobs:
             for compiler in clang clang++; do
               real_compiler="$(command -v "${compiler}")"
               wrapper="${wrapper_dir}/${compiler}"
-              printf '#!/bin/sh\nexec "%s" -Wno-error=cast-function-type-mismatch "$@"\n' "${real_compiler}" > "${wrapper}"
+              # Keep upstream OpenSSL and SDK/libc++ warnings non-fatal under -Werror.
+              printf '#!/bin/sh\nexec "%s" "$@" -Wno-error=cast-function-type-mismatch -Wno-error=invalid-specialization\n' "${real_compiler}" > "${wrapper}"
               chmod +x "${wrapper}"
             done
             export PATH="${wrapper_dir}:${PATH}"
@@ -215,7 +216,11 @@ jobs:
               -DCANGJIE_BUILD_STDLIB_WITH_COVERAGE=OFF \
               -DCANGJIE_BUILD_ARGS= \
               -DBUILD_GCC_TOOLCHAIN=
-            cmake --build "${build_dir}" --parallel
+            # FlatBuffers tracks NTFS alternate streams that need this checkout override.
+            GIT_CONFIG_COUNT=1 \
+              GIT_CONFIG_KEY_0=core.protectNTFS \
+              GIT_CONFIG_VALUE_0=false \
+              cmake --build "${build_dir}" --parallel
             cmake --install "${build_dir}" --config Release
           else
             python build.py build --build-type release
