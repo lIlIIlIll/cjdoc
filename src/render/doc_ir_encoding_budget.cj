@@ -198,6 +198,9 @@ internal func consumeTagEncoding(value: DocTag, path: String,
     budget.consumeString(value.description, "${path}.description")
     budget.consumeString(value.referenceState, "${path}.referenceState")
     budget.consumeOptionalString(value.targetSymbolId, "${path}.targetSymbolId")
+    if (!value.directives.isEmpty()) {
+        budget.consumeString(value.directives, "${path}.directives")
+    }
 }
 
 internal func consumeCommentEncoding(value: DocComment, path: String, jsonDepth: Int64,

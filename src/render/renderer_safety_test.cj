@@ -100,6 +100,17 @@ private func hiddenAssetDocumentation(): DocumentationSet {
 @Test
 class RendererSafetyTest {
     @TestCase
+    func resourceFallbackKeepsItsDiagnosticVisible(): Unit {
+        let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "partial",
+            ProjectInfo("resource-limited"), ConfigurationSnapshot(),
+            diagnostics: [Diagnostic("warning", "CJDOC3027", "Resource limit reached")])
+        let index = rendererSafetyContent(HtmlDocumentationRenderer().render(documentation), "html/index.html")
+        @Expect(index.contains("No API declarations are available for this audience."))
+        @Expect(index.contains("<details class=\"generation-metadata\" open>"))
+        @Expect(index.contains("CJDOC3027"))
+    }
+
+    @TestCase
     func rendererFactorySupportsEveryDocumentedFormat(): Unit {
         let documentation = rendererSafetyDocumentation(MarkdownNode("document"))
         let expectations = [
@@ -168,23 +179,23 @@ class RendererSafetyTest {
     func fencedCodeRendersAtTheValidatedUpperBound(): Unit {
         let code = MarkdownNode("document", children: [MarkdownNode("code_block",
             MarkdownNodeMetadata.forCodeBlock("fenced", Some("~"), DOC_IR_MAX_FENCE_LENGTH,
-                "cj", "cj", ""), literal: "body")])
+                "cangjie", "cangjie", ""), literal: "body")])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
             rendererSafetyDocumentation(code)), "markdown/docs.md")
         let marks = rendererSafetyFenceMarks()
 
-        @Expect(markdown.contains("${marks}cj\nbody\n${marks}"))
+        @Expect(markdown.contains("${marks}cangjie\nbody\n${marks}"))
     }
 
     @TestCase
     func markdownCodeUsesAContentSafeDynamicDelimiter(): Unit {
         let code = MarkdownNode("document", children: [MarkdownNode("code_block",
             MarkdownNodeMetadata.forCodeBlock("fenced", Some("`"), 3,
-                "cj", "cj", ""), literal: "before ```` after")])
+                "cangjie", "cangjie", ""), literal: "before ```` after")])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
             rendererSafetyDocumentation(code)), "markdown/docs.md")
 
-        @Expect(markdown.contains("`````cj\nbefore ```` after\n`````"))
+        @Expect(markdown.contains("`````cangjie\nbefore ```` after\n`````"))
     }
 
     @TestCase
@@ -201,13 +212,12 @@ class RendererSafetyTest {
 
     @TestCase
     func structuredExamplesRenderAsSafeCodeBlocksInBothFormats(): Unit {
-        let example = DocTag("example", "Unsafe <input>", """
-            Explain the example.
-
-            ```cj
-            let value = "<script>alert(1)</script>"
-            ```
-            """)
+        let example = DocTag("example", "Unsafe <input>",
+            "Explain the example with <script>alert(2)</script> and " +
+            "[run](javascript:alert(5)).\n\n" +
+            "```cangjie\n" +
+            "let value = \"<script>alert(1)</script>\"\n" +
+            "```")
         let plain = DocTag("example", "Plain text", "<img src=x>")
         let documentation = rendererSafetyDocumentation(MarkdownNode("document"), tags: [example, plain])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(documentation),
@@ -217,11 +227,17 @@ class RendererSafetyTest {
         let css = rendererSafetyContent(artifacts, "html/style.css")
 
         @Expect(markdown.contains("#### Examples"), true)
-        @Expect(markdown.contains("```cj"), true)
+        @Expect(markdown.contains("```cangjie"), true)
+        @Expect(markdown.contains(
+            "Explain the example with &lt;script&gt;alert\\(2\\)&lt;/script&gt; and"), true)
+        @Expect(markdown.contains("\\[run\\]\\(javascript:alert\\(5\\)\\)"), true)
+        @Expect(!markdown.contains("[run](javascript:"), true)
         @Expect(markdown.contains("<script>alert(1)</script>"), true)
-        @Expect(html.contains("<h3>Examples</h3>"), true)
+        @Expect(!markdown.contains("<script>alert(2)</script>"), true)
+        @Expect(markdown.contains("&lt;img src\\=x&gt;"), true)
+        @Expect(html.contains("<h5>Examples</h5>"), true)
         @Expect(html.contains("class=\"example-block\""), true)
-        @Expect(html.contains("data-language=\"cj\""), true)
+        @Expect(html.contains("data-language=\"cangjie\""), true)
         @Expect(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"), true)
         @Expect(html.contains("&lt;img src=x&gt;"), true)
         @Expect(!html.contains("<code><script>alert(1)"), true)
@@ -232,6 +248,69 @@ class RendererSafetyTest {
         var exampleCount: Int64 = 0
         for (tag in decodedComment.tags) { if (tag.name == "example") { exampleCount++ } }
         @Expect(exampleCount, 2)
+    }
+
+    @TestCase
+    func exampleDirectivesRoundTripWithoutBeingRendered(): Unit {
+        let pinned = DocTag("example", "Failing call", "```cangjie\nmissing()\n```",
+            directives: "{must-fail error=\"missing\"}")
+        let plain = DocTag("example", "Plain call", "```cangjie\nsafe()\n```")
+        let documentation = rendererSafetyDocumentation(MarkdownNode("document"),
+            tags: [pinned, plain])
+        let encoded = encodeDocIr(documentation)
+        @Expect(encoded.contains("{must-fail error=\\\"missing\\\"}"), true)
+        // Only the pinned tag carries the key, so pre-existing documents keep their
+        // exact byte encoding.
+        @Expect(encoded.split("\"directives\"").size, 2)
+        let tags = decodeDocIr(encoded).declarations[0].documentation.getOrThrow().tags
+        @Expect(tags.size, 2)
+        @Expect(tags[0].directives, "{must-fail error=\"missing\"}")
+        @Expect(tags[1].directives, "")
+        let html = rendererSafetyText(HtmlDocumentationRenderer().render(documentation))
+        @Expect(!html.contains("must-fail"), true)
+        let markdown = rendererSafetyContent(
+            MarkdownDocumentationRenderer().render(documentation), "markdown/docs.md")
+        @Expect(!markdown.contains("must-fail"), true)
+        let misplaced = rendererSafetyDocumentation(MarkdownNode("document"),
+            tags: [DocTag("param", "value", "parameter", directives: "{run}")])
+        @ExpectThrows[IllegalArgumentException](encodeDocIr(misplaced))
+    }
+
+    @TestCase
+    func exampleFenceIndentationMatchesMarkdownRules(): Unit {
+        let valid = DocTag("example", "Three spaces", "   ```cangjie\nsafe()\n   ```")
+        let invalid = DocTag("example", "Four spaces",
+            "    ```cangjie\nsafe()\n<script>alert(3)</script>")
+        let invalidInfo = DocTag("example", "Backtick info",
+            "```cangjie`invalid\n<script>alert(4)</script>")
+        let unterminated = DocTag("example", "Unterminated", "```cangjie\nsafe()")
+        let hiddenWhitespace = DocTag("example", "Hidden whitespace",
+            "\r\t```cangjie\nsafe()\n<script>alert(6)</script>")
+        let carriageReturnBoundary = DocTag("example", "CR boundary",
+            "```cangjie\nsafe()\n```\r<script>alert(7)</script>")
+        let documentation = rendererSafetyDocumentation(MarkdownNode("document"),
+            tags: [valid, invalid, invalidInfo, unterminated, hiddenWhitespace,
+                carriageReturnBoundary,
+                DocTag("param", "value", "parameter")])
+        let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(documentation),
+            "markdown/docs.md")
+        let html = rendererSafetyText(HtmlDocumentationRenderer().render(documentation))
+
+        @Expect(markdown.contains("   ```cangjie"), true)
+        @Expect(markdown.contains("&lt;script&gt;alert\\(3\\)&lt;/script&gt;"), true)
+        @Expect(!markdown.contains("<script>alert(3)</script>"), true)
+        @Expect(markdown.contains("&lt;script&gt;alert\\(4\\)&lt;/script&gt;"), true)
+        @Expect(!markdown.contains("<script>alert(4)</script>"), true)
+        @Expect(markdown.contains("safe()\n```\n\n##### Hidden whitespace"), true)
+        @Expect(markdown.contains("&lt;script&gt;alert\\(6\\)&lt;/script&gt;"), true)
+        @Expect(!markdown.contains("<script>alert(6)</script>"), true)
+        @Expect(markdown.contains("&lt;script&gt;alert\\(7\\)&lt;/script&gt;"), true)
+        @Expect(!markdown.contains("<script>alert(7)</script>"), true)
+        @Expect(html.contains("<pre><code"), true)
+        @Expect(html.contains("&lt;script&gt;alert(3)&lt;/script&gt;"), true)
+        @Expect(!html.contains("<script>alert(3)</script>"), true)
+        @Expect(!html.contains("<script>alert(6)</script>"), true)
+        @Expect(!html.contains("<script>alert(7)</script>"), true)
     }
 
     @TestCase

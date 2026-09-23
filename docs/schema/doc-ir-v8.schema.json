@@ -174,7 +174,8 @@
       "properties": {
         "name": {"type": "string", "minLength": 1}, "subject": {"type": "string"},
         "description": {"type": "string"}, "referenceState": {"$ref": "#/$defs/semanticState"},
-        "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"}
+        "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"},
+        "directives": {"type": "string"}
       }
     },
     "headingMetadata": {

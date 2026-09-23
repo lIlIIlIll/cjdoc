@@ -85,7 +85,9 @@ internal class ExampleFenceOpening {
 }
 
 internal func trimExampleBlankLines(value: String): String {
-    let lines = value.split("\n")
+    // Fence tracking must use the same line boundaries as Markdown consumers.
+    let normalized = value.replace("\r\n", "\n").replace("\r", "\n")
+    let lines = normalized.split("\n")
     var first: Int64 = 0
     while (first < lines.size && lines[first].trimAscii().isEmpty()) { first++ }
     var last = lines.size
@@ -101,8 +103,25 @@ internal func trimExampleBlankLines(value: String): String {
     out.toString()
 }
 
+internal func exampleFenceLineValue(line: String): ?String {
+    // CommonMark permits only up to three ASCII spaces before a fence.
+    var leadingSpaces: Int64 = 0
+    while (leadingSpaces < line.size && line[leadingSpaces] == b' ') {
+        leadingSpaces++
+    }
+    if (leadingSpaces > 3) { return None }
+    let remainder = line[leadingSpaces..]
+    if (!remainder.isEmpty() && remainder[0] != b'`' && remainder[0] != b'~') {
+        return None
+    }
+    Some(remainder.trimAscii())
+}
+
 internal func exampleFenceOpening(line: String): ?ExampleFenceOpening {
-    let value = line.trimAsciiStart()
+    let value = match (exampleFenceLineValue(line)) {
+        case Some(candidate) => candidate
+        case None => return None
+    }
     if (value.isEmpty()) { return None }
     let marker = if (value[0] == b'`') {
         "`"
@@ -115,13 +134,17 @@ internal func exampleFenceOpening(line: String): ?ExampleFenceOpening {
     while (length < value.size && value[length] == marker[0]) { length++ }
     if (length < 3) { return None }
     let info = value[length..].trimAscii()
+    if (marker == "`" && info.contains("`")) { return None }
     let fields = info.split(" ", 2, removeEmpty: true)
     let language = if (fields.isEmpty()) { "" } else { fields[0] }
     Some(ExampleFenceOpening(marker, length, language))
 }
 
 internal func isExampleFenceClosing(line: String, fence: ExampleFenceOpening): Bool {
-    let value = line.trimAscii()
+    let value = match (exampleFenceLineValue(line)) {
+        case Some(candidate) => candidate
+        case None => return false
+    }
     if (!value.startsWith(fence.marker)) { return false }
     var length: Int64 = 0
     while (length < value.size && value[length] == fence.marker[0]) { length++ }
@@ -180,16 +203,16 @@ internal func appendExampleHtml(out: RenderTextBuffer, value: String): Unit {
 }
 
 internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: DocComment,
-    locale: String): Unit {
+    locale: String, headingLevel!: Int64 = 3): Unit {
     var hasExamples = false
     for (tag in comment.tags) { if (tag.name == "example") { hasExamples = true; break } }
     if (!hasExamples) { return }
-    out.append("<h3>${label(locale, "Examples", "示例")}</h3><div class=\"example-list\">\n")
+    out.append("<h${headingLevel}>${label(locale, "Examples", "示例")}</h${headingLevel}><div class=\"example-list\">\n")
     for (tag in comment.tags) {
         if (tag.name != "example") { continue }
         out.append("<div class=\"example-block\">")
         if (!tag.subject.isEmpty()) {
-            out.append("<h4 class=\"example-title\">${escapeHtml(tag.subject)}</h4>")
+            out.append("<h${min(6, headingLevel + 1)} class=\"example-title\">${escapeHtml(tag.subject)}</h${min(6, headingLevel + 1)}>")
         }
         if (trimExampleBlankLines(tag.description).isEmpty()) {
             let emptyLabel = label(locale, "No example content.", "示例内容为空。")
@@ -416,4 +439,3 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
         case _ => out.append(escapeHtml(markdownNodeText(node)))
     }
 }
-

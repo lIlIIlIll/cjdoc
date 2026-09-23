@@ -76,15 +76,34 @@ internal let HTML_SEARCH_SCRIPT = """
   let selected = -1;
   const ambiguousLabels = new Set();
   const displayKey = (entry) => JSON.stringify([entry.packageName, entry.qualifiedName]);
-  const rank = (entry, query) => {
+  const words = (name) => name.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2").toLocaleLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const oneEditAway = (name, query) => {
+    if (query.length < 4 || query.length > 128 || Math.abs(name.length - query.length) > 1) return false;
+    let i = 0, j = 0, edits = 0;
+    while (i < name.length && j < query.length) {
+      if (name[i] === query[j]) { i += 1; j += 1; continue; }
+      if (++edits > 1) return false;
+      if (name.length >= query.length) i += 1;
+      if (query.length >= name.length) j += 1;
+    }
+    return edits + (i < name.length || j < query.length ? 1 : 0) <= 1;
+  };
+  const rank = (entry, rawQuery) => {
+    const query = rawQuery.toLocaleLowerCase();
     const name = entry.name.toLocaleLowerCase();
     const qualified = entry.qualifiedName.toLocaleLowerCase();
-    if (name === query) return 0;
-    if (qualified === query) return 1;
-    if (name.startsWith(query)) return 2;
-    if (qualified.startsWith(query)) return 3;
+    if (entry.name === rawQuery) return 0;
+    if (entry.qualifiedName === rawQuery) return 1;
+    if (name === query || qualified === query) return 2;
+    if (name.startsWith(query)) return 3;
+    const parts = words(entry.name);
+    if (parts.some((part) => part.startsWith(query))) return 4;
+    if (query.length >= 2 && parts.map((part) => part[0]).join("").startsWith(query)) return 5;
+    if (qualified.startsWith(query)) return 6;
     const haystack = (entry.qualifiedName + " " + entry.kind + " " + entry.packageName + " " + entry.summary).toLocaleLowerCase();
-    return query.split(/\\s+/).filter(Boolean).every((token) => haystack.includes(token)) ? 4 : -1;
+    if (query.split(/\\s+/).filter(Boolean).every((token) => haystack.includes(token))) return 7;
+    return oneEditAway(name, query) ? 8 : -1;
   };
   const select = (next) => {
     if (!visible.length) return;
@@ -101,7 +120,7 @@ internal let HTML_SEARCH_SCRIPT = """
     visible = [];
     selected = -1;
     input.removeAttribute("aria-activedescendant");
-    const query = input.value.trim().toLocaleLowerCase();
+    const query = input.value.trim();
     if (!query) { input.setAttribute("aria-expanded", "false"); return; }
     const selectedKind = kindFilter ? kindFilter.value : "";
     const selectedPackage = packageFilter ? packageFilter.value : "";
@@ -125,6 +144,12 @@ internal let HTML_SEARCH_SCRIPT = """
       kind.textContent = " — " + entry.kind +
         (ambiguousLabels.has(displayKey(entry)) ? " · " + entry.id : "");
       link.append(name, kind);
+      if (entry.summary) {
+        const summary = document.createElement("span");
+        summary.className = "search-summary";
+        summary.textContent = entry.summary.slice(0, 180);
+        link.append(summary);
+      }
       item.append(link);
       results.append(item);
     }
@@ -251,7 +276,7 @@ internal let HTML_SEARCH_SCRIPT = """
     const allHeadings = [...content.querySelectorAll("h1, h2, h3, h4")];
     const semanticHeadings = allHeadings.filter((heading) => {
       const role = heading.dataset.cjdocTocRole;
-      return role === "api-root" || role === "api" || role === "member";
+      return role === "api-root" || role === "api" || role === "member" || role === "group";
     });
     const semanticMode = semanticHeadings.length > 0;
     const headings = semanticMode
@@ -354,7 +379,7 @@ internal let HTML_SEARCH_SCRIPT = """
       let currentApi = null;
       for (const heading of headings) {
         const role = heading.dataset.cjdocTocRole;
-        if (role === "api-root" || role === "api") {
+        if (role === "api-root" || role === "api" || role === "group") {
           currentApi = createApiNode(heading, apiNodes.length);
           tocList.append(currentApi.item);
         } else if (role === "member" && currentApi) {

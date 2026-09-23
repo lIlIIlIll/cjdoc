@@ -16,7 +16,7 @@
   },
   "providers": [
     {
-      "name": "ast",
+      "name": "syntax",
       "version": "1",
       "moduleId": "cjdoc:module:v1:root",
       "state": "partial",
@@ -118,7 +118,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "Box value.",
@@ -163,12 +163,12 @@
         "start": {
           "line": 67,
           "column": 5,
-          "byteOffset": 1224
+          "byteOffset": 1229
         },
         "end": {
           "line": 67,
           "column": 49,
-          "byteOffset": 1268
+          "byteOffset": 1273
         }
       },
       "headerSpelling": "public init(value: T)",
@@ -186,7 +186,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -220,7 +220,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -238,12 +238,12 @@
         "start": {
           "line": 65,
           "column": 5,
-          "byteOffset": 1165
+          "byteOffset": 1170
         },
         "end": {
           "line": 65,
           "column": 24,
-          "byteOffset": 1184
+          "byteOffset": 1189
         }
       },
       "headerSpelling": "public let value: T",
@@ -259,7 +259,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -293,7 +293,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -343,12 +343,12 @@
         "start": {
           "line": 85,
           "column": 5,
-          "byteOffset": 1558
+          "byteOffset": 1563
         },
         "end": {
           "line": 85,
           "column": 54,
-          "byteOffset": 1607
+          "byteOffset": 1612
         }
       },
       "headerSpelling": "public func length(): Int64",
@@ -366,7 +366,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -400,7 +400,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -450,12 +450,12 @@
         "start": {
           "line": 79,
           "column": 5,
-          "byteOffset": 1428
+          "byteOffset": 1433
         },
         "end": {
           "line": 79,
           "column": 43,
-          "byteOffset": 1466
+          "byteOffset": 1471
         }
       },
       "headerSpelling": "public func pretty(): String",
@@ -473,7 +473,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -507,7 +507,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "Initial value.",
@@ -568,12 +568,12 @@
         "start": {
           "line": 47,
           "column": 5,
-          "byteOffset": 846
+          "byteOffset": 851
         },
         "end": {
           "line": 49,
           "column": 6,
-          "byteOffset": 902
+          "byteOffset": 907
         }
       },
       "headerSpelling": "public init(value: T)",
@@ -591,7 +591,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -625,7 +625,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -643,12 +643,12 @@
         "start": {
           "line": 60,
           "column": 5,
-          "byteOffset": 1084
+          "byteOffset": 1089
         },
         "end": {
           "line": 60,
           "column": 35,
-          "byteOffset": 1114
+          "byteOffset": 1119
         }
       },
       "headerSpelling": "private func hidden(): Unit",
@@ -666,7 +666,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -700,7 +700,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -756,12 +756,12 @@
         "start": {
           "line": 55,
           "column": 5,
-          "byteOffset": 977
+          "byteOffset": 982
         },
         "end": {
           "line": 55,
           "column": 36,
-          "byteOffset": 1008
+          "byteOffset": 1013
         }
       },
       "headerSpelling": "public func read(): Int64",
@@ -779,7 +779,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -813,7 +813,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -863,12 +863,12 @@
         "start": {
           "line": 58,
           "column": 5,
-          "byteOffset": 1039
+          "byteOffset": 1044
         },
         "end": {
           "line": 58,
           "column": 44,
-          "byteOffset": 1078
+          "byteOffset": 1083
         }
       },
       "headerSpelling": "public prop size: Int64",
@@ -884,7 +884,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -918,7 +918,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -968,12 +968,12 @@
         "start": {
           "line": 41,
           "column": 5,
-          "byteOffset": 746
+          "byteOffset": 751
         },
         "end": {
           "line": 41,
           "column": 24,
-          "byteOffset": 765
+          "byteOffset": 770
         }
       },
       "headerSpelling": "public let value: T",
@@ -989,7 +989,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1023,7 +1023,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -1041,12 +1041,12 @@
         "start": {
           "line": 35,
           "column": 5,
-          "byteOffset": 637
+          "byteOffset": 642
         },
         "end": {
           "line": 35,
           "column": 23,
-          "byteOffset": 655
+          "byteOffset": 660
         }
       },
       "headerSpelling": "func read(): Int64",
@@ -1063,7 +1063,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1097,7 +1097,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": null,
@@ -1120,12 +1120,12 @@
         "start": {
           "line": 73,
           "column": 5,
-          "byteOffset": 1331
+          "byteOffset": 1336
         },
         "end": {
           "line": 73,
           "column": 21,
-          "byteOffset": 1347
+          "byteOffset": 1352
         }
       },
       "headerSpelling": "| Failed(String)",
@@ -1141,7 +1141,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1181,12 +1181,12 @@
         "start": {
           "line": 72,
           "column": 5,
-          "byteOffset": 1319
+          "byteOffset": 1324
         },
         "end": {
           "line": 72,
           "column": 12,
-          "byteOffset": 1326
+          "byteOffset": 1331
         }
       },
       "headerSpelling": "| Ready",
@@ -1199,7 +1199,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1240,7 +1240,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           }
         }
@@ -1286,12 +1286,12 @@
         "start": {
           "line": 39,
           "column": 1,
-          "byteOffset": 682
+          "byteOffset": 687
         },
         "end": {
           "line": 61,
           "column": 2,
-          "byteOffset": 1116
+          "byteOffset": 1121
         }
       },
       "headerSpelling": "public class Parser<T> <: Reader",
@@ -1310,7 +1310,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1382,12 +1382,12 @@
         "start": {
           "line": 71,
           "column": 1,
-          "byteOffset": 1294
+          "byteOffset": 1299
         },
         "end": {
           "line": 74,
           "column": 2,
-          "byteOffset": 1349
+          "byteOffset": 1354
         }
       },
       "headerSpelling": "public enum Status",
@@ -1401,7 +1401,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1442,7 +1442,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           }
         }
@@ -1488,12 +1488,12 @@
         "start": {
           "line": 83,
           "column": 1,
-          "byteOffset": 1508
+          "byteOffset": 1513
         },
         "end": {
           "line": 86,
           "column": 2,
-          "byteOffset": 1609
+          "byteOffset": 1614
         }
       },
       "headerSpelling": "extend Box<String>",
@@ -1509,7 +1509,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1550,7 +1550,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           }
         }
@@ -1596,12 +1596,12 @@
         "start": {
           "line": 77,
           "column": 1,
-          "byteOffset": 1378
+          "byteOffset": 1383
         },
         "end": {
           "line": 80,
           "column": 2,
-          "byteOffset": 1468
+          "byteOffset": 1473
         }
       },
       "headerSpelling": "extend Box<String>",
@@ -1617,7 +1617,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1651,7 +1651,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "Input value.",
@@ -1668,7 +1668,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -1731,12 +1731,12 @@
         "start": {
           "line": 93,
           "column": 1,
-          "byteOffset": 1692
+          "byteOffset": 1697
         },
         "end": {
           "line": 93,
           "column": 47,
-          "byteOffset": 1738
+          "byteOffset": 1743
         }
       },
       "headerSpelling": "public func identity<T>(value: T): T",
@@ -1760,7 +1760,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1794,7 +1794,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "Text.",
@@ -1812,7 +1812,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "Strict mode.",
@@ -1829,7 +1829,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -1892,12 +1892,12 @@
         "start": {
           "line": 118,
           "column": 1,
-          "byteOffset": 2200
+          "byteOffset": 2205
         },
         "end": {
           "line": 123,
           "column": 2,
-          "byteOffset": 2308
+          "byteOffset": 2313
         }
       },
       "headerSpelling": "public func multiline(\n    text: String,\n    strict: Bool\n): String",
@@ -1922,7 +1922,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1956,7 +1956,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "Input text.",
@@ -1973,7 +1973,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -2040,12 +2040,12 @@
         "start": {
           "line": 103,
           "column": 1,
-          "byteOffset": 1874
+          "byteOffset": 1879
         },
         "end": {
           "line": 104,
           "column": 58,
-          "byteOffset": 1974
+          "byteOffset": 1979
         }
       },
       "headerSpelling": "@Deprecated[message: \"Use parse instead.\"]\npublic func oldParse(text: String): Int64",
@@ -2073,7 +2073,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -2107,7 +2107,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "Input bytes.",
@@ -2124,7 +2124,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -2187,12 +2187,12 @@
         "start": {
           "line": 29,
           "column": 1,
-          "byteOffset": 504
+          "byteOffset": 509
         },
         "end": {
           "line": 31,
           "column": 2,
-          "byteOffset": 580
+          "byteOffset": 585
         }
       },
       "headerSpelling": "public func parse(data: Array<UInt8>): Int64",
@@ -2216,7 +2216,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -2250,7 +2250,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "输入文本。",
@@ -2267,7 +2267,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -2280,9 +2280,9 @@
         
       ],
       "documentation": {
-        "rawText": "/**\n * 从文本解析值。\n *\n * ## Example\n *\n * ```cj\n * let value = parse(\"42\")\n * ```\n *\n * @param text 输入文本。\n * @return 解析结果。\n * @throws IllegalArgumentException 输入非法时抛出。\n * @see basic.parse(String)\n * @see basic.parse(Array<UInt8>) 字节数组重载。\n * @see basic.multiline(String,Bool)\n * @since 0.1.0\n */",
+        "rawText": "/**\n * 从文本解析值。\n *\n * ## Example\n *\n * ```cangjie\n * let value = parse(\"42\")\n * ```\n *\n * @param text 输入文本。\n * @return 解析结果。\n * @throws IllegalArgumentException 输入非法时抛出。\n * @see basic.parse(String)\n * @see basic.parse(Array<UInt8>) 字节数组重载。\n * @see basic.multiline(String,Bool)\n * @since 0.1.0\n */",
         "summary": "从文本解析值。",
-        "description": "## Example\n\n```cj\nlet value = parse(\"42\")\n```",
+        "description": "## Example\n\n```cangjie\nlet value = parse(\"42\")\n```",
         "markdown": {
           "kind": "document",
           "literal": "",
@@ -2333,8 +2333,8 @@
                 "codeKind": "fenced",
                 "fenceCharacter": "`",
                 "fenceLength": 3,
-                "infoRaw": "cj",
-                "language": "cj",
+                "infoRaw": "cangjie",
+                "language": "cangjie",
                 "attributesRaw": ""
               },
               "children": [
@@ -2400,12 +2400,12 @@
         "start": {
           "line": 20,
           "column": 1,
-          "byteOffset": 370
+          "byteOffset": 375
         },
         "end": {
           "line": 22,
           "column": 2,
-          "byteOffset": 426
+          "byteOffset": 431
         }
       },
       "headerSpelling": "public func parse(text: String): Int64",
@@ -2426,7 +2426,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -2460,7 +2460,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "文本值。",
@@ -2477,7 +2477,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -2540,12 +2540,12 @@
         "start": {
           "line": 111,
           "column": 1,
-          "byteOffset": 2060
+          "byteOffset": 2065
         },
         "end": {
           "line": 111,
           "column": 54,
-          "byteOffset": 2113
+          "byteOffset": 2118
         }
       },
       "headerSpelling": "public func 解析(文本: String): String",
@@ -2566,7 +2566,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -2638,12 +2638,12 @@
         "start": {
           "line": 34,
           "column": 1,
-          "byteOffset": 607
+          "byteOffset": 612
         },
         "end": {
           "line": 36,
           "column": 2,
-          "byteOffset": 657
+          "byteOffset": 662
         }
       },
       "headerSpelling": "public interface Reader",
@@ -2657,7 +2657,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -2729,12 +2729,12 @@
         "start": {
           "line": 64,
           "column": 1,
-          "byteOffset": 1138
+          "byteOffset": 1143
         },
         "end": {
           "line": 68,
           "column": 2,
-          "byteOffset": 1270
+          "byteOffset": 1275
         }
       },
       "headerSpelling": "public struct Box<T>",
@@ -2751,7 +2751,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -2823,12 +2823,12 @@
         "start": {
           "line": 96,
           "column": 1,
-          "byteOffset": 1768
+          "byteOffset": 1773
         },
         "end": {
           "line": 96,
           "column": 26,
-          "byteOffset": 1793
+          "byteOffset": 1798
         }
       },
       "headerSpelling": "public type Name = String",
@@ -2844,7 +2844,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -2870,6 +2870,24 @@
     
   ],
   "diagnostics": [
-    
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "trivial-param-description: description repeats parameter 'text'",
+      "source": {
+        "path": "src/api.cj",
+        "start": {
+          "line": 118,
+          "column": 1,
+          "byteOffset": 2205
+        },
+        "end": {
+          "line": 123,
+          "column": 2,
+          "byteOffset": 2313
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"
+    }
   ]
 }

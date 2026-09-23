@@ -106,6 +106,7 @@ generated <你的项目目录>/target/doc
 | 生成 Markdown | `cjdoc generate --project . --format markdown` | `target/doc/markdown/index.md` |
 | 生成 JSON | `cjdoc generate --project . --format json` | `target/doc/docs.json` |
 | 检查文档问题 | `cjdoc check --project .` | 终端诊断，成功退出码为 `0` |
+| 检查示例 | `cjdoc check --project . --check-examples` | 按 `@example` 指令校验或运行 `cangjie` 代码块 |
 
 一次生成多个格式：
 
@@ -116,7 +117,7 @@ cjdoc generate --project . \
   --format html
 ```
 
-`--format` 可以重复指定。完整任务说明见 [`docs/usage.md`](docs/usage.md)；workspace、依赖、条件编译、缓存和 CI 见 [`docs/advanced-usage.md`](docs/advanced-usage.md)。
+`--format` 可以重复指定。默认语义后端是 `source`；要显式使用同一版本 Cangjie toolchain 生成 raw CHIR 并做结构化 enrichment，可在 `generate` 或 `check` 上使用 `--semantic chir`。`--cjc <path>` 和重复的 `--chir-import-path <dir>` 只在 CHIR 模式有效；失败时保留 source declarations 并报告 `CJDOC2101`–`CJDOC2106` warning。`render` 只消费已有 Doc IR。完整任务说明见 [`docs/usage.md`](docs/usage.md)；workspace、依赖、条件编译、缓存和 CI 见 [`docs/advanced-usage.md`](docs/advanced-usage.md)。
 
 ## 常见问题
 

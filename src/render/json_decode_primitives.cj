@@ -126,6 +126,16 @@ internal func nullableStringAt(object: JsonObjectValue, key: String, path: Strin
     catch (_: Exception) { fail("${path}.${key}", "expected string or null") }
 }
 
+// Optional properties are absent, not null: an absent key reads as the default so
+// documents produced before the property existed stay strictly decodable.
+internal func defaultStringAt(object: JsonObjectValue, key: String, path: String): String {
+    match (object.get(key)) {
+        case Some(value) => try { value.string }
+            catch (_: Exception) { fail("${path}.${key}", "expected string") }
+        case None => ""
+    }
+}
+
 internal func nullableBoolAt(object: JsonObjectValue, key: String, path: String): ?Bool {
     let value = required(object, key, path)
     if (value.isNull) { return None }
@@ -222,12 +232,13 @@ internal func migratedOptionalSymbolId(value: ?String, legacy: Bool,
 internal func decodeTag(node: JsonNode, path: String, legacy: Bool,
     legacyIds: HashMap<String, String>): DocTag {
     let value = strictObject(node, path,
-        ["name", "subject", "description", "referenceState", "targetSymbolId"])
+        ["name", "subject", "description", "referenceState", "targetSymbolId", "directives"])
     DocTag(stringAt(value, "name", path), stringAt(value, "subject", path),
         stringAt(value, "description", path),
         referenceState: stringAt(value, "referenceState", path),
         targetSymbolId: migratedOptionalSymbolId(nullableStringAt(value, "targetSymbolId", path),
-            legacy, legacyIds, "${path}.targetSymbolId"))
+            legacy, legacyIds, "${path}.targetSymbolId"),
+        directives: defaultStringAt(value, "directives", path))
 }
 
 internal func decodeMarkdownMetadata(node: JsonNode, kind: String,

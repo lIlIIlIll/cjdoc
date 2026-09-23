@@ -5,6 +5,11 @@ import std.convert.Parsable
 
 internal class NewCliOptions {
     var command = ""
+    var semanticMode = "source"
+    var semanticExplicit = false
+    var cjcExecutable = "cjc"
+    var cjcExplicit = false
+    let chirImportPaths = ArrayList<String>()
     var project = "."
     var projectExplicit = false
     var output: ?String = None
@@ -12,6 +17,7 @@ internal class NewCliOptions {
     let formats = ArrayList<String>()
     var stdout = false
     var denyWarnings = false
+    var checkExamples = false
     var forceOwned = false
     var jobs: Int64 = 1
     var jobsExplicit = false
@@ -39,16 +45,20 @@ internal class NewCliOptions {
 internal func newUsage(): String {
     "usage:\n" +
     "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout]\n" +
+    "                 [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
     "                 [--audience external|package|all] [--lint-profile off|standard|strict] [--jobs 1..64]\n" +
+    "                 [--check-examples]\n" +
     "                 [--cfg NAME=VALUE] [--include-path-dependencies] [--include-cached-dependencies]\n" +
     "                 [--dependency-source NAME=PATH] [--cjpm-cache <dir>]\n" +
     "                 [--cache-dir <dir>|--no-cache] [--force-owned]\n" +
     "                 [--locale zh-CN|en] [--markdown-layout site|single]\n" +
-    "  cjdoc check [--project <dir>] [--deny-warnings] [--lint-profile off|standard|strict]\n" +
+    "  cjdoc check [--project <dir>] [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
+    "              [--deny-warnings] [--lint-profile off|standard|strict]\n" +
+    "              [--check-examples]\n" +
     "              [--api-surface-baseline <file>] [--min-symbol-coverage 0..100] [--min-parameter-coverage 0..100]\n" +
     "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout] [--force-owned]\n" +
     "               [--locale zh-CN|en] [--markdown-layout site|single]\n" +
-    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|diagnostics|cfg-matrix|search-index|api-surface|documentation-coverage\n"
+    "  cjdoc schema list|doc-ir|doc-ir-v6|doc-ir-v7|doc-ir-v8|diagnostics|cfg-matrix|search-index|api-surface|documentation-coverage|documentation-quality\n"
 }
 
 internal func splitNamedValue(value: String, option: String): (String, String) {
@@ -88,6 +98,10 @@ private func requireNonEmptyCliValue(args: Array<String>, index: Int64, option: 
 
 private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>, index: Int64): ?Int64 {
     match (args[index]) {
+        case "--cjc" =>
+            options.cjcExecutable = requireNonEmptyCliValue(args, index, "--cjc")
+            options.cjcExplicit = true
+            Some(index + 2)
         case "--project" =>
             options.project = requireCliValue(args, index, "--project")
             options.projectExplicit = true
@@ -127,6 +141,9 @@ private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>,
 
 private func parseCollectionOption(options: NewCliOptions, args: Array<String>, index: Int64): ?Int64 {
     match (args[index]) {
+        case "--chir-import-path" =>
+            options.chirImportPaths.add(requireNonEmptyCliValue(args, index, "--chir-import-path"))
+            Some(index + 2)
         case "--format" =>
             addFormat(options, requireCliValue(args, index, "--format"))
             Some(index + 2)
@@ -163,6 +180,10 @@ private func parseNumericOption(options: NewCliOptions, args: Array<String>, ind
 
 private func parseEnumOption(options: NewCliOptions, args: Array<String>, index: Int64): ?Int64 {
     match (args[index]) {
+        case "--semantic" =>
+            options.semanticMode = requireCliValue(args, index, "--semantic")
+            options.semanticExplicit = true
+            Some(index + 2)
         case "--audience" =>
             options.audience = requireCliValue(args, index, "--audience")
             options.audienceExplicit = true
@@ -179,6 +200,7 @@ private func parseFlagOption(options: NewCliOptions, args: Array<String>, index:
     match (args[index]) {
         case "--stdout" => options.stdout = true; Some(index + 1)
         case "--deny-warnings" => options.denyWarnings = true; Some(index + 1)
+        case "--check-examples" => options.checkExamples = true; Some(index + 1)
         case "--force-owned" => options.forceOwned = true; Some(index + 1)
         case "--include-path-dependencies" => options.includePathDependencies = true; Some(index + 1)
         case "--include-cached-dependencies" => options.includeCachedDependencies = true; Some(index + 1)
@@ -203,6 +225,17 @@ private func validateCliOptions(options: NewCliOptions): Unit {
     if (options.lintProfile != "off" && options.lintProfile != "standard" && options.lintProfile != "strict") {
         throw IllegalArgumentException("--lint-profile must be off, standard, or strict")
     }
+    if (options.semanticMode != "source" && options.semanticMode != "chir") {
+        throw IllegalArgumentException("--semantic must be source or chir")
+    }
+    if (options.command != "generate" && options.command != "check" &&
+        (options.semanticExplicit || options.cjcExplicit || !options.chirImportPaths.isEmpty())) {
+        throw IllegalArgumentException("semantic options are only valid for generate and check")
+    }
+    if (options.semanticMode == "source" &&
+        (options.cjcExplicit || !options.chirImportPaths.isEmpty())) {
+        throw IllegalArgumentException("--cjc and --chir-import-path require --semantic chir")
+    }
     for (threshold in [options.minSymbolCoverage, options.minParameterCoverage]) {
         if (threshold.isSome() && (threshold.getOrThrow() < 0 || threshold.getOrThrow() > 100)) {
             throw IllegalArgumentException("coverage thresholds must be in 0..100")
@@ -221,7 +254,7 @@ private func validateCliOptions(options: NewCliOptions): Unit {
         throw IllegalArgumentException("render requires --input")
     }
     if (options.command == "render" && (options.projectExplicit || options.denyWarnings ||
-        options.includePathDependencies || options.includeCachedDependencies ||
+        options.checkExamples || options.includePathDependencies || options.includeCachedDependencies ||
         options.cacheDirectory.isSome() || options.noCache || options.cjpmCacheRoot.isSome() ||
         options.apiSurfaceBaseline.isSome() || options.minSymbolCoverage.isSome() ||
         options.minParameterCoverage.isSome() ||
@@ -268,7 +301,7 @@ private func parseSchemaCommand(args: Array<String>): NewCliOptions {
         options.schemaName != "doc-ir-v6" && options.schemaName != "doc-ir-v7" &&
         options.schemaName != "doc-ir-v8" && options.schemaName != "diagnostics" &&
         options.schemaName != "cfg-matrix" && options.schemaName != "search-index" &&
-        options.schemaName != "api-surface" && options.schemaName != "documentation-coverage") {
+        options.schemaName != "api-surface" && options.schemaName != "documentation-coverage" && options.schemaName != "documentation-quality") {
         throw IllegalArgumentException("unknown schema '${options.schemaName}'")
     }
     options

@@ -114,6 +114,11 @@ private func buildDocIrV8Schema(id: String): String {
             "          \"then\": {\"properties\": {\"canonical\": {\"type\": \"string\", " +
             "\"minLength\": 1}}}}\n" +
             "      ]")
+        .replace("        \"targetSymbolId\": {\"$ref\": \"#/$defs/nullableSymbolId\"}\n" +
+            "      }\n    },\n    \"markdownNode\": {",
+            "        \"targetSymbolId\": {\"$ref\": \"#/$defs/nullableSymbolId\"},\n" +
+            "        \"directives\": {\"type\": \"string\"}\n" +
+            "      }\n    },\n    \"markdownNode\": {")
 
     let metadataDefinitions = """
     "headingMetadata": {

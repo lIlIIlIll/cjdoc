@@ -1,6 +1,7 @@
 package cjdoc
 
 import cjdoc.model as public_model
+import cjdoc.quality.*
 import std.collection.*
 import std.sort.*
 
@@ -200,7 +201,8 @@ internal class PublicDiagnosticProjection {
     let incompleteSource: Bool
 
     init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
-        assetCollector: LocalAssetCollector, markdownContext: MarkdownGenerationContext) {
+        assetCollector: LocalAssetCollector, markdownContext: MarkdownGenerationContext,
+        declarations: Array<public_model.SymbolDoc>, lintProfile: String) {
         let diagnostics = ArrayList<public_model.Diagnostic>()
         var hasError = false
         var incompleteSource = !documentation.orphanDocComments.isEmpty() ||
@@ -228,6 +230,12 @@ internal class PublicDiagnosticProjection {
             incompleteSource = true
         }
         diagnostics.add(all: markdownContext.diagnostics())
+        if (lintProfile != "off") {
+            for (symbol in declarations) {
+                if (symbol.visibility != "public" && symbol.visibility != "protected") { continue }
+                diagnostics.add(all: documentationQualityDiagnostics(symbol, documentation.projectName))
+            }
+        }
         sort(diagnostics, lessThan: {
             left, right => comparePublicDiagnostic(left, right) < 0
         }, stable: true)
@@ -246,7 +254,8 @@ internal func publicDocumentation(documentation: DocumentationSet,
         providerProjection.statesByModule)
     let sourceProjection = PublicSourceProjection(documentation, sourceMapper)
     let diagnosticProjection = PublicDiagnosticProjection(documentation, sourceMapper,
-        declarationProjection.assetCollector, declarationProjection.markdownContext)
+        declarationProjection.assetCollector, declarationProjection.markdownContext,
+        declarationProjection.declarations, request.lintProfile)
     let status = if (diagnosticProjection.hasError || diagnosticProjection.incompleteSource ||
         providerProjection.incomplete) {
         "partial"

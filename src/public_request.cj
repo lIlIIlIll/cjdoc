@@ -4,6 +4,28 @@ import cjdoc.model as public_model
 import cjdoc.provider as public_provider
 import std.collection.*
 
+public class ChirOptions {
+    public let compilerExecutable: String
+    private let importPathsStorage: ArrayList<String>
+
+    public init(compilerExecutable!: String = "cjc", importPaths!: Array<String> = []) {
+        if (compilerExecutable.trimAscii().isEmpty()) {
+            throw IllegalArgumentException("CHIR compiler executable cannot be empty")
+        }
+        for (path in importPaths) {
+            if (path.trimAscii().isEmpty()) {
+                throw IllegalArgumentException("CHIR import paths cannot be empty")
+            }
+        }
+        this.compilerExecutable = compilerExecutable
+        this.importPathsStorage = ArrayList<String>(importPaths)
+    }
+
+    public prop importPaths: ReadOnlyList<String> {
+        get() { importPathsStorage }
+    }
+}
+
 public class GenerationRequest {
     public let projectRoot: String
     public let includePathDependencies: Bool
@@ -11,9 +33,11 @@ public class GenerationRequest {
     public let jobs: Int64
     public let audience: String
     public let lintProfile: String
+    public let checkExamples: Bool
     public let cacheDirectory: ?String
     public let cacheFingerprint: ?String
     public let astPreflightExecutable: ?String
+    public let chir: ?ChirOptions
     public let cjpmCacheRoot: ?String
     private let dependencySourcesStorage: ArrayList<DependencySourceInput>
     private let cfgValuesStorage: ArrayList<CfgValue>
@@ -21,9 +45,11 @@ public class GenerationRequest {
 
     public init(projectRoot: String, includePathDependencies!: Bool = false, includeCachedDependencies!: Bool = false,
         jobs!: Int64 = 1, audience!: String = "external", lintProfile!: String = "standard",
+        checkExamples!: Bool = false,
         dependencySources!: Array<DependencySourceInput> = [], cfgValues!: Array<CfgValue> = [],
         providerFactories!: Array<public_provider.SemanticProviderFactory> = [], cacheDirectory!: ?String = None,
-        cacheFingerprint!: ?String = None, astPreflightExecutable!: ?String = None, cjpmCacheRoot!: ?String = None) {
+        cacheFingerprint!: ?String = None, astPreflightExecutable!: ?String = None,
+        chir!: ?ChirOptions = None, cjpmCacheRoot!: ?String = None) {
         if (projectRoot.isEmpty()) {
             throw IllegalArgumentException("project root cannot be empty")
         }
@@ -39,15 +65,20 @@ public class GenerationRequest {
         if (providerFactories.size > 1) {
             throw IllegalArgumentException("cjdoc accepts at most one semantic provider factory")
         }
+        if (chir.isSome() && !providerFactories.isEmpty()) {
+            throw IllegalArgumentException("CHIR cannot be combined with an external semantic provider factory")
+        }
         this.projectRoot = projectRoot
         this.includePathDependencies = includePathDependencies
         this.includeCachedDependencies = includeCachedDependencies
         this.jobs = jobs
         this.audience = audience
         this.lintProfile = lintProfile
+        this.checkExamples = checkExamples
         this.cacheDirectory = cacheDirectory
         this.cacheFingerprint = cacheFingerprint
         this.astPreflightExecutable = astPreflightExecutable
+        this.chir = chir
         this.cjpmCacheRoot = cjpmCacheRoot
         this.dependencySourcesStorage = ArrayList<DependencySourceInput>(dependencySources)
         let normalizedCfg = CfgProfile(values: cfgValues)
@@ -210,19 +241,27 @@ internal class PublicSourceMapper {
     func range(location: SourceLocation): public_model.SourceRange {
         var startOffset: Int64 = 0
         var endOffset: Int64 = 0
+        var startColumn = location.startColumn
+        var endColumn = location.endColumn
         if (let Some(index) <- sourceIndex(location.path)) {
-            if (let Some(start) <- index.byteOffset(location.startLine, location.startColumn)) {
-                if (let Some(end) <- index.byteOffset(location.endLine, location.endColumn)) {
+            if (let Some(start) <- index.codepointByteOffset(location.startLine, location.startColumn)) {
+                if (let Some(end) <- index.codepointByteOffset(location.endLine, location.endColumn)) {
                     if (end >= start) {
                         startOffset = start
                         endOffset = end
+                        if (let Some(value) <- index.byteColumn(location.startLine, start)) {
+                            startColumn = value
+                        }
+                        if (let Some(value) <- index.byteColumn(location.endLine, end)) {
+                            endColumn = value
+                        }
                     }
                 }
             }
         }
         public_model.SourceRange(location.path,
-            public_model.SourcePosition(location.startLine, location.startColumn, startOffset),
-            public_model.SourcePosition(location.endLine, location.endColumn, endOffset))
+            public_model.SourcePosition(location.startLine, startColumn, startOffset),
+            public_model.SourcePosition(location.endLine, endColumn, endOffset))
     }
 
     func contains(range: public_model.SourceRange): Bool {

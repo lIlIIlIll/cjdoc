@@ -16,7 +16,7 @@
   },
   "providers": [
     {
-      "name": "ast",
+      "name": "syntax",
       "version": "1",
       "moduleId": "cjdoc:module:v1:root",
       "state": "partial",
@@ -105,7 +105,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "stored value",
@@ -189,7 +189,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -223,7 +223,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -264,7 +264,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -298,7 +298,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -369,7 +369,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -403,7 +403,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -444,7 +444,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -478,7 +478,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -551,7 +551,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -585,7 +585,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -658,7 +658,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -752,7 +752,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -793,7 +793,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           }
         }
@@ -860,7 +860,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -901,7 +901,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           }
         }
@@ -968,7 +968,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1002,7 +1002,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -1043,7 +1043,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1077,7 +1077,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -1161,7 +1161,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1195,7 +1195,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -1236,7 +1236,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1262,6 +1262,24 @@
     
   ],
   "diagnostics": [
-    
+    {
+      "severity": "warning",
+      "code": "CJDOC3040",
+      "message": "trivial-summary: description repeats declaration 'length'",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 22,
+          "column": 5,
+          "byteOffset": 370
+        },
+        "end": {
+          "line": 22,
+          "column": 54,
+          "byteOffset": 419
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::extend_visibility_fixture::Box<String>::function:length#g0()"
+    }
   ]
 }

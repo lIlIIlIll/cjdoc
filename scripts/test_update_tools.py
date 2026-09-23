@@ -33,6 +33,7 @@ SCHEMA_NAMES = (
     "search-index",
     "api-surface",
     "documentation-coverage",
+    "documentation-quality",
 )
 
 
@@ -105,7 +106,7 @@ class UpdateToolsTest(unittest.TestCase):
             "repo=Path(__file__).resolve().parents[3]\n"
             "args=sys.argv[1:]\n"
             "if args[:2] == ['schema','list']:\n"
-            " print('doc-ir\\ndoc-ir-v6\\ndoc-ir-v7\\ndoc-ir-v8\\ndiagnostics\\ncfg-matrix\\nsearch-index\\napi-surface\\ndocumentation-coverage')\n"
+            " print('doc-ir\\ndoc-ir-v6\\ndoc-ir-v7\\ndoc-ir-v8\\ndiagnostics\\ncfg-matrix\\nsearch-index\\napi-surface\\ndocumentation-coverage\\ndocumentation-quality')\n"
             "elif args and args[0] == 'schema':\n"
             " print((repo/'fake-schemas'/f'{args[1]}.schema.json').read_text(encoding='utf-8'),end='')\n"
             "elif args and args[0] == 'generate':\n"

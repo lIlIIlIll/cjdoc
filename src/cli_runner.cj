@@ -12,7 +12,7 @@ private func selectedSourceCacheDirectory(options: NewCliOptions): ?String {
     match (options.cacheDirectory) {
         case Some(path) => Some(path)
         case None => Some(Path(options.project).join("target").join("cjdoc").join("cache")
-            .join("source-v4").toString())
+            .join("source-v11").toString())
     }
 }
 
@@ -115,7 +115,7 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndiagnostics\ncfg-matrix\nsearch-index\napi-surface\ndocumentation-coverage\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndiagnostics\ncfg-matrix\nsearch-index\napi-surface\ndocumentation-coverage\ndocumentation-quality\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA
@@ -125,6 +125,7 @@ internal func schemaTextForCli(name: String): String {
         case "search-index" => SEARCH_INDEX_SCHEMA
         case "api-surface" => API_SURFACE_SCHEMA
         case "documentation-coverage" => DOCUMENTATION_COVERAGE_SCHEMA
+        case "documentation-quality" => DOCUMENTATION_QUALITY_SCHEMA
         case _ => throw IllegalArgumentException("unknown schema '${name}'")
     }
 }
@@ -142,19 +143,30 @@ private func readDocIrInput(path: Path): String {
 private func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
     selectedCache: ?String, outputLock: ?OutputLockHandle): Int64 {
     let commandLine = getCommandLine()
-    let astPreflightExecutable: ?String = if (commandLine.isEmpty()) { None }
-        else { Some(commandLine[0]) }
+    let astPreflightExecutable: ?String = if (commandLine.size > 0) {
+        Some(commandLine[0])
+    } else {
+        None
+    }
+    let chirOptions: ?ChirOptions = if (options.semanticMode == "chir") {
+        Some(ChirOptions(compilerExecutable: options.cjcExecutable,
+            importPaths: options.chirImportPaths.toArray()))
+    } else {
+        None
+    }
     let generationRequest: ?GenerationRequest = if (options.command == "render") {
         None
     } else {
         Some(GenerationRequest(options.project, jobs: options.jobs,
             audience: options.audience, lintProfile: options.lintProfile,
+            checkExamples: options.checkExamples,
             includePathDependencies: options.includePathDependencies,
             includeCachedDependencies: options.includeCachedDependencies,
             dependencySources: options.dependencySources.toArray(),
             cfgValues: options.cfgValues.toArray(),
             cacheDirectory: selectedCache,
             astPreflightExecutable: astPreflightExecutable,
+            chir: chirOptions,
             cjpmCacheRoot: options.cjpmCacheRoot))
     }
     var documentation = match (generationRequest) {

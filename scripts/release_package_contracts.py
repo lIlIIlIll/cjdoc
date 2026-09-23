@@ -23,6 +23,7 @@ SCHEMA_PAYLOAD = {
     "docs/schema/search-index.schema.json",
     "docs/schema/api-surface.schema.json",
     "docs/schema/documentation-coverage.schema.json",
+    "docs/schema/documentation-quality.schema.json",
 }
 REPOSITORY_PAYLOAD = {
     "README.md": "README.md",

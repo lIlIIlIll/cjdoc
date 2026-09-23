@@ -66,6 +66,34 @@ private func splitReferenceSubject(rest: String): (String, String) {
     (value, "")
 }
 
+// Splits the trailing `{...}` directive group off an `@example` line.
+// The group is returned verbatim, braces included: this parser must not interpret
+// it, because a malformed block has to reach the example gate and be reported as
+// CJDOC3033 rather than be silently reinterpreted as part of the title.
+private func splitExampleDirectives(rest: String): (String, String) {
+    let value = rest.trimAscii()
+    if (value.isEmpty() || value[value.size - 1] != b'}') { return (value, "") }
+    var depth: Int64 = 0
+    var index = value.size
+    while (index > 0) {
+        index--
+        match (value[index]) {
+            case b'}' => depth++
+            case b'{' => depth--
+            case _ => ()
+        }
+        if (depth < 0) { return (value, "") }
+        if (depth == 0) {
+            // A group glued to preceding text (`foo{bar}`) is a title, not a directive.
+            if (index > 0 && value[index - 1] != b' ' && value[index - 1] != b'\t') {
+                return (value, "")
+            }
+            return (value[..index].trimAscii(), value[index..])
+        }
+    }
+    (value, "")
+}
+
 private func isStructuredDocTag(tagText: String): Bool {
     tagText.startsWith("@param ") ||
         tagText == "@return" || tagText.startsWith("@return ") ||
@@ -253,8 +281,9 @@ private class DocCommentParseState {
             seeTags.add(tag)
             currentTag = tag
         } else if (tagText == "@example" || tagText.startsWith("@example ")) {
-            let title = tagText.removePrefix("@example").trimAscii()
+            let (title, directives) = splitExampleDirectives(tagText.removePrefix("@example"))
             let tag = DocTag("example", title, "")
+            tag.directives = directives
             examples.add(tag)
             currentExample = Some(tag)
         } else if (tagText.startsWith("@since ")) {

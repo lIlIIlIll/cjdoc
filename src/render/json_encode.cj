@@ -106,7 +106,13 @@ private func appendTag(out: StringBuilder, value: DocTag): Unit {
     out.append("{\"name\":${escapeJsonString(value.name)},\"subject\":${escapeJsonString(value.subject)},")
     out.append("\"description\":${escapeJsonString(value.description)},")
     out.append("\"referenceState\":${escapeJsonString(value.referenceState)},")
-    out.append("\"targetSymbolId\":${nullableString(value.targetSymbolId)}}")
+    out.append("\"targetSymbolId\":${nullableString(value.targetSymbolId)}")
+    // Directives are an additive optional property: absent means none, which keeps
+    // every pre-existing document byte-identical on the wire.
+    if (!value.directives.isEmpty()) {
+        out.append(",\"directives\":${escapeJsonString(value.directives)}")
+    }
+    out.append("}")
 }
 
 private func appendMarkdownMetadata(out: StringBuilder, value: MarkdownNodeMetadata): Unit {

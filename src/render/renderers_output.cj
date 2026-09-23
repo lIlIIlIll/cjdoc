@@ -149,6 +149,7 @@ internal func appendCoverageArtifacts(artifacts: RenderArtifactCollector,
     out.append(",\n  \"symbols\": {\"total\": ${symbols}, \"documented\": ${documentedSymbols}, \"percent\": ${coveragePercent(documentedSymbols, symbols)}},\n")
     out.append("  \"parameters\": {\"total\": ${parameters}, \"documented\": ${documentedParameters}, \"percent\": ${coveragePercent(documentedParameters, parameters)}}\n}\n")
     artifacts.addText("coverage/coverage.json", "application/json", out.toString())
+    appendDocumentationQualityArtifact(artifacts, documentation)
 }
 
 public class ApiSurfaceDocumentationRenderer <: DocumentationRenderer {
@@ -182,7 +183,7 @@ internal func markdownSymbolPagePath(symbol: SymbolDoc): String {
 internal func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
     assetLookup: HashMap<String, String>, heading: String, locale: String): Unit {
     out.append("${heading} "); appendMarkdownCodeSpan(out, symbol.qualifiedName); out.append("\n\n")
-    appendMarkdownCodeBlock(out, symbol.headerSpelling, "cj", "`", 3)
+    appendMarkdownCodeBlock(out, symbol.headerSpelling, "cangjie", "`", 3)
     match (symbol.documentation) {
         case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup, locale: locale)
         case None => ()
@@ -290,7 +291,7 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
         out.append("\n\n[${label(locale, "Package", "包")} ")
         appendMarkdownCodeSpan(out, symbol.packageName)
         out.append("](../${markdownPackagePagePath(symbol.moduleId, symbol.packageName)})\n\n")
-        appendMarkdownCodeBlock(out, symbol.headerSpelling, "cj", "`", 3)
+        appendMarkdownCodeBlock(out, symbol.headerSpelling, "cangjie", "`", 3)
         match (symbol.documentation) {
             case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup, locale: locale)
             case None => ()

@@ -57,8 +57,14 @@ SCHEMA_NAMES = (
     "search-index",
     "api-surface",
     "documentation-coverage",
+    "documentation-quality",
 )
 SCHEMA_CONTRACTS = {
+    "documentation-quality": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/documentation-quality.schema.json",
+        "cjdoc.documentation-quality/1",
+        ("schemaVersion", "audience", "assessment", "symbols", "parameters", "findings"),
+    ),
     "doc-ir": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
         "cjdoc.doc-ir/8",

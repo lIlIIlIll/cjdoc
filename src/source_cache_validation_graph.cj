@@ -65,7 +65,7 @@ internal func cachedSourceSignatureMatches(declaration: SourceDeclaration,
 
 internal func validateCachedCommentBindings(parsed: ParsedSourceFile,
     source: IndexedSourceBuffer): Unit {
-    let comments = collectDocComments(parsed.input.logicalPath, cangjieLex(source.source))
+    let comments = collectDocComments(parsed.input.logicalPath, cangjieLex(source.source), source)
     var commentIndex: Int64 = 0
     var candidate: ?RawDocComment = None
     var symbolIndex: Int64 = 0
@@ -251,8 +251,13 @@ internal func validateDecodedSourceCache(parsed: ParsedSourceFile,
             !sourceCacheLocationMatchesCaptured(reExport.source, expectedPath, capturedSourceIndex)) {
             throw IllegalArgumentException("invalid cached public import")
         }
-        let exact = sourceBuffer.slice(reExport.source)
-        if (exact.isEmpty() || cangjieLex(exact).toString().trimAscii() != reExport.normalizedSpec) {
+        let exact = sourceBuffer.slice(reExport.source).trimAscii()
+        let normalizedExact = if (exact.startsWith("public ")) {
+            exact.removePrefix("public ").trimAscii()
+        } else {
+            exact
+        }
+        if (normalizedExact.isEmpty() || normalizedExact != reExport.normalizedSpec) {
             throw IllegalArgumentException("cached public import does not match source")
         }
     }

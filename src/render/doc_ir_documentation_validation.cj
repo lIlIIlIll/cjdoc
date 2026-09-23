@@ -240,12 +240,16 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         }
         if (let Some(comment) <- declaration.documentation) {
             for (tag in comment.tags) {
+                let tagPath = "$.declarations[${index}].documentation.tags"
+                if (!tag.directives.isEmpty() && tag.name != "example") {
+                    domainFail(tagPath, "directives are only allowed on @example tags")
+                }
                 match (tag.targetSymbolId) {
                     case Some(targetId) => if (!byId.contains(targetId)) {
-                        domainFail("$.declarations[${index}].documentation.tags", "unknown target SymbolId")
+                        domainFail(tagPath, "unknown target SymbolId")
                     }
                     case None => if (tag.referenceState == "resolved") {
-                        domainFail("$.declarations[${index}].documentation.tags", "resolved target is missing")
+                        domainFail(tagPath, "resolved target is missing")
                     }
                 }
             }

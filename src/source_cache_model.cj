@@ -1,16 +1,6 @@
 package cjdoc
 
-import std.ast.*
 import std.collection.*
-
-internal func packageNameFrom(program: Program, fallback: String): String {
-    var value = program.packageHeader.toTokens().toString().trimAscii()
-    if (value.isEmpty()) { return fallback }
-    if (value.startsWith("macro package ")) { value = value.removePrefix("macro package ") }
-    if (value.startsWith("package ")) { value = value.removePrefix("package ") }
-    return value.trimAscii()
-}
-
 internal func sourceAggregationKey(left: String, right: String): String {
     "${left.size}:${left}${right}"
 }

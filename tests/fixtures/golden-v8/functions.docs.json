@@ -16,7 +16,7 @@
   },
   "providers": [
     {
-      "name": "ast",
+      "name": "syntax",
       "version": "1",
       "moduleId": "cjdoc:module:v1:root",
       "state": "partial",
@@ -98,7 +98,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "input",
@@ -115,7 +115,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -207,7 +207,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -241,7 +241,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "input",
@@ -259,7 +259,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "mode",
@@ -276,7 +276,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -376,7 +376,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -410,7 +410,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "input bytes",
@@ -427,7 +427,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -519,7 +519,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -553,7 +553,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "input text",
@@ -570,7 +570,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -659,7 +659,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -693,7 +693,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "输入文本。",
@@ -710,7 +710,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -799,7 +799,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -825,6 +825,24 @@
     
   ],
   "diagnostics": [
-    
+    {
+      "severity": "warning",
+      "code": "CJDOC3040",
+      "message": "trivial-summary: description repeats declaration 'identity'",
+      "source": {
+        "path": "src/fixture.cj",
+        "start": {
+          "line": 22,
+          "column": 1,
+          "byteOffset": 351
+        },
+        "end": {
+          "line": 22,
+          "column": 47,
+          "byteOffset": 397
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::functions_fixture::function:identity#g1(@g0)"
+    }
   ]
 }

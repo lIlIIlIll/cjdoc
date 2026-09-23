@@ -34,7 +34,7 @@ internal func publicTag(value: DocTag): public_model.DocTag {
         case _ => "unavailable"
     }
     public_model.DocTag(value.name, value.subject, value.description, referenceState: state,
-        targetSymbolId: value.targetSymbolId)
+        targetSymbolId: value.targetSymbolId, directives: value.directives)
 }
 
 internal let MAX_GENERATED_MARKDOWN_DEPTH: Int64 = 48
@@ -315,6 +315,7 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
                 case Some(value) => context.consumeText(value)
                 case None => ()
             }
+            if (!tag.directives.isEmpty()) { context.consumeText(tag.directives) }
         }
         let body = if (value.descriptionMarkdown.isEmpty()) {
             value.summaryMarkdown

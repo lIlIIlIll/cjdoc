@@ -14,12 +14,12 @@ class ModelCodecV8Suite5 {
         @Expect(markdown.contains("##### Topic"))
         @Expect(markdown.contains("3) [x] First\n\n4) Second"))
         @Expect(markdown.contains("| :---: |"))
-        @Expect(markdown.contains("~~~~cj {.numberLines}"))
+        @Expect(markdown.contains("~~~~cangjie {.numberLines}"))
         @Expect(html.contains("--doc-topic"))
         @Expect(html.contains("<ol start=\"3\">"))
         @Expect(html.contains("type=\"checkbox\" disabled checked"))
         @Expect(html.contains("<th class=\"align-center\">"))
-        @Expect(html.contains("data-language=\"cj\""))
+        @Expect(html.contains("data-language=\"cangjie\""))
         @Expect(html.contains("data-cjdoc-attributes=\"{.numberLines}\""))
         @Expect(!html.contains("<h3>Returns</h3>"))
         @Expect(!html.contains("MUST-NOT-RENDER"))
@@ -83,7 +83,7 @@ class ModelCodecV8Suite5 {
             canonical: Some("std.core.Int64"), provider: Some("types")))
         let html = codecRenderedText(HtmlDocumentationRenderer().render(codecTypeDocument(
             returnType, canonicalTypes: true, documentation: documentation)))
-        @Expect(html.contains("<h3>Returns</h3><div class=\"return-value\">"))
+        @Expect(html.contains("<h5>Returns</h5><div class=\"return-value\">"))
         @Expect(html.contains("<code class=\"return-type\" title=\"Definition unavailable\">Int64</code><div class=\"return-description\"><p>The computed result.</p>"))
     }
 }

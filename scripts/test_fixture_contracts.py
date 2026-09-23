@@ -14,9 +14,10 @@ GOLDEN_OR_CHECK_FIXTURES = {
     "workspace",
 }
 CANGJIE_CONTRACT_FIXTURES = {
-    "binary_punctuation", "cfg_owner", "frontend_gaps", "frontend_regressions", "lint",
-    "local_assets", "manifest_headers", "markdown_limits", "private_file_scope", "recovery",
-    "reexports",
+    "binary_punctuation", "chir_semantics", "cfg_owner", "frontend_gaps",
+    "frontend_regressions", "lint", "local_assets", "manifest_headers",
+    "markdown_limits", "private_file_scope", "recovery", "reexports",
+    "documentation_quality",
 }
 CLI_CONTRACT_FIXTURES = {
     "cached_dependencies", "conditional_complex", "deep_binary", "duplicate",

@@ -16,7 +16,7 @@
   },
   "providers": [
     {
-      "name": "ast",
+      "name": "syntax",
       "version": "1",
       "moduleId": "cjdoc:module:v1:root",
       "state": "partial",
@@ -106,7 +106,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "stored value",
@@ -190,7 +190,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -224,7 +224,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -295,7 +295,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -329,7 +329,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "horizontal coordinate",
@@ -347,7 +347,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": "vertical coordinate",
@@ -446,7 +446,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -480,7 +480,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -519,7 +519,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -553,7 +553,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -592,7 +592,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -626,7 +626,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -698,7 +698,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -732,7 +732,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "ast"
+              "provider": "syntax"
             }
           },
           "documentation": null,
@@ -808,7 +808,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -898,7 +898,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -989,7 +989,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1080,7 +1080,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1171,7 +1171,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1265,7 +1265,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -1358,7 +1358,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {

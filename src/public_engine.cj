@@ -5,10 +5,14 @@ import std.collection.*
 
 public class DocumentationEngine {
     public func generate(request: GenerationRequest): public_model.DocumentationSet {
-        let semanticProvider: SemanticProvider = if (request.providerFactories.isEmpty()) {
-            defaultSemanticProvider()
-        } else {
+        let semanticProvider: SemanticProvider = if (!request.providerFactories.isEmpty()) {
             FactorySemanticProviderAdapter(request.providerFactories[0])
+        } else {
+            match (request.chir) {
+                case Some(options) => AutoChirSemanticProvider(options,
+                    workerExecutable: request.astPreflightExecutable)
+                case None => defaultSemanticProvider()
+            }
         }
         let documentation = generateDocumentation(request, semanticProvider: semanticProvider)
         match (request.lintProfile) {
@@ -16,6 +20,9 @@ public class DocumentationEngine {
             case "standard" => lintDocumentation(documentation, false)
             case "strict" => lintDocumentation(documentation, true, missingSymbolDocs: true)
             case _ => ()
+        }
+        if (request.checkExamples) {
+            compileDocumentationExamples(documentation)
         }
         sortDocumentationDeterministically(documentation)
         let result = publicDocumentation(documentation, request)

@@ -47,6 +47,25 @@ class NewCliRegressionTest {
     }
 
     @TestCase
+    func checkExamplesIsAnExplicitGenerationOption(): Unit {
+        let options = parseNewCli(["check", "--check-examples"])
+        @Expect(options.checkExamples, true)
+        @ExpectThrows[IllegalArgumentException](parseNewCli([
+            "render", "--input", "docs.json", "--check-examples"]))
+    }
+
+    @TestCase
+    func chirOptionsAreExplicitAndCommandScoped(): Unit {
+        let options = parseNewCli(["generate", "--semantic", "chir", "--cjc", "custom-cjc",
+            "--chir-import-path", "dep-a", "--chir-import-path", "dep-b"])
+        @Expect(options.semanticMode, "chir")
+        @Expect(options.cjcExecutable, "custom-cjc")
+        @Expect(options.chirImportPaths.toArray(), ["dep-a", "dep-b"])
+        @ExpectThrows[IllegalArgumentException](parseNewCli(["generate", "--cjc", "custom-cjc"]))
+        @ExpectThrows[IllegalArgumentException](parseNewCli(["render", "--semantic", "chir"]))
+    }
+
+    @TestCase
     func docIrInputMustBeRegularAndWithinTheReadLimit(): Unit {
         let parent = createNewCliTestTempDirectory()
         try {

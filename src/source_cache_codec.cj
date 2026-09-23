@@ -1,6 +1,5 @@
 package cjdoc
 
-import std.ast.*
 import std.collection.*
 import std.convert.Parsable
 
@@ -149,10 +148,13 @@ internal func cacheAddTag(writer: SourceCacheWriter, tag: DocTag): Unit {
     writer.add(tag.name)
     writer.add(tag.subject)
     writer.add(tag.description)
+    writer.add(tag.directives)
 }
 
 internal func cacheReadTag(reader: SourceCacheReader): DocTag {
-    DocTag(reader.next(), reader.next(), reader.next())
+    let tag = DocTag(reader.next(), reader.next(), reader.next())
+    tag.directives = reader.next()
+    tag
 }
 
 internal func cacheAddTags(writer: SourceCacheWriter, tags: ArrayList<DocTag>): Unit {
@@ -359,6 +361,8 @@ internal class ParsedSourceFile {
     let input: SourceInputFile
     var packageName: ?String = None
     var capturedSourceIndex: ?CapturedSourceIndex = None
+    var capturedSource: String = ""
+    let imports = ArrayList<String>()
     let declarations = ArrayList<SourceDeclaration>()
     let reExports = ArrayList<SourceReExport>()
     let orphanDocComments = ArrayList<OrphanDocComment>()
