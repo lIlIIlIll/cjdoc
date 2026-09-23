@@ -2,7 +2,6 @@ package cjdoc.render
 
 import cjdoc.model.*
 import std.collection.*
-import std.sort.*
 
 internal func label(locale: String, english: String, chinese: String): String {
     if (locale == "zh-CN") { chinese } else { english }
@@ -10,7 +9,8 @@ internal func label(locale: String, english: String, chinese: String): String {
 
 internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: DocumentationSet,
     projection: RenderProjection, rootPrefix: String, locale: String,
-    currentPackagePath!: ?String = None, currentRoute!: String = "overview"): Unit {
+    currentPackagePath!: ?String = None, currentRoute!: String = "overview",
+    currentSymbol!: ?SymbolDoc = None): Unit {
     out.append("<aside id=\"cjdoc-sidebar\" class=\"docs-sidebar\" aria-label=\"${label(locale, "Documentation navigation", "文档导航")}\" tabindex=\"-1\">")
     out.append("<button class=\"sidebar-close\" type=\"button\" data-cjdoc-sidebar-close aria-label=\"${label(locale, "Close navigation", "关闭导航")}\">${label(locale, "Close", "关闭")}</button>")
     out.append("<div class=\"sidebar-section\"><p class=\"sidebar-label\">${label(locale, "Documentation", "文档")}</p>")
@@ -20,6 +20,7 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
     let apiCurrent = if (currentRoute == "api") { " aria-current=\"page\"" } else { "" }
     out.append("<a class=\"sidebar-link${overviewClass}\" data-cjdoc-nav-link${overviewCurrent} href=\"${rootPrefix}index.html\">${label(locale, "Overview", "总览")}</a>")
     out.append("<a class=\"sidebar-link${apiClass}\" data-cjdoc-nav-link${apiCurrent} href=\"${rootPrefix}index.html#packages\">${label(locale, "API Reference", "API 参考")}</a></div>")
+    appendContextSidebar(out, projection, rootPrefix, locale, currentPackagePath, currentSymbol)
     if (!projection.modules.isEmpty()) {
         out.append("<div class=\"sidebar-section\"><p class=\"sidebar-label\">${label(locale, "Package reference", "包参考")}</p>")
         out.append("<label class=\"sidebar-filter-label\"><span class=\"sr-only\">${label(locale, "Filter packages", "筛选包")}</span><input class=\"sidebar-filter\" type=\"search\" placeholder=\"${label(locale, "Filter packages", "筛选包")}\" data-cjdoc-sidebar-filter></label>")
@@ -50,10 +51,91 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
     out.append("<p class=\"sidebar-note\">${label(locale, "Generated from", "生成自")}<code>${escapeHtml(documentation.schemaVersion)}</code></p></aside>")
 }
 
+internal func appendContextSidebar(out: RenderTextBuffer, projection: RenderProjection,
+    rootPrefix: String, locale: String, currentPackagePath: ?String,
+    currentSymbol: ?SymbolDoc): Unit {
+    var owner: ?SymbolDoc = None
+    match (currentSymbol) {
+        case Some(symbol) => owner = memberContextOwner(projection, symbol)
+        case None => ()
+    }
+
+    let targets = ArrayList<SymbolDoc>()
+    var localMembers = false
+    var contextTitle = label(locale, "In this package", "当前包")
+    var moreHref = ""
+    match (owner) {
+        case Some(value) =>
+            contextTitle = value.name
+            localMembers = match (currentSymbol) {
+                case Some(symbol) => symbol.id == value.id
+                case None => false
+            }
+            for (entry in projection.members(value).entries) { targets.add(entry.symbol) }
+            moreHref = rootPrefix + symbolPagePath(value)
+        case None => match (currentPackagePath) {
+            case Some(route) =>
+                for (pkg in projection.packages) {
+                    if (packagePagePath(pkg.source.moduleId, pkg.source.name) != route) { continue }
+                    match (projection.topLevelByPackage.get(
+                        routeKey(pkg.source.moduleId, pkg.source.name))) {
+                        case Some(values) => targets.add(all: values)
+                        case None => ()
+                    }
+                    moreHref = rootPrefix + route
+                }
+            case None => ()
+        }
+    }
+    if (targets.isEmpty()) { return }
+
+    out.append("<section class=\"sidebar-section sidebar-context\" aria-label=\"" +
+        escapeHtml(contextTitle) + "\"><p class=\"sidebar-label\">" +
+        escapeHtml(contextTitle) + "</p>")
+    out.append("<label class=\"sidebar-filter-label\"><span class=\"sr-only\">" +
+        label(locale, "Filter this context", "筛选当前条目") +
+        "</span><input type=\"search\" class=\"sidebar-filter\" data-cjdoc-context-filter placeholder=\"" +
+        label(locale, "Filter declarations", "筛选声明") + "\"></label>")
+    out.append("<nav class=\"context-links\">")
+    let maximum: Int64 = 256
+    var shown: Int64 = 0
+    for (symbol in targets) {
+        if (shown >= maximum) { break }
+        let href = if (localMembers) {
+            "#" + symbolAnchor(symbol)
+        } else {
+            rootPrefix + symbolPagePath(symbol)
+        }
+        let active = match (currentSymbol) {
+            case Some(value) => value.id == symbol.id
+            case None => false
+        }
+        out.append("<a class=\"context-item")
+        if (active) { out.append(" is-current") }
+        out.append("\" data-cjdoc-context-item href=\"" + escapeHtml(href) + "\"")
+        if (active) { out.append(" aria-current=\"page\"") }
+        let text = if (symbol.headerSpelling.isEmpty()) { symbol.name } else {
+            htmlTocLabel(symbol)
+        }
+        out.append("><code>" + escapeHtml(text) + "</code></a>")
+        shown++
+    }
+    out.append("</nav><p class=\"sidebar-no-results\" data-cjdoc-context-empty role=\"status\" hidden>" +
+        label(locale, "No matching declarations.", "没有匹配的声明。") + "</p>")
+    if (targets.size > maximum) {
+        out.append("<p class=\"sidebar-limit\">" +
+            label(locale, "Showing the first 256 entries.", "显示前 256 个条目。") +
+            " <a href=\"" + escapeHtml(moreHref) + "\">" +
+            label(locale, "Full index", "完整索引") + "</a></p>")
+    }
+    out.append("</section>")
+}
+
 internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: String,
     documentation: DocumentationSet, projection: RenderProjection,
     locale!: String = "en", currentPackagePath!: ?String = None,
-    currentRoute!: String = "overview", docVersion!: ?String = None): Unit {
+    currentRoute!: String = "overview", docVersion!: ?String = None,
+    currentSymbol!: ?SymbolDoc = None): Unit {
     let projectLabel = escapeHtml(documentation.project.name)
     let documentVersionLabel = match (docVersion) {
         case Some(value) => escapeHtml(value)
@@ -164,15 +246,19 @@ internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: 
     out.append("</div></div></header>\n<div class=\"reference-context\" data-cjdoc-reference-context>")
     out.append("<span><strong>" + documentationVersionContextLabel + "</strong> " + documentVersionLabel + "</span>")
     out.append("<span><strong>" + audienceContextLabel + "</strong> " + escapeHtml(documentation.configuration.audience) + "</span>")
+    out.append("<details class=\"reference-build-details\"><summary>" +
+        label(locale, "Build details", "构建详情") + "</summary><div>")
     out.append("<span><strong>" + label(locale, "Library version", "库版本") + "</strong> " + label(locale, "not provided", "未提供") + "</span>")
     out.append("<span><strong>" + label(locale, "Target platform", "目标平台") + "</strong> " + label(locale, "unknown", "未知") + "</span>")
     out.append("<span><strong>" + configurationContextLabel + "</strong> " + escapeHtml(documentation.configuration.cfgProfile) + "</span>")
-    out.append("<span><strong>" + generatorContextLabel + "</strong> " + escapeHtml(documentation.generator.name) + " " + escapeHtml(documentation.generator.version) + "</span></div>\n<div class=\"docs-layout\">")
+    out.append("<span><strong>" + generatorContextLabel + "</strong> " + escapeHtml(documentation.generator.name) + " " + escapeHtml(documentation.generator.version) + "</span>")
+    out.append("</div></details></div>\n<div class=\"docs-layout\">")
     out.append("<button class=\"nav-backdrop\" type=\"button\" data-cjdoc-menu-backdrop aria-label=\"")
     out.append(closeNavigationLabel)
     out.append("\" hidden></button>")
     appendHtmlSidebar(out, documentation, projection, rootPrefix, locale,
-        currentPackagePath: currentPackagePath, currentRoute: currentRoute)
+        currentPackagePath: currentPackagePath, currentRoute: currentRoute,
+        currentSymbol: currentSymbol)
     out.append("<main class=\"docs-main\" data-cjdoc-content tabindex=\"-1\"><div class=\"content-column\"><details class=\"mobile-toc\" data-cjdoc-mobile-toc hidden><summary>")
     out.append(onThisPageLabel)
     out.append("</summary><nav><ol></ol></nav></details>\n")
@@ -436,159 +522,6 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             }
     }
 }
-internal class HtmlSignatureLinkSpan {
-    let start: Int64
-    let end: Int64
-    let url: String
-
-    init(start: Int64, end: Int64, url: String) {
-        this.start = start
-        this.end = end
-        this.url = url
-    }
-}
-
-private func signatureIdentifierByte(value: Byte): Bool {
-    (value >= b'a' && value <= b'z') || (value >= b'A' && value <= b'Z') ||
-        (value >= b'0' && value <= b'9') || value == b'_' || value >= 0x80u8
-}
-
-private func signatureSpanBoundary(value: String, start: Int64, end: Int64): Bool {
-    let firstIdentifier = !value.isEmpty() && signatureIdentifierByte(value[0])
-    let lastIdentifier = !value.isEmpty() && signatureIdentifierByte(value[value.size - 1])
-    if (firstIdentifier && start > 0 && signatureIdentifierByte(value[start - 1])) { return false }
-    if (lastIdentifier && end < value.size && signatureIdentifierByte(value[end])) { return false }
-    true
-}
-
-private func signatureTypeStartAfterReturnDelimiter(raw: String): Int64 {
-    var parenthesisDepth: Int64 = 0
-    var bracketDepth: Int64 = 0
-    var braceDepth: Int64 = 0
-    var index: Int64 = 0
-    while (index < raw.size) {
-        let byte = raw[index]
-        if (byte == b'(') {
-            parenthesisDepth++
-        } else if (byte == b')' && parenthesisDepth > 0) {
-            parenthesisDepth--
-        } else if (byte == b'[') {
-            bracketDepth++
-        } else if (byte == b']' && bracketDepth > 0) {
-            bracketDepth--
-        } else if (byte == b'{') {
-            braceDepth++
-        } else if (byte == b'}' && braceDepth > 0) {
-            braceDepth--
-        } else if (byte == b':' && parenthesisDepth == 0 && bracketDepth == 0 && braceDepth == 0) {
-            return index + 1
-        }
-        index++
-    }
-    0
-}
-
-private func signatureTypeStartAfterParameterDelimiter(raw: String, parameterName: String,
-    cursor: Int64): Int64 {
-    if (parameterName.isEmpty()) { return cursor }
-    var searchCursor = cursor
-    while (searchCursor < raw.size) {
-        match (raw[searchCursor..].indexOf(parameterName)) {
-            case None => return cursor
-            case Some(relative) =>
-                let start = searchCursor + relative
-                let end = start + parameterName.size
-                if (signatureSpanBoundary(raw, start, end)) {
-                    var delimiter = end
-                    while (delimiter < raw.size &&
-                        (raw[delimiter] == b' ' || raw[delimiter] == b'\t' ||
-                            raw[delimiter] == b'\r' || raw[delimiter] == b'\n')) {
-                        delimiter++
-                    }
-                    if (delimiter < raw.size && raw[delimiter] == b':') {
-                        return delimiter + 1
-                    }
-                }
-                searchCursor = end
-        }
-    }
-    cursor
-}
-
-private func collectSignatureTypeSpans(spans: ArrayList<HtmlSignatureLinkSpan>, raw: String,
-    typeRef: TypeRef, typeLinkIndex: HtmlTypeLinkIndex, cursor: Int64): Int64 {
-    let spelling = if (typeRef.arguments.isEmpty()) { typeRef.spelling } else {
-        typeHeadSpelling(typeRef.spelling)
-    }
-    var nextCursor = cursor
-    if (!spelling.isEmpty() && cursor < raw.size) {
-        var searchCursor = cursor
-        while (searchCursor < raw.size) {
-            match (raw[searchCursor..].indexOf(spelling)) {
-                case Some(relative) =>
-                    let start = searchCursor + relative
-                    let end = start + spelling.size
-                    if (!signatureSpanBoundary(raw, start, end)) {
-                        searchCursor = end
-                        continue
-                    }
-                    nextCursor = end
-                    match (typeLinkIndex.targetUrl(typeRef)) {
-                        case Some(url) => spans.add(HtmlSignatureLinkSpan(start, end, url))
-                        case None => ()
-                    }
-                    break
-                case None => break
-            }
-        }
-    }
-    for (argument in typeRef.arguments) {
-        nextCursor = collectSignatureTypeSpans(spans, raw, argument, typeLinkIndex, nextCursor)
-    }
-    nextCursor
-}
-
-internal func appendLinkedSignatureHtml(out: RenderTextBuffer, symbol: SymbolDoc,
-    typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String): Unit {
-    let raw = symbol.headerSpelling
-    if (raw.isEmpty() || symbol.sourceApiSignature.state != "available" ||
-        symbol.sourceApiSignature.tokens.isEmpty()) {
-        out.append(escapeHtml(raw))
-        return
-    }
-    let spans = ArrayList<HtmlSignatureLinkSpan>()
-    var cursor: Int64 = 0
-    for (parameter in symbol.parameters) {
-        let parameterTypeCursor = signatureTypeStartAfterParameterDelimiter(raw, parameter.name, cursor)
-        cursor = collectSignatureTypeSpans(spans, raw, parameter.typeRef, typeLinkIndex, parameterTypeCursor)
-    }
-    match (symbol.returnType) {
-        case Some(returnType) =>
-            let delimiterCursor = signatureTypeStartAfterReturnDelimiter(raw)
-            let returnCursor = if (delimiterCursor > cursor) { delimiterCursor } else { cursor }
-            cursor = collectSignatureTypeSpans(spans, raw, returnType, typeLinkIndex, returnCursor)
-        case None => ()
-    }
-    for (relationship in symbol.typeRelationships) {
-        cursor = collectSignatureTypeSpans(spans, raw, relationship.target, typeLinkIndex, cursor)
-    }
-    if (spans.isEmpty()) {
-        out.append(escapeHtml(raw))
-        return
-    }
-    sort(spans, lessThan: { left, right => left.start < right.start }, stable: true)
-    var position: Int64 = 0
-    for (span in spans) {
-        if (span.start < position) { continue }
-        out.append(escapeHtml(raw[position..span.start]))
-        out.append("<a class=\"type-link signature-type-link\" href=\"" + rootPrefix + escapeHtml(span.url) + "\">")
-        out.append(escapeHtml(raw[span.start..span.end]))
-        out.append("</a>")
-        position = span.end
-    }
-    if (position < raw.size) { out.append(escapeHtml(raw[position..raw.size])) }
-}
-
 private func hasResolvedSymbolRelationship(symbol: SymbolDoc, kind: String, display: String): Bool {
     for (relationship in symbol.symbolRelationships) {
         if (relationship.kind == kind && relationship.targetDisplay == display &&
@@ -603,8 +536,9 @@ internal func appendSymbolRelationshipSection(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
     if (symbol.typeRelationships.isEmpty() && symbol.symbolRelationships.isEmpty()) { return }
-    out.append("<section class=\"symbol-relationships\" aria-labelledby=\"symbol-relationships-heading\">")
-    out.append("<h2 id=\"symbol-relationships-heading\">${label(locale, "Relationships", "关系")}</h2><dl class=\"relationships\">")
+    let headingId = "symbol-relationships-heading-" + htmlStableSlug(symbol.id)
+    out.append("<section class=\"symbol-relationships\" aria-labelledby=\"" + headingId + "\">")
+    out.append("<h2 id=\"" + headingId + "\">${label(locale, "Relationships", "关系")}</h2><dl class=\"relationships\">")
     for (relationship in symbol.typeRelationships) {
         if (hasResolvedSymbolRelationship(symbol, relationship.kind, relationship.target.spelling)) { continue }
         out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd>")
@@ -669,7 +603,8 @@ internal func appendReverseTypeUsageSection(out: RenderTextBuffer, symbol: Symbo
 
 internal func appendSymbolMetadata(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
-    assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex, locale!: String = "en"): Unit {
+    assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
+    locale!: String = "en", includeSummary!: Bool = true): Unit {
     out.append("<div class=\"symbol-meta\"><p class=\"symbol-kind\">${escapeHtml(symbol.kind)}")
     if (symbol.visibility != "public") {
         out.append(" <span class=\"badge\">${escapeHtml(symbol.visibility)}</span>")
@@ -678,9 +613,11 @@ internal func appendSymbolMetadata(out: RenderTextBuffer,
         out.append(" <span class=\"badge\" data-state=\"${escapeHtml(symbol.semantic.state)}\">semantic: ${escapeHtml(symbol.semantic.state)}</span>")
     }
     out.append("</p>")
-    match (symbol.documentation) {
-        case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, rootPrefix)
-        case None => ()
+    if (includeSummary) {
+        match (symbol.documentation) {
+            case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, rootPrefix)
+            case None => ()
+        }
     }
     out.append("<h2 class=\"signature-heading\">${label(locale, "Signature", "签名")}</h2><pre class=\"signature-block\"><code>")
     appendLinkedSignatureHtml(out, symbol, typeLinkIndex, rootPrefix)

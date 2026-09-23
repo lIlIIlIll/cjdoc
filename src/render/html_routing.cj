@@ -93,6 +93,19 @@ internal class RenderProjection {
     let visibleSymbols = ArrayList<SymbolDoc>()
     let packages = ArrayList<ProjectedPackage>()
     let modules = ArrayList<ProjectedModule>()
+    let membersByOwner = HashMap<String, ArrayList<SymbolDoc>>()
+    let topLevelByPackage = HashMap<String, ArrayList<SymbolDoc>>()
+    private let memberBrowsers = HashMap<String, HtmlMemberBrowser>()
+
+    func members(owner: SymbolDoc): HtmlMemberBrowser {
+        match (memberBrowsers.get(owner.id)) {
+            case Some(value) => value
+            case None =>
+                let value = HtmlMemberBrowser(owner, this)
+                memberBrowsers[owner.id] = value
+                value
+        }
+    }
 
     init(documentation: DocumentationSet) {
         allIndex = indexSymbols(documentation)
@@ -101,6 +114,19 @@ internal class RenderProjection {
             if (renderable[symbol.id]) {
                 visibleSymbols.add(symbol)
                 visibleIndex[symbol.id] = symbol
+            }
+        }
+
+        for (symbol in visibleSymbols) {
+            let groups = if (symbol.ownerId.isSome()) { membersByOwner } else { topLevelByPackage }
+            let key = if (symbol.ownerId.isSome()) {
+                symbol.ownerId.getOrThrow()
+            } else {
+                routeKey(symbol.moduleId, symbol.packageName)
+            }
+            match (groups.get(key)) {
+                case Some(values) => values.add(symbol)
+                case None => groups[key] = ArrayList<SymbolDoc>([symbol])
             }
         }
 
@@ -143,30 +169,12 @@ internal class RenderProjection {
 
 internal func groupTopLevelByPackage(projection: RenderProjection):
     HashMap<String, ArrayList<SymbolDoc>> {
-    let groups = HashMap<String, ArrayList<SymbolDoc>>()
-    for (symbol in projection.visibleSymbols where symbol.ownerId.isNone()) {
-        let key = routeKey(symbol.moduleId, symbol.packageName)
-        match (groups.get(key)) {
-            case Some(values) => values.add(symbol)
-            case None => groups[key] = ArrayList<SymbolDoc>([symbol])
-        }
-    }
-    groups
+    projection.topLevelByPackage
 }
 
 internal func groupMembersByOwner(projection: RenderProjection):
     HashMap<String, ArrayList<SymbolDoc>> {
-    let groups = HashMap<String, ArrayList<SymbolDoc>>()
-    for (symbol in projection.visibleSymbols) {
-        match (symbol.ownerId) {
-            case Some(ownerId) => match (groups.get(ownerId)) {
-                case Some(values) => values.add(symbol)
-                case None => groups[ownerId] = ArrayList<SymbolDoc>([symbol])
-            }
-            case None => ()
-        }
-    }
-    groups
+    projection.membersByOwner
 }
 
 internal func findProjectedModule(projection: RenderProjection, id: String): ?ModuleDoc {
@@ -180,9 +188,64 @@ internal func findSymbol(index: HashMap<String, SymbolDoc>, id: String): ?Symbol
     index.get(id)
 }
 
+private func visibleThroughOwners(symbol: SymbolDoc, audience: String,
+    index: HashMap<String, SymbolDoc>): Bool {
+    var current: ?SymbolDoc = Some(symbol)
+    let visited = HashSet<String>()
+    while (current.isSome()) {
+        let value = current.getOrThrow()
+        if (!visited.add(value.id)) { return false }
+        if (!isVisibleForAudience(value, audience)) { return false }
+        current = match (value.ownerId) {
+            case Some(ownerId) => index.get(ownerId)
+            case None => None
+        }
+    }
+    true
+}
+
+private func addVisibleOwnerId(values: HashSet<String>, ownerId: String): Unit {
+    let _ = values.add(ownerId)
+}
+
+internal func visibleExtensionContainerIds(documentation: DocumentationSet,
+    index: HashMap<String, SymbolDoc>): HashSet<String> {
+    let audience = documentation.configuration.audience
+    let ownersWithVisibleMembers = HashSet<String>()
+    for (member in documentation.declarations) {
+        if (!isVisibleForAudience(member, audience)) { continue }
+        match (member.ownerId) {
+            case Some(ownerId) => addVisibleOwnerId(ownersWithVisibleMembers, ownerId)
+            case None => ()
+        }
+    }
+    let result = HashSet<String>()
+    for (extension in documentation.declarations) {
+        if (extension.kind != "extend" || !ownersWithVisibleMembers.contains(extension.id)) {
+            continue
+        }
+        for (relation in extension.symbolRelationships) {
+            if (relation.kind != "extensionTarget" || relation.state != "resolved") { continue }
+            match (relation.targetSymbolId) {
+                case Some(targetId) => match (index.get(targetId)) {
+                    case Some(target) =>
+                        if (visibleThroughOwners(target, audience, index)) {
+                            let _ = result.add(extension.id)
+                            break
+                        }
+                    case None => ()
+                }
+                case None => ()
+            }
+        }
+    }
+    result
+}
+
 internal func renderabilityIndex(documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>): HashMap<String, Bool> {
     let results = HashMap<String, Bool>()
+    let visibleExtensionContainers = visibleExtensionContainerIds(documentation, index)
     for (root in documentation.declarations) {
         if (results.contains(root.id)) { continue }
         let path = ArrayList<SymbolDoc>()
@@ -197,7 +260,8 @@ internal func renderabilityIndex(documentation: DocumentationSet,
                 case None => ()
             }
             path.add(symbol)
-            if (!isVisibleForAudience(symbol, documentation.configuration.audience)) {
+            if (!isVisibleForAudience(symbol, documentation.configuration.audience) &&
+                !visibleExtensionContainers.contains(symbol.id)) {
                 inherited = false
                 break
             }
@@ -211,7 +275,8 @@ internal func renderabilityIndex(documentation: DocumentationSet,
             position--
             let symbol = path[position]
             inherited = inherited &&
-                isVisibleForAudience(symbol, documentation.configuration.audience)
+                (isVisibleForAudience(symbol, documentation.configuration.audience) ||
+                    visibleExtensionContainers.contains(symbol.id))
             results[symbol.id] = inherited
         }
     }

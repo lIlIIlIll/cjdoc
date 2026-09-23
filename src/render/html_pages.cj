@@ -91,6 +91,19 @@ internal func appendDeclarationRow(out: RenderTextBuffer, symbol: SymbolDoc,
     out.append("</a></article>\n")
 }
 
+public func renderUtilityHtmlPage(documentation: DocumentationSet, title: String, body: String,
+    rootPrefix: String, locale!: String = "en", docVersion!: ?String = None): String {
+    let projection = RenderProjection(documentation)
+    let out = RenderTextBuffer()
+    appendPageStart(out, title, rootPrefix, documentation, projection, locale: locale,
+        currentRoute: "utility", docVersion: docVersion)
+    out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"${rootPrefix}index.html\">${label(locale, "Home", "首页")}</a></li><li aria-current=\"page\">${escapeHtml(title)}</li></ol></nav>")
+    out.append("<header class=\"page-header\"><h1>${escapeHtml(title)}</h1></header>\n")
+    out.append(body)
+    appendPageEnd(out, documentation, locale: locale)
+    out.toString()
+}
+
 public func renderConceptualHtmlPage(documentation: DocumentationSet, title: String, body: String,
     rootPrefix: String, source!: ?String = None, locale!: String = "en",
     docVersion!: ?String = None): String {
@@ -214,6 +227,71 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
     out.toString()
 }
 
+internal func appendInlineMemberDetail(out: RenderTextBuffer,
+    documentation: DocumentationSet, projection: RenderProjection,
+    index: HashMap<String, SymbolDoc>, entry: HtmlMemberEntry,
+    assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
+    rootPrefix: String, locale: String): Unit {
+    let member = entry.symbol
+    let anchor = symbolAnchor(member)
+    let standaloneLabel = label(locale, "Open standalone page", "打开独立页面")
+    out.append("<details class=\"declaration-summary member-detail\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\" data-member-origin=\"${escapeHtml(entry.origin)}\">")
+    out.append("<summary class=\"member-detail-summary\"><span class=\"member-summary-main\">")
+    if (!member.headerSpelling.isEmpty()) {
+        out.append("<code class=\"declaration-signature\">${escapeHtml(member.headerSpelling)}</code>")
+    } else {
+        out.append("<code class=\"declaration-signature\">${escapeHtml(member.name)}</code>")
+    }
+    out.append("</span><span class=\"declaration-kind\">${escapeHtml(member.kind)} · " +
+        escapeHtml(memberOriginLabel(entry.origin, locale)) + "</span>")
+    match (member.documentation) {
+        case Some(comment) =>
+            let summary = summaryPlainText(comment)
+            if (!summary.isEmpty()) {
+                out.append("<span class=\"member-summary-description\">${escapeHtml(summary)}</span>")
+            }
+        case None => ()
+    }
+    out.append("</summary><div class=\"member-detail-body\">")
+    if (entry.origin != "declared") {
+        match (entry.declaredBy) {
+            case Some(declaredBy) =>
+                out.append("<p class=\"member-origin\">" +
+                    escapeHtml(memberOriginLabel(entry.origin, locale)) + " · <a href=\"" +
+                    rootPrefix + escapeHtml(symbolPagePath(declaredBy)) + "\"><code>" +
+                    escapeHtml(declaredBy.qualifiedName) + "</code></a></p>")
+                if (entry.origin == "extension") {
+                    out.append("<p class=\"extension-conditions\">" +
+                        label(locale,
+                            "Subject to the extension target and constraints; applicability is not inferred.",
+                            "成员受扩展目标与约束限制；此处不推断对具体实例的适用性。") +
+                        "</p>")
+                    if (!declaredBy.headerSpelling.isEmpty()) {
+                        out.append("<pre class=\"extension-signature\"><code>" +
+                            escapeHtml(declaredBy.headerSpelling) + "</code></pre>")
+                    }
+                }
+            case None => ()
+        }
+    }
+    out.append("<div class=\"member-detail-actions\"><a class=\"member-permalink\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(member))}\">${standaloneLabel}</a>")
+    match (findProjectedModule(projection, member.moduleId)) {
+        case Some(module) => match (sourceUrl(documentation.project, module, member.source)) {
+            case Some(url) => out.append("<a class=\"member-source-link\" href=\"" +
+                escapeHtml(url) + "\" rel=\"noreferrer\">" +
+                label(locale, "View source", "查看源码") + "</a>")
+            case None => ()
+        }
+        case None => ()
+    }
+    out.append("</div>")
+    appendSymbolMetadata(out, index, member, rootPrefix, assetLookup, typeLinkIndex,
+        locale: locale, includeSummary: false)
+    appendDocumentationHtml(out, index, member, rootPrefix, assetLookup, typeLinkIndex,
+        headingBase: 3, locale: locale)
+    out.append("</div></details>\n")
+}
+
 internal func memberSectionTitle(symbol: SymbolDoc): String {
     match (symbol.kind) {
         case "constructor" => "Constructors"
@@ -231,8 +309,10 @@ internal func memberSectionTitle(symbol: SymbolDoc): String {
 }
 
 internal func appendMemberSection(out: RenderTextBuffer,
-    index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
-    owner: SymbolDoc, title: String, locale: String): Unit {
+    documentation: DocumentationSet, projection: RenderProjection,
+    index: HashMap<String, SymbolDoc>, browser: HtmlMemberBrowser,
+    title: String, assetLookup: HashMap<String, String>,
+    typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
     let sectionLabel = match (title) {
         case "Constructors" => "构造器"
         case "Properties" => "属性"
@@ -247,37 +327,40 @@ internal func appendMemberSection(out: RenderTextBuffer,
         case _ => "其他成员"
     }
     let overloadLabel = label(locale, "Overloads", "重载")
-    var opened = false
-    match (membersByOwner.get(owner.id)) {
-        case Some(members) =>
-            let overloadCounts = HashMap<String, Int64>()
-            for (member in members) {
-                if (memberSectionTitle(member) != title) { continue }
-                let count = match (overloadCounts.get(member.name)) {
-                    case Some(value) => value + 1
-                    case None => 1
-                }
-                overloadCounts[member.name] = count
-            }
-            var previousName = ""
-            for (member in members) {
-                if (memberSectionTitle(member) != title) { continue }
-                if (!opened) {
-                    out.append("<h2>" + escapeHtml(label(locale, title, sectionLabel)) + "</h2>\n")
-                    opened = true
-                }
-                let count = match (overloadCounts.get(member.name)) {
-                    case Some(value) => value
-                    case None => 0
-                }
-                if (count > 1 && previousName != member.name) {
-                    out.append("<p class=\"overload-group-label\"><span>" + escapeHtml(overloadLabel) + "</span> <code>" + escapeHtml(member.name) + "</code></p>\n")
-                }
-                previousName = member.name
-                appendDeclarationRow(out, member, "../")
-            }
-        case None => ()
+    let overloadCounts = HashMap<String, Int64>()
+    for (entry in browser.entries) {
+        if (memberSectionTitle(entry.symbol) != title) { continue }
+        let key = "${entry.groupKey}:${entry.symbol.name}"
+        overloadCounts[key] = match (overloadCounts.get(key)) {
+            case Some(value) => value + 1
+            case None => 1
+        }
     }
+    var opened = false
+    var previousKey = ""
+    for (entry in browser.entries) {
+        let member = entry.symbol
+        if (memberSectionTitle(member) != title) { continue }
+        if (!opened) {
+            out.append("<section class=\"member-group\" data-cjdoc-member-group><h2>" +
+                escapeHtml(label(locale, title, sectionLabel)) + "</h2>\n")
+            opened = true
+        }
+        let overloadKey = "${entry.groupKey}:${member.name}"
+        let count = match (overloadCounts.get(overloadKey)) {
+            case Some(value) => value
+            case None => 0
+        }
+        if (count > 1 && previousKey != overloadKey) {
+            out.append("<p class=\"overload-group-label\"><span>" +
+                escapeHtml(overloadLabel) + "</span> <code>" +
+                escapeHtml(member.name) + "</code> · " + count.toString() + "</p>\n")
+        }
+        previousKey = overloadKey
+        appendInlineMemberDetail(out, documentation, projection, index, entry,
+            assetLookup, typeLinkIndex, "../", locale)
+    }
+    if (opened) { out.append("</section>\n") }
 }
 
 internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<String, SymbolDoc>,
@@ -298,17 +381,67 @@ internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<Strin
     }
 }
 
+internal func appendSiblingMemberNavigation(out: RenderTextBuffer,
+    index: HashMap<String, SymbolDoc>, projection: RenderProjection,
+    symbol: SymbolDoc, rootPrefix: String, locale: String): Unit {
+    let owner = match (memberContextOwner(projection, symbol)) {
+        case Some(value) => value
+        case None => return
+    }
+    let entries = projection.members(owner).entries
+    if (entries.size <= 1) { return }
+    let overloadCounts = HashMap<String, Int64>()
+    for (entry in entries) {
+        let key = "${entry.groupKey}:${entry.symbol.name}"
+        overloadCounts[key] = match (overloadCounts.get(key)) {
+            case Some(value) => value + 1
+            case None => 1
+        }
+    }
+    out.append("<nav class=\"sibling-members\" aria-label=\"" +
+        label(locale, "Other members of this type", "同类型的其他成员") + "\"><span>" +
+        label(locale, "Members", "成员") + "</span><div>")
+    var shown: Int64 = 0
+    for (entry in entries) {
+        if (shown >= 24) { break }
+        let member = entry.symbol
+        let key = "${entry.groupKey}:${member.name}"
+        let overloadCount = match (overloadCounts.get(key)) {
+            case Some(value) => value
+            case None => 0
+        }
+        let display = if (overloadCount > 1 && !member.headerSpelling.isEmpty()) {
+            member.headerSpelling
+        } else { member.name }
+        if (member.id == symbol.id) {
+            out.append("<span class=\"is-current\" aria-current=\"page\"><code>" +
+                escapeHtml(display) + "</code></span>")
+        } else {
+            out.append("<a href=\"" + rootPrefix + escapeHtml(symbolPagePath(member)) +
+                "\"><code>" + escapeHtml(display) + "</code></a>")
+        }
+        shown++
+    }
+    if (entries.size > 24) {
+        out.append("<a class=\"sibling-members-all\" href=\"" + rootPrefix +
+            escapeHtml(symbolPagePath(owner)) + "\">" +
+            label(locale, "All members", "全部成员") + "</a>")
+    }
+    out.append("</div></nav>\n")
+}
 internal func renderSymbolPage(documentation: DocumentationSet, projection: RenderProjection,
-    index: HashMap<String, SymbolDoc>, membersByOwner: HashMap<String, ArrayList<SymbolDoc>>,
-    symbol: SymbolDoc, assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
+    index: HashMap<String, SymbolDoc>, symbol: SymbolDoc,
+    assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
     locale!: String = "en", docVersion!: ?String = None): String {
     let out = RenderTextBuffer()
     appendPageStart(out, symbol.qualifiedName, "../", documentation, projection, locale: locale,
-        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)), currentRoute: "api", docVersion: docVersion)
+        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)),
+        currentRoute: "api", docVersion: docVersion, currentSymbol: Some(symbol))
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li>")
     out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">${label(locale, "Package", "包")} <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     appendOwnerBreadcrumbs(out, index, symbol, "../", locale)
     out.append("<li aria-current=\"page\"><code>${escapeHtml(symbol.name)}</code></li></ol></nav>\n")
+    appendSiblingMemberNavigation(out, index, projection, symbol, "../", locale)
     out.append("<header class=\"page-header\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(symbol.name)}</code></h1>")
     appendSymbolMetadata(out, index, symbol, "../", assetLookup, typeLinkIndex, locale: locale)
     match (findProjectedModule(projection, symbol.moduleId)) {
@@ -326,17 +459,33 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     }
     if (isTypeDeclaration(symbol)) {
         let filterLabel = label(locale, "Filter members", "筛选成员")
+        let originLabel = label(locale, "Origin", "来源")
         let noResultsLabel = label(locale, "No matching members.", "没有匹配的成员。")
-        out.append("<section class=\"member-browser\" data-cjdoc-member-browser>")
-        out.append("<div class=\"member-browser-toolbar\"><label for=\"cjdoc-member-filter\">" + filterLabel + "</label><input id=\"cjdoc-member-filter\" type=\"search\" data-cjdoc-member-filter placeholder=\"" + filterLabel + "\" autocomplete=\"off\"></div>")
-        out.append("<p class=\"member-filter-status\" data-cjdoc-member-filter-status role=\"status\" hidden>" + noResultsLabel + "</p>")
+        let browser = projection.members(symbol)
+        if (!browser.entries.isEmpty()) {
+            out.append("<section class=\"member-browser\" data-cjdoc-member-browser>")
+            out.append("<div class=\"member-browser-toolbar\"><label for=\"cjdoc-member-filter\">" +
+                filterLabel + "</label><input id=\"cjdoc-member-filter\" type=\"search\" data-cjdoc-member-filter placeholder=\"" +
+                filterLabel + "\" autocomplete=\"off\">")
+            out.append("<label for=\"cjdoc-member-origin\">" + originLabel +
+                "</label><select id=\"cjdoc-member-origin\" data-cjdoc-member-origin><option value=\"\">" +
+                label(locale, "All origins", "所有来源") + "</option>")
+            for (origin in ["declared", "inherited", "extension"]) {
+                out.append("<option value=\"" + origin + "\">" +
+                    escapeHtml(memberOriginLabel(origin, locale)) + "</option>")
+            }
+            out.append("</select></div>")
+            out.append("<p class=\"member-filter-status\" data-cjdoc-member-filter-status role=\"status\" hidden>" +
+                noResultsLabel + "</p>")
+            for (title in ["Constructors", "Properties", "Variables", "Functions", "Enum cases",
+                "Nested classes", "Nested structs", "Nested interfaces", "Nested enums",
+                "Nested extensions", "Other members"]) {
+                appendMemberSection(out, documentation, projection, index, browser,
+                    title, assetLookup, typeLinkIndex, locale)
+            }
+            out.append("</section>\n")
+        }
     }
-    for (title in ["Constructors", "Properties", "Variables", "Functions", "Enum cases",
-        "Nested classes", "Nested structs", "Nested interfaces", "Nested enums", "Nested extensions",
-        "Other members"]) {
-        appendMemberSection(out, index, membersByOwner, symbol, title, locale)
-    }
-    if (isTypeDeclaration(symbol)) { out.append("</section>\n") }
     appendPageEnd(out, documentation, locale: locale)
     out.toString()
 }

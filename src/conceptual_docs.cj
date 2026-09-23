@@ -468,8 +468,11 @@ private func conceptualHtmlPackagePath(moduleId: String, packageName: String): S
 }
 
 private func conceptualArtifactPath(symbol: public_model.SymbolDoc, htmlLayout: Bool): String {
+    // HTML emits a stable detail page for every visible declaration. Keep conceptual
+    // reverse associations on the declaration that was actually bound instead of
+    // redirecting member/top-level associations to an owner or package aggregate.
+    if (htmlLayout) { return conceptualSymbolPath(symbol.id) }
     if (conceptualMarkdownContainer(symbol.kind)) {
-        if (htmlLayout) { return conceptualSymbolPath(symbol.id) }
         return conceptualMarkdownSymbolPath(symbol.id)
     }
     match (symbol.ownerId) {
@@ -1370,6 +1373,71 @@ private func conceptualArtifactSymbolIndex(documentation: public_model.Documenta
     result
 }
 
+private func conceptualInlineMemberAnchorIndex(documentation: public_model.DocumentationSet):
+    HashMap<String, Int64> {
+    let result = HashMap<String, Int64>()
+    var index: Int64 = 0
+    for (symbol in documentation.declarations) {
+        if (conceptualVisibleForAudience(symbol, documentation)) {
+            result["symbol-" + conceptualSymbolSlug(symbol.id)] = index
+        }
+        index++
+    }
+    result
+}
+
+private func conceptualAugmentInlineMembers(path: String, content: String,
+    documentation: public_model.DocumentationSet,
+    anchorIndex: HashMap<String, Int64>,
+    pages: ArrayList<ConceptualPage>, resolvers: Array<ExternalDocResolver>,
+    locale: String): String {
+    if (!path.startsWith("html/symbols/")) { return content }
+    let insertions = ArrayList<(Int64, String)>()
+    let marker = "id=\"symbol-"
+    let closing = "</div></details>"
+    var cursor: Int64 = 0
+    while (cursor < content.size) {
+        let markerStart = match (content[cursor..].indexOf(marker)) {
+            case Some(relative) => cursor + relative
+            case None => break
+        }
+        let anchorStart = markerStart + "id=\"".size
+        let anchorEnd = match (content[anchorStart..].indexOf("\"")) {
+            case Some(relative) => anchorStart + relative
+            case None => break
+        }
+        let anchor = content[anchorStart..anchorEnd]
+        let symbolIndexValue = match (anchorIndex.get(anchor)) {
+            case Some(value) => value
+            case None =>
+                cursor = anchorEnd + 1
+                continue
+        }
+        let closeStart = match (content[anchorEnd..].indexOf(closing)) {
+            case Some(relative) => anchorEnd + relative
+            case None =>
+                cursor = anchorEnd + 1
+                continue
+        }
+        let symbol = documentation.declarations[symbolIndexValue]
+        let suffix = "-inline-" + conceptualSymbolSlug(symbol.id)
+        let section = conceptualApiUsageHtml(pages, symbol.id, locale,
+            headingSuffix: suffix) +
+            conceptualExternalUsageHtml(symbol, resolvers, locale,
+                headingSuffix: suffix)
+        if (!section.isEmpty()) { insertions.add((closeStart, section)) }
+        cursor = closeStart + closing.size
+    }
+    var result = content
+    var position = insertions.size
+    while (position > 0) {
+        position--
+        let (insertAt, section) = insertions[position]
+        result = result[..insertAt] + section + result[insertAt..]
+    }
+    result
+}
+
 private func conceptualAugmentApiArtifact(path: String, content: String,
     documentation: public_model.DocumentationSet,
     symbolIndex: HashMap<String, ArrayList<Int64>>,
@@ -1452,6 +1520,11 @@ internal func appendConceptualArtifacts(projectRoot: String,
     } else {
         HashMap<String, ArrayList<Int64>>()
     }
+    let htmlInlineMemberIndex = if (shouldAugmentApiArtifacts) {
+        conceptualInlineMemberAnchorIndex(documentation)
+    } else {
+        HashMap<String, Int64>()
+    }
     let conceptualSearch = if (config.enabled && hasHtml) {
         conceptualSearchIndex(search, pages)
     } else { search }
@@ -1476,8 +1549,10 @@ internal func appendConceptualArtifacts(projectRoot: String,
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
                 searchScript))
         } else if (shouldAugmentApiArtifacts && (artifact.path.startsWith("html/symbols/") || artifact.path.startsWith("html/packages/"))) {
-            let content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
+            var content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
                 documentation, htmlSymbolIndex, pages, resolvers, locale)
+            content = conceptualAugmentInlineMembers(artifact.path, content, documentation,
+                htmlInlineMemberIndex, pages, resolvers, locale)
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, content))
         } else if (shouldAugmentApiArtifacts && (artifact.path.startsWith("markdown/symbols/") || artifact.path.startsWith("markdown/packages/"))) {
             let content = conceptualAugmentApiArtifact(artifact.path, artifact.content,

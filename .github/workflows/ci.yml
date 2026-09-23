@@ -118,6 +118,7 @@ jobs:
         env:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
           CJDOC_HTML_FIXTURE: ${{ github.workspace }}/target/html-reference/html
+          CJDOC_HTML_FIXTURE_ZH: ${{ github.workspace }}/target/html-reference-zh/html
           CJDOC_VERSION_FIXTURE: ${{ github.workspace }}/target/html-versions
         run: |
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
@@ -127,6 +128,7 @@ jobs:
             --repository-url https://github.com/example/reference \
             --repository-revision 0123456789012345678901234567890123456789 \
             --output target/html-reference-previous
+          CURRENT_START=$(python -c 'import time; print(time.perf_counter_ns())')
           target/release/bin/main generate \
             --project tests/fixtures/projects/html_reference \
             --format html --format json --locale en --no-cache \
@@ -134,12 +136,57 @@ jobs:
             --repository-url https://github.com/example/reference \
             --repository-revision 0123456789012345678901234567890123456789 \
             --output target/html-reference
+          CURRENT_END=$(python -c 'import time; print(time.perf_counter_ns())')
+          echo $(((CURRENT_END - CURRENT_START) / 1000000)) > target/issue-49-current-generate-ms.txt
+          target/release/bin/main generate \
+            --project tests/fixtures/projects/html_reference \
+            --format html --locale zh-CN --no-cache \
+            --doc-version 1.3.0 \
+            --repository-url https://github.com/example/reference \
+            --repository-revision 0123456789012345678901234567890123456789 \
+            --output target/html-reference-zh
+
+          BASE_ROOT="${RUNNER_TEMP}/cjdoc-issue49-baseline"
+          rm -rf "${BASE_ROOT}"
+          git fetch --no-tags --depth=1 origin c0ec28b6698e16da4e02cf7f59ff08d8e20fadf0
+          git worktree add --detach "${BASE_ROOT}" c0ec28b6698e16da4e02cf7f59ff08d8e20fadf0
+          rm -rf "${BASE_ROOT}/tests/fixtures/projects/html_reference"
+          cp -R tests/fixtures/projects/html_reference "${BASE_ROOT}/tests/fixtures/projects/html_reference"
+          pushd "${BASE_ROOT}"
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          cjpm build
+          BASE_START=$(python -c 'import time; print(time.perf_counter_ns())')
+          target/release/bin/main generate \
+            --project tests/fixtures/projects/html_reference \
+            --format html --locale en --no-cache \
+            --doc-version 1.3.0 \
+            --repository-url https://github.com/example/reference \
+            --repository-revision 0123456789012345678901234567890123456789 \
+            --output "${GITHUB_WORKSPACE}/target/html-reference-baseline"
+          BASE_END=$(python -c 'import time; print(time.perf_counter_ns())')
+          popd
+          echo $(((BASE_END - BASE_START) / 1000000)) > target/issue-49-baseline-generate-ms.txt
+          node tests/browser/measure-reference-density.mjs \
+            target/html-reference-baseline/html \
+            target/html-reference/html \
+            target/issue-49-density.json \
+            "$(cat target/issue-49-baseline-generate-ms.txt)" \
+            "$(cat target/issue-49-current-generate-ms.txt)"
+          cat target/issue-49-density.json
           target/release/bin/main versions compose \
             --version 1.2.0=target/html-reference-previous/html \
             --version 1.3.0=target/html-reference/html \
             --latest 1.3.0 \
             --output target/html-versions
           npm --prefix tests/browser test
+
+      - name: Upload issue #49 density evidence
+        if: always() && matrix.platform == 'linux-x64'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cjdoc-issue-49-density
+          path: target/issue-49-density.json
+          if-no-files-found: warn
 
       - name: Upload browser screenshots
         if: always() && matrix.platform == 'linux-x64'
