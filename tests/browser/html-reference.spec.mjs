@@ -315,10 +315,14 @@ test.describe('generated HTML reference', () => {
 
     const useDetail = page.locator('details[data-cjdoc-member][data-member-name="use"]');
     await useDetail.locator('.member-detail-summary').click();
-    const linkedSignatureHtml = await useDetail.locator('.signature-block code').innerHTML();
-    expect(linkedSignatureHtml).toContain('&quot;Token&quot;');
-    expect(linkedSignatureHtml).toMatch(/item!:\s*<a[^>]*>Token<\/a>/);
-    expect(linkedSignatureHtml).not.toMatch(/&quot;<a[^>]*>Token<\/a>&quot;/);
+    const useSignature = useDetail.locator('.signature-block code');
+    const linkedSignatureHtml = await useSignature.innerHTML();
+    await expect(useSignature).toContainText('label!: String = "Token", item!: Token');
+    // This source-only fixture intentionally leaves Token unresolved. The renderer must
+    // fail closed instead of guessing from spelling, while resolved-link behavior is
+    // covered by HtmlSignatureMappingTest.
+    await expect(useSignature.locator('.signature-type-link')).toHaveCount(0);
+    expect(linkedSignatureHtml).not.toMatch(/"[^"]*<a[^>]*>Token<\/a>[^"]*"/);
 
     await expect(page.locator('.source-action')).not.toHaveCount(0);
     await expect(page.locator('.source-action a')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
