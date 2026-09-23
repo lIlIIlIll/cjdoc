@@ -77,7 +77,7 @@ internal class HtmlMemberBrowser {
 
 internal func memberContextOwner(projection: RenderProjection, symbol: SymbolDoc): ?SymbolDoc {
     if (isTypeDeclaration(symbol)) { return Some(symbol) }
-    let declaredOwner = match (symbol.ownerId) {
+    let declaredOwner: ?SymbolDoc = match (symbol.ownerId) {
         case Some(ownerId) => projection.visibleIndex.get(ownerId)
         case None => None
     }
