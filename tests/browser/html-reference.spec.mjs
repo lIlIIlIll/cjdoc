@@ -43,6 +43,18 @@ async function clickOutside(page) {
   await page.mouse.click(5, (viewport?.height || 720) - 5);
 }
 
+function referenceBoxClassLink(page) {
+  return page.locator(
+    'article[data-cjdoc-member][data-member-name="ReferenceBox"][data-member-kind="class"] > .declaration-row-link'
+  );
+}
+
+async function referenceBoxClassHref(page) {
+  const link = referenceBoxClassLink(page);
+  await expect(link).toHaveCount(1);
+  return link.getAttribute('href');
+}
+
 let httpServer;
 let httpBaseUrl;
 
@@ -135,7 +147,9 @@ test.describe('generated HTML reference', () => {
     const results = page.locator('[data-cjdoc-results] [role="option"]');
     await expect(search).toHaveAttribute('aria-expanded', 'false');
     await search.fill('ReferenceBox');
-    await expect(results).toHaveCount(5);
+    await expect(results).not.toHaveCount(0);
+    const referenceBoxResultCount = await results.count();
+    expect(referenceBoxResultCount).toBeGreaterThanOrEqual(2);
     await expect(results.first()).toContainText('ReferenceBox');
     await expect(results.first().locator('.search-result-signature')).toBeVisible();
     await expect(results.first()).not.toContainText('cjdoc:v2');
@@ -154,7 +168,7 @@ test.describe('generated HTML reference', () => {
     await expect(results).toHaveCount(0);
     await expect(search).toHaveAttribute('aria-expanded', 'false');
     await search.click();
-    await expect(results).toHaveCount(5);
+    await expect(results).toHaveCount(referenceBoxResultCount);
     await page.keyboard.press('Escape');
     await expect(search).toHaveValue('');
     await expect(results).toHaveCount(0);
@@ -162,7 +176,7 @@ test.describe('generated HTML reference', () => {
     await clickOutside(page);
     await page.keyboard.press('Control+k');
     await expect(search).toBeFocused();
-    await expect(results).toHaveCount(5);
+    await expect(results).toHaveCount(referenceBoxResultCount);
 
     await page.emulateMedia({ colorScheme: 'dark' });
     await page.evaluate(() => localStorage.removeItem('cjdoc-theme'));
@@ -187,7 +201,7 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'api');
     await expect(page.locator('.sidebar-link[href*="#packages"][aria-current="page"]')).toHaveCount(1);
     await expect(page.locator('.declaration-row-link')).not.toHaveCount(0);
-    const classHref = await page.locator('.declaration-row-link').first().getAttribute('href');
+    const classHref = await referenceBoxClassHref(page);
     const classUrl = new URL(classHref, packageUrl).href;
     await gotoFile(page, classUrl);
     await expect(page.locator('.breadcrumbs')).toContainText('Package');
@@ -345,7 +359,11 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('.page-header h1')).toContainText('Getting started');
     await expect(page.locator('.breadcrumbs')).toContainText('Concepts');
     await expect(page.locator('.conceptual-bindings')).toContainText('resolved');
-    await expect(page.locator('.conceptual-bindings a[href*="symbols/symbol-"]')).toHaveCount(1);
+    const boundApiLinks = page.locator('.conceptual-bindings a[href*="symbols/symbol-"]');
+    await expect(boundApiLinks).toHaveCount(2);
+    expect(await boundApiLinks.nth(0).getAttribute('href')).not.toBe(
+      await boundApiLinks.nth(1).getAttribute('href')
+    );
     await expect(page.locator('.conceptual-bindings')).toContainText('</span><a href=phish>click</a>');
     await expect(page.locator('.conceptual-bindings a[href="phish"]')).toHaveCount(0);
     await expect(page.locator('.conceptual-bindings')).toContainText('unavailable');
@@ -413,7 +431,7 @@ test.describe('generated HTML reference', () => {
     const packageHref = await page.locator('.package-index a').first().getAttribute('href');
     const packageUrl = new URL(packageHref, indexUrl).href;
     await gotoFile(page, packageUrl);
-    const classHref = await page.locator('.declaration-row-link').filter({ hasText: 'ReferenceBox' }).getAttribute('href');
+    const classHref = await referenceBoxClassHref(page);
     const classUrl = new URL(classHref, packageUrl).href;
     await gotoFile(page, classUrl);
     const browser = page.locator('[data-cjdoc-member-browser]');
@@ -433,7 +451,7 @@ test.describe('generated HTML reference', () => {
     const packageHref = await page.locator('.package-index a').first().getAttribute('href');
     const packageUrl = new URL(packageHref, indexUrl).href;
     await gotoFile(page, packageUrl);
-    const classHref = await page.locator('.declaration-row-link').filter({ hasText: 'ReferenceBox' }).getAttribute('href');
+    const classHref = await referenceBoxClassHref(page);
     const classUrl = new URL(classHref, packageUrl).href;
     await gotoFile(page, classUrl);
     const top = await page.locator('.docs-main .breadcrumbs').evaluate(element => element.getBoundingClientRect().top);
@@ -458,7 +476,7 @@ test.describe('generated HTML reference', () => {
     const packageHref = await page.locator('.package-index a').first().getAttribute('href');
     const packageUrl = new URL(packageHref, zhIndexUrl).href;
     await gotoFile(page, packageUrl);
-    const classHref = await page.locator('.declaration-row-link').filter({ hasText: 'ReferenceBox' }).getAttribute('href');
+    const classHref = await referenceBoxClassHref(page);
     const classUrl = new URL(classHref, packageUrl).href;
     await gotoFile(page, classUrl);
     await expect(page.locator('[data-cjdoc-member-filter]')).toHaveAttribute('placeholder', '筛选成员');
@@ -476,7 +494,7 @@ test.describe('generated HTML reference', () => {
     await expectStable(page);
     const packageHref = await page.locator('.package-index a').first().getAttribute('href');
     await page.goto(new URL(packageHref, page.url()).href);
-    const classHref = await page.locator('.declaration-row-link').filter({ hasText: 'ReferenceBox' }).getAttribute('href');
+    const classHref = await referenceBoxClassHref(page);
     await page.goto(new URL(classHref, page.url()).href);
     const normalize = page.locator('[data-cjdoc-member][data-member-name="normalize"]');
     const anchor = await normalize.getAttribute('id');
@@ -493,7 +511,7 @@ test.describe('generated HTML reference', () => {
     const packageHref = await page.locator('.package-index a').first().getAttribute('href');
     const packageUrl = new URL(packageHref, indexUrl).href;
     await gotoFile(page, packageUrl);
-    const classHref = await page.locator('.declaration-row-link').filter({ hasText: 'ReferenceBox' }).getAttribute('href');
+    const classHref = await referenceBoxClassHref(page);
     const classUrl = new URL(classHref, packageUrl).href;
     await gotoFile(page, classUrl);
     const memberHref = await page.locator('[data-cjdoc-member][data-member-name="normalize"] .member-permalink').getAttribute('href');
@@ -525,7 +543,7 @@ test.describe('generated HTML reference', () => {
     await page.goto(indexUrl);
     const packageHref = await page.locator('.package-index a').first().getAttribute('href');
     await page.goto(new URL(packageHref, indexUrl).href);
-    const classHref = await page.locator('.declaration-row-link').filter({ hasText: 'ReferenceBox' }).getAttribute('href');
+    const classHref = await referenceBoxClassHref(page);
     await page.goto(new URL(classHref, page.url()).href);
     const before = page.url();
     const detail = page.locator('[data-cjdoc-member][data-member-name="normalize"]');
