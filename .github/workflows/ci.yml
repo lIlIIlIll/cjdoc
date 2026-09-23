@@ -237,6 +237,10 @@ jobs:
               "${flatc_exe}" "${flatc_alias}"
             test -f "${build_dir}/bin/flatc"
             "${flatc_alias}" --version
+            # The compile-time macro loads dependencies from both generated DLL directories.
+            stdx_build_bin="$(cygpath -u "${build_dir}/bin")"
+            stdx_library_bin="$(cygpath -u "${build_dir}/lib/windows_x86_64_cjnative")"
+            export PATH="${stdx_build_bin}:${stdx_library_bin}:${PATH}"
             GIT_CONFIG_COUNT=1 \
               GIT_CONFIG_KEY_0=core.protectNTFS \
               GIT_CONFIG_VALUE_0=false \
@@ -282,3 +286,21 @@ jobs:
             python scripts/with_stdx.py --variant static -- \
               python scripts/real_repository_smoke.py --project .
           fi
+      - name: Regenerate macOS STS golden candidates
+        id: macos-goldens
+        if: failure() && matrix.platform == 'macos-arm64'
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
+          bash scripts/update_goldens.sh
+
+      - name: Upload macOS STS golden candidates
+        if: always() && steps.macos-goldens.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sts-golden-candidates-macos-arm64
+          path: tests/fixtures/golden-v10/*.docs.json
+          if-no-files-found: error
