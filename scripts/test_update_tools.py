@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from scripts import fixture_snapshot
 
@@ -229,6 +230,28 @@ class UpdateToolsTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("v6 golden set mismatch", result.stderr)
             self.assertFalse((repo / "tests/fixtures/golden-v10").exists())
+
+    def test_snapshot_accepts_matching_bytes_despite_stale_status(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary)
+            self.make_repo(repo)
+            fixture = repo / "tests/fixtures/projects/basic/src/fixture.cj"
+            original_bytes = fixture.read_bytes()
+            destination = repo / "target/fixture-snapshot"
+            receipt_path = repo / "target/fixture-snapshot.json"
+            stale_status = " M tests/fixtures/projects/basic/src/fixture.cj"
+            with patch.object(
+                fixture_snapshot, "scoped_status", return_value=stale_status
+            ):
+                prepared = fixture_snapshot.prepare(repo, destination, receipt_path)
+                verified = fixture_snapshot.verify(receipt_path)
+            snapshot_file = destination / "tests/fixtures/projects/basic/src/fixture.cj"
+            self.assertEqual(snapshot_file.read_bytes(), original_bytes)
+            self.assertEqual(
+                prepared["snapshot"]["sha256"],
+                verified["snapshot"]["sha256"],
+            )
+            self.assertIn("verifiedAfter", verified)
 
     def test_golden_update_publishes_only_a_complete_v10_set(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
