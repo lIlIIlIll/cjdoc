@@ -2,7 +2,6 @@ package cjdoc.render
 
 import cjdoc.model.*
 import std.collection.*
-import std.sort.*
 
 internal func label(locale: String, english: String, chinese: String): String {
     if (locale == "zh-CN") { chinese } else { english }
