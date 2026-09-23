@@ -17,6 +17,7 @@ REQUIRED_STATIC_ARTIFACTS = (
     "stdx.syntax.cjo",
     "stdx.chir.cjo",
     "libstdx.syntax.a",
+    "libstdx.syntaxFFI.a",
     "libstdx.chir.a",
 )
 REQUIRED_DYNAMIC_ARTIFACTS = (
@@ -145,13 +146,19 @@ def static_link_options(path: Path, target: str) -> tuple[str, str]:
     configured = os.environ.get("CANGJIE_FLATBUFFERS_LIB")
     if configured:
         candidates.insert(0, Path(configured))
-    flatbuffers = next((candidate.resolve() for candidate in candidates if candidate.is_file() and not candidate.is_symlink()), None)
-    if flatbuffers is None:
-        fail("static stdx sidecar has no authenticated libflatbuffers.a; set CANGJIE_FLATBUFFERS_LIB")
-    options = [str(flatbuffers)]
+    flatbuffers = next(
+        (candidate.resolve() for candidate in candidates
+         if candidate.is_file() and not candidate.is_symlink()),
+        None,
+    )
+    options: list[str] = []
+    dependency_digest = ""
+    if flatbuffers is not None:
+        options.append(str(flatbuffers))
+        dependency_digest = file_digest(flatbuffers)
     if target.endswith("-linux-gnu"):
         options[0:0] = ["-lstdc++", "-lgcc_s"]
-    return " ".join(options), file_digest(flatbuffers)
+    return " ".join(options), dependency_digest
 
 
 def split_command(argv: list[str]) -> tuple[list[str], list[str]]:

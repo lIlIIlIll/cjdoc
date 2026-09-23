@@ -30,20 +30,22 @@ class WithStdxTest(unittest.TestCase):
                 {file.name for file in files}, set(with_stdx.REQUIRED_STATIC_ARTIFACTS)
             )
 
-    def test_static_link_options_require_flatbuffers_and_hash_dependency(self) -> None:
+    def test_static_link_options_support_bundled_and_external_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             sidecar = self.make_sidecar(
                 Path(temporary), with_stdx.REQUIRED_STATIC_ARTIFACTS
             )
-            with self.assertRaisesRegex(SystemExit, "libflatbuffers"):
-                with_stdx.static_link_options(sidecar, "x86_64-unknown-linux-gnu")
+            options, digest = with_stdx.static_link_options(
+                sidecar, "x86_64-unknown-linux-gnu"
+            )
+            self.assertEqual(options, "-lstdc++ -lgcc_s")
+            self.assertEqual(digest, "")
+
             flatbuffers = sidecar / "libflatbuffers.a"
             flatbuffers.write_bytes(b"flatbuffers")
             options, digest = with_stdx.static_link_options(
                 sidecar, "x86_64-unknown-linux-gnu"
             )
-            self.assertIn("-lstdc++", options)
-            self.assertIn("-lgcc_s", options)
             self.assertIn(str(flatbuffers), options)
             self.assertEqual(digest, with_stdx.file_digest(flatbuffers))
 
