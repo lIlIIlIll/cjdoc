@@ -64,6 +64,18 @@ jobs:
       - name: Test SDK installer
         run: python -m unittest scripts/test_install_cangjie_sdk.py
 
+      - name: Install stdx build Python dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v python3 >/dev/null 2>&1; then
+            python_command=python3
+          else
+            python_command=python
+          fi
+          "${python_command}" -m pip install --disable-pip-version-check psutil
+          "${python_command}" -c 'import psutil'
+
       - name: Install Windows STS stdx OpenSSL dependency
         if: matrix.platform == 'windows-x64'
         id: msys2
@@ -144,11 +156,17 @@ jobs:
           test "$(git -C "${stdx_dir}" rev-parse HEAD)" = "${CANGJIE_STDX_SOURCE_REV}"
           cd "${stdx_dir}"
           if [[ "${RUNNER_OS}" == "macOS" ]]; then
-            export CC="$(xcrun --find clang)"
-            export CXX="$(xcrun --find clang++)"
             export CFLAGS="${CFLAGS:-} -Wno-error=cast-function-type-mismatch"
           fi
-          python build.py build -t release
+          if ! cjpm build; then
+            build_log="${stdx_dir}/build-script-cache/release/stdx/bin/script-log"
+            if [[ -f "${build_log}" ]]; then
+              tail -n 200 "${build_log}"
+            else
+              echo "stdx build log is missing: ${build_log}" >&2
+            fi
+            exit 1
+          fi
           python build.py install
           case "${RUNNER_OS}:${RUNNER_ARCH}" in
             Linux:X64) stdx_target=linux_x86_64 ;;
