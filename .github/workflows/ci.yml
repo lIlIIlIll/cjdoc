@@ -142,6 +142,7 @@ jobs:
         env:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
           CANGJIE_STDX_SOURCE_REV: "6d53814868de41bccf5b92b1d6ff0250c9c4a0e8"
+          CANGJIE_COMPILER_SCHEMA_REV: "2fe6b291d37153aa1da56c6c7c020d5ab67fa93d"
         run: |
           set -euo pipefail
           if [[ "${RUNNER_OS}" == "macOS" ]]; then
@@ -149,6 +150,15 @@ jobs:
           fi
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           stdx_dir="${RUNNER_TEMP}/cangjie-stdx"
+          compiler_schema_dir="${RUNNER_TEMP}/cangjie_compiler"
+          git init "${compiler_schema_dir}"
+          git -C "${compiler_schema_dir}" remote add origin https://gitcode.com/Cangjie/cangjie_compiler.git
+          git -C "${compiler_schema_dir}" sparse-checkout init --cone
+          git -C "${compiler_schema_dir}" sparse-checkout set schema
+          git -C "${compiler_schema_dir}" fetch --depth 1 --filter=blob:none origin "${CANGJIE_COMPILER_SCHEMA_REV}"
+          git -C "${compiler_schema_dir}" checkout --detach FETCH_HEAD
+          test "$(git -C "${compiler_schema_dir}" rev-parse HEAD)" = "${CANGJIE_COMPILER_SCHEMA_REV}"
+          test -s "${compiler_schema_dir}/schema/PackageFormat.fbs"
           git init "${stdx_dir}"
           git -C "${stdx_dir}" remote add origin https://gitcode.com/Cangjie/cangjie_stdx.git
           git -C "${stdx_dir}" fetch --depth 1 origin "${CANGJIE_STDX_SOURCE_REV}"
@@ -156,18 +166,55 @@ jobs:
           test "$(git -C "${stdx_dir}" rev-parse HEAD)" = "${CANGJIE_STDX_SOURCE_REV}"
           cd "${stdx_dir}"
           if [[ "${RUNNER_OS}" == "macOS" ]]; then
-            export CFLAGS="${CFLAGS:-} -Wno-error=cast-function-type-mismatch"
+            # Keep upstream OpenSSL callback casts from failing under -Werror.
+            wrapper_dir="${RUNNER_TEMP}/clang-wrappers"
+            mkdir -p "${wrapper_dir}"
+            for compiler in clang clang++; do
+              real_compiler="$(command -v "${compiler}")"
+              wrapper="${wrapper_dir}/${compiler}"
+              printf '#!/bin/sh\nexec "%s" -Wno-error=cast-function-type-mismatch "$@"\n' "${real_compiler}" > "${wrapper}"
+              chmod +x "${wrapper}"
+            done
+            export PATH="${wrapper_dir}:${PATH}"
           fi
-          if ! cjpm build; then
-            build_log="${stdx_dir}/build-script-cache/release/stdx/bin/script-log"
-            if [[ -f "${build_log}" ]]; then
-              tail -n 200 "${build_log}"
-            else
-              echo "stdx build log is missing: ${build_log}" >&2
-            fi
-            exit 1
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            build_dir="${stdx_dir}/build_temp/build"
+            cmake_include="${RUNNER_TEMP}/mingw-boundscheck.cmake"
+            cat > "${cmake_include}" <<'CMAKE'
+          # MinGW's secure CRT overlaps the secure stdio definitions built by boundscheck.
+          function(cjdoc_avoid_mingw_secure_stdio_redefinition)
+            foreach(target boundscheck boundscheck-static)
+              if(TARGET "${target}")
+                target_compile_definitions("${target}" PRIVATE _INC_STDIO_S)
+              endif()
+            endforeach()
+          endfunction()
+          cmake_language(DEFER CALL cjdoc_avoid_mingw_secure_stdio_redefinition)
+          CMAKE
+            cmake -S "${stdx_dir}" -B "${build_dir}" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_TOOLCHAIN_FILE="${stdx_dir}/build/common/mingw_x86_64_toolchain.cmake" \
+              -DCMAKE_INSTALL_PREFIX="${stdx_dir}/target" \
+              -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="${cmake_include}" \
+              -DCANGJIE_SCHEMA_DIR="${compiler_schema_dir}/schema" \
+              -DCANGJIE_TARGET_LIB= \
+              -DCANGJIE_TARGET_TOOLCHAIN= \
+              -DCANGJIE_INCLUDE= \
+              -DCANGJIE_TARGET_SYSROOT= \
+              -DCANGJIE_BUILD_WITHOUT_EFFECT_HANDLERS=OFF \
+              -DCANGJIE_BUILD_WITHOUT_SYNTAX=OFF \
+              -DCANGJIE_BUILD_WITHOUT_CHIR=OFF \
+              -DCANGJIE_BUILD_WITHOUT_PLUGIN=OFF \
+              -DCANGJIE_BUILD_WITHOUT_ASPECT_CJ=OFF \
+              -DCANGJIE_BUILD_STDLIB_WITH_COVERAGE=OFF \
+              -DCANGJIE_BUILD_ARGS= \
+              -DBUILD_GCC_TOOLCHAIN=
+            cmake --build "${build_dir}" --parallel
+            cmake --install "${build_dir}" --config Release
+          else
+            python build.py build --build-type release
+            python build.py install
           fi
-          python build.py install
           case "${RUNNER_OS}:${RUNNER_ARCH}" in
             Linux:X64) stdx_target=linux_x86_64 ;;
             macOS:ARM64) stdx_target=darwin_aarch64 ;;
