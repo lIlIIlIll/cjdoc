@@ -196,6 +196,15 @@ jobs:
             cmake_include="${RUNNER_TEMP}/mingw-boundscheck.cmake"
             cat > "${cmake_include}" <<'CMAKE'
           # MinGW's secure CRT overlaps the secure stdio definitions built by boundscheck.
+          # Native x64 Windows host/target should not select the cross-host DLL path.
+          if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows"
+             AND CMAKE_SYSTEM_NAME STREQUAL "Windows"
+             AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$"
+             AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+            set(CMAKE_CROSSCOMPILING OFF)
+          endif()
+          message(STATUS
+            "CMake host=${CMAKE_HOST_SYSTEM_NAME}/${CMAKE_HOST_SYSTEM_PROCESSOR}; target=${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}; cross=${CMAKE_CROSSCOMPILING}")
           function(cjdoc_avoid_mingw_secure_stdio_redefinition)
             foreach(target boundscheck boundscheck-static)
               if(TARGET "${target}")
@@ -263,31 +272,6 @@ jobs:
           test -d "${sidecar}"
           echo "CJDOC_STDX_PATH=${sidecar}" >> "${GITHUB_ENV}"
 
-      - name: Diagnose Windows STS macro-linked target
-        if: failure() && matrix.platform == 'windows-x64'
-        continue-on-error: true
-        shell: bash
-        env:
-          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
-        run: |
-          set -euo pipefail
-          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
-          build_dir="${RUNNER_TEMP}/cangjie-stdx/build_temp/build"
-          mingw_runtime_bin="$(cygpath -u 'C:/mingw64/bin')"
-          stdx_build_bin="$(cygpath -u "${build_dir}/bin")"
-          stdx_library_bin="$(cygpath -u "${build_dir}/lib/windows_x86_64_cjnative")"
-          export PATH="${mingw_runtime_bin}:${stdx_build_bin}:${stdx_library_bin}:${PATH}"
-          batch_files=("${build_dir}"/src/CMakeFiles/stdx.aspect_cj.plugins.collect_aspects.a-*.bat)
-          if [[ -e "${batch_files[0]}" ]]; then
-            for batch in "${batch_files[@]}"; do
-              printf '\n--- generated compile batch: %s ---\n' "${batch}"
-              sed -n '1,12p' "${batch}"
-            done
-          else
-            echo "generated CollectAspects batch file is missing" >&2
-          fi
-          cmake --build "${build_dir}" --target cangjieCJNATIVECollectAspects --verbose --parallel 1
-
       - name: Verify built STS stdx sidecar
         shell: bash
         env:
@@ -310,10 +294,59 @@ jobs:
         env:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
         run: |
+          set -euo pipefail
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           cjc -v
           cjpm -v
+          if [[ "${{ matrix.platform }}" != 'windows-x64' ]]; then
+            # STS 1.2.0's bundled llc crashes at -O2 on the markdown/yjson CI dependencies.
+            # Keep the repository default unchanged and lower optimization only for Unix CI.
+            real_cjpm="$(command -v cjpm)"
+            wrapper_dir="${RUNNER_TEMP}/cjpm-sts-optimization"
+            mkdir -p "${wrapper_dir}"
+            cat >"${wrapper_dir}/cjpm" <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          case "${1:-}" in
+            build|test) ;;
+            *) exec "${CJDOC_REAL_CJPM}" "$@" ;;
+          esac
+          if [[ "$PWD" != "${GITHUB_WORKSPACE}" ]]; then
+            exec "${CJDOC_REAL_CJPM}" "$@"
+          fi
+          manifest="$(pwd)/cjpm.toml"
+          backup="$(mktemp "${RUNNER_TEMP}/cjpm-manifest.XXXXXX")"
+          cp "${manifest}" "${backup}"
+          restore_manifest() {
+            cp "${backup}" "${manifest}"
+            rm -f "${backup}"
+          }
+          trap restore_manifest EXIT
+          python - "${manifest}" <<'PY'
+          from pathlib import Path
+          import sys
+
+          manifest = Path(sys.argv[1])
+          contents = manifest.read_text(encoding="utf-8")
+          needle = 'override-compile-option = ""'
+          if contents.count(needle) != 1:
+              raise SystemExit("expected exactly one default override-compile-option in cjpm.toml")
+          updated = contents.replace(
+              needle, 'override-compile-option = "-O1"', 1
+          )
+          manifest.write_text(updated, encoding="utf-8")
+          PY
+          set +e
+          "${CJDOC_REAL_CJPM}" "$@"
+          status=$?
+          set -e
+          exit "${status}"
+          SH
+            chmod +x "${wrapper_dir}/cjpm"
+            export CJDOC_REAL_CJPM="${real_cjpm}"
+            export PATH="${wrapper_dir}:${PATH}"
+          fi
           python scripts/with_stdx.py --variant static -- scripts/check.sh
           if [[ "${{ matrix.platform }}" == 'linux-x64' ]]; then
             python scripts/with_stdx.py --variant static -- \
@@ -327,38 +360,4 @@ jobs:
           cp -p "${RUNNER_TEMP}/source-edge-fixture.cj" \
             tests/fixtures/projects/source_edges/src/fixture.cj
 
-      - name: Regenerate macOS STS golden candidates
-        id: macos-goldens
-        if: failure() && matrix.platform == 'macos-arm64' && steps.restore-source-edge.outcome == 'success'
-        shell: bash
-        env:
-          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
-        run: |
-          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
-          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          bash scripts/update_goldens.sh
 
-      - name: Upload macOS STS golden candidates
-        if: always() && steps.macos-goldens.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: sts-golden-candidates-macos-arm64
-          path: tests/fixtures/golden-v10/*.docs.json
-          if-no-files-found: error
-
-      - name: Compare Linux STS dynamic stdx test behavior
-        if: failure() && matrix.platform == 'linux-x64'
-        continue-on-error: true
-        shell: bash
-        env:
-          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
-        run: |
-          set -euo pipefail
-          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
-          dynamic_sidecar="${RUNNER_TEMP}/cangjie-stdx/target/linux_x86_64_cjnative/dynamic/stdx"
-          test -d "${dynamic_sidecar}"
-          export CANGJIE_STDX_PATH="${dynamic_sidecar}"
-          python scripts/with_stdx.py --variant dynamic --print-env --
-          python scripts/safe_output_root.py --repo . --directory target --allow-missing >/dev/null
-          rm -rf target
-          python scripts/with_stdx.py --variant dynamic -- cjpm test --jobs 1
