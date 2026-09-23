@@ -154,7 +154,7 @@ jobs:
           cp -R tests/fixtures/projects/html_reference "${BASE_ROOT}/tests/fixtures/projects/html_reference"
           pushd "${BASE_ROOT}"
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
-          cjpm build --release
+          cjpm build
           BASE_START=$(python -c 'import time; print(time.perf_counter_ns())')
           target/release/bin/main generate \
             --project tests/fixtures/projects/html_reference \
