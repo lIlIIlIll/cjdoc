@@ -667,6 +667,7 @@ internal let HTML_SEARCH_SCRIPT = """
   const memberRows = [...document.querySelectorAll("[data-cjdoc-member]")];
   const memberGroups = [...document.querySelectorAll("[data-cjdoc-member-group]")];
   const memberStatus = document.querySelector("[data-cjdoc-member-filter-status]");
+  let memberTargetNotice = "";
   const applyMemberFilter = () => {
     const query = memberFilter ? memberFilter.value.trim().toLocaleLowerCase() : "";
     const origin = originFilter ? originFilter.value : "";
@@ -684,19 +685,28 @@ internal let HTML_SEARCH_SCRIPT = """
       group.hidden = !group.querySelector("[data-cjdoc-member]:not([hidden])");
     }
     if (memberStatus) {
-      const active = Boolean(query || origin);
+      const active = Boolean(query || origin || memberTargetNotice);
       if (!active) {
         memberStatus.hidden = true;
       } else {
-        memberStatus.textContent = isChinese
+        const countText = isChinese
           ? "匹配成员：" + visible
           : visible + " matching member" + (visible === 1 ? "" : "s");
+        memberStatus.textContent = memberTargetNotice
+          ? countText + memberTargetNotice
+          : countText;
         memberStatus.hidden = false;
       }
     }
   };
-  if (memberFilter) memberFilter.addEventListener("input", applyMemberFilter);
-  if (originFilter) originFilter.addEventListener("change", applyMemberFilter);
+  if (memberFilter) memberFilter.addEventListener("input", () => {
+    memberTargetNotice = "";
+    applyMemberFilter();
+  });
+  if (originFilter) originFilter.addEventListener("change", () => {
+    memberTargetNotice = "";
+    applyMemberFilter();
+  });
 
   const memberStateKey = (() => {
     const project = document.body.dataset.cjdocProject || "";
@@ -754,6 +764,9 @@ internal let HTML_SEARCH_SCRIPT = """
       if (member.hidden) {
         if (memberFilter) memberFilter.value = "";
         if (originFilter) originFilter.value = "";
+        memberTargetNotice = isChinese
+          ? "；已清除筛选以显示链接目标。"
+          : ". Filters cleared to reveal the linked member.";
         applyMemberFilter();
       }
       member.hidden = false;
@@ -772,10 +785,7 @@ internal let HTML_SEARCH_SCRIPT = """
   const isHistoryNavigation = navigationEntry && navigationEntry.type === "back_forward";
   if (isHistoryNavigation && savedMemberState) {
     requestAnimationFrame(() => {
-      if (Array.isArray(savedMemberState.scroll) && savedMemberState.scroll.length === 2 &&
-          savedMemberState.scroll.every((value) => Number.isFinite(value) && value >= 0)) {
-        window.scrollTo(savedMemberState.scroll[0], savedMemberState.scroll[1]);
-      }
+      // Keep the layout stable, but leave document scroll restoration to the browser.
       if (sidebar && Number.isFinite(savedMemberState.sidebar) && savedMemberState.sidebar >= 0) {
         sidebar.scrollTop = savedMemberState.sidebar;
       }
