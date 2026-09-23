@@ -17,7 +17,8 @@ cd "${repo_root}"
 "${python_cmd}" scripts/verify_repository_inputs.py --repo "${repo_root}" --require-tracked
 "${python_cmd}" "${repo_root}/scripts/safe_output_root.py" --repo "${repo_root}" \
     --directory "${target_root}/release/bin" --allow-missing >/dev/null
-cjpm build
+# Keep project compilation single-job; STS 1.2.0's bundled llc has crashed under concurrent CI jobs.
+cjpm build --jobs 1
 if [[ -x "${binary}" || ( -f "${binary}" && ( "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ) ) ]]; then
     :
 elif [[ -f "${binary}.exe" ]]; then
@@ -28,7 +29,7 @@ else
 fi
 "${python_cmd}" scripts/verify_repository_inputs.py --repo "${repo_root}" \
     --require-tracked --legacy-binary "${binary}"
-cjpm test
+cjpm test --jobs 1
 "${python_cmd}" -m unittest discover -s scripts -p 'test_*.py'
 
 "${python_cmd}" "${repo_root}/scripts/safe_output_root.py" --repo "${repo_root}" \

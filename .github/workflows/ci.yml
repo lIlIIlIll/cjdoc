@@ -190,6 +190,7 @@ jobs:
             done
             export PATH="${wrapper_dir}:${PATH}"
           fi
+          # Keep target generation serial; parallel CI builds lost generated plugin artifacts.
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             build_dir="${stdx_dir}/build_temp/build"
             cmake_include="${RUNNER_TEMP}/mingw-boundscheck.cmake"
@@ -239,10 +240,10 @@ jobs:
             GIT_CONFIG_COUNT=1 \
               GIT_CONFIG_KEY_0=core.protectNTFS \
               GIT_CONFIG_VALUE_0=false \
-              cmake --build "${build_dir}" --parallel
+              cmake --build "${build_dir}" --parallel 1
             cmake --install "${build_dir}" --config Release
           else
-            python build.py build --build-type release
+            python build.py build --build-type release --jobs 1
             python build.py install
           fi
           case "${RUNNER_OS}:${RUNNER_ARCH}" in
