@@ -77,6 +77,10 @@ class HtmlMemberBrowserTest {
         }
         @Expect(extensionSeen, true)
         @Expect(inheritedSeen, true)
+        match (memberContextOwner(projection, extensionMember)) {
+            case Some(contextOwner) => @Expect(contextOwner.id, ownerId)
+            case None => @Expect(true, false)
+        }
     }
 
     @TestCase
