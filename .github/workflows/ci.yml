@@ -216,7 +216,14 @@ jobs:
               -DCANGJIE_BUILD_STDLIB_WITH_COVERAGE=OFF \
               -DCANGJIE_BUILD_ARGS= \
               -DBUILD_GCC_TOOLCHAIN=
-            # FlatBuffers tracks NTFS alternate streams that need this checkout override.
+            # The pinned CHIR script probes bin/flatc, while Windows installs flatc.exe.
+            GIT_CONFIG_COUNT=1 \
+              GIT_CONFIG_KEY_0=core.protectNTFS \
+              GIT_CONFIG_VALUE_0=false \
+              cmake --build "${build_dir}" --target flatbuffers --parallel
+            test -f "${build_dir}/bin/flatc.exe"
+            cp "${build_dir}/bin/flatc.exe" "${build_dir}/bin/flatc"
+            test -f "${build_dir}/bin/flatc"
             GIT_CONFIG_COUNT=1 \
               GIT_CONFIG_KEY_0=core.protectNTFS \
               GIT_CONFIG_VALUE_0=false \
