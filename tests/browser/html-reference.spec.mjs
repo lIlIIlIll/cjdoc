@@ -256,6 +256,10 @@ test.describe('generated HTML reference', () => {
     expect(await allMemberDetails.count()).toBeGreaterThanOrEqual(20);
     const normalizeDetail = page.locator('details[data-cjdoc-member][data-member-name="normalize"]');
     const labelDetail = page.locator('details[data-cjdoc-member][data-member-name="label"]');
+    // History restoration intentionally keeps the member open. Close it explicitly
+    // before exercising the fresh one-action expansion path.
+    await expect(normalizeDetail).toHaveAttribute('open', '');
+    await normalizeDetail.locator('.member-detail-summary').click();
     await expect(normalizeDetail).not.toHaveAttribute('open', '');
     const typePageUrl = page.url();
     await normalizeDetail.locator('.member-detail-summary').click();
