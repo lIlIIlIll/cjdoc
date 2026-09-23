@@ -224,7 +224,8 @@ jobs:
             test -f "${build_dir}/bin/flatc.exe"
             # Native Python avoids MSYS resolving both names to the .exe file.
             flatc_exe="$(cygpath -w "${build_dir}/bin/flatc.exe")"
-            flatc_alias="$(cygpath -w "${build_dir}/bin/flatc")"
+            # cygpath resolves the missing executable path to the existing .exe file.
+            flatc_alias="${flatc_exe%.exe}"
             python -c 'import shutil, sys; shutil.copyfile(sys.argv[1], sys.argv[2])' \
               "${flatc_exe}" "${flatc_alias}"
             test -f "${build_dir}/bin/flatc"
