@@ -17,7 +17,7 @@
   },
   "providers": [
     {
-      "name": "ast",
+      "name": "syntax",
       "version": "1",
       "moduleId": "cjdoc:module:v1:root",
       "state": "partial",
@@ -32,7 +32,7 @@
       }
     },
     {
-      "name": "ast",
+      "name": "syntax",
       "version": "1",
       "moduleId": "cjdoc:module:v1:path:path_dep_alpha",
       "state": "partial",
@@ -47,7 +47,7 @@
       }
     },
     {
-      "name": "ast",
+      "name": "syntax",
       "version": "1",
       "moduleId": "cjdoc:module:v1:path:path_dep_beta",
       "state": "partial",
@@ -191,7 +191,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -270,7 +270,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -304,7 +304,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -377,7 +377,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -411,7 +411,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "ast"
+          "provider": "syntax"
         }
       },
       "annotations": [
@@ -490,7 +490,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "ast",
+        "provider": "syntax",
         "canonicalSignature": null
       },
       "origin": {
@@ -653,6 +653,25 @@
       "severity": "warning",
       "code": "CJDOC3038",
       "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/root.cj",
+        "start": {
+          "line": 7,
+          "column": 1,
+          "byteOffset": 88
+        },
+        "end": {
+          "line": 7,
+          "column": 31,
+          "byteOffset": 118
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::path_dependencies_fixture::function:rootApi#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3040",
+      "message": "trivial-summary: description repeats declaration 'rootApi'",
       "source": {
         "path": "src/root.cj",
         "start": {
