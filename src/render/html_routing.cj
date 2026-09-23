@@ -211,7 +211,9 @@ internal func visibleExtensionContainerIds(documentation: DocumentationSet,
     for (member in documentation.declarations) {
         if (!isVisibleForAudience(member, audience)) { continue }
         match (member.ownerId) {
-            case Some(ownerId) => let _ = ownersWithVisibleMembers.add(ownerId)
+            case Some(ownerId) => {
+                let _ = ownersWithVisibleMembers.add(ownerId)
+            }
             case None => ()
         }
     }
