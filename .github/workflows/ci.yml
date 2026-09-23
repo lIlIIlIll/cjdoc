@@ -28,7 +28,7 @@ jobs:
             sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.2.0.tar.gz&objectKey=6ab1e26eece1f87ff5befa73"
             sdk_sha256: "8c5fd944cd9cc51ee63d4a240e3ecc4f540345dae1468e8b47c927ecf2ba998f"
           - platform: windows-x64
-            runner: windows-2025
+            runner: windows-2022
             sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-windows-x64-1.2.0.zip&objectKey=6ab1eafae4bd101f57762f5e"
             sdk_sha256: "7bd5088ad56fb03c1214e73ea076de5ac08580cc419a8cbd46a524ee1ca250bf"
           - platform: macos-arm64
@@ -135,9 +135,26 @@ jobs:
           git -C "${stdx_dir}" checkout --detach FETCH_HEAD
           test "$(git -C "${stdx_dir}" rev-parse HEAD)" = "${CANGJIE_STDX_SOURCE_REV}"
           cd "${stdx_dir}"
-          cjpm build
-          sidecar="${stdx_dir}/target/release/stdx"
-          echo "CANGJIE_STDX_PATH=${sidecar}" >> "${GITHUB_ENV}"
+          if ! cjpm build; then
+            build_log="${stdx_dir}/build-script-cache/release/stdx/bin/script-log"
+            if [[ -f "${build_log}" ]]; then
+              tail -n 200 "${build_log}"
+            else
+              echo "stdx build log is missing: ${build_log}" >&2
+            fi
+            exit 1
+          fi
+          case "${RUNNER_OS}:${RUNNER_ARCH}" in
+            Linux:X64) stdx_target=linux_x86_64 ;;
+            macOS:ARM64) stdx_target=darwin_aarch64 ;;
+            Windows:X64) stdx_target=windows_x86_64 ;;
+            *)
+              echo "Unsupported stdx CI target: ${RUNNER_OS}/${RUNNER_ARCH}" >&2
+              exit 1
+              ;;
+          esac
+          sidecar="${stdx_dir}/target/${stdx_target}_cjnative/static/stdx"
+          echo "CJDOC_STDX_PATH=${sidecar}" >> "${GITHUB_ENV}"
 
       - name: Verify built STS stdx sidecar
         shell: bash
@@ -145,6 +162,7 @@ jobs:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
         run: |
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           python scripts/with_stdx.py --variant static --print-env --
 
       - name: Run v9 local acceptance gate
@@ -153,6 +171,7 @@ jobs:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
         run: |
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           cjc -v
           cjpm -v
           python scripts/with_stdx.py --variant static -- scripts/check.sh
