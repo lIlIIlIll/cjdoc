@@ -86,7 +86,7 @@ jobs:
           update: true
           install: mingw-w64-x86_64-openssl
 
-      - name: Set Windows STS OpenSSL and MinGW runtime paths
+      - name: Set Windows STS stdx OpenSSL search path
         if: matrix.platform == 'windows-x64'
         shell: pwsh
         env:
@@ -95,7 +95,6 @@ jobs:
           $opensslRoot = Join-Path $env:MSYS2_LOCATION 'mingw64'
           "OPENSSL_ROOT_DIR=$opensslRoot" >> $env:GITHUB_ENV
           "CMAKE_PREFIX_PATH=$opensslRoot" >> $env:GITHUB_ENV
-          (Join-Path $opensslRoot 'bin') >> $env:GITHUB_PATH
 
       - name: Add macOS LLVM archiver to PATH
         if: runner.os == 'macOS'
@@ -150,6 +149,12 @@ jobs:
             xattr -dr com.apple.quarantine "${CANGJIE_SDK_ROOT}" || true
           fi
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            # flatc is built with this MinGW toolchain, so its runtime DLLs must win lookup.
+            mingw_runtime_bin="$(cygpath -u 'C:/mingw64/bin')"
+            test -d "${mingw_runtime_bin}"
+            export PATH="${mingw_runtime_bin}:${PATH}"
+          fi
           stdx_dir="${RUNNER_TEMP}/cangjie-stdx"
           compiler_schema_dir="${RUNNER_TEMP}/cangjie_compiler"
           git init "${compiler_schema_dir}"
@@ -230,6 +235,7 @@ jobs:
             python -c 'import shutil, sys; shutil.copyfile(sys.argv[1], sys.argv[2])' \
               "${flatc_exe}" "${flatc_alias}"
             test -f "${build_dir}/bin/flatc"
+            "${flatc_alias}" --version
             GIT_CONFIG_COUNT=1 \
               GIT_CONFIG_KEY_0=core.protectNTFS \
               GIT_CONFIG_VALUE_0=false \
