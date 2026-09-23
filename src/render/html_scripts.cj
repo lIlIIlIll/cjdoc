@@ -436,7 +436,7 @@ internal let HTML_SEARCH_SCRIPT = """
     const allHeadings = [...content.querySelectorAll("h1, h2, h3, h4")];
     const semanticHeadings = allHeadings.filter((heading) => {
       const role = heading.dataset.cjdocTocRole;
-      return role === "api-root" || role === "api" || role === "member";
+      return role === "api-root" || role === "api" || role === "member" || role === "group";
     });
     const semanticMode = false;
     const headings = allHeadings.filter((heading) => {
@@ -543,7 +543,7 @@ internal let HTML_SEARCH_SCRIPT = """
       let currentApi = null;
       for (const heading of headings) {
         const role = heading.dataset.cjdocTocRole;
-        if (role === "api-root" || role === "api") {
+        if (role === "api-root" || role === "api" || role === "group") {
           currentApi = createApiNode(heading, apiNodes.length);
           tocList.append(currentApi.item);
         } else if (role === "member" && currentApi) {

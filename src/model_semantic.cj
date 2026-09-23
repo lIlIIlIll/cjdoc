@@ -166,6 +166,8 @@ class DocTag {
     // Populated for @see tags by the declaration-index resolution pass.
     public var referenceState: String = "unresolved"
     public var targetSymbolId: ?String = None
+    // Verbatim trailing `{...}` directive block for @example tags; empty when absent.
+    public var directives: String = ""
 
     public init(name: String, subject: String, description: String) {
         this.name = name

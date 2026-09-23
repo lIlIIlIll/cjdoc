@@ -108,7 +108,7 @@ class SourcePipelineSuite1 {
             *
             * @example Basic addition
             *
-            * ```cj
+            * ```cangjie
             * let result = add(1, 2)
             * @param insideCode remains code
             *
@@ -118,22 +118,33 @@ class SourcePipelineSuite1 {
             *
             * @example Invalid input
             *
-            * ~~~cj
+            * ~~~cangjie
             * add(-1, 2)
             * ~~~
+            *
+            * @example Nested fence
+            *
+            * ````cangjie
+            * ```cangjie
+            * let nested = add(1, 2)
+            * @param nestedCode remains code
+            * ```
+            * ````
             * @param left left value
             * @return sum
             */
             """)
         @Expect(comment.summaryMarkdown, "Summary.")
         @Expect(comment.descriptionMarkdown, "")
-        @Expect(comment.examples.size, 2)
+        @Expect(comment.examples.size, 3)
         @Expect(comment.examples[0].subject, "Basic addition")
         @Expect(comment.examples[0].description.contains("@param insideCode remains code"), true)
         @Expect(comment.examples[0].description.contains("\n\n"), true)
         @Expect(comment.examples[0].description.contains("Explain the input above."), true)
         @Expect(comment.examples[1].subject, "Invalid input")
         @Expect(comment.examples[1].description.contains("add(-1, 2)"), true)
+        @Expect(comment.examples[2].subject, "Nested fence")
+        @Expect(comment.examples[2].description.contains("@param nestedCode remains code"), true)
         @Expect(comment.params.size, 1)
         @Expect(comment.params[0].subject, "left")
         @Expect(comment.returns.isSome(), true)
@@ -187,7 +198,7 @@ class SourcePipelineSuite1 {
             * Summary.
             *
             * - list item
-            *   ```cj
+            *   ```cangjie
             *   @param nested hidden in list-item fence
             *
             *   @throws Nested hidden after a blank code line

@@ -9,6 +9,16 @@ internal func escapeHtml(value: String): String {
     out.toString()
 }
 
+public func renderStandaloneMarkdownHtml(node: MarkdownNode): String {
+    let context = HtmlMarkdownContext(2)
+    collectMarkdownHeadings(node, "standalone", HashMap<String, Int64>(), context)
+    let out = RenderTextBuffer()
+    appendMarkdownNodeHtml(out, node, HashMap<String, String>(), "", context)
+    out.toString()
+}
+public func escapeStandaloneHtml(value: String): String {
+    escapeHtml(value)
+}
 internal func assetMediaExtension(mediaType: String): String {
     match (mediaType) {
         case "image/png" => "png"
@@ -152,10 +162,11 @@ internal func isExampleFenceClosing(line: String, fence: ExampleFenceOpening): B
 }
 
 internal func appendExampleCodeHtml(out: RenderTextBuffer, code: String, language: String): Unit {
+    let normalizedLanguage = if (language == "cj") { "cangjie" } else { language }
     out.append("<pre><code")
-    if (!language.isEmpty()) {
-        out.append(" class=\"language-${htmlStableSlug(language)}\"")
-        out.append(" data-language=\"${escapeHtml(language)}\"")
+    if (!normalizedLanguage.isEmpty()) {
+        out.append(" class=\"language-${htmlStableSlug(normalizedLanguage)}\"")
+        out.append(" data-language=\"${escapeHtml(normalizedLanguage)}\"")
     }
     out.append(">"); appendHtmlEscapedValue(out, code); out.append("</code></pre>\n")
 }
@@ -250,16 +261,16 @@ internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: D
 }
 
 internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: DocComment,
-    locale: String): Unit {
+    locale: String, headingLevel!: Int64 = 3): Unit {
     var hasExamples = false
     for (tag in comment.tags) { if (tag.name == "example") { hasExamples = true; break } }
     if (!hasExamples) { return }
-    out.append("<h3>${label(locale, "Examples", "示例")}</h3><div class=\"example-list\">\n")
+    out.append("<h${headingLevel}>${label(locale, "Examples", "示例")}</h${headingLevel}><div class=\"example-list\">\n")
     for (tag in comment.tags) {
         if (tag.name != "example") { continue }
         out.append("<div class=\"example-block\">")
         if (!tag.subject.isEmpty()) {
-            out.append("<h4 class=\"example-title\">${escapeHtml(tag.subject)}</h4>")
+            out.append("<h${min(6, headingLevel + 1)} class=\"example-title\">${escapeHtml(tag.subject)}</h${min(6, headingLevel + 1)}>")
         }
         if (trimExampleBlankLines(tag.description).isEmpty()) {
             let emptyLabel = label(locale, "No example content.", "示例内容为空。")
@@ -528,16 +539,4 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
         }
         case _ => out.append(escapeHtml(markdownNodeText(node)))
     }
-}
-public func renderStandaloneMarkdownHtml(source: MarkdownNode, allowExternalLinks!: Bool = false): String {
-    let parsed = source
-    let context = HtmlMarkdownContext(1, allowExternalLinks: allowExternalLinks)
-    collectMarkdownHeadings(parsed, "concept", HashMap<String, Int64>(), context)
-    let out = RenderTextBuffer()
-    appendMarkdownNodeHtml(out, parsed, HashMap<String, String>(), "", context)
-    out.toString()
-}
-
-public func escapeStandaloneHtml(value: String): String {
-    escapeHtml(value)
 }

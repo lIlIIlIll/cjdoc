@@ -38,7 +38,7 @@ public func fenced(): Unit {}
  * 3) first
  * 4) [x] done
  *
- * ~~~~cj {#sample}
+ * ~~~~cangjie {#sample}
  * let value = 1
  * ~~~~
  *

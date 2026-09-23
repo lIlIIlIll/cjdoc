@@ -131,8 +131,10 @@ class ReleaseSecurityTest(ReleaseToolsTestSupport, unittest.TestCase):
         package = workflow.split("\n  package:\n", 1)[1].split("\n  publish:\n", 1)[0]
         publish = workflow.split("\n  publish:\n", 1)[1]
         self.assertIn(
-            "if: ${{ vars.CANGJIE_DAILY_LINUX_X64_URL != '' && "
-            "vars.CANGJIE_DAILY_LINUX_X64_SHA256 != '' }}",
+            "if: ${{ vars.CANGJIE_DAILY_1_3_LINUX_X64_URL != '' && "
+            "vars.CANGJIE_DAILY_1_3_LINUX_X64_SHA256 != '' && "
+            "vars.CANGJIE_DAILY_STDX_1_3_LINUX_X64_URL != '' && "
+            "vars.CANGJIE_DAILY_STDX_1_3_LINUX_X64_SHA256 != '' }}",
             daily,
         )
         self.assertIn("needs.daily-acceptance.result == 'success'", package)

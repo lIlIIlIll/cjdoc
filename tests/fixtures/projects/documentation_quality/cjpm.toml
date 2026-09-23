@@ -1,0 +1,4 @@
+[package]
+name = "quality_fixture"
+version = "1.0.0"
+output-type = "static"

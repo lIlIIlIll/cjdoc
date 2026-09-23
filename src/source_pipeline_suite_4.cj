@@ -55,12 +55,57 @@ class SourcePipelineSuite4 {
     }
 
     @TestCase
-    func publicEngineFailsClosedWithoutParserWorker(): Unit {
+    func publicEngineUsesSyntaxSourceByDefault(): Unit {
         let documentation = DocumentationEngine().generate(GenerationRequest(
             FIXTURES + "basic", lintProfile: "off", audience: "all"))
-        @Expect(documentation.status, "partial")
-        @Expect(documentation.declarations.size, 0)
-        @Expect(containsDiagnostic(documentation, "CJDOC1020"), true)
+        @Expect(documentation.status, "complete")
+        @Expect(documentation.declarations.size, 25)
+        @Expect(containsDiagnostic(documentation, "CJDOC1020"), false)
+    }
+    @TestCase
+    func recoversUnsupportedFunctionBodySyntax(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            Directory.create(temporary.join("src"), recursive: true)
+            File.writeTo(temporary.join("cjpm.toml"), """
+                [package]
+                name = "syntax_recovery"
+                cjc-version = "1.3.0"
+                output-type = "static"
+                """.toArray())
+            File.writeTo(temporary.join("src/recovery.cj"), "package syntax_recovery\npublic func byteBacked(): String { String.fromUtf8(Array<Byte>(4, repeat: b'x')) }\n".toArray())
+            let documentation = DocumentationEngine().generate(GenerationRequest(
+                temporary.toString(), lintProfile: "off", audience: "all"))
+            @Expect(documentation.status, "complete")
+            @Expect(declarationNamed(documentation, "byteBacked").kind, "function")
+            @Expect(containsDiagnostic(documentation, "CJDOC1011"), false)
+        } finally {
+            let _ = removeIfExists(temporary, recursive: true)
+        }
+    }
+
+    @TestCase
+    func preservesUtf8PublicSourceColumns(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            Directory.create(temporary.join("src"), recursive: true)
+            File.writeTo(temporary.join("cjpm.toml"), """
+                [package]
+                name = "unicode_ranges"
+                cjc-version = "1.3.0"
+                output-type = "static"
+                """.toArray())
+            File.writeTo(temporary.join("src/ranges.cj"),
+                "package unicode_ranges\n/* 中文 */ public func 解析(): Unit {}\n".toArray())
+            let documentation = DocumentationEngine().generate(GenerationRequest(
+                temporary.toString(), lintProfile: "off", audience: "all"))
+            let declaration = declarationNamed(documentation, "解析")
+            @Expect(documentation.status, "complete")
+            @Expect(declaration.source.start.column, 14)
+            @Expect(declaration.source.start.byteOffset > 0, true)
+        } finally {
+            let _ = removeIfExists(temporary, recursive: true)
+        }
     }
 
     @TestCase

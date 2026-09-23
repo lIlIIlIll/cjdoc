@@ -189,13 +189,15 @@ let MAX_CAPTURED_SOURCE_LINES: Int64 = 1000000
 class CapturedSourceIndex {
     public let byteLength: Int64
     public let available: Bool
+    private let sourceBytes: Array<UInt8>
     private let lineStarts = ArrayList<Int64>()
 
     public init(source: String, maxLines!: Int64 = MAX_CAPTURED_SOURCE_LINES) {
         if (maxLines < 1) {
             throw IllegalArgumentException("captured source line limit must be positive")
         }
-        let bytes = source.toArray()
+        this.sourceBytes = source.toArray()
+        let bytes = this.sourceBytes
         this.byteLength = bytes.size
         lineStarts.add(0)
         var withinLimit = true
@@ -218,14 +220,50 @@ class CapturedSourceIndex {
         let lineIndex = line - 1
         if (lineIndex >= lineStarts.size) { return None }
         let start = lineStarts[lineIndex]
-        let end = if (lineIndex + 1 < lineStarts.size) {
+        let lineEnd = if (lineIndex + 1 < lineStarts.size) {
             lineStarts[lineIndex + 1] - 1
         } else {
             byteLength
         }
-        let delta = column - 1
-        if (delta > end - start) { return None }
-        Some(start + delta)
+        let offset = start + column - 1
+        if (offset > lineEnd) { return None }
+        Some(offset)
+    }
+
+    public func codepointByteOffset(line: Int64, column: Int64): ?Int64 {
+        if (!available || line < 1 || column < 1) { return None }
+        let lineIndex = line - 1
+        if (lineIndex >= lineStarts.size) { return None }
+        let start = lineStarts[lineIndex]
+        let lineEnd = if (lineIndex + 1 < lineStarts.size) {
+            lineStarts[lineIndex + 1] - 1
+        } else {
+            byteLength
+        }
+        var cursor = start
+        var currentColumn: Int64 = 1
+        while (cursor < lineEnd && currentColumn < column) {
+            let value = sourceBytes[cursor]
+            cursor++
+            if (!(value >= 128u8 && value <= 191u8)) { currentColumn++ }
+        }
+        if (currentColumn != column) { return None }
+        Some(cursor)
+    }
+
+
+    public func byteColumn(line: Int64, byteOffset: Int64): ?Int64 {
+        if (!available || line < 1 || byteOffset < 0) { return None }
+        let lineIndex = line - 1
+        if (lineIndex >= lineStarts.size) { return None }
+        let start = lineStarts[lineIndex]
+        let lineEnd = if (lineIndex + 1 < lineStarts.size) {
+            lineStarts[lineIndex + 1] - 1
+        } else {
+            byteLength
+        }
+        if (byteOffset < start || byteOffset > lineEnd) { return None }
+        Some(byteOffset - start + 1)
     }
 
     public func positionMatches(line: Int64, column: Int64, byteOffset: Int64): Bool {
@@ -244,14 +282,22 @@ class SourceFileOrigin {
     public let actualRoot: String
     public let logicalPrefix: String
     public let capturedSourceIndex: ?CapturedSourceIndex
+    public let packageName: String
+    public let imports: Array<String>
+    public let capturedSource: String
 
     public init(logicalPath: String, actualPath: String, actualRoot: String,
-        logicalPrefix: String, capturedSourceIndex!: ?CapturedSourceIndex = None) {
+        logicalPrefix: String, capturedSourceIndex!: ?CapturedSourceIndex = None,
+        packageName!: String = "", imports!: Array<String> = [],
+        capturedSource!: String = "") {
         this.logicalPath = logicalPath
         this.actualPath = actualPath
         this.actualRoot = actualRoot
         this.logicalPrefix = logicalPrefix
         this.capturedSourceIndex = capturedSourceIndex
+        this.packageName = packageName
+        this.imports = imports
+        this.capturedSource = capturedSource
     }
 }
 
@@ -305,6 +351,8 @@ class MacroInvocation {
 class SourceSnapshot {
     public let projectName: String
     public let modules = ArrayList<SourceModule>()
+    public var cfgProfile = CfgProfile()
+    public var manifestText: ?String = None
     public let packages = ArrayList<SourcePackage>()
     public let declarations = ArrayList<SourceDeclaration>()
     public let reExports = ArrayList<SourceReExport>()
