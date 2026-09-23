@@ -109,14 +109,18 @@ def inventory_entry(digest, kind: bytes, relative: str,
         digest.update(str(size).encode("ascii") + b"\0" + content_digest.digest())
 
 
-def committed_inventory_digest(repo: Path, commit: str, relative: Path,
-                               expected_tree: str) -> str:
+def committed_inventory_digest(
+    repo: Path, commit: str, relative: Path, expected_tree: str, *,
+    exclude: Path | None = None,
+) -> str:
     raw = git(
         repo, "ls-tree", "-r", "-t", "-z", commit, "--", relative.as_posix(),
         text=False,
     )
     assert isinstance(raw, bytes)
     prefix = relative.as_posix() + "/" if relative != Path(".") else ""
+    excluded = exclude.as_posix() if exclude is not None else None
+    excluded_prefix = f"{excluded}/" if excluded is not None else None
     digest = hashlib.sha256()
     found_root = relative == Path(".")
     for record in (item for item in raw.split(b"\0") if item):
@@ -143,6 +147,11 @@ def committed_inventory_digest(repo: Path, commit: str, relative: Path,
         if prefix and not name.startswith(prefix):
             raise ValueError("source_edges committed tree escaped its subtree")
         local_name = name[len(prefix):] if prefix else name
+        if excluded is not None and (
+            local_name == excluded
+            or (excluded_prefix is not None and local_name.startswith(excluded_prefix))
+        ):
+            continue
         if not local_name or local_name.startswith("/"):
             raise ValueError("source_edges committed tree contains an invalid path")
         if kind == b"tree" and mode == b"040000":
@@ -163,13 +172,19 @@ def committed_inventory_digest(repo: Path, commit: str, relative: Path,
     return digest.hexdigest()
 
 
-def working_inventory_digest(project: Path, *, repository_root: Path) -> str:
+def working_inventory_digest(
+    project: Path, *, repository_root: Path, exclude: Path | None = None
+) -> str:
     if project.is_symlink() or not project.is_dir():
-        raise ValueError("source_edges override must be a regular directory")
+        raise ValueError("fixture inventory root must be a regular directory")
     digest = hashlib.sha256()
     for path in sorted(project.rglob("*"), key=lambda item: item.relative_to(project).as_posix()):
         relative_path = path.relative_to(project)
         if project == repository_root and relative_path.parts[0] == ".git":
+            continue
+        if exclude is not None and (
+            relative_path == exclude or exclude in relative_path.parents
+        ):
             continue
         relative = relative_path.as_posix()
         mode = path.lstat().st_mode
@@ -185,6 +200,35 @@ def working_inventory_digest(project: Path, *, repository_root: Path) -> str:
                 f"source_edges override contains a symlink or special file: {relative}"
             )
     return digest.hexdigest()
+
+
+def require_committed_fixture_inventory(
+    repo: Path,
+    commit: str,
+    fixtures_tree: str,
+    *,
+    exclude_source_edges: bool,
+    context: str,
+) -> None:
+    inventory_exclude = Path("source_edges") if exclude_source_edges else None
+    status_exclude = SOURCE_EDGES_RELATIVE if exclude_source_edges else None
+    committed = committed_inventory_digest(
+        repo, commit, FIXTURE_RELATIVE, fixtures_tree, exclude=inventory_exclude
+    )
+    try:
+        working = working_inventory_digest(
+            repo / FIXTURE_RELATIVE,
+            repository_root=repo,
+            exclude=inventory_exclude,
+        )
+    except ValueError as error:
+        status = scoped_status(repo, FIXTURE_RELATIVE, exclude=status_exclude)
+        raise ValueError(f"{context}:\n{status or error}") from error
+    if working == committed:
+        return
+    status = scoped_status(repo, FIXTURE_RELATIVE, exclude=status_exclude)
+    detail = status or "working-tree fixture bytes or modes differ from committed tree"
+    raise ValueError(f"{context}:\n{detail}")
 
 
 def extract_git_tree(repo: Path, commit: str, relative: Path, destination: Path) -> None:
@@ -264,10 +308,13 @@ def prepare(
         raise ValueError(f"fixture snapshot destination already exists: {destination}")
     commit = git_object(repo, "HEAD^{commit}")
     fixtures_tree = git_object(repo, f"{commit}:{FIXTURE_RELATIVE.as_posix()}")
-    excluded = SOURCE_EDGES_RELATIVE if override is not None else None
-    status = scoped_status(repo, FIXTURE_RELATIVE, exclude=excluded)
-    if status:
-        raise ValueError("refusing mixed or dirty repository fixture inputs:\n" + status)
+    require_committed_fixture_inventory(
+        repo,
+        commit,
+        fixtures_tree,
+        exclude_source_edges=override is not None,
+        context="refusing mixed or dirty repository fixture inputs",
+    )
     if override is None and (expected_commit is not None or expected_tree is not None):
         raise ValueError("source_edges identity was provided without an override")
     if override is not None and (not expected_commit or not expected_tree):
@@ -341,10 +388,13 @@ def verify(receipt_path: Path) -> dict[str, Any]:
     if git_object(repo, "HEAD^{commit}") != commit or \
             git_object(repo, f"{commit}:{FIXTURE_RELATIVE.as_posix()}") != fixtures_tree:
         raise ValueError("repository fixture identity changed during golden generation")
-    excluded = SOURCE_EDGES_RELATIVE if override is not None else None
-    status = scoped_status(repo, FIXTURE_RELATIVE, exclude=excluded)
-    if status:
-        raise ValueError("repository fixtures changed during golden generation:\n" + status)
+    require_committed_fixture_inventory(
+        repo,
+        commit,
+        fixtures_tree,
+        exclude_source_edges=override is not None,
+        context="repository fixtures changed during golden generation",
+    )
     if override is not None:
         if not isinstance(override, dict):
             raise ValueError("invalid source_edges override receipt")

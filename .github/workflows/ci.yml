@@ -277,6 +277,15 @@ jobs:
           stdx_build_bin="$(cygpath -u "${build_dir}/bin")"
           stdx_library_bin="$(cygpath -u "${build_dir}/lib/windows_x86_64_cjnative")"
           export PATH="${mingw_runtime_bin}:${stdx_build_bin}:${stdx_library_bin}:${PATH}"
+          batch_files=("${build_dir}"/src/CMakeFiles/stdx.aspect_cj.plugins.collect_aspects.a-*.bat)
+          if [[ -e "${batch_files[0]}" ]]; then
+            for batch in "${batch_files[@]}"; do
+              printf '\n--- generated compile batch: %s ---\n' "${batch}"
+              sed -n '1,12p' "${batch}"
+            done
+          else
+            echo "generated CollectAspects batch file is missing" >&2
+          fi
           cmake --build "${build_dir}" --target cangjieCJNATIVECollectAspects --verbose --parallel 1
 
       - name: Verify built STS stdx sidecar
@@ -336,3 +345,20 @@ jobs:
           name: sts-golden-candidates-macos-arm64
           path: tests/fixtures/golden-v10/*.docs.json
           if-no-files-found: error
+
+      - name: Compare Linux STS dynamic stdx test behavior
+        if: failure() && matrix.platform == 'linux-x64'
+        continue-on-error: true
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          set -euo pipefail
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          dynamic_sidecar="${RUNNER_TEMP}/cangjie-stdx/target/linux_x86_64_cjnative/dynamic/stdx"
+          test -d "${dynamic_sidecar}"
+          export CANGJIE_STDX_PATH="${dynamic_sidecar}"
+          python scripts/with_stdx.py --variant dynamic --print-env --
+          python scripts/safe_output_root.py --repo . --directory target --allow-missing >/dev/null
+          rm -rf target
+          python scripts/with_stdx.py --variant dynamic -- cjpm test --jobs 1
