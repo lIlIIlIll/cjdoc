@@ -188,37 +188,60 @@ internal func findSymbol(index: HashMap<String, SymbolDoc>, id: String): ?Symbol
     index.get(id)
 }
 
-internal func extensionContainerVisibleForAudience(extension: SymbolDoc,
-    documentation: DocumentationSet, index: HashMap<String, SymbolDoc>): Bool {
-    if (extension.kind != "extend") { return false }
-    var targetVisible = false
-    for (relation in extension.symbolRelationships) {
-        if (relation.kind != "extensionTarget" || relation.state != "resolved") { continue }
-        match (relation.targetSymbolId) {
-            case Some(targetId) => match (index.get(targetId)) {
-                case Some(target) =>
-                    if (isVisibleForAudience(target, documentation.configuration.audience)) {
-                        targetVisible = true
-                        break
-                    }
-                case None => ()
-            }
+private func visibleThroughOwners(symbol: SymbolDoc, audience: String,
+    index: HashMap<String, SymbolDoc>): Bool {
+    var current: ?SymbolDoc = Some(symbol)
+    let visited = HashSet<String>()
+    while (current.isSome()) {
+        let value = current.getOrThrow()
+        if (!visited.add(value.id)) { return false }
+        if (!isVisibleForAudience(value, audience)) { return false }
+        current = match (value.ownerId) {
+            case Some(ownerId) => index.get(ownerId)
+            case None => None
+        }
+    }
+    true
+}
+
+internal func visibleExtensionContainerIds(documentation: DocumentationSet,
+    index: HashMap<String, SymbolDoc>): HashSet<String> {
+    let audience = documentation.configuration.audience
+    let ownersWithVisibleMembers = HashSet<String>()
+    for (member in documentation.declarations) {
+        if (!isVisibleForAudience(member, audience)) { continue }
+        match (member.ownerId) {
+            case Some(ownerId) => let _ = ownersWithVisibleMembers.add(ownerId)
             case None => ()
         }
     }
-    if (!targetVisible) { return false }
-    for (member in documentation.declarations) {
-        if (member.ownerId == Some(extension.id) &&
-            isVisibleForAudience(member, documentation.configuration.audience)) {
-            return true
+    let result = HashSet<String>()
+    for (extension in documentation.declarations) {
+        if (extension.kind != "extend" || !ownersWithVisibleMembers.contains(extension.id)) {
+            continue
+        }
+        for (relation in extension.symbolRelationships) {
+            if (relation.kind != "extensionTarget" || relation.state != "resolved") { continue }
+            match (relation.targetSymbolId) {
+                case Some(targetId) => match (index.get(targetId)) {
+                    case Some(target) =>
+                        if (visibleThroughOwners(target, audience, index)) {
+                            let _ = result.add(extension.id)
+                            break
+                        }
+                    case None => ()
+                }
+                case None => ()
+            }
         }
     }
-    false
+    result
 }
 
 internal func renderabilityIndex(documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>): HashMap<String, Bool> {
     let results = HashMap<String, Bool>()
+    let visibleExtensionContainers = visibleExtensionContainerIds(documentation, index)
     for (root in documentation.declarations) {
         if (results.contains(root.id)) { continue }
         let path = ArrayList<SymbolDoc>()
@@ -234,7 +257,7 @@ internal func renderabilityIndex(documentation: DocumentationSet,
             }
             path.add(symbol)
             if (!isVisibleForAudience(symbol, documentation.configuration.audience) &&
-                !extensionContainerVisibleForAudience(symbol, documentation, index)) {
+                !visibleExtensionContainers.contains(symbol.id)) {
                 inherited = false
                 break
             }
@@ -249,7 +272,7 @@ internal func renderabilityIndex(documentation: DocumentationSet,
             let symbol = path[position]
             inherited = inherited &&
                 (isVisibleForAudience(symbol, documentation.configuration.audience) ||
-                    extensionContainerVisibleForAudience(symbol, documentation, index))
+                    visibleExtensionContainers.contains(symbol.id))
             results[symbol.id] = inherited
         }
     }
