@@ -315,7 +315,7 @@ internal func codecRendererFixture(): DocumentationSet {
     let table = MarkdownNode("table", MarkdownNodeMetadata.forTable(["center"]),
         children: [header])
     let code = MarkdownNode("code_block", MarkdownNodeMetadata.forCodeBlock("fenced", Some("~"),
-        4, "cj {.numberLines}", "cj", "{.numberLines}"), literal: "main()")
+        4, "cangjie {.numberLines}", "cangjie", "{.numberLines}"), literal: "main()")
     let markdown = MarkdownNode("document", children: [heading, link, list, table, code])
     let returnType = TypeRef("primitive", "Unit", SemanticType("resolved",
         canonical: Some("std.core.Unit"), provider: Some("ast")))

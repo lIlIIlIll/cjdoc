@@ -18,7 +18,43 @@ internal let MAX_SOURCE_DEPENDENCY_EDGES: Int64 = 16384
 internal let MAX_SOURCE_OWNER_DEPTH: Int64 = 128
 internal let MAX_SOURCE_AUXILIARY_BYTES: Int64 = 512 * 1024 * 1024
 internal let MAX_SOURCE_AUXILIARY_WORK: Int64 = 1024 * 1024 * 1024
+internal func sourceLexerTokens(source: String): Tokens {
+    cangjieLex(source)
+}
+internal let MAX_SOURCE_BINARY_DEPTH: Int64 = 64
+internal func sourceBinaryOperator(value: String): Bool {
+    match (value) {
+        case "+" | "-" | "*" | "/" | "%" | "&&" | "||" => true
+        case _ => false
+    }
+}
 
+// Guard only the operator/operand shape that can create a deeply nested
+// expression. Punctuation in enum cases and generic type arguments is not
+// treated as binary syntax.
+internal func hasDeepSourceBinaryExpression(source: String): Bool {
+    let tokens = try { sourceLexerTokens(source) } catch (_: Exception) { return false }
+    var expectingOperand = true
+    var depth: Int64 = 0
+    for (token in tokens) {
+        if (token.kind == COMMENT || token.kind == NL || token.value.isEmpty()) { continue }
+        if (sourceBinaryOperator(token.value)) {
+            if (!expectingOperand) {
+                depth++
+                if (depth >= MAX_SOURCE_BINARY_DEPTH) { return true }
+            }
+            expectingOperand = true
+            continue
+        }
+        if (expectingOperand) {
+            expectingOperand = false
+        } else {
+            depth = 0
+            expectingOperand = token.value == "(" || token.value == "[" || token.value == "{"
+        }
+    }
+    false
+}
 internal class SourceAuxiliaryBudget {
     private let maxBytes: Int64
     private let maxWork: Int64
@@ -125,22 +161,7 @@ internal func rangeContains(outer: SourceLocation, inner: SourceLocation): Bool 
     return startsBefore && endsAfter
 }
 
-internal func declarationVisibility(decl: Decl): String {
-    for (modifier in decl.modifiers) {
-        match (modifier.keyword.value) {
-            case "public" => return "public"
-            case "protected" => return "protected"
-            case "private" => return "private"
-            case "internal" => return "internal"
-            case _ => ()
-        }
-    }
-    return "internal"
-}
 
-internal func normalizedTokens(node: Node): String {
-    return node.toTokens().toString().trimAscii()
-}
 
 internal func sourceApiSignatureTokens(signature: String): Array<String> {
     let result = ArrayList<String>()
@@ -177,14 +198,34 @@ internal class IndexedSourceBuffer {
     func byteOffset(line: Int64, column: Int64): Int64 {
         if (line < 1 || column < 1 || line > lineStarts.size) { return -1 }
         let lineIndex = line - 1
-        let result = lineStarts[lineIndex] + column - 1
+        let start = lineStarts[lineIndex]
         let lineEnd = if (lineIndex + 1 < lineStarts.size) {
-            lineStarts[lineIndex + 1]
+            lineStarts[lineIndex + 1] - 1
         } else {
             bytes.size
         }
-        if (result < lineStarts[lineIndex] || result > lineEnd || result > bytes.size) { return -1 }
-        result
+        var cursor = start
+        var currentColumn: Int64 = 1
+        while (cursor < lineEnd && currentColumn < column) {
+            let value = bytes[cursor]
+            cursor++
+            if (!(value >= 128u8 && value <= 191u8)) { currentColumn++ }
+        }
+        if (currentColumn != column) { return -1 }
+        cursor
+    }
+    func byteOffsetFromLexerPosition(line: Int64, column: Int64): Int64 {
+        if (line < 1 || column < 1 || line > lineStarts.size) { return -1 }
+        let lineIndex = line - 1
+        let start = lineStarts[lineIndex]
+        let lineEnd = if (lineIndex + 1 < lineStarts.size) {
+            lineStarts[lineIndex + 1] - 1
+        } else {
+            bytes.size
+        }
+        let offset = start + column - 1
+        if (offset < start || offset > lineEnd) { return -1 }
+        offset
     }
 
     func position(offset: Int64): (Int64, Int64) {
@@ -199,7 +240,14 @@ internal class IndexedSourceBuffer {
                 high = middle
             }
         }
-        (low + 1, offset - lineStarts[low] + 1)
+        var cursor = lineStarts[low]
+        var column: Int64 = 1
+        while (cursor < offset) {
+            let value = bytes[cursor]
+            cursor++
+            if (!(value >= 128u8 && value <= 191u8)) { column++ }
+        }
+        (low + 1, column)
     }
 
     func slice(location: SourceLocation): String {
@@ -231,7 +279,8 @@ internal func headerEndOffset(source: String): Int64 {
             case RSQUARE => squareDepth--
             case LCURL =>
                 if (roundDepth == 0 && squareDepth == 0) {
-                    return IndexedSourceBuffer(source).byteOffset(Int64(token.pos.line), Int64(token.pos.column))
+                    return IndexedSourceBuffer(source).byteOffsetFromLexerPosition(
+                        Int64(token.pos.line), Int64(token.pos.column))
                 }
             case _ => ()
         }
@@ -239,130 +288,163 @@ internal func headerEndOffset(source: String): Int64 {
     return source.size
 }
 
-internal func declarationSignature(decl: Decl, source: IndexedSourceBuffer, location: SourceLocation,
-    hasBody: Bool): String {
-    let exact = source.slice(location)
-    if (exact.isEmpty()) { return normalizedTokens(decl) }
-    if (!hasBody) { return exact.trimAscii() }
-    let end = headerEndOffset(exact)
-    let bytes = exact.toArray()
-    let selected = ArrayList<UInt8>()
+internal func utf8CodepointWidth(value: String): Int64 {
+    var width: Int64 = 0
+    for (byte in value.toArray()) {
+        if (!(byte >= 128u8 && byte <= 191u8)) { width++ }
+    }
+    width
+}
+
+internal func commentLocation(path: String, token: Token, index: IndexedSourceBuffer): SourceLocation {
+    let lines = token.value.split("\n")
+    let rawStart = index.byteOffsetFromLexerPosition(Int64(token.pos.line),
+        Int64(token.pos.column))
+    let (startLine, startColumn) = index.position(rawStart)
+    let endLine = startLine + lines.size - 1
+    let endColumn = if (lines.size == 1) {
+        startColumn + utf8CodepointWidth(lines[0])
+    } else {
+        utf8CodepointWidth(lines[lines.size - 1]) + 1
+    }
+    SourceLocation(path, startLine, startColumn, endLine, endColumn)
+}
+
+internal func collectDocComments(path: String, tokens: Tokens,
+    index: IndexedSourceBuffer): ArrayList<RawDocComment> {
+    let comments = ArrayList<RawDocComment>()
+    for (token in tokens) {
+        if (token.kind == COMMENT && token.value.startsWith("/**")) {
+            comments.add(RawDocComment(token.value, commentLocation(path, token, index)))
+        }
+    }
+    comments
+}
+
+
+internal func isFunctionLike(symbol: SourceDeclaration): Bool {
+    symbol.kind == "function" || symbol.kind == "constructor"
+}
+
+internal func sourceOrderLess(left: SourceDeclaration, right: SourceDeclaration): Bool {
+    if (left.source.path != right.source.path) { return left.source.path < right.source.path }
+    if (left.source.startLine != right.source.startLine) {
+        return left.source.startLine < right.source.startLine
+    }
+    if (left.source.startColumn != right.source.startColumn) {
+        return left.source.startColumn < right.source.startColumn
+    }
+    if (left.source.endLine != right.source.endLine) { return left.source.endLine > right.source.endLine }
+    left.source.endColumn > right.source.endColumn
+}
+
+internal func removeLocalDeclarations(symbols: ArrayList<SourceDeclaration>,
+    extraScopes: ArrayList<SourceLocation>): Unit {
+    let activeFunctions = ArrayList<SourceLocation>()
     var index: Int64 = 0
-    while (index < end && index < bytes.size) {
-        selected.add(bytes[index])
+    while (index < symbols.size) {
+        var inExtraScope = false
+        for (scope in extraScopes) {
+            if (rangeContains(scope, symbols[index].source)) {
+                inExtraScope = true
+                break
+            }
+        }
+        if (inExtraScope) {
+            symbols.remove(at: index)
+            continue
+        }
+        while (!activeFunctions.isEmpty() &&
+            !rangeContains(activeFunctions[activeFunctions.size - 1], symbols[index].source)) {
+            activeFunctions.remove(at: activeFunctions.size - 1)
+        }
+        if (!activeFunctions.isEmpty() && symbols[index].kind != "variable") {
+            symbols.remove(at: index)
+        } else {
+            if (isFunctionLike(symbols[index])) { activeFunctions.add(symbols[index].source) }
+            index++
+        }
+    }
+}
+
+internal func assignOwners(symbols: ArrayList<SourceDeclaration>): Unit {
+    let containers = ArrayList<Int64>()
+    var index: Int64 = 0
+    while (index < symbols.size) {
+        while (!containers.isEmpty() &&
+            !rangeContains(symbols[containers[containers.size - 1]].source, symbols[index].source)) {
+            containers.remove(at: containers.size - 1)
+        }
+        let best = if (containers.isEmpty()) { -1 } else { containers[containers.size - 1] }
+        symbols[index].ownerIndex = best
+        if (best >= 0) { symbols[index].ownerSourceKey = Some(symbols[best].sourceKey) }
+        if (best >= 0 && symbols[best].kind == "interface" && symbols[index].visibility == "internal") {
+            symbols[index].visibility = "public"
+        }
+        if (symbols[index].isContainer) { containers.add(index) }
         index++
     }
-    return String.fromUtf8(selected.toArray()).trimAscii()
 }
 
-internal func addCommonAstData(symbol: SourceDeclaration, decl: Decl): Unit {
-    for (annotation in decl.annotations) {
-        symbol.annotations.add(annotation.toTokens().toString().trimAscii())
-    }
-    for (modifier in decl.modifiers) {
-        symbol.modifiers.add(modifier.keyword.value)
-        if (modifier.keyword.value == "override") {
-            symbol.symbolRelationships.add(SourceSymbolRelationship("override", symbol.name))
+internal func onlyWhitespaceBetween(source: IndexedSourceBuffer, left: SourceLocation,
+    right: SourceLocation): Bool {
+    let start = source.byteOffset(left.endLine, left.endColumn)
+    let end = source.byteOffset(right.startLine, right.startColumn)
+    if (start < 0 || end < start) { return false }
+    var index = start
+    while (index < end && index < source.bytes.size) {
+        match (source.bytes[index]) {
+            case 9u8 | 10u8 | 13u8 | 32u8 => ()
+            case _ => return false
         }
+        index++
     }
-    if (decl.isGenericDecl) {
-        for (token in decl.genericParam.parameters) {
-            if (token.kind == IDENTIFIER) { symbol.genericParameters.add(token.value) }
+    index == end
+}
+
+internal func sameSourceRange(left: SourceLocation, right: SourceLocation): Bool {
+    left.path == right.path && left.startLine == right.startLine &&
+        left.startColumn == right.startColumn && left.endLine == right.endLine &&
+        left.endColumn == right.endColumn
+}
+
+internal func bindComments(symbols: ArrayList<SourceDeclaration>,
+    comments: ArrayList<RawDocComment>, source: IndexedSourceBuffer): ArrayList<OrphanDocComment> {
+    var commentIndex: Int64 = 0
+    var candidate: ?RawDocComment = None
+    var symbolIndex: Int64 = 0
+    while (symbolIndex < symbols.size) {
+        let symbol = symbols[symbolIndex]
+        while (commentIndex < comments.size &&
+            positionLessOrEqual(comments[commentIndex].source.endLine,
+                comments[commentIndex].source.endColumn,
+                symbol.source.startLine, symbol.source.startColumn)) {
+            if (!comments[commentIndex].bound) { candidate = comments[commentIndex] }
+            commentIndex++
         }
-    }
-}
-
-internal func tokenEndPosition(token: Token): (Int64, Int64) {
-    let lines = token.value.split("\n")
-    let endLine = Int64(token.pos.line) + lines.size - 1
-    let endColumn = if (lines.size == 1) {
-        Int64(token.pos.column) + token.value.size
-    } else {
-        lines[lines.size - 1].size + 1
-    }
-    (endLine, endColumn)
-}
-
-internal func importKindName(kind: ImportKind): String {
-    match (kind) {
-        case ImportKind.Single => "single"
-        case ImportKind.Alias => "alias"
-        case ImportKind.All => "all"
-        case ImportKind.Multi => "multi"
-    }
-}
-
-internal func importAliasName(tokens: Tokens): ?String {
-    var index = tokens.size
-    while (index > 0) {
-        index--
-        let value = tokens[index].value
-        if (!value.isEmpty() && value != "as") { return Some(value) }
-    }
-    None
-}
-
-internal func importPrefixPaths(tokens: Tokens): Array<String> {
-    let result = ArrayList<String>()
-    for (token in tokens) {
-        if (!token.value.isEmpty()) { result.add(token.value) }
-    }
-    result.toArray()
-}
-
-internal func importLocation(path: String, value: ImportList): ?SourceLocation {
-    let tokens = value.toTokens()
-    if (tokens.size == 0) { return None }
-    var first: Int64 = 0
-    while (first < tokens.size && (tokens[first].value.isEmpty() || tokens[first].kind == NL)) { first++ }
-    if (first >= tokens.size || tokens[first].pos.line <= 0 || tokens[first].pos.column <= 0) { return None }
-    var last = tokens.size
-    while (last > first && (tokens[last - 1].value.isEmpty() || tokens[last - 1].kind == NL)) { last-- }
-    if (last <= first) { return None }
-    let endToken = tokens[last - 1]
-    if (endToken.pos.line <= 0 || endToken.pos.column <= 0) { return None }
-    let (endLine, endColumn) = tokenEndPosition(endToken)
-    Some(SourceLocation(path, Int64(tokens[first].pos.line), Int64(tokens[first].pos.column),
-        endLine, endColumn))
-}
-
-internal func collectPublicReExports(program: Program, path: String, packageName: String,
-    moduleId: String): Array<SourceReExport> {
-    let result = ArrayList<SourceReExport>()
-    for (importList in program.importLists) {
-        if (importList.modifier.value != "public") { continue }
-        let location = match (importLocation(path, importList)) {
-            case Some(value) => value
-            case None => continue
+        if (let Some(comment) <- candidate) {
+            if (!comment.bound && onlyWhitespaceBetween(source, comment.source, symbol.source)) {
+                var groupedIndex = symbolIndex
+                while (groupedIndex < symbols.size &&
+                    sameSourceRange(symbols[groupedIndex].source, symbol.source)) {
+                    symbols[groupedIndex].documentation = parseDocComment(comment.raw)
+                    groupedIndex++
+                }
+                comment.bound = true
+            }
+            candidate = None
         }
-        let content = importList.content
-        let items = ArrayList<SourceImportItem>()
-        for (item in content.items) {
-            if (item.identifier.value.isEmpty()) { continue }
-            items.add(SourceImportItem(item.identifier.value,
-                alias: importAliasName(item.importAlias)))
+        var nextIndex = symbolIndex + 1
+        while (nextIndex < symbols.size && sameSourceRange(symbols[nextIndex].source, symbol.source)) {
+            nextIndex++
         }
-        result.add(SourceReExport(importKindName(content.importKind),
-            if (content.orgName.value.isEmpty()) { None } else { Some(content.orgName.value) },
-            content.identifier.value, importAliasName(content.importAlias), location,
-            importList.toTokens().toString().trimAscii(), packageName, moduleId,
-            prefixPaths: importPrefixPaths(content.prefixPaths), items: items.toArray()))
+        symbolIndex = nextIndex
     }
-    result.toArray()
-}
-
-internal class PatternBinding {
-    let name: String
-
-    init(name: String) { this.name = name }
-}
-
-internal class PatternBindingCollector <: Visitor {
-    let bindings = ArrayList<PatternBinding>()
-
-    public override func visit(pattern: VarPattern): Unit {
-        let name = pattern.identifier.value
-        if (!name.isEmpty()) { bindings.add(PatternBinding(name)) }
-        breakTraverse()
+    let orphans = ArrayList<OrphanDocComment>()
+    for (comment in comments where !comment.bound) {
+        orphans.add(OrphanDocComment(comment.raw, comment.source))
     }
+    orphans
 }
+
+

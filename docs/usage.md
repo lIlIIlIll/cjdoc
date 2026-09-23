@@ -37,7 +37,7 @@ cjdoc generate --project . --format html \
 
 把 `/** ... */` 放在声明前面。普通的 `//` 和 `/* ... */` 注释不会绑定到声明。
 
-````cangjie
+```cangjie
 /**
  * 从文本中读取一个整数。
  *
@@ -65,16 +65,16 @@ public func parse(text: String): Int64 {
 | `@deprecated` | 标记不再建议使用的 API |
 | `@author` | 记录作者 |
 | `@version` | 记录 API 版本 |
-| `@example` | 添加带可选标题的代码示例 |
+| `@example` | 添加带可选标题、可选指令的代码示例 |
 
-`@example` 后可以写标题，随后使用 Markdown fenced code block 放置示例代码；示例会在 HTML 的“示例”区域单独渲染，在 Markdown 输出中保留代码围栏：
+`@example` 后可以写标题，标题后可以写一个用 `{}` 包裹的指令块，随后使用 Markdown fenced code block 放置示例代码；示例会在 HTML 的“示例”区域单独渲染，在 Markdown 输出中保留代码围栏：
 
-````cangjie
+~~~cangjie
 /**
  * 计算两个整数的和。
  *
  * @example 基本用法
- * ```cj
+ * ```cangjie
  * let result = add(1, 2)
  * ```
  *
@@ -82,11 +82,57 @@ public func parse(text: String): Int64 {
  * @param right 右侧数值。
  * @return 两数之和。
  */
-````
+~~~
 
 示例内容会持续到下一个顶层结构化标签（例如 `@param` 或 `@return`）；代码围栏内部出现的 `@param` 等文本会保持为示例代码，不会被误解析成文档标签。
 
-文档页的“声明详情”会把源码能够识别的继承、扩展和 `override` 关系投影为导航链接。目标在当前文档集中且匹配唯一时，JSON/HTML 使用稳定 `SymbolId`；目标缺失或不唯一时保留原始显示并标记 `unavailable` 或 `ambiguous`，不会生成猜测链接。AST fallback 只生成同一模块内可证明的反向 `subType`、`extendedBy` 关系；没有 provider 可靠目标时，AST fallback 的 `override` 保持 `unavailable`。
+默认情况下，`@example` 只负责收集、清理并渲染示例内容，指令块只是随注释一起记录在 Doc IR 的 `directives` 字段中，不会改变输出。需要校验示例中的 API、参数和类型时，可显式启用 `--check-examples`：cjdoc 会把每个语言标记为 `cangjie` 的 fenced code block 放入声明所属的源码包中，调用 `cjc` 进行编译校验，并按指令决定是否运行。没有该开关时指令完全不生效，既不会编译也不会运行示例。编译失败会产生 error，缺少 `cangjie` fenced code block 会产生 warning；其他语言的代码块不会参与校验。该选项要求 `cjc` 已在 `PATH` 中，且示例应是可以放入函数体的代码片段。`@see` 引用仍会参与符号解析和文档 lint。
+
+指令块写在 `@example` 标题之后，用 `{}` 包裹，指令之间用空格分隔；需要值的指令写成 `name="value"`：
+
+| 指令 | 含义 |
+|---|---|
+| `must-pass` | 显式固定“该示例必须编译通过，并且必须真的被检查过” |
+| `must-fail` | 该示例必须编译失败，并且失败必须发生在示例代码之内 |
+| `error="…"` | 与 `must-fail` 搭配，要求编译器输出包含该片段 |
+| `run` | 编译通过后把示例作为可执行程序运行，要求退出码为 0 |
+| `flags="…"` | 为该示例的 `cjc` 调用追加选项，只接受下面的白名单 |
+
+指令名区分大小写，不允许重复。`must-pass` 与 `must-fail` 互斥，`run` 不能与 `must-fail` 同时出现，`error=` 必须搭配 `must-fail`。语法错误、冲突、未知指令以及白名单之外的选项都会产生 `CJDOC3033`，此时该示例不会被排队编译：
+
+~~~cangjie
+/**
+ * 计算两个整数的和。
+ *
+ * @example 故意失败的用法 {must-fail error="undeclared identifier"}
+ * ```cangjie
+ * let result = missingApi(1, 2)
+ * ```
+ *
+ * @example 基本用法 {run flags="--int-overflow wrapping"}
+ * ```cangjie
+ * println(add(1, 2))
+ * ```
+ * ```output
+ * 3
+ * ```
+ */
+~~~
+
+`flags="…"` 允许的 `cjc` 选项：
+
+- `--cfg KEY=VALUE`：`KEY` 是标识符，`VALUE` 只含字母、数字与 `_.+-`。内置键名（如 `os`、`arch`）不在这里重复列举，由 `cjc` 拒绝。
+- `-Woff GROUP` 与 `-Won GROUP`：`all`、`unused`、`unused-main`、`deprecated`、`unsupport-compile-source`、`package-import`、`parser`、`semantics`、`interpreter`、`apilevel-check`。`driver-arg` 不在列表中，因为它会掩盖上一条里的错误。
+- `--int-overflow MODE`：`throwing`、`wrapping`、`saturating`。
+- 单独出现的 `--experimental`、`-O0`、`-O1`、`-O2`、`-Os`、`-Oz`。
+
+输出路径与源文件列表仍由 cjdoc 掌握，因此 `-o`、`--output-type`、`-p`、`-L`、`-l`、`--import-path`、`@file` 等一律被拒绝。
+
+带 `run` 的示例可以额外使用语言标记为 `output` 的 fenced code block 固定标准输出：每个示例最多一个 `output` 块，且必须同时带 `run`，否则产生 `CJDOC3033`。比较前两侧都会统一换行符并去掉首尾空行，因此 `println` 结尾的那一个换行不需要写出。示例本身会被包装进一个无参数的 `main`，所以引用 `args` 的示例无法通过编译；需要 `exit` 等函数时，`import` 写在示例所属的源码文件里。
+
+运行时的限制是固定的：单次运行上限 10 秒，stdout 与 stderr 各上限 64 KiB，一次检查最多 256 个示例。可执行文件用 `--static --output-type exe` 构建，这样示例即使没有把 SDK 运行库放进 `LD_LIBRARY_PATH` 也能运行；静态链接不可用的环境会报告 `CJDOC3038`。
+
+固定结果但检查没有真正发生，同样算失败：`CJDOC3034` 表示固定为失败的示例却编译通过、失败并不在示例代码内（例如整个源码包本身编译不过）、缺少 `cangjie` 代码块，或因为限制与临时目录问题而被跳过；`CJDOC3035` 表示运行退出码非 0；`CJDOC3036` 表示 stdout 与 `output` 块不一致；`CJDOC3037` 表示超过运行时限被终止；`CJDOC3039` 表示输出超过上限。
 
 文档注释应紧邻它描述的声明。默认生成 external 文档，所以示例声明应为 `public` 或 `protected`。
 
@@ -98,7 +144,19 @@ public func parse(text: String): Int64 {
 cjdoc generate --project . --format html
 ```
 
-然后刷新 `target/doc/html/index.html`。默认缓存放在 `target/cjdoc/cache/source-v8`，通常不需要手动处理。
+然后刷新 `target/doc/html/index.html`。默认缓存放在 `target/cjdoc/cache/source-v11`，通常不需要手动处理。
+
+## 选择语义后端
+
+普通生成默认使用 `source` 模式。需要验证同一份源码经过 Cangjie compiler 和 `stdx.chir` 结构化 API 的结果时，只在 `generate` 或 `check` 上显式选择 CHIR：
+
+```bash
+cjdoc generate --project . --semantic chir --format json --stdout
+```
+
+CHIR 模式从本次源码快照编译 raw CHIR，不读取 host 上未捕获的源文件；可用 `--cjc <path>` 指定 compiler，并可重复传入 `--chir-import-path <dir>`。compiler、输入构建约束、编译、artifact/worker 协议和 overload 映射问题分别产生 `CJDOC2101`–`CJDOC2106` warning。任何 CHIR 失败都会保留 source declarations；注释和最终 Doc IR 仍由源码路径决定。
+
+`render` 只读取已有 Doc IR，因此不能选择 semantic backend。
 
 ## 检查文档问题
 
@@ -107,6 +165,14 @@ cjdoc generate --project . --format html
 ```bash
 cjdoc check --project .
 ```
+
+同时编译校验（并按指令运行）API 示例：
+
+```bash
+cjdoc check --project . --check-examples
+```
+
+`--check-examples` 是显式开关，不会改变普通 `generate` 或 `check` 的默认行为；没有它时 `@example` 指令完全不生效。开启后，默认只做编译，不执行示例；只有带 `run` 的示例才会被构建为可执行文件并运行。源码包本身无法由 `cjc` 编译时，诊断会区分为上下文编译失败（`CJDOC3031`）而不是示例失败。
 
 准备提交或发布前，可以提高 lint 要求，并把 warning 也视为失败：
 
@@ -177,103 +243,9 @@ cjdoc diff --baseline api-surface.json --current api-surface-next.json --format 
 cjdoc generate --project . --format coverage --stdout
 ```
 
-兼容读取旧 coverage artifact 时使用 `cjdoc schema documentation-coverage-v1`；生成器不会覆盖或重写 v1 schema。当前 coverage 默认使用 `external` audience。需要把它们接入 CI 时，见 [`docs/advanced-usage.md`](advanced-usage.md#在-ci-中检查-api-和文档覆盖率)。
+输出到目录时，`coverage` 还会生成独立的 `coverage/quality.json`。`--stdout` 保持输出原有的 presence coverage；规则与指标说明见[文档质量检查](documentation-quality.md)。
 
-质量规则和覆盖率门禁写在项目根的 `cjdoc.toml`：
-
-```toml
-[lint]
-severity = "warning"
-missing-example = "off"
-broken-link = "error"
-
-[coverage]
-symbols = 90
-parameters = 95
-semantic-links = 100
-
-[coverage.package.basic]
-symbols = 100
-```
-
-规则支持 `off`、`warning`、`error`；覆盖率阈值为 0–100，package 表只覆盖同名包，未设置的指标继承全局阈值。
-
-用 `symbol-index` 导出面向工具和 agent 的稳定导航索引：
-
-```bash
-cjdoc generate --project . --format symbol-index --stdout > symbol-index.json
-```
-
-输出版本为 `cjdoc.symbol-index/1`。每个可见声明包含稳定 `id`、源码范围、HTML 路由、语义关系和 `@see` 引用；无法唯一解析的目标保留状态而不伪造 `targetId`。索引也可与 HTML 一起生成，文件位于 `target/doc/html/symbol-index.json`；单独生成仍位于 `target/doc/symbol-index/symbol-index.json`，后者适合作为外部文档 resolver 的本地输入。
-
-## Agent-readable navigation and context
-
-生成 HTML 时，站点会同时写入两个不依赖 HTML 解析的机器入口：
-
-- `html/navigation-index.json`：项目、包、声明和概念页的稳定页面目录，版本为 `cjdoc.navigation-index/1`；每条声明记录 `symbolId`、HTML 路由、package/module 和显式 semantic state。
-- `html/llms.txt`：有界的摘要索引，使用相对链接指向页面，适合 agent 先枚举再读取。
-
-需要包含签名、参数、返回值、throws、示例和概念 Markdown 时，显式启用完整索引：
-
-```bash
-cjdoc generate --project . --format html --agent-full
-```
-
-这会额外生成 `html/llms-full.txt`。两个文本文件、导航 JSON 和 symbol index 都由同一份 Doc IR 直接生成，按当前 audience 过滤，不会把 private 声明或猜测的摘要暴露给工具。缺失、partial 和 unavailable 语义状态会原样保留；输出有固定大小和条数上限，并且重复生成保持确定性。
-
-`navigation-index.json` 的 schema 可用下面的命令读取：
-
-```bash
-cjdoc schema navigation-index > navigation-index.schema.json
-```
-
-`llms.txt` 和 `llms-full.txt` 的链接是相对路径，版本组合器复制它们后仍可通过 `file://` 使用。
-
-## Conceptual documentation
-
-项目根目录下存在 `docs/`，或配置了 `cjdoc.toml` 的 `[docs]` / `[[docs.pages]]` 时，cjdoc 会把面向用户的概念文档发布到 `concepts/`。`docs/index.md` 是项目指南；模块和包页面会从当前 Doc IR 生成。额外页面使用受限的相对路径配置：
-
-```toml
-[docs]
-index = "docs/index.md"
-
-[[docs.pages]]
-source = "docs/guides/start.md"
-route = "concepts/guides/start"
-title = "Getting started"
-```
-
-HTML 和 Markdown 概念页都会链接回 API 参考；HTML 会转义原始 HTML，并默认不把远程 Markdown 链接变成可点击的外链。概念页也会加入 `html/search-index.json`，类型为 `concept`。
-
-## 本地 serve/watch
-
-开发时可以启动 loopback-only 静态服务，并在源码、Markdown 或配置变更后自动重新生成：
-
-```bash
-cjdoc serve --project . --port 8080
-```
-
-服务只绑定 `127.0.0.1`。使用 `--open` 请求系统默认浏览器打开站点；`/__cjdoc/status.json` 返回构建次数、成功构建次数和最近一次错误。构建失败时服务继续提供最近一次成功的站点，直到进程退出。
-
-## 发布多个本地文档版本
-
-先为每个版本生成独立、可复制的 HTML 目录，并用 `--doc-version` 写入版本元数据：
-
-```bash
-cjdoc generate --project . --format html --doc-version 1.3.0 --output target/docs-1.3
-```
-
-然后只用本地目录组合静态站点：
-
-```bash
-cjdoc versions compose --version 1.2.0=target/docs-1.2/html --version 1.3.0=target/docs-1.3/html --label 1.3.0=Current --channel 1.2.0=stable --channel 1.3.0=stable --status 1.2.0=published --status 1.3.0=latest --latest 1.3.0 --output public/docs
-```
-
-组合结果包含 `versions.json`、根版本选择页和 `latest/` 别名；每个版本目录自包含，可直接通过 `file://` 打开。页面选择器优先使用 `html/symbol-index.json` 中的稳定 symbol ID 跨版本定位；删除或新增的声明会明确回退到该版本首页并标记 unavailable。channel、status 和 latest 只记录命令行显式值，不连接网络，也不启动服务。
-
-如果已有 `cjdoc.api-diff/1` 报告，可以用 `--diff VERSION=FILE` 把它绑定到目标版本。组合器会原样复制报告到目标版本的 `api-diff.json`，在 `versions.json` 写入 `apiDiff`，并在版本 selector 显示 Changes 链接；它不会改写 API diff 或 Doc IR。
-
-`versions.json` 的 schema 是 `cjdoc.versions/1`，源文件位于 `docs/schema/versions.schema.json`。
+这两个命令默认使用 `external` audience。需要把它们接入 CI 时，见 [`docs/advanced-usage.md`](advanced-usage.md#在-ci-中检查-api-和文档覆盖率)。
 
 ## 查看已有 JSON
 

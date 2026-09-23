@@ -40,6 +40,7 @@ SCHEMA_NAMES = (
     "api-diff",
     "documentation-coverage-v1",
     "documentation-coverage",
+    "documentation-quality",
     "doctest-results",
     "versions",
 )
@@ -116,7 +117,7 @@ class UpdateToolsTest(unittest.TestCase):
             "repo=Path(__file__).resolve().parents[3]\n"
             "args=sys.argv[1:]\n"
             "if args[:2] == ['schema','list']:\n"
-            " print('doc-ir\\ndoc-ir-v9\\ndoc-ir-v10\\ndoc-ir-v6\\ndoc-ir-v7\\ndoc-ir-v8\\ndiagnostics\\ncfg-matrix\\nsearch-index\\nsymbol-index\\nnavigation-index\\napi-surface\\napi-surface-v1\\napi-diff\\ndocumentation-coverage-v1\\ndocumentation-coverage\\ndoctest-results\\nversions')\n"
+            " print('doc-ir\\ndoc-ir-v6\\ndoc-ir-v7\\ndoc-ir-v8\\ndoc-ir-v9\\ndoc-ir-v10\\ndiagnostics\\ncfg-matrix\\nsearch-index\\nsymbol-index\\nnavigation-index\\napi-surface\\napi-surface-v1\\napi-diff\\ndocumentation-coverage-v1\\ndocumentation-coverage\\ndocumentation-quality\\ndoctest-results\\nversions')\n"
             "elif args and args[0] == 'schema':\n"
             " print((repo/'fake-schemas'/f'{args[1]}.schema.json').read_text(encoding='utf-8'),end='')\n"
             "elif args and args[0] == 'generate':\n"

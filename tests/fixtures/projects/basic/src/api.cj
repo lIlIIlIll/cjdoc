@@ -5,7 +5,7 @@ package basic
  *
  * ## Example
  *
- * ```cj
+ * ```cangjie
  * let value = parse("42")
  * ```
  *

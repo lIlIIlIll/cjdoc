@@ -36,7 +36,7 @@ cjpm test
 rm -rf "${check_dir}"
 mkdir -p "${check_dir}/schemas"
 
-for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage doctest-results versions; do
+for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${check_dir}/schemas/${schema_name}.schema.json"
 done
@@ -56,6 +56,7 @@ cmp docs/schema/api-surface-v1.schema.json "${check_dir}/schemas/api-surface-v1.
 cmp docs/schema/api-diff.schema.json "${check_dir}/schemas/api-diff.schema.json"
 cmp docs/schema/documentation-coverage-v1.schema.json "${check_dir}/schemas/documentation-coverage-v1.schema.json"
 cmp docs/schema/documentation-coverage.schema.json "${check_dir}/schemas/documentation-coverage.schema.json"
+cmp docs/schema/documentation-quality.schema.json "${check_dir}/schemas/documentation-quality.schema.json"
 cmp docs/schema/doctest-results.schema.json "${check_dir}/schemas/doctest-results.schema.json"
 cmp docs/schema/versions.schema.json "${check_dir}/schemas/versions.schema.json"
 

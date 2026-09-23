@@ -225,7 +225,7 @@ class SourcePipelineSuite3 {
         try {
             let cache = temporary.join("cache")
             Directory.create(cache)
-            let provider = AstSourceProvider(cacheDirectory: Some(cache.toString()),
+            let provider = SyntaxSourceProvider(cacheDirectory: Some(cache.toString()),
                 cacheFingerprint: Some("source-cache-contract-v1"),
                 astPreflightExecutable: TEST_AST_PREFLIGHT)
             let first = provider.collect(FIXTURES + "basic")

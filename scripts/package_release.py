@@ -23,12 +23,12 @@ sys.dont_write_bytecode = True
 
 try:
     from .verify_release_package import verify_archive
-    from .install_cangjie_sdk import validate_cached_sdk_root
+    from .install_cangjie_sdk import validate_cached_sdk_root, validate_combined_sdk_root
     from .safe_output_root import safe_output_directory, safe_output_file, safe_regular_file
     from .worktree_identity import exact_worktree_identity
 except ImportError:  # Direct script execution.
     from verify_release_package import verify_archive
-    from install_cangjie_sdk import validate_cached_sdk_root
+    from install_cangjie_sdk import validate_cached_sdk_root, validate_combined_sdk_root
     from safe_output_root import safe_output_directory, safe_output_file, safe_regular_file
     from worktree_identity import exact_worktree_identity
 
@@ -52,7 +52,7 @@ SCHEMA_FILES = (
     "api-surface-v1.schema.json",
     "api-diff.schema.json",
     "documentation-coverage.schema.json",
-    "doctest-results.schema.json",
+    "documentation-quality.schema.json",
 )
 
 
@@ -141,7 +141,16 @@ def committed_package_version(repo: Path, source_commit: str) -> str:
 
 def collect_payload(repo: Path, binary: Path, windows: bool, version: str,
                     platform_name: str, source_commit: str,
-                    sdk_version: str, sdk_sha256: str) -> dict[str, tuple[bytes, int]]:
+                    sdk_version: str, sdk_sha256: str,
+                    stdx_version: str | None = None,
+                    stdx_sha256: str | None = None) -> dict[str, tuple[bytes, int]]:
+    if (stdx_version is None) != (stdx_sha256 is None):
+        raise ValueError("stdx version and checksum must be supplied together")
+    if stdx_version is not None:
+        if not stdx_version or not SEMVER.fullmatch(stdx_version):
+            raise ValueError("stdx version must be a stable three-part SemVer")
+        if not SHA256.fullmatch(stdx_sha256 or ""):
+            raise ValueError("stdx archive SHA-256 must be lowercase 64-hex")
     executable_name = "cjdoc.exe" if windows else "cjdoc"
     payload: dict[str, tuple[bytes, int]] = {
         executable_name: (binary.read_bytes(), 0o755),
@@ -157,16 +166,25 @@ def collect_payload(repo: Path, binary: Path, windows: bool, version: str,
     for schema_name in SCHEMA_FILES:
         relative = f"docs/schema/{schema_name}"
         payload[relative] = (committed_file(repo, source_commit, relative), 0o644)
+    runtime: dict[str, object] = {
+        "requiresCangjieSdk": True,
+        "sdkVersion": sdk_version,
+        "sdkArchiveSha256": sdk_sha256,
+    }
+    schema_version = "cjdoc.release-package/2"
+    if stdx_version is not None:
+        schema_version = "cjdoc.release-package/3"
+        runtime.update({
+            "requiresStdx": True,
+            "stdxVersion": stdx_version,
+            "stdxArchiveSha256": stdx_sha256,
+        })
     manifest = {
-        "schemaVersion": "cjdoc.release-package/2",
+        "schemaVersion": schema_version,
         "version": version,
         "platform": platform_name,
         "sourceCommit": source_commit,
-        "runtime": {
-            "requiresCangjieSdk": True,
-            "sdkVersion": sdk_version,
-            "sdkArchiveSha256": sdk_sha256,
-        },
+        "runtime": runtime,
         "files": {
             name: {"sha256": sha256_bytes(content), "size": len(content)}
             for name, (content, _) in sorted(payload.items())
@@ -204,7 +222,9 @@ def write_tar_gz(path: Path, root_name: str, payload: dict[str, tuple[bytes, int
 
 
 def build_archive(repo: Path, binary: Path, platform_name: str, output: Path,
-                  *, source_commit: str, sdk_version: str, sdk_sha256: str) -> Path:
+                  *, source_commit: str, sdk_version: str, sdk_sha256: str,
+                  stdx_version: str | None = None,
+                  stdx_sha256: str | None = None) -> Path:
     if not COMMIT.fullmatch(source_commit):
         raise ValueError("source commit must be a lowercase 40-hex commit")
     verify_source_commit(repo, source_commit)
@@ -227,7 +247,8 @@ def build_archive(repo: Path, binary: Path, platform_name: str, output: Path,
     verify_source_commit(repo, source_commit)
     root_name = f"cjdoc-{version}"
     payload = collect_payload(repo, binary, windows, version, platform_name,
-                              source_commit, sdk_version, sdk_sha256)
+                              source_commit, sdk_version, sdk_sha256,
+                              stdx_version, stdx_sha256)
     verify_source_commit(repo, source_commit)
     with tempfile.NamedTemporaryFile(dir=output, prefix=f".{asset.name}.", delete=False) as stream:
         temporary = Path(stream.name)
@@ -274,6 +295,8 @@ def main() -> int:
     parser.add_argument("--source-commit", default=os.environ.get("CJDOC_RELEASE_COMMIT"))
     parser.add_argument("--sdk-version", required=True)
     parser.add_argument("--sdk-sha256", required=True)
+    parser.add_argument("--stdx-version")
+    parser.add_argument("--stdx-sha256")
     parser.add_argument("--sdk-root", type=Path,
                         default=Path(configured_sdk_root) if configured_sdk_root else None)
     args = parser.parse_args()
@@ -291,18 +314,27 @@ def main() -> int:
             raise ValueError("SDK archive SHA-256 must be lowercase 64-hex")
         if not args.sdk_version:
             raise ValueError("SDK version is missing")
-        validate_cached_sdk_root(args.sdk_root, args.sdk_sha256)
+        stdx_options = (args.stdx_version, args.stdx_sha256)
+        if any(value is not None for value in stdx_options) and not all(stdx_options):
+            raise ValueError("--stdx-version and --stdx-sha256 must be supplied together")
+        if args.stdx_sha256 is None:
+            validate_cached_sdk_root(args.sdk_root, args.sdk_sha256)
+        else:
+            validate_combined_sdk_root(args.sdk_root, args.sdk_sha256, args.stdx_sha256)
         verify_binary_version(binary, version)
         asset = build_archive(
             repo, binary, args.platform, args.output,
             source_commit=args.source_commit,
             sdk_version=args.sdk_version,
             sdk_sha256=args.sdk_sha256,
+            stdx_version=args.stdx_version,
+            stdx_sha256=args.stdx_sha256,
         )
         package_evidence = verify_archive(
             asset, args.platform, version, args.sdk_version, args.sdk_sha256,
             args.source_commit, smoke=True, repository=repo,
             sdk_root=args.sdk_root, sdk_marker_verified=True,
+            stdx_version=args.stdx_version, stdx_sha256=args.stdx_sha256,
         )
     except (OSError, ValueError, tomllib.TOMLDecodeError,
             tarfile.TarError, zipfile.BadZipFile) as error:

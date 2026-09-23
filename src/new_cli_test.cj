@@ -17,7 +17,10 @@ class NewCliRegressionTest {
     func versionedSchemaNamesRouteToTheirExactVersions(): Unit {
         @Expect(schemaTextForCli("doc-ir-v7"), DOC_IR_V7_SCHEMA)
         @Expect(schemaTextForCli("doc-ir-v8"), DOC_IR_V8_SCHEMA)
+        @Expect(schemaTextForCli("doctest-results"), DOCTEST_RESULTS_SCHEMA)
+        @Expect(schemaTextForCli("versions"), VERSIONS_SCHEMA)
         @Expect(schemaTextForCli("list").contains("doc-ir-v8\n"), true)
+        @Expect(schemaTextForCli("list").contains("versions\n"), true)
     }
 
     @TestCase
@@ -50,6 +53,25 @@ class NewCliRegressionTest {
         @Expect(runCli(["check", "--deny-breaking-api"]), 2)
         @Expect(runCli(["generate", "--deny-potentially-breaking-api"]), 2)
         @Expect(runCli(["render", "--input", "missing.json", "--deny-breaking-api"]), 2)
+    }
+
+    @TestCase
+    func checkExamplesIsAnExplicitGenerationOption(): Unit {
+        let options = parseNewCli(["check", "--check-examples"])
+        @Expect(options.checkExamples, true)
+        @ExpectThrows[IllegalArgumentException](parseNewCli([
+            "render", "--input", "docs.json", "--check-examples"]))
+    }
+
+    @TestCase
+    func chirOptionsAreExplicitAndCommandScoped(): Unit {
+        let options = parseNewCli(["generate", "--semantic", "chir", "--cjc", "custom-cjc",
+            "--chir-import-path", "dep-a", "--chir-import-path", "dep-b"])
+        @Expect(options.semanticMode, "chir")
+        @Expect(options.cjcExecutable, "custom-cjc")
+        @Expect(options.chirImportPaths.toArray(), ["dep-a", "dep-b"])
+        @ExpectThrows[IllegalArgumentException](parseNewCli(["generate", "--cjc", "custom-cjc"]))
+        @ExpectThrows[IllegalArgumentException](parseNewCli(["render", "--semantic", "chir"]))
     }
 
     @TestCase

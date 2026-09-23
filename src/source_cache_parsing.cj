@@ -1,12 +1,11 @@
 package cjdoc
 
-import std.ast.*
 import std.collection.*
 import std.env.*
 import std.fs.*
 import std.process.*
-import std.sort.*
 
+internal let SYNTAX_WORKER_PROTOCOL = "cjdoc-syntax-worker/1"
 internal func decodeParsedSource(input: SourceInputFile, cacheKey: String,
     bytes: Array<UInt8>, capturedSourceIndex: CapturedSourceIndex, capturedSource: String,
     maxItems!: Int64 = MAX_SOURCE_CACHE_ITEMS): ParsedSourceFile {
@@ -15,7 +14,9 @@ internal func decodeParsedSource(input: SourceInputFile, cacheKey: String,
         throw IllegalArgumentException("cache key mismatch")
     }
     let parsed = ParsedSourceFile(input)
+    parsed.capturedSource = capturedSource
     parsed.packageName = cacheReadOptionalString(reader)
+    cacheReadStrings(reader, parsed.imports)
     var count = checkedCacheCount(reader)
     var index: Int64 = 0
     while (index < count) {
@@ -74,6 +75,7 @@ internal func stableSourceCacheHash(value: String): String {
 }
 
 internal func defaultSourceCacheFingerprint(): String {
+    let identity = ToolchainIdentity()
     let sdkPath = match (getVariable("CANGJIE_HOME")) {
         case Some(value) => value
         case None => match (getVariable("CANGJIE_SDK_ROOT")) {
@@ -82,15 +84,18 @@ internal func defaultSourceCacheFingerprint(): String {
         }
     }
     let canonicalSdk = try { canonicalize(sdkPath).toString() } catch (_: Exception) { sdkPath }
-    let compilerVersion = try {
-        let (exitCode, output, _) = executeWithOutput("cjc", ["--version"])
-        if (exitCode == 0) { String.fromUtf8(output).trimAscii() } else { "unknown-cjc" }
-    } catch (_: Exception) {
-        "unknown-cjc"
+    let compilerVersion = if (identity.compilerVersion != "unknown-cjc") {
+        identity.compilerVersion
+    } else {
+        try {
+            let (exitCode, output, _) = executeWithBoundedOutput("cjc", ["--version"])
+            if (exitCode == 0) { String.fromUtf8(output).trimAscii() } else { "unknown-cjc" }
+        } catch (_: Exception) {
+            "unknown-cjc"
+        }
     }
-    "${canonicalSdk}\n${compilerVersion}"
+    "${identity.sourceBackendFingerprint()}\nsdk=${canonicalSdk}\ncjc=${compilerVersion}"
 }
-
 internal func makeSourceCacheKey(input: SourceInputFile, fallbackPackageName: String,
     source: String, fingerprint: String): ?String {
     let writer = SourceCacheWriter()
@@ -160,136 +165,135 @@ internal func encodeAndWriteSourceCache(path: String, cacheKey: String,
     }
 }
 
-internal func parseSourceText(input: SourceInputFile, fallbackPackageName: String,
-    source: String): ParsedSourceFile {
-    let result = ParsedSourceFile(input)
-    let relative = input.logicalPath
-    try {
-        let tokens = cangjieLex(source)
-        let program = parseProgram(tokens)
-        if (exceedsSafeBinaryExpressionDepth(program)) {
-            result.diagnostics.add(Diagnostic("error", "CJDOC1012",
-                "source exceeds the safe std.ast binary-expression depth; file skipped",
-                source: SourceLocation(relative, 1, 1, 1, 1)))
-            return result
-        }
-        let packageName = packageNameFrom(program, fallbackPackageName)
-        let sourceBuffer = IndexedSourceBuffer(source)
-        let collector = AstDeclarationCollector(relative, packageName, input.module.id, sourceBuffer)
-        program.traverse(collector)
-        sort(collector.declarations, lessThan: sourceOrderLess, stable: true)
-        removeLocalDeclarations(collector.declarations, collector.localScopes)
-        collector.declarations.add(all: collector.primaryConstructorMembers)
-        sort(collector.declarations, lessThan: sourceOrderLess, stable: true)
-        assignOwners(collector.declarations)
-        result.orphanDocComments.add(all: bindComments(collector.declarations,
-            collectDocComments(relative, tokens), sourceBuffer))
-        for (comment in result.orphanDocComments) {
-            result.diagnostics.add(Diagnostic("warning", "CJDOC1014",
-                "doc comment is not attached to a documentable declaration",
-                source: comment.source))
-        }
-        result.packageName = Some(packageName)
-        result.declarations.add(all: collector.declarations)
-        result.reExports.add(all: collectPublicReExports(program, relative, packageName, input.module.id))
-        result.macroInvocations.add(all: collector.macroInvocations)
-        result.unsupportedDeclarations.add(all: collector.unsupportedDeclarations)
-        result.diagnostics.add(all: collector.diagnostics)
-    } catch (_: Exception) {
-        result.diagnostics.add(Diagnostic("error", "CJDOC1011",
-            "failed to parse '${relative}'",
-            source: SourceLocation(relative, 1, 1, 1, 1)))
-    }
-    result
-}
-
 internal func normalizeSourceNewlines(source: String): String {
     source.replace("\r\n", "\n").replace("\r", "\n")
 }
 
-func runAstParsePreflight(path: String): Int64 {
-    try {
-        let source = normalizeSourceNewlines(readTextBounded(Path(path), MAX_SOURCE_FILE_BYTES))
-        let tokens = cangjieLex(source)
-        if (looksLikeUnsafeBinaryExpressionDepth(tokens, false)) { return 12 }
-        let program = parseProgram(tokens)
-        if (exceedsSafeBinaryExpressionDepth(program)) { return 12 }
-        return 0
-    } catch (_: Exception) {
-        // Keep ordinary parser exceptions distinct from a native SIGSEGV,
-        // which executeWithOutput reports as signal status 11.
-        return 10
+internal func syntaxWorkerFailure(input: SourceInputFile, code: String,
+    message: String): ParsedSourceFile {
+    let result = ParsedSourceFile(input)
+    result.diagnostics.add(Diagnostic("error", code, message,
+        source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
+    result
+}
+
+internal func syntaxWorkerCacheKey(source: String): String {
+    Sha256Digest.digestBytes(source.toArray())
+}
+
+internal func writeSyntaxWorkerRequest(path: Path, sourcePath: Path, outputPath: Path,
+    input: SourceInputFile, fallbackPackageName: String, sourceDigest: String): Unit {
+    let writer = SourceCacheWriter(maxBytes: 1024 * 1024, maxItems: 128)
+    writer.add(SYNTAX_WORKER_PROTOCOL)
+    writer.add(sourcePath.toString())
+    writer.add(outputPath.toString())
+    writer.add(input.logicalPath)
+    writer.add(input.module.id)
+    writer.add(input.module.name)
+    writer.add(fallbackPackageName)
+    writer.add(sourceDigest)
+    match (writer.result()) {
+        case Some(bytes) => File.writeTo(path, bytes)
+        case None => throw IllegalArgumentException("syntax worker request exceeds the safety limit")
     }
 }
 
-internal func astPreflightStatus(executable: String, source: String): Int64 {
-    let temporaryDirectory = try {
+internal func syntaxWorkerParse(input: SourceInputFile, fallbackPackageName: String,
+    source: String, executable: String): ParsedSourceFile {
+    let temporary = try {
         Directory.createTemp(getTempDirectory())
     } catch (_: Exception) {
-        return -1
+        return syntaxWorkerFailure(input, "CJDOC1020",
+            "syntax parser worker is unavailable; file skipped")
     }
-    var status: Int64 = -1
+    let sourceDigest = syntaxWorkerCacheKey(source)
     try {
-        let temporarySource = temporaryDirectory.join("captured-source.cj")
-        File.writeTo(temporarySource, source.toArray())
-        let (exitCode, _, _) = executeWithOutput(executable,
-            ["--internal-ast-preflight", temporarySource.toString()])
-        status = exitCode
+        let sourcePath = temporary.join("source.cj")
+        let requestPath = temporary.join("request.bin")
+        let outputPath = temporary.join("response.bin")
+        File.writeTo(sourcePath, source.toArray())
+        writeSyntaxWorkerRequest(requestPath, sourcePath, outputPath, input,
+            fallbackPackageName, sourceDigest)
+        let workerPath = try { canonicalize(Path(executable)).toString() } catch (_: Exception) { executable }
+        let (status, _, _) = executeWithBoundedOutput(workerPath,
+            ["--internal-syntax-parse", requestPath.toString()])
+        if (status != 0) {
+            if (hasDeepSourceBinaryExpression(source)) {
+                return syntaxWorkerFailure(input, "CJDOC1012",
+                    "source expression exceeds the bounded syntax depth; file skipped")
+            }
+            return syntaxWorkerFailure(input, "CJDOC1011",
+                "syntax parser rejected the source; file skipped")
+        }
+        let response = readFileBounded(outputPath, MAX_SOURCE_CACHE_BYTES)
+        let capturedSourceIndex = CapturedSourceIndex(source)
+        let parsed = decodeParsedSource(input, sourceDigest, response,
+            capturedSourceIndex, source)
+        parsed.cacheStatus = "worker"
+        return parsed
     } catch (_: Exception) {
-        status = -1
+        return syntaxWorkerFailure(input, "CJDOC1020",
+            "syntax parser worker returned an invalid response; file skipped")
     } finally {
-        try { let _ = removeIfExists(temporaryDirectory, recursive: true) } catch (_: Exception) {}
+        let _ = removeIfExists(temporary, recursive: true)
     }
-    status
 }
 
-internal func parseAfterAstPreflight(input: SourceInputFile, fallbackPackageName: String,
-    source: String, executable: ?String): ParsedSourceFile {
-    if (executable.isNone() || executable.getOrThrow().isEmpty()) {
-        let result = ParsedSourceFile(input)
-        result.diagnostics.add(Diagnostic("error", "CJDOC1020",
-            "isolated std.ast parser is unavailable for '${input.logicalPath}'; file skipped",
-            source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
-        return result
-    }
-    let actual = executable.getOrThrow()
-    let status = astPreflightStatus(actual, source)
-    if (status == 10) {
-        let result = ParsedSourceFile(input)
-        result.diagnostics.add(Diagnostic("error", "CJDOC1011",
-            "failed to parse '${input.logicalPath}'",
-            source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
-        return result
-    }
-    if (status == 12) {
-        let result = ParsedSourceFile(input)
-        result.diagnostics.add(Diagnostic("error", "CJDOC1012",
-            "source exceeds the safe std.ast binary-expression depth; file skipped",
-            source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
-        return result
-    }
-    if (status == 11 || status == 139) {
-        let deepBinary = try {
-            looksLikeUnsafeBinaryExpressionDepth(cangjieLex(source), true)
-        } catch (_: Exception) {
-            false
+internal func runSyntaxParseWorker(requestPath: String): Int64 {
+    try {
+        let requestInfo = FileInfo(requestPath)
+        if (!requestInfo.isRegular() || requestInfo.isSymbolicLink() || requestInfo.size < 0 ||
+            requestInfo.size > 1024 * 1024) { return 2 }
+        let requestRoot = canonicalize(Path(requestPath).parent).toString()
+        let reader = SourceCacheReader(readFileBounded(Path(requestPath), 1024 * 1024),
+            maxItems: 128)
+        if (reader.next() != SYNTAX_WORKER_PROTOCOL) { return 2 }
+        let sourcePath = reader.next()
+        let outputPath = reader.next()
+        let logicalPath = reader.next()
+        let moduleId = reader.next()
+        let moduleName = reader.next()
+        let fallbackPackageName = reader.next()
+        let sourceDigest = reader.next()
+        if (!reader.finished()) { return 2 }
+        let canonicalSource = canonicalize(Path(sourcePath)).toString()
+        let canonicalOutput = Path(outputPath).toString()
+        if (!hostPathIsWithin(requestRoot, canonicalSource) ||
+            !hostPathIsWithin(requestRoot, canonicalOutput)) { return 2 }
+        let sourceInfo = FileInfo(canonicalSource)
+        if (!sourceInfo.isRegular() || sourceInfo.isSymbolicLink() ||
+            sourceInfo.size < 0 || sourceInfo.size > MAX_SOURCE_FILE_BYTES) { return 2 }
+        let source = normalizeSourceNewlines(readTextBounded(Path(canonicalSource),
+            MAX_SOURCE_FILE_BYTES))
+        if (syntaxWorkerCacheKey(source) != sourceDigest) { return 2 }
+        let module = SourceModule(moduleId, moduleName, "root", "")
+        let input = SourceInputFile(canonicalSource, requestRoot, logicalPath, module,
+            sourceInfo.size)
+        let parsed = parseSourceTextWithSyntax(input, fallbackPackageName, source)
+        let encoded = encodeParsedSource(sourceDigest, parsed, CapturedSourceIndex(source), source)
+        match (encoded) {
+            case Some(bytes) => File.writeTo(Path(canonicalOutput), bytes)
+            case None => return 2
         }
-        if (deepBinary) {
-            let result = ParsedSourceFile(input)
-            result.diagnostics.add(Diagnostic("error", "CJDOC1012",
-                "source exceeds the safe std.ast binary-expression depth; file skipped",
-                source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
-            return result
-        }
+        0
+    } catch (_: Exception) {
+        2
     }
-    if (status != 0) {
-        let result = ParsedSourceFile(input)
-        result.diagnostics.add(Diagnostic("error", "CJDOC1020",
-            "isolated std.ast parser failed for '${input.logicalPath}'; file skipped",
-            source: SourceLocation(input.logicalPath, 1, 1, 1, 1)))
-        return result
+}
+
+internal func parseSourceFrontend(input: SourceInputFile, fallbackPackageName: String,
+    source: String, astPreflightExecutable: ?String): ParsedSourceFile {
+    let parsed = match (astPreflightExecutable) {
+        case Some(executable) =>
+            if (!executable.isEmpty()) {
+                syntaxWorkerParse(input, fallbackPackageName, source, executable)
+            } else {
+                parseSourceTextWithSyntax(input, fallbackPackageName, source)
+            }
+        case _ => parseSourceTextWithSyntax(input, fallbackPackageName, source)
     }
-    return parseSourceText(input, fallbackPackageName, source)
+    parsed.capturedSource = source
+    parsed
 }
 
 internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: String,
@@ -335,11 +339,11 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
     }
     match (cacheDirectory) {
         case None => return withCapturedSourceIndex(
-            parseAfterAstPreflight(input, fallbackPackageName, source, astPreflightExecutable),
+            parseSourceFrontend(input, fallbackPackageName, source, astPreflightExecutable),
             capturedSourceIndex)
         case Some(directory) =>
             if (auxiliaryBudget.limitReached() || !auxiliaryBudget.consumeWork(source.size)) {
-                let parsed = parseAfterAstPreflight(input, fallbackPackageName, source,
+                let parsed = parseSourceFrontend(input, fallbackPackageName, source,
                     astPreflightExecutable)
                 parsed.diagnostics.add(Diagnostic("error", "CJDOC1028",
                     "source metadata or cache exceeded the configured aggregate byte/work safety budget; remaining cache work skipped"))
@@ -348,7 +352,7 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
             }
             let cacheKeyValue = makeSourceCacheKey(input, fallbackPackageName, source, cacheFingerprint)
             if (cacheKeyValue.isNone()) {
-                let parsed = parseAfterAstPreflight(input, fallbackPackageName, source,
+                let parsed = parseSourceFrontend(input, fallbackPackageName, source,
                     astPreflightExecutable)
                 parsed.cacheStatus = "miss-write-failed"
                 return withCapturedSourceIndex(parsed, capturedSourceIndex)
@@ -363,7 +367,7 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
                         source),
                         capturedSourceIndex)
                 } catch (_: Exception) {
-                    let parsed = parseAfterAstPreflight(input, fallbackPackageName, source,
+                    let parsed = parseSourceFrontend(input, fallbackPackageName, source,
                         astPreflightExecutable)
                     if (auxiliaryBudget.limitReached()) {
                         parsed.diagnostics.add(Diagnostic("error", "CJDOC1028",
@@ -380,7 +384,7 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
                     return withCapturedSourceIndex(parsed, capturedSourceIndex)
                 }
             }
-            let parsed = parseAfterAstPreflight(input, fallbackPackageName, source,
+            let parsed = parseSourceFrontend(input, fallbackPackageName, source,
                 astPreflightExecutable)
             parsed.cacheStatus = if (encodeAndWriteSourceCache(path, cacheKey, parsed,
                 capturedSourceIndex, source, auxiliaryBudget)) {
@@ -398,9 +402,14 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
 
 internal func mergeParsedSource(sourceSnapshot: SourceSnapshot, parsed: ParsedSourceFile,
     cacheStats: SourceCacheStats, aggregation: SourceAggregationIndex): Unit {
+    let packageName = match (parsed.packageName) {
+        case Some(value) => value
+        case None => parsed.input.module.name
+    }
     sourceSnapshot.sourceFileOrigins.add(SourceFileOrigin(parsed.input.logicalPath,
         parsed.input.actualPath, parsed.input.actualRoot, parsed.input.module.sourcePrefix,
-        capturedSourceIndex: parsed.capturedSourceIndex))
+        capturedSourceIndex: parsed.capturedSourceIndex, packageName: packageName,
+        imports: parsed.imports.toArray(), capturedSource: parsed.capturedSource))
     match (parsed.cacheStatus) {
         case "hit" => cacheStats.hits++
         case "miss-written" =>

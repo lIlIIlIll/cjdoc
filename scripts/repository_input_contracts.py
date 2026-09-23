@@ -67,10 +67,16 @@ SCHEMA_NAMES = (
     "api-diff",
     "documentation-coverage-v1",
     "documentation-coverage",
+    "documentation-quality",
     "doctest-results",
     "versions",
 )
 SCHEMA_CONTRACTS = {
+    "documentation-quality": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/documentation-quality.schema.json",
+        "cjdoc.documentation-quality/1",
+        ("schemaVersion", "audience", "assessment", "symbols", "parameters", "findings"),
+    ),
     "doc-ir": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
         "cjdoc.doc-ir/10",

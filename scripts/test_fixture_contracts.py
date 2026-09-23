@@ -15,9 +15,10 @@ GOLDEN_OR_CHECK_FIXTURES = {
     "workspace",
 }
 CANGJIE_CONTRACT_FIXTURES = {
-    "binary_punctuation", "cfg_owner", "frontend_gaps", "frontend_regressions", "lint",
-    "local_assets", "manifest_headers", "markdown_limits", "private_file_scope", "recovery",
-    "reexports",
+    "binary_punctuation", "chir_semantics", "cfg_owner", "frontend_gaps",
+    "frontend_regressions", "lint", "local_assets", "manifest_headers",
+    "markdown_limits", "private_file_scope", "recovery", "reexports",
+    "documentation_quality",
 }
 CLI_CONTRACT_FIXTURES = {
     "cached_dependencies", "conditional_complex", "deep_binary", "duplicate",
@@ -188,7 +189,7 @@ class FixtureContractTest(unittest.TestCase):
         self.assertEqual(self.names(document), {"noValue", "undocumented"})
         self.assertTrue({"CJDOC3022", "CJDOC3023"}.issubset(self.codes(document)))
 
-    def test_override_relationship_is_explicitly_unavailable_in_ast_fallback(self) -> None:
+    def test_override_relationship_resolves_with_syntax_backend(self) -> None:
         document, _ = self.generate("override", expected_exit=0)
         derived = [
             declaration for declaration in document["declarations"]
@@ -198,8 +199,8 @@ class FixtureContractTest(unittest.TestCase):
         self.assertEqual(derived[0]["symbolRelationships"], [{
             "kind": "override",
             "targetDisplay": "read",
-            "state": "unavailable",
-            "targetSymbolId": None,
+            "state": "resolved",
+            "targetSymbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::override_fixture::BaseReader::function:read#g0()",
         }])
 
     def test_invalid_path_dependencies_do_not_drop_the_root_api(self) -> None:
