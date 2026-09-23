@@ -30,8 +30,11 @@ class HtmlMemberBrowserTest {
             "public func extra(): Unit", SemanticInfo("partial", "ast"),
             ownerId: Some(extensionId))
         let extension = SymbolDoc(extensionId, "extend", "Box", "fixture.Box",
-            "fixture", moduleId, "public", memberBrowserTestSource(3),
-            "extend Box", SemanticInfo("partial", "ast"))
+            "fixture", moduleId, "internal", memberBrowserTestSource(3),
+            "extend Box", SemanticInfo("partial", "ast"), symbolRelationships: [
+                SymbolRelationship("extensionTarget", "fixture.Box", "resolved",
+                    targetSymbolId: Some(ownerId))
+            ])
         let inherited = SymbolDoc(inheritedId, "function", "baseMember",
             "fixture.Base.baseMember", "fixture", moduleId, "public",
             memberBrowserTestSource(6), "public func baseMember(): Unit",
