@@ -116,6 +116,17 @@ public class ReferenceBox<T> {
      */
     public func convert(value: String): String { value }
 
+    /**
+     * A deliberately long signature used to verify wrapping without losing named parameters or defaults.
+     * @param source Source name.
+     * @param destination Destination name.
+     * @param retries Retry count.
+     * @param timeoutMs Timeout in milliseconds.
+     * @param enabled Whether the operation is enabled.
+     * @return The source value.
+     */
+    public func veryLongOperation(source!: String, destination!: String, retries!: Int64 = 3, timeoutMs!: Int64 = 1000, enabled!: Bool = true): String { source }
+
     /** A documented property. */
     public prop label: String { get() { "reference" } }
 }
