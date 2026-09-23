@@ -64,6 +64,36 @@ jobs:
       - name: Test SDK installer
         run: python -m unittest scripts/test_install_cangjie_sdk.py
 
+      - name: Install stdx build Python dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v python3 >/dev/null 2>&1; then
+            python_command=python3
+          else
+            python_command=python
+          fi
+          "${python_command}" -m pip install --disable-pip-version-check psutil
+          "${python_command}" -c 'import psutil'
+
+      - name: Add macOS LLVM archiver to PATH
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          llvm_ar="$(xcrun --find llvm-ar 2>/dev/null || true)"
+          llvm_bin=""
+          if [[ -n "${llvm_ar}" ]]; then
+            llvm_bin="$(dirname "${llvm_ar}")"
+          fi
+          if [[ -z "${llvm_bin}" || ! -x "${llvm_bin}/llvm-ranlib" ]]; then
+            brew install llvm
+            llvm_bin="$(brew --prefix llvm)/bin"
+          fi
+          test -x "${llvm_bin}/llvm-ar"
+          test -x "${llvm_bin}/llvm-ranlib"
+          echo "${llvm_bin}" >> "${GITHUB_PATH}"
+
       - name: Restore Cangjie STS SDK
         id: sdk-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -107,9 +137,6 @@ jobs:
           cd "${stdx_dir}"
           cjpm build
           sidecar="${stdx_dir}/target/release/stdx"
-          for artifact in stdx.syntax.cjo stdx.chir.cjo libstdx.syntax.a libstdx.syntaxFFI.a libstdx.chir.a; do
-            test -f "${sidecar}/${artifact}"
-          done
           echo "CANGJIE_STDX_PATH=${sidecar}" >> "${GITHUB_ENV}"
 
       - name: Verify built STS stdx sidecar
