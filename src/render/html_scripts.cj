@@ -715,7 +715,6 @@ internal let HTML_SEARCH_SCRIPT = """
     const cfg = document.body.dataset.cjdocCfg || "";
     return "cjdoc-member-state:" + [project, version, audience, cfg, location.pathname].join("|");
   })();
-  const sidebar = document.querySelector("#cjdoc-sidebar");
   const saveMemberState = () => {
     try {
       const open = [...document.querySelectorAll("details[data-cjdoc-member][open]")]
