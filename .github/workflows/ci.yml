@@ -263,6 +263,22 @@ jobs:
           test -d "${sidecar}"
           echo "CJDOC_STDX_PATH=${sidecar}" >> "${GITHUB_ENV}"
 
+      - name: Diagnose Windows STS macro-linked target
+        if: failure() && matrix.platform == 'windows-x64'
+        continue-on-error: true
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          set -euo pipefail
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          build_dir="${RUNNER_TEMP}/cangjie-stdx/build_temp/build"
+          mingw_runtime_bin="$(cygpath -u 'C:/mingw64/bin')"
+          stdx_build_bin="$(cygpath -u "${build_dir}/bin")"
+          stdx_library_bin="$(cygpath -u "${build_dir}/lib/windows_x86_64_cjnative")"
+          export PATH="${mingw_runtime_bin}:${stdx_build_bin}:${stdx_library_bin}:${PATH}"
+          cmake --build "${build_dir}" --target cangjieCJNATIVECollectAspects --verbose --parallel 1
+
       - name: Verify built STS stdx sidecar
         shell: bash
         env:
@@ -271,6 +287,14 @@ jobs:
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           python scripts/with_stdx.py --variant static --print-env --
+
+      - name: Snapshot pristine source-edge fixture
+        id: source-edge-snapshot
+        if: matrix.platform == 'macos-arm64'
+        shell: bash
+        run: |
+          cp -p tests/fixtures/projects/source_edges/src/fixture.cj \
+            "${RUNNER_TEMP}/source-edge-fixture.cj"
 
       - name: Run v9 local acceptance gate
         shell: bash
@@ -286,9 +310,17 @@ jobs:
             python scripts/with_stdx.py --variant static -- \
               python scripts/real_repository_smoke.py --project .
           fi
+      - name: Restore pristine source-edge fixture
+        id: restore-source-edge
+        if: always() && matrix.platform == 'macos-arm64' && steps.source-edge-snapshot.outcome == 'success'
+        shell: bash
+        run: |
+          cp -p "${RUNNER_TEMP}/source-edge-fixture.cj" \
+            tests/fixtures/projects/source_edges/src/fixture.cj
+
       - name: Regenerate macOS STS golden candidates
         id: macos-goldens
-        if: failure() && matrix.platform == 'macos-arm64'
+        if: failure() && matrix.platform == 'macos-arm64' && steps.restore-source-edge.outcome == 'success'
         shell: bash
         env:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
