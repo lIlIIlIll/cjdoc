@@ -57,15 +57,7 @@ internal func appendContextSidebar(out: RenderTextBuffer, projection: RenderProj
     currentSymbol: ?SymbolDoc): Unit {
     var owner: ?SymbolDoc = None
     match (currentSymbol) {
-        case Some(symbol) =>
-            if (isTypeDeclaration(symbol)) {
-                owner = Some(symbol)
-            } else {
-                match (symbol.ownerId) {
-                    case Some(ownerId) => owner = projection.visibleIndex.get(ownerId)
-                    case None => ()
-                }
-            }
+        case Some(symbol) => owner = memberContextOwner(projection, symbol)
         case None => ()
     }
 
