@@ -64,17 +64,25 @@ jobs:
       - name: Test SDK installer
         run: python -m unittest scripts/test_install_cangjie_sdk.py
 
-      - name: Install stdx build Python dependency
-        shell: bash
+      - name: Install Windows STS stdx OpenSSL dependency
+        if: matrix.platform == 'windows-x64'
+        id: msys2
+        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2.32.0
+        with:
+          msystem: MINGW64
+          suppress-deprecation-warnings: msystem-mingw64
+          update: true
+          install: mingw-w64-x86_64-openssl
+
+      - name: Set Windows STS stdx OpenSSL search path
+        if: matrix.platform == 'windows-x64'
+        shell: pwsh
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: |
-          set -euo pipefail
-          if command -v python3 >/dev/null 2>&1; then
-            python_command=python3
-          else
-            python_command=python
-          fi
-          "${python_command}" -m pip install --disable-pip-version-check psutil
-          "${python_command}" -c 'import psutil'
+          $opensslRoot = Join-Path $env:MSYS2_LOCATION 'mingw64'
+          "OPENSSL_ROOT_DIR=$opensslRoot" >> $env:GITHUB_ENV
+          "CMAKE_PREFIX_PATH=$opensslRoot" >> $env:GITHUB_ENV
 
       - name: Add macOS LLVM archiver to PATH
         if: runner.os == 'macOS'
@@ -135,15 +143,13 @@ jobs:
           git -C "${stdx_dir}" checkout --detach FETCH_HEAD
           test "$(git -C "${stdx_dir}" rev-parse HEAD)" = "${CANGJIE_STDX_SOURCE_REV}"
           cd "${stdx_dir}"
-          if ! cjpm build; then
-            build_log="${stdx_dir}/build-script-cache/release/stdx/bin/script-log"
-            if [[ -f "${build_log}" ]]; then
-              tail -n 200 "${build_log}"
-            else
-              echo "stdx build log is missing: ${build_log}" >&2
-            fi
-            exit 1
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            export CC="$(xcrun --find clang)"
+            export CXX="$(xcrun --find clang++)"
+            export CFLAGS="${CFLAGS:-} -Wno-error=cast-function-type-mismatch"
           fi
+          python build.py build -t release
+          python build.py install
           case "${RUNNER_OS}:${RUNNER_ARCH}" in
             Linux:X64) stdx_target=linux_x86_64 ;;
             macOS:ARM64) stdx_target=darwin_aarch64 ;;
@@ -154,6 +160,7 @@ jobs:
               ;;
           esac
           sidecar="${stdx_dir}/target/${stdx_target}_cjnative/static/stdx"
+          test -d "${sidecar}"
           echo "CJDOC_STDX_PATH=${sidecar}" >> "${GITHUB_ENV}"
 
       - name: Verify built STS stdx sidecar
