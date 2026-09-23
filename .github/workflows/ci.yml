@@ -154,11 +154,17 @@ jobs:
           git init "${compiler_schema_dir}"
           git -C "${compiler_schema_dir}" remote add origin https://gitcode.com/Cangjie/cangjie_compiler.git
           git -C "${compiler_schema_dir}" sparse-checkout init --cone
-          git -C "${compiler_schema_dir}" sparse-checkout set schema
+          git -C "${compiler_schema_dir}" sparse-checkout set schema include
           git -C "${compiler_schema_dir}" fetch --depth 1 --filter=blob:none origin "${CANGJIE_COMPILER_SCHEMA_REV}"
           git -C "${compiler_schema_dir}" checkout --detach FETCH_HEAD
           test "$(git -C "${compiler_schema_dir}" rev-parse HEAD)" = "${CANGJIE_COMPILER_SCHEMA_REV}"
           test -s "${compiler_schema_dir}/schema/PackageFormat.fbs"
+          test -d "${compiler_schema_dir}/include/cangjie"
+          if [[ ! -d "${CANGJIE_SDK_ROOT}/include/cangjie" ]]; then
+            # macOS and Windows STS archives omit headers required by stdx syntax.
+            mkdir -p "${CANGJIE_SDK_ROOT}/include"
+            cp -R "${compiler_schema_dir}/include/cangjie" "${CANGJIE_SDK_ROOT}/include/"
+          fi
           git init "${stdx_dir}"
           git -C "${stdx_dir}" remote add origin https://gitcode.com/Cangjie/cangjie_stdx.git
           git -C "${stdx_dir}" fetch --depth 1 origin "${CANGJIE_STDX_SOURCE_REV}"
