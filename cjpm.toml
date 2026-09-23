@@ -1,5 +1,5 @@
 [package]
-cjc-version = "1.3.0"
+cjc-version = "1.2.0"
 name = "cjdoc"
 organization = ""
 description = "Cangjie API documentation generator"
