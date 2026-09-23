@@ -384,53 +384,50 @@ internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<Strin
 internal func appendSiblingMemberNavigation(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, projection: RenderProjection,
     symbol: SymbolDoc, rootPrefix: String, locale: String): Unit {
-    match (symbol.ownerId) {
-        case Some(ownerId) => match (findSymbol(index, ownerId)) {
-            case Some(owner) =>
-                let entries = projection.members(owner).entries
-                if (entries.size <= 1) { return }
-                let overloadCounts = HashMap<String, Int64>()
-                for (entry in entries) {
-                    let key = "${entry.groupKey}:${entry.symbol.name}"
-                    overloadCounts[key] = match (overloadCounts.get(key)) {
-                        case Some(value) => value + 1
-                        case None => 1
-                    }
-                }
-                out.append("<nav class=\"sibling-members\" aria-label=\"" +
-                    label(locale, "Other members of this type", "同类型的其他成员") + "\"><span>" +
-                    label(locale, "Members", "成员") + "</span><div>")
-                var shown: Int64 = 0
-                for (entry in entries) {
-                    if (shown >= 24) { break }
-                    let member = entry.symbol
-                    let key = "${entry.groupKey}:${member.name}"
-                    let overloadCount = match (overloadCounts.get(key)) {
-                        case Some(value) => value
-                        case None => 0
-                    }
-                    let display = if (overloadCount > 1 && !member.headerSpelling.isEmpty()) {
-                        member.headerSpelling
-                    } else { member.name }
-                    if (member.id == symbol.id) {
-                        out.append("<span class=\"is-current\" aria-current=\"page\"><code>" +
-                            escapeHtml(display) + "</code></span>")
-                    } else {
-                        out.append("<a href=\"" + rootPrefix + escapeHtml(symbolPagePath(member)) +
-                            "\"><code>" + escapeHtml(display) + "</code></a>")
-                    }
-                    shown++
-                }
-                if (entries.size > 24) {
-                    out.append("<a class=\"sibling-members-all\" href=\"" + rootPrefix +
-                        escapeHtml(symbolPagePath(owner)) + "\">" +
-                        label(locale, "All members", "全部成员") + "</a>")
-                }
-                out.append("</div></nav>\n")
-            case None => ()
-        }
-        case None => ()
+    let owner = match (memberContextOwner(projection, symbol)) {
+        case Some(value) => value
+        case None => return
     }
+    let entries = projection.members(owner).entries
+    if (entries.size <= 1) { return }
+    let overloadCounts = HashMap<String, Int64>()
+    for (entry in entries) {
+        let key = "${entry.groupKey}:${entry.symbol.name}"
+        overloadCounts[key] = match (overloadCounts.get(key)) {
+            case Some(value) => value + 1
+            case None => 1
+        }
+    }
+    out.append("<nav class=\"sibling-members\" aria-label=\"" +
+        label(locale, "Other members of this type", "同类型的其他成员") + "\"><span>" +
+        label(locale, "Members", "成员") + "</span><div>")
+    var shown: Int64 = 0
+    for (entry in entries) {
+        if (shown >= 24) { break }
+        let member = entry.symbol
+        let key = "${entry.groupKey}:${member.name}"
+        let overloadCount = match (overloadCounts.get(key)) {
+            case Some(value) => value
+            case None => 0
+        }
+        let display = if (overloadCount > 1 && !member.headerSpelling.isEmpty()) {
+            member.headerSpelling
+        } else { member.name }
+        if (member.id == symbol.id) {
+            out.append("<span class=\"is-current\" aria-current=\"page\"><code>" +
+                escapeHtml(display) + "</code></span>")
+        } else {
+            out.append("<a href=\"" + rootPrefix + escapeHtml(symbolPagePath(member)) +
+                "\"><code>" + escapeHtml(display) + "</code></a>")
+        }
+        shown++
+    }
+    if (entries.size > 24) {
+        out.append("<a class=\"sibling-members-all\" href=\"" + rootPrefix +
+            escapeHtml(symbolPagePath(owner)) + "\">" +
+            label(locale, "All members", "全部成员") + "</a>")
+    }
+    out.append("</div></nav>\n")
 }
 internal func renderSymbolPage(documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc,
