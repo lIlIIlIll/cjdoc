@@ -49,6 +49,17 @@ class WithStdxTest(unittest.TestCase):
             self.assertIn(str(flatbuffers), options)
             self.assertEqual(digest, with_stdx.file_digest(flatbuffers))
 
+    def test_static_link_options_include_macos_cxx_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            sidecar = self.make_sidecar(
+                Path(temporary), with_stdx.REQUIRED_STATIC_ARTIFACTS
+            )
+            options, digest = with_stdx.static_link_options(
+                sidecar, "aarch64-apple-darwin"
+            )
+            self.assertEqual(options, "-lc++")
+            self.assertEqual(digest, "")
+
     def test_dynamic_mode_does_not_require_static_dependency(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             sidecar = self.make_sidecar(

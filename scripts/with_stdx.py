@@ -158,6 +158,9 @@ def static_link_options(path: Path, target: str) -> tuple[str, str]:
         dependency_digest = file_digest(flatbuffers)
     if target.endswith("-linux-gnu"):
         options[0:0] = ["-lstdc++", "-lgcc_s"]
+    elif target.endswith("-apple-darwin"):
+        # ld64.lld needs libc++ explicitly for the static syntax archive.
+        options.append("-lc++")
     return " ".join(options), dependency_digest
 
 

@@ -86,7 +86,7 @@ jobs:
           update: true
           install: mingw-w64-x86_64-openssl
 
-      - name: Set Windows STS stdx OpenSSL search path
+      - name: Set Windows STS OpenSSL and MinGW runtime paths
         if: matrix.platform == 'windows-x64'
         shell: pwsh
         env:
@@ -95,6 +95,7 @@ jobs:
           $opensslRoot = Join-Path $env:MSYS2_LOCATION 'mingw64'
           "OPENSSL_ROOT_DIR=$opensslRoot" >> $env:GITHUB_ENV
           "CMAKE_PREFIX_PATH=$opensslRoot" >> $env:GITHUB_ENV
+          (Join-Path $opensslRoot 'bin') >> $env:GITHUB_PATH
 
       - name: Add macOS LLVM archiver to PATH
         if: runner.os == 'macOS'
