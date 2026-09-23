@@ -205,11 +205,13 @@ test.describe('generated HTML reference', () => {
     const classUrl = new URL(classHref, packageUrl).href;
     await gotoFile(page, classUrl);
     await expect(page.locator('.breadcrumbs')).toContainText('Package');
-    await expect(page.locator('.api-usages')).toContainText('Getting started');
-    await expect(page.locator('.external-documentation a')).toHaveAttribute('href', 'https://docs.example.test/1.1.3/libs/std/core/reference-box.html#referencebox');
-    await expect(page.locator('.external-documentation')).toContainText('version: 1.1.3');
-    await expect(page.locator('.external-documentation')).toContainText('format: cjdoc.symbol-index/1');
-    await expect(page.locator('.external-documentation')).toContainText('index: docs/std-symbol-index.json');
+    const classUsages = page.locator('main > .api-usages');
+    const classExternalDocs = page.locator('main > .external-documentation');
+    await expect(classUsages).toContainText('Getting started');
+    await expect(classExternalDocs.locator('a')).toHaveAttribute('href', 'https://docs.example.test/1.1.3/libs/std/core/reference-box.html#referencebox');
+    await expect(classExternalDocs).toContainText('version: 1.1.3');
+    await expect(classExternalDocs).toContainText('format: cjdoc.symbol-index/1');
+    await expect(classExternalDocs).toContainText('index: docs/std-symbol-index.json');
     await gotoFile(page, packageUrl);
     const stateHref = await page.locator('.declaration-row-link').filter({ hasText: 'ReferenceState' }).getAttribute('href');
     expect(stateHref).toBeTruthy();
@@ -228,7 +230,7 @@ test.describe('generated HTML reference', () => {
     const extensionMember = page.locator('[data-cjdoc-member][data-member-origin="extension"]');
     await expect(extensionMember).not.toHaveCount(0);
     await expect(extensionMember.first()).toContainText('extensionMarker');
-    await extensionMember.first().locator('summary').click();
+    await extensionMember.first().locator('.member-detail-summary').click();
     await expect(extensionMember.first().locator('.extension-conditions')).toContainText('extension target');
     await originFilter.selectOption('');
     await memberFilter.fill('normalize');
@@ -236,7 +238,7 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-member][data-member-name="label"]')).toBeHidden();
     await expect(page.locator('[data-cjdoc-member-filter-status]')).toContainText('matching member');
     const normalizeForRestore = page.locator('details[data-cjdoc-member][data-member-name="normalize"]');
-    await normalizeForRestore.locator('summary').click();
+    await normalizeForRestore.locator('.member-detail-summary').click();
     const restoreHref = await normalizeForRestore.locator('.member-permalink').getAttribute('href');
     expect(restoreHref).toBeTruthy();
     await page.evaluate(() => window.scrollTo(0, Math.min(520, document.documentElement.scrollHeight - innerHeight)));
@@ -256,13 +258,13 @@ test.describe('generated HTML reference', () => {
     const labelDetail = page.locator('details[data-cjdoc-member][data-member-name="label"]');
     await expect(normalizeDetail).not.toHaveAttribute('open', '');
     const typePageUrl = page.url();
-    await normalizeDetail.locator('summary').click();
+    await normalizeDetail.locator('.member-detail-summary').click();
     await expect(normalizeDetail).toHaveAttribute('open', '');
     await expect(normalizeDetail.locator('.member-detail-body')).toContainText('Parameters');
     await expect(normalizeDetail.locator('.member-detail-body')).toContainText('Returns');
     await expect(normalizeDetail.locator('.member-detail-body')).toContainText('precondition');
     expect(page.url()).toBe(typePageUrl);
-    await labelDetail.locator('summary').click();
+    await labelDetail.locator('.member-detail-summary').click();
     await expect(labelDetail).toHaveAttribute('open', '');
     await expect(labelDetail.locator('.api-usages')).toContainText('Getting started');
     await expect(labelDetail.locator('.member-source-link')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
@@ -271,8 +273,8 @@ test.describe('generated HTML reference', () => {
     const pingDetails = page.locator('details[data-cjdoc-member][data-member-name="ping"]');
     await expect(pingDetails).toHaveCount(2);
     await expect(page.locator('details[data-cjdoc-member][data-member-name="convert"]')).toHaveCount(2);
-    await pingDetails.nth(0).locator('summary').click();
-    await pingDetails.nth(1).locator('summary').click();
+    await pingDetails.nth(0).locator('.member-detail-summary').click();
+    await pingDetails.nth(1).locator('.member-detail-summary').click();
     await expect(pingDetails.nth(0)).toHaveAttribute('open', '');
     await expect(pingDetails.nth(1)).toHaveAttribute('open', '');
     const normalizeAnchor = await normalizeDetail.getAttribute('id');
@@ -302,13 +304,13 @@ test.describe('generated HTML reference', () => {
     }));
     expect(longStyle.whiteSpace).not.toBe('nowrap');
     expect(longStyle.text).toContain('enabled!: Bool = true');
-    await longDetail.locator('summary').focus();
+    await longDetail.locator('.member-detail-summary').focus();
     await page.keyboard.press('Enter');
     await expect(longDetail).toHaveAttribute('open', '');
     await expect(longDetail.locator('.signature-block')).toContainText('timeoutMs!: Int64 = 1000');
 
     const useDetail = page.locator('details[data-cjdoc-member][data-member-name="use"]');
-    await useDetail.locator('summary').click();
+    await useDetail.locator('.member-detail-summary').click();
     const linkedSignatureHtml = await useDetail.locator('.signature-block code').innerHTML();
     expect(linkedSignatureHtml).toContain('&quot;Token&quot;');
     expect(linkedSignatureHtml).toMatch(/item!:\s*<a[^>]*>Token<\/a>/);
@@ -483,7 +485,7 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-member-origin] option[value="declared"]')).toContainText('直接声明');
     const convert = page.locator('[data-cjdoc-member][data-member-name="convert"]').first();
     await expect(convert).toContainText('将整数转换为文本');
-    await convert.locator('summary').click();
+    await convert.locator('.member-detail-summary').click();
     await expect(convert.locator('.member-detail-body')).toContainText('返回值');
   });
 
@@ -547,7 +549,7 @@ test.describe('generated HTML reference', () => {
     await page.goto(new URL(classHref, page.url()).href);
     const before = page.url();
     const detail = page.locator('[data-cjdoc-member][data-member-name="normalize"]');
-    await detail.locator('summary').tap();
+    await detail.locator('.member-detail-summary').tap();
     await expect(detail).toHaveAttribute('open', '');
     expect(page.url()).toBe(before);
     await expectStable(page);
