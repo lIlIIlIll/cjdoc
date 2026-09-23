@@ -75,6 +75,30 @@ internal class HtmlMemberBrowser {
     }
 }
 
+internal func memberContextOwner(projection: RenderProjection, symbol: SymbolDoc): ?SymbolDoc {
+    if (isTypeDeclaration(symbol)) { return Some(symbol) }
+    let declaredOwner = match (symbol.ownerId) {
+        case Some(ownerId) => projection.visibleIndex.get(ownerId)
+        case None => None
+    }
+    match (declaredOwner) {
+        case Some(owner) =>
+            if (owner.kind != "extend") { return Some(owner) }
+            for (relation in owner.symbolRelationships) {
+                if (relation.kind != "extensionTarget" || relation.state != "resolved") { continue }
+                match (relation.targetSymbolId) {
+                    case Some(targetId) => match (projection.visibleIndex.get(targetId)) {
+                        case Some(target) => return Some(target)
+                        case None => ()
+                    }
+                    case None => ()
+                }
+            }
+            Some(owner)
+        case None => None
+    }
+}
+
 internal func memberOriginLabel(origin: String, locale: String): String {
     match (origin) {
         case "declared" => label(locale, "Declared", "直接声明")
