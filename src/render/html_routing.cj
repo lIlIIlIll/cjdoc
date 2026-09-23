@@ -188,6 +188,34 @@ internal func findSymbol(index: HashMap<String, SymbolDoc>, id: String): ?Symbol
     index.get(id)
 }
 
+internal func extensionContainerVisibleForAudience(extension: SymbolDoc,
+    documentation: DocumentationSet, index: HashMap<String, SymbolDoc>): Bool {
+    if (extension.kind != "extend") { return false }
+    var targetVisible = false
+    for (relation in extension.symbolRelationships) {
+        if (relation.kind != "extensionTarget" || relation.state != "resolved") { continue }
+        match (relation.targetSymbolId) {
+            case Some(targetId) => match (index.get(targetId)) {
+                case Some(target) =>
+                    if (isVisibleForAudience(target, documentation.configuration.audience)) {
+                        targetVisible = true
+                        break
+                    }
+                case None => ()
+            }
+            case None => ()
+        }
+    }
+    if (!targetVisible) { return false }
+    for (member in documentation.declarations) {
+        if (member.ownerId == Some(extension.id) &&
+            isVisibleForAudience(member, documentation.configuration.audience)) {
+            return true
+        }
+    }
+    false
+}
+
 internal func renderabilityIndex(documentation: DocumentationSet,
     index: HashMap<String, SymbolDoc>): HashMap<String, Bool> {
     let results = HashMap<String, Bool>()
@@ -205,7 +233,8 @@ internal func renderabilityIndex(documentation: DocumentationSet,
                 case None => ()
             }
             path.add(symbol)
-            if (!isVisibleForAudience(symbol, documentation.configuration.audience)) {
+            if (!isVisibleForAudience(symbol, documentation.configuration.audience) &&
+                !extensionContainerVisibleForAudience(symbol, documentation, index)) {
                 inherited = false
                 break
             }
@@ -219,7 +248,8 @@ internal func renderabilityIndex(documentation: DocumentationSet,
             position--
             let symbol = path[position]
             inherited = inherited &&
-                isVisibleForAudience(symbol, documentation.configuration.audience)
+                (isVisibleForAudience(symbol, documentation.configuration.audience) ||
+                    extensionContainerVisibleForAudience(symbol, documentation, index))
             results[symbol.id] = inherited
         }
     }
