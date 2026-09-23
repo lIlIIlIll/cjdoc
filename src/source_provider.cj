@@ -1,11 +1,10 @@
 package cjdoc
 
-import std.ast.*
 import std.collection.*
 import std.fs.*
 import std.sort.*
 
-class AstSourceProvider <: SourceProvider {
+class SyntaxSourceProvider <: SourceProvider {
     private let includePathDependencies: Bool
     private let dependencySources: Array<DependencySourceInput>
     private let jobs: Int64
@@ -97,6 +96,7 @@ class AstSourceProvider <: SourceProvider {
             case None => if (requestedName.isEmpty()) { "project" } else { requestedName }
         }
         let sourceSnapshot = SourceSnapshot(projectName)
+        sourceSnapshot.manifestText = Some(manifest)
         if (packageView.limitReached) {
             sourceSnapshot.modules.add(SourceModule(moduleId("root", projectName, ""),
                 projectName, "root", ""))

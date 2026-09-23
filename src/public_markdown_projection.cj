@@ -39,17 +39,15 @@ internal func publicTag(value: DocTag, targetVisible!: Bool = true): public_mode
     }
     let targetSymbolId: ?String = if (state == "resolved") { value.targetSymbolId } else { None }
     public_model.DocTag(value.name, value.subject, value.description, referenceState: state,
-        targetSymbolId: targetSymbolId)
+        targetSymbolId: value.targetSymbolId, directives: value.directives)
 }
 
-private func publicTagForAudience(value: DocTag, renderableIds: HashSet<String>): public_model.DocTag {
-    let targetVisible = match (value.targetSymbolId) {
-        case Some(targetId) => renderableIds.contains(targetId)
-        case None => true
+internal func publicTagForAudience(value: DocTag, renderableIds: HashSet<String>): public_model.DocTag {
+    match (value.targetSymbolId) {
+        case Some(targetId) => publicTag(value, targetVisible: renderableIds.contains(targetId))
+        case None => publicTag(value)
     }
-    publicTag(value, targetVisible: targetVisible)
 }
-
 internal let MAX_GENERATED_MARKDOWN_DEPTH: Int64 = 48
 internal let MAX_GENERATED_MARKDOWN_NODES: Int64 = 100000
 internal let MAX_GENERATED_MARKDOWN_STRING_BYTES: Int64 = 1024 * 1024
@@ -387,6 +385,7 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
                 case Some(value) => context.consumeText(value)
                 case None => ()
             }
+            if (!tag.directives.isEmpty()) { context.consumeText(tag.directives) }
         }
         let body = if (value.descriptionMarkdown.isEmpty()) {
             value.summaryMarkdown

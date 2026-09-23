@@ -1,6 +1,7 @@
 package cjdoc
 
 import cjdoc.model as public_model
+import cjdoc.quality.*
 import std.collection.*
 import std.sort.*
 import std.fs.*
@@ -265,7 +266,7 @@ internal class PublicDiagnosticProjection {
 
     init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
         assetCollector: LocalAssetCollector, markdownContext: MarkdownGenerationContext,
-        semanticLinkDiagnostics!: Array<public_model.Diagnostic> = []) {
+        declarations: Array<public_model.SymbolDoc>, lintProfile: String) {
         let diagnostics = ArrayList<public_model.Diagnostic>()
         var hasError = false
         var incompleteSource = !documentation.orphanDocComments.isEmpty() ||
@@ -293,10 +294,12 @@ internal class PublicDiagnosticProjection {
             incompleteSource = true
         }
         diagnostics.add(all: markdownContext.diagnostics())
-        for (diagnostic in semanticLinkDiagnostics) {
-            if (diagnostic.severity == "error") { hasError = true }
+        if (lintProfile != "off") {
+            for (symbol in declarations) {
+                if (symbol.visibility != "public" && symbol.visibility != "protected") { continue }
+                diagnostics.add(all: documentationQualityDiagnostics(symbol, documentation.projectName))
+            }
         }
-        diagnostics.add(all: semanticLinkDiagnostics)
         sort(diagnostics, lessThan: {
             left, right => comparePublicDiagnostic(left, right) < 0
         }, stable: true)
@@ -320,7 +323,7 @@ internal func publicDocumentation(documentation: DocumentationSet,
     let sourceProjection = PublicSourceProjection(documentation, sourceMapper)
     let diagnosticProjection = PublicDiagnosticProjection(documentation, sourceMapper,
         declarationProjection.assetCollector, declarationProjection.markdownContext,
-        semanticLinkDiagnostics: semanticLinkDiagnostics)
+        declarationProjection.declarations, request.lintProfile)
     let status = if (diagnosticProjection.hasError || diagnosticProjection.incompleteSource ||
         providerProjection.incomplete) {
         "partial"

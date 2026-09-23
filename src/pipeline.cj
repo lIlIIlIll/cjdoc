@@ -17,6 +17,7 @@ class DocumentationDriver {
     public func generate(projectRoot: String): DocumentationSet {
         let source = sourceProvider.collect(projectRoot)
         filterSourceForCfg(source, cfgProfile)
+        source.cfgProfile = cfgProfile
         let semantic = semanticProvider.analyze(source)
         let documentation = DocumentationBinder().bind(source, semantic,
             expectedProvider: Some(semanticProvider.providerName()))
@@ -26,14 +27,14 @@ class DocumentationDriver {
 }
 
 func defaultSemanticProvider(): SemanticProvider {
-    AstSemanticProvider()
+    SyntaxSemanticProvider()
 }
 
 func generateDocumentation(request: GenerationRequest,
     semanticProvider!: SemanticProvider = defaultSemanticProvider()): DocumentationSet {
     let profile = CfgProfile(values: request.cfgValues.toArray())
     DocumentationDriver(
-        AstSourceProvider(includePathDependencies: request.includePathDependencies,
+        SyntaxSourceProvider(includePathDependencies: request.includePathDependencies,
             dependencySources: request.dependencySources.toArray(), jobs: request.jobs,
             cacheDirectory: request.cacheDirectory, cacheFingerprint: request.cacheFingerprint,
             astPreflightExecutable: request.astPreflightExecutable,

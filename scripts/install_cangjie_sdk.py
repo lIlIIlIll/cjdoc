@@ -13,6 +13,7 @@ import shutil
 import stat
 import tarfile
 import tempfile
+import subprocess
 import urllib.parse
 import urllib.request
 import zipfile
@@ -29,7 +30,9 @@ except ImportError:  # Direct script execution.
 
 CACHE_MARKER = ".cjdoc-sdk-cache.json"
 CACHE_ARCHIVE = ".cjdoc-sdk-archive"
-CACHE_MARKER_SCHEMA = "cjdoc.sdk-cache/3"
+LEGACY_CACHE_MARKER_SCHEMA = "cjdoc.sdk-cache/3"
+CACHE_MARKER_SCHEMA = "cjdoc.sdk-cache/4"
+STDX_CACHE_ARCHIVE = ".cjdoc-stdx-archive"
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 MAX_ARCHIVE_SIZE = 2 * 1024 * 1024 * 1024
 MAX_ARCHIVE_MEMBERS = 100000
@@ -108,7 +111,7 @@ def tree_sha256(directory: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(directory.rglob("*"), key=lambda item: item.relative_to(directory).as_posix()):
         relative = path.relative_to(directory).as_posix()
-        if relative in (CACHE_MARKER, CACHE_ARCHIVE):
+        if relative in (CACHE_MARKER, CACHE_ARCHIVE, STDX_CACHE_ARCHIVE):
             continue
         metadata = path.lstat()
         if stat.S_ISLNK(metadata.st_mode):
@@ -157,7 +160,7 @@ def safe_marker_root(destination: Path, value: object) -> Path:
 def marker_value(destination: Path, root: Path, archive_filename: str,
                  archive_sha256: str) -> dict[str, object]:
     return {
-        "schemaVersion": CACHE_MARKER_SCHEMA,
+        "schemaVersion": LEGACY_CACHE_MARKER_SCHEMA,
         "archiveName": archive_filename,
         "archiveSha256": archive_sha256,
         "sdkRoot": root.relative_to(destination).as_posix(),
@@ -196,7 +199,7 @@ def validate_cached_sdk(destination: Path, archive_filename: str,
         "schemaVersion", "archiveName", "archiveSha256", "sdkRoot", "treeSha256"
     }
     if not isinstance(marker, dict) or set(marker) != expected_keys or \
-            marker.get("schemaVersion") != CACHE_MARKER_SCHEMA:
+            marker.get("schemaVersion") != LEGACY_CACHE_MARKER_SCHEMA:
         raise ValueError("SDK cache marker schema is unknown")
     marker_archive_name = marker.get("archiveName")
     if not isinstance(marker_archive_name, str) or not marker_archive_name or \
@@ -363,6 +366,17 @@ def verify_tar_members(archive: Path, destination: Path, *, compressed: bool) ->
             )
 
 
+def restore_zip_modes(package: zipfile.ZipFile, destination: Path) -> None:
+    for member in package.infolist():
+        mode = (member.external_attr >> 16) & 0o7777
+        if not mode or member.is_dir() or not (mode & 0o111):
+            continue
+        path = destination / safe_member_name(member.filename)
+        if path.is_file() and not path.is_symlink():
+            current = stat.S_IMODE(path.stat().st_mode)
+            path.chmod(current | (mode & 0o111))
+
+
 def extract(archive: Path, destination: Path) -> None:
     verify_archive_file(archive)
     archive_type = archive_magic(archive)
@@ -370,6 +384,7 @@ def extract(archive: Path, destination: Path) -> None:
         verify_zip_members(archive, destination)
         with zipfile.ZipFile(archive) as package:
             package.extractall(destination)
+            restore_zip_modes(package, destination)
         return
     if archive_type in ("tar", "gzip-tar"):
         compressed = archive_type == "gzip-tar"
@@ -380,26 +395,271 @@ def extract(archive: Path, destination: Path) -> None:
     raise ValueError(f"unsupported SDK archive: {archive.name}")
 
 
-def write_github_output(output: Path | None, root: Path) -> None:
+def stdx_root(directory: Path) -> Path | None:
+    candidates: list[Path] = []
+    for package in directory.rglob("stdx.chir.cjo"):
+        if package.is_symlink() or package.parent.name != "stdx":
+            continue
+        root = package.parent
+        required = ("stdx.syntax.cjo", "libstdx.syntax.a", "libstdx.chir.a")
+        if all((root / name).is_file() and not (root / name).is_symlink() for name in required):
+            if root not in candidates:
+                candidates.append(root)
+    if not candidates:
+        return None
+    return min(candidates, key=lambda path: (len(path.relative_to(directory).parts), str(path)))
+
+
+def safe_archive_filename(value: str, option: str) -> str:
+    if not value or value in (".", "..") or Path(value).name != value or "/" in value or \
+            "\\" in value or "\x00" in value:
+        raise ValueError(f"{option} is not a safe archive filename")
+    return value
+
+
+def stdx_artifact_digests(root: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for path in sorted(root.iterdir(), key=lambda item: item.name):
+        if path.is_symlink() or not path.is_file():
+            continue
+        if path.suffix not in (".a", ".bc", ".cjo", ".so") and not path.name.startswith("lib"):
+            continue
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        result[path.name] = digest.hexdigest()
+    return result
+
+
+def combined_marker_value(destination: Path, sdk: Path, stdx: Path,
+                          compiler_name: str, compiler_sha256: str,
+                          stdx_name: str, stdx_sha256: str,
+                          compiler_version: str, compiler_target: str) -> dict[str, object]:
+    return {
+        "schemaVersion": CACHE_MARKER_SCHEMA,
+        "compilerArchiveName": compiler_name,
+        "compilerArchiveSha256": compiler_sha256,
+        "stdxArchiveName": stdx_name,
+        "stdxArchiveSha256": stdx_sha256,
+        "sdkRoot": sdk.relative_to(destination).as_posix(),
+        "stdxRoot": stdx.relative_to(destination).as_posix(),
+        "compilerVersion": compiler_version,
+        "compilerTarget": compiler_target,
+        "stdxArtifacts": stdx_artifact_digests(stdx),
+        "treeSha256": tree_sha256(destination),
+    }
+
+
+def write_combined_cache_marker(destination: Path, sdk: Path, stdx: Path,
+                                compiler_name: str, compiler_sha256: str,
+                                stdx_name: str, stdx_sha256: str,
+                                compiler_version: str, compiler_target: str) -> None:
+    for name, expected in ((CACHE_ARCHIVE, compiler_sha256), (STDX_CACHE_ARCHIVE, stdx_sha256)):
+        archive = destination / name
+        verify_archive_file(archive)
+        verify_sha256(archive, expected)
+    value = combined_marker_value(
+        destination, sdk, stdx, compiler_name, compiler_sha256, stdx_name, stdx_sha256,
+        compiler_version, compiler_target
+    )
+    marker = destination / CACHE_MARKER
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=destination, prefix=f".{CACHE_MARKER}.", delete=False
+    ) as stream:
+        json.dump(value, stream, ensure_ascii=False, indent=2, sort_keys=True)
+        stream.write("\n")
+        temporary = Path(stream.name)
+    os.replace(temporary, marker)
+
+
+def validate_combined_cache(destination: Path, compiler_name: str, compiler_sha256: str,
+                            stdx_name: str, stdx_sha256: str) -> tuple[Path, Path]:
+    if destination.is_symlink() or not destination.is_dir():
+        raise ValueError("SDK cache destination must be a regular directory")
+    marker_path = destination / CACHE_MARKER
+    if marker_path.is_symlink() or not marker_path.is_file():
+        raise ValueError("SDK cache has no verified compiler/stdx marker")
+    marker = strict_load(marker_path, description="SDK cache marker")
+    expected_keys = {
+        "schemaVersion", "compilerArchiveName", "compilerArchiveSha256",
+        "stdxArchiveName", "stdxArchiveSha256", "sdkRoot", "stdxRoot",
+        "compilerVersion", "compilerTarget", "stdxArtifacts", "treeSha256"
+    }
+    if not isinstance(marker, dict) or set(marker) != expected_keys or \
+            marker.get("schemaVersion") != CACHE_MARKER_SCHEMA:
+        raise ValueError("SDK cache marker schema is unknown")
+    if marker.get("compilerArchiveName") != compiler_name or \
+            marker.get("compilerArchiveSha256") != compiler_sha256 or \
+            marker.get("stdxArchiveName") != stdx_name or \
+            marker.get("stdxArchiveSha256") != stdx_sha256:
+        raise ValueError("SDK cache marker does not match the requested archives")
+    if not SHA256.fullmatch(compiler_sha256) or not SHA256.fullmatch(stdx_sha256):
+        raise ValueError("requested archive checksum is invalid")
+    compiler_archive = destination / CACHE_ARCHIVE
+    stdx_archive = destination / STDX_CACHE_ARCHIVE
+    for archive, expected in ((compiler_archive, compiler_sha256), (stdx_archive, stdx_sha256)):
+        if archive.is_symlink() or not archive.is_file():
+            raise ValueError("SDK cache omits a checksum-pinned archive")
+        verify_archive_file(archive)
+        verify_sha256(archive, expected)
+    sdk = safe_marker_root(destination, marker.get("sdkRoot"))
+    stdx = safe_marker_root(destination, marker.get("stdxRoot"))
+    if not sdk.is_dir() or sdk_root(destination) != sdk:
+        raise ValueError("SDK cache marker does not identify a complete SDK root")
+    if not stdx.is_dir() or stdx_root(destination) != stdx:
+        raise ValueError("SDK cache marker does not identify a complete stdx root")
+    expected_tree = marker.get("treeSha256")
+    if not isinstance(expected_tree, str) or not SHA256.fullmatch(expected_tree):
+        raise ValueError("SDK cache marker tree digest is invalid")
+    if tree_sha256(destination) != expected_tree:
+        raise ValueError("SDK cache tree digest does not match the verified extraction marker")
+    artifacts = marker.get("stdxArtifacts")
+    if artifacts != stdx_artifact_digests(stdx):
+        raise ValueError("SDK cache stdx artifact digest does not match the verified marker")
+    with tempfile.TemporaryDirectory(prefix="cjdoc-sdk-authenticate-", dir=destination.parent) as temporary:
+        authenticated = Path(temporary) / "extracted"
+        authenticated.mkdir()
+        extract(compiler_archive, authenticated)
+        extract(stdx_archive, authenticated)
+        if sdk_root(authenticated) is None or stdx_root(authenticated) is None:
+            raise ValueError("authenticated archives do not contain compiler and stdx roots")
+        if tree_sha256(authenticated) != expected_tree:
+            raise ValueError("authenticated archives do not match the verified extraction marker")
+    return sdk, stdx
+
+
+def validate_combined_sdk_root(root: Path, compiler_sha256: str, stdx_sha256: str) -> tuple[Path, Path]:
+    root = lexical_absolute(root)
+    if root.is_symlink() or not root.is_dir() or root.resolve(strict=True) != root:
+        raise ValueError("active SDK root must be a canonical regular directory")
+    for destination in (root, *root.parents):
+        marker_path = destination / CACHE_MARKER
+        if not marker_path.exists():
+            continue
+        marker = strict_load(marker_path, description="SDK cache marker")
+        if not isinstance(marker, dict):
+            raise ValueError("SDK cache marker is invalid")
+        compiler_name = marker.get("compilerArchiveName")
+        stdx_name = marker.get("stdxArchiveName")
+        if not isinstance(compiler_name, str) or not isinstance(stdx_name, str):
+            raise ValueError("SDK cache marker archive names are invalid")
+        sdk, stdx = validate_combined_cache(
+            destination, compiler_name, compiler_sha256, stdx_name, stdx_sha256
+        )
+        if sdk != root:
+            raise ValueError("active SDK root does not match its verified extraction marker")
+        return sdk, stdx
+    raise ValueError("active SDK root has no verified compiler/stdx marker")
+
+
+def write_github_output(output: Path | None, root: Path, stdx: Path | None = None) -> None:
     normalized = root.resolve().as_posix()
     if "\n" in normalized or "\r" in normalized:
         raise ValueError("Cangjie SDK root contains a line break")
     print(f"Cangjie SDK root: {normalized}")
+    if stdx is not None:
+        normalized_stdx = stdx.resolve().as_posix()
+        if "\n" in normalized_stdx or "\r" in normalized_stdx:
+            raise ValueError("stdx root contains a line break")
+        print(f"Cangjie stdx static root: {normalized_stdx}")
     if output is not None:
         with output.open("a", encoding="utf-8", newline="\n") as stream:
             stream.write(f"root={normalized}\n")
+            if stdx is not None:
+                stream.write(f"stdx_static={normalized_stdx}\n")
+
+def compiler_identity(root: Path) -> tuple[str, str]:
+    command = root / "bin" / "cjc"
+    try:
+        completed = subprocess.run(
+            [str(command), "-v"], check=True, capture_output=True, text=True, timeout=15
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ValueError(f"cannot query installed compiler identity: {error}") from error
+    output = f"{completed.stdout}\n{completed.stderr}"
+    version = re.search(r"Cangjie Compiler:\s*([^\n]+)", output)
+    target = re.search(r"Target:\s*([^\n]+)", output)
+    if version is None or target is None:
+        raise ValueError("installed compiler identity is incomplete")
+    return version.group(1).strip(), target.group(1).strip()
+
+
+def install_combined(args: argparse.Namespace) -> int:
+    compiler_sha256 = args.sha256
+    stdx_sha256 = args.stdx_sha256
+    if not SHA256.fullmatch(compiler_sha256) or not SHA256.fullmatch(stdx_sha256):
+        raise ValueError("compiler and stdx checksums must be lowercase 64-hex")
+    compiler_name = safe_archive_filename(archive_name(args.url), "compiler archive name")
+    stdx_name = safe_archive_filename(
+        args.stdx_archive_name or archive_name(args.stdx_url), "stdx archive name"
+    )
+    destination = lexical_absolute(args.destination)
+    if destination.is_symlink():
+        raise ValueError("SDK cache destination must not be a symlink")
+    if destination.is_dir():
+        root, stdx = validate_combined_cache(
+            destination, compiler_name, compiler_sha256, stdx_name, stdx_sha256
+        )
+        write_github_output(args.github_output, root, stdx)
+        return 0
+    if destination.exists():
+        raise ValueError(f"existing SDK cache is incomplete: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="cjdoc-sdk-", dir=destination.parent) as temporary:
+        temporary_path = Path(temporary)
+        compiler_archive = temporary_path / compiler_name
+        stdx_archive = temporary_path / stdx_name
+        extracted = temporary_path / "extracted"
+        extracted.mkdir()
+        download(args.url, compiler_archive)
+        verify_sha256(compiler_archive, compiler_sha256)
+        download(args.stdx_url, stdx_archive)
+        verify_sha256(stdx_archive, stdx_sha256)
+        extract(compiler_archive, extracted)
+        extract(stdx_archive, extracted)
+        reserved = (CACHE_MARKER, CACHE_ARCHIVE, STDX_CACHE_ARCHIVE)
+        if any((extracted / name).exists() or (extracted / name).is_symlink() for name in reserved):
+            raise ValueError("SDK archive uses a reserved cache metadata path")
+        sdk = sdk_root(extracted)
+        stdx = stdx_root(extracted)
+        if sdk is None or stdx is None:
+            raise ValueError("archives do not contain compiler and static stdx roots")
+        shutil.copyfile(compiler_archive, extracted / CACHE_ARCHIVE)
+        shutil.copyfile(stdx_archive, extracted / STDX_CACHE_ARCHIVE)
+        version, target = compiler_identity(sdk)
+        write_combined_cache_marker(
+            extracted, sdk, stdx, compiler_name, compiler_sha256, stdx_name, stdx_sha256,
+            version, target
+        )
+        shutil.move(str(extracted), destination)
+    root, stdx = validate_combined_cache(
+        destination, compiler_name, compiler_sha256, stdx_name, stdx_sha256
+    )
+    write_github_output(args.github_output, root, stdx)
+    return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--url", required=True)
     parser.add_argument("--sha256", required=True)
+    parser.add_argument("--stdx-url")
+    parser.add_argument("--stdx-sha256")
+    parser.add_argument("--stdx-archive-name")
     parser.add_argument("--destination", required=True, type=Path)
     parser.add_argument("--github-output", type=Path)
     args = parser.parse_args()
 
     if not SHA256.fullmatch(args.sha256):
         raise ValueError("--sha256 must be lowercase 64-hex")
+    stdx_options = (args.stdx_url, args.stdx_sha256)
+    if any(value is not None for value in stdx_options) and not all(stdx_options):
+        raise ValueError("--stdx-url and --stdx-sha256 must be supplied together")
+    if args.stdx_archive_name and not args.stdx_url:
+        raise ValueError("--stdx-archive-name requires --stdx-url")
+    if args.stdx_url is not None:
+        return install_combined(args)
 
     destination = lexical_absolute(args.destination)
     if destination.is_symlink():
@@ -422,7 +682,7 @@ def main() -> int:
         verify_sha256(archive, args.sha256)
         extract(archive, extracted)
         if any((extracted / name).exists() or (extracted / name).is_symlink()
-               for name in (CACHE_MARKER, CACHE_ARCHIVE)):
+               for name in (CACHE_MARKER, CACHE_ARCHIVE, STDX_CACHE_ARCHIVE)):
             raise ValueError("SDK archive uses a reserved cache metadata path")
         extracted_root = sdk_root(extracted)
         if extracted_root is None:

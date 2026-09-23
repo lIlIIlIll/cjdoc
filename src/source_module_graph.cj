@@ -1,6 +1,5 @@
 package cjdoc
 
-import std.ast.*
 import std.collection.*
 import std.fs.*
 import std.sort.*

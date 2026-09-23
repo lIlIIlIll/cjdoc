@@ -31,7 +31,7 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         artifacts.addText("html/symbol-index.json", "application/json",
             renderSymbolIndex(documentation, hrefPrefix: "", version: docVersion))
         artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
-            renderSearchIndexScript(searchIndex, projection))
+            renderSearchIndexScript(searchIndex))
         artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8", HTML_THEME_BOOTSTRAP_SCRIPT)
         artifacts.addText("html/search.js", "text/javascript; charset=utf-8", HTML_SEARCH_SCRIPT)
         artifacts.addText("html/style.css", "text/css; charset=utf-8",
@@ -94,6 +94,7 @@ internal func appendCoverageArtifacts(artifacts: RenderArtifactCollector,
     documentation: DocumentationSet): Unit {
     artifacts.addText("coverage/coverage.json", "application/json",
         renderDocumentationCoverageV2(documentation))
+    appendDocumentationQualityArtifact(artifacts, documentation)
 }
 
 public class ApiSurfaceDocumentationRenderer <: DocumentationRenderer {
@@ -129,7 +130,7 @@ internal func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
     pagePath: String, symbolIndex: HashMap<String, SymbolDoc>): Unit {
     out.append("<a id=\"${symbolAnchor(symbol)}\"></a>\n")
     out.append("${heading} "); appendMarkdownCodeSpan(out, symbol.qualifiedName); out.append("\n\n")
-    appendMarkdownCodeBlock(out, symbol.headerSpelling, "cj", "`", 3)
+    appendMarkdownCodeBlock(out, symbol.headerSpelling, "cangjie", "`", 3)
     match (symbol.documentation) {
         case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
             locale: locale, pagePath: pagePath, symbolIndex: Some(symbolIndex))
@@ -241,7 +242,7 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
         out.append("\n\n[${label(locale, "Package", "包")} ")
         appendMarkdownCodeSpan(out, symbol.packageName)
         out.append("](../${markdownPackagePagePath(symbol.moduleId, symbol.packageName)})\n\n")
-        appendMarkdownCodeBlock(out, symbol.headerSpelling, "cj", "`", 3)
+        appendMarkdownCodeBlock(out, symbol.headerSpelling, "cangjie", "`", 3)
         match (symbol.documentation) {
             case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
                 locale: locale, pagePath: markdownSymbolPagePath(symbol),

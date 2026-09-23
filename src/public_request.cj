@@ -5,29 +5,55 @@ import cjdoc.provider as public_provider
 import std.collection.*
 import std.fs.*
 
+public class ChirOptions {
+    public let compilerExecutable: String
+    private let importPathsStorage: ArrayList<String>
+
+    public init(compilerExecutable!: String = "cjc", importPaths!: Array<String> = []) {
+        if (compilerExecutable.trimAscii().isEmpty()) {
+            throw IllegalArgumentException("CHIR compiler executable cannot be empty")
+        }
+        for (path in importPaths) {
+            if (path.trimAscii().isEmpty()) {
+                throw IllegalArgumentException("CHIR import paths cannot be empty")
+            }
+        }
+        this.compilerExecutable = compilerExecutable
+        this.importPathsStorage = ArrayList<String>(importPaths)
+    }
+
+    public prop importPaths: ReadOnlyList<String> {
+        get() { importPathsStorage }
+    }
+}
+
 public class GenerationRequest {
     public let projectRoot: String
+    public let repository: ?public_model.RepositoryInfo
+    public let repositoryRoot: ?String
     public let includePathDependencies: Bool
     public let includeCachedDependencies: Bool
     public let jobs: Int64
     public let audience: String
     public let lintProfile: String
-    public let repository: ?public_model.RepositoryInfo
-    public let repositoryRoot: ?String
+    public let checkExamples: Bool
     public let cacheDirectory: ?String
     public let cacheFingerprint: ?String
     public let astPreflightExecutable: ?String
+    public let chir: ?ChirOptions
     public let cjpmCacheRoot: ?String
     private let dependencySourcesStorage: ArrayList<DependencySourceInput>
     private let cfgValuesStorage: ArrayList<CfgValue>
     private let providerFactoriesStorage: ArrayList<public_provider.SemanticProviderFactory>
 
-    public init(projectRoot: String, includePathDependencies!: Bool = false, includeCachedDependencies!: Bool = false,
+    public init(projectRoot: String, repository!: ?public_model.RepositoryInfo = None,
+        repositoryRoot!: ?String = None, includePathDependencies!: Bool = false, includeCachedDependencies!: Bool = false,
         jobs!: Int64 = 1, audience!: String = "external", lintProfile!: String = "standard",
-        repository!: ?public_model.RepositoryInfo = None, repositoryRoot!: ?String = None,
+        checkExamples!: Bool = false,
         dependencySources!: Array<DependencySourceInput> = [], cfgValues!: Array<CfgValue> = [],
         providerFactories!: Array<public_provider.SemanticProviderFactory> = [], cacheDirectory!: ?String = None,
-        cacheFingerprint!: ?String = None, astPreflightExecutable!: ?String = None, cjpmCacheRoot!: ?String = None) {
+        cacheFingerprint!: ?String = None, astPreflightExecutable!: ?String = None,
+        chir!: ?ChirOptions = None, cjpmCacheRoot!: ?String = None) {
         if (projectRoot.isEmpty()) {
             throw IllegalArgumentException("project root cannot be empty")
         }
@@ -43,34 +69,22 @@ public class GenerationRequest {
         if (providerFactories.size > 1) {
             throw IllegalArgumentException("cjdoc accepts at most one semantic provider factory")
         }
+        if (chir.isSome() && !providerFactories.isEmpty()) {
+            throw IllegalArgumentException("CHIR cannot be combined with an external semantic provider factory")
+        }
         this.projectRoot = projectRoot
+        this.repository = repository
+        this.repositoryRoot = repositoryRoot
         this.includePathDependencies = includePathDependencies
         this.includeCachedDependencies = includeCachedDependencies
         this.jobs = jobs
         this.audience = audience
         this.lintProfile = lintProfile
-        if (repositoryRoot.isSome() && repository.isNone()) {
-            throw IllegalArgumentException("repositoryRoot requires repository URL and revision")
-        }
-        let validatedRepositoryRoot: ?String = match (repositoryRoot) {
-            case None => None
-            case Some(path) => try {
-                let resolved = canonicalize(path).toString()
-                if (!FileInfo(resolved).isDirectory()) {
-                    throw IllegalArgumentException("repositoryRoot must be a directory")
-                }
-                Some(resolved)
-            } catch (error: IllegalArgumentException) {
-                throw error
-            } catch (_: Exception) {
-                throw IllegalArgumentException("repositoryRoot must resolve to a directory")
-            }
-        }
-        this.repository = repository
-        this.repositoryRoot = validatedRepositoryRoot
+        this.checkExamples = checkExamples
         this.cacheDirectory = cacheDirectory
         this.cacheFingerprint = cacheFingerprint
         this.astPreflightExecutable = astPreflightExecutable
+        this.chir = chir
         this.cjpmCacheRoot = cjpmCacheRoot
         this.dependencySourcesStorage = ArrayList<DependencySourceInput>(dependencySources)
         let normalizedCfg = CfgProfile(values: cfgValues)
@@ -233,19 +247,27 @@ internal class PublicSourceMapper {
     func range(location: SourceLocation): public_model.SourceRange {
         var startOffset: Int64 = 0
         var endOffset: Int64 = 0
+        var startColumn = location.startColumn
+        var endColumn = location.endColumn
         if (let Some(index) <- sourceIndex(location.path)) {
-            if (let Some(start) <- index.byteOffset(location.startLine, location.startColumn)) {
-                if (let Some(end) <- index.byteOffset(location.endLine, location.endColumn)) {
+            if (let Some(start) <- index.codepointByteOffset(location.startLine, location.startColumn)) {
+                if (let Some(end) <- index.codepointByteOffset(location.endLine, location.endColumn)) {
                     if (end >= start) {
                         startOffset = start
                         endOffset = end
+                        if (let Some(value) <- index.byteColumn(location.startLine, start)) {
+                            startColumn = value
+                        }
+                        if (let Some(value) <- index.byteColumn(location.endLine, end)) {
+                            endColumn = value
+                        }
                     }
                 }
             }
         }
         public_model.SourceRange(location.path,
-            public_model.SourcePosition(location.startLine, location.startColumn, startOffset),
-            public_model.SourcePosition(location.endLine, location.endColumn, endOffset))
+            public_model.SourcePosition(location.startLine, startColumn, startOffset),
+            public_model.SourcePosition(location.endLine, endColumn, endOffset))
     }
 
     func contains(range: public_model.SourceRange): Bool {
