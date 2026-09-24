@@ -372,7 +372,7 @@ jobs:
         run: |
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          python scripts/with_stdx.py --variant static --print-env --
+          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
       - name: Snapshot pristine source-edge fixture
         id: source-edge-snapshot
@@ -440,7 +440,7 @@ jobs:
             export CJDOC_REAL_CJPM="${real_cjpm}"
             export PATH="${wrapper_dir}:${PATH}"
           fi
-          python scripts/with_stdx.py --variant static -- bash scripts/check.sh
+          bash scripts/check.sh
           if [[ "${{ matrix.platform }}" == 'linux-x64' ]]; then
             python scripts/with_stdx.py --variant static -- \
               python scripts/real_repository_smoke.py --project .
