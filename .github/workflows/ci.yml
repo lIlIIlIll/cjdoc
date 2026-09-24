@@ -331,6 +331,13 @@ jobs:
               cmake --build "${build_dir}" --target stdx.chir --parallel 1
           else
             build_dir="${stdx_dir}/build_temp/build"
+            if command -v clang >/dev/null 2>&1 && command -v clang++ >/dev/null 2>&1; then
+              export CC=clang
+              export CXX=clang++
+            else
+              export CC=gcc
+              export CXX=g++
+            fi
             cmake -S "${stdx_dir}" -B "${build_dir}" -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_TOOLCHAIN_FILE="${stdx_dir}/build/common/${stdx_toolchain}" \
@@ -433,11 +440,61 @@ jobs:
             export CJDOC_REAL_CJPM="${real_cjpm}"
             export PATH="${wrapper_dir}:${PATH}"
           fi
-          python scripts/with_stdx.py --variant static -- scripts/check.sh
+          python scripts/with_stdx.py --variant static -- bash scripts/check.sh
           if [[ "${{ matrix.platform }}" == 'linux-x64' ]]; then
             python scripts/with_stdx.py --variant static -- \
               python scripts/real_repository_smoke.py --project .
           fi
+      - name: Probe macOS source generation after acceptance failure
+        if: failure() && matrix.platform == 'macos-arm64'
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          set -euo pipefail
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
+          probe_json="${RUNNER_TEMP}/cjdoc-macos-source-probe.json"
+          probe_stderr="${RUNNER_TEMP}/cjdoc-macos-source-probe.stderr"
+          set +e
+          target/release/bin/main generate --project tests/fixtures/projects/basic \
+            --format json --stdout >"${probe_json}" 2>"${probe_stderr}"
+          probe_status=$?
+          set -e
+          echo "source_generation_probe_exit=${probe_status}"
+          python - "${probe_json}" "${probe_stderr}" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          try:
+              document = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          except (OSError, json.JSONDecodeError) as error:
+              print(f"probe_json_unavailable={type(error).__name__}")
+          else:
+              print(
+                  "probe_result="
+                  f"status:{document.get('status')} "
+                  f"files:{len(document.get('files', []))} "
+                  f"declarations:{len(document.get('declarations', []))}"
+              )
+              for diagnostic in document.get("diagnostics", []):
+                  print(f"diagnostic={diagnostic.get('code')}: {diagnostic.get('message')}")
+
+          stderr_path = Path(sys.argv[2])
+          if stderr_path.is_file():
+              stderr = stderr_path.read_text(encoding="utf-8", errors="replace")
+              for value, replacement in (
+                  (os.environ.get("GITHUB_WORKSPACE", ""), "<workspace>"),
+                  (os.environ.get("RUNNER_TEMP", ""), "<runner-temp>"),
+                  (str(Path.home()), "<runner-home>"),
+              ):
+                  if value:
+                      stderr = stderr.replace(value, replacement)
+              for line in stderr.splitlines()[:12]:
+                  print(f"probe_stderr={line}")
+          PY
 
       - name: Probe Linux STS source generation after acceptance failure
         if: failure() && matrix.platform == 'linux-x64'
