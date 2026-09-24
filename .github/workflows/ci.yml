@@ -199,8 +199,32 @@ jobs:
           )
           if source.count(needle) != 1:
               raise SystemExit("expected one cross-host macro PATH condition in AddCangjieSource.cmake")
-          module.write_bytes(source.replace(needle, replacement, 1))
-          print("guarded native Windows macro runtime search path")
+          source = source.replace(needle, replacement, 1)
+
+          environment_marker = b"    set(_cj_lib_compile_env" + newline
+          environment_start = source.find(environment_marker)
+          macro_link_condition = b"    if(CANGJIELIB_LINK_MACRO_LIBS)" + newline
+          condition_start = source.find(macro_link_condition, environment_start)
+          if environment_start < 0 or condition_start < 0:
+              raise SystemExit("expected stdx library macro environment in AddCangjieSource.cmake")
+          # Native Windows inherits runtime DLL paths; do not pass PATH through a CMake list.
+          native_macro_condition = newline.join(
+              (
+                  b"    if(CANGJIELIB_LINK_MACRO_LIBS",
+                  b'       AND NOT (CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows"',
+                  b'           AND CMAKE_SYSTEM_NAME STREQUAL "Windows"',
+                  b'           AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$"',
+                  b'           AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$"))',
+                  b"",
+              )
+          )
+          source = (
+              source[:condition_start]
+              + native_macro_condition
+              + source[condition_start + len(macro_link_condition):]
+          )
+          module.write_bytes(source)
+          print("guarded native Windows macro runtime search paths")
           PY
           fi
           cd "${stdx_dir}"
@@ -526,6 +550,74 @@ jobs:
                       stream = stream.replace(value, replacement)
               for line in stream.splitlines()[:12]:
                   print(f"syntax_worker_probe_output={line}")
+          PY
+
+          python - "${RUNNER_TEMP}/cjdoc-diagnostic-engine-probe" <<'PY'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          root = Path(os.environ["CANGJIE_SDK_ROOT"])
+          runtime_lib = root / "runtime/lib/linux_x86_64_cjnative"
+          probe_dir = Path(sys.argv[1])
+          probe_dir.mkdir(parents=True, exist_ok=True)
+          source_path = probe_dir / "diagnostic_engine.cpp"
+          binary_path = probe_dir / "diagnostic_engine"
+          source_path.write_text(
+              """#include <optional>
+          #include "cangjie/Basic/DiagnosticEngine.h"
+          #include "cangjie/Basic/SourceManager.h"
+
+          int main()
+          {
+              Cangjie::DiagnosticEngine diag;
+              Cangjie::SourceManager sm;
+              diag.SetSourceManager(&sm);
+              diag.SetDiagnoseStatus(true);
+              diag.DisableScopeCheck();
+              diag.SetErrorCountLimit(std::nullopt);
+              return 0;
+          }
+          """,
+              encoding="utf-8",
+          )
+          compile = subprocess.run(
+              [
+                  "c++",
+                  "-std=c++17",
+                  f"-I{root / 'include'}",
+                  str(source_path),
+                  f"-L{runtime_lib}",
+                  f"-Wl,-rpath,{runtime_lib}",
+                  "-lcangjie-std-ast",
+                  "-o",
+                  str(binary_path),
+              ],
+              capture_output=True,
+              text=True,
+              timeout=60,
+          )
+          print(f"diagnostic_engine_compile_exit={compile.returncode}")
+          for line in (compile.stdout + compile.stderr).splitlines()[:12]:
+              for value, replacement in (
+                  (str(root), "<cangjie-sdk>"),
+                  (os.environ.get("RUNNER_TEMP", ""), "<runner-temp>"),
+                  (str(Path.home()), "<runner-home>"),
+              ):
+                  if value:
+                      line = line.replace(value, replacement)
+              print(f"diagnostic_engine_compile_output={line}")
+          if compile.returncode != 0:
+              raise SystemExit(0)
+          try:
+              run = subprocess.run([str(binary_path)], capture_output=True, text=True, timeout=30)
+          except subprocess.TimeoutExpired:
+              print("diagnostic_engine_run=timeout")
+              raise SystemExit(0)
+          print(f"diagnostic_engine_run_exit={run.returncode}")
+          for line in (run.stdout + run.stderr).splitlines()[:12]:
+              print(f"diagnostic_engine_run_output={line}")
           PY
 
       - name: Restore pristine source-edge fixture
