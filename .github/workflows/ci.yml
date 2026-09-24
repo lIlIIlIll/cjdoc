@@ -317,15 +317,18 @@ jobs:
             stdx_library_bin="$(cygpath -u "${build_dir}/lib/windows_x86_64_cjnative")"
             stdx_library_root="$(cygpath -u "${build_dir}/lib")"
             sdk_runtime_bin="$(cygpath -u "${CANGJIE_SDK_ROOT}/runtime/lib/windows_x86_64_cjnative")"
+            sdk_tools_lib="$(cygpath -u "${CANGJIE_SDK_ROOT}/tools/lib")"
             test -d "${stdx_library_root}"
             test -d "${sdk_runtime_bin}"
-            export PATH="${stdx_build_bin}:${stdx_library_bin}:${stdx_library_root}:${sdk_runtime_bin}:${PATH}"
+            test -d "${sdk_tools_lib}"
+            export PATH="${stdx_build_bin}:${stdx_library_bin}:${stdx_library_root}:${sdk_runtime_bin}:${sdk_tools_lib}:${PATH}"
             GIT_CONFIG_COUNT=1 \
               GIT_CONFIG_KEY_0=core.protectNTFS \
               GIT_CONFIG_VALUE_0=false \
               cmake --build "${build_dir}" --parallel 1
             cmake --install "${build_dir}" --config Release
           else
+            cd "${stdx_dir}"
             python build.py build --build-type release --jobs 1
             python build.py install
           fi
@@ -342,33 +345,51 @@ jobs:
           test -d "${sidecar}"
           echo "CJDOC_STDX_PATH=${sidecar}" >> "${GITHUB_ENV}"
 
-      - name: Dump failing Windows STS macro batch
+      - name: Inspect failing Windows STS macro DLL imports
         if: failure() && steps.stdx_build.outcome == 'failure' && matrix.platform == 'windows-x64'
         shell: pwsh
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: |
           $buildRoot = Join-Path $env:RUNNER_TEMP 'cangjie-stdx'
-          if (-not (Test-Path -LiteralPath $buildRoot)) {
-            Write-Host 'STS stdx checkout is missing.'
+          $plugin = Get-ChildItem -LiteralPath $buildRoot -Recurse -File -Filter 'lib-macro_stdx.plugin.dll' -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $plugin) {
+            Write-Host 'The generated STS macro plugin DLL is missing.'
             exit 0
           }
-          $batchFiles = Get-ChildItem -LiteralPath $buildRoot -Recurse -File -Filter '*.bat' |
-            Where-Object {
-              $matchesName = $_.FullName -match 'CollectAspects|Aspect'
-              $matchesCommand = Select-String -LiteralPath $_.FullName -Pattern 'CANGJIE_PATH|cmake.exe -E env' -Quiet
-              $matchesName -or $matchesCommand
-            } |
-            Select-Object -First 4
-          if (-not $batchFiles) {
-            Write-Host 'No candidate macro batch files found.'
+          $objdump = Join-Path $env:MSYS2_LOCATION 'mingw64\bin\objdump.exe'
+          if (-not (Test-Path -LiteralPath $objdump)) {
+            Write-Host 'MSYS2 objdump is unavailable for the generated STS macro plugin.'
             exit 0
           }
-          foreach ($batch in $batchFiles) {
-            $displayPath = $batch.FullName.Replace($env:RUNNER_TEMP, '<runner-temp>').Replace($env:GITHUB_WORKSPACE, '<workspace>')
-            Write-Host "---- $displayPath"
-            Get-Content -LiteralPath $batch.FullName -TotalCount 12 | ForEach-Object {
-              $line = $_.Replace($env:RUNNER_TEMP, '<runner-temp>').Replace($env:GITHUB_WORKSPACE, '<workspace>')
-              if ($env:USERPROFILE) { $line = $line.Replace($env:USERPROFILE, '<runner-home>') }
-              Write-Host $line
+          $imports = @(& $objdump -p $plugin.FullName | ForEach-Object {
+            if ($_ -match '^\s*DLL Name:\s*(.+)$') { $Matches[1].Trim() }
+          })
+          $roots = [ordered]@{
+            'stdx-modules' = Join-Path $buildRoot 'build_temp\build\modules'
+            'stdx-libraries' = Join-Path $buildRoot 'build_temp\build\lib'
+            'sdk-runtime' = Join-Path $env:CANGJIE_SDK_ROOT 'runtime\lib\windows_x86_64_cjnative'
+            'sdk-tools' = Join-Path $env:CANGJIE_SDK_ROOT 'tools\lib'
+            'mingw-runtime' = Join-Path $env:MSYS2_LOCATION 'mingw64\bin'
+          }
+          $available = @{}
+          foreach ($root in $roots.GetEnumerator()) {
+            if (Test-Path -LiteralPath $root.Value) {
+              Get-ChildItem -LiteralPath $root.Value -Recurse -File -Filter '*.dll' -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                  $key = $_.Name.ToLowerInvariant()
+                  if (-not $available.ContainsKey($key)) { $available[$key] = $root.Key }
+                }
+            }
+          }
+          foreach ($import in $imports) {
+            $key = $import.ToLowerInvariant()
+            if ($available.ContainsKey($key)) {
+              Write-Host "DLL dependency available: $import ($($available[$key]))"
+            } else {
+              Write-Host "DLL dependency not found in stdx, SDK, or MinGW roots: $import"
             }
           }
 
