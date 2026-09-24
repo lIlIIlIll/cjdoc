@@ -570,9 +570,9 @@ internal func parseSourceTextWithAst(input: SourceInputFile, fallbackPackageName
         result.macroInvocations.add(all: collector.macroInvocations)
         result.unsupportedDeclarations.add(all: collector.unsupportedDeclarations)
         result.diagnostics.add(all: collector.diagnostics)
-    } catch (error: Exception) {
+    } catch (_: Exception) {
         result.diagnostics.add(Diagnostic("error", "CJDOC1011",
-            "failed to parse '${relative}': ${error.toString()}",
+            "failed to parse '${relative}'",
             source: SourceLocation(relative, 1, 1, 1, 1)))
     }
     result

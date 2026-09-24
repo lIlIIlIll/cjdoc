@@ -480,7 +480,15 @@ jobs:
                   f"declarations:{len(document.get('declarations', []))}"
               )
               for diagnostic in document.get("diagnostics", []):
-                  print(f"diagnostic={diagnostic.get('code')}: {diagnostic.get('message')}")
+                  message = str(diagnostic.get("message", ""))
+                  for value, replacement in (
+                      (os.environ.get("GITHUB_WORKSPACE", ""), "<workspace>"),
+                      (os.environ.get("RUNNER_TEMP", ""), "<runner-temp>"),
+                      (str(Path.home()), "<runner-home>"),
+                  ):
+                      if value:
+                          message = message.replace(value, replacement)
+                  print(f"diagnostic={diagnostic.get('code')}: {message}")
 
           stderr_path = Path(sys.argv[2])
           if stderr_path.is_file():
