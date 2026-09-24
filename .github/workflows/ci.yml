@@ -240,6 +240,22 @@ jobs:
             export PATH="${wrapper_dir}:${PATH}"
           fi
           # Keep target generation serial; parallel CI builds lost generated plugin artifacts.
+          case "${RUNNER_OS}:${RUNNER_ARCH}" in
+            Linux:X64)
+              stdx_target=linux_x86_64
+              stdx_toolchain=linux_x86_64_toolchain.cmake
+              ;;
+            macOS:ARM64)
+              stdx_target=darwin_aarch64
+              stdx_toolchain=darwin_aarch64_toolchain.cmake
+              ;;
+            Windows:X64) stdx_target=windows_x86_64 ;;
+            *)
+              echo "Unsupported stdx CI target: ${RUNNER_OS}/${RUNNER_ARCH}" >&2
+              exit 1
+              ;;
+          esac
+
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             build_dir="${stdx_dir}/build_temp/build"
             cmake_include="${RUNNER_TEMP}/mingw-boundscheck.cmake"
@@ -313,28 +329,33 @@ jobs:
               GIT_CONFIG_KEY_0=core.protectNTFS \
               GIT_CONFIG_VALUE_0=false \
               cmake --build "${build_dir}" --target stdx.chir --parallel 1
-            sidecar="${stdx_dir}/target/windows_x86_64_cjnative/static/stdx"
-            mkdir -p "${sidecar}"
-            cp "${build_dir}/modules/windows_x86_64_cjnative/stdx/stdx.chir.cjo" "${sidecar}/"
-            cp "${build_dir}/lib/windows_x86_64_cjnative/libstdx.chir.a" "${sidecar}/"
-            test -f "${sidecar}/stdx.chir.cjo"
-            test -f "${sidecar}/libstdx.chir.a"
           else
-            cd "${stdx_dir}"
-            python build.py build --build-type release --jobs 1
-            python build.py install
+            build_dir="${stdx_dir}/build_temp/build"
+            cmake -S "${stdx_dir}" -B "${build_dir}" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_TOOLCHAIN_FILE="${stdx_dir}/build/common/${stdx_toolchain}" \
+              -DCMAKE_INSTALL_PREFIX="${stdx_dir}/target" \
+              -DCANGJIE_SCHEMA_DIR="${compiler_schema_dir}/schema" \
+              -DCANGJIE_TARGET_LIB= \
+              -DCANGJIE_TARGET_TOOLCHAIN= \
+              -DCANGJIE_INCLUDE= \
+              -DCANGJIE_TARGET_SYSROOT= \
+              -DCANGJIE_BUILD_WITHOUT_EFFECT_HANDLERS=OFF \
+              -DCANGJIE_BUILD_WITHOUT_SYNTAX=ON \
+              -DCANGJIE_BUILD_WITHOUT_CHIR=OFF \
+              -DCANGJIE_BUILD_WITHOUT_PLUGIN=OFF \
+              -DCANGJIE_BUILD_WITHOUT_ASPECT_CJ=ON \
+              -DCANGJIE_BUILD_STDLIB_WITH_COVERAGE=OFF \
+              -DCANGJIE_BUILD_ARGS= \
+              -DBUILD_GCC_TOOLCHAIN=
+            cmake --build "${build_dir}" --target stdx.chir --parallel 1
           fi
-          case "${RUNNER_OS}:${RUNNER_ARCH}" in
-            Linux:X64) stdx_target=linux_x86_64 ;;
-            macOS:ARM64) stdx_target=darwin_aarch64 ;;
-            Windows:X64) stdx_target=windows_x86_64 ;;
-            *)
-              echo "Unsupported stdx CI target: ${RUNNER_OS}/${RUNNER_ARCH}" >&2
-              exit 1
-              ;;
-          esac
           sidecar="${stdx_dir}/target/${stdx_target}_cjnative/static/stdx"
-          test -d "${sidecar}"
+          mkdir -p "${sidecar}"
+          cp "${build_dir}/modules/${stdx_target}_cjnative/stdx/stdx.chir.cjo" "${sidecar}/"
+          cp "${build_dir}/lib/libstdx.chir.a" "${sidecar}/"
+          test -f "${sidecar}/stdx.chir.cjo"
+          test -f "${sidecar}/libstdx.chir.a"
           echo "CJDOC_STDX_PATH=${sidecar}" >> "${GITHUB_ENV}"
 
       - name: Verify built STS stdx sidecar
