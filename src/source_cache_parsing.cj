@@ -5,7 +5,7 @@ import std.env.*
 import std.fs.*
 import std.process.*
 
-internal let SYNTAX_WORKER_PROTOCOL = "cjdoc-syntax-worker/1"
+internal let SOURCE_PARSE_WORKER_PROTOCOL = "cjdoc-source-parse-worker/1"
 internal func decodeParsedSource(input: SourceInputFile, cacheKey: String,
     bytes: Array<UInt8>, capturedSourceIndex: CapturedSourceIndex, capturedSource: String,
     maxItems!: Int64 = MAX_SOURCE_CACHE_ITEMS): ParsedSourceFile {
@@ -169,7 +169,7 @@ internal func normalizeSourceNewlines(source: String): String {
     source.replace("\r\n", "\n").replace("\r", "\n")
 }
 
-internal func syntaxWorkerFailure(input: SourceInputFile, code: String,
+internal func sourceParseWorkerFailure(input: SourceInputFile, code: String,
     message: String): ParsedSourceFile {
     let result = ParsedSourceFile(input)
     result.diagnostics.add(Diagnostic("error", code, message,
@@ -177,14 +177,14 @@ internal func syntaxWorkerFailure(input: SourceInputFile, code: String,
     result
 }
 
-internal func syntaxWorkerCacheKey(source: String): String {
+internal func sourceParseWorkerCacheKey(source: String): String {
     Sha256Digest.digestBytes(source.toArray())
 }
 
-internal func writeSyntaxWorkerRequest(path: Path, sourcePath: Path, outputPath: Path,
+internal func writeSourceParseWorkerRequest(path: Path, sourcePath: Path, outputPath: Path,
     input: SourceInputFile, fallbackPackageName: String, sourceDigest: String): Unit {
     let writer = SourceCacheWriter(maxBytes: 1024 * 1024, maxItems: 128)
-    writer.add(SYNTAX_WORKER_PROTOCOL)
+    writer.add(SOURCE_PARSE_WORKER_PROTOCOL)
     writer.add(sourcePath.toString())
     writer.add(outputPath.toString())
     writer.add(input.logicalPath)
@@ -194,36 +194,36 @@ internal func writeSyntaxWorkerRequest(path: Path, sourcePath: Path, outputPath:
     writer.add(sourceDigest)
     match (writer.result()) {
         case Some(bytes) => File.writeTo(path, bytes)
-        case None => throw IllegalArgumentException("syntax worker request exceeds the safety limit")
+        case None => throw IllegalArgumentException("source parser worker request exceeds the safety limit")
     }
 }
 
-internal func syntaxWorkerParse(input: SourceInputFile, fallbackPackageName: String,
+internal func sourceParseWorkerParse(input: SourceInputFile, fallbackPackageName: String,
     source: String, executable: String): ParsedSourceFile {
     let temporary = try {
         Directory.createTemp(getTempDirectory())
     } catch (_: Exception) {
-        return syntaxWorkerFailure(input, "CJDOC1020",
-            "syntax parser worker is unavailable; file skipped")
+        return sourceParseWorkerFailure(input, "CJDOC1020",
+            "source parser worker is unavailable; file skipped")
     }
-    let sourceDigest = syntaxWorkerCacheKey(source)
+    let sourceDigest = sourceParseWorkerCacheKey(source)
     try {
         let sourcePath = temporary.join("source.cj")
         let requestPath = temporary.join("request.bin")
         let outputPath = temporary.join("response.bin")
         File.writeTo(sourcePath, source.toArray())
-        writeSyntaxWorkerRequest(requestPath, sourcePath, outputPath, input,
+        writeSourceParseWorkerRequest(requestPath, sourcePath, outputPath, input,
             fallbackPackageName, sourceDigest)
         let workerPath = try { canonicalize(Path(executable)).toString() } catch (_: Exception) { executable }
         let (status, _, _) = executeWithBoundedOutput(workerPath,
-            ["--internal-syntax-parse", requestPath.toString()])
+            ["--internal-source-parse", requestPath.toString()])
         if (status != 0) {
             if (hasDeepSourceBinaryExpression(source)) {
-                return syntaxWorkerFailure(input, "CJDOC1012",
-                    "source expression exceeds the bounded syntax depth; file skipped")
+                return sourceParseWorkerFailure(input, "CJDOC1012",
+                    "source expression exceeds the safe std.ast binary-expression depth; file skipped")
             }
-            return syntaxWorkerFailure(input, "CJDOC1011",
-                "syntax parser rejected the source; file skipped")
+            return sourceParseWorkerFailure(input, "CJDOC1011",
+                "std.ast parser rejected the source; file skipped")
         }
         let response = readFileBounded(outputPath, MAX_SOURCE_CACHE_BYTES)
         let capturedSourceIndex = CapturedSourceIndex(source)
@@ -232,14 +232,14 @@ internal func syntaxWorkerParse(input: SourceInputFile, fallbackPackageName: Str
         parsed.cacheStatus = "worker"
         return parsed
     } catch (_: Exception) {
-        return syntaxWorkerFailure(input, "CJDOC1020",
-            "syntax parser worker returned an invalid response; file skipped")
+        return sourceParseWorkerFailure(input, "CJDOC1020",
+            "source parser worker returned an invalid response; file skipped")
     } finally {
         let _ = removeIfExists(temporary, recursive: true)
     }
 }
 
-internal func runSyntaxParseWorker(requestPath: String): Int64 {
+internal func runSourceParseWorker(requestPath: String): Int64 {
     try {
         let requestInfo = FileInfo(requestPath)
         if (!requestInfo.isRegular() || requestInfo.isSymbolicLink() || requestInfo.size < 0 ||
@@ -247,7 +247,7 @@ internal func runSyntaxParseWorker(requestPath: String): Int64 {
         let requestRoot = canonicalize(Path(requestPath).parent).toString()
         let reader = SourceCacheReader(readFileBounded(Path(requestPath), 1024 * 1024),
             maxItems: 128)
-        if (reader.next() != SYNTAX_WORKER_PROTOCOL) { return 2 }
+        if (reader.next() != SOURCE_PARSE_WORKER_PROTOCOL) { return 2 }
         let sourcePath = reader.next()
         let outputPath = reader.next()
         let logicalPath = reader.next()
@@ -265,11 +265,11 @@ internal func runSyntaxParseWorker(requestPath: String): Int64 {
             sourceInfo.size < 0 || sourceInfo.size > MAX_SOURCE_FILE_BYTES) { return 2 }
         let source = normalizeSourceNewlines(readTextBounded(Path(canonicalSource),
             MAX_SOURCE_FILE_BYTES))
-        if (syntaxWorkerCacheKey(source) != sourceDigest) { return 2 }
+        if (sourceParseWorkerCacheKey(source) != sourceDigest) { return 2 }
         let module = SourceModule(moduleId, moduleName, "root", "")
         let input = SourceInputFile(canonicalSource, requestRoot, logicalPath, module,
             sourceInfo.size)
-        let parsed = parseSourceTextWithSyntax(input, fallbackPackageName, source)
+        let parsed = parseSourceTextWithAst(input, fallbackPackageName, source)
         let encoded = encodeParsedSource(sourceDigest, parsed, CapturedSourceIndex(source), source)
         match (encoded) {
             case Some(bytes) => File.writeTo(Path(canonicalOutput), bytes)
@@ -286,11 +286,11 @@ internal func parseSourceFrontend(input: SourceInputFile, fallbackPackageName: S
     let parsed = match (astPreflightExecutable) {
         case Some(executable) =>
             if (!executable.isEmpty()) {
-                syntaxWorkerParse(input, fallbackPackageName, source, executable)
+                sourceParseWorkerParse(input, fallbackPackageName, source, executable)
             } else {
-                parseSourceTextWithSyntax(input, fallbackPackageName, source)
+                parseSourceTextWithAst(input, fallbackPackageName, source)
             }
-        case _ => parseSourceTextWithSyntax(input, fallbackPackageName, source)
+        case _ => parseSourceTextWithAst(input, fallbackPackageName, source)
     }
     parsed.capturedSource = source
     parsed

@@ -170,27 +170,11 @@ jobs:
           test "$(git -C "${compiler_schema_dir}" rev-parse HEAD)" = "${CANGJIE_COMPILER_SCHEMA_REV}"
           test -s "${compiler_schema_dir}/schema/PackageFormat.fbs"
           test -d "${compiler_schema_dir}/include/cangjie"
-          # Use pinned compiler headers through an overlay; keep the verified SDK cache immutable.
-          export CANGJIE_COMPILER_INCLUDE_DIR="${compiler_schema_dir}/include"
           git init "${stdx_dir}"
           git -C "${stdx_dir}" remote add origin https://gitcode.com/Cangjie/cangjie_stdx.git
           git -C "${stdx_dir}" fetch --depth 1 origin "${CANGJIE_STDX_SOURCE_REV}"
           git -C "${stdx_dir}" checkout --detach FETCH_HEAD
           test "$(git -C "${stdx_dir}" rev-parse HEAD)" = "${CANGJIE_STDX_SOURCE_REV}"
-          python - "${stdx_dir}/src/stdx/syntax/native/CMakeLists.txt" <<'PY'
-          from pathlib import Path
-          import sys
-
-          cmake_file = Path(sys.argv[1])
-          source = cmake_file.read_bytes()
-          newline = b"\r\n" if b"\r\n" in source else b"\n"
-          needle = b"    set(CANGJIE_INC_DIR $ENV{CANGJIE_HOME}/include)" + newline
-          replacement = b"    set(CANGJIE_INC_DIR $ENV{CANGJIE_COMPILER_INCLUDE_DIR})" + newline
-          if source.count(needle) != 1:
-              raise SystemExit("expected one STS syntax compiler include assignment")
-          cmake_file.write_bytes(source.replace(needle, replacement, 1))
-          print("selected pinned compiler headers without changing the SDK")
-          PY
           # Avoid native Windows PATH-list splitting while retaining every macro DLL directory.
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             python - "${stdx_dir}/build/common/modules/AddCangjieSource.cmake" <<'PY'
@@ -294,7 +278,7 @@ jobs:
               -DCANGJIE_INCLUDE= \
               -DCANGJIE_TARGET_SYSROOT= \
               -DCANGJIE_BUILD_WITHOUT_EFFECT_HANDLERS=OFF \
-              -DCANGJIE_BUILD_WITHOUT_SYNTAX=OFF \
+              -DCANGJIE_BUILD_WITHOUT_SYNTAX=ON \
               -DCANGJIE_BUILD_WITHOUT_CHIR=OFF \
               -DCANGJIE_BUILD_WITHOUT_PLUGIN=OFF \
               -DCANGJIE_BUILD_WITHOUT_ASPECT_CJ=ON \
@@ -328,8 +312,13 @@ jobs:
             GIT_CONFIG_COUNT=1 \
               GIT_CONFIG_KEY_0=core.protectNTFS \
               GIT_CONFIG_VALUE_0=false \
-              cmake --build "${build_dir}" --parallel 1
-            cmake --install "${build_dir}" --config Release
+              cmake --build "${build_dir}" --target stdx.chir --parallel 1
+            sidecar="${stdx_dir}/target/windows_x86_64_cjnative/static/stdx"
+            mkdir -p "${sidecar}"
+            cp "${build_dir}/modules/windows_x86_64_cjnative/stdx/stdx.chir.cjo" "${sidecar}/"
+            cp "${build_dir}/lib/windows_x86_64_cjnative/libstdx.chir.a" "${sidecar}/"
+            test -f "${sidecar}/stdx.chir.cjo"
+            test -f "${sidecar}/libstdx.chir.a"
           else
             cd "${stdx_dir}"
             python build.py build --build-type release --jobs 1

@@ -322,7 +322,7 @@ python3 scripts/with_stdx.py --variant static -- cjpm build
 ## 能力边界
 
 - 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/8`。
-- 默认 `--semantic source` 使用 `stdx.syntax` 做结构化源码遍历；注释仍来自源码 lexer，Doc IR 和 renderer 不依赖 CHIR。
+- 默认 `--semantic source` 使用 `std.ast` 和源码 lexer 做结构化源码遍历；注释仍来自原始源码，Doc IR 和 renderer 不依赖 CHIR。
 - `generate`/`check` 可显式使用 `--semantic chir`。cjdoc 会从本次捕获的源码调用 `cjc --emit-chir=raw`，再通过 `stdx.chir` worker 做结构化 enrichment；失败时保留 source declarations，并产生 `CJDOC2101`–`CJDOC2106` warning。
 - `render` 只消费已有 Doc IR，不能使用 `--semantic`、`--cjc` 或 `--chir-import-path`。
 - 宏调用和没有显式 `--cfg` 输入的条件编译不会被强行展开。

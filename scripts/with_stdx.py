@@ -14,16 +14,11 @@ from typing import Iterable
 
 
 REQUIRED_STATIC_ARTIFACTS = (
-    "stdx.syntax.cjo",
     "stdx.chir.cjo",
-    "libstdx.syntax.a",
-    "libstdx.syntaxFFI.a",
     "libstdx.chir.a",
 )
 REQUIRED_DYNAMIC_ARTIFACTS = (
-    "stdx.syntax.cjo",
     "stdx.chir.cjo",
-    "libstdx.syntax.so",
     "libstdx.chir.so",
 )
 VERSION_RE = re.compile(r"Cangjie Compiler:\s*([^\n]+)")
@@ -133,36 +128,6 @@ def authenticate_stdx(path: Path, required_artifacts: tuple[str, ...]) -> tuple[
     return digest.hexdigest(), files
 
 
-def file_digest(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
-def static_link_options(path: Path, target: str) -> tuple[str, str]:
-    candidates = [path / "libflatbuffers.a"]
-    configured = os.environ.get("CANGJIE_FLATBUFFERS_LIB")
-    if configured:
-        candidates.insert(0, Path(configured))
-    flatbuffers = next(
-        (candidate.resolve() for candidate in candidates
-         if candidate.is_file() and not candidate.is_symlink()),
-        None,
-    )
-    options: list[str] = []
-    dependency_digest = ""
-    if flatbuffers is not None:
-        options.append(str(flatbuffers))
-        dependency_digest = file_digest(flatbuffers)
-    if target.endswith("-linux-gnu"):
-        options[0:0] = ["-lstdc++", "-lgcc_s"]
-    elif target.endswith("-apple-darwin"):
-        # ld64.lld needs libc++ explicitly for the static syntax archive.
-        options.append("-lc++")
-    return " ".join(options), dependency_digest
-
 
 def split_command(argv: list[str]) -> tuple[list[str], list[str]]:
     try:
@@ -216,8 +181,6 @@ def main(argv: list[str]) -> int:
 
     link_options = ""
     dependency_digest = ""
-    if variant == "static":
-        link_options, dependency_digest = static_link_options(selected, target)
     fingerprint = hashlib.sha256(
         f"{version}\0{target}\0{selected_digest}\0{dependency_digest}".encode("utf-8")
     ).hexdigest()
