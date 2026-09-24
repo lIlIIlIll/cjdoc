@@ -76,7 +76,7 @@ jobs:
           "${python_command}" -m pip install --disable-pip-version-check psutil
           "${python_command}" -c 'import psutil'
 
-      - name: Install Windows STS stdx OpenSSL dependency
+      - name: Install Windows STS stdx build and diagnostic tools
         if: matrix.platform == 'windows-x64'
         id: msys2
         uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2.32.0
@@ -84,7 +84,7 @@ jobs:
           msystem: MINGW64
           suppress-deprecation-warnings: msystem-mingw64
           update: true
-          install: mingw-w64-x86_64-openssl
+          install: mingw-w64-x86_64-openssl mingw-w64-x86_64-binutils
 
       - name: Set Windows STS stdx OpenSSL search path
         if: matrix.platform == 'windows-x64'
@@ -144,6 +144,7 @@ jobs:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
           CANGJIE_STDX_SOURCE_REV: "6d53814868de41bccf5b92b1d6ff0250c9c4a0e8"
           CANGJIE_COMPILER_SCHEMA_REV: "2fe6b291d37153aa1da56c6c7c020d5ab67fa93d"
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: |
           set -euo pipefail
           if [[ "${RUNNER_OS}" == "macOS" ]]; then
@@ -151,10 +152,12 @@ jobs:
           fi
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            # flatc is built with this MinGW toolchain, so its runtime DLLs must win lookup.
+            # Keep the flatc toolchain first and expose its MSYS2 OpenSSL DLLs.
             mingw_runtime_bin="$(cygpath -u 'C:/mingw64/bin')"
+            msys2_runtime_bin="$(cygpath -u "${MSYS2_LOCATION}/mingw64/bin")"
             test -d "${mingw_runtime_bin}"
-            export PATH="${mingw_runtime_bin}:${PATH}"
+            test -d "${msys2_runtime_bin}"
+            export PATH="${mingw_runtime_bin}:${msys2_runtime_bin}:${PATH}"
           fi
           stdx_dir="${RUNNER_TEMP}/cangjie-stdx"
           compiler_schema_dir="${RUNNER_TEMP}/cangjie_compiler"
