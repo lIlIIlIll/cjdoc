@@ -215,15 +215,17 @@ internal func sourceParseWorkerParse(input: SourceInputFile, fallbackPackageName
         writeSourceParseWorkerRequest(requestPath, sourcePath, outputPath, input,
             fallbackPackageName, sourceDigest)
         let workerPath = try { canonicalize(Path(executable)).toString() } catch (_: Exception) { executable }
-        let (status, _, _) = executeWithBoundedOutput(workerPath,
+        let (status, workerOutput, workerError) = executeWithBoundedOutput(workerPath,
             ["--internal-source-parse", requestPath.toString()])
         if (status != 0) {
             if (hasDeepSourceBinaryExpression(source)) {
                 return sourceParseWorkerFailure(input, "CJDOC1012",
                     "source expression exceeds the safe std.ast binary-expression depth; file skipped")
             }
+            let standardOutput = String.fromUtf8(workerOutput).trimAscii()
+            let standardError = String.fromUtf8(workerError).trimAscii()
             return sourceParseWorkerFailure(input, "CJDOC1011",
-                "std.ast parser rejected the source; file skipped")
+                "std.ast worker failed with status ${status}: " + standardOutput + " " + standardError)
         }
         let response = readFileBounded(outputPath, MAX_SOURCE_CACHE_BYTES)
         let capturedSourceIndex = CapturedSourceIndex(source)
@@ -243,11 +245,11 @@ internal func runSourceParseWorker(requestPath: String): Int64 {
     try {
         let requestInfo = FileInfo(requestPath)
         if (!requestInfo.isRegular() || requestInfo.isSymbolicLink() || requestInfo.size < 0 ||
-            requestInfo.size > 1024 * 1024) { return 2 }
+            requestInfo.size > 1024 * 1024) { return 21 }
         let requestRoot = canonicalize(Path(requestPath).parent).toString()
         let reader = SourceCacheReader(readFileBounded(Path(requestPath), 1024 * 1024),
             maxItems: 128)
-        if (reader.next() != SOURCE_PARSE_WORKER_PROTOCOL) { return 2 }
+        if (reader.next() != SOURCE_PARSE_WORKER_PROTOCOL) { return 22 }
         let sourcePath = reader.next()
         let outputPath = reader.next()
         let logicalPath = reader.next()
@@ -255,17 +257,17 @@ internal func runSourceParseWorker(requestPath: String): Int64 {
         let moduleName = reader.next()
         let fallbackPackageName = reader.next()
         let sourceDigest = reader.next()
-        if (!reader.finished()) { return 2 }
+        if (!reader.finished()) { return 23 }
         let canonicalSource = canonicalize(Path(sourcePath)).toString()
         let canonicalOutput = Path(outputPath).toString()
         if (!hostPathIsWithin(requestRoot, canonicalSource) ||
-            !hostPathIsWithin(requestRoot, canonicalOutput)) { return 2 }
+            !hostPathIsWithin(requestRoot, canonicalOutput)) { return 24 }
         let sourceInfo = FileInfo(canonicalSource)
         if (!sourceInfo.isRegular() || sourceInfo.isSymbolicLink() ||
-            sourceInfo.size < 0 || sourceInfo.size > MAX_SOURCE_FILE_BYTES) { return 2 }
+            sourceInfo.size < 0 || sourceInfo.size > MAX_SOURCE_FILE_BYTES) { return 25 }
         let source = normalizeSourceNewlines(readTextBounded(Path(canonicalSource),
             MAX_SOURCE_FILE_BYTES))
-        if (sourceParseWorkerCacheKey(source) != sourceDigest) { return 2 }
+        if (sourceParseWorkerCacheKey(source) != sourceDigest) { return 26 }
         let module = SourceModule(moduleId, moduleName, "root", "")
         let input = SourceInputFile(canonicalSource, requestRoot, logicalPath, module,
             sourceInfo.size)
@@ -273,11 +275,12 @@ internal func runSourceParseWorker(requestPath: String): Int64 {
         let encoded = encodeParsedSource(sourceDigest, parsed, CapturedSourceIndex(source), source)
         match (encoded) {
             case Some(bytes) => File.writeTo(Path(canonicalOutput), bytes)
-            case None => return 2
+            case None => return 27
         }
         0
-    } catch (_: Exception) {
-        2
+    } catch (error: Exception) {
+        println(error.message)
+        28
     }
 }
 
