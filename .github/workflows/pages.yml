@@ -1,14 +1,27 @@
 name: Deploy showcase
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/pages.yml'
+      - 'site/**'
+      - 'examples/**'
+      - 'scripts/**'
+      - 'tests/showcase_contract/**'
+      - 'src/**'
+      - 'docs/**'
+      - 'cjpm.toml'
+      - 'cjpm.lock'
+      - 'vendor/**'
+      - 'tests/fixtures/projects/html_reference/**'
   push:
     branches: [main]
     paths:
       - '.github/workflows/pages.yml'
       - 'site/**'
-      - 'scripts/build_showcase.py'
-      - 'scripts/install_cangjie_sdk.py'
-      - 'scripts/validate_html_site.py'
+      - 'examples/**'
+      - 'scripts/**'
+      - 'tests/showcase_contract/**'
       - 'src/**'
       - 'docs/**'
       - 'cjpm.toml'
@@ -19,12 +32,10 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: github-pages
-  cancel-in-progress: false
+  group: github-pages-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CJDOC_PYTHON: python
@@ -49,6 +60,26 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+
+      - name: Preserve exact tracked source inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/showcase-inputs
+          git archive --format=tar.gz --output=target/showcase-inputs/source.tar.gz HEAD
+          git rev-parse HEAD > target/showcase-inputs/revision.txt
+          sha256sum target/showcase-inputs/source.tar.gz > target/showcase-inputs/SHA256SUMS
+
+      - name: Upload reproducible source inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cjdoc-showcase-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/showcase-inputs/
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Test showcase contracts
+        run: python -m unittest discover -s tests/showcase_contract -v
 
       - name: Restore Cangjie SDK
         id: sdk-cache
@@ -91,16 +122,43 @@ jobs:
             --repository-url "${SHOWCASE_REPOSITORY_URL}" \
             --revision "${SHOWCASE_REVISION}"
 
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cjdoc-showcase-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/showcase-evidence/
+            target/showcase-site/artifacts/showcase-stage-report.json
+          retention-days: 30
+          if-no-files-found: warn
+
       - name: Configure GitHub Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: target/showcase-site
 
+      - name: Upload PR preview
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cjdoc-showcase-preview-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/showcase-site
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
+
   deploy:
     name: Publish showcase
+    if: github.event_name != 'pull_request'
+    permissions:
+      pages: write
+      id-token: write
     needs: build
     runs-on: ubuntu-22.04
     timeout-minutes: 10

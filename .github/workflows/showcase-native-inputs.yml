@@ -1,0 +1,47 @@
+name: Showcase native validation inputs
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/showcase-native-inputs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-inputs:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Archive exact public source inputs without Git metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/native-inputs
+          git archive --format=tar.gz --output=target/native-inputs/source.tar.gz HEAD
+          git rev-parse HEAD > target/native-inputs/revision.txt
+          for entry in \
+            markdown:db4f9527944b589db8436669f1d255192388cee2 \
+            yjson:54b4965dee0f0b96710cbc678ec5ec9a126b055c \
+            yjson_macros:fec0adce41f73d037d876cbac7a28aee8108bb5c; do
+            name="${entry%%:*}"
+            revision="${entry#*:}"
+            directory="$RUNNER_TEMP/cjdoc-input-$name"
+            git init "$directory"
+            git -C "$directory" fetch --depth 1 "https://github.com/lIlIIlIll/$name.git" "$revision"
+            test "$(git -C "$directory" rev-parse FETCH_HEAD)" = "$revision"
+            git -C "$directory" archive --format=tar.gz --output="$GITHUB_WORKSPACE/target/native-inputs/$name.tar.gz" FETCH_HEAD
+            printf '%s %s\n' "$name" "$revision" >> target/native-inputs/revisions.txt
+          done
+          sha256sum target/native-inputs/*.tar.gz > target/native-inputs/SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cjdoc-dependency-inputs-${{ github.run_id }}
+          path: target/native-inputs/
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
