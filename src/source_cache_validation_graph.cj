@@ -198,16 +198,34 @@ internal func validateDecodedSourceCache(parsed: ParsedSourceFile,
     let declarationsByKey = HashMap<String, SourceDeclaration>()
     var previous: ?SourceDeclaration = None
     for (declaration in parsed.declarations) {
-        if (!validCachedDeclarationKind(declaration.kind) || declaration.name.isEmpty() ||
-            declaration.packageName != packageName || declaration.moduleId != parsed.input.module.id ||
-            !validCachedVisibility(declaration.visibility) ||
-            !sourceCacheLocationMatchesCaptured(declaration.source, expectedPath,
-                capturedSourceIndex) ||
-            !cachedSourceSignatureMatches(declaration, sourceBuffer) ||
-            declaration.sourceKey != makeSourceDeclarationKey(declaration.source,
-                declaration.kind, declaration.name) ||
-            declarationsByKey.contains(declaration.sourceKey)) {
-            throw IllegalArgumentException("invalid cached declaration")
+        if (!validCachedDeclarationKind(declaration.kind)) {
+            throw IllegalArgumentException("invalid cached declaration kind")
+        }
+        if (declaration.name.isEmpty()) {
+            throw IllegalArgumentException("invalid cached declaration name")
+        }
+        if (declaration.packageName != packageName) {
+            throw IllegalArgumentException("invalid cached declaration package")
+        }
+        if (declaration.moduleId != parsed.input.module.id) {
+            throw IllegalArgumentException("invalid cached declaration module")
+        }
+        if (!validCachedVisibility(declaration.visibility)) {
+            throw IllegalArgumentException("invalid cached declaration visibility")
+        }
+        if (!sourceCacheLocationMatchesCaptured(declaration.source, expectedPath,
+            capturedSourceIndex)) {
+            throw IllegalArgumentException("invalid cached declaration location")
+        }
+        if (!cachedSourceSignatureMatches(declaration, sourceBuffer)) {
+            throw IllegalArgumentException("invalid cached declaration signature")
+        }
+        if (declaration.sourceKey != makeSourceDeclarationKey(declaration.source,
+            declaration.kind, declaration.name)) {
+            throw IllegalArgumentException("invalid cached declaration key")
+        }
+        if (declarationsByKey.contains(declaration.sourceKey)) {
+            throw IllegalArgumentException("duplicate cached declaration key")
         }
         if ((declaration.kind == "enum" && declaration.enumNonExhaustive.isNone()) ||
             (declaration.kind != "enum" && declaration.enumNonExhaustive.isSome())) {
