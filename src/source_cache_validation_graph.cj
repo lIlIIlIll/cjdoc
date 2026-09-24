@@ -66,7 +66,9 @@ internal func cachedSourceSignatureMatches(declaration: SourceDeclaration,
     var cursor = source.byteOffset(declaration.source.startLine,
         declaration.source.startColumn)
     if (cursor < 0 || end <= cursor || end > source.bytes.size) {
-        return reportCachedSignatureMismatch(declaration, "invalid source range")
+        return reportCachedSignatureMismatch(declaration,
+            "invalid source range start=${declaration.source.startLine}:${declaration.source.startColumn} offset=${cursor} " +
+                "end=${declaration.source.endLine}:${declaration.source.endColumn} offset=${end} bytes=${source.bytes.size}")
     }
     while (cursor < end && (source.bytes[cursor] == b' ' || source.bytes[cursor] == b'\t' ||
         source.bytes[cursor] == b'\r' || source.bytes[cursor] == b'\n')) { cursor++ }
