@@ -1,0 +1,17 @@
+[docs]
+index = "README.md"
+
+[[docs.pages]]
+source = "docs/usage.md"
+route = "concepts/manual/usage"
+title = "使用说明 / Usage"
+
+[[docs.pages]]
+source = "docs/advanced-usage.md"
+route = "concepts/manual/advanced-usage"
+title = "高级使用 / Advanced usage"
+
+[[docs.pages]]
+source = "docs/release-process.md"
+route = "concepts/manual/release-process"
+title = "发布流程 / Release process"

@@ -1,0 +1,25 @@
+[doctest]
+mode = "deny"
+timeout-ms = 30000
+memory-mb = 4096
+jobs = 2
+
+[docs]
+index = "docs/index.md"
+
+[[docs.pages]]
+source = "docs/guide.md"
+route = "concepts/guides/first-catalogue"
+title = "目录与资源入门 / Catalogue and lifetime"
+
+[external-docs.pocket_support]
+index = "docs/support-symbol-index.json"
+base-url = "./dependencies/support-v1"
+version = "support-v1"
+
+[lint]
+severity = "warning"
+
+[coverage]
+symbols = 90
+parameters = 80

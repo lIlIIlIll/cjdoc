@@ -17,11 +17,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Archive the exact public dependency revisions without Git metadata
+      - name: Archive exact public source inputs without Git metadata
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p target/native-inputs
+          git archive --format=tar.gz --output=target/native-inputs/source.tar.gz HEAD
+          git rev-parse HEAD > target/native-inputs/revision.txt
           for entry in \
             markdown:db4f9527944b589db8436669f1d255192388cee2 \
             yjson:54b4965dee0f0b96710cbc678ec5ec9a126b055c \

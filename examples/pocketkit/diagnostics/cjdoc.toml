@@ -1,0 +1,8 @@
+[doctest]
+mode = "warn"
+timeout-ms = 30000
+memory-mb = 4096
+jobs = 1
+
+[docs]
+index = "docs/index.md"
