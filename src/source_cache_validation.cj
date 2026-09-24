@@ -2,6 +2,7 @@ package cjdoc
 
 import std.ast.*
 import std.collection.*
+import std.env.*
 
 internal func encodeParsedSource(cacheKey: String, parsed: ParsedSourceFile,
     capturedSourceIndex: CapturedSourceIndex, capturedSource: String,
@@ -9,7 +10,12 @@ internal func encodeParsedSource(cacheKey: String, parsed: ParsedSourceFile,
     maxItems!: Int64 = MAX_SOURCE_CACHE_ITEMS): ?Array<UInt8> {
     try {
         validateDecodedSourceCache(parsed, capturedSourceIndex, capturedSource)
-    } catch (_: Exception) {
+    } catch (error: Exception) {
+        match (getVariable("CJDOC_DEBUG_SOURCE_WORKER")) {
+            case Some(value) =>
+                if (value == "1") { println("source_cache_validation=${error.message}") }
+            case None => ()
+        }
         return None
     }
     let writer = SourceCacheWriter(maxBytes: maxBytes, maxItems: maxItems)
