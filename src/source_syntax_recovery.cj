@@ -29,9 +29,9 @@ private func syntaxRecoveryMatchingBrace(tokens: Tokens, opening: Int64): Int64 
     -1
 }
 
-// stdx.syntax translates function bodies eagerly. A source body can therefore
-// fail the structured parse on an expression that the declaration collector does
-// not need. Keep line/column offsets stable while replacing only those bodies.
+// std.ast parses function bodies eagerly. A body can fail on an expression
+// that declaration collection does not need; preserve original offsets by
+// replacing only those bodies with same-length whitespace.
 internal func syntaxRecoverySource(source: String): String {
     let tokens = cangjieLex(source)
     let sourceIndex = IndexedSourceBuffer(source)

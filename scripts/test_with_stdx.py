@@ -17,10 +17,10 @@ class WithStdxTest(unittest.TestCase):
             (sidecar / name).write_bytes(name.encode("utf-8"))
         return sidecar
 
-    def test_authenticates_static_artifacts_and_digest(self) -> None:
+    def test_authenticates_chir_static_artifacts_and_digest(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             sidecar = self.make_sidecar(
-                Path(temporary), with_stdx.REQUIRED_STATIC_ARTIFACTS
+                Path(temporary), ("stdx.chir.cjo", "libstdx.chir.a")
             )
             digest, files = with_stdx.authenticate_stdx(
                 sidecar, with_stdx.REQUIRED_STATIC_ARTIFACTS
@@ -30,40 +30,11 @@ class WithStdxTest(unittest.TestCase):
                 {file.name for file in files}, set(with_stdx.REQUIRED_STATIC_ARTIFACTS)
             )
 
-    def test_static_link_options_support_bundled_and_external_dependencies(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            sidecar = self.make_sidecar(
-                Path(temporary), with_stdx.REQUIRED_STATIC_ARTIFACTS
-            )
-            options, digest = with_stdx.static_link_options(
-                sidecar, "x86_64-unknown-linux-gnu"
-            )
-            self.assertEqual(options, "-lstdc++ -lgcc_s")
-            self.assertEqual(digest, "")
-
-            flatbuffers = sidecar / "libflatbuffers.a"
-            flatbuffers.write_bytes(b"flatbuffers")
-            options, digest = with_stdx.static_link_options(
-                sidecar, "x86_64-unknown-linux-gnu"
-            )
-            self.assertIn(str(flatbuffers), options)
-            self.assertEqual(digest, with_stdx.file_digest(flatbuffers))
-
-    def test_static_link_options_include_macos_cxx_runtime(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            sidecar = self.make_sidecar(
-                Path(temporary), with_stdx.REQUIRED_STATIC_ARTIFACTS
-            )
-            options, digest = with_stdx.static_link_options(
-                sidecar, "aarch64-apple-darwin"
-            )
-            self.assertEqual(options, "-lc++")
-            self.assertEqual(digest, "")
 
     def test_dynamic_mode_does_not_require_static_dependency(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             sidecar = self.make_sidecar(
-                Path(temporary), with_stdx.REQUIRED_DYNAMIC_ARTIFACTS
+                Path(temporary), ("stdx.chir.cjo", "libstdx.chir.so")
             )
             digest, _ = with_stdx.authenticate_stdx(
                 sidecar, with_stdx.REQUIRED_DYNAMIC_ARTIFACTS

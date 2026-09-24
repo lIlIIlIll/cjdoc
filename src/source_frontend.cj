@@ -5,7 +5,7 @@ import std.collection.*
 import std.fs.*
 import std.sync.AtomicInt64
 
-internal let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v10"
+internal let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v11"
 internal let MAX_SOURCE_FILE_BYTES: Int64 = 32 * 1024 * 1024
 internal let MAX_SOURCE_CACHE_BYTES: Int64 = 64 * 1024 * 1024
 internal let MAX_SOURCE_CACHE_ITEMS: Int64 = 100000
@@ -22,39 +22,6 @@ internal func sourceLexerTokens(source: String): Tokens {
     cangjieLex(source)
 }
 internal let MAX_SOURCE_BINARY_DEPTH: Int64 = 64
-internal func sourceBinaryOperator(value: String): Bool {
-    match (value) {
-        case "+" | "-" | "*" | "/" | "%" | "&&" | "||" => true
-        case _ => false
-    }
-}
-
-// Guard only the operator/operand shape that can create a deeply nested
-// expression. Punctuation in enum cases and generic type arguments is not
-// treated as binary syntax.
-internal func hasDeepSourceBinaryExpression(source: String): Bool {
-    let tokens = try { sourceLexerTokens(source) } catch (_: Exception) { return false }
-    var expectingOperand = true
-    var depth: Int64 = 0
-    for (token in tokens) {
-        if (token.kind == COMMENT || token.kind == NL || token.value.isEmpty()) { continue }
-        if (sourceBinaryOperator(token.value)) {
-            if (!expectingOperand) {
-                depth++
-                if (depth >= MAX_SOURCE_BINARY_DEPTH) { return true }
-            }
-            expectingOperand = true
-            continue
-        }
-        if (expectingOperand) {
-            expectingOperand = false
-        } else {
-            depth = 0
-            expectingOperand = token.value == "(" || token.value == "[" || token.value == "{"
-        }
-    }
-    false
-}
 internal class SourceAuxiliaryBudget {
     private let maxBytes: Int64
     private let maxWork: Int64

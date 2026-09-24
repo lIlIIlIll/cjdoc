@@ -401,7 +401,7 @@ def stdx_root(directory: Path) -> Path | None:
         if package.is_symlink() or package.parent.name != "stdx":
             continue
         root = package.parent
-        required = ("stdx.syntax.cjo", "libstdx.syntax.a", "libstdx.chir.a")
+        required = ("stdx.chir.cjo", "libstdx.chir.a")
         if all((root / name).is_file() and not (root / name).is_symlink() for name in required):
             if root not in candidates:
                 candidates.append(root)

@@ -31,7 +31,7 @@ internal class ToolchainIdentity {
     }
 
     func sourceBackendFingerprint(): String {
-        "cjdoc-source-backend=stdx.syntax/v2\n" +
+        "cjdoc-source-backend=std.ast/v1\n" +
             "compiler=${compilerVersion}\n" +
             "target=${compilerTarget}\n" +
             "toolchain=${toolchainFingerprint}\n" +
