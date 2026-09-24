@@ -348,7 +348,7 @@ jobs:
           test -d "${sidecar}"
           echo "CJDOC_STDX_PATH=${sidecar}" >> "${GITHUB_ENV}"
 
-      - name: Inspect failing Windows STS macro DLL imports
+      - name: Inspect failing Windows STS macro DLL dependency closure
         if: failure() && steps.stdx_build.outcome == 'failure' && matrix.platform == 'windows-x64'
         shell: pwsh
         env:
@@ -367,15 +367,46 @@ jobs:
             Write-Host 'MSYS2 objdump is unavailable for the generated STS macro plugin.'
             exit 0
           }
-          $imports = @(& $objdump -p $plugin.FullName | ForEach-Object {
-            if ($_ -match '^\s*DLL Name:\s*(.+)$') { $Matches[1].Trim() }
-          })
+          $buildDir = Join-Path $buildRoot 'build_temp\build'
+          $moduleRoot = Join-Path $buildDir 'modules\windows_x86_64_cjnative'
+          $libraryRoot = Join-Path $buildDir 'lib'
+          $env:CANGJIE_PATH = $moduleRoot
+          $env:LIBRARY_PATH = $libraryRoot
+          $pathRoots = @(
+            (Join-Path $buildDir 'bin'),
+            $moduleRoot,
+            (Join-Path $moduleRoot 'stdx'),
+            (Join-Path $libraryRoot 'windows_x86_64_cjnative'),
+            $libraryRoot,
+            (Join-Path $env:CANGJIE_SDK_ROOT 'runtime\lib\windows_x86_64_cjnative'),
+            (Join-Path $env:CANGJIE_SDK_ROOT 'tools\lib'),
+            (Join-Path $env:CANGJIE_SDK_ROOT 'tools\bin'),
+            (Join-Path $env:CANGJIE_SDK_ROOT 'third_party\llvm\bin'),
+            (Join-Path $env:CANGJIE_SDK_ROOT 'third_party\llvm\lib'),
+            'C:\mingw64\bin',
+            (Join-Path $env:MSYS2_LOCATION 'mingw64\bin')
+          )
+          $env:PATH = (($pathRoots + $env:PATH) -join ';')
+          Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class CjdocNativeLoader { [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern IntPtr LoadLibrary(string path); }'
+          $module = [CjdocNativeLoader]::LoadLibrary($plugin.FullName)
+          if ($module -eq [IntPtr]::Zero) {
+            $errorCode = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            $errorMessage = [System.ComponentModel.Win32Exception]::new($errorCode).Message
+            Write-Host "Direct LoadLibrary failed: Win32 $errorCode ($errorMessage)"
+          } else {
+            Write-Host 'Direct LoadLibrary succeeded.'
+          }
           $roots = [ordered]@{
             'stdx-modules' = Join-Path $buildRoot 'build_temp\build\modules'
             'stdx-libraries' = Join-Path $buildRoot 'build_temp\build\lib'
             'sdk-runtime' = Join-Path $env:CANGJIE_SDK_ROOT 'runtime\lib\windows_x86_64_cjnative'
-            'sdk-tools' = Join-Path $env:CANGJIE_SDK_ROOT 'tools\lib'
-            'mingw-runtime' = Join-Path $env:MSYS2_LOCATION 'mingw64\bin'
+            'sdk-tools-lib' = Join-Path $env:CANGJIE_SDK_ROOT 'tools\lib'
+            'sdk-tools-bin' = Join-Path $env:CANGJIE_SDK_ROOT 'tools\bin'
+            'sdk-llvm-bin' = Join-Path $env:CANGJIE_SDK_ROOT 'third_party\llvm\bin'
+            'sdk-llvm-lib' = Join-Path $env:CANGJIE_SDK_ROOT 'third_party\llvm\lib'
+            'mingw-toolchain' = 'C:\mingw64\bin'
+            'msys2-runtime' = Join-Path $env:MSYS2_LOCATION 'mingw64\bin'
+            'windows-system' = Join-Path $env:WINDIR 'System32'
           }
           $available = @{}
           foreach ($root in $roots.GetEnumerator()) {
@@ -383,18 +414,35 @@ jobs:
               Get-ChildItem -LiteralPath $root.Value -Recurse -File -Filter '*.dll' -ErrorAction SilentlyContinue |
                 ForEach-Object {
                   $key = $_.Name.ToLowerInvariant()
-                  if (-not $available.ContainsKey($key)) { $available[$key] = $root.Key }
+                  if (-not $available.ContainsKey($key)) {
+                    $available[$key] = @{ path = $_.FullName; root = $root.Key }
+                  }
                 }
             }
           }
-          foreach ($import in $imports) {
-            $key = $import.ToLowerInvariant()
-            if ($available.ContainsKey($key)) {
-              Write-Host "DLL dependency available: $import ($($available[$key]))"
-            } else {
-              Write-Host "DLL dependency not found in stdx, SDK, or MinGW roots: $import"
+          $pending = [System.Collections.Generic.Queue[string]]::new()
+          $pending.Enqueue($plugin.FullName)
+          $visited = @{}
+          while ($pending.Count -gt 0) {
+            $dllPath = $pending.Dequeue()
+            $dllKey = $dllPath.ToLowerInvariant()
+            if ($visited.ContainsKey($dllKey)) { continue }
+            $visited[$dllKey] = $true
+            $dllName = [System.IO.Path]::GetFileName($dllPath)
+            foreach ($import in @(& $objdump -p $dllPath | ForEach-Object {
+              if ($_ -match '^\s*DLL Name:\s*(.+)$') { $Matches[1].Trim() }
+            })) {
+              $importKey = $import.ToLowerInvariant()
+              if ($importKey -match '^(api-ms-win-|ext-ms-win-)') { continue }
+              if (-not $available.ContainsKey($importKey)) {
+                Write-Host "Missing DLL dependency: $import (imported by $dllName)"
+                continue
+              }
+              $dependency = $available[$importKey]
+              if ($dependency.root -ne 'windows-system') { $pending.Enqueue($dependency.path) }
             }
           }
+          Write-Host "Inspected $($visited.Count) DLLs from the STS macro dependency closure."
 
       - name: Verify built STS stdx sidecar
         shell: bash
