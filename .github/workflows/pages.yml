@@ -1,113 +1,125 @@
-name: Deploy showcase
+name: Pages
 
 on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "site/**"
+      - "examples/**"
+      - "scripts/**"
+      - "tests/showcase_contract/**"
+      - "src/**"
+      - "docs/**"
+      - ".github/workflows/pages.yml"
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/pages.yml'
-      - 'site/**'
-      - 'scripts/build_showcase.py'
-      - 'scripts/install_cangjie_sdk.py'
-      - 'scripts/validate_html_site.py'
-      - 'src/**'
-      - 'docs/**'
-      - 'cjpm.toml'
-      - 'cjpm.lock'
-      - 'vendor/**'
-      - 'tests/fixtures/projects/html_reference/**'
-  workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: github-pages
-  cancel-in-progress: false
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
-  CJDOC_PYTHON: python
-  PYTHONDONTWRITEBYTECODE: "1"
-  PYTHONUTF8: "1"
-  cjHeapSize: "512MB"
-  CANGJIE_SDK_URL: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.1.3.tar.gz&objectKey=6a19349d21f5a8178d6fd22b"
-  CANGJIE_SDK_SHA256: "2b68905afc466e665ae181595c63f96c18d75fd2c1fb6c6f0cb64e179c28d61a"
+  SDK_VERSION: 1.1.3
+  SDK_URL: https://github.com/SunriseSummer/CangjieSDK/releases/download/1.1.3/cangjie-sdk-linux-x64-1.1.3.tar.gz
+  SDK_SHA256: 05bffd793681eea8c32da7acbc491a0b1ccd915086626251fed862778dc0552f28ab
 
 jobs:
   build:
-    name: Build showcase
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
     steps:
-      - name: Check out source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v4
         with:
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+          fetch-depth: 0
+      - name: Check tracked files for sensitive data
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=8.21.2
+          curl --fail --location --retry 3 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
+            --output "$RUNNER_TEMP/gitleaks.tar.gz"
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" dir . --redact --no-banner --exit-code 1
+      - name: Preserve exact tracked source inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/showcase-inputs
+          git archive --format=tar.gz --output=target/showcase-inputs/source.tar.gz HEAD
+          git rev-parse HEAD > target/showcase-inputs/revision.txt
+          sha256sum target/showcase-inputs/source.tar.gz > target/showcase-inputs/SHA256SUMS
+      - name: Upload reproducible source inputs
+        uses: actions/upload-artifact@v4
         with:
-          python-version: "3.12"
-
-      - name: Restore Cangjie SDK
+          name: cjdoc-showcase-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/showcase-inputs/
+          retention-days: 7
+          if-no-files-found: error
+      - name: Test showcase contracts
+        run: python3 -m unittest discover -s tests/showcase_contract -v
+      - name: Cache Cangjie SDK
         id: sdk-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/cangjie-sdk-1.1.3
-          key: cangjie-sdk-linux-x64-2b68905afc466e665ae181595c63f96c18d75fd2c1fb6c6f0cb64e179c28d61a-v3-authenticated-archive
-
-      - name: Install checksum-pinned Cangjie SDK
-        id: sdk
+          path: cangjie
+          key: cangjie-sdk-${{ runner.os }}-x64-${{ env.SDK_VERSION }}-${{ env.SDK_SHA256 }}-no-symlinks-v2
+      - name: Install Cangjie SDK
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: python3 scripts/install_cangjie_sdk.py --url "$SDK_URL" --sha256 "$SDK_SHA256" --dest cangjie
+      - name: Install project dependencies
         shell: bash
         run: |
-          python scripts/install_cangjie_sdk.py \
-            --url "${CANGJIE_SDK_URL}" \
-            --sha256 "${CANGJIE_SDK_SHA256}" \
-            --destination "${RUNNER_TEMP}/cangjie-sdk-1.1.3" \
-            --github-output "${GITHUB_OUTPUT}"
-
-      - name: Build cjdoc
+          source cangjie/envsetup.sh
+          cjpm update
+      - name: Build binary
         shell: bash
-        env:
-          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
         run: |
-          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
-          cjc -v
-          cjpm -v
+          source cangjie/envsetup.sh
           cjpm build
-
-      - name: Build showcase site
+      - name: Build static showcase
         shell: bash
-        env:
-          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
-          SHOWCASE_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
-          SHOWCASE_REVISION: ${{ github.sha }}
         run: |
-          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
-          python scripts/build_showcase.py \
-            --binary target/release/bin/main \
-            --output target/showcase-site \
-            --repository-url "${SHOWCASE_REPOSITORY_URL}" \
-            --revision "${SHOWCASE_REVISION}"
-
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+          source cangjie/envsetup.sh
+          python3 scripts/build_showcase.py --root . --binary target/release/bin/main --output target/site --repository "$GITHUB_REPOSITORY"
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          path: target/showcase-site
-
+          name: cjdoc-pages-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/site/artifacts/showcase-stage-report.json
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Configure Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: target/site
+      - name: Upload PR preview artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cjdoc-pages-preview-pr-${{ github.event.pull_request.number }}
+          path: target/site
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
   deploy:
-    name: Publish showcase
+    if: github.event_name != 'pull_request'
+    permissions:
+      pages: write
+      id-token: write
     needs: build
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        uses: actions/deploy-pages@v4
