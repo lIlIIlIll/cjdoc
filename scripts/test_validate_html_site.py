@@ -13,7 +13,7 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("validate_html_site.py")
 CSP = (
-    "default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; "
+    "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
     "base-uri 'none'; form-action 'none'"
 )
 

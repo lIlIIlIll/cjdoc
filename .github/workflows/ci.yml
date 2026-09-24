@@ -138,6 +138,7 @@ jobs:
             --github-output "${GITHUB_OUTPUT}"
 
       - name: Build pinned STS stdx source
+        id: stdx_build
         shell: bash
         env:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
@@ -272,6 +273,36 @@ jobs:
           test -d "${sidecar}"
           echo "CJDOC_STDX_PATH=${sidecar}" >> "${GITHUB_ENV}"
 
+      - name: Dump failing Windows STS macro batch
+        if: failure() && steps.stdx_build.outcome == 'failure' && matrix.platform == 'windows-x64'
+        shell: pwsh
+        run: |
+          $buildRoot = Join-Path $env:RUNNER_TEMP 'cangjie-stdx'
+          if (-not (Test-Path -LiteralPath $buildRoot)) {
+            Write-Host 'STS stdx checkout is missing.'
+            exit 0
+          }
+          $batchFiles = Get-ChildItem -LiteralPath $buildRoot -Recurse -File -Filter '*.bat' |
+            Where-Object {
+              $matchesName = $_.FullName -match 'CollectAspects|Aspect'
+              $matchesCommand = Select-String -LiteralPath $_.FullName -Pattern 'CANGJIE_PATH|cmake.exe -E env' -Quiet
+              $matchesName -or $matchesCommand
+            } |
+            Select-Object -First 4
+          if (-not $batchFiles) {
+            Write-Host 'No candidate macro batch files found.'
+            exit 0
+          }
+          foreach ($batch in $batchFiles) {
+            $displayPath = $batch.FullName.Replace($env:RUNNER_TEMP, '<runner-temp>').Replace($env:GITHUB_WORKSPACE, '<workspace>')
+            Write-Host "---- $displayPath"
+            Get-Content -LiteralPath $batch.FullName -TotalCount 12 | ForEach-Object {
+              $line = $_.Replace($env:RUNNER_TEMP, '<runner-temp>').Replace($env:GITHUB_WORKSPACE, '<workspace>')
+              if ($env:USERPROFILE) { $line = $line.Replace($env:USERPROFILE, '<runner-home>') }
+              Write-Host $line
+            }
+          }
+
       - name: Verify built STS stdx sidecar
         shell: bash
         env:
@@ -352,6 +383,60 @@ jobs:
             python scripts/with_stdx.py --variant static -- \
               python scripts/real_repository_smoke.py --project .
           fi
+
+      - name: Probe Linux STS source generation after acceptance failure
+        if: failure() && matrix.platform == 'linux-x64'
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          set -euo pipefail
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
+          probe_json="${RUNNER_TEMP}/cjdoc-linux-source-probe.json"
+          probe_stderr="${RUNNER_TEMP}/cjdoc-linux-source-probe.stderr"
+          set +e
+          python scripts/with_stdx.py --variant static -- \
+            target/release/bin/main generate --project tests/fixtures/projects/basic \
+              --format json --stdout --no-cache >"${probe_json}" 2>"${probe_stderr}"
+          probe_status=$?
+          set -e
+          echo "source_generation_probe_exit=${probe_status}"
+          python - "${probe_json}" "${probe_stderr}" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          output_path = Path(sys.argv[1])
+          try:
+              document = json.loads(output_path.read_text(encoding="utf-8"))
+          except (OSError, json.JSONDecodeError) as error:
+              print(f"probe_json_unavailable={type(error).__name__}")
+          else:
+              print(
+                  "probe_result="
+                  f"status:{document.get('status')} "
+                  f"declarations:{len(document.get('declarations', []))} "
+                  f"unsupported:{len(document.get('unsupportedDeclarations', []))}"
+              )
+              for diagnostic in document.get("diagnostics", []):
+                  print(f"diagnostic={diagnostic.get('code')}: {diagnostic.get('message')}")
+
+          stderr_path = Path(sys.argv[2])
+          if stderr_path.is_file():
+              stderr = stderr_path.read_text(encoding="utf-8", errors="replace")
+              for value, replacement in (
+                  (os.environ.get("GITHUB_WORKSPACE", ""), "<workspace>"),
+                  (os.environ.get("RUNNER_TEMP", ""), "<runner-temp>"),
+                  (str(Path.home()), "<runner-home>"),
+              ):
+                  if value:
+                      stderr = stderr.replace(value, replacement)
+              for line in stderr.splitlines()[:12]:
+                  print(f"probe_stderr={line}")
+          PY
+
       - name: Restore pristine source-edge fixture
         id: restore-source-edge
         if: always() && matrix.platform == 'macos-arm64' && steps.source-edge-snapshot.outcome == 'success'
