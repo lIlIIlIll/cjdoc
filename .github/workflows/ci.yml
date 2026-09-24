@@ -195,17 +195,9 @@ jobs:
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             build_dir="${stdx_dir}/build_temp/build"
             cmake_include="${RUNNER_TEMP}/mingw-boundscheck.cmake"
+            native_project_include="${RUNNER_TEMP}/mingw-native-project.cmake"
             cat > "${cmake_include}" <<'CMAKE'
           # MinGW's secure CRT overlaps the secure stdio definitions built by boundscheck.
-          # Native x64 Windows host/target should not select the cross-host DLL path.
-          if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows"
-             AND CMAKE_SYSTEM_NAME STREQUAL "Windows"
-             AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$"
-             AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
-            set(CMAKE_CROSSCOMPILING OFF)
-          endif()
-          message(STATUS
-            "CMake host=${CMAKE_HOST_SYSTEM_NAME}/${CMAKE_HOST_SYSTEM_PROCESSOR}; target=${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}; cross=${CMAKE_CROSSCOMPILING}")
           function(cjdoc_avoid_mingw_secure_stdio_redefinition)
             foreach(target boundscheck boundscheck-static)
               if(TARGET "${target}")
@@ -215,11 +207,23 @@ jobs:
           endfunction()
           cmake_language(DEFER CALL cjdoc_avoid_mingw_secure_stdio_redefinition)
           CMAKE
+            cat > "${native_project_include}" <<'CMAKE'
+          # Nested project() calls in pinned STS stdx re-detect native Windows as cross-compiling.
+          if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows"
+             AND CMAKE_SYSTEM_NAME STREQUAL "Windows"
+             AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$"
+             AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+            set(CMAKE_CROSSCOMPILING OFF)
+          endif()
+          message(STATUS
+            "CMake project=${PROJECT_NAME}; host=${CMAKE_HOST_SYSTEM_NAME}/${CMAKE_HOST_SYSTEM_PROCESSOR}; target=${CMAKE_SYSTEM_NAME}/${CMAKE_SYSTEM_PROCESSOR}; cross=${CMAKE_CROSSCOMPILING}")
+          CMAKE
             cmake -S "${stdx_dir}" -B "${build_dir}" -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_TOOLCHAIN_FILE="${stdx_dir}/build/common/mingw_x86_64_toolchain.cmake" \
               -DCMAKE_INSTALL_PREFIX="${stdx_dir}/target" \
               -DCMAKE_PROJECT_TOP_LEVEL_INCLUDES="${cmake_include}" \
+              -DCMAKE_PROJECT_INCLUDE="${native_project_include}" \
               -DCANGJIE_SCHEMA_DIR="${compiler_schema_dir}/schema" \
               -DCANGJIE_TARGET_LIB= \
               -DCANGJIE_TARGET_TOOLCHAIN= \
@@ -435,6 +439,67 @@ jobs:
                       stderr = stderr.replace(value, replacement)
               for line in stderr.splitlines()[:12]:
                   print(f"probe_stderr={line}")
+          PY
+          python - "${RUNNER_TEMP}/cjdoc-syntax-worker-probe" <<'PY'
+          import hashlib
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          root.mkdir(parents=True, exist_ok=True)
+          source = Path("tests/fixtures/projects/basic/src/api.cj").read_bytes()
+          source = source.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+          source_path = root / "source.cj"
+          request_path = root / "request.bin"
+          response_path = root / "response.bin"
+          source_path.write_bytes(source)
+          fields = (
+              "cjdoc-syntax-worker/1",
+              str(source_path.resolve()),
+              str(response_path.resolve()),
+              "src/api.cj",
+              "basic",
+              "basic",
+              "basic",
+              hashlib.sha256(source).hexdigest(),
+          )
+
+          def encode_field(value):
+              encoded = value.encode("utf-8")
+              return str(len(encoded)).encode("ascii") + b":" + encoded
+
+          request_path.write_bytes(b"".join(encode_field(value) for value in fields))
+          command = [
+              sys.executable,
+              "scripts/with_stdx.py",
+              "--variant",
+              "static",
+              "--",
+              str(Path("target/release/bin/main").resolve()),
+              "--internal-syntax-parse",
+              str(request_path.resolve()),
+          ]
+          try:
+              result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+          except subprocess.TimeoutExpired:
+              print("syntax_worker_probe=timeout")
+              raise SystemExit(0)
+          print(f"syntax_worker_probe_exit={result.returncode}")
+          print(f"syntax_worker_response_exists={response_path.is_file()}")
+          if response_path.is_file():
+              print(f"syntax_worker_response_bytes={response_path.stat().st_size}")
+          for stream in (result.stdout, result.stderr):
+              for value, replacement in (
+                  (os.environ.get("GITHUB_WORKSPACE", ""), "<workspace>"),
+                  (os.environ.get("RUNNER_TEMP", ""), "<runner-temp>"),
+                  (str(Path.home()), "<runner-home>"),
+              ):
+                  if value:
+                      stream = stream.replace(value, replacement)
+              for line in stream.splitlines()[:12]:
+                  print(f"syntax_worker_probe_output={line}")
           PY
 
       - name: Restore pristine source-edge fixture

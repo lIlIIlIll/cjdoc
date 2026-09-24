@@ -307,7 +307,7 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
     let out = StringBuilder()
     out.append("<!doctype html><html lang=\"")
     out.append(language)
-    out.append("\"><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>")
+    out.append("\"><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>")
     out.append(validationTitle)
     out.append(" · ")
     out.append(public_render.escapeStandaloneHtml(documentation.project.name))
