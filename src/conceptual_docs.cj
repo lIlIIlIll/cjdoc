@@ -273,11 +273,7 @@ private func conceptualResolveBindings(page: ConceptualPage,
         var matches = ArrayList<public_model.SymbolDoc>()
         var allMatches = ArrayList<public_model.SymbolDoc>()
         for (symbol in documentation.declarations) {
-            let matchesTarget = if (binding.target.startsWith("id:")) {
-                symbol.id == binding.target.removePrefix("id:")
-            } else {
-                symbol.qualifiedName == binding.target
-            }
+            let matchesTarget = conceptualBindingMatches(symbol, binding.target, binding.selector)
             if (matchesTarget) {
                 allMatches.add(symbol)
                 if (conceptualVisibleForAudience(symbol, documentation)) {
@@ -1293,13 +1289,16 @@ private func conceptualExternalUsageHtml(symbol: public_model.SymbolDoc,
             case None => ()
         }
         if (!resolver.indexPath.isEmpty()) {
-            out.append(" <span class=\"binding-meta\">index: " + public_render.escapeStandaloneHtml(resolver.indexPath) + "</span>")
+            out.append(" <span class=\"binding-meta\">index: " + public_render.escapeStandaloneHtml(resolver.indexPath))
+            out.append("</span>")
         }
         if (!resolver.format.isEmpty()) {
-            out.append(" <span class=\"binding-meta\">format: " + public_render.escapeStandaloneHtml(resolver.format) + "</span>")
+            out.append(" <span class=\"binding-meta\">format: " + public_render.escapeStandaloneHtml(resolver.format))
+            out.append("</span>")
         }
         if (!resolver.fingerprint.isEmpty()) {
-            out.append(" <span class=\"binding-meta\">fingerprint: " + public_render.escapeStandaloneHtml(resolver.fingerprint) + "</span>")
+            out.append(" <span class=\"binding-meta\">fingerprint: " + public_render.escapeStandaloneHtml(resolver.fingerprint))
+            out.append("</span>")
         }
         out.append("</li>")
     }

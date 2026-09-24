@@ -3,7 +3,7 @@
 先创建目录，追加文本，再按位置读取。显式绑定的是 **String 重载**，不是同名的整数重载。
 Create a catalogue, append a string, and read the first entry. The binding below selects the **String overload**.
 
-<!-- cjdoc-bind target="pocketkit.TextCatalog.add(String)" selector="member" provenance="docs/guide.md" version="demo-v2" language="zh-CN" -->
+<!-- cjdoc-bind target="pocketkit.TextCatalog.add" selector="signature:public func add(value: String): Unit" provenance="docs/guide.md" version="demo-v2" language="zh-CN" -->
 
 ```cangjie
 import pocketkit.*
@@ -23,7 +23,7 @@ not a complete external-contract merge. Execution evidence belongs to the source
 
 ## 阅读器责任 / Reader ownership
 
-<!-- cjdoc-bind target="pocketkit.io.TextReader.read()" selector="member" provenance="docs/guide.md" version="demo-v2" -->
+<!-- cjdoc-bind target="pocketkit.io.TextReader.read" selector="member" provenance="docs/guide.md" version="demo-v2" -->
 
 从 openText 的返回类型进入 TextReader，再查看其 Readable 接口。关闭是幂等的，
 关闭后读取会抛出异常。阅读器只管理内存会话，不管理文件描述符。

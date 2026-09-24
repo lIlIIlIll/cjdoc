@@ -1,192 +1,27 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="__LOCALE__">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="cjdoc turns Cangjie source truth into deterministic API documentation, semantic indexes, quality reports, and offline-ready sites.">
-  <meta name="color-scheme" content="dark light">
-  <title>cjdoc — source truth, shipped as a site</title>
-  <link rel="stylesheet" href="showcase.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Try the native cjdoc API documentation experience with the owned PocketKit example library.">
+<title>cjdoc — __TITLE__</title>
+<link rel="stylesheet" href="showcase.css">
+<script src="showcase.js" defer></script>
 </head>
-<body>
-  <a class="skip-link" href="#main">Skip to content</a>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <a class="brand" href="#top" aria-label="cjdoc home">
-        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
-          <path d="M7 4.5h13.5L25 9v18.5H7z" fill="none" stroke="currentColor" stroke-width="1.7"/>
-          <path d="M20.5 4.5V9H25M11 14h10M11 18h10M11 22h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
-        </svg>
-        <span>cjdoc</span>
-        <span class="brand-version">DOC IR 10</span>
-      </a>
-      <nav class="topnav" aria-label="Primary navigation">
-        <a href="#capabilities">Capabilities</a>
-        <a href="#outputs">Outputs</a>
-        <a href="#workflow">Workflow</a>
-        <a href="api/index.html">API reference</a>
-        <a href="https://github.com/lIlIIlIll/cjdoc">GitHub</a>
-      </nav>
-      <button class="icon-button" type="button" data-theme-toggle aria-label="Switch color theme" title="Switch color theme">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2M12 19v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M3 12h2M19 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42M16.5 12a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-      </button>
-    </div>
-  </header>
-
-  <main id="main">
-    <section class="hero" id="top">
-      <div class="hero-copy">
-        <h1>Source truth,<br><span>shipped as a site.</span></h1>
-        <p class="hero-lede">cjdoc reads Cangjie declarations and documentation comments, binds them into a schema-versioned model, and publishes a reference surface that stays useful on a server or as a folder on disk.</p>
-        <div class="hero-actions">
-          <a class="button button-primary" href="api/index.html">Open API reference <span aria-hidden="true">↗</span></a>
-          <a class="button button-secondary" href="#outputs">Inspect the artifacts</a>
-        </div>
-        <div class="hero-context" aria-label="Build properties">
-          <span><i class="status-dot status-green" aria-hidden="true"></i> pure Cangjie</span>
-          <span><i class="status-dot status-blue" aria-hidden="true"></i> Doc IR v10</span>
-          <span><i class="status-dot status-amber" aria-hidden="true"></i> file:// ready</span>
-        </div>
-      </div>
-      <div class="terminal" aria-label="cjdoc generation example">
-        <div class="terminal-bar">
-          <span class="terminal-lights" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span class="terminal-title">release / documentation</span>
-          <span class="terminal-state">READY</span>
-        </div>
-        <pre><code><span class="code-muted">$</span> cjdoc generate --project . \
-    --format html --format json \
-    --format api-surface --format coverage
-
-<span class="code-dim">source</span>  <span class="code-value">std.ast + lexer</span>
-<span class="code-dim">model</span>   <span class="code-value">cjdoc.doc-ir/10</span>
-<span class="code-dim">site</span>    <span class="code-value">html/index.html</span>
-<span class="code-dim">data</span>    <span class="code-value">docs.json</span>
-<span class="code-dim">gate</span>    <span class="code-ok">deterministic · bounded · offline</span></code></pre>
-        <div class="terminal-footer"><span>one source pipeline</span><span>multiple consumers</span></div>
-      </div>
-    </section>
-
-    <section class="pipeline-section section-rule" aria-labelledby="pipeline-title">
-      <div class="section-intro">
-        <p class="section-label">ONE BOUNDARY</p>
-        <h2 id="pipeline-title">Every surface starts from the same facts.</h2>
-        <p>Comments remain attached to source declarations. Semantic certainty stays explicit. Renderers only consume the public Doc IR, so HTML, Markdown, JSON, and agent exports cannot quietly drift apart.</p>
-      </div>
-      <div class="pipeline" aria-label="cjdoc data pipeline">
-        <div class="pipeline-step"><span class="pipeline-index">01</span><strong>Cangjie source</strong><small>declarations + comments</small></div>
-        <span class="flow-arrow" aria-hidden="true"></span>
-        <div class="pipeline-step"><span class="pipeline-index">02</span><strong>AST + lexer</strong><small>source-backed facts</small></div>
-        <span class="flow-arrow" aria-hidden="true"></span>
-        <div class="pipeline-step pipeline-step-active"><span class="pipeline-index">03</span><strong>Doc IR v10</strong><small>typed, bounded, deterministic</small></div>
-        <span class="flow-arrow" aria-hidden="true"></span>
-        <div class="pipeline-step"><span class="pipeline-index">04</span><strong>Published outputs</strong><small>people + tools + agents</small></div>
-      </div>
-    </section>
-
-    <section class="section-rule" id="capabilities" aria-labelledby="capabilities-title">
-      <div class="section-intro section-intro-wide">
-        <p class="section-label">WHAT SHIPS</p>
-        <h2 id="capabilities-title">A documentation toolchain, not a template.</h2>
-        <p>Explore the generated reference or jump straight to the machine-readable contracts. The showcase is built from cjdoc itself plus a small multi-package example workspace.</p>
-      </div>
-      <div class="capability-list">
-        <article class="capability-row">
-          <span class="capability-code">API</span>
-          <div><h3>Reference pages with real source context</h3><p>Packages, declarations, signatures, parameters, returns, examples, diagnostics, search, themes, and source links rendered from the bound model.</p></div>
-          <a class="text-link" href="api/index.html">Read the docs <span aria-hidden="true">↗</span></a>
-        </article>
-        <article class="capability-row">
-          <span class="capability-code">NAV</span>
-          <div><h3>Semantic relationships that stay honest</h3><p>Extends, implements, overrides, inherited members, reverse navigation, and explicit partial or unavailable states instead of guessed links.</p></div>
-          <a class="text-link" href="artifacts/navigation-index.json">Open the index <span aria-hidden="true">↗</span></a>
-        </article>
-        <article class="capability-row">
-          <span class="capability-code">QLT</span>
-          <div><h3>Quality and coverage as first-class output</h3><p>Lint findings, coverage dimensions, scoped thresholds, semantic-link health, and documented evidence gaps can become a CI gate.</p></div>
-          <a class="text-link" href="artifacts/coverage.json">View coverage <span aria-hidden="true">↗</span></a>
-        </article>
-        <article class="capability-row">
-          <span class="capability-code">RUN</span>
-          <div><h3>Examples that can compile without touching the site</h3><p>Structured examples preserve source ranges, support compile and run semantics, and emit bounded results with explicit failure states.</p></div>
-          <a class="text-link" href="artifacts/doctest-results.json">See doctest results <span aria-hidden="true">↗</span></a>
-        </article>
-        <article class="capability-row">
-          <span class="capability-code">VER</span>
-          <div><h3>Static publishing with deliberate version boundaries</h3><p>Version manifests, stable identity matching, safe fallback routes, and independent file://-readable sites keep publishing local and reproducible.</p></div>
-          <a class="text-link" href="docs/advanced-usage.md">Read the workflow <span aria-hidden="true">↗</span></a>
-        </article>
-        <article class="capability-row">
-          <span class="capability-code">LLM</span>
-          <div><h3>Navigation made for machines too</h3><p>Symbol indexes, navigation indexes, llms.txt, and bounded full context let downstream tools consume authoritative data without parsing HTML.</p></div>
-          <a class="text-link" href="artifacts/llms-full.txt">Open full context <span aria-hidden="true">↗</span></a>
-        </article>
-      </div>
-    </section>
-
-    <section class="outputs-section section-rule" id="outputs" aria-labelledby="outputs-title">
-      <div class="section-intro">
-        <p class="section-label">OPEN CONTRACTS</p>
-        <h2 id="outputs-title">Inspect what the renderer actually emitted.</h2>
-        <p>No screenshots standing in for product truth. These are the files a release pipeline, static host, documentation reader, or agent can consume directly.</p>
-      </div>
-      <div class="output-layout">
-        <div class="output-list">
-          <a class="output-link" href="api/index.html"><span><b>API reference</b><small>Generated HTML site for cjdoc</small></span><span class="output-arrow" aria-hidden="true">↗</span></a>
-          <a class="output-link" href="demo/index.html"><span><b>Workspace demo</b><small>Two packages, cross-package navigation, examples</small></span><span class="output-arrow" aria-hidden="true">↗</span></a>
-          <a class="output-link" href="artifacts/docs.json"><span><b>Doc IR</b><small>Strict machine-readable document model</small></span><span class="output-arrow" aria-hidden="true">↗</span></a>
-          <a class="output-link" href="artifacts/api-surface.json"><span><b>API surface</b><small>Stable snapshot for compatibility diffing</small></span><span class="output-arrow" aria-hidden="true">↗</span></a>
-          <a class="output-link" href="artifacts/navigation-index.json"><span><b>Navigation index</b><small>Pages, symbols, packages, and safe hrefs</small></span><span class="output-arrow" aria-hidden="true">↗</span></a>
-          <a class="output-link" href="schemas/doc-ir-v10.schema.json"><span><b>Schema registry</b><small>Versioned contract with frozen legacy inputs</small></span><span class="output-arrow" aria-hidden="true">↗</span></a>
-        </div>
-        <div class="evidence-panel">
-          <div class="evidence-head"><span>artifacts / docs.json</span><span class="evidence-state"><i class="status-dot status-green" aria-hidden="true"></i> valid output</span></div>
-          <pre class="json-preview" aria-label="Doc IR excerpt"><code>{
-  <span class="json-key">"schemaVersion"</span>: <span class="json-string">"cjdoc.doc-ir/10"</span>,
-  <span class="json-key">"status"</span>: <span class="json-string">"partial"</span>,
-  <span class="json-key">"declarations"</span>: <span class="json-string">"&lt;generated&gt;"</span>,
-  <span class="json-key">"semanticStates"</span>: [
-    <span class="json-string">"resolved"</span>, <span class="json-string">"partial"</span>,
-    <span class="json-string">"unavailable"</span>, <span class="json-string">"ambiguous"</span>
-  ]
-}</code></pre>
-          <p class="evidence-note">The values above are a shape preview. The linked artifact is the source of truth.</p>
-          <a class="button button-secondary button-small" href="build.json">View build metadata</a>
-        </div>
-      </div>
-    </section>
-
-    <section class="workflow-section section-rule" id="workflow" aria-labelledby="workflow-title">
-      <div class="section-intro section-intro-wide">
-        <p class="section-label">FROM CHECKOUT TO PAGES</p>
-        <h2 id="workflow-title">A release path that stays inspectable.</h2>
-        <p>The same binary that powers this showcase can be run against a library checkout. Build locally, open the folder directly, or publish the output to any static host.</p>
-      </div>
-      <div class="workflow-grid">
-        <ol class="workflow-steps">
-          <li><span class="step-marker">1</span><div><strong>Point at a Cangjie project</strong><code>cjdoc generate --project .</code></div></li>
-          <li><span class="step-marker">2</span><div><strong>Choose the surfaces you need</strong><code>--format html --format json --format coverage</code></div></li>
-          <li><span class="step-marker">3</span><div><strong>Publish the directory</strong><code>open target/doc/html/index.html</code></div></li>
-        </ol>
-        <div class="command-panel">
-          <div class="command-head"><span>quick start</span><button class="copy-button" type="button" data-copy="cjdoc generate --project . --format html --format json --format coverage" aria-label="Copy quick start command">copy</button></div>
-          <pre><code><span class="code-muted">$</span> cjdoc generate \
-    --project . \
-    --format html \
-    --format json \
-    --format coverage</code></pre>
-          <p class="command-status" data-copy-status aria-live="polite">Static output. No hosted runtime required.</p>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <footer class="footer">
-    <div class="footer-inner">
-      <div><strong>cjdoc</strong><span>source-backed Cangjie API documentation</span></div>
-      <div class="footer-links"><a href="api/index.html">API reference</a><a href="artifacts/llms.txt">llms.txt</a><a href="https://github.com/lIlIIlIll/cjdoc">Repository</a></div>
-    </div>
-  </footer>
-  <script src="showcase.js"></script>
-</body>
-</html>
+<body data-cjdoc-doc-version="showcase">
+<a class="skip-link" href="#main">Skip to content / 跳到正文</a>
+<header class="site-header"><a class="brand" href="index.html">cjdoc<span> / documentation in practice</span></a><nav aria-label="Showcase navigation"><a href="index.html" lang="zh-CN">中文</a><a href="en.html" lang="en">English</a><a href="__REPOSITORY__">GitHub</a><button type="button" data-showcase-theme>Light / Dark</button></nav></header>
+<main id="main">
+<section class="hero"><div><p class="eyebrow">CANGJIE · NATIVE API DOCUMENTATION</p><h1>__HEADLINE__</h1><p class="lead">__LEAD__</p><div class="actions"><a class="button primary" data-showcase-primary href="__PRIMARY__">__OPEN__ <span aria-hidden="true">↗</span></a><a class="button" data-showcase-quickstart href="__GUIDE__">__QUICK__</a></div><p class="caption">__BOUNDARY__</p></div><aside class="hero-sample" aria-label="PocketKit source example"><div class="code-heading"><span>PocketKit / TextCatalog</span><span>demo-v2</span></div><pre><code id="hero-code">let catalog = TextCatalog()
+catalog.add("hello")
+assert(catalog.at(0) == "hello")</code></pre><button type="button" data-showcase-copy="hero-code">Copy / 复制</button><p>__SAMPLE__</p><a href="__SOURCE__">__SOURCE_LABEL__ →</a></aside></section>
+<section class="quickstart" aria-labelledby="quick-title"><div><p class="eyebrow">01 / START HERE</p><h2 id="quick-title">__QUICK__</h2><p>__QUICK_TEXT__</p><a href="__GUIDE__">__READ_GUIDE__ →</a></div><div><pre><code id="reproduce-command">python3 examples/pocketkit/reproduce.py \
+  --cjdoc /absolute/path/to/cjdoc \
+  --output ./generated --locale both</code></pre><button type="button" data-showcase-copy="reproduce-command">Copy / 复制</button><p><a href="downloads/__LOCALE__.html">__DOWNLOADS__ →</a></p></div></section>
+<section aria-labelledby="feature-title"><div class="section-heading"><div><p class="eyebrow">02 / EXPLORE BY TASK</p><h2 id="feature-title">__FEATURES__</h2></div><p>__FEATURE_NOTE__</p></div><div class="feature-grid"><!-- SHOWCASE_FEATURES --></div></section>
+<section class="machine-section" aria-labelledby="machine-title"><p class="eyebrow">03 / THE SAME OUTPUT, STRUCTURED</p><h2 id="machine-title">__MACHINE__</h2><p>__MACHINE_TEXT__</p><div class="artifact-links"><a href="showcase-features.json">Feature manifest</a><a href="artifacts/docs.json">Doc IR</a><a href="artifacts/navigation-index.json">Navigation</a><a href="artifacts/coverage.json">Coverage</a><a href="artifacts/api-diff.json">API diff</a><a href="artifacts/doctest-results.json">Doctest</a><a href="artifacts/llms.txt">llms.txt</a><a href="schemas/index.html">Schemas</a></div></section>
+<section class="integrators" aria-labelledby="integrator-title"><p class="eyebrow">04 / FOR INTEGRATORS</p><h2 id="integrator-title">__INTEGRATORS__</h2><p>__INTEGRATOR_TEXT__</p><div class="artifact-links"><a href="api/index.html">cjdoc API</a><a href="api/concepts/manual/usage.html">Usage</a><a href="api/concepts/manual/advanced-usage.html">Advanced usage</a><a href="api/concepts/manual/release-process.html">Release process</a><a href="docs/usage.md">Markdown</a><a href="demo/index.html">Legacy demo entry</a></div></section>
+</main>
+<footer><p>__PROVENANCE__</p><details><summary>Build provenance / 构建来源</summary><pre>__BUILD__</pre><a href="build.json">build.json</a> · <a href="showcase-plan.json">Resolved author plan</a></details></footer>
+<p class="visually-hidden" aria-live="polite" data-showcase-status></p>
+</body></html>
