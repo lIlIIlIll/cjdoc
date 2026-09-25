@@ -57,6 +57,11 @@ class HtmlPresentationQualityTest {
         let documentation = DocumentationEngine().generate(GenerationRequest(
             "tests/fixtures/projects/reexports", includePathDependencies: true,
             astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
+        var rootReExportCount: Int64 = 0
+        for (pkg in documentation.packages) {
+            if (pkg.name == "reexport_root") { rootReExportCount = pkg.reExports.size }
+        }
+        @Expect(rootReExportCount > 0, true)
         let html = renderedContent(api_render.HtmlDocumentationRenderer().render(documentation))
         @Expect(html.contains("<details class=\"reexports\"><summary"))
         @Expect(!html.contains("<details class=\"reexports\" open"))
