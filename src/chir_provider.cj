@@ -524,7 +524,13 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
             let _ = compiled.add(key)
             None
         } catch (error: Exception) {
-            Some("CHIR compilation raised an exception: ${error.message}")
+            let message = error.message
+            if (message.startsWith("CJDOC2101:") || message.startsWith("CJDOC2102:") ||
+                message.startsWith("CJDOC2103:") || message.startsWith("CJDOC2104:")) {
+                Some(message)
+            } else {
+                Some("CHIR compilation raised an exception: ${message}")
+            }
         } finally {
             let _ = compiling.remove(key)
         }
