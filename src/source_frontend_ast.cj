@@ -37,6 +37,16 @@ internal class AstDeclarationCollector <: Visitor {
             startLine = Int64(tokens[0].pos.line)
             startColumn = Int64(tokens[0].pos.column)
         }
+        for (modifier in decl.modifiers) {
+            let modifierStartLine = Int64(modifier.beginPos.line)
+            let modifierStartColumn = Int64(modifier.beginPos.column)
+            if (modifierStartLine > 0 && modifierStartColumn > 0 &&
+                (startLine <= 0 || startColumn <= 0 ||
+                    positionLess(modifierStartLine, modifierStartColumn, startLine, startColumn))) {
+                startLine = modifierStartLine
+                startColumn = modifierStartColumn
+            }
+        }
         if (startLine <= 0 || startColumn <= 0) { return None }
         let endLine = if (decl.endPos.line > 0) { Int64(decl.endPos.line) } else { startLine }
         let endColumn = if (decl.endPos.column > 0) { Int64(decl.endPos.column) } else { startColumn }
