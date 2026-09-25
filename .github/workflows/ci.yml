@@ -392,11 +392,15 @@ jobs:
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           cjc -v
           cjpm -v
-          if [[ "${{ matrix.platform }}" != 'windows-x64' ]]; then
-            # STS 1.2.0's bundled llc crashes at -O2 on the markdown/yjson CI dependencies.
-            # Keep the repository default unchanged and lower optimization only for Unix CI.
+            # STS 1.2.0's bundled llc crashes at -O2 on markdown/yjson dependencies.
+            # Keep defaults unchanged; lower optimization only for acceptance builds.
+            runner_temp="${RUNNER_TEMP}"
             real_cjpm="$(command -v cjpm)"
-            wrapper_dir="${RUNNER_TEMP}/cjpm-sts-optimization"
+            if command -v cygpath >/dev/null 2>&1; then
+              runner_temp="$(cygpath -u "${runner_temp}")"
+              real_cjpm="$(cygpath -u "${real_cjpm}")"
+            fi
+            wrapper_dir="${runner_temp}/cjpm-sts-optimization"
             mkdir -p "${wrapper_dir}"
             cat >"${wrapper_dir}/cjpm" <<'SH'
           #!/usr/bin/env bash
@@ -405,11 +409,17 @@ jobs:
             build|test) ;;
             *) exec "${CJDOC_REAL_CJPM}" "$@" ;;
           esac
-          if [[ "$PWD" != "${GITHUB_WORKSPACE}" ]]; then
+          workspace="${GITHUB_WORKSPACE}"
+          runner_temp="${RUNNER_TEMP}"
+          if command -v cygpath >/dev/null 2>&1; then
+            workspace="$(cygpath -u "${workspace}")"
+            runner_temp="$(cygpath -u "${runner_temp}")"
+          fi
+          if [[ "$PWD" != "${workspace}" ]]; then
             exec "${CJDOC_REAL_CJPM}" "$@"
           fi
           manifest="$(pwd)/cjpm.toml"
-          backup="$(mktemp "${RUNNER_TEMP}/cjpm-manifest.XXXXXX")"
+          backup="$(mktemp "${runner_temp}/cjpm-manifest.XXXXXX")"
           cp "${manifest}" "${backup}"
           restore_manifest() {
             cp "${backup}" "${manifest}"
@@ -439,7 +449,6 @@ jobs:
             chmod +x "${wrapper_dir}/cjpm"
             export CJDOC_REAL_CJPM="${real_cjpm}"
             export PATH="${wrapper_dir}:${PATH}"
-          fi
           bash scripts/check.sh
           if [[ "${{ matrix.platform }}" == 'linux-x64' ]]; then
             python scripts/with_stdx.py --variant static -- \
