@@ -55,6 +55,13 @@ class SourcePipelineSuite6 {
             }
         }
         @Expect(sourceParserFailure, "")
+        var punctuationError = ""
+        for (diagnostic in punctuation.diagnostics) {
+            if (diagnostic.severity == "error") {
+                punctuationError = diagnostic.code + ": " + diagnostic.message
+            }
+        }
+        @Expect(punctuationError, "")
         @Expect(punctuation.status, "complete")
         @Expect(containsDiagnostic(punctuation, "CJDOC1012"), false)
         @Expect(declarationNamed(punctuation, "ManyCases").kind, "enum")

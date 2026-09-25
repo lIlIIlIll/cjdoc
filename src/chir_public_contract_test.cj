@@ -56,7 +56,13 @@ class ChirPublicContracts {
             @Expect(documentation.schemaVersion, "cjdoc.doc-ir/10")
             @Expect(documentation.providers[0].name, "chir")
             @Expect(documentation.declarations.size > 0, true)
-            @Expect(!publicHasDiagnostic(documentation, "CJDOC2101"))
+            var compilerUnavailable = ""
+            for (diagnostic in documentation.diagnostics) {
+                if (diagnostic.code == "CJDOC2101") {
+                    compilerUnavailable = diagnostic.message
+                }
+            }
+            @Expect(compilerUnavailable, "")
         } finally {
             let _ = removeIfExists(temporary, recursive: true)
         }
@@ -69,7 +75,13 @@ class ChirPublicContracts {
                 chir: Some(ChirOptions())))
         @Expect(documentation.providers[0].name, "chir")
         @Expect(documentation.declarations.size > 0, true)
-        @Expect(!publicHasDiagnostic(documentation, "CJDOC2101"))
+        var compilerUnavailable = ""
+        for (diagnostic in documentation.diagnostics) {
+            if (diagnostic.code == "CJDOC2101") {
+                compilerUnavailable = diagnostic.message
+            }
+        }
+        @Expect(compilerUnavailable, "")
         var sawState = false
         var sawExtra = false
         for (declaration in documentation.declarations) {
