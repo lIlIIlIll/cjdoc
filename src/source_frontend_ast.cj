@@ -33,7 +33,8 @@ internal class AstDeclarationCollector <: Visitor {
         var startColumn = Int64(decl.beginPos.column)
         let tokens = decl.toTokens()
         if (tokens.size > 0 && tokens[0].pos.line > 0 && tokens[0].pos.column > 0 &&
-            positionLess(Int64(tokens[0].pos.line), Int64(tokens[0].pos.column), startLine, startColumn)) {
+            (startLine <= 0 || startColumn <= 0 ||
+                positionLess(Int64(tokens[0].pos.line), Int64(tokens[0].pos.column), startLine, startColumn))) {
             startLine = Int64(tokens[0].pos.line)
             startColumn = Int64(tokens[0].pos.column)
         }
