@@ -40,7 +40,11 @@ internal class AstDeclarationCollector <: Visitor {
         if (startLine <= 0 || startColumn <= 0) { return None }
         let endLine = if (decl.endPos.line > 0) { Int64(decl.endPos.line) } else { startLine }
         let endColumn = if (decl.endPos.column > 0) { Int64(decl.endPos.column) } else { startColumn }
-        let location = SourceLocation(path, startLine, startColumn, endLine, endColumn)
+        let location = match (sourceLocationFromAstRange(path, source,
+            startLine, startColumn, endLine, endColumn)) {
+            case Some(value) => value
+            case None => return None
+        }
         let signature = declarationSignature(decl, source, location, hasBody)
         let symbol = SourceDeclaration(makeSourceDeclarationKey(location, kind, name), kind, name,
             packageName, moduleId, declarationVisibility(decl), location,
@@ -81,9 +85,14 @@ internal class AstDeclarationCollector <: Visitor {
         let last = tokens[lastIndex]
         if (first.pos.line <= 0 || first.pos.column <= 0 ||
             last.pos.line <= 0 || last.pos.column <= 0) { return }
-        let (endLine, endColumn) = tokenEndPosition(last)
-        let location = SourceLocation(path, Int64(first.pos.line), Int64(first.pos.column),
-            endLine, endColumn)
+        let startOffset = source.byteOffsetFromLexerPosition(
+            Int64(first.pos.line), Int64(first.pos.column))
+        let endOffset = tokenEndByteOffset(source, last)
+        let location = match (sourceLocationFromByteOffsets(path, source,
+            startOffset, endOffset)) {
+            case Some(value) => value
+            case None => return
+        }
         let exact = source.slice(location)
         let signature = if (exact.isEmpty()) {
             normalizedTokens(parameter).trimAscii().trimEnd(",").trimAscii()
@@ -136,17 +145,14 @@ internal class AstDeclarationCollector <: Visitor {
                 if (tokens.size == 0) { continue }
                 let first = tokens[0]
                 let last = tokens[tokens.size - 1]
-                let lastLines = last.value.split("\n")
-                let endLine = Int64(last.pos.line) + lastLines.size - 1
-                let endColumn = if (lastLines.size == 1) {
-                    Int64(last.pos.column) + last.value.size
-                } else {
-                    lastLines[lastLines.size - 1].size + 1
-                }
-                let (startLine, startColumn) = enumCaseStart(source,
+                let startOffset = enumCaseStartOffset(source,
                     Int64(first.pos.line), Int64(first.pos.column))
-                let location = SourceLocation(path, startLine, startColumn,
-                    endLine, endColumn)
+                let endOffset = tokenEndByteOffset(source, last)
+                let location = match (sourceLocationFromByteOffsets(path, source,
+                    startOffset, endOffset)) {
+                    case Some(value) => value
+                    case None => continue
+                }
                 let exact = source.slice(location)
                 let name = constructor.identifier.value
                 let signature = if (exact.isEmpty()) {
@@ -231,20 +237,26 @@ internal class AstDeclarationCollector <: Visitor {
     }
 
     public override func visit(decl: MainDecl): Unit {
-        if (decl.beginPos.line > 0 && decl.beginPos.column > 0 && decl.endPos.line > 0 && decl.endPos.column > 0) {
-            localScopes.add(SourceLocation(path, Int64(decl.beginPos.line), Int64(decl.beginPos.column),
-                Int64(decl.endPos.line), Int64(decl.endPos.column)))
+        if (decl.beginPos.line > 0 && decl.beginPos.column > 0 &&
+            decl.endPos.line > 0 && decl.endPos.column > 0) {
+            if (let Some(location) <- sourceLocationFromAstRange(path, source,
+                Int64(decl.beginPos.line), Int64(decl.beginPos.column),
+                Int64(decl.endPos.line), Int64(decl.endPos.column))) {
+                localScopes.add(location)
+            }
         }
         breakTraverse()
     }
 
     public override func visit(decl: MacroDecl): Unit {
-        let location = SourceLocation(path, Int64(decl.beginPos.line), Int64(decl.beginPos.column),
-            Int64(decl.endPos.line), Int64(decl.endPos.column))
-        diagnostics.add(Diagnostic("warning", "CJDOC1009",
-            "unsupported declaration 'macro ${decl.identifier.value}'", source: location))
-        unsupportedDeclarations.add(UnsupportedDeclaration("macro", decl.identifier.value,
-            "macro expansion is not executed", location))
+        if (let Some(location) <- sourceLocationFromAstRange(path, source,
+            Int64(decl.beginPos.line), Int64(decl.beginPos.column),
+            Int64(decl.endPos.line), Int64(decl.endPos.column))) {
+            diagnostics.add(Diagnostic("warning", "CJDOC1009",
+                "unsupported declaration 'macro ${decl.identifier.value}'", source: location))
+            unsupportedDeclarations.add(UnsupportedDeclaration("macro", decl.identifier.value,
+                "macro expansion is not executed", location))
+        }
         breakTraverse()
     }
 
@@ -252,13 +264,15 @@ internal class AstDeclarationCollector <: Visitor {
         let name = try { decl.fullIdentifier.value } catch (_: Exception) {
             try { decl.identifier.value } catch (_: Exception) { "<macro>" }
         }
-        let location = SourceLocation(path, Int64(decl.beginPos.line), Int64(decl.beginPos.column),
-            Int64(decl.endPos.line), Int64(decl.endPos.column))
-        diagnostics.add(Diagnostic("warning", "CJDOC1009",
-            "macro invocation '${name}' is not expanded", source: location))
-        macroInvocations.add(MacroInvocation(name, location))
-        unsupportedDeclarations.add(UnsupportedDeclaration("macroInvocation", name,
-            "macro expansion is not executed", location))
+        if (let Some(location) <- sourceLocationFromAstRange(path, source,
+            Int64(decl.beginPos.line), Int64(decl.beginPos.column),
+            Int64(decl.endPos.line), Int64(decl.endPos.column))) {
+            diagnostics.add(Diagnostic("warning", "CJDOC1009",
+                "macro invocation '${name}' is not expanded", source: location))
+            macroInvocations.add(MacroInvocation(name, location))
+            unsupportedDeclarations.add(UnsupportedDeclaration("macroInvocation", name,
+                "macro expansion is not executed", location))
+        }
         breakTraverse()
     }
 }
@@ -313,17 +327,20 @@ internal func addCommonAstData(symbol: SourceDeclaration, decl: Decl): Unit {
     }
 }
 
-internal func tokenEndPosition(token: Token): (Int64, Int64) {
-    let lines = token.value.split("\n")
-    let endLine = Int64(token.pos.line) + lines.size - 1
-    let endColumn = if (lines.size == 1) {
-        Int64(token.pos.column) + token.value.size
-    } else {
-        lines[lines.size - 1].size + 1
-    }
-    (endLine, endColumn)
+internal func tokenEndByteOffset(source: IndexedSourceBuffer, token: Token): Int64 {
+    if (token.pos.line <= 0 || token.pos.column <= 0) { return -1 }
+    let startOffset = source.byteOffsetFromLexerPosition(
+        Int64(token.pos.line), Int64(token.pos.column))
+    if (startOffset < 0) { return -1 }
+    startOffset + token.value.toArray().size
 }
 
+internal func sourceLocationFromAstRange(path: String, source: IndexedSourceBuffer,
+    startLine: Int64, startColumn: Int64, endLine: Int64, endColumn: Int64): ?SourceLocation {
+    let startOffset = source.byteOffsetFromLexerPosition(startLine, startColumn)
+    let endOffset = source.byteOffsetFromLexerPosition(endLine, endColumn)
+    sourceLocationFromByteOffsets(path, source, startOffset, endOffset)
+}
 internal func importKindName(kind: ImportKind): String {
     match (kind) {
         case ImportKind.Single => "single"
@@ -351,7 +368,8 @@ internal func importPrefixPaths(tokens: Tokens): Array<String> {
     result.toArray()
 }
 
-internal func importLocation(path: String, value: ImportList): ?SourceLocation {
+internal func importLocation(path: String, source: IndexedSourceBuffer,
+    value: ImportList): ?SourceLocation {
     let tokens = value.toTokens()
     if (tokens.size == 0) { return None }
     var first: Int64 = 0
@@ -360,19 +378,22 @@ internal func importLocation(path: String, value: ImportList): ?SourceLocation {
     var last = tokens.size
     while (last > first && (tokens[last - 1].value.isEmpty() || tokens[last - 1].kind == NL)) { last-- }
     if (last <= first) { return None }
+    let firstToken = tokens[first]
     let endToken = tokens[last - 1]
     if (endToken.pos.line <= 0 || endToken.pos.column <= 0) { return None }
-    let (endLine, endColumn) = tokenEndPosition(endToken)
-    Some(SourceLocation(path, Int64(tokens[first].pos.line), Int64(tokens[first].pos.column),
-        endLine, endColumn))
+    let startOffset = source.byteOffsetFromLexerPosition(
+        Int64(firstToken.pos.line), Int64(firstToken.pos.column))
+    let endOffset = tokenEndByteOffset(source, endToken)
+    sourceLocationFromByteOffsets(path, source, startOffset, endOffset)
 }
 
-internal func collectPublicReExports(program: Program, path: String, packageName: String,
+internal func collectPublicReExports(program: Program, path: String,
+    source: IndexedSourceBuffer, packageName: String,
     moduleId: String): Array<SourceReExport> {
     let result = ArrayList<SourceReExport>()
     for (importList in program.importLists) {
         if (importList.modifier.value != "public") { continue }
-        let location = match (importLocation(path, importList)) {
+        let location = match (importLocation(path, source, importList)) {
             case Some(value) => value
             case None => continue
         }
@@ -396,7 +417,7 @@ internal func collectImports(program: Program, path: String,
     source: IndexedSourceBuffer): Array<String> {
     let imports = ArrayList<String>()
     for (importList in program.importLists) {
-        let location = match (importLocation(path, importList)) {
+        let location = match (importLocation(path, source, importList)) {
             case Some(value) => value
             case None => continue
         }
@@ -566,7 +587,8 @@ internal func parseSourceTextWithAst(input: SourceInputFile, fallbackPackageName
         result.packageName = Some(packageName)
         result.imports.add(all: collectImports(program, relative, sourceBuffer))
         result.declarations.add(all: collector.declarations)
-        result.reExports.add(all: collectPublicReExports(program, relative, packageName, input.module.id))
+        result.reExports.add(all: collectPublicReExports(program, relative, sourceBuffer,
+            packageName, input.module.id))
         result.macroInvocations.add(all: collector.macroInvocations)
         result.unsupportedDeclarations.add(all: collector.unsupportedDeclarations)
         result.diagnostics.add(all: collector.diagnostics)

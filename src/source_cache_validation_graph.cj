@@ -2,7 +2,6 @@ package cjdoc
 
 import std.ast.*
 import std.collection.*
-import std.env.*
 
 func validateCachedParameterDefaults(declaration: SourceDeclaration): Unit {
     let matches = try {
@@ -35,59 +34,33 @@ internal func validateCachedDocComment(comment: ?DocComment): Unit {
     }
 }
 
-func reportCachedSignatureMismatch(declaration: SourceDeclaration, reason: String): Bool {
-    match (getVariable("CJDOC_DEBUG_SOURCE_WORKER")) {
-        case Some(value) =>
-            if (value == "1") {
-                println("source_signature_cache=${declaration.name}:${reason}")
-            }
-        case None => ()
-    }
-    false
-}
-
 internal func cachedSourceSignatureMatches(declaration: SourceDeclaration,
     source: IndexedSourceBuffer): Bool {
-    if (declaration.sourceSignature.isEmpty()) {
-        return reportCachedSignatureMismatch(declaration, "empty signature")
-    }
+    if (declaration.sourceSignature.isEmpty()) { return false }
     let expectedTokens = sourceApiSignatureTokens(declaration.sourceSignature)
-    if (expectedTokens.size != declaration.sourceApiSignatureTokens.size) {
-        return reportCachedSignatureMismatch(declaration, "signature token count")
-    }
+    if (expectedTokens.size != declaration.sourceApiSignatureTokens.size) { return false }
     var tokenIndex: Int64 = 0
     while (tokenIndex < expectedTokens.size) {
-        if (expectedTokens[tokenIndex] != declaration.sourceApiSignatureTokens[tokenIndex]) {
-            return reportCachedSignatureMismatch(declaration, "signature token mismatch")
-        }
+        if (expectedTokens[tokenIndex] != declaration.sourceApiSignatureTokens[tokenIndex]) { return false }
         tokenIndex++
     }
     let end = source.byteOffset(declaration.source.endLine, declaration.source.endColumn)
     var cursor = source.byteOffset(declaration.source.startLine,
         declaration.source.startColumn)
-    if (cursor < 0 || end <= cursor || end > source.bytes.size) {
-        return reportCachedSignatureMismatch(declaration,
-            "invalid source range start=${declaration.source.startLine}:${declaration.source.startColumn} offset=${cursor} " +
-                "end=${declaration.source.endLine}:${declaration.source.endColumn} offset=${end} bytes=${source.bytes.size}")
-    }
+    if (cursor < 0 || end <= cursor || end > source.bytes.size) { return false }
     while (cursor < end && (source.bytes[cursor] == b' ' || source.bytes[cursor] == b'\t' ||
         source.bytes[cursor] == b'\r' || source.bytes[cursor] == b'\n')) { cursor++ }
     let signature = declaration.sourceSignature.toArray()
-    if (signature.size > end - cursor) {
-        return reportCachedSignatureMismatch(declaration, "signature longer than source range")
-    }
+    if (signature.size > end - cursor) { return false }
     var signatureIndex: Int64 = 0
     while (signatureIndex < signature.size) {
-        if (source.bytes[cursor + signatureIndex] != signature[signatureIndex]) {
-            return reportCachedSignatureMismatch(declaration, "signature bytes differ")
-        }
+        if (source.bytes[cursor + signatureIndex] != signature[signatureIndex]) { return false }
         signatureIndex++
     }
     cursor += signature.size
     while (cursor < end && (source.bytes[cursor] == b' ' || source.bytes[cursor] == b'\t' ||
         source.bytes[cursor] == b'\r' || source.bytes[cursor] == b'\n')) { cursor++ }
-    if (cursor == end || source.bytes[cursor] == b'{') { return true }
-    return reportCachedSignatureMismatch(declaration, "signature does not reach body boundary")
+    cursor == end || source.bytes[cursor] == b'{'
 }
 
 internal func validateCachedCommentBindings(parsed: ParsedSourceFile,
@@ -225,34 +198,16 @@ internal func validateDecodedSourceCache(parsed: ParsedSourceFile,
     let declarationsByKey = HashMap<String, SourceDeclaration>()
     var previous: ?SourceDeclaration = None
     for (declaration in parsed.declarations) {
-        if (!validCachedDeclarationKind(declaration.kind)) {
-            throw IllegalArgumentException("invalid cached declaration kind")
-        }
-        if (declaration.name.isEmpty()) {
-            throw IllegalArgumentException("invalid cached declaration name")
-        }
-        if (declaration.packageName != packageName) {
-            throw IllegalArgumentException("invalid cached declaration package")
-        }
-        if (declaration.moduleId != parsed.input.module.id) {
-            throw IllegalArgumentException("invalid cached declaration module")
-        }
-        if (!validCachedVisibility(declaration.visibility)) {
-            throw IllegalArgumentException("invalid cached declaration visibility")
-        }
-        if (!sourceCacheLocationMatchesCaptured(declaration.source, expectedPath,
-            capturedSourceIndex)) {
-            throw IllegalArgumentException("invalid cached declaration location")
-        }
-        if (!cachedSourceSignatureMatches(declaration, sourceBuffer)) {
-            throw IllegalArgumentException("invalid cached declaration signature")
-        }
-        if (declaration.sourceKey != makeSourceDeclarationKey(declaration.source,
-            declaration.kind, declaration.name)) {
-            throw IllegalArgumentException("invalid cached declaration key")
-        }
-        if (declarationsByKey.contains(declaration.sourceKey)) {
-            throw IllegalArgumentException("duplicate cached declaration key")
+        if (!validCachedDeclarationKind(declaration.kind) || declaration.name.isEmpty() ||
+            declaration.packageName != packageName || declaration.moduleId != parsed.input.module.id ||
+            !validCachedVisibility(declaration.visibility) ||
+            !sourceCacheLocationMatchesCaptured(declaration.source, expectedPath,
+                capturedSourceIndex) ||
+            !cachedSourceSignatureMatches(declaration, sourceBuffer) ||
+            declaration.sourceKey != makeSourceDeclarationKey(declaration.source,
+                declaration.kind, declaration.name) ||
+            declarationsByKey.contains(declaration.sourceKey)) {
+            throw IllegalArgumentException("invalid cached declaration")
         }
         if ((declaration.kind == "enum" && declaration.enumNonExhaustive.isNone()) ||
             (declaration.kind != "enum" && declaration.enumNonExhaustive.isSome())) {

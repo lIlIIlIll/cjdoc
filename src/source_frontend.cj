@@ -162,25 +162,6 @@ internal class IndexedSourceBuffer {
         }
     }
 
-    func byteOffset(line: Int64, column: Int64): Int64 {
-        if (line < 1 || column < 1 || line > lineStarts.size) { return -1 }
-        let lineIndex = line - 1
-        let start = lineStarts[lineIndex]
-        let lineEnd = if (lineIndex + 1 < lineStarts.size) {
-            lineStarts[lineIndex + 1] - 1
-        } else {
-            bytes.size
-        }
-        var cursor = start
-        var currentColumn: Int64 = 1
-        while (cursor < lineEnd && currentColumn < column) {
-            let value = bytes[cursor]
-            cursor++
-            if (!(value >= 128u8 && value <= 191u8)) { currentColumn++ }
-        }
-        if (currentColumn != column) { return -1 }
-        cursor
-    }
     func byteOffsetFromLexerPosition(line: Int64, column: Int64): Int64 {
         if (line < 1 || column < 1 || line > lineStarts.size) { return -1 }
         let lineIndex = line - 1
@@ -195,6 +176,11 @@ internal class IndexedSourceBuffer {
         offset
     }
 
+    func byteOffset(line: Int64, column: Int64): Int64 {
+        byteOffsetFromLexerPosition(line, column)
+    }
+
+    // Public SourcePosition columns are 1-based UTF-8 byte columns.
     func position(offset: Int64): (Int64, Int64) {
         if (offset < 0 || offset > bytes.size) { return (1, 1) }
         var low: Int64 = 0
@@ -207,14 +193,7 @@ internal class IndexedSourceBuffer {
                 high = middle
             }
         }
-        var cursor = lineStarts[low]
-        var column: Int64 = 1
-        while (cursor < offset) {
-            let value = bytes[cursor]
-            cursor++
-            if (!(value >= 128u8 && value <= 191u8)) { column++ }
-        }
-        (low + 1, column)
+        (low + 1, offset - lineStarts[low] + 1)
     }
 
     func slice(location: SourceLocation): String {
@@ -224,15 +203,25 @@ internal class IndexedSourceBuffer {
         String.fromUtf8(bytes[start..end])
     }
 }
+internal func sourceLocationFromByteOffsets(path: String, source: IndexedSourceBuffer,
+    startOffset: Int64, endOffset: Int64): ?SourceLocation {
+    if (startOffset < 0 || endOffset < startOffset || endOffset > source.bytes.size) {
+        return None
+    }
+    let (startLine, startColumn) = source.position(startOffset)
+    let (endLine, endColumn) = source.position(endOffset)
+    Some(SourceLocation(path, startLine, startColumn, endLine, endColumn))
+}
 
-internal func enumCaseStart(source: IndexedSourceBuffer, line: Int64, column: Int64): (Int64, Int64) {
-    let start = source.byteOffset(line, column)
-    if (start <= 0) { return (line, column) }
+internal func enumCaseStartOffset(source: IndexedSourceBuffer,
+    line: Int64, column: Int64): Int64 {
+    let start = source.byteOffsetFromLexerPosition(line, column)
+    if (start < 0 || start == 0) { return start }
     var cursor = start - 1
     while (cursor >= 0 && (source.bytes[cursor] == b' ' || source.bytes[cursor] == b'\t' ||
         source.bytes[cursor] == b'\r' || source.bytes[cursor] == b'\n')) { cursor-- }
-    if (cursor < 0 || source.bytes[cursor] != b'|') { return (line, column) }
-    source.position(cursor)
+    if (cursor >= 0 && source.bytes[cursor] == b'|') { return cursor }
+    start
 }
 
 internal func headerEndOffset(source: String): Int64 {
@@ -255,14 +244,6 @@ internal func headerEndOffset(source: String): Int64 {
     return source.size
 }
 
-internal func utf8CodepointWidth(value: String): Int64 {
-    var width: Int64 = 0
-    for (byte in value.toArray()) {
-        if (!(byte >= 128u8 && byte <= 191u8)) { width++ }
-    }
-    width
-}
-
 internal func commentLocation(path: String, token: Token, index: IndexedSourceBuffer): SourceLocation {
     let lines = token.value.split("\n")
     let rawStart = index.byteOffsetFromLexerPosition(Int64(token.pos.line),
@@ -270,9 +251,9 @@ internal func commentLocation(path: String, token: Token, index: IndexedSourceBu
     let (startLine, startColumn) = index.position(rawStart)
     let endLine = startLine + lines.size - 1
     let endColumn = if (lines.size == 1) {
-        startColumn + utf8CodepointWidth(lines[0])
+        startColumn + lines[0].toArray().size
     } else {
-        utf8CodepointWidth(lines[lines.size - 1]) + 1
+        lines[lines.size - 1].toArray().size + 1
     }
     SourceLocation(path, startLine, startColumn, endLine, endColumn)
 }
