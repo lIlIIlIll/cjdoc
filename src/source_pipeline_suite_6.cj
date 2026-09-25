@@ -69,10 +69,19 @@ class SourcePipelineSuite6 {
                     }
                 }
             }
-            let nested = declarationNamed(punctuation, "Nested")
-            failureDetails = failureDetails +
-                "Nested source ${nested.source.start.line}:${nested.source.start.column}/${nested.source.start.byteOffset}-" +
-                "${nested.source.end.line}:${nested.source.end.column}/${nested.source.end.byteOffset}; "
+            var nestedRangeDetails = "Nested declaration not found; "
+            for (declaration in punctuation.declarations) {
+                if (declaration.name == "Nested") {
+                    nestedRangeDetails = "Nested source " + declaration.source.start.line.toString() + ":" +
+                        declaration.source.start.column.toString() + "/" +
+                        declaration.source.start.byteOffset.toString() + "-" +
+                        declaration.source.end.line.toString() + ":" +
+                        declaration.source.end.column.toString() + "/" +
+                        declaration.source.end.byteOffset.toString() + "; "
+                    break
+                }
+            }
+            failureDetails = failureDetails + nestedRangeDetails
             for (unsupported in punctuation.unsupportedDeclarations) {
                 failureDetails = failureDetails + "unsupported " + unsupported.kind + " " +
                     unsupported.name + ": " + unsupported.reason + "; "
