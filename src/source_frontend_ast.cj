@@ -85,11 +85,9 @@ internal class AstDeclarationCollector <: Visitor {
         let last = tokens[lastIndex]
         if (first.pos.line <= 0 || first.pos.column <= 0 ||
             last.pos.line <= 0 || last.pos.column <= 0) { return }
-        let startOffset = source.byteOffsetFromLexerPosition(
-            Int64(first.pos.line), Int64(first.pos.column))
-        let endOffset = tokenEndByteOffset(source, last)
-        let location = match (sourceLocationFromByteOffsets(path, source,
-            startOffset, endOffset)) {
+        let (endLine, endColumn) = tokenEndPosition(last)
+        let location = match (sourceLocationFromAstRange(path, source,
+            Int64(first.pos.line), Int64(first.pos.column), endLine, endColumn)) {
             case Some(value) => value
             case None => return
         }
@@ -145,11 +143,11 @@ internal class AstDeclarationCollector <: Visitor {
                 if (tokens.size == 0) { continue }
                 let first = tokens[0]
                 let last = tokens[tokens.size - 1]
-                let startOffset = enumCaseStartOffset(source,
+                let (endLine, endColumn) = tokenEndPosition(last)
+                let (startLine, startColumn) = enumCaseStart(source,
                     Int64(first.pos.line), Int64(first.pos.column))
-                let endOffset = tokenEndByteOffset(source, last)
-                let location = match (sourceLocationFromByteOffsets(path, source,
-                    startOffset, endOffset)) {
+                let location = match (sourceLocationFromAstRange(path, source,
+                    startLine, startColumn, endLine, endColumn)) {
                     case Some(value) => value
                     case None => continue
                 }
@@ -327,20 +325,25 @@ internal func addCommonAstData(symbol: SourceDeclaration, decl: Decl): Unit {
     }
 }
 
-internal func tokenEndByteOffset(source: IndexedSourceBuffer, token: Token): Int64 {
-    if (token.pos.line <= 0 || token.pos.column <= 0) { return -1 }
-    let startOffset = source.byteOffsetFromLexerPosition(
-        Int64(token.pos.line), Int64(token.pos.column))
-    if (startOffset < 0) { return -1 }
-    startOffset + token.value.toArray().size
+internal func tokenEndPosition(token: Token): (Int64, Int64) {
+    let lines = token.value.split("\n")
+    let endLine = Int64(token.pos.line) + lines.size - 1
+    let endColumn = if (lines.size == 1) {
+        Int64(token.pos.column) + lines[0].toArray().size
+    } else {
+        lines[lines.size - 1].toArray().size + 1
+    }
+    (endLine, endColumn)
 }
 
 internal func sourceLocationFromAstRange(path: String, source: IndexedSourceBuffer,
     startLine: Int64, startColumn: Int64, endLine: Int64, endColumn: Int64): ?SourceLocation {
     let startOffset = source.byteOffsetFromLexerPosition(startLine, startColumn)
     let endOffset = source.byteOffsetFromLexerPosition(endLine, endColumn)
-    sourceLocationFromByteOffsets(path, source, startOffset, endOffset)
+    if (startOffset < 0 || endOffset < startOffset) { return None }
+    Some(SourceLocation(path, startLine, startColumn, endLine, endColumn))
 }
+
 internal func importKindName(kind: ImportKind): String {
     match (kind) {
         case ImportKind.Single => "single"
@@ -368,32 +371,28 @@ internal func importPrefixPaths(tokens: Tokens): Array<String> {
     result.toArray()
 }
 
-internal func importLocation(path: String, source: IndexedSourceBuffer,
-    value: ImportList): ?SourceLocation {
+internal func importLocation(path: String, value: ImportList): ?SourceLocation {
     let tokens = value.toTokens()
     if (tokens.size == 0) { return None }
     var first: Int64 = 0
     while (first < tokens.size && (tokens[first].value.isEmpty() || tokens[first].kind == NL)) { first++ }
-    if (first >= tokens.size || tokens[first].pos.line <= 0 || tokens[first].pos.column <= 0) { return None }
+    if (first >= tokens.size) { return None }
     var last = tokens.size
     while (last > first && (tokens[last - 1].value.isEmpty() || tokens[last - 1].kind == NL)) { last-- }
     if (last <= first) { return None }
-    let firstToken = tokens[first]
     let endToken = tokens[last - 1]
     if (endToken.pos.line <= 0 || endToken.pos.column <= 0) { return None }
-    let startOffset = source.byteOffsetFromLexerPosition(
-        Int64(firstToken.pos.line), Int64(firstToken.pos.column))
-    let endOffset = tokenEndByteOffset(source, endToken)
-    sourceLocationFromByteOffsets(path, source, startOffset, endOffset)
+    let (endLine, endColumn) = tokenEndPosition(endToken)
+    Some(SourceLocation(path, Int64(tokens[first].pos.line), Int64(tokens[first].pos.column),
+        endLine, endColumn))
 }
 
 internal func collectPublicReExports(program: Program, path: String,
-    source: IndexedSourceBuffer, packageName: String,
-    moduleId: String): Array<SourceReExport> {
+    packageName: String, moduleId: String): Array<SourceReExport> {
     let result = ArrayList<SourceReExport>()
     for (importList in program.importLists) {
         if (importList.modifier.value != "public") { continue }
-        let location = match (importLocation(path, source, importList)) {
+        let location = match (importLocation(path, importList)) {
             case Some(value) => value
             case None => continue
         }
@@ -417,7 +416,7 @@ internal func collectImports(program: Program, path: String,
     source: IndexedSourceBuffer): Array<String> {
     let imports = ArrayList<String>()
     for (importList in program.importLists) {
-        let location = match (importLocation(path, source, importList)) {
+        let location = match (importLocation(path, importList)) {
             case Some(value) => value
             case None => continue
         }
@@ -587,8 +586,8 @@ internal func parseSourceTextWithAst(input: SourceInputFile, fallbackPackageName
         result.packageName = Some(packageName)
         result.imports.add(all: collectImports(program, relative, sourceBuffer))
         result.declarations.add(all: collector.declarations)
-        result.reExports.add(all: collectPublicReExports(program, relative, sourceBuffer,
-            packageName, input.module.id))
+        result.reExports.add(all: collectPublicReExports(program, relative, packageName,
+            input.module.id))
         result.macroInvocations.add(all: collector.macroInvocations)
         result.unsupportedDeclarations.add(all: collector.unsupportedDeclarations)
         result.diagnostics.add(all: collector.diagnostics)

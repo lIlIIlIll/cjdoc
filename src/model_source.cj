@@ -230,42 +230,6 @@ class CapturedSourceIndex {
         Some(offset)
     }
 
-    public func codepointByteOffset(line: Int64, column: Int64): ?Int64 {
-        if (!available || line < 1 || column < 1) { return None }
-        let lineIndex = line - 1
-        if (lineIndex >= lineStarts.size) { return None }
-        let start = lineStarts[lineIndex]
-        let lineEnd = if (lineIndex + 1 < lineStarts.size) {
-            lineStarts[lineIndex + 1] - 1
-        } else {
-            byteLength
-        }
-        var cursor = start
-        var currentColumn: Int64 = 1
-        while (cursor < lineEnd && currentColumn < column) {
-            let value = sourceBytes[cursor]
-            cursor++
-            if (!(value >= 128u8 && value <= 191u8)) { currentColumn++ }
-        }
-        if (currentColumn != column) { return None }
-        Some(cursor)
-    }
-
-
-    public func byteColumn(line: Int64, byteOffset: Int64): ?Int64 {
-        if (!available || line < 1 || byteOffset < 0) { return None }
-        let lineIndex = line - 1
-        if (lineIndex >= lineStarts.size) { return None }
-        let start = lineStarts[lineIndex]
-        let lineEnd = if (lineIndex + 1 < lineStarts.size) {
-            lineStarts[lineIndex + 1] - 1
-        } else {
-            byteLength
-        }
-        if (byteOffset < start || byteOffset > lineEnd) { return None }
-        Some(byteOffset - start + 1)
-    }
-
     public func positionMatches(line: Int64, column: Int64, byteOffset: Int64): Bool {
         match (this.byteOffset(line, column)) {
             case Some(expected) => expected == byteOffset
