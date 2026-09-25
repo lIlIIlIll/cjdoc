@@ -60,6 +60,19 @@ class SourcePipelineSuite6 {
             for (diagnostic in punctuation.diagnostics) {
                 failureDetails = failureDetails + diagnostic.code + ": " + diagnostic.message + "; "
             }
+            for (diagnostic in punctuation.diagnostics) {
+                if (diagnostic.code == "CJDOC1014") {
+                    if (let Some(source) <- diagnostic.source) {
+                        failureDetails = failureDetails +
+                            "orphan source ${source.start.line}:${source.start.column}/${source.start.byteOffset}-" +
+                            "${source.end.line}:${source.end.column}/${source.end.byteOffset}; "
+                    }
+                }
+            }
+            let nested = declarationNamed(punctuation, "Nested")
+            failureDetails = failureDetails +
+                "Nested source ${nested.source.start.line}:${nested.source.start.column}/${nested.source.start.byteOffset}-" +
+                "${nested.source.end.line}:${nested.source.end.column}/${nested.source.end.byteOffset}; "
             for (unsupported in punctuation.unsupportedDeclarations) {
                 failureDetails = failureDetails + "unsupported " + unsupported.kind + " " +
                     unsupported.name + ": " + unsupported.reason + "; "
