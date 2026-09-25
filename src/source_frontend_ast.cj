@@ -43,7 +43,15 @@ internal class AstDeclarationCollector <: Visitor {
         let location = match (sourceLocationFromAstRange(path, source,
             startLine, startColumn, endLine, endColumn)) {
             case Some(value) => value
-            case None => return None
+            case None =>
+                if (tokens.isEmpty()) { return None }
+                let lastToken = tokens[tokens.size - 1]
+                let (tokenEndLine, tokenEndColumn) = tokenEndPosition(lastToken)
+                match (sourceLocationFromAstRange(path, source, startLine, startColumn,
+                    tokenEndLine, tokenEndColumn)) {
+                    case Some(value) => value
+                    case None => return None
+                }
         }
         let signature = declarationSignature(decl, source, location, hasBody)
         let symbol = SourceDeclaration(makeSourceDeclarationKey(location, kind, name), kind, name,
