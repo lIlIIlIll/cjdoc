@@ -455,9 +455,9 @@ private func validateChirWorkerFile(path: Path): Unit {
 
 private func validateChirWorkerStagedFile(root: Path, path: Path): Unit {
     validateChirWorkerFile(path)
-    let expectedPrefix = canonicalize(root).toString() + "/"
+    let canonicalRoot = canonicalize(root).toString()
     let actual = canonicalize(path).toString()
-    if (!actual.startsWith(expectedPrefix)) {
+    if (actual == canonicalRoot || !hostPathIsWithin(canonicalRoot, actual)) {
         throw IllegalArgumentException("CHIR worker source escapes its staging directory")
     }
 }

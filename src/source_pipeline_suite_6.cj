@@ -55,13 +55,24 @@ class SourcePipelineSuite6 {
             }
         }
         @Expect(sourceParserFailure, "")
-        var punctuationError = ""
-        for (diagnostic in punctuation.diagnostics) {
-            if (diagnostic.severity == "error") {
-                punctuationError = diagnostic.code + ": " + diagnostic.message
+        if (punctuation.status != "complete") {
+            var failureDetails = ""
+            for (diagnostic in punctuation.diagnostics) {
+                failureDetails = failureDetails + diagnostic.code + ": " + diagnostic.message + "; "
             }
+            for (unsupported in punctuation.unsupportedDeclarations) {
+                failureDetails = failureDetails + "unsupported " + unsupported.kind + " " +
+                    unsupported.name + ": " + unsupported.reason + "; "
+            }
+            for (provider in punctuation.providers) {
+                failureDetails = failureDetails + "provider " + provider.name + ": " + provider.state + "; "
+            }
+            for (unbound in punctuation.unboundSemanticDeclarations) {
+                failureDetails = failureDetails + "unbound " + unbound.provider + " " +
+                    unbound.display + ": " + unbound.reason + "; "
+            }
+            @Expect(failureDetails, "")
         }
-        @Expect(punctuationError, "")
         @Expect(punctuation.status, "complete")
         @Expect(containsDiagnostic(punctuation, "CJDOC1012"), false)
         @Expect(declarationNamed(punctuation, "ManyCases").kind, "enum")
