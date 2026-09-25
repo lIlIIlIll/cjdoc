@@ -57,6 +57,13 @@ class HtmlPresentationQualityTest {
         let documentation = DocumentationEngine().generate(GenerationRequest(
             "tests/fixtures/projects/reexports", includePathDependencies: true,
             astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
+        var rootParseFailure = ""
+        for (diagnostic in documentation.diagnostics) {
+            if (diagnostic.code == "CJDOC1011" && diagnostic.message.contains("src/root.cj")) {
+                rootParseFailure = diagnostic.message
+            }
+        }
+        @Expect(rootParseFailure, "")
         var rootPackageFound = false
         var rootReExportCount: Int64 = 0
         for (pkg in documentation.packages) {
