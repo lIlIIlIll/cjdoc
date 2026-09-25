@@ -55,13 +55,24 @@ internal class AstDeclarationCollector <: Visitor {
             startLine, startColumn, endLine, endColumn)) {
             case Some(value) => value
             case None =>
-                if (tokens.size == 0) { return None }
-                let lastToken = tokens[tokens.size - 1]
-                let (tokenEndLine, tokenEndColumn) = tokenEndPosition(lastToken)
-                match (sourceLocationFromAstRange(path, source, startLine, startColumn,
-                    tokenEndLine, tokenEndColumn)) {
+                // Nested generic closers can put std.ast's exclusive end column one past the source line.
+                let adjustedEnd: ?SourceLocation = if (endLine == startLine && endColumn > startColumn) {
+                    sourceLocationFromAstRange(path, source, startLine, startColumn,
+                        endLine, endColumn - 1)
+                } else {
+                    None
+                }
+                match (adjustedEnd) {
                     case Some(value) => value
-                    case None => return None
+                    case None =>
+                        if (tokens.size == 0) { return None }
+                        let lastToken = tokens[tokens.size - 1]
+                        let (tokenEndLine, tokenEndColumn) = tokenEndPosition(lastToken)
+                        match (sourceLocationFromAstRange(path, source, startLine, startColumn,
+                            tokenEndLine, tokenEndColumn)) {
+                            case Some(value) => value
+                            case None => return None
+                        }
                 }
         }
         let signature = declarationSignature(decl, source, location, hasBody)
