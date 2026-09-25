@@ -247,27 +247,19 @@ internal class PublicSourceMapper {
     func range(location: SourceLocation): public_model.SourceRange {
         var startOffset: Int64 = 0
         var endOffset: Int64 = 0
-        var startColumn = location.startColumn
-        var endColumn = location.endColumn
         if (let Some(index) <- sourceIndex(location.path)) {
-            if (let Some(start) <- index.codepointByteOffset(location.startLine, location.startColumn)) {
-                if (let Some(end) <- index.codepointByteOffset(location.endLine, location.endColumn)) {
+            if (let Some(start) <- index.byteOffset(location.startLine, location.startColumn)) {
+                if (let Some(end) <- index.byteOffset(location.endLine, location.endColumn)) {
                     if (end >= start) {
                         startOffset = start
                         endOffset = end
-                        if (let Some(value) <- index.byteColumn(location.startLine, start)) {
-                            startColumn = value
-                        }
-                        if (let Some(value) <- index.byteColumn(location.endLine, end)) {
-                            endColumn = value
-                        }
                     }
                 }
             }
         }
         public_model.SourceRange(location.path,
-            public_model.SourcePosition(location.startLine, startColumn, startOffset),
-            public_model.SourcePosition(location.endLine, endColumn, endOffset))
+            public_model.SourcePosition(location.startLine, location.startColumn, startOffset),
+            public_model.SourcePosition(location.endLine, location.endColumn, endOffset))
     }
 
     func contains(range: public_model.SourceRange): Bool {

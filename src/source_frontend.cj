@@ -203,25 +203,15 @@ internal class IndexedSourceBuffer {
         String.fromUtf8(bytes[start..end])
     }
 }
-internal func sourceLocationFromByteOffsets(path: String, source: IndexedSourceBuffer,
-    startOffset: Int64, endOffset: Int64): ?SourceLocation {
-    if (startOffset < 0 || endOffset < startOffset || endOffset > source.bytes.size) {
-        return None
-    }
-    let (startLine, startColumn) = source.position(startOffset)
-    let (endLine, endColumn) = source.position(endOffset)
-    Some(SourceLocation(path, startLine, startColumn, endLine, endColumn))
-}
 
-internal func enumCaseStartOffset(source: IndexedSourceBuffer,
-    line: Int64, column: Int64): Int64 {
-    let start = source.byteOffsetFromLexerPosition(line, column)
-    if (start < 0 || start == 0) { return start }
+internal func enumCaseStart(source: IndexedSourceBuffer, line: Int64, column: Int64): (Int64, Int64) {
+    let start = source.byteOffset(line, column)
+    if (start <= 0) { return (line, column) }
     var cursor = start - 1
     while (cursor >= 0 && (source.bytes[cursor] == b' ' || source.bytes[cursor] == b'\t' ||
         source.bytes[cursor] == b'\r' || source.bytes[cursor] == b'\n')) { cursor-- }
-    if (cursor >= 0 && source.bytes[cursor] == b'|') { return cursor }
-    start
+    if (cursor < 0 || source.bytes[cursor] != b'|') { return (line, column) }
+    source.position(cursor)
 }
 
 internal func headerEndOffset(source: String): Int64 {
