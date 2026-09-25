@@ -59,8 +59,13 @@ class HtmlPresentationQualityTest {
             astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
         var rootParseFailure = ""
         for (diagnostic in documentation.diagnostics) {
-            if (diagnostic.code == "CJDOC1011" && diagnostic.message.contains("src/root.cj")) {
-                rootParseFailure = diagnostic.message
+            if (diagnostic.code == "CJDOC1011") {
+                match (diagnostic.source) {
+                    case Some(source) => if (source.path == "src/root.cj") {
+                        rootParseFailure = diagnostic.message
+                    }
+                    case None => ()
+                }
             }
         }
         @Expect(rootParseFailure, "")
