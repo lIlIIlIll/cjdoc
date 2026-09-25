@@ -98,7 +98,18 @@ class ChirPublicContracts {
             GenerationRequest("tests/fixtures/projects/basic", lintProfile: "off",
                 chir: Some(ChirOptions(compilerExecutable: "missing-cjc-for-cjdoc-test"))))
         @Expect(documentation.declarations.size, 25)
-        @Expect(publicHasDiagnostic(documentation, "CJDOC2101"))
+        var compilerFailureCode = ""
+        var compilerFailureMessage = ""
+        for (diagnostic in documentation.diagnostics) {
+            if (diagnostic.code.startsWith("CJDOC21")) {
+                compilerFailureCode = diagnostic.code
+                compilerFailureMessage = diagnostic.message
+            }
+        }
+        @Expect(compilerFailureCode, "CJDOC2101")
+        if (compilerFailureCode != "CJDOC2101") {
+            @Expect(compilerFailureMessage, "")
+        }
         @Expect(documentation.providers[0].name, "chir")
     }
 }
