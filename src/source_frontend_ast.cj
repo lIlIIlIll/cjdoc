@@ -44,7 +44,7 @@ internal class AstDeclarationCollector <: Visitor {
             startLine, startColumn, endLine, endColumn)) {
             case Some(value) => value
             case None =>
-                if (tokens.isEmpty()) { return None }
+                if (tokens.size == 0) { return None }
                 let lastToken = tokens[tokens.size - 1]
                 let (tokenEndLine, tokenEndColumn) = tokenEndPosition(lastToken)
                 match (sourceLocationFromAstRange(path, source, startLine, startColumn,
