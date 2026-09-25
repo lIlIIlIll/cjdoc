@@ -47,6 +47,14 @@ class SourcePipelineSuite6 {
     @TestCase
     func punctuationDoesNotTriggerBinaryDepthGuard(): Unit {
         let punctuation = generateFixture("binary_punctuation")
+        var sourceParserFailure = ""
+        for (diagnostic in punctuation.diagnostics) {
+            if (diagnostic.code == "CJDOC1011" || diagnostic.code == "CJDOC1012" ||
+                diagnostic.code == "CJDOC1020") {
+                sourceParserFailure = diagnostic.code + ": " + diagnostic.message
+            }
+        }
+        @Expect(sourceParserFailure, "")
         @Expect(punctuation.status, "complete")
         @Expect(containsDiagnostic(punctuation, "CJDOC1012"), false)
         @Expect(declarationNamed(punctuation, "ManyCases").kind, "enum")

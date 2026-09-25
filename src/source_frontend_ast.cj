@@ -388,7 +388,7 @@ internal func importLocation(path: String, value: ImportList): ?SourceLocation {
 }
 
 internal func collectPublicReExports(program: Program, path: String,
-    packageName: String, moduleId: String): Array<SourceReExport> {
+    packageName: String, moduleId: String, source: IndexedSourceBuffer): Array<SourceReExport> {
     let result = ArrayList<SourceReExport>()
     for (importList in program.importLists) {
         if (importList.modifier.value != "public") { continue }
@@ -403,10 +403,16 @@ internal func collectPublicReExports(program: Program, path: String,
             items.add(SourceImportItem(item.identifier.value,
                 alias: importAliasName(item.importAlias)))
         }
+        let sourceText = source.slice(location).trimAscii()
+        let normalizedSpec = if (sourceText.startsWith("public ")) {
+            sourceText.removePrefix("public ").trimAscii()
+        } else {
+            sourceText
+        }
         result.add(SourceReExport(importKindName(content.importKind),
             if (content.orgName.value.isEmpty()) { None } else { Some(content.orgName.value) },
             content.identifier.value, importAliasName(content.importAlias), location,
-            importList.toTokens().toString().trimAscii(), packageName, moduleId,
+            normalizedSpec, packageName, moduleId,
             prefixPaths: importPrefixPaths(content.prefixPaths), items: items.toArray()))
     }
     result.toArray()
@@ -587,7 +593,7 @@ internal func parseSourceTextWithAst(input: SourceInputFile, fallbackPackageName
         result.imports.add(all: collectImports(program, relative, sourceBuffer))
         result.declarations.add(all: collector.declarations)
         result.reExports.add(all: collectPublicReExports(program, relative, packageName,
-            input.module.id))
+            input.module.id, sourceBuffer))
         result.macroInvocations.add(all: collector.macroInvocations)
         result.unsupportedDeclarations.add(all: collector.unsupportedDeclarations)
         result.diagnostics.add(all: collector.diagnostics)
