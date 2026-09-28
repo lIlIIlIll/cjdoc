@@ -41,7 +41,7 @@
       "organization": null,
       "repositoryPath": null,
       "packageNames": [
-        "macro package unsupported_fixture"
+        "unsupported_fixture"
       ],
       "dependencyIds": [
         
@@ -50,7 +50,7 @@
   ],
   "packages": [
     {
-      "name": "macro package unsupported_fixture",
+      "name": "unsupported_fixture",
       "moduleId": "cjdoc:module:v1:root",
       "sourceFiles": [
         "src/macro.cj"
@@ -67,7 +67,7 @@
     {
       "path": "src/macro.cj",
       "moduleId": "cjdoc:module:v1:root",
-      "packageName": "macro package unsupported_fixture"
+      "packageName": "unsupported_fixture"
     }
   ],
   "declarations": [
@@ -143,7 +143,7 @@
     {
       "severity": "warning",
       "code": "CJDOC1009",
-      "message": "unsupported declaration 'Echo'",
+      "message": "unsupported declaration 'macro Echo'",
       "source": {
         "path": "src/macro.cj",
         "start": {
