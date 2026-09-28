@@ -330,7 +330,10 @@ class RendererSafetyTest {
     @TestCase
     func htmlPromotesSummaryWithoutRepeatingTheOpeningParagraph(): Unit {
         let markdown = MarkdownNode("document", children: [
-            MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "Unique summary text.")]),
+            MarkdownNode("paragraph", children: [
+                MarkdownNode("text", literal: "Unique summary text. "),
+                MarkdownNode("text", literal: "<script>alert(9)</script>")
+            ]),
             MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "Additional details.")])
         ])
         let artifacts = HtmlDocumentationRenderer().render(rendererSafetyDocumentation(markdown))
@@ -339,6 +342,8 @@ class RendererSafetyTest {
 
         @Expect(html.split("Unique summary text.").size, 2)
         @Expect(html.contains("<p>Additional details.</p>"), true)
+        @Expect(html.contains("&lt;script&gt;alert(9)&lt;/script&gt;"), true)
+        @Expect(!html.contains("<script>alert(9)</script>"), true)
     }
 
     @TestCase

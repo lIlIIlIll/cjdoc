@@ -62,7 +62,7 @@ internal func appendSymbolMetadata(out: RenderTextBuffer,
             case None => ()
         }
     }
-    out.append("<h2 class=\"signature-heading\">${label(locale, \"Signature\", \"签名\")}</h2><pre class=\"signature-block\"><code>")
+    out.append("<h2 class=\"signature-heading\">${label(locale, "Signature", "签名")}</h2><pre class=\"signature-block\"><code>")
     appendLinkedSignatureHtml(out, symbol, typeLinkIndex, rootPrefix)
     out.append("</code></pre></div>\n")
 }
