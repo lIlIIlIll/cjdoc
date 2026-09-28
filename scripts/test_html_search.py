@@ -34,12 +34,13 @@ const controls = {"[data-cjdoc-search]": input, "[data-cjdoc-results]": results,
 const document = {querySelector: key => controls[key] || null,
   querySelectorAll: key => key === "[data-cjdoc-category]" ? [kind] : [],
   createElement: tag => new Element(tag), documentElement: {lang: "en"},
+  body: { dataset: {} },
   addEventListener: (key, handler) => { document[key] = handler; }};
-const window = {addEventListener: (key, handler) => { window[key] = handler; }};
+const window = {location: {hash: ""}, addEventListener: (key, handler) => { window[key] = handler; }};
 const entry = (name, packageName = "net", type = "class") => ({id: packageName + name,
  name, qualifiedName: packageName + "." + name, packageName, kind: type,
  summary: "<script>literal preview</script>", href: "symbols/" + name + ".html"});
-const context = {document, window, __CJDOC_SEARCH_INDEX__: {schemaVersion: "cjdoc.search-index/6",
+const context = {document, window, location: {pathname: "/fixture/index.html"}, performance: {getEntriesByType: () => []}, __CJDOC_SEARCH_INDEX__: {schemaVersion: "cjdoc.search-index/6",
  entries: [entry("HttpClientBuilder"), entry("HTTPConnectionBuffer"), entry("httpclientbuilder"),
  entry("HttpClientBuilder", "other"), entry("send", "net", "function")]}};
 vm.runInNewContext(SCRIPT, context);
