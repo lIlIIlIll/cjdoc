@@ -241,7 +241,8 @@ internal func appendSymbolArticle(out: RenderTextBuffer,
         out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, symbol))}\"><code>${escapeHtml(symbol.qualifiedName)}</code></a>")
     } else { out.append("<code>${escapeHtml(symbol.qualifiedName)}</code>") }
     out.append("</${titleTag}>\n")
-    appendSymbolMetadata(out, index, symbol, rootPrefix, locale: locale)
+    appendSymbolMetadata(out, index, symbol, rootPrefix, assetLookup, typeLinkIndex,
+        locale: locale)
     appendDocumentationHtml(out, index, symbol, rootPrefix, assetLookup,
         typeLinkIndex, headingBase: 2, locale: locale)
     out.append("</article>\n")

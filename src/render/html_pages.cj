@@ -16,7 +16,7 @@ internal func renderHtmlIndex(documentation: DocumentationSet, projection: Rende
     let pageTitle = documentation.project.name + " " + apiDocumentationLabel
     let out = RenderTextBuffer()
     appendPageStart(out, pageTitle, "",
-        documentation, projection, locale: locale)
+        documentation, projection, locale: locale, docVersion: docVersion)
     out.append("<header class=\"page-header\"><h1>${escapeHtml(documentation.project.name)} ${apiDocumentationLabel}</h1></header>\n")
     out.append("<section class=\"quick-start\" aria-labelledby=\"quick-start-title\"><h2 id=\"quick-start-title\">")
     out.append(startHereLabel)
@@ -115,7 +115,8 @@ public func renderConceptualHtmlPage(documentation: DocumentationSet, title: Str
     let apiReferenceLabel = label(locale, "API reference", "API 参考")
     let conceptsLabel = label(locale, "Concepts", "概念文档")
     let sourceLabel = label(locale, "Source", "来源")
-    appendPageStart(out, title, rootPrefix, documentation, projection, locale: locale)
+    appendPageStart(out, title, rootPrefix, documentation, projection, locale: locale,
+        currentRoute: "concept", docVersion: docVersion)
     out.append("<nav class=\"breadcrumbs\" aria-label=\"")
     out.append(breadcrumbLabel)
     out.append("\"><ol><li><a href=\"")
@@ -150,8 +151,9 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
     let packageDoc = pkg.source
     let out = RenderTextBuffer()
     appendPageStart(out, "${label(locale, "Package", "包")} ${packageDoc.name}", "../",
-        documentation, projection, locale: locale,
-        currentPackagePath: Some(packagePagePath(packageDoc.moduleId, packageDoc.name)))
+        documentation, projection, locale: locale, docVersion: docVersion,
+        currentPackagePath: Some(packagePagePath(packageDoc.moduleId, packageDoc.name)),
+        currentRoute: "api")
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li><li aria-current=\"page\">${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></li></ol></nav>\n")
     out.append("<header class=\"page-header\"><h1>${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></h1></header>\n")
     out.append("<h2 id=\"declarations\">${label(locale, "Declarations", "声明")}</h2>\n")
@@ -416,7 +418,8 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     locale!: String = "en", docVersion!: ?String = None): String {
     let out = RenderTextBuffer()
     appendPageStart(out, symbol.qualifiedName, "../", documentation, projection, locale: locale,
-        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)))
+        currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)),
+        currentRoute: "api", docVersion: docVersion, currentSymbol: Some(symbol))
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li>")
     out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">${label(locale, "Package", "包")} <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     appendOwnerBreadcrumbs(out, index, symbol, "../", locale)
@@ -424,7 +427,8 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     appendSiblingMemberNavigation(out, index, projection, symbol, "../", locale)
     out.append("<header class=\"page-header\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(symbol.name)}</code></h1>")
     out.append("<p class=\"symbol-kind\">${escapeHtml(symbol.kind)}</p>")
-    appendSymbolMetadata(out, index, symbol, "../", locale: locale)
+    appendSymbolMetadata(out, index, symbol, "../", assetLookup, typeLinkIndex,
+        locale: locale)
     match (findProjectedModule(projection, symbol.moduleId)) {
         case Some(module) => match (sourceUrl(documentation.project, module, symbol.source)) {
             case Some(url) => out.append("<p class=\"source-action\"><a href=\"${escapeHtml(url)}\" rel=\"noreferrer\">${label(locale, "View source", "查看源码")}</a></p>\n")

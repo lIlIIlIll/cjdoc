@@ -5,7 +5,8 @@ import std.collection.*
 
 internal func appendSymbolMetadata(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
-    locale!: String = "en"): Unit {
+    assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
+    locale!: String = "en", includeSummary!: Bool = true): Unit {
     out.append("<div class=\"symbol-meta\"><p class=\"meta\"><span class=\"badge\">${escapeHtml(symbol.kind)}</span>")
     out.append("<span class=\"badge\">${escapeHtml(symbol.visibility)}</span>")
     out.append("</p><details class=\"declaration-metadata\"><summary>${label(locale, "Declaration metadata", "声明元数据")}</summary><p class=\"meta\"><span class=\"badge\" data-state=\"${escapeHtml(symbol.semantic.state)}\">semantic: ${escapeHtml(symbol.semantic.state)}</span>")
@@ -54,6 +55,15 @@ internal func appendSymbolMetadata(out: RenderTextBuffer,
         }
         out.append("</dl>\n")
     }
-    out.append("<p class=\"meta\">Symbol ID: <code>${escapeHtml(symbol.id)}</code></p></details></div><p class=\"signature-heading\">${label(locale, "Signature", "签名")}</p><pre class=\"signature-block\"><code>${escapeHtml(symbol.headerSpelling)}</code></pre>\n")
+    out.append("<p class=\"meta\">Symbol ID: <code>${escapeHtml(symbol.id)}</code></p></details>")
+    if (includeSummary) {
+        match (symbol.documentation) {
+            case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, rootPrefix)
+            case None => ()
+        }
+    }
+    out.append("<h2 class=\"signature-heading\">${label(locale, \"Signature\", \"签名\")}</h2><pre class=\"signature-block\"><code>")
+    appendLinkedSignatureHtml(out, symbol, typeLinkIndex, rootPrefix)
+    out.append("</code></pre></div>\n")
 }
 
