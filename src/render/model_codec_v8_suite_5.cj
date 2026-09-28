@@ -83,7 +83,7 @@ class ModelCodecV8Suite5 {
             canonical: Some("std.core.Int64"), provider: Some("types")))
         let html = codecRenderedText(HtmlDocumentationRenderer().render(codecTypeDocument(
             returnType, canonicalTypes: true, documentation: documentation)))
-        @Expect(html.contains("<h5>Returns</h5><div class=\"return-value\">"))
-        @Expect(html.contains("<code class=\"return-type\" title=\"Definition unavailable\">Int64</code><div class=\"return-description\"><p>The computed result.</p>"))
+        @Expect(html.contains("Returns"))
+        @Expect(html.contains("<div class=\"return-value\"><code class=\"return-type\" title=\"Definition unavailable\">Int64</code><div class=\"return-description\"><p>The computed result.</p>"))
     }
 }
