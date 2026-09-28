@@ -64,7 +64,7 @@ input.events.keydown({key: "Escape"}); assert.equal(results.children.length, 0);
 document.keydown({key: "k", ctrlKey: true, preventDefault() {}}); assert(input.focused);
 '''
         script = "const SCRIPT = " + __import__("json").dumps(canonical_search_script()) + ";\n" + harness
-        result = subprocess.run(["node", "-e", script], text=True, capture_output=True)
+        result = subprocess.run(["node"], input=script, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
 

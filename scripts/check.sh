@@ -70,7 +70,11 @@ run_golden() {
         --output "${check_dir}/${name}/first" --cache-dir "${check_dir}/cache/${name}" "$@" >/dev/null
     "${binary}" generate --project "${project}" --format json \
         --output "${check_dir}/${name}/second" --cache-dir "${check_dir}/cache/${name}" "$@" >/dev/null
-    cmp "${expected}" "${check_dir}/${name}/first/docs.json"
+    if ! cmp -s "${expected}" "${check_dir}/${name}/first/docs.json"; then
+        diff -u --label "expected ${name}" --label "generated ${name}" \
+            "${expected}" "${check_dir}/${name}/first/docs.json" || true
+        return 1
+    fi
     cmp "${check_dir}/${name}/first/docs.json" "${check_dir}/${name}/second/docs.json"
     "${binary}" render --input "${check_dir}/${name}/first/docs.json" \
         --format json --stdout | tr -d '\r' >"${check_dir}/${name}/validated.json"
