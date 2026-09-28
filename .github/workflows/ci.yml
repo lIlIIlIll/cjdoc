@@ -79,7 +79,7 @@ jobs:
       - name: Install Windows STS stdx build tools
         if: matrix.platform == 'windows-x64'
         id: msys2
-        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2.32.0
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
         with:
           msystem: MINGW64
           suppress-deprecation-warnings: msystem-mingw64
@@ -406,7 +406,7 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           case "${1:-}" in
-            build|test) ;;
+            build|test|run) ;;
             *) exec "${CJDOC_REAL_CJPM}" "$@" ;;
           esac
           workspace="${GITHUB_WORKSPACE}"
@@ -415,10 +415,12 @@ jobs:
             workspace="$(cygpath -u "${workspace}")"
             runner_temp="$(cygpath -u "${runner_temp}")"
           fi
-          if [[ "$PWD" != "${workspace}" ]]; then
-            exec "${CJDOC_REAL_CJPM}" "$@"
-          fi
-          manifest="$(pwd)/cjpm.toml"
+          # The provider fixture is nested but compiles this repository as a path dependency.
+          case "$PWD" in
+            "${workspace}"|"${workspace}"/*) ;;
+            *) exec "${CJDOC_REAL_CJPM}" "$@" ;;
+          esac
+          manifest="${workspace}/cjpm.toml"
           backup="$(mktemp "${runner_temp}/cjpm-manifest.XXXXXX")"
           cp "${manifest}" "${backup}"
           restore_manifest() {
