@@ -310,6 +310,42 @@ internal func parseSourceFrontend(input: SourceInputFile, fallbackPackageName: S
 }
 
 
+private func sourceCacheStringListsMatch(first: ArrayList<String>,
+    second: ArrayList<String>): Bool {
+    if (first.size != second.size) { return false }
+    var index: Int64 = 0
+    while (index < first.size) {
+        if (first[index] != second[index]) { return false }
+        index++
+    }
+    true
+}
+
+private func cachedImportMetadataMatchesSource(input: SourceInputFile,
+    fallbackPackageName: String, source: String, cached: ParsedSourceFile,
+    astPreflightExecutable: ?String, auxiliaryBudget: SourceAuxiliaryBudget): Bool {
+    let sourceImports = sourceImportTextsFromSource(input.logicalPath, source)
+    if (!sourceCacheStringListsMatch(cached.imports, sourceImports)) { return false }
+    if (sourceImports.isEmpty()) { return cached.packageImports.isEmpty() }
+
+    let importSourceBuilder = StringBuilder()
+    var firstImport = true
+    for (importText in sourceImports) {
+        if (!firstImport) { importSourceBuilder.append(String.fromUtf8([10u8])) }
+        importSourceBuilder.append(importText)
+        firstImport = false
+    }
+    let importSource = importSourceBuilder.toString()
+    if (!auxiliaryBudget.consumeWork(importSource.size)) {
+        throw IllegalArgumentException("source cache import verification exceeded work budget")
+    }
+    let sourceDerived = parseSourceFrontend(input, fallbackPackageName, importSource,
+        astPreflightExecutable)
+    if (sourceDerived.packageName.isNone()) { return false }
+    sourceCacheStringListsMatch(cached.imports, sourceDerived.imports) &&
+        sourceCacheStringListsMatch(cached.packageImports, sourceDerived.packageImports)
+}
+
 internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: String,
     cacheDirectory: ?String, cacheFingerprint: String,
     astPreflightExecutable: ?String, auxiliaryBudget: SourceAuxiliaryBudget): ParsedSourceFile {
@@ -375,11 +411,35 @@ internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: Stri
             let path = sourceCachePath(directory, input, cacheKey)
             if (exists(path)) {
                 try {
-                    return withCapturedSourceIndex(decodeParsedSource(input, cacheKey,
+                    let cached = decodeParsedSource(input, cacheKey,
                         readAuxiliaryFileBounded(Path(path), MAX_SOURCE_CACHE_BYTES,
-                            auxiliaryBudget), capturedSourceIndex,
-                        source),
-                        capturedSourceIndex)
+                            auxiliaryBudget), capturedSourceIndex, source)
+                    if (!auxiliaryBudget.consumeWork(source.size)) {
+                        throw IllegalArgumentException("source cache import verification exceeded work budget")
+                    }
+                    if (cachedImportMetadataMatchesSource(input, fallbackPackageName, source,
+                        cached, astPreflightExecutable, auxiliaryBudget)) {
+                        return withCapturedSourceIndex(cached, capturedSourceIndex)
+                    }
+                    if (!auxiliaryBudget.consumeWork(source.size)) {
+                        throw IllegalArgumentException("source cache fallback parse exceeded work budget")
+                    }
+                    let sourceDerived = parseSourceFrontend(input, fallbackPackageName, source,
+                        astPreflightExecutable)
+                    if (sourceDerived.packageName.isNone()) {
+                        return withCapturedSourceIndex(sourceDerived, capturedSourceIndex)
+                    }
+                    sourceDerived.cacheStatus = if (encodeAndWriteSourceCache(path, cacheKey,
+                        sourceDerived, capturedSourceIndex, source, auxiliaryBudget)) {
+                        "corrupt-written"
+                    } else {
+                        "corrupt-write-failed"
+                    }
+                    if (auxiliaryBudget.limitReached()) {
+                        sourceDerived.diagnostics.add(Diagnostic("error", "CJDOC1028",
+                            "source metadata or cache exceeded the configured aggregate byte/work safety budget; remaining cache work skipped"))
+                    }
+                    return withCapturedSourceIndex(sourceDerived, capturedSourceIndex)
                 } catch (_: Exception) {
                     let parsed = parseSourceFrontend(input, fallbackPackageName, source,
                         astPreflightExecutable)

@@ -127,16 +127,14 @@ class ChirPublicContracts {
                 """
                 package chir_contract
 
-                import chir_dependency as dep
+                public import chir_dependency.Widget
 
                 public enum State {
                     | Ready
                     | Failed(String)
                 }
 
-                extend dep.Box {
-                    public func extra(): Int64 { 2 }
-                }
+                public func useWidget(value: Widget): Widget { value }
 
                 public type Alias = Int64
                 """.toArray())
@@ -144,7 +142,7 @@ class ChirPublicContracts {
                 """
                 package chir_dependency
 
-                public class Box {
+                public class Widget {
                     public init() {}
                 }
                 """.toArray())
@@ -165,13 +163,13 @@ class ChirPublicContracts {
                 }
             }
             @Expect(compilerFailure, "")
-            var extensionState = "missing"
+            var foundImportedFunction = false
             for (declaration in documentation.declarations) {
-                if (declaration.kind == "extend") {
-                    extensionState = declaration.semantic.state
+                if (declaration.kind == "function" && declaration.name == "useWidget") {
+                    foundImportedFunction = true
                 }
             }
-            @Expect(extensionState, "partial")
+            @Expect(foundImportedFunction, true)
         } finally {
             let _ = removeIfExists(temporary, recursive: true)
         }

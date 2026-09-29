@@ -260,5 +260,93 @@ class SourcePipelineSuite3 {
             let _ = removeIfExists(temporary, recursive: true)
         }
     }
+    @TestCase
+    func rejectsChecksumValidImportMetadataTampering(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let project = temporary.join("project")
+            let cache = temporary.join("cache")
+            Directory.create(project.join("src"), recursive: true)
+            Directory.create(cache)
+            File.writeTo(project.join("cjpm.toml"),
+                """
+                [package]
+                cjc-version = "1.3.0"
+                name = "cache_integrity"
+                version = "0.1.0"
+                output-type = "static"
+                """.toArray())
+            File.writeTo(project.join("src/main.cj"),
+                """
+                package cache_integrity
+                public import cache_orig.Foo
+                public class Api {}
+                """.toArray())
+            let provider = SyntaxSourceProvider(cacheDirectory: Some(cache.toString()),
+                cacheFingerprint: Some("cache-import-integrity-v1"),
+                astPreflightExecutable: TEST_AST_PREFLIGHT)
+            let cold = provider.collect(project.toString())
+            @Expect(cold.sourceFileOrigins.size, 1)
+            @Expect(cold.sourceFileOrigins[0].imports[0], "public import cache_orig.Foo")
+            @Expect(cold.sourceFileOrigins[0].packageImports[0], "cache_orig")
+            let validProvider = SyntaxSourceProvider(cacheDirectory: Some(cache.toString()),
+                cacheFingerprint: Some("cache-import-integrity-v1"),
+                astPreflightExecutable: TEST_AST_PREFLIGHT)
+            let validCacheHit = validProvider.collect(project.toString())
+            @Expect(validCacheHit.sourceFileOrigins[0].imports[0], "public import cache_orig.Foo")
+            @Expect(validCacheHit.sourceFileOrigins[0].packageImports[0], "cache_orig")
+            @Expect(validProvider.cacheStats.hits, 1)
+            let entries = Directory.readFrom(cache)
+            @Expect(entries.size, 1)
+            let cachePath = entries[0].path
+            let bytes = File.readFrom(cachePath)
+            let reader = SourceCacheReader(bytes)
+            @Expect(reader.next(), SOURCE_CACHE_FORMAT)
+            let _ = reader.next()
+            let _ = cacheReadOptionalString(reader)
+            @Expect(reader.nextCount(), 1)
+            let originalImport = reader.next()
+            let importStart = reader.offset - originalImport.toArray().size
+            @Expect(reader.nextCount(), 1)
+            let originalPackage = reader.next()
+            let packageStart = reader.offset - originalPackage.toArray().size
+            @Expect(originalPackage, "cache_orig")
+            let replacementPackage = "cache_fake"
+            let replacementImport = originalImport.replace(originalPackage, replacementPackage)
+            @Expect(replacementImport.size, originalImport.size)
+            let replacementImportBytes = replacementImport.toArray()
+            let replacementPackageBytes = replacementPackage.toArray()
+            var index: Int64 = 0
+            while (index < replacementImportBytes.size) {
+                bytes[importStart + index] = replacementImportBytes[index]
+                index++
+            }
+            index = 0
+            while (index < replacementPackageBytes.size) {
+                bytes[packageStart + index] = replacementPackageBytes[index]
+                index++
+            }
+            let checksumStart = bytes.size - 67
+            @Expect(bytes[checksumStart], b'6')
+            @Expect(bytes[checksumStart + 1], b'4')
+            @Expect(bytes[checksumStart + 2], b':')
+            let checksum = Sha256Digest.digestBytes(bytes[..checksumStart]).toArray()
+            @Expect(checksum.size, 64)
+            index = 0
+            while (index < checksum.size) {
+                bytes[checksumStart + 3 + index] = checksum[index]
+                index++
+            }
+            File.writeTo(cachePath, bytes)
 
+            let repaired = provider.collect(project.toString())
+            @Expect(repaired.sourceFileOrigins[0].imports[0], "public import cache_orig.Foo")
+            @Expect(repaired.sourceFileOrigins[0].packageImports[0], "cache_orig")
+            @Expect(provider.cacheStats.hits, 0)
+            @Expect(provider.cacheStats.corruptEntries, 1)
+            @Expect(provider.cacheStats.writes, 1)
+        } finally {
+            let _ = removeIfExists(temporary, recursive: true)
+        }
+    }
 }

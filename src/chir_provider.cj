@@ -418,7 +418,12 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
         names.toArray()
     }
     private func importReferencesPackage(importText: String, packageName: String): Bool {
-        let value = importText.trimAscii()
+        let trimmed = importText.trimAscii()
+        let value = if (trimmed.startsWith("public ")) {
+            trimmed.removePrefix("public ").trimAscii()
+        } else {
+            trimmed
+        }
         if (!value.startsWith("import ")) { return false }
         let importedName = value[7..].trimAscii()
         if (!importedName.startsWith(packageName)) { return false }

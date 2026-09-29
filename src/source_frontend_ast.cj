@@ -485,6 +485,79 @@ internal func collectImports(program: Program, path: String,
     imports.toArray()
 }
 
+private func sourceImportStatementEnd(tokens: Tokens, importIndex: Int64): Int64 {
+    var index = importIndex
+    var lastIndex = importIndex
+    var braceDepth: Int64 = 0
+    while (index < tokens.size) {
+        let token = tokens[index]
+        if (braceDepth == 0 && token.kind == NL) { return lastIndex }
+        if (braceDepth == 0 && token.value == ";") { return lastIndex }
+        match (token.kind) {
+            case LCURL => braceDepth++
+            case RCURL => if (braceDepth > 0) { braceDepth-- }
+            case _ => ()
+        }
+        if (token.kind != NL && token.kind != COMMENT && !token.value.isEmpty()) {
+            lastIndex = index
+        }
+        index++
+    }
+    lastIndex
+}
+
+private func sourceImportStart(tokens: Tokens, importIndex: Int64): Int64 {
+    var index = importIndex
+    while (index > 0) {
+        index--
+        let token = tokens[index]
+        if (token.kind == NL || token.kind == COMMENT || token.value.isEmpty()) { continue }
+        match (token.value) {
+            case "public" | "protected" | "internal" | "private" => return index
+            case _ => return importIndex
+        }
+    }
+    importIndex
+}
+
+internal func sourceImportTextsFromSource(path: String, source: String): ArrayList<String> {
+    let tokens = sourceLexerTokens(source)
+    let sourceIndex = IndexedSourceBuffer(source)
+    let imports = ArrayList<String>()
+    var declarationDepth: Int64 = 0
+    var index: Int64 = 0
+    while (index < tokens.size) {
+        let token = tokens[index]
+        if (declarationDepth == 0 && token.kind == IMPORT) {
+            let first = tokens[sourceImportStart(tokens, index)]
+            let importEnd = sourceImportStatementEnd(tokens, index)
+            let last = tokens[importEnd]
+            if (first.pos.line <= 0 || first.pos.column <= 0 ||
+                last.pos.line <= 0 || last.pos.column <= 0) {
+                throw IllegalArgumentException("source import has invalid token positions")
+            }
+            let (endLine, endColumn) = tokenEndPosition(last)
+            let location = match (sourceLocationFromAstRange(path, sourceIndex,
+                Int64(first.pos.line), Int64(first.pos.column), endLine, endColumn)) {
+                case Some(value) => value
+                case None => throw IllegalArgumentException("source import range is invalid")
+            }
+            let text = sourceIndex.slice(location).trimAscii()
+            if (text.isEmpty()) { throw IllegalArgumentException("source import is empty") }
+            imports.add(text)
+            index = importEnd + 1
+            continue
+        }
+        match (token.kind) {
+            case LCURL => declarationDepth++
+            case RCURL => if (declarationDepth > 0) { declarationDepth-- }
+            case _ => ()
+        }
+        index++
+    }
+    imports
+}
+
 internal class PatternBinding {
     let name: String
 
