@@ -4,16 +4,46 @@ set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-basic_fixture_target="${repo_root}/tests/fixtures/projects/basic/target"
-if [[ -e "${basic_fixture_target}" || -L "${basic_fixture_target}" ]]; then
-    echo "basic fixture build output already exists: tests/fixtures/projects/basic/target" >&2
-    exit 1
-fi
-cleanup_basic_fixture_target() {
-    rm -rf -- "${basic_fixture_target}"
-}
-trap cleanup_basic_fixture_target EXIT
 python_cmd="${CJDOC_PYTHON:-python3}"
+fixture_project_root="${repo_root}/tests/fixtures/projects"
+ensure_fixture_build_outputs_absent() {
+    "${python_cmd}" - "${fixture_project_root}" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+targets = sorted(
+    (path for path in root.rglob("target") if path.is_dir() or path.is_symlink()),
+    key=lambda path: path.relative_to(root).as_posix(),
+)
+if targets:
+    names = ", ".join(path.relative_to(root).as_posix() for path in targets)
+    print("fixture build output already exists; refusing destructive cleanup: " + names,
+          file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+cleanup_fixture_build_outputs() {
+    "${python_cmd}" - "${fixture_project_root}" <<'PY'
+from pathlib import Path
+import shutil
+import sys
+
+root = Path(sys.argv[1])
+targets = sorted(
+    (path for path in root.rglob("target") if path.is_symlink() or path.is_dir()),
+    key=lambda path: len(path.parts),
+    reverse=True,
+)
+for target in targets:
+    if target.is_symlink():
+        target.unlink()
+    elif target.is_dir():
+        shutil.rmtree(target)
+PY
+}
+ensure_fixture_build_outputs_absent
+trap cleanup_fixture_build_outputs EXIT
 "${python_cmd}" "${repo_root}/scripts/safe_output_root.py" --repo "${repo_root}" \
     --directory "${repo_root}/target" --create >/dev/null
 target_root="${repo_root}/target"
@@ -280,7 +310,7 @@ test ! -e "${provider_build_cache}"
 test ! -e "${provider_target}"
 cleanup_provider_outputs() {
     rm -rf -- "${provider_build_cache}" "${provider_target}"
-    cleanup_basic_fixture_target
+    cleanup_fixture_build_outputs
 }
 trap cleanup_provider_outputs EXIT
 (cd "${provider_project}" && cjpm run --build-args "--jobs 1")
