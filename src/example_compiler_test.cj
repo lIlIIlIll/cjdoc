@@ -473,12 +473,12 @@ class ExampleCompilerTest {
              * @example Descendant timeout {run}
              * ```cangjie
              * let descendant = try {
-             *     launch("sleep", ["30"],
+             *     launch("sleep", ["60"],
              *         stdIn: ProcessRedirect.Discard,
              *         stdOut: ProcessRedirect.Inherit,
              *         stdErr: ProcessRedirect.Inherit)
              * } catch (_: Exception) {
-             *     launch("cmd.exe", ["/c", "ping", "-n", "31", "127.0.0.1"],
+             *     launch("cmd.exe", ["/c", "ping", "-n", "61", "127.0.0.1"],
              *         stdIn: ProcessRedirect.Discard,
              *         stdOut: ProcessRedirect.Inherit,
              *         stdErr: ProcessRedirect.Inherit)
@@ -500,7 +500,8 @@ class ExampleCompilerTest {
                 }
             }
             @Expect(timedOut, true)
-            @Expect(elapsed < 25000, true)
+            // Includes compilation while remaining below the descendant's 60s lifetime.
+            @Expect(elapsed < 45000, true)
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
