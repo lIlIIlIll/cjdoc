@@ -4,6 +4,7 @@ import cjdoc.model as public_model
 import std.collection.*
 import std.env.*
 import std.fs.*
+import std.io.*
 import std.convert.Parsable
 import std.process.*
 import std.time.*
@@ -467,25 +468,25 @@ class ExampleCompilerTest {
         let source = """
             package example_compile
 
-            import std.env.*
             import std.fs.*
             import std.process.*
-            import std.time.*
 
             /**
              * Spawns a child that keeps inherited output pipes open.
              * @example Descendant timeout {run}
              * ```cangjie
-             * let commandLine = getCommandLine()
-             * if (commandLine.size > 1 && commandLine[1] == "descendant") {
-             *     sleep(Duration.second * 30)
-             * } else {
-             *     let descendant = launch(commandLine[0], ["descendant"],
+             * let descendant = try {
+             *     launch("sleep", ["30"],
              *         stdIn: ProcessRedirect.Discard,
              *         stdOut: ProcessRedirect.Inherit,
              *         stdErr: ProcessRedirect.Inherit)
-             *     File.writeTo(Path("__CHILD_PID_PATH__"), descendant.pid.toString().toArray())
+             * } catch (_: Exception) {
+             *     launch("cmd.exe", ["/c", "ping", "-n", "31", "127.0.0.1"],
+             *         stdIn: ProcessRedirect.Discard,
+             *         stdOut: ProcessRedirect.Inherit,
+             *         stdErr: ProcessRedirect.Inherit)
              * }
+             * File.writeTo(Path("__CHILD_PID_PATH__"), descendant.pid.toString().toArray())
              * ```
              */
             public func exampleEntry(): Unit { () }
@@ -500,7 +501,13 @@ class ExampleCompilerTest {
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
             let elapsed = (MonoTime.now() - start).toMilliseconds()
-            @Expect(hasExampleDiagnostic(documentation, "CJDOC3073"), true)
+            let timedOut = hasExampleDiagnostic(documentation, "CJDOC3073")
+            if (!timedOut) {
+                for (diagnostic in documentation.diagnostics) {
+                    println("${diagnostic.severity}[${diagnostic.code}] ${diagnostic.message}")
+                }
+            }
+            @Expect(timedOut, true)
             @Expect(elapsed < 25000, true)
             let hasDescendantPid = try { FileInfo(pidFile).isRegular() } catch (_: Exception) { false }
             @Expect(hasDescendantPid, true)
