@@ -250,7 +250,7 @@ cleanup_provider_outputs() {
     rm -rf -- "${provider_build_cache}" "${provider_target}"
 }
 trap cleanup_provider_outputs EXIT
-(cd "${provider_project}" && cjpm run)
+(cd "${provider_project}" && cjpm run --build-args "--jobs 1")
 cleanup_provider_outputs
 trap - EXIT
 
