@@ -4,6 +4,15 @@ set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+basic_fixture_target="${repo_root}/tests/fixtures/projects/basic/target"
+if [[ -e "${basic_fixture_target}" || -L "${basic_fixture_target}" ]]; then
+    echo "basic fixture build output already exists: tests/fixtures/projects/basic/target" >&2
+    exit 1
+fi
+cleanup_basic_fixture_target() {
+    rm -rf -- "${basic_fixture_target}"
+}
+trap cleanup_basic_fixture_target EXIT
 python_cmd="${CJDOC_PYTHON:-python3}"
 "${python_cmd}" "${repo_root}/scripts/safe_output_root.py" --repo "${repo_root}" \
     --directory "${repo_root}/target" --create >/dev/null
@@ -271,6 +280,7 @@ test ! -e "${provider_build_cache}"
 test ! -e "${provider_target}"
 cleanup_provider_outputs() {
     rm -rf -- "${provider_build_cache}" "${provider_target}"
+    cleanup_basic_fixture_target
 }
 trap cleanup_provider_outputs EXIT
 (cd "${provider_project}" && cjpm run --build-args "--jobs 1")
