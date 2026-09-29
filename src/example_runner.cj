@@ -16,7 +16,7 @@ foreign {
     func CreateJobObjectW(attributes: CPointer<Unit>,
         name: CPointer<UInt16>): CPointer<Unit>
     func SetInformationJobObject(job: CPointer<Unit>, infoClass: Int32,
-        limits: VArray<Int64, $8>, length: UInt32): Int32
+        limits: VArray<Int64, $18>, length: UInt32): Int32
     func OpenProcess(access: UInt32, inheritHandle: Int32,
         processId: UInt32): CPointer<Unit>
     func AssignProcessToJobObject(job: CPointer<Unit>,
@@ -186,8 +186,11 @@ private func createExampleProcessJob(process: SubProcess): CPointer<Unit> {
         if (job.isNull()) {
             throw IllegalStateException("could not create run-example process job")
         }
-        var limits: VArray<Int64, $8> = [0, 0, 0x2000, 0, 0, 0, 0, 0]
-        if (SetInformationJobObject(job, 2, inout limits, 64) == 0) {
+        // JobObjectExtendedLimitInformation is 18 64-bit words on Windows x64;
+        // LimitFlags is word 2.
+        var extendedLimits: VArray<Int64, $18> =
+            [0, 0, 0x2000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        if (SetInformationJobObject(job, 9, inout extendedLimits, 144) == 0) {
             let _ = CloseHandle(job)
             throw IllegalStateException("could not configure run-example process job")
         }
