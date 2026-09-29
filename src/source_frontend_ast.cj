@@ -448,6 +448,29 @@ internal func collectPublicReExports(program: Program, path: String,
     result.toArray()
 }
 
+internal func collectImportedPackagePaths(program: Program): Array<String> {
+    let result = ArrayList<String>()
+    for (importList in program.importLists) {
+        let content = importList.content
+        let prefix = ArrayList<String>(importPrefixPaths(content.prefixPaths))
+        let packagePath = joinedImportPath(prefix)
+        if (!packagePath.isEmpty() && !result.contains(packagePath)) {
+            result.add(packagePath)
+        }
+        match (content.importKind) {
+            case ImportKind.Alias =>
+                if (!content.identifier.value.isEmpty()) {
+                    let aliasPackagePath = joinedImportPath(prefix, tail: Some(content.identifier.value))
+                    if (!aliasPackagePath.isEmpty() && !result.contains(aliasPackagePath)) {
+                        result.add(aliasPackagePath)
+                    }
+                }
+            case _ => ()
+        }
+    }
+    result.toArray()
+}
+
 internal func collectImports(program: Program, path: String,
     source: IndexedSourceBuffer): Array<String> {
     let imports = ArrayList<String>()
@@ -621,6 +644,7 @@ internal func parseSourceTextWithAst(input: SourceInputFile, fallbackPackageName
         }
         result.packageName = Some(packageName)
         result.imports.add(all: collectImports(program, relative, sourceBuffer))
+        result.packageImports.add(all: collectImportedPackagePaths(program))
         result.declarations.add(all: collector.declarations)
         result.reExports.add(all: collectPublicReExports(program, relative, packageName,
             input.module.id, sourceBuffer))

@@ -51,6 +51,11 @@ internal func syntaxRecoverySource(source: String): String {
             value == "set" || value == "mut" || value == "remove" ||
             value == "operator" || (braceDepth == 0 && value == "main")) {
             functionCandidate = true
+        } else if (value == "let" || value == "var" || value == "prop" ||
+            value == "class" || value == "struct" || value == "interface" ||
+            value == "enum" || value == "type" || value == "extend" ||
+            value == "import" || value == "package") {
+            functionCandidate = false
         } else if (value == "{") {
             if (functionCandidate) {
                 let closing = syntaxRecoveryMatchingBrace(tokens, index)

@@ -214,6 +214,7 @@ internal class PublicDeclarationProjection {
     let declarations: Array<public_model.SymbolDoc>
     let assetCollector: LocalAssetCollector
     let markdownContext: MarkdownGenerationContext
+    let renderableIds: HashSet<String>
 
     init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
         providerStatesByModule: HashMap<String, String>, audience: String) {
@@ -228,6 +229,7 @@ internal class PublicDeclarationProjection {
         this.declarations = declarations.toArray()
         this.assetCollector = assetCollector
         this.markdownContext = markdownContext
+        this.renderableIds = renderableIds
     }
 }
 
@@ -266,7 +268,8 @@ internal class PublicDiagnosticProjection {
 
     init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
         assetCollector: LocalAssetCollector, markdownContext: MarkdownGenerationContext,
-        declarations: Array<public_model.SymbolDoc>, lintProfile: String) {
+        declarations: Array<public_model.SymbolDoc>, renderableIds: HashSet<String>,
+        semanticLinkDiagnostics: Array<public_model.Diagnostic>, lintProfile: String) {
         let diagnostics = ArrayList<public_model.Diagnostic>()
         var hasError = false
         var incompleteSource = !documentation.orphanDocComments.isEmpty() ||
@@ -294,9 +297,13 @@ internal class PublicDiagnosticProjection {
             incompleteSource = true
         }
         diagnostics.add(all: markdownContext.diagnostics())
+        for (diagnostic in semanticLinkDiagnostics) {
+            if (diagnostic.severity == "error") { hasError = true }
+            diagnostics.add(diagnostic)
+        }
         if (lintProfile != "off") {
             for (symbol in declarations) {
-                if (symbol.visibility != "public" && symbol.visibility != "protected") { continue }
+                if (!renderableIds.contains(symbol.id)) { continue }
                 diagnostics.add(all: documentationQualityDiagnostics(symbol, documentation.projectName))
             }
         }
@@ -323,7 +330,8 @@ internal func publicDocumentation(documentation: DocumentationSet,
     let sourceProjection = PublicSourceProjection(documentation, sourceMapper)
     let diagnosticProjection = PublicDiagnosticProjection(documentation, sourceMapper,
         declarationProjection.assetCollector, declarationProjection.markdownContext,
-        declarationProjection.declarations, request.lintProfile)
+        declarationProjection.declarations, declarationProjection.renderableIds,
+        semanticLinkDiagnostics, request.lintProfile)
     let status = if (diagnosticProjection.hasError || diagnosticProjection.incompleteSource ||
         providerProjection.incomplete) {
         "partial"

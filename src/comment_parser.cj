@@ -72,28 +72,51 @@ private func splitReferenceSubject(rest: String): (String, String) {
 // CJDOC3033 rather than be silently reinterpreted as part of the title.
 private func splitExampleDirectives(rest: String): (String, String) {
     let value = rest.trimAscii()
-    if (value.isEmpty() || value[value.size - 1] != b'}') { return (value, "") }
+    if (value.isEmpty()) { return (value, "") }
+    var candidate: ?Int64 = None
     var depth: Int64 = 0
-    var index = value.size
-    while (index > 0) {
-        index--
-        match (value[index]) {
-            case b'}' => depth++
-            case b'{' => depth--
-            case _ => ()
-        }
-        if (depth < 0) { return (value, "") }
+    var quoted = false
+    var escaped = false
+    var index: Int64 = 0
+    while (index < value.size) {
+        let byte = value[index]
         if (depth == 0) {
-            // A group glued to preceding text (`foo{bar}`) is a title, not a directive.
-            if (index > 0 && value[index - 1] != b' ' && value[index - 1] != b'\t') {
-                return (value, "")
+            if (byte == b'{' && index > 0 &&
+                (value[index - 1] == b' ' || value[index - 1] == b'\t')) {
+                candidate = Some(index)
+                depth = 1
             }
-            return (value[..index].trimAscii(), value[index..])
+        } else if (quoted) {
+            if (escaped) {
+                escaped = false
+            } else if (byte == b'\\') {
+                escaped = true
+            } else if (byte == b'"') {
+                quoted = false
+            }
+        } else {
+            match (byte) {
+                case b'"' => quoted = true
+                case b'{' => depth++
+                case b'}' =>
+                    depth--
+                    if (depth == 0) {
+                        if (value[index + 1..].trimAscii().isEmpty()) {
+                            let start = candidate.getOrThrow()
+                            return (value[..start].trimAscii(), value[start..])
+                        }
+                        candidate = None
+                    }
+                case _ => ()
+            }
         }
+        index++
     }
-    (value, "")
+    match (candidate) {
+        case Some(start) => (value[..start].trimAscii(), value[start..])
+        case None => (value, "")
+    }
 }
-
 
 private func behaviorContractName(tagText: String): ?String {
     for (name in ["precondition", "postcondition", "invariant", "performance", "state",

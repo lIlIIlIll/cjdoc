@@ -44,7 +44,7 @@
         </div>
         <div class="hero-context" aria-label="Build properties">
           <span><i class="status-dot status-green" aria-hidden="true"></i> pure Cangjie</span>
-          <span><i class="status-dot status-blue" aria-hidden="true"></i> Doc IR v10</span>
+          <span><i class="status-dot status-blue" aria-hidden="true"></i> Doc IR v11</span>
           <span><i class="status-dot status-amber" aria-hidden="true"></i> file:// ready</span>
         </div>
       </div>
@@ -59,7 +59,7 @@
     --format api-surface --format coverage
 
 <span class="code-dim">source</span>  <span class="code-value">std.ast + lexer</span>
-<span class="code-dim">model</span>   <span class="code-value">cjdoc.doc-ir/10</span>
+<span class="code-dim">model</span>   <span class="code-value">cjdoc.doc-ir/11</span>
 <span class="code-dim">site</span>    <span class="code-value">html/index.html</span>
 <span class="code-dim">data</span>    <span class="code-value">docs.json</span>
 <span class="code-dim">gate</span>    <span class="code-ok">deterministic · bounded · offline</span></code></pre>
@@ -78,7 +78,7 @@
         <span class="flow-arrow" aria-hidden="true"></span>
         <div class="pipeline-step"><span class="pipeline-index">02</span><strong>AST + lexer</strong><small>source-backed facts</small></div>
         <span class="flow-arrow" aria-hidden="true"></span>
-        <div class="pipeline-step pipeline-step-active"><span class="pipeline-index">03</span><strong>Doc IR v10</strong><small>typed, bounded, deterministic</small></div>
+        <div class="pipeline-step pipeline-step-active"><span class="pipeline-index">03</span><strong>Doc IR v11</strong><small>typed, bounded, deterministic</small></div>
         <span class="flow-arrow" aria-hidden="true"></span>
         <div class="pipeline-step"><span class="pipeline-index">04</span><strong>Published outputs</strong><small>people + tools + agents</small></div>
       </div>
@@ -137,12 +137,12 @@
           <a class="output-link" href="artifacts/docs.json"><span><b>Doc IR</b><small>Strict machine-readable document model</small></span><span class="output-arrow" aria-hidden="true">↗</span></a>
           <a class="output-link" href="artifacts/api-surface.json"><span><b>API surface</b><small>Stable snapshot for compatibility diffing</small></span><span class="output-arrow" aria-hidden="true">↗</span></a>
           <a class="output-link" href="artifacts/navigation-index.json"><span><b>Navigation index</b><small>Pages, symbols, packages, and safe hrefs</small></span><span class="output-arrow" aria-hidden="true">↗</span></a>
-          <a class="output-link" href="schemas/doc-ir-v10.schema.json"><span><b>Schema registry</b><small>Versioned contract with frozen legacy inputs</small></span><span class="output-arrow" aria-hidden="true">↗</span></a>
+          <a class="output-link" href="schemas/doc-ir-v11.schema.json"><span><b>Schema registry</b><small>Versioned contract with frozen legacy inputs</small></span><span class="output-arrow" aria-hidden="true">↗</span></a>
         </div>
         <div class="evidence-panel">
           <div class="evidence-head"><span>artifacts / docs.json</span><span class="evidence-state"><i class="status-dot status-green" aria-hidden="true"></i> valid output</span></div>
           <pre class="json-preview" aria-label="Doc IR excerpt"><code>{
-  <span class="json-key">"schemaVersion"</span>: <span class="json-string">"cjdoc.doc-ir/10"</span>,
+  <span class="json-key">"schemaVersion"</span>: <span class="json-string">"cjdoc.doc-ir/11"</span>,
   <span class="json-key">"status"</span>: <span class="json-string">"partial"</span>,
   <span class="json-key">"declarations"</span>: <span class="json-string">"&lt;generated&gt;"</span>,
   <span class="json-key">"semanticStates"</span>: [

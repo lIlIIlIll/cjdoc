@@ -17,6 +17,7 @@ internal func encodeParsedSource(cacheKey: String, parsed: ParsedSourceFile,
     writer.add(cacheKey)
     cacheAddOptionalString(writer, parsed.packageName)
     cacheAddStrings(writer, parsed.imports)
+    cacheAddStrings(writer, parsed.packageImports)
     if (!writer.addCount(parsed.declarations.size)) { return None }
     for (declaration in parsed.declarations) {
         cacheAddDeclaration(writer, declaration)

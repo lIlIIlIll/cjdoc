@@ -17,6 +17,7 @@ internal func decodeParsedSource(input: SourceInputFile, cacheKey: String,
     parsed.capturedSource = capturedSource
     parsed.packageName = cacheReadOptionalString(reader)
     cacheReadStrings(reader, parsed.imports)
+    cacheReadStrings(reader, parsed.packageImports)
     var count = checkedCacheCount(reader)
     var index: Int64 = 0
     while (index < count) {
@@ -257,9 +258,20 @@ internal func runSourceParseWorker(requestPath: String): Int64 {
         let sourceDigest = reader.next()
         if (!reader.finished()) { return 2 }
         let canonicalSource = canonicalize(Path(sourcePath)).toString()
-        let canonicalOutput = Path(outputPath).toString()
+        let requestedOutput = Path(outputPath).normalize()
+        let outputParts = requestedOutput.toString().replace("\\", "/").split("/")
+        if (outputParts.isEmpty()) { return 2 }
+        let outputName = outputParts[outputParts.size - 1]
+        if (outputName.isEmpty() || outputName == "." || outputName == "..") { return 2 }
+        let canonicalOutputParent = canonicalize(requestedOutput.parent.toString()).toString()
+        let canonicalOutput = Path(canonicalOutputParent).join(outputName).toString()
         if (!hostPathIsWithin(requestRoot, canonicalSource) ||
+            !hostPathIsWithin(requestRoot, canonicalOutputParent) ||
             !hostPathIsWithin(requestRoot, canonicalOutput)) { return 2 }
+        if (exists(Path(canonicalOutput))) {
+            let outputInfo = FileInfo(canonicalOutput)
+            if (!outputInfo.isRegular() || outputInfo.isSymbolicLink()) { return 2 }
+        }
         let sourceInfo = FileInfo(canonicalSource)
         if (!sourceInfo.isRegular() || sourceInfo.isSymbolicLink() ||
             sourceInfo.size < 0 || sourceInfo.size > MAX_SOURCE_FILE_BYTES) { return 2 }
@@ -283,18 +295,20 @@ internal func runSourceParseWorker(requestPath: String): Int64 {
 
 internal func parseSourceFrontend(input: SourceInputFile, fallbackPackageName: String,
     source: String, astPreflightExecutable: ?String): ParsedSourceFile {
+    let unavailable = "source parser worker is unavailable; file skipped"
     let parsed = match (astPreflightExecutable) {
         case Some(executable) =>
             if (!executable.isEmpty()) {
                 sourceParseWorkerParse(input, fallbackPackageName, source, executable)
             } else {
-                parseSourceTextWithAst(input, fallbackPackageName, source)
+                sourceParseWorkerFailure(input, "CJDOC1020", unavailable)
             }
-        case _ => parseSourceTextWithAst(input, fallbackPackageName, source)
+        case _ => sourceParseWorkerFailure(input, "CJDOC1020", unavailable)
     }
     parsed.capturedSource = source
     parsed
 }
+
 
 internal func parseSourceInput(input: SourceInputFile, fallbackPackageName: String,
     cacheDirectory: ?String, cacheFingerprint: String,
@@ -408,8 +422,9 @@ internal func mergeParsedSource(sourceSnapshot: SourceSnapshot, parsed: ParsedSo
     }
     sourceSnapshot.sourceFileOrigins.add(SourceFileOrigin(parsed.input.logicalPath,
         parsed.input.actualPath, parsed.input.actualRoot, parsed.input.module.sourcePrefix,
-        capturedSourceIndex: parsed.capturedSourceIndex, packageName: packageName,
-        imports: parsed.imports.toArray(), capturedSource: parsed.capturedSource))
+        parsed.input.module.id, capturedSourceIndex: parsed.capturedSourceIndex,
+        packageName: packageName, imports: parsed.imports.toArray(),
+        packageImports: parsed.packageImports.toArray(), capturedSource: parsed.capturedSource))
     match (parsed.cacheStatus) {
         case "hit" => cacheStats.hits++
         case "miss-written" =>

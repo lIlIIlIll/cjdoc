@@ -55,14 +55,6 @@ class SourcePipelineSuite4 {
     }
 
     @TestCase
-    func publicEngineUsesSyntaxSourceByDefault(): Unit {
-        let documentation = DocumentationEngine().generate(GenerationRequest(
-            FIXTURES + "basic", lintProfile: "off", audience: "all"))
-        @Expect(documentation.status, "complete")
-        @Expect(documentation.declarations.size, 25)
-        @Expect(containsDiagnostic(documentation, "CJDOC1020"), false)
-    }
-    @TestCase
     func recoversUnsupportedFunctionBodySyntax(): Unit {
         let temporary = Directory.createTemp(getTempDirectory())
         try {
@@ -75,10 +67,49 @@ class SourcePipelineSuite4 {
                 """.toArray())
             File.writeTo(temporary.join("src/recovery.cj"), "package syntax_recovery\npublic func byteBacked(): String { String.fromUtf8(Array<Byte>(4, repeat: b'x')) }\n".toArray())
             let documentation = DocumentationEngine().generate(GenerationRequest(
-                temporary.toString(), lintProfile: "off", audience: "all"))
+                temporary.toString(), lintProfile: "off", audience: "all",
+                astPreflightExecutable: TEST_AST_PREFLIGHT))
             @Expect(documentation.status, "complete")
             @Expect(declarationNamed(documentation, "byteBacked").kind, "function")
             @Expect(containsDiagnostic(documentation, "CJDOC1011"), false)
+        } finally {
+            let _ = removeIfExists(temporary, recursive: true)
+        }
+    }
+
+    @TestCase
+    func bodylessMethodDoesNotConsumePropertyInitializer(): Unit {
+        let source = """
+            interface Recovery {
+                func missing(): Unit
+                let callback = { => 41 }
+            }
+            public func broken(): Unit { let value = ; }
+            """
+        let recovered = syntaxRecoverySource(source)
+        @Expect(recovered.contains("let callback = { => 41 }"), true)
+        @Expect(recovered.contains("let value = ;"), false)
+    }
+
+    @TestCase
+    func sourceParseWorkerRejectsNormalizedOutputTraversal(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let workerRoot = temporary.join("worker")
+            Directory.create(workerRoot)
+            let sourcePath = workerRoot.join("source.cj")
+            let requestPath = workerRoot.join("request.bin")
+            let escapedPath = temporary.join("escaped.bin")
+            let sourceText = "package worker_safe\npublic func value(): Int64 { 1 }\n"
+            File.writeTo(sourcePath, sourceText.toArray())
+            let input = SourceInputFile(sourcePath.toString(), workerRoot.toString(),
+                "src/source.cj", SourceModule("worker-safe", "worker_safe", "root", ""),
+                sourceText.toArray().size)
+            writeSourceParseWorkerRequest(requestPath, sourcePath,
+                Path(workerRoot.toString() + "/../escaped.bin"), input, "worker_safe",
+                sourceParseWorkerCacheKey(sourceText))
+            @Expect(runSourceParseWorker(requestPath.toString()) != 0, true)
+            @Expect(exists(escapedPath), false)
         } finally {
             let _ = removeIfExists(temporary, recursive: true)
         }
@@ -98,7 +129,8 @@ class SourcePipelineSuite4 {
             File.writeTo(temporary.join("src/ranges.cj"),
                 "package unicode_ranges\n/* 中文 */ public func 解析(): Unit {}\n".toArray())
             let documentation = DocumentationEngine().generate(GenerationRequest(
-                temporary.toString(), lintProfile: "off", audience: "all"))
+                temporary.toString(), lintProfile: "off", audience: "all",
+                astPreflightExecutable: TEST_AST_PREFLIGHT))
             let declaration = declarationNamed(documentation, "解析")
             @Expect(documentation.status, "complete")
             @Expect(declaration.source.start.column, 14)

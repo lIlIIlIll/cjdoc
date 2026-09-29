@@ -24,13 +24,14 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         validateHtmlRouting(projection, projectedAssets)
         let topLevelByPackage = groupTopLevelByPackage(projection)
         let searchIndex = renderSearchIndex(documentation, projection)
+        let searchSignatures = renderSearchSignatureIndex(projection)
         artifacts.addText("html/index.html", "text/html; charset=utf-8",
             renderHtmlIndex(documentation, projection, locale: locale, docVersion: docVersion))
         artifacts.addText("html/search-index.json", "application/json", searchIndex)
         artifacts.addText("html/symbol-index.json", "application/json",
             renderSymbolIndex(documentation, hrefPrefix: "", version: docVersion))
         artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
-            renderSearchIndexScript(searchIndex))
+            renderSearchIndexScript(searchIndex, searchSignatures))
         artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8", HTML_THEME_BOOTSTRAP_SCRIPT)
         artifacts.addText("html/search.js", "text/javascript; charset=utf-8", HTML_SEARCH_SCRIPT)
         artifacts.addText("html/style.css", "text/css; charset=utf-8",

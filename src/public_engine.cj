@@ -26,6 +26,9 @@ internal func generateDocumentationWithSource(request: GenerationRequest,
             qualityConfig: Some(qualityConfig), audience: request.audience)
         case _ => ()
     }
+    if (request.checkExamples) {
+        compileDocumentationExamples(documentation, request.audience)
+    }
     sortDocumentationDeterministically(documentation)
     let result = publicDocumentation(documentation, request)
     validateGeneratedDocIr(result)
@@ -60,7 +63,7 @@ public class DocumentationEngine {
             case _ => ()
         }
         if (request.checkExamples) {
-            compileDocumentationExamples(documentation)
+            compileDocumentationExamples(documentation, request.audience)
         }
         sortDocumentationDeterministically(documentation)
         let result = publicDocumentation(documentation, request)

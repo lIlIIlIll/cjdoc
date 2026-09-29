@@ -39,7 +39,7 @@ internal func publicTag(value: DocTag, targetVisible!: Bool = true): public_mode
     }
     let targetSymbolId: ?String = if (state == "resolved") { value.targetSymbolId } else { None }
     public_model.DocTag(value.name, value.subject, value.description, referenceState: state,
-        targetSymbolId: value.targetSymbolId, directives: value.directives)
+        targetSymbolId: targetSymbolId, directives: value.directives)
 }
 
 internal func publicTagForAudience(value: DocTag, renderableIds: HashSet<String>): public_model.DocTag {

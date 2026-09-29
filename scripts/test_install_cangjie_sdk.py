@@ -302,7 +302,9 @@ class InstallCangjieSdkTest(unittest.TestCase):
             expected = self.add_authenticated_archive(destination)
             write_cache_marker(destination, root, "sdk.zip", expected)
             self.assertEqual(validate_cached_sdk(destination, "sdk.zip", expected), root)
-            (root / "bin").chmod(0o700)
+            original_mode = (root / "bin").stat().st_mode & 0o777
+            drifted_mode = 0o755 if original_mode == 0o700 else 0o700
+            (root / "bin").chmod(drifted_mode)
             with self.assertRaisesRegex(ValueError, "tree digest"):
                 validate_cached_sdk(destination, "sdk.zip", expected)
 

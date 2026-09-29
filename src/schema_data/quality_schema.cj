@@ -93,9 +93,9 @@ public let DOCUMENTATION_QUALITY_SCHEMA = """
           },
           "code": {
             "enum": [
-              "CJDOC3040",
-              "CJDOC3041",
-              "CJDOC3042"
+              "CJDOC3047",
+              "CJDOC3048",
+              "CJDOC3049"
             ]
           },
           "message": {

@@ -1,17 +1,17 @@
 package cjdoc
 
+import std.ast.*
 import std.collection.*
 import std.env.*
 import std.fs.*
-import std.process.*
 
 // Example checking is opt-in because documentation snippets are often partial
 // expressions rather than complete programs. These limits keep a malformed
 // comment from turning a documentation check into an unbounded compiler job.
 private let MAX_EXAMPLE_COUNT: Int64 = 256
 private let MAX_EXAMPLE_CODE_BYTES: Int64 = 1024 * 1024
-private let MAX_EXAMPLE_SOURCE_FILE_BYTES: Int64 = 32 * 1024 * 1024
-private let MAX_EXAMPLE_SOURCE_BYTES: Int64 = 128 * 1024 * 1024
+internal let MAX_EXAMPLE_SOURCE_FILE_BYTES: Int64 = 32 * 1024 * 1024
+internal let MAX_EXAMPLE_SOURCE_BYTES: Int64 = 128 * 1024 * 1024
 private let MAX_EXAMPLE_COMPILER_OUTPUT_BYTES: Int64 = 8192
 
 private class ExampleFence {
@@ -44,7 +44,7 @@ private class ExampleSourceContext {
 }
 
 // One judged `@example`. `pinned` records that the author wrote a directive block,
-// which turns every infrastructure skip into a visible CJDOC3034: a pin must never be
+// which turns every infrastructure skip into a visible CJDOC3070: a pin must never be
 // satisfied by a check that silently did not happen.
 internal class ExampleCompilationTarget {
     let symbol: SymbolDoc
@@ -54,13 +54,14 @@ internal class ExampleCompilationTarget {
     let expectsFailure: Bool
     let failureContains: ?String
     let compilerOptions: Array<String>
+    let imports: Array<String>
     let execute: Bool
     let expectedOutput: ?String
 
     init(symbol: SymbolDoc, title: String, code: String, pinned!: Bool = false,
         expectsFailure!: Bool = false, failureContains!: ?String = None,
-        compilerOptions!: Array<String> = [], execute!: Bool = false,
-        expectedOutput!: ?String = None) {
+        compilerOptions!: Array<String> = [], imports!: Array<String> = [],
+        execute!: Bool = false, expectedOutput!: ?String = None) {
         this.symbol = symbol
         this.title = title
         this.code = code
@@ -68,6 +69,7 @@ internal class ExampleCompilationTarget {
         this.expectsFailure = expectsFailure
         this.failureContains = failureContains
         this.compilerOptions = compilerOptions
+        this.imports = imports
         this.execute = execute
         this.expectedOutput = expectedOutput
     }
@@ -75,15 +77,16 @@ internal class ExampleCompilationTarget {
 
 internal class ExampleCompilationUnit {
     let actualRoot: String
+    let moduleId: String
     let packageName: String
     let sourceOrigins = ArrayList<SourceFileOrigin>()
-    let imports = ArrayList<String>()
     let targets = ArrayList<ExampleCompilationTarget>()
     var sourceBytes: Int64 = 0
     var sourceLimitExceeded = false
 
-    init(actualRoot: String, packageName: String) {
+    init(actualRoot: String, moduleId: String, packageName: String) {
         this.actualRoot = actualRoot
+        this.moduleId = moduleId
         this.packageName = packageName
     }
 
@@ -102,10 +105,6 @@ internal class ExampleCompilationUnit {
         }
         sourceOrigins.add(origin)
         sourceBytes += size
-    }
-
-    func addImport(value: String): Unit {
-        if (!value.isEmpty() && !imports.contains(value)) { imports.add(value) }
     }
 }
 
@@ -272,9 +271,10 @@ private func examplePackageName(symbol: SymbolDoc, contexts: ArrayList<ExampleSo
 }
 
 private func findExampleUnit(units: ArrayList<ExampleCompilationUnit>, actualRoot: String,
-    packageName: String): ?ExampleCompilationUnit {
+    moduleId: String, packageName: String): ?ExampleCompilationUnit {
     for (unit in units) {
-        if (unit.actualRoot == actualRoot && unit.packageName == packageName) { return Some(unit) }
+        if (unit.actualRoot == actualRoot && unit.moduleId == moduleId &&
+            unit.packageName == packageName) { return Some(unit) }
     }
     None
 }
@@ -285,7 +285,6 @@ private func attachExampleSources(unit: ExampleCompilationUnit,
         if (context.origin.actualRoot != unit.actualRoot) { continue }
         if (!context.packageName.isEmpty() && context.packageName != unit.packageName) { continue }
         unit.addSource(context.origin)
-        for (spelling in context.imports) { unit.addImport(spelling) }
     }
     unit.addSource(targetOrigin)
 }
@@ -302,7 +301,7 @@ internal func addExampleDiagnostic(documentation: DocumentationSet, symbol: Symb
 
 private func reportPinnedExampleSkipped(documentation: DocumentationSet, symbol: SymbolDoc,
     label: String, reason: String): Unit {
-    addExampleDiagnostic(documentation, symbol, "error", "CJDOC3034",
+    addExampleDiagnostic(documentation, symbol, "error", "CJDOC3070",
         "@example '${label}' is pinned but was not checked: ${reason}")
 }
 
@@ -394,24 +393,26 @@ private func collectExampleForTag(documentation: DocumentationSet, state: Exampl
             return
     }
     let packageName = examplePackageName(symbol, state.contexts, origin)
-    let unit = match (findExampleUnit(state.units, origin.actualRoot, packageName)) {
+    let unit = match (findExampleUnit(state.units, origin.actualRoot, origin.moduleId, packageName)) {
         case Some(value) => value
         case None =>
-            let value = ExampleCompilationUnit(origin.actualRoot, packageName)
+            let value = ExampleCompilationUnit(origin.actualRoot, origin.moduleId, packageName)
             state.units.add(value)
             attachExampleSources(value, state.contexts, origin)
             value
     }
     unit.targets.add(ExampleCompilationTarget(symbol, tag.subject, code, pinned: pinned,
         expectsFailure: directives.expectsFailure, failureContains: directives.failureContains,
-        compilerOptions: compilerOptions, execute: directives.execute,
-        expectedOutput: expectedOutput))
+        compilerOptions: compilerOptions, imports: origin.imports,
+        execute: directives.execute, expectedOutput: expectedOutput))
     state.count++
 }
 
 private func collectExampleTargets(documentation: DocumentationSet,
-    state: ExampleCollectionState): Unit {
+    state: ExampleCollectionState, audience: String): Unit {
+    let renderableIds = renderableSymbolIds(documentation, audience)
     for (symbol in documentation.symbols) {
+        if (!renderableIds.contains(symbol.id)) { continue }
         match (symbol.documentation) {
             case Some(comment) =>
                 for (tag in comment.examples) { collectExampleForTag(documentation, state, symbol, tag) }
@@ -420,20 +421,114 @@ private func collectExampleTargets(documentation: DocumentationSet,
     }
 }
 
+private func nextExampleToken(tokens: Tokens, start: Int64): Int64 {
+    var index = start
+    while (index < tokens.size && (tokens[index].kind == NL || tokens[index].kind == COMMENT)) {
+        index++
+    }
+    index
+}
+
+private func existingMainBodyRange(source: String): ?(Int64, Int64) {
+    let tokens = sourceLexerTokens(source)
+    let sourceIndex = IndexedSourceBuffer(source)
+    var index: Int64 = 0
+    var declarationDepth: Int64 = 0
+    while (index < tokens.size) {
+        let kind = tokens[index].kind
+        if (kind == LCURL) { declarationDepth++ }
+        if (kind == RCURL && declarationDepth > 0) { declarationDepth-- }
+        if (declarationDepth != 0 || kind != IDENTIFIER || tokens[index].value != "main") {
+            index++
+            continue
+        }
+        let opening = nextExampleToken(tokens, index + 1)
+        if (opening >= tokens.size || tokens[opening].kind != LPAREN) {
+            index++
+            continue
+        }
+        var cursor = opening
+        var parentheses: Int64 = 0
+        var closing: Int64 = -1
+        while (cursor < tokens.size) {
+            if (tokens[cursor].kind == LPAREN) { parentheses++ }
+            if (tokens[cursor].kind == RPAREN) {
+                parentheses--
+                if (parentheses == 0) { closing = cursor; break }
+            }
+            cursor++
+        }
+        if (closing < 0) { return None }
+        cursor = closing + 1
+        var bodyOpening: Int64 = -1
+        while (cursor < tokens.size) {
+            if (tokens[cursor].kind == LCURL) { bodyOpening = cursor; break }
+            if (tokens[cursor].kind == NL) {
+                let next = nextExampleToken(tokens, cursor + 1)
+                if (next < tokens.size && tokens[next].kind == IDENTIFIER &&
+                    next + 1 < tokens.size && tokens[next + 1].kind == LPAREN) {
+                    break
+                }
+                if (next < tokens.size && ["func", "class", "struct", "interface", "enum",
+                    "package", "import", "let", "var", "prop"].contains(tokens[next].value)) {
+                    break
+                }
+            }
+            cursor++
+        }
+        if (bodyOpening < 0) { index++ ; continue }
+        var braceDepth: Int64 = 0
+        var bodyClosing: Int64 = -1
+        cursor = bodyOpening
+        while (cursor < tokens.size) {
+            if (tokens[cursor].kind == LCURL) { braceDepth++ }
+            if (tokens[cursor].kind == RCURL) {
+                braceDepth--
+                if (braceDepth == 0) { bodyClosing = cursor; break }
+            }
+            cursor++
+        }
+        if (bodyClosing < 0) { return None }
+        let openingOffset = sourceIndex.byteOffsetFromLexerPosition(
+            Int64(tokens[bodyOpening].pos.line), Int64(tokens[bodyOpening].pos.column))
+        let closingOffset = sourceIndex.byteOffsetFromLexerPosition(
+            Int64(tokens[bodyClosing].pos.line), Int64(tokens[bodyClosing].pos.column))
+        if (openingOffset < 0 || closingOffset <= openingOffset) { return None }
+        return Some((openingOffset + 1, closingOffset))
+    }
+    None
+}
+
+private func replaceExistingMainBody(source: String): (String, Bool) {
+    match (existingMainBodyRange(source)) {
+        case Some((start, end)) =>
+            (source[..start] + "\n    __cjdoc_example_runner()\n" + source[end..], true)
+        case None => (source, false)
+    }
+}
+
 internal func stageExampleSources(unit: ExampleCompilationUnit,
-    temporary: Path): Array<String> {
+    temporary: Path, forRun!: Bool = false): (Array<String>, Bool) {
     let paths = ArrayList<String>()
     var index: Int64 = 0
+    var entryPointPatched = false
     try {
         for (origin in unit.sourceOrigins) {
             let path = temporary.join("__cjdoc_context_${index}.cj")
-            File.writeTo(path, origin.capturedSource.toArray())
+            let stagedSource = if (forRun && !entryPointPatched) {
+                let (rewritten, found) = replaceExistingMainBody(origin.capturedSource)
+                if (found) { entryPointPatched = true }
+                rewritten
+            } else {
+                origin.capturedSource
+            }
+            File.writeTo(path, stagedSource.toArray())
             paths.add(path.toString())
             index++
         }
-        paths.toArray()
+        (paths.toArray(), entryPointPatched)
     } catch (_: Exception) {
-        []
+        ([], false)
     }
 }
 
@@ -441,8 +536,8 @@ private func syntheticExampleSource(unit: ExampleCompilationUnit,
     target: ExampleCompilationTarget): String {
     let out = StringBuilder()
     if (!unit.packageName.isEmpty()) { out.append("package ${unit.packageName}\n\n") }
-    for (spelling in unit.imports) { out.append(spelling); out.append("\n") }
-    if (!unit.imports.isEmpty()) { out.append("\n") }
+    for (spelling in target.imports) { out.append(spelling); out.append("\n") }
+    if (!target.imports.isEmpty()) { out.append("\n") }
     out.append("func __cjdoc_compile_example(): Unit {\n")
     for (line in target.code.split("\n")) {
         out.append("    "); out.append(line); out.append("\n")
@@ -455,17 +550,31 @@ private func syntheticExampleSource(unit: ExampleCompilationUnit,
 // example is executable without the SDK runtime on `PATH`, see docs/usage.md).
 // `--output-type exe` also drops a `<package>.cjo` into the current working
 // directory, so every caller must pass `workingDirectory: Some(temporary)`.
-internal func exampleCompilerArguments(unit: ExampleCompilationUnit,
-    target: ExampleCompilationTarget, generated: Path, output: Path,
-    sourcePaths!: Array<String> = [], staticExecutable!: Bool = false): Array<String> {
+internal func exampleCompilerArguments(documentation: DocumentationSet,
+    unit: ExampleCompilationUnit, target: ExampleCompilationTarget, generated: Path,
+    output: Path, sourcePaths!: Array<String> = [],
+    staticExecutable!: Bool = false,
+    packageArtifacts!: Array<ExamplePackageArtifact> = []): Array<String> {
     let args = ArrayList<String>()
     args.add("--diagnostic-format"); args.add("noColor")
     args.add("--error-count-limit"); args.add("8")
     args.add("-Woff"); args.add("all")
+    for (cfg in documentation.cfgProfile.values) {
+        args.add("--cfg"); args.add(cfg.name + "=" + cfg.value)
+    }
     for (option in target.compilerOptions) { args.add(option) }
+    for (artifact in packageArtifacts) {
+        args.add("--import-path"); args.add(artifact.artifactRoot.toString())
+        args.add("--library-path"); args.add(artifact.artifactRoot.toString())
+    }
     if (staticExecutable) {
         args.add("--static")
         args.add("--output-type"); args.add("exe")
+        var index = packageArtifacts.size
+        while (index > 0) {
+            index--
+            args.add("--library"); args.add(packageArtifacts[index].packageName)
+        }
     } else {
         args.add("--output-type"); args.add("staticlib")
     }
@@ -531,12 +640,12 @@ private func judgeFailedCompile(documentation: DocumentationSet,
             // because an uncompilable package would otherwise satisfy `must-fail`.
             addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3031",
                 "declaring package could not be compiled for @example '${label}': ${detail}")
-            addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3034",
+            addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3070",
                 "@example '${label}' pinned to fail did not fail inside the example: ${detail}")
         } else {
             match (target.failureContains) {
                 case Some(fragment) => if (!outputText.contains(fragment)) {
-                    addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3034",
+                    addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3070",
                         "@example '${label}' failed without the pinned message '${fragment}'")
                 }
                 case None => ()
@@ -555,7 +664,8 @@ private func judgeFailedCompile(documentation: DocumentationSet,
 }
 
 private func compileExampleTarget(documentation: DocumentationSet,
-    unit: ExampleCompilationUnit, target: ExampleCompilationTarget): Unit {
+    unit: ExampleCompilationUnit, target: ExampleCompilationTarget,
+    packageArtifacts: Array<ExamplePackageArtifact>, dependencyFailure: String): Unit {
     let label = exampleLabel(target.symbol, target.title)
     if (unit.sourceLimitExceeded || unit.sourceOrigins.isEmpty()) {
         addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3031",
@@ -564,6 +674,10 @@ private func compileExampleTarget(documentation: DocumentationSet,
             reportPinnedExampleSkipped(documentation, target.symbol, label,
                 "the declaring package sources could not be prepared")
         }
+        return
+    }
+    if (!dependencyFailure.isEmpty()) {
+        judgeFailedCompile(documentation, target, label, dependencyFailure, 1)
         return
     }
     let temporary = try {
@@ -579,7 +693,7 @@ private func compileExampleTarget(documentation: DocumentationSet,
     }
     let generated = temporary.join("__cjdoc_example.cj")
     try {
-        let sourcePaths = stageExampleSources(unit, temporary)
+        let (sourcePaths, _) = stageExampleSources(unit, temporary)
         if (sourcePaths.isEmpty()) {
             addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3031",
                 "cannot stage the source context for @example '${label}'")
@@ -590,18 +704,20 @@ private func compileExampleTarget(documentation: DocumentationSet,
         } else {
             let output = temporary.join("__cjdoc_example.a")
             File.writeTo(generated, syntheticExampleSource(unit, target).toArray())
-            let (exitCode, stdout, stderr) = executeWithOutput("cjc",
-                exampleCompilerArguments(unit, target, generated, output,
-                    sourcePaths: sourcePaths, staticExecutable: false),
+            let (exitCode, stdout, stderr) = executeWithBoundedOutput("cjc",
+                exampleCompilerArguments(documentation, unit, target, generated, output,
+                    sourcePaths: sourcePaths, staticExecutable: false,
+                    packageArtifacts: packageArtifacts),
                 workingDirectory: Some(temporary))
             if (exitCode != 0) {
                 judgeFailedCompile(documentation, target, label,
                     compilerOutput(stdout, stderr, generated, temporary), exitCode)
             } else if (target.expectsFailure) {
-                addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3034",
+                addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3070",
                     "@example '${label}' is pinned to fail but compiled successfully")
             } else if (target.execute) {
-                runExampleTarget(documentation, unit, target, generated, temporary)
+                runExampleTarget(documentation, unit, target, generated, temporary,
+                    packageArtifacts)
             }
         }
     } catch (error: Exception) {
@@ -615,11 +731,15 @@ private func compileExampleTarget(documentation: DocumentationSet,
     }
 }
 
-internal func compileDocumentationExamples(documentation: DocumentationSet): Unit {
+internal func compileDocumentationExamples(documentation: DocumentationSet, audience: String): Unit {
     let state = ExampleCollectionState(collectExampleSourceContexts(documentation))
-    collectExampleTargets(documentation, state)
+    collectExampleTargets(documentation, state, audience)
     for (unit in state.units) {
-        sortStrings(unit.imports)
-        for (target in unit.targets) { compileExampleTarget(documentation, unit, target) }
+        let preparation = prepareExampleDependencies(documentation, unit)
+        for (target in unit.targets) {
+            compileExampleTarget(documentation, unit, target, preparation.artifacts,
+                preparation.failure)
+        }
+        releaseExampleDependencies(preparation)
     }
 }

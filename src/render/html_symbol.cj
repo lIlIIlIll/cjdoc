@@ -3,6 +3,18 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
+internal func appendReverseTypeUsages(out: RenderTextBuffer,
+    index: HashMap<String, SymbolDoc>, typeLinkIndex: HtmlTypeLinkIndex,
+    symbol: SymbolDoc, rootPrefix: String, locale: String): Unit {
+    let usages = typeLinkIndex.reverseUsages(symbol.id)
+    if (usages.isEmpty()) { return }
+    out.append("<section class=\"reverse-type-usages\"><h2>${label(locale, "Used by", "使用于")}</h2><ul>")
+    for (usage in usages) {
+        out.append("<li><a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, usage.source))}\"><code>${escapeHtml(usage.source.qualifiedName)}</code></a> <span class=\"badge\">${escapeHtml(usage.kind)}</span></li>")
+    }
+    out.append("</ul></section>")
+}
+
 internal func appendSymbolMetadata(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
@@ -39,7 +51,12 @@ internal func appendSymbolMetadata(out: RenderTextBuffer,
     if (!symbol.typeRelationships.isEmpty() || !symbol.symbolRelationships.isEmpty()) {
         out.append("<dl class=\"relationships\">")
         for (relationship in symbol.typeRelationships) {
-            out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd><code>${escapeHtml(relationship.target.spelling)}</code> <span class=\"badge\" data-state=\"${escapeHtml(relationship.target.semantic.state)}\">${escapeHtml(relationship.target.semantic.state)}</span></dd>")
+            out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd>")
+            match (typeLinkIndex.targetUrl(relationship.target)) {
+                case Some(url) => out.append("<a href=\"${rootPrefix}${escapeHtml(url)}\"><code>${escapeHtml(relationship.target.spelling)}</code></a>")
+                case None => out.append("<code>${escapeHtml(relationship.target.spelling)}</code>")
+            }
+            out.append(" <span class=\"badge\" data-state=\"${escapeHtml(relationship.target.semantic.state)}\">${escapeHtml(relationship.target.semantic.state)}</span></dd>")
         }
         for (relationship in symbol.symbolRelationships) {
             out.append("<dt>${escapeHtml(relationship.kind)}</dt><dd>")
@@ -56,6 +73,7 @@ internal func appendSymbolMetadata(out: RenderTextBuffer,
         out.append("</dl>\n")
     }
     out.append("<p class=\"meta\">Symbol ID: <code>${escapeHtml(symbol.id)}</code></p></details>")
+    appendReverseTypeUsages(out, index, typeLinkIndex, symbol, rootPrefix, locale)
     if (includeSummary) {
         match (symbol.documentation) {
             case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, rootPrefix)

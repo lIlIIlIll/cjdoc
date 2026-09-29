@@ -33,6 +33,69 @@ internal func appendSearchJsonString(out: RenderTextBuffer, value: String): Unit
     out.append("\"")
 }
 
+internal func searchTextExcerpt(value: String, maximum!: Int64 = 240): String {
+    let out = RenderTextBuffer()
+    var count: Int64 = 0
+    for (rune in value.runes()) {
+        if (count == maximum) { out.append("…"); return out.toString() }
+        out.append(rune)
+        count++
+    }
+    out.toString()
+}
+
+internal func appendOptionalSearchString(out: RenderTextBuffer, value: ?String): Unit {
+    match (value) {
+        case Some(text) => appendSearchJsonString(out, text)
+        case None => out.append("null")
+    }
+}
+
+internal func searchModuleName(documentation: DocumentationSet, moduleId: String): ?String {
+    for (module in documentation.modules) {
+        if (module.id == moduleId) { return Some(module.name) }
+    }
+    None
+}
+
+internal func searchOwnerName(projection: RenderProjection, declaration: SymbolDoc): ?String {
+    match (declaration.ownerId) {
+        case Some(ownerId) =>
+            match (projection.visibleIndex.get(ownerId)) {
+                case Some(owner) => Some(owner.qualifiedName)
+                case None => None
+            }
+        case None => None
+    }
+}
+
+internal func appendSearchMetadata(out: RenderTextBuffer, documentation: DocumentationSet,
+    projection: RenderProjection, declaration: SymbolDoc, moduleId: String): Unit {
+    out.append(", \"moduleId\": ")
+    appendSearchJsonString(out, moduleId)
+    out.append(", \"moduleName\": ")
+    appendOptionalSearchString(out, searchModuleName(documentation, moduleId))
+    out.append(", \"ownerName\": ")
+    appendOptionalSearchString(out, searchOwnerName(projection, declaration))
+    out.append(", \"parameterTypes\": [")
+    var firstParameter = true
+    for (parameter in declaration.parameters) {
+        if (!firstParameter) { out.append(",") }
+        firstParameter = false
+        appendSearchJsonString(out, parameter.typeRef.spelling)
+    }
+    out.append("] , \"returnType\": ")
+    match (declaration.returnType) {
+        case Some(typeRef) => appendSearchJsonString(out, typeRef.spelling)
+        case None => out.append("null")
+    }
+    out.append(", \"returnCanonical\": ")
+    match (declaration.returnType) {
+        case Some(typeRef) => appendOptionalSearchString(out, typeRef.semantic.canonical)
+        case None => out.append("null")
+    }
+}
+
 internal func renderSearchIndex(documentation: DocumentationSet,
     projection: RenderProjection): String {
     let out = RenderTextBuffer()
@@ -50,8 +113,9 @@ internal func renderSearchIndex(documentation: DocumentationSet,
         out.append(", \"qualifiedName\": "); appendSearchJsonString(out, declaration.qualifiedName)
         out.append(", \"kind\": "); appendSearchJsonString(out, declaration.kind)
         out.append(", \"packageName\": "); appendSearchJsonString(out, declaration.packageName)
+        appendSearchMetadata(out, documentation, projection, declaration, declaration.moduleId)
         let summary = match (declaration.documentation) {
-            case Some(comment) => markdownNodeText(comment.markdown)
+            case Some(comment) => searchTextExcerpt(summaryPlainText(comment))
             case None => ""
         }
         out.append(", \"summary\": "); appendSearchJsonString(out, summary)
@@ -77,8 +141,9 @@ internal func renderSearchIndex(documentation: DocumentationSet,
                             appendSearchJsonString(out, "${pkg.name}.${binding.exposedName}")
                             out.append(", \"kind\": "); appendSearchJsonString(out, target.kind)
                             out.append(", \"packageName\": "); appendSearchJsonString(out, pkg.name)
+                            appendSearchMetadata(out, documentation, projection, target, pkg.moduleId)
                             let summary = match (target.documentation) {
-                                case Some(comment) => markdownNodeText(comment.markdown)
+                                case Some(comment) => searchTextExcerpt(summaryPlainText(comment))
                                 case None => ""
                             }
                             out.append(", \"summary\": "); appendSearchJsonString(out, summary)
@@ -97,10 +162,29 @@ internal func renderSearchIndex(documentation: DocumentationSet,
     out.toString()
 }
 
-internal func renderSearchIndexScript(searchIndex: String): String {
+internal func renderSearchSignatureIndex(projection: RenderProjection): String {
+    let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
+    sort(visible, lessThan: { left, right => left.id < right.id }, stable: true)
+    let out = RenderTextBuffer()
+    out.append("{")
+    var first = true
+    for (symbol in visible) {
+        if (!first) { out.append(",") }
+        first = false
+        appendSearchJsonString(out, symbol.id)
+        out.append(":")
+        appendSearchJsonString(out, searchTextExcerpt(symbol.headerSpelling, maximum: 512))
+    }
+    out.append("}")
+    out.toString()
+}
+
+internal func renderSearchIndexScript(searchIndex: String, signatures: String): String {
     let out = RenderTextBuffer()
     out.append("globalThis.__CJDOC_SEARCH_INDEX__ = ")
     out.append(searchIndex.trimAscii())
+    out.append(";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = ")
+    out.append(signatures.trimAscii())
     out.append(";\n")
     out.toString()
 }

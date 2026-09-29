@@ -20,17 +20,20 @@ private let EXAMPLE_RUN_POLL_MILLISECONDS: Int64 = 50
 // the artifact lookup cannot mistake either of them for the executable.
 private let EXAMPLE_RUN_OUTPUT_BASE = "__cjdoc_run"
 
-// The run-mode shape is a parameterless `main`, which is how Cangjie requires it to be
-// declared: `func main()` is a hard error. `syntheticExampleSource()` keeps the
-// statement-only compile probe, so the two builders share only the prologue. An
-// example body that references `args` therefore cannot compile.
+// Cangjie entry points use a bare `main()`; `func main()` is invalid. When the
+// package already declares an entry point, staging replaces its body with a call to
+// the generated example function instead of adding a second `main`.
 internal func exampleProgramSource(unit: ExampleCompilationUnit,
-    target: ExampleCompilationTarget): String {
+    target: ExampleCompilationTarget, existingMain!: Bool = false): String {
     let out = StringBuilder()
     if (!unit.packageName.isEmpty()) { out.append("package ${unit.packageName}\n\n") }
-    for (spelling in unit.imports) { out.append(spelling); out.append("\n") }
-    if (!unit.imports.isEmpty()) { out.append("\n") }
-    out.append("main(): Unit {\n")
+    for (spelling in target.imports) { out.append(spelling); out.append("\n") }
+    if (!target.imports.isEmpty()) { out.append("\n") }
+    if (existingMain) {
+        out.append("func __cjdoc_example_runner(): Unit {\n")
+    } else {
+        out.append("main(): Unit {\n")
+    }
     for (line in target.code.split("\n")) {
         out.append("    "); out.append(line); out.append("\n")
     }
@@ -129,37 +132,38 @@ private func findExampleExecutable(temporary: Path): ?Path {
 
 private func buildExampleExecutable(documentation: DocumentationSet,
     unit: ExampleCompilationUnit, target: ExampleCompilationTarget, generated: Path,
-    temporary: Path): ?Path {
+    temporary: Path, packageArtifacts: Array<ExamplePackageArtifact>): ?Path {
     let label = exampleLabel(target.symbol, target.title)
     try {
-        let sourcePaths = stageExampleSources(unit, temporary)
+        let (sourcePaths, existingMain) = stageExampleSources(unit, temporary, forRun: true)
         if (sourcePaths.isEmpty()) {
-            addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3038",
+            addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3074",
                 "@example '${label}' could not stage its source context")
             return None
         }
-        File.writeTo(generated, exampleProgramSource(unit, target).toArray())
-        let (exitCode, stdout, stderr) = executeWithOutput("cjc",
-            exampleCompilerArguments(unit, target, generated,
+        File.writeTo(generated, exampleProgramSource(unit, target,
+            existingMain: existingMain).toArray())
+        let (exitCode, stdout, stderr) = executeWithBoundedOutput("cjc",
+            exampleCompilerArguments(documentation, unit, target, generated,
                 temporary.join(EXAMPLE_RUN_OUTPUT_BASE), sourcePaths: sourcePaths,
-                staticExecutable: true),
+                staticExecutable: true,
+                packageArtifacts: packageArtifacts),
             workingDirectory: Some(temporary))
         if (exitCode != 0) {
-            // A missing linker is an environment gap, so this is CJDOC3038 rather than
-            // a CJDOC3030 blamed on the documentation.
-            addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3038",
+            // A missing linker is an environment gap, not a source failure.
+            addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3074",
                 "@example '${label}' could not be built as an executable: ${exampleFailureDetail(compilerOutput(stdout, stderr, generated, temporary), exitCode)}")
             return None
         }
         match (findExampleExecutable(temporary)) {
             case Some(executable) => executable
             case None =>
-                addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3038",
+                addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3074",
                     "@example '${label}' could not be built as an executable: cjc produced no ${EXAMPLE_RUN_OUTPUT_BASE} artifact")
                 None
         }
     } catch (error: Exception) {
-        addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3038",
+        addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3074",
             "@example '${label}' could not be built as an executable: ${error.message}")
         None
     }
@@ -175,13 +179,13 @@ private func reportExampleRunOutcome(documentation: DocumentationSet,
     target: ExampleCompilationTarget, label: String, result: ExampleProcessResult,
     generated: Path, temporary: Path): Unit {
     if (result.timedOut) {
-        addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3037",
+        addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3073",
             "@example '${label}' exceeded the ${MAX_EXAMPLE_RUN_MILLISECONDS}ms run limit and was terminated")
         return
     }
     if (result.standardOutputBytes > MAX_EXAMPLE_RUN_OUTPUT_BYTES ||
         result.standardErrorBytes > MAX_EXAMPLE_RUN_OUTPUT_BYTES) {
-        addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3039",
+        addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3075",
             "@example '${label}' produced ${result.standardOutputBytes}/${result.standardErrorBytes} bytes, above the ${MAX_EXAMPLE_RUN_OUTPUT_BYTES}-byte run output limit")
         return
     }
@@ -190,7 +194,7 @@ private func reportExampleRunOutcome(documentation: DocumentationSet,
     let standardError = normalizeExampleOutput(decodedCompilerOutput(result.standardError),
         generated, temporary)
     if (result.exitCode != 0) {
-        addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3035",
+        addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3071",
             "@example '${label}' failed at runtime (exit code ${result.exitCode}): ${standardError}")
         return
     }
@@ -198,7 +202,7 @@ private func reportExampleRunOutcome(documentation: DocumentationSet,
         case Some(expected) =>
             let actual = normalizeExampleRunOutput(decodedCompilerOutput(result.standardOutput))
             if (actual != expected) {
-                addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3036",
+                addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3072",
                     "@example '${label}' output mismatch: expected ${boundedCompilerOutput(expected)}, got ${boundedCompilerOutput(actual)}")
             }
         case None => ()
@@ -208,15 +212,17 @@ private func reportExampleRunOutcome(documentation: DocumentationSet,
 // Reached only after a successful compile, so a `must-fail` example never runs and a
 // passing compile is a precondition of `run`.
 internal func runExampleTarget(documentation: DocumentationSet, unit: ExampleCompilationUnit,
-    target: ExampleCompilationTarget, generated: Path, temporary: Path): Unit {
+    target: ExampleCompilationTarget, generated: Path, temporary: Path,
+    packageArtifacts: Array<ExamplePackageArtifact>): Unit {
     let label = exampleLabel(target.symbol, target.title)
-    match (buildExampleExecutable(documentation, unit, target, generated, temporary)) {
+    match (buildExampleExecutable(documentation, unit, target, generated, temporary,
+        packageArtifacts)) {
         case Some(executable) =>
             try {
                 reportExampleRunOutcome(documentation, target, label,
                     executeExampleProgram(executable), generated, temporary)
             } catch (error: Exception) {
-                addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3038",
+                addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3074",
                     "@example '${label}' could not be executed: ${error.message}")
             }
         case None => ()

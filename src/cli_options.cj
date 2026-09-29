@@ -68,7 +68,7 @@ internal class NewCliOptions {
 }
 internal func newUsage(): String {
     "usage:\n" +
-    "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout]\n" +
+    "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout] [--doc-version <version>]\n" +
     "                 [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
     "                 [--audience external|package|all] [--lint-profile off|standard|strict] [--jobs 1..64]\n" +
     "                 [--check-examples]\n" +
@@ -77,13 +77,15 @@ internal func newUsage(): String {
     "                 [--cache-dir <dir>|--no-cache] [--force-owned]\n" +
     "                 [--locale zh-CN|en] [--markdown-layout site|single]\n" +
     "  cjdoc check [--project <dir>] [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
-    "              [--deny-warnings] [--lint-profile off|standard|strict]\n" +
-    "              [--check-examples]\n" +
+    "              [--deny-warnings] [--lint-profile off|standard|strict] [--check-examples]\n" +
     "              [--api-surface-baseline <file>] [--min-symbol-coverage 0..100] [--min-parameter-coverage 0..100]\n" +
     "  cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
-    "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout] [--force-owned]\n" +
+    "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout] [--force-owned] [--doc-version <version>]\n" +
     "               [--locale zh-CN|en] [--markdown-layout site|single]\n" +
+    "  cjdoc serve [--project <dir>] [--port <port>] [--open] [--agent-full]\n" +
+    "  cjdoc versions compose --version ID=PATH... [--label ID=TEXT] [--channel ID=TEXT] [--status ID=TEXT]\n" +
+    "                        [--base-path ID=PATH] [--release ID=URL] [--diff ID=PATH] [--latest ID] --output <dir> [--force-owned]\n" +
     "  cjdoc schema <name> (use 'cjdoc schema list' for available schemas)\n"
 }
 
@@ -253,6 +255,8 @@ private func parseFlagOption(options: NewCliOptions, args: Array<String>, index:
     match (args[index]) {
         case "--stdout" => options.stdout = true; Some(index + 1)
         case "--deny-warnings" => options.denyWarnings = true; Some(index + 1)
+        case "--deny-breaking-api" => options.denyBreakingApi = true; Some(index + 1)
+        case "--deny-potentially-breaking-api" => options.denyPotentiallyBreakingApi = true; Some(index + 1)
         case "--check-examples" => options.checkExamples = true; Some(index + 1)
         case "--force-owned" => options.forceOwned = true; Some(index + 1)
         case "--include-path-dependencies" => options.includePathDependencies = true; Some(index + 1)
@@ -292,11 +296,17 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
         options.repositoryUrl.isSome() || options.repositoryRevision.isSome() || options.repositoryRoot.isSome() ||
         !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty() ||
         options.docVersion.isSome() || options.agentFull || options.servePortExplicit ||
-        options.serveOpenExplicit) {
+        options.serveOpenExplicit || options.checkExamples || !options.formats.isEmpty() ||
+        options.semanticExplicit || options.cjcExplicit || !options.chirImportPaths.isEmpty() ||
+        options.localeExplicit || options.markdownLayoutExplicit ||
+        options.versionSubcommand != "" || !options.versionInputs.isEmpty() ||
+        !options.versionLabels.isEmpty() || !options.versionChannels.isEmpty() ||
+        !options.versionStatuses.isEmpty() || !options.versionBasePaths.isEmpty() ||
+        !options.versionReleases.isEmpty() || !options.versionDiffs.isEmpty() ||
+        !options.versionAssignmentIds.isEmpty() || options.latestVersion.isSome()) {
         throw IllegalArgumentException("diff accepts only input paths, --format, and API deny flags")
     }
 }
-
 private func validateCliOptions(options: NewCliOptions): Unit {
     if (options.command == "diff") { validateDiffOptions(options); return }
     if (options.denyBreakingApi || options.denyPotentiallyBreakingApi) {

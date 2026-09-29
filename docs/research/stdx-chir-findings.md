@@ -1,67 +1,71 @@
-# stdx.chir and Source-CHIR binding findings
+# stdx.chir and source–CHIR binding findings
 
-## Current daily result
+## Verification baseline
 
-20260829 `cjc` 可以生成 raw/opt serialized CHIR，`chir-dis` 可以反序列化成人类可读文本。然而同一 daily 的 stdx sidecar 没有 `stdx.chir.cjo`，所以普通 cjpm/cjc 项目无法 import `stdx.chir`。
+The current integration uses a same-version Cangjie 1.3.0 compiler and `stdx` sidecar. The repository wrapper authenticates the compiler and sidecar artifacts, verifies their target/version, and exposes the selected sidecar through `CANGJIE_STDX_PATH`. The project does not modify the SDK, compiler, std, or stdx sources.
 
-Probe sources:
+The probe and fixture evidence is repository-relative:
 
 - `probes/chir_flow/fixture.cj`
 - `probes/chir_loader/main.cj`
+- `tests/fixtures/projects/chir_semantics/src/api.cj`
 
-current daily loader 编译的确定结果：
+## Working CHIR path
+
+Explicit `--semantic chir` follows this path:
+
+1. Source discovery reads and normalizes each source file once.
+2. The source snapshot records package/import/re-export structure, cfg inputs, and manifest text.
+3. A private worker staging directory receives only those captured source bytes.
+4. The worker invokes `cjc --emit-chir=raw --output-type=staticlib` with the configured import roots and cfg values.
+5. The worker bounds compiler output and artifact size, calls `stdx.chir.deserializePackage`, and emits a small versioned response protocol.
+6. The provider adapter consumes structured functions, members, custom types, enum cases, and extension targets.
+7. The source provider remains the declaration/comment boundary; unmatched or ambiguous CHIR records produce warnings and source-backed output remains available.
+
+The worker never invokes a shell, network client, or `cjpm`; it does not parse `chir-dis` text or debug strings.
+
+## Public API observations
+
+The current same-version sidecar exposes enough structured data for conservative enrichment:
 
 ```text
-error: can not find package 'stdx.chir'
+Package.functions
+Package.allCustomTypeDefs
+CustomTypeDef.instanceVars/staticVars
+EnumDef.constructors
+Function.declaredParent
+Function.genericTypeParams
+Function.funcSrcCodeType.paramTypes
+ExtendDef.extendedType
 ```
 
-## Same-version local sidecar experiment
+The implementation filters `isCompilerAdd()` and `isImported()` records and keeps package identity in every serialized record. Ordinary member owners come from `declaredParent`; extension members use the `ExtendDef` target identity because extension functions do not provide a stable source span.
 
-本机另有一套 compiler/stdlib/stdx 均为 `0.0.1` 的 local build。它不是 current daily，只用于确认公开 API 可以真实运行。使用显式 `--import-path`, `-L`, `-l stdx.chir` 和 `LD_LIBRARY_PATH` 后，以下调用通过：
+## Binding limits
 
-```cj
-let pkg = deserializePackage(CPointer<UInt8>(raw.pointer), bytes.size)
-```
+A CHIR `Function` has no stable public source span that can be used as the sole binding key. Therefore the provider does not claim exact source-to-CHIR identity. It uses package/name/owner plus generic arity and parameter count as a conservative disambiguator:
 
-fixture 的关键输出：
-
-```text
-package=chir_probe
-classes=2
-structs=1
-enums=1
-extends=1
-function=parse|public=true|owner=Parser|type=(String) -> T
-function=parse|public=true|owner=Parser|type=(Array<UInt8>) -> T
-function=pretty|public=true|owner=|type=() -> String
-function=transform|public=true|owner=<package>|generic=1
-function=解析|public=true|owner=<package>|type=(String) -> String
-member=value|type=T|location=fixture.cj-8-5, scope: 0
-extend=chir_probe:Parser|methods=1
-```
-
-输出中的类型名称在实际 CHIR 中带 canonical/internal identity；上面的片段为阅读性省略，完整 probe 会打印真实值。
-
-## Source to CHIR binding gate
-
-优先 key 原计划为 `file + kind + name + start line/column + owner`，signature 只辅助消歧。实测无法构造这个 key：`Function` 没有公开 `location`/`debugLocation`。当前 stdx 源码中存在 internal `_propLocation`，但没有 public getter。`MemberVar.location` 与当前源码树的 `CustomTypeDef.location` 不足以覆盖函数和 overload。
-
-| Case | Result | 证据/原因 |
+| Case | Result | Policy |
 |---|---|---|
-| same-name overload | FAIL | CHIR signature 能区分 overload，但 Function 无位置，不能可靠对应 source declaration |
-| nested/member function | PARTIAL | `declaredParent` 对普通成员可用；仍无 source position |
-| multiline signature | FAIL | CHIR 无公开 Function span，换行场景不能定位 |
-| annotation | UNKNOWN | 当前源码公开 `customAnnoInstances`；current daily 无 artifact，local artifact 版本又不含同一 API surface |
-| generic function | PARTIAL | local probe 得到 generic arity/type；仍无法位置回绑 |
-| extension function | PARTIAL | ExtendDef target/methods 可读，但 method `declaredParent` 为空且无位置 |
-| Unicode identifier | PARTIAL | source AST 与 local CHIR 都保留 `解析`；没有 location 完成双向证明 |
+| unique top-level function | PARTIAL | retain source declaration and attach partial CHIR type data |
+| ordinary member function | PARTIAL | match `declaredParent` owner |
+| extension function | PARTIAL | match `ExtendDef.extendedType` target |
+| same-name overload with unique shape | PARTIAL | accept only one unique shape |
+| same-name overload with equal shapes | WARNING | emit `CJDOC2105`, do not claim one-to-one mapping |
+| type alias/property without stable CHIR record | WARNING | source-backed result and `CJDOC2106` |
+| enum case | PARTIAL | match owner type and constructor source name |
+| compiler-generated/imported function | EXCLUDED | filtered before binding |
+| comments | SOURCE ONLY | lexer/source snapshot remains authoritative |
 
-明确回答：**CHIR DebugLocation 当前不足以可靠地把 semantic Function 映射回 source declaration，结果是 FAIL。**
+The explicit fallback is not a failure of generation: it is the contract that source comments and declarations survive semantic-provider failure. A renderer receives only current Doc IR v11 and never imports `stdx.chir` or a provider implementation.
 
-不采用的 fallback：
+## Failure categories
 
-- 不解析 `.chirtxt` 中看似存在的位置；该格式不是公开稳定 API。
-- 不按 mangled name 或字符串 type 猜测并标记为 Resolved。
-- 不修改 compiler/stdx，也不复制内部反序列化器。
+- `CJDOC2101`: compiler, worker executable, or compiler version unavailable.
+- `CJDOC2102`: captured project input or dependency/build configuration cannot be reproduced by the worker.
+- `CJDOC2103`: compiler failure or timeout.
+- `CJDOC2104`: raw artifact, deserialization, or worker response failure.
+- `CJDOC2105`: one-to-one source mapping is ambiguous.
+- `CJDOC2106`: a source declaration is known but cannot be reliably mapped to a structured CHIR record.
 
-因此当前 explicit fallback 是 `std.ast -> SourceSnapshot -> AstSemanticProvider -> DocumentationBinder -> Doc IR`。公开 SPI 以 cjdoc 自己的 `SourceDeclarationView` 和 `SemanticDeclaration` 传递信息，`stdx.chir` 类型无法越过 provider adapter 边界。未来只有当 G1-G7 全部通过才增加独立 `ChirSemanticProvider`；v0.4 不包含 CHIR loader、driver 或运行时依赖。
+This split is intentional: users can distinguish toolchain/input failures from a conservative mapping warning without changing the Doc IR schema or provider SPI.

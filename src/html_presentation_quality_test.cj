@@ -11,10 +11,10 @@ class HtmlPresentationQualityTest {
         let documentation = DocumentationEngine().generate(
             GenerationRequest("tests/fixtures/projects/documentation_quality",
                 astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
-        @Expect(publicHasDiagnostic(documentation, "CJDOC3040"))
-        @Expect(publicHasDiagnostic(documentation, "CJDOC3041"))
-        @Expect(publicHasDiagnostic(documentation, "CJDOC3042"))
-        @Expect(documentation.schemaVersion, "cjdoc.doc-ir/10")
+        @Expect(publicHasDiagnostic(documentation, "CJDOC3047"))
+        @Expect(publicHasDiagnostic(documentation, "CJDOC3048"))
+        @Expect(publicHasDiagnostic(documentation, "CJDOC3049"))
+@Expect(documentation.schemaVersion, "cjdoc.doc-ir/11")
         let artifacts = api_render.DocumentationCoverageRenderer().render(documentation)
         let presence = artifactContent(artifacts, "coverage/coverage.json")
         let quality = artifactContent(artifacts, "coverage/quality.json")
@@ -25,9 +25,9 @@ class HtmlPresentationQualityTest {
         let off = DocumentationEngine().generate(
             GenerationRequest("tests/fixtures/projects/documentation_quality", lintProfile: "off",
                 astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
-        @Expect(!publicHasDiagnostic(off, "CJDOC3040"))
-        @Expect(!publicHasDiagnostic(off, "CJDOC3041"))
-        @Expect(!publicHasDiagnostic(off, "CJDOC3042"))
+        @Expect(!publicHasDiagnostic(off, "CJDOC3047"))
+        @Expect(!publicHasDiagnostic(off, "CJDOC3048"))
+        @Expect(!publicHasDiagnostic(off, "CJDOC3049"))
     }
 
     @TestCase

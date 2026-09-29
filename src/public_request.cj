@@ -4,7 +4,25 @@ import cjdoc.model as public_model
 import cjdoc.provider as public_provider
 import std.collection.*
 import std.fs.*
-
+private func normalizeRepositoryRoot(repositoryRoot: ?String): ?String {
+    match (repositoryRoot) {
+        case None => None
+        case Some(path) =>
+            if (path.trimAscii().isEmpty()) {
+                throw IllegalArgumentException("repository root cannot be empty")
+            }
+            let resolved = try { canonicalize(path).toString() } catch (_: Exception) {
+                throw IllegalArgumentException("repository root must be an accessible directory")
+            }
+            let info = try { FileInfo(resolved) } catch (_: Exception) {
+                throw IllegalArgumentException("repository root must be an accessible directory")
+            }
+            if (!info.isDirectory()) {
+                throw IllegalArgumentException("repository root must be an accessible directory")
+            }
+            Some(resolved)
+    }
+}
 public class ChirOptions {
     public let compilerExecutable: String
     private let importPathsStorage: ArrayList<String>
@@ -74,7 +92,7 @@ public class GenerationRequest {
         }
         this.projectRoot = projectRoot
         this.repository = repository
-        this.repositoryRoot = repositoryRoot
+        this.repositoryRoot = normalizeRepositoryRoot(repositoryRoot)
         this.includePathDependencies = includePathDependencies
         this.includeCachedDependencies = includeCachedDependencies
         this.jobs = jobs

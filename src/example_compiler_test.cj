@@ -22,6 +22,73 @@ private func createExampleProject(source: String): Path {
     root
 }
 
+private func createExampleProjectWithPathDependencies(): Path {
+    let root = Directory.createTemp(getTempDirectory())
+    Directory.create(root.join("src"), recursive: true)
+    Directory.create(root.join("deps/alpha/src"), recursive: true)
+    Directory.create(root.join("deps/beta/src"), recursive: true)
+    File.writeTo(root.join("cjpm.toml"),
+        """
+        [package]
+        cjc-version = "1.1.0"
+        name = "example_compile"
+        version = "0.1.0"
+        output-type = "static"
+
+        [dependencies]
+        path_dep_alpha = { path = "deps/alpha", output-type = "static" }
+        """.toArray())
+    File.writeTo(root.join("src/api.cj"),
+        """
+        package example_compile
+
+        import path_dep_alpha.*
+
+        /**
+         * Calls an imported package.
+         * @example Transitive local package
+         * ```cangjie
+         * let result = alphaApi()
+         * ```
+         */
+        public func rootApi(): Unit { () }
+        """.toArray())
+    File.writeTo(root.join("deps/alpha/cjpm.toml"),
+        """
+        [package]
+        cjc-version = "1.1.0"
+        name = "path_dep_alpha"
+        version = "0.1.0"
+        output-type = "static"
+
+        [dependencies]
+        path_dep_beta = { path = "../beta", output-type = "static" }
+        """.toArray())
+    File.writeTo(root.join("deps/alpha/src/alpha.cj"),
+        """
+        package path_dep_alpha
+
+        import path_dep_beta.*
+
+        public func alphaApi(): Int64 { betaApi() }
+        """.toArray())
+    File.writeTo(root.join("deps/beta/cjpm.toml"),
+        """
+        [package]
+        cjc-version = "1.1.0"
+        name = "path_dep_beta"
+        version = "0.1.0"
+        output-type = "static"
+        """.toArray())
+    File.writeTo(root.join("deps/beta/src/beta.cj"),
+        """
+        package path_dep_beta
+
+        public func betaApi(): Int64 { 42 }
+        """.toArray())
+    root
+}
+
 private func exampleRequest(root: Path, checkExamples: Bool): GenerationRequest {
     GenerationRequest(root.toString(), lintProfile: "off", audience: "all",
         checkExamples: checkExamples, astPreflightExecutable: Some("target/release/bin/main"))
@@ -57,20 +124,20 @@ private func exampleDiagnosticSummary(documentation: public_model.DocumentationS
 }
 
 // A `cjc` static link may be unavailable on a host, in which case a run-mode example
-// legitimately degrades to CJDOC3038. Run assertions therefore tolerate that single
+// legitimately degrades to CJDOC3074. Run assertions therefore tolerate that single
 // code and nothing else; the pre-spawn assertions stay unconditional.
 private func runOutcomeAccepted(documentation: public_model.DocumentationSet,
     expected: String): Bool {
-    hasExampleDiagnostic(documentation, expected) || hasExampleDiagnostic(documentation, "CJDOC3038")
+    hasExampleDiagnostic(documentation, expected) || hasExampleDiagnostic(documentation, "CJDOC3074")
 }
 
 private func noRunOutcome(documentation: public_model.DocumentationSet): Bool {
     !hasExampleDiagnostic(documentation, "CJDOC3030") &&
-        !hasExampleDiagnostic(documentation, "CJDOC3034") &&
-        !hasExampleDiagnostic(documentation, "CJDOC3035") &&
-        !hasExampleDiagnostic(documentation, "CJDOC3036") &&
-        !hasExampleDiagnostic(documentation, "CJDOC3037") &&
-        !hasExampleDiagnostic(documentation, "CJDOC3039")
+        !hasExampleDiagnostic(documentation, "CJDOC3070") &&
+        !hasExampleDiagnostic(documentation, "CJDOC3071") &&
+        !hasExampleDiagnostic(documentation, "CJDOC3072") &&
+        !hasExampleDiagnostic(documentation, "CJDOC3073") &&
+        !hasExampleDiagnostic(documentation, "CJDOC3075")
 }
 
 private let arithmeticSource = """
@@ -191,7 +258,7 @@ class ExampleCompilerTest {
             """))
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
-            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3034",
+            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3070",
                 "is pinned to fail but compiled successfully"))
         } finally {
             let _ = removeIfExists(root, recursive: true)
@@ -214,8 +281,8 @@ class ExampleCompilerTest {
             """))
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
-            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3034", "Other failure"))
-            @Expect(!hasExampleDiagnosticAbout(documentation, "CJDOC3034", "Named failure"))
+            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3070", "Other failure"))
+            @Expect(!hasExampleDiagnosticAbout(documentation, "CJDOC3070", "Named failure"))
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
@@ -239,7 +306,7 @@ class ExampleCompilerTest {
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
             @Expect(hasExampleDiagnostic(documentation, "CJDOC3031"))
-            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3034",
+            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3070",
                 "did not fail inside the example"))
         } finally {
             let _ = removeIfExists(root, recursive: true)
@@ -260,8 +327,8 @@ class ExampleCompilerTest {
             @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3033", "unknown directive"))
             @Expect(!hasExampleDiagnostic(documentation, "CJDOC3030"))
             @Expect(!hasExampleDiagnostic(documentation, "CJDOC3031"))
-            @Expect(!hasExampleDiagnostic(documentation, "CJDOC3034"))
-            @Expect(!hasExampleDiagnostic(documentation, "CJDOC3038"))
+            @Expect(!hasExampleDiagnostic(documentation, "CJDOC3070"))
+            @Expect(!hasExampleDiagnostic(documentation, "CJDOC3074"))
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
@@ -305,8 +372,8 @@ class ExampleCompilerTest {
         try {
             let pinned = DocumentationEngine().generate(exampleRequest(root, true))
             let unpinned = DocumentationEngine().generate(exampleRequest(withoutFlag, true))
-            @Expect(noRunOutcome(pinned) || hasExampleDiagnostic(pinned, "CJDOC3038"), true)
-            @Expect(runOutcomeAccepted(unpinned, "CJDOC3035"), true)
+            @Expect(noRunOutcome(pinned) || hasExampleDiagnostic(pinned, "CJDOC3074"), true)
+            @Expect(runOutcomeAccepted(unpinned, "CJDOC3071"), true)
         } finally {
             let _ = removeIfExists(root, recursive: true)
             let _ = removeIfExists(withoutFlag, recursive: true)
@@ -337,9 +404,9 @@ class ExampleCompilerTest {
             """))
         try {
             let pinned = DocumentationEngine().generate(exampleRequest(matching, true))
-            @Expect(noRunOutcome(pinned) || hasExampleDiagnostic(pinned, "CJDOC3038"), true)
+            @Expect(noRunOutcome(pinned) || hasExampleDiagnostic(pinned, "CJDOC3074"), true)
             let mismatched = DocumentationEngine().generate(exampleRequest(differing, true))
-            @Expect(runOutcomeAccepted(mismatched, "CJDOC3036"), true)
+            @Expect(runOutcomeAccepted(mismatched, "CJDOC3072"), true)
         } finally {
             let _ = removeIfExists(matching, recursive: true)
             let _ = removeIfExists(differing, recursive: true)
@@ -357,8 +424,8 @@ class ExampleCompilerTest {
             """))
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
-            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3035", "exit code 3") ||
-                hasExampleDiagnostic(documentation, "CJDOC3038"), true)
+            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3071", "exit code 3") ||
+                hasExampleDiagnostic(documentation, "CJDOC3074"), true)
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
@@ -378,7 +445,7 @@ class ExampleCompilerTest {
             """))
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
-            @Expect(runOutcomeAccepted(documentation, "CJDOC3035"), true)
+            @Expect(runOutcomeAccepted(documentation, "CJDOC3071"), true)
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
@@ -433,7 +500,7 @@ class ExampleCompilerTest {
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
             @Expect(hasExampleDiagnostic(documentation, "CJDOC3032"))
-            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3034", "was not checked"))
+            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3070", "was not checked"))
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
@@ -452,9 +519,30 @@ class ExampleCompilerTest {
             let documentation = DocumentationEngine().generate(exampleRequest(root, false))
             @Expect(!hasExampleDiagnostic(documentation, "CJDOC3030"))
             @Expect(!hasExampleDiagnostic(documentation, "CJDOC3033"))
-            @Expect(!hasExampleDiagnostic(documentation, "CJDOC3034"))
+            @Expect(!hasExampleDiagnostic(documentation, "CJDOC3070"))
         } finally {
             let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
+    func importedPackageExamplesCompileAcrossColdAndWarmCaches(): Unit {
+        let root = createExampleProjectWithPathDependencies()
+        let cache = Directory.createTemp(getTempDirectory())
+        let request = GenerationRequest(root.toString(), lintProfile: "off", audience: "all",
+            checkExamples: true, includePathDependencies: true,
+            cacheDirectory: Some(cache.toString()),
+            astPreflightExecutable: Some("target/release/bin/main"))
+        try {
+            let cold = DocumentationEngine().generate(request)
+            @Expect(!hasExampleDiagnostic(cold, "CJDOC3030"))
+            @Expect(!hasExampleDiagnostic(cold, "CJDOC3031"))
+            let warm = DocumentationEngine().generate(request)
+            @Expect(!hasExampleDiagnostic(warm, "CJDOC3030"))
+            @Expect(!hasExampleDiagnostic(warm, "CJDOC3031"))
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+            let _ = removeIfExists(cache, recursive: true)
         }
     }
 
@@ -493,12 +581,34 @@ class ExampleCompilerTest {
         let cache = Directory.createTemp(getTempDirectory())
         try {
             let cold = DocumentationEngine().generate(cachedExampleRequest(root, cache.toString()))
-            @Expect(hasExampleDiagnostic(cold, "CJDOC3034"))
+            @Expect(hasExampleDiagnostic(cold, "CJDOC3070"))
             let warm = DocumentationEngine().generate(cachedExampleRequest(root, cache.toString()))
-            @Expect(hasExampleDiagnostic(warm, "CJDOC3034"))
+            @Expect(hasExampleDiagnostic(warm, "CJDOC3070"))
         } finally {
             let _ = removeIfExists(root, recursive: true)
             let _ = removeIfExists(cache, recursive: true)
+        }
+    }
+
+    @TestCase
+    func directiveManagedExamplesDoNotEnterLegacyDoctest(): Unit {
+        let root = createExampleProject(sourceWith(
+            """
+             * @example Expected failure {must-fail}
+             * ```cangjie
+             * let invalid: Int64 = "wrong"
+             * ```
+            """))
+        try {
+            let generated = generateDocumentationWithSource(
+                exampleRequest(root, false), defaultSemanticProvider())
+            let report = runDoctests(generated.publicDocumentation,
+                DoctestConfig(mode: "warn"), root.join("legacy-doctest"),
+                projectRoot: root,
+                sourceOrigins: generated.internalDocumentation.sourceFileOrigins.toArray())
+            @Expect(report.results.size, 0)
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
         }
     }
 }

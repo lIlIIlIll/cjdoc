@@ -196,7 +196,7 @@ private func isUserConditionValue(value: String): Bool {
 
 // Built-in `--cfg` keys (`os`, `arch`, `debug`, …) are not enumerated here: `cjc`
 // rejects them with a driver-level error naming no source file, and the pin
-// attribution rule turns that into a visible CJDOC3031/CJDOC3034 instead of a second,
+// attribution rule turns that into a visible CJDOC3031/CJDOC3070 instead of a second,
 // drifting local list. A user key is accepted on the command line but cannot gate
 // `@When[...]`, so `flags=` changes compilation behaviour; it does not switch an
 // optional example on and off.

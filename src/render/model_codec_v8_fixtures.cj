@@ -294,7 +294,7 @@ internal func codecAsset(base64: String, sourcePath: String): AssetDoc {
     AssetDoc("sha256-${docIrSha256Bytes(decoded)}", "image/gif", sourcePath, base64)
 }
 
-internal func codecRendererFixture(): DocumentationSet {
+internal func codecRendererFixture(extraTag!: ?DocTag = None): DocumentationSet {
     let moduleId = "cjdoc:module:v1:render-v8"
     let symbolId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arender-v8::fixture::function:api#g0()"
     let source = SourceRange("src/api.cj", SourcePosition(1, 1, 0), SourcePosition(1, 24, 23))
@@ -319,10 +319,16 @@ internal func codecRendererFixture(): DocumentationSet {
     let markdown = MarkdownNode("document", children: [heading, link, list, table, code])
     let returnType = TypeRef("primitive", "Unit", SemanticType("resolved",
         canonical: Some("std.core.Unit"), provider: Some("ast")))
+    let tags = ArrayList<DocTag>()
+    tags.add(DocTag("return", "", "MUST-NOT-RENDER"))
+    match (extraTag) {
+        case Some(tag) => tags.add(tag)
+        case None => ()
+    }
     let symbol = SymbolDoc(symbolId, "function", "api", "fixture.api", "fixture", moduleId,
         "public", source, "public func api(): Unit", SemanticInfo("partial", "ast"),
         returnType: Some(returnType), documentation: Some(DocComment("raw", "summary", "",
-            markdown, tags: [DocTag("return", "", "MUST-NOT-RENDER")])))
+            markdown, tags: tags.toArray())))
     DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("renderer"),
         ConfigurationSnapshot(lintProfile: "off"), providers: [ProviderInfo("ast", "builtin",
             moduleId, "partial", SemanticCapabilities(false, false, false, true, false))],

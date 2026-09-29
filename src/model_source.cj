@@ -247,20 +247,24 @@ class SourceFileOrigin {
     public let logicalPrefix: String
     public let capturedSourceIndex: ?CapturedSourceIndex
     public let packageName: String
+    public let moduleId: String
     public let imports: Array<String>
+    public let packageImports: Array<String>
     public let capturedSource: String
 
     public init(logicalPath: String, actualPath: String, actualRoot: String,
-        logicalPrefix: String, capturedSourceIndex!: ?CapturedSourceIndex = None,
+        logicalPrefix: String, moduleId: String, capturedSourceIndex!: ?CapturedSourceIndex = None,
         packageName!: String = "", imports!: Array<String> = [],
-        capturedSource!: String = "") {
+        packageImports!: Array<String> = [], capturedSource!: String = "") {
         this.logicalPath = logicalPath
         this.actualPath = actualPath
         this.actualRoot = actualRoot
         this.logicalPrefix = logicalPrefix
         this.capturedSourceIndex = capturedSourceIndex
         this.packageName = packageName
+        this.moduleId = moduleId
         this.imports = imports
+        this.packageImports = packageImports
         this.capturedSource = capturedSource
     }
 }

@@ -93,6 +93,31 @@ class ExampleDirectivesTest {
     }
 
     @TestCase
+    func quotedBracesAndMalformedTrailingBlocksArePreserved(): Unit {
+        let quoted = parseDocComment("""
+/**
+ * @example Error text {must-fail error="missing } symbol"}
+ */
+""")
+        @Expect(quoted.examples.size, 1)
+        @Expect(quoted.examples[0].subject, "Error text")
+        @Expect(quoted.examples[0].directives,
+            "{must-fail error=\"missing } symbol\"}")
+        @Expect(directiveProblems(quoted.examples[0].directives), "")
+
+        let malformed = parseDocComment("""
+/**
+ * @example Unclosed {must-fail
+ */
+""")
+        @Expect(malformed.examples.size, 1)
+        @Expect(malformed.examples[0].subject, "Unclosed")
+        @Expect(malformed.examples[0].directives, "{must-fail")
+        @Expect(directiveProblems(malformed.examples[0].directives),
+            "'{must-fail' is not a '{…}' directive block")
+    }
+
+    @TestCase
     func onlyAllowlistedCompilerOptionsReachCjc(): Unit {
         @Expect(flagProblems(["--output-type", "exe"]), "invalid compiler option '--output-type exe'")
         @Expect(flagProblems(["-Woff", "driver-arg"]), "invalid compiler option '-Woff driver-arg'")

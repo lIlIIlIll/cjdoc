@@ -28,11 +28,11 @@ class Element {
   click() { this.clicked = true; }
 }
 const input = new Element(), results = new Element(), kind = new Element(), pkg = new Element();
-kind.dataset.cjdocCategory = "functions";
+kind.value = "";
 const controls = {"[data-cjdoc-search]": input, "[data-cjdoc-results]": results,
   "[data-cjdoc-kind]": kind, "[data-cjdoc-package]": pkg};
 const document = {querySelector: key => controls[key] || null,
-  querySelectorAll: key => key === "[data-cjdoc-category]" ? [kind] : [],
+  querySelectorAll: () => [],
   createElement: tag => new Element(tag), documentElement: {lang: "en"},
   body: { dataset: {} },
   addEventListener: (key, handler) => { document[key] = handler; }};
@@ -41,8 +41,9 @@ const entry = (name, packageName = "net", type = "class") => ({id: packageName +
  name, qualifiedName: packageName + "." + name, packageName, kind: type,
  summary: "<script>literal preview</script>", href: "symbols/" + name + ".html"});
 const context = {document, window, location: {pathname: "/fixture/index.html"}, performance: {getEntriesByType: () => []}, __CJDOC_SEARCH_INDEX__: {schemaVersion: "cjdoc.search-index/6",
- entries: [entry("HttpClientBuilder"), entry("HTTPConnectionBuffer"), entry("httpclientbuilder"),
- entry("HttpClientBuilder", "other"), entry("send", "net", "function")]}};
+entries: [entry("HttpClientBuilder"), entry("HTTPConnectionBuffer"), entry("httpclientbuilder"),
+ entry("HttpClientBuilder", "other"), entry("send", "net", "function"), entry("BuilderTools"),
+ entry("Nova"), entry("a".repeat(128)), entry("a".repeat(129))]}};
 vm.runInNewContext(SCRIPT, context);
 const search = query => { input.value = query; input.events.input(); return results.children.map(x => x.children[0].children[0].children[0].textContent); };
 assert(search("HttpClientBuilder").includes("HttpClientBuilder"));
@@ -50,13 +51,30 @@ assert(search("httpclientbuilder").includes("httpclientbuilder"));
 assert(search("Http").includes("HttpClientBuilder"));
 assert(search("Http").includes("HTTPConnectionBuffer"));
 assert(search("builder").includes("HttpClientBuilder"));
+assert.equal(search("buil")[0], "BuilderTools");
+assert(search("HCB").includes("HttpClientBuilder"));
+assert(search("HttClientBuilder").includes("HttpClientBuilder"));
+assert(search("HtttpClientBuilder").includes("HttpClientBuilder"));
+assert(search("HttpClientBuildex").includes("HttpClientBuilder"));
+assert.equal(search("HxtClientBuildeq").length, 0);
+assert(search("Niva").includes("Nova"));
+assert.equal(search("Nva").length, 0);
+const maxLengthTypo = "a".repeat(127) + "b";
+assert(search(maxLengthTypo).includes("a".repeat(128)));
+const tooLongTypo = "a".repeat(128) + "b";
+assert.equal(search(tooLongTypo).length, 0);
 assert(search("package:other").includes("HttpClientBuilder"));
 assert.equal(search("zzzzzz").length, 0);
 pkg.value = "other"; pkg.events.change();
 assert.deepEqual(search("Http"), ["HttpClientBuilder"]);
 assert.equal(results.children[0].children[0].children[2].textContent, "<script>literal preview</script>");
-kind.events.click(); assert.equal(results.children.length, 0);
-kind.dataset.cjdocCategory = "all"; kind.events.click(); pkg.value = ""; search("Http");
+pkg.value = ""; pkg.events.change();
+kind.value = "function"; kind.events.change();
+assert.deepEqual(search("send"), ["send"]);
+assert.deepEqual(search("Http"), []);
+kind.value = "class"; kind.events.change();
+assert.equal(search("send").length, 0);
+kind.value = ""; kind.events.change(); search("Http");
 input.events.keydown({key: "ArrowDown", preventDefault() {}});
 assert.equal(input.attrs["aria-activedescendant"], "cjdoc-search-result-0");
 const link = results.children[0].children[0];

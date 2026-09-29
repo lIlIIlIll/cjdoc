@@ -39,6 +39,7 @@ SEMVER = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 SCHEMA_FILES = (
     "doc-ir.schema.json",
     "doc-ir-v9.schema.json",
+    "doc-ir-v11.schema.json",
     "doc-ir-v10.schema.json",
     "doc-ir-v6.schema.json",
     "doc-ir-v7.schema.json",
@@ -53,6 +54,7 @@ SCHEMA_FILES = (
     "api-diff.schema.json",
     "documentation-coverage.schema.json",
     "documentation-quality.schema.json",
+    "doctest-results.schema.json",
 )
 
 

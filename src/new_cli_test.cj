@@ -56,6 +56,31 @@ class NewCliRegressionTest {
     }
 
     @TestCase
+    func diffParsesApiDenyFlagsAndRejectsGenerationOnlyOptions(): Unit {
+        let strict = parseNewCli(["diff", "--baseline", "old.json", "--current", "new.json",
+            "--deny-breaking-api", "--format", "json"])
+        @Expect(strict.denyBreakingApi, true)
+        @Expect(strict.diffFormat, "json")
+        let potential = parseNewCli(["diff", "old.json", "new.json",
+            "--deny-potentially-breaking-api"])
+        @Expect(potential.denyPotentiallyBreakingApi, true)
+        @ExpectThrows[IllegalArgumentException](parseNewCli([
+            "diff", "old.json", "new.json", "--check-examples"]))
+        @ExpectThrows[IllegalArgumentException](parseNewCli([
+            "diff", "old.json", "new.json", "--semantic", "source"]))
+        @ExpectThrows[IllegalArgumentException](parseNewCli([
+            "diff", "old.json", "new.json", "--doc-version", "v1"]))
+    }
+
+    @TestCase
+    func helpListsEverySupportedTopLevelCommandAndDocVersion(): Unit {
+        let usage = newUsage()
+        @Expect(usage.contains("cjdoc serve"), true)
+        @Expect(usage.contains("cjdoc versions compose"), true)
+        @Expect(usage.contains("--doc-version"), true)
+    }
+
+    @TestCase
     func checkExamplesIsAnExplicitGenerationOption(): Unit {
         let options = parseNewCli(["check", "--check-examples"])
         @Expect(options.checkExamples, true)

@@ -84,22 +84,36 @@ def compiler_bundle_root(cjc: Path) -> Path | None:
     return resolved.parent.parent.parent
 
 
-def stdx_candidates(cjc: Path, variant: str) -> list[Path]:
+def compiler_target_family(target: str) -> str | None:
+    normalized = target.lower()
+    architecture = normalized.split("-", 1)[0]
+    architecture = {"amd64": "x86_64", "arm64": "aarch64"}.get(architecture, architecture)
+    if architecture not in {"x86_64", "aarch64"}:
+        return None
+    if "linux" in normalized:
+        platform = "linux"
+    elif "windows" in normalized or "mingw" in normalized:
+        platform = "windows"
+    elif "darwin" in normalized or "apple" in normalized:
+        platform = "darwin"
+    else:
+        return None
+    return f"{platform}_{architecture}"
+
+
+def stdx_candidates(cjc: Path, variant: str, compiler_target: str) -> list[Path]:
+    configured = os.environ.get("CANGJIE_STDX_PATH")
+    if configured:
+        return unique_paths([Path(configured)])
+
     candidates: list[Path] = []
     bundle = compiler_bundle_root(cjc)
-    if bundle is not None:
-        for target in sorted(bundle.glob("*_cjnative")):
+    family = compiler_target_family(compiler_target)
+    if bundle is not None and family is not None:
+        for target in sorted(bundle.glob(f"{family}_cjnative")):
             candidates.append(target / variant / "stdx")
             if variant == "static":
                 candidates.append(target / "static-static-link-extern" / "stdx")
-    configured = os.environ.get("CANGJIE_STDX_PATH")
-    if configured:
-        configured_path = Path(configured)
-        if configured_path.name == "stdx":
-            parent = configured_path.parent
-            if parent.name == variant:
-                candidates.append(parent / "stdx")
-            candidates.append(parent.parent / variant / "stdx")
     return unique_paths(candidates)
 
 
@@ -168,7 +182,7 @@ def main(argv: list[str]) -> int:
     required = REQUIRED_STATIC_ARTIFACTS if variant == "static" else REQUIRED_DYNAMIC_ARTIFACTS
     selected: Path | None = None
     selected_digest = ""
-    for candidate in stdx_candidates(cjc, variant):
+    for candidate in stdx_candidates(cjc, variant, target):
         try:
             digest, _ = authenticate_stdx(candidate, required)
         except SystemExit:

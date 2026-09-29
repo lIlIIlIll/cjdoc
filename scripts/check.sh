@@ -37,7 +37,7 @@ cjpm test --jobs 1
 rm -rf "${check_dir}"
 mkdir -p "${check_dir}/schemas"
 
-for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions; do
+for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 doc-ir-v11 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${check_dir}/schemas/${schema_name}.schema.json"
 done
@@ -47,6 +47,7 @@ cmp docs/schema/doc-ir-v7.schema.json "${check_dir}/schemas/doc-ir-v7.schema.jso
 cmp docs/schema/doc-ir-v8.schema.json "${check_dir}/schemas/doc-ir-v8.schema.json"
 cmp docs/schema/doc-ir-v9.schema.json "${check_dir}/schemas/doc-ir-v9.schema.json"
 cmp docs/schema/doc-ir-v10.schema.json "${check_dir}/schemas/doc-ir-v10.schema.json"
+cmp docs/schema/doc-ir-v11.schema.json "${check_dir}/schemas/doc-ir-v11.schema.json"
 cmp docs/schema/diagnostics.schema.json "${check_dir}/schemas/diagnostics.schema.json"
 cmp docs/schema/cfg-matrix.schema.json "${check_dir}/schemas/cfg-matrix.schema.json"
 cmp docs/schema/search-index.schema.json "${check_dir}/schemas/search-index.schema.json"
@@ -81,17 +82,17 @@ run_golden() {
     cmp "${check_dir}/${name}/first/docs.json" "${check_dir}/${name}/validated.json"
 }
 
-run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v10/basic.docs.json
-run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v10/functions.docs.json
-run_golden types tests/fixtures/projects/types tests/fixtures/golden-v10/types.docs.json
-run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v10/extend.docs.json
-run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v10/source-edges.docs.json
-run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v10/unsupported.docs.json
-run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v10/workspace.docs.json
+run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v11/basic.docs.json
+run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v11/functions.docs.json
+run_golden types tests/fixtures/projects/types tests/fixtures/golden-v11/types.docs.json
+run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v11/extend.docs.json
+run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v11/source-edges.docs.json
+run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v11/unsupported.docs.json
+run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v11/workspace.docs.json
 run_golden conditional-linux tests/fixtures/projects/conditional \
-    tests/fixtures/golden-v10/conditional-linux.docs.json --cfg os=Linux
+    tests/fixtures/golden-v11/conditional-linux.docs.json --cfg os=Linux
 run_golden path-dependencies tests/fixtures/projects/path_dependencies \
-    tests/fixtures/golden-v10/path-dependencies.docs.json --include-path-dependencies
+    tests/fixtures/golden-v11/path-dependencies.docs.json --include-path-dependencies
 
 "${binary}" generate --project tests/fixtures/projects/basic \
     --format json --format markdown --format html --output "${check_dir}/all/first" \
@@ -131,7 +132,7 @@ test "${version_traversal_code}" -eq 2
 test -s "${check_dir}/versions-bad.stderr"
 "${binary}" generate --project tests/fixtures/projects/basic --format json --stdout \
     --cache-dir "${check_dir}/cache/stdout" >"${check_dir}/stdout.json"
-"${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/10" and len(value["declarations"]) == 25' \
+"${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/11" and len(value["declarations"]) == 25' \
     "${check_dir}/stdout.json"
 
 set +e

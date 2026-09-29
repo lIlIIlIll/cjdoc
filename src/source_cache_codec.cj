@@ -365,6 +365,7 @@ internal class ParsedSourceFile {
     var capturedSourceIndex: ?CapturedSourceIndex = None
     var capturedSource: String = ""
     let imports = ArrayList<String>()
+    let packageImports = ArrayList<String>()
     let declarations = ArrayList<SourceDeclaration>()
     let reExports = ArrayList<SourceReExport>()
     let orphanDocComments = ArrayList<OrphanDocComment>()

@@ -185,7 +185,8 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
             if (matchState == 0) { unmatched++ }
             if (matchState == 2) { ambiguous++ }
             if (matchState == 3) { notReliablyMapped++ }
-            let semanticState = if (backed) { "partial" } else { "unavailable" }
+            let semanticState = if (matchState == 2) { "ambiguous" }
+                else if (backed) { "partial" } else { "unavailable" }
             let parameters = ArrayList<public_provider.SemanticParameter>()
             if (backed) {
                 for (parameter in view.parameters) {
@@ -325,10 +326,13 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
     }
 
     private func sourceBaseTypeName(value: String): String {
-        match (value.indexOf("<")) {
+        let base = match (value.indexOf("<")) {
             case Some(index) => value[..index].trimAscii()
             case None => value.trimAscii()
         }
+        let components = base.split(".")
+        if (components.isEmpty()) { return base }
+        components[components.size - 1].trimAscii()
     }
 
     private func packageOrigins(moduleId: String, packageName: String): Array<SourceFileOrigin> {
@@ -337,7 +341,7 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
             if (pkg.moduleId != moduleId || pkg.name != packageName) { continue }
             for (logicalPath in pkg.sourceFiles) {
                 for (origin in source.sourceFileOrigins) {
-                    if (origin.logicalPath == logicalPath) { result.add(origin) }
+                    if (origin.moduleId == moduleId && origin.logicalPath == logicalPath) { result.add(origin) }
                 }
             }
         }
@@ -365,27 +369,53 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
         sort(names)
         names.toArray()
     }
+    private func importReferencesPackage(importText: String, packageName: String): Bool {
+        let value = importText.trimAscii()
+        if (!value.startsWith("import ")) { return false }
+        let importedName = value[7..].trimAscii()
+        if (!importedName.startsWith(packageName)) { return false }
+        if (importedName.size == packageName.size) { return true }
+        let boundary = importedName[packageName.size]
+        boundary == b'.' || boundary == b'{' || boundary == b' ' ||
+            boundary == b'\n' || boundary == b'\r'
+    }
+
     private func packageDependsOn(moduleId: String, packageName: String,
         dependencyName: String): Bool {
-        for (origin in source.sourceFileOrigins) {
-            if (origin.packageName != packageName) { continue }
-            for (importText in origin.imports) {
-                let value = importText.trimAscii()
-                if (value.contains("import " + dependencyName) ||
-                    value.contains(" " + dependencyName + ".")) { return true }
+        for (pkg in source.packages) {
+            if (pkg.moduleId != moduleId || pkg.name != packageName) { continue }
+            for (logicalPath in pkg.sourceFiles) {
+                for (origin in source.sourceFileOrigins) {
+                    if (origin.moduleId != moduleId || origin.logicalPath != logicalPath) { continue }
+                    for (importText in origin.imports) {
+                        if (importReferencesPackage(importText, dependencyName)) { return true }
+                    }
+                }
             }
         }
         false
     }
 
-    private func packageDependencies(moduleId: String, packageName: String): Array<String> {
-        let names = ArrayList<String>()
-        for (pkg in source.packages) {
-            if (pkg.moduleId != moduleId || pkg.name == packageName) { continue }
-            if (packageDependsOn(moduleId, packageName, pkg.name)) { names.add(pkg.name) }
+    private func packageDependencies(moduleId: String,
+        packageName: String): Array<SourcePackage> {
+        let allowedModules = HashSet<String>()
+        let _ = allowedModules.add(moduleId)
+        for (dependencyId in moduleDependencyIds(moduleId)) {
+            let _ = allowedModules.add(dependencyId)
         }
-        sort(names)
-        names.toArray()
+        let dependencies = ArrayList<SourcePackage>()
+        for (pkg in source.packages) {
+            if (!allowedModules.contains(pkg.moduleId) ||
+                (pkg.moduleId == moduleId && pkg.name == packageName)) { continue }
+            if (packageDependsOn(moduleId, packageName, pkg.name)) {
+                dependencies.add(pkg)
+            }
+        }
+        sort(dependencies, lessThan: { left, right =>
+            if (left.moduleId == right.moduleId) { left.name < right.name }
+            else { left.moduleId < right.moduleId }
+        }, stable: true)
+        dependencies.toArray()
     }
 
 
@@ -417,17 +447,9 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
         let seen = HashSet<String>()
         for (path in options.importPaths) { appendChirImportPath(paths, seen, path) }
         for (dependency in packageDependencies(moduleId, packageName)) {
-            let key = moduleId + ":" + dependency
+            let key = dependency.moduleId + ":" + dependency.name
             if (let Some(path) <- artifactRoots.get(key)) {
                 appendChirImportPath(paths, seen, path)
-            }
-        }
-        for (dependencyModuleId in moduleDependencyIds(moduleId)) {
-            for (dependencyPackage in modulePackageNames(dependencyModuleId)) {
-                let key = dependencyModuleId + ":" + dependencyPackage
-                if (let Some(path) <- artifactRoots.get(key)) {
-                    appendChirImportPath(paths, seen, path)
-                }
             }
         }
         paths
@@ -463,20 +485,11 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
                 if (item.id == moduleId) { moduleName = Some(item.name); break }
             }
             if (moduleName.isNone()) { return Some("source module is missing") }
-            for (dependencyModuleId in moduleDependencyIds(moduleId)) {
-                for (dependencyPackage in modulePackageNames(dependencyModuleId)) {
-                    match (compilePackage(dependencyModuleId, dependencyPackage)) {
-                        case Some(message) =>
-                            return Some("dependency module '" + dependencyModuleId +
-                                ":" + dependencyPackage + "' is unavailable: " + message)
-                        case None => ()
-                    }
-                }
-            }
             for (dependency in packageDependencies(moduleId, packageName)) {
-                match (compilePackage(moduleId, dependency)) {
+                match (compilePackage(dependency.moduleId, dependency.name)) {
                     case Some(message) =>
-                        return Some("dependency '" + dependency + "' is unavailable: " + message)
+                        return Some("dependency '" + dependency.moduleId + ":" +
+                            dependency.name + "' is unavailable: " + message)
                     case None => ()
                 }
             }

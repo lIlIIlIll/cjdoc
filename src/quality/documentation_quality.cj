@@ -48,7 +48,7 @@ public func documentationQualityDiagnostics(symbol: SymbolDoc, projectName: Stri
         case Some(comment) =>
             if (repeats(summaryText(comment), symbol.name,
                 ["API", "公开 API", "${projectName} 公开 API", "${projectName} API"])) {
-                findings.add(Diagnostic("warning", "CJDOC3040",
+                findings.add(Diagnostic("warning", "CJDOC3047",
                     "trivial-summary: description repeats declaration '${symbol.name}'",
                     source: Some(symbol.source), symbolId: Some(symbol.id)))
             }
@@ -56,7 +56,7 @@ public func documentationQualityDiagnostics(symbol: SymbolDoc, projectName: Stri
                 if (tag.name != "return") { continue }
                 if (let Some(returnType) <- symbol.returnType) {
                     if (repeats(tag.description, returnType.spelling, ["返回", "return", "returns"])) {
-                        findings.add(Diagnostic("warning", "CJDOC3042",
+                            findings.add(Diagnostic("warning", "CJDOC3049",
                             "trivial-return-description: description repeats the return type",
                             source: Some(symbol.source), symbolId: Some(symbol.id)))
                     }
@@ -66,7 +66,7 @@ public func documentationQualityDiagnostics(symbol: SymbolDoc, projectName: Stri
     }
     for (parameter in symbol.parameters where !parameter.name.startsWith("_")) {
         if (trivialParameterDocumentation(parameter)) {
-            findings.add(Diagnostic("warning", "CJDOC3041",
+            findings.add(Diagnostic("warning", "CJDOC3048",
                 "trivial-param-description: description repeats parameter '${parameter.name}'",
                 source: Some(symbol.source), symbolId: Some(symbol.id)))
         }

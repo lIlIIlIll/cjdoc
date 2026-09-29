@@ -14,7 +14,7 @@ internal func appendDocumentationQualityArtifact(artifacts: RenderArtifactCollec
     for (symbol in projection.visibleSymbols) {
         var trivialSummary = false
         for (finding in documentationQualityDiagnostics(symbol, documentation.project.name)) {
-            if (finding.code == "CJDOC3040") { trivialSummary = true }
+            if (finding.code == "CJDOC3047") { trivialSummary = true }
             if (!first) { findings.append(",") }; first = false
             findings.append("{\"symbolId\": "); appendSearchJsonString(findings, symbol.id)
             findings.append(", \"code\": "); appendSearchJsonString(findings, finding.code)

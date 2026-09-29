@@ -47,8 +47,8 @@ GOLDEN_NAMES = (
     "path-dependencies",
 )
 
-CURRENT_GOLDEN_VERSION = 10
-LEGACY_GOLDEN_VERSIONS = (6, 7, 8, 9)
+CURRENT_GOLDEN_VERSION = 11
+LEGACY_GOLDEN_VERSIONS = (6, 7, 8, 9, 10)
 
 SCHEMA_NAMES = (
     "doc-ir",
@@ -57,6 +57,7 @@ SCHEMA_NAMES = (
     "doc-ir-v8",
     "doc-ir-v9",
     "doc-ir-v10",
+    "doc-ir-v11",
     "diagnostics",
     "cfg-matrix",
     "search-index",
@@ -79,12 +80,13 @@ SCHEMA_CONTRACTS = {
     ),
     "doc-ir": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-        "cjdoc.doc-ir/10",
+        "cjdoc.doc-ir/11",
         ("schemaVersion", "generator", "status", "project", "configuration", "providers",
          "modules", "packages", "files", "declarations", "assets", "orphanDocComments",
          "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations",
          "diagnostics"),
     ),
+
     "doc-ir-v6": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
         "cjdoc.doc-ir/6",
@@ -93,6 +95,7 @@ SCHEMA_CONTRACTS = {
          "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations",
          "diagnostics"),
     ),
+
     "doc-ir-v7": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
         "cjdoc.doc-ir/7",
@@ -125,10 +128,20 @@ SCHEMA_CONTRACTS = {
          "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations",
          "diagnostics"),
     ),
+    "doc-ir-v11": (
+        "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v11.schema.json",
+        "cjdoc.doc-ir/11",
+        ("schemaVersion", "generator", "status", "project", "configuration", "providers",
+         "modules", "packages", "files", "declarations", "assets", "orphanDocComments",
+         "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations",
+         "diagnostics"),
+    ),
+
     "diagnostics": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/diagnostics.schema.json",
         "cjdoc.diagnostics/2", ("schemaVersion", "diagnostics"),
     ),
+
     "cfg-matrix": (
         "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/cfg-matrix.schema.json",
         "cjdoc.cfg-matrix/2", ("schemaVersion", "generator", "profiles"),
