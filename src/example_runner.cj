@@ -11,7 +11,7 @@ import std.time.*
 import std.posix.{killpg, SIGKILL}
 
 @When[os == "Windows"]
-@CallingConv[STDCALL]
+@CallingConv[CDECL]
 foreign {
     func CreateJobObjectW(attributes: CPointer<Unit>,
         name: CPointer<UInt16>): CPointer<Unit>
