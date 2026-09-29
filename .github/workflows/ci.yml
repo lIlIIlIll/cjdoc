@@ -433,56 +433,58 @@ jobs:
             rm -rf "${backup_dir}"
           }
           trap restore_manifests EXIT
-          patch_dependency_optimization=0
+          patch_fixture_entry=0
           if [[ "${RUNNER_OS:-}" == 'Linux' && "$PWD" != "${workspace}" ]]; then
-            patch_dependency_optimization=1
+            patch_fixture_entry=1
           fi
-          python - "${manifest}" "${workspace}/cjpm.lock" "${backup_dir}" \
-            "${patch_dependency_optimization}" <<'PY'
+          python - "${manifest}" "${backup_dir}" "${patch_fixture_entry}" <<'PY'
           from pathlib import Path
           import shutil
           import sys
           import tomllib
 
           root_manifest = Path(sys.argv[1])
-          lock_path = Path(sys.argv[2])
-          backup_dir = Path(sys.argv[3])
-          patch_dependencies = sys.argv[4] == "1"
+          backup_dir = Path(sys.argv[2])
+          patch_fixture_entry = sys.argv[3] == "1"
           manifests = [(root_manifest, "cjdoc")]
-          if patch_dependencies:
-              locked = tomllib.loads(lock_path.read_text(encoding="utf-8"))
-              requires = locked.get("requires")
-              if not isinstance(requires, dict):
-                  raise SystemExit("cjpm.lock has no dependency table")
-              cache_root = Path.home() / ".cjpm" / "git"
-              for name in ("markdown", "yjson"):
-                  dependency = requires.get(name)
-                  if not isinstance(dependency, dict) or not dependency.get("commitId"):
-                      raise SystemExit(f"cjpm.lock has no pinned {name} dependency")
-                  dependency_manifest = cache_root / name / dependency["commitId"] / "cjpm.toml"
-                  manifests.append((dependency_manifest, name))
+          if patch_fixture_entry:
+              manifests.append((Path.cwd() / "cjpm.toml", "provider_plugin_fixture"))
 
           needle = 'override-compile-option = ""'
+          updates = []
           for manifest, expected_name in manifests:
               contents = manifest.read_text(encoding="utf-8")
               package = tomllib.loads(contents).get("package")
               if not isinstance(package, dict) or package.get("name") != expected_name:
                   raise SystemExit(f"unexpected package manifest for {expected_name}")
-              if contents.count(needle) != 1:
-                  raise SystemExit(f"expected one default override-compile-option in {manifest}")
+              override = package.get("override-compile-option")
+              if override == "-O1":
+                  updated = contents
+              elif override == "":
+                  if contents.count(needle) != 1:
+                      raise SystemExit(f"expected one default override-compile-option in {manifest}")
+                  updated = contents.replace(needle, 'override-compile-option = "-O1"', 1)
+              elif override is None:
+                  package_header = "[package]\n"
+                  if contents.count(package_header) != 1:
+                      raise SystemExit(f"expected one package table in {manifest}")
+                  updated = contents.replace(
+                      package_header,
+                      package_header + '  override-compile-option = "-O1"\n',
+                      1,
+                  )
+              else:
+                  raise SystemExit(f"unexpected compile override for {expected_name}")
+              updates.append((manifest, updated))
 
           backup_dir.mkdir(parents=True, exist_ok=True)
           paths_file = backup_dir / "manifest-paths"
-          for index, (manifest, _) in enumerate(manifests):
+          for index, (manifest, _) in enumerate(updates):
               shutil.copy2(manifest, backup_dir / f"{index}.toml")
               with paths_file.open("ab") as stream:
                   stream.write(str(manifest).encode("utf-8") + b"\0")
-          for manifest, _ in manifests:
-              contents = manifest.read_text(encoding="utf-8")
-              manifest.write_text(
-                  contents.replace(needle, 'override-compile-option = "-O1"', 1),
-                  encoding="utf-8",
-              )
+          for manifest, contents in updates:
+              manifest.write_text(contents, encoding="utf-8")
           PY
           set +e
           "${CJDOC_REAL_CJPM}" "$@"
