@@ -68,8 +68,15 @@ def verify_vendor(repo: Path) -> dict[str, object]:
     dependencies = root_manifest.get("dependencies")
     if not isinstance(dependencies, dict):
         raise ValueError("root dependencies must be a TOML table")
-    if set(dependencies) != {"markdown", "yjson", "yjson_algorithms"}:
+    if set(dependencies) != {
+        "markdown", "yjson", "yjson_algorithms", "cjdoc_chir_protocol"
+    }:
         raise ValueError("root dependency inventory does not match audited provenance")
+
+    protocol = dependencies.get("cjdoc_chir_protocol")
+    if protocol != {"path": "tools/chir-protocol", "output-type": "static"}:
+        raise ValueError("CHIR protocol dependency must use the audited in-repository package")
+
     markdown = dependencies.get("markdown")
     yjson = dependencies.get("yjson")
     vendored = dependencies.get("yjson_algorithms")

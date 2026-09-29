@@ -78,7 +78,8 @@ class ReleaseToolsTestSupport:
             "[dependencies]\n"
             f"markdown={{git=\"https://github.com/lIlIIlIll/markdown.git\",commitId=\"{MARKDOWN_COMMIT}\",output-type=\"static\"}}\n"
             f"yjson={{git=\"https://github.com/lIlIIlIll/yjson.git\",commitId=\"{YJSON_COMMIT}\",output-type=\"static\"}}\n"
-            "yjson_algorithms={path=\"vendor/yjson_algorithms\",output-type=\"static\"}\n",
+            "yjson_algorithms={path=\"vendor/yjson_algorithms\",output-type=\"static\"}\n"
+            "cjdoc_chir_protocol={path=\"tools/chir-protocol\",output-type=\"static\"}\n",
             encoding="utf-8",
         )
         (root / "cjpm.lock").write_text(
