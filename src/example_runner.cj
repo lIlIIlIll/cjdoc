@@ -196,11 +196,11 @@ private func executeExampleProgram(executable: Path): ExampleProcessResult {
 private func isRunnableExampleFile(path: Path): Bool {
     try { FileInfo(path).isRegular() } catch (_: Exception) { false }
 }
-
-// `-o` is honoured literally on Linux, while some targets append an executable suffix,
-// so the artifact is located by listing the directory instead of building a
-// platform-conditional name.
+// The -o path is literal on Linux; Windows may append .exe. Prefer that exact
+// executable name, then fall back to a unique suffixed artifact from other targets.
 private func findExampleExecutable(temporary: Path): ?Path {
+    let suffixed = temporary.join("${EXAMPLE_RUN_OUTPUT_BASE}.exe")
+    if (isRunnableExampleFile(suffixed)) { return Some(suffixed) }
     let literal = temporary.join(EXAMPLE_RUN_OUTPUT_BASE)
     if (isRunnableExampleFile(literal)) { return Some(literal) }
     let candidates = ArrayList<Path>()
@@ -306,7 +306,7 @@ internal func runExampleTarget(documentation: DocumentationSet, unit: ExampleCom
                     executeExampleProgram(executable), generated, temporary)
             } catch (error: Exception) {
                 addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3074",
-                    "@example '${label}' could not be executed: ${error.message}")
+                    "@example '${label}' could not be executed (artifact extension '${executable.extensionName}'): ${error.message}")
             }
         case None => ()
     }
