@@ -25,11 +25,20 @@ private func normalizeRepositoryRoot(repositoryRoot: ?String): ?String {
 }
 public class ChirOptions {
     public let compilerExecutable: String
+    public let workerExecutable: ?String
     private let importPathsStorage: ArrayList<String>
 
-    public init(compilerExecutable!: String = "cjc", importPaths!: Array<String> = []) {
+    public init(compilerExecutable!: String = "cjc", importPaths!: Array<String> = [],
+        workerExecutable!: ?String = None) {
         if (compilerExecutable.trimAscii().isEmpty()) {
             throw IllegalArgumentException("CHIR compiler executable cannot be empty")
+        }
+        match (workerExecutable) {
+            case Some(path) =>
+                if (path.trimAscii().isEmpty()) {
+                    throw IllegalArgumentException("CHIR worker executable cannot be empty")
+                }
+            case None => ()
         }
         for (path in importPaths) {
             if (path.trimAscii().isEmpty()) {
@@ -37,6 +46,7 @@ public class ChirOptions {
             }
         }
         this.compilerExecutable = compilerExecutable
+        this.workerExecutable = workerExecutable
         this.importPathsStorage = ArrayList<String>(importPaths)
     }
 

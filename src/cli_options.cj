@@ -9,6 +9,7 @@ internal class NewCliOptions {
     var semanticExplicit = false
     var cjcExecutable = "cjc"
     var cjcExplicit = false
+    var chirWorkerExecutable: ?String = None
     let chirImportPaths = ArrayList<String>()
     var project = "."
     var projectExplicit = false
@@ -70,6 +71,7 @@ internal func newUsage(): String {
     "usage:\n" +
     "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout] [--doc-version <version>]\n" +
     "                 [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
+    "                 [--chir-worker <executable>]\n" +
     "                 [--audience external|package|all] [--lint-profile off|standard|strict] [--jobs 1..64]\n" +
     "                 [--check-examples]\n" +
     "                 [--cfg NAME=VALUE] [--include-path-dependencies] [--include-cached-dependencies]\n" +
@@ -77,6 +79,7 @@ internal func newUsage(): String {
     "                 [--cache-dir <dir>|--no-cache] [--force-owned]\n" +
     "                 [--locale zh-CN|en] [--markdown-layout site|single]\n" +
     "  cjdoc check [--project <dir>] [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
+    "              [--chir-worker <executable>]\n" +
     "              [--deny-warnings] [--lint-profile off|standard|strict] [--check-examples]\n" +
     "              [--api-surface-baseline <file>] [--min-symbol-coverage 0..100] [--min-parameter-coverage 0..100]\n" +
     "  cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
@@ -130,6 +133,10 @@ private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>,
         case "--cjc" =>
             options.cjcExecutable = requireNonEmptyCliValue(args, index, "--cjc")
             options.cjcExplicit = true
+            Some(index + 2)
+        case "--chir-worker" =>
+            options.chirWorkerExecutable = Some(
+                requireNonEmptyCliValue(args, index, "--chir-worker"))
             Some(index + 2)
         case "--project" =>
             options.project = requireCliValue(args, index, "--project")
@@ -297,7 +304,8 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
         !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty() ||
         options.docVersion.isSome() || options.agentFull || options.servePortExplicit ||
         options.serveOpenExplicit || options.checkExamples || !options.formats.isEmpty() ||
-        options.semanticExplicit || options.cjcExplicit || !options.chirImportPaths.isEmpty() ||
+        options.semanticExplicit || options.cjcExplicit ||
+        options.chirWorkerExecutable.isSome() || !options.chirImportPaths.isEmpty() ||
         options.localeExplicit || options.markdownLayoutExplicit ||
         options.versionSubcommand != "" || !options.versionInputs.isEmpty() ||
         !options.versionLabels.isEmpty() || !options.versionChannels.isEmpty() ||
@@ -323,12 +331,15 @@ private func validateCliOptions(options: NewCliOptions): Unit {
         throw IllegalArgumentException("--semantic must be source or chir")
     }
     if (options.command != "generate" && options.command != "check" &&
-        (options.semanticExplicit || options.cjcExplicit || !options.chirImportPaths.isEmpty())) {
+        (options.semanticExplicit || options.cjcExplicit ||
+            options.chirWorkerExecutable.isSome() || !options.chirImportPaths.isEmpty())) {
         throw IllegalArgumentException("semantic options are only valid for generate and check")
     }
     if (options.semanticMode == "source" &&
-        (options.cjcExplicit || !options.chirImportPaths.isEmpty())) {
-        throw IllegalArgumentException("--cjc and --chir-import-path require --semantic chir")
+        (options.cjcExplicit || options.chirWorkerExecutable.isSome() ||
+            !options.chirImportPaths.isEmpty())) {
+        throw IllegalArgumentException(
+            "--cjc, --chir-worker, and --chir-import-path require --semantic chir")
     }
     for (threshold in [options.minSymbolCoverage, options.minParameterCoverage]) {
         if (threshold.isSome() && (threshold.getOrThrow() < 0 || threshold.getOrThrow() > 100)) {

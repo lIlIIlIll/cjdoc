@@ -47,8 +47,7 @@ public class DocumentationEngine {
             FactorySemanticProviderAdapter(request.providerFactories[0])
         } else {
             match (request.chir) {
-                case Some(options) => AutoChirSemanticProvider(options,
-                    workerExecutable: request.astPreflightExecutable)
+                case Some(options) => AutoChirSemanticProvider(options)
                 case None => defaultSemanticProvider()
             }
         }

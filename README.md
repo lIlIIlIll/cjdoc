@@ -147,7 +147,7 @@ cjdoc generate --project . \
   --format html
 ```
 
-`--format` 可以重复指定。默认语义后端是 `source`；要显式使用同一版本 Cangjie toolchain 生成 raw CHIR 并做结构化 enrichment，可在 `generate` 或 `check` 上使用 `--semantic chir`。`--cjc <path>` 和重复的 `--chir-import-path <dir>` 只在 CHIR 模式有效；失败时保留 source declarations 并报告 `CJDOC2101`–`CJDOC2106` warning。`render` 只消费已有 Doc IR。完整任务说明见 [`docs/usage.md`](docs/usage.md)；workspace、依赖、条件编译、缓存和 CI 见 [`docs/advanced-usage.md`](docs/advanced-usage.md)。
+`--format` 可以重复指定。默认语义后端为 `source`。显式启用 CHIR enrichment 时，仅 `generate`/`check` 接受 `--semantic chir`，并且必须提供独立构建的 `--chir-worker <path>`；worker 实现位于 `tools/chir-worker`，只有该包依赖 `stdx.chir`。可用 `--cjc <path>` 和重复的 `--chir-import-path <dir>` 配置 worker。缺少 worker 或 CHIR 失败时，source declarations 会保留并产生 `CJDOC2101`–`CJDOC2106` warning。`render` 只消费已有 Doc IR。完整任务说明见 [`docs/usage.md`](docs/usage.md)；workspace、依赖、条件编译、缓存和 CI 见 [`docs/advanced-usage.md`](docs/advanced-usage.md)。
 
 ## 常见问题
 

@@ -4,6 +4,23 @@ import std.env.*
 import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
+import cjdoc.model as public_model
+
+private func chirTestOptions(compilerExecutable!: String = "cjc"): ChirOptions {
+    ChirOptions(compilerExecutable: compilerExecutable,
+        workerExecutable: getVariable("CJDOC_CHIR_WORKER"))
+}
+
+private func chirTestReportsMissingWorker(documentation: public_model.DocumentationSet): Bool {
+    for (diagnostic in documentation.diagnostics) {
+        if (diagnostic.code == "CJDOC2101" &&
+            diagnostic.message.contains("CHIR worker executable is not configured")) {
+            return true
+        }
+    }
+    false
+}
+
 @Test
 class ChirPublicContracts {
     @TestCase
@@ -71,8 +88,13 @@ class ChirPublicContracts {
 
             let documentation = DocumentationEngine().generate(
                 GenerationRequest(temporary.toString(), lintProfile: "off",
-                    includePathDependencies: true, chir: Some(ChirOptions()),
+                    includePathDependencies: true, chir: Some(chirTestOptions()),
                     astPreflightExecutable: Some("target/release/bin/main")))
+            if (!getVariable("CJDOC_CHIR_WORKER").isSome()) {
+                @Expect(chirTestReportsMissingWorker(documentation), true)
+                @Expect(documentation.declarations.size > 0, true)
+                return
+            }
             var matchedFunctions: Int64 = 0
             for (declaration in documentation.declarations) {
                 if (declaration.packageName != "extension_identity" ||
@@ -89,12 +111,16 @@ class ChirPublicContracts {
     @TestCase
     func chirOptionsCopyInputsAndRejectInvalidValues(): Unit {
         let paths = ["existing-import-root"]
-        let options = ChirOptions(compilerExecutable: "cjc", importPaths: paths)
+        let worker = Some("worker-executable")
+        let options = ChirOptions(compilerExecutable: "cjc", importPaths: paths,
+            workerExecutable: worker)
         paths[0] = "mutated-after-construction"
         @Expect(options.compilerExecutable, "cjc")
+        @Expect(options.workerExecutable, worker)
         @Expect(options.importPaths[0], "existing-import-root")
         @ExpectThrows[IllegalArgumentException](ChirOptions(compilerExecutable: " "))
         @ExpectThrows[IllegalArgumentException](ChirOptions(importPaths: [""]))
+        @ExpectThrows[IllegalArgumentException](ChirOptions(workerExecutable: Some(" ")))
     }
 
     @TestCase
@@ -148,11 +174,15 @@ class ChirPublicContracts {
                 """.toArray())
             let documentation = DocumentationEngine().generate(
                 GenerationRequest(temporary.toString(), lintProfile: "off",
-                    includePathDependencies: true, chir: Some(ChirOptions()),
+                    includePathDependencies: true, chir: Some(chirTestOptions()),
                     astPreflightExecutable: Some("target/release/bin/main")))
             @Expect(documentation.schemaVersion, "cjdoc.doc-ir/11")
             @Expect(documentation.providers[0].name, "chir")
             @Expect(documentation.declarations.size > 0, true)
+            if (!getVariable("CJDOC_CHIR_WORKER").isSome()) {
+                @Expect(chirTestReportsMissingWorker(documentation), true)
+                return
+            }
             var compilerFailure = ""
             for (diagnostic in documentation.diagnostics) {
                 if (diagnostic.code == "CJDOC2101" ||
@@ -178,11 +208,15 @@ class ChirPublicContracts {
     @TestCase
     func chirSemanticFixtureUsesStructuredPackageRecords(): Unit {
         let documentation = DocumentationEngine().generate(
-        GenerationRequest("tests/fixtures/projects/chir_semantics", lintProfile: "off",
-                chir: Some(ChirOptions()),
+            GenerationRequest("tests/fixtures/projects/chir_semantics", lintProfile: "off",
+                chir: Some(chirTestOptions()),
                 astPreflightExecutable: Some("target/release/bin/main")))
         @Expect(documentation.providers[0].name, "chir")
         @Expect(documentation.declarations.size > 0, true)
+        if (!getVariable("CJDOC_CHIR_WORKER").isSome()) {
+            @Expect(chirTestReportsMissingWorker(documentation), true)
+            return
+        }
         var compilerUnavailable = ""
         for (diagnostic in documentation.diagnostics) {
             if (diagnostic.code == "CJDOC2101") {
@@ -257,8 +291,13 @@ class ChirPublicContracts {
 
             let documentation = DocumentationEngine().generate(
                 GenerationRequest(temporary.toString(), lintProfile: "off",
-                    includePathDependencies: true, chir: Some(ChirOptions()),
+                    includePathDependencies: true, chir: Some(chirTestOptions()),
                     astPreflightExecutable: Some("target/release/bin/main")))
+            if (!getVariable("CJDOC_CHIR_WORKER").isSome()) {
+                @Expect(chirTestReportsMissingWorker(documentation), true)
+                @Expect(documentation.declarations.size > 0, true)
+                return
+            }
             var rootApiState = "missing"
             for (declaration in documentation.declarations) {
                 if (declaration.name == "rootApi" && declaration.packageName == "collision") {
@@ -274,8 +313,8 @@ class ChirPublicContracts {
     @TestCase
     func failedChirCompilationPreservesSourceDeclarations(): Unit {
         let documentation = DocumentationEngine().generate(
-        GenerationRequest("tests/fixtures/projects/basic", lintProfile: "off",
-                chir: Some(ChirOptions(compilerExecutable: "missing-cjc-for-cjdoc-test")),
+            GenerationRequest("tests/fixtures/projects/basic", lintProfile: "off",
+                chir: Some(chirTestOptions(compilerExecutable: "missing-cjc-for-cjdoc-test")),
                 astPreflightExecutable: Some("target/release/bin/main")))
         @Expect(documentation.declarations.size, 25)
         var compilerFailureCode = ""

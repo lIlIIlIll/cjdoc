@@ -29,6 +29,17 @@ else
 fi
 "${python_cmd}" scripts/verify_repository_inputs.py --repo "${repo_root}" \
     --require-tracked --legacy-binary "${binary}"
+worker_project="${repo_root}/tools/chir-worker"
+worker_binary="${worker_project}/target/release/bin/main"
+if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
+    worker_binary="${worker_binary}.exe"
+fi
+(cd "${worker_project}" && cjpm build --jobs 1)
+if [[ ! -x "${worker_binary}" && ! ( -f "${worker_binary}" && ( "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ) ) ]]; then
+    echo "CHIR worker executable was not produced at ${worker_binary}" >&2
+    exit 1
+fi
+export CJDOC_CHIR_WORKER="${worker_binary}"
 cjpm test --jobs 1
 "${python_cmd}" -m unittest discover -s scripts -p 'test_*.py'
 
@@ -36,6 +47,18 @@ cjpm test --jobs 1
     --directory "${check_dir}" --allow-missing >/dev/null
 rm -rf "${check_dir}"
 mkdir -p "${check_dir}/schemas"
+
+"${binary}" generate --project tests/fixtures/projects/chir_semantics \
+    --semantic chir --chir-worker "${worker_binary}" --format json --stdout \
+    >"${check_dir}/chir-worker-cli.json" 2>"${check_dir}/chir-worker-cli.stderr"
+"${python_cmd}" -c 'import json,sys; document=json.load(open(sys.argv[1], encoding="utf-8")); names={item["name"] for item in document["declarations"]}; assert document["providers"][0]["name"]=="chir" and {"State","extra"} <= names and not any(item["code"]=="CJDOC2101" for item in document["diagnostics"])' \
+    "${check_dir}/chir-worker-cli.json"
+
+"${binary}" generate --project tests/fixtures/projects/basic --semantic chir \
+    --format json --stdout >"${check_dir}/chir-unconfigured-cli.json" \
+    2>"${check_dir}/chir-unconfigured-cli.stderr"
+"${python_cmd}" -c 'import json,sys; document=json.load(open(sys.argv[1], encoding="utf-8")); assert len(document["declarations"])==25 and any(item["code"]=="CJDOC2101" and "worker executable is not configured" in item["message"] for item in document["diagnostics"])' \
+    "${check_dir}/chir-unconfigured-cli.json"
 
 for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 doc-ir-v11 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \

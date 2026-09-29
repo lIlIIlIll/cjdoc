@@ -2,6 +2,7 @@ package cjdoc
 
 import cjdoc.model as public_model
 import cjdoc.provider as public_provider
+import cjdoc_chir_protocol.*
 import std.collection.*
 import std.env.*
 import std.fs.*
@@ -67,11 +68,9 @@ private func chirCompileOptionValueSupported(value: String): Bool {
 // were present in the source view supplied by the public adapter.
 internal class AutoChirSemanticProvider <: SemanticProvider {
     private let options: ChirOptions
-    private let workerExecutable: ?String
 
-    init(options: ChirOptions, workerExecutable!: ?String = None) {
+    init(options: ChirOptions) {
         this.options = options
-        this.workerExecutable = workerExecutable
     }
 
     public func providerName(): String { "chir" }
@@ -81,8 +80,7 @@ internal class AutoChirSemanticProvider <: SemanticProvider {
     }
 
     public func analyze(source: SourceSnapshot): SemanticResult {
-        let factory = ChirSemanticProviderFactory(source, options, providerVersion(),
-            workerExecutable: workerExecutable)
+        let factory = ChirSemanticProviderFactory(source, options, providerVersion())
         try {
             return FactorySemanticProviderAdapter(factory).analyze(source)
         } finally {
@@ -139,7 +137,6 @@ internal func chirExtensionTargetMatch(summary: ChirWorkerSummary,
 internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFactory {
     private let source: SourceSnapshot
     private let options: ChirOptions
-    private let workerExecutable: ?String
     private let identityVersion: String
     private let unsupportedManifestReason: ?String
     private let compiled = HashSet<String>()
@@ -148,11 +145,9 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
     private let compiling = HashSet<String>()
     private let artifactRoots = HashMap<String, String>()
     private let retainedDirectories = ArrayList<Path>()
-    init(source: SourceSnapshot, options: ChirOptions, identityVersion: String,
-        workerExecutable!: ?String = None) {
+    init(source: SourceSnapshot, options: ChirOptions, identityVersion: String) {
         this.source = source
         this.options = options
-        this.workerExecutable = workerExecutable
         this.identityVersion = identityVersion
         this.unsupportedManifestReason = chirManifestUnsupportedReason(source.manifestText)
     }
@@ -566,22 +561,25 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
             let response = temporary.join("response.txt")
             let importPaths = dependencyImportPaths(moduleId, packageName)
             let cfgValues = chirCfgValues()
+            let executable = match (options.workerExecutable) {
+                case Some(value) => value
+                case None => return Some("CJDOC2101: CHIR worker executable is not configured")
+            }
             writeChirWorkerRequest(request, normalizedChirCompiler(), moduleName.getOrThrow(),
                 packageName, importPaths, cfgValues, sourcePaths)
-            let workerCode = match (workerExecutable) {
-                case Some(executable) =>
-                    let workerPath = try { canonicalize(Path(executable)).toString() } catch (_: Exception) { executable }
-                    let (code, stdout, stderr) = executeWithBoundedOutput(workerPath,
-                        ["--internal-chir-analyze", request.toString(), response.toString()],
-                        workingDirectory: Some(temporary))
-                    if (code != 0) {
-                        return Some("CHIR worker failed: " + boundedChirCompilerOutput(stdout, stderr))
-                    }
-                    code
-                case None => runChirAnalyzeWorker(request.toString(), response.toString())
+            let workerPath = try {
+                canonicalize(Path(executable)).toString()
+            } catch (_: Exception) {
+                executable
             }
-            if (workerCode != 0) { return Some("CHIR worker could not be started") }
-            let summary = readChirWorkerResponse(response)
+            let (workerCode, stdout, stderr) = executeWithBoundedOutput(workerPath,
+                ["--internal-chir-analyze", request.toString(), response.toString()],
+                workingDirectory: Some(temporary))
+            if (workerCode != 0) {
+                return Some("CHIR worker failed: " + boundedChirCompilerOutput(stdout, stderr))
+            }
+            let summary = readChirWorkerResponse(
+                readTextBounded(response, MAX_CHIR_RESPONSE_BYTES))
             if (summary.functionCount < 0 || summary.typeCount < 0 || summary.extendCount < 0) {
                 return Some("CHIR worker returned invalid declaration counts")
             }

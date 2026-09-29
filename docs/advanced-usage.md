@@ -323,8 +323,8 @@ python3 scripts/with_stdx.py --variant static -- cjpm build
 
 - 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/11`。
 - 默认 `--semantic source` 使用 `std.ast` 和源码 lexer 做结构化源码遍历；注释仍来自原始源码，Doc IR 和 renderer 不依赖 CHIR。
-- `generate`/`check` 可显式使用 `--semantic chir`。cjdoc 会从本次捕获的源码调用 `cjc --emit-chir=raw`，再通过 `stdx.chir` worker 做结构化 enrichment；失败时保留 source declarations，并产生 `CJDOC2101`–`CJDOC2106` warning。
-- `render` 只消费已有 Doc IR，不能使用 `--semantic`、`--cjc` 或 `--chir-import-path`。
+- `generate`/`check` 可显式使用 `--semantic chir`，并须通过 `--chir-worker <path>` 指向独立 worker executable。只有 `tools/chir-worker` package 导入 `stdx.chir`；core 通过受限文件协议调用它。worker 未配置或 CHIR 处理失败时保留 source declarations，并产生 `CJDOC2101`–`CJDOC2106` warning。
+- `render` 只消费已有 Doc IR，不能使用 `--semantic`、`--cjc`、`--chir-worker` 或 `--chir-import-path`。
 - 宏调用和没有显式 `--cfg` 输入的条件编译不会被强行展开。
 - 单次扫描、单个源码文件和辅助输入都有大小及数量限制，超限时会保留 partial 结果并输出诊断。
 - POSIX 平台可以在满足安全条件时嵌入本地图片；当前 Windows 不嵌入本地 asset，并会产生 `CJDOC4026` 和 partial 状态。
@@ -346,6 +346,7 @@ python3 scripts/with_stdx.py --variant static -- cjpm build
 | `--semantic <source|chir>` | `generate`, `check` | `source` | 选择 source 或显式 CHIR enrichment |
 | `--cjc <path>` | `generate`, `check` | `cjc` | CHIR 模式调用的 compiler；必须与 `--semantic chir` 同时使用 |
 | `--chir-import-path <dir>` | `generate`, `check` | 无 | CHIR 编译的只读 import root，可重复 |
+| `--chir-worker <path>` | `generate`, `check` | 无 | 独立 CHIR worker executable；未配置时保留 source declarations 并报告 `CJDOC2101` |
 | `--include-path-dependencies` | `generate`, `check` | 关闭 | 扫描 manifest 中的 path dependency |
 | `--include-cached-dependencies` | `generate`, `check` | 关闭 | 扫描可发现的 cjpm cache dependency |
 | `--dependency-source NAME=PATH` | `generate`, `check` | 无 | 显式提供只读 dependency source，可重复 |

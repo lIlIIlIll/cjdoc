@@ -1,16 +1,8 @@
 [package]
 cjc-version = "1.2.0"
-name = "cjdoc"
-organization = ""
-description = "Cangjie API documentation generator"
-version = "0.7.2"
-target-dir = ""
-script-dir = ""
+name = "cjdoc_chir_worker"
+version = "0.1.0"
 output-type = "executable"
-compile-option = ""
-override-compile-option = ""
-link-option = ""
-package-configuration = {}
 
 [target.x86_64-unknown-linux-gnu]
 link-option = "${CJDOC_STDX_LINK_OPTIONS}"
@@ -33,7 +25,4 @@ link-option = "${CJDOC_STDX_LINK_OPTIONS}"
     path-option = ["${CANGJIE_STDX_PATH}"]
 
 [dependencies]
-"markdown" = { git = "https://github.com/lIlIIlIll/markdown.git", commitId = "db4f9527944b589db8436669f1d255192388cee2", output-type = "static" }
-"yjson" = { git = "https://github.com/lIlIIlIll/yjson.git", commitId = "54b4965dee0f0b96710cbc678ec5ec9a126b055c", output-type = "static" }
-"yjson_algorithms" = { path = "vendor/yjson_algorithms", output-type = "static" }
-"cjdoc_chir_protocol" = { path = "tools/chir-protocol", output-type = "static" }
+"cjdoc_chir_protocol" = { path = "../chir-protocol", output-type = "static" }

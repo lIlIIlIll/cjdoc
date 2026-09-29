@@ -374,7 +374,8 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
     }
     let chirOptions: ?ChirOptions = if (options.semanticMode == "chir") {
         Some(ChirOptions(compilerExecutable: options.cjcExecutable,
-            importPaths: options.chirImportPaths.toArray()))
+            importPaths: options.chirImportPaths.toArray(),
+            workerExecutable: options.chirWorkerExecutable))
     } else {
         None
     }
@@ -399,8 +400,7 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
     var documentation = match (generationRequest) {
         case Some(request) =>
             let semanticProvider: SemanticProvider = match (request.chir) {
-                case Some(chir) => AutoChirSemanticProvider(chir,
-                    workerExecutable: request.astPreflightExecutable)
+                case Some(chir) => AutoChirSemanticProvider(chir)
                 case None => defaultSemanticProvider()
             }
             let (generatedDocumentation, generatedOrigins) = generatePublicDocumentationWithSource(request,

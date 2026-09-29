@@ -91,11 +91,14 @@ class NewCliRegressionTest {
     @TestCase
     func chirOptionsAreExplicitAndCommandScoped(): Unit {
         let options = parseNewCli(["generate", "--semantic", "chir", "--cjc", "custom-cjc",
-            "--chir-import-path", "dep-a", "--chir-import-path", "dep-b"])
+            "--chir-worker", "custom-worker", "--chir-import-path", "dep-a",
+            "--chir-import-path", "dep-b"])
         @Expect(options.semanticMode, "chir")
         @Expect(options.cjcExecutable, "custom-cjc")
+        @Expect(options.chirWorkerExecutable, Some("custom-worker"))
         @Expect(options.chirImportPaths.toArray(), ["dep-a", "dep-b"])
         @ExpectThrows[IllegalArgumentException](parseNewCli(["generate", "--cjc", "custom-cjc"]))
+        @ExpectThrows[IllegalArgumentException](parseNewCli(["generate", "--chir-worker", "worker"]))
         @ExpectThrows[IllegalArgumentException](parseNewCli(["render", "--semantic", "chir"]))
     }
 

@@ -148,13 +148,16 @@ cjdoc generate --project . --format html
 
 ## 选择语义后端
 
-普通生成默认使用 `source` 模式。需要验证同一份源码经过 Cangjie compiler 和 `stdx.chir` 结构化 API 的结果时，只在 `generate` 或 `check` 上显式选择 CHIR：
+普通生成默认使用 `source` 模式。CHIR enrichment 通过独立可执行 worker 实现；worker package 位于 cjdoc 源码仓库的 `tools/chir-worker`，只有该 package 导入 `stdx.chir`。在配置好相同 Cangjie 与 stdx target 的环境中先构建 worker：
 
 ```bash
-cjdoc generate --project . --semantic chir --format json --stdout
+(cd tools/chir-worker && cjpm build)
+cjdoc generate --project . --semantic chir \
+  --chir-worker tools/chir-worker/target/release/bin/main \
+  --format json --stdout
 ```
 
-CHIR 模式从本次源码快照编译 raw CHIR，不读取 host 上未捕获的源文件；可用 `--cjc <path>` 指定 compiler，并可重复传入 `--chir-import-path <dir>`。compiler、输入构建约束、编译、artifact/worker 协议和 overload 映射问题分别产生 `CJDOC2101`–`CJDOC2106` warning。任何 CHIR 失败都会保留 source declarations；注释和最终 Doc IR 仍由源码路径决定。
+Windows worker executable 带有 `.exe` 后缀。CHIR 模式从本次源码快照编译 raw CHIR，不读取 host 上未捕获的源文件；可用 `--cjc <path>` 指定 compiler，并可重复传入 `--chir-import-path <dir>`。worker 未配置或 compiler、输入构建约束、artifact/worker 协议、overload 映射失败时，会产生 `CJDOC2101`–`CJDOC2106` warning。任何 CHIR 失败都会保留 source declarations；注释和最终 Doc IR 仍由源码路径决定。
 
 `render` 只读取已有 Doc IR，因此不能选择 semantic backend。
 
