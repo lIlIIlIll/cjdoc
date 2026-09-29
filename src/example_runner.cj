@@ -7,6 +7,8 @@ import std.math.*
 import std.process.*
 import std.sync.*
 import std.time.*
+@When[os != "Windows"]
+import std.posix.{killpg, SIGKILL}
 
 // Run-mode limits. A `run` example is documentation, not a test suite: it must never
 // turn `cjdoc check --check-examples` into an unbounded job, and its pinned output has
@@ -19,6 +21,7 @@ private let EXAMPLE_RUN_POLL_MILLISECONDS: Int64 = 50
 // compile-only archive (`__cjdoc_example.a`) that share this temporary directory, so
 // the artifact lookup cannot mistake either of them for the executable.
 private let EXAMPLE_RUN_OUTPUT_BASE = "__cjdoc_run"
+private let EXAMPLE_RUN_SUPERVISOR_ARGUMENT = "--cjdoc-run-example-supervisor"
 
 // Cangjie entry points use a bare `main()`; `func main()` is invalid. When the
 // package already declares an entry point, staging replaces its body with a call to
@@ -29,16 +32,72 @@ internal func exampleProgramSource(unit: ExampleCompilationUnit,
     if (!unit.packageName.isEmpty()) { out.append("package ${unit.packageName}\n\n") }
     for (spelling in target.imports) { out.append(spelling); out.append("\n") }
     if (!target.imports.isEmpty()) { out.append("\n") }
+    appendExampleSupervisorSupport(out)
     if (existingMain) {
         out.append("func __cjdoc_example_runner(): Unit {\n")
     } else {
         out.append("main(): Unit {\n")
     }
+    out.append("    __cjdoc_runExampleSupervisor()\n")
     for (line in target.code.split("\n")) {
         out.append("    "); out.append(line); out.append("\n")
     }
     out.append("}\n")
     out.toString()
+}
+
+private func appendExampleSupervisorSupport(out: StringBuilder): Unit {
+    out.append("""
+        import std.env.{getCommandLine}
+        import std.io.{InputStream, OutputStream}
+        import std.process.{launch, Process, ProcessRedirect}
+        import std.sync.*
+        @When[os != "Windows"]
+        import std.posix.{setpgid}
+
+        private let __cjdoc_example_supervisor_argument = "${EXAMPLE_RUN_SUPERVISOR_ARGUMENT}"
+
+        private func __cjdoc_forwardExampleStream(stream: InputStream,
+            destination: OutputStream): Unit {
+            let buffer = Array<Byte>(8192, repeat: 0)
+            var count = stream.read(buffer)
+            while (count > 0) {
+                let forwarded = Array<Byte>(count, repeat: 0)
+                for (index in 0..count) { forwarded[index] = buffer[index] }
+                destination.write(forwarded)
+                destination.flush()
+                count = stream.read(buffer)
+            }
+        }
+
+        @When[os != "Windows"]
+        private func __cjdoc_isolateExampleProcessGroup(): Unit {
+            if (setpgid(0, 0) != 0) {
+                throw IllegalStateException("could not isolate run-example process group")
+            }
+        }
+
+        @When[os == "Windows"]
+        private func __cjdoc_isolateExampleProcessGroup(): Unit { () }
+
+        private func __cjdoc_runExampleSupervisor(): Unit {
+            let commandLine = getCommandLine()
+            if (commandLine.size < 3 ||
+                commandLine[1] != __cjdoc_example_supervisor_argument) { return }
+            __cjdoc_isolateExampleProcessGroup()
+            let example = launch(commandLine[2], [],
+                stdIn: ProcessRedirect.Discard,
+                stdOut: ProcessRedirect.Pipe,
+                stdErr: ProcessRedirect.Pipe)
+            let standardOutput = spawn { => __cjdoc_forwardExampleStream(
+                example.stdOutPipe, Process.current.stdOut) }
+            let standardError = spawn { => __cjdoc_forwardExampleStream(
+                example.stdErrPipe, Process.current.stdErr) }
+            standardOutput.get()
+            standardError.get()
+            Process.current.exit(example.wait())
+        }
+        """)
 }
 
 // Keeps the first `limit` bytes but drains to EOF, so an example that prints more than
@@ -81,12 +140,36 @@ private class ExampleProcessResult {
     }
 }
 
-// `state` is the single arbiter of the outcome: 0 running, 1 finished normally,
+// state is the single arbiter of the outcome: 0 running, 1 finished normally,
 // 2 terminated by the watchdog. The exit code of a force-killed child is not portable,
-// so it is never inspected. The watchdog lingers at most one poll interval past the end
-// of the run, which keeps the serial gate schedule free of stray threads.
+// so it is never inspected. The supervisor keeps the process-tree root alive while
+// inherited output pipes remain open.
+private func terminateExampleProcessDirectly(process: SubProcess): Unit {
+    try { process.terminate(force: true) } catch (_: Exception) { () }
+}
+
+@When[os != "Windows"]
+private func terminateExampleProcessTree(process: SubProcess): Unit {
+    if (killpg(Int32(process.pid), SIGKILL) != 0) {
+        terminateExampleProcessDirectly(process)
+    }
+}
+
+@When[os == "Windows"]
+private func terminateExampleProcessTree(process: SubProcess): Unit {
+    try {
+        let exitCode = execute("taskkill.exe", ["/F", "/T", "/PID", process.pid.toString()],
+            stdIn: ProcessRedirect.Discard, stdOut: ProcessRedirect.Discard,
+            stdErr: ProcessRedirect.Discard)
+        if (exitCode != 0) { terminateExampleProcessDirectly(process) }
+    } catch (_: Exception) {
+        terminateExampleProcessDirectly(process)
+    }
+}
+
 private func executeExampleProgram(executable: Path): ExampleProcessResult {
-    let process = launch(executable.toString(), [], stdIn: ProcessRedirect.Discard,
+    let process = launch(executable.toString(), [EXAMPLE_RUN_SUPERVISOR_ARGUMENT,
+        executable.toString()], stdIn: ProcessRedirect.Discard,
         stdOut: ProcessRedirect.Pipe, stdErr: ProcessRedirect.Pipe)
     let state = AtomicInt64(0)
     let watchdog = spawn {
@@ -95,7 +178,7 @@ private func executeExampleProgram(executable: Path): ExampleProcessResult {
             sleep(Duration.millisecond * EXAMPLE_RUN_POLL_MILLISECONDS)
             waited += EXAMPLE_RUN_POLL_MILLISECONDS
         }
-        if (state.compareAndSwap(0, 2)) { process.terminate(force: true) }
+        if (state.compareAndSwap(0, 2)) { terminateExampleProcessTree(process) }
     }
     let standardOutput = spawn { => readBoundedExampleStream(process.stdOutPipe,
         MAX_EXAMPLE_RUN_OUTPUT_BYTES) }
