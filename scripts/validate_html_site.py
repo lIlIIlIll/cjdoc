@@ -19,7 +19,7 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "0f1b5a7fc2e011a2196d3f8b8465baf7dd43f3f81940c132cd4b6082175effd0"
+CANONICAL_SEARCH_JS_SHA256 = "466c7dedfcbc1ca68ddb9ec36efb51180c06ebe3a371236f928bba4e858d31fd"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "79fe532a96603bce52c49d9fd92cea58503875a0c61f5d3475f11c337f960642"
 
 
