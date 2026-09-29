@@ -434,7 +434,8 @@ jobs:
           }
           trap restore_manifests EXIT
           patch_fixture_entry=0
-          if [[ "${RUNNER_OS:-}" == 'Linux' && "$PWD" != "${workspace}" ]]; then
+          provider_fixture="${workspace}/tests/fixtures/projects/provider_plugin"
+          if [[ "${RUNNER_OS:-}" == 'Linux' && "$PWD" == "${provider_fixture}" ]]; then
             patch_fixture_entry=1
           fi
           python - "${manifest}" "${backup_dir}" "${patch_fixture_entry}" <<'PY'
