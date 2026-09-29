@@ -6,6 +6,8 @@ export PYTHONDONTWRITEBYTECODE=1
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 python_cmd="${CJDOC_PYTHON:-python3}"
 fixture_project_root="${repo_root}/tests/fixtures/projects"
+worker_project="${repo_root}/tools/chir-worker"
+worker_target="${worker_project}/target"
 ensure_fixture_build_outputs_absent() {
     "${python_cmd}" - "${fixture_project_root}" <<'PY'
 from pathlib import Path
@@ -43,7 +45,15 @@ for target in targets:
 PY
 }
 ensure_fixture_build_outputs_absent
-trap cleanup_fixture_build_outputs EXIT
+if [[ -e "${worker_target}" || -L "${worker_target}" ]]; then
+    printf '%s\n' 'worker build output already exists; refusing destructive cleanup: tools/chir-worker/target' >&2
+    exit 1
+fi
+cleanup_generated_build_outputs() {
+    rm -rf -- "${worker_target}"
+    cleanup_fixture_build_outputs
+}
+trap cleanup_generated_build_outputs EXIT
 "${python_cmd}" "${repo_root}/scripts/safe_output_root.py" --repo "${repo_root}" \
     --directory "${repo_root}/target" --create >/dev/null
 target_root="${repo_root}/target"
@@ -68,8 +78,7 @@ else
 fi
 "${python_cmd}" scripts/verify_repository_inputs.py --repo "${repo_root}" \
     --require-tracked --legacy-binary "${binary}"
-worker_project="${repo_root}/tools/chir-worker"
-worker_binary="${worker_project}/target/release/bin/main"
+worker_binary="${worker_target}/release/bin/main"
 if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
     worker_binary="${worker_binary}.exe"
 fi
@@ -310,7 +319,7 @@ test ! -e "${provider_build_cache}"
 test ! -e "${provider_target}"
 cleanup_provider_outputs() {
     rm -rf -- "${provider_build_cache}" "${provider_target}"
-    cleanup_fixture_build_outputs
+    cleanup_generated_build_outputs
 }
 trap cleanup_provider_outputs EXIT
 (cd "${provider_project}" && cjpm run --build-args "--jobs 1")

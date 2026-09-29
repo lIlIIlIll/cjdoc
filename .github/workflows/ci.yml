@@ -411,12 +411,14 @@ jobs:
           esac
           workspace="${GITHUB_WORKSPACE}"
           runner_temp="${RUNNER_TEMP}"
+          current_directory="$PWD"
           if command -v cygpath >/dev/null 2>&1; then
             workspace="$(cygpath -u "${workspace}")"
             runner_temp="$(cygpath -u "${runner_temp}")"
+            current_directory="$(cygpath -u "${current_directory}")"
           fi
           # The provider fixture is nested but compiles this repository as a path dependency.
-          case "$PWD" in
+          case "$current_directory" in
             "${workspace}"|"${workspace}"/*) ;;
             *) exec "${CJDOC_REAL_CJPM}" "$@" ;;
           esac
@@ -435,7 +437,7 @@ jobs:
           trap restore_manifests EXIT
           patch_fixture_entry=0
           provider_fixture="${workspace}/tests/fixtures/projects/provider_plugin"
-          if [[ "${RUNNER_OS:-}" == 'Linux' && "$PWD" == "${provider_fixture}" ]]; then
+          if [[ "$current_directory" == "${provider_fixture}" ]]; then
             patch_fixture_entry=1
           fi
           python - "${manifest}" "${backup_dir}" "${patch_fixture_entry}" <<'PY'
