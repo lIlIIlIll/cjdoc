@@ -10,6 +10,20 @@ import std.time.*
 @When[os != "Windows"]
 import std.posix.{killpg, SIGKILL}
 
+@When[os == "Windows"]
+@CallingConv[STDCALL]
+foreign {
+    func CreateJobObjectW(attributes: CPointer<Unit>,
+        name: CPointer<UInt16>): CPointer<Unit>
+    func SetInformationJobObject(job: CPointer<Unit>, infoClass: Int32,
+        limits: VArray<Int64, $8>, length: UInt32): Int32
+    func OpenProcess(access: UInt32, inheritHandle: Int32,
+        processId: UInt32): CPointer<Unit>
+    func AssignProcessToJobObject(job: CPointer<Unit>,
+        process: CPointer<Unit>): Int32
+    func CloseHandle(handle: CPointer<Unit>): Int32
+}
+
 // Run-mode limits. A `run` example is documentation, not a test suite: it must never
 // turn `cjdoc check --check-examples` into an unbounded job, and its pinned output has
 // to stay small enough to fit into a diagnostic.
@@ -57,6 +71,17 @@ private func appendExampleSupervisorSupport(out: StringBuilder): Unit {
 
         private let __cjdoc_example_supervisor_argument = "${EXAMPLE_RUN_SUPERVISOR_ARGUMENT}"
 
+        @When[os == "Windows"]
+        private func __cjdoc_waitForExampleSupervisorRelease(): Unit {
+            let releaseSignal = Array<Byte>(1, repeat: 0)
+            if (Process.current.stdIn.read(releaseSignal) != 1) {
+                throw IllegalStateException("run-example supervisor was not released")
+            }
+        }
+
+        @When[os != "Windows"]
+        private func __cjdoc_waitForExampleSupervisorRelease(): Unit { () }
+
         private func __cjdoc_forwardExampleStream(stream: InputStream,
             destination: OutputStream): Unit {
             let buffer = Array<Byte>(8192, repeat: 0)
@@ -84,6 +109,7 @@ private func appendExampleSupervisorSupport(out: StringBuilder): Unit {
             let commandLine = getCommandLine()
             if (commandLine.size < 3 ||
                 commandLine[1] != __cjdoc_example_supervisor_argument) { return }
+            __cjdoc_waitForExampleSupervisorRelease()
             __cjdoc_isolateExampleProcessGroup()
             let example = launch(commandLine[2], [],
                 stdIn: ProcessRedirect.Discard,
@@ -140,37 +166,107 @@ private class ExampleProcessResult {
     }
 }
 
-// state is the single arbiter of the outcome: 0 running, 1 finished normally,
-// 2 terminated by the watchdog. The exit code of a force-killed child is not portable,
-// so it is never inspected. The supervisor keeps the process-tree root alive while
-// inherited output pipes remain open.
+// State is the single arbiter of the outcome: 0 running, 1 finished normally,
+// 2 terminated by the watchdog. On Windows, closing the job handle also terminates
+// descendants that outlive their immediate parent.
 private func terminateExampleProcessDirectly(process: SubProcess): Unit {
     try { process.terminate(force: true) } catch (_: Exception) { () }
 }
 
+@When[os == "Windows"]
+private func exampleSupervisorInputRedirect(): ProcessRedirect { ProcessRedirect.Pipe }
+
 @When[os != "Windows"]
-private func terminateExampleProcessTree(process: SubProcess): Unit {
+private func exampleSupervisorInputRedirect(): ProcessRedirect { ProcessRedirect.Discard }
+
+@When[os == "Windows"]
+private func createExampleProcessJob(process: SubProcess): CPointer<Unit> {
+    unsafe {
+        let job = CreateJobObjectW(CPointer<Unit>(), CPointer<UInt16>())
+        if (job.isNull()) {
+            throw IllegalStateException("could not create run-example process job")
+        }
+        var limits: VArray<Int64, $8> = [0, 0, 0x2000, 0, 0, 0, 0, 0]
+        if (SetInformationJobObject(job, 2, inout limits, 64) == 0) {
+            let _ = CloseHandle(job)
+            throw IllegalStateException("could not configure run-example process job")
+        }
+        let processHandle = OpenProcess(0x0101, 0, UInt32(process.pid))
+        if (processHandle.isNull()) {
+            let _ = CloseHandle(job)
+            throw IllegalStateException("could not open run-example supervisor process")
+        }
+        let assigned = AssignProcessToJobObject(job, processHandle) != 0
+        let _ = CloseHandle(processHandle)
+        if (!assigned) {
+            let _ = CloseHandle(job)
+            throw IllegalStateException("could not assign run-example supervisor to process job")
+        }
+        job
+    }
+}
+
+@When[os != "Windows"]
+private func createExampleProcessJob(process: SubProcess): CPointer<Unit> {
+    let _ = process
+    CPointer<Unit>()
+}
+
+@When[os == "Windows"]
+private func releaseExampleSupervisor(process: SubProcess): Unit {
+    let releaseSignal = Array<Byte>(1, repeat: 0)
+    process.stdInPipe.write(releaseSignal)
+    process.stdInPipe.flush()
+}
+
+@When[os != "Windows"]
+private func releaseExampleSupervisor(process: SubProcess): Unit {
+    let _ = process
+}
+
+@When[os == "Windows"]
+private func closeExampleProcessJob(job: CPointer<Unit>): Bool {
+    if (job.isNull()) { return false }
+    unsafe { CloseHandle(job) != 0 }
+}
+
+@When[os != "Windows"]
+private func closeExampleProcessJob(job: CPointer<Unit>): Bool {
+    let _ = job
+    false
+}
+
+@When[os != "Windows"]
+private func terminateExampleProcessTree(process: SubProcess,
+    job: CPointer<Unit>): Unit {
+    let _ = job
     if (killpg(Int32(process.pid), SIGKILL) != 0) {
         terminateExampleProcessDirectly(process)
     }
 }
 
 @When[os == "Windows"]
-private func terminateExampleProcessTree(process: SubProcess): Unit {
-    try {
-        let exitCode = execute("taskkill.exe", ["/F", "/T", "/PID", process.pid.toString()],
-            stdIn: ProcessRedirect.Discard, stdOut: ProcessRedirect.Discard,
-            stdErr: ProcessRedirect.Discard)
-        if (exitCode != 0) { terminateExampleProcessDirectly(process) }
-    } catch (_: Exception) {
-        terminateExampleProcessDirectly(process)
-    }
+private func terminateExampleProcessTree(process: SubProcess,
+    job: CPointer<Unit>): Unit {
+    if (!closeExampleProcessJob(job)) { terminateExampleProcessDirectly(process) }
 }
 
 private func executeExampleProgram(executable: Path): ExampleProcessResult {
     let process = launch(executable.toString(), [EXAMPLE_RUN_SUPERVISOR_ARGUMENT,
-        executable.toString()], stdIn: ProcessRedirect.Discard,
+        executable.toString()], stdIn: exampleSupervisorInputRedirect(),
         stdOut: ProcessRedirect.Pipe, stdErr: ProcessRedirect.Pipe)
+    let job = try {
+        createExampleProcessJob(process)
+    } catch (error: Exception) {
+        terminateExampleProcessDirectly(process)
+        throw error
+    }
+    try {
+        releaseExampleSupervisor(process)
+    } catch (error: Exception) {
+        if (!closeExampleProcessJob(job)) { terminateExampleProcessDirectly(process) }
+        throw error
+    }
     let state = AtomicInt64(0)
     let watchdog = spawn {
         var waited: Int64 = 0
@@ -178,7 +274,7 @@ private func executeExampleProgram(executable: Path): ExampleProcessResult {
             sleep(Duration.millisecond * EXAMPLE_RUN_POLL_MILLISECONDS)
             waited += EXAMPLE_RUN_POLL_MILLISECONDS
         }
-        if (state.compareAndSwap(0, 2)) { terminateExampleProcessTree(process) }
+        if (state.compareAndSwap(0, 2)) { terminateExampleProcessTree(process, job) }
     }
     let standardOutput = spawn { => readBoundedExampleStream(process.stdOutPipe,
         MAX_EXAMPLE_RUN_OUTPUT_BYTES) }
@@ -188,6 +284,7 @@ private func executeExampleProgram(executable: Path): ExampleProcessResult {
     let (errorBytes, errorTotal) = standardError.get()
     let exitCode = process.wait()
     let completed = state.compareAndSwap(0, 1)
+    if (completed) { let _ = closeExampleProcessJob(job) }
     watchdog.get()
     ExampleProcessResult(exitCode, outputBytes, errorBytes, outputTotal, errorTotal,
         !completed && state.load() == 2)
