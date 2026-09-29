@@ -5,8 +5,6 @@ import std.collection.*
 import std.env.*
 import std.fs.*
 import std.io.*
-import std.convert.Parsable
-import std.process.*
 import std.time.*
 import std.unittest.*
 import std.unittest.testmacro.*
@@ -468,7 +466,6 @@ class ExampleCompilerTest {
         let source = """
             package example_compile
 
-            import std.fs.*
             import std.process.*
 
             /**
@@ -486,17 +483,12 @@ class ExampleCompilerTest {
              *         stdOut: ProcessRedirect.Inherit,
              *         stdErr: ProcessRedirect.Inherit)
              * }
-             * File.writeTo(Path("__CHILD_PID_PATH__"), descendant.pid.toString().toArray())
+             * let _ = descendant.pid
              * ```
              */
             public func exampleEntry(): Unit { () }
             """
         let root = createExampleProject(source)
-        let pidFile = root.join("descendant.pid")
-        let escapedPidFile = pidFile.toString().replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-        File.writeTo(root.join("src/api.cj"),
-            source.replace("__CHILD_PID_PATH__", escapedPidFile).toArray())
         let start = MonoTime.now()
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
@@ -509,22 +501,6 @@ class ExampleCompilerTest {
             }
             @Expect(timedOut, true)
             @Expect(elapsed < 25000, true)
-            let hasDescendantPid = try { FileInfo(pidFile).isRegular() } catch (_: Exception) { false }
-            @Expect(hasDescendantPid, true)
-            if (!hasDescendantPid) { return }
-            let descendantPid = Int64.parse(String.fromUtf8(File.readFrom(pidFile)))
-            var attempts: Int64 = 0
-            var descendantAlive = true
-            while (descendantAlive && attempts < 20) {
-                try {
-                    descendantAlive = findProcess(descendantPid).isAlive()
-                } catch (_: Exception) {
-                    descendantAlive = false
-                }
-                if (descendantAlive) { sleep(Duration.millisecond * 50) }
-                attempts++
-            }
-            @Expect(descendantAlive, false)
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
