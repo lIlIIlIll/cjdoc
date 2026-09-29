@@ -196,8 +196,17 @@ private func executeExampleProgram(executable: Path): ExampleProcessResult {
 private func isRunnableExampleFile(path: Path): Bool {
     try { FileInfo(path).isRegular() } catch (_: Exception) { false }
 }
-// The -o path is literal on Linux; Windows may append .exe. Prefer that exact
-// executable name, then fall back to a unique suffixed artifact from other targets.
+@When[os == "Windows"]
+private func exampleExecutableOutputPath(temporary: Path): Path {
+    temporary.join("${EXAMPLE_RUN_OUTPUT_BASE}.exe")
+}
+
+@When[os != "Windows"]
+private func exampleExecutableOutputPath(temporary: Path): Path {
+    temporary.join(EXAMPLE_RUN_OUTPUT_BASE)
+}
+
+// Prefer the Windows executable suffix; other targets may emit their suffix via cjc.
 private func findExampleExecutable(temporary: Path): ?Path {
     let suffixed = temporary.join("${EXAMPLE_RUN_OUTPUT_BASE}.exe")
     if (isRunnableExampleFile(suffixed)) { return Some(suffixed) }
@@ -228,7 +237,7 @@ private func buildExampleExecutable(documentation: DocumentationSet,
             existingMain: existingMain).toArray())
         let (exitCode, stdout, stderr) = executeWithBoundedOutput("cjc",
             exampleCompilerArguments(documentation, unit, target, generated,
-                temporary.join(EXAMPLE_RUN_OUTPUT_BASE), sourcePaths: sourcePaths,
+                exampleExecutableOutputPath(temporary), sourcePaths: sourcePaths,
                 staticExecutable: true,
                 packageArtifacts: packageArtifacts),
             workingDirectory: Some(temporary))
