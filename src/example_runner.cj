@@ -10,19 +10,30 @@ import std.time.*
 @When[os != "Windows"]
 import std.posix.{killpg, SIGKILL}
 
+// Keep these standalone: std.ast rejects foreign blocks in cjdoc's self-documentation pass.
 @When[os == "Windows"]
 @CallingConv[CDECL]
-foreign {
-    func CreateJobObjectW(attributes: CPointer<Unit>,
-        name: CPointer<UInt16>): CPointer<Unit>
-    func SetInformationJobObject(job: CPointer<Unit>, infoClass: Int32,
-        limits: VArray<Int64, $18>, length: UInt32): Int32
-    func OpenProcess(access: UInt32, inheritHandle: Int32,
-        processId: UInt32): CPointer<Unit>
-    func AssignProcessToJobObject(job: CPointer<Unit>,
-        process: CPointer<Unit>): Int32
-    func CloseHandle(handle: CPointer<Unit>): Int32
-}
+foreign func CreateJobObjectW(attributes: CPointer<Unit>,
+    name: CPointer<UInt16>): CPointer<Unit>
+
+@When[os == "Windows"]
+@CallingConv[CDECL]
+foreign func SetInformationJobObject(job: CPointer<Unit>, infoClass: Int32,
+    limits: VArray<Int64, $18>, length: UInt32): Int32
+
+@When[os == "Windows"]
+@CallingConv[CDECL]
+foreign func OpenProcess(access: UInt32, inheritHandle: Int32,
+    processId: UInt32): CPointer<Unit>
+
+@When[os == "Windows"]
+@CallingConv[CDECL]
+foreign func AssignProcessToJobObject(job: CPointer<Unit>,
+    process: CPointer<Unit>): Int32
+
+@When[os == "Windows"]
+@CallingConv[CDECL]
+foreign func CloseHandle(handle: CPointer<Unit>): Int32
 
 // Run-mode limits. A `run` example is documentation, not a test suite: it must never
 // turn `cjdoc check --check-examples` into an unbounded job, and its pinned output has
