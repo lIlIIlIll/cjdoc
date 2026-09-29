@@ -17,7 +17,7 @@
   },
   "providers": [
     {
-      "name": "syntax",
+      "name": "ast",
       "version": "1",
       "moduleId": "cjdoc:module:v1:root",
       "state": "partial",
@@ -96,7 +96,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -147,7 +147,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {

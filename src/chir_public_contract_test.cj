@@ -7,6 +7,86 @@ import std.unittest.testmacro.*
 @Test
 class ChirPublicContracts {
     @TestCase
+    func extensionTargetsKeepPackageIdentityWhenNamesCollide(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        let dependencyARoot = temporary.join("deps").join("a")
+        let dependencyBRoot = temporary.join("deps").join("b")
+        try {
+            Directory.create(temporary.join("src"), recursive: true)
+            Directory.create(dependencyARoot.join("src"), recursive: true)
+            Directory.create(dependencyBRoot.join("src"), recursive: true)
+            File.writeTo(temporary.join("cjpm.toml"),
+                """
+                [package]
+                cjc-version = "1.3.0"
+                name = "extension_identity"
+                version = "0.1.0"
+                output-type = "static"
+
+                [dependencies]
+                a = { path = "deps/a", output-type = "static" }
+                b = { path = "deps/b", output-type = "static" }
+                """.toArray())
+            File.writeTo(dependencyARoot.join("cjpm.toml"),
+                """
+                [package]
+                cjc-version = "1.3.0"
+                name = "a"
+                version = "0.1.0"
+                output-type = "static"
+                """.toArray())
+            File.writeTo(dependencyBRoot.join("cjpm.toml"),
+                """
+                [package]
+                cjc-version = "1.3.0"
+                name = "b"
+                version = "0.1.0"
+                output-type = "static"
+                """.toArray())
+            File.writeTo(temporary.join("src/api.cj"),
+                """
+                package extension_identity
+
+                import a as a
+                import b as b
+
+                extend a.Foo {
+                    public func extra(): Int64 { 1 }
+                }
+
+                extend b.Foo {
+                    public func extra(): Int64 { 2 }
+                }
+                """.toArray())
+            File.writeTo(dependencyARoot.join("src/api.cj"),
+                """
+                package a
+                public class Foo { public init() {} }
+                """.toArray())
+            File.writeTo(dependencyBRoot.join("src/api.cj"),
+                """
+                package b
+                public class Foo { public init() {} }
+                """.toArray())
+
+            let documentation = DocumentationEngine().generate(
+                GenerationRequest(temporary.toString(), lintProfile: "off",
+                    includePathDependencies: true, chir: Some(ChirOptions()),
+                    astPreflightExecutable: Some("target/release/bin/main")))
+            var matchedFunctions: Int64 = 0
+            for (declaration in documentation.declarations) {
+                if (declaration.packageName != "extension_identity" ||
+                    declaration.kind != "function" || declaration.name != "extra") { continue }
+                matchedFunctions++
+                @Expect(declaration.semantic.state, "partial")
+            }
+            @Expect(matchedFunctions, 2)
+        } finally {
+            let _ = removeIfExists(temporary, recursive: true)
+        }
+    }
+
+    @TestCase
     func chirOptionsCopyInputsAndRejectInvalidValues(): Unit {
         let paths = ["existing-import-root"]
         let options = ChirOptions(compilerExecutable: "cjc", importPaths: paths)

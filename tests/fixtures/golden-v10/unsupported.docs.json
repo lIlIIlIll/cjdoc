@@ -17,7 +17,7 @@
   },
   "providers": [
     {
-      "name": "syntax",
+      "name": "ast",
       "version": "1",
       "moduleId": "cjdoc:module:v1:root",
       "state": "partial",

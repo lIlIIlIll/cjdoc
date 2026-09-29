@@ -414,6 +414,34 @@ class ExampleCompilerTest {
     }
 
     @TestCase
+    func existingMainKeywordIsReusedForRunExamples(): Unit {
+        let root = createExampleProject(
+            """
+            package example_compile
+
+            /**
+             * Runs a documented example with the existing entry point.
+             * @example Existing entry point {run}
+             * ```cangjie
+             * println("example output")
+             * ```
+             */
+            public func sample(): Unit { () }
+
+            main(): Unit {
+                println("original main")
+            }
+            """)
+        try {
+            let documentation = DocumentationEngine().generate(exampleRequest(root, true))
+            @Expect(!hasExampleDiagnostic(documentation, "CJDOC3030"))
+            @Expect(!hasExampleDiagnostic(documentation, "CJDOC3031"))
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
     func runtimeFailureReportsCapturedEvidence(): Unit {
         let root = createExampleProject(sourceWith(
             """

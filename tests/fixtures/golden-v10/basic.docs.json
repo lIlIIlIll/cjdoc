@@ -17,7 +17,7 @@
   },
   "providers": [
     {
-      "name": "syntax",
+      "name": "ast",
       "version": "1",
       "moduleId": "cjdoc:module:v1:root",
       "state": "partial",
@@ -120,7 +120,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "syntax"
+              "provider": "ast"
             }
           },
           "documentation": "Box value.",
@@ -165,12 +165,12 @@
         "start": {
           "line": 67,
           "column": 5,
-          "byteOffset": 1229
+          "byteOffset": 1224
         },
         "end": {
           "line": 67,
           "column": 49,
-          "byteOffset": 1273
+          "byteOffset": 1268
         }
       },
       "headerSpelling": "public init(value: T)",
@@ -188,7 +188,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -222,7 +222,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -240,12 +240,12 @@
         "start": {
           "line": 65,
           "column": 5,
-          "byteOffset": 1170
+          "byteOffset": 1165
         },
         "end": {
           "line": 65,
           "column": 24,
-          "byteOffset": 1189
+          "byteOffset": 1184
         }
       },
       "headerSpelling": "public let value: T",
@@ -261,7 +261,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -295,7 +295,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -345,12 +345,12 @@
         "start": {
           "line": 85,
           "column": 5,
-          "byteOffset": 1563
+          "byteOffset": 1558
         },
         "end": {
           "line": 85,
           "column": 54,
-          "byteOffset": 1612
+          "byteOffset": 1607
         }
       },
       "headerSpelling": "public func length(): Int64",
@@ -368,7 +368,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -402,7 +402,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -452,12 +452,12 @@
         "start": {
           "line": 79,
           "column": 5,
-          "byteOffset": 1433
+          "byteOffset": 1428
         },
         "end": {
           "line": 79,
           "column": 43,
-          "byteOffset": 1471
+          "byteOffset": 1466
         }
       },
       "headerSpelling": "public func pretty(): String",
@@ -475,7 +475,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -509,7 +509,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "syntax"
+              "provider": "ast"
             }
           },
           "documentation": "Initial value.",
@@ -570,12 +570,12 @@
         "start": {
           "line": 47,
           "column": 5,
-          "byteOffset": 851
+          "byteOffset": 846
         },
         "end": {
           "line": 49,
           "column": 6,
-          "byteOffset": 907
+          "byteOffset": 902
         }
       },
       "headerSpelling": "public init(value: T)",
@@ -593,7 +593,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -627,7 +627,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -645,12 +645,12 @@
         "start": {
           "line": 60,
           "column": 5,
-          "byteOffset": 1089
+          "byteOffset": 1084
         },
         "end": {
           "line": 60,
           "column": 35,
-          "byteOffset": 1119
+          "byteOffset": 1114
         }
       },
       "headerSpelling": "private func hidden(): Unit",
@@ -668,7 +668,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -702,7 +702,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -758,12 +758,12 @@
         "start": {
           "line": 55,
           "column": 5,
-          "byteOffset": 982
+          "byteOffset": 977
         },
         "end": {
           "line": 55,
           "column": 36,
-          "byteOffset": 1013
+          "byteOffset": 1008
         }
       },
       "headerSpelling": "public func read(): Int64",
@@ -781,7 +781,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -815,7 +815,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -865,12 +865,12 @@
         "start": {
           "line": 58,
           "column": 5,
-          "byteOffset": 1044
+          "byteOffset": 1039
         },
         "end": {
           "line": 58,
           "column": 44,
-          "byteOffset": 1083
+          "byteOffset": 1078
         }
       },
       "headerSpelling": "public prop size: Int64",
@@ -886,7 +886,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -920,7 +920,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -970,12 +970,12 @@
         "start": {
           "line": 41,
           "column": 5,
-          "byteOffset": 751
+          "byteOffset": 746
         },
         "end": {
           "line": 41,
           "column": 24,
-          "byteOffset": 770
+          "byteOffset": 765
         }
       },
       "headerSpelling": "public let value: T",
@@ -991,7 +991,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -1025,7 +1025,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -1043,12 +1043,12 @@
         "start": {
           "line": 35,
           "column": 5,
-          "byteOffset": 642
+          "byteOffset": 637
         },
         "end": {
           "line": 35,
           "column": 23,
-          "byteOffset": 660
+          "byteOffset": 655
         }
       },
       "headerSpelling": "func read(): Int64",
@@ -1065,7 +1065,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -1099,7 +1099,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "syntax"
+              "provider": "ast"
             }
           },
           "documentation": null,
@@ -1122,12 +1122,12 @@
         "start": {
           "line": 73,
           "column": 5,
-          "byteOffset": 1336
+          "byteOffset": 1331
         },
         "end": {
           "line": 73,
           "column": 21,
-          "byteOffset": 1352
+          "byteOffset": 1347
         }
       },
       "headerSpelling": "| Failed(String)",
@@ -1143,7 +1143,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -1183,12 +1183,12 @@
         "start": {
           "line": 72,
           "column": 5,
-          "byteOffset": 1324
+          "byteOffset": 1319
         },
         "end": {
           "line": 72,
           "column": 12,
-          "byteOffset": 1331
+          "byteOffset": 1326
         }
       },
       "headerSpelling": "| Ready",
@@ -1201,7 +1201,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -1242,7 +1242,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "syntax"
+              "provider": "ast"
             }
           }
         }
@@ -1293,12 +1293,12 @@
         "start": {
           "line": 39,
           "column": 1,
-          "byteOffset": 687
+          "byteOffset": 682
         },
         "end": {
           "line": 61,
           "column": 2,
-          "byteOffset": 1121
+          "byteOffset": 1116
         }
       },
       "headerSpelling": "public class Parser<T> <: Reader",
@@ -1317,7 +1317,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -1389,12 +1389,12 @@
         "start": {
           "line": 71,
           "column": 1,
-          "byteOffset": 1299
+          "byteOffset": 1294
         },
         "end": {
           "line": 74,
           "column": 2,
-          "byteOffset": 1354
+          "byteOffset": 1349
         }
       },
       "headerSpelling": "public enum Status",
@@ -1408,7 +1408,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -1449,7 +1449,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "syntax"
+              "provider": "ast"
             }
           }
         }
@@ -1500,12 +1500,12 @@
         "start": {
           "line": 83,
           "column": 1,
-          "byteOffset": 1513
+          "byteOffset": 1508
         },
         "end": {
           "line": 86,
           "column": 2,
-          "byteOffset": 1614
+          "byteOffset": 1609
         }
       },
       "headerSpelling": "extend Box<String>",
@@ -1521,7 +1521,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -1562,7 +1562,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "syntax"
+              "provider": "ast"
             }
           }
         }
@@ -1613,12 +1613,12 @@
         "start": {
           "line": 77,
           "column": 1,
-          "byteOffset": 1383
+          "byteOffset": 1378
         },
         "end": {
           "line": 80,
           "column": 2,
-          "byteOffset": 1473
+          "byteOffset": 1468
         }
       },
       "headerSpelling": "extend Box<String>",
@@ -1634,7 +1634,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -1668,7 +1668,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "syntax"
+              "provider": "ast"
             }
           },
           "documentation": "Input value.",
@@ -1685,7 +1685,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -1748,12 +1748,12 @@
         "start": {
           "line": 93,
           "column": 1,
-          "byteOffset": 1697
+          "byteOffset": 1692
         },
         "end": {
           "line": 93,
           "column": 47,
-          "byteOffset": 1743
+          "byteOffset": 1738
         }
       },
       "headerSpelling": "public func identity<T>(value: T): T",
@@ -1777,7 +1777,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -1811,7 +1811,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "syntax"
+              "provider": "ast"
             }
           },
           "documentation": "Text.",
@@ -1829,7 +1829,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "syntax"
+              "provider": "ast"
             }
           },
           "documentation": "Strict mode.",
@@ -1846,7 +1846,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -1909,12 +1909,12 @@
         "start": {
           "line": 118,
           "column": 1,
-          "byteOffset": 2205
+          "byteOffset": 2200
         },
         "end": {
           "line": 123,
           "column": 2,
-          "byteOffset": 2313
+          "byteOffset": 2308
         }
       },
       "headerSpelling": "public func multiline(\n    text: String,\n    strict: Bool\n): String",
@@ -1939,7 +1939,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -1973,7 +1973,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "syntax"
+              "provider": "ast"
             }
           },
           "documentation": "Input text.",
@@ -1990,7 +1990,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -2057,12 +2057,12 @@
         "start": {
           "line": 103,
           "column": 1,
-          "byteOffset": 1879
+          "byteOffset": 1874
         },
         "end": {
           "line": 104,
           "column": 58,
-          "byteOffset": 1979
+          "byteOffset": 1974
         }
       },
       "headerSpelling": "@Deprecated[message: \"Use parse instead.\"]\npublic func oldParse(text: String): Int64",
@@ -2090,7 +2090,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -2124,7 +2124,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "syntax"
+              "provider": "ast"
             }
           },
           "documentation": "Input bytes.",
@@ -2141,7 +2141,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -2204,12 +2204,12 @@
         "start": {
           "line": 29,
           "column": 1,
-          "byteOffset": 509
+          "byteOffset": 504
         },
         "end": {
           "line": 31,
           "column": 2,
-          "byteOffset": 585
+          "byteOffset": 580
         }
       },
       "headerSpelling": "public func parse(data: Array<UInt8>): Int64",
@@ -2233,7 +2233,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -2267,7 +2267,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "syntax"
+              "provider": "ast"
             }
           },
           "documentation": "输入文本。",
@@ -2284,7 +2284,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -2297,9 +2297,9 @@
         
       ],
       "documentation": {
-        "rawText": "/**\n * 从文本解析值。\n *\n * ## Example\n *\n * ```cangjie\n * let value = parse(\"42\")\n * ```\n *\n * @param text 输入文本。\n * @return 解析结果。\n * @throws IllegalArgumentException 输入非法时抛出。\n * @see basic.parse(String)\n * @see basic.parse(Array<UInt8>) 字节数组重载。\n * @see basic.multiline(String,Bool)\n * @since 0.1.0\n */",
+        "rawText": "/**\n * 从文本解析值。\n *\n * ## Example\n *\n * ```cj\n * let value = parse(\"42\")\n * ```\n *\n * @param text 输入文本。\n * @return 解析结果。\n * @throws IllegalArgumentException 输入非法时抛出。\n * @see basic.parse(String)\n * @see basic.parse(Array<UInt8>) 字节数组重载。\n * @see basic.multiline(String,Bool)\n * @since 0.1.0\n */",
         "summary": "从文本解析值。",
-        "description": "## Example\n\n```cangjie\nlet value = parse(\"42\")\n```",
+        "description": "## Example\n\n```cj\nlet value = parse(\"42\")\n```",
         "markdown": {
           "kind": "document",
           "literal": "",
@@ -2350,8 +2350,8 @@
                 "codeKind": "fenced",
                 "fenceCharacter": "`",
                 "fenceLength": 3,
-                "infoRaw": "cangjie",
-                "language": "cangjie",
+                "infoRaw": "cj",
+                "language": "cj",
                 "attributesRaw": ""
               },
               "children": [
@@ -2417,12 +2417,12 @@
         "start": {
           "line": 20,
           "column": 1,
-          "byteOffset": 375
+          "byteOffset": 370
         },
         "end": {
           "line": 22,
           "column": 2,
-          "byteOffset": 431
+          "byteOffset": 426
         }
       },
       "headerSpelling": "public func parse(text: String): Int64",
@@ -2443,7 +2443,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -2477,7 +2477,7 @@
             "semantic": {
               "state": "partial",
               "canonical": null,
-              "provider": "syntax"
+              "provider": "ast"
             }
           },
           "documentation": "文本值。",
@@ -2494,7 +2494,7 @@
         "semantic": {
           "state": "partial",
           "canonical": null,
-          "provider": "syntax"
+          "provider": "ast"
         }
       },
       "annotations": [
@@ -2557,12 +2557,12 @@
         "start": {
           "line": 111,
           "column": 1,
-          "byteOffset": 2065
+          "byteOffset": 2060
         },
         "end": {
           "line": 111,
           "column": 54,
-          "byteOffset": 2118
+          "byteOffset": 2113
         }
       },
       "headerSpelling": "public func 解析(文本: String): String",
@@ -2583,7 +2583,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -2660,12 +2660,12 @@
         "start": {
           "line": 34,
           "column": 1,
-          "byteOffset": 612
+          "byteOffset": 607
         },
         "end": {
           "line": 36,
           "column": 2,
-          "byteOffset": 662
+          "byteOffset": 657
         }
       },
       "headerSpelling": "public interface Reader",
@@ -2679,7 +2679,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -2762,12 +2762,12 @@
         "start": {
           "line": 64,
           "column": 1,
-          "byteOffset": 1143
+          "byteOffset": 1138
         },
         "end": {
           "line": 68,
           "column": 2,
-          "byteOffset": 1275
+          "byteOffset": 1270
         }
       },
       "headerSpelling": "public struct Box<T>",
@@ -2784,7 +2784,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -2856,12 +2856,12 @@
         "start": {
           "line": 96,
           "column": 1,
-          "byteOffset": 1773
+          "byteOffset": 1768
         },
         "end": {
           "line": 96,
           "column": 26,
-          "byteOffset": 1798
+          "byteOffset": 1793
         }
       },
       "headerSpelling": "public type Name = String",
@@ -2877,7 +2877,7 @@
       },
       "semantic": {
         "state": "partial",
-        "provider": "syntax",
+        "provider": "ast",
         "canonicalSignature": null
       },
       "origin": {
@@ -2912,12 +2912,12 @@
         "start": {
           "line": 20,
           "column": 1,
-          "byteOffset": 375
+          "byteOffset": 370
         },
         "end": {
           "line": 22,
           "column": 2,
-          "byteOffset": 431
+          "byteOffset": 426
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(String)"
@@ -2931,12 +2931,12 @@
         "start": {
           "line": 20,
           "column": 1,
-          "byteOffset": 375
+          "byteOffset": 370
         },
         "end": {
           "line": 22,
           "column": 2,
-          "byteOffset": 431
+          "byteOffset": 426
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(String)"
@@ -2950,12 +2950,12 @@
         "start": {
           "line": 20,
           "column": 1,
-          "byteOffset": 375
+          "byteOffset": 370
         },
         "end": {
           "line": 22,
           "column": 2,
-          "byteOffset": 431
+          "byteOffset": 426
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(String)"
@@ -2969,12 +2969,12 @@
         "start": {
           "line": 29,
           "column": 1,
-          "byteOffset": 509
+          "byteOffset": 504
         },
         "end": {
           "line": 31,
           "column": 2,
-          "byteOffset": 585
+          "byteOffset": 580
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(Array<UInt8>)"
@@ -2988,12 +2988,12 @@
         "start": {
           "line": 29,
           "column": 1,
-          "byteOffset": 509
+          "byteOffset": 504
         },
         "end": {
           "line": 31,
           "column": 2,
-          "byteOffset": 585
+          "byteOffset": 580
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(Array<UInt8>)"
@@ -3007,12 +3007,12 @@
         "start": {
           "line": 29,
           "column": 1,
-          "byteOffset": 509
+          "byteOffset": 504
         },
         "end": {
           "line": 31,
           "column": 2,
-          "byteOffset": 585
+          "byteOffset": 580
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(Array<UInt8>)"
@@ -3026,12 +3026,12 @@
         "start": {
           "line": 29,
           "column": 1,
-          "byteOffset": 509
+          "byteOffset": 504
         },
         "end": {
           "line": 31,
           "column": 2,
-          "byteOffset": 585
+          "byteOffset": 580
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:parse#g0(Array<UInt8>)"
@@ -3045,12 +3045,12 @@
         "start": {
           "line": 34,
           "column": 1,
-          "byteOffset": 612
+          "byteOffset": 607
         },
         "end": {
           "line": 36,
           "column": 2,
-          "byteOffset": 662
+          "byteOffset": 657
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::interface:Reader#g0()"
@@ -3064,12 +3064,12 @@
         "start": {
           "line": 34,
           "column": 1,
-          "byteOffset": 612
+          "byteOffset": 607
         },
         "end": {
           "line": 36,
           "column": 2,
-          "byteOffset": 662
+          "byteOffset": 657
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::interface:Reader#g0()"
@@ -3083,12 +3083,12 @@
         "start": {
           "line": 35,
           "column": 5,
-          "byteOffset": 642
+          "byteOffset": 637
         },
         "end": {
           "line": 35,
           "column": 23,
-          "byteOffset": 660
+          "byteOffset": 655
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Reader::function:read#g0()"
@@ -3102,12 +3102,12 @@
         "start": {
           "line": 39,
           "column": 1,
-          "byteOffset": 687
+          "byteOffset": 682
         },
         "end": {
           "line": 61,
           "column": 2,
-          "byteOffset": 1121
+          "byteOffset": 1116
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::class:Parser#g1()"
@@ -3121,12 +3121,12 @@
         "start": {
           "line": 39,
           "column": 1,
-          "byteOffset": 687
+          "byteOffset": 682
         },
         "end": {
           "line": 61,
           "column": 2,
-          "byteOffset": 1121
+          "byteOffset": 1116
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::class:Parser#g1()"
@@ -3140,12 +3140,12 @@
         "start": {
           "line": 41,
           "column": 5,
-          "byteOffset": 751
+          "byteOffset": 746
         },
         "end": {
           "line": 41,
           "column": 24,
-          "byteOffset": 770
+          "byteOffset": 765
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::variable:value#g0()"
@@ -3159,12 +3159,12 @@
         "start": {
           "line": 41,
           "column": 5,
-          "byteOffset": 751
+          "byteOffset": 746
         },
         "end": {
           "line": 41,
           "column": 24,
-          "byteOffset": 770
+          "byteOffset": 765
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::variable:value#g0()"
@@ -3178,12 +3178,12 @@
         "start": {
           "line": 41,
           "column": 5,
-          "byteOffset": 751
+          "byteOffset": 746
         },
         "end": {
           "line": 41,
           "column": 24,
-          "byteOffset": 770
+          "byteOffset": 765
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::variable:value#g0()"
@@ -3197,12 +3197,12 @@
         "start": {
           "line": 41,
           "column": 5,
-          "byteOffset": 751
+          "byteOffset": 746
         },
         "end": {
           "line": 41,
           "column": 24,
-          "byteOffset": 770
+          "byteOffset": 765
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::variable:value#g0()"
@@ -3216,12 +3216,12 @@
         "start": {
           "line": 47,
           "column": 5,
-          "byteOffset": 851
+          "byteOffset": 846
         },
         "end": {
           "line": 49,
           "column": 6,
-          "byteOffset": 907
+          "byteOffset": 902
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::constructor:init#g0(@g0)"
@@ -3235,12 +3235,12 @@
         "start": {
           "line": 47,
           "column": 5,
-          "byteOffset": 851
+          "byteOffset": 846
         },
         "end": {
           "line": 49,
           "column": 6,
-          "byteOffset": 907
+          "byteOffset": 902
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::constructor:init#g0(@g0)"
@@ -3254,12 +3254,12 @@
         "start": {
           "line": 47,
           "column": 5,
-          "byteOffset": 851
+          "byteOffset": 846
         },
         "end": {
           "line": 49,
           "column": 6,
-          "byteOffset": 907
+          "byteOffset": 902
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::constructor:init#g0(@g0)"
@@ -3273,12 +3273,12 @@
         "start": {
           "line": 55,
           "column": 5,
-          "byteOffset": 982
+          "byteOffset": 977
         },
         "end": {
           "line": 55,
           "column": 36,
-          "byteOffset": 1013
+          "byteOffset": 1008
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::function:read#g0()"
@@ -3292,12 +3292,12 @@
         "start": {
           "line": 55,
           "column": 5,
-          "byteOffset": 982
+          "byteOffset": 977
         },
         "end": {
           "line": 55,
           "column": 36,
-          "byteOffset": 1013
+          "byteOffset": 1008
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::function:read#g0()"
@@ -3311,12 +3311,12 @@
         "start": {
           "line": 55,
           "column": 5,
-          "byteOffset": 982
+          "byteOffset": 977
         },
         "end": {
           "line": 55,
           "column": 36,
-          "byteOffset": 1013
+          "byteOffset": 1008
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::function:read#g0()"
@@ -3330,12 +3330,12 @@
         "start": {
           "line": 58,
           "column": 5,
-          "byteOffset": 1044
+          "byteOffset": 1039
         },
         "end": {
           "line": 58,
           "column": 44,
-          "byteOffset": 1083
+          "byteOffset": 1078
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::property:size#g0()"
@@ -3349,12 +3349,12 @@
         "start": {
           "line": 58,
           "column": 5,
-          "byteOffset": 1044
+          "byteOffset": 1039
         },
         "end": {
           "line": 58,
           "column": 44,
-          "byteOffset": 1083
+          "byteOffset": 1078
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::property:size#g0()"
@@ -3368,12 +3368,12 @@
         "start": {
           "line": 58,
           "column": 5,
-          "byteOffset": 1044
+          "byteOffset": 1039
         },
         "end": {
           "line": 58,
           "column": 44,
-          "byteOffset": 1083
+          "byteOffset": 1078
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::property:size#g0()"
@@ -3387,12 +3387,12 @@
         "start": {
           "line": 58,
           "column": 5,
-          "byteOffset": 1044
+          "byteOffset": 1039
         },
         "end": {
           "line": 58,
           "column": 44,
-          "byteOffset": 1083
+          "byteOffset": 1078
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Parser::property:size#g0()"
@@ -3406,12 +3406,12 @@
         "start": {
           "line": 64,
           "column": 1,
-          "byteOffset": 1143
+          "byteOffset": 1138
         },
         "end": {
           "line": 68,
           "column": 2,
-          "byteOffset": 1275
+          "byteOffset": 1270
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::struct:Box#g1()"
@@ -3425,12 +3425,12 @@
         "start": {
           "line": 64,
           "column": 1,
-          "byteOffset": 1143
+          "byteOffset": 1138
         },
         "end": {
           "line": 68,
           "column": 2,
-          "byteOffset": 1275
+          "byteOffset": 1270
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::struct:Box#g1()"
@@ -3444,12 +3444,12 @@
         "start": {
           "line": 65,
           "column": 5,
-          "byteOffset": 1170
+          "byteOffset": 1165
         },
         "end": {
           "line": 65,
           "column": 24,
-          "byteOffset": 1189
+          "byteOffset": 1184
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Box::variable:value#g0()"
@@ -3463,12 +3463,12 @@
         "start": {
           "line": 67,
           "column": 5,
-          "byteOffset": 1229
+          "byteOffset": 1224
         },
         "end": {
           "line": 67,
           "column": 49,
-          "byteOffset": 1273
+          "byteOffset": 1268
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Box::constructor:init#g0(@g0)"
@@ -3482,12 +3482,12 @@
         "start": {
           "line": 67,
           "column": 5,
-          "byteOffset": 1229
+          "byteOffset": 1224
         },
         "end": {
           "line": 67,
           "column": 49,
-          "byteOffset": 1273
+          "byteOffset": 1268
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Box::constructor:init#g0(@g0)"
@@ -3501,12 +3501,12 @@
         "start": {
           "line": 67,
           "column": 5,
-          "byteOffset": 1229
+          "byteOffset": 1224
         },
         "end": {
           "line": 67,
           "column": 49,
-          "byteOffset": 1273
+          "byteOffset": 1268
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Box::constructor:init#g0(@g0)"
@@ -3520,12 +3520,12 @@
         "start": {
           "line": 67,
           "column": 5,
-          "byteOffset": 1229
+          "byteOffset": 1224
         },
         "end": {
           "line": 67,
           "column": 49,
-          "byteOffset": 1273
+          "byteOffset": 1268
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Box::constructor:init#g0(@g0)"
@@ -3539,12 +3539,12 @@
         "start": {
           "line": 71,
           "column": 1,
-          "byteOffset": 1299
+          "byteOffset": 1294
         },
         "end": {
           "line": 74,
           "column": 2,
-          "byteOffset": 1354
+          "byteOffset": 1349
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::enum:Status#g0()"
@@ -3558,12 +3558,12 @@
         "start": {
           "line": 71,
           "column": 1,
-          "byteOffset": 1299
+          "byteOffset": 1294
         },
         "end": {
           "line": 74,
           "column": 2,
-          "byteOffset": 1354
+          "byteOffset": 1349
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::enum:Status#g0()"
@@ -3577,12 +3577,12 @@
         "start": {
           "line": 72,
           "column": 5,
-          "byteOffset": 1324
+          "byteOffset": 1319
         },
         "end": {
           "line": 72,
           "column": 12,
-          "byteOffset": 1331
+          "byteOffset": 1326
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Status::enumCase:Ready#g0()"
@@ -3596,12 +3596,12 @@
         "start": {
           "line": 73,
           "column": 5,
-          "byteOffset": 1336
+          "byteOffset": 1331
         },
         "end": {
           "line": 73,
           "column": 21,
-          "byteOffset": 1352
+          "byteOffset": 1347
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Status::enumCase:Failed#g0(String)"
@@ -3615,12 +3615,12 @@
         "start": {
           "line": 93,
           "column": 1,
-          "byteOffset": 1697
+          "byteOffset": 1692
         },
         "end": {
           "line": 93,
           "column": 47,
-          "byteOffset": 1743
+          "byteOffset": 1738
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:identity#g1(@g0)"
@@ -3634,12 +3634,12 @@
         "start": {
           "line": 93,
           "column": 1,
-          "byteOffset": 1697
+          "byteOffset": 1692
         },
         "end": {
           "line": 93,
           "column": 47,
-          "byteOffset": 1743
+          "byteOffset": 1738
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:identity#g1(@g0)"
@@ -3653,12 +3653,12 @@
         "start": {
           "line": 93,
           "column": 1,
-          "byteOffset": 1697
+          "byteOffset": 1692
         },
         "end": {
           "line": 93,
           "column": 47,
-          "byteOffset": 1743
+          "byteOffset": 1738
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:identity#g1(@g0)"
@@ -3672,12 +3672,12 @@
         "start": {
           "line": 93,
           "column": 1,
-          "byteOffset": 1697
+          "byteOffset": 1692
         },
         "end": {
           "line": 93,
           "column": 47,
-          "byteOffset": 1743
+          "byteOffset": 1738
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:identity#g1(@g0)"
@@ -3691,12 +3691,12 @@
         "start": {
           "line": 96,
           "column": 1,
-          "byteOffset": 1773
+          "byteOffset": 1768
         },
         "end": {
           "line": 96,
           "column": 26,
-          "byteOffset": 1798
+          "byteOffset": 1793
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::typeAlias:Name#g0()"
@@ -3710,12 +3710,12 @@
         "start": {
           "line": 96,
           "column": 1,
-          "byteOffset": 1773
+          "byteOffset": 1768
         },
         "end": {
           "line": 96,
           "column": 26,
-          "byteOffset": 1798
+          "byteOffset": 1793
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::typeAlias:Name#g0()"
@@ -3729,12 +3729,12 @@
         "start": {
           "line": 103,
           "column": 1,
-          "byteOffset": 1879
+          "byteOffset": 1874
         },
         "end": {
           "line": 104,
           "column": 58,
-          "byteOffset": 1979
+          "byteOffset": 1974
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:oldParse#g0(String)"
@@ -3748,12 +3748,12 @@
         "start": {
           "line": 103,
           "column": 1,
-          "byteOffset": 1879
+          "byteOffset": 1874
         },
         "end": {
           "line": 104,
           "column": 58,
-          "byteOffset": 1979
+          "byteOffset": 1974
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:oldParse#g0(String)"
@@ -3767,12 +3767,12 @@
         "start": {
           "line": 103,
           "column": 1,
-          "byteOffset": 1879
+          "byteOffset": 1874
         },
         "end": {
           "line": 104,
           "column": 58,
-          "byteOffset": 1979
+          "byteOffset": 1974
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:oldParse#g0(String)"
@@ -3786,12 +3786,12 @@
         "start": {
           "line": 103,
           "column": 1,
-          "byteOffset": 1879
+          "byteOffset": 1874
         },
         "end": {
           "line": 104,
           "column": 58,
-          "byteOffset": 1979
+          "byteOffset": 1974
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:oldParse#g0(String)"
@@ -3805,12 +3805,12 @@
         "start": {
           "line": 111,
           "column": 1,
-          "byteOffset": 2065
+          "byteOffset": 2060
         },
         "end": {
           "line": 111,
           "column": 54,
-          "byteOffset": 2118
+          "byteOffset": 2113
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:解析#g0(String)"
@@ -3824,12 +3824,12 @@
         "start": {
           "line": 111,
           "column": 1,
-          "byteOffset": 2065
+          "byteOffset": 2060
         },
         "end": {
           "line": 111,
           "column": 54,
-          "byteOffset": 2118
+          "byteOffset": 2113
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:解析#g0(String)"
@@ -3843,12 +3843,12 @@
         "start": {
           "line": 111,
           "column": 1,
-          "byteOffset": 2065
+          "byteOffset": 2060
         },
         "end": {
           "line": 111,
           "column": 54,
-          "byteOffset": 2118
+          "byteOffset": 2113
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:解析#g0(String)"
@@ -3862,12 +3862,12 @@
         "start": {
           "line": 111,
           "column": 1,
-          "byteOffset": 2065
+          "byteOffset": 2060
         },
         "end": {
           "line": 111,
           "column": 54,
-          "byteOffset": 2118
+          "byteOffset": 2113
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:解析#g0(String)"
@@ -3881,12 +3881,12 @@
         "start": {
           "line": 118,
           "column": 1,
-          "byteOffset": 2205
+          "byteOffset": 2200
         },
         "end": {
           "line": 123,
           "column": 2,
-          "byteOffset": 2313
+          "byteOffset": 2308
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"
@@ -3900,12 +3900,12 @@
         "start": {
           "line": 118,
           "column": 1,
-          "byteOffset": 2205
+          "byteOffset": 2200
         },
         "end": {
           "line": 123,
           "column": 2,
-          "byteOffset": 2313
+          "byteOffset": 2308
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"
@@ -3919,12 +3919,12 @@
         "start": {
           "line": 118,
           "column": 1,
-          "byteOffset": 2205
+          "byteOffset": 2200
         },
         "end": {
           "line": 123,
           "column": 2,
-          "byteOffset": 2313
+          "byteOffset": 2308
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"
@@ -3938,12 +3938,12 @@
         "start": {
           "line": 118,
           "column": 1,
-          "byteOffset": 2205
+          "byteOffset": 2200
         },
         "end": {
           "line": 123,
           "column": 2,
-          "byteOffset": 2313
+          "byteOffset": 2308
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"
@@ -3957,12 +3957,12 @@
         "start": {
           "line": 118,
           "column": 1,
-          "byteOffset": 2205
+          "byteOffset": 2200
         },
         "end": {
           "line": 123,
           "column": 2,
-          "byteOffset": 2313
+          "byteOffset": 2308
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"
@@ -3976,31 +3976,12 @@
         "start": {
           "line": 118,
           "column": 1,
-          "byteOffset": 2205
+          "byteOffset": 2200
         },
         "end": {
           "line": 123,
           "column": 2,
-          "byteOffset": 2313
-        }
-      },
-      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"
-    },
-    {
-      "severity": "warning",
-      "code": "CJDOC3041",
-      "message": "trivial-param-description: description repeats parameter 'text'",
-      "source": {
-        "path": "src/api.cj",
-        "start": {
-          "line": 118,
-          "column": 1,
-          "byteOffset": 2205
-        },
-        "end": {
-          "line": 123,
-          "column": 2,
-          "byteOffset": 2313
+          "byteOffset": 2308
         }
       },
       "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::function:multiline#g0(String,Bool)"

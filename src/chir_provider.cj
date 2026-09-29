@@ -90,6 +90,52 @@ internal class AutoChirSemanticProvider <: SemanticProvider {
         }
     }
 }
+private func chirSourceTypeIdentity(value: String): (String, String) {
+    let base = match (value.indexOf("<")) {
+        case Some(index) => value[..index].trimAscii()
+        case None => value.trimAscii()
+    }
+    let components = base.split(".")
+    if (components.isEmpty()) { return ("", base) }
+    let targetName = components[components.size - 1].trimAscii()
+    if (components.size == 1) { return ("", targetName) }
+    var targetPackageName = components[0].trimAscii()
+    var index: Int64 = 1
+    while (index < components.size - 1) {
+        targetPackageName += "." + components[index].trimAscii()
+        index++
+    }
+    (targetPackageName, targetName)
+}
+
+internal func chirExtensionTargetMatch(summary: ChirWorkerSummary,
+    extensionPackage: String, sourceName: String): (Int64, String) {
+    let sourceIdentity = chirSourceTypeIdentity(sourceName)
+    let sourceTargetPackage = sourceIdentity[0]
+    let targetName = sourceIdentity[1]
+    var targetPackageName = ""
+    var candidateCount: Int64 = 0
+    var hasMultipleTargetPackages = false
+    var exactPackageMatch = false
+    for (record in summary.extendRecords) {
+        if (record.packageName != extensionPackage || record.targetName != targetName) { continue }
+        if (candidateCount == 0) {
+            targetPackageName = record.targetPackageName
+        } else if (targetPackageName != record.targetPackageName) {
+            hasMultipleTargetPackages = true
+        }
+        candidateCount++
+        if (!sourceTargetPackage.isEmpty() && record.targetPackageName == sourceTargetPackage) {
+            targetPackageName = record.targetPackageName
+            exactPackageMatch = true
+        }
+    }
+    if (candidateCount == 0) { return (0, "") }
+    if (exactPackageMatch) { return (1, targetPackageName) }
+    if (hasMultipleTargetPackages) { return (2, "") }
+    (1, targetPackageName)
+}
+
 internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFactory {
     private let source: SourceSnapshot
     private let options: ChirOptions
@@ -247,13 +293,8 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
             return 0
         }
         if (view.kind == "extend") {
-            let targetName = sourceBaseTypeName(view.name)
-            for (record in summary.extendRecords) {
-                if (record.packageName == view.packageName && record.targetName == targetName) {
-                    return 1
-                }
-            }
-            return 0
+            let targetMatch = chirExtensionTargetMatch(summary, view.packageName, view.name)
+            return targetMatch[0]
         }
         if (view.kind == "typeAlias" || view.kind == "property") { return 3 }
         if (view.kind == "enumCase") {
@@ -281,7 +322,14 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
     }
 
     private func chirHasFunction(summary: ChirWorkerSummary,
-        view: public_provider.SourceDeclarationView, owner: (String, String, String)): Int64 {
+        view: public_provider.SourceDeclarationView,
+        owner: (String, String, String, String)): Int64 {
+        var targetPackageName = ""
+        if (owner[0] == "extend") {
+            let targetMatch = chirExtensionTargetMatch(summary, owner[1], owner[3])
+            if (targetMatch[0] != 1) { return targetMatch[0] }
+            targetPackageName = targetMatch[1]
+        }
         var candidates: Int64 = 0
         var shaped: Int64 = 0
         for (record in summary.functionRecords) {
@@ -293,7 +341,7 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
                     record.ownerName == owner[2]
             } else if (owner[0] == "extend") {
                 record.ownerKind == "extend" && record.ownerPackageName == owner[1] &&
-                    (record.targetName == owner[2] || record.ownerName == owner[2])
+                    record.targetPackageName == targetPackageName && record.targetName == owner[2]
             } else {
                 false
             }
@@ -310,18 +358,18 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
     }
 
     private func sourceOwnerIdentity(view: public_provider.SourceDeclarationView,
-        declarations: ReadOnlyList<public_provider.SourceDeclarationView>): (String, String, String) {
+        declarations: ReadOnlyList<public_provider.SourceDeclarationView>): (String, String, String, String) {
         match (view.ownerId) {
             case Some(ownerId) =>
                 for (candidate in declarations) {
                     if (candidate.id != ownerId) { continue }
                     if (candidate.kind == "extend") {
-                        return ("extend", candidate.packageName, sourceBaseTypeName(candidate.name))
+                        return ("extend", candidate.packageName, sourceBaseTypeName(candidate.name), candidate.name)
                     }
-                    return ("type", candidate.packageName, candidate.name)
+                    return ("type", candidate.packageName, candidate.name, "")
                 }
-                ("unknown", "", "")
-            case None => ("none", "", "")
+                ("unknown", "", "", "")
+            case None => ("none", "", "", "")
         }
     }
 

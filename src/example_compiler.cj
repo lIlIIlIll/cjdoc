@@ -438,7 +438,8 @@ private func existingMainBodyRange(source: String): ?(Int64, Int64) {
         let kind = tokens[index].kind
         if (kind == LCURL) { declarationDepth++ }
         if (kind == RCURL && declarationDepth > 0) { declarationDepth-- }
-        if (declarationDepth != 0 || kind != IDENTIFIER || tokens[index].value != "main") {
+        let isMainName = kind == MAIN || (kind == IDENTIFIER && tokens[index].value == "main")
+        if (declarationDepth != 0 || !isMainName) {
             index++
             continue
         }
