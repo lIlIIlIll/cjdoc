@@ -40,13 +40,15 @@ private func compilerTargetArch(): String { "arm" }
 internal func compilerBuiltinCfgValue(name: String): ?String {
     if (name == "os") { return Some(compilerTargetOs()) }
     if (name == "arch") { return Some(compilerTargetArch()) }
+    // Neither CHIR workers nor allowlisted examples invoke cjc with -g.
+    if (name == "debug") { return Some("false") }
     None
 }
 
 internal func compilerCfgProfile(profile: CfgProfile): CfgProfile {
     let values = ArrayList<CfgValue>()
     values.add(all: profile.values.toArray())
-    for (name in ["os", "arch"]) {
+    for (name in ["os", "arch", "debug"]) {
         if (profile.value(name).isNone()) {
             match (compilerBuiltinCfgValue(name)) {
                 case Some(value) => values.add(CfgValue(name, value))
@@ -57,24 +59,26 @@ internal func compilerCfgProfile(profile: CfgProfile): CfgProfile {
     CfgProfile(values: values.toArray())
 }
 
-// Return only user-defined cfg arguments. Built-in selectors are validated
-// against the target selected by cjc and deliberately omitted from argv.
+// A validated built-in selector must not be forwarded as a user cfg argument.
+internal func validateCompilerBuiltinCfg(cfg: CfgValue): Bool {
+    match (compilerBuiltinCfgValue(cfg.name)) {
+        case Some(actual) =>
+            if (cfg.value != actual) {
+                throw IllegalArgumentException("cfg '" + cfg.name + "=" + cfg.value +
+                    "' does not match compiler target '" + cfg.name + "=" + actual + "'")
+            }
+            true
+        case None => false
+    }
+}
+
+// Append only user-defined values; validate built-ins against the native target.
 internal func appendCompilerCfgArguments(arguments: ArrayList<String>,
     profile: CfgProfile): Unit {
     for (cfg in profile.values) {
-        if (cfg.name == "os" || cfg.name == "arch") {
-            match (compilerBuiltinCfgValue(cfg.name)) {
-                case Some(actual) =>
-                    if (cfg.value != actual) {
-                        throw IllegalArgumentException("cfg '${cfg.name}=${cfg.value}' does not match compiler target '${cfg.name}=${actual}'")
-                    }
-                case None =>
-                    throw IllegalStateException("compiler target does not expose built-in cfg '${cfg.name}'")
-            }
-        } else {
-            arguments.add("--cfg")
-            arguments.add(cfg.name + "=" + cfg.value)
-        }
+        if (validateCompilerBuiltinCfg(cfg)) { continue }
+        arguments.add("--cfg")
+        arguments.add(cfg.name + "=" + cfg.value)
     }
 }
 
@@ -350,7 +354,7 @@ private func evaluateWhenExpression(expression: String, profile: CfgProfile): ?B
 }
 // Evaluate a raw @When annotation for compiler-side source rewriting. Unlike
 // provider-neutral documentation filtering, executable example generation must
-// know the host target when no explicit os/arch profile value was supplied.
+// know the native os/arch and default release debug selector when not supplied.
 internal func compilerWhenSelection(annotation: String, profile: CfgProfile): ?Bool {
     match (whenExpression(annotation)) {
         case Some(expression) =>

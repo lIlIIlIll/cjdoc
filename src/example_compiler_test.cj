@@ -467,6 +467,7 @@ class ExampleCompilerTest {
             package example_compile
 
             import std.process.*
+            import std.fs.*
 
             /**
              * Spawns a child that keeps inherited output pipes open.
@@ -489,17 +490,28 @@ class ExampleCompilerTest {
             public func exampleEntry(): Unit { () }
             """
         let root = createExampleProject(source)
+        let marker = root.join("run-marker")
+        let markerLiteral = marker.toString().replace("\\", "\\\\").replace("\"", "\\\"")
+        let markedSource = source.replace("let descendant = try {",
+            "File.writeTo(Path(\"${markerLiteral}\"), \"executed\".toArray())\n * let descendant = try {")
+        File.writeTo(root.join("src/api.cj"), markedSource.toArray())
         let start = MonoTime.now()
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
             let elapsed = (MonoTime.now() - start).toMilliseconds()
             let timedOut = hasExampleDiagnostic(documentation, "CJDOC3073")
-            if (!timedOut) {
+            if (!timedOut && compilerBuiltinCfgValue("os") != Some("macOS")) {
                 for (diagnostic in documentation.diagnostics) {
                     println("${diagnostic.severity}[${diagnostic.code}] ${diagnostic.message}")
                 }
             }
-            @Expect(timedOut, true)
+            if (compilerBuiltinCfgValue("os") == Some("macOS")) {
+                @Expect(hasExampleDiagnostic(documentation, "CJDOC3074"), true)
+                @Expect(exists(marker), false)
+            } else {
+                @Expect(timedOut, true)
+                @Expect(exists(marker), true)
+            }
             // Includes compilation while remaining below the descendant's 60s lifetime.
             @Expect(elapsed < 45000, true)
         } finally {
@@ -683,6 +695,39 @@ class ExampleCompilerTest {
                 projectRoot: root,
                 sourceOrigins: generated.internalDocumentation.sourceFileOrigins.toArray())
             @Expect(report.results.size, 0)
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+}
+
+@When[os != "macOS"]
+@Test
+class ExampleReleaseEntryPointTest {
+    @TestCase
+    func complementaryDebugMainsKeepTheReleaseRunWrapper(): Unit {
+        let root = createExampleProject("""
+            package example_compile
+            /**
+             * @example Selected entry point {run}
+             * ```cangjie
+             * println(7)
+             * ```
+             * ```output
+             * 7
+             * ```
+             */
+            public func sample(): Unit {}
+            @When[debug]
+            main(): Int64 { println("original debug main"); 0 }
+            @When[!debug]
+            main(): Int64 { println("original release main"); 0 }
+            """)
+        try {
+            let documentation = DocumentationEngine().generate(GenerationRequest(root.toString(),
+                lintProfile: "off", checkExamples: true,
+                astPreflightExecutable: Some("target/release/bin/main")))
+            @Expect(exampleDiagnosticSummary(documentation), [])
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }

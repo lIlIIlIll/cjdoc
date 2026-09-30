@@ -403,6 +403,25 @@ class InstallCangjieSdkTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "authenticated archive extraction"):
                 validate_cached_sdk(destination, "sdk.zip", expected)
 
+    def test_stdx_root_requires_complete_regular_static_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            incomplete = directory / "stdx"
+            complete = directory / "sidecar" / "stdx"
+            for root in (incomplete, complete):
+                root.mkdir(parents=True)
+                (root / "stdx.chir.cjo").write_bytes(b"package")
+                (root / "libstdx.chir.a").write_bytes(b"archive")
+            self.assertIsNone(install_cangjie_sdk.stdx_root(directory))
+            (complete / "libflatbuffers.a").write_bytes(b"flatbuffers archive")
+            self.assertEqual(install_cangjie_sdk.stdx_root(directory), complete)
+            (incomplete / "libflatbuffers.a").write_bytes(b"flatbuffers archive")
+            self.assertEqual(install_cangjie_sdk.stdx_root(directory), incomplete)
+            if os.name != "nt":
+                (incomplete / "libflatbuffers.a").unlink()
+                (incomplete / "libflatbuffers.a").symlink_to(complete / "libflatbuffers.a")
+                self.assertEqual(install_cangjie_sdk.stdx_root(directory), complete)
+
 
 if __name__ == "__main__":
     unittest.main()

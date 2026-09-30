@@ -33,12 +33,38 @@ private func chirTomlCode(line: String): String {
     line.trimAscii()
 }
 
+private func chirCompileOptionArrayClosed(value: String): Bool {
+    var quoteByte: UInt8 = 0u8
+    var escaped = false
+    for (index in 0..value.size) {
+        let byte = value[index]
+        if (quoteByte != 0u8) {
+            if (quoteByte == b'"' && escaped) { escaped = false }
+            else if (quoteByte == b'"' && byte == b'\\') { escaped = true }
+            else if (byte == quoteByte) { quoteByte = 0u8 }
+        } else if (byte == b'"' || byte == b'\'') {
+            quoteByte = byte
+        } else if (byte == b']') {
+            return true
+        }
+    }
+    false
+}
+
 private func chirManifestUnsupportedReason(manifest: ?String): ?String {
     match (manifest) {
         case None => None
         case Some(text) =>
+            var continuedOptions = false
             for (line in text.split("\n")) {
                 let trimmed = chirTomlCode(line)
+                if (continuedOptions) {
+                    if (!chirCompileOptionValueSupported(trimmed)) {
+                        return Some("CHIR rejects unsupported compiler options in cjpm.toml")
+                    }
+                    continuedOptions = !chirCompileOptionArrayClosed(trimmed)
+                    continue
+                }
                 if (trimmed == "[features]" || trimmed.startsWith("[package-configuration") ||
                     trimmed == "[build]") {
                     return Some("CHIR does not support this cjpm manifest section")
@@ -51,9 +77,14 @@ private func chirManifestUnsupportedReason(manifest: ?String): ?String {
                             if (!chirCompileOptionValueSupported(value)) {
                                 return Some("CHIR rejects unsupported compiler options in cjpm.toml")
                             }
+                            continuedOptions = value.startsWith("[") &&
+                                !chirCompileOptionArrayClosed(value)
                         }
                     case None => ()
                 }
+            }
+            if (continuedOptions) {
+                return Some("CHIR rejects an unterminated compiler-option array in cjpm.toml")
             }
             None
     }
@@ -618,6 +649,7 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
                 entry.name.contains("\r") || entry.value.contains("\n") || entry.value.contains("\r")) {
                 throw IllegalArgumentException("CHIR cfg value is not representable")
             }
+            if (validateCompilerBuiltinCfg(entry)) { continue }
             values.add(entry.name + "=" + entry.value)
         }
         values

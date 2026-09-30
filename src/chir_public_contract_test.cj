@@ -311,6 +311,70 @@ class ChirPublicContracts {
     }
 
     @TestCase
+    func multilineCompilerOptionsRejectUnsupportedFlagsAndKeepSource(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            Directory.create(root.join("src"))
+            File.writeTo(root.join("src/api.cj"),
+                "package multiline_options\npublic func stableApi(): Int64 { 7 }\n".toArray())
+            for (key in ["compile-option", "override-compile-option"]) {
+                for (option in ["-p alternate", "-B alternate"]) {
+                    File.writeTo(root.join("cjpm.toml"),
+                        ("[package]\nname = \"multiline_options\"\n" +
+                         key + " = [\n \"-O2\", # allowed first element\n \"" + option + "\",\n]\n").toArray())
+                    let documentation = DocumentationEngine().generate(GenerationRequest(root.toString(),
+                        lintProfile: "off", chir: Some(chirTestOptions()),
+                        astPreflightExecutable: Some("target/release/bin/main")))
+                    @Expect(publicHasDiagnostic(documentation, "CJDOC2102"), true)
+                    @Expect(publicHasDiagnostic(documentation, "CJDOC2101"), false)
+                    @Expect(documentation.declarations[0].name, "stableApi")
+                    @Expect(documentation.declarations[0].semantic.state, "unavailable")
+                    @Expect(documentation.declarations[0].returnType.getOrThrow().spelling, "Int64")
+                }
+            }
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
+    func builtinCfgValidationKeepsUserConditionalChirAndRejectsMismatches(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            Directory.create(root.join("src"))
+            File.writeTo(root.join("cjpm.toml"), "[package]\nname = \"native_cfg\"\n".toArray())
+            File.writeTo(root.join("src/api.cj"),
+                ("package native_cfg\n@When[feature == \"enabled\"]\n" +
+                 "public func selectedApi(): Int64 { 7 }\n").toArray())
+            let userCfg = CfgValue("feature", "enabled")
+            let native = DocumentationEngine().generate(GenerationRequest(root.toString(),
+                cfgValues: [CfgValue("os", compilerBuiltinCfgValue("os").getOrThrow()),
+                    CfgValue("arch", compilerBuiltinCfgValue("arch").getOrThrow()),
+                    CfgValue("debug", "false"), userCfg],
+                lintProfile: "off", chir: Some(chirTestOptions()),
+                astPreflightExecutable: Some("target/release/bin/main")))
+            @Expect(publicHasDiagnostic(native, "CJDOC2102"), false)
+            @Expect(publicHasDiagnostic(native, "CJDOC2104"), false)
+            if (getVariable("CJDOC_CHIR_WORKER").isSome()) {
+                @Expect(native.declarations[0].name, "selectedApi")
+                @Expect(native.declarations[0].semantic.provider, "chir")
+            } else {
+                @Expect(chirTestReportsMissingWorker(native), true)
+            }
+            let mismatch = DocumentationEngine().generate(GenerationRequest(root.toString(),
+                cfgValues: [CfgValue("debug", "true"), userCfg],
+                lintProfile: "off", chir: Some(chirTestOptions()),
+                astPreflightExecutable: Some("target/release/bin/main")))
+            @Expect(publicHasDiagnostic(mismatch, "CJDOC2102"), true)
+            @Expect(mismatch.declarations[0].name, "selectedApi")
+            @Expect(mismatch.declarations[0].semantic.state, "unavailable")
+            @Expect(mismatch.declarations[0].returnType.getOrThrow().spelling, "Int64")
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
     func failedChirCompilationPreservesSourceDeclarations(): Unit {
         let documentation = DocumentationEngine().generate(
             GenerationRequest("tests/fixtures/projects/basic", lintProfile: "off",
