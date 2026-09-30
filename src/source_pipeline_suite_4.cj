@@ -1,5 +1,7 @@
 package cjdoc
 
+import std.ast.*
+import std.collection.ArrayList
 import std.env.*
 import std.fs.*
 import std.unittest.*
@@ -72,7 +74,11 @@ class SourcePipelineSuite4 {
             @Expect(documentation.status, "complete")
             @Expect(declarationNamed(documentation, "byteBacked").kind, "function")
             let defaultExpression = declarationNamed(documentation, "byteBacked").parameters[0].defaultExpression.getOrThrow()
-            @Expect(defaultExpression.replace("\n", "").replace(" ", ""), "{=>1}")
+            let defaultTokens = ArrayList<String>()
+            for (token in cangjieLex(defaultExpression)) {
+                if (!ignoredDefaultToken(token)) { defaultTokens.add(token.value) }
+            }
+            @Expect(defaultTokens.toArray(), ["{", "=>", "1", "}"])
             @Expect(containsDiagnostic(documentation, "CJDOC1011"), false)
         } finally {
             let _ = removeIfExists(temporary, recursive: true)
