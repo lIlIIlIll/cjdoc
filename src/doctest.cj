@@ -407,21 +407,8 @@ internal func memoryBoundedCommand(command: String, arguments: Array<String>,
         wrapped.add(all: arguments)
         return (candidate, wrapped.toArray())
     }
-    // macOS and other POSIX systems may not ship prlimit. Keep the same
-    // address-space bound through a shell builtin; the shell exits before exec
-    // when ulimit is unsupported, so callers never fall back to an unbounded run.
-    if (exists(Path("/bin/sh"))) {
-        let wrapped = ArrayList<String>()
-        wrapped.add("-c")
-        wrapped.add("ulimit -v \"$1\" || exit 125; shift; exec \"$@\"")
-        wrapped.add("cjdoc-memory-limit")
-        wrapped.add(((limit + 1023) / 1024).toString())
-        wrapped.add(command)
-        wrapped.add(all: arguments)
-        return ("/bin/sh", wrapped.toArray())
-    }
     // Running without an enforceable bound is not a safe fallback.
-    throw IllegalStateException("doctest memory limit is unavailable on this platform")
+    throw IllegalStateException("address-space memory limit is unavailable on this platform")
 }
 private func doctestOriginForLogicalPath(origins: Array<SourceFileOrigin>, moduleId: String,
     logicalPath: String): ?SourceFileOrigin {
