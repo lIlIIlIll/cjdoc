@@ -61,7 +61,7 @@ bash scripts/update_goldens.sh
 - Windows x64 (`windows-2022`);
 - macOS ARM64 (`macos-15`).
 
-Linux also runs the real-repository smoke. These jobs are pull-request/push evidence only after GitHub reports them for the exact commit. The compiler and stdx archive checksums are passed independently to the installer and are both included in package provenance.
+Linux also runs the real-repository smoke. These jobs are pull-request/push evidence only after GitHub reports them for the exact commit. The compiler and stdx archive checksums are passed independently to the installer and are both included in package provenance. Static sidecars also authenticate `libflatbuffers.a`; `with_stdx.py` supplies its library search option as a raw cjpm token, not shell-quoted text.
 
 Platform acceptance does not imply identical local-asset capabilities. POSIX builds embed a local asset only after opening every path component with `openat` + `O_NOFOLLOW` and validating the opened regular file. The current Windows SDK lacks a public API with equivalent safe no-follow/openat semantics, so Windows intentionally does not embed local assets: it omits the asset, emits `CJDOC4026`, and marks the document `partial`. A successful Windows acceptance/package job verifies that fail-closed contract; it must not be reported as Windows asset-embedding support.
 

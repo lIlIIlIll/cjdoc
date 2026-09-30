@@ -210,7 +210,8 @@ def main(argv: list[str]) -> int:
     if selected is None:
         fail(f"no authenticated {variant} stdx sidecar matches the selected compiler")
 
-    link_options = f'-L"{selected}" -lflatbuffers' if variant == "static" else ""
+    # cjpm passes link-option tokens directly; embedded shell quotes are literal.
+    link_options = f"-L{selected} -lflatbuffers" if variant == "static" else ""
     dependency_digest = file_digest(selected / "libflatbuffers.a") if variant == "static" else ""
     fingerprint = hashlib.sha256(
         f"{version}\0{target}\0{selected_digest}\0{dependency_digest}".encode("utf-8")
