@@ -81,8 +81,8 @@ private func splitExampleDirectives(rest: String): (String, String) {
     while (index < value.size) {
         let byte = value[index]
         if (depth == 0) {
-            if (byte == b'{' && index > 0 &&
-                (value[index - 1] == b' ' || value[index - 1] == b'\t')) {
+            if (byte == b'{' && (index == 0 ||
+                value[index - 1] == b' ' || value[index - 1] == b'\t')) {
                 candidate = Some(index)
                 depth = 1
             }

@@ -39,6 +39,8 @@ internal func syntaxRecoverySource(source: String): String {
     let ranges = ArrayList<(Int64, Int64)>()
     var braceDepth: Int64 = 0
     var functionCandidate = false
+    var signatureParentheses: Int64 = 0
+    var signatureBrackets: Int64 = 0
     var index: Int64 = 0
     while (index < tokens.size) {
         let token = tokens[index]
@@ -47,6 +49,22 @@ internal func syntaxRecoverySource(source: String): String {
             continue
         }
         let value = token.value
+        if (functionCandidate) {
+            if (value == "(") { signatureParentheses++ }
+            if (value == ")" && signatureParentheses > 0) { signatureParentheses-- }
+            if (value == "[") { signatureBrackets++ }
+            if (value == "]" && signatureBrackets > 0) { signatureBrackets-- }
+            if (signatureParentheses > 0 || signatureBrackets > 0) {
+                if (value == "{") {
+                    let closing = syntaxRecoveryMatchingBrace(tokens, index)
+                    if (closing < 0) { return source }
+                    index = closing + 1
+                } else {
+                    index++
+                }
+                continue
+            }
+        }
         if (value == "func" || value == "init" || value == "get" ||
             value == "set" || value == "mut" || value == "remove" ||
             value == "operator" || (braceDepth == 0 && value == "main")) {

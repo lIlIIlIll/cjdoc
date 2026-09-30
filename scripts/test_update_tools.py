@@ -84,7 +84,7 @@ class UpdateToolsTest(unittest.TestCase):
             script.chmod(0o755)
 
         for name in SCHEMA_NAMES:
-            if name in ("doc-ir-v6", "doc-ir-v7", "doc-ir-v8"):
+            if name in ("doc-ir-v6", "doc-ir-v7", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10"):
                 shutil.copyfile(
                     PROJECT_ROOT / "docs/schema" / f"{name}.schema.json",
                     schemas / f"{name}.schema.json",
@@ -178,12 +178,14 @@ class UpdateToolsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)
             self.make_repo(repo)
-            v6 = (repo / "docs/schema/doc-ir-v6.schema.json").read_bytes()
-            v7 = (repo / "docs/schema/doc-ir-v7.schema.json").read_bytes()
+            frozen = {
+                version: (repo / f"docs/schema/doc-ir-v{version}.schema.json").read_bytes()
+                for version in range(6, 11)
+            }
             result = self.run_script(repo, "update_schemas.sh")
             self.assertEqual(result.returncode, 0, msg=result.stderr)
-            self.assertEqual((repo / "docs/schema/doc-ir-v6.schema.json").read_bytes(), v6)
-            self.assertEqual((repo / "docs/schema/doc-ir-v7.schema.json").read_bytes(), v7)
+            for version, content in frozen.items():
+                self.assertEqual((repo / f"docs/schema/doc-ir-v{version}.schema.json").read_bytes(), content)
             self.assertEqual(
                 {path.name for path in (repo / "docs/schema").iterdir()},
                 {f"{name}.schema.json" for name in SCHEMA_NAMES},
@@ -199,8 +201,8 @@ class UpdateToolsTest(unittest.TestCase):
             before = {
                 path.name: path.read_bytes() for path in (repo / "docs/schema").iterdir()
             }
-            (repo / "fake-schemas/doc-ir-v7.schema.json").write_text(
-                '{"properties":{"schemaVersion":{"const":"cjdoc.doc-ir/7"}},'
+            (repo / "fake-schemas/doc-ir-v10.schema.json").write_text(
+                '{"properties":{"schemaVersion":{"const":"cjdoc.doc-ir/10"}},'
                 '"drift":true}\n', encoding="utf-8"
             )
             result = self.run_script(repo, "update_schemas.sh")

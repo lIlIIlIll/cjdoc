@@ -18,6 +18,19 @@ internal func moduleId(role: String, name: String, logicalPrefix: String): Strin
     "cjdoc:module:v1:path:${percentEscapeSymbolPart(name)}"
 }
 
+internal func sourcePackagePathPrefixLength(packageName: String, reference: String): Int64 {
+    let start = match (packageName.indexOf("::")) {
+        case Some(index) => index + 2
+        case None => 0
+    }
+    let length = packageName.size - start
+    if (length == 0 || reference.size < length) { return -1 }
+    for (index in 0..length) {
+        if (packageName[start + index] != reference[index]) { return -1 }
+    }
+    length
+}
+
 internal func findSourceModule(modules: ArrayList<SourceModuleRoot>, actualRoot: String): ?SourceModuleRoot {
     for (module in modules) {
         if (module.actualRoot == actualRoot) { return Some(module) }
@@ -221,7 +234,8 @@ internal func addExternalSourceModule(modules: ArrayList<SourceModuleRoot>,
         }
     }
     let moduleDoc = SourceModule(moduleId("externalDependency", input.name, prefix),
-        packageName, "externalDependency", prefix, organization: packageView.organization)
+        packageName, "externalDependency", prefix,
+        organization: packageView.organization, manifestText: Some(dependencyManifest))
     let module = SourceModuleRoot(resolved, sourceRoot, prefix, moduleDoc)
     if (sourceModuleCollision(modules, module)) {
         diagnostics.add(Diagnostic("warning", "CJDOC1018",

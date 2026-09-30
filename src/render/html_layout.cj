@@ -149,7 +149,11 @@ internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: 
     out.append(">\n")
     out.append("<header class=\"site-nav\"><div class=\"site-nav-inner\">")
     out.append("<button class=\"nav-menu\" type=\"button\" data-cjdoc-menu aria-controls=\"cjdoc-sidebar\" aria-expanded=\"false\" aria-label=\"${label(locale, "Open navigation", "打开导航")}\">${label(locale, "Menu", "菜单")}</button>")
-    out.append("<a class=\"brand\" href=\"${rootPrefix}index.html\"><span class=\"brand-mark\" aria-hidden=\"true\">cj</span><span>cjdoc<span class=\"brand-subtitle\">${label(locale, "API docs", "API 文档")}</span></span></a>")
+    let brandSubtitle = match (docVersion) {
+        case Some(value) => value
+        case None => label(locale, "API docs", "API 文档")
+    }
+    out.append("<a class=\"brand\" href=\"${rootPrefix}index.html\"><span class=\"brand-mark\" aria-hidden=\"true\">cj</span><span>cjdoc<span class=\"brand-subtitle\">${escapeHtml(brandSubtitle)}</span></span></a>")
     out.append("<div class=\"site-search\"><div class=\"search-area\"><div class=\"search-shell\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"></circle><path d=\"m20 20-4-4\"></path></svg><label class=\"sr-only\" for=\"cjdoc-search-input\">${label(locale, "Search API", "搜索 API")}</label>")
     out.append("<input id=\"cjdoc-search-input\" type=\"search\" placeholder=\"${label(locale, "Search docs", "搜索文档")}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"cjdoc-search-results\" aria-expanded=\"false\" data-cjdoc-search data-root=\"${rootPrefix}\"><kbd>Ctrl K</kbd></div>")
     out.append("<ul id=\"cjdoc-search-results\" class=\"search-results\" role=\"listbox\" data-cjdoc-results aria-live=\"polite\"></ul><p class=\"search-status-note\" data-cjdoc-search-status role=\"status\" hidden></p></div>")

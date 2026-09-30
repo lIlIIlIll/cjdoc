@@ -274,10 +274,18 @@ internal func addPathDependencies(modules: ArrayList<SourceModuleRoot>, seen: Ha
                 let _ = seen.add(resolved)
                 continue
         }
-        let prefix = dependencyPrefix(dependencyName)
-        let dependencyDoc = SourceModule(moduleId("pathDependency", dependencyName, prefix),
+        // Organization distinguishes module identity; cjc still receives the declared module name.
+        let dependencyIdentity = match (dependencyPackage.organization) {
+            case Some(organization) =>
+                if (organization.isEmpty()) { dependencyName } else { organization + "::" + dependencyName }
+            case None => dependencyName
+        }
+        let prefix = "dependencies/" + percentEscapeSymbolPart(dependencyIdentity)
+            .replace("/", "%2F").replace("\\", "%5C")
+        let dependencyDoc = SourceModule(moduleId("pathDependency", dependencyIdentity, prefix),
             dependencyName, "pathDependency", prefix,
-            organization: dependencyPackage.organization)
+            organization: dependencyPackage.organization,
+            manifestText: Some(dependencyManifest))
         if (!budget.canAddModule(modules.size)) { break }
         let dependencyModule = SourceModuleRoot(resolved, dependencySourceRoot,
             prefix, dependencyDoc)
@@ -361,7 +369,8 @@ internal func discoverSourceModules(root: String, manifest: String, includePathD
             }
         }
         let moduleDoc = SourceModule(moduleId(role, name, prefix), name, role, prefix,
-            organization: packageView.organization)
+            organization: packageView.organization,
+            manifestText: Some(moduleManifest))
         let module = SourceModuleRoot(moduleRoot, sourceRoot, prefix, moduleDoc)
         if (sourceModuleCollision(modules, module)) {
             diagnostics.add(Diagnostic("error", "CJDOC1010",

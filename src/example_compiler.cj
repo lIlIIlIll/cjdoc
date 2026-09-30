@@ -429,7 +429,53 @@ private func nextExampleToken(tokens: Tokens, start: Int64): Int64 {
     index
 }
 
-private func existingMainBodyRange(source: String): ?(Int64, Int64) {
+private func previousAnnotationToken(tokens: Tokens, start: Int64): Int64 {
+    var index = start
+    while (index >= 0 && (tokens[index].kind == NL || tokens[index].kind == COMMENT)) {
+        index--
+    }
+    index
+}
+
+private func whenAnnotationBeforeMain(source: String, tokens: Tokens,
+    mainIndex: Int64, profile: CfgProfile): Bool {
+    let sourceIndex = IndexedSourceBuffer(source)
+    var cursor = previousAnnotationToken(tokens, mainIndex - 1)
+    while (cursor >= 0) {
+        if (tokens[cursor].kind != RSQUARE) { break }
+        var squareDepth: Int64 = 1
+        var opening = cursor - 1
+        while (opening >= 0 && squareDepth > 0) {
+            if (tokens[opening].kind == RSQUARE) { squareDepth++ }
+            if (tokens[opening].kind == LSQUARE) { squareDepth-- }
+            opening--
+        }
+        if (squareDepth != 0) { break }
+        let annotationName = opening
+        let at = annotationName - 1
+        if (annotationName < 0 || at < 0 || tokens[annotationName].kind != IDENTIFIER ||
+            tokens[at].kind != AT) { break }
+        if (tokens[annotationName].value != "When") {
+            cursor = previousAnnotationToken(tokens, at)
+            continue
+        }
+        let start = sourceIndex.byteOffsetFromLexerPosition(
+            Int64(tokens[at].pos.line), Int64(tokens[at].pos.column))
+        let close = sourceIndex.byteOffsetFromLexerPosition(
+            Int64(tokens[cursor].pos.line), Int64(tokens[cursor].pos.column))
+        if (start < 0 || close < start) { break }
+        let annotation = source[start..close + tokens[cursor].value.size]
+        match (compilerWhenSelection(annotation, profile)) {
+            case Some(selected) => if (!selected) { return false }
+            case None => return false
+        }
+        cursor = previousAnnotationToken(tokens, at - 1)
+    }
+    true
+}
+
+private func existingMainNameRange(source: String,
+    profile: CfgProfile): ?(Int64, Int64) {
     let tokens = sourceLexerTokens(source)
     let sourceIndex = IndexedSourceBuffer(source)
     var index: Int64 = 0
@@ -448,68 +494,30 @@ private func existingMainBodyRange(source: String): ?(Int64, Int64) {
             index++
             continue
         }
-        var cursor = opening
-        var parentheses: Int64 = 0
-        var closing: Int64 = -1
-        while (cursor < tokens.size) {
-            if (tokens[cursor].kind == LPAREN) { parentheses++ }
-            if (tokens[cursor].kind == RPAREN) {
-                parentheses--
-                if (parentheses == 0) { closing = cursor; break }
-            }
-            cursor++
+        if (!whenAnnotationBeforeMain(source, tokens, index, profile)) {
+            index++
+            continue
         }
-        if (closing < 0) { return None }
-        cursor = closing + 1
-        var bodyOpening: Int64 = -1
-        while (cursor < tokens.size) {
-            if (tokens[cursor].kind == LCURL) { bodyOpening = cursor; break }
-            if (tokens[cursor].kind == NL) {
-                let next = nextExampleToken(tokens, cursor + 1)
-                if (next < tokens.size && tokens[next].kind == IDENTIFIER &&
-                    next + 1 < tokens.size && tokens[next + 1].kind == LPAREN) {
-                    break
-                }
-                if (next < tokens.size && ["func", "class", "struct", "interface", "enum",
-                    "package", "import", "let", "var", "prop"].contains(tokens[next].value)) {
-                    break
-                }
-            }
-            cursor++
-        }
-        if (bodyOpening < 0) { index++ ; continue }
-        var braceDepth: Int64 = 0
-        var bodyClosing: Int64 = -1
-        cursor = bodyOpening
-        while (cursor < tokens.size) {
-            if (tokens[cursor].kind == LCURL) { braceDepth++ }
-            if (tokens[cursor].kind == RCURL) {
-                braceDepth--
-                if (braceDepth == 0) { bodyClosing = cursor; break }
-            }
-            cursor++
-        }
-        if (bodyClosing < 0) { return None }
-        let openingOffset = sourceIndex.byteOffsetFromLexerPosition(
-            Int64(tokens[bodyOpening].pos.line), Int64(tokens[bodyOpening].pos.column))
-        let closingOffset = sourceIndex.byteOffsetFromLexerPosition(
-            Int64(tokens[bodyClosing].pos.line), Int64(tokens[bodyClosing].pos.column))
-        if (openingOffset < 0 || closingOffset <= openingOffset) { return None }
-        return Some((openingOffset + 1, closingOffset))
+        let start = sourceIndex.byteOffsetFromLexerPosition(
+            Int64(tokens[index].pos.line), Int64(tokens[index].pos.column))
+        if (start < 0) { return None }
+        return Some((start, start + tokens[index].value.size))
     }
     None
 }
 
-private func replaceExistingMainBody(source: String): (String, Bool) {
-    match (existingMainBodyRange(source)) {
+private func renameExistingMain(source: String,
+    profile: CfgProfile): (String, Bool) {
+    match (existingMainNameRange(source, profile)) {
         case Some((start, end)) =>
-            (source[..start] + "\n    __cjdoc_example_runner()\n" + source[end..], true)
+            (source[..start] + "func __cjdoc_preserved_main" + source[end..], true)
         case None => (source, false)
     }
 }
 
 internal func stageExampleSources(unit: ExampleCompilationUnit,
-    temporary: Path, forRun!: Bool = false): (Array<String>, Bool) {
+    temporary: Path, forRun!: Bool = false,
+    cfgProfile!: CfgProfile = CfgProfile()): (Array<String>, Bool) {
     let paths = ArrayList<String>()
     var index: Int64 = 0
     var entryPointPatched = false
@@ -517,7 +525,7 @@ internal func stageExampleSources(unit: ExampleCompilationUnit,
         for (origin in unit.sourceOrigins) {
             let path = temporary.join("__cjdoc_context_${index}.cj")
             let stagedSource = if (forRun && !entryPointPatched) {
-                let (rewritten, found) = replaceExistingMainBody(origin.capturedSource)
+                let (rewritten, found) = renameExistingMain(origin.capturedSource, cfgProfile)
                 if (found) { entryPointPatched = true }
                 rewritten
             } else {
@@ -560,9 +568,7 @@ internal func exampleCompilerArguments(documentation: DocumentationSet,
     args.add("--diagnostic-format"); args.add("noColor")
     args.add("--error-count-limit"); args.add("8")
     args.add("-Woff"); args.add("all")
-    for (cfg in documentation.cfgProfile.values) {
-        args.add("--cfg"); args.add(cfg.name + "=" + cfg.value)
-    }
+    appendCompilerCfgArguments(args, documentation.cfgProfile)
     for (option in target.compilerOptions) { args.add(option) }
     for (artifact in packageArtifacts) {
         args.add("--import-path"); args.add(artifact.artifactRoot.toString())
@@ -574,7 +580,12 @@ internal func exampleCompilerArguments(documentation: DocumentationSet,
         var index = packageArtifacts.size
         while (index > 0) {
             index--
-            args.add("--library"); args.add(packageArtifacts[index].packageName)
+            let packageName = packageArtifacts[index].packageName
+            let libraryName = match (packageName.indexOf("::")) {
+                case Some(separator) => packageName[separator + 2..] + "@" + packageName[..separator]
+                case None => packageName
+            }
+            args.add("--library"); args.add(libraryName)
         }
     } else {
         args.add("--output-type"); args.add("staticlib")

@@ -448,24 +448,26 @@ internal func collectPublicReExports(program: Program, path: String,
     result.toArray()
 }
 
+private func qualifiedPackageImportPath(organization: String, packagePath: String): String {
+    if (organization.isEmpty()) { return packagePath }
+    organization + "::" + packagePath
+}
+
 internal func collectImportedPackagePaths(program: Program): Array<String> {
     let result = ArrayList<String>()
     for (importList in program.importLists) {
         let content = importList.content
         let prefix = ArrayList<String>(importPrefixPaths(content.prefixPaths))
-        let packagePath = joinedImportPath(prefix)
-        if (!packagePath.isEmpty() && !result.contains(packagePath)) {
-            result.add(packagePath)
-        }
-        match (content.importKind) {
+        let packagePath = match (content.importKind) {
             case ImportKind.Alias =>
-                if (!content.identifier.value.isEmpty()) {
-                    let aliasPackagePath = joinedImportPath(prefix, tail: Some(content.identifier.value))
-                    if (!aliasPackagePath.isEmpty() && !result.contains(aliasPackagePath)) {
-                        result.add(aliasPackagePath)
-                    }
+                if (content.identifier.value.isEmpty()) { joinedImportPath(prefix) } else {
+                    joinedImportPath(prefix, tail: Some(content.identifier.value))
                 }
-            case _ => ()
+            case _ => joinedImportPath(prefix)
+        }
+        let qualifiedPath = qualifiedPackageImportPath(content.orgName.value, packagePath)
+        if (!packagePath.isEmpty() && !result.contains(qualifiedPath)) {
+            result.add(qualifiedPath)
         }
     }
     result.toArray()
@@ -660,11 +662,19 @@ internal func hasDeepSourceBinaryExpression(source: String): Bool {
 }
 
 internal func packageNameFrom(program: Program, fallback: String): String {
-    var value = program.packageHeader.toTokens().toString().trimAscii()
-    if (value.isEmpty()) { return fallback }
-    if (value.startsWith("macro package ")) { value = value.removePrefix("macro package ") }
-    if (value.startsWith("package ")) { value = value.removePrefix("package ") }
-    value.trimAscii()
+    let builder = StringBuilder()
+    var inPackageName = false
+    for (token in program.packageHeader.toTokens()) {
+        if (!inPackageName) {
+            inPackageName = token.value == "package"
+            continue
+        }
+        if (token.kind != TokenKind.NL && token.kind != TokenKind.COMMENT) {
+            builder.append(token.value)
+        }
+    }
+    let name = builder.toString()
+    if (name.isEmpty()) { fallback } else { name }
 }
 
 internal func parseSourceTextWithAst(input: SourceInputFile, fallbackPackageName: String,

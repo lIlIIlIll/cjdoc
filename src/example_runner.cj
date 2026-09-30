@@ -40,6 +40,8 @@ foreign func CloseHandle(handle: CPointer<Unit>): Int32
 // to stay small enough to fit into a diagnostic.
 private let MAX_EXAMPLE_RUN_MILLISECONDS: Int64 = 10000
 private let MAX_EXAMPLE_RUN_OUTPUT_BYTES: Int64 = 65536
+private let MAX_EXAMPLE_RUN_MEMORY_MB: Int64 = 2048
+private let MAX_EXAMPLE_RUN_MEMORY_BYTES: Int64 = MAX_EXAMPLE_RUN_MEMORY_MB * 1024 * 1024
 private let EXAMPLE_RUN_CHUNK_BYTES: Int64 = 8192
 private let EXAMPLE_RUN_POLL_MILLISECONDS: Int64 = 50
 // Deliberately distinct from the generated source (`__cjdoc_example.cj`) and the
@@ -48,21 +50,17 @@ private let EXAMPLE_RUN_POLL_MILLISECONDS: Int64 = 50
 private let EXAMPLE_RUN_OUTPUT_BASE = "__cjdoc_run"
 private let EXAMPLE_RUN_SUPERVISOR_ARGUMENT = "--cjdoc-run-example-supervisor"
 
-// Cangjie entry points use a bare `main()`; `func main()` is invalid. When the
-// package already declares an entry point, staging replaces its body with a call to
-// the generated example function instead of adding a second `main`.
+// Cangjie entry points use a bare main(); func main() is invalid. Staging
+// renames an active source entry point to preserve its original signature, so
+// the generated wrapper can always own the executable entry point.
 internal func exampleProgramSource(unit: ExampleCompilationUnit,
-    target: ExampleCompilationTarget, existingMain!: Bool = false): String {
+    target: ExampleCompilationTarget): String {
     let out = StringBuilder()
     if (!unit.packageName.isEmpty()) { out.append("package ${unit.packageName}\n\n") }
     for (spelling in target.imports) { out.append(spelling); out.append("\n") }
     if (!target.imports.isEmpty()) { out.append("\n") }
     appendExampleSupervisorSupport(out)
-    if (existingMain) {
-        out.append("func __cjdoc_example_runner(): Unit {\n")
-    } else {
-        out.append("main(): Unit {\n")
-    }
+    out.append("main(): Unit {\n")
     out.append("    __cjdoc_runExampleSupervisor()\n")
     for (line in target.code.split("\n")) {
         out.append("    "); out.append(line); out.append("\n")
@@ -73,19 +71,18 @@ internal func exampleProgramSource(unit: ExampleCompilationUnit,
 
 private func appendExampleSupervisorSupport(out: StringBuilder): Unit {
     out.append("""
-        import std.env.{getCommandLine}
-        import std.io.{InputStream, OutputStream}
-        import std.process.{launch, Process, ProcessRedirect}
-        import std.sync.*
+        import std.env as __cjdoc_env
+        import std.io as __cjdoc_io
+        import std.process as __cjdoc_process
         @When[os != "Windows"]
-        import std.posix.{setpgid}
+        import std.posix as __cjdoc_posix
 
         private let __cjdoc_example_supervisor_argument = "${EXAMPLE_RUN_SUPERVISOR_ARGUMENT}"
 
         @When[os == "Windows"]
         private func __cjdoc_waitForExampleSupervisorRelease(): Unit {
             let releaseSignal = Array<Byte>(1, repeat: 0)
-            if (Process.current.stdIn.read(releaseSignal) != 1) {
+            if (__cjdoc_process.Process.current.stdIn.read(releaseSignal) != 1) {
                 throw IllegalStateException("run-example supervisor was not released")
             }
         }
@@ -93,8 +90,8 @@ private func appendExampleSupervisorSupport(out: StringBuilder): Unit {
         @When[os != "Windows"]
         private func __cjdoc_waitForExampleSupervisorRelease(): Unit { () }
 
-        private func __cjdoc_forwardExampleStream(stream: InputStream,
-            destination: OutputStream): Unit {
+        private func __cjdoc_forwardExampleStream(stream: __cjdoc_io.InputStream,
+            destination: __cjdoc_io.OutputStream): Unit {
             let buffer = Array<Byte>(8192, repeat: 0)
             var count = stream.read(buffer)
             while (count > 0) {
@@ -108,7 +105,7 @@ private func appendExampleSupervisorSupport(out: StringBuilder): Unit {
 
         @When[os != "Windows"]
         private func __cjdoc_isolateExampleProcessGroup(): Unit {
-            if (setpgid(0, 0) != 0) {
+            if (__cjdoc_posix.setpgid(0, 0) != 0) {
                 throw IllegalStateException("could not isolate run-example process group")
             }
         }
@@ -117,22 +114,22 @@ private func appendExampleSupervisorSupport(out: StringBuilder): Unit {
         private func __cjdoc_isolateExampleProcessGroup(): Unit { () }
 
         private func __cjdoc_runExampleSupervisor(): Unit {
-            let commandLine = getCommandLine()
+            let commandLine = __cjdoc_env.getCommandLine()
             if (commandLine.size < 3 ||
                 commandLine[1] != __cjdoc_example_supervisor_argument) { return }
             __cjdoc_waitForExampleSupervisorRelease()
             __cjdoc_isolateExampleProcessGroup()
-            let example = launch(commandLine[2], [],
-                stdIn: ProcessRedirect.Discard,
-                stdOut: ProcessRedirect.Pipe,
-                stdErr: ProcessRedirect.Pipe)
+            let example = __cjdoc_process.launch(commandLine[2], [],
+                stdIn: __cjdoc_process.ProcessRedirect.Discard,
+                stdOut: __cjdoc_process.ProcessRedirect.Pipe,
+                stdErr: __cjdoc_process.ProcessRedirect.Pipe)
             let standardOutput = spawn { => __cjdoc_forwardExampleStream(
-                example.stdOutPipe, Process.current.stdOut) }
+                example.stdOutPipe, __cjdoc_process.Process.current.stdOut) }
             let standardError = spawn { => __cjdoc_forwardExampleStream(
-                example.stdErrPipe, Process.current.stdErr) }
+                example.stdErrPipe, __cjdoc_process.Process.current.stdErr) }
             standardOutput.get()
             standardError.get()
-            Process.current.exit(example.wait())
+            __cjdoc_process.Process.current.exit(example.wait())
         }
         """)
 }
@@ -191,16 +188,22 @@ private func exampleSupervisorInputRedirect(): ProcessRedirect { ProcessRedirect
 private func exampleSupervisorInputRedirect(): ProcessRedirect { ProcessRedirect.Discard }
 
 @When[os == "Windows"]
-private func createExampleProcessJob(process: SubProcess): CPointer<Unit> {
+internal func createExampleProcessJob(process: SubProcess,
+    memoryBytes!: Int64 = 0): CPointer<Unit> {
     unsafe {
         let job = CreateJobObjectW(CPointer<Unit>(), CPointer<UInt16>())
         if (job.isNull()) {
             throw IllegalStateException("could not create run-example process job")
         }
         // JobObjectExtendedLimitInformation is 18 64-bit words on Windows x64;
-        // LimitFlags is word 2.
+        // LimitFlags is word 2 and JobMemoryLimit is word 15.
+        if (memoryBytes < 0) {
+            throw IllegalArgumentException("memory limit must not be negative")
+        }
+        let limitFlags: Int64 = if (memoryBytes > 0) { 0x2200 } else { 0x2000 }
         var extendedLimits: VArray<Int64, $18> =
-            [0, 0, 0x2000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            [0, 0, limitFlags, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        if (memoryBytes > 0) { extendedLimits[15] = memoryBytes }
         if (SetInformationJobObject(job, 9, inout extendedLimits, 144) == 0) {
             let _ = CloseHandle(job)
             throw IllegalStateException("could not configure run-example process job")
@@ -221,8 +224,10 @@ private func createExampleProcessJob(process: SubProcess): CPointer<Unit> {
 }
 
 @When[os != "Windows"]
-private func createExampleProcessJob(process: SubProcess): CPointer<Unit> {
+internal func createExampleProcessJob(process: SubProcess,
+    memoryBytes!: Int64 = 0): CPointer<Unit> {
     let _ = process
+    let _ = memoryBytes
     CPointer<Unit>()
 }
 
@@ -239,13 +244,13 @@ private func releaseExampleSupervisor(process: SubProcess): Unit {
 }
 
 @When[os == "Windows"]
-private func closeExampleProcessJob(job: CPointer<Unit>): Bool {
+internal func closeExampleProcessJob(job: CPointer<Unit>): Bool {
     if (job.isNull()) { return false }
     unsafe { CloseHandle(job) != 0 }
 }
 
 @When[os != "Windows"]
-private func closeExampleProcessJob(job: CPointer<Unit>): Bool {
+internal func closeExampleProcessJob(job: CPointer<Unit>): Bool {
     let _ = job
     false
 }
@@ -265,12 +270,25 @@ private func terminateExampleProcessTree(process: SubProcess,
     if (!closeExampleProcessJob(job)) { terminateExampleProcessDirectly(process) }
 }
 
-private func executeExampleProgram(executable: Path): ExampleProcessResult {
-    let process = launch(executable.toString(), [EXAMPLE_RUN_SUPERVISOR_ARGUMENT,
-        executable.toString()], stdIn: exampleSupervisorInputRedirect(),
+@When[os == "Windows"]
+private func launchExampleSupervisor(executable: Path): SubProcess {
+    launch(executable.toString(), [EXAMPLE_RUN_SUPERVISOR_ARGUMENT, executable.toString()],
+        stdIn: exampleSupervisorInputRedirect(), stdOut: ProcessRedirect.Pipe,
+        stdErr: ProcessRedirect.Pipe)
+}
+
+@When[os != "Windows"]
+private func launchExampleSupervisor(executable: Path): SubProcess {
+    let (command, arguments) = memoryBoundedCommand(executable.toString(),
+        [EXAMPLE_RUN_SUPERVISOR_ARGUMENT, executable.toString()], MAX_EXAMPLE_RUN_MEMORY_MB)
+    launch(command, arguments, stdIn: exampleSupervisorInputRedirect(),
         stdOut: ProcessRedirect.Pipe, stdErr: ProcessRedirect.Pipe)
+}
+
+private func executeExampleProgram(executable: Path): ExampleProcessResult {
+    let process = launchExampleSupervisor(executable)
     let job = try {
-        createExampleProcessJob(process)
+        createExampleProcessJob(process, memoryBytes: MAX_EXAMPLE_RUN_MEMORY_BYTES)
     } catch (error: Exception) {
         terminateExampleProcessDirectly(process)
         throw error
@@ -338,14 +356,14 @@ private func buildExampleExecutable(documentation: DocumentationSet,
     temporary: Path, packageArtifacts: Array<ExamplePackageArtifact>): ?Path {
     let label = exampleLabel(target.symbol, target.title)
     try {
-        let (sourcePaths, existingMain) = stageExampleSources(unit, temporary, forRun: true)
+        let (sourcePaths, _) = stageExampleSources(unit, temporary,
+            forRun: true, cfgProfile: documentation.cfgProfile)
         if (sourcePaths.isEmpty()) {
             addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3074",
                 "@example '${label}' could not stage its source context")
             return None
         }
-        File.writeTo(generated, exampleProgramSource(unit, target,
-            existingMain: existingMain).toArray())
+        File.writeTo(generated, exampleProgramSource(unit, target).toArray())
         let (exitCode, stdout, stderr) = executeWithBoundedOutput("cjc",
             exampleCompilerArguments(documentation, unit, target, generated,
                 exampleExecutableOutputPath(temporary), sourcePaths: sourcePaths,

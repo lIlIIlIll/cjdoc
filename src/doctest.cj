@@ -391,7 +391,12 @@ private func skippedResult(snippet: DoctestSnippet, message: String): DoctestCas
     DoctestCaseResult(snippet, "skipped", message: message)
 }
 
-private func memoryBoundedCommand(command: String, arguments: Array<String>, memoryMb: Int64): (String, Array<String>) {
+internal func memoryBoundedCommand(command: String, arguments: Array<String>,
+    memoryMb: Int64): (String, Array<String>) {
+    if (memoryMb < 0) {
+        throw IllegalArgumentException("memory limit must not be negative")
+    }
+    if (memoryMb == 0) { return (command, arguments) }
     let limit = memoryMb * 1024 * 1024
     for (candidate in ["/usr/bin/prlimit", "/bin/prlimit"]) {
         if (!exists(Path(candidate))) { continue }
@@ -402,10 +407,20 @@ private func memoryBoundedCommand(command: String, arguments: Array<String>, mem
         wrapped.add(all: arguments)
         return (candidate, wrapped.toArray())
     }
-    // Running without an enforceable bound is not a safe fallback. In
-    // particular, macOS and Windows do not provide Linux's prlimit paths;
-    // report the unavailable limiter and let the command fail closed instead
-    // of executing unbounded user code.
+    // macOS and other POSIX systems may not ship prlimit. Keep the same
+    // address-space bound through a shell builtin; the shell exits before exec
+    // when ulimit is unsupported, so callers never fall back to an unbounded run.
+    if (exists(Path("/bin/sh"))) {
+        let wrapped = ArrayList<String>()
+        wrapped.add("-c")
+        wrapped.add("ulimit -v \"$1\" || exit 125; shift; exec \"$@\"")
+        wrapped.add("cjdoc-memory-limit")
+        wrapped.add(((limit + 1023) / 1024).toString())
+        wrapped.add(command)
+        wrapped.add(all: arguments)
+        return ("/bin/sh", wrapped.toArray())
+    }
+    // Running without an enforceable bound is not a safe fallback.
     throw IllegalStateException("doctest memory limit is unavailable on this platform")
 }
 private func doctestOriginForLogicalPath(origins: Array<SourceFileOrigin>, moduleId: String,

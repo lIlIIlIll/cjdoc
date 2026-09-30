@@ -60,11 +60,39 @@ private func cachedExampleReachableModules(documentation: DocumentationSet, modu
     }
 }
 
+private func exampleModuleOrganization(documentation: DocumentationSet,
+    moduleId: String): ?String {
+    for (module in documentation.modules) {
+        if (module.id == moduleId) { return module.organization }
+    }
+    None
+}
+
+private func examplePackageOrganizationMatches(documentation: DocumentationSet,
+    packageDoc: PackageDoc, organization: String): Bool {
+    if (organization.isEmpty()) { return true }
+    if (let Some(index) <- packageDoc.name.indexOf("::")) {
+        return index == organization.size && packageDoc.name.startsWith(organization)
+    }
+    match (exampleModuleOrganization(documentation, packageDoc.moduleId)) {
+        case Some(value) => value == organization
+        case None => false
+    }
+}
+
 private func selectExamplePackage(documentation: DocumentationSet, ownerModuleId: String,
-    packageName: String, reachable: HashSet<String>): (?PackageDoc, Bool) {
+    packageName: String, reachable: HashSet<String>,
+    organization!: ?String = None): (?PackageDoc, Bool) {
     var sameModule: ?PackageDoc = None
     let candidates = ArrayList<PackageDoc>()
-    for (candidate in documentation.packages where candidate.name == packageName) {
+    for (candidate in documentation.packages where
+        sourcePackagePathPrefixLength(candidate.name, packageName) == packageName.size) {
+        let organizationMatches = match (organization) {
+            case Some(value) => examplePackageOrganizationMatches(documentation,
+                candidate, value)
+            case None => true
+        }
+        if (!organizationMatches) { continue }
         if (candidate.moduleId == ownerModuleId) {
             if (sameModule.isSome()) { return (None<PackageDoc>, true) }
             sameModule = Some(candidate)
@@ -77,20 +105,123 @@ private func selectExamplePackage(documentation: DocumentationSet, ownerModuleId
     (None<PackageDoc>, candidates.size > 1)
 }
 
+private func exampleAliasSeparator(value: String): ?Int64 {
+    let bytes = value.toArray()
+    var index: Int64 = 0
+    while (index + 1 < bytes.size) {
+        if (bytes[index] == b'a' && bytes[index + 1] == b's') {
+            let before = index == 0 || bytes[index - 1] == b' ' || bytes[index - 1] == b'\t'
+            let after = index + 2 >= bytes.size || bytes[index + 2] == b' ' ||
+                bytes[index + 2] == b'\t'
+            if (before && after) { return Some(index) }
+        }
+        index++
+    }
+    None
+}
+
+private func exampleImportPackageReference(importText: String): ?String {
+    let trimmed = importText.trimAscii()
+    let value = if (trimmed.startsWith("public ")) {
+        trimmed.removePrefix("public ").trimAscii()
+    } else {
+        trimmed
+    }
+    if (!value.startsWith("import ")) { return None }
+    var imported = value[7..].trimAscii()
+    let alias = exampleAliasSeparator(imported)
+    if (let Some(index) <- alias) { imported = imported[..index].trimAscii() }
+    let bytes = imported.toArray()
+    var end = bytes.size
+    var hasPackageSelector = false
+    var index: Int64 = 0
+    while (index < bytes.size) {
+        if (bytes[index] == b'{' || bytes[index] == b'*') {
+            end = index
+            hasPackageSelector = true
+            break
+        }
+        index++
+    }
+    var path = imported[..end].trimAscii()
+    let pathBytes = path.toArray()
+    if (!pathBytes.isEmpty() && pathBytes[pathBytes.size - 1] == b'.') {
+        path = path[..path.size - 1].trimAscii()
+    }
+    if (alias.isNone() && !hasPackageSelector) {
+        let parts = path.toArray()
+        var dot: Int64 = parts.size
+        while (dot > 0) {
+            dot--
+            if (parts[dot] == b'.') { break }
+        }
+        if (dot > 0) { path = path[..dot] }
+    }
+    if (path.isEmpty()) { return None }
+    match (path.indexOf("::")) {
+        case Some(orgIndex) =>
+            if (orgIndex <= 0 || orgIndex + 2 >= path.size) { None } else {
+                Some(path[..orgIndex] + "::" + path[orgIndex + 2..])
+            }
+        case None => Some(path)
+    }
+}
+
+private func exampleImportPackageReferences(origin: SourceFileOrigin): Array<String> {
+    let result = ArrayList<String>()
+    for (importText in origin.imports) {
+        if (let Some(reference) <- exampleImportPackageReference(importText)) {
+            if (!result.contains(reference)) { result.add(reference) }
+        }
+    }
+    if (result.isEmpty()) { result.add(all: origin.packageImports) }
+    result.toArray()
+}
+
+private func selectExampleImportPackage(documentation: DocumentationSet,
+    ownerModuleId: String, reference: String, reachable: HashSet<String>): (?PackageDoc, Bool) {
+    let organization: ?String
+    var path = reference
+    match (reference.indexOf("::")) {
+        case Some(index) =>
+            organization = Some(reference[..index])
+            path = reference[index + 2..]
+        case None => organization = None
+    }
+    if (path.isEmpty()) { return (None<PackageDoc>, false) }
+    while (!path.isEmpty()) {
+        let (selected, ambiguous) = selectExamplePackage(documentation, ownerModuleId,
+            path, reachable, organization: organization)
+        if (ambiguous || selected.isSome()) { return (selected, ambiguous) }
+        let bytes = path.toArray()
+        var dot: Int64 = bytes.size
+        while (dot > 0) {
+            dot--
+            if (bytes[dot] == b'.') { break }
+        }
+        if (dot <= 0) { break }
+        path = path[..dot]
+    }
+    (None<PackageDoc>, false)
+}
+
 private func addExampleImportedPackage(documentation: DocumentationSet, ownerModuleId: String,
-    packageName: String, reachableCache: HashMap<String, HashSet<String>>,
+    packageReference: String, reachableCache: HashMap<String, HashSet<String>>,
     required: ArrayList<PackageDoc>, seen: HashSet<String>): String {
     let reachable = cachedExampleReachableModules(documentation, ownerModuleId, reachableCache)
-    let (selected, ambiguous) = selectExamplePackage(documentation, ownerModuleId,
-        packageName, reachable)
-    if (ambiguous) { return "imported package '${packageName}' is ambiguous" }
+    let (selected, ambiguous) = selectExampleImportPackage(documentation, ownerModuleId,
+        packageReference, reachable)
+    if (ambiguous) {
+        return "imported package '" + packageReference + "' is ambiguous"
+    }
     match (selected) {
         case None => return ""
         case Some(packageDoc) =>
             let key = packageDoc.moduleId + "\n" + packageDoc.name
             if (seen.contains(key)) { return "" }
             if (required.size >= MAX_EXAMPLE_DEPENDENCY_PACKAGES) {
-                return "example package dependency limit of ${MAX_EXAMPLE_DEPENDENCY_PACKAGES} was reached"
+                return "example package dependency limit of " +
+                    MAX_EXAMPLE_DEPENDENCY_PACKAGES.toString() + " was reached"
             }
             let _ = seen.add(key)
             required.add(packageDoc)
@@ -107,8 +238,8 @@ private func requiredExamplePackages(documentation: DocumentationSet,
     var index: Int64 = 0
     while (index < unit.sourceOrigins.size) {
         let origin = unit.sourceOrigins[index]
-        for (packageName in origin.packageImports) {
-            let failure = addExampleImportedPackage(documentation, ownerModuleId, packageName,
+        for (packageReference in exampleImportPackageReferences(origin)) {
+            let failure = addExampleImportedPackage(documentation, ownerModuleId, packageReference,
                 reachableCache, required, seen)
             if (!failure.isEmpty()) { return ([], failure) }
         }
@@ -121,8 +252,8 @@ private func requiredExamplePackages(documentation: DocumentationSet,
         ownerModuleId = packageDoc.moduleId
         for (origin in documentation.sourceFileOrigins where
             origin.moduleId == packageDoc.moduleId && origin.packageName == packageDoc.name) {
-            for (packageName in origin.packageImports) {
-                let failure = addExampleImportedPackage(documentation, ownerModuleId, packageName,
+            for (packageReference in exampleImportPackageReferences(origin)) {
+                let failure = addExampleImportedPackage(documentation, ownerModuleId, packageReference,
                     reachableCache, required, seen)
                 if (!failure.isEmpty()) { return ([], failure) }
             }
@@ -177,9 +308,7 @@ private func compileExampleDependency(documentation: DocumentationSet, packageDo
     arguments.add("-Woff"); arguments.add("all")
     arguments.add("--diagnostic-format"); arguments.add("noColor")
     arguments.add("--error-count-limit"); arguments.add("8")
-    for (cfg in documentation.cfgProfile.values) {
-        arguments.add("--cfg"); arguments.add(cfg.name + "=" + cfg.value)
-    }
+    appendCompilerCfgArguments(arguments, documentation.cfgProfile)
     for (artifact in artifacts) {
         arguments.add("--import-path"); arguments.add(artifact.artifactRoot.toString())
         arguments.add("--library-path"); arguments.add(artifact.artifactRoot.toString())
@@ -224,9 +353,9 @@ private func examplePackageDependenciesReady(documentation: DocumentationSet,
     let reachable = cachedExampleReachableModules(documentation, packageDoc.moduleId, reachableCache)
     for (origin in documentation.sourceFileOrigins where
         origin.moduleId == packageDoc.moduleId && origin.packageName == packageDoc.name) {
-        for (packageName in origin.packageImports) {
-            let (selected, _) = selectExamplePackage(documentation, packageDoc.moduleId,
-                packageName, reachable)
+        for (packageReference in exampleImportPackageReferences(origin)) {
+            let (selected, _) = selectExampleImportPackage(documentation, packageDoc.moduleId,
+                packageReference, reachable)
             match (selected) {
                 case Some(dependency) =>
                     if (dependency.moduleId == packageDoc.moduleId &&

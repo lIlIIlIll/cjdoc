@@ -100,6 +100,9 @@ public class GenerationRequest {
         if (chir.isSome() && !providerFactories.isEmpty()) {
             throw IllegalArgumentException("CHIR cannot be combined with an external semantic provider factory")
         }
+        if (repositoryRoot.isSome() && repository.isNone()) {
+            throw IllegalArgumentException("repository root requires repository metadata")
+        }
         this.projectRoot = projectRoot
         this.repository = repository
         this.repositoryRoot = normalizeRepositoryRoot(repositoryRoot)

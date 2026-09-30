@@ -278,8 +278,10 @@ def main() -> int:
         entry["canonicalId"] for entry in entries
         if not entry["canonicalId"].startswith("cjdoc:concept:")
     }
-    if set(signatures) != api_canonical_ids:
-        raise ValueError("search signatures must match canonical API entry IDs")
+    exposure_ids = {entry["id"] for entry in entries if entry["exposure"]}
+    expected_signature_ids = api_canonical_ids | exposure_ids
+    if set(signatures) != expected_signature_ids:
+        raise ValueError("search signatures must match canonical API and exposure entry IDs")
     print(f"validated {len(pages)} HTML pages and {len(entries)} search entries")
     return 0
 

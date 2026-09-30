@@ -31,7 +31,7 @@ cjdoc generate --project . --format html \
   --repository-revision <commit-or-ref> --repository-root .
 ```
 
-`repository-url` 与 `repository-revision` 必须成对出现；`repository-root` 只能用于 `generate`，不能用于 `render` 或 `check`。不能证明源码文件位于仓库内时，页面省略 View source action，不生成猜测链接。HTML 站点可直接通过 `file://` 打开，包索引、声明页、搜索类别、主题和移动端抽屉均使用本地资源。
+`repository-url` 与 `repository-revision` 必须成对出现；`repository-root` 还要求这组仓库元数据，只能用于 `generate`，不能用于 `render` 或 `check`。公开 `GenerationRequest` 同样拒绝没有 `RepositoryInfo` 的 `repositoryRoot`。不能证明源码文件位于仓库内时，页面省略 View source action，不生成猜测链接。HTML 站点可直接通过 `file://` 打开，包索引、声明页、搜索类别、主题和移动端抽屉均使用本地资源。
 
 ## 写文档注释
 
@@ -128,11 +128,11 @@ public func parse(text: String): Int64 {
 
 输出路径与源文件列表仍由 cjdoc 掌握，因此 `-o`、`--output-type`、`-p`、`-L`、`-l`、`--import-path`、`@file` 等一律被拒绝。
 
-带 `run` 的示例可以额外使用语言标记为 `output` 的 fenced code block 固定标准输出：每个示例最多一个 `output` 块，且必须同时带 `run`，否则产生 `CJDOC3033`。比较前两侧都会统一换行符并去掉首尾空行，因此 `println` 结尾的那一个换行不需要写出。示例本身会被包装进一个无参数的 `main`，所以引用 `args` 的示例无法通过编译；需要 `exit` 等函数时，`import` 写在示例所属的源码文件里。
+带 `run` 的示例可以额外使用语言标记为 `output` 的 fenced code block 固定标准输出：每个示例最多一个 `output` 块，且必须同时带 `run`，否则产生 `CJDOC3033`。比较前两侧都会统一换行符并去掉首尾空行，因此 `println` 结尾的那一个换行不需要写出。示例本身会被包装进一个无参数的 `main`，所以引用 `args` 的示例无法通过编译；需要 `exit` 等函数时，`import` 写在示例所属的源码文件里。源码中当前配置选中的 `main` 会保留为普通函数，原返回类型不变，由示例包装器提供入口；未选中的条件入口不参与替换。命令行 `--cfg os=…` 与 `--cfg arch=…` 必须匹配构建目标，匹配值不会再转发给 `cjc --cfg`，其他用户配置正常转发。
 
-运行时的限制是固定的：单次运行上限 10 秒，stdout 与 stderr 各上限 64 KiB，一次检查最多 256 个示例。可执行文件用 `--static --output-type exe` 构建，这样示例即使没有把 SDK 运行库放进 `LD_LIBRARY_PATH` 也能运行；静态链接不可用的环境会报告 `CJDOC3038`。
+运行时的限制是固定的：单次运行上限 10 秒，stdout 与 stderr 各上限 64 KiB，一次检查最多 256 个示例。POSIX 为每个运行进程设置 2048 MiB 地址空间上限，Windows 为进程树设置 2048 MiB Job 内存上限；无法建立限制时检查失败，不会无界运行。超限导致非零退出时报告 `CJDOC3071`。可执行文件用 `--static --output-type exe` 构建，这样示例即使没有把 SDK 运行库放进 `LD_LIBRARY_PATH` 也能运行。静态链接不可用的环境会报告 `CJDOC3074`。
 
-固定结果但检查没有真正发生，同样算失败：`CJDOC3034` 表示固定为失败的示例却编译通过、失败并不在示例代码内（例如整个源码包本身编译不过）、缺少 `cangjie` 代码块，或因为限制与临时目录问题而被跳过；`CJDOC3035` 表示运行退出码非 0；`CJDOC3036` 表示 stdout 与 `output` 块不一致；`CJDOC3037` 表示超过运行时限被终止；`CJDOC3039` 表示输出超过上限。
+固定结果但检查没有真正发生，同样算失败：`CJDOC3070` 表示固定结果的检查没有真正发生，例如因为限制或临时目录问题而被跳过；`CJDOC3071` 表示运行退出码非 0；`CJDOC3072` 表示 stdout 与 `output` 块不一致；`CJDOC3073` 表示超过运行时限被终止；`CJDOC3074` 表示构建示例可执行文件失败；`CJDOC3075` 表示输出超过上限。
 
 文档注释应紧邻它描述的声明。默认生成 external 文档，所以示例声明应为 `public` 或 `protected`。
 

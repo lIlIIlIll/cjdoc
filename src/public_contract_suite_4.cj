@@ -11,6 +11,12 @@ import std.posix.*
 @Test
 class PublicApiContractsSuite4 {
     @TestCase
+    func rejectsRepositoryRootWithoutRepositoryMetadata(): Unit {
+        @AssertThrows[IllegalArgumentException](GenerationRequest(
+            PUBLIC_FIXTURE_PROJECTS + "basic", repositoryRoot: Some(".")))
+    }
+
+    @TestCase
     func providerIdentityIsReadOnceAndHostileExceptionsStayInModuleFallback(): Unit {
         let stableCapture = HostileProviderCapture()
         let stableFactory = HostileProviderFactory("valid", stableCapture)

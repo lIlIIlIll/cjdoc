@@ -12,7 +12,7 @@ class WithStdxTest(unittest.TestCase):
     @staticmethod
     def make_sidecar(directory: Path, names: tuple[str, ...]) -> Path:
         sidecar = directory / "stdx"
-        sidecar.mkdir()
+        sidecar.mkdir(parents=True)
         for name in names:
             (sidecar / name).write_bytes(name.encode("utf-8"))
         return sidecar
@@ -20,7 +20,8 @@ class WithStdxTest(unittest.TestCase):
     def test_authenticates_chir_static_artifacts_and_digest(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             sidecar = self.make_sidecar(
-                Path(temporary), ("stdx.chir.cjo", "libstdx.chir.a")
+                Path(temporary),
+                ("stdx.chir.cjo", "libstdx.chir.a", "libflatbuffers.a"),
             )
             digest, files = with_stdx.authenticate_stdx(
                 sidecar, with_stdx.REQUIRED_STATIC_ARTIFACTS
@@ -30,17 +31,37 @@ class WithStdxTest(unittest.TestCase):
                 {file.name for file in files}, set(with_stdx.REQUIRED_STATIC_ARTIFACTS)
             )
 
-
-    def test_dynamic_mode_does_not_require_static_dependency(self) -> None:
+    def test_static_sidecar_rejects_missing_flatbuffers(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             sidecar = self.make_sidecar(
-                Path(temporary), ("stdx.chir.cjo", "libstdx.chir.so")
+                Path(temporary), ("stdx.chir.cjo", "libstdx.chir.a")
             )
-            digest, _ = with_stdx.authenticate_stdx(
-                sidecar, with_stdx.REQUIRED_DYNAMIC_ARTIFACTS
+            with self.assertRaises(SystemExit):
+                with_stdx.authenticate_stdx(
+                    sidecar, with_stdx.required_artifacts("static", "x86_64-unknown-linux-gnu")
+                )
+
+    def test_dynamic_mode_requires_target_specific_library(self) -> None:
+        platforms = {
+            "x86_64-unknown-linux-gnu": "libstdx.chir.so",
+            "aarch64-apple-darwin": "libstdx.chir.dylib",
+            "x86_64-w64-mingw32": "stdx.chir.dll",
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            for index, (target, library) in enumerate(platforms.items()):
+                sidecar = self.make_sidecar(
+                    Path(temporary) / str(index), ("stdx.chir.cjo", library)
+                )
+                digest, files = with_stdx.authenticate_stdx(
+                    sidecar, with_stdx.required_artifacts("dynamic", target)
+                )
+                self.assertTrue(digest)
+                self.assertEqual(
+                    {file.name for file in files}, {"stdx.chir.cjo", library}
+                )
+            self.assertEqual(
+                with_stdx.parse_options(["--variant", "dynamic"]), ("dynamic", False)
             )
-            self.assertTrue(digest)
-            self.assertEqual(with_stdx.parse_options(["--variant", "dynamic"]), ("dynamic", False))
             self.assertEqual(with_stdx.parse_options(["--print-env"]), ("static", True))
     def test_configured_sidecar_is_used_without_rewriting(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

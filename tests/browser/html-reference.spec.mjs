@@ -393,7 +393,7 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('.validation-page')).toContainText('API diff: not attached');
     await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveAttribute(
       'content',
-      "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'",
+      "default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'",
     );
     await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveCount(1);
     await expect(page.locator('script[src="theme-bootstrap.js"]')).toHaveCount(1);

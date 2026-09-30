@@ -85,8 +85,10 @@ internal func validCachedVisibility(visibility: String): Bool {
     }
 }
 
+// std.ast pretty-prints closure bodies with newlines; signature comparison
+// uses the same significant-token contract as sourceApiSignatureTokens.
 internal func ignoredDefaultToken(token: Token): Bool {
-    token.kind == COMMENT || token.value.isEmpty()
+    token.kind == COMMENT || token.kind == NL || token.value.isEmpty()
 }
 
 internal func cachedDefaultMatchesSourceTokens(expression: String, sourceTokens: Tokens,

@@ -24,7 +24,7 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         validateHtmlRouting(projection, projectedAssets)
         let topLevelByPackage = groupTopLevelByPackage(projection)
         let searchIndex = renderSearchIndex(documentation, projection)
-        let searchSignatures = renderSearchSignatureIndex(projection)
+        let searchSignatures = renderSearchSignatureIndex(documentation, projection)
         artifacts.addText("html/index.html", "text/html; charset=utf-8",
             renderHtmlIndex(documentation, projection, locale: locale, docVersion: docVersion))
         artifacts.addText("html/search-index.json", "application/json", searchIndex)

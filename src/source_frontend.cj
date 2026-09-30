@@ -5,7 +5,7 @@ import std.collection.*
 import std.fs.*
 import std.sync.AtomicInt64
 
-internal let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v12"
+internal let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v14"
 internal let MAX_SOURCE_FILE_BYTES: Int64 = 32 * 1024 * 1024
 internal let MAX_SOURCE_CACHE_BYTES: Int64 = 64 * 1024 * 1024
 internal let MAX_SOURCE_CACHE_ITEMS: Int64 = 100000

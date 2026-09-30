@@ -243,15 +243,6 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             }
     }
 }
-private func hasResolvedSymbolRelationship(symbol: SymbolDoc, kind: String, display: String): Bool {
-    for (relationship in symbol.symbolRelationships) {
-        if (relationship.kind == kind && relationship.targetDisplay == display &&
-            relationship.state == "resolved" && relationship.targetSymbolId.isSome()) {
-            return true
-        }
-    }
-    false
-}
 internal func appendSymbolArticle(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,

@@ -361,8 +361,10 @@ jobs:
           mkdir -p "${sidecar}"
           cp "${build_dir}/modules/${stdx_target}_cjnative/stdx/stdx.chir.cjo" "${sidecar}/"
           cp "${build_dir}/lib/libstdx.chir.a" "${sidecar}/"
+          cp "${build_dir}/lib/libflatbuffers.a" "${sidecar}/"
           test -f "${sidecar}/stdx.chir.cjo"
           test -f "${sidecar}/libstdx.chir.a"
+          test -f "${sidecar}/libflatbuffers.a"
           echo "CJDOC_STDX_PATH=${sidecar}" >> "${GITHUB_ENV}"
 
       - name: Verify built STS stdx sidecar

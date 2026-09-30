@@ -162,7 +162,51 @@ internal func renderSearchIndex(documentation: DocumentationSet,
     out.toString()
 }
 
-internal func renderSearchSignatureIndex(projection: RenderProjection): String {
+private func searchDeclarationKeywordMatches(token: HtmlSignatureToken,
+    symbolKind: String): Bool {
+    match (symbolKind) {
+        case "function" => token.kind == "FUNC"
+        case "class" => token.kind == "CLASS"
+        case "struct" => token.kind == "STRUCT"
+        case "interface" => token.kind == "INTERFACE"
+        case "enum" => token.kind == "ENUM"
+        case "typeAlias" => token.kind == "TYPE" || token.kind == "TYPE_ALIAS" ||
+            token.kind == "TYPEALIAS"
+        case "property" => token.kind == "LET" || token.kind == "VAR" || token.kind == "PROP"
+        case "variable" => token.kind == "LET" || token.kind == "VAR"
+        case _ => false
+    }
+}
+
+private func searchDeclarationIdentifier(symbol: SymbolDoc): ?HtmlSignatureToken {
+    let tokens = alignedSignatureTokens(symbol)
+    if (tokens.size < 2) { return None }
+    for (index in 1..tokens.size) {
+        let candidate = tokens[index]
+        if (candidate.kind == "IDENTIFIER" && candidate.value == symbol.name &&
+            searchDeclarationKeywordMatches(tokens[index - 1], symbol.kind)) {
+            return Some(candidate)
+        }
+    }
+    None
+}
+
+private func searchSignatureForExposure(symbol: SymbolDoc, exposedName: String): String {
+    let signature = symbol.headerSpelling
+    if (exposedName == symbol.name) { return signature }
+    if (signature.isEmpty()) { return exposedName }
+    if (symbol.sourceApiSignature.state != "available") {
+        return "${exposedName}: ${signature}"
+    }
+    match (searchDeclarationIdentifier(symbol)) {
+        case Some(declaration) => signature[..declaration.start] + exposedName +
+            signature[declaration.end..]
+        case None => "${exposedName}: ${signature}"
+    }
+}
+
+internal func renderSearchSignatureIndex(documentation: DocumentationSet,
+    projection: RenderProjection): String {
     let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(visible, lessThan: { left, right => left.id < right.id }, stable: true)
     let out = RenderTextBuffer()
@@ -174,6 +218,25 @@ internal func renderSearchSignatureIndex(projection: RenderProjection): String {
         appendSearchJsonString(out, symbol.id)
         out.append(":")
         appendSearchJsonString(out, searchTextExcerpt(symbol.headerSpelling, maximum: 512))
+    }
+    for (pkg in documentation.packages) {
+        for (reExport in pkg.reExports) {
+            for (binding in reExport.bindings) {
+                for (targetId in binding.targetSymbolIds) {
+                    match (projection.visibleIndex.get(targetId)) {
+                        case Some(target) =>
+                            if (!first) { out.append(",") }
+                            first = false
+                            appendSearchJsonString(out,
+                                "${reExport.id}:${binding.exposedName}:${target.id}")
+                            out.append(":")
+                            appendSearchJsonString(out, searchTextExcerpt(
+                                searchSignatureForExposure(target, binding.exposedName), maximum: 512))
+                        case None => ()
+                    }
+                }
+            }
+        }
     }
     out.append("}")
     out.toString()

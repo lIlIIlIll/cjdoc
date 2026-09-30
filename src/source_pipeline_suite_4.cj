@@ -65,12 +65,14 @@ class SourcePipelineSuite4 {
                 cjc-version = "1.3.0"
                 output-type = "static"
                 """.toArray())
-            File.writeTo(temporary.join("src/recovery.cj"), "package syntax_recovery\npublic func byteBacked(): String { String.fromUtf8(Array<Byte>(4, repeat: b'x')) }\n".toArray())
+            File.writeTo(temporary.join("src/recovery.cj"), "package syntax_recovery\npublic func byteBacked(callback!: () -> Int64 = { => 1 }): String { String.fromUtf8(Array<Byte>(4, repeat: b'x')) }\n".toArray())
             let documentation = DocumentationEngine().generate(GenerationRequest(
                 temporary.toString(), lintProfile: "off", audience: "all",
                 astPreflightExecutable: TEST_AST_PREFLIGHT))
             @Expect(documentation.status, "complete")
             @Expect(declarationNamed(documentation, "byteBacked").kind, "function")
+            let defaultExpression = declarationNamed(documentation, "byteBacked").parameters[0].defaultExpression.getOrThrow()
+            @Expect(defaultExpression.replace("\n", "").replace(" ", ""), "{=>1}")
             @Expect(containsDiagnostic(documentation, "CJDOC1011"), false)
         } finally {
             let _ = removeIfExists(temporary, recursive: true)
@@ -154,6 +156,52 @@ class SourcePipelineSuite4 {
         @Expect(dependencies.diagnostics.size, 0)
         @Expect(declarationNamed(dependencies, "alphaApi").source.start.byteOffset > 0, true)
         @Expect(declarationNamed(dependencies, "betaApi").source.start.byteOffset > 0, true)
+    }
+
+    @TestCase
+    func sameNamedDependenciesInDifferentOrganizationsRemainReachable(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            Directory.create(temporary.join("src"), recursive: true)
+            File.writeTo(temporary.join("cjpm.toml"), """
+                [package]
+                name = "organization_owner"
+                cjc-version = "1.2.0"
+                output-type = "static"
+                [dependencies]
+                first = { path = "acme" }
+                second = { path = "other" }
+                """.toArray())
+            File.writeTo(temporary.join("src/owner.cj"),
+                "package organization_owner\npublic func owner(): Unit {}\n".toArray())
+            for (organization in ["acme", "other"]) {
+                let dependency = temporary.join(organization)
+                Directory.create(dependency.join("src"), recursive: true)
+                File.writeTo(dependency.join("cjpm.toml"), """
+                    [package]
+                    name = "shared"
+                    organization = "${organization}"
+                    cjc-version = "1.2.0"
+                    output-type = "static"
+                    """.toArray())
+                File.writeTo(dependency.join("src/shared.cj"),
+                    "package ${organization}::shared\npublic func value(): Int64 { 9 }\n".toArray())
+            }
+            let documentation = DocumentationEngine().generate(GenerationRequest(
+                temporary.toString(), lintProfile: "off", audience: "all",
+                includePathDependencies: true, astPreflightExecutable: TEST_AST_PREFLIGHT))
+            @Expect(documentation.status, "complete")
+            @Expect(containsDiagnostic(documentation, "CJDOC1016"), false)
+            var acmeModule: ?String = None
+            var otherModule: ?String = None
+            for (declaration in documentation.declarations) {
+                if (declaration.qualifiedName == "acme::shared.value") { acmeModule = Some(declaration.moduleId) }
+                if (declaration.qualifiedName == "other::shared.value") { otherModule = Some(declaration.moduleId) }
+            }
+            @Expect(acmeModule.getOrThrow() != otherModule.getOrThrow(), true)
+        } finally {
+            let _ = removeIfExists(temporary, recursive: true)
+        }
     }
 
     @TestCase

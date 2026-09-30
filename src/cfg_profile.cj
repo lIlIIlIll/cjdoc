@@ -12,6 +12,71 @@ public class CfgValue {
         this.value = value
     }
 }
+// cjc treats these selectors as built-in conditions. They select the target at
+// compiler invocation time and cannot be repeated as user --cfg arguments.
+// Keep the values in one place so source selection and example compilation
+// agree on the target that is actually being built.
+@When[os == "Linux"]
+private func compilerTargetOs(): String { "Linux" }
+
+@When[os == "Windows"]
+private func compilerTargetOs(): String { "Windows" }
+
+@When[os == "macOS"]
+private func compilerTargetOs(): String { "macOS" }
+
+@When[os == "iOS"]
+private func compilerTargetOs(): String { "iOS" }
+
+@When[arch == "x86_64"]
+private func compilerTargetArch(): String { "x86_64" }
+
+@When[arch == "aarch64"]
+private func compilerTargetArch(): String { "aarch64" }
+
+@When[arch == "arm"]
+private func compilerTargetArch(): String { "arm" }
+
+internal func compilerBuiltinCfgValue(name: String): ?String {
+    if (name == "os") { return Some(compilerTargetOs()) }
+    if (name == "arch") { return Some(compilerTargetArch()) }
+    None
+}
+
+internal func compilerCfgProfile(profile: CfgProfile): CfgProfile {
+    let values = ArrayList<CfgValue>()
+    values.add(all: profile.values.toArray())
+    for (name in ["os", "arch"]) {
+        if (profile.value(name).isNone()) {
+            match (compilerBuiltinCfgValue(name)) {
+                case Some(value) => values.add(CfgValue(name, value))
+                case None => ()
+            }
+        }
+    }
+    CfgProfile(values: values.toArray())
+}
+
+// Return only user-defined cfg arguments. Built-in selectors are validated
+// against the target selected by cjc and deliberately omitted from argv.
+internal func appendCompilerCfgArguments(arguments: ArrayList<String>,
+    profile: CfgProfile): Unit {
+    for (cfg in profile.values) {
+        if (cfg.name == "os" || cfg.name == "arch") {
+            match (compilerBuiltinCfgValue(cfg.name)) {
+                case Some(actual) =>
+                    if (cfg.value != actual) {
+                        throw IllegalArgumentException("cfg '${cfg.name}=${cfg.value}' does not match compiler target '${cfg.name}=${actual}'")
+                    }
+                case None =>
+                    throw IllegalStateException("compiler target does not expose built-in cfg '${cfg.name}'")
+            }
+        } else {
+            arguments.add("--cfg")
+            arguments.add(cfg.name + "=" + cfg.value)
+        }
+    }
+}
 
 class CfgProfile {
     public let values = ArrayList<CfgValue>()
@@ -282,6 +347,18 @@ private class CfgExpressionParser {
 // references configuration that the selected profile does not define.
 private func evaluateWhenExpression(expression: String, profile: CfgProfile): ?Bool {
     CfgExpressionParser(expression, profile).parse()
+}
+// Evaluate a raw @When annotation for compiler-side source rewriting. Unlike
+// provider-neutral documentation filtering, executable example generation must
+// know the host target when no explicit os/arch profile value was supplied.
+internal func compilerWhenSelection(annotation: String, profile: CfgProfile): ?Bool {
+    match (whenExpression(annotation)) {
+        case Some(expression) =>
+            if (expression.isEmpty()) { None } else {
+                evaluateWhenExpression(expression, compilerCfgProfile(profile))
+            }
+        case None => None
+    }
 }
 
 private func cfgSelection(declaration: SourceDeclaration, profile: CfgProfile): ?Bool {

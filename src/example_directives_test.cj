@@ -118,6 +118,27 @@ class ExampleDirectivesTest {
     }
 
     @TestCase
+    func untitledRunAndMustFailDirectivesRemainDirectives(): Unit {
+        let parsed = parseDocComment("""
+/**
+ * @example {run}
+ * ```cangjie
+ * println("ok")
+ * ```
+ * @example {must-fail}
+ * ```cangjie
+ * missingName()
+ * ```
+ */
+""")
+        @Expect(parsed.examples.size, 2)
+        @Expect(parsed.examples[0].subject, "")
+        @Expect(parsed.examples[0].directives, "{run}")
+        @Expect(parsed.examples[1].subject, "")
+        @Expect(parsed.examples[1].directives, "{must-fail}")
+    }
+
+    @TestCase
     func onlyAllowlistedCompilerOptionsReachCjc(): Unit {
         @Expect(flagProblems(["--output-type", "exe"]), "invalid compiler option '--output-type exe'")
         @Expect(flagProblems(["-Woff", "driver-arg"]), "invalid compiler option '-Woff driver-arg'")

@@ -80,7 +80,11 @@ internal func appendSymbolMetadata(out: RenderTextBuffer,
             case None => ()
         }
     }
-    out.append("<h2 class=\"signature-heading\">${label(locale, "Signature", "签名")}</h2><pre class=\"signature-block\"><code>")
+    out.append("<h2 class=\"signature-heading\">${label(locale, "Signature", "签名")}")
+    if (symbol.sourceApiSignature.state == "unavailable") {
+        out.append(" <span class=\"badge\" data-state=\"unavailable\">${label(locale, "unavailable", "不可用")}</span>")
+    }
+    out.append("</h2><pre class=\"signature-block\"><code>")
     appendLinkedSignatureHtml(out, symbol, typeLinkIndex, rootPrefix)
     out.append("</code></pre></div>\n")
 }

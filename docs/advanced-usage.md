@@ -324,6 +324,8 @@ python3 scripts/with_stdx.py --variant static -- cjpm build
 - 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/11`。
 - 默认 `--semantic source` 使用 `std.ast` 和源码 lexer 做结构化源码遍历；注释仍来自原始源码，Doc IR 和 renderer 不依赖 CHIR。
 - `generate`/`check` 可显式使用 `--semantic chir`，并须通过 `--chir-worker <path>` 指向独立 worker executable。只有 `tools/chir-worker` package 导入 `stdx.chir`；core 通过受限文件协议调用它。worker 未配置或 CHIR 处理失败时保留 source declarations，并产生 `CJDOC2101`–`CJDOC2106` warning。
+- CHIR 逐个检查待编译的根包、workspace member 和已捕获依赖的 manifest。不支持的构建配置或编译选项产生 `CJDOC2102`，受影响的编译不会派发给 worker，源码/AST fallback 仍保留；TOML 注释不参与这项检查。
+- 组织限定依赖须有匹配的源码 package 声明，例如 `package acme::actual_dep`。cjdoc 保留源码，不根据 manifest 的 `organization` 重写 package 头；组织名和完整的 package alias 路径参与依赖选择。
 - `render` 只消费已有 Doc IR，不能使用 `--semantic`、`--cjc`、`--chir-worker` 或 `--chir-import-path`。
 - 宏调用和没有显式 `--cfg` 输入的条件编译不会被强行展开。
 - 单次扫描、单个源码文件和辅助输入都有大小及数量限制，超限时会保留 partial 结果并输出诊断。

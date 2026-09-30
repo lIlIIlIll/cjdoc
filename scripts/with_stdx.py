@@ -16,10 +16,7 @@ from typing import Iterable
 REQUIRED_STATIC_ARTIFACTS = (
     "stdx.chir.cjo",
     "libstdx.chir.a",
-)
-REQUIRED_DYNAMIC_ARTIFACTS = (
-    "stdx.chir.cjo",
-    "libstdx.chir.so",
+    "libflatbuffers.a",
 )
 VERSION_RE = re.compile(r"Cangjie Compiler:\s*([^\n]+)")
 TARGET_RE = re.compile(r"Target:\s*([^\n]+)")
@@ -99,7 +96,27 @@ def compiler_target_family(target: str) -> str | None:
     else:
         return None
     return f"{platform}_{architecture}"
+def required_artifacts(variant: str, target: str) -> tuple[str, ...]:
+    if variant == "static":
+        return REQUIRED_STATIC_ARTIFACTS
+    family = compiler_target_family(target)
+    if family is None:
+        fail(f"unsupported compiler target for dynamic stdx: {target}")
+    platform = family.split("_", 1)[0]
+    library = {
+        "linux": "libstdx.chir.so",
+        "darwin": "libstdx.chir.dylib",
+        "windows": "stdx.chir.dll",
+    }[platform]
+    return ("stdx.chir.cjo", library)
 
+
+def file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 def stdx_candidates(cjc: Path, variant: str, compiler_target: str) -> list[Path]:
     configured = os.environ.get("CANGJIE_STDX_PATH")
@@ -130,7 +147,7 @@ def authenticate_stdx(path: Path, required_artifacts: tuple[str, ...]) -> tuple[
             fail(f"stdx sidecar contains a symlink: {item.name}")
         if not item.is_file():
             continue
-        if not (item.suffix in {".a", ".bc", ".cjo", ".so"} or item.name.startswith("lib")):
+        if not (item.suffix in {".a", ".bc", ".cjo", ".dll", ".dylib", ".so"} or item.name.startswith("lib")):
             continue
         files.append(item)
         digest.update(item.name.encode("utf-8"))
@@ -179,7 +196,7 @@ def main(argv: list[str]) -> int:
     if cjc is None:
         fail("cannot locate cjc from the configured SDK environment")
     version, target = compiler_info(cjc)
-    required = REQUIRED_STATIC_ARTIFACTS if variant == "static" else REQUIRED_DYNAMIC_ARTIFACTS
+    required = required_artifacts(variant, target)
     selected: Path | None = None
     selected_digest = ""
     for candidate in stdx_candidates(cjc, variant, target):
@@ -193,8 +210,8 @@ def main(argv: list[str]) -> int:
     if selected is None:
         fail(f"no authenticated {variant} stdx sidecar matches the selected compiler")
 
-    link_options = ""
-    dependency_digest = ""
+    link_options = f'-L"{selected}" -lflatbuffers' if variant == "static" else ""
+    dependency_digest = file_digest(selected / "libflatbuffers.a") if variant == "static" else ""
     fingerprint = hashlib.sha256(
         f"{version}\0{target}\0{selected_digest}\0{dependency_digest}".encode("utf-8")
     ).hexdigest()

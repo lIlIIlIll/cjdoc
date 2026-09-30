@@ -41,7 +41,7 @@ fi
 from pathlib import Path
 from scripts.verify_repository_inputs import validate_schema_document
 from scripts.strict_json import strict_load
-for name in ("doc-ir-v6", "doc-ir-v7", "doc-ir-v8"):
+for name in ("doc-ir-v6", "doc-ir-v7", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10"):
     validate_schema_document(name, strict_load(Path("docs/schema") / f"{name}.schema.json", description=name))
 PY
 "${python_cmd}" scripts/safe_output_root.py \
@@ -56,7 +56,7 @@ rm -rf "${update_dir}"
 test -d "${schema_dir}"
 stage_dir="$(mktemp -d "${schema_parent}/.schema.XXXXXX")"
 
-for schema_name in doc-ir-v6 doc-ir-v7 doc-ir-v8; do
+for schema_name in doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${update_dir}/${schema_name}.schema.json"
     cmp "${schema_dir}/${schema_name}.schema.json" \
@@ -65,7 +65,7 @@ for schema_name in doc-ir-v6 doc-ir-v7 doc-ir-v8; do
         "${stage_dir}/${schema_name}.schema.json"
 done
 
-for schema_name in doc-ir doc-ir-v9 doc-ir-v10 doc-ir-v11 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions; do
+for schema_name in doc-ir doc-ir-v11 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${stage_dir}/${schema_name}.schema.json"
 done

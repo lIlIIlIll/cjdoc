@@ -8,24 +8,45 @@ import std.env.*
 import std.fs.*
 import std.process.*
 import std.sort.*
+private func chirTomlCode(line: String): String {
+    let bytes = line.toArray()
+    var quoteByte: UInt8 = 0u8
+    var escaped = false
+    var index: Int64 = 0
+    while (index < bytes.size) {
+        let byte = bytes[index]
+        if (quoteByte != 0u8) {
+            if (quoteByte == b'"' && escaped) {
+                escaped = false
+            } else if (quoteByte == b'"' && byte == b'\\') {
+                escaped = true
+            } else if (byte == quoteByte) {
+                quoteByte = 0u8
+            }
+        } else if (byte == b'"' || byte == b'\'') {
+            quoteByte = byte
+        } else if (byte == b'#') {
+            return String.fromUtf8(bytes[..index]).trimAscii()
+        }
+        index++
+    }
+    line.trimAscii()
+}
+
 private func chirManifestUnsupportedReason(manifest: ?String): ?String {
     match (manifest) {
         case None => None
         case Some(text) =>
             for (line in text.split("\n")) {
-                let trimmed = line.trimAscii()
+                let trimmed = chirTomlCode(line)
                 if (trimmed == "[features]" || trimmed.startsWith("[package-configuration") ||
                     trimmed == "[build]") {
                     return Some("CHIR does not support this cjpm manifest section")
                 }
-                let code = match (trimmed.indexOf("#")) {
-                    case Some(index) => trimmed[..index].trimAscii()
-                    case None => trimmed
-                }
-                match (code.indexOf("=")) {
+                match (trimmed.indexOf("=")) {
                     case Some(index) =>
-                        let key = code[..index].trimAscii()
-                        let value = code[index + 1..].trimAscii()
+                        let key = trimmed[..index].trimAscii()
+                        let value = trimmed[index + 1..].trimAscii()
                         if (key == "compile-option" || key == "override-compile-option") {
                             if (!chirCompileOptionValueSupported(value)) {
                                 return Some("CHIR rejects unsupported compiler options in cjpm.toml")
@@ -42,27 +63,32 @@ private func chirCompileOptionValueSupported(value: String): Bool {
     if (value.isEmpty() || value == "[]" || value == "\"\"" || value == "''") { return true }
     let allowed = ["-O0", "-O1", "-O2", "-O3", "-g", "--static", "--static-libs",
         "CJDOC_STDX_LINK_OPTIONS", "-lstdc++", "-lgcc_s"]
-    for (byte in value.toArray()) {
+    let bytes = value.toArray()
+    for (byte in bytes) {
         if (byte == b'\n' || byte == b'\r') { return false }
     }
-    if (value.contains("--")) {
-        var remaining = value
-        while (let Some(index) <- remaining.indexOf("--")) {
-            let tail = remaining[index..]
-            var end: Int64 = 0
-            while (end < tail.size && tail[end] != b' ' && tail[end] != b'\t' &&
-                tail[end] != b'\"' && tail[end] != b',' && tail[end] != b']') { end++ }
-            let token = tail[..end]
-            var known = false
-            for (candidate in allowed) { if (token == candidate) { known = true; break } }
-            if (!known) { return false }
-            if (end >= tail.size) { break }
-            remaining = tail[end..]
+    let tokens = ArrayList<String>()
+    var start: Int64 = 0
+    var index: Int64 = 0
+    while (index < bytes.size) {
+        let byte = bytes[index]
+        if (byte == b' ' || byte == b'\t' || byte == b'[' || byte == b']' ||
+            byte == b',' || byte == b'"' || byte == b'\'') {
+            if (index > start) { tokens.add(String.fromUtf8(bytes[start..index])) }
+            start = index + 1
         }
+        index++
+    }
+    if (start < bytes.size) { tokens.add(String.fromUtf8(bytes[start..])) }
+    for (token in tokens) {
+        var known = false
+        for (candidate in allowed) {
+            if (token == candidate) { known = true; break }
+        }
+        if (!known) { return false }
     }
     true
 }
-
 // CHIR remains an enrichment provider. Source declarations and comments remain
 // the binding boundary; this factory only returns records for declarations that
 // were present in the source view supplied by the public adapter.
@@ -138,7 +164,6 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
     private let source: SourceSnapshot
     private let options: ChirOptions
     private let identityVersion: String
-    private let unsupportedManifestReason: ?String
     private let compiled = HashSet<String>()
     private let failed = HashMap<String, String>()
     private let summaries = HashMap<String, ChirWorkerSummary>()
@@ -149,7 +174,6 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
         this.source = source
         this.options = options
         this.identityVersion = identityVersion
-        this.unsupportedManifestReason = chirManifestUnsupportedReason(source.manifestText)
     }
 
     public prop name: String { get() { "chir" } }
@@ -164,6 +188,23 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
         }
     }
 
+    private func unsupportedManifestReasonForModule(moduleId: String): ?String {
+        for (module in source.modules) {
+            if (module.id != moduleId) { continue }
+            match (module.manifestText) {
+                case Some(text) => return chirManifestUnsupportedReason(Some(text))
+                case None =>
+                    if (module.role == "root") {
+                        return chirManifestUnsupportedReason(source.manifestText)
+                    }
+                    return None
+            }
+        }
+        if (source.modules.isEmpty()) {
+            return chirManifestUnsupportedReason(source.manifestText)
+        }
+        None
+    }
     func analyzeModule(moduleId: String,
         declarations: ReadOnlyList<public_provider.SourceDeclarationView>): public_provider.SemanticBatch {
         let capabilities = public_model.SemanticCapabilities(true, true, true, false, false)
@@ -175,7 +216,7 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
                 public_model.SemanticCapabilities(false, false, false, false, false),
                 diagnostics: diagnostics.toArray())
         }
-        match (unsupportedManifestReason) {
+        match (unsupportedManifestReasonForModule(moduleId)) {
             case Some(reason) =>
                 diagnostics.add(public_model.Diagnostic("warning", "CJDOC2102", reason))
                 return public_provider.SemanticBatch(
@@ -404,39 +445,94 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
         []
     }
 
-    private func modulePackageNames(moduleId: String): Array<String> {
-        let names = ArrayList<String>()
-        for (pkg in source.packages) {
-            if (pkg.moduleId == moduleId) { names.add(pkg.name) }
+    private func moduleOrganization(moduleId: String): ?String {
+        for (module in source.modules) {
+            if (module.id == moduleId) { return module.organization }
         }
-        sort(names)
-        names.toArray()
+        None
     }
-    private func importReferencesPackage(importText: String, packageName: String): Bool {
+
+    private func importAliasSeparator(value: String): ?Int64 {
+        let bytes = value.toArray()
+        var index: Int64 = 0
+        while (index + 1 < bytes.size) {
+            if (bytes[index] == b'a' && bytes[index + 1] == b's') {
+                let before = index == 0 || bytes[index - 1] == b' ' || bytes[index - 1] == b'\t'
+                let after = index + 2 >= bytes.size || bytes[index + 2] == b' ' ||
+                    bytes[index + 2] == b'\t'
+                if (before && after) { return Some(index) }
+            }
+            index++
+        }
+        None
+    }
+
+    private func chirImportReference(importText: String): (String, String) {
         let trimmed = importText.trimAscii()
         let value = if (trimmed.startsWith("public ")) {
             trimmed.removePrefix("public ").trimAscii()
         } else {
             trimmed
         }
-        if (!value.startsWith("import ")) { return false }
-        let importedName = value[7..].trimAscii()
-        if (!importedName.startsWith(packageName)) { return false }
-        if (importedName.size == packageName.size) { return true }
-        let boundary = importedName[packageName.size]
-        boundary == b'.' || boundary == b'{' || boundary == b' ' ||
-            boundary == b'\n' || boundary == b'\r'
+        if (!value.startsWith("import ")) { return ("", "") }
+        var importedName = value[7..].trimAscii()
+        if (let Some(alias) <- importAliasSeparator(importedName)) {
+            importedName = importedName[..alias].trimAscii()
+        }
+        match (importedName.indexOf("::")) {
+            case Some(index) =>
+                if (index <= 0 || index + 2 >= importedName.size) { return ("", "") }
+                (importedName[..index].trimAscii(), importedName[index + 2..].trimAscii())
+            case None => ("", importedName)
+        }
+    }
+
+    private func chirImportMatchingPathLength(importedPath: String, packageName: String): Int64 {
+        let length = sourcePackagePathPrefixLength(packageName, importedPath)
+        if (length < 0 || importedPath.size == length) { return length }
+        let boundary = importedPath[length]
+        if (boundary == b'.' || boundary == b'{' || boundary == b'*' || boundary == b' ' ||
+            boundary == b'\n' || boundary == b'\r') { length } else { -1 }
+    }
+
+    private func chirImportMatchesOrganization(packageDoc: SourcePackage,
+        organization: String): Bool {
+        if (organization.isEmpty()) { return true }
+        if (let Some(index) <- packageDoc.name.indexOf("::")) {
+            return index == organization.size && packageDoc.name.startsWith(organization)
+        }
+        match (moduleOrganization(packageDoc.moduleId)) {
+            case Some(value) => value == organization
+            case None => false
+        }
+    }
+
+    private func importReferencesPackage(importText: String, dependencyPackage: SourcePackage,
+        candidates: Array<SourcePackage>): Bool {
+        let reference = chirImportReference(importText)
+        let organization = reference[0]
+        let importedPath = reference[1]
+        if (!chirImportMatchesOrganization(dependencyPackage, organization)) { return false }
+        let selectedLength = chirImportMatchingPathLength(importedPath, dependencyPackage.name)
+        if (selectedLength < 0) { return false }
+        var longest: Int64 = -1
+        for (candidate in candidates) {
+            if (!chirImportMatchesOrganization(candidate, organization)) { continue }
+            let length = chirImportMatchingPathLength(importedPath, candidate.name)
+            if (length > longest) { longest = length }
+        }
+        selectedLength == longest
     }
 
     private func packageDependsOn(moduleId: String, packageName: String,
-        dependencyName: String): Bool {
+        dependency: SourcePackage, candidates: Array<SourcePackage>): Bool {
         for (pkg in source.packages) {
             if (pkg.moduleId != moduleId || pkg.name != packageName) { continue }
             for (logicalPath in pkg.sourceFiles) {
                 for (origin in source.sourceFileOrigins) {
                     if (origin.moduleId != moduleId || origin.logicalPath != logicalPath) { continue }
                     for (importText in origin.imports) {
-                        if (importReferencesPackage(importText, dependencyName)) { return true }
+                        if (importReferencesPackage(importText, dependency, candidates)) { return true }
                     }
                 }
             }
@@ -451,11 +547,16 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
         for (dependencyId in moduleDependencyIds(moduleId)) {
             let _ = allowedModules.add(dependencyId)
         }
-        let dependencies = ArrayList<SourcePackage>()
+        let candidates = ArrayList<SourcePackage>()
         for (pkg in source.packages) {
             if (!allowedModules.contains(pkg.moduleId) ||
                 (pkg.moduleId == moduleId && pkg.name == packageName)) { continue }
-            if (packageDependsOn(moduleId, packageName, pkg.name)) {
+            candidates.add(pkg)
+        }
+        let dependencies = ArrayList<SourcePackage>()
+        let candidateValues = candidates.toArray()
+        for (pkg in candidateValues) {
+            if (packageDependsOn(moduleId, packageName, pkg, candidateValues)) {
                 dependencies.add(pkg)
             }
         }
@@ -526,6 +627,10 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
         let key = moduleId + ":" + packageName
         if (compiled.contains(key)) { return None }
         if (let Some(message) <- failed.get(key)) { return Some(message) }
+        match (unsupportedManifestReasonForModule(moduleId)) {
+            case Some(reason) => return Some("CJDOC2102: " + reason)
+            case None => ()
+        }
         if (!compiling.add(key)) { return Some("CHIR package dependency cycle") }
         try {
             var moduleName: ?String = None

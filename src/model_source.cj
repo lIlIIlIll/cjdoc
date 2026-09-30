@@ -168,16 +168,18 @@ class SourceModule {
     public let role: String
     public let sourcePrefix: String
     public let organization: ?String
+    public let manifestText: ?String
     public let packageNames = ArrayList<String>()
     public let dependencyIds = ArrayList<String>()
 
     public init(id: String, name: String, role: String, sourcePrefix: String,
-        organization!: ?String = None) {
+        organization!: ?String = None, manifestText!: ?String = None) {
         this.id = id
         this.name = name
         this.role = role
         this.sourcePrefix = sourcePrefix
         this.organization = organization
+        this.manifestText = manifestText
     }
 }
 
@@ -189,15 +191,13 @@ let MAX_CAPTURED_SOURCE_LINES: Int64 = 1000000
 class CapturedSourceIndex {
     public let byteLength: Int64
     public let available: Bool
-    private let sourceBytes: Array<UInt8>
     private let lineStarts = ArrayList<Int64>()
 
     public init(source: String, maxLines!: Int64 = MAX_CAPTURED_SOURCE_LINES) {
         if (maxLines < 1) {
             throw IllegalArgumentException("captured source line limit must be positive")
         }
-        this.sourceBytes = source.toArray()
-        let bytes = this.sourceBytes
+        let bytes = source.toArray()
         this.byteLength = bytes.size
         lineStarts.add(0)
         var withinLimit = true
