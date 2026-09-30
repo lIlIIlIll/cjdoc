@@ -996,6 +996,7 @@ private func conceptualSearchIndex(base: String, pages: ArrayList<ConceptualPage
         out.append(conceptualJsonString(page.route))
         out.append(",\"kind\":\"concept\",\"packageName\":\"\",\"summary\":\"\",\"href\":")
         out.append(conceptualJsonString(page.route))
+        out.append(",\"moduleId\":\"conceptual\",\"moduleName\":null,\"ownerName\":null,\"parameterTypes\":[],\"returnType\":null,\"returnCanonical\":null")
         out.append(",\"bindings\":[")
         var firstBinding = true
         for (binding in page.bindings) {

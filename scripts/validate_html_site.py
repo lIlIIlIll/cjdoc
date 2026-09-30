@@ -19,7 +19,7 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "ea2de6575a38af9fe9a9588e587c7c94c490a9e39e8a95f0a89b21e128636f03"
+CANONICAL_SEARCH_JS_SHA256 = "466c7dedfcbc1ca68ddb9ec36efb51180c06ebe3a371236f928bba4e858d31fd"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "79fe532a96603bce52c49d9fd92cea58503875a0c61f5d3475f11c337f960642"
 
 
@@ -225,21 +225,18 @@ def main() -> int:
     if not search_script.startswith(prefix):
         raise ValueError("search-index.js must start with the generated search assignment")
     marker_index = search_script.find(signature_marker, len(prefix))
-    if marker_index >= 0:
-        if not search_script.endswith(suffix):
-            raise ValueError("search-index.js signature assignment must end with a newline")
-        embedded_search = search_script[len(prefix) : marker_index]
-        signature_text = search_script[marker_index + len(signature_marker) : -len(suffix)]
-        signatures = strict_loads(signature_text, description="embedded search signatures")
-        if not isinstance(signatures, dict) or any(
-            not isinstance(key, str) or not isinstance(value, str)
-            for key, value in signatures.items()
-        ):
-            raise ValueError("embedded search signatures must be a string map")
-    else:
-        if not search_script.endswith(suffix):
-            raise ValueError("search-index.js must contain only the generated search assignment")
-        embedded_search = search_script[len(prefix) : -len(suffix)]
+    if marker_index < 0:
+        raise ValueError("search-index.js must include the generated signature assignment")
+    if not search_script.endswith(suffix):
+        raise ValueError("search-index.js signature assignment must end with a newline")
+    embedded_search = search_script[len(prefix) : marker_index]
+    signature_text = search_script[marker_index + len(signature_marker) : -len(suffix)]
+    signatures = strict_loads(signature_text, description="embedded search signatures")
+    if not isinstance(signatures, dict) or any(
+        not isinstance(key, str) or not isinstance(value, str)
+        for key, value in signatures.items()
+    ):
+        raise ValueError("embedded search signatures must be a string map")
     if (
         embedded_search != search_text.strip()
         or strict_loads(embedded_search, description="embedded HTML search index") != search
@@ -250,21 +247,41 @@ def main() -> int:
     entries = search.get("entries")
     if not isinstance(entries, list):
         raise ValueError("search index entries must be an array")
+    if any(not isinstance(entry, dict) for entry in entries):
+        raise ValueError("search index entries must be objects")
     ids = [entry.get("id") for entry in entries]
     if len(ids) != len(set(ids)):
         raise ValueError("search index IDs must be unique")
     required = {"id", "canonicalId", "exposure", "name", "qualifiedName", "kind",
-                "packageName", "summary", "href"}
-    allowed = required | {"moduleId", "moduleName", "ownerName", "parameterTypes", "returnType", "returnCanonical", "bindings", "externalDocs"}
+                "packageName", "summary", "href", "moduleId", "moduleName", "ownerName",
+                "parameterTypes", "returnType", "returnCanonical"}
+    allowed = required | {"bindings", "externalDocs"}
     for entry in entries:
         fields = set(entry)
         if not required.issubset(fields) or not fields.issubset(allowed):
             raise ValueError(f"invalid search entry fields for {entry.get('id')}")
+        if not isinstance(entry["moduleId"], str) or not entry["moduleId"]:
+            raise ValueError("search entry moduleId must be a non-empty string")
+        for field in ("moduleName", "ownerName", "returnType", "returnCanonical"):
+            if entry[field] is not None and not isinstance(entry[field], str):
+                raise ValueError(f"search entry {field} must be a string or null")
+        if not isinstance(entry["parameterTypes"], list) or any(
+            not isinstance(value, str) for value in entry["parameterTypes"]
+        ):
+            raise ValueError("search entry parameterTypes must be an array of strings")
         target, fragment = resolve_local(root, root / "search-index.json", entry["href"])
         target_parser = pages.get(target.resolve()) if target is not None else None
         if target_parser is None or (fragment and fragment not in target_parser.ids):
             raise ValueError(f"broken search target: {entry['href']}")
 
+    api_canonical_ids = {
+        entry["canonicalId"] for entry in entries
+        if not entry["canonicalId"].startswith("cjdoc:concept:")
+    }
+    exposure_ids = {entry["id"] for entry in entries if entry["exposure"]}
+    expected_signature_ids = api_canonical_ids | exposure_ids
+    if set(signatures) != expected_signature_ids:
+        raise ValueError("search signatures must match canonical API and exposure entry IDs")
     print(f"validated {len(pages)} HTML pages and {len(entries)} search entries")
     return 0
 

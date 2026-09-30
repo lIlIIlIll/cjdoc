@@ -136,13 +136,14 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
         fail("$.schemaVersion", "expected string")
     }
     let schemaText = if (version == DOC_IR_SCHEMA_VERSION) { DOC_IR_SCHEMA }
+        else if (version == DOC_IR_V10_SCHEMA_VERSION) { DOC_IR_V10_SCHEMA }
         else if (version == DOC_IR_V9_SCHEMA_VERSION) { DOC_IR_V9_SCHEMA }
         else if (version == DOC_IR_V8_SCHEMA_VERSION) { DOC_IR_V8_SCHEMA }
         else if (version == DOC_IR_V7_SCHEMA_VERSION) { DOC_IR_V7_SCHEMA }
         else if (version == DOC_IR_V6_SCHEMA_VERSION) { DOC_IR_V6_SCHEMA }
         else {
             fail("$.schemaVersion",
-                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
+                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V10_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
                 "'${DOC_IR_V8_SCHEMA_VERSION}', '${DOC_IR_V7_SCHEMA_VERSION}', or " +
                 "'${DOC_IR_V6_SCHEMA_VERSION}'")
         }
@@ -181,6 +182,14 @@ internal func stringAt(object: JsonObject, key: String, path: String): String {
     catch (_: Exception) { fail("${path}.${key}", "expected string") }
 }
 
+internal func defaultStringAt(object: JsonObject, key: String, path: String): String {
+    match (object.get(key)) {
+        case None => ""
+        case Some(value) =>
+            try { value.asString() }
+            catch (_: Exception) { fail("${path}.${key}", "expected string") }
+    }
+}
 internal func boolAt(object: JsonObject, key: String, path: String): Bool {
     try { required(object, key, path).asBool() }
     catch (_: Exception) { fail("${path}.${key}", "expected boolean") }
@@ -310,12 +319,13 @@ internal func migratedOptionalSymbolId(value: ?String, legacy: Bool,
 internal func decodeTag(node: JsonNode, path: String, legacy: Bool,
     legacyIds: HashMap<String, String>): DocTag {
     let value = strictObject(node, path,
-        ["name", "subject", "description", "referenceState", "targetSymbolId"])
+        ["name", "subject", "description", "referenceState", "targetSymbolId", "directives"])
     DocTag(stringAt(value, "name", path), stringAt(value, "subject", path),
         stringAt(value, "description", path),
         referenceState: stringAt(value, "referenceState", path),
         targetSymbolId: migratedOptionalSymbolId(nullableStringAt(value, "targetSymbolId", path),
-            legacy, legacyIds, "${path}.targetSymbolId"))
+            legacy, legacyIds, "${path}.targetSymbolId"),
+        directives: defaultStringAt(value, "directives", path))
 }
 
 internal func decodeMarkdownMetadata(node: JsonNode, kind: String,

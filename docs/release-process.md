@@ -8,7 +8,7 @@ This document separates development evidence from release evidence. A lower gate
 |---|---|---|---|
 | Build | `cjpm build` | local compiler exit status | tests, generated output, other SDKs or runners |
 | Unit and contract | `cjpm test` | the current Cangjie unit and public-contract suite | golden/schema sync, CLI transactions or hosted CI |
-| Local acceptance | `scripts/check.sh` | repository-input preflight, build, tests, v10 goldens, v6/v7/v8/v9 read-only migration, deterministic render, fixture contracts and security/resource/output/provider checks | real-repository scale, performance budgets, another OS/SDK or a release |
+| Local acceptance | `scripts/check.sh` | repository-input preflight, build, tests, current v11 goldens, frozen v6-v10 read-only migration, deterministic render, fixture contracts and security/resource/output/provider checks | real-repository scale, performance budgets, another OS/SDK or a release |
 | Real repository | `python scripts/real_repository_smoke.py --project .` | two complete JSON+HTML trees, per-file SHA-256 equality, whole-site validation, binary identity and clean Git project identities in a JSON receipt | performance or hosted runners |
 | Performance hard ceiling | `python scripts/perf_gate.py check` | fixed-CPU cold/warm mirrored samples, output SHA-256, binary identity, clean Git project identities, wall time and best-effort peak RSS across two profiles | a regression comparison, or behavior on another CPU, SDK or operating system |
 | Release | `CJDOC_RELEASE_TAG=vX.Y.Z scripts/release_check.sh` | all preceding local evidence plus exact tag/HEAD/commit/tree/dirty, dependency/vendor, schema and baseline receipts in one transactionally promoted `target/release-evidence/` | GitHub-hosted matrix success until that workflow actually runs |
@@ -42,7 +42,7 @@ The checked-in measurements describe their recorded environment. They are not cl
 
 Real-repository and performance evidence rejects dirty or unversioned inputs by default. `--allow-dirty` is only a diagnostic/calibration escape hatch: the receipt then sets `trustedCommit: false`, omits `sourceCommit`, and records the project working-tree digest. Such a receipt cannot satisfy `release_check.sh`, which requires the clean release commit.
 
-`scripts/update_goldens.sh` archives the committed fixture tree into an immutable snapshot, generates only from that snapshot, and verifies its digest and Git identity again before publishing the complete v10 set. It refuses dirty/mixed fixture inputs and preserves frozen v6/v7/v8/v9 goldens. A clean alternate `source_edges` checkout is supported only with all three variables below; the expected commit and subtree tree must match its Git worktree before and after generation:
+`scripts/update_goldens.sh` archives the committed fixture tree into an immutable snapshot, generates only from that snapshot, and verifies its digest and Git identity again before publishing the complete current v11 set. It refuses dirty/mixed fixture inputs and preserves frozen v6-v10 goldens. A clean alternate `source_edges` checkout is supported only with all three variables below; the expected commit and subtree tree must match its Git worktree before and after generation:
 
 ```bash
 CJDOC_SOURCE_EDGES_PROJECT=/clean/checkout/tests/fixtures/projects/source_edges \
@@ -51,37 +51,41 @@ CJDOC_SOURCE_EDGES_TREE=<40-hex-subtree> \
 bash scripts/update_goldens.sh
 ```
 
-`scripts/update_schemas.sh` likewise stages the complete published set, strictly parses all nine schemas (duplicate keys and non-finite numbers are rejected), verifies their draft, `$id`, version and repository-specific root contract, byte-compares embedded v6/v7 schemas with their frozen files, and updates only the v10/current and shared schemas. These Python shape checks are not represented as a complete official Draft 2020-12 meta-schema implementation. The built yjson-backed decoder separately performs real schema validation while strict-round-tripping every v9 golden and migrating every frozen v6/v7/v8/v9 input. Neither tool should be used to hand-normalize a failing expected artifact. The repository-input gate also byte-freezes all 36 legacy inputs and their per-fixture v8 semantic migration receipts, so a decoder that maps distinct inputs to one generic v8 document cannot pass.
+`scripts/update_schemas.sh` stages the complete published set, strictly parses all published schemas (rejecting duplicate keys and non-finite numbers), verifies their draft, `$id`, version and root contract, byte-compares generated v6-v10 schemas with their frozen files, and updates only the current v11 and shared schemas. These Python shape checks do not implement the complete official Draft 2020-12 meta-schema. The built yjson-backed decoder separately validates and strictly round-trips every v11 golden and migrates every frozen v6-v10 input. Neither tool should hand-normalize a failing expected artifact. The repository-input gate verifies frozen v6-v8 schema hashes, v6-v7 migration receipts and the complete v6-v10 golden inventory.
 
 ## CI and SDK matrix
 
-[`ci.yml`](../.github/workflows/ci.yml) runs the checksum-pinned Cangjie 1.1.3 SDK on:
+[`ci.yml`](../.github/workflows/ci.yml) runs checksum-pinned Cangjie 1.2.0 STS compiler archives together with the matching authenticated `stdx` release/1.2 sidecar on:
 
 - Linux x64 (`ubuntu-22.04`);
-- Windows x64 (`windows-2025`);
+- Windows x64 (`windows-2022`);
 - macOS ARM64 (`macos-15`).
 
-Linux also runs the real-repository smoke. These jobs are pull-request/push evidence only after GitHub reports them for the exact commit.
+Linux also runs the real-repository smoke. These jobs are pull-request/push evidence only after GitHub reports them for the exact commit. The compiler and stdx archive checksums are passed independently to the installer and are both included in package provenance. The installer selects only static sidecars containing regular, non-symlink `stdx.chir.cjo`, `libstdx.chir.a`, and `libflatbuffers.a` files, rejecting incomplete roots before authentication or export. Static sidecars also authenticate `libflatbuffers.a`; `with_stdx.py` supplies its library search option as a raw cjpm token, not shell-quoted text.
 
 Platform acceptance does not imply identical local-asset capabilities. POSIX builds embed a local asset only after opening every path component with `openat` + `O_NOFOLLOW` and validating the opened regular file. The current Windows SDK lacks a public API with equivalent safe no-follow/openat semantics, so Windows intentionally does not embed local assets: it omits the asset, emits `CJDOC4026`, and marks the document `partial`. A successful Windows acceptance/package job verifies that fail-closed contract; it must not be reported as Windows asset-embedding support.
 
-The workflow triggers for both `main` and `dev`. Before SDK setup it verifies that the complete v10 golden set, all four complete frozen v6/v7/v8/v9 migration sets, published schemas, notices, licenses and vendor provenance files are tracked. Restored SDK caches retain the checksum-pinned archive as well as the extracted tree. Every hit rechecks the archive's raw-size bound and SHA-256, re-runs bounded archive preflight, re-extracts into a temporary directory, and compares that authenticated extraction with the marker and cached tree. A missing archive, a forged self-consistent marker/tree, or a directory-shaped hit without authenticated metadata fails closed. Checkout credentials are not persisted in the worktree.
+Run-example capability also varies by platform. Linux uses a hard address-space limit and Windows uses a Job memory limit. The current macOS runner cannot establish that address-space limit, so cjdoc refuses `{run}` examples before launching user code and emits `CJDOC3074`. A green macOS acceptance job verifies this fail-closed contract, not successful run-example execution.
 
-[`daily.yml`](../.github/workflows/daily.yml) runs a Linux x64 daily SDK on a schedule and by manual dispatch. Scheduled runs fail closed unless these repository variables contain a matching archive URL and lowercase SHA-256:
+The workflow triggers for both `main` and `dev`. Before SDK setup it verifies that the complete current v11 golden set and every frozen v6-v10 migration input, published schemas, notices, licenses and vendor provenance files are tracked. Restored SDK caches retain both checksum-pinned archives as well as the extracted tree. Every hit rechecks both archive hashes, re-runs bounded archive preflight, re-extracts into a temporary directory, and compares that authenticated extraction with the marker and cached tree. A missing archive, a forged self-consistent marker/tree, or a directory-shaped hit without authenticated metadata fails closed. Checkout credentials are not persisted in the worktree.
 
-- `CANGJIE_DAILY_LINUX_X64_URL`
-- `CANGJIE_DAILY_LINUX_X64_SHA256`
+[`daily.yml`](../.github/workflows/daily.yml) runs a Linux x64 daily compiler and matching stdx sidecar on a schedule and by manual dispatch. Scheduled runs fail closed unless these repository variables contain matching archive URLs and lowercase SHA-256 values:
 
-Manual runs may supply the same two values as workflow inputs. Updating the URL without its checksum, or leaving either value empty, is not a valid daily result.
+- `CANGJIE_DAILY_1_3_LINUX_X64_URL`
+- `CANGJIE_DAILY_1_3_LINUX_X64_SHA256`
+- `CANGJIE_DAILY_STDX_1_3_LINUX_X64_URL`
+- `CANGJIE_DAILY_STDX_1_3_LINUX_X64_SHA256`
+
+Manual runs may supply the same four values as workflow inputs. Updating an archive URL without its checksum, or leaving either archive pair incomplete, is not a valid daily result.
 
 ## Tag release workflow
 
 [`release.yml`](../.github/workflows/release.yml) is the only automated publisher. A `v*` tag starts, in order:
 
-1. the full Linux release gate on stable Cangjie 1.1.3;
-2. stable Windows x64 and macOS ARM64 acceptance;
-3. configured daily Linux acceptance and real-repository smoke when both checksum-pinned daily SDK variables are present; otherwise this optional forward-compatibility job is explicitly skipped;
-4. deterministic packages for Linux x64, Windows x64 and macOS ARM64 in `contents: read` jobs, each with a SHA-256 sidecar and uploaded only as a digest-checked Actions artifact;
+1. the full Linux release gate on stable Cangjie 1.3.0 and its matching stdx sidecar;
+2. stable Windows x64 and macOS ARM64 acceptance with their matching sidecars;
+3. configured daily Linux acceptance and real-repository smoke when all four checksum-pinned daily variables are present; otherwise this optional forward-compatibility job is explicitly skipped;
+4. deterministic packages for Linux x64, Windows x64 and macOS ARM64 in `contents: read` jobs. Each package records compiler and stdx version/checksum provenance in the v3 manifest, carries a SHA-256 sidecar, and is uploaded only as a digest-checked Actions artifact;
 5. one `contents: write` publisher downloads those artifacts, re-verifies the exact tag checkout, exact asset set, every SHA-256 sidecar, every internal package manifest and every repository-derived payload byte;
 6. only after verification, that publisher creates or confirms a draft, confirms it is still draft immediately before upload and again immediately before changing it to a public release.
 
@@ -89,7 +93,7 @@ The tag must equal `v` plus the stable `package.version`, resolve to checked-out
 
 `release_check.sh` first verifies that every path component of the repository's canonical `target/` is a real directory, never a symlink or special file. It then deletes stale final evidence, writes all receipts beneath a same-filesystem staging directory, rechecks Git identity/cleanliness after every gate, verifies that runtime receipts name the same source commit and binary hash, and promotes the complete directory with one rename. Update and acceptance tooling uses the same output-root initializer. Failure removes staging evidence rather than leaving a partial or stale receipt.
 
-`package_release.py` first requires the active `CANGJIE_SDK_ROOT` to match its authenticated archive-SHA extraction, then uses fixed archive timestamps, owners, ordering and permissions beneath canonical `target/release-package`. The SDK installer enforces the compressed-size limit while streaming and preflights member count, individual/aggregate expanded size, path and entry type before extraction; ZIP EOCD/ZIP64 entry count and central-directory size are bounded before `ZipFile` materializes entries. TAR/GZIP input is scanned block-by-block before `tarfile`: checksum, header count, PAX/GNU extension count/bytes, declared member size, aggregate payload and total decompressed bytes are bounded. Repository payloads are read from Git blobs at `sourceCommit`, not mutable worktree bytes; source identity is checked before and after payload collection, and the publisher compares the archive bytes with the same tagged commit. Each archive contains the platform binary, README, project license, third-party notices/license texts, all published schemas and a `cjdoc.release-package/2` manifest binding platform, source commit, declared SDK version/archive SHA-256, payload sizes and payload hashes. Windows packages must be ZIP by both name and magic; Linux/macOS packages must be GZIP-compressed TAR. Verification rejects disguised formats, extension headers in release TARs, non-regular members, special permission bits, non-executable executables, executable data files, excessive raw/member/aggregate sizes and unsafe paths before extraction. Member sizes and SHA-256 values are checked in bounded streaming reads; only the separately capped release manifest is retained in memory. It streams verified regular files into a private temporary directory, rechecks their hashes during extraction, sources the exact declared SDK root, verifies that `CANGJIE_HOME`, `cjc` and `cjpm` all resolve inside it, then runs the extracted binary's `--version` and `schema list` in that environment. The smoke must expose `doc-ir-v8` before artifact upload.
+`package_release.py` first requires the active `CANGJIE_SDK_ROOT` to match its authenticated compiler-and-stdx archive identities, then uses fixed archive timestamps, owners, ordering and permissions beneath canonical `target/release-package`. The SDK installer enforces the compressed-size limit while streaming and preflights member count, individual/aggregate expanded size, path and entry type before extraction; ZIP EOCD/ZIP64 entry count and central-directory size are bounded before `ZipFile` materializes entries. TAR/GZIP input is scanned block-by-block before `tarfile`: checksum, header count, PAX/GNU extension count/bytes, declared member size, aggregate payload and total decompressed bytes are bounded. Repository payloads are read from Git blobs at `sourceCommit`, not mutable worktree bytes; source identity is checked before and after payload collection, and the publisher compares the archive bytes with the same tagged commit. Each archive contains the platform binary, README, project license, third-party notices/license texts, all published schemas and a `cjdoc.release-package/3` manifest binding platform, source commit, declared compiler/stdx versions and both archive SHA-256 values, payload sizes and payload hashes. Windows packages must be ZIP by both name and magic; Linux/macOS packages must be GZIP-compressed TAR. Verification rejects disguised formats, extension headers in release TARs, non-regular members, special permission bits, non-executable executables, executable data files, excessive raw/member/aggregate sizes and unsafe paths before extraction. Member sizes and SHA-256 values are checked in bounded streaming reads; only the separately capped release manifest is retained in memory. It streams verified regular files into a private temporary directory, rechecks their hashes during extraction, sources the exact declared SDK root, verifies that `CANGJIE_HOME`, `cjc` and `cjpm` all resolve inside it, then runs the extracted binary's `--version` and `schema list` in that environment. The smoke must expose `doc-ir-v8` before artifact upload.
 
 ## Release checklist
 
@@ -97,7 +101,7 @@ Before creating a tag:
 
 1. Confirm `scripts/check.sh`, the real-repository smoke and `scripts/perf_gate.py check` passed on the intended source.
 2. From a clean checkout at the exact tag, run `CJDOC_RELEASE_TAG=vX.Y.Z CJDOC_RELEASE_COMMIT=$(git rev-parse HEAD) scripts/release_check.sh` and retain the transactionally promoted `target/release-evidence/`.
-3. Confirm the exact commit has successful required stable-platform CI. If the two daily SDK repository variables are configured, also require a successful daily run; otherwise confirm that the optional daily job is explicitly skipped rather than failed.
+3. Confirm the exact commit has successful required stable-platform CI. If the four daily compiler/stdx repository variables are configured, also require a successful daily run; otherwise confirm that the optional daily job is explicitly skipped rather than failed.
 4. Review public Cangjie compatibility and Doc IR/schema changes separately.
 5. Confirm the version and release notes describe breaking changes, migrations and known limitations.
 6. Create and push the exact signed or otherwise project-approved tag through the normal repository process.

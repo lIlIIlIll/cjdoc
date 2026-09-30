@@ -47,6 +47,54 @@ class SourcePipelineSuite6 {
     @TestCase
     func punctuationDoesNotTriggerBinaryDepthGuard(): Unit {
         let punctuation = generateFixture("binary_punctuation")
+        var sourceParserFailure = ""
+        for (diagnostic in punctuation.diagnostics) {
+            if (diagnostic.code == "CJDOC1011" || diagnostic.code == "CJDOC1012" ||
+                diagnostic.code == "CJDOC1020") {
+                sourceParserFailure = diagnostic.code + ": " + diagnostic.message
+            }
+        }
+        @Expect(sourceParserFailure, "")
+        if (punctuation.status != "complete") {
+            var failureDetails = ""
+            for (diagnostic in punctuation.diagnostics) {
+                failureDetails = failureDetails + diagnostic.code + ": " + diagnostic.message + "; "
+            }
+            for (diagnostic in punctuation.diagnostics) {
+                if (diagnostic.code == "CJDOC1014") {
+                    if (let Some(source) <- diagnostic.source) {
+                        failureDetails = failureDetails +
+                            "orphan source ${source.start.line}:${source.start.column}/${source.start.byteOffset}-" +
+                            "${source.end.line}:${source.end.column}/${source.end.byteOffset}; "
+                    }
+                }
+            }
+            var nestedRangeDetails = "Nested declaration not found; "
+            for (declaration in punctuation.declarations) {
+                if (declaration.name == "Nested") {
+                    nestedRangeDetails = "Nested source " + declaration.source.start.line.toString() + ":" +
+                        declaration.source.start.column.toString() + "/" +
+                        declaration.source.start.byteOffset.toString() + "-" +
+                        declaration.source.end.line.toString() + ":" +
+                        declaration.source.end.column.toString() + "/" +
+                        declaration.source.end.byteOffset.toString() + "; "
+                    break
+                }
+            }
+            failureDetails = failureDetails + nestedRangeDetails
+            for (unsupported in punctuation.unsupportedDeclarations) {
+                failureDetails = failureDetails + "unsupported " + unsupported.kind + " " +
+                    unsupported.name + ": " + unsupported.reason + "; "
+            }
+            for (provider in punctuation.providers) {
+                failureDetails = failureDetails + "provider " + provider.name + ": " + provider.state + "; "
+            }
+            for (unbound in punctuation.unboundSemanticDeclarations) {
+                failureDetails = failureDetails + "unbound " + unbound.provider + " " +
+                    unbound.display + ": " + unbound.reason + "; "
+            }
+            @Expect(failureDetails, "")
+        }
         @Expect(punctuation.status, "complete")
         @Expect(containsDiagnostic(punctuation, "CJDOC1012"), false)
         @Expect(declarationNamed(punctuation, "ManyCases").kind, "enum")

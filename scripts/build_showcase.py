@@ -226,7 +226,7 @@ def main() -> int:
             "schemaVersion": "cjdoc.showcase/1",
             "source": {"repository": repository_url, "revision": revision},
             "surfaces": ["api", "demo", "markdown", "artifacts", "schemas"],
-            "currentDocIr": "cjdoc.doc-ir/10",
+            "currentDocIr": "cjdoc.doc-ir/11",
             "demo": {"workspace": "two packages", "doctest": "warn"},
         }
         (output / "build.json").write_text(
@@ -243,7 +243,7 @@ def main() -> int:
         output / "demo/index.html",
         output / "artifacts/docs.json",
         output / "artifacts/doctest-results.json",
-        output / "schemas/doc-ir-v10.schema.json",
+        output / "schemas/doc-ir-v11.schema.json",
         output / "build.json",
     )
     missing = [str(path.relative_to(output)) for path in required if not path.is_file()]

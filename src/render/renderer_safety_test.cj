@@ -100,6 +100,17 @@ private func hiddenAssetDocumentation(): DocumentationSet {
 @Test
 class RendererSafetyTest {
     @TestCase
+    func resourceFallbackKeepsItsDiagnosticVisible(): Unit {
+        let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "partial",
+            ProjectInfo("resource-limited"), ConfigurationSnapshot(),
+            diagnostics: [Diagnostic("warning", "CJDOC3027", "Resource limit reached")])
+        let index = rendererSafetyContent(HtmlDocumentationRenderer().render(documentation), "html/index.html")
+        @Expect(index.contains("No API declarations are available for this audience."))
+        @Expect(index.contains("<details class=\"generation-metadata\" open>"))
+        @Expect(index.contains("CJDOC3027"))
+    }
+
+    @TestCase
     func rendererFactorySupportsEveryDocumentedFormat(): Unit {
         let documentation = rendererSafetyDocumentation(MarkdownNode("document"))
         let expectations = [
@@ -157,6 +168,45 @@ class RendererSafetyTest {
             "html/search-index.json").contains("cjdoc"), true)
     }
     @TestCase
+    func reExportSearchSignaturesUseTokenIdentityAndPreserveUnavailableSource(): Unit {
+        let moduleId = "cjdoc:module:v1:renderer-exposure"
+        let availableId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arenderer-exposure::fixture::function:pub#g0()"
+        let unavailableId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arenderer-exposure::fixture::function:opaque#g0()"
+        let availableRaw = "public func pub(): Unit"
+        let unavailableRaw = "public func opaque(): Unit"
+        let source = SourceRange("src/api.cj", SourcePosition(1, 1, 0),
+            SourcePosition(1, availableRaw.size + 1, availableRaw.size))
+        let availableTokens = ["PUBLIC:6:public", "FUNC:4:func", "IDENTIFIER:3:pub",
+            "LPAREN:1:(", "RPAREN:1:)", "COLON:1::", "IDENTIFIER:4:Unit"]
+        let available = SymbolDoc(availableId, "function", "pub", "fixture.pub", "fixture",
+            moduleId, "public", source, availableRaw, SemanticInfo("partial", "ast"),
+            sourceApiSignature: SourceApiSignature("available", tokens: availableTokens))
+        let unavailable = SymbolDoc(unavailableId, "function", "opaque", "fixture.opaque",
+            "fixture", moduleId, "public", source, unavailableRaw, SemanticInfo("partial", "ast"),
+            sourceApiSignature: SourceApiSignature("unavailable"))
+        let reExport = ReExportDoc(
+            "cjdoc:reexport:v1:1111111111111111111111111111111111111111111111111111111111111111",
+            "single", "fixture", "resolved", source, targetModuleId: Some(moduleId),
+            bindings: [
+                ReExportBinding("renamedPub", targetSymbolIds: [availableId]),
+                ReExportBinding("renamedOpaque", targetSymbolIds: [unavailableId])])
+        let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
+            ProjectInfo("renderer-exposure"), ConfigurationSnapshot(lintProfile: "off"),
+            providers: [ProviderInfo("ast", "builtin", moduleId, "partial",
+                SemanticCapabilities(false, false, false, false, false))],
+            modules: [ModuleDoc(moduleId, "renderer-exposure", "root", "",
+                packageNames: ["fixture"])],
+            packages: [PackageDoc("fixture", moduleId, sourceFiles: ["src/api.cj"],
+                symbolIds: [availableId, unavailableId], reExports: [reExport])],
+            files: [FileDoc("src/api.cj", moduleId, "fixture")],
+            declarations: [available, unavailable])
+        let searchIndexScript = rendererSafetyContent(
+            HtmlDocumentationRenderer().render(documentation), "html/search-index.js")
+        @Expect(searchIndexScript.contains("\"public func renamedPub(): Unit\""), true)
+        @Expect(searchIndexScript.contains(
+            "\"renamedOpaque: public func opaque(): Unit\""), true)
+    }
+    @TestCase
     func audienceProjectionOmitsAssetsReferencedOnlyByHiddenDeclarations(): Unit {
         let documentation = hiddenAssetDocumentation()
         validateDocumentationSet(documentation)
@@ -208,23 +258,23 @@ class RendererSafetyTest {
     func fencedCodeRendersAtTheValidatedUpperBound(): Unit {
         let code = MarkdownNode("document", children: [MarkdownNode("code_block",
             MarkdownNodeMetadata.forCodeBlock("fenced", Some("~"), DOC_IR_MAX_FENCE_LENGTH,
-                "cj", "cj", ""), literal: "body")])
+                "cangjie", "cangjie", ""), literal: "body")])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
             rendererSafetyDocumentation(code)), "markdown/docs.md")
         let marks = rendererSafetyFenceMarks()
 
-        @Expect(markdown.contains("${marks}cj\nbody\n${marks}"))
+        @Expect(markdown.contains("${marks}cangjie\nbody\n${marks}"))
     }
 
     @TestCase
     func markdownCodeUsesAContentSafeDynamicDelimiter(): Unit {
         let code = MarkdownNode("document", children: [MarkdownNode("code_block",
             MarkdownNodeMetadata.forCodeBlock("fenced", Some("`"), 3,
-                "cj", "cj", ""), literal: "before ```` after")])
+                "cangjie", "cangjie", ""), literal: "before ```` after")])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
             rendererSafetyDocumentation(code)), "markdown/docs.md")
 
-        @Expect(markdown.contains("`````cj\nbefore ```` after\n`````"))
+        @Expect(markdown.contains("`````cangjie\nbefore ```` after\n`````"))
     }
 
     @TestCase
@@ -266,7 +316,7 @@ class RendererSafetyTest {
         @Expect(markdown.contains("&lt;img src\\=x&gt;"), true)
         @Expect(html.contains("<h3>Examples</h3>"), true)
         @Expect(html.contains("class=\"example-block\""), true)
-        @Expect(html.contains("data-language=\"cj\""), true)
+        @Expect(html.contains("data-language=\"cangjie\""), true)
         @Expect(html.contains("&lt;script&gt;alert(1)&lt;/script&gt;"), true)
         @Expect(html.contains("&lt;img src=x&gt;"), true)
         @Expect(!html.contains("<code><script>alert(1)"), true)
@@ -319,7 +369,10 @@ class RendererSafetyTest {
     @TestCase
     func htmlPromotesSummaryWithoutRepeatingTheOpeningParagraph(): Unit {
         let markdown = MarkdownNode("document", children: [
-            MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "Unique summary text.")]),
+            MarkdownNode("paragraph", children: [
+                MarkdownNode("text", literal: "Unique summary text. "),
+                MarkdownNode("text", literal: "<script>alert(9)</script>")
+            ]),
             MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "Additional details.")])
         ])
         let artifacts = HtmlDocumentationRenderer().render(rendererSafetyDocumentation(markdown))
@@ -328,6 +381,8 @@ class RendererSafetyTest {
 
         @Expect(html.split("Unique summary text.").size, 2)
         @Expect(html.contains("<p>Additional details.</p>"), true)
+        @Expect(html.contains("&lt;script&gt;alert(9)&lt;/script&gt;"), true)
+        @Expect(!html.contains("<script>alert(9)</script>"), true)
     }
 
     @TestCase

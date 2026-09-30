@@ -22,8 +22,7 @@ def canonical_search_script() -> str:
     source = (SCRIPT.parent.parent / "src/render/html_scripts.cj").read_text(encoding="utf-8")
     marker = 'internal let HTML_SEARCH_SCRIPT = """\n'
     literal = source.split(marker, 1)[1].split('\n"""', 1)[0]
-    # The script's only Cangjie escape is the doubled backslash in /\s+/.
-    # Decode it instead of treating source spelling as emitted bytes.
+    # Decode doubled backslashes in Cangjie string literals before execution.
     return literal.replace("\\\\", "\\") + "\n"
 
 
@@ -51,15 +50,35 @@ class ValidateHtmlSiteTest(unittest.TestCase):
         (root / "search.js").write_text(
             canonical_search_script(), encoding="utf-8", newline="\n"
         )
+        canonical_id = "cjdoc:v2:fixture:example"
+        entry = {
+            "id": canonical_id,
+            "canonicalId": canonical_id,
+            "exposure": False,
+            "name": "example",
+            "qualifiedName": "Fixture.example",
+            "kind": "function",
+            "packageName": "Fixture",
+            "summary": "A fixture summary.",
+            "href": "index.html#top",
+            "moduleId": "fixture-module",
+            "moduleName": "Fixture",
+            "ownerName": None,
+            "parameterTypes": ["String"],
+            "returnType": "Unit",
+            "returnCanonical": "std.core.Unit",
+        }
         search_text = json.dumps(
-            {"schemaVersion": "cjdoc.search-index/6", "entries": []},
+            {"schemaVersion": "cjdoc.search-index/6", "entries": [entry]},
             separators=(",", ":"),
         )
         (root / "search-index.json").write_text(
             search_text + "\n", encoding="utf-8", newline="\n"
         )
+        signature_text = json.dumps({canonical_id: "func example(String)"}, separators=(",", ":"))
         (root / "search-index.js").write_text(
-            "globalThis.__CJDOC_SEARCH_INDEX__ = " + search_text + ";\n",
+            "globalThis.__CJDOC_SEARCH_INDEX__ = " + search_text
+            + ";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = " + signature_text + ";\n",
             encoding="utf-8", newline="\n",
         )
 
@@ -78,6 +97,25 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             result = self.validate(root)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("validated 1 HTML pages", result.stdout)
+
+    def test_rejects_missing_structured_search_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            search = json.loads((root / "search-index.json").read_text(encoding="utf-8"))
+            entry = search["entries"][0]
+            del entry["parameterTypes"]
+            search_text = json.dumps(search, separators=(",", ":"))
+            (root / "search-index.json").write_text(search_text + "\n", encoding="utf-8")
+            signatures = json.dumps({entry["canonicalId"]: "func example(String)"}, separators=(",", ":"))
+            (root / "search-index.js").write_text(
+                "globalThis.__CJDOC_SEARCH_INDEX__ = " + search_text
+                + ";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = " + signatures + ";\n",
+                encoding="utf-8",
+            )
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("invalid search entry fields", result.stderr)
 
     def test_canonical_search_arrow_up_starts_at_last_result(self) -> None:
         script = canonical_search_script()
@@ -205,8 +243,10 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             root = Path(directory)
             self.write_site(root)
             script = (root / "search-index.js").read_text(encoding="utf-8")
+            marker = "\"entries\":["
+            self.assertIn(marker, script)
             (root / "search-index.js").write_text(
-                script.replace("\"entries\":[]", "\"entries\":[],\"extra\":true"),
+                script.replace(marker, "\"entries\":[{\"extra\":true},", 1),
                 encoding="utf-8",
             )
             result = self.validate(root)

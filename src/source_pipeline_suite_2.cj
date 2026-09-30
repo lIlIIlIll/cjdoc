@@ -84,8 +84,8 @@ class SourcePipelineSuite2 {
         @Expect(code.codeKind, Some("fenced"))
         @Expect(code.fenceCharacter, Some("~"))
         @Expect(code.fenceLength, Some(4))
-        @Expect(code.infoRaw, Some("cj {#sample}"))
-        @Expect(code.language, Some("cj"))
+        @Expect(code.infoRaw, Some("cangjie {#sample}"))
+        @Expect(code.language, Some("cangjie"))
         // The pinned Markdown parser preserves the complete fence suffix in
         // infoRaw but does not split attributes into attributesRaw.
         @Expect(code.attributesRaw, Some(""))

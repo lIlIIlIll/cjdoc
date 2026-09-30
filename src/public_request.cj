@@ -4,30 +4,84 @@ import cjdoc.model as public_model
 import cjdoc.provider as public_provider
 import std.collection.*
 import std.fs.*
+private func normalizeRepositoryRoot(repositoryRoot: ?String): ?String {
+    match (repositoryRoot) {
+        case None => None
+        case Some(path) =>
+            if (path.trimAscii().isEmpty()) {
+                throw IllegalArgumentException("repository root cannot be empty")
+            }
+            let resolved = try { canonicalize(path).toString() } catch (_: Exception) {
+                throw IllegalArgumentException("repository root must be an accessible directory")
+            }
+            let info = try { FileInfo(resolved) } catch (_: Exception) {
+                throw IllegalArgumentException("repository root must be an accessible directory")
+            }
+            if (!info.isDirectory()) {
+                throw IllegalArgumentException("repository root must be an accessible directory")
+            }
+            Some(resolved)
+    }
+}
+public class ChirOptions {
+    public let compilerExecutable: String
+    public let workerExecutable: ?String
+    private let importPathsStorage: ArrayList<String>
+
+    public init(compilerExecutable!: String = "cjc", importPaths!: Array<String> = [],
+        workerExecutable!: ?String = None) {
+        if (compilerExecutable.trimAscii().isEmpty()) {
+            throw IllegalArgumentException("CHIR compiler executable cannot be empty")
+        }
+        match (workerExecutable) {
+            case Some(path) =>
+                if (path.trimAscii().isEmpty()) {
+                    throw IllegalArgumentException("CHIR worker executable cannot be empty")
+                }
+            case None => ()
+        }
+        for (path in importPaths) {
+            if (path.trimAscii().isEmpty()) {
+                throw IllegalArgumentException("CHIR import paths cannot be empty")
+            }
+        }
+        this.compilerExecutable = compilerExecutable
+        this.workerExecutable = workerExecutable
+        this.importPathsStorage = ArrayList<String>(importPaths)
+    }
+
+    public prop importPaths: ReadOnlyList<String> {
+        get() { importPathsStorage }
+    }
+}
 
 public class GenerationRequest {
     public let projectRoot: String
+    public let repository: ?public_model.RepositoryInfo
+    public let repositoryRoot: ?String
     public let includePathDependencies: Bool
     public let includeCachedDependencies: Bool
     public let jobs: Int64
     public let audience: String
     public let lintProfile: String
-    public let repository: ?public_model.RepositoryInfo
-    public let repositoryRoot: ?String
+    public let checkExamples: Bool
     public let cacheDirectory: ?String
     public let cacheFingerprint: ?String
     public let astPreflightExecutable: ?String
+    public let chir: ?ChirOptions
     public let cjpmCacheRoot: ?String
     private let dependencySourcesStorage: ArrayList<DependencySourceInput>
     private let cfgValuesStorage: ArrayList<CfgValue>
     private let providerFactoriesStorage: ArrayList<public_provider.SemanticProviderFactory>
 
-    public init(projectRoot: String, includePathDependencies!: Bool = false, includeCachedDependencies!: Bool = false,
+    public init(projectRoot: String, repository!: ?public_model.RepositoryInfo = None,
+        repositoryRoot!: ?String = None, includePathDependencies!: Bool = false, includeCachedDependencies!: Bool = false,
         jobs!: Int64 = 1, audience!: String = "external", lintProfile!: String = "standard",
-        repository!: ?public_model.RepositoryInfo = None, repositoryRoot!: ?String = None,
+        checkExamples!: Bool = false,
         dependencySources!: Array<DependencySourceInput> = [], cfgValues!: Array<CfgValue> = [],
         providerFactories!: Array<public_provider.SemanticProviderFactory> = [], cacheDirectory!: ?String = None,
-        cacheFingerprint!: ?String = None, astPreflightExecutable!: ?String = None, cjpmCacheRoot!: ?String = None) {
+        cacheFingerprint!: ?String = None, astPreflightExecutable!: ?String = None,
+        chir!: ?ChirOptions = None, cjpmCacheRoot!: ?String = None) {
         if (projectRoot.isEmpty()) {
             throw IllegalArgumentException("project root cannot be empty")
         }
@@ -43,34 +97,25 @@ public class GenerationRequest {
         if (providerFactories.size > 1) {
             throw IllegalArgumentException("cjdoc accepts at most one semantic provider factory")
         }
+        if (chir.isSome() && !providerFactories.isEmpty()) {
+            throw IllegalArgumentException("CHIR cannot be combined with an external semantic provider factory")
+        }
+        if (repositoryRoot.isSome() && repository.isNone()) {
+            throw IllegalArgumentException("repository root requires repository metadata")
+        }
         this.projectRoot = projectRoot
+        this.repository = repository
+        this.repositoryRoot = normalizeRepositoryRoot(repositoryRoot)
         this.includePathDependencies = includePathDependencies
         this.includeCachedDependencies = includeCachedDependencies
         this.jobs = jobs
         this.audience = audience
         this.lintProfile = lintProfile
-        if (repositoryRoot.isSome() && repository.isNone()) {
-            throw IllegalArgumentException("repositoryRoot requires repository URL and revision")
-        }
-        let validatedRepositoryRoot: ?String = match (repositoryRoot) {
-            case None => None
-            case Some(path) => try {
-                let resolved = canonicalize(path).toString()
-                if (!FileInfo(resolved).isDirectory()) {
-                    throw IllegalArgumentException("repositoryRoot must be a directory")
-                }
-                Some(resolved)
-            } catch (error: IllegalArgumentException) {
-                throw error
-            } catch (_: Exception) {
-                throw IllegalArgumentException("repositoryRoot must resolve to a directory")
-            }
-        }
-        this.repository = repository
-        this.repositoryRoot = validatedRepositoryRoot
+        this.checkExamples = checkExamples
         this.cacheDirectory = cacheDirectory
         this.cacheFingerprint = cacheFingerprint
         this.astPreflightExecutable = astPreflightExecutable
+        this.chir = chir
         this.cjpmCacheRoot = cjpmCacheRoot
         this.dependencySourcesStorage = ArrayList<DependencySourceInput>(dependencySources)
         let normalizedCfg = CfgProfile(values: cfgValues)

@@ -332,7 +332,7 @@ private func collectSnippets(documentation: public_model.DocumentationSet): Arra
             case Some(comment) =>
                 var exampleIndex: Int64 = 0
                 for (tag in comment.tags) {
-                    if (tag.name != "example") { continue }
+                    if (tag.name != "example" || !tag.directives.isEmpty()) { continue }
                     let found = extractSnippets(symbol, tag, exampleIndex)
                     if (found.isEmpty()) {
                         snippets.add(DoctestSnippet(
@@ -391,7 +391,12 @@ private func skippedResult(snippet: DoctestSnippet, message: String): DoctestCas
     DoctestCaseResult(snippet, "skipped", message: message)
 }
 
-private func memoryBoundedCommand(command: String, arguments: Array<String>, memoryMb: Int64): (String, Array<String>) {
+internal func memoryBoundedCommand(command: String, arguments: Array<String>,
+    memoryMb: Int64): (String, Array<String>) {
+    if (memoryMb < 0) {
+        throw IllegalArgumentException("memory limit must not be negative")
+    }
+    if (memoryMb == 0) { return (command, arguments) }
     let limit = memoryMb * 1024 * 1024
     for (candidate in ["/usr/bin/prlimit", "/bin/prlimit"]) {
         if (!exists(Path(candidate))) { continue }
@@ -402,39 +407,37 @@ private func memoryBoundedCommand(command: String, arguments: Array<String>, mem
         wrapped.add(all: arguments)
         return (candidate, wrapped.toArray())
     }
-    // Running without an enforceable bound is not a safe fallback. In
-    // particular, macOS and Windows do not provide Linux's prlimit paths;
-    // report the unavailable limiter and let the command fail closed instead
-    // of executing unbounded user code.
-    throw IllegalStateException("doctest memory limit is unavailable on this platform")
+    // Running without an enforceable bound is not a safe fallback.
+    throw IllegalStateException("address-space memory limit is unavailable on this platform")
 }
-private func doctestOriginForLogicalPath(origins: Array<SourceFileOrigin>, logicalPath: String): ?SourceFileOrigin {
+private func doctestOriginForLogicalPath(origins: Array<SourceFileOrigin>, moduleId: String,
+    logicalPath: String): ?SourceFileOrigin {
     var found: ?SourceFileOrigin = None
-    for (origin in origins where origin.logicalPath == logicalPath) {
+    for (origin in origins where origin.moduleId == moduleId && origin.logicalPath == logicalPath) {
         if (found.isSome()) { return None }
         found = Some(origin)
     }
     found
 }
 
-private func discoveredPackageSourceRoot(module: public_model.ModuleDoc,
-    packageDoc: public_model.PackageDoc, origins: Array<SourceFileOrigin>): ?String {
-    if (packageDoc.sourceFiles.isEmpty()) { return None }
+internal func discoveredPackageSourceRoot(moduleId: String, sourcePrefix: String,
+    sourceFiles: Array<String>, origins: Array<SourceFileOrigin>): ?String {
+    if (sourceFiles.isEmpty()) { return None }
     var actualRoot: ?String = None
     var packageRoot: ?String = None
-    for (logicalPath in packageDoc.sourceFiles) {
-        let origin = match (doctestOriginForLogicalPath(origins, logicalPath)) {
+    for (logicalPath in sourceFiles) {
+        let origin = match (doctestOriginForLogicalPath(origins, moduleId, logicalPath)) {
             case Some(value) => value
             case None => return None
         }
-        if (origin.logicalPrefix != module.sourcePrefix ||
+        if (origin.logicalPrefix != sourcePrefix ||
             !hostPathIsWithin(origin.actualRoot, origin.actualPath)) { return None }
         let relative = match (relativePathFromResolved(origin.actualRoot, origin.actualPath)) {
             case Some(value) => value
             case None => return None
         }
-        let expected = if (module.sourcePrefix.isEmpty()) { relative }
-            else { module.sourcePrefix + "/" + relative }
+        let expected = if (sourcePrefix.isEmpty()) { relative }
+            else { sourcePrefix + "/" + relative }
         if (expected != logicalPath) { return None }
         match (actualRoot) {
             case Some(value) => if (value != origin.actualRoot) { return None }
@@ -482,7 +485,8 @@ private func packageSourceRoot(documentation: public_model.DocumentationSet,
         case None => throw IllegalStateException("doctest package module is unavailable")
     }
     if (!sourceOrigins.isEmpty()) {
-        let discovered = match (discoveredPackageSourceRoot(resolvedModule, packageDoc, sourceOrigins)) {
+        let discovered = match (discoveredPackageSourceRoot(resolvedModule.id,
+            resolvedModule.sourcePrefix, packageDoc.sourceFiles.toArray(), sourceOrigins)) {
             case Some(value) => value
             case None => throw IllegalStateException(
                 "doctest package root is unavailable from source discovery: " + packageDoc.name)

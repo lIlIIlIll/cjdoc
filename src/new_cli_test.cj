@@ -17,7 +17,10 @@ class NewCliRegressionTest {
     func versionedSchemaNamesRouteToTheirExactVersions(): Unit {
         @Expect(schemaTextForCli("doc-ir-v7"), DOC_IR_V7_SCHEMA)
         @Expect(schemaTextForCli("doc-ir-v8"), DOC_IR_V8_SCHEMA)
+        @Expect(schemaTextForCli("doctest-results"), DOCTEST_RESULTS_SCHEMA)
+        @Expect(schemaTextForCli("versions"), VERSIONS_SCHEMA)
         @Expect(schemaTextForCli("list").contains("doc-ir-v8\n"), true)
+        @Expect(schemaTextForCli("list").contains("versions\n"), true)
     }
 
     @TestCase
@@ -50,6 +53,53 @@ class NewCliRegressionTest {
         @Expect(runCli(["check", "--deny-breaking-api"]), 2)
         @Expect(runCli(["generate", "--deny-potentially-breaking-api"]), 2)
         @Expect(runCli(["render", "--input", "missing.json", "--deny-breaking-api"]), 2)
+    }
+
+    @TestCase
+    func diffParsesApiDenyFlagsAndRejectsGenerationOnlyOptions(): Unit {
+        let strict = parseNewCli(["diff", "--baseline", "old.json", "--current", "new.json",
+            "--deny-breaking-api", "--format", "json"])
+        @Expect(strict.denyBreakingApi, true)
+        @Expect(strict.diffFormat, "json")
+        let potential = parseNewCli(["diff", "old.json", "new.json",
+            "--deny-potentially-breaking-api"])
+        @Expect(potential.denyPotentiallyBreakingApi, true)
+        @ExpectThrows[IllegalArgumentException](parseNewCli([
+            "diff", "old.json", "new.json", "--check-examples"]))
+        @ExpectThrows[IllegalArgumentException](parseNewCli([
+            "diff", "old.json", "new.json", "--semantic", "source"]))
+        @ExpectThrows[IllegalArgumentException](parseNewCli([
+            "diff", "old.json", "new.json", "--doc-version", "v1"]))
+    }
+
+    @TestCase
+    func helpListsEverySupportedTopLevelCommandAndDocVersion(): Unit {
+        let usage = newUsage()
+        @Expect(usage.contains("cjdoc serve"), true)
+        @Expect(usage.contains("cjdoc versions compose"), true)
+        @Expect(usage.contains("--doc-version"), true)
+    }
+
+    @TestCase
+    func checkExamplesIsAnExplicitGenerationOption(): Unit {
+        let options = parseNewCli(["check", "--check-examples"])
+        @Expect(options.checkExamples, true)
+        @ExpectThrows[IllegalArgumentException](parseNewCli([
+            "render", "--input", "docs.json", "--check-examples"]))
+    }
+
+    @TestCase
+    func chirOptionsAreExplicitAndCommandScoped(): Unit {
+        let options = parseNewCli(["generate", "--semantic", "chir", "--cjc", "custom-cjc",
+            "--chir-worker", "custom-worker", "--chir-import-path", "dep-a",
+            "--chir-import-path", "dep-b"])
+        @Expect(options.semanticMode, "chir")
+        @Expect(options.cjcExecutable, "custom-cjc")
+        @Expect(options.chirWorkerExecutable, Some("custom-worker"))
+        @Expect(options.chirImportPaths.toArray(), ["dep-a", "dep-b"])
+        @ExpectThrows[IllegalArgumentException](parseNewCli(["generate", "--cjc", "custom-cjc"]))
+        @ExpectThrows[IllegalArgumentException](parseNewCli(["generate", "--chir-worker", "worker"]))
+        @ExpectThrows[IllegalArgumentException](parseNewCli(["render", "--semantic", "chir"]))
     }
 
     @TestCase

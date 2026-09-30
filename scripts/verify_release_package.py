@@ -15,7 +15,7 @@ import zipfile
 
 try:
     from . import release_archive_reader as _archive_reader
-    from .install_cangjie_sdk import validate_cached_sdk_root
+    from .install_cangjie_sdk import validate_cached_sdk_root, validate_combined_sdk_root
     from .release_archive_reader import (
         ArchiveMember,
         checked_size,
@@ -47,7 +47,7 @@ try:
     from .strict_json import strict_loads
 except ImportError:  # Direct script execution.
     import release_archive_reader as _archive_reader
-    from install_cangjie_sdk import validate_cached_sdk_root
+    from install_cangjie_sdk import validate_cached_sdk_root, validate_combined_sdk_root
     from release_archive_reader import (
         ArchiveMember,
         checked_size,
@@ -92,10 +92,13 @@ def read_archive(path: Path, *, expected_format: str | None = None) -> dict[str,
 
 def inspect_archive(path: Path, platform_name: str, version: str,
                     sdk_version: str, sdk_sha256: str,
-                    source_commit: str) -> tuple[dict[str, object], dict[str, ArchiveMember], str]:
+                    source_commit: str,
+                    stdx_version: str | None = None,
+                    stdx_sha256: str | None = None) -> tuple[dict[str, object], dict[str, ArchiveMember], str]:
     _sync_archive_limits()
     return _inspect_archive(
-        path, platform_name, version, sdk_version, sdk_sha256, source_commit
+        path, platform_name, version, sdk_version, sdk_sha256, source_commit,
+        stdx_version, stdx_sha256
     )
 
 def powershell_sdk_environment_invocation(setup: Path) -> tuple[list[str], dict[str, str]]:
@@ -233,11 +236,14 @@ def verify_archive(path: Path, platform_name: str, version: str,
                    sdk_version: str, sdk_sha256: str, source_commit: str,
                    smoke: bool, repository: Path | None = None,
                    sdk_root: Path | None = None,
-                   sdk_marker_verified: bool = False) -> dict[str, object]:
+                   sdk_marker_verified: bool = False,
+                   stdx_version: str | None = None,
+                   stdx_sha256: str | None = None) -> dict[str, object]:
     path = lexical_absolute(path)
     archive_sha256 = sha256_file(path)
     manifest, members, executable_name = inspect_archive(
-        path, platform_name, version, sdk_version, sdk_sha256, source_commit
+        path, platform_name, version, sdk_version, sdk_sha256, source_commit,
+        stdx_version, stdx_sha256
     )
     if repository is not None:
         verify_repository_payload(members, repository, source_commit)
@@ -246,8 +252,13 @@ def verify_archive(path: Path, platform_name: str, version: str,
     if smoke:
         if sdk_root is None:
             raise ValueError("release package smoke requires --sdk-root")
-        validated_root = sdk_root.resolve() if sdk_marker_verified else \
-            validate_cached_sdk_root(sdk_root, sdk_sha256)
+        if sdk_marker_verified:
+            validated_root = sdk_root.resolve()
+        elif stdx_sha256 is None:
+            validated_root = validate_cached_sdk_root(sdk_root, sdk_sha256)
+        else:
+            validated_root, _ = validate_combined_sdk_root(
+                sdk_root, sdk_sha256, stdx_sha256)
         environment, sdk_environment_evidence = declared_sdk_environment(validated_root)
         with tempfile.TemporaryDirectory(prefix="cjdoc-package-smoke-") as temporary:
             expected_format = "zip" if platform_name.startswith("windows-") else "gzip-tar"
@@ -275,6 +286,8 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--sdk-version", required=True)
     parser.add_argument("--sdk-sha256", required=True)
+    parser.add_argument("--stdx-version")
+    parser.add_argument("--stdx-sha256")
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--repository", type=Path)
     parser.add_argument("--sdk-root", type=Path)
@@ -285,7 +298,8 @@ def main() -> int:
             lexical_absolute(args.archive), args.platform, args.version,
             args.sdk_version, args.sdk_sha256, args.source_commit,
             smoke=not args.inspect_only, repository=args.repository,
-            sdk_root=args.sdk_root,
+            sdk_root=args.sdk_root, stdx_version=args.stdx_version,
+            stdx_sha256=args.stdx_sha256,
         )
     except (OSError, ValueError, tarfile.TarError, zipfile.BadZipFile) as error:
         parser.error(str(error))

@@ -35,8 +35,4 @@ private func buildDocIrV10Schema(source: String): String {
     schema
 }
 
-private let DOC_IR_CURRENT_ID =
-    "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json"
-
 public let DOC_IR_V10_SCHEMA = buildDocIrV10Schema(DOC_IR_V9_SCHEMA)
-public let DOC_IR_SCHEMA = DOC_IR_V10_SCHEMA.replace(DOC_IR_V10_ID, DOC_IR_CURRENT_ID)

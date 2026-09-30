@@ -168,16 +168,18 @@ class SourceModule {
     public let role: String
     public let sourcePrefix: String
     public let organization: ?String
+    public let manifestText: ?String
     public let packageNames = ArrayList<String>()
     public let dependencyIds = ArrayList<String>()
 
     public init(id: String, name: String, role: String, sourcePrefix: String,
-        organization!: ?String = None) {
+        organization!: ?String = None, manifestText!: ?String = None) {
         this.id = id
         this.name = name
         this.role = role
         this.sourcePrefix = sourcePrefix
         this.organization = organization
+        this.manifestText = manifestText
     }
 }
 
@@ -218,14 +220,14 @@ class CapturedSourceIndex {
         let lineIndex = line - 1
         if (lineIndex >= lineStarts.size) { return None }
         let start = lineStarts[lineIndex]
-        let end = if (lineIndex + 1 < lineStarts.size) {
+        let lineEnd = if (lineIndex + 1 < lineStarts.size) {
             lineStarts[lineIndex + 1] - 1
         } else {
             byteLength
         }
-        let delta = column - 1
-        if (delta > end - start) { return None }
-        Some(start + delta)
+        let offset = start + column - 1
+        if (offset > lineEnd) { return None }
+        Some(offset)
     }
 
     public func positionMatches(line: Int64, column: Int64, byteOffset: Int64): Bool {
@@ -244,14 +246,26 @@ class SourceFileOrigin {
     public let actualRoot: String
     public let logicalPrefix: String
     public let capturedSourceIndex: ?CapturedSourceIndex
+    public let packageName: String
+    public let moduleId: String
+    public let imports: Array<String>
+    public let packageImports: Array<String>
+    public let capturedSource: String
 
     public init(logicalPath: String, actualPath: String, actualRoot: String,
-        logicalPrefix: String, capturedSourceIndex!: ?CapturedSourceIndex = None) {
+        logicalPrefix: String, moduleId: String, capturedSourceIndex!: ?CapturedSourceIndex = None,
+        packageName!: String = "", imports!: Array<String> = [],
+        packageImports!: Array<String> = [], capturedSource!: String = "") {
         this.logicalPath = logicalPath
         this.actualPath = actualPath
         this.actualRoot = actualRoot
         this.logicalPrefix = logicalPrefix
         this.capturedSourceIndex = capturedSourceIndex
+        this.packageName = packageName
+        this.moduleId = moduleId
+        this.imports = imports
+        this.packageImports = packageImports
+        this.capturedSource = capturedSource
     }
 }
 
@@ -305,6 +319,8 @@ class MacroInvocation {
 class SourceSnapshot {
     public let projectName: String
     public let modules = ArrayList<SourceModule>()
+    public var cfgProfile = CfgProfile()
+    public var manifestText: ?String = None
     public let packages = ArrayList<SourcePackage>()
     public let declarations = ArrayList<SourceDeclaration>()
     public let reExports = ArrayList<SourceReExport>()

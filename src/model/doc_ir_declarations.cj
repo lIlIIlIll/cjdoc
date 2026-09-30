@@ -180,15 +180,18 @@ public class DocTag {
     public let description: String
     public let referenceState: String
     public let targetSymbolId: ?String
+    public let directives: String
 
     public init(name: String, subject: String, description: String,
-        referenceState!: String = "unavailable", targetSymbolId!: ?String = None) {
+        referenceState!: String = "unavailable", targetSymbolId!: ?String = None,
+        directives!: String = "") {
         if (!isSemanticState(referenceState)) { throw IllegalArgumentException("invalid reference state") }
         this.name = name
         this.subject = subject
         this.description = description
         this.referenceState = referenceState
         this.targetSymbolId = targetSymbolId
+        this.directives = directives
     }
 }
 

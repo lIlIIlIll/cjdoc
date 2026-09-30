@@ -6,11 +6,19 @@ on:
   workflow_dispatch:
     inputs:
       sdk_url:
-        description: Checksum-pinned Linux x64 daily SDK URL
+        description: Checksum-pinned Cangjie 1.3 SDK URL
         required: false
         type: string
       sdk_sha256:
-        description: Lowercase SHA-256 for the daily SDK archive
+        description: Lowercase SHA-256 for the Cangjie 1.3 SDK archive
+        required: false
+        type: string
+      stdx_url:
+        description: Checksum-pinned matching stdx 1.3 archive URL
+        required: false
+        type: string
+      stdx_sha256:
+        description: Lowercase SHA-256 for the matching stdx archive
         required: false
         type: string
 
@@ -30,8 +38,10 @@ jobs:
       CJDOC_PYTHON: python
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUTF8: "1"
-      CANGJIE_SDK_URL: ${{ inputs.sdk_url || vars.CANGJIE_DAILY_LINUX_X64_URL }}
-      CANGJIE_SDK_SHA256: ${{ inputs.sdk_sha256 || vars.CANGJIE_DAILY_LINUX_X64_SHA256 }}
+      CANGJIE_SDK_URL: ${{ inputs.sdk_url || vars.CANGJIE_DAILY_1_3_LINUX_X64_URL }}
+      CANGJIE_SDK_SHA256: ${{ inputs.sdk_sha256 || vars.CANGJIE_DAILY_1_3_LINUX_X64_SHA256 }}
+      CANGJIE_STDX_URL: ${{ inputs.stdx_url || vars.CANGJIE_DAILY_STDX_1_3_LINUX_X64_URL }}
+      CANGJIE_STDX_SHA256: ${{ inputs.stdx_sha256 || vars.CANGJIE_DAILY_STDX_1_3_LINUX_X64_SHA256 }}
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -53,17 +63,23 @@ jobs:
         id: sdk-cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: ${{ runner.temp }}/cangjie-sdk-daily
-          key: cangjie-sdk-daily-linux-x64-${{ inputs.sdk_sha256 || vars.CANGJIE_DAILY_LINUX_X64_SHA256 }}-v3-authenticated-archive
+          path: ${{ runner.temp }}/cangjie-sdk-daily-1.3-stdx
+          key: cangjie-sdk-daily-linux-x64-${{ inputs.sdk_sha256 || vars.CANGJIE_DAILY_1_3_LINUX_X64_SHA256 }}-${{ inputs.stdx_sha256 || vars.CANGJIE_DAILY_STDX_1_3_LINUX_X64_SHA256 }}-v4-authenticated-archive
 
       - name: Install checksum-pinned daily Cangjie SDK
         id: sdk
         shell: bash
         run: |
+          test -n "${CANGJIE_SDK_URL}"
+          [[ "${CANGJIE_SDK_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+          test -n "${CANGJIE_STDX_URL}"
+          [[ "${CANGJIE_STDX_SHA256}" =~ ^[0-9a-f]{64}$ ]]
           python scripts/install_cangjie_sdk.py \
             --url "${CANGJIE_SDK_URL}" \
             --sha256 "${CANGJIE_SDK_SHA256}" \
-            --destination "${RUNNER_TEMP}/cangjie-sdk-daily" \
+            --stdx-url "${CANGJIE_STDX_URL}" \
+            --stdx-sha256 "${CANGJIE_STDX_SHA256}" \
+            --destination "${RUNNER_TEMP}/cangjie-sdk-daily-1.3-stdx" \
             --github-output "${GITHUB_OUTPUT}"
 
       - name: Run v8 acceptance and real-repository smoke
@@ -74,5 +90,6 @@ jobs:
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           cjc -v
           cjpm -v
-          scripts/check.sh
-          python scripts/real_repository_smoke.py --project .
+          python scripts/with_stdx.py --variant static -- scripts/check.sh
+          python scripts/with_stdx.py --variant static -- \
+            python scripts/real_repository_smoke.py --project .

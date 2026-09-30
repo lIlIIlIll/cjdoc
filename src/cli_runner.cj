@@ -12,7 +12,7 @@ internal func selectedSourceCacheDirectory(options: NewCliOptions): ?String {
     match (options.cacheDirectory) {
         case Some(path) => Some(path)
         case None => Some(Path(options.project).join("target").join("cjdoc").join("cache")
-            .join("source-v4").toString())
+            .join("source-v11").toString())
     }
 }
 
@@ -187,13 +187,14 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 }
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndoctest-results\nversions\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndoc-ir-v11\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndocumentation-quality\ndoctest-results\nversions\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA
         case "doc-ir-v8" => DOC_IR_V8_SCHEMA
         case "doc-ir-v9" => DOC_IR_V9_SCHEMA
         case "doc-ir-v10" => DOC_IR_V10_SCHEMA
+        case "doc-ir-v11" => DOC_IR_V11_SCHEMA
         case "diagnostics" => DIAGNOSTICS_SCHEMA
         case "cfg-matrix" => CFG_MATRIX_SCHEMA
         case "search-index" => SEARCH_INDEX_SCHEMA
@@ -204,9 +205,10 @@ internal func schemaTextForCli(name: String): String {
         case "api-diff" => API_DIFF_SCHEMA
         case "documentation-coverage-v1" => DOCUMENTATION_COVERAGE_V1_SCHEMA
         case "documentation-coverage" => DOCUMENTATION_COVERAGE_SCHEMA
-        case "versions" => VERSIONS_SCHEMA
+        case "documentation-quality" => DOCUMENTATION_QUALITY_SCHEMA
         case "doctest-results" => DOCTEST_RESULTS_SCHEMA
-        case _ => throw IllegalArgumentException("unknown schema " + name)
+        case "versions" => VERSIONS_SCHEMA
+        case _ => throw IllegalArgumentException("unknown schema '${name}'")
     }
 }
 
@@ -365,28 +367,44 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
  internal func executeDocumentCommand(options: NewCliOptions, lockedOutput: ?String,
     selectedCache: ?String, outputLock: ?OutputLockHandle, writeOnFailure!: Bool = true): Int64 {
     let commandLine = getCommandLine()
-    let astPreflightExecutable: ?String = if (commandLine.isEmpty()) { None }
-        else { Some(commandLine[0]) }
+    let astPreflightExecutable: ?String = if (commandLine.size > 0) {
+        Some(commandLine[0])
+    } else {
+        None
+    }
+    let chirOptions: ?ChirOptions = if (options.semanticMode == "chir") {
+        Some(ChirOptions(compilerExecutable: options.cjcExecutable,
+            importPaths: options.chirImportPaths.toArray(),
+            workerExecutable: options.chirWorkerExecutable))
+    } else {
+        None
+    }
     let generationRequest: ?GenerationRequest = if (options.command == "render") {
         None
     } else {
         let repository = repositoryForOptions(options)
-        Some(GenerationRequest(options.project, jobs: options.jobs,
+        Some(GenerationRequest(options.project, repository: repository,
+            repositoryRoot: repositoryRootForOptions(options, repository), jobs: options.jobs,
             audience: options.audience, lintProfile: options.lintProfile,
-            repository: repository, repositoryRoot: repositoryRootForOptions(options, repository),
+            checkExamples: options.checkExamples,
             includePathDependencies: options.includePathDependencies,
             includeCachedDependencies: options.includeCachedDependencies,
             dependencySources: options.dependencySources.toArray(),
             cfgValues: options.cfgValues.toArray(),
             cacheDirectory: selectedCache,
             astPreflightExecutable: astPreflightExecutable,
+            chir: chirOptions,
             cjpmCacheRoot: options.cjpmCacheRoot))
     }
     var sourceOrigins: Array<SourceFileOrigin> = []
     var documentation = match (generationRequest) {
         case Some(request) =>
+            let semanticProvider: SemanticProvider = match (request.chir) {
+                case Some(chir) => AutoChirSemanticProvider(chir)
+                case None => defaultSemanticProvider()
+            }
             let (generatedDocumentation, generatedOrigins) = generatePublicDocumentationWithSource(request,
-                defaultSemanticProvider())
+                semanticProvider)
             sourceOrigins = generatedOrigins
             generatedDocumentation
         case None => decodeValidatedDocIr(readDocIrInput(Path(options.input.getOrThrow())))
