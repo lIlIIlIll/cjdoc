@@ -229,7 +229,7 @@ private func addExampleImportedPackage(documentation: DocumentationSet, ownerMod
     ""
 }
 
-private func requiredExamplePackages(documentation: DocumentationSet,
+internal func requiredExamplePackages(documentation: DocumentationSet,
     unit: ExampleCompilationUnit): (Array<PackageDoc>, String) {
     let required = ArrayList<PackageDoc>()
     let seen = HashSet<String>()
@@ -287,7 +287,8 @@ private func exampleModule(documentation: DocumentationSet, moduleId: String): ?
 }
 
 private func compileExampleDependency(documentation: DocumentationSet, packageDoc: PackageDoc,
-    workRoot: Path, artifacts: ArrayList<ExamplePackageArtifact>, index: Int64):
+    workRoot: Path, artifacts: ArrayList<ExamplePackageArtifact>, index: Int64,
+    compilerOptions: Array<String>):
     (?ExamplePackageArtifact, String) {
     let module = match (exampleModule(documentation, packageDoc.moduleId)) {
         case Some(value) => value
@@ -309,6 +310,7 @@ private func compileExampleDependency(documentation: DocumentationSet, packageDo
     arguments.add("--diagnostic-format"); arguments.add("noColor")
     arguments.add("--error-count-limit"); arguments.add("8")
     appendCompilerCfgArguments(arguments, documentation.cfgProfile)
+    for (option in compilerOptions) { arguments.add(option) }
     for (artifact in artifacts) {
         arguments.add("--import-path"); arguments.add(artifact.artifactRoot.toString())
         arguments.add("--library-path"); arguments.add(artifact.artifactRoot.toString())
@@ -370,8 +372,8 @@ private func examplePackageDependenciesReady(documentation: DocumentationSet,
 }
 
 internal func prepareExampleDependencies(documentation: DocumentationSet,
-    unit: ExampleCompilationUnit): ExampleDependencyPreparation {
-    let (required, requirementFailure) = requiredExamplePackages(documentation, unit)
+    required: Array<PackageDoc>, requirementFailure: String,
+    compilerOptions: Array<String>): ExampleDependencyPreparation {
     if (!requirementFailure.isEmpty()) {
         return ExampleDependencyPreparation(None<Path>, [], requirementFailure)
     }
@@ -397,7 +399,7 @@ internal func prepareExampleDependencies(documentation: DocumentationSet,
                 continue
             }
             let (artifact, failure) = compileExampleDependency(documentation, packageDoc,
-                workRoot, artifacts, index)
+                workRoot, artifacts, index, compilerOptions)
             index++
             match (artifact) {
                 case Some(value) => artifacts.add(value); compiledAny = true

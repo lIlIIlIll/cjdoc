@@ -395,4 +395,46 @@ class ChirPublicContracts {
         }
         @Expect(documentation.providers[0].name, "chir")
     }
+
+    @TestCase
+    func quotedCompilerOptionKeysPreserveManifestGuardSemantics(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            Directory.create(root.join("src"))
+            File.writeTo(root.join("src/api.cj"),
+                "package quoted_options\npublic func stableApi(): Int64 { 7 }\n".toArray())
+            let keys = ["\"compile-option\"", "'compile-option'", "\"compile\\u002doption\"",
+                "\"override-compile-option\"", "'override-compile-option'",
+                "\"override\\u002dcompile\\U0000002doption\""]
+            for (key in keys) {
+                for (option in ["-p alternate", "-B alternate"]) {
+                    File.writeTo(root.join("cjpm.toml"),
+                        ("[package]\nname = \"quoted_options\"\n" + key +
+                         " = [\n \"-O2\", # supported first element\n \"" + option + "\",\n]\n").toArray())
+                    let documentation = DocumentationEngine().generate(GenerationRequest(root.toString(),
+                        lintProfile: "off", chir: Some(chirTestOptions()),
+                        astPreflightExecutable: Some("target/release/bin/main")))
+                    @Expect(publicHasDiagnostic(documentation, "CJDOC2102"), true)
+                    @Expect(publicHasDiagnostic(documentation, "CJDOC2101"), false)
+                    @Expect(documentation.declarations[0].name, "stableApi")
+                    @Expect(documentation.declarations[0].semantic.state, "unavailable")
+                    @Expect(documentation.declarations[0].returnType.getOrThrow().spelling, "Int64")
+                }
+                File.writeTo(root.join("cjpm.toml"),
+                    ("[package]\nname = \"quoted_options\"\n" + key + " = \"-O2\" # allowed\n").toArray())
+                let supported = DocumentationEngine().generate(GenerationRequest(root.toString(),
+                    lintProfile: "off", chir: Some(chirTestOptions()),
+                    astPreflightExecutable: Some("target/release/bin/main")))
+                @Expect(publicHasDiagnostic(supported, "CJDOC2102"), false)
+                @Expect(publicHasDiagnostic(supported, "CJDOC2104"), false)
+                if (getVariable("CJDOC_CHIR_WORKER").isSome()) {
+                    @Expect(supported.declarations[0].semantic.state, "partial")
+                } else {
+                    @Expect(chirTestReportsMissingWorker(supported), true)
+                }
+            }
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
 }

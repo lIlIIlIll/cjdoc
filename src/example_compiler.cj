@@ -34,12 +34,10 @@ private class ExampleExtraction {
 private class ExampleSourceContext {
     let origin: SourceFileOrigin
     let packageName: String
-    let imports = ArrayList<String>()
 
-    init(origin: SourceFileOrigin, packageName: String, imports: Array<String>) {
+    init(origin: SourceFileOrigin, packageName: String) {
         this.origin = origin
         this.packageName = packageName
-        this.imports.add(all: imports)
     }
 }
 
@@ -111,6 +109,7 @@ internal class ExampleCompilationUnit {
 private class ExampleCollectionState {
     let contexts: ArrayList<ExampleSourceContext>
     let units = ArrayList<ExampleCompilationUnit>()
+    let importsByFile = HashMap<String, Array<String>>()
     var count: Int64 = 0
     var limitReported = false
 
@@ -232,7 +231,7 @@ private func joinedExampleCode(blocks: ArrayList<String>): String {
 }
 
 private func readExampleSourceContext(origin: SourceFileOrigin): ?ExampleSourceContext {
-    Some(ExampleSourceContext(origin, origin.packageName, origin.imports))
+    Some(ExampleSourceContext(origin, origin.packageName))
 }
 
 private func collectExampleSourceContexts(documentation: DocumentationSet): ArrayList<ExampleSourceContext> {
@@ -392,6 +391,22 @@ private func collectExampleForTag(documentation: DocumentationSet, state: Exampl
             }
             return
     }
+    let imports = try {
+        match (state.importsByFile.get(origin.actualPath)) {
+            case Some(value) => value
+            case None =>
+                let value = sourceImportTextsFromSource(origin.logicalPath, origin.capturedSource, true).toArray()
+                state.importsByFile[origin.actualPath] = value
+                value
+        }
+    } catch (_: Exception) {
+        addExampleDiagnostic(documentation, symbol, "error", "CJDOC3031",
+            "cannot capture conditional imports for @example '${label}'")
+        if (pinned) {
+            reportPinnedExampleSkipped(documentation, symbol, label, "the declaring imports could not be captured")
+        }
+        return
+    }
     let packageName = examplePackageName(symbol, state.contexts, origin)
     let unit = match (findExampleUnit(state.units, origin.actualRoot, origin.moduleId, packageName)) {
         case Some(value) => value
@@ -403,7 +418,7 @@ private func collectExampleForTag(documentation: DocumentationSet, state: Exampl
     }
     unit.targets.add(ExampleCompilationTarget(symbol, tag.subject, code, pinned: pinned,
         expectsFailure: directives.expectsFailure, failureContains: directives.failureContains,
-        compilerOptions: compilerOptions, imports: origin.imports,
+        compilerOptions: compilerOptions, imports: imports,
         execute: directives.execute, expectedOutput: expectedOutput))
     state.count++
 }
@@ -743,15 +758,38 @@ private func compileExampleTarget(documentation: DocumentationSet,
     }
 }
 
-internal func compileDocumentationExamples(documentation: DocumentationSet, audience: String): Unit {
-    let state = ExampleCollectionState(collectExampleSourceContexts(documentation))
-    collectExampleTargets(documentation, state, audience)
-    for (unit in state.units) {
-        let preparation = prepareExampleDependencies(documentation, unit)
+// Validated flags contain no whitespace, so separators preserve argv boundaries.
+private func exampleCompilerOptionsKey(options: Array<String>): String {
+    let key = StringBuilder()
+    for (option in options) { key.append(option); key.append("\n") }
+    key.toString()
+}
+
+private func compileExampleUnit(documentation: DocumentationSet,
+    unit: ExampleCompilationUnit): Unit {
+    let (required, requirementFailure) = requiredExamplePackages(documentation, unit)
+    let preparations = HashMap<String, ExampleDependencyPreparation>()
+    try {
         for (target in unit.targets) {
+            let key = exampleCompilerOptionsKey(target.compilerOptions)
+            let preparation = match (preparations.get(key)) {
+                case Some(value) => value
+                case None =>
+                    let value = prepareExampleDependencies(documentation, required,
+                        requirementFailure, target.compilerOptions)
+                    preparations[key] = value
+                    value
+            }
             compileExampleTarget(documentation, unit, target, preparation.artifacts,
                 preparation.failure)
         }
-        releaseExampleDependencies(preparation)
+    } finally {
+        for ((_, preparation) in preparations) { releaseExampleDependencies(preparation) }
     }
+}
+
+internal func compileDocumentationExamples(documentation: DocumentationSet, audience: String): Unit {
+    let state = ExampleCollectionState(collectExampleSourceContexts(documentation))
+    collectExampleTargets(documentation, state, audience)
+    for (unit in state.units) { compileExampleUnit(documentation, unit) }
 }

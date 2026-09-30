@@ -522,7 +522,44 @@ private func sourceImportStart(tokens: Tokens, importIndex: Int64): Int64 {
     importIndex
 }
 
-internal func sourceImportTextsFromSource(path: String, source: String): ArrayList<String> {
+private func previousImportToken(tokens: Tokens, before: Int64): Int64 {
+    var index = before
+    while (index > 0) {
+        index--
+        let token = tokens[index]
+        if (token.kind != NL && token.kind != COMMENT && !token.value.isEmpty()) { return index }
+    }
+    -1
+}
+
+private func conditionalSourceImportStart(tokens: Tokens, importIndex: Int64): Int64 {
+    var start = sourceImportStart(tokens, importIndex)
+    var before = start
+    while (before > 0) {
+        var opening = previousImportToken(tokens, before)
+        if (opening < 0 || tokens[opening].kind != RSQUARE) { break }
+        var squareDepth: Int64 = 1
+        while (opening > 0 && squareDepth > 0) {
+            opening--
+            match (tokens[opening].kind) {
+                case RSQUARE => squareDepth++
+                case LSQUARE => squareDepth--
+                case _ => ()
+            }
+        }
+        if (squareDepth != 0) { break }
+        let name = previousImportToken(tokens, opening)
+        if (name < 0 || tokens[name].kind != IDENTIFIER || tokens[name].value != "When") { break }
+        let annotation = previousImportToken(tokens, name)
+        if (annotation < 0 || tokens[annotation].kind != AT) { break }
+        start = annotation
+        before = start
+    }
+    start
+}
+
+internal func sourceImportTextsFromSource(path: String, source: String,
+    includeWhen: Bool): ArrayList<String> {
     let tokens = sourceLexerTokens(source)
     let sourceIndex = IndexedSourceBuffer(source)
     let imports = ArrayList<String>()
@@ -531,7 +568,10 @@ internal func sourceImportTextsFromSource(path: String, source: String): ArrayLi
     while (index < tokens.size) {
         let token = tokens[index]
         if (declarationDepth == 0 && token.kind == IMPORT) {
-            let first = tokens[sourceImportStart(tokens, index)]
+            let start = if (includeWhen) { conditionalSourceImportStart(tokens, index) } else {
+                sourceImportStart(tokens, index)
+            }
+            let first = tokens[start]
             let importEnd = sourceImportStatementEnd(tokens, index)
             let last = tokens[importEnd]
             if (first.pos.line <= 0 || first.pos.column <= 0 ||

@@ -128,6 +128,10 @@ public func parse(text: String): Int64 {
 
 输出路径与源文件列表仍由 cjdoc 掌握，因此 `-o`、`--output-type`、`-p`、`-L`、`-l`、`--import-path`、`@file` 等一律被拒绝。
 
+检查示例时会复制声明文件的 import，并保留附着的 `@When[...]` 条件；由本次真实 `cjc` 配置决定 import 是否生效，不会把未选中的平台 import 变成无条件依赖。
+
+每个示例的 `flags="…"` 同时用于声明包和所有捕获的传递依赖。相同有序 flag 集共享依赖产物，不同 flag 集分别编译并隔离产物；示例 flags 不改变 Doc IR 的源码选择，文档条件仍由请求的 `--cfg` 决定。
+
 带 `run` 的示例可以额外使用语言标记为 `output` 的 fenced code block 固定标准输出：每个示例最多一个 `output` 块，且必须同时带 `run`，否则产生 `CJDOC3033`。比较前两侧都会统一换行符并去掉首尾空行，因此 `println` 结尾的那一个换行不需要写出。示例本身会被包装进一个无参数的 `main`，所以引用 `args` 的示例无法通过编译；需要 `exit` 等函数时，`import` 写在示例所属的源码文件里。源码中当前配置选中的 `main` 会保留为普通函数，原返回类型不变，由示例包装器提供入口；未选中的条件入口不参与替换。命令行 `--cfg os=…` 与 `--cfg arch=…` 必须匹配构建目标，匹配值不会再转发给 `cjc --cfg`，其他用户配置正常转发。 内置 `debug` 的默认值按实际 `cjc` 调用取 `false`（示例标志白名单不允许 `-g`），所以互补的 `@When[debug]` / `@When[!debug]` 入口只替换 release 分支。
 
 运行时的限制是固定的：单次运行上限 10 秒，stdout 与 stderr 各上限 64 KiB，一次检查最多 256 个示例。Linux 通过 `prlimit` 为每个运行进程设置 2048 MiB 地址空间上限，Windows 为进程树设置 2048 MiB Job 内存上限；无法建立限制时在启动示例前失败，不会无界运行。当前 macOS 无法提供这项地址空间限制，因此 `{run}` 示例被拒绝并报告 `CJDOC3074`，不会尝试运行用户代码。超限导致非零退出时报告 `CJDOC3071`。可执行文件用 `--static --output-type exe` 构建，这样示例即使没有把 SDK 运行库放进 `LD_LIBRARY_PATH` 也能运行。静态链接不可用的环境会报告 `CJDOC3074`。
@@ -161,7 +165,7 @@ Windows worker executable 带有 `.exe` 后缀。CHIR 模式从本次源码快�
 
 CHIR 的 `--cfg os=…`、`--cfg arch=…`、`--cfg debug=…` 必须与实际原生编译目标及默认 release 模式匹配；这些内置键只参与验证，不会作为用户 `cjc --cfg` 参数转发。普通用户自定义 cfg 仍会传给 worker。内置选择不匹配时报告 `CJDOC2102` 并保留源码 fallback。
 
-每个模块及递归依赖的 `compile-option` / `override-compile-option` 都会完整检查，包括带注释的多行数组。任一元素包含不受支持的编译选项（如 `-p` 或 `-B`）时，在启动 worker 前报告 `CJDOC2102`，不会用忽略该构建约束的 CHIR 结果补充声明。
+每个模块及递归依赖的 `compile-option` / `override-compile-option` 都会完整检查，包括普通 key、单引号或双引号 key（以及合法的 Unicode 转义）和带注释的多行数组。任一元素包含不受支持的编译选项（如 `-p` 或 `-B`）时，在启动 worker 前报告 `CJDOC2102`，不会用忽略该构建约束的 CHIR 结果补充声明。
 
 `render` 只读取已有 Doc IR，因此不能选择 semantic backend。
 

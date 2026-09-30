@@ -699,6 +699,110 @@ class ExampleCompilerTest {
             let _ = removeIfExists(root, recursive: true)
         }
     }
+
+    @TestCase
+    func conditionalImportsKeepNativeExamplesValidThroughWarmCache(): Unit {
+        let nativeOs = compilerBuiltinCfgValue("os").getOrThrow()
+        let inactiveOs = if (nativeOs == "Windows") { "Linux" } else { "Windows" }
+        let root = createExampleProject("""
+            package example_compile
+            @When[os == "INACTIVE_OS"]
+            import absent_platform.api
+            @When[os == "ACTIVE_OS"]
+            import std.collection.ArrayList
+            /**
+             * @example Native conditional imports {must-pass}
+             * ```cangjie
+             * let values = ArrayList<Int64>()
+             * values.add(7)
+             * ```
+             */
+            public func sample(): Unit {}
+            """.replace("INACTIVE_OS", inactiveOs).replace("ACTIVE_OS", nativeOs))
+        try {
+            let request = cachedExampleRequest(root, root.join("cache").toString())
+            @Expect(exampleDiagnosticSummary(DocumentationEngine().generate(request)), [])
+            @Expect(exampleDiagnosticSummary(DocumentationEngine().generate(request)), [])
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
+    func exampleFlagsSelectConditionalImportsWithoutDroppingThem(): Unit {
+        let root = createExampleProject("""
+            package example_compile
+            @When[feature == "on"]
+            import std.collection.ArrayList
+            /**
+             * @example Enabled import {must-pass flags="--cfg feature=on"}
+             * ```cangjie
+             * let values = ArrayList<Int64>()
+             * ```
+             * @example Disabled import {must-fail error="ArrayList" flags="--cfg feature=off"}
+             * ```cangjie
+             * let values = ArrayList<Int64>()
+             * ```
+             */
+            public func sample(): Unit {}
+            """)
+        try {
+            @Expect(exampleDiagnosticSummary(DocumentationEngine().generate(exampleRequest(root, true))), [])
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
+    func dependencyArtifactsRemainIsolatedAcrossExampleFlagSets(): Unit {
+        let root = createExampleProjectWithPathDependencies()
+        try {
+            File.writeTo(root.join("src/api.cj"), """
+                package example_compile
+                import path_dep_alpha.*
+                /**
+                 * @example On profile {must-pass flags="--cfg feature=on"}
+                 * ```cangjie
+                 * let result: Int64 = alphaOnApi()
+                 * ```
+                 * @example Off profile {must-pass flags="--cfg feature=off"}
+                 * ```cangjie
+                 * let result: Int64 = alphaOffApi()
+                 * ```
+                 * @example Wrong profile {must-pass flags="--cfg feature=off"}
+                 * ```cangjie
+                 * let result: Int64 = alphaOnApi()
+                 * ```
+                 */
+                public func rootApi(): Unit {}
+                """.toArray())
+            File.writeTo(root.join("deps/alpha/src/alpha.cj"), """
+                package path_dep_alpha
+                import path_dep_beta.*
+                @When[feature == "on"]
+                public func alphaOnApi(): Int64 { betaOnApi() }
+                @When[feature == "off"]
+                public func alphaOffApi(): Int64 { betaOffApi() }
+                """.toArray())
+            File.writeTo(root.join("deps/beta/src/beta.cj"), """
+                package path_dep_beta
+                @When[feature == "on"]
+                public func betaOnApi(): Int64 { 7 }
+                @When[feature == "off"]
+                public func betaOffApi(): Int64 { 8 }
+                """.toArray())
+            let documentation = DocumentationEngine().generate(GenerationRequest(root.toString(),
+                lintProfile: "off", audience: "all", checkExamples: true, includePathDependencies: true,
+                astPreflightExecutable: Some("target/release/bin/main")))
+            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3030", "On profile"), false)
+            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3030", "Off profile"), false)
+            @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3030", "Wrong profile"), true)
+            @Expect(hasExampleDiagnostic(documentation, "CJDOC3031"), false)
+            @Expect(hasExampleDiagnostic(documentation, "CJDOC3070"), false)
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
 }
 
 @When[os != "macOS"]

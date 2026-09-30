@@ -324,7 +324,7 @@ private func sourceCacheStringListsMatch(first: ArrayList<String>,
 private func cachedImportMetadataMatchesSource(input: SourceInputFile,
     fallbackPackageName: String, source: String, cached: ParsedSourceFile,
     astPreflightExecutable: ?String, auxiliaryBudget: SourceAuxiliaryBudget): Bool {
-    let sourceImports = sourceImportTextsFromSource(input.logicalPath, source)
+    let sourceImports = sourceImportTextsFromSource(input.logicalPath, source, false)
     if (!sourceCacheStringListsMatch(cached.imports, sourceImports)) { return false }
     if (sourceImports.isEmpty()) { return cached.packageImports.isEmpty() }
 
