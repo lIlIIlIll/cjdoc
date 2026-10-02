@@ -149,7 +149,7 @@ def native_check_view(root: Path) -> str:
     output = '<section id="native-check"><h2>原生指令检查 / Native directive checks</h2>'
     output += '<p>Compile, run, expected compile failure and skipped source examples are checked by the native CLI. '
     output += '这是整次命令证据；当前引擎没有逐例结果报告，因此不宣称每个示例的独立通过状态。</p>'
-    output += '<p><a href="check-modes/native-check.json">Raw native check evidence</a> · <a href="check-modes/src/api.cj" download>Download exact checked source</a></p>'
+    output += '<p><a href="check-modes/native-check.json">Raw native check evidence</a> · <a href="check-modes/src/api.cj" download>View / download exact checked source</a></p>'
     output += '<p>Exit code: <code>' + escaped(raw["exitCode"]) + '</code></p>'
     output += '<pre>' + escaped(json.dumps(raw, ensure_ascii=False, indent=2)) + '</pre></section>'
     return output

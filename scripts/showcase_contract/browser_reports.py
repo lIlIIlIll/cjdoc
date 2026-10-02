@@ -30,11 +30,15 @@ def doctest(journey: Journey):
     check = journey.raw('#native-check a[href$="native-check.json"]', "cjdoc.showcase-native-check/1")
     if check.get("exitCode") != 0 or check.get("scope") != "aggregate command evidence; no per-example result claim":
         raise AssertionError("native check does not provide successful aggregate command evidence")
-    source = journey.download('#native-check a[href$="src/api.cj"]')
+    selector = '#native-check a[href$="src/api.cj"]'
+    # Chromium displays local text files even when the link has `download`.
+    # Exercise that real offline navigation and compare its exact source bytes.
+    source = (journey.raw(selector).encode("utf-8") if journey.mode == "file"
+              else journey.download(selector))
     records = [item for item in check["sources"] if item["path"] == "src/api.cj"]
     if len(records) != 1 or hashlib.sha256(source).hexdigest() != records[0]["sha256"]:
         raise AssertionError("native check source does not match its execution input digest")
-    journey.assertions.append("native compile/run/expected-failure checks retain aggregate exit status and exact downloaded source inputs")
+    journey.assertions.append("native compile/run/expected-failure checks retain aggregate exit status and exact source inputs opened offline or downloaded over HTTP")
     journey.assertions.append("every displayed doctest status/id/exit code matches raw execution, with a source example and native API backlink")
 
 

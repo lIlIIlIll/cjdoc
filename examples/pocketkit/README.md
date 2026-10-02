@@ -37,13 +37,18 @@ The Pages homepage and human-readable report presentation are publication layers
 不是尚未提供的逐例 machine result。检查必须退出 0，且只能出现一条预期无代码诊断。
 
 本次 legacy doctest 配置的编译/运行阶段各限时 30 秒，内存 4,096 MiB；普通快照并发 2，
-诊断项目并发 1。对应 revision 的 `src/doctest.cj` 对 stdout/stderr 分别设 8 MiB 读取上限；
+诊断项目并发 1。完整复现流程使用 Linux SDK 1.2.0 与 `prlimit` 验证；legacy 管线无法建立
+地址空间限制时（如当前 macOS、Windows 环境）会在编译前明确拒绝，`warn` 不会绕过限制。
+对应 revision 的 `src/doctest.cj` 对 stdout/stderr 分别设 8 MiB 读取上限；
 超限不会通过，原始结果可能为 failed 或 timeout，不保证超限输出完整保留或立即终止。
 原生 `{run}` 则使用 10 秒、2,048 MiB 的限制：每个输出流保留前 65,536 bytes，同时排空
 并统计完整字节数；超量产生 `CJDOC3075`，超时终止进程树并产生 `CJDOC3073`。
 指令示例的编译子进程默认限时 120 秒、每个流仅保留前 8,192 bytes；编译诊断还有
 8,192-byte 正文展示预算。这是诊断保留/截断，不是运行输出上限，也不改变实际编译退出码。
 
+The complete reproduction workflow is verified with Linux SDK 1.2.0 and `prlimit`. Legacy doctest
+refuses compilation when its address-space limiter is unavailable, including current macOS and
+Windows environments; `warn` does not disable that requirement.
 Legacy doctest caps each stdout/stderr stream at 8 MiB and never treats excess output as success.
 Native `{run}` retains 64 KiB per stream while draining and counting all bytes; excess output is an
 error, and its 10-second watchdog terminates the process tree. Compiler diagnostics retain only

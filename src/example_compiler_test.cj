@@ -701,7 +701,7 @@ class ExampleCompilerTest {
     }
 
     @TestCase
-    func legacyDoctestCompileErrorsDoNotExposeTemporaryRoots(): Unit {
+    func legacyDoctestKeepsDiagnosticsPortableOrRefusesUnboundedCompilation(): Unit {
         let root = createExampleProject(sourceWith(
             """
              * @example Ordinary failure
@@ -712,8 +712,32 @@ class ExampleCompilerTest {
         try {
             let generated = generateDocumentationWithSource(
                 exampleRequest(root, false), defaultSemanticProvider())
+            let config = DoctestConfig(mode: "warn")
+            let unavailable = "address-space memory limit is unavailable on this platform"
+            // Probe the existing command wrapper without launching a process.
+            // Platforms without prlimit must reject the request, not run this
+            // regression with the memory limit disabled or silently skip it.
+            let canBoundMemory = try {
+                let _ = memoryBoundedCommand("cjc", [], config.memoryMb)
+                true
+            } catch (error: IllegalStateException) {
+                @Expect(error.message, unavailable)
+                false
+            }
+            if (!canBoundMemory) {
+                var refusal = ""
+                try {
+                    let _ = runDoctests(generated.publicDocumentation, config,
+                        root.join("legacy-doctest"), projectRoot: root,
+                        sourceOrigins: generated.internalDocumentation.sourceFileOrigins.toArray())
+                } catch (error: IllegalStateException) {
+                    refusal = error.message
+                }
+                @Expect(refusal, unavailable)
+                return
+            }
             let report = runDoctests(generated.publicDocumentation,
-                DoctestConfig(mode: "warn"), root.join("legacy-doctest"),
+                config, root.join("legacy-doctest"),
                 projectRoot: root,
                 sourceOrigins: generated.internalDocumentation.sourceFileOrigins.toArray())
             @Expect(report.results.size, 1)
