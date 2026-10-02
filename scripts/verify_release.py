@@ -98,12 +98,13 @@ def verify_repository(repo: Path, tag: str | None,
         raise ValueError("release repository must be a canonical regular directory")
     manifest_path = repo / "cjpm.toml"
     lock_path = repo / "cjpm.lock"
-    schema_path = repo / "docs/schema/doc-ir-v10.schema.json"
+    schema_path = repo / "docs/schema/doc-ir-v11.schema.json"
     legacy_schema_paths = {
         6: repo / "docs/schema/doc-ir-v6.schema.json",
         7: repo / "docs/schema/doc-ir-v7.schema.json",
         8: repo / "docs/schema/doc-ir-v8.schema.json",
         9: repo / "docs/schema/doc-ir-v9.schema.json",
+        10: repo / "docs/schema/doc-ir-v10.schema.json",
     }
     alias_schema_path = repo / "docs/schema/doc-ir.schema.json"
     baseline_path = repo / "tests/perf/baseline.json"
@@ -159,7 +160,7 @@ def verify_repository(repo: Path, tag: str | None,
     }
     alias_schema = strict_load(alias_schema_path)
     expected = f"cjdoc.doc-ir/{CURRENT_GOLDEN_VERSION}"
-    for name, schema in (("doc-ir-v10", current_schema), ("doc-ir", alias_schema)):
+    for name, schema in (("doc-ir-v11", current_schema), ("doc-ir", alias_schema)):
         actual = schema.get("properties", {}).get("schemaVersion", {}).get("const")
         if actual != expected:
             raise ValueError(f"{name} schema does not declare {expected}")

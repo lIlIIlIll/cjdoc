@@ -66,18 +66,13 @@ internal let HTML_SEARCH_SCRIPT = """
   if (input && results) {
   const root = input.dataset.root || "";
   const searchArea = input.closest(".search-area");
+  const kindFilter = document.querySelector("[data-cjdoc-kind]");
   const packageFilter = document.querySelector("[data-cjdoc-package]");
-  const categoryTabs = [...document.querySelectorAll("[data-cjdoc-category]")];
   const searchStatus = document.querySelector("[data-cjdoc-search-status]");
   let entries = [];
   let visible = [];
   let selected = -1;
-  let activeCategory = "all";
-  const categoryFor = (kind) => {
-    if (["class", "struct", "interface", "enum", "typeAlias"].includes(kind)) return "classes";
-    if (["function", "constructor"].includes(kind)) return "functions";
-    return "other";
-  };
+  let activeKind = "";
   const fieldNames = new Set(["name", "owner", "param", "return", "package", "kind"]);
   const parseQuery = (raw) => {
     const filters = [];
@@ -100,9 +95,67 @@ internal let HTML_SEARCH_SCRIPT = """
     if (field === "package") return (entry.packageName || "").toLocaleLowerCase();
     return (entry[field] || "").toLocaleLowerCase();
   };
+  const wordParts = (value) => {
+    const chars = [...value];
+    const words = [];
+    let current = "";
+    const isWordChar = (char) => /[\\p{L}\\p{N}_]/u.test(char);
+    const isUpper = (char) => char !== char.toLocaleLowerCase() && char === char.toLocaleUpperCase();
+    const isLower = (char) => char === char.toLocaleLowerCase() && char !== char.toLocaleUpperCase();
+    const flush = () => {
+      if (!current) return;
+      words.push(current.toLocaleLowerCase());
+      current = "";
+    };
+    for (let i = 0; i < chars.length; i += 1) {
+      const char = chars[i];
+      if (!isWordChar(char)) { flush(); continue; }
+      const previous = chars[i - 1];
+      const next = chars[i + 1];
+      if (current && isUpper(char) && (isLower(previous) ||
+          (isUpper(previous) && next && isLower(next)))) flush();
+      current += char;
+    }
+    flush();
+    return words;
+  };
+  const acronym = (value) => wordParts(value).map((word) => Array.from(word)[0]).join("");
+  const oneEditApart = (query, candidate) => {
+    if (candidate.length > query.length * 2 + 2 || query.length > candidate.length * 2 + 2) return false;
+    const queryChars = [...query];
+    const candidateChars = [...candidate];
+    if (Math.abs(queryChars.length - candidateChars.length) > 1) return false;
+    let queryIndex = 0;
+    let candidateIndex = 0;
+    let edits = 0;
+    while (queryIndex < queryChars.length && candidateIndex < candidateChars.length) {
+      if (queryChars[queryIndex] === candidateChars[candidateIndex]) {
+        queryIndex += 1;
+        candidateIndex += 1;
+        continue;
+      }
+      edits += 1;
+      if (edits > 1) return false;
+      if (queryChars.length === candidateChars.length) {
+        queryIndex += 1;
+        candidateIndex += 1;
+      } else if (queryChars.length > candidateChars.length) {
+        queryIndex += 1;
+      } else {
+        candidateIndex += 1;
+      }
+    }
+    if (queryIndex < queryChars.length || candidateIndex < candidateChars.length) edits += 1;
+    return edits === 1;
+  };
+  const hasOneSpellingError = (entry, query) => {
+    const candidates = [entry.name.toLocaleLowerCase(), ...wordParts(entry.name), ...wordParts(entry.qualifiedName)];
+    return candidates.some((candidate) => oneEditApart(query, candidate));
+  };
   const rank = (entry, parsed) => {
     if (parsed.filters.some((filter) => !fieldValue(entry, filter.field).includes(filter.value))) return -1;
-    const query = parsed.terms.join(" ");
+    const terms = parsed.terms.map((term) => term.toLocaleLowerCase()).filter(Boolean);
+    const query = terms.join(" ");
     if (!query) return 0;
     const name = entry.name.toLocaleLowerCase();
     const qualified = entry.qualifiedName.toLocaleLowerCase();
@@ -111,17 +164,16 @@ internal let HTML_SEARCH_SCRIPT = """
     if (name.startsWith(query)) return 2;
     if (qualified.startsWith(query)) return 3;
     const haystack = (entry.qualifiedName + " " + entry.kind + " " + entry.packageName + " " + (entry.ownerName || "") + " " + (entry.parameterTypes || []).join(" ") + " " + (entry.returnType || "") + " " + entry.summary).toLocaleLowerCase();
-    return query.split(" ").filter(Boolean).every((token) => haystack.includes(token)) ? 4 : -1;
+    const words = wordParts(haystack);
+    if (terms.every((term) => words.some((word) => word.startsWith(term)))) return 4;
+    if (terms.length === 1 && (acronym(entry.name) === query || acronym(entry.qualifiedName) === query)) return 5;
+    if (terms.every((term) => haystack.includes(term))) return 6;
+    const queryLength = [...query].length;
+    if (terms.length === 1 && queryLength >= 4 && queryLength <= 128 && hasOneSpellingError(entry, query)) return 7;
+    return -1;
   };
-  const setCategory = (next) => {
-    activeCategory = next;
-    for (const tab of categoryTabs) {
-      const active = tab.dataset.cjdocCategory === next;
-      tab.setAttribute("aria-selected", active ? "true" : "false");
-      tab.setAttribute("aria-pressed", active ? "true" : "false");
-    }
-    render();
-  };
+
+
   const select = (next) => {
     if (!visible.length) return;
     selected = (next + visible.length) % visible.length;
@@ -152,7 +204,7 @@ internal let HTML_SEARCH_SCRIPT = """
     }
     const selectedPackage = packageFilter ? packageFilter.value : "";
     const matches = entries.map((entry) => ({entry, rank: rank(entry, parsedQuery)}))
-      .filter((item) => item.rank >= 0 && (activeCategory === "all" || categoryFor(item.entry.kind) === activeCategory) &&
+      .filter((item) => item.rank >= 0 && (!activeKind || item.entry.kind === activeKind) &&
         (!selectedPackage || item.entry.packageName === selectedPackage))
       .sort((left, right) => left.rank - right.rank ||
         left.entry.qualifiedName.localeCompare(right.entry.qualifiedName) || left.entry.id.localeCompare(right.entry.id));
@@ -215,6 +267,7 @@ internal let HTML_SEARCH_SCRIPT = """
   const index = globalThis.__CJDOC_SEARCH_INDEX__;
   entries = index && index.schemaVersion === "cjdoc.search-index/6" && Array.isArray(index.entries)
     ? index.entries : [];
+  addOptions(kindFilter, entries.map((entry) => entry.kind));
   addOptions(packageFilter, entries.map((entry) => entry.packageName));
   const closeSearch = () => {
     visible = [];
@@ -227,7 +280,10 @@ internal let HTML_SEARCH_SCRIPT = """
   render();
   input.addEventListener("focus", () => { if (input.value.trim()) render(); });
   input.addEventListener("input", render);
-  for (const tab of categoryTabs) tab.addEventListener("click", () => setCategory(tab.dataset.cjdocCategory));
+  if (kindFilter) kindFilter.addEventListener("change", () => {
+    activeKind = kindFilter.value;
+    render();
+  });
   if (packageFilter) packageFilter.addEventListener("change", render);
   input.addEventListener("keydown", (event) => {
     if (event.key === "ArrowDown") { event.preventDefault(); select(selected + 1); }
@@ -316,7 +372,7 @@ internal let HTML_SEARCH_SCRIPT = """
     });
     for (const button of themeButtons) button.addEventListener("click", () => setTheme(button.dataset.cjdocThemeValue));
     document.addEventListener("click", (event) => {
-      if (!themePopover.hidden && !themePopover.contains(event.target) && event.target !== themeToggle) closeTheme(false);
+      if (!themePopover.hidden && !themePopover.contains(event.target) && !themeToggle.contains(event.target)) closeTheme(false);
     });
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape" && !themePopover.hidden) { event.stopPropagation(); closeTheme(true); }
@@ -449,11 +505,11 @@ internal let HTML_SEARCH_SCRIPT = """
   const content = document.querySelector("[data-cjdoc-content]");
   if (toc && content) {
     const tocList = toc.querySelector("ol");
-    const allHeadings = [...content.querySelectorAll("h1, h2, h3, h4")]
+    const allHeadings = [...content.querySelectorAll("h1, h2, h3, h4, h5, h6")]
       .filter((heading) => !heading.closest(".member-detail"));
     const semanticHeadings = allHeadings.filter((heading) => {
       const role = heading.dataset.cjdocTocRole;
-      return role === "api-root" || role === "api" || role === "member";
+      return role === "api-root" || role === "api" || role === "member" || role === "group";
     });
     const semanticMode = false;
     const headings = allHeadings.filter((heading) => {
@@ -462,14 +518,15 @@ internal let HTML_SEARCH_SCRIPT = """
         heading.tagName === "H2" || heading.tagName === "H3") &&
         !heading.classList.contains("signature-heading");
     });
-    const usedIds = new Set();
+    const usedIds = new Set([...document.querySelectorAll("[id]")].map((node) => node.id));
     const slug = (value, index) => {
       const normalized = value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "");
       return normalized || "section-" + index;
     };
     const ensureHeadingId = (heading, index) => {
-      let id = heading.id || slug(heading.textContent.trim(), index);
+      if (heading.id) return;
+      let id = slug(heading.textContent.trim(), index);
       const base = id;
       let suffix = 2;
       while (usedIds.has(id)) { id = base + "-" + suffix; suffix += 1; }
@@ -560,7 +617,7 @@ internal let HTML_SEARCH_SCRIPT = """
       let currentApi = null;
       for (const heading of headings) {
         const role = heading.dataset.cjdocTocRole;
-        if (role === "api-root" || role === "api") {
+        if (role === "api-root" || role === "api" || role === "group") {
           currentApi = createApiNode(heading, apiNodes.length);
           tocList.append(currentApi.item);
         } else if (role === "member" && currentApi) {

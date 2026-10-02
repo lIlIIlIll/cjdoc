@@ -145,7 +145,7 @@ class SourcePipelineSuite5 {
             File.writeTo(root.join("member/src/member.cj"),
                 "package bounded_member\npublic func memberApi(): Unit {}\n".toArray())
 
-            let snapshot = AstSourceProvider(astPreflightExecutable: TEST_AST_PREFLIGHT,
+            let snapshot = SyntaxSourceProvider(astPreflightExecutable: TEST_AST_PREFLIGHT,
                 sourceDirectoryEntryLimit: 1).collect(root.toString())
             var limitDiagnostics: Int64 = 0
             for (diagnostic in snapshot.diagnostics) {
@@ -221,7 +221,7 @@ class SourcePipelineSuite5 {
             File.writeTo(root.join("src/api.cj"),
                 "package bounded_auxiliary\npublic func api(): Unit {}\n".toArray())
 
-            let metadataLimited = AstSourceProvider(astPreflightExecutable: TEST_AST_PREFLIGHT,
+            let metadataLimited = SyntaxSourceProvider(astPreflightExecutable: TEST_AST_PREFLIGHT,
                 sourceAuxiliaryByteLimit: manifest.size - 1).collect(root.toString())
             @Expect(metadataLimited.modules.size, 1)
             @Expect(metadataLimited.declarations.size, 0)
@@ -231,7 +231,7 @@ class SourcePipelineSuite5 {
             }
             @Expect(metadataLimits, 1)
 
-            let workLimited = AstSourceProvider(astPreflightExecutable: TEST_AST_PREFLIGHT,
+            let workLimited = SyntaxSourceProvider(astPreflightExecutable: TEST_AST_PREFLIGHT,
                 sourceAuxiliaryWorkLimit: manifest.size).collect(root.toString())
             @Expect(workLimited.modules.size, 1)
             @Expect(workLimited.declarations.size, 0)
@@ -241,7 +241,7 @@ class SourcePipelineSuite5 {
             }
             @Expect(workLimits, 1)
 
-            let cacheLimited = AstSourceProvider(cacheDirectory: Some(cache.toString()),
+            let cacheLimited = SyntaxSourceProvider(cacheDirectory: Some(cache.toString()),
                 cacheFingerprint: Some("bounded-cache-work-v1"),
                 astPreflightExecutable: TEST_AST_PREFLIGHT,
                 sourceAuxiliaryByteLimit: manifest.size + 1).collect(root.toString())

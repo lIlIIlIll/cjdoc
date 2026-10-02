@@ -42,7 +42,7 @@ class PublicApiContractsSuite2 {
         @Expect(!searchIndex.contains("basic.Parser.hidden"))
         @Expect(artifactContent(externalArtifacts, "html/index.html").contains(
             "<script src=\"theme-bootstrap.js\"></script><link rel=\"stylesheet\""))
-        @Expect(externalHtml.contains("<h2>Functions</h2>"))
+        @Expect(externalHtml.contains(">Functions</h2>"))
         @Expect(externalHtml.contains("Content-Security-Policy"))
     }
 
@@ -80,7 +80,11 @@ class PublicApiContractsSuite2 {
         }
         @Expect(packageCount, 2)
         let index = artifactContent(artifacts, "html/index.html")
-        @Expect(index.contains("2 modules, 2 packages, 2 visible declarations"))
+        @Expect(index.contains("API overview"))
+        @Expect(!index.contains("visible declarations</p>"))
+        for (artifact in artifacts where artifact.path.startsWith("html/packages/")) {
+            @Expect(index.contains(artifact.path[5..]))
+        }
         let search = artifactContent(artifacts, "html/search-index.json")
         @Expect(search.contains("shared.first"))
         @Expect(search.contains("shared.second"))

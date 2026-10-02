@@ -10,7 +10,10 @@ on:
       - 'tests/showcase_contract/**'
       - 'src/**'
       - 'docs/**'
+      - 'README.md'
       - 'cjpm.toml'
+      - 'cjdoc.toml'
+      - 'tools/**'
       - 'cjpm.lock'
       - 'vendor/**'
       - 'tests/fixtures/projects/html_reference/**'
@@ -24,7 +27,10 @@ on:
       - 'tests/showcase_contract/**'
       - 'src/**'
       - 'docs/**'
+      - 'README.md'
       - 'cjpm.toml'
+      - 'cjdoc.toml'
+      - 'tools/**'
       - 'cjpm.lock'
       - 'vendor/**'
       - 'tests/fixtures/projects/html_reference/**'
@@ -42,14 +48,14 @@ env:
   PYTHONDONTWRITEBYTECODE: "1"
   PYTHONUTF8: "1"
   cjHeapSize: "512MB"
-  CANGJIE_SDK_URL: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.1.3.tar.gz&objectKey=6a19349d21f5a8178d6fd22b"
-  CANGJIE_SDK_SHA256: "2b68905afc466e665ae181595c63f96c18d75fd2c1fb6c6f0cb64e179c28d61a"
+  CANGJIE_SDK_URL: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.2.0.tar.gz&objectKey=6ab1e26eece1f87ff5befa73"
+  CANGJIE_SDK_SHA256: "8c5fd944cd9cc51ee63d4a240e3ecc4f540345dae1468e8b47c927ecf2ba998f"
 
 jobs:
   build:
     name: Build showcase
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    timeout-minutes: 70
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,6 +66,9 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+
+      - name: Verify tracked repository inputs
+        run: python scripts/verify_repository_inputs.py --require-tracked
 
       - name: Preserve exact tracked source inputs
         shell: bash
@@ -85,8 +94,8 @@ jobs:
         id: sdk-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ runner.temp }}/cangjie-sdk-1.1.3
-          key: cangjie-sdk-linux-x64-2b68905afc466e665ae181595c63f96c18d75fd2c1fb6c6f0cb64e179c28d61a-v3-authenticated-archive
+          path: ${{ runner.temp }}/cangjie-sdk-1.2.0
+          key: cangjie-sdk-linux-x64-8c5fd944cd9cc51ee63d4a240e3ecc4f540345dae1468e8b47c927ecf2ba998f-sts-1.2.0-v4
 
       - name: Install checksum-pinned Cangjie SDK
         id: sdk
@@ -95,18 +104,90 @@ jobs:
           python scripts/install_cangjie_sdk.py \
             --url "${CANGJIE_SDK_URL}" \
             --sha256 "${CANGJIE_SDK_SHA256}" \
-            --destination "${RUNNER_TEMP}/cangjie-sdk-1.1.3" \
+            --destination "${RUNNER_TEMP}/cangjie-sdk-1.2.0" \
             --github-output "${GITHUB_OUTPUT}"
+
+      - name: Install stdx and browser acceptance dependencies
+        run: |
+          python -m pip install --disable-pip-version-check psutil -r scripts/requirements-showcase.txt
+          python -m playwright install --with-deps chromium
+          sudo apt-get install -y fonts-noto-cjk
+
+      - name: Build pinned STS stdx CHIR sidecar
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+          CANGJIE_STDX_SOURCE_REV: "6d53814868de41bccf5b92b1d6ff0250c9c4a0e8"
+          CANGJIE_COMPILER_SCHEMA_REV: "2fe6b291d37153aa1da56c6c7c020d5ab67fa93d"
+        run: |
+          set -euo pipefail
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          compiler_schema_dir="${RUNNER_TEMP}/cangjie_compiler"
+          stdx_dir="${RUNNER_TEMP}/cangjie-stdx"
+          git init "${compiler_schema_dir}"
+          git -C "${compiler_schema_dir}" remote add origin https://gitcode.com/Cangjie/cangjie_compiler.git
+          git -C "${compiler_schema_dir}" sparse-checkout init --cone
+          git -C "${compiler_schema_dir}" sparse-checkout set schema include
+          git -C "${compiler_schema_dir}" fetch --depth 1 --filter=blob:none origin "${CANGJIE_COMPILER_SCHEMA_REV}"
+          git -C "${compiler_schema_dir}" checkout --detach FETCH_HEAD
+          test "$(git -C "${compiler_schema_dir}" rev-parse HEAD)" = "${CANGJIE_COMPILER_SCHEMA_REV}"
+          git init "${stdx_dir}"
+          git -C "${stdx_dir}" remote add origin https://gitcode.com/Cangjie/cangjie_stdx.git
+          git -C "${stdx_dir}" fetch --depth 1 origin "${CANGJIE_STDX_SOURCE_REV}"
+          git -C "${stdx_dir}" checkout --detach FETCH_HEAD
+          test "$(git -C "${stdx_dir}" rev-parse HEAD)" = "${CANGJIE_STDX_SOURCE_REV}"
+          # The pinned stdx and FlatBuffers build requires Clang.
+          command -v clang clang++ cmake ninja
+          export CC=clang CXX=clang++
+          build_dir="${stdx_dir}/build_temp/build"
+          cmake -S "${stdx_dir}" -B "${build_dir}" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="${stdx_dir}/build/common/linux_x86_64_toolchain.cmake" \
+            -DCMAKE_INSTALL_PREFIX="${stdx_dir}/target" \
+            -DCANGJIE_SCHEMA_DIR="${compiler_schema_dir}/schema" \
+            -DCANGJIE_TARGET_LIB= -DCANGJIE_TARGET_TOOLCHAIN= \
+            -DCANGJIE_INCLUDE= -DCANGJIE_TARGET_SYSROOT= \
+            -DCANGJIE_BUILD_WITHOUT_EFFECT_HANDLERS=OFF \
+            -DCANGJIE_BUILD_WITHOUT_SYNTAX=ON \
+            -DCANGJIE_BUILD_WITHOUT_CHIR=OFF \
+            -DCANGJIE_BUILD_WITHOUT_PLUGIN=OFF \
+            -DCANGJIE_BUILD_WITHOUT_ASPECT_CJ=ON \
+            -DCANGJIE_BUILD_STDLIB_WITH_COVERAGE=OFF \
+            -DCANGJIE_BUILD_ARGS= -DBUILD_GCC_TOOLCHAIN=
+          cmake --build "${build_dir}" --target stdx.chir --parallel 1
+          sidecar="${stdx_dir}/target/linux_x86_64_cjnative/static/stdx"
+          mkdir -p "${sidecar}"
+          cp "${build_dir}/modules/linux_x86_64_cjnative/stdx/stdx.chir.cjo" "${sidecar}/"
+          cp "${build_dir}/lib/libstdx.chir.a" "${sidecar}/"
+          cp "${build_dir}/lib/libflatbuffers.a" "${sidecar}/"
+          export CANGJIE_STDX_PATH="${sidecar}"
+          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
       - name: Build cjdoc
         shell: bash
         env:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
         run: |
+          set -euo pipefail
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           cjc -v
           cjpm -v
-          cjpm build
+          # STS 1.2.0's llc crashes at -O2 on markdown/yjson; use the CI -O1 workaround.
+          python scripts/with_stdx.py --variant static -- python - <<'PYTHON'
+          from pathlib import Path
+          import subprocess
+
+          manifest = Path("cjpm.toml")
+          contents = manifest.read_bytes()
+          needle = b'override-compile-option = ""'
+          if contents.count(needle) != 1:
+              raise SystemExit("expected one default compile override in cjpm.toml")
+          try:
+              manifest.write_bytes(contents.replace(needle, b'override-compile-option = "-O1"', 1))
+              subprocess.run(["cjpm", "build", "--jobs", "1"], check=True)
+          finally:
+              manifest.write_bytes(contents)
+          PYTHON
 
       - name: Build showcase site
         shell: bash
@@ -122,6 +203,36 @@ jobs:
             --repository-url "${SHOWCASE_REPOSITORY_URL}" \
             --revision "${SHOWCASE_REVISION}"
 
+      - name: Reproduce downloaded source bundle with native cjdoc
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          python scripts/check_showcase_source.py \
+            --site target/showcase-site \
+            --binary target/release/bin/main \
+            --evidence target/showcase-source-evidence.json
+
+      - name: Run browser acceptance against the final site
+        shell: bash
+        env:
+          PYTHONPATH: scripts
+        run: |
+          python -m showcase_contract.browser \
+            --site target/showcase-site \
+            --evidence target/showcase-evidence
+
+      - name: Verify final site and browser evidence before publishing
+        shell: bash
+        env:
+          PYTHONPATH: scripts
+        run: |
+          python -m showcase_contract verify \
+            --site target/showcase-site \
+            --evidence target/showcase-evidence/results.json \
+            --baseline site/showcase-baseline.json
+
       - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -129,6 +240,8 @@ jobs:
           name: cjdoc-showcase-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             target/showcase-evidence/
+            target/showcase-source-evidence.json
+            target/showcase-source-evidence.log
             target/showcase-site/artifacts/showcase-stage-report.json
           retention-days: 30
           if-no-files-found: warn

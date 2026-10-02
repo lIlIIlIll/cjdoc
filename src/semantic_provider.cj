@@ -7,11 +7,10 @@ private func astTypeRef(spelling: String): TypeRef {
     return TypeRef(spelling, state: "partial")
 }
 
-// AstSemanticProvider deliberately exposes only semantics that std.ast can
-// establish without type checking. Type spellings are useful but never
-// promoted to canonical/resolved types.
-class AstSemanticProvider <: SemanticProvider {
-    public func providerName(): String { "ast" }
+// SyntaxSemanticProvider exposes source-level facts without type checking.
+// Type spellings remain partial source facts until CHIR is explicitly enabled.
+class SyntaxSemanticProvider <: SemanticProvider {
+    public func providerName(): String { "syntax" }
     public func providerVersion(): String { "1" }
 
     public func analyze(source: SourceSnapshot): SemanticResult {

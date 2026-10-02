@@ -7,6 +7,9 @@ from pathlib import Path
 
 from .contract import array, fields, text, validate_manifest
 from .site import ContractError, Site, canonical_json, relative_path
+from .scenarios import BUDGETS, SCENARIOS
+from .browser_metrics import validate_metrics
+from .offline import ARCHIVE
 
 EVIDENCE_SCHEMA = "cjdoc.showcase-evidence/1"
 
@@ -33,10 +36,12 @@ def _expected_cases(manifest: dict) -> dict[tuple[str, ...], dict]:
     return expected
 
 
-def _validate_case(case: object, expected: dict, evidence_files: Site) -> tuple[str, ...]:
+def _validate_case(case: object, expected: dict, evidence_files: Site, measured: bool = False) -> tuple[str, ...]:
     required = {"featureId", "targetId", "scenarioId", "mode", "locale", "version",
                 "status", "entry", "href", "activations", "documentNavigations",
                 "assertions", "screenshot"}
+    if measured:
+        required |= {"metrics", "screenshots"}
     case = fields(case, required, set(), "browser case")
     for key in ("featureId", "targetId", "scenarioId", "mode", "locale", "version"):
         text(case[key], f"browser case.{key}")
@@ -61,7 +66,32 @@ def _validate_case(case: object, expected: dict, evidence_files: Site) -> tuple[
     image = evidence_files.file(relative_path(screenshot["path"]))
     if hashlib.sha256(image.read_bytes()).hexdigest() != screenshot["sha256"]:
         raise ContractError(f"screenshot is missing or changed: {key}")
+    if measured:
+        if key[2] not in SCENARIOS:
+            raise ContractError("unregistered measured browser scenario")
+        validate_metrics(case["metrics"], SCENARIOS[key[2]])
+        validate_theme_images(case["screenshots"], evidence_files, SCENARIOS[key[2]][2])
+        light = next(picture for picture in case["screenshots"] if picture["theme"] == "light")
+        if case["screenshot"] != {field: light[field] for field in ("path", "sha256")}:
+            raise ContractError("primary screenshot differs from the measured Light attachment")
     return key
+
+
+def validate_theme_images(value: object, evidence_files: Site, width: int | None = None):
+    images = array(value, "theme screenshots", nonempty=True)
+    if len(images) != 2 or any(not isinstance(picture, dict) for picture in images):
+        raise ContractError("both actively tested Light and Dark screenshots are required")
+    if {picture.get("theme") for picture in images} != {"light", "dark"}:
+        raise ContractError("both actively tested Light and Dark screenshots are required")
+    if len({picture.get("path") for picture in images}) != 2:
+        raise ContractError("theme screenshots must be distinct attachments")
+    for picture in images:
+        fields(picture, {"theme", "path", "sha256"}, set(), "theme screenshot")
+        content = evidence_files.file(relative_path(picture["path"])).read_bytes()
+        if not content.startswith(b"\x89PNG\r\n\x1a\n") or hashlib.sha256(content).hexdigest() != picture["sha256"]:
+            raise ContractError("theme screenshot is missing, changed, or not a PNG")
+        if width is not None and (len(content) < 24 or int.from_bytes(content[16:20], "big") != width):
+            raise ContractError("theme screenshot width differs from the measured viewport")
 
 
 def validate_evidence(manifest: dict, evidence: dict, site: Site, evidence_root: Path) -> None:
@@ -73,10 +103,22 @@ def validate_evidence(manifest: dict, evidence: dict, site: Site, evidence_root:
     Keep evidence outside the site to avoid a self-referential tree digest.
     """
     validate_manifest(manifest)
-    fields(evidence, {"schemaVersion", "revision", "manifestSha256", "siteSha256",
-                      "runner", "results"}, set(), "evidence")
-    if evidence["schemaVersion"] != EVIDENCE_SCHEMA:
+    measured = evidence.get("schemaVersion") == "cjdoc.showcase-evidence/2"
+    required = {"schemaVersion", "revision", "manifestSha256", "siteSha256", "runner", "results"}
+    if measured:
+        required |= {"budgets", "siteMetrics", "homepages"}
+    fields(evidence, required, set(), "evidence")
+    if evidence["schemaVersion"] not in {EVIDENCE_SCHEMA, "cjdoc.showcase-evidence/2"}:
         raise ContractError("unsupported browser evidence schema")
+    if measured:
+        if evidence["budgets"] != BUDGETS:
+            raise ContractError("browser evidence changed the reviewed regression budgets")
+        sizes = {"siteBytes": sum(path.stat().st_size for path in site.root.rglob("*") if path.is_file()),
+                 "offlineBytes": site.file(ARCHIVE).stat().st_size}
+        if evidence["siteMetrics"] != sizes:
+            raise ContractError("browser site sizes do not match the final tree")
+        if any(value > BUDGETS[name] for name, value in sizes.items()):
+            raise ContractError("final site exceeds reviewed size budgets")
     if evidence["revision"] != manifest["revision"]:
         raise ContractError("browser evidence is for a different source revision")
     manifest_digest = hashlib.sha256(canonical_json(manifest)).hexdigest()
@@ -88,13 +130,32 @@ def validate_evidence(manifest: dict, evidence: dict, site: Site, evidence_root:
     for field, value in runner.items():
         text(value, f"runner.{field}")
     expected = _expected_cases(manifest)
+    if not measured and any(key[2].count("-") >= 2 and key[2].rsplit("-", 1)[-1] in
+                            {"desktop", "narrow", "mobile"} for key in expected):
+        raise ContractError("final showcase journeys require measured browser evidence v2")
+    if measured and any(key[2] not in SCENARIOS for key in expected):
+        raise ContractError("unregistered measured browser scenario")
     evidence_root = evidence_root.absolute()
     if evidence_root.resolve().is_relative_to(site.root) or site.root.is_relative_to(evidence_root.resolve()):
         raise ContractError("browser evidence and final site must be separate trees")
     evidence_files = Site(evidence_root)
+    if measured:
+        wanted = {(key[4], SCENARIOS[key[2]][2], SCENARIOS[key[2]][3], key[3], SCENARIOS[key[2]][-1])
+                  for key in expected}
+        actual = set()
+        for home in array(evidence["homepages"], "homepage observations", nonempty=True):
+            fields(home, {"locale", "mode", "prefix", "viewport", "screenshots"}, set(), "homepage observation")
+            fields(home["viewport"], {"width", "height"}, set(), "homepage viewport")
+            identity = (home["locale"], home["viewport"]["width"], home["viewport"]["height"], home["mode"], home["prefix"])
+            if identity not in wanted or identity in actual:
+                raise ContractError("unexpected or repeated homepage observation")
+            actual.add(identity)
+            validate_theme_images(home["screenshots"], evidence_files, home["viewport"]["width"])
+        if actual != wanted:
+            raise ContractError("homepage locale/viewport/transport screenshot matrix is incomplete")
     seen = set()
     for case in array(evidence["results"], "browser results"):
-        key = _validate_case(case, expected, evidence_files)
+        key = _validate_case(case, expected, evidence_files, measured)
         if key in seen:
             raise ContractError(f"duplicate browser evidence: {key}")
         seen.add(key)

@@ -118,6 +118,29 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "bytes differ"):
                 package_release.build_archive(repo, binary, "linux-x64", output, **options)
 
+    def test_release_archive_records_stdx_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo, commit = self.make_release_repo(root / "repo")
+            binary = root / "main"
+            binary.write_bytes(b"binary")
+            output = repo / "target/release-package"
+            asset = package_release.build_archive(
+                repo, binary, "linux-x64", output,
+                source_commit=commit, sdk_version="1.3.0", sdk_sha256=SDK_SHA256,
+                stdx_version="1.3.0", stdx_sha256="b" * 64,
+            )
+            manifest, _, _ = verify_release_package.inspect_archive(
+                asset, "linux-x64", "0.7.0", "1.3.0", SDK_SHA256, commit,
+                stdx_version="1.3.0", stdx_sha256="b" * 64,
+            )
+            self.assertEqual(manifest["schemaVersion"], "cjdoc.release-package/3")
+            self.assertEqual(manifest["runtime"]["stdxArchiveSha256"], "b" * 64)
+            with self.assertRaisesRegex(ValueError, "stdx requirements"):
+                verify_release_package.inspect_archive(
+                    asset, "linux-x64", "0.7.0", "1.3.0", SDK_SHA256, commit,
+                )
+
     def test_release_archive_rejects_path_traversal(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             archive = Path(temporary) / "bad.zip"

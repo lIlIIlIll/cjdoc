@@ -16,6 +16,8 @@ internal func encodeParsedSource(cacheKey: String, parsed: ParsedSourceFile,
     writer.add(SOURCE_CACHE_FORMAT)
     writer.add(cacheKey)
     cacheAddOptionalString(writer, parsed.packageName)
+    cacheAddStrings(writer, parsed.imports)
+    cacheAddStrings(writer, parsed.packageImports)
     if (!writer.addCount(parsed.declarations.size)) { return None }
     for (declaration in parsed.declarations) {
         cacheAddDeclaration(writer, declaration)
@@ -83,8 +85,10 @@ internal func validCachedVisibility(visibility: String): Bool {
     }
 }
 
+// std.ast pretty-prints closure bodies with newlines; signature comparison
+// uses the same significant-token contract as sourceApiSignatureTokens.
 internal func ignoredDefaultToken(token: Token): Bool {
-    token.kind == COMMENT || token.value.isEmpty()
+    token.kind == COMMENT || token.kind == NL || token.value.isEmpty()
 }
 
 internal func cachedDefaultMatchesSourceTokens(expression: String, sourceTokens: Tokens,

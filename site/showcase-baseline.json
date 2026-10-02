@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "cjdoc.showcase-baseline/1",
+  "basis": "issue-50-promised-scope",
+  "issue": 50,
+  "executionEvidence": "none; browser evidence is required separately",
+  "locales": ["zh-CN", "en"],
+  "transports": ["root", "subpath", "offline"],
+  "viewports": ["desktop", "narrow", "mobile"],
+  "features": [
+    {"id":"compact-members","implementation":"complete","demonstration":"available","journey":"members","targets":[{"id":"append-string","version":"demo-v2"}]},
+    {"id":"type-navigation","implementation":"partial","demonstration":"available","journey":"types","targets":[{"id":"open-reader","version":"demo-v2"}]},
+    {"id":"chinese-contracts","implementation":"complete","demonstration":"available","journey":"contracts","targets":[{"id":"window","version":"demo-v2"}]},
+    {"id":"resource-lifetime","implementation":"complete","demonstration":"available","journey":"resources","targets":[{"id":"read","version":"demo-v2"}]},
+    {"id":"guide-association","implementation":"partial","demonstration":"available","journey":"guides","targets":[{"id":"catalogue-guide","version":"demo-v2"}]},
+    {"id":"search-discovery","implementation":"complete","demonstration":"available","journey":"search","targets":[{"id":"catalogue-search","version":"demo-v2"}]},
+    {"id":"doctest-results","implementation":"partial","demonstration":"available","journey":"doctest","targets":[{"id":"doctest-report","version":"demo-v2"}]},
+    {"id":"api-diff","implementation":"partial","demonstration":"available","journey":"diff","targets":[{"id":"changes","version":"demo-v2"}]},
+    {"id":"multi-version","implementation":"complete","demonstration":"available","journey":"versions","targets":[{"id":"common-overload","version":"demo-v2"},{"id":"removed-member","version":"demo-v1"},{"id":"old-integer-overload","version":"demo-v1"}]},
+    {"id":"quality","implementation":"complete","demonstration":"available","journey":"quality","targets":[{"id":"coverage-report","version":"demo-v2"}]},
+    {"id":"external-docs","implementation":"complete","demonstration":"available","journey":"external","targets":[{"id":"scoped-labels","version":"demo-v2"}]},
+    {"id":"offline-source","implementation":"complete","demonstration":"available","journey":"downloads","targets":[{"id":"downloads","version":"showcase"}]},
+    {"id":"machine-output","implementation":"complete","demonstration":"available","journey":"machine","targets":[{"id":"catalogue-identity","version":"demo-v2"}]},
+    {"id":"boundaries","implementation":"partial","demonstration":"available","journey":"diagnostics","targets":[{"id":"negative-examples","version":"diagnostics"}]},
+    {"id":"local-authoring","implementation":"complete","demonstration":"available","journey":"authoring","targets":[{"id":"serve-guide","version":"demo-v2"}]},
+    {"id":"extension-origin","implementation":"partial","demonstration":"available","journey":"extension","targets":[{"id":"text-extension","version":"demo-v2"}]},
+    {"id":"external-contract-merge","implementation":"not-implemented","demonstration":"uncovered","journey":"unavailable","targets":[]}
+  ]
+}

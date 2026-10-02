@@ -9,6 +9,35 @@ internal func escapeHtml(value: String): String {
     out.toString()
 }
 
+private func safeMappedRelativeLinkDestination(value: String): Bool {
+    let parts = value.split("#", 2)
+    var path = parts[0]
+    while (path.startsWith("../")) { path = path.removePrefix("../") }
+    if (path.contains("%") || !safeRelativeLinkDestination(path)) { return false }
+    parts.size == 1 || safeLinkDestination("#" + parts[1])
+}
+
+public func renderStandaloneMarkdownHtml(node: MarkdownNode,
+    sourceLinks!: HashMap<String, String> = HashMap<String, String>()): String {
+    let context = HtmlMarkdownContext(2, sourceLinks: sourceLinks)
+    collectMarkdownHeadings(node, "standalone", HashMap<String, Int64>(), context)
+    let out = RenderTextBuffer()
+    appendMarkdownNodeHtml(out, node, HashMap<String, String>(), "", context)
+    out.toString()
+}
+
+/** Resolve a source Markdown fragment using the same heading IDs as standalone HTML. */
+public func standaloneMarkdownFragment(node: MarkdownNode, fragment: String): ?String {
+    let context = HtmlMarkdownContext(2)
+    collectMarkdownHeadings(node, "standalone", HashMap<String, Int64>(), context)
+    match (context.fragmentTargets.get(fragment)) {
+        case Some(target) => Some("#" + target)
+        case None => None
+    }
+}
+public func escapeStandaloneHtml(value: String): String {
+    escapeHtml(value)
+}
 internal func assetMediaExtension(mediaType: String): String {
     match (mediaType) {
         case "image/png" => "png"
@@ -152,10 +181,11 @@ internal func isExampleFenceClosing(line: String, fence: ExampleFenceOpening): B
 }
 
 internal func appendExampleCodeHtml(out: RenderTextBuffer, code: String, language: String): Unit {
+    let normalizedLanguage = if (language == "cj") { "cangjie" } else { language }
     out.append("<pre><code")
-    if (!language.isEmpty()) {
-        out.append(" class=\"language-${htmlStableSlug(language)}\"")
-        out.append(" data-language=\"${escapeHtml(language)}\"")
+    if (!normalizedLanguage.isEmpty()) {
+        out.append(" class=\"language-${htmlStableSlug(normalizedLanguage)}\"")
+        out.append(" data-language=\"${escapeHtml(normalizedLanguage)}\"")
     }
     out.append(">"); appendHtmlEscapedValue(out, code); out.append("</code></pre>\n")
 }
@@ -226,14 +256,15 @@ private func behaviorContractLabel(name: String, locale: String): String {
 }
 
 internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: DocComment,
-    locale: String): Unit {
+    locale: String, anchor: String): Unit {
     var hasContracts = false
     for (tag in comment.tags) {
         if (isBehaviorContractTag(tag.name)) { hasContracts = true; break }
     }
     if (!hasContracts) { return }
-    out.append("<section class=\"behavior-contracts\" aria-labelledby=\"behavior-contracts-heading\">\n")
-    out.append("<h3 id=\"behavior-contracts-heading\">" + label(locale, "Behavior contracts", "行为契约") + "</h3><dl>\n")
+    let headingId = escapeHtml(anchor + "--behavior-contracts-heading")
+    out.append("<section class=\"behavior-contracts\" aria-labelledby=\"${headingId}\">\n")
+    out.append("<h3 id=\"${headingId}\">" + label(locale, "Behavior contracts", "行为契约") + "</h3><dl>\n")
     for (tag in comment.tags) {
         if (!isBehaviorContractTag(tag.name)) { continue }
         out.append("<dt><code>" + escapeHtml(behaviorContractLabel(tag.name, locale)) + "</code>")
@@ -250,16 +281,16 @@ internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: D
 }
 
 internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: DocComment,
-    locale: String): Unit {
+    locale: String, headingLevel!: Int64 = 3): Unit {
     var hasExamples = false
     for (tag in comment.tags) { if (tag.name == "example") { hasExamples = true; break } }
     if (!hasExamples) { return }
-    out.append("<h3>${label(locale, "Examples", "示例")}</h3><div class=\"example-list\">\n")
+    out.append("<h${headingLevel}>${label(locale, "Examples", "示例")}</h${headingLevel}><div class=\"example-list\">\n")
     for (tag in comment.tags) {
         if (tag.name != "example") { continue }
         out.append("<div class=\"example-block\">")
         if (!tag.subject.isEmpty()) {
-            out.append("<h4 class=\"example-title\">${escapeHtml(tag.subject)}</h4>")
+            out.append("<h${min(6, headingLevel + 1)} class=\"example-title\">${escapeHtml(tag.subject)}</h${min(6, headingLevel + 1)}>")
         }
         if (trimExampleBlankLines(tag.description).isEmpty()) {
             let emptyLabel = label(locale, "No example content.", "示例内容为空。")
@@ -305,11 +336,14 @@ internal class HtmlMarkdownContext {
     let headingIds = ArrayList<String>()
     let fragmentTargets = HashMap<String, String>()
     let usedHeadingSlugs = HashSet<String>()
+    let sourceLinks: HashMap<String, String>
     var nextHeading: Int64 = 0
 
-    init(headingBase: Int64, allowExternalLinks!: Bool = true) {
+    init(headingBase: Int64, allowExternalLinks!: Bool = true,
+        sourceLinks!: HashMap<String, String> = HashMap<String, String>()) {
         this.headingBase = headingBase
         this.allowExternalLinks = allowExternalLinks
+        this.sourceLinks = sourceLinks
     }
 }
 
@@ -433,13 +467,18 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
                 }
             }; out.append("</li>")
         case "link" =>
-            let destination = match (context.fragmentTargets.get(node.literal)) {
-                case Some(target) => "#${target}"
-                case None => node.literal
+            let sourceDestination = context.sourceLinks.get(node.literal)
+            let destination = match (sourceDestination) {
+                case Some(target) => target
+                case None => match (context.fragmentTargets.get(node.literal)) {
+                    case Some(target) => "#${target}"
+                    case None => node.literal
+                }
             }
             let isRemote = destination.startsWith("http://") || destination.startsWith("https://")
             let safeDestination = safeLinkDestination(destination) ||
-                safeRelativeLinkDestination(destination)
+                safeRelativeLinkDestination(destination) ||
+                (sourceDestination.isSome() && safeMappedRelativeLinkDestination(destination))
             if (safeDestination && (context.allowExternalLinks || !isRemote)) {
                 out.append("<a href=\"${escapeHtml(destination)}\"")
                 if (destination.startsWith("http://") || destination.startsWith("https://")) {
@@ -528,16 +567,4 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
         }
         case _ => out.append(escapeHtml(markdownNodeText(node)))
     }
-}
-public func renderStandaloneMarkdownHtml(source: MarkdownNode, allowExternalLinks!: Bool = false): String {
-    let parsed = source
-    let context = HtmlMarkdownContext(1, allowExternalLinks: allowExternalLinks)
-    collectMarkdownHeadings(parsed, "concept", HashMap<String, Int64>(), context)
-    let out = RenderTextBuffer()
-    appendMarkdownNodeHtml(out, parsed, HashMap<String, String>(), "", context)
-    out.toString()
-}
-
-public func escapeStandaloneHtml(value: String): String {
-    escapeHtml(value)
 }

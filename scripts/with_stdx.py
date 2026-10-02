@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""Run a command with the authenticated, matching static stdx sidecar."""
+
+from __future__ import annotations
+
+import hashlib
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+from typing import Iterable
+
+
+REQUIRED_STATIC_ARTIFACTS = (
+    "stdx.chir.cjo",
+    "libstdx.chir.a",
+    "libflatbuffers.a",
+)
+VERSION_RE = re.compile(r"Cangjie Compiler:\s*([^\n]+)")
+TARGET_RE = re.compile(r"Target:\s*([^\n]+)")
+
+
+def fail(message: str) -> "NoReturn":
+    raise SystemExit(f"with_stdx.py: {message}")
+
+
+def unique_paths(paths: Iterable[Path]) -> list[Path]:
+    result: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        try:
+            normalized = path.expanduser().resolve(strict=True)
+        except FileNotFoundError:
+            continue
+        key = normalized.as_posix()
+        if key not in seen:
+            seen.add(key)
+            result.append(normalized)
+    return result
+
+
+def compiler_candidates() -> list[Path]:
+    candidates: list[Path] = []
+    for variable in ("CANGJIE_HOME", "CANGJIE_SDK_ROOT"):
+        value = os.environ.get(variable)
+        if not value:
+            continue
+        root = Path(value)
+        candidates.extend((root / "bin" / "cjc", root / "cangjie" / "bin" / "cjc"))
+    located = shutil.which("cjc")
+    if located:
+        candidates.append(Path(located))
+    return unique_paths(candidates)
+
+
+def compiler_info(cjc: Path) -> tuple[str, str]:
+    try:
+        completed = subprocess.run(
+            [str(cjc), "-v"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        fail(f"cannot query compiler version: {error}")
+    output = f"{completed.stdout}\n{completed.stderr}"
+    version = VERSION_RE.search(output)
+    target = TARGET_RE.search(output)
+    if version is None or target is None:
+        fail("compiler version output is incomplete")
+    return version.group(1).strip(), target.group(1).strip()
+
+
+def compiler_bundle_root(cjc: Path) -> Path | None:
+    resolved = cjc.resolve()
+    if resolved.parent.name != "bin" or resolved.parent.parent.name != "cangjie":
+        return None
+    return resolved.parent.parent.parent
+
+
+def compiler_target_family(target: str) -> str | None:
+    normalized = target.lower()
+    architecture = normalized.split("-", 1)[0]
+    architecture = {"amd64": "x86_64", "arm64": "aarch64"}.get(architecture, architecture)
+    if architecture not in {"x86_64", "aarch64"}:
+        return None
+    if "linux" in normalized:
+        platform = "linux"
+    elif "windows" in normalized or "mingw" in normalized:
+        platform = "windows"
+    elif "darwin" in normalized or "apple" in normalized:
+        platform = "darwin"
+    else:
+        return None
+    return f"{platform}_{architecture}"
+def required_artifacts(variant: str, target: str) -> tuple[str, ...]:
+    if variant == "static":
+        return REQUIRED_STATIC_ARTIFACTS
+    family = compiler_target_family(target)
+    if family is None:
+        fail(f"unsupported compiler target for dynamic stdx: {target}")
+    platform = family.split("_", 1)[0]
+    library = {
+        "linux": "libstdx.chir.so",
+        "darwin": "libstdx.chir.dylib",
+        "windows": "stdx.chir.dll",
+    }[platform]
+    return ("stdx.chir.cjo", library)
+
+
+def file_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+def stdx_candidates(cjc: Path, variant: str, compiler_target: str) -> list[Path]:
+    configured = os.environ.get("CANGJIE_STDX_PATH")
+    if configured:
+        return unique_paths([Path(configured)])
+
+    candidates: list[Path] = []
+    bundle = compiler_bundle_root(cjc)
+    family = compiler_target_family(compiler_target)
+    if bundle is not None and family is not None:
+        for target in sorted(bundle.glob(f"{family}_cjnative")):
+            candidates.append(target / variant / "stdx")
+            if variant == "static":
+                candidates.append(target / "static-static-link-extern" / "stdx")
+    return unique_paths(candidates)
+
+
+def authenticate_stdx(path: Path, required_artifacts: tuple[str, ...]) -> tuple[str, list[Path]]:
+    if path.name != "stdx" or not path.is_dir() or path.is_symlink():
+        fail("stdx path must be a regular stdx directory")
+    missing = [name for name in required_artifacts if not (path / name).is_file()]
+    if missing:
+        fail(f"stdx sidecar is missing required artifacts: {', '.join(missing)}")
+    digest = hashlib.sha256()
+    files: list[Path] = []
+    for item in sorted(path.iterdir(), key=lambda candidate: candidate.name):
+        if item.is_symlink():
+            fail(f"stdx sidecar contains a symlink: {item.name}")
+        if not item.is_file():
+            continue
+        if not (item.suffix in {".a", ".bc", ".cjo", ".dll", ".dylib", ".so"} or item.name.startswith("lib")):
+            continue
+        files.append(item)
+        digest.update(item.name.encode("utf-8"))
+        digest.update(b"\0")
+        with item.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        digest.update(b"\0")
+    return digest.hexdigest(), files
+
+
+
+def split_command(argv: list[str]) -> tuple[list[str], list[str]]:
+    try:
+        marker = argv.index("--")
+    except ValueError:
+        fail("usage: with_stdx.py [--variant static|dynamic] [--print-env] -- command [args...]")
+    return argv[:marker], argv[marker + 1 :]
+
+
+def parse_options(options: list[str]) -> tuple[str, bool]:
+    print_only = options.count("--print-env") == 1
+    remaining = [option for option in options if option != "--print-env"]
+    if options.count("--print-env") > 1:
+        fail("--print-env may be specified once")
+    if not remaining:
+        return "static", print_only
+    if len(remaining) == 1 and remaining[0].startswith("--variant="):
+        variant = remaining[0].split("=", 1)[1]
+    elif len(remaining) == 2 and remaining[0] == "--variant":
+        variant = remaining[1]
+    else:
+        fail(f"unknown options: {' '.join(options)}")
+    if variant not in {"static", "dynamic"}:
+        fail("variant must be static or dynamic")
+    return variant, print_only
+
+
+def main(argv: list[str]) -> int:
+    options, command = split_command(argv)
+    variant, print_only = parse_options(options)
+    if not command and not print_only:
+        fail("missing command")
+
+    cjc = next(iter(compiler_candidates()), None)
+    if cjc is None:
+        fail("cannot locate cjc from the configured SDK environment")
+    version, target = compiler_info(cjc)
+    required = required_artifacts(variant, target)
+    selected: Path | None = None
+    selected_digest = ""
+    for candidate in stdx_candidates(cjc, variant, target):
+        try:
+            digest, _ = authenticate_stdx(candidate, required)
+        except SystemExit:
+            continue
+        selected = candidate
+        selected_digest = digest
+        break
+    if selected is None:
+        fail(f"no authenticated {variant} stdx sidecar matches the selected compiler")
+
+    # cjpm passes link-option tokens directly; embedded shell quotes are literal.
+    link_options = f"-L{selected} -lflatbuffers" if variant == "static" else ""
+    dependency_digest = file_digest(selected / "libflatbuffers.a") if variant == "static" else ""
+    fingerprint = hashlib.sha256(
+        f"{version}\0{target}\0{selected_digest}\0{dependency_digest}".encode("utf-8")
+    ).hexdigest()
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "CANGJIE_STDX_PATH": str(selected),
+            "CJDOC_STDX_PATH": str(selected),
+            "CJDOC_STDX_VARIANT": variant,
+            "CJDOC_STDX_DIGEST": selected_digest,
+            "CJDOC_STDX_LINK_OPTIONS": link_options,
+            "CJDOC_STDX_DEPENDENCY_DIGEST": dependency_digest,
+            "CJDOC_TOOLCHAIN_VERSION": version,
+            "CJDOC_TOOLCHAIN_TARGET": target,
+            "CJDOC_TOOLCHAIN_FINGERPRINT": fingerprint,
+            "CJDOC_STDX_WRAPPED": "1",
+        }
+    )
+    if print_only:
+        for key in (
+            "CANGJIE_STDX_PATH",
+            "CJDOC_STDX_PATH",
+            "CJDOC_STDX_VARIANT",
+            "CJDOC_STDX_DIGEST",
+            "CJDOC_STDX_LINK_OPTIONS",
+            "CJDOC_STDX_DEPENDENCY_DIGEST",
+            "CJDOC_TOOLCHAIN_VERSION",
+            "CJDOC_TOOLCHAIN_TARGET",
+            "CJDOC_TOOLCHAIN_FINGERPRINT",
+        ):
+            print(f"{key}={environment[key]}")
+        return 0
+    os.execvpe(command[0], command, environment)
+    return 127
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

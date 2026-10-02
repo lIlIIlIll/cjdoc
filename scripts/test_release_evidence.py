@@ -283,7 +283,7 @@ class ReleaseEvidenceTest(ReleaseToolsTestSupport, unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             repo, _ = self.make_release_repo(Path(temporary) / "repo")
             scripts = repo / "scripts"
-            scripts.mkdir()
+            scripts.mkdir(exist_ok=True)
             for name in (
                 "safe_output_root.py",
                 "strict_json.py",
@@ -293,6 +293,7 @@ class ReleaseEvidenceTest(ReleaseToolsTestSupport, unittest.TestCase):
                 "repository_input_files.py",
                 "repository_input_migrations.py",
                 "repository_input_vendor.py",
+                "showcase_inputs.py",
             ):
                 shutil.copyfile(PROJECT_ROOT / "scripts" / name, scripts / name)
             self.git(repo, "add", "scripts")
@@ -324,5 +325,4 @@ class ReleaseEvidenceTest(ReleaseToolsTestSupport, unittest.TestCase):
             binary.chmod(0o755)
             verified = verify_repository_inputs.verify_current_goldens(repo, binary)
             self.assertEqual(len(verified), len(GOLDEN_NAMES))
-
 

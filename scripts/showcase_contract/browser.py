@@ -1,13 +1,12 @@
-"""Real final-tree Playwright runner. No synthetic success or policy bypass.
+"""Fail-closed Playwright acceptance of every promised final-site journey.
 
-Only registered behavioral scenarios can produce evidence. Browser startup,
-HTTP/file navigation and assertion failures leave results.json absent and write
-failures.json instead. This is a foundation for S-06, not all of its scenarios.
+The runner activates the final homepage, follows native links, records observed
+layout/action timings and produces evidence only after all scenarios pass.
 """
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, ExitStack
 from functools import partial
 import hashlib
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -18,22 +17,17 @@ import tempfile
 import threading
 from urllib.parse import unquote, urlsplit
 
+from .browser_journeys import JOURNEYS as API_JOURNEYS
+from .browser_reports import JOURNEYS as REPORT_JOURNEYS
+from .browser_metrics import check_layout, layout, screenshot_name, screenshots, validate_metrics
+from .browser_support import Journey
 from .contract import validate_manifest
 from .evidence import _expected_cases, validate_evidence
 from .offline import ARCHIVE, extract_archive
+from .scenarios import SCENARIOS, BUDGETS
 from .site import ContractError, Site, canonical_json, load_json
 
-# This table defines test behavior, not a second list of feature targets.
-# Targets and required executions always come from the resolved feature manifest.
-SCENARIOS = {
-    "member-desktop-light-root": ("member", "http", 1280, 900, "light", "/"),
-    "member-desktop-dark-subpath": ("member", "http", 1280, 900, "dark", "/cjdoc-preview/"),
-    "member-mobile-dark-subpath": ("member", "http", 390, 844, "dark", "/cjdoc-preview/"),
-    "member-offline": ("member", "file", 1280, 900, "light", None),
-    "search-root": ("search", "http", 1280, 900, "light", "/"),
-    "search-subpath": ("search", "http", 1280, 900, "dark", "/cjdoc-preview/"),
-    "search-offline": ("search", "file", 1280, 900, "light", None),
-}
+BEHAVIORS = {**API_JOURNEYS, **REPORT_JOURNEYS}
 
 
 def registered_cases(manifest: dict) -> dict:
@@ -43,12 +37,12 @@ def registered_cases(manifest: dict) -> dict:
         raise ContractError("no available showcase scenarios; refusing a vacuous browser pass")
     for key, target in cases.items():
         scenario = SCENARIOS.get(key[2])
-        if scenario is None or scenario[1] != key[3]:
+        if scenario is None or scenario[1] != key[3] or scenario[0] not in BEHAVIORS:
             raise ContractError(f"unimplemented or mismatched browser scenario: {key[2]} / {key[3]}")
-        if scenario[0] == "member" and target.get("placement") != "member":
+        if scenario[0] in {"members", "contracts", "resources"} and target.get("placement") != "member":
             raise ContractError("member browser scenarios require a native inline member target")
-        if scenario[0] == "search" and target["kind"] != "navigation":
-            raise ContractError("search browser scenarios require a navigation target")
+        if scenario[0] in {"search", "types", "guides", "versions", "external", "machine", "extension", "authoring"} and target["kind"] != "navigation":
+            raise ContractError("navigation browser scenarios require a navigation target")
     return cases
 
 
@@ -62,6 +56,10 @@ def serve(root: Path, prefix: str):
                 return
             self.path = "/" + path[len(prefix):]
             super().do_GET()
+
+        def guess_type(self, path):
+            value = super().guess_type(path)
+            return value + "; charset=utf-8" if value.startswith("text/") or value == "application/json" else value
 
         def log_message(self, *_):
             pass
@@ -78,127 +76,152 @@ def serve(root: Path, prefix: str):
 
 
 def same_route(actual: str, base: str, href: str) -> bool:
-    expected = urlsplit(base + href)
-    got = urlsplit(actual)
+    expected, got = urlsplit(base + href), urlsplit(actual)
     return (got.scheme, got.netloc, unquote(got.path), got.query, unquote(got.fragment)) == (
         expected.scheme, expected.netloc, unquote(expected.path), expected.query, unquote(expected.fragment))
 
 
-def member_behavior(page, target: dict) -> tuple[int, list[str]]:
+def observe(context, base: str, errors: list, scrolling: dict):
+    allowed = urlsplit(base)
+    def route_resource(route):
+        parsed = urlsplit(route.request.url)
+        if ((parsed.scheme, parsed.netloc) == (allowed.scheme, allowed.netloc)
+                or parsed.scheme in ("data", "blob")):
+            route.continue_()
+        else:
+            errors.append("unexpected remote resource: " + route.request.url)
+            route.abort()
+    context.route("**/*", route_resource)
+    def scroll_event(_, distance):
+        scrolling["scrollEvents"] += 1
+        scrolling["scrollDistance"] += int(distance)
+    context.expose_binding("__showcaseObserveScroll", scroll_event)
+    context.add_init_script('''(() => {
+      let previous = 0;
+      addEventListener("scroll", () => {
+        const distance = Math.round(Math.abs(scrollY - previous)); previous = scrollY;
+        globalThis.__showcaseObserveScroll(distance);
+      }, {passive:true});
+    })();''')
+
+
+def check_locale_navigation(journey: Journey):
     from playwright.sync_api import expect
-    resolved = target["resolved"]
-    anchor = unquote(urlsplit(resolved["href"]).fragment)
-    # IDs are copied from native HTML. No source-to-anchor encoding is reproduced.
-    detail = page.locator("[data-cjdoc-member]")
-    matches = [item for item in detail.all() if item.get_attribute("id") == anchor]
-    if len(matches) != 1:
-        raise AssertionError("deep link did not locate exactly one native member detail")
-    current = matches[0]
-    expect(current).to_have_attribute("open", "")
-    expect(current).to_be_visible()
-    if " ".join(resolved["signature"].split()) not in " ".join(current.inner_text().split()):
-        raise AssertionError("opened contract does not contain the selected source signature")
-    assertions = ["homepage click landed on the native owner page and exact member anchor",
-                  "the selected member opened automatically with its full source signature"]
-    activations = 1
-    siblings = [item for item in page.locator("[data-cjdoc-member]").all()
-                if item.get_attribute("data-member-name") == resolved["memberName"]]
-    if len(siblings) >= 2:
-        second = next(item for item in siblings if item.get_attribute("id") != anchor)
-        if second.get_attribute("open") is None:
-            second.locator("summary").first.click()
-            activations += 1
-        expect(current).to_have_attribute("open", "")
-        expect(second).to_have_attribute("open", "")
-        assertions.append("two overload contracts remained open simultaneously on one owner page")
-    field = page.locator("[data-cjdoc-member-filter]")
-    expect(field).to_have_count(1)
-    field.fill("cjdoc_no_such_member_58b0e6")
-    expect(current).not_to_be_visible()
-    field.fill(resolved["memberName"])
-    expect(current).to_be_visible()
-    field.fill("")
-    assertions.append("member filtering hid unmatched rows and restored the selected overload")
-    return activations, assertions
+    page = journey.page
+    link = page.locator("[data-showcase-locale][href]")
+    if not link.count():
+        raise AssertionError("generated example lacks a mapped other-language entry")
+    before = page.url
+    fragment = urlsplit(before).fragment
+    locale = "en" if journey.target["locale"] == "zh-CN" else "zh-CN"
+    journey.click(link.first)
+    expect(page.locator("html")).to_have_attribute("lang", locale)
+    expect(page.locator("body")).to_have_attribute("data-cjdoc-doc-version", journey.target["version"])
+    if journey.target.get("placement") == "member":
+        if urlsplit(page.url).fragment != fragment:
+            raise AssertionError("language switching lost the selected native member anchor")
+        from .browser_journeys import selected_member
+        selected_member(journey)
+    if journey.target.get("signature"):
+        from .browser_support import require_text
+        require_text(page.locator("main"), journey.target["signature"])
+    if journey.target.get("resolved", {}).get("symbolId"):
+        from urllib.parse import urljoin
+        index_link = page.locator('[data-machine-format="navigation"]')
+        index_url = urljoin(page.url, index_link.get_attribute("href"))
+        native = load_json(journey.local_path(index_url))
+        identity = journey.target["resolved"].get("ownerSymbolId", journey.target["resolved"]["symbolId"])
+        matches = [record for record in native["pages"] if record.get("symbolId") == identity]
+        if len(matches) != 1 or unquote(page.url.split("#")[0]) != unquote(urljoin(index_url, matches[0]["href"]).split("#")[0]):
+            raise AssertionError("language switch did not preserve the native symbol/owner identity")
+    journey.back(before)
+    journey.assertions.append("the language control follows the same native declaration/version and browser Back returns")
 
 
-def search_behavior(page, target: dict) -> tuple[int, list[str]]:
+def exercise(browser, target: dict, key: tuple, base: str, site: Site, output: Path, homes: dict) -> dict:
     from playwright.sync_api import expect
-    query = target["match"]["title"].split(".")[-1]
-    field = page.locator("[data-cjdoc-search]")
-    expect(field).to_have_count(1)
-    page.keyboard.press("Control+k")
-    expect(field).to_be_focused()
-    field.fill("name:" + query)
-    results = page.locator("[data-cjdoc-results] a")
-    expect(results.first).to_be_visible()
-    if not any(query.lower() in text.lower() for text in results.all_text_contents()):
-        raise AssertionError("name: query did not find the selected indexed symbol")
-    field.fill("cjdoc_no_such_symbol_58b0e6")
-    expect(results).to_have_count(0)
-    return 1, ["Ctrl+K focused the generated search input",
-               "name: query returned a matching indexed symbol",
-               "an unmatched query cleared stale result links"]
-
-
-def screenshot_name(key: tuple[str, ...]) -> str:
-    """Hash the complete tuple so user IDs cannot collide through delimiters."""
-    return "scenario-" + hashlib.sha256(canonical_json(list(key))).hexdigest() + ".png"
-
-
-def exercise(browser, target: dict, key: tuple, base: str, screenshots: Path) -> dict:
     behavior, _, width, height, theme, _ = SCENARIOS[key[2]]
-    from playwright.sync_api import expect
-    context = browser.new_context(viewport={"width": width, "height": height}, color_scheme=theme)
-    errors: list[str] = []
+    context = browser.new_context(viewport={"width": width, "height": height}, color_scheme=theme,
+                                  accept_downloads=True, permissions=["clipboard-read", "clipboard-write"])
+    errors, scrolling = [], {"scrollEvents": 0, "scrollDistance": 0}
+    page = None
     try:
-        # Enforce the static-site boundary; unexpected remote resources fail.
-        allowed = urlsplit(base)
-        def route_resource(route):
-            parsed = urlsplit(route.request.url)
-            if ((parsed.scheme, parsed.netloc) == (allowed.scheme, allowed.netloc)
-                    or parsed.scheme in ("data", "blob")):
-                route.continue_()
-            else:
-                errors.append("unexpected remote resource: " + route.request.url)
-                route.abort()
-        context.route("**/*", route_resource)
+        observe(context, base, errors, scrolling)
         page = context.new_page()
         page.on("pageerror", lambda error: errors.append(str(error)))
-        page.on("requestfailed", lambda req: errors.append(f"request failed: {req.url}: {req.failure}"))
+        # Chromium reports intentional download navigations as net::ERR_ABORTED;
+        # actual download failure is checked through the Download object instead.
+        page.on("requestfailed", lambda req: errors.append(f"request failed: {req.url}: {req.failure}")
+                if not (req.failure == "net::ERR_ABORTED" and urlsplit(req.url).path.endswith((".zip", ".cj"))) else None)
         page.on("response", lambda response: errors.append(f"HTTP {response.status}: {response.url}")
                 if response.status >= 400 else None)
         page.set_default_timeout(10000)
-        page.goto(base + "index.html", wait_until="networkidle")
+        page.goto(base + "index.html", wait_until="load")
+        if page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"):
+            raise AssertionError("final homepage overflows its viewport")
+        initial_actions = 0
+        if target["locale"] == "en":
+            page.locator('header a[lang="en"]').click()
+            page.wait_for_load_state("load")
+            expect(page.locator("html")).to_have_attribute("lang", "en")
+            initial_actions += 1
+        home_key = (target["locale"], width, height, key[3], SCENARIOS[key[2]][-1])
+        if home_key not in homes:
+            home = Journey(page, site, base, target, key[3])
+            images = screenshots(home, tuple(str(part) for part in (*home_key, "homepage")), output)
+            homes[home_key] = {"locale": target["locale"], "mode": key[3], "prefix": SCENARIOS[key[2]][-1],
+                               "viewport": {"width": width, "height": height}, "screenshots": images}
+            initial_actions += home.activations - 1
         link = page.locator(f'[data-feature-id="{key[0]}"] [data-target-id="{key[1]}"]')
         expect(link).to_have_count(1)
         expect(link).to_have_attribute("href", target["resolved"]["href"])
-        navigations: list[str] = []
-        page.on("request", lambda request: navigations.append(request.url)
-                if request.resource_type == "document" and request.frame == page.main_frame else None)
+        navigations = []
+        # Count committed document loads, not same-document hashes or download
+        # requests that Chromium intentionally aborts before committing a page.
+        page.on("domcontentloaded", lambda: navigations.append(page.url))
         link.click()
-        page.wait_for_load_state("networkidle")
+        page.wait_for_load_state("load")
         if not same_route(page.url, base, target["resolved"]["href"]):
-            raise AssertionError("homepage feature entry did not reach its exact resolved route")
+            raise AssertionError("homepage entry did not reach its exact native resolved route")
         if len(navigations) != 1:
-            raise AssertionError("feature entry must reach its target in one document navigation")
+            raise AssertionError("homepage feature entry must reach its target in one document navigation")
         expect(page.locator("html")).to_have_attribute("lang", target["locale"])
         expect(page.locator("body")).to_have_attribute("data-cjdoc-doc-version", target["version"])
-        activations, assertions = (member_behavior if behavior == "member" else search_behavior)(page, target)
-        # Check real layout, not viewport constants alone.
-        if page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"):
-            raise AssertionError(f"horizontal page overflow at {width}px")
-        assertions.append(f"no horizontal page overflow at {width}x{height} ({theme} preference)")
+        journey = Journey(page, site, base, target, key[3])
+        journey.activations += initial_actions
+        if target.get("placement") == "member":
+            from .browser_journeys import selected_member
+            expect(selected_member(journey).locator("summary").first).to_be_in_viewport()
+        duplicates = page.evaluate("""() => {
+          const seen=new Set(), repeated=[];
+          for (const node of document.querySelectorAll('[id]')) {
+            if (seen.has(node.id)) repeated.push(node.id); seen.add(node.id);
+          }
+          return repeated;
+        }""")
+        if duplicates:
+            raise AssertionError("runtime scripts produced duplicate HTML IDs: " + ", ".join(duplicates))
+        initial = layout(page)
+        check_layout(initial, width, behavior)
+        BEHAVIORS[behavior](journey)
+        if target["kind"] == "navigation":
+            check_locale_navigation(journey)
+        pictures = screenshots(journey, key, output)
+        metrics = {"viewport": {"width": width, "height": height}, "landing": initial, **scrolling,
+                   **journey.timings, "homepageActivations": 1, "homepageDocumentNavigations": 1}
+        validate_metrics(metrics, SCENARIOS[key[2]])
         if errors:
             raise AssertionError("; ".join(errors))
-        filename = screenshot_name(key)
-        screenshot = screenshots / filename
-        page.screenshot(path=str(screenshot), full_page=True)
         return {"featureId": key[0], "targetId": key[1], "scenarioId": key[2], "mode": key[3],
                 "locale": key[4], "version": key[5], "status": "passed", "entry": "index.html",
-                "href": target["resolved"]["href"], "activations": activations,
-                "documentNavigations": len(navigations), "assertions": assertions,
-                "screenshot": {"path": filename, "sha256": hashlib.sha256(screenshot.read_bytes()).hexdigest()}}
+                "href": target["resolved"]["href"], "activations": journey.activations,
+                "documentNavigations": len(navigations), "assertions": journey.assertions,
+                "screenshot": {name: pictures[0][name] for name in ("path", "sha256")},
+                "screenshots": pictures, "metrics": metrics}
+    except Exception:
+        if page is not None:
+            page.screenshot(path=str(output / screenshot_name((*key, "failed"))), full_page=True)
+        raise
     finally:
         context.close()
 
@@ -213,44 +236,50 @@ def run(site_path: Path, evidence_path: Path, executable: str | None = None) -> 
     if evidence_path.exists() or evidence_path.is_symlink():
         raise ContractError("browser evidence output must be a new directory (no stale results reuse)")
     output.mkdir(parents=True)
+    active = None
     try:
         manifest = load_json(site.file("showcase-features.json"))
         cases = registered_cases(manifest)
+        site.validate_links()
         fingerprint = site.digest()
+        sizes = {"siteBytes": sum(path.stat().st_size for path in site.root.rglob("*") if path.is_file()),
+                 "offlineBytes": site.file(ARCHIVE).stat().st_size}
+        for name, value in sizes.items():
+            if value > BUDGETS[name]:
+                raise ContractError("final controlled showcase exceeds size budget: " + name)
         from playwright.sync_api import sync_playwright
-        results = []
-        with tempfile.TemporaryDirectory(prefix="cjdoc-offline-test-") as temporary:
-            offline = None
-            if any(key[3] == "file" for key in cases):
-                offline = extract_archive(site.file(ARCHIVE), Path(temporary) / "site", site)
+        results, homes = [], {}
+        with tempfile.TemporaryDirectory(prefix="cjdoc-offline-test-") as temporary, ExitStack() as stack:
+            offline = extract_archive(site.file(ARCHIVE), Path(temporary) / "site", site)
+            bases = {prefix: stack.enter_context(serve(site.root, prefix)) for prefix in ("/", "/cjdoc-preview/")}
             with sync_playwright() as playwright:
                 options = {"headless": True}
                 if executable:
                     options["executable_path"] = executable
                 browser = playwright.chromium.launch(**options)
                 try:
-                    for key, target in cases.items():
+                    for number, (key, target) in enumerate(cases.items(), 1):
+                        active = key
                         prefix = SCENARIOS[key[2]][-1]
-                        if key[3] == "file":
-                            base = offline.root.as_uri() + "/"
-                            results.append(exercise(browser, target, key, base, output))
-                        else:
-                            with serve(site.root, prefix) as base:
-                                results.append(exercise(browser, target, key, base, output))
+                        current = offline if key[3] == "file" else site
+                        base = offline.root.as_uri() + "/" if key[3] == "file" else bases[prefix]
+                        print(f"[{number}/{len(cases)}] {' / '.join(key)}", flush=True)
+                        results.append(exercise(browser, target, key, base, current, output, homes))
                     browser_version = browser.version
                 finally:
                     browser.close()
         if Site(site_path).digest() != fingerprint:
             raise ContractError("final published tree changed during browser verification")
-        evidence = {"schemaVersion": "cjdoc.showcase-evidence/1", "revision": manifest["revision"],
+        evidence = {"schemaVersion": "cjdoc.showcase-evidence/2", "revision": manifest["revision"],
                     "manifestSha256": hashlib.sha256(canonical_json(manifest)).hexdigest(),
-                    "siteSha256": fingerprint,
+                    "siteSha256": fingerprint, "budgets": BUDGETS, "siteMetrics": sizes,
+                    "homepages": list(homes.values()),
                     "runner": {"name": "cjdoc-final-showcase-browser", "version": importlib.metadata.version("playwright"),
                                "browser": "chromium", "browserVersion": browser_version}, "results": results}
         validate_evidence(manifest, evidence, site, output)
         (output / "results.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     except Exception as error:
-        (output / "failures.json").write_text(json.dumps({"status": "failed", "error": str(error)},
+        (output / "failures.json").write_text(json.dumps({"status": "failed", "case": active, "error": str(error)},
                                                           ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         raise
 
@@ -266,7 +295,7 @@ def main(argv=None) -> int:
     except Exception as error:
         print(f"Showcase browser verification FAILED: {error}")
         return 1
-    print("Registered final-tree browser scenarios passed. Run the static/evidence gate before upload.")
+    print("All declared final-tree browser journeys passed. Run the static/evidence gate before upload.")
     return 0
 
 

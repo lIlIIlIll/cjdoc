@@ -101,6 +101,16 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "hash mismatch"):
                 verify_repository_inputs.verify_repository_inputs(repo)
 
+    def test_showcase_inputs_cannot_be_omitted_from_tracked_release_source(self) -> None:
+        for relative in ("site/showcase-catalog.json", "site/showcase-baseline.json",
+                         "examples/pocketkit/demo-v2/src/catalog.cj",
+                         "examples/pocketkit/check-modes/src/api.cj"):
+            with self.subTest(path=relative), tempfile.TemporaryDirectory() as temporary:
+                repo, _ = self.make_release_repo(Path(temporary))
+                self.git(repo, "rm", "-q", "--cached", "--", relative)
+                with self.assertRaisesRegex(ValueError, "not tracked"):
+                    verify_repository_inputs.verify_repository_inputs(repo, require_tracked=True)
+
     def test_repository_inputs_reject_legacy_schema_drift_and_vendor_extras(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo, _ = self.make_release_repo(Path(temporary))
@@ -207,5 +217,4 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
             binary.chmod(0o755)
             with self.assertRaisesRegex(ValueError, "semantic receipt"):
                 verify_repository_inputs.verify_legacy_migrations(repo, binary)
-
 

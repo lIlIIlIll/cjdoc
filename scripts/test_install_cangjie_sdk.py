@@ -302,7 +302,9 @@ class InstallCangjieSdkTest(unittest.TestCase):
             expected = self.add_authenticated_archive(destination)
             write_cache_marker(destination, root, "sdk.zip", expected)
             self.assertEqual(validate_cached_sdk(destination, "sdk.zip", expected), root)
-            (root / "bin").chmod(0o700)
+            original_mode = (root / "bin").stat().st_mode & 0o777
+            drifted_mode = 0o755 if original_mode == 0o700 else 0o700
+            (root / "bin").chmod(drifted_mode)
             with self.assertRaisesRegex(ValueError, "tree digest"):
                 validate_cached_sdk(destination, "sdk.zip", expected)
 
@@ -400,6 +402,25 @@ class InstallCangjieSdkTest(unittest.TestCase):
             marker_path.write_text(json.dumps(marker), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "authenticated archive extraction"):
                 validate_cached_sdk(destination, "sdk.zip", expected)
+
+    def test_stdx_root_requires_complete_regular_static_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            incomplete = directory / "stdx"
+            complete = directory / "sidecar" / "stdx"
+            for root in (incomplete, complete):
+                root.mkdir(parents=True)
+                (root / "stdx.chir.cjo").write_bytes(b"package")
+                (root / "libstdx.chir.a").write_bytes(b"archive")
+            self.assertIsNone(install_cangjie_sdk.stdx_root(directory))
+            (complete / "libflatbuffers.a").write_bytes(b"flatbuffers archive")
+            self.assertEqual(install_cangjie_sdk.stdx_root(directory), complete)
+            (incomplete / "libflatbuffers.a").write_bytes(b"flatbuffers archive")
+            self.assertEqual(install_cangjie_sdk.stdx_root(directory), incomplete)
+            if os.name != "nt":
+                (incomplete / "libflatbuffers.a").unlink()
+                (incomplete / "libflatbuffers.a").symlink_to(complete / "libflatbuffers.a")
+                self.assertEqual(install_cangjie_sdk.stdx_root(directory), complete)
 
 
 if __name__ == "__main__":

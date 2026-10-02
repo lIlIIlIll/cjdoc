@@ -9,7 +9,7 @@ class ModelCodecV8Suite3 {
     @TestCase
     func fencedCodeAndOrderedListBoundsFailClosed(): Unit {
         let boundedFence = MarkdownNode("code_block", MarkdownNodeMetadata.forCodeBlock("fenced",
-            Some("~"), DOC_IR_MAX_FENCE_LENGTH, "cj", "cj", ""), literal: "main()")
+            Some("~"), DOC_IR_MAX_FENCE_LENGTH, "cangjie", "cangjie", ""), literal: "main()")
         validateDocumentationSet(codecMarkdownDocument(MarkdownNode("document",
             children: [boundedFence])))
 
@@ -27,13 +27,13 @@ class ModelCodecV8Suite3 {
 
         let invalidBacktickInfo = MarkdownNode("code_block",
             MarkdownNodeMetadata.forCodeBlock("fenced", Some("`"), 3,
-                "cj`unsafe", "cj", ""), literal: "main()")
+                "cangjie`unsafe", "cangjie", ""), literal: "main()")
         @ExpectThrows[IllegalArgumentException](validateDocumentationSet(codecMarkdownDocument(
             MarkdownNode("document", children: [invalidBacktickInfo]))))
 
         let tildeWithBacktickInfo = MarkdownNode("code_block",
             MarkdownNodeMetadata.forCodeBlock("fenced", Some("~"), 3,
-                "cj`safe", "cj", ""), literal: "main()")
+                "cangjie`safe", "cangjie", ""), literal: "main()")
         let tildeJson = encodeDocIr(codecMarkdownDocument(
             MarkdownNode("document", children: [tildeWithBacktickInfo])))
         @Expect(decodeDocIr(tildeJson).declarations.size, 1)
@@ -44,7 +44,7 @@ class ModelCodecV8Suite3 {
         @Expect(infoError.message.contains("invalid Doc IR schema"))
 
         let multilineInfo = MarkdownNode("code_block", MarkdownNodeMetadata.forCodeBlock("fenced",
-            Some("~"), 3, "cj\nunsafe", "cj", ""), literal: "main()")
+            Some("~"), 3, "cangjie\nunsafe", "cangjie", ""), literal: "main()")
         @ExpectThrows[IllegalArgumentException](validateDocumentationSet(codecMarkdownDocument(
             MarkdownNode("document", children: [multilineInfo]))))
 

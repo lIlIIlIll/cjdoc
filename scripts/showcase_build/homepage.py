@@ -43,7 +43,7 @@ def first(manifest: dict, feature_id: str, locale: str) -> dict:
     return matches[0]
 
 
-def cards(manifest: dict) -> str:
+def cards(manifest: dict, locale: str | None = None) -> str:
     out = []
     for number, feature in enumerate(manifest["features"], 1):
         e = html.escape
@@ -55,10 +55,13 @@ def cards(manifest: dict) -> str:
         if feature["targets"]:
             card += '<details><summary>操作说明 / Instructions</summary><p>' + e(feature["targets"][0]["instructions"]) + '</p></details>'
         card += '<div class="feature-targets">'
-        for target in feature["targets"]:
+        targets = sorted(feature["targets"], key=lambda target: target["locale"] != locale)
+        for target in targets:
             if target["resolved"]:
                 label = target["locale"] + ' · ' + target["version"]
-                card += f'<a data-target-id="{e(target["id"])}" href="{e(target["resolved"]["href"])}">{e(label)}</a>'
+                if sum(item["locale"] == target["locale"] for item in targets) > 1:
+                    label += ' · ' + (target.get("signature") or target.get("match", {}).get("title", target["id"]))
+                card += f'<a data-target-id="{e(target["id"])}" lang="{e(target["locale"])}" href="{e(target["resolved"]["href"])}">{e(label)}</a>'
         out.append(card + '</div></article>')
     return '\n'.join(out)
 
@@ -76,12 +79,53 @@ def publish(repo: Path, site: Path, manifest: dict, metadata: dict) -> None:
         content = template
         for key, value in values.items():
             content = content.replace('__' + key + '__', html.escape(value, quote=True))
-        content = content.replace('<!-- SHOWCASE_FEATURES -->', cards(manifest))
+        content = content.replace('<!-- SHOWCASE_FEATURES -->', cards(manifest, locale))
+        content = content.replace('<!-- SHOWCASE_COVERAGE -->', coverage(manifest, locale))
         (site / filename).write_text(content, encoding="utf-8")
+
+
+def coverage(manifest: dict, locale: str) -> str:
+    """Describe demonstrated samples separately from planned capabilities."""
+    features = manifest["features"]
+    implemented = [feature for feature in features if feature["implementation"] != "not-implemented"]
+    available = [feature for feature in implemented if feature["demonstration"] == "available"]
+    partial = sum(feature["implementation"] == "partial" for feature in features)
+    planned = sum(feature["implementation"] == "not-implemented" for feature in features)
+    if locale == "zh-CN":
+        text = (f"核心已实现能力的演示覆盖：{len(available)}/{len(implemented)}；"
+                f"其中 {partial} 项实现仍有明确边界，另有 {planned} 项计划能力。"
+                "可体验状态须通过本次最终目录的浏览器门禁后才允许发布，不能据此理解为全部功能已完成。")
+    else:
+        text = (f"Demonstration coverage of implemented capabilities: {len(available)}/{len(implemented)}; "
+                f"{partial} implementations remain partial, with {planned} planned capabilities. "
+                "Available samples must pass the final-site browser gate before publication; "
+                "this does not claim every feature is complete.")
+    return '<p class="coverage-summary" data-showcase-coverage>' + html.escape(text) + '</p>'
+
+
+DOWNLOAD_TEXT = {
+    "zh-CN": {
+        "home": "index.html", "back": "展示首页", "title": "源码与离线目录",
+        "source": "可复现源码", "license": "MIT 许可，包含 demo-v1、demo-v2、support-v1、指令检查与独立诊断项目。SDK 与 cjdoc 二进制不包含在下载中。",
+        "source_zip": "下载 PocketKit 源码 ZIP", "manifest": "源码 revision 与 SHA-256 清单",
+        "copy": "复制", "run": "从解压根目录执行。输出目录必须不存在；需要 SDK 1.2.0 和对应 revision 的 cjdoc。页面不会在浏览器内执行代码。",
+        "offline": "完整离线目录", "use": "解压后直接打开 index.html，或打开 en.html 阅读英文首页。导航、搜索、成员展开和复制不要求联网。源码外链仍需网络。",
+        "offline_zip": "下载完整离线 ZIP", "recursive": "离线 ZIP 不包含自身，以避免递归打包；解压后仍保留独立的源码下载。"
+    },
+    "en": {
+        "home": "en.html", "back": "Showcase home", "title": "Source and offline site",
+        "source": "Reproducible source", "license": "MIT licensed. Includes demo-v1, demo-v2, support-v1, directive checks and the isolated diagnostics project. The SDK and cjdoc binary are not included.",
+        "source_zip": "Download PocketKit source ZIP", "manifest": "Source revision and SHA-256 manifest",
+        "copy": "Copy", "run": "Run from the extracted root. The output directory must not exist. Requires SDK 1.2.0 and cjdoc built from the matching revision. This page does not execute code in the browser.",
+        "offline": "Complete offline site", "use": "Extract the archive and open en.html, or index.html for Chinese. Navigation, search, member expansion and copy work without a network connection. External source links still require the network.",
+        "offline_zip": "Download complete offline ZIP", "recursive": "The offline archive excludes itself to avoid recursive packaging. The extracted site retains its separate source download."
+    }
+}
 
 
 def downloads(site: Path) -> None:
     (site / "downloads").mkdir(exist_ok=True)
-    for locale in TEXT:
-        content = f'''<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Downloads · cjdoc</title><link rel="stylesheet" href="../showcase.css"><script src="../showcase.js" defer></script></head><body data-cjdoc-doc-version="showcase"><main class="download-page"><a data-showcase-home href="../index.html">← 展示首页 / Showcase</a><h1>源码与离线目录 / Source and offline site</h1><article><h2>可复现源码 / Reproducible source</h2><p>MIT 许可，包含 demo-v1、demo-v2、support-v1 与独立诊断项目。SDK 与 cjdoc 二进制不包含在下载中。</p><p><a data-source-download href="pocketkit-source.zip" download>Download PocketKit source ZIP</a> · <a href="source-manifest.json">Source revision and SHA-256 manifest</a></p><pre><code id="download-command">python3 examples/pocketkit/reproduce.py --cjdoc /absolute/path/to/cjdoc --output ./generated --locale both</code></pre><button data-showcase-copy="download-command">Copy / 复制</button><p>从解压根目录执行。输出目录必须不存在；需要 SDK 1.1.3 和对应 revision 的 cjdoc。页面不会在浏览器内执行任意代码。</p></article><article id="offline"><h2>完整离线目录 / Complete offline site</h2><p>解压后直接打开 index.html。导航、搜索、成员展开和复制不要求联网。源码外链仍需网络。</p><p><a data-offline-download href="showcase-offline.zip" download>Download generated offline ZIP</a></p><p>离线 ZIP 不包含自身，以避免递归打包；解压后仍保留独立的源码下载。</p></article><p aria-live="polite" data-showcase-status></p></main></body></html>'''
+    for locale, raw in DOWNLOAD_TEXT.items():
+        words = {key: html.escape(value) for key, value in raw.items()}
+        content = f'''<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{words["title"]} · cjdoc</title><link rel="stylesheet" href="../showcase.css"><script src="../showcase.js" defer></script></head><body data-cjdoc-doc-version="showcase"><main class="download-page"><nav aria-label="Language and showcase"><a data-showcase-home href="../{words["home"]}">← {words["back"]}</a><a href="zh-CN.html" lang="zh-CN">中文</a><a href="en.html" lang="en">English</a><button type="button" data-showcase-theme>Light / Dark</button></nav><h1>{words["title"]}</h1><article><h2>{words["source"]}</h2><p>{words["license"]}</p><p><a data-source-download href="pocketkit-source.zip" download>{words["source_zip"]}</a> · <a href="source-manifest.json">{words["manifest"]}</a></p><pre><code id="download-command">python3 examples/pocketkit/reproduce.py --cjdoc /absolute/path/to/cjdoc --output ./generated --locale both</code></pre><button data-showcase-copy="download-command">{words["copy"]}</button><p>{words["run"]}</p></article><article id="offline"><h2>{words["offline"]}</h2><p>{words["use"]}</p><p><a data-offline-download href="showcase-offline.zip" download>{words["offline_zip"]}</a></p><p>{words["recursive"]}</p></article><p aria-live="polite" data-showcase-status></p></main></body></html>'''
         (site / "downloads" / (locale + ".html")).write_text(content, encoding="utf-8")

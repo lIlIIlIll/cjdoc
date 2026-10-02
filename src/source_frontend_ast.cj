@@ -2,6 +2,7 @@ package cjdoc
 
 import std.ast.*
 import std.collection.*
+import std.sort.*
 
 internal class AstDeclarationCollector <: Visitor {
     let path: String
@@ -32,14 +33,48 @@ internal class AstDeclarationCollector <: Visitor {
         var startColumn = Int64(decl.beginPos.column)
         let tokens = decl.toTokens()
         if (tokens.size > 0 && tokens[0].pos.line > 0 && tokens[0].pos.column > 0 &&
-            positionLess(Int64(tokens[0].pos.line), Int64(tokens[0].pos.column), startLine, startColumn)) {
+            (startLine <= 0 || startColumn <= 0 ||
+                positionLess(Int64(tokens[0].pos.line), Int64(tokens[0].pos.column), startLine, startColumn))) {
             startLine = Int64(tokens[0].pos.line)
             startColumn = Int64(tokens[0].pos.column)
+        }
+        for (modifier in decl.modifiers) {
+            let modifierStartLine = Int64(modifier.beginPos.line)
+            let modifierStartColumn = Int64(modifier.beginPos.column)
+            if (modifierStartLine > 0 && modifierStartColumn > 0 &&
+                (startLine <= 0 || startColumn <= 0 ||
+                    positionLess(modifierStartLine, modifierStartColumn, startLine, startColumn))) {
+                startLine = modifierStartLine
+                startColumn = modifierStartColumn
+            }
         }
         if (startLine <= 0 || startColumn <= 0) { return None }
         let endLine = if (decl.endPos.line > 0) { Int64(decl.endPos.line) } else { startLine }
         let endColumn = if (decl.endPos.column > 0) { Int64(decl.endPos.column) } else { startColumn }
-        let location = SourceLocation(path, startLine, startColumn, endLine, endColumn)
+        let location = match (sourceLocationFromAstRange(path, source,
+            startLine, startColumn, endLine, endColumn)) {
+            case Some(value) => value
+            case None =>
+                // Nested generic closers can put std.ast's exclusive end column one past the source line.
+                let adjustedEnd: ?SourceLocation = if (endLine == startLine && endColumn > startColumn) {
+                    sourceLocationFromAstRange(path, source, startLine, startColumn,
+                        endLine, endColumn - 1)
+                } else {
+                    None
+                }
+                match (adjustedEnd) {
+                    case Some(value) => value
+                    case None =>
+                        if (tokens.size == 0) { return None }
+                        let lastToken = tokens[tokens.size - 1]
+                        let (tokenEndLine, tokenEndColumn) = tokenEndPosition(lastToken)
+                        match (sourceLocationFromAstRange(path, source, startLine, startColumn,
+                            tokenEndLine, tokenEndColumn)) {
+                            case Some(value) => value
+                            case None => return None
+                        }
+                }
+        }
         let signature = declarationSignature(decl, source, location, hasBody)
         let symbol = SourceDeclaration(makeSourceDeclarationKey(location, kind, name), kind, name,
             packageName, moduleId, declarationVisibility(decl), location,
@@ -81,8 +116,11 @@ internal class AstDeclarationCollector <: Visitor {
         if (first.pos.line <= 0 || first.pos.column <= 0 ||
             last.pos.line <= 0 || last.pos.column <= 0) { return }
         let (endLine, endColumn) = tokenEndPosition(last)
-        let location = SourceLocation(path, Int64(first.pos.line), Int64(first.pos.column),
-            endLine, endColumn)
+        let location = match (sourceLocationFromAstRange(path, source,
+            Int64(first.pos.line), Int64(first.pos.column), endLine, endColumn)) {
+            case Some(value) => value
+            case None => return
+        }
         let exact = source.slice(location)
         let signature = if (exact.isEmpty()) {
             normalizedTokens(parameter).trimAscii().trimEnd(",").trimAscii()
@@ -135,17 +173,14 @@ internal class AstDeclarationCollector <: Visitor {
                 if (tokens.size == 0) { continue }
                 let first = tokens[0]
                 let last = tokens[tokens.size - 1]
-                let lastLines = last.value.split("\n")
-                let endLine = Int64(last.pos.line) + lastLines.size - 1
-                let endColumn = if (lastLines.size == 1) {
-                    Int64(last.pos.column) + last.value.size
-                } else {
-                    lastLines[lastLines.size - 1].size + 1
-                }
+                let (endLine, endColumn) = tokenEndPosition(last)
                 let (startLine, startColumn) = enumCaseStart(source,
                     Int64(first.pos.line), Int64(first.pos.column))
-                let location = SourceLocation(path, startLine, startColumn,
-                    endLine, endColumn)
+                let location = match (sourceLocationFromAstRange(path, source,
+                    startLine, startColumn, endLine, endColumn)) {
+                    case Some(value) => value
+                    case None => continue
+                }
                 let exact = source.slice(location)
                 let name = constructor.identifier.value
                 let signature = if (exact.isEmpty()) {
@@ -230,20 +265,26 @@ internal class AstDeclarationCollector <: Visitor {
     }
 
     public override func visit(decl: MainDecl): Unit {
-        if (decl.beginPos.line > 0 && decl.beginPos.column > 0 && decl.endPos.line > 0 && decl.endPos.column > 0) {
-            localScopes.add(SourceLocation(path, Int64(decl.beginPos.line), Int64(decl.beginPos.column),
-                Int64(decl.endPos.line), Int64(decl.endPos.column)))
+        if (decl.beginPos.line > 0 && decl.beginPos.column > 0 &&
+            decl.endPos.line > 0 && decl.endPos.column > 0) {
+            if (let Some(location) <- sourceLocationFromAstRange(path, source,
+                Int64(decl.beginPos.line), Int64(decl.beginPos.column),
+                Int64(decl.endPos.line), Int64(decl.endPos.column))) {
+                localScopes.add(location)
+            }
         }
         breakTraverse()
     }
 
     public override func visit(decl: MacroDecl): Unit {
-        let location = SourceLocation(path, Int64(decl.beginPos.line), Int64(decl.beginPos.column),
-            Int64(decl.endPos.line), Int64(decl.endPos.column))
-        diagnostics.add(Diagnostic("warning", "CJDOC1009",
-            "unsupported declaration 'macro ${decl.identifier.value}'", source: location))
-        unsupportedDeclarations.add(UnsupportedDeclaration("macro", decl.identifier.value,
-            "macro expansion is not executed", location))
+        if (let Some(location) <- sourceLocationFromAstRange(path, source,
+            Int64(decl.beginPos.line), Int64(decl.beginPos.column),
+            Int64(decl.endPos.line), Int64(decl.endPos.column))) {
+            diagnostics.add(Diagnostic("warning", "CJDOC1009",
+                "unsupported declaration 'macro ${decl.identifier.value}'", source: location))
+            unsupportedDeclarations.add(UnsupportedDeclaration("macro", decl.identifier.value,
+                "macro expansion is not executed", location))
+        }
         breakTraverse()
     }
 
@@ -251,38 +292,328 @@ internal class AstDeclarationCollector <: Visitor {
         let name = try { decl.fullIdentifier.value } catch (_: Exception) {
             try { decl.identifier.value } catch (_: Exception) { "<macro>" }
         }
-        let location = SourceLocation(path, Int64(decl.beginPos.line), Int64(decl.beginPos.column),
-            Int64(decl.endPos.line), Int64(decl.endPos.column))
-        diagnostics.add(Diagnostic("warning", "CJDOC1009",
-            "macro invocation '${name}' is not expanded", source: location))
-        macroInvocations.add(MacroInvocation(name, location))
-        unsupportedDeclarations.add(UnsupportedDeclaration("macroInvocation", name,
-            "macro expansion is not executed", location))
+        if (let Some(location) <- sourceLocationFromAstRange(path, source,
+            Int64(decl.beginPos.line), Int64(decl.beginPos.column),
+            Int64(decl.endPos.line), Int64(decl.endPos.column))) {
+            diagnostics.add(Diagnostic("warning", "CJDOC1009",
+                "macro invocation '${name}' is not expanded", source: location))
+            macroInvocations.add(MacroInvocation(name, location))
+            unsupportedDeclarations.add(UnsupportedDeclaration("macroInvocation", name,
+                "macro expansion is not executed", location))
+        }
         breakTraverse()
     }
 }
 
-internal func commentLocation(path: String, token: Token): SourceLocation {
-    let lines = token.value.split("\n")
-    let startLine = Int64(token.pos.line)
-    let startColumn = Int64(token.pos.column)
-    let endLine = startLine + lines.size - 1
-    let endColumn = if (lines.size == 1) {
-        startColumn + lines[0].size
-    } else {
-        lines[lines.size - 1].size + 1
-    }
-    return SourceLocation(path, startLine, startColumn, endLine, endColumn)
-}
-
-internal func collectDocComments(path: String, tokens: Tokens): ArrayList<RawDocComment> {
-    let comments = ArrayList<RawDocComment>()
-    for (token in tokens) {
-        if (token.kind == COMMENT && token.value.startsWith("/**")) {
-            comments.add(RawDocComment(token.value, commentLocation(path, token)))
+internal func declarationVisibility(decl: Decl): String {
+    for (modifier in decl.modifiers) {
+        match (modifier.keyword.value) {
+            case "public" => return "public"
+            case "protected" => return "protected"
+            case "private" => return "private"
+            case "internal" => return "internal"
+            case _ => ()
         }
     }
-    return comments
+    return "internal"
+}
+
+internal func normalizedTokens(node: Node): String {
+    return node.toTokens().toString().trimAscii()
+}
+
+internal func declarationSignature(decl: Decl, source: IndexedSourceBuffer, location: SourceLocation,
+    hasBody: Bool): String {
+    let exact = source.slice(location)
+    if (exact.isEmpty()) { return normalizedTokens(decl) }
+    if (!hasBody) { return exact.trimAscii() }
+    let end = headerEndOffset(exact)
+    let bytes = exact.toArray()
+    let selected = ArrayList<UInt8>()
+    var index: Int64 = 0
+    while (index < end && index < bytes.size) {
+        selected.add(bytes[index])
+        index++
+    }
+    return String.fromUtf8(selected.toArray()).trimAscii()
+}
+
+internal func addCommonAstData(symbol: SourceDeclaration, decl: Decl): Unit {
+    for (annotation in decl.annotations) {
+        symbol.annotations.add(annotation.toTokens().toString().trimAscii())
+    }
+    for (modifier in decl.modifiers) {
+        symbol.modifiers.add(modifier.keyword.value)
+        if (modifier.keyword.value == "override") {
+            symbol.symbolRelationships.add(SourceSymbolRelationship("override", symbol.name))
+        }
+    }
+    if (decl.isGenericDecl) {
+        for (token in decl.genericParam.parameters) {
+            if (token.kind == IDENTIFIER) { symbol.genericParameters.add(token.value) }
+        }
+    }
+}
+
+internal func tokenEndPosition(token: Token): (Int64, Int64) {
+    let lines = token.value.split("\n")
+    let endLine = Int64(token.pos.line) + lines.size - 1
+    let endColumn = if (lines.size == 1) {
+        Int64(token.pos.column) + lines[0].toArray().size
+    } else {
+        lines[lines.size - 1].toArray().size + 1
+    }
+    (endLine, endColumn)
+}
+
+internal func sourceLocationFromAstRange(path: String, source: IndexedSourceBuffer,
+    startLine: Int64, startColumn: Int64, endLine: Int64, endColumn: Int64): ?SourceLocation {
+    let startOffset = source.byteOffsetFromLexerPosition(startLine, startColumn)
+    let endOffset = source.byteOffsetFromLexerPosition(endLine, endColumn)
+    if (startOffset < 0 || endOffset < startOffset) { return None }
+    Some(SourceLocation(path, startLine, startColumn, endLine, endColumn))
+}
+
+internal func importKindName(kind: ImportKind): String {
+    match (kind) {
+        case ImportKind.Single => "single"
+        case ImportKind.Alias => "alias"
+        case ImportKind.All => "all"
+        case ImportKind.Multi => "multi"
+    }
+}
+
+internal func importAliasName(tokens: Tokens): ?String {
+    var index = tokens.size
+    while (index > 0) {
+        index--
+        let value = tokens[index].value
+        if (!value.isEmpty() && value != "as") { return Some(value) }
+    }
+    None
+}
+
+internal func importPrefixPaths(tokens: Tokens): Array<String> {
+    let result = ArrayList<String>()
+    for (token in tokens) {
+        if (!token.value.isEmpty()) { result.add(token.value) }
+    }
+    result.toArray()
+}
+
+internal func importLocation(path: String, value: ImportList): ?SourceLocation {
+    let tokens = value.toTokens()
+    if (tokens.size == 0) { return None }
+    var first: Int64 = 0
+    while (first < tokens.size && (tokens[first].value.isEmpty() || tokens[first].kind == NL)) { first++ }
+    if (first >= tokens.size) { return None }
+    var last = tokens.size
+    while (last > first && (tokens[last - 1].value.isEmpty() || tokens[last - 1].kind == NL)) { last-- }
+    if (last <= first) { return None }
+    let endToken = tokens[last - 1]
+    if (endToken.pos.line <= 0 || endToken.pos.column <= 0) { return None }
+    let (endLine, endColumn) = tokenEndPosition(endToken)
+    Some(SourceLocation(path, Int64(tokens[first].pos.line), Int64(tokens[first].pos.column),
+        endLine, endColumn))
+}
+
+internal func collectPublicReExports(program: Program, path: String,
+    packageName: String, moduleId: String, source: IndexedSourceBuffer): Array<SourceReExport> {
+    let result = ArrayList<SourceReExport>()
+    for (importList in program.importLists) {
+        if (importList.modifier.value != "public") { continue }
+        let location = match (importLocation(path, importList)) {
+            case Some(value) => value
+            case None => continue
+        }
+        let content = importList.content
+        let items = ArrayList<SourceImportItem>()
+        for (item in content.items) {
+            if (item.identifier.value.isEmpty()) { continue }
+            items.add(SourceImportItem(item.identifier.value,
+                alias: importAliasName(item.importAlias)))
+        }
+        let sourceText = source.slice(location).trimAscii()
+        let normalizedSpec = if (sourceText.startsWith("public ")) {
+            sourceText.removePrefix("public ").trimAscii()
+        } else {
+            sourceText
+        }
+        result.add(SourceReExport(importKindName(content.importKind),
+            if (content.orgName.value.isEmpty()) { None } else { Some(content.orgName.value) },
+            content.identifier.value, importAliasName(content.importAlias), location,
+            normalizedSpec, packageName, moduleId,
+            prefixPaths: importPrefixPaths(content.prefixPaths), items: items.toArray()))
+    }
+    result.toArray()
+}
+
+private func qualifiedPackageImportPath(organization: String, packagePath: String): String {
+    if (organization.isEmpty()) { return packagePath }
+    organization + "::" + packagePath
+}
+
+internal func collectImportedPackagePaths(program: Program): Array<String> {
+    let result = ArrayList<String>()
+    for (importList in program.importLists) {
+        let content = importList.content
+        let prefix = ArrayList<String>(importPrefixPaths(content.prefixPaths))
+        let packagePath = match (content.importKind) {
+            case ImportKind.Alias =>
+                if (content.identifier.value.isEmpty()) { joinedImportPath(prefix) } else {
+                    joinedImportPath(prefix, tail: Some(content.identifier.value))
+                }
+            case _ => joinedImportPath(prefix)
+        }
+        let qualifiedPath = qualifiedPackageImportPath(content.orgName.value, packagePath)
+        if (!packagePath.isEmpty() && !result.contains(qualifiedPath)) {
+            result.add(qualifiedPath)
+        }
+    }
+    result.toArray()
+}
+
+internal func collectImports(program: Program, path: String,
+    source: IndexedSourceBuffer): Array<String> {
+    let imports = ArrayList<String>()
+    for (importList in program.importLists) {
+        let location = match (importLocation(path, importList)) {
+            case Some(value) => value
+            case None => continue
+        }
+        let text = source.slice(location).trimAscii()
+        if (!text.isEmpty()) { imports.add(text) }
+    }
+    imports.toArray()
+}
+
+private func sourceImportStatementEnd(tokens: Tokens, importIndex: Int64): Int64 {
+    var index = importIndex
+    var lastIndex = importIndex
+    var braceDepth: Int64 = 0
+    while (index < tokens.size) {
+        let token = tokens[index]
+        if (braceDepth == 0 && token.kind == NL) { return lastIndex }
+        if (braceDepth == 0 && token.value == ";") { return lastIndex }
+        match (token.kind) {
+            case LCURL => braceDepth++
+            case RCURL => if (braceDepth > 0) { braceDepth-- }
+            case _ => ()
+        }
+        if (token.kind != NL && token.kind != COMMENT && !token.value.isEmpty()) {
+            lastIndex = index
+        }
+        index++
+    }
+    lastIndex
+}
+
+private func sourceImportStart(tokens: Tokens, importIndex: Int64): Int64 {
+    var index = importIndex
+    while (index > 0) {
+        index--
+        let token = tokens[index]
+        if (token.kind == NL || token.kind == COMMENT || token.value.isEmpty()) { continue }
+        match (token.value) {
+            case "public" | "protected" | "internal" | "private" => return index
+            case _ => return importIndex
+        }
+    }
+    importIndex
+}
+
+private func previousImportToken(tokens: Tokens, before: Int64): Int64 {
+    var index = before
+    while (index > 0) {
+        index--
+        let token = tokens[index]
+        if (token.kind != NL && token.kind != COMMENT && !token.value.isEmpty()) { return index }
+    }
+    -1
+}
+
+private func conditionalSourceImportStart(tokens: Tokens, importIndex: Int64): Int64 {
+    var start = sourceImportStart(tokens, importIndex)
+    var before = start
+    while (before > 0) {
+        var opening = previousImportToken(tokens, before)
+        if (opening < 0 || tokens[opening].kind != RSQUARE) { break }
+        var squareDepth: Int64 = 1
+        while (opening > 0 && squareDepth > 0) {
+            opening--
+            match (tokens[opening].kind) {
+                case RSQUARE => squareDepth++
+                case LSQUARE => squareDepth--
+                case _ => ()
+            }
+        }
+        if (squareDepth != 0) { break }
+        let name = previousImportToken(tokens, opening)
+        if (name < 0 || tokens[name].kind != IDENTIFIER || tokens[name].value != "When") { break }
+        let annotation = previousImportToken(tokens, name)
+        if (annotation < 0 || tokens[annotation].kind != AT) { break }
+        start = annotation
+        before = start
+    }
+    start
+}
+
+internal func sourceImportTextsFromSource(path: String, source: String,
+    includeWhen: Bool): ArrayList<String> {
+    let tokens = sourceLexerTokens(source)
+    let sourceIndex = IndexedSourceBuffer(source)
+    let imports = ArrayList<String>()
+    var declarationDepth: Int64 = 0
+    var index: Int64 = 0
+    while (index < tokens.size) {
+        let token = tokens[index]
+        if (declarationDepth == 0 && token.kind == IMPORT) {
+            let start = if (includeWhen) { conditionalSourceImportStart(tokens, index) } else {
+                sourceImportStart(tokens, index)
+            }
+            let first = tokens[start]
+            let importEnd = sourceImportStatementEnd(tokens, index)
+            let last = tokens[importEnd]
+            if (first.pos.line <= 0 || first.pos.column <= 0 ||
+                last.pos.line <= 0 || last.pos.column <= 0) {
+                throw IllegalArgumentException("source import has invalid token positions")
+            }
+            let (endLine, endColumn) = tokenEndPosition(last)
+            let location = match (sourceLocationFromAstRange(path, sourceIndex,
+                Int64(first.pos.line), Int64(first.pos.column), endLine, endColumn)) {
+                case Some(value) => value
+                case None => throw IllegalArgumentException("source import range is invalid")
+            }
+            let text = sourceIndex.slice(location).trimAscii()
+            if (text.isEmpty()) { throw IllegalArgumentException("source import is empty") }
+            imports.add(text)
+            index = importEnd + 1
+            continue
+        }
+        match (token.kind) {
+            case LCURL => declarationDepth++
+            case RCURL => if (declarationDepth > 0) { declarationDepth-- }
+            case _ => ()
+        }
+        index++
+    }
+    imports
+}
+
+internal class PatternBinding {
+    let name: String
+
+    init(name: String) { this.name = name }
+}
+
+internal class PatternBindingCollector <: Visitor {
+    let bindings = ArrayList<PatternBinding>()
+
+    public override func visit(pattern: VarPattern): Unit {
+        let name = pattern.identifier.value
+        if (!name.isEmpty()) { bindings.add(PatternBinding(name)) }
+        breakTraverse()
+    }
 }
 
 internal func isBinaryOperator(value: String): Bool {
@@ -298,7 +629,7 @@ internal func isBinaryOperator(value: String): Bool {
 // BinaryExpr failure while the failed parser supplies the additional signal.
 internal func looksLikeUnsafeBinaryExpressionDepth(tokens: Tokens,
     includeAmbiguousPunctuation: Bool): Bool {
-    let safeOperatorLimit: Int64 = 64
+    let safeOperatorLimit: Int64 = MAX_SOURCE_BINARY_DEPTH
     let outerOperators = ArrayList<Int64>()
     var operators: Int64 = 0
     for (token in tokens) {
@@ -336,7 +667,7 @@ internal func looksLikeUnsafeBinaryExpressionDepth(tokens: Tokens,
 // BinaryExpr chain at 67 operators. Keep a small safety margin and fail this
 // file explicitly instead of allowing a native SIGSEGV to terminate cjdoc.
 internal func binaryExpressionDepthAtLeast(expression: Expr, depth: Int64): Bool {
-    let safeOperatorLimit: Int64 = 64
+    let safeOperatorLimit: Int64 = MAX_SOURCE_BINARY_DEPTH
     match (expression) {
         case binary: BinaryExpr =>
             let nextDepth = depth + 1
@@ -365,129 +696,88 @@ internal func exceedsSafeBinaryExpressionDepth(program: Program): Bool {
     program.traverse(visitor)
     visitor.exceeded
 }
-
-internal func isFunctionLike(symbol: SourceDeclaration): Bool {
-    return symbol.kind == "function" || symbol.kind == "constructor"
+internal func hasDeepSourceBinaryExpression(source: String): Bool {
+    let tokens = try { sourceLexerTokens(source) } catch (_: Exception) { return false }
+    looksLikeUnsafeBinaryExpressionDepth(tokens, true)
 }
 
-internal func sourceOrderLess(left: SourceDeclaration, right: SourceDeclaration): Bool {
-    if (left.source.path != right.source.path) { return left.source.path < right.source.path }
-    if (left.source.startLine != right.source.startLine) {
-        return left.source.startLine < right.source.startLine
-    }
-    if (left.source.startColumn != right.source.startColumn) {
-        return left.source.startColumn < right.source.startColumn
-    }
-    if (left.source.endLine != right.source.endLine) { return left.source.endLine > right.source.endLine }
-    return left.source.endColumn > right.source.endColumn
-}
-
-internal func removeLocalDeclarations(symbols: ArrayList<SourceDeclaration>,
-    extraScopes: ArrayList<SourceLocation>): Unit {
-    let activeFunctions = ArrayList<SourceLocation>()
-    var index: Int64 = 0
-    while (index < symbols.size) {
-        var inExtraScope = false
-        for (scope in extraScopes) {
-            if (rangeContains(scope, symbols[index].source)) {
-                inExtraScope = true
-                break
-            }
-        }
-        if (inExtraScope) {
-            symbols.remove(at: index)
+internal func packageNameFrom(program: Program, fallback: String): String {
+    let builder = StringBuilder()
+    var inPackageName = false
+    for (token in program.packageHeader.toTokens()) {
+        if (!inPackageName) {
+            inPackageName = token.value == "package"
             continue
         }
-        while (!activeFunctions.isEmpty() &&
-            !rangeContains(activeFunctions[activeFunctions.size - 1], symbols[index].source)) {
-            activeFunctions.remove(at: activeFunctions.size - 1)
-        }
-        if (!activeFunctions.isEmpty()) {
-            symbols.remove(at: index)
-        } else {
-            if (isFunctionLike(symbols[index])) { activeFunctions.add(symbols[index].source) }
-            index++
+        if (token.kind != TokenKind.NL && token.kind != TokenKind.COMMENT) {
+            builder.append(token.value)
         }
     }
+    let name = builder.toString()
+    if (name.isEmpty()) { fallback } else { name }
 }
 
-internal func assignOwners(symbols: ArrayList<SourceDeclaration>): Unit {
-    let containers = ArrayList<Int64>()
-    var index: Int64 = 0
-    while (index < symbols.size) {
-        while (!containers.isEmpty() &&
-            !rangeContains(symbols[containers[containers.size - 1]].source, symbols[index].source)) {
-            containers.remove(at: containers.size - 1)
+internal func parseSourceTextWithAst(input: SourceInputFile, fallbackPackageName: String,
+    source: String): ParsedSourceFile {
+    let result = ParsedSourceFile(input)
+    let relative = input.logicalPath
+    try {
+        let tokens = sourceLexerTokens(source)
+        if (looksLikeUnsafeBinaryExpressionDepth(tokens, false)) {
+            result.diagnostics.add(Diagnostic("error", "CJDOC1012",
+                "source exceeds the safe std.ast binary-expression depth; file skipped",
+                source: SourceLocation(relative, 1, 1, 1, 1)))
+            return result
         }
-        let best = if (containers.isEmpty()) { -1 } else { containers[containers.size - 1] }
-        symbols[index].ownerIndex = best
-        if (best >= 0) { symbols[index].ownerSourceKey = Some(symbols[best].sourceKey) }
-        if (best >= 0 && symbols[best].kind == "interface" && symbols[index].visibility == "internal") {
-            symbols[index].visibility = "public"
-        }
-        if (symbols[index].isContainer) { containers.add(index) }
-        index++
-    }
-}
-
-internal func onlyWhitespaceBetween(source: IndexedSourceBuffer, left: SourceLocation,
-    right: SourceLocation): Bool {
-    let start = source.byteOffset(left.endLine, left.endColumn)
-    let end = source.byteOffset(right.startLine, right.startColumn)
-    if (start < 0 || end < start) { return false }
-    var index = start
-    while (index < end && index < source.bytes.size) {
-        match (source.bytes[index]) {
-            case 9u8 | 10u8 | 13u8 | 32u8 => ()
-            case _ => return false
-        }
-        index++
-    }
-    return index == end
-}
-
-internal func sameSourceRange(left: SourceLocation, right: SourceLocation): Bool {
-    left.path == right.path && left.startLine == right.startLine &&
-        left.startColumn == right.startColumn && left.endLine == right.endLine &&
-        left.endColumn == right.endColumn
-}
-
-internal func bindComments(symbols: ArrayList<SourceDeclaration>,
-    comments: ArrayList<RawDocComment>, source: IndexedSourceBuffer): ArrayList<OrphanDocComment> {
-    var commentIndex: Int64 = 0
-    var candidate: ?RawDocComment = None
-    var symbolIndex: Int64 = 0
-    while (symbolIndex < symbols.size) {
-        let symbol = symbols[symbolIndex]
-        while (commentIndex < comments.size &&
-            positionLessOrEqual(comments[commentIndex].source.endLine, comments[commentIndex].source.endColumn,
-                symbol.source.startLine, symbol.source.startColumn)) {
-            if (!comments[commentIndex].bound) { candidate = comments[commentIndex] }
-            commentIndex++
-        }
-        if (let Some(comment) <- candidate) {
-            if (!comment.bound && onlyWhitespaceBetween(source, comment.source, symbol.source)) {
-                var groupedIndex = symbolIndex
-                while (groupedIndex < symbols.size &&
-                    sameSourceRange(symbols[groupedIndex].source, symbol.source)) {
-                    // DocComment is mutable while tags are resolved, so every
-                    // destructured binding receives an independent instance.
-                    symbols[groupedIndex].documentation = parseDocComment(comment.raw)
-                    groupedIndex++
-                }
-                comment.bound = true
+        let program = try {
+            parseProgram(tokens)
+        } catch (error: Exception) {
+            let recovered = syntaxRecoverySource(source)
+            if (recovered == source) { throw error }
+            let recoveredTokens = sourceLexerTokens(recovered)
+            if (looksLikeUnsafeBinaryExpressionDepth(recoveredTokens, false)) {
+                result.diagnostics.add(Diagnostic("error", "CJDOC1012",
+                    "source exceeds the safe std.ast binary-expression depth; file skipped",
+                    source: SourceLocation(relative, 1, 1, 1, 1)))
+                return result
             }
-            candidate = None
+            parseProgram(recoveredTokens)
         }
-        var nextIndex = symbolIndex + 1
-        while (nextIndex < symbols.size && sameSourceRange(symbols[nextIndex].source, symbol.source)) {
-            nextIndex++
+        if (exceedsSafeBinaryExpressionDepth(program)) {
+            result.diagnostics.add(Diagnostic("error", "CJDOC1012",
+                "source exceeds the safe std.ast binary-expression depth; file skipped",
+                source: SourceLocation(relative, 1, 1, 1, 1)))
+            return result
         }
-        symbolIndex = nextIndex
+        let packageName = packageNameFrom(program, fallbackPackageName)
+        let sourceBuffer = IndexedSourceBuffer(source)
+        let collector = AstDeclarationCollector(relative, packageName, input.module.id, sourceBuffer)
+        program.traverse(collector)
+        sort(collector.declarations, lessThan: sourceOrderLess, stable: true)
+        removeLocalDeclarations(collector.declarations, collector.localScopes)
+        collector.declarations.add(all: collector.primaryConstructorMembers)
+        sort(collector.declarations, lessThan: sourceOrderLess, stable: true)
+        assignOwners(collector.declarations)
+        result.orphanDocComments.add(all: bindComments(collector.declarations,
+            collectDocComments(relative, tokens, sourceBuffer), sourceBuffer))
+        for (comment in result.orphanDocComments) {
+            result.diagnostics.add(Diagnostic("warning", "CJDOC1014",
+                "doc comment is not attached to a documentable declaration",
+                source: comment.source))
+        }
+        result.packageName = Some(packageName)
+        result.imports.add(all: collectImports(program, relative, sourceBuffer))
+        result.packageImports.add(all: collectImportedPackagePaths(program))
+        result.declarations.add(all: collector.declarations)
+        result.reExports.add(all: collectPublicReExports(program, relative, packageName,
+            input.module.id, sourceBuffer))
+        result.macroInvocations.add(all: collector.macroInvocations)
+        result.unsupportedDeclarations.add(all: collector.unsupportedDeclarations)
+        result.diagnostics.add(all: collector.diagnostics)
+    } catch (_: Exception) {
+        result.diagnostics.add(Diagnostic("error", "CJDOC1011",
+            "failed to parse '${relative}'",
+            source: SourceLocation(relative, 1, 1, 1, 1)))
     }
-    let orphans = ArrayList<OrphanDocComment>()
-    for (comment in comments where !comment.bound) {
-        orphans.add(OrphanDocComment(comment.raw, comment.source))
-    }
-    return orphans
+    result
 }

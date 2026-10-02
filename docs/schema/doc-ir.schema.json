@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-  "title": "cjdoc Doc IR v10",
+  "title": "cjdoc Doc IR v11",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "generator", "status", "project", "configuration", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/10"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/11"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "project": {"$ref": "#/$defs/project"},
@@ -193,7 +193,8 @@
       "properties": {
         "name": {"type": "string", "minLength": 1}, "subject": {"type": "string"},
         "description": {"type": "string"}, "referenceState": {"$ref": "#/$defs/semanticState"},
-        "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"}
+        "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"},
+        "directives": {"type": "string"}
       }
     },
     "headingMetadata": {

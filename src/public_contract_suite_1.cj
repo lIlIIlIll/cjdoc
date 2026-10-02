@@ -27,11 +27,20 @@ class PublicApiContractsSuite1 {
     }
 
     @TestCase
+    func missingAstWorkerSkipsSourceExplicitly(): Unit {
+        let documentation = DocumentationEngine().generate(
+            GenerationRequest(PUBLIC_FIXTURE_PROJECTS + "basic", lintProfile: "off"))
+        @Expect(documentation.status, "partial")
+        @Expect(documentation.declarations.size, 0)
+        @Expect(publicHasDiagnostic(documentation, "CJDOC1020"))
+    }
+
+    @TestCase
     func generatedDocIrRoundTripsStrictly(): Unit {
         let documentation = DocumentationEngine().generate(
             GenerationRequest(PUBLIC_FIXTURE_PROJECTS + "basic", lintProfile: "standard",
                 astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
-        @Expect(documentation.schemaVersion, "cjdoc.doc-ir/10")
+        @Expect(documentation.schemaVersion, "cjdoc.doc-ir/11")
         @Expect(documentation.declarations.size, 25)
         @Expect(documentation.files.size, 1)
         @Expect(documentation.declarations[0].source.start.byteOffset > 0)
@@ -42,8 +51,8 @@ class PublicApiContractsSuite1 {
 
         let unknown = encoded.replace("\"schemaVersion\":", "\"unknown\":true,\"schemaVersion\":")
         @ExpectThrows(api_render.decodeDocIr(unknown))
-        let duplicate = encoded.replace("\"schemaVersion\": \"cjdoc.doc-ir/10\",",
-            "\"schemaVersion\": \"cjdoc.doc-ir/10\", \"schemaVersion\": \"cjdoc.doc-ir/10\",")
+        let duplicate = encoded.replace("\"schemaVersion\": \"cjdoc.doc-ir/11\",",
+            "\"schemaVersion\": \"cjdoc.doc-ir/11\", \"schemaVersion\": \"cjdoc.doc-ir/11\",")
         @ExpectThrows(api_render.decodeDocIr(duplicate))
 
         let missingProviderModule = encoded.replace(
@@ -62,7 +71,7 @@ class PublicApiContractsSuite1 {
         let path = Path("tests/fixtures/golden-v6/basic.docs.json")
         let legacy = String.fromUtf8(File.readFrom(path))
         let migrated = api_render.decodeDocIr(legacy)
-        @Expect(migrated.schemaVersion, "cjdoc.doc-ir/10")
+        @Expect(migrated.schemaVersion, "cjdoc.doc-ir/11")
         @Expect(migrated.providers.size, 1)
         @Expect(migrated.providers[0].moduleId, "cjdoc:module:v1:root")
         @Expect(migrated.declarations[0].moduleId, "cjdoc:module:v1:root")

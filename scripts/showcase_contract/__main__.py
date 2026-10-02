@@ -10,6 +10,7 @@ import sys
 import tempfile
 
 from .contract import ContractError, check_regressions, resolve_plan
+from .baseline import check_baseline
 from .evidence import validate_evidence
 from .offline import create_archive
 from .render import render_home
@@ -47,6 +48,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     verify.add_argument("--site", type=Path, required=True)
     verify.add_argument("--evidence", type=Path, required=True)
     verify.add_argument("--previous", type=Path)
+    verify.add_argument("--baseline", type=Path, help="reviewed scope commitments; not historical execution evidence")
     return parser.parse_args(argv)
 
 
@@ -74,6 +76,12 @@ def main(argv: list[str] | None = None) -> int:
             print("Targets resolved. Browser evidence is still required before publication.")
             return 0
         manifest = load_json(site.file("showcase-features.json"))
+        if args.baseline:
+            check_baseline(load_json(args.baseline), manifest)
+        elif any(scenario["id"].rsplit("-", 1)[-1] in {"desktop", "narrow", "mobile"}
+                 for feature in manifest["features"] for target in feature["targets"]
+                 for scenario in target["scenarios"]):
+            raise ContractError("published showcase verification requires --baseline")
         if args.previous:
             check_regressions(load_json(args.previous), manifest)
         site.validate_links()

@@ -187,6 +187,12 @@ internal func loadDocumentationQualityConfig(projectRoot: String): Documentation
             } else { None }
             continue
         }
+        // Other consumers own [docs], [[docs.pages]], [external-docs.*],
+        // and [doctest]. In particular, repeated array-table keys are valid
+        // there and must never enter this parser's duplicate-key scope.
+        if (section != "lint" && section != "coverage" && packageOverride.isNone()) {
+            continue
+        }
         let equals = line.indexOf("=")
         if (equals.isNone()) { continue }
         let key = line[..equals.getOrThrow()].trimAscii()

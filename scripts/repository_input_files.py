@@ -62,6 +62,10 @@ def read_toml(path: Path) -> dict[str, Any]:
 
 
 def required_repository_paths() -> tuple[str, ...]:
+    try:
+        from .showcase_inputs import source_inputs
+    except ImportError:
+        from showcase_inputs import source_inputs
     paths = [
         "README.md",
         "LICENSE",
@@ -74,7 +78,11 @@ def required_repository_paths() -> tuple[str, ...]:
         "vendor/yjson_algorithms/cjpm.toml",
         "vendor/yjson_algorithms/vendor-manifest.toml",
         "tests/fixtures/legacy-migration-v8.json",
+        "cjdoc.toml",
+        "site/showcase-baseline.json",
+        "scripts/requirements-showcase.txt",
     ]
+    paths.extend(source_inputs())
     paths.extend(f"docs/schema/{name}.schema.json" for name in SCHEMA_NAMES)
     for version in (*LEGACY_GOLDEN_VERSIONS, CURRENT_GOLDEN_VERSION):
         paths.extend(f"tests/fixtures/golden-v{version}/{name}.docs.json" for name in GOLDEN_NAMES)
@@ -145,8 +153,8 @@ def validate_schema_document(name: str, value: object) -> None:
                 )
         if properties["status"] != {"enum": ["complete", "partial"]}:
             raise ValueError(f"{name} schema status shape is invalid")
-        if name in ("doc-ir", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10"):
-            if name in ("doc-ir", "doc-ir-v9", "doc-ir-v10") and "repository" not in definitions:
+        if name in ("doc-ir", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11"):
+            if name in ("doc-ir", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11") and "repository" not in definitions:
                 raise ValueError(f"{name} repository definition is missing")
             if not {
                 "codeBlockMetadata", "headingMetadata", "listMetadata",
@@ -297,5 +305,3 @@ def verify_schema_set(repo: Path) -> None:
         path = directory / f"doc-ir-v{version}.schema.json"
         if sha256(path) != expected_hash:
             raise ValueError(f"published doc-ir-v{version} schema is not byte-frozen")
-
-

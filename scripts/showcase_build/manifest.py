@@ -6,6 +6,7 @@ from pathlib import Path
 
 from showcase_contract.contract import PLAN_SCHEMA, validate_plan
 from showcase_contract.site import ContractError, load_json, relative_path
+from showcase_inputs import source_inputs
 
 LOCALES = ("zh-CN", "en")
 JOURNEYS = {"members", "types", "contracts", "resources", "guides", "search", "doctest",
@@ -50,14 +51,7 @@ def compile_plan(repo: Path, site: Path) -> dict:
     if catalog.get("schemaVersion") != "cjdoc.showcase-catalog/1":
         raise ContractError("unsupported maintained showcase catalog")
     plan = {"schemaVersion": PLAN_SCHEMA, "features": []}
-    # Explicit, revision-controlled source inventory; derived indices are not source claims.
-    inputs = ["site/showcase-catalog.json", "examples/pocketkit/LICENSE", "examples/pocketkit/reproduce.py"]
-    for version in ("demo-v1", "demo-v2"):
-        inputs += [f"examples/pocketkit/{version}/{path}" for path in
-                   ("cjpm.toml", "cjdoc.toml", "src/catalog.cj", "src/io/reader.cj",
-                    "src/parsing/parser.cj", "docs/index.md", "docs/guide.md")]
-    inputs += [f"examples/pocketkit/{part}/{path}" for part in ("support-v1", "diagnostics")
-               for path in ("cjpm.toml", "cjdoc.toml", "src/api.cj", "docs/index.md")]
+    inputs = source_inputs()
     for source in catalog["features"]:
         feature = {key: deepcopy(source[key]) for key in
                    ("id", "title", "implementation", "demonstration", "reason")}
@@ -72,7 +66,7 @@ def compile_plan(repo: Path, site: Path) -> dict:
                           "scenarios": [{"id": source["journey"] + "-" + transport + "-" + width,
                                          "mode": "file" if transport == "offline" else "http"}
                                         for transport in ("root", "subpath", "offline")
-                                        for width in ("desktop", "narrow")]}
+                                        for width in ("desktop", "narrow", "mobile")]}
                 if specification.get("download"):
                     target.update(kind="artifact", path=f"downloads/{locale}.html")
                 else:

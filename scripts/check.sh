@@ -5,6 +5,55 @@ export PYTHONDONTWRITEBYTECODE=1
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 python_cmd="${CJDOC_PYTHON:-python3}"
+fixture_project_root="${repo_root}/tests/fixtures/projects"
+worker_project="${repo_root}/tools/chir-worker"
+worker_target="${worker_project}/target"
+ensure_fixture_build_outputs_absent() {
+    "${python_cmd}" - "${fixture_project_root}" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+targets = sorted(
+    (path for path in root.rglob("target") if path.is_dir() or path.is_symlink()),
+    key=lambda path: path.relative_to(root).as_posix(),
+)
+if targets:
+    names = ", ".join(path.relative_to(root).as_posix() for path in targets)
+    print("fixture build output already exists; refusing destructive cleanup: " + names,
+          file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+cleanup_fixture_build_outputs() {
+    "${python_cmd}" - "${fixture_project_root}" <<'PY'
+from pathlib import Path
+import shutil
+import sys
+
+root = Path(sys.argv[1])
+targets = sorted(
+    (path for path in root.rglob("target") if path.is_symlink() or path.is_dir()),
+    key=lambda path: len(path.parts),
+    reverse=True,
+)
+for target in targets:
+    if target.is_symlink():
+        target.unlink()
+    elif target.is_dir():
+        shutil.rmtree(target)
+PY
+}
+ensure_fixture_build_outputs_absent
+if [[ -e "${worker_target}" || -L "${worker_target}" ]]; then
+    printf '%s\n' 'worker build output already exists; refusing destructive cleanup: tools/chir-worker/target' >&2
+    exit 1
+fi
+cleanup_generated_build_outputs() {
+    rm -rf -- "${worker_target}"
+    cleanup_fixture_build_outputs
+}
+trap cleanup_generated_build_outputs EXIT
 "${python_cmd}" "${repo_root}/scripts/safe_output_root.py" --repo "${repo_root}" \
     --directory "${repo_root}/target" --create >/dev/null
 target_root="${repo_root}/target"
@@ -17,7 +66,8 @@ cd "${repo_root}"
 "${python_cmd}" scripts/verify_repository_inputs.py --repo "${repo_root}" --require-tracked
 "${python_cmd}" "${repo_root}/scripts/safe_output_root.py" --repo "${repo_root}" \
     --directory "${target_root}/release/bin" --allow-missing >/dev/null
-cjpm build
+# Keep project compilation single-job; STS 1.2.0's bundled llc has crashed under concurrent CI jobs.
+cjpm build --jobs 1
 if [[ -x "${binary}" || ( -f "${binary}" && ( "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ) ) ]]; then
     :
 elif [[ -f "${binary}.exe" ]]; then
@@ -28,7 +78,17 @@ else
 fi
 "${python_cmd}" scripts/verify_repository_inputs.py --repo "${repo_root}" \
     --require-tracked --legacy-binary "${binary}"
-cjpm test
+worker_binary="${worker_target}/release/bin/main"
+if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
+    worker_binary="${worker_binary}.exe"
+fi
+(cd "${worker_project}" && cjpm build --jobs 1)
+if [[ ! -x "${worker_binary}" && ! ( -f "${worker_binary}" && ( "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ) ) ]]; then
+    echo "CHIR worker executable was not produced at ${worker_binary}" >&2
+    exit 1
+fi
+export CJDOC_CHIR_WORKER="${worker_binary}"
+cjpm test --jobs 1
 "${python_cmd}" -m unittest discover -s scripts -p 'test_*.py'
 
 "${python_cmd}" "${repo_root}/scripts/safe_output_root.py" --repo "${repo_root}" \
@@ -36,7 +96,19 @@ cjpm test
 rm -rf "${check_dir}"
 mkdir -p "${check_dir}/schemas"
 
-for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage doctest-results versions; do
+"${binary}" generate --project tests/fixtures/projects/chir_semantics \
+    --semantic chir --chir-worker "${worker_binary}" --format json --stdout \
+    >"${check_dir}/chir-worker-cli.json" 2>"${check_dir}/chir-worker-cli.stderr"
+"${python_cmd}" -c 'import json,sys; document=json.load(open(sys.argv[1], encoding="utf-8")); names={item["name"] for item in document["declarations"]}; assert document["providers"][0]["name"]=="chir" and {"State","extra"} <= names and not any(item["code"]=="CJDOC2101" for item in document["diagnostics"])' \
+    "${check_dir}/chir-worker-cli.json"
+
+"${binary}" generate --project tests/fixtures/projects/basic --semantic chir \
+    --format json --stdout >"${check_dir}/chir-unconfigured-cli.json" \
+    2>"${check_dir}/chir-unconfigured-cli.stderr"
+"${python_cmd}" -c 'import json,sys; document=json.load(open(sys.argv[1], encoding="utf-8")); assert len(document["declarations"])==25 and any(item["code"]=="CJDOC2101" and "worker executable is not configured" in item["message"] for item in document["diagnostics"])' \
+    "${check_dir}/chir-unconfigured-cli.json"
+
+for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 doc-ir-v11 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${check_dir}/schemas/${schema_name}.schema.json"
 done
@@ -46,6 +118,7 @@ cmp docs/schema/doc-ir-v7.schema.json "${check_dir}/schemas/doc-ir-v7.schema.jso
 cmp docs/schema/doc-ir-v8.schema.json "${check_dir}/schemas/doc-ir-v8.schema.json"
 cmp docs/schema/doc-ir-v9.schema.json "${check_dir}/schemas/doc-ir-v9.schema.json"
 cmp docs/schema/doc-ir-v10.schema.json "${check_dir}/schemas/doc-ir-v10.schema.json"
+cmp docs/schema/doc-ir-v11.schema.json "${check_dir}/schemas/doc-ir-v11.schema.json"
 cmp docs/schema/diagnostics.schema.json "${check_dir}/schemas/diagnostics.schema.json"
 cmp docs/schema/cfg-matrix.schema.json "${check_dir}/schemas/cfg-matrix.schema.json"
 cmp docs/schema/search-index.schema.json "${check_dir}/schemas/search-index.schema.json"
@@ -56,6 +129,7 @@ cmp docs/schema/api-surface-v1.schema.json "${check_dir}/schemas/api-surface-v1.
 cmp docs/schema/api-diff.schema.json "${check_dir}/schemas/api-diff.schema.json"
 cmp docs/schema/documentation-coverage-v1.schema.json "${check_dir}/schemas/documentation-coverage-v1.schema.json"
 cmp docs/schema/documentation-coverage.schema.json "${check_dir}/schemas/documentation-coverage.schema.json"
+cmp docs/schema/documentation-quality.schema.json "${check_dir}/schemas/documentation-quality.schema.json"
 cmp docs/schema/doctest-results.schema.json "${check_dir}/schemas/doctest-results.schema.json"
 cmp docs/schema/versions.schema.json "${check_dir}/schemas/versions.schema.json"
 
@@ -68,24 +142,28 @@ run_golden() {
         --output "${check_dir}/${name}/first" --cache-dir "${check_dir}/cache/${name}" "$@" >/dev/null
     "${binary}" generate --project "${project}" --format json \
         --output "${check_dir}/${name}/second" --cache-dir "${check_dir}/cache/${name}" "$@" >/dev/null
-    cmp "${expected}" "${check_dir}/${name}/first/docs.json"
+    if ! cmp -s "${expected}" "${check_dir}/${name}/first/docs.json"; then
+        diff -u --label "expected ${name}" --label "generated ${name}" \
+            "${expected}" "${check_dir}/${name}/first/docs.json" || true
+        return 1
+    fi
     cmp "${check_dir}/${name}/first/docs.json" "${check_dir}/${name}/second/docs.json"
     "${binary}" render --input "${check_dir}/${name}/first/docs.json" \
         --format json --stdout | tr -d '\r' >"${check_dir}/${name}/validated.json"
     cmp "${check_dir}/${name}/first/docs.json" "${check_dir}/${name}/validated.json"
 }
 
-run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v10/basic.docs.json
-run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v10/functions.docs.json
-run_golden types tests/fixtures/projects/types tests/fixtures/golden-v10/types.docs.json
-run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v10/extend.docs.json
-run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v10/source-edges.docs.json
-run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v10/unsupported.docs.json
-run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v10/workspace.docs.json
+run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v11/basic.docs.json
+run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v11/functions.docs.json
+run_golden types tests/fixtures/projects/types tests/fixtures/golden-v11/types.docs.json
+run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v11/extend.docs.json
+run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v11/source-edges.docs.json
+run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v11/unsupported.docs.json
+run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v11/workspace.docs.json
 run_golden conditional-linux tests/fixtures/projects/conditional \
-    tests/fixtures/golden-v10/conditional-linux.docs.json --cfg os=Linux
+    tests/fixtures/golden-v11/conditional-linux.docs.json --cfg os=Linux
 run_golden path-dependencies tests/fixtures/projects/path_dependencies \
-    tests/fixtures/golden-v10/path-dependencies.docs.json --include-path-dependencies
+    tests/fixtures/golden-v11/path-dependencies.docs.json --include-path-dependencies
 
 "${binary}" generate --project tests/fixtures/projects/basic \
     --format json --format markdown --format html --output "${check_dir}/all/first" \
@@ -125,7 +203,7 @@ test "${version_traversal_code}" -eq 2
 test -s "${check_dir}/versions-bad.stderr"
 "${binary}" generate --project tests/fixtures/projects/basic --format json --stdout \
     --cache-dir "${check_dir}/cache/stdout" >"${check_dir}/stdout.json"
-"${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/10" and len(value["declarations"]) == 25' \
+"${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/11" and len(value["declarations"]) == 25' \
     "${check_dir}/stdout.json"
 
 set +e
@@ -241,9 +319,10 @@ test ! -e "${provider_build_cache}"
 test ! -e "${provider_target}"
 cleanup_provider_outputs() {
     rm -rf -- "${provider_build_cache}" "${provider_target}"
+    cleanup_generated_build_outputs
 }
 trap cleanup_provider_outputs EXIT
-(cd "${provider_project}" && cjpm run)
+(cd "${provider_project}" && cjpm run --build-args "--jobs 1")
 cleanup_provider_outputs
 trap - EXIT
 

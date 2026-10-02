@@ -19,6 +19,52 @@ LOCALES = ("zh-CN", "en")
 FORMATS = ("html", "json", "markdown", "api-surface", "coverage")
 
 
+def check_directive_examples(binary: Path, source: Path, output: Path) -> Path:
+    """Capture native check evidence without inventing per-example results."""
+    project = source / "check-modes"
+    destination = output / "check-modes"
+    destination.mkdir()
+    command = [str(binary), "check", "--project", str(project),
+               "--check-examples", "--lint-profile", "off", "--no-cache"]
+    print("+ " + " ".join(command), flush=True)
+    completed = subprocess.run(command, cwd=source, capture_output=True, text=True,
+                               check=False, timeout=300)
+    compiler = subprocess.run(["cjc", "-v"], cwd=source, capture_output=True,
+                              text=True, check=True, timeout=30)
+    inventory = []
+    for relative in ("cjpm.toml", "cjdoc.toml", "src/api.cj"):
+        path = project / relative
+        copied = destination / relative
+        copied.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, copied)
+        inventory.append({"path": relative, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+    record = {
+        "schemaVersion": "cjdoc.showcase-native-check/1",
+        "scope": "aggregate command evidence; no per-example result claim",
+        "command": ["cjdoc", "check", "--project", "examples/pocketkit/check-modes",
+                    "--check-examples", "--lint-profile", "off", "--no-cache"],
+        "workingDirectory": "source archive root",
+        "executableSha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+        "compilerVersion": (compiler.stdout + compiler.stderr).strip(),
+        "sources": inventory,
+        "exitCode": completed.returncode,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+    }
+    (destination / "native-check.json").write_text(
+        json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if completed.returncode != 0:
+        raise subprocess.CalledProcessError(completed.returncode, command,
+                                            completed.stdout, completed.stderr)
+    # This dedicated package intentionally has exactly one unpinned, no-code
+    # example. Keep its skip visible and reject any other native diagnostic.
+    diagnostics = [line for line in completed.stderr.splitlines()
+                   if "[CJDOC" in line]
+    if len(diagnostics) != 1 or "[CJDOC3032]" not in diagnostics[0]:
+        raise ValueError("directive checks did not produce the exact expected skip diagnostic")
+    return destination
+
+
 def run(command: list[str], cwd: Path, *, output: Path | None = None) -> None:
     print("+ " + " ".join(command), flush=True)
     if output is None:
@@ -55,7 +101,8 @@ def assemble(output: Path) -> Path:
     machine.mkdir()
     for source, name in ((output / "docs.json", "docs.json"),
                          (output / "api-surface/api-surface.json", "api-surface.json"),
-                         (output / "coverage/coverage.json", "coverage.json")):
+                         (output / "coverage/coverage.json", "coverage.json"),
+                         (output / "coverage/quality.json", "quality.json")):
         shutil.copyfile(source, machine / name)
     shutil.copytree(output / "markdown", machine / "markdown")
     results = output / "doctest/results.json"
@@ -69,6 +116,29 @@ def assemble(output: Path) -> Path:
             raise ValueError("native validation page has no expected doctest evidence link")
         page.write_text(content.replace(old, 'href="doctest/results.json"'), encoding="utf-8")
     return root
+
+
+def validate_diagnostic_examples(output: Path) -> None:
+    """Accept only the two maintained negative outcomes from the native runner."""
+    report = json.loads((output / "doctest/results.json").read_text(encoding="utf-8"))
+    if report.get("schemaVersion") != "cjdoc.doctest/1" or report.get("mode") != "warn":
+        raise ValueError("diagnostic examples require the native warning-mode report")
+    expected = {"pocket_diagnostics.deliberateFailure": "failed",
+                "pocket_diagnostics.explanatoryExample": "skipped"}
+    results = report.get("results", [])
+    if len(results) != len(expected) or {
+            item.get("qualifiedName"): item.get("status") for item in results} != expected:
+        raise ValueError("diagnostic examples differ from the explicit expected result set")
+    if report.get("summary") != {"passed": 0, "failed": 1, "timedOut": 0, "skipped": 1}:
+        raise ValueError("diagnostic examples have an unexpected native summary")
+    for item in results:
+        if item["status"] == "failed":
+            if (type(item.get("exitCode")) is not int or item["exitCode"] != 1
+                    or item.get("message") != "compile failed"
+                    or "mismatched types" not in item.get("stderr", "")):
+                raise ValueError("deliberate failure must be the expected compiler type error")
+        elif item.get("exitCode") is not None or item.get("message") != "no executable Cangjie fence":
+            raise ValueError("explanatory example must retain its native no-code skip")
 
 
 def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] = LOCALES,
@@ -85,6 +155,7 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
     before = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in managed}
     output.mkdir(parents=True)
     options = dict(repository=repository, revision=revision, repository_root=repository_root)
+    checks = check_directive_examples(binary, source, output)
     support = generate(binary, source / "support-v1", output / "support", locale="en",
                        version="support-v1", **options)
     index = support / "html/symbol-index.json"
@@ -93,7 +164,7 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
         raise ValueError("independent dependency index has the wrong schema/version")
     for version in VERSIONS:
         shutil.copyfile(index, source / version / "docs/support-symbol-index.json")
-    result = {"support": support, "locales": {}}
+    result = {"support": support, "checks": checks, "locales": {}}
     for locale in locales:
         directory = output / locale
         directory.mkdir()
@@ -129,6 +200,7 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
             roots[version] = root
         diagnostics = generate(binary, source / "diagnostics", directory / "diagnostics",
                                locale=locale, version="diagnostics", **options)
+        validate_diagnostic_examples(diagnostics)
         assemble(diagnostics)
         result["locales"][locale] = dict(generated=generated, composed=composed,
                                          roots=roots, diff=diff, diagnostics=diagnostics)

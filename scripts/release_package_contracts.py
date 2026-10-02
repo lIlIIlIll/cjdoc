@@ -16,6 +16,7 @@ STREAM_CHUNK_SIZE = 1024 * 1024
 SCHEMA_PAYLOAD = {
     "docs/schema/doc-ir.schema.json",
     "docs/schema/doc-ir-v9.schema.json",
+    "docs/schema/doc-ir-v11.schema.json",
     "docs/schema/doc-ir-v10.schema.json",
     "docs/schema/doc-ir-v6.schema.json",
     "docs/schema/doc-ir-v7.schema.json",
@@ -29,6 +30,7 @@ SCHEMA_PAYLOAD = {
     "docs/schema/api-surface-v1.schema.json",
     "docs/schema/api-diff.schema.json",
     "docs/schema/documentation-coverage.schema.json",
+    "docs/schema/documentation-quality.schema.json",
     "docs/schema/doctest-results.schema.json",
 }
 REPOSITORY_PAYLOAD = {

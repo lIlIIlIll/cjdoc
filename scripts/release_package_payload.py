@@ -88,12 +88,21 @@ def verify_repository_payload(members: dict[str, ArchiveMember], repo: Path,
 
 def inspect_archive(path: Path, platform_name: str, version: str,
                     sdk_version: str, sdk_sha256: str,
-                    source_commit: str) -> tuple[dict[str, object], dict[str, ArchiveMember], str]:
+                    source_commit: str,
+                    stdx_version: str | None = None,
+                    stdx_sha256: str | None = None) -> tuple[dict[str, object], dict[str, ArchiveMember], str]:
     path = lexical_absolute(path)
     if not SEMVER.fullmatch(version):
         raise ValueError("release package version must be a stable three-part SemVer")
     if not SHA256.fullmatch(sdk_sha256):
         raise ValueError("SDK archive SHA-256 must be lowercase 64-hex")
+    if (stdx_version is None) != (stdx_sha256 is None):
+        raise ValueError("stdx version and checksum must be supplied together")
+    if stdx_version is not None:
+        if not SEMVER.fullmatch(stdx_version):
+            raise ValueError("stdx version must be a stable three-part SemVer")
+        if not SHA256.fullmatch(stdx_sha256 or ""):
+            raise ValueError("stdx archive SHA-256 must be lowercase 64-hex")
     if not COMMIT.fullmatch(source_commit):
         raise ValueError("source commit must be lowercase 40-hex")
     extension = ".zip" if platform_name.startswith("windows-") else ".tar.gz"
@@ -123,20 +132,35 @@ def inspect_archive(path: Path, platform_name: str, version: str,
         )
     except ValueError as error:
         raise ValueError(f"release manifest is invalid: {error}") from error
+    schema_version = manifest.get("schemaVersion") if isinstance(manifest, dict) else None
     if not isinstance(manifest, dict) or set(manifest) != {
         "schemaVersion", "version", "platform", "sourceCommit", "runtime", "files"
-    } or manifest.get("schemaVersion") != "cjdoc.release-package/2":
+    } or schema_version not in {
+        "cjdoc.release-package/2", "cjdoc.release-package/3"
+    }:
         raise ValueError("unknown release package manifest schema")
     if manifest.get("version") != version or manifest.get("platform") != platform_name:
         raise ValueError("release package identity does not match its declared target")
     if manifest.get("sourceCommit") != source_commit:
         raise ValueError("release package source commit does not match")
     runtime = manifest.get("runtime")
-    if not isinstance(runtime, dict) or set(runtime) != {
-        "requiresCangjieSdk", "sdkVersion", "sdkArchiveSha256"
-    } or runtime.get("requiresCangjieSdk") is not True or \
-            runtime.get("sdkVersion") != sdk_version or runtime.get("sdkArchiveSha256") != sdk_sha256:
-        raise ValueError("release package SDK requirement does not match")
+    if schema_version == "cjdoc.release-package/2":
+        if stdx_version is not None:
+            raise ValueError("release package omits required stdx provenance")
+        if not isinstance(runtime, dict) or set(runtime) != {
+            "requiresCangjieSdk", "sdkVersion", "sdkArchiveSha256"
+        } or runtime.get("requiresCangjieSdk") is not True or \
+                runtime.get("sdkVersion") != sdk_version or runtime.get("sdkArchiveSha256") != sdk_sha256:
+            raise ValueError("release package SDK requirement does not match")
+    else:
+        if stdx_version is None or not isinstance(runtime, dict) or set(runtime) != {
+            "requiresCangjieSdk", "sdkVersion", "sdkArchiveSha256",
+            "requiresStdx", "stdxVersion", "stdxArchiveSha256"
+        } or runtime.get("requiresCangjieSdk") is not True or \
+                runtime.get("sdkVersion") != sdk_version or runtime.get("sdkArchiveSha256") != sdk_sha256 or \
+                runtime.get("requiresStdx") is not True or runtime.get("stdxVersion") != stdx_version or \
+                runtime.get("stdxArchiveSha256") != stdx_sha256:
+            raise ValueError("release package SDK and stdx requirements do not match")
     files = manifest.get("files")
     if not isinstance(files, dict):
         raise ValueError("release package manifest files must be an object")

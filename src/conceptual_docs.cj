@@ -412,7 +412,7 @@ private func conceptualSlug(value: String): String {
     slug
 }
 
-private func conceptualSymbolSlug(value: String): String {
+internal func conceptualSymbolSlug(value: String): String {
     let digits = "0123456789abcdef"
     let out = StringBuilder()
     if (value.isEmpty()) { return "root" }
@@ -435,7 +435,7 @@ private func conceptualStableHash(value: String): String {
     "${first}-${second}"
 }
 
-private func conceptualSymbolPath(symbolId: String): String {
+internal func conceptualSymbolPath(symbolId: String): String {
     let slug = conceptualSymbolSlug(symbolId)
     let bounded = if (slug.size <= 96) { slug } else {
         slug[..64] + "--" + conceptualStableHash(symbolId)
@@ -992,6 +992,7 @@ private func conceptualSearchIndex(base: String, pages: ArrayList<ConceptualPage
         out.append(conceptualJsonString(page.route))
         out.append(",\"kind\":\"concept\",\"packageName\":\"\",\"summary\":\"\",\"href\":")
         out.append(conceptualJsonString(page.route))
+        out.append(",\"moduleId\":\"conceptual\",\"moduleName\":null,\"ownerName\":null,\"parameterTypes\":[],\"returnType\":null,\"returnCanonical\":null")
         out.append(",\"bindings\":[")
         var firstBinding = true
         for (binding in page.bindings) {
@@ -1134,9 +1135,11 @@ private func conceptualBindingsHtml(page: ConceptualPage,
 }
 
 private func conceptualMarkdownBodyHtml(documentation: public_model.DocumentationSet,
-    page: ConceptualPage, markdown: String): String {
+    page: ConceptualPage, pages: ArrayList<ConceptualPage>, markdown: String): String {
     try {
-        public_render.renderStandaloneMarkdownHtml(parseStandaloneMarkdown(markdown))
+        let parsed = parseStandaloneMarkdown(markdown)
+        public_render.renderStandaloneMarkdownHtml(parsed,
+            sourceLinks: conceptualSourceLinks(parsed, page, pages))
     } catch (_: Exception) {
         let source = public_model.SourceRange(page.source, public_model.SourcePosition(1, 1, 0),
             public_model.SourcePosition(1, 1, 0))
@@ -1155,7 +1158,7 @@ internal func renderConceptualDocumentationArtifacts(documentation: public_model
         if (format == "html") {
             for (page in pages) {
                 let markdown = conceptualMarkdownWithoutBindings(page.markdown)
-                let body = conceptualMarkdownBodyHtml(documentation, page, markdown)
+                let body = conceptualMarkdownBodyHtml(documentation, page, pages, markdown)
                 let bindings = conceptualBindingsHtml(page, documentation, locale)
                 let pageBody = if (page.kind == "project") {
                     body + conceptualProjectHtmlNavigation(pages) + bindings
@@ -1272,9 +1275,14 @@ private func conceptualExternalUsageHtml(symbol: public_model.SymbolDoc,
         out.append("</strong> ")
         if (!qualifiedUrl.isEmpty()) {
             out.append("<a rel=\"noreferrer\" href=\"")
-            out.append(public_render.escapeStandaloneHtml(qualifiedUrl))
+            // Resolver-relative links are rooted at the docset. Every symbol
+            // detail and inline member lives one directory below that root.
+            let destination = if (qualifiedUrl.startsWith("./")) {
+                "../" + qualifiedUrl.removePrefix("./")
+            } else { qualifiedUrl }
+            out.append(public_render.escapeStandaloneHtml(destination))
             out.append("\">")
-            out.append(conceptualBindingLabel(locale, "Open official reference", "打开官方参考"))
+            out.append(conceptualBindingLabel(locale, "Open external reference", "打开外部参考"))
             out.append("</a>")
         } else if (qualifiedAmbiguous) {
             out.append("<span class=\"badge\" data-state=\"ambiguous\">ambiguous</span>")
@@ -1325,7 +1333,10 @@ private func conceptualExternalUsageMarkdown(symbol: public_model.SymbolDoc,
         count++
         out.append("- **" + public_render.escapeStandaloneHtml(resolver.name) + "** ")
         if (!qualifiedUrl.isEmpty()) {
-            out.append("[Open official reference](" + conceptualMarkdownDestination(qualifiedUrl) + ")")
+            let destination = if (qualifiedUrl.startsWith("./")) {
+                "../" + qualifiedUrl.removePrefix("./")
+            } else { qualifiedUrl }
+            out.append("[Open external reference](" + conceptualMarkdownDestination(destination) + ")")
         } else if (qualifiedAmbiguous) {
             out.append("ambiguous")
         } else {

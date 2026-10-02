@@ -3,7 +3,7 @@ package pocket_diagnostics
 /**
  * 故意触发编译失败的隔离示例，不属于默认入门结果。
  *
- * 本项目只检验失败被如实记录。没有 expected-failure 成功模式，raw status 必须保持 failed，
+ * 本项目检验 legacy doctest 如实记录失败；这里没有写 must-fail 指令，raw status 必须保持 failed，
  * 不能把它计入通过样本。{@link MissingDocumentationTarget} 应保持 unresolved。
  *
  * @example 故意错误的赋值
@@ -27,7 +27,7 @@ public class Second {
 
 /**
  * {@link duplicate} 在本项目不唯一，应该显示 ambiguous 而不是猜测一个目标。
- * {@link First.duplicate()} 和 {@link Second.duplicate()} 提供限定名示例。
+ * {@link pocket_diagnostics.First.duplicate} 和 {@link pocket_diagnostics.Second.duplicate} 提供限定名示例。
  */
 public func ambiguousReference(): Unit {}
 

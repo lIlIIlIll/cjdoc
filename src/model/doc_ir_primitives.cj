@@ -2,7 +2,8 @@ package cjdoc.model
 
 import std.collection.*
 
-public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/10"
+public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/11"
+public let DOC_IR_V11_SCHEMA_VERSION = "cjdoc.doc-ir/11"
 public let DOC_IR_V10_SCHEMA_VERSION = "cjdoc.doc-ir/10"
 public let DOC_IR_V9_SCHEMA_VERSION = "cjdoc.doc-ir/9"
 public let DOC_IR_V8_SCHEMA_VERSION = "cjdoc.doc-ir/8"

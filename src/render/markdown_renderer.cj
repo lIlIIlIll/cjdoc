@@ -476,7 +476,7 @@ internal func appendMarkdownArtifacts(artifacts: RenderArtifactCollector,
             out.append("<a id=\"${symbolAnchor(declaration)}\"></a>\n")
             out.append("### "); appendMarkdownCodeSpan(out, declaration.qualifiedName)
             out.append("\n\n")
-            appendMarkdownCodeBlock(out, declaration.headerSpelling, "cj", "`", 3)
+            appendMarkdownCodeBlock(out, declaration.headerSpelling, "cangjie", "`", 3)
             match (declaration.documentation) {
                 case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
                     symbolIndex: Some(projection.visibleIndex))

@@ -107,6 +107,7 @@ generated <你的项目目录>/target/doc
 | 生成 JSON | `cjdoc generate --project . --format json` | `target/doc/docs.json` |
 | 生成 API snapshot | `cjdoc generate --project . --format api-surface --stdout > api-surface.json` | `api-surface.json` |
 | 检查文档问题 | `cjdoc check --project .` | 终端诊断，成功退出码为 `0` |
+| 检查示例 | `cjdoc check --project . --check-examples` | 按 `@example` 指令校验或运行 `cangjie` 代码块 |
 
 启用可执行的 `@example` Cangjie 代码块，在项目根的 `cjdoc.toml` 中加入：
 
@@ -146,7 +147,7 @@ cjdoc generate --project . \
   --format html
 ```
 
-`--format` 可以重复指定。完整任务说明见 [`docs/usage.md`](docs/usage.md)；workspace、依赖、条件编译、缓存和 CI 见 [`docs/advanced-usage.md`](docs/advanced-usage.md)。
+`--format` 可以重复指定。默认语义后端为 `source`。显式启用 CHIR enrichment 时，仅 `generate`/`check` 接受 `--semantic chir`，并且必须提供独立构建的 `--chir-worker <path>`；worker 实现位于 `tools/chir-worker`，只有该包依赖 `stdx.chir`。可用 `--cjc <path>` 和重复的 `--chir-import-path <dir>` 配置 worker。缺少 worker 或 CHIR 失败时，source declarations 会保留并产生 `CJDOC2101`–`CJDOC2106` warning。`render` 只消费已有 Doc IR。完整任务说明见 [`docs/usage.md`](docs/usage.md)；workspace、依赖、条件编译、缓存和 CI 见 [`docs/advanced-usage.md`](docs/advanced-usage.md)。
 
 ## 常见问题
 
@@ -176,7 +177,7 @@ cjdoc generate --project . --format html --audience all
 
 ## 当前边界
 
-- 当前输出版本是 `cjdoc.doc-ir/10`。输入端严格兼容已发布的 v6、v7、v8、v9；普通用户不需要直接编辑这个 JSON。
+- 当前输出版本是 `cjdoc.doc-ir/11`。输入端严格兼容已发布的 v6、v7、v8、v9、v10；普通用户不需要直接编辑这个 JSON。
 - 无法展开的宏、没有提供的条件编译输入和部分不支持的源码会产生诊断，并可能使结果标为 `partial`。
 - cjdoc 不会替你下载依赖源码。需要把依赖纳入文档时，按 [`docs/advanced-usage.md`](docs/advanced-usage.md) 的说明提供路径或 cache。
 
@@ -185,4 +186,4 @@ cjdoc generate --project . --format html --audience all
 - [`docs/usage.md`](docs/usage.md)：常用任务和文档注释写法。
 - [`docs/advanced-usage.md`](docs/advanced-usage.md)：多格式、workspace、依赖、缓存、CI 和维护者用法。
 - [`docs/release-process.md`](docs/release-process.md)：发布与验收流程，面向维护者。
-- [`docs/research/`](docs/research/)：源码解析能力和架构决策记录，面向维护者。
+- [`docs/research/`](https://github.com/lIlIIlIll/cjdoc/tree/main/docs/research)：源码解析能力和架构决策记录，面向维护者。
