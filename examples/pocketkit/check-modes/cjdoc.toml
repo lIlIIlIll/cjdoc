@@ -1,0 +1,4 @@
+# Directive examples are checked explicitly with --check-examples. The legacy
+# doctest runner does not own these examples and must not claim their results.
+[doctest]
+mode = "off"

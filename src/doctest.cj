@@ -659,9 +659,11 @@ private func executeSnippet(snippet: DoctestSnippet, config: DoctestConfig,
     File.writeTo(source, doctestProgram(snippet.code,
         projectPackageName: projectPackageName).toArray())
     let compileArguments = ArrayList<String>()
-    compileArguments.add(source.toString())
+    // The compiler already runs in caseRoot. Relative input/output names keep
+    // its original diagnostics portable without rewriting evidence afterwards.
+    compileArguments.add("example.cj")
     compileArguments.add("-o")
-    compileArguments.add(executable.toString())
+    compileArguments.add("example")
     compileArguments.add("--static")
     match ((projectContext, selectedPackage)) {
         case (Some(context), Some(packageContext)) =>

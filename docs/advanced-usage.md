@@ -310,14 +310,19 @@ cjdoc schema doc-ir > doc-ir.schema.json
 
 普通工具用户应优先下载 release binary。只有在发布页没有对应资产，或你正在修改 cjdoc 时，才从源码构建。
 
-源码构建需要同一版本的 Cangjie 1.3.0 `cjc`/`cjpm` 和 sibling `stdx` sidecar，并能访问 `cjpm.lock` 固定的 Git 依赖，或已经准备好对应的 cjpm cache。在仓库根目录运行：
+当前源码与 Pages 构建使用 Cangjie **1.2.0 STS** 的 `cjc`/`cjpm` 和匹配的 `stdx` release/1.2 sidecar，并需要 `cjpm.lock` 固定的 Git 依赖，或已经准备好的对应 cjpm cache。SDK 与 sidecar 的固定来源、校验和及构建步骤见 [Pages workflow](../.github/workflows/pages.yml)。
+
+复现 Linux 展示构建时，按该工作流准备 SDK 和 sidecar，再执行完整的 “Build cjdoc” 步骤。SDK 1.2.0 的 `llc` 在默认优化级别处理 markdown/yjson 时会崩溃；该步骤临时设置 `override-compile-option = "-O1"`，并在结束时恢复原清单。不要省略这个处理而直接使用默认构建命令。完整展示复现与验收说明见同一仓库 revision 的 `docs/showcase-contract.md`。
+
+构建完成后，在同一 SDK 环境下从仓库根目录确认工具版本：
 
 ```bash
-python3 scripts/with_stdx.py --variant static -- cjpm build
+cjc -v
+cjpm -v
 ./cjdoc --version
 ```
 
-仓库根目录的 `./cjdoc` launcher 在 binary 不存在时也会尝试构建。维护者验收使用 `scripts/check.sh`；发布验收和证据分层见 [`docs/release-process.md`](release-process.md)。
+仓库根目录的 `./cjdoc` launcher 在 binary 不存在时会尝试默认构建；SDK 1.2.0 下应先完成上面的构建步骤。维护者运行 `scripts/check.sh` 时，使用 [CI workflow](../.github/workflows/ci.yml) 中同一 SDK、sidecar 和临时 `-O1` 包装步骤。Tag 发布流程仍单独配置 Cangjie 1.3.0；其验收与当前源码/Pages 构建分开，见 [`docs/release-process.md`](release-process.md)。
 
 ## 能力边界
 

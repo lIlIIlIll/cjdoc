@@ -121,6 +121,8 @@ jobs = 1
 
 `generate` 会把结果写入 `target/doc/doctest/results.json`；`warn` 只报告失败，`deny` 返回退出码 `1`。每个示例在独立临时工作目录中通过参数数组启动编译器和程序，不经过 shell；`--stdout` 不能与启用的 doctest 同时使用。结果 schema 是 `cjdoc.doctest/1`。
 
+这条 legacy doctest 管线的正数内存限制依赖 `/usr/bin/prlimit` 或 `/bin/prlimit`。限制器不可用时（包括当前 macOS、Windows 环境），会在启动编译进程前明确拒绝；`warn` 不会绕过这项安全要求。
+
 比较 API snapshot 使用 `diff`：
 
 ```bash
@@ -186,4 +188,4 @@ cjdoc generate --project . --format html --audience all
 - [`docs/usage.md`](docs/usage.md)：常用任务和文档注释写法。
 - [`docs/advanced-usage.md`](docs/advanced-usage.md)：多格式、workspace、依赖、缓存、CI 和维护者用法。
 - [`docs/release-process.md`](docs/release-process.md)：发布与验收流程，面向维护者。
-- [`docs/research/`](docs/research/)：源码解析能力和架构决策记录，面向维护者。
+- [`docs/research/`](https://github.com/lIlIIlIll/cjdoc/tree/main/docs/research)：源码解析能力和架构决策记录，面向维护者。

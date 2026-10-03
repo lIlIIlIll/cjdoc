@@ -701,6 +701,56 @@ class ExampleCompilerTest {
     }
 
     @TestCase
+    func legacyDoctestKeepsDiagnosticsPortableOrRefusesUnboundedCompilation(): Unit {
+        let root = createExampleProject(sourceWith(
+            """
+             * @example Ordinary failure
+             * ```cangjie
+             * let invalid: Int64 = "wrong"
+             * ```
+            """))
+        try {
+            let generated = generateDocumentationWithSource(
+                exampleRequest(root, false), defaultSemanticProvider())
+            let config = DoctestConfig(mode: "warn")
+            let unavailable = "address-space memory limit is unavailable on this platform"
+            // Probe the existing command wrapper without launching a process.
+            // Platforms without prlimit must reject the request, not run this
+            // regression with the memory limit disabled or silently skip it.
+            let canBoundMemory = try {
+                let _ = memoryBoundedCommand("cjc", [], config.memoryMb)
+                true
+            } catch (error: IllegalStateException) {
+                @Expect(error.message, unavailable)
+                false
+            }
+            if (!canBoundMemory) {
+                var refusal = ""
+                try {
+                    let _ = runDoctests(generated.publicDocumentation, config,
+                        root.join("legacy-doctest"), projectRoot: root,
+                        sourceOrigins: generated.internalDocumentation.sourceFileOrigins.toArray())
+                } catch (error: IllegalStateException) {
+                    refusal = error.message
+                }
+                @Expect(refusal, unavailable)
+                return
+            }
+            let report = runDoctests(generated.publicDocumentation,
+                config, root.join("legacy-doctest"),
+                projectRoot: root,
+                sourceOrigins: generated.internalDocumentation.sourceFileOrigins.toArray())
+            @Expect(report.results.size, 1)
+            @Expect(report.results[0].status, "failed")
+            @Expect(report.results[0].stderr.contains("example.cj:"))
+            @Expect(!report.results[0].stderr.contains(root.toString()))
+            @Expect(!report.results[0].stderr.contains("tmpDir"))
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
     func conditionalImportsKeepNativeExamplesValidThroughWarmCache(): Unit {
         let nativeOs = compilerBuiltinCfgValue("os").getOrThrow()
         let inactiveOs = if (nativeOs == "Windows") { "Linux" } else { "Windows" }

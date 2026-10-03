@@ -78,6 +78,7 @@ class UpdateToolsTest(unittest.TestCase):
             "worktree_identity.py", "repository_input_contracts.py",
             "repository_input_files.py", "repository_input_migrations.py",
             "repository_input_vendor.py",
+            "showcase_inputs.py",
         ):
             shutil.copyfile(PROJECT_ROOT / "scripts" / name, scripts / name)
         for script in (scripts / "update_goldens.sh", scripts / "update_schemas.sh"):
