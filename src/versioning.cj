@@ -12,7 +12,7 @@ internal let VERSION_FILE_MAX_BYTES: Int64 = 32 * 1024 * 1024
 internal let VERSION_DIFF_MAX_BYTES: Int64 = 32 * 1024 * 1024
 internal let VERSION_TOTAL_MAX_BYTES: Int64 = 256 * 1024 * 1024
 internal let VERSION_MAX_SITES: Int64 = 64
-internal let VERSION_COMPOSE_MAX_FILES: Int64 = 65533
+internal let VERSION_COMPOSE_MAX_FILES: Int64 = 65532
 
 private class VersionComposeBudget {
     var totalBytes: Int64 = 0
@@ -71,8 +71,10 @@ internal class VersionSourceFile {
 internal class VersionSymbolIndex {
     let hrefById = HashMap<String, String>()
     let idByHref = HashMap<String, String>()
+    let ownerById = HashMap<String, String>()
+    let membersByOwner = HashMap<String, ArrayList<String>>()
 
-    func add(id: String, href: String): Unit {
+    func add(id: String, href: String, owner!: ?String = None): Unit {
         if (id.isEmpty() || href.isEmpty() || !isSafeOutputPath(href)) {
             throw IllegalArgumentException("version symbol index contains an unsafe route")
         }
@@ -90,6 +92,17 @@ internal class VersionSymbolIndex {
         }
         hrefById[id] = href
         idByHref[href] = id
+        match (owner) {
+            case Some(ownerId) =>
+                if (!ownerById.contains(id)) {
+                    ownerById[id] = ownerId
+                    match (membersByOwner.get(ownerId)) {
+                        case Some(members) => members.add(id)
+                        case None => membersByOwner[ownerId] = ArrayList<String>([id])
+                    }
+                }
+            case None => ()
+        }
     }
 }
 
@@ -246,7 +259,7 @@ private func loadVersionSymbols(files: ArrayList<VersionSourceFile>): VersionSym
                 case Some(value) => value
                 case None => throw IllegalArgumentException("version symbol index entry has no href")
             }
-            result.add(id, href)
+            result.add(id, href, owner: versionJsonStringField(entry, "ownerId"))
         }
     }
     result
@@ -403,7 +416,8 @@ private func buildVersionSpecs(options: NewCliOptions): (ArrayList<VersionCompos
             throw IllegalArgumentException("duplicate version base path '${spec.basePath}'")
         }
         if (spec.basePath == "index.html" || spec.basePath.startsWith("index.html/") ||
-            spec.basePath == "versions.json" || spec.basePath.startsWith("versions.json/")) {
+            spec.basePath == "versions.json" || spec.basePath.startsWith("versions.json/") ||
+            spec.basePath == "version-navigation.js" || spec.basePath.startsWith("version-navigation.js/")) {
             throw IllegalArgumentException("version base path collides with publisher files '${spec.basePath}'")
         }
         if (spec.basePath == "latest" || spec.basePath.startsWith("latest/")) {
@@ -446,40 +460,73 @@ private func versionRelativeHref(fromPath: String, toPath: String): String {
     out.toString()
 }
 
-private func versionTargetRoute(current: VersionSite, relative: String, target: VersionSite): (String, Bool) {
+internal func versionSymbolTarget(current: VersionSite, id: String, target: VersionSite): (String, Bool) {
+    match (target.symbols.hrefById.get(id)) {
+        case Some(href) => (href, false)
+        case None =>
+            match (current.symbols.ownerById.get(id)) {
+                case Some(owner) => match (target.symbols.hrefById.get(owner)) {
+                    case Some(href) => return (href, true)
+                    case None => ()
+                }
+                case None => ()
+            }
+            ("index.html", true)
+    }
+}
+
+internal func versionTargetRoute(current: VersionSite, relative: String, target: VersionSite): (String, Bool) {
     match (current.symbols.idByHref.get(relative)) {
-        case Some(id) => match (target.symbols.hrefById.get(id)) {
-            case Some(href) => (href, false)
-            case None => ("index.html", true)
-        }
+        case Some(id) => versionSymbolTarget(current, id, target)
         case None => if (target.hasPath(relative)) { (relative, false) } else { ("index.html", false) }
     }
 }
 
-private func versionSelector(current: VersionSite, currentOutputPath: String,
-    relative: String, sites: ArrayList<VersionSite>, limit!: Int64 = VERSION_FILE_MAX_BYTES): String {
+internal func versionSelector(current: VersionSite, currentOutputPath: String,
+    relative: String, sites: ArrayList<VersionSite>, limit!: Int64 = VERSION_FILE_MAX_BYTES,
+    chinese!: Bool = false): String {
     let out = VersionTextBuffer(limit)
-    out.append("<nav class=\"cjdoc-version-selector\" aria-label=\"Documentation version\"><span>Version</span>")
+    let versionLabel = if (chinese) { "文档版本" } else { "Documentation version" }
+    let missingLabel = if (chinese) { "（此版本没有该符号）" } else { " (symbol unavailable)" }
+    out.append("<nav class=\"cjdoc-version-selector\" aria-label=\"${versionLabel}\"><span>${versionLabel}</span>")
     for (target in sites) {
         let (route, unavailable) = versionTargetRoute(current, relative, target)
         let targetPath = versionOutputPath(target, route)
         let href = versionRelativeHref(currentOutputPath, targetPath)
         let currentClass = if (target.spec.id == current.spec.id) { " aria-current=\"page\"" } else { "" }
         let suffix = if (unavailable && target.spec.id != current.spec.id) {
-            " (symbol unavailable)"
+            missingLabel
         } else {
             ""
         }
-        out.append("<a href=\"${public_render.escapeStandaloneHtml(href)}\"${currentClass}>${public_render.escapeStandaloneHtml(target.spec.label + suffix)}</a>")
+        let routes = VersionTextBuffer(limit)
+        routes.append("{")
+        var first = true
+        match (current.symbols.idByHref.get(relative)) {
+            case Some(ownerId) => match (current.symbols.membersByOwner.get(ownerId)) {
+                case Some(ids) => for (id in ids) {
+                    let (memberRoute, missing) = versionSymbolTarget(current, id, target)
+                    let memberHref = versionRelativeHref(currentOutputPath, versionOutputPath(target, memberRoute))
+                    if (!first) { routes.append(",") }; first = false
+                    routes.append("${versionJsonEscape(versionSymbolAnchor(id))}:[${versionJsonEscape(memberHref)},${missing}]")
+                }
+                case None => ()
+            }
+            case None => ()
+        }
+        routes.append("}")
+        out.append("<a href=\"${public_render.escapeStandaloneHtml(href)}\"${currentClass} data-cjdoc-version-link data-cjdoc-version-label=\"${public_render.escapeStandaloneHtml(target.spec.label)}\" data-cjdoc-version-missing=\"${public_render.escapeStandaloneHtml(missingLabel)}\" data-cjdoc-version-routes=\"${public_render.escapeStandaloneHtml(routes.toString())}\">${public_render.escapeStandaloneHtml(target.spec.label + suffix)}</a>")
         match (target.spec.apiDiffSource) {
             case Some(_) =>
                 let diffPath = versionOutputPath(target, "api-diff.json")
                 let diffHref = versionRelativeHref(currentOutputPath, diffPath)
-                out.append(" <a href=\"${public_render.escapeStandaloneHtml(diffHref)}\">Changes</a>")
+                let changesLabel = if (chinese) { "版本变化" } else { "Changes" }
+                out.append(" <a href=\"${public_render.escapeStandaloneHtml(diffHref)}\">${changesLabel}</a>")
             case None => ()
         }
     }
     out.append("</nav>\n")
+    out.append("<script src=\"${public_render.escapeStandaloneHtml(versionRelativeHref(currentOutputPath, "version-navigation.js"))}\" defer></script>\n")
     out.toString()
 }
 
@@ -612,11 +659,12 @@ private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: Stri
                 } else {
                     VERSION_FILE_MAX_BYTES
                 }
-                let selector = versionSelector(site, outputPath, file.path, sites, limit: selectorLimit)
-                budget.reserveArtifact(outputPath, file.bytes.size + selector.size)
                 let html = try { String.fromUtf8(file.bytes) } catch (_: Exception) {
                     throw IllegalArgumentException("version HTML is not UTF-8 '${file.path}'")
                 }
+                let selector = versionSelector(site, outputPath, file.path, sites, limit: selectorLimit,
+                    chinese: html.contains("lang=\"zh-CN\"") || html.contains("lang=\"zh\""))
+                budget.reserveArtifact(outputPath, file.bytes.size + selector.size)
                 let withEvidence = rewriteComposedDoctestEvidence(html, site, outputPath, file.path)
                 let content = injectVersionSelector(attachComposedApiDiffEvidence(withEvidence, site, outputPath, file.path), selector)
                 artifacts.add(public_render.RenderArtifact(outputPath, file.mediaType, content))
@@ -626,6 +674,8 @@ private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: Stri
             }
         }
     }
+    budget.reserveArtifact("version-navigation.js", VERSION_NAVIGATION_SCRIPT.size)
+    artifacts.add(public_render.RenderArtifact("version-navigation.js", "text/javascript; charset=utf-8", VERSION_NAVIGATION_SCRIPT))
     let manifest = versionManifest(sites, latest, latestPolicy)
     budget.reserveArtifact("versions.json", manifest.size)
     artifacts.add(public_render.RenderArtifact("versions.json", "application/json", manifest))

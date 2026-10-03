@@ -187,7 +187,7 @@ internal func appendExampleCodeHtml(out: RenderTextBuffer, code: String, languag
         out.append(" class=\"language-${htmlStableSlug(normalizedLanguage)}\"")
         out.append(" data-language=\"${escapeHtml(normalizedLanguage)}\"")
     }
-    out.append(">"); appendHtmlEscapedValue(out, code); out.append("</code></pre>\n")
+    out.append(">"); appendHighlightedCodeHtml(out, code, normalizedLanguage); out.append("</code></pre>\n")
 }
 
 internal func appendExampleHtml(out: RenderTextBuffer, value: String): Unit {
@@ -411,9 +411,11 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
         case "code_span" => out.append("<code>${escapeHtml(node.literal)}</code>")
         case "code_block" =>
             out.append("<pre><code")
+            var displayLanguage = ""
             if (let Some(metadata) <- node.metadata) {
                 if (metadata.kind == "code_block") {
                     let language = metadata.language.getOrThrow()
+                    displayLanguage = language
                     if (!language.isEmpty()) {
                         out.append(" class=\"language-${htmlStableSlug(language)}\"")
                         out.append(" data-language=\"${escapeHtml(language)}\"")
@@ -423,7 +425,9 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
                     }
                 }
             }
-            out.append(">${escapeHtml(node.literal)}</code></pre>\n")
+            out.append(">")
+            appendHighlightedCodeHtml(out, node.literal, displayLanguage)
+            out.append("</code></pre>\n")
         case "thematic_break" => out.append("<hr>\n")
         case "block_quote" =>
             out.append("<blockquote>"); for (child in node.children) {

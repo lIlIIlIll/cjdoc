@@ -72,7 +72,6 @@ internal let HTML_SEARCH_SCRIPT = """
   let entries = [];
   let visible = [];
   let selected = -1;
-  let activeKind = "";
   const fieldNames = new Set(["name", "owner", "param", "return", "package", "kind"]);
   const parseQuery = (raw) => {
     const filters = [];
@@ -203,8 +202,10 @@ internal let HTML_SEARCH_SCRIPT = """
       return;
     }
     const selectedPackage = packageFilter ? packageFilter.value : "";
+    // Read the controls themselves: history restores their values without change events.
+    const selectedKind = kindFilter ? kindFilter.value : "";
     const matches = entries.map((entry) => ({entry, rank: rank(entry, parsedQuery)}))
-      .filter((item) => item.rank >= 0 && (!activeKind || item.entry.kind === activeKind) &&
+      .filter((item) => item.rank >= 0 && (!selectedKind || item.entry.kind === selectedKind) &&
         (!selectedPackage || item.entry.packageName === selectedPackage))
       .sort((left, right) => left.rank - right.rank ||
         left.entry.qualifiedName.localeCompare(right.entry.qualifiedName) || left.entry.id.localeCompare(right.entry.id));
@@ -229,12 +230,12 @@ internal let HTML_SEARCH_SCRIPT = """
       kind.className = "search-kind";
       kind.textContent = entry.kind;
       context.className = "search-context";
-      const moduleLabel = entry.moduleId
-        ? (entry.moduleName ? entry.moduleName + " · " : "") + "module: " + entry.moduleId
-        : "";
-      context.textContent = [entry.packageName, moduleLabel,
-        entry.qualifiedName !== entry.name ? entry.qualifiedName : "",
-        entry.ownerName ? "owner: " + entry.ownerName : ""].filter(Boolean).join(" · ");
+      const ownerLabel = entry.ownerName || entry.packageName;
+      const moduleLabel = entry.moduleName && entry.moduleName !== entry.packageName
+        ? entry.moduleName : "";
+      context.textContent = [ownerLabel, moduleLabel].filter(Boolean).join(" · ");
+      // Keep exact module identity available for otherwise identical declarations.
+      context.title = [entry.qualifiedName, entry.moduleName, entry.moduleId].filter(Boolean).join(" · ");
       head.append(name, kind);
       link.append(head, context);
       const signatureText = signatures[entry.id] || signatures[entry.canonicalId] || "";
@@ -280,10 +281,7 @@ internal let HTML_SEARCH_SCRIPT = """
   render();
   input.addEventListener("focus", () => { if (input.value.trim()) render(); });
   input.addEventListener("input", render);
-  if (kindFilter) kindFilter.addEventListener("change", () => {
-    activeKind = kindFilter.value;
-    render();
-  });
+  if (kindFilter) kindFilter.addEventListener("change", render);
   if (packageFilter) packageFilter.addEventListener("change", render);
   input.addEventListener("keydown", (event) => {
     if (event.key === "ArrowDown") { event.preventDefault(); select(selected + 1); }
@@ -380,6 +378,15 @@ internal let HTML_SEARCH_SCRIPT = """
   }
   const menu = document.querySelector("[data-cjdoc-menu]");
   const sidebar = document.querySelector("#cjdoc-sidebar");
+  const siteHeader = document.querySelector(".site-nav");
+  const updateHeaderHeight = () => {
+    if (!siteHeader) return;
+    document.documentElement.style.setProperty("--cjdoc-header-height",
+      Math.ceil(siteHeader.getBoundingClientRect().height) + "px");
+  };
+  updateHeaderHeight();
+  if (siteHeader && "ResizeObserver" in window) new ResizeObserver(updateHeaderHeight).observe(siteHeader);
+  window.addEventListener("resize", updateHeaderHeight);
   const sidebarClose = document.querySelector("[data-cjdoc-sidebar-close]");
   const menuBackdrop = document.querySelector("[data-cjdoc-menu-backdrop]");
   let opener = null;
@@ -482,8 +489,16 @@ internal let HTML_SEARCH_SCRIPT = """
     if (contextEmpty) contextEmpty.hidden = !query || visible > 0;
   };
   if (contextFilter) contextFilter.addEventListener("input", filterContext);
-  const activePackage = document.querySelector(".sidebar-package.is-current");
-  if (activePackage && sidebar) sidebar.scrollTop = Math.max(0, activePackage.offsetTop - sidebar.clientHeight / 3);
+  const positionSidebar = () => {
+    if (!sidebar) return;
+    const context = sidebar.querySelector(".sidebar-context");
+    const current = context && [...context.querySelectorAll("a")].find((link) =>
+      link.classList.contains("is-current") || (window.location.hash && link.getAttribute("href") === window.location.hash));
+    const target = current || context || sidebar.querySelector(".sidebar-package.is-current");
+    if (!target) return;
+    sidebar.scrollTop = Math.max(0, sidebar.scrollTop + target.getBoundingClientRect().top -
+      sidebar.getBoundingClientRect().top - sidebar.clientHeight / 3);
+  };
   const syncRouteState = () => {
     const overview = document.querySelector(".sidebar-link[href$='index.html']");
     const api = document.querySelector(".sidebar-link[href*='#packages']");
@@ -503,6 +518,7 @@ internal let HTML_SEARCH_SCRIPT = """
   window.addEventListener("popstate", syncRouteState);
   const toc = document.querySelector("[data-cjdoc-toc]");
   const content = document.querySelector("[data-cjdoc-content]");
+  let syncTocVisibility = () => {};
   if (toc && content) {
     const tocList = toc.querySelector("ol");
     const allHeadings = [...content.querySelectorAll("h1, h2, h3, h4, h5, h6")]
@@ -641,11 +657,14 @@ internal let HTML_SEARCH_SCRIPT = """
       }
       mobileToc.hidden = headings.length === 0;
     }
+    let updateActiveToc = () => {};
     if (headings.length && "IntersectionObserver" in window) {
 
       const links = [...tocList.querySelectorAll("a")];
       const byId = new Map(links.map((link) => [link.dataset.tocTarget, link]));
       const setActive = (targetId) => {
+        const target = document.getElementById(targetId);
+        if (target && target.closest("[hidden]")) return;
         for (const link of links) {
           link.classList.remove("is-active", "is-parent-active");
         }
@@ -658,6 +677,7 @@ internal let HTML_SEARCH_SCRIPT = """
           parent.setExpanded(true);
         }
       };
+      updateActiveToc = setActive;
       for (const link of links) {
         link.addEventListener("click", () => {
           const parent = parentByLink.get(link);
@@ -677,6 +697,24 @@ internal let HTML_SEARCH_SCRIPT = """
       const firstLink = tocList.querySelector("a");
       if (firstLink) firstLink.classList.add("is-active");
     }
+    syncTocVisibility = () => {
+      const visibleHeadings = headings.filter((heading) => !heading.closest("[hidden]"));
+      const visibleIds = new Set(visibleHeadings.map((heading) => heading.id));
+      for (const list of [tocList, mobileTocList]) {
+        if (!list) continue;
+        for (const link of list.querySelectorAll("[data-toc-target]")) {
+          link.closest("li").hidden = !visibleIds.has(link.dataset.tocTarget);
+        }
+      }
+      const active = tocList.querySelector(".is-active");
+      if (active && !visibleIds.has(active.dataset.tocTarget)) {
+        active.classList.remove("is-active");
+        if (visibleHeadings.length) updateActiveToc(visibleHeadings[0].id);
+      }
+      toc.hidden = visibleHeadings.length === 0;
+      if (mobileToc) mobileToc.hidden = visibleHeadings.length === 0;
+    };
+    syncTocVisibility();
   }
   const copyText = async (value) => {
     if (navigator.clipboard && window.isSecureContext) {
@@ -693,6 +731,32 @@ internal let HTML_SEARCH_SCRIPT = """
     if (previousFocus && typeof previousFocus.focus === "function") previousFocus.focus();
     return copied;
   };
+  for (const button of document.querySelectorAll("[data-cjdoc-copy-link]")) {
+    const label = button.textContent;
+    button.addEventListener("click", async () => {
+      const url = new URL(button.dataset.cjdocCopyLink, window.location.href).href;
+      const copied = await copyText(url);
+      button.dataset.copyLinkResult = copied ? "copied" : "manual";
+      button.dataset.copied = copied ? "true" : "false";
+      button.textContent = copied ? (isChinese ? "链接已复制" : "Link copied")
+        : (isChinese ? "请选择并复制链接" : "Select and copy the link");
+      if (!copied) {
+        let field = button.parentElement.querySelector("[data-cjdoc-copy-link-fallback]");
+        if (!field) {
+          field = document.createElement("input");
+          field.type = "text";
+          field.readOnly = true;
+          field.dataset.cjdocCopyLinkFallback = "";
+          field.setAttribute("aria-label", isChinese ? "链接地址" : "Link address");
+          button.insertAdjacentElement("afterend", field);
+        }
+        field.value = url;
+        field.focus();
+        field.select();
+      }
+      window.setTimeout(() => { button.textContent = label; button.dataset.copied = "false"; }, 1800);
+    });
+  }
   for (const code of document.querySelectorAll("pre > code")) {
     const pre = code.parentElement;
     if (pre.querySelector("[data-cjdoc-copy]")) continue;
@@ -724,6 +788,13 @@ internal let HTML_SEARCH_SCRIPT = """
   const memberRows = [...document.querySelectorAll("[data-cjdoc-member]")];
   const memberGroups = [...document.querySelectorAll("[data-cjdoc-member-group]")];
   const memberStatus = document.querySelector("[data-cjdoc-member-filter-status]");
+  const expandMembers = document.querySelector("[data-cjdoc-members-expand]");
+  const collapseMembers = document.querySelector("[data-cjdoc-members-collapse]");
+  const syncMemberActions = () => {
+    const visible = memberRows.filter((member) => !member.hidden);
+    if (expandMembers) expandMembers.disabled = !visible.some((member) => !member.open);
+    if (collapseMembers) collapseMembers.disabled = !visible.some((member) => member.open);
+  };
   let memberTargetNotice = "";
   const applyMemberFilter = () => {
     const query = memberFilter ? memberFilter.value.trim().toLocaleLowerCase() : "";
@@ -741,6 +812,8 @@ internal let HTML_SEARCH_SCRIPT = """
     for (const group of memberGroups) {
       group.hidden = !group.querySelector("[data-cjdoc-member]:not([hidden])");
     }
+    syncTocVisibility();
+    syncMemberActions();
     if (memberStatus) {
       const active = Boolean(query || origin || memberTargetNotice);
       if (!active) {
@@ -772,6 +845,8 @@ internal let HTML_SEARCH_SCRIPT = """
     const cfg = document.body.dataset.cjdocCfg || "";
     return "cjdoc-member-state:" + [project, version, audience, cfg, location.pathname].join("|");
   })();
+  const navigationEntry = performance.getEntriesByType("navigation")[0];
+  const isHistoryNavigation = navigationEntry && navigationEntry.type === "back_forward";
   const saveMemberState = () => {
     try {
       const open = [...document.querySelectorAll("details[data-cjdoc-member][open]")]
@@ -780,6 +855,9 @@ internal let HTML_SEARCH_SCRIPT = """
         open,
         filter: memberFilter ? memberFilter.value : "",
         origin: originFilter ? originFilter.value : "",
+        contextFilter: contextFilter ? contextFilter.value : "",
+        sidebarFilter: sidebarFilter ? sidebarFilter.value : "",
+        sidebarGroups: savedSidebarState || [...document.querySelectorAll(".sidebar-group")].map((group) => group.open),
         scroll: [window.scrollX, window.scrollY],
         sidebar: sidebar ? sidebar.scrollTop : 0
       }));
@@ -791,22 +869,47 @@ internal let HTML_SEARCH_SCRIPT = """
     if (raw) savedMemberState = JSON.parse(raw);
   } catch (_) {}
   const restoreMemberState = () => {
-    if (window.location.hash || !savedMemberState) return;
+    if (!savedMemberState || (window.location.hash && !isHistoryNavigation)) return false;
     const state = savedMemberState;
     if (memberFilter && typeof state.filter === "string") memberFilter.value = state.filter;
     if (originFilter && typeof state.origin === "string") originFilter.value = state.origin;
     applyMemberFilter();
     if (Array.isArray(state.open)) {
-      for (const id of state.open) {
-        const item = document.getElementById(id);
-        if (item && item.matches("details[data-cjdoc-member]") && !item.hidden) item.open = true;
+      for (const item of memberRows) item.open = state.open.includes(item.id);
+    }
+    syncMemberActions();
+    return true;
+  };
+  const restoreSidebarState = () => {
+    if (isHistoryNavigation && savedMemberState) {
+      if (contextFilter && typeof savedMemberState.contextFilter === "string") contextFilter.value = savedMemberState.contextFilter;
+      if (sidebarFilter && typeof savedMemberState.sidebarFilter === "string") sidebarFilter.value = savedMemberState.sidebarFilter;
+      if (Array.isArray(savedMemberState.sidebarGroups)) {
+        [...document.querySelectorAll(".sidebar-group")].forEach((group, index) => {
+          if (typeof savedMemberState.sidebarGroups[index] === "boolean") group.open = savedMemberState.sidebarGroups[index];
+        });
+        savedSidebarState = null;
       }
     }
+    filterSidebar();
+    filterContext();
   };
-  for (const member of memberRows) member.addEventListener("toggle", saveMemberState);
+  for (const member of memberRows) member.addEventListener("toggle", () => {
+    syncMemberActions();
+    saveMemberState();
+  });
+  for (const [button, open] of [[expandMembers, true], [collapseMembers, false]]) {
+    if (button) button.addEventListener("click", () => {
+      for (const member of memberRows) if (!member.hidden) member.open = open;
+      syncMemberActions();
+      saveMemberState();
+    });
+  }
   if (memberFilter) memberFilter.addEventListener("input", saveMemberState);
   if (originFilter) originFilter.addEventListener("change", saveMemberState);
-  restoreMemberState();
+  if (contextFilter) contextFilter.addEventListener("input", saveMemberState);
+  if (sidebarFilter) sidebarFilter.addEventListener("input", saveMemberState);
+  const restoredMembers = restoreMemberState();
 
   const revealHashTarget = (scroll = false) => {
     if (!window.location.hash || window.location.hash.length <= 1) return;
@@ -829,23 +932,39 @@ internal let HTML_SEARCH_SCRIPT = """
       member.open = true;
       const group = member.closest("[data-cjdoc-member-group]");
       if (group) group.hidden = false;
+      syncTocVisibility();
+      syncMemberActions();
       if (scroll) requestAnimationFrame(() => member.scrollIntoView({block: "start"}));
     }
     saveMemberState();
   };
-  revealHashTarget();
+  if (!restoredMembers) revealHashTarget(true);
   window.addEventListener("hashchange", () => revealHashTarget(true));
+  document.addEventListener("click", (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = event.target.closest && event.target.closest("a[href]");
+    if (!link || !window.location.hash) return;
+    let target;
+    try { target = new URL(link.href, window.location.href); } catch (_) { return; }
+    if (target.href === window.location.href) revealHashTarget(true);
+  });
   window.addEventListener("pagehide", saveMemberState);
-
-  const navigationEntry = performance.getEntriesByType("navigation")[0];
-  const isHistoryNavigation = navigationEntry && navigationEntry.type === "back_forward";
-  if (isHistoryNavigation && savedMemberState) {
+  restoreSidebarState();
+  applyMemberFilter();
+  const finishPageLayout = (event) => {
     requestAnimationFrame(() => {
-      // Keep the layout stable, but leave document scroll restoration to the browser.
-      if (sidebar && Number.isFinite(savedMemberState.sidebar) && savedMemberState.sidebar >= 0) {
+      updateHeaderHeight();
+      // Form values may be restored after the deferred script has run.
+      filterSidebar();
+      filterContext();
+      applyMemberFilter();
+      if (event && event.persisted) return;
+      if (isHistoryNavigation && savedMemberState && sidebar && Number.isFinite(savedMemberState.sidebar) && savedMemberState.sidebar >= 0) {
         sidebar.scrollTop = savedMemberState.sidebar;
-      }
+      } else positionSidebar();
     });
-  }
+  };
+  finishPageLayout();
+  window.addEventListener("pageshow", finishPageLayout);
 })();
 """

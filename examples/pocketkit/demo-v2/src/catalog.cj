@@ -249,6 +249,7 @@ public class TextCatalog {
 
     /**
      * 复制所有非空条目，作为 demo-v2 新增的 API。
+     * @since 0.2.0
      * @return 保持插入顺序的新数组，不修改原目录。
      */
     public func nonEmpty(): Array<String> {

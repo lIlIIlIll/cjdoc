@@ -1,13 +1,14 @@
 "use strict";
 (() => {
   const status = document.querySelector('[data-showcase-status]');
+  const zh = document.documentElement.lang === 'zh-CN';
   const say = (message) => { if (status) status.textContent = message; };
   const theme = document.querySelector('[data-showcase-theme]');
-  try { const saved = localStorage.getItem('cjdoc-showcase-theme'); if (saved === 'dark' || saved === 'light') document.documentElement.dataset.theme = saved; } catch (_) {}
   if (theme) theme.addEventListener('click', () => {
-    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    const next = ['dark', 'ocean', 'terminal'].includes(document.documentElement.dataset.theme) ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
-    try { localStorage.setItem('cjdoc-showcase-theme', next); } catch (_) {}
+    if (globalThis.__CJDOC_THEME__) globalThis.__CJDOC_THEME__.persist(next);
+    else { try { localStorage.setItem('cjdoc-theme', next); } catch (_) {} }
   });
   document.querySelectorAll('[data-showcase-copy]').forEach(button => button.addEventListener('click', async () => {
     const source = document.getElementById(button.dataset.showcaseCopy);
@@ -21,10 +22,10 @@
       try { copied = document.execCommand('copy'); } catch (_) {} finally { field.remove(); }
     }
     button.dataset.copyResult = copied ? 'copied' : 'unavailable';
-    say(copied ? 'Copied / 已复制' : 'Clipboard unavailable; select the code manually / 请手动选择代码');
+    say(copied ? (zh ? '已复制' : 'Copied') : (zh ? '剪贴板不可用，请手动选择代码' : 'Clipboard unavailable; select the code manually'));
   }));
   if (location.protocol === 'file:') document.querySelectorAll('[data-offline-download]').forEach(link => {
     link.removeAttribute('href'); link.setAttribute('aria-disabled', 'true');
-    link.textContent = 'Already viewing the extracted offline site / 当前已是解压后的离线目录';
+    link.textContent = zh ? '当前已是解压后的离线目录' : 'Already viewing the extracted offline site';
   });
 })();

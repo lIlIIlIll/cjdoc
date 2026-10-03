@@ -233,6 +233,15 @@ jobs:
             --evidence target/showcase-evidence/results.json \
             --baseline site/showcase-baseline.json
 
+      - name: Check API reading regressions against the final site
+        shell: bash
+        env:
+          PYTHONPATH: scripts
+        run: |
+          python -m showcase_contract.browser_reading_regressions \
+            --site target/showcase-site \
+            --evidence target/showcase-reading-evidence
+
       - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -240,6 +249,7 @@ jobs:
           name: cjdoc-showcase-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             target/showcase-evidence/
+            target/showcase-reading-evidence/
             target/showcase-source-evidence.json
             target/showcase-source-evidence.log
             target/showcase-site/artifacts/showcase-stage-report.json

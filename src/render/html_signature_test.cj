@@ -61,6 +61,9 @@ class HtmlSignatureMappingTest {
         appendLinkedSignatureHtml(out, documentation.declarations[1], links, "../")
         @Expect(out.toString().contains("&quot;Token&quot;"), true)
         @Expect(out.toString().contains("&quot;<a"), false)
+        @Expect(out.toString().contains("<span class=\"code-keyword\">func</span>"), true)
+        @Expect(out.toString().contains("<span class=\"code-string\">&quot;Token&quot;</span>"), true)
+        @Expect(out.toString().contains("class=\"type-link signature-type-link\""), true)
     }
 
     @TestCase

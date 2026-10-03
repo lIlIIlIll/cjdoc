@@ -11,6 +11,7 @@ from html.parser import HTMLParser
 import json
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from showcase_contract.site import ContractError, canonical_json, load_json, relative_path
 
@@ -19,6 +20,24 @@ COVERAGE = "cjdoc.documentation-coverage/2"
 DOCTEST = "cjdoc.doctest/1"
 DIFF = "cjdoc.api-diff/1"
 QUALITY = "cjdoc.documentation-quality/1"
+
+FILTER_SCRIPT = '''"use strict";
+for (const input of document.querySelectorAll("[data-report-filter]")) {
+  const section = input.closest("section");
+  const rows = [...section.querySelectorAll("[data-report-diagnostic]")];
+  const status = section.querySelector("[data-report-filter-status]");
+  input.addEventListener("input", () => {
+    const words = input.value.trim().toLocaleLowerCase().split(/\\s+/).filter(Boolean);
+    let count = 0;
+    for (const row of rows) {
+      const content = (row.dataset.search + " " + row.textContent).toLocaleLowerCase();
+      row.hidden = !words.every(word => content.includes(word));
+      if (!row.hidden) count++;
+    }
+    if (status) status.textContent = document.documentElement.lang === "zh-CN"
+      ? `显示 ${count} / ${rows.length} 条诊断` : `${count} / ${rows.length} diagnostics shown`;
+  });
+}'''
 
 
 def escaped(value: object) -> str:
@@ -109,11 +128,14 @@ def coverage_view(raw: dict) -> str:
         scopes.extend((kind, item.get("name", item.get("id", "")), item["metrics"]) for item in raw[kind])
     for kind, name, metrics in scopes:
         for metric, value in metrics.items():
+            percent = (escaped(value["percent"]) + "%") if value["total"] else '<span data-reported-percent="' + escaped(value["percent"]) + '">Not applicable</span>'
             rows.append([escaped(kind), escaped(name), escaped(metric), escaped(value["documented"]),
-                         escaped(value["total"]), escaped(value["percent"]) + "%"])
+                         escaped(value["total"]), percent])
     return '<section id="coverage"><h2>文档覆盖 / Coverage</h2><p>Audience: <code>' + escaped(raw["audience"]) + (
         '</code>。分子、分母和百分比均来自原报告；覆盖率不证明契约正确。 '
         'All values come from the native report; coverage is not correctness.</p>'
+        '<p>semanticLinks counts explicit comment references and @see links only; signature type links are reported separately in diagnostics. '
+        'A zero denominator means no applicable items; the original percentage remains in the raw report.</p>'
         '<p><a href="machine/coverage.json">Raw coverage JSON</a></p>') + table(
             ("Scope", "Name", "Metric", "Documented", "Total", "Percent"), rows) + '</section>'
 
@@ -192,15 +214,59 @@ def doctest_view(raw: dict | None, ir: dict, root: Path, mapping: dict) -> str:
     return output + '</section>'
 
 
+class SourceAction(HTMLParser):
+    """Use the native renderer's verified source URL; never invent source mappings."""
+    def __init__(self, text: str) -> None:
+        super().__init__(convert_charrefs=True)
+        self.active = False
+        self.href = None
+        self.feed(text)
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        values = dict(attrs)
+        if tag == "p":
+            self.active = "source-action" in values.get("class", "").split()
+        elif tag == "a" and self.active:
+            candidate = values.get("href", "")
+            parsed = urlsplit(candidate)
+            if parsed.scheme == "https" and parsed.netloc == "github.com":
+                self.href = candidate
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "p":
+            self.active = False
+
+
 def diagnostics_view(ir: dict, root: Path, mapping: dict) -> str:
     output = '<section id="diagnostics"><h2>诊断与缺口 / Diagnostics</h2><p>Collection state: <code>'
     output += escaped(ir["status"]) + '</code>; audience: ' + escaped(ir["configuration"]["audience"]) + '</p>'
     output += '<p><a href="machine/docs.json">Raw Doc IR with diagnostic source ranges</a></p>'
     if not ir["diagnostics"]:
         output += '<p>No diagnostics were emitted. This is not a proof of semantic completeness.</p>'
-    for diagnostic in ir["diagnostics"]:
-        output += '<article class="report-diagnostic"><h3>' + escaped(diagnostic["code"]) + ' / ' + escaped(diagnostic["severity"]) + '</h3>'
-        output += '<p>' + escaped(diagnostic["message"]) + '</p><pre>' + escaped(json.dumps(diagnostic, ensure_ascii=False, indent=2)) + '</pre></article>'
+    else:
+        output += '<label class="report-filter">Filter diagnostics <input type="search" data-report-filter placeholder="API, file, code or message"></label>'
+        output += '<p data-report-filter-status role="status">' + str(len(ir["diagnostics"])) + ' diagnostics</p>'
+    sources = {}
+    for number, diagnostic in enumerate(ir["diagnostics"]):
+        symbol_id = diagnostic.get("symbolId")
+        entry = mapping.get(symbol_id)
+        name = entry["qualifiedName"] if entry else "Project diagnostic"
+        source = diagnostic.get("source") or {}
+        location = source.get("path", "")
+        if source.get("start"):
+            location += ':' + str(source["start"]["line"])
+        search = ' '.join(str(value) for value in (name, location, diagnostic["code"], diagnostic["severity"], diagnostic["message"]))
+        output += '<article class="report-diagnostic" data-report-diagnostic data-search="' + escaped(search) + '" id="diagnostic-' + str(number) + '" aria-labelledby="diagnostic-title-' + str(number) + '">'
+        output += '<p><strong id="diagnostic-title-' + str(number) + '">' + escaped(diagnostic["code"]) + ' / ' + escaped(diagnostic["severity"]) + '</strong></p><p>'
+        output += declaration_link(root, root, mapping, symbol_id, "Source API") if entry else escaped(name)
+        if location:
+            if entry and symbol_id not in sources:
+                page = root / relative_path(entry["href"])
+                sources[symbol_id] = SourceAction(page.read_text(encoding="utf-8")).href if page.is_file() else None
+            source_url = sources.get(symbol_id)
+            output += ' · ' + (f'<a href="{escaped(source_url)}" rel="noreferrer">{escaped(location)}</a>' if source_url else escaped(location))
+        output += '</p><p>' + escaped(diagnostic["message"]) + '</p><details><summary>Raw diagnostic JSON</summary><pre>'
+        output += escaped(json.dumps(diagnostic, ensure_ascii=False, indent=2)) + '</pre></details></article>'
     return output + '</section>'
 
 
@@ -274,14 +340,17 @@ def publish(root: Path, revision: str, version: str, locale: str, *, baseline: P
     body += diff_view(data.get("machine/api-diff.json"), root, baseline, current)
     body += coverage_view(data["machine/coverage.json"]) + quality_view(data["machine/quality.json"], root, mapping)
     body += diagnostics_view(ir, root, mapping)
-    body += '<section id="provenance"><h2>构建来源 / Provenance</h2><p><a href="report-provenance.json">Exact input hashes</a></p><pre>' + escaped(json.dumps(provenance, ensure_ascii=False, indent=2)) + '</pre></section>'
+    body += '<section id="provenance"><h2>构建来源 / Provenance</h2><p><a href="report-provenance.json">Exact input hashes</a></p><details><summary>Input hashes and build metadata</summary><pre>' + escaped(json.dumps(provenance, ensure_ascii=False, indent=2)) + '</pre></details></section>'
+    from .localization import localize_ui
+    body = localize_ui(body, locale)
     page = root / "validation.html"
     original = page.read_text(encoding="utf-8")
     start, end = UtilityRegion(original).regions[0]
     updated = original[:start] + body + original[end:]
-    updated = updated.replace('</head>', '<link rel="stylesheet" href="report.css"></head>', 1)
+    updated = updated.replace('</head>', '<link rel="stylesheet" href="report.css"><script defer src="report.js"></script></head>', 1)
     page.write_text(updated, encoding="utf-8")
-    (root / "report.css").write_text('.validation-page{min-width:0}.validation-page section{scroll-margin-top:5rem;margin-block:2rem}.validation-page pre{white-space:pre-wrap;overflow-wrap:anywhere}.validation-page code{overflow-wrap:anywhere}.report-table-scroll{max-width:100%;overflow:auto}.report-case,.report-change,.report-diagnostic{border:1px solid var(--border-color,currentColor);padding:1rem;margin-block:1rem;border-radius:.5rem}.validation-page table{width:100%;border-collapse:collapse}.validation-page td,.validation-page th{text-align:start;vertical-align:top;padding:.5rem;border-bottom:1px solid currentColor}', encoding="utf-8")
+    (root / "report.js").write_text(FILTER_SCRIPT, encoding="utf-8")
+    (root / "report.css").write_text('.validation-page{min-width:0}.validation-page section{scroll-margin-top:5rem;margin-block:2rem}.validation-page pre{white-space:pre-wrap;overflow-wrap:anywhere}.validation-page code{overflow-wrap:anywhere}.report-table-scroll{max-width:100%;overflow:auto}.report-case,.report-change,.report-diagnostic{border:1px solid var(--border-color,currentColor);padding:1rem;margin-block:1rem;border-radius:.5rem}.report-diagnostic[hidden]{display:none}.report-diagnostic h3,.report-diagnostic p{margin-block:.35rem}.report-filter{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.report-filter input{flex:1;min-width:12rem;padding:.5rem}.validation-page table{width:100%;border-collapse:collapse}.validation-page td,.validation-page th{text-align:start;vertical-align:top;padding:.5rem;border-bottom:1px solid currentColor}', encoding="utf-8")
 
 
 def verify(root: Path, revision: str) -> None:

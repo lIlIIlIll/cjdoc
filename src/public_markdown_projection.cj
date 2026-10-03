@@ -261,6 +261,31 @@ internal func publicMarkdownNode(node: NodeRef, source: SourceBuffer, assetColle
             }
     }
     context.consumeText(literal)
+    // GFM bare-link scanning can include following Chinese sentence punctuation.
+    // Only correct a bare source URL; explicitly authored Markdown/autolinks may
+    // intentionally contain Unicode punctuation and must retain their target.
+    let isLink = match (node.kind) { case NodeKind.Link => true; case _ => false }
+    if (isLink && source.text(node) == literal &&
+        (literal.startsWith("http://") || literal.startsWith("https://"))) {
+        var boundary = literal.size
+        for (punctuation in ["。", "，", "；", "！", "？", "、", "："]) {
+            match (literal.indexOf(punctuation)) {
+                case Some(position) => if (position < boundary) { boundary = position }
+                case None => ()
+            }
+        }
+        if (boundary < literal.size) {
+            let target = literal[..boundary]
+            let suffix = literal[boundary..]
+            context.consumeNode(depth + 1)
+            context.consumeNode(depth + 2)
+            context.consumeNode(depth + 1)
+            return public_model.MarkdownNode("custom_inline", children: [
+                public_model.MarkdownNode("link", literal: target,
+                    children: [public_model.MarkdownNode("text", literal: target)]),
+                public_model.MarkdownNode("text", literal: suffix)])
+        }
+    }
     match (node.kind) {
         case NodeKind.Text => match (explicitSemanticLinkNodes(literal)) {
             case Some(linkChildren) =>

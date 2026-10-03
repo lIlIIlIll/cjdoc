@@ -11,12 +11,12 @@ internal func appendPackageMetadata(out: RenderTextBuffer, pkg: ProjectedPackage
         for (reExport in packageDoc.reExports) {
             if (reExport.kind == "packageAlias") {
                 out.append("<li><code>${escapeHtml(reExport.alias.getOrThrow())}</code>")
-                if (reExport.state == "resolved") { out.append(" → package") }
-                out.append(" <code>${escapeHtml(reExport.targetPackageName)}</code> <span class=\"badge\">${escapeHtml(reExport.kind)}</span> <span class=\"badge\">${escapeHtml(reExport.state)}</span></li>\n")
+                if (reExport.state == "resolved") { out.append(" → ${label(locale, "package", "包")}") }
+                out.append(" <code>${escapeHtml(reExport.targetPackageName)}</code> <span class=\"badge\">${escapeHtml(htmlKindLabel(reExport.kind, locale))}</span> <span class=\"badge\">${escapeHtml(htmlStateLabel(reExport.state, locale))}</span></li>\n")
                 continue
             }
             if (reExport.bindings.isEmpty()) {
-                out.append("<li><code>${escapeHtml(reExport.targetPackageName)}</code> <span class=\"badge\">${escapeHtml(reExport.kind)}</span> <span class=\"badge\">${escapeHtml(reExport.state)}</span></li>\n")
+                out.append("<li><code>${escapeHtml(reExport.targetPackageName)}</code> <span class=\"badge\">${escapeHtml(htmlKindLabel(reExport.kind, locale))}</span> <span class=\"badge\">${escapeHtml(htmlStateLabel(reExport.state, locale))}</span></li>\n")
                 continue
             }
             for (binding in reExport.bindings) {
@@ -29,7 +29,7 @@ internal func appendPackageMetadata(out: RenderTextBuffer, pkg: ProjectedPackage
                         case None => out.append("<code>${escapeHtml(targetId)}</code>")
                     }
                 }
-                out.append(" <span class=\"badge\">${escapeHtml(reExport.state)}</span></li>\n")
+                out.append(" <span class=\"badge\">${escapeHtml(htmlStateLabel(reExport.state, locale))}</span></li>\n")
             }
         }
         out.append("</ul></details>\n")
@@ -44,5 +44,5 @@ internal func appendPackageMetadata(out: RenderTextBuffer, pkg: ProjectedPackage
 internal func appendPackageDeclarationMetadata(out: RenderTextBuffer, symbol: SymbolDoc,
     locale: String): Unit {
     if (symbol.semantic.state == "resolved") { return }
-    out.append("<details class=\"declaration-metadata\"><summary>${label(locale, "Declaration metadata", "声明元数据")}</summary><p class=\"meta\">semantic: ${escapeHtml(symbol.semantic.state)}</p></details>\n")
+    out.append("<details class=\"declaration-metadata\"><summary>${label(locale, "Declaration metadata", "声明元数据")}</summary><p class=\"meta\">${label(locale, "Semantic information", "语义信息")}: ${escapeHtml(htmlStateLabel(symbol.semantic.state, locale))}</p></details>\n")
 }

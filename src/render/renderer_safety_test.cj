@@ -437,6 +437,54 @@ class RendererSafetyTest {
     }
 
     @TestCase
+    func readableAliasesKeepStableRoutesAndEscapeSourceNames(): Unit {
+        let documentation = rendererOwnerDocumentation("class")
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        let owner = documentation.declarations[0]
+        let alias = symbolReadablePagePath(owner)
+        @Expect(alias.startsWith("symbols/fixture-Owner-"), true)
+        @Expect(!rendererSafetyContent(artifacts, "html/${symbolPagePath(owner)}").isEmpty(), true)
+        @Expect(rendererSafetyContent(artifacts, "html/${alias}").contains(
+            "href=\"${symbolPagePath(owner)["symbols/".size..]}\""), true)
+        let unsafeName = "中文.<script>\"&Owner"
+        let first = SymbolDoc("alias-one", "function", "api", unsafeName, "fixture", owner.moduleId,
+            "public", owner.source, "public func api(): Unit", SemanticInfo("partial", "ast"))
+        let overload = SymbolDoc("alias-two", "function", "api", unsafeName, "fixture", owner.moduleId,
+            "public", owner.source, "public func api(value: Int64): Unit", SemanticInfo("partial", "ast"))
+        @Expect(symbolReadablePagePath(first) != symbolReadablePagePath(overload), true)
+        for (byte in symbolReadablePagePath(first).toArray()) { @Expect(byte < 0x80, true) }
+        let unsafeAlias = renderSymbolAlias(first, "zh-CN")
+        @Expect(unsafeAlias.contains("<script>\"&Owner"), false)
+        @Expect(unsafeAlias.contains("&lt;script&gt;&quot;&amp;Owner"), true)
+        let longName = rendererSafetyFenceMarks(marker: "a", count: 47) + ".b"
+        let longSymbol = SymbolDoc("alias-long", "function", "api", longName, "fixture", owner.moduleId,
+            "public", owner.source, "public func api(): Unit", SemanticInfo("partial", "ast"))
+        let readable = symbolReadablePagePath(longSymbol).removePrefix("symbols/").removeSuffix(
+            "-${stableFileHash(longSymbol.id)}.html")
+        @Expect(readable.size <= 48, true)
+    }
+
+    @TestCase
+    func htmlMemberReadingStartsWithTheTypeAndKeepsOneCompleteInlineSignature(): Unit {
+        let documentation = rendererOwnerDocumentation("class")
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        let html = rendererSafetyContent(artifacts,
+            "html/${symbolPagePath(documentation.declarations[0])}")
+        let main = html[html.indexOf("<main ").getOrThrow()..]
+        @Expect(main.contains("sibling-members"), false)
+        @Expect(main.split("public func member(): Unit").size, 2)
+        @Expect(main.indexOf("api-page-header").getOrThrow() <
+            main.indexOf("member-browser\"").getOrThrow(), true)
+        @Expect(main.indexOf("member-browser\"").getOrThrow() <
+            main.indexOf("declaration-metadata").getOrThrow(), true)
+        @Expect(html.contains("class=\"skip-link\" href=\"#cjdoc-main\""), true)
+        @Expect(html.contains("id=\"cjdoc-main\""), true)
+        @Expect(html.contains("<code>member()</code>"), true)
+        @Expect(main.contains("data-cjdoc-members-expand"), true)
+        @Expect(main.contains("data-cjdoc-members-collapse"), true)
+    }
+
+    @TestCase
     func htmlChineseLabelsCoverBreadcrumbAndRuntimeControls(): Unit {
         let documentation = rendererSafetyDocumentation(MarkdownNode("document"))
         let collector = RenderArtifactCollector()

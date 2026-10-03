@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from showcase_contract.site import ContractError
+from .homepage_copy import GROUPS, LIMITS, TASKS
 
 TEXT = {
     "zh-CN": {
@@ -34,6 +35,19 @@ TEXT = {
     }
 }
 
+UI_TEXT = {
+    "zh-CN": {"HOME": "index.html", "SKIP": "跳到正文", "TAGLINE": "实际体验 API 文档", "NAVIGATION": "展示导航",
+        "THEME": "切换明暗", "COPY": "复制", "EYEBROW": "仓颉 · 原生 API 文档", "REPRODUCE": "复现 PocketKit 示例",
+        "BUILD_LABEL": "构建来源", "PLAN_LABEL": "完整演示计划", "MANIFEST": "功能清单", "NAV_LABEL": "导航索引",
+        "COVERAGE_LABEL": "覆盖率", "DIFF_LABEL": "API 变化", "DOCTEST_LABEL": "示例验证", "SCHEMAS": "数据结构定义",
+        "USAGE": "使用说明", "ADVANCED": "高级用法", "RELEASE": "发布流程", "LEGACY": "旧版演示入口"},
+    "en": {"HOME": "en.html", "SKIP": "Skip to content", "TAGLINE": "documentation in practice", "NAVIGATION": "Showcase navigation",
+        "THEME": "Light / Dark", "COPY": "Copy", "EYEBROW": "CANGJIE · NATIVE API DOCUMENTATION", "REPRODUCE": "Reproduce the PocketKit example",
+        "BUILD_LABEL": "Build provenance", "PLAN_LABEL": "Full demonstration plan", "MANIFEST": "Feature manifest", "NAV_LABEL": "Navigation",
+        "COVERAGE_LABEL": "Coverage", "DIFF_LABEL": "API diff", "DOCTEST_LABEL": "Doctest", "SCHEMAS": "Schemas",
+        "USAGE": "Usage", "ADVANCED": "Advanced usage", "RELEASE": "Release process", "LEGACY": "Legacy demo entry"},
+}
+
 
 def first(manifest: dict, feature_id: str, locale: str) -> dict:
     matches = [target for feature in manifest["features"] if feature["id"] == feature_id
@@ -44,34 +58,54 @@ def first(manifest: dict, feature_id: str, locale: str) -> dict:
 
 
 def cards(manifest: dict, locale: str | None = None) -> str:
+    locale = locale or "zh-CN"
+    language = 0 if locale == "zh-CN" else 1
     out = []
-    for number, feature in enumerate(manifest["features"], 1):
-        e = html.escape
-        card = f'<article class="feature-card" data-feature-id="{e(feature["id"])}" data-demonstration="{e(feature["demonstration"])}">'
-        card += f'<span class="feature-number">{number:02d} / {e(feature["id"])}</span><h3>{e(feature["title"])}</h3>'
-        card += '<div class="feature-states"><span>Implementation / 实现: ' + e(feature["implementation"]) + '</span><span>Demo / 演示: ' + e(feature["demonstration"]) + '</span></div>'
-        if feature["reason"]:
-            card += '<p>' + e(feature["reason"]) + '</p>'
-        if feature["targets"]:
-            card += '<details><summary>操作说明 / Instructions</summary><p>' + e(feature["targets"][0]["instructions"]) + '</p></details>'
-        card += '<div class="feature-targets">'
-        targets = sorted(feature["targets"], key=lambda target: target["locale"] != locale)
-        for target in targets:
-            if target["resolved"]:
-                label = target["locale"] + ' · ' + target["version"]
-                if sum(item["locale"] == target["locale"] for item in targets) > 1:
-                    label += ' · ' + (target.get("signature") or target.get("match", {}).get("title", target["id"]))
-                card += f'<a data-target-id="{e(target["id"])}" lang="{e(target["locale"])}" href="{e(target["resolved"]["href"])}">{e(label)}</a>'
-        out.append(card + '</div></article>')
+    features = {feature["id"]: feature for feature in manifest["features"]}
+    grouped = {identity for _, _, _, identities in GROUPS for identity in identities}
+    if set(features) - grouped:
+        raise ContractError("feature has no reader task group: " + ', '.join(sorted(set(features) - grouped)))
+    for group, chinese, english, identities in GROUPS:
+        out.append(f'<section class="feature-group" aria-labelledby="task-{group}"><h3 id="task-{group}">{chinese if language == 0 else english}</h3><div class="feature-grid">')
+        for identity in identities:
+            if identity in features:
+                out.append(card(features[identity], locale))
+        out.append('</div></section>')
     return '\n'.join(out)
 
+
+def card(feature: dict, locale: str) -> str:
+    language = 0 if locale == "zh-CN" else 1
+    e = html.escape
+    task = TASKS[feature["id"]]
+    card = f'<article class="feature-card" data-feature-id="{e(feature["id"])}" data-demonstration="{e(feature["demonstration"])}">'
+    title = feature["title"].split(" / ")
+    card += '<h4>' + e(title[min(language, len(title) - 1)]) + '</h4><p>' + e(task[language + 2]) + '</p>'
+    if feature["id"] in LIMITS:
+        card += '<p class="feature-limit">' + e(LIMITS[feature["id"]][language]) + '</p>'
+    card += '<div class="feature-targets">'
+    targets = [target for target in feature["targets"] if target["locale"] == locale]
+    for target in targets:
+        if target["resolved"]:
+            label = task[language]
+            if len(targets) > 1:
+                label += ' · ' + target["version"] + ' · ' + (target.get("signature") or target.get("match", {}).get("title", target["id"]))
+            card += f'<a data-target-id="{e(target["id"])}" lang="{e(target["locale"])}" href="{e(target["resolved"]["href"])}">{e(label)}</a>'
+    card += '</div><details class="feature-evidence"><summary>' + ('实现状态与证据' if language == 0 else 'Implementation and evidence') + '</summary>'
+    states = {'complete': '已实现', 'partial': '部分实现', 'not-implemented': '未实现', 'available': '可体验', 'uncovered': '未覆盖'}
+    implementation = states[feature['implementation']] if language == 0 else feature['implementation']
+    demonstration = states[feature['demonstration']] if language == 0 else feature['demonstration']
+    card += '<p>' + ('实现：' if language == 0 else 'Implementation: ') + e(implementation)
+    card += ' · ' + ('演示：' if language == 0 else 'Demo: ') + e(demonstration) + '</p>'
+    card += '<a href="showcase-features.json">' + ('完整功能清单与验证入口' if language == 0 else 'Full feature manifest and evidence routes') + '</a></details></article>'
+    return card
 
 def publish(repo: Path, site: Path, manifest: dict, metadata: dict) -> None:
     template = (repo / "site/index.html").read_text(encoding="utf-8")
     if template.count('<!-- SHOWCASE_FEATURES -->') != 1:
         raise ContractError("homepage needs exactly one feature-catalog slot")
     for locale, filename in (("zh-CN", "index.html"), ("en", "en.html")):
-        values = {**TEXT[locale], "LOCALE": locale, "REPOSITORY": metadata["source"]["repository"],
+        values = {**TEXT[locale], **UI_TEXT[locale], "LOCALE": locale, "REPOSITORY": metadata["source"]["repository"],
                   "PRIMARY": first(manifest, "compact-members", locale)["resolved"]["href"],
                   "GUIDE": first(manifest, "guide-association", locale)["resolved"]["href"],
                   "SOURCE": metadata["source"]["repository"] + '/tree/' + manifest["revision"] + '/examples/pocketkit',
@@ -81,7 +115,20 @@ def publish(repo: Path, site: Path, manifest: dict, metadata: dict) -> None:
             content = content.replace('__' + key + '__', html.escape(value, quote=True))
         content = content.replace('<!-- SHOWCASE_FEATURES -->', cards(manifest, locale))
         content = content.replace('<!-- SHOWCASE_COVERAGE -->', coverage(manifest, locale))
+        content = content.replace('<!-- SHOWCASE_GET_STARTED -->', getting_started(locale, metadata["source"]["repository"]))
         (site / filename).write_text(content, encoding="utf-8")
+
+
+def getting_started(locale: str, repository: str) -> str:
+    zh = locale == "zh-CN"
+    title = "给自己的项目生成文档" if zh else "Document your own project"
+    intro = ("先安装仓颉 SDK，再从发布页选择实际提供的平台文件，改名为 cjdoc（Windows 为 cjdoc.exe）并加入 PATH。若没有适合的平台文件，按源码构建说明安装。"
+             if zh else "Install the Cangjie SDK, then choose an available platform file from Releases. Rename it to cjdoc (cjdoc.exe on Windows) and add it to PATH. If no matching file is available, follow the source build instructions.")
+    links = ("下载安装包", "源码构建说明", "完整使用说明") if zh else ("Download a release", "Build from source", "Full usage guide")
+    command = 'cjdoc --version\ncjdoc generate --project /path/to/your-project --format html'
+    note = ("项目根目录需要 cjpm.toml 与 src/。为公开 API 添加 /** ... */ 注释，再运行上面的命令。打开项目下的 target/doc/html/index.html 即可阅读；不需要启动服务器。"
+            if zh else "Your project root needs cjpm.toml and src/. Add /** ... */ comments to public APIs and run the commands above. Open target/doc/html/index.html in that project; no server is required.")
+    return f'<section class="quickstart own-project" id="get-started" aria-labelledby="own-project-title"><div><h2 id="own-project-title">{title}</h2><p>{intro}</p><p><a href="{html.escape(repository, quote=True)}/releases">{links[0]}</a> · <a href="api/concepts/manual/advanced-usage.html">{links[1]}</a> · <a href="api/concepts/manual/usage.html">{links[2]}</a></p></div><div><pre><code id="own-project-command">{html.escape(command)}</code></pre><button type="button" data-showcase-copy="own-project-command">{"复制" if zh else "Copy"}</button><p>{note}</p></div></section>'
 
 
 def coverage(manifest: dict, locale: str) -> str:
@@ -128,4 +175,7 @@ def downloads(site: Path) -> None:
     for locale, raw in DOWNLOAD_TEXT.items():
         words = {key: html.escape(value) for key, value in raw.items()}
         content = f'''<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{words["title"]} · cjdoc</title><link rel="stylesheet" href="../showcase.css"><script src="../showcase.js" defer></script></head><body data-cjdoc-doc-version="showcase"><main class="download-page"><nav aria-label="Language and showcase"><a data-showcase-home href="../{words["home"]}">← {words["back"]}</a><a href="zh-CN.html" lang="zh-CN">中文</a><a href="en.html" lang="en">English</a><button type="button" data-showcase-theme>Light / Dark</button></nav><h1>{words["title"]}</h1><article><h2>{words["source"]}</h2><p>{words["license"]}</p><p><a data-source-download href="pocketkit-source.zip" download>{words["source_zip"]}</a> · <a href="source-manifest.json">{words["manifest"]}</a></p><pre><code id="download-command">python3 examples/pocketkit/reproduce.py --cjdoc /absolute/path/to/cjdoc --output ./generated --locale both</code></pre><button data-showcase-copy="download-command">{words["copy"]}</button><p>{words["run"]}</p></article><article id="offline"><h2>{words["offline"]}</h2><p>{words["use"]}</p><p><a data-offline-download href="showcase-offline.zip" download>{words["offline_zip"]}</a></p><p>{words["recursive"]}</p></article><p aria-live="polite" data-showcase-status></p></main></body></html>'''
+        content = content.replace('<script src="../showcase.js"', '<script src="../theme-bootstrap.js"></script><script src="../showcase.js"')
+        if locale == "zh-CN":
+            content = content.replace('Light / Dark', '切换明暗').replace('aria-label="Language and showcase"', 'aria-label="语言与展示导航"')
         (site / "downloads" / (locale + ".html")).write_text(content, encoding="utf-8")
