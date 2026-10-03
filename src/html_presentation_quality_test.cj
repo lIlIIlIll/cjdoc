@@ -47,7 +47,8 @@ class HtmlPresentationQualityTest {
         @Expect(packageHtml.contains("id=\"functions\""))
         @Expect(packageHtml.contains("<details class=\"declaration-metadata\"><summary>"))
         @Expect(!packageHtml.contains("<details class=\"declaration-metadata\" open"))
-        @Expect(packageHtml.contains("semantic: partial"))
+        @Expect(packageHtml.contains("<details class=\"declaration-metadata\"><summary>Declaration metadata</summary>" +
+            "<p class=\"meta\">Semantic information: partial</p></details>"))
         @Expect(packageHtml.contains("<details class=\"package-sources\">"))
         @Expect(packageHtml.contains("&lt;script&gt;"))
         @Expect(!packageHtml.contains("<script>alert"))

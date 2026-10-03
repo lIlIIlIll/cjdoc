@@ -394,6 +394,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     }
     out.append("</header>\n")
     if (isTypeDeclaration(symbol)) {
+        appendDocumentationIntroductionHtml(out, symbol, "../", assetLookup, 4, locale)
         match (symbol.documentation) {
             case Some(comment) => appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(symbol))
             case None => ()
@@ -429,7 +430,8 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
         }
     }
     appendDocumentationHtml(out, index, symbol, "../", assetLookup,
-        typeLinkIndex, headingBase: 4, locale: locale, includeContracts: !isTypeDeclaration(symbol))
+        typeLinkIndex, headingBase: 4, locale: locale, includeContracts: !isTypeDeclaration(symbol),
+        includeIntroduction: !isTypeDeclaration(symbol))
     appendDeclarationMetadata(out, index, symbol, "../", assetLookup, typeLinkIndex,
         locale: locale)
     appendReverseTypeUsages(out, index, typeLinkIndex, symbol, "../", locale)

@@ -42,7 +42,8 @@ private func rendererSafetyFenceMarks(marker!: String = "~",
     out.toString()
 }
 
-private func rendererOwnerDocumentation(ownerKind: String): DocumentationSet {
+private func rendererOwnerDocumentation(ownerKind: String,
+    ownerDocumentation!: ?DocComment = None): DocumentationSet {
     let moduleId = "cjdoc:module:v1:owner-validation"
     let ownerId =
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aowner-validation::fixture::class:Owner#g0()"
@@ -51,7 +52,8 @@ private func rendererOwnerDocumentation(ownerKind: String): DocumentationSet {
     let source = SourceRange("src/owner.cj", SourcePosition(1, 1, 0),
         SourcePosition(1, 24, 23))
     let owner = SymbolDoc(ownerId, ownerKind, "Owner", "fixture.Owner", "fixture", moduleId,
-        "public", source, "public ${ownerKind} Owner", SemanticInfo("partial", "ast"))
+        "public", source, "public ${ownerKind} Owner", SemanticInfo("partial", "ast"),
+        documentation: ownerDocumentation)
     let member = SymbolDoc(memberId, "function", "member", "fixture.Owner.member", "fixture",
         moduleId, "public", source, "public func member(): Unit",
         SemanticInfo("partial", "ast"), ownerId: Some(ownerId))
@@ -466,7 +468,12 @@ class RendererSafetyTest {
 
     @TestCase
     func htmlMemberReadingStartsWithTheTypeAndKeepsOneCompleteInlineSignature(): Unit {
-        let documentation = rendererOwnerDocumentation("class")
+        let introduction = DocComment("raw", "", "", MarkdownNode("document", children: [
+            MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "A compact type summary.")]),
+            MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "No internal synchronization.")])
+        ]), tags: [DocTag("precondition", "", "Callers coordinate concurrent access."),
+            DocTag("example", "", "Example after members.")])
+        let documentation = rendererOwnerDocumentation("class", ownerDocumentation: Some(introduction))
         let artifacts = HtmlDocumentationRenderer().render(documentation)
         let html = rendererSafetyContent(artifacts,
             "html/${symbolPagePath(documentation.declarations[0])}")
@@ -477,6 +484,13 @@ class RendererSafetyTest {
             mainHtml.indexOf("member-browser\"").getOrThrow(), true)
         @Expect(mainHtml.indexOf("member-browser\"").getOrThrow() <
             mainHtml.indexOf("declaration-metadata").getOrThrow(), true)
+        @Expect(mainHtml.indexOf("No internal synchronization.").getOrThrow() <
+            mainHtml.indexOf("member-browser\"").getOrThrow(), true)
+        @Expect(mainHtml.indexOf("Callers coordinate concurrent access.").getOrThrow() <
+            mainHtml.indexOf("member-browser\"").getOrThrow(), true)
+        @Expect(mainHtml.indexOf("Example after members.").getOrThrow() >
+            mainHtml.indexOf("member-browser\"").getOrThrow(), true)
+        @Expect(mainHtml.split("A compact type summary.").size, 2)
         @Expect(html.contains("class=\"skip-link\" href=\"#cjdoc-main\""), true)
         @Expect(html.contains("id=\"cjdoc-main\""), true)
         @Expect(html.contains("<code>member()</code>"), true)

@@ -13,6 +13,7 @@ internal let VERSION_DIFF_MAX_BYTES: Int64 = 32 * 1024 * 1024
 internal let VERSION_TOTAL_MAX_BYTES: Int64 = 256 * 1024 * 1024
 internal let VERSION_MAX_SITES: Int64 = 64
 internal let VERSION_COMPOSE_MAX_FILES: Int64 = 65532
+internal let VERSION_CONTEXT_MAX_MEMBERS: Int64 = 4 * VERSION_COMPOSE_MAX_FILES
 
 private class VersionComposeBudget {
     var totalBytes: Int64 = 0
@@ -77,6 +78,13 @@ internal class VersionSymbolIndex {
     private let memberIdsByOwner = HashMap<String, HashSet<String>>()
     private let kindById = HashMap<String, String>()
     private let contextRelations = ArrayList<(String, String, String)>()
+    private let contextMemberLimit: Int64
+    private var contextMemberCount: Int64 = 0
+
+    init(limit!: Int64 = VERSION_CONTEXT_MAX_MEMBERS) {
+        if (limit <= 0) { throw IllegalArgumentException("invalid version context member limit") }
+        this.contextMemberLimit = limit
+    }
 
     func add(id: String, href: String, owner!: ?String = None, kind!: String = ""): Unit {
         if (id.isEmpty() || href.isEmpty() || !isSafeOutputPath(href)) {
@@ -113,12 +121,20 @@ internal class VersionSymbolIndex {
 
     private func addContextMember(owner: String, id: String): Unit {
         match (memberIdsByOwner.get(owner)) {
-            case Some(ids) => if (!ids.add(id)) { return }
+            case Some(ids) => if (ids.contains(id)) { return }
+            case None => ()
+        }
+        if (contextMemberCount >= contextMemberLimit) {
+            throw IllegalArgumentException("version context members exceed composition memory budget")
+        }
+        match (memberIdsByOwner.get(owner)) {
+            case Some(ids) => let _ = ids.add(id)
             case None =>
                 let ids = HashSet<String>()
                 let _ = ids.add(id)
                 memberIdsByOwner[owner] = ids
         }
+        contextMemberCount++
         match (membersByOwner.get(owner)) {
             case Some(members) => members.add(id)
             case None => membersByOwner[owner] = ArrayList<String>([id])

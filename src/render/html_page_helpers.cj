@@ -84,41 +84,46 @@ internal func appendSummaryHtml(out: RenderTextBuffer, comment: DocComment,
     }
 }
 
+internal func appendDocumentationIntroductionHtml(out: RenderTextBuffer, symbol: SymbolDoc,
+    rootPrefix: String, assetLookup: HashMap<String, String>, headingBase: Int64,
+    locale: String): Unit {
+    let comment = match (symbol.documentation) {
+        case Some(value) => value
+        case None => return
+    }
+    match (findTag(comment, "deprecated")) {
+        case Some(tag) =>
+            out.append("<aside class=\"callout\"><strong>${label(locale, "Deprecated.", "已弃用。")}</strong> ")
+            appendStructuredTextHtml(out, tag.description)
+            out.append("</aside>\n")
+        case None => ()
+    }
+    if (comment.markdown.kind == "paragraph") { return }
+    let summaryIndex = topLevelParagraphIndex(comment)
+    if (comment.markdown.children.isEmpty() ||
+        (comment.markdown.children.size == 1 && summaryIndex == 0)) { return }
+    out.append("<div class=\"description\">")
+    let markdownContext = markdownHtmlContext(comment, symbol, headingBase)
+    var childIndex: Int64 = 0
+    for (child in comment.markdown.children) {
+        if (childIndex != summaryIndex) {
+            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, markdownContext)
+        }
+        childIndex++
+    }
+    out.append("</div>\n")
+}
+
 internal func appendDocumentationHtml(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
     headingBase!: Int64 = 3, includeContracts!: Bool = true,
-    locale!: String = "en"): Unit {
+    includeIntroduction!: Bool = true, locale!: String = "en"): Unit {
+    if (includeIntroduction) {
+        appendDocumentationIntroductionHtml(out, symbol, rootPrefix, assetLookup, headingBase, locale)
+    }
     match (symbol.documentation) {
         case Some(comment) =>
-            match (findTag(comment, "deprecated")) {
-                case Some(tag) =>
-                    out.append("<aside class=\"callout\"><strong>${label(locale, "Deprecated.", "已弃用。")}</strong> ")
-                    appendStructuredTextHtml(out, tag.description)
-                    out.append("</aside>\n")
-                case None => ()
-            }
-                        let summaryIndex = topLevelParagraphIndex(comment)
-            if (comment.markdown.kind != "paragraph") {
-            var hasDescription = false
-            var childIndex: Int64 = 0
-            for (child in comment.markdown.children) {
-                if (childIndex != summaryIndex) { hasDescription = true; break }
-                childIndex++
-            }
-            if (hasDescription) {
-                out.append("<div class=\"description\">")
-                let markdownContext = markdownHtmlContext(comment, symbol, headingBase)
-                childIndex = 0
-                for (child in comment.markdown.children) {
-                    if (childIndex != summaryIndex) {
-                        appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, markdownContext)
-                    }
-                    childIndex++
-                }
-                out.append("</div>\n")
-            }
-            }
             if (!symbol.parameters.isEmpty()) {
                 out.append("<h3>${label(locale, "Parameters", "参数")}</h3><dl class=\"parameter-list\">\n")
                 for (parameter in symbol.parameters) {

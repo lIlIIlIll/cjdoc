@@ -7,6 +7,25 @@ import std.unittest.testmacro.*
 @Test
 class VersionContextMemberTest {
     @TestCase
+    func contextMembershipBudgetRejectsExpansionButDoesNotChargeDuplicates(): Unit {
+        let index = VersionSymbolIndex(limit: 2)
+        index.add("owner", "symbols/owner.html", kind: "class")
+        index.add("extension", "symbols/extension.html", kind: "extend")
+        index.add("extra", "symbols/extra.html", owner: Some("extension"))
+        index.addContextRelation("owner", "extendedBy", "resolved", "extension")
+        index.addContextRelation("owner", "extendedBy", "resolved", "extension")
+        index.resolveContextMembers()
+        index.resolveContextMembers()
+        @Expect(index.membersByOwner["owner"].size, 1)
+        @Expect(index.membersByOwner["extension"].size, 1)
+        index.add("another", "symbols/another.html")
+        index.addContextRelation("owner", "inheritedMember", "resolved", "another")
+        @ExpectThrows[IllegalArgumentException](index.resolveContextMembers())
+        @Expect(index.membersByOwner["owner"].size, 1)
+        @ExpectThrows[IllegalArgumentException](VersionSymbolIndex(limit: 0))
+    }
+
+    @TestCase
     func versionSelectorsMapDeclaredExtendedAndInheritedInlineMembers(): Unit {
         let source = """
 {"schemaVersion":"cjdoc.symbol-index/1","entries":[
