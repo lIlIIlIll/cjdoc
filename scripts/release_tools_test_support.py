@@ -24,6 +24,7 @@ from scripts import verify_release_package
 from scripts import verify_remote_tag
 from scripts import verify_repository_inputs
 from scripts import worktree_identity
+from scripts.showcase_inputs import source_inputs
 from scripts.verify_repository_inputs import (
     CURRENT_GOLDEN_VERSION,
     GOLDEN_NAMES,
@@ -62,6 +63,10 @@ class ReleaseToolsTestSupport:
             "vendor/yjson_algorithms/UPSTREAM.md",
             "vendor/yjson_algorithms/cjpm.toml",
             "vendor/yjson_algorithms/vendor-manifest.toml",
+            "cjdoc.toml",
+            "site/showcase-baseline.json",
+            "scripts/requirements-showcase.txt",
+            *source_inputs(),
         ):
             destination = root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -137,4 +142,3 @@ class ReleaseToolsTestSupport:
             encoding="utf-8",
         )
         return root
-

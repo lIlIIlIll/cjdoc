@@ -139,7 +139,11 @@ private func serveResponse(socket: TcpSocket, status: String, contentType: Strin
 
 private func serveError(socket: TcpSocket, status: String, message: String): Unit {
     let body = "${status}\n${message}\n".toArray()
-    serveResponse(socket, status, "text/plain; charset=utf-8", body)
+    // A client can disconnect after any read or write. Reporting its error is
+    // best-effort: another failed write must never escape into the accept loop.
+    try {
+        serveResponse(socket, status, "text/plain; charset=utf-8", body)
+    } catch (_: Exception) { () }
 }
 
 private func readServeRequest(socket: TcpSocket): String {
@@ -220,27 +224,29 @@ private func serveStaticPath(siteRoot: Path, relative: String): Array<Byte> {
 
 private func serveClient(socket: TcpSocket, siteRoot: Path, state: ServeState,
     port: Int64): Unit {
-    socket.readTimeout = Some(Duration.second * 5)
     try {
+        socket.readTimeout = Some(Duration.second * 5)
         let request = readServeRequest(socket)
         let (relative, headOnly, _) = serveRequestPath(request)
         if (relative == "__cjdoc/status.json") {
             serveResponse(socket, "200 OK", "application/json; charset=utf-8",
                 serveStatusJson(state, port), headOnly: headOnly)
         } else {
-            try {
-                let body = serveStaticPath(siteRoot, relative)
-                serveResponse(socket, "200 OK", serveContentType(relative), body, headOnly: headOnly)
+            let body = try {
+                serveStaticPath(siteRoot, relative)
             } catch (_: Exception) {
                 serveError(socket, "404 Not Found", "artifact not found")
+                return
             }
+            serveResponse(socket, "200 OK", serveContentType(relative), body, headOnly: headOnly)
         }
     } catch (_: SocketTimeoutException) {
         serveError(socket, "408 Request Timeout", "request timed out")
     } catch (_: Exception) {
         serveError(socket, "400 Bad Request", "bad request")
+    } finally {
+        try { socket.close() } catch (_: Exception) { () }
     }
-    try { socket.close() } catch (_: Exception) { () }
 }
 
 private func serveBuild(options: NewCliOptions, output: String, cache: ?String,

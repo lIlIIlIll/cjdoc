@@ -1,37 +1,30 @@
+"use strict";
 (() => {
-  const root = document.documentElement;
-  const themeButton = document.querySelector('[data-theme-toggle]');
-  const copyButton = document.querySelector('[data-copy]');
-  const copyStatus = document.querySelector('[data-copy-status]');
-
-  const applyTheme = (theme) => {
-    root.dataset.theme = theme;
-    if (themeButton) {
-      themeButton.setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`);
-      themeButton.title = `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`;
-    }
-  };
-
-  const storedTheme = (() => {
-    try { return localStorage.getItem('cjdoc-theme'); } catch (_) { return null; }
-  })();
-  applyTheme(storedTheme === 'light' ? 'light' : 'dark');
-
-  themeButton?.addEventListener('click', () => {
-    const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
-    applyTheme(next);
-    try { localStorage.setItem('cjdoc-theme', next); } catch (_) { /* file:// storage can be unavailable */ }
+  const status = document.querySelector('[data-showcase-status]');
+  const say = (message) => { if (status) status.textContent = message; };
+  const theme = document.querySelector('[data-showcase-theme]');
+  try { const saved = localStorage.getItem('cjdoc-showcase-theme'); if (saved === 'dark' || saved === 'light') document.documentElement.dataset.theme = saved; } catch (_) {}
+  if (theme) theme.addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('cjdoc-showcase-theme', next); } catch (_) {}
   });
-
-  copyButton?.addEventListener('click', async () => {
-    const value = copyButton.dataset.copy;
-    try {
-      await navigator.clipboard.writeText(value);
-      copyButton.textContent = 'copied';
-      if (copyStatus) copyStatus.textContent = 'Command copied to the clipboard.';
-    } catch (_) {
-      if (copyStatus) copyStatus.textContent = value;
+  document.querySelectorAll('[data-showcase-copy]').forEach(button => button.addEventListener('click', async () => {
+    const source = document.getElementById(button.dataset.showcaseCopy);
+    if (!source) return;
+    const text = source.textContent;
+    let copied = false;
+    try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); copied = true; } } catch (_) {}
+    if (!copied) {
+      const field = document.createElement('textarea'); field.value = text;
+      field.style.position = 'fixed'; field.style.left = '-10000px'; document.body.appendChild(field); field.select();
+      try { copied = document.execCommand('copy'); } catch (_) {} finally { field.remove(); }
     }
-    window.setTimeout(() => { copyButton.textContent = 'copy'; }, 1800);
+    button.dataset.copyResult = copied ? 'copied' : 'unavailable';
+    say(copied ? 'Copied / 已复制' : 'Clipboard unavailable; select the code manually / 请手动选择代码');
+  }));
+  if (location.protocol === 'file:') document.querySelectorAll('[data-offline-download]').forEach(link => {
+    link.removeAttribute('href'); link.setAttribute('aria-disabled', 'true');
+    link.textContent = 'Already viewing the extracted offline site / 当前已是解压后的离线目录';
   });
 })();

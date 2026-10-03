@@ -518,14 +518,15 @@ internal let HTML_SEARCH_SCRIPT = """
         heading.tagName === "H2" || heading.tagName === "H3") &&
         !heading.classList.contains("signature-heading");
     });
-    const usedIds = new Set();
+    const usedIds = new Set([...document.querySelectorAll("[id]")].map((node) => node.id));
     const slug = (value, index) => {
       const normalized = value.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "");
       return normalized || "section-" + index;
     };
     const ensureHeadingId = (heading, index) => {
-      let id = heading.id || slug(heading.textContent.trim(), index);
+      if (heading.id) return;
+      let id = slug(heading.textContent.trim(), index);
       const base = id;
       let suffix = 2;
       while (usedIds.has(id)) { id = base + "-" + suffix; suffix += 1; }

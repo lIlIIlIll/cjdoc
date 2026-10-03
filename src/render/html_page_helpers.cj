@@ -120,7 +120,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             }
             }
             appendDocumentationExamplesHtml(out, comment, locale)
-            appendDocumentationContractsHtml(out, comment, locale)
+            appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(symbol))
             if (!symbol.parameters.isEmpty()) {
                 out.append("<h3>${label(locale, "Parameters", "参数")}</h3><dl class=\"parameter-list\">\n")
                 for (parameter in symbol.parameters) {

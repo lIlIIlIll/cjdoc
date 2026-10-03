@@ -1,0 +1,2 @@
+# Optional dependency for real browser tests, not needed for contract unit tests.
+playwright==1.57.0

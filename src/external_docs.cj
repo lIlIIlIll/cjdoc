@@ -67,12 +67,14 @@ private func externalHrefHasAsciiControlOrWhitespace(value: String): Bool {
 }
 
 private func safeExternalBaseUrl(value: String): Bool {
-    (value.startsWith("https://") || value.startsWith("http://")) &&
+    safeLocalExternalBaseUrl(value) ||
+        ((value.startsWith("https://") || value.startsWith("http://")) &&
         !externalHrefHasAsciiControlOrWhitespace(value) &&
-        !value.contains("#") && !value.contains("?")
+        !value.contains("#") && !value.contains("?"))
 }
 
 private func safeExternalHref(baseUrl: String, href: String): ?String {
+    if (safeLocalExternalBaseUrl(baseUrl)) { return safeLocalExternalHref(baseUrl, href) }
     if (externalHrefHasAsciiControlOrWhitespace(href)) { return None }
     if (href.startsWith("http://") || href.startsWith("https://")) {
         if (!safeExternalBaseUrl(href)) { return None }

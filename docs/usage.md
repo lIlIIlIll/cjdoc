@@ -232,6 +232,8 @@ jobs = 1
 
 `warn` 会继续生成并返回 `0`，`deny` 在编译失败、运行失败或超时后返回 `1`。生成目录会增加 `doctest/results.json`，其版本为 `cjdoc.doctest/1`；`check` 会执行检查但不写 artifact。每个代码块在独立工作目录编译和运行，命令通过参数数组传递，不经过 shell。启用 doctest 时不能使用 `--stdout`，因为该选项必须保持单一 JSON 输出。
 
+上述 `warn` 行为适用于已执行示例的结果；执行准备失败仍会报错。这条 legacy 管线通过 `/usr/bin/prlimit` 或 `/bin/prlimit` 实施正数地址空间上限。当前 macOS、Windows 环境没有该限制器，因此会在启动编译进程前明确拒绝，不会自动取消内存限制；这与 `check --check-examples` 的平台能力分别判断。
+
 ## 生成 API surface 和 coverage
 
 用 `api-surface` 保存公开 API 的稳定快照：
