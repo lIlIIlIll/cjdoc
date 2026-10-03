@@ -32,7 +32,7 @@ A prerelease or partially validated implementation must remain `state: candidate
 python scripts/perf_gate.py record \
   --profile basic=tests/fixtures/projects/basic \
   --profile self=. \
-  --output /tmp/cjdoc-perf-baseline.json
+  --output ../cjdoc-perf-baseline.json
 ```
 
 Review the raw evidence, limits, SDK identity and source changes. Only after local acceptance, real-repository smoke and an independent diff review pass may the reviewed values replace the checked-in file and change to `state: frozen`. `verify_release.py` and the release gate reject any other state.
