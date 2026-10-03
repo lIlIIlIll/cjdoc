@@ -44,6 +44,11 @@ def escaped(value: object) -> str:
     return html.escape(str(value), quote=True)
 
 
+def source_text(value: object) -> str:
+    """Separate source identities from translatable presentation labels."""
+    return '<span data-report-source-text>' + escaped(value) + '</span>'
+
+
 def checked(path: Path, schema: str) -> dict:
     if path.is_symlink() or not path.is_file() or path.stat().st_size > 64 * 1024 * 1024:
         raise ContractError(f"missing, unsafe or oversized report: {path.name}")
@@ -111,7 +116,7 @@ def declaration_link(root: Path, origin: Path, mapping: dict, symbol_id: str | N
         raise ContractError("report symbol has no native declaration route")
     entry = mapping[symbol_id]
     href = os.path.relpath(root / relative_path(entry["href"]), origin).replace(os.sep, "/")
-    return f'<a href="{escaped(href)}" data-report-symbol="{escaped(symbol_id)}">{escaped(label)}: {escaped(entry["qualifiedName"])}</a>'
+    return f'<a href="{escaped(href)}" data-report-symbol="{escaped(symbol_id)}">{escaped(label)}: {source_text(entry["qualifiedName"])}</a>'
 
 
 def table(headers: tuple[str, ...], rows: list[list[str]]) -> str:
@@ -129,7 +134,8 @@ def coverage_view(raw: dict) -> str:
     for kind, name, metrics in scopes:
         for metric, value in metrics.items():
             percent = (escaped(value["percent"]) + "%") if value["total"] else '<span data-reported-percent="' + escaped(value["percent"]) + '">Not applicable</span>'
-            rows.append([escaped(kind), escaped(name), escaped(metric), escaped(value["documented"]),
+            display_name = escaped(name) if kind == "project" else source_text(name)
+            rows.append([escaped(kind), display_name, escaped(metric), escaped(value["documented"]),
                          escaped(value["total"]), percent])
     return '<section id="coverage"><h2>文档覆盖 / Coverage</h2><p>Audience: <code>' + escaped(raw["audience"]) + (
         '</code>。分子、分母和百分比均来自原报告；覆盖率不证明契约正确。 '
@@ -202,7 +208,7 @@ def doctest_view(raw: dict | None, ir: dict, root: Path, mapping: dict) -> str:
         if len(tags) != 1:
             raise ContractError("doctest result cannot be traced to one source example")
         output += f'<article class="report-case" id="doctest-case-{number}" data-doctest-status="{escaped(result["status"])}">'
-        output += '<h3>' + escaped(result["qualifiedName"]) + ': ' + escaped(result["status"]) + '</h3>'
+        output += '<h3>' + source_text(result["qualifiedName"]) + ': ' + escaped(result["status"]) + '</h3>'
         output += '<p>' + declaration_link(root, root, mapping, result["symbolId"], "Source API") + '</p>'
         output += '<p>id: <code>' + escaped(result["id"]) + '</code></p>'
         output += '<p>exitCode: ' + escaped(result["exitCode"]) + '; durationMs: ' + escaped(result["durationMs"]) + '</p>'
@@ -264,7 +270,7 @@ def diagnostics_view(ir: dict, root: Path, mapping: dict) -> str:
                 page = root / relative_path(entry["href"])
                 sources[symbol_id] = SourceAction(page.read_text(encoding="utf-8")).href if page.is_file() else None
             source_url = sources.get(symbol_id)
-            output += ' · ' + (f'<a href="{escaped(source_url)}" rel="noreferrer">{escaped(location)}</a>' if source_url else escaped(location))
+            output += ' · ' + (f'<a href="{escaped(source_url)}" rel="noreferrer">{source_text(location)}</a>' if source_url else source_text(location))
         output += '</p><p>' + escaped(diagnostic["message"]) + '</p><details><summary>Raw diagnostic JSON</summary><pre>'
         output += escaped(json.dumps(diagnostic, ensure_ascii=False, indent=2)) + '</pre></details></article>'
     return output + '</section>'

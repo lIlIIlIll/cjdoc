@@ -35,7 +35,7 @@ def canonical_theme_bootstrap_script() -> str:
 
 def canonical_symbol_alias_script() -> str:
     source = (SCRIPT.parent.parent / "src/render/html_routing.cj").read_text(encoding="utf-8")
-    return source.split('internal let HTML_SYMBOL_ALIAS_SCRIPT = #"\n', 1)[1].split('\n"#', 1)[0] + "\n"
+    return "\n" + source.split('internal let HTML_SYMBOL_ALIAS_SCRIPT = #"\n', 1)[1].split('\n"#', 1)[0] + "\n"
 
 
 class ValidateHtmlSiteTest(unittest.TestCase):

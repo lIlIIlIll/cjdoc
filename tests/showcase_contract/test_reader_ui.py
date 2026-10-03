@@ -15,9 +15,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 from report_views.localization import localize_ui
 from report_views.pages import PageTitle
-from report_views.reports import FILTER_SCRIPT, coverage_view, diagnostics_view
+from report_views.reports import FILTER_SCRIPT, coverage_view, declaration_link, diagnostics_view
 from showcase_build.homepage import cards, getting_started
 from showcase_build.navigation import SCRIPT, VersionLinks
+from showcase_contract.browser_reports import expected_coverage_rows
 
 
 class ReaderUiTests(unittest.TestCase):
@@ -37,6 +38,22 @@ class ReaderUiTests(unittest.TestCase):
         self.assertIn("注释引用解析率", result)
         self.assertIn("签名类型链接另列在诊断中", result)
         self.assertIn('data-reported-percent="100">无适用项', result)
+        self.assertEqual(raw, original)
+
+    def test_browser_coverage_contract_keeps_each_raw_number_and_localizes_only_labels(self) -> None:
+        raw = {"metrics": {"symbols": {"documented": 2, "total": 3, "percent": 17},
+                           "deprecated": {"documented": 0, "total": 0, "percent": 93}},
+               "packages": [{"name": "fixture", "metrics": {"parameters": {"documented": 1, "total": 5, "percent": 19}}}],
+               "modules": []}
+        original = copy.deepcopy(raw)
+        self.assertEqual(expected_coverage_rows(raw, True), [
+            ["项目", "全部", "声明摘要", "2", "3", "17%"],
+            ["项目", "全部", "弃用说明", "0", "0", "无适用项"],
+            ["包", "fixture", "参数说明", "1", "5", "19%"]])
+        self.assertEqual(expected_coverage_rows(raw, False), [
+            ["project", "all", "symbols", "2", "3", "17%"],
+            ["project", "all", "deprecated", "0", "0", "Not applicable"],
+            ["packages", "fixture", "parameters", "1", "5", "19%"]])
         self.assertEqual(raw, original)
 
     def test_diagnostics_link_exact_native_identity_and_source_without_guessing(self) -> None:
@@ -66,6 +83,20 @@ class ReaderUiTests(unittest.TestCase):
         self.assertTrue(result.endswith(evidence))
         self.assertIn('<h2>文档覆盖</h2>', result)
         self.assertIn('<h2>Coverage</h2>', localize_ui('<h2>文档覆盖 / Coverage</h2>', "en"))
+
+    def test_report_localization_preserves_real_names_that_match_ui_labels(self) -> None:
+        metric = {"symbols": {"documented": 1, "total": 2, "percent": 50}}
+        raw = {"audience": "external", "metrics": metric,
+               "packages": [{"name": "all", "metrics": metric}],
+               "modules": [{"name": "symbols", "metrics": metric}]}
+        rendered = localize_ui(coverage_view(raw), "zh-CN")
+        self.assertIn('<span data-report-source-text>all</span>', rendered)
+        self.assertIn('<span data-report-source-text>symbols</span>', rendered)
+        link = declaration_link(self.root, self.root, {"symbol": {"href": "api.html", "qualifiedName": "Source API"}}, "symbol", "Source API")
+        self.assertIn('对应 API: <span data-report-source-text>Source API</span>', localize_ui(link, "zh-CN"))
+        expected = expected_coverage_rows(raw, True)
+        self.assertEqual(expected[1][1], "all")
+        self.assertEqual(expected[2][1], "symbols")
 
     def test_report_version_links_keep_category_and_expose_missing_report(self) -> None:
         for version in ("demo-v1", "demo-v2"):

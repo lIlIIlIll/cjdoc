@@ -470,18 +470,18 @@ class RendererSafetyTest {
         let artifacts = HtmlDocumentationRenderer().render(documentation)
         let html = rendererSafetyContent(artifacts,
             "html/${symbolPagePath(documentation.declarations[0])}")
-        let main = html[html.indexOf("<main ").getOrThrow()..]
-        @Expect(main.contains("sibling-members"), false)
-        @Expect(main.split("public func member(): Unit").size, 2)
-        @Expect(main.indexOf("api-page-header").getOrThrow() <
-            main.indexOf("member-browser\"").getOrThrow(), true)
-        @Expect(main.indexOf("member-browser\"").getOrThrow() <
-            main.indexOf("declaration-metadata").getOrThrow(), true)
+        let mainHtml = html[html.indexOf("<main ").getOrThrow()..]
+        @Expect(mainHtml.contains("sibling-members"), false)
+        @Expect(mainHtml.split("public func member(): Unit").size, 2)
+        @Expect(mainHtml.indexOf("api-page-header").getOrThrow() <
+            mainHtml.indexOf("member-browser\"").getOrThrow(), true)
+        @Expect(mainHtml.indexOf("member-browser\"").getOrThrow() <
+            mainHtml.indexOf("declaration-metadata").getOrThrow(), true)
         @Expect(html.contains("class=\"skip-link\" href=\"#cjdoc-main\""), true)
         @Expect(html.contains("id=\"cjdoc-main\""), true)
         @Expect(html.contains("<code>member()</code>"), true)
-        @Expect(main.contains("data-cjdoc-members-expand"), true)
-        @Expect(main.contains("data-cjdoc-members-collapse"), true)
+        @Expect(mainHtml.contains("data-cjdoc-members-expand"), true)
+        @Expect(mainHtml.contains("data-cjdoc-members-collapse"), true)
     }
 
     @TestCase

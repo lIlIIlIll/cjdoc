@@ -73,8 +73,12 @@ internal class VersionSymbolIndex {
     let idByHref = HashMap<String, String>()
     let ownerById = HashMap<String, String>()
     let membersByOwner = HashMap<String, ArrayList<String>>()
+    private let declaredMembersByOwner = HashMap<String, ArrayList<String>>()
+    private let memberIdsByOwner = HashMap<String, HashSet<String>>()
+    private let kindById = HashMap<String, String>()
+    private let contextRelations = ArrayList<(String, String, String)>()
 
-    func add(id: String, href: String, owner!: ?String = None): Unit {
+    func add(id: String, href: String, owner!: ?String = None, kind!: String = ""): Unit {
         if (id.isEmpty() || href.isEmpty() || !isSafeOutputPath(href)) {
             throw IllegalArgumentException("version symbol index contains an unsafe route")
         }
@@ -92,16 +96,55 @@ internal class VersionSymbolIndex {
         }
         hrefById[id] = href
         idByHref[href] = id
+        kindById[id] = kind
         match (owner) {
             case Some(ownerId) =>
                 if (!ownerById.contains(id)) {
                     ownerById[id] = ownerId
-                    match (membersByOwner.get(ownerId)) {
+                    match (declaredMembersByOwner.get(ownerId)) {
                         case Some(members) => members.add(id)
-                        case None => membersByOwner[ownerId] = ArrayList<String>([id])
+                        case None => declaredMembersByOwner[ownerId] = ArrayList<String>([id])
                     }
+                    addContextMember(ownerId, id)
                 }
             case None => ()
+        }
+    }
+
+    private func addContextMember(owner: String, id: String): Unit {
+        match (memberIdsByOwner.get(owner)) {
+            case Some(ids) => if (!ids.add(id)) { return }
+            case None =>
+                let ids = HashSet<String>()
+                let _ = ids.add(id)
+                memberIdsByOwner[owner] = ids
+        }
+        match (membersByOwner.get(owner)) {
+            case Some(members) => members.add(id)
+            case None => membersByOwner[owner] = ArrayList<String>([id])
+        }
+    }
+
+    func addContextRelation(owner: String, kind: String, state: String, target: String): Unit {
+        if (state == "resolved" && (kind == "extendedBy" || kind == "inheritedMember" ||
+            kind == "inherits-member")) { contextRelations.add((owner, kind, target)) }
+    }
+
+    // Mirror the renderer's explicit member projection without changing declared
+    // ownership or inventing transitive inheritance/extension relationships.
+    func resolveContextMembers(): Unit {
+        for ((owner, kind, target) in contextRelations) {
+            if (!hrefById.contains(owner) || !hrefById.contains(target)) { continue }
+            if (kind == "extendedBy") {
+                match (kindById.get(target)) {
+                    case Some("extend") => ()
+                    case _ => continue
+                }
+                match (declaredMembersByOwner.get(target)) {
+                    case Some(members) => for (id in members) { addContextMember(owner, id) }
+                    case None => ()
+                }
+            } else { addContextMember(owner, target) }
         }
     }
 }
@@ -189,6 +232,29 @@ private func versionJsonArrayValues(value: JsonArray): Array<JsonNode> {
     result.toArray()
 }
 
+private func loadVersionContextRelations(index: VersionSymbolIndex, owner: String,
+    entry: JsonObject): Unit {
+    let relations = match (entry.get("relations")) {
+        case Some(value) => try { value.asArray() } catch (_: Exception) { return }
+        case None => return
+    }
+    for (node in versionJsonArrayValues(relations)) {
+        let relation = try { node.asObject() } catch (_: Exception) { continue }
+        let kind = match (versionJsonStringField(relation, "kind")) {
+            case Some(value) => value
+            case None => continue
+        }
+        let state = match (versionJsonStringField(relation, "state")) {
+            case Some(value) => value
+            case None => continue
+        }
+        match (versionJsonStringField(relation, "targetId")) {
+            case Some(target) => index.addContextRelation(owner, kind, state, target)
+            case None => ()
+        }
+    }
+}
+
 private func collectVersionFilesInDirectory(directory: Path, relative: String,
     files: ArrayList<VersionSourceFile>, seen: HashSet<String>, budget: VersionComposeBudget): Unit {
     for (info in Directory.readFrom(directory)) {
@@ -219,7 +285,7 @@ private func collectVersionFilesInDirectory(directory: Path, relative: String,
     }
 }
 
-private func loadVersionSymbols(files: ArrayList<VersionSourceFile>): VersionSymbolIndex {
+internal func loadVersionSymbols(files: ArrayList<VersionSourceFile>): VersionSymbolIndex {
     let result = VersionSymbolIndex()
     for (file in files) {
         if (file.path != "symbol-index.json") { continue }
@@ -259,9 +325,15 @@ private func loadVersionSymbols(files: ArrayList<VersionSourceFile>): VersionSym
                 case Some(value) => value
                 case None => throw IllegalArgumentException("version symbol index entry has no href")
             }
-            result.add(id, href, owner: versionJsonStringField(entry, "ownerId"))
+            let kind = match (versionJsonStringField(entry, "kind")) {
+                case Some(value) => value
+                case None => ""
+            }
+            result.add(id, href, owner: versionJsonStringField(entry, "ownerId"), kind: kind)
+            loadVersionContextRelations(result, id, entry)
         }
     }
+    result.resolveContextMembers()
     result
 }
 private func loadVersionApiDiff(spec: VersionComposeSpec, budget: VersionComposeBudget): VersionSourceFile {

@@ -74,11 +74,17 @@ class LocalizedUI(HTMLParser):
     def __init__(self, text: str, locale: str) -> None:
         super().__init__(convert_charrefs=False)
         self.locale, self.protected, self.output = locale, 0, []
+        self.source_spans = []
         self.feed(text)
 
     def handle_starttag(self, tag: str, attrs: list) -> None:
         if tag in {"pre", "code"}:
             self.protected += 1
+        if tag == "span":
+            source_text = "data-report-source-text" in dict(attrs)
+            self.source_spans.append(source_text)
+            if source_text:
+                self.protected += 1
         original = self.get_starttag_text()
         if self.locale == "zh-CN" and tag == "input" and "data-report-filter" in dict(attrs):
             original = original.replace('placeholder="API, file, code or message"', 'placeholder="API、文件、诊断码或说明"')
@@ -87,6 +93,8 @@ class LocalizedUI(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         self.output.append(f"</{tag}>")
         if tag in {"pre", "code"}:
+            self.protected -= 1
+        if tag == "span" and self.source_spans and self.source_spans.pop():
             self.protected -= 1
 
     def handle_data(self, value: str) -> None:

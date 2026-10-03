@@ -299,10 +299,11 @@ def machine(journey: Journey):
         raise AssertionError("machine Markdown does not contain the exact selected source header")
     if ("# `" + selected[0]["qualifiedName"] + "`") not in markdown:
         raise AssertionError("machine Markdown's declaration heading disagrees with the exact native selection")
-    metadata = journey.page.locator(".page-header .declaration-metadata")
+    metadata = journey.page.locator("main .declaration-metadata").filter(has_text=selected[0]["id"])
     if metadata.get_attribute("open") is None:
         journey.click(metadata.locator("summary"))
-    require_text(metadata, "Symbol ID: " + selected[0]["id"])
+    label = "符号标识: " if journey.target["locale"] == "zh-CN" else "Symbol ID: "
+    require_text(metadata, label + selected[0]["id"])
     for required in ("Version: " + target["version"], "Stable id: " + selected[0]["id"],
                      "Page: " + rows[0]["href"], selected[0]["headerSpelling"]):
         if required not in llms:
