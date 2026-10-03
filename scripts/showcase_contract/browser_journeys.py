@@ -167,9 +167,16 @@ def search(journey: Journey):
 
 def versions(journey: Journey):
     from playwright.sync_api import expect
+    from .site import load_json
     page, origin = journey.page, journey.page.url
     version = journey.target["version"]
     other = "demo-v1" if version == "demo-v2" else "demo-v2"
+    missing_label = "此版本没有该符号" if journey.target["locale"] == "zh-CN" else "symbol unavailable"
+    current_index_url = urljoin(origin, page.locator('[data-machine-format="symbols"]').get_attribute("href"))
+    current_index = load_json(journey.local_path(current_index_url))
+    source_matches = [entry for entry in current_index["entries"] if entry["id"] == journey.target["resolved"]["symbolId"]]
+    if len(source_matches) != 1:
+        raise AssertionError("version source index must identify the selected native symbol exactly once")
     link = page.locator(".cjdoc-version-selector a").filter(has_text=other).first
     label = link.inner_text()
     expected = urljoin(origin, link.get_attribute("href"))
@@ -177,15 +184,19 @@ def versions(journey: Journey):
     if page.url != expected:
         raise AssertionError("version switch did not follow its native identity-mapped route")
     expect(page.locator("body")).to_have_attribute("data-cjdoc-doc-version", other)
-    from .site import load_json
     index_url = urljoin(page.url, page.locator('[data-machine-format="symbols"]').get_attribute("href"))
     index = load_json(journey.local_path(index_url))
     matches = [entry for entry in index["entries"] if entry["id"] == journey.target["resolved"]["symbolId"]]
     if not matches:
-        if "symbol unavailable" not in label or page.url != urljoin(index_url, "index.html"):
-            raise AssertionError("removed native identity must be explicitly unavailable and reach the declared version overview")
+        owner = source_matches[0].get("ownerId")
+        owners = [entry for entry in index["entries"] if entry["id"] == owner]
+        if len(owners) > 1:
+            raise AssertionError("fallback owner identity is ambiguous in the target version")
+        fallback = owners[0]["href"] if owners else "index.html"
+        if missing_label not in label or unquote(page.url) != unquote(urljoin(index_url, fallback)):
+            raise AssertionError("removed native identity must be explicitly unavailable and reach its surviving owner or version overview")
     elif len(matches) == 1:
-        if "symbol unavailable" in label or unquote(page.url) != unquote(urljoin(index_url, matches[0]["href"])):
+        if missing_label in label or unquote(page.url) != unquote(urljoin(index_url, matches[0]["href"])):
             raise AssertionError("version switch must preserve the exact common native identity")
         require_text(page.locator("main"), journey.target["signature"])
     else:
@@ -288,10 +299,11 @@ def machine(journey: Journey):
         raise AssertionError("machine Markdown does not contain the exact selected source header")
     if ("# `" + selected[0]["qualifiedName"] + "`") not in markdown:
         raise AssertionError("machine Markdown's declaration heading disagrees with the exact native selection")
-    metadata = journey.page.locator(".page-header .declaration-metadata")
+    metadata = journey.page.locator("main .declaration-metadata").filter(has_text=selected[0]["id"])
     if metadata.get_attribute("open") is None:
         journey.click(metadata.locator("summary"))
-    require_text(metadata, "Symbol ID: " + selected[0]["id"])
+    label = "符号标识: " if journey.target["locale"] == "zh-CN" else "Symbol ID: "
+    require_text(metadata, label + selected[0]["id"])
     for required in ("Version: " + target["version"], "Stable id: " + selected[0]["id"],
                      "Page: " + rows[0]["href"], selected[0]["headerSpelling"]):
         if required not in llms:

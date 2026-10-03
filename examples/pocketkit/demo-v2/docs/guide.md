@@ -87,7 +87,7 @@ After reproduction creates the dependency index, run this in the selected exampl
 cjdoc serve --project . --port 8080
 ```
 
-访问 http://127.0.0.1:8080。修改注释或指南后，serve 会重新生成。
+访问 [本地预览 / Local preview](http://127.0.0.1:8080)。修改注释或指南后，serve 会重新生成。
 `/__cjdoc/status.json` 提供构建状态。静态 Pages 不运行编译器或常驻服务器。
 
 Visit the local URL and edit a comment to trigger rebuilding. The status endpoint reports build state.

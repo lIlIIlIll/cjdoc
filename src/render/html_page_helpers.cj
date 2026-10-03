@@ -84,43 +84,46 @@ internal func appendSummaryHtml(out: RenderTextBuffer, comment: DocComment,
     }
 }
 
+internal func appendDocumentationIntroductionHtml(out: RenderTextBuffer, symbol: SymbolDoc,
+    rootPrefix: String, assetLookup: HashMap<String, String>, headingBase: Int64,
+    locale: String): Unit {
+    let comment = match (symbol.documentation) {
+        case Some(value) => value
+        case None => return
+    }
+    match (findTag(comment, "deprecated")) {
+        case Some(tag) =>
+            out.append("<aside class=\"callout\"><strong>${label(locale, "Deprecated.", "已弃用。")}</strong> ")
+            appendStructuredTextHtml(out, tag.description)
+            out.append("</aside>\n")
+        case None => ()
+    }
+    if (comment.markdown.kind == "paragraph") { return }
+    let summaryIndex = topLevelParagraphIndex(comment)
+    if (comment.markdown.children.isEmpty() ||
+        (comment.markdown.children.size == 1 && summaryIndex == 0)) { return }
+    out.append("<div class=\"description\">")
+    let markdownContext = markdownHtmlContext(comment, symbol, headingBase)
+    var childIndex: Int64 = 0
+    for (child in comment.markdown.children) {
+        if (childIndex != summaryIndex) {
+            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, markdownContext)
+        }
+        childIndex++
+    }
+    out.append("</div>\n")
+}
+
 internal func appendDocumentationHtml(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    headingBase!: Int64 = 3,
-    locale!: String = "en"): Unit {
+    headingBase!: Int64 = 3, includeContracts!: Bool = true,
+    includeIntroduction!: Bool = true, locale!: String = "en"): Unit {
+    if (includeIntroduction) {
+        appendDocumentationIntroductionHtml(out, symbol, rootPrefix, assetLookup, headingBase, locale)
+    }
     match (symbol.documentation) {
         case Some(comment) =>
-            match (findTag(comment, "deprecated")) {
-                case Some(tag) =>
-                    out.append("<aside class=\"callout\"><strong>${label(locale, "Deprecated.", "已弃用。")}</strong> ")
-                    appendStructuredTextHtml(out, tag.description)
-                    out.append("</aside>\n")
-                case None => ()
-            }
-                        let summaryIndex = topLevelParagraphIndex(comment)
-            if (comment.markdown.kind != "paragraph") {
-            var hasDescription = false
-            var childIndex: Int64 = 0
-            for (child in comment.markdown.children) {
-                if (childIndex != summaryIndex) { hasDescription = true; break }
-                childIndex++
-            }
-            if (hasDescription) {
-                out.append("<h2>${label(locale, "Overview", "概览")}</h2><div class=\"description\">")
-                let markdownContext = markdownHtmlContext(comment, symbol, headingBase)
-                childIndex = 0
-                for (child in comment.markdown.children) {
-                    if (childIndex != summaryIndex) {
-                        appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, markdownContext)
-                    }
-                    childIndex++
-                }
-                out.append("</div>\n")
-            }
-            }
-            appendDocumentationExamplesHtml(out, comment, locale)
-            appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(symbol))
             if (!symbol.parameters.isEmpty()) {
                 out.append("<h3>${label(locale, "Parameters", "参数")}</h3><dl class=\"parameter-list\">\n")
                 for (parameter in symbol.parameters) {
@@ -175,7 +178,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                             case None => out.append("<code>${escapeHtml(tag.subject)}</code>")
                         }
                         if (tag.referenceState != "resolved") {
-                            out.append(" <span class=\"badge\" data-state=\"${escapeHtml(tag.referenceState)}\">${escapeHtml(tag.referenceState)}</span>")
+                            out.append(" <span class=\"badge reference-state\" data-state=\"${escapeHtml(tag.referenceState)}\">${escapeHtml(htmlReferenceStateLabel(tag.referenceState, locale))}</span>")
                         }
                         out.append("</dt><dd>")
                         appendStructuredTextHtml(out, tag.description)
@@ -184,6 +187,10 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                 }
                 out.append("</dl>\n")
             }
+            if (includeContracts) {
+                appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(symbol))
+            }
+            appendDocumentationExamplesHtml(out, comment, locale)
             var hasSee = false
             for (tag in comment.tags) { if (tag.name == "see") { hasSee = true; break } }
             if (hasSee) {
@@ -216,7 +223,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                 if (opened) { out.append("</ul>\n") }
             }
         case None =>
-            out.append("<h2>${label(locale, "Overview", "概览")}</h2><p class=\"empty-state\">${label(locale, "No documentation is available for this declaration.", "此声明暂无文档。")}</p>\n")
+            out.append("<p class=\"empty-state\">${label(locale, "No documentation is available for this declaration.", "此声明暂无文档。")}</p>\n")
             if (!symbol.parameters.isEmpty()) {
                 out.append("<h3>${label(locale, "Parameters", "参数")}</h3><dl class=\"parameter-list\">\n")
                 for (parameter in symbol.parameters) {
@@ -260,5 +267,8 @@ internal func appendSymbolArticle(out: RenderTextBuffer,
         locale: locale)
     appendDocumentationHtml(out, index, symbol, rootPrefix, assetLookup,
         typeLinkIndex, headingBase: 2, locale: locale)
+    appendDeclarationMetadata(out, index, symbol, rootPrefix, assetLookup, typeLinkIndex,
+        locale: locale)
+    appendReverseTypeUsages(out, index, typeLinkIndex, symbol, rootPrefix, locale)
     out.append("</article>\n")
 }

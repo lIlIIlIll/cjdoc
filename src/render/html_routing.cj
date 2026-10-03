@@ -48,6 +48,51 @@ internal func symbolPagePath(symbol: SymbolDoc): String {
     "symbols/symbol-${boundedHtmlSlug(symbol.id)}.html"
 }
 
+// Human-readable aliases do not replace the stable SymbolId routes. Restrict
+// the label to portable ASCII and disambiguate overloads/modules by identity.
+internal func symbolReadablePagePath(symbol: SymbolDoc): String {
+    let name = StringBuilder()
+    var length: Int64 = 0
+    var separator = false
+    for (byte in symbol.qualifiedName.toArray()) {
+        if (length >= 48) { break }
+        if ((byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') ||
+            (byte >= b'0' && byte <= b'9') || byte == b'_') {
+            if (separator && length > 0) {
+                if (length + 2 > 48) { break }
+                name.append("-"); length++
+            }
+            name.append(String.fromUtf8([byte]))
+            length++
+            separator = false
+        } else { separator = true }
+    }
+    let readable = if (length == 0) { "api" } else { name.toString() }
+    "symbols/${readable}-${stableFileHash(symbol.id)}.html"
+}
+
+internal func renderSymbolAlias(symbol: SymbolDoc, locale: String): String {
+    let target = symbolPagePath(symbol)["symbols/".size..]
+    let out = RenderTextBuffer()
+    out.append("<!doctype html><html lang=\"${escapeHtml(locale)}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'\">")
+    out.append("<title>${escapeHtml(symbol.qualifiedName)}</title><link rel=\"canonical\" href=\"${escapeHtml(target)}\"></head><body data-cjdoc-route=\"symbol-alias\"><main>")
+    out.append("<a data-cjdoc-alias-target href=\"${escapeHtml(target)}\">${escapeHtml(label(locale, "Open API documentation", "打开 API 文档"))}: ${escapeHtml(symbol.qualifiedName)}</a></main><script src=\"../symbol-alias.js\" defer></script></body></html>")
+    out.toString()
+}
+
+internal let HTML_SYMBOL_ALIAS_SCRIPT = #"
+(function () {
+  'use strict';
+  var link = document.querySelector('[data-cjdoc-alias-target]');
+  if (!link) return;
+  var target = new URL(link.getAttribute('href'), location.href);
+  target.search = location.search;
+  target.hash = location.hash;
+  link.href = target.href;
+  location.replace(target.href);
+}());
+"#
+
 internal func symbolAnchor(symbol: SymbolDoc): String {
     "symbol-${htmlStableSlug(symbol.id)}"
 }
@@ -564,7 +609,7 @@ internal func appendTypeRefCodeHtml(out: RenderTextBuffer, typeRef: TypeRef,
     out.append("<code")
     if (!className.isEmpty()) { out.append(" class=\"${escapeHtml(className)}\"") }
     if (typeLinkIndex.shouldShowUnavailableTitle(typeRef)) {
-        out.append(" title=\"${escapeHtml(label(locale, "Definition unavailable", "定义不可用"))}\"")
+        out.append(" title=\"${escapeHtml(label(locale, "Documentation link unavailable", "暂无文档链接"))}\"")
     }
     out.append(">")
     appendTypeRefContentHtml(out, typeRef, typeLinkIndex, rootPrefix)
@@ -631,7 +676,7 @@ internal func appendAssetArtifacts(artifacts: RenderArtifactCollector,
 
 internal func validateHtmlRouting(projection: RenderProjection, assets: ArrayList<AssetDoc>): Unit {
     let paths = HashSet<String>()
-    for (path in ["index.html", "search-index.json", "search-index.js", "search.js", "theme-bootstrap.js", "style.css"]) {
+    for (path in ["index.html", "search-index.json", "search-index.js", "search.js", "theme-bootstrap.js", "symbol-alias.js", "style.css"]) {
         let _ = paths.add(path)
     }
     for (pkg in projection.packages) {
@@ -640,10 +685,13 @@ internal func validateHtmlRouting(projection: RenderProjection, assets: ArrayLis
             throw IllegalArgumentException("HTML route collision for package '${pkg.source.name}'")
         }
     }
-    for (symbol in projection.visibleSymbols where isContainerDeclaration(symbol)) {
+    for (symbol in projection.visibleSymbols) {
         let path = symbolPagePath(symbol)
         if (!paths.add(path)) {
             throw IllegalArgumentException("HTML route collision for SymbolId '${symbol.id}'")
+        }
+        if (!paths.add(symbolReadablePagePath(symbol))) {
+            throw IllegalArgumentException("HTML alias collision for SymbolId '${symbol.id}'")
         }
     }
     for (asset in assets) {

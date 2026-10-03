@@ -19,8 +19,9 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "80fac731a0a686ee86d1513c195fd28c86432c48436ae3722fcb8e95ac182220"
+CANONICAL_SEARCH_JS_SHA256 = "0053f45938c2f178792bf47ca878ee8f15b46e5f6dd1d95c2fd2860b0ef81c0d"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "79fe532a96603bce52c49d9fd92cea58503875a0c61f5d3475f11c337f960642"
+CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "c3d8038e8c37d201ff30c2bb7018bd7b88730a22046e26918fb173752d16938a"
 
 
 class PageParser(HTMLParser):
@@ -33,6 +34,7 @@ class PageParser(HTMLParser):
         self.stack: list[str] = []
         self.csp_policies: list[str] = []
         self.script_sources: list[str] = []
+        self.is_alias = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         lowered_tag = tag.lower()
@@ -45,6 +47,8 @@ class PageParser(HTMLParser):
                 self.errors.append(f"duplicate attribute {name!r} on <{tag}>")
             seen_attributes.add(name)
         values = {name.lower(): value for name, value in attrs}
+        if lowered_tag == "body":
+            self.is_alias = values.get("data-cjdoc-route") == "symbol-alias"
         if lowered_tag == "style":
             self.errors.append("inline style element is forbidden")
         if lowered_tag not in VOID_ELEMENTS:
@@ -175,6 +179,8 @@ def main() -> int:
             prefix + "search-index.js",
             prefix + "search.js",
         ]
+        if parser.is_alias:
+            expected_scripts = [prefix + "symbol-alias.js"]
         if parser.script_sources != expected_scripts:
             raise ValueError(
                 f"{relative}: expected exact canonical script references"
@@ -198,7 +204,7 @@ def main() -> int:
     script_paths = {
         path.relative_to(root).as_posix() for path in root.rglob("*.js")
     }
-    if script_paths != {"search.js", "search-index.js", "theme-bootstrap.js"}:
+    if script_paths != {"search.js", "search-index.js", "theme-bootstrap.js", "symbol-alias.js"}:
         raise ValueError("site must contain only the canonical script set")
     theme_bootstrap_bytes = (root / "theme-bootstrap.js").read_bytes()
     if hashlib.sha256(theme_bootstrap_bytes).hexdigest() != CANONICAL_THEME_BOOTSTRAP_JS_SHA256:
@@ -208,9 +214,13 @@ def main() -> int:
     if hashlib.sha256(script_bytes).hexdigest() != CANONICAL_SEARCH_JS_SHA256:
         raise ValueError("search.js differs from the canonical renderer script")
     script = script_bytes.decode("utf-8")
+    alias_bytes = (root / "symbol-alias.js").read_bytes()
+    if hashlib.sha256(alias_bytes).hexdigest() != CANONICAL_SYMBOL_ALIAS_JS_SHA256:
+        raise ValueError("symbol-alias.js differs from the canonical renderer script")
     for script_name, script_text in (
         ("theme bootstrap", theme_bootstrap),
         ("browser search", script),
+        ("symbol alias", alias_bytes.decode("utf-8")),
     ):
         for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
             if sink in script_text:

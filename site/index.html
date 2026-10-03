@@ -6,22 +6,24 @@
 <meta name="description" content="Try the native cjdoc API documentation experience with the owned PocketKit example library.">
 <title>cjdoc — __TITLE__</title>
 <link rel="stylesheet" href="showcase.css">
+<script src="theme-bootstrap.js"></script>
 <script src="showcase.js" defer></script>
 </head>
 <body data-cjdoc-doc-version="showcase">
-<a class="skip-link" href="#main">Skip to content / 跳到正文</a>
-<header class="site-header"><a class="brand" href="index.html">cjdoc<span> / documentation in practice</span></a><nav aria-label="Showcase navigation"><a href="index.html" lang="zh-CN">中文</a><a href="en.html" lang="en">English</a><a href="__REPOSITORY__">GitHub</a><button type="button" data-showcase-theme>Light / Dark</button></nav></header>
+<a class="skip-link" href="#main">__SKIP__</a>
+<header class="site-header"><a class="brand" href="__HOME__">cjdoc<span> / __TAGLINE__</span></a><nav aria-label="__NAVIGATION__"><a href="index.html" lang="zh-CN">中文</a><a href="en.html" lang="en">English</a><a href="__REPOSITORY__">GitHub</a><button type="button" data-showcase-theme>__THEME__</button></nav></header>
 <main id="main">
-<section class="hero"><div><p class="eyebrow">CANGJIE · NATIVE API DOCUMENTATION</p><h1>__HEADLINE__</h1><p class="lead">__LEAD__</p><div class="actions"><a class="button primary" data-showcase-primary href="__PRIMARY__">__OPEN__ <span aria-hidden="true">↗</span></a><a class="button" data-showcase-quickstart href="__GUIDE__">__QUICK__</a></div><p class="caption">__BOUNDARY__</p></div><aside class="hero-sample" aria-label="PocketKit source example"><div class="code-heading"><span>PocketKit / TextCatalog</span><span>demo-v2</span></div><pre><code id="hero-code">let catalog = TextCatalog()
+<section class="hero"><div><p class="eyebrow">__EYEBROW__</p><h1>__HEADLINE__</h1><p class="lead">__LEAD__</p><div class="actions"><a class="button primary" data-showcase-primary href="__PRIMARY__">__OPEN__ <span aria-hidden="true">↗</span></a><a class="button" data-showcase-quickstart href="#get-started">__QUICK__</a></div><p class="caption">__BOUNDARY__</p></div><aside class="hero-sample" aria-label="PocketKit source example"><div class="code-heading"><span>PocketKit / TextCatalog</span><span>demo-v2</span></div><pre><code id="hero-code">let catalog = TextCatalog()
 catalog.add("hello")
-assert(catalog.at(0) == "hello")</code></pre><button type="button" data-showcase-copy="hero-code">Copy / 复制</button><p>__SAMPLE__</p><a href="__SOURCE__">__SOURCE_LABEL__ →</a></aside></section>
-<section class="quickstart" aria-labelledby="quick-title"><div><p class="eyebrow">01 / START HERE</p><h2 id="quick-title">__QUICK__</h2><p>__QUICK_TEXT__</p><a href="__GUIDE__">__READ_GUIDE__ →</a></div><div><pre><code id="reproduce-command">python3 examples/pocketkit/reproduce.py \
+assert(catalog.at(0) == "hello")</code></pre><button type="button" data-showcase-copy="hero-code">__COPY__</button><p>__SAMPLE__</p><a href="__SOURCE__">__SOURCE_LABEL__ →</a></aside></section>
+<!-- SHOWCASE_GET_STARTED -->
+<section class="quickstart" aria-labelledby="quick-title"><div><h2 id="quick-title">__REPRODUCE__</h2><p>__QUICK_TEXT__</p><a href="__GUIDE__">__READ_GUIDE__ →</a></div><div><pre><code id="reproduce-command">python3 examples/pocketkit/reproduce.py \
   --cjdoc /absolute/path/to/cjdoc \
-  --output ./generated --locale both</code></pre><button type="button" data-showcase-copy="reproduce-command">Copy / 复制</button><p><a href="downloads/__LOCALE__.html">__DOWNLOADS__ →</a></p></div></section>
-<section aria-labelledby="feature-title"><div class="section-heading"><div><p class="eyebrow">02 / EXPLORE BY TASK</p><h2 id="feature-title">__FEATURES__</h2></div><p>__FEATURE_NOTE__</p></div><!-- SHOWCASE_COVERAGE --><div class="feature-grid"><!-- SHOWCASE_FEATURES --></div></section>
-<section class="machine-section" aria-labelledby="machine-title"><p class="eyebrow">03 / THE SAME OUTPUT, STRUCTURED</p><h2 id="machine-title">__MACHINE__</h2><p>__MACHINE_TEXT__</p><div class="artifact-links"><a href="showcase-features.json">Feature manifest</a><a href="artifacts/docs.json">Doc IR</a><a href="artifacts/navigation-index.json">Navigation</a><a href="artifacts/coverage.json">Coverage</a><a href="artifacts/api-diff.json">API diff</a><a href="artifacts/doctest-results.json">Doctest</a><a href="artifacts/llms.txt">llms.txt</a><a href="schemas/index.html">Schemas</a></div></section>
-<section class="integrators" aria-labelledby="integrator-title"><p class="eyebrow">04 / FOR INTEGRATORS</p><h2 id="integrator-title">__INTEGRATORS__</h2><p>__INTEGRATOR_TEXT__</p><div class="artifact-links"><a href="api/index.html">cjdoc API</a><a href="api/concepts/manual/usage.html">Usage</a><a href="api/concepts/manual/advanced-usage.html">Advanced usage</a><a href="api/concepts/manual/release-process.html">Release process</a><a href="docs/usage.md">Markdown</a><a href="demo/index.html">Legacy demo entry</a></div></section>
+  --output ./generated --locale both</code></pre><button type="button" data-showcase-copy="reproduce-command">__COPY__</button><p><a href="downloads/__LOCALE__.html">__DOWNLOADS__ →</a></p></div></section>
+<section aria-labelledby="feature-title"><div class="section-heading"><div><h2 id="feature-title">__FEATURES__</h2></div><p>__FEATURE_NOTE__</p></div><!-- SHOWCASE_COVERAGE --><div class="feature-groups"><!-- SHOWCASE_FEATURES --></div></section>
+<section class="machine-section" aria-labelledby="machine-title"><h2 id="machine-title">__MACHINE__</h2><p>__MACHINE_TEXT__</p><div class="artifact-links"><a href="showcase-features.json">__MANIFEST__</a><a href="artifacts/docs.json">Doc IR</a><a href="artifacts/navigation-index.json">__NAV_LABEL__</a><a href="artifacts/coverage.json">__COVERAGE_LABEL__</a><a href="artifacts/api-diff.json">__DIFF_LABEL__</a><a href="artifacts/doctest-results.json">__DOCTEST_LABEL__</a><a href="artifacts/llms.txt">llms.txt</a><a href="schemas/index.html">__SCHEMAS__</a></div></section>
+<section class="integrators" aria-labelledby="integrator-title"><h2 id="integrator-title">__INTEGRATORS__</h2><p>__INTEGRATOR_TEXT__</p><div class="artifact-links"><a href="api/index.html">cjdoc API</a><a href="api/concepts/manual/usage.html">__USAGE__</a><a href="api/concepts/manual/advanced-usage.html">__ADVANCED__</a><a href="api/concepts/manual/release-process.html">__RELEASE__</a><a href="docs/usage.md">Markdown</a><a href="demo/index.html">__LEGACY__</a></div></section>
 </main>
-<footer><p>__PROVENANCE__</p><details><summary>Build provenance / 构建来源</summary><pre>__BUILD__</pre><a href="build.json">build.json</a> · <a href="showcase-plan.json">Resolved author plan</a></details></footer>
+<footer><p>__PROVENANCE__</p><details><summary>__BUILD_LABEL__</summary><pre>__BUILD__</pre><a href="build.json">build.json</a> · <a href="showcase-plan.json">__PLAN_LABEL__</a></details></footer>
 <p class="visually-hidden" aria-live="polite" data-showcase-status></p>
 </body></html>

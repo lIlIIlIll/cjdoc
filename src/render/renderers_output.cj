@@ -34,6 +34,7 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
             renderSearchIndexScript(searchIndex, searchSignatures))
         artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8", HTML_THEME_BOOTSTRAP_SCRIPT)
         artifacts.addText("html/search.js", "text/javascript; charset=utf-8", HTML_SEARCH_SCRIPT)
+        artifacts.addText("html/symbol-alias.js", "text/javascript; charset=utf-8", HTML_SYMBOL_ALIAS_SCRIPT)
         artifacts.addText("html/style.css", "text/css; charset=utf-8",
             HTML_STYLE + HTML_RETURN_LAYOUT_STYLE + HTML_TYPE_LINK_STYLE + HTML_NAVIGATION_STYLE +
                 HTML_TOC_STYLE + HTML_LAYOUT_HARDENING_STYLE + HTML_EXAMPLE_STYLE + HTML_REFERENCE_BROWSER_STYLE)
@@ -43,6 +44,8 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
                 renderPackagePage(documentation, projection, index, topLevelByPackage, pkg, locale: locale, docVersion: docVersion))
         }
         for (symbol in projection.visibleSymbols) {
+            artifacts.addText("html/${symbolReadablePagePath(symbol)}", "text/html; charset=utf-8",
+                renderSymbolAlias(symbol, locale))
             artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
                 renderSymbolPage(documentation, projection, index, symbol, assetLookup,
                     typeLinkIndex, locale: locale, docVersion: docVersion))

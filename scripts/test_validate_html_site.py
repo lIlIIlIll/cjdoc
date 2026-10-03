@@ -33,6 +33,11 @@ def canonical_theme_bootstrap_script() -> str:
     return literal + "\n"
 
 
+def canonical_symbol_alias_script() -> str:
+    source = (SCRIPT.parent.parent / "src/render/html_routing.cj").read_text(encoding="utf-8")
+    return "\n" + source.split('internal let HTML_SYMBOL_ALIAS_SCRIPT = #"\n', 1)[1].split('\n"#', 1)[0] + "\n"
+
+
 class ValidateHtmlSiteTest(unittest.TestCase):
     def write_site(self, root: Path) -> None:
         index = (
@@ -49,6 +54,9 @@ class ValidateHtmlSiteTest(unittest.TestCase):
         )
         (root / "search.js").write_text(
             canonical_search_script(), encoding="utf-8", newline="\n"
+        )
+        (root / "symbol-alias.js").write_text(
+            canonical_symbol_alias_script(), encoding="utf-8", newline="\n"
         )
         canonical_id = "cjdoc:v2:fixture:example"
         entry = {
@@ -98,6 +106,22 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("validated 1 HTML pages", result.stdout)
 
+    def test_alias_requires_canonical_script_and_valid_target(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            alias = root / "api.html"
+            alias.write_text(
+                f'<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="{CSP}">'
+                '</head><body data-cjdoc-route="symbol-alias"><a data-cjdoc-alias-target href="index.html">API</a>'
+                '<script src="symbol-alias.js" defer></script></body></html>', encoding="utf-8")
+            self.assertEqual(self.validate(root).returncode, 0)
+            alias.write_text(alias.read_text(encoding="utf-8").replace('href="index.html"', 'href="missing.html"'), encoding="utf-8")
+            self.assertIn("broken local link", self.validate(root).stderr)
+            (root / "symbol-alias.js").write_text("location.replace('https://evil.test')", encoding="utf-8")
+            alias.unlink()
+            self.assertIn("symbol-alias.js differs", self.validate(root).stderr)
+
     def test_rejects_missing_structured_search_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -126,8 +150,9 @@ class ValidateHtmlSiteTest(unittest.TestCase):
 
     def test_canonical_search_displays_context_and_signatures(self) -> None:
         script = canonical_search_script()
-        self.assertIn("const moduleLabel = entry.moduleId", script)
-        self.assertIn("context.textContent = [entry.packageName, moduleLabel,", script)
+        self.assertIn("const ownerLabel = entry.ownerName || entry.packageName", script)
+        self.assertIn("context.textContent = [ownerLabel, moduleLabel]", script)
+        self.assertIn("context.title = [entry.qualifiedName, entry.moduleName, entry.moduleId]", script)
         self.assertIn("const signatures = globalThis.__CJDOC_SEARCH_SIGNATURES__ || {}", script)
         self.assertIn("signatures[entry.id] || signatures[entry.canonicalId]", script)
         self.assertIn('signature.className = "search-result-signature"', script)

@@ -119,6 +119,11 @@ def click_and_return(journey: Journey, link, expected_name: str, version: str | 
     journey.back(old)
 
 
+def clipboard_code_matches(copied: str, source: str) -> bool:
+    """Allow platform CRLF conversion while retaining outer-whitespace tolerance."""
+    return copied.replace("\r\n", "\n").strip() == source.replace("\r\n", "\n").strip()
+
+
 def copy_code(journey: Journey, button=None):
     from playwright.sync_api import expect
     page = journey.page
@@ -134,7 +139,7 @@ def copy_code(journey: Journey, button=None):
     expect(button).to_have_attribute(attribute, expected)
     if page.evaluate("Boolean(navigator.clipboard && window.isSecureContext)"):
         copied = page.evaluate("navigator.clipboard.readText()")
-        if copied.strip() != code.strip():
+        if not clipboard_code_matches(copied, code):
             raise AssertionError("clipboard contents do not match the displayed source code")
     else:
         # Verify the real clipboard fallback by pasting into a temporary probe;
@@ -143,7 +148,7 @@ def copy_code(journey: Journey, button=None):
           probe.id='showcase-paste-probe'; document.body.append(probe); probe.focus(); }""")
         try:
             page.keyboard.press("Control+v")
-            if page.locator("#showcase-paste-probe").input_value().strip() != code.strip():
+            if not clipboard_code_matches(page.locator("#showcase-paste-probe").input_value(), code):
                 raise AssertionError("real clipboard paste did not reproduce the displayed code")
         finally:
             page.locator("#showcase-paste-probe").evaluate("node => node.remove()")

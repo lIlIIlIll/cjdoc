@@ -4,7 +4,37 @@ from __future__ import annotations
 from html.parser import HTMLParser
 from pathlib import Path
 from .reports import UtilityRegion
-from showcase_contract.site import ContractError
+from .localization import localize_ui
+from showcase_contract.site import ContractError, load_json
+
+
+class PageTitle(HTMLParser):
+    def __init__(self, source: str, title: str) -> None:
+        super().__init__(convert_charrefs=True)
+        self.source, self.title, self.edits, self.active = source, title, [], None
+        self.offsets = [0]
+        for line in source.splitlines(keepends=True):
+            self.offsets.append(self.offsets[-1] + len(line))
+        self.feed(source)
+
+    def position(self) -> int:
+        line, column = self.getpos()
+        return self.offsets[line - 1] + column
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        if tag in {"title", "h1"}:
+            self.active = (tag, self.position() + len(self.get_starttag_text()))
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.active and self.active[0] == tag:
+            self.edits.append((self.active[1], self.position()))
+            self.active = None
+
+    def result(self) -> str:
+        source = self.source
+        for start, end in reversed(self.edits):
+            source = source[:start] + self.title + source[end:]
+        return source
 
 
 class Sections(HTMLParser):
@@ -43,6 +73,10 @@ def publish(root: Path) -> None:
     component = text[start:end]
     sections = Sections(component).regions
     check = ("native-check",) if "native-check" in sections else ()
+    locale = load_json(root / "report-provenance.json")["locale"]
+    titles = {"doctest": ("示例验证", "Doctest results"), "diff": ("API 变化", "API changes"),
+              "coverage": ("文档覆盖与缺项", "Coverage and documentation gaps"),
+              "diagnostics": ("诊断与边界示例", "Diagnostics and boundary examples")}
     for name, selected in {"doctest": ("doctest", *check), "diff": ("api-diff",),
                            "coverage": ("coverage", "quality", "diagnostics"),
                            "diagnostics": ("diagnostics", "doctest", *check)}.items():
@@ -52,4 +86,6 @@ def publish(root: Path) -> None:
                 raise ContractError("missing report component: " + key)
             left, right = sections[key]
             body += component[left:right]
-        (root / f"report-{name}.html").write_text(text[:start] + body + text[end:], encoding="utf-8")
+        body = localize_ui(body, locale)
+        page = PageTitle(text[:start] + body + text[end:], titles[name][0 if locale == "zh-CN" else 1]).result()
+        (root / f"report-{name}.html").write_text(page, encoding="utf-8")

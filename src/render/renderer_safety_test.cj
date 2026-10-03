@@ -42,7 +42,8 @@ private func rendererSafetyFenceMarks(marker!: String = "~",
     out.toString()
 }
 
-private func rendererOwnerDocumentation(ownerKind: String): DocumentationSet {
+private func rendererOwnerDocumentation(ownerKind: String,
+    ownerDocumentation!: ?DocComment = None): DocumentationSet {
     let moduleId = "cjdoc:module:v1:owner-validation"
     let ownerId =
         "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aowner-validation::fixture::class:Owner#g0()"
@@ -51,7 +52,8 @@ private func rendererOwnerDocumentation(ownerKind: String): DocumentationSet {
     let source = SourceRange("src/owner.cj", SourcePosition(1, 1, 0),
         SourcePosition(1, 24, 23))
     let owner = SymbolDoc(ownerId, ownerKind, "Owner", "fixture.Owner", "fixture", moduleId,
-        "public", source, "public ${ownerKind} Owner", SemanticInfo("partial", "ast"))
+        "public", source, "public ${ownerKind} Owner", SemanticInfo("partial", "ast"),
+        documentation: ownerDocumentation)
     let member = SymbolDoc(memberId, "function", "member", "fixture.Owner.member", "fixture",
         moduleId, "public", source, "public func member(): Unit",
         SemanticInfo("partial", "ast"), ownerId: Some(ownerId))
@@ -434,6 +436,66 @@ class RendererSafetyTest {
             "<details class=\"declaration-summary member-detail\""), true)
         @Expect(symbolHtml.contains("data-cjdoc-member"), true)
         @Expect(symbolHtml.contains("class=\"member-permalink\""), true)
+    }
+
+    @TestCase
+    func readableAliasesKeepStableRoutesAndEscapeSourceNames(): Unit {
+        let documentation = rendererOwnerDocumentation("class")
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        let owner = documentation.declarations[0]
+        let alias = symbolReadablePagePath(owner)
+        @Expect(alias.startsWith("symbols/fixture-Owner-"), true)
+        @Expect(!rendererSafetyContent(artifacts, "html/${symbolPagePath(owner)}").isEmpty(), true)
+        @Expect(rendererSafetyContent(artifacts, "html/${alias}").contains(
+            "href=\"${symbolPagePath(owner)["symbols/".size..]}\""), true)
+        let unsafeName = "中文.<script>\"&Owner"
+        let first = SymbolDoc("alias-one", "function", "api", unsafeName, "fixture", owner.moduleId,
+            "public", owner.source, "public func api(): Unit", SemanticInfo("partial", "ast"))
+        let overload = SymbolDoc("alias-two", "function", "api", unsafeName, "fixture", owner.moduleId,
+            "public", owner.source, "public func api(value: Int64): Unit", SemanticInfo("partial", "ast"))
+        @Expect(symbolReadablePagePath(first) != symbolReadablePagePath(overload), true)
+        for (byte in symbolReadablePagePath(first).toArray()) { @Expect(byte < 0x80, true) }
+        let unsafeAlias = renderSymbolAlias(first, "zh-CN")
+        @Expect(unsafeAlias.contains("<script>\"&Owner"), false)
+        @Expect(unsafeAlias.contains("&lt;script&gt;&quot;&amp;Owner"), true)
+        let longName = rendererSafetyFenceMarks(marker: "a", count: 47) + ".b"
+        let longSymbol = SymbolDoc("alias-long", "function", "api", longName, "fixture", owner.moduleId,
+            "public", owner.source, "public func api(): Unit", SemanticInfo("partial", "ast"))
+        let readable = symbolReadablePagePath(longSymbol).removePrefix("symbols/").removeSuffix(
+            "-${stableFileHash(longSymbol.id)}.html")
+        @Expect(readable.size <= 48, true)
+    }
+
+    @TestCase
+    func htmlMemberReadingStartsWithTheTypeAndKeepsOneCompleteInlineSignature(): Unit {
+        let introduction = DocComment("raw", "", "", MarkdownNode("document", children: [
+            MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "A compact type summary.")]),
+            MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "No internal synchronization.")])
+        ]), tags: [DocTag("precondition", "", "Callers coordinate concurrent access."),
+            DocTag("example", "", "Example after members.")])
+        let documentation = rendererOwnerDocumentation("class", ownerDocumentation: Some(introduction))
+        let artifacts = HtmlDocumentationRenderer().render(documentation)
+        let html = rendererSafetyContent(artifacts,
+            "html/${symbolPagePath(documentation.declarations[0])}")
+        let mainHtml = html[html.indexOf("<main ").getOrThrow()..]
+        @Expect(mainHtml.contains("sibling-members"), false)
+        @Expect(mainHtml.split("public func member(): Unit").size, 2)
+        @Expect(mainHtml.indexOf("api-page-header").getOrThrow() <
+            mainHtml.indexOf("member-browser\"").getOrThrow(), true)
+        @Expect(mainHtml.indexOf("member-browser\"").getOrThrow() <
+            mainHtml.indexOf("declaration-metadata").getOrThrow(), true)
+        @Expect(mainHtml.indexOf("No internal synchronization.").getOrThrow() <
+            mainHtml.indexOf("member-browser\"").getOrThrow(), true)
+        @Expect(mainHtml.indexOf("Callers coordinate concurrent access.").getOrThrow() <
+            mainHtml.indexOf("member-browser\"").getOrThrow(), true)
+        @Expect(mainHtml.indexOf("Example after members.").getOrThrow() >
+            mainHtml.indexOf("member-browser\"").getOrThrow(), true)
+        @Expect(mainHtml.split("A compact type summary.").size, 2)
+        @Expect(html.contains("class=\"skip-link\" href=\"#cjdoc-main\""), true)
+        @Expect(html.contains("id=\"cjdoc-main\""), true)
+        @Expect(html.contains("<code>member()</code>"), true)
+        @Expect(mainHtml.contains("data-cjdoc-members-expand"), true)
+        @Expect(mainHtml.contains("data-cjdoc-members-collapse"), true)
     }
 
     @TestCase

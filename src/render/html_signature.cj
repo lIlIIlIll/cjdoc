@@ -267,18 +267,40 @@ internal func linkedSignatureSpans(symbol: SymbolDoc,
     spans
 }
 
+private func appendSignatureRangeHtml(out: RenderTextBuffer, raw: String,
+    tokens: ArrayList<HtmlSignatureToken>, start: Int64, end: Int64): Unit {
+    var position = start
+    for (token in tokens) {
+        if (token.start < start || token.end > end) { continue }
+        out.append(escapeHtml(raw[position..token.start]))
+        var className = htmlCodeWordClass(token.value)
+        if (token.kind.contains("STRING") || token.kind.contains("RUNE") || token.kind.contains("CHAR")) {
+            className = "code-string"
+        } else if (token.kind.contains("LITERAL")) { className = "code-number" }
+        appendHtmlCodeToken(out, token.value, className)
+        position = token.end
+    }
+    out.append(escapeHtml(raw[position..end]))
+}
+
+internal func appendSignatureTextHtml(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
+    appendSignatureRangeHtml(out, symbol.headerSpelling, alignedSignatureTokens(symbol),
+        0, symbol.headerSpelling.size)
+}
+
 internal func appendLinkedSignatureHtml(out: RenderTextBuffer, symbol: SymbolDoc,
     links: HtmlTypeLinkIndex, rootPrefix: String): Unit {
     let raw = symbol.headerSpelling
+    let tokens = alignedSignatureTokens(symbol)
     var position: Int64 = 0
     for (span in linkedSignatureSpans(symbol, links)) {
         if (span.start < position) { continue }
-        out.append(escapeHtml(raw[position..span.start]))
+        appendSignatureRangeHtml(out, raw, tokens, position, span.start)
         out.append("<a class=\"type-link signature-type-link\" href=\"" +
             escapeHtml(rootPrefix + span.url) + "\">")
-        out.append(escapeHtml(raw[span.start..span.end]))
+        appendSignatureRangeHtml(out, raw, tokens, span.start, span.end)
         out.append("</a>")
         position = span.end
     }
-    out.append(escapeHtml(raw[position..]))
+    appendSignatureRangeHtml(out, raw, tokens, position, raw.size)
 }

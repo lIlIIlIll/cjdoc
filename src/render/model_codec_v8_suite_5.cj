@@ -65,9 +65,9 @@ class ModelCodecV8Suite5 {
         let documentation = codecTypeLinkDocument(externalType,
             parameters: [ParameterDoc("unknown", unavailableType), ParameterDoc("maybe", ambiguousType)])
         let html = codecRenderedText(HtmlDocumentationRenderer().render(documentation))
-        @Expect(html.contains("<code class=\"parameter-type-code\" title=\"Definition unavailable\">UnknownType</code>"))
+        @Expect(html.contains("<code class=\"parameter-type-code\" title=\"Documentation link unavailable\">UnknownType</code>"))
         @Expect(html.contains("<code class=\"parameter-type-code\">MaybeType</code>"))
-        @Expect(html.contains("<code class=\"return-type\" title=\"Definition unavailable\">ExternalType</code>"))
+        @Expect(html.contains("<code class=\"return-type\" title=\"Documentation link unavailable\">ExternalType</code>"))
         @Expect(!html.contains(">UnknownType</a>"))
         @Expect(!html.contains(">MaybeType</a>"))
         @Expect(!html.contains(">ExternalType</a>"))
@@ -84,6 +84,6 @@ class ModelCodecV8Suite5 {
         let html = codecRenderedText(HtmlDocumentationRenderer().render(codecTypeDocument(
             returnType, canonicalTypes: true, documentation: documentation)))
         @Expect(html.contains("Returns"))
-        @Expect(html.contains("<div class=\"return-value\"><code class=\"return-type\" title=\"Definition unavailable\">Int64</code><div class=\"return-description\"><p>The computed result.</p>"))
+        @Expect(html.contains("<div class=\"return-value\"><code class=\"return-type\" title=\"Documentation link unavailable\">Int64</code><div class=\"return-description\"><p>The computed result.</p>"))
     }
 }

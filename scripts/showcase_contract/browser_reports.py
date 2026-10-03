@@ -7,8 +7,32 @@ import hashlib
 from .browser_support import Journey, click_and_return, require_text
 
 
+COVERAGE_LABELS_ZH = {"project": "项目", "all": "全部", "packages": "包", "modules": "模块",
+    "symbols": "声明摘要", "parameters": "参数说明", "returns": "返回说明", "throws": "已写异常说明",
+    "examples": "示例", "deprecated": "弃用说明", "semanticLinks": "注释引用解析率"}
+
+
+def report_label(value: str, chinese: bool) -> str:
+    return COVERAGE_LABELS_ZH.get(value, value) if chinese else value
+
+
+def expected_coverage_rows(raw: dict, chinese: bool) -> list[list[str]]:
+    expected = []
+    scopes = [("project", "all", raw["metrics"])]
+    for scope in ("packages", "modules"):
+        scopes += [(scope, item.get("name", item.get("id", "")), item["metrics"]) for item in raw[scope]]
+    for scope, name, metrics in scopes:
+        for metric, value in metrics.items():
+            percent = (str(value["percent"]) + "%") if value["total"] else ("无适用项" if chinese else "Not applicable")
+            display_name = report_label(name, chinese) if scope == "project" else name
+            expected.append([report_label(scope, chinese), display_name, report_label(metric, chinese),
+                             str(value["documented"]), str(value["total"]), percent])
+    return expected
+
+
 def doctest(journey: Journey):
     page = journey.page
+    chinese = journey.target["locale"] == "zh-CN"
     raw = journey.raw('#doctest a[href$="results.json"]', "cjdoc.doctest/1")
     if not raw["results"]:
         raise AssertionError("doctest demonstration contains no real execution results")
@@ -22,7 +46,8 @@ def doctest(journey: Journey):
         case = cases.nth(index)
         if case.get_attribute("data-doctest-status") != result["status"]:
             raise AssertionError("doctest presentation changed the native status")
-        require_text(case, result["id"], "exitCode: " + str(result["exitCode"]), "Source @example")
+        require_text(case, result["id"], ("退出码：" if chinese else "exitCode: ") + str(result["exitCode"]),
+                     "源码 @example" if chinese else "Source @example")
         if not case.locator("pre code").inner_text().strip():
             raise AssertionError("doctest result is missing its exact source example")
     source = cases.first.locator("[data-report-symbol]")
@@ -44,6 +69,7 @@ def doctest(journey: Journey):
 
 def diff(journey: Journey):
     page = journey.page
+    chinese = journey.target["locale"] == "zh-CN"
     raw = journey.raw('#api-diff a[href$="api-diff.json"]', "cjdoc.api-diff/1")
     require_text(page.locator("#api-diff"), "demo-v1", "demo-v2", raw["comparisonState"])
     displayed = json.loads(page.locator('[data-report-summary="diff"]').inner_text())
@@ -58,35 +84,36 @@ def diff(journey: Journey):
             raise AssertionError("diff view reclassified a native change")
         require_text(rows.nth(number), entry["matchState"])
     links = page.locator("#api-diff [data-report-symbol]")
-    for label, version in (("Before", "demo-v1"), ("After", "demo-v2")):
+    for label, version in ((("变更前" if chinese else "Before"), "demo-v1"),
+                           (("变更后" if chinese else "After"), "demo-v2")):
         link = links.filter(has_text=label).first
-        symbol = link.inner_text().split(":", 1)[-1].strip().split(".")[-1]
+        symbol = link.inner_text().split("：" if chinese else ":", 1)[-1].strip().split(".")[-1]
         click_and_return(journey, link, symbol, version)
     journey.assertions.append("the native diff's versions, comparison state and change classifications match raw evidence and open before/after APIs")
 
 
 def quality(journey: Journey):
     page = journey.page
+    chinese = journey.target["locale"] == "zh-CN"
     raw = journey.raw('#coverage a[href$="coverage.json"]', "cjdoc.documentation-coverage/2")
-    require_text(page.locator("#coverage"), raw["audience"], "coverage is not correctness")
+    require_text(page.locator("#coverage"), raw["audience"], "覆盖率不证明契约正确" if chinese else "coverage is not correctness")
     rows = page.locator("#coverage tbody tr")
-    expected = []
-    scopes = [("project", "all", raw["metrics"])]
-    for scope in ("packages", "modules"):
-        scopes += [(scope, item.get("name", item.get("id", "")), item["metrics"]) for item in raw[scope]]
-    for scope, name, metrics in scopes:
-        for metric, value in metrics.items():
-            expected.append([scope, name, metric, str(value["documented"]), str(value["total"]), str(value["percent"]) + "%"])
+    expected = expected_coverage_rows(raw, chinese)
     actual = [row.locator("td").all_text_contents() for row in rows.all()]
     if actual != expected:
         raise AssertionError("coverage scope/numerators/denominators differ from native raw metrics")
+    metrics = [raw["metrics"]] + [item["metrics"] for scope in ("packages", "modules") for item in raw[scope]]
+    originals = [value for group in metrics for value in group.values()]
+    for row, value in zip(rows.all(), originals):
+        if value["total"] == 0 and row.locator("[data-reported-percent]").get_attribute("data-reported-percent") != str(value["percent"]):
+            raise AssertionError("zero-denominator presentation lost the native reported percentage")
     ir = journey.raw('#diagnostics a[href$="docs.json"]', "cjdoc.doc-ir/11")
     if page.locator("#diagnostics .report-diagnostic").count() != len(ir["diagnostics"]):
         raise AssertionError("quality page dropped native diagnostics")
     lint = journey.raw('#quality a[href$="quality.json"]', "cjdoc.documentation-quality/1")
     require_text(page.locator("#quality"), lint["audience"], lint["assessment"])
     displayed = [row.locator("td").all_text_contents() for row in page.locator("#quality tbody tr").all()]
-    expected_quality = [[name, str(lint[name]["meaningful"]), str(lint[name]["total"]), str(lint[name]["percent"])]
+    expected_quality = [[report_label(name, chinese), str(lint[name]["meaningful"]), str(lint[name]["total"]), str(lint[name]["percent"])]
                         for name in ("symbols", "parameters")]
     if displayed != expected_quality:
         raise AssertionError("quality view changed native heuristic metrics")
@@ -105,9 +132,14 @@ def diagnostics(journey: Journey):
     if not native or page.locator("#diagnostics .report-diagnostic").count() != len(native):
         raise AssertionError("boundary demonstration has no complete native diagnostics")
     for number, diagnostic in enumerate(native):
-        shown = json.loads(page.locator("#diagnostics .report-diagnostic").nth(number).locator("pre").inner_text())
+        shown = json.loads(page.locator("#diagnostics .report-diagnostic").nth(number).locator("pre").text_content())
         if shown != diagnostic:
             raise AssertionError("boundary view changed the native diagnostic or source range")
+    first = page.locator("#diagnostics .report-diagnostic").first
+    journey.click(first.locator("details summary"))
+    if not first.locator("pre").is_visible():
+        raise AssertionError("raw diagnostic evidence cannot be expanded")
+    journey.click(first.locator("details summary"))
     raw = journey.raw('#doctest a[href$="results.json"]', "cjdoc.doctest/1")
     states = {result["status"] for result in raw["results"]}
     if not {"failed", "skipped"}.issubset(states):
