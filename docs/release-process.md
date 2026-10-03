@@ -61,6 +61,8 @@ bash scripts/update_goldens.sh
 - Windows x64 (`windows-2022`);
 - macOS ARM64 (`macos-15`).
 
+Current source builds and the [Pages workflow](../.github/workflows/pages.yml) use this 1.2.0 STS toolchain. Its bundled `llc` crashes at the default optimization level on markdown/yjson, so CI acceptance and Pages temporarily use `-O1` and restore the original manifests afterwards. Follow the complete workflow setup and build steps described in [source-build instructions](advanced-usage.md#从源码构建维护者用); a bare default `cjpm build` does not include that workaround.
+
 Linux also runs the real-repository smoke. These jobs are pull-request/push evidence only after GitHub reports them for the exact commit. The compiler and stdx archive checksums are passed independently to the installer and are both included in package provenance. The installer selects only static sidecars containing regular, non-symlink `stdx.chir.cjo`, `libstdx.chir.a`, and `libflatbuffers.a` files, rejecting incomplete roots before authentication or export. Static sidecars also authenticate `libflatbuffers.a`; `with_stdx.py` supplies its library search option as a raw cjpm token, not shell-quoted text.
 
 Platform acceptance does not imply identical local-asset capabilities. POSIX builds embed a local asset only after opening every path component with `openat` + `O_NOFOLLOW` and validating the opened regular file. The current Windows SDK lacks a public API with equivalent safe no-follow/openat semantics, so Windows intentionally does not embed local assets: it omits the asset, emits `CJDOC4026`, and marks the document `partial`. A successful Windows acceptance/package job verifies that fail-closed contract; it must not be reported as Windows asset-embedding support.
@@ -80,7 +82,7 @@ Manual runs may supply the same four values as workflow inputs. Updating an arch
 
 ## Tag release workflow
 
-[`release.yml`](../.github/workflows/release.yml) is the only automated publisher. A `v*` tag starts, in order:
+[`release.yml`](../.github/workflows/release.yml) is the only automated publisher. It still configures Cangjie 1.3.0 compiler/stdx archives through repository variables, separately from the current 1.2.0 STS source/CI/Pages workflow. Passing those 1.2.0 jobs does not verify the tag-release toolchain. A `v*` tag starts, in order:
 
 1. the full Linux release gate on stable Cangjie 1.3.0 and its matching stdx sidecar;
 2. stable Windows x64 and macOS ARM64 acceptance with their matching sidecars;
