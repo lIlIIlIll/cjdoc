@@ -31,7 +31,7 @@ class HtmlPresentationQualityTest {
     }
 
     @TestCase
-    func htmlOffersGroupsAndKeepsMetadataCollapsed(): Unit {
+    func htmlOffersGroupsWithoutExposingDeclarationDiagnostics(): Unit {
         let documentation = DocumentationEngine().generate(
             GenerationRequest("tests/fixtures/projects/documentation_quality",
                 astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
@@ -45,10 +45,8 @@ class HtmlPresentationQualityTest {
             if (artifact.path.startsWith("html/packages/")) { packageHtml += artifact.content }
         }
         @Expect(packageHtml.contains("id=\"functions\""))
-        @Expect(packageHtml.contains("<details class=\"declaration-metadata\"><summary>"))
-        @Expect(!packageHtml.contains("<details class=\"declaration-metadata\" open"))
-        @Expect(packageHtml.contains("<details class=\"declaration-metadata\"><summary>Declaration metadata</summary>" +
-            "<p class=\"meta\">Semantic information: partial</p></details>"))
+        @Expect(!packageHtml.contains("declaration-metadata"))
+        @Expect(!packageHtml.contains("Semantic information: partial"))
         @Expect(packageHtml.contains("<details class=\"package-sources\">"))
         @Expect(packageHtml.contains("&lt;script&gt;"))
         @Expect(!packageHtml.contains("<script>alert"))

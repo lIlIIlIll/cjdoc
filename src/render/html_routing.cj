@@ -570,6 +570,18 @@ internal func typeGenericSuffix(spelling: String): String {
     else { spelling[genericEnd + 1..] }
 }
 
+// Some source/AST providers record a generic type's spelling with trivia around
+// angle brackets. Normalize only this display spelling; source signatures and
+// semantic identities must remain byte-for-byte intact. Function arrows and
+// generic constraints are deliberately left untouched.
+private func genericTypeDisplaySpelling(spelling: String): String {
+    if (!spelling.contains("<") || spelling.contains("->") || spelling.contains("<:")) {
+        return spelling
+    }
+    spelling.replace(" <", "<").replace("< ", "<")
+        .replace(" >", ">").replace("> ", ">").replace(" ,", ",")
+}
+
 internal func appendTypeAtomHtml(out: RenderTextBuffer, typeRef: TypeRef,
     spelling: String, typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String): Unit {
     match (typeLinkIndex.targetUrl(typeRef)) {
@@ -584,7 +596,8 @@ internal func appendTypeRefContentHtml(out: RenderTextBuffer, typeRef: TypeRef,
     match (typeRef.spelling.indexOf("<")) {
         case Some(_) =>
             if (typeRef.arguments.isEmpty()) {
-                appendTypeAtomHtml(out, typeRef, typeRef.spelling, typeLinkIndex, rootPrefix)
+                appendTypeAtomHtml(out, typeRef,
+                    genericTypeDisplaySpelling(typeRef.spelling), typeLinkIndex, rootPrefix)
                 return
             }
             appendTypeAtomHtml(out, typeRef, typeHeadSpelling(typeRef.spelling),

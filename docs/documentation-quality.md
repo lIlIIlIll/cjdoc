@@ -49,8 +49,10 @@ cjdoc generate --project . --format coverage
 ## HTML 展示
 
 首页提供包入口与 API 分类入口。包页按类、结构体、接口、枚举、函数、变量与常量、
-类型别名和扩展分组。重导出及源文件默认折叠。声明的 semantic state、源位置和
-Symbol ID 保留在默认折叠的“声明元数据”中。
+类型别名和扩展分组。重导出及源文件默认折叠。正式 API 页面默认不暴露原始
+Symbol ID、全局 semantic state 或解析提供者证据；面向读者的类型/成员关系直接
+显示在“关联关系”章节，并在目标不确定时提供局部说明。机器索引、Doc IR、
+coverage 与诊断报告仍保留可追溯的内部信息。
 
 Doc IR v11 的 project metadata 提供项目名、类型和可选仓库 URL/revision，不包含项目
 描述或包版本。HTML 使用提供的仓库元数据生成源码链接，并单独标注 cjdoc 生成器版本。

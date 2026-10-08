@@ -198,7 +198,6 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
                 }
                 wroteDeclaration = true
                 appendDeclarationRow(out, symbol, "../", locale: locale)
-                appendPackageDeclarationMetadata(out, symbol, locale)
             }
             if (opened) { out.append("</div></section>\n") }
         }
@@ -227,8 +226,11 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     } else {
         out.append("<code class=\"declaration-signature\">${escapeHtml(member.name)}</code>")
     }
-    out.append("</span><span class=\"declaration-kind\">${escapeHtml(htmlKindLabel(member.kind, locale))} · " +
-        escapeHtml(memberOriginLabel(entry.origin, locale)) + "</span>")
+    out.append("</span>")
+    if (entry.origin != "declared") {
+        out.append("<span class=\"declaration-kind\">" +
+            escapeHtml(memberOriginLabel(entry.origin, locale)) + "</span>")
+    }
     match (member.documentation) {
         case Some(comment) =>
             let summary = summaryPlainText(comment)
@@ -273,8 +275,8 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     out.append("</div>")
     appendDocumentationHtml(out, index, member, rootPrefix, assetLookup, typeLinkIndex,
         headingBase: 3, locale: locale)
-    appendDeclarationMetadata(out, index, member, rootPrefix, assetLookup, typeLinkIndex,
-        locale: locale)
+    appendReaderRelationships(out, index, member, rootPrefix, typeLinkIndex, locale,
+        headingTag: "h3")
     appendReverseTypeUsages(out, index, typeLinkIndex, member, rootPrefix, locale)
     out.append("</div></details>\n")
 }
@@ -432,8 +434,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     appendDocumentationHtml(out, index, symbol, "../", assetLookup,
         typeLinkIndex, headingBase: 4, locale: locale, includeContracts: !isTypeDeclaration(symbol),
         includeIntroduction: !isTypeDeclaration(symbol))
-    appendDeclarationMetadata(out, index, symbol, "../", assetLookup, typeLinkIndex,
-        locale: locale)
+    appendReaderRelationships(out, index, symbol, "../", typeLinkIndex, locale)
     appendReverseTypeUsages(out, index, typeLinkIndex, symbol, "../", locale)
     appendPageEnd(out, documentation, locale: locale)
     out.toString()

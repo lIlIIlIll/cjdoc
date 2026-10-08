@@ -482,8 +482,9 @@ class RendererSafetyTest {
         @Expect(mainHtml.split("public func member(): Unit").size, 2)
         @Expect(mainHtml.indexOf("api-page-header").getOrThrow() <
             mainHtml.indexOf("member-browser\"").getOrThrow(), true)
-        @Expect(mainHtml.indexOf("member-browser\"").getOrThrow() <
-            mainHtml.indexOf("declaration-metadata").getOrThrow(), true)
+        @Expect(mainHtml.contains("declaration-metadata"), false)
+        @Expect(mainHtml.contains("Symbol ID"), false)
+        @Expect(mainHtml.contains("Semantic information"), false)
         @Expect(mainHtml.indexOf("No internal synchronization.").getOrThrow() <
             mainHtml.indexOf("member-browser\"").getOrThrow(), true)
         @Expect(mainHtml.indexOf("Callers coordinate concurrent access.").getOrThrow() <
@@ -496,6 +497,75 @@ class RendererSafetyTest {
         @Expect(html.contains("<code>member()</code>"), true)
         @Expect(mainHtml.contains("data-cjdoc-members-expand"), true)
         @Expect(mainHtml.contains("data-cjdoc-members-collapse"), true)
+    }
+
+    @TestCase
+    func readerPagesShowRelationshipsWithoutRawDeclarationDiagnostics(): Unit {
+        let moduleId = "cjdoc:module:v1:reader-relationships"
+        let source = SourceRange("src/api.cj", SourcePosition(1, 1, 0),
+            SourcePosition(1, 24, 23))
+        let contractId = "cjdoc:v2:reader-relationships::fixture::interface:Readable#g0()"
+        let ownerId = "cjdoc:v2:reader-relationships::fixture::class:TextReader#g0()"
+        let secretId = "cjdoc:v2:reader-relationships::fixture::class:PrivateReader#g0()"
+        let contract = SymbolDoc(contractId, "interface", "Readable", "fixture.Readable",
+            "fixture", moduleId, "public", source, "public interface Readable",
+            SemanticInfo("partial", "ast"))
+        let privateReader = SymbolDoc(secretId, "class", "PrivateReader", "fixture.PrivateReader",
+            "fixture", moduleId, "private", source, "private class PrivateReader",
+            SemanticInfo("partial", "ast"))
+        let reader = SymbolDoc(ownerId, "class", "TextReader", "fixture.TextReader",
+            "fixture", moduleId, "public", source, "public class TextReader <: Readable",
+            SemanticInfo("partial", "ast"), typeRelationships: [
+                TypeRelationship("superType", TypeRef("named", "Readable",
+                    SemanticType("resolved", canonical: Some("fixture.Readable"))))
+            ], symbolRelationships: [
+                SymbolRelationship("implements", "fixture.Readable", "resolved",
+                    targetSymbolId: Some(contractId)),
+                SymbolRelationship("extendedBy", "fixture.PrivateReader", "resolved",
+                    targetSymbolId: Some(secretId))
+            ])
+        let document = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
+            ProjectInfo("reader-relationships"), ConfigurationSnapshot(audience: "external"),
+            modules: [ModuleDoc(moduleId, "reader-relationships", "root", "",
+                packageNames: ["fixture"])],
+            packages: [PackageDoc("fixture", moduleId,
+                symbolIds: [contractId, ownerId, secretId])],
+            declarations: [contract, reader, privateReader])
+        let page = rendererSafetyContent(HtmlDocumentationRenderer().render(document),
+            "html/${symbolPagePath(reader)}")
+        @Expect(page.contains("class=\"symbol-relationships\""), true)
+        @Expect(page.contains("Relationships</h2>"), true)
+        @Expect(page.contains("fixture.Readable"), true)
+        @Expect(page.contains("Target not present in this documentation"), true)
+        @Expect(page.contains("fixture.PrivateReader"), false)
+        @Expect(page.contains("Declaration metadata"), false)
+        @Expect(page.contains("Symbol ID"), false)
+        @Expect(page.contains("Semantic information"), false)
+    }
+
+    @TestCase
+    func parameterTypeDisplayCompactsGenericTriviaWithoutChangingSourceSignature(): Unit {
+        let moduleId = "cjdoc:module:v1:generic-display"
+        let source = SourceRange("src/generic.cj", SourcePosition(1, 1, 0),
+            SourcePosition(1, 63, 62))
+        let raw = "public func addAll(entries: Array<String>): Unit"
+        let symbol = SymbolDoc("cjdoc:v2:generic-display::fixture::function:addAll#g0()",
+            "function", "addAll", "fixture.addAll", "fixture", moduleId,
+            "public", source, raw, SemanticInfo("partial", "ast"),
+            parameters: [ParameterDoc("entries", TypeRef("named", "Array < String >",
+                SemanticType("unavailable")), documentation: Some("input array"))],
+            documentation: Some(DocComment("raw", "", "", MarkdownNode("document"))))
+        let doc = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
+            ProjectInfo("generic-display"), ConfigurationSnapshot(),
+            modules: [ModuleDoc(moduleId, "generic-display", "root", "",
+                packageNames: ["fixture"])],
+            packages: [PackageDoc("fixture", moduleId, symbolIds: [symbol.id])],
+            declarations: [symbol])
+        let page = rendererSafetyContent(HtmlDocumentationRenderer().render(doc),
+            "html/${symbolPagePath(symbol)}")
+        @Expect(page.contains("Array&lt;String&gt;"), true)
+        @Expect(page.contains("Array &lt; String &gt;"), false)
+        @Expect(page.contains("class=\"signature-block\""), true)
     }
 
     @TestCase
