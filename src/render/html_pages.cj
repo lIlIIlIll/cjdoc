@@ -401,6 +401,8 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
             case Some(comment) => appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(symbol))
             case None => ()
         }
+        // Relations explain the type before readers browse its members.
+        appendReaderRelationships(out, index, symbol, "../", typeLinkIndex, locale)
         let filterLabel = label(locale, "Filter members", "筛选成员")
         let originLabel = label(locale, "Origin", "来源")
         let noResultsLabel = label(locale, "No matching members.", "没有匹配的成员。")
@@ -434,7 +436,9 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     appendDocumentationHtml(out, index, symbol, "../", assetLookup,
         typeLinkIndex, headingBase: 4, locale: locale, includeContracts: !isTypeDeclaration(symbol),
         includeIntroduction: !isTypeDeclaration(symbol))
-    appendReaderRelationships(out, index, symbol, "../", typeLinkIndex, locale)
+    if (!isTypeDeclaration(symbol)) {
+        appendReaderRelationships(out, index, symbol, "../", typeLinkIndex, locale)
+    }
     appendReverseTypeUsages(out, index, typeLinkIndex, symbol, "../", locale)
     appendPageEnd(out, documentation, locale: locale)
     out.toString()
