@@ -27,26 +27,59 @@ private func appendRelationshipUncertainty(out: RenderTextBuffer,
     }
 }
 
+// Human-facing labels should not expose internal relation-kind spellings.
+private func readerRelationshipLabel(kind: String, locale: String): String {
+    if (locale == "zh-CN") {
+        if (kind == "subType") { return "子类型" }
+        return htmlKindLabel(kind, locale)
+    }
+    match (kind) {
+        case "superType" => "Parent type"
+        case "subType" => "Subtype"
+        case "extensionTarget" => "Extension target"
+        case "genericConstraint" => "Generic constraint"
+        case "extendedBy" => "Extended by"
+        case "inheritedMember" => "Inherited member"
+        case "implements" => "Implements"
+        case "overrides" => "Overrides"
+        case "inherits" => "Inherits"
+        case _ => htmlKindLabel(kind, locale)
+    }
+}
+
 internal func appendReaderRelationships(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     typeLinkIndex: HtmlTypeLinkIndex, locale: String,
     headingTag!: String = "h2"): Unit {
-    if (symbol.typeRelationships.isEmpty() && symbol.symbolRelationships.isEmpty()) { return }
+    var hasVisibleSymbolRelationship = false
+    for (relationship in symbol.symbolRelationships) {
+        match (relationship.targetSymbolId) {
+            case Some(id) => if (findSymbol(index, id).isSome()) {
+                hasVisibleSymbolRelationship = true
+            }
+            case None => hasVisibleSymbolRelationship = true
+        }
+    }
+    if (symbol.typeRelationships.isEmpty() && !hasVisibleSymbolRelationship) { return }
     out.append("<section class=\"symbol-relationships\" aria-label=\"${label(locale, "Type and member relationships", "类型与成员关系")}\">")
     out.append("<${headingTag}>${label(locale, "Relationships", "关联关系")}</${headingTag}><dl>")
     for (relationship in symbol.typeRelationships) {
-        out.append("<dt>${escapeHtml(htmlKindLabel(relationship.kind, locale))}</dt><dd>")
+        out.append("<dt>${escapeHtml(readerRelationshipLabel(relationship.kind, locale))}</dt><dd>")
         appendTypeRefCodeHtml(out, relationship.target, typeLinkIndex, rootPrefix, locale)
         appendRelationshipUncertainty(out, relationship.target.semantic.state, locale)
         out.append("</dd>")
     }
     for (relationship in symbol.symbolRelationships) {
-        out.append("<dt>${escapeHtml(htmlKindLabel(relationship.kind, locale))}</dt><dd>")
+        // A filtered declaration must not reveal even the existence of its edge.
+        if (let Some(targetId) <- relationship.targetSymbolId) {
+            if (findSymbol(index, targetId).isNone()) { continue }
+        }
+        out.append("<dt>${escapeHtml(readerRelationshipLabel(relationship.kind, locale))}</dt><dd>")
         match (relationship.targetSymbolId) {
             case Some(targetId) => match (findSymbol(index, targetId)) {
                 case Some(target) => out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(relationship.targetDisplay)}</code></a>")
-                // A filtered target must not leak through a relation's display text.
-                case None => out.append("${label(locale, "Target not present in this documentation", "目标未包含在当前文档中")}")
+                // The visibility check above already discarded filtered targets.
+                case None => ()
             }
             case None => out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
         }
