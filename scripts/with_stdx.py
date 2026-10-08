@@ -16,7 +16,6 @@ from typing import Iterable
 REQUIRED_STATIC_ARTIFACTS = (
     "stdx.chir.cjo",
     "libstdx.chir.a",
-    "libflatbuffers.a",
 )
 VERSION_RE = re.compile(r"Cangjie Compiler:\s*([^\n]+)")
 TARGET_RE = re.compile(r"Target:\s*([^\n]+)")
@@ -124,6 +123,12 @@ def stdx_candidates(cjc: Path, variant: str, compiler_target: str) -> list[Path]
         return unique_paths([Path(configured)])
 
     candidates: list[Path] = []
+    # `Zxilly/setup-cangjie` injects the per-variant component root; the
+    # authenticated artifacts live in its `stdx` subdirectory.
+    component = os.environ.get(
+        "CANGJIE_STDX_PATH_DYNAMIC" if variant == "dynamic" else "CANGJIE_STDX_PATH_STATIC")
+    if component:
+        candidates.extend([Path(component) / "stdx", Path(component)])
     bundle = compiler_bundle_root(cjc)
     family = compiler_target_family(compiler_target)
     if bundle is not None and family is not None:
@@ -211,8 +216,12 @@ def main(argv: list[str]) -> int:
         fail(f"no authenticated {variant} stdx sidecar matches the selected compiler")
 
     # cjpm passes link-option tokens directly; embedded shell quotes are literal.
-    link_options = f"-L{selected} -lflatbuffers" if variant == "static" else ""
-    dependency_digest = file_digest(selected / "libflatbuffers.a") if variant == "static" else ""
+    # The published stdx archives statically carry their FlatBuffers objects
+    # inside libstdx.chir.a, so no separate -lflatbuffers token is emitted.
+    link_options = f"-L{selected}" if variant == "static" else ""
+    # No separate FlatBuffers library participates in the link, so the
+    # dependency digest is empty for every supported static sidecar.
+    dependency_digest = ""
     fingerprint = hashlib.sha256(
         f"{version}\0{target}\0{selected_digest}\0{dependency_digest}".encode("utf-8")
     ).hexdigest()

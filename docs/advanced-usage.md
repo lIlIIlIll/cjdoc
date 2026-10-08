@@ -310,7 +310,7 @@ cjdoc schema doc-ir > doc-ir.schema.json
 
 普通工具用户应优先下载 release binary。只有在发布页没有对应资产，或你正在修改 cjdoc 时，才从源码构建。
 
-当前源码与 Pages 构建使用 Cangjie **1.2.0 STS** 的 `cjc`/`cjpm` 和匹配的 `stdx` release/1.2 sidecar，并需要 `cjpm.lock` 固定的 Git 依赖，或已经准备好的对应 cjpm cache。SDK 与 sidecar 的固定来源、校验和及构建步骤见 [Pages workflow](../.github/workflows/pages.yml)。
+当前源码与 Pages 构建使用 Cangjie **1.2.0 STS** 的 `cjc`/`cjpm` 和匹配的 `stdx` release/1.2 sidecar，并需要 `cjpm.lock` 固定的 Git 依赖，或已经准备好的对应 cjpm cache。工作流通过 [`Zxilly/setup-cangjie`](https://github.com/Zxilly/setup-cangjie) 的 `sts` + `stdx` component 获取 SDK 与 stdx，压缩包由其 `cangjie-version-manifest` 提供 SHA-256 校验；固定在 workflow `env` 中的版本与 `cjv-version` 决定实际安装内容。手工复现时可用同一工具的 `cjv install sts-1.2.0 --component stdx`。
 
 复现 Linux 展示构建时，按该工作流准备 SDK 和 sidecar，再执行完整的 “Build cjdoc” 步骤。SDK 1.2.0 的 `llc` 在默认优化级别处理 markdown/yjson 时会崩溃；该步骤临时设置 `override-compile-option = "-O1"`，并在结束时恢复原清单。不要省略这个处理而直接使用默认构建命令。完整展示复现与验收说明见同一仓库 revision 的 `docs/showcase-contract.md`。
 

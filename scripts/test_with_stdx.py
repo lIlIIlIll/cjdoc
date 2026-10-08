@@ -21,7 +21,7 @@ class WithStdxTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             sidecar = self.make_sidecar(
                 Path(temporary),
-                ("stdx.chir.cjo", "libstdx.chir.a", "libflatbuffers.a"),
+                ("stdx.chir.cjo", "libstdx.chir.a"),
             )
             digest, files = with_stdx.authenticate_stdx(
                 sidecar, with_stdx.REQUIRED_STATIC_ARTIFACTS
@@ -31,11 +31,9 @@ class WithStdxTest(unittest.TestCase):
                 {file.name for file in files}, set(with_stdx.REQUIRED_STATIC_ARTIFACTS)
             )
 
-    def test_static_sidecar_rejects_missing_flatbuffers(self) -> None:
+    def test_static_sidecar_rejects_missing_chir_library(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            sidecar = self.make_sidecar(
-                Path(temporary), ("stdx.chir.cjo", "libstdx.chir.a")
-            )
+            sidecar = self.make_sidecar(Path(temporary), ("stdx.chir.cjo",))
             with self.assertRaises(SystemExit):
                 with_stdx.authenticate_stdx(
                     sidecar, with_stdx.required_artifacts("static", "x86_64-unknown-linux-gnu")
