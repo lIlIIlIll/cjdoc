@@ -517,9 +517,12 @@ class RendererSafetyTest {
             "fixture", moduleId, "public", source, "public class TextReader <: Readable",
             SemanticInfo("partial", "ast"), typeRelationships: [
                 TypeRelationship("superType", TypeRef("named", "Readable",
-                    SemanticType("resolved", canonical: Some("fixture.Readable"),
-                        provider: Some("ast"))))
+                    SemanticType("partial", provider: Some("ast")))),
+                TypeRelationship("extendedBy", TypeRef("named", "fixture.PrivateReader",
+                    SemanticType("partial", provider: Some("ast"))))
             ], symbolRelationships: [
+                SymbolRelationship("superType", "Readable", "resolved",
+                    targetSymbolId: Some(contractId)),
                 SymbolRelationship("implements", "fixture.Readable", "resolved",
                     targetSymbolId: Some(contractId)),
                 SymbolRelationship("extendedBy", "fixture.PrivateReader", "resolved",
@@ -544,9 +547,24 @@ class RendererSafetyTest {
         @Expect(page.contains("fixture.PrivateReader"), false)
         @Expect(page.contains("Extended by"), false)
         @Expect(page.contains("Parent type"), true)
+        // The source TypeRef is partial, but its navigation edge has an exact
+        // resolved SymbolId. Render one linked relationship, not both states.
+        @Expect(page.split("<dt>Parent type</dt>").size, 2)
+        @Expect(page.contains("Relationship not fully established"), false)
+        @Expect(page.contains("<dt>Parent type</dt><dd><a href="), true)
         @Expect(page.contains("Declaration metadata"), false)
         @Expect(page.contains("Symbol ID"), false)
         @Expect(page.contains("Semantic information"), false)
+    }
+
+    @TestCase
+    func readerRelationshipKindsMatchActualForwardAndReverseEdges(): Unit {
+        @Expect(readerRelationshipLabel("override", "en"), "Overrides")
+        @Expect(readerRelationshipLabel("overriddenBy", "en"), "Overridden by")
+        @Expect(readerRelationshipLabel("implementedBy", "en"), "Implemented by")
+        @Expect(readerRelationshipLabel("override", "zh-CN"), "重写")
+        @Expect(readerRelationshipLabel("overriddenBy", "zh-CN"), "被重写")
+        @Expect(readerRelationshipLabel("implementedBy", "zh-CN"), "被实现")
     }
 
     @TestCase

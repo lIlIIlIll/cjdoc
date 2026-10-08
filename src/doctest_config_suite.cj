@@ -5,6 +5,16 @@ import std.unittest.testmacro.*
 import std.env.*
 import std.fs.*
 
+@When[os == "Windows"]
+private func doctestSlowCommand(): (String, Array<String>) {
+    ("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Milliseconds 900"])
+}
+
+@When[os != "Windows"]
+private func doctestSlowCommand(): (String, Array<String>) {
+    ("/bin/sh", ["-c", "sleep 0.9"])
+}
+
 @Test
 class DoctestConfigSuite {
     @TestCase
@@ -41,6 +51,24 @@ class DoctestConfigSuite {
             }
             let capped = runBoundedProcess("cjc", ["-v"], root, 5000, 1)
             @Expect(capped.outputLimit, true)
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
+    func subprocessPipeWaitDeadlineRemainsTimeoutNotOutputLimit(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            let (command, arguments) = doctestSlowCommand()
+            // Non-multiples of 25 ms exercise the gap before the watchdog poll.
+            let deadlines: Array<Int64> = [71, 83, 97]
+            for (timeout in deadlines) {
+                let result = runBoundedProcess(command, arguments, root, timeout,
+                    DOCTEST_MAX_OUTPUT_BYTES)
+                @Expect(result.timedOut, true)
+                @Expect(result.outputLimit, false)
+            }
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }

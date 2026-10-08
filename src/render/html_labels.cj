@@ -34,7 +34,10 @@ internal func htmlKindLabel(kind: String, locale: String): String {
         case "multi" => "多项导入"
         case "inherits" => "继承"
         case "overrides" => "重写"
+        case "override" => "重写"
+        case "overriddenBy" => "被重写"
         case "implements" => "实现"
+        case "implementedBy" => "被实现"
         case _ => kind
     }
 }

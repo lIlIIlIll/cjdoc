@@ -213,6 +213,18 @@ private func processText(bytes: Array<Byte>): String {
     try { String.fromUtf8(bytes) } catch (_: Exception) { "<non-UTF-8 output>" }
 }
 
+// A pipe Future.get deadline can expire just before the 25 ms watchdog poll.
+// Claim the process timeout immediately in that case; do not misclassify it as
+// an output-limit failure and suppress the watchdog's state transition.
+private func markDoctestPipeFailure(process: SubProcess, state: AtomicInt64,
+    started: MonoTime, timeoutMs: Int64): Unit {
+    let expired = (MonoTime.now() - started).toMilliseconds() >= timeoutMs
+    let failureState: Int64 = if (expired) { 2 } else { 3 }
+    if (state.compareAndSwap(0, failureState)) {
+        try { process.terminate(force: true) } catch (_: Exception) { () }
+    }
+}
+
 // Draining both pipes must precede wait(): SubProcess.wait may close pipe
 // handles while a concurrent reader still has a pending read. A watchdog
 // enforces the same timeout without racing those readers against wait().
@@ -241,18 +253,14 @@ internal func runBoundedProcess(command: String, arguments: Array<String>, worki
     var stderr = Array<Byte>()
     var outputLimit = false
     try { stdout = stdoutFuture.get(Duration.millisecond * timeoutMs) } catch (_: Exception) {
-        outputLimit = true
         stdoutFuture.cancel()
-        if (state.compareAndSwap(0, 3)) {
-            try { process.terminate(force: true) } catch (_: Exception) { () }
-        }
+        markDoctestPipeFailure(process, state, started, timeoutMs)
+        if (state.load() == 3) { outputLimit = true }
     }
     try { stderr = stderrFuture.get(Duration.millisecond * timeoutMs) } catch (_: Exception) {
-        outputLimit = true
         stderrFuture.cancel()
-        if (state.compareAndSwap(0, 3)) {
-            try { process.terminate(force: true) } catch (_: Exception) { () }
-        }
+        markDoctestPipeFailure(process, state, started, timeoutMs)
+        if (state.load() == 3) { outputLimit = true }
     }
     var exitCode: Int64 = -1
     try { exitCode = process.wait() } catch (_: Exception) {
