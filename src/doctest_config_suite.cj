@@ -25,6 +25,27 @@ class DoctestConfigSuite {
         @Expect(config.jobs, 4)
     }
 
+    // Short-lived children once raced SubProcess.wait() closing their pipes,
+    // so check the same bounded reader with repeated fast exits.
+    @TestCase
+    func subprocessPipesDrainBeforeReapingShortLivedChildren(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            for (_ in 0..12) {
+                let result = runBoundedProcess("cjc", ["-v"], root, 5000,
+                    DOCTEST_MAX_OUTPUT_BYTES)
+                @Expect(result.exitCode, 0)
+                @Expect(result.timedOut, false)
+                @Expect(result.outputLimit, false)
+                @Expect(!result.stdout.isEmpty() || !result.stderr.isEmpty(), true)
+            }
+            let capped = runBoundedProcess("cjc", ["-v"], root, 5000, 1)
+            @Expect(capped.outputLimit, true)
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
     @TestCase
     func invalidModeIsRejected(): Unit {
         @ExpectThrows[IllegalArgumentException](DoctestConfig(mode: "report"))

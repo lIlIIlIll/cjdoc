@@ -7,6 +7,7 @@ import std.core.*
 import std.fs.*
 import std.io.*
 import std.process.*
+import std.sync.*
 import std.time.*
 import std.unicode.*
 
@@ -96,7 +97,7 @@ private class DoctestFence {
     }
 }
 
-private class DoctestProcessResult {
+internal class DoctestProcessResult {
     public let exitCode: Int64
     public let stdout: String
     public let stderr: String
@@ -212,37 +213,55 @@ private func processText(bytes: Array<Byte>): String {
     try { String.fromUtf8(bytes) } catch (_: Exception) { "<non-UTF-8 output>" }
 }
 
-private func runBoundedProcess(command: String, arguments: Array<String>, workingDirectory: Path,
+// Draining both pipes must precede wait(): SubProcess.wait may close pipe
+// handles while a concurrent reader still has a pending read. A watchdog
+// enforces the same timeout without racing those readers against wait().
+internal func runBoundedProcess(command: String, arguments: Array<String>, workingDirectory: Path,
     timeoutMs: Int64, maxOutputBytes: Int64): DoctestProcessResult {
     let process = launch(command, arguments, workingDirectory: Some(workingDirectory),
         stdOut: Pipe, stdErr: Pipe)
+    // 0 = running, 1 = completed, 2 = timeout, 3 = read failed / output limit.
+    let state = AtomicInt64(0)
+    let started = MonoTime.now()
+    let watchdog = spawn {
+        while ((MonoTime.now() - started).toMilliseconds() < timeoutMs && state.load() == 0) {
+            sleep(Duration.millisecond * 25)
+        }
+        if (state.compareAndSwap(0, 2)) {
+            try { process.terminate(force: true) } catch (_: Exception) { () }
+        }
+    }
     let stdoutFuture: Future<Array<Byte>> = spawn {
         readProcessPipe(process.stdOutPipe, maxOutputBytes)
     }
     let stderrFuture: Future<Array<Byte>> = spawn {
         readProcessPipe(process.stdErrPipe, maxOutputBytes)
     }
-    var timedOut = false
-    var outputLimit = false
-    var exitCode: Int64 = -1
-    try {
-        exitCode = process.wait(timeout: Some(Duration.millisecond * timeoutMs))
-    } catch (_: Exception) {
-        timedOut = true
-        process.terminate(force: true)
-        try { let _ = process.wait() } catch (_: Exception) { () }
-    }
     var stdout = Array<Byte>()
     var stderr = Array<Byte>()
+    var outputLimit = false
     try { stdout = stdoutFuture.get(Duration.millisecond * timeoutMs) } catch (_: Exception) {
         outputLimit = true
         stdoutFuture.cancel()
+        if (state.compareAndSwap(0, 3)) {
+            try { process.terminate(force: true) } catch (_: Exception) { () }
+        }
     }
     try { stderr = stderrFuture.get(Duration.millisecond * timeoutMs) } catch (_: Exception) {
         outputLimit = true
         stderrFuture.cancel()
+        if (state.compareAndSwap(0, 3)) {
+            try { process.terminate(force: true) } catch (_: Exception) { () }
+        }
     }
-    DoctestProcessResult(exitCode, processText(stdout), processText(stderr), timedOut, outputLimit)
+    var exitCode: Int64 = -1
+    try { exitCode = process.wait() } catch (_: Exception) {
+        let _ = state.compareAndSwap(0, 3)
+    }
+    let finished = state.compareAndSwap(0, 1)
+    watchdog.get()
+    DoctestProcessResult(exitCode, processText(stdout), processText(stderr),
+        !finished && state.load() == 2, outputLimit)
 }
 
 private func leadingSpaces(line: String): Int64 {

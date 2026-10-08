@@ -574,7 +574,7 @@ internal func typeGenericSuffix(spelling: String): String {
 // angle brackets. Normalize only this display spelling; source signatures and
 // semantic identities must remain byte-for-byte intact. Function arrows and
 // generic constraints are deliberately left untouched.
-private func genericTypeDisplaySpelling(spelling: String): String {
+internal func genericTypeDisplaySpelling(spelling: String): String {
     if (!spelling.contains("<") || spelling.contains("->") || spelling.contains("<:")) {
         return spelling
     }

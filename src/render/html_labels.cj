@@ -80,7 +80,9 @@ internal func htmlContextLabel(symbol: SymbolDoc): String {
         var first = true
         for (parameter in symbol.parameters) {
             if (!first) { out.append(", ") }; first = false
-            out.append(parameter.typeRef.spelling)
+            // Context labels are reader-facing, unlike the original TypeRef and
+            // source signature. Keep generic trivia consistent with the type table.
+            out.append(genericTypeDisplaySpelling(parameter.typeRef.spelling))
         }
         out.append(")")
     }
