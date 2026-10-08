@@ -427,7 +427,10 @@ internal let HTML_SEARCH_SCRIPT = """
     document.body.style.overflow = "hidden";
     if (menuBackdrop) menuBackdrop.hidden = false;
     const target = sidebar.querySelector("[data-cjdoc-sidebar-filter], [data-cjdoc-sidebar-close], a, summary");
-    if (target) window.setTimeout(() => target.focus(), 0); else window.setTimeout(() => sidebar.focus(), 0);
+    // Focus in the same task as the click: the drawer is already displayed and
+    // inert on the rest of the document is already applied, so a deferred timer
+    // would only add a window where focus sits on a now-inert control.
+    if (target) target.focus(); else sidebar.focus();
   };
   if (menu && sidebar) {
     menu.addEventListener("click", () => {

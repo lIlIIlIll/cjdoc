@@ -406,21 +406,25 @@ class InstallCangjieSdkTest(unittest.TestCase):
     def test_stdx_root_requires_complete_regular_static_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
-            incomplete = directory / "stdx"
-            complete = directory / "sidecar" / "stdx"
-            for root in (incomplete, complete):
+            shallow = directory / "stdx"
+            deep = directory / "sidecar" / "stdx"
+            for root in (shallow, deep):
                 root.mkdir(parents=True)
-                (root / "stdx.chir.cjo").write_bytes(b"package")
-                (root / "libstdx.chir.a").write_bytes(b"archive")
+            (shallow / "stdx.chir.cjo").write_bytes(b"package")
             self.assertIsNone(install_cangjie_sdk.stdx_root(directory))
-            (complete / "libflatbuffers.a").write_bytes(b"flatbuffers archive")
-            self.assertEqual(install_cangjie_sdk.stdx_root(directory), complete)
-            (incomplete / "libflatbuffers.a").write_bytes(b"flatbuffers archive")
-            self.assertEqual(install_cangjie_sdk.stdx_root(directory), incomplete)
+            (shallow / "libstdx.chir.a").write_bytes(b"archive")
+            self.assertEqual(install_cangjie_sdk.stdx_root(directory), shallow)
+            # A deeper complete root never outranks the shallowest authenticated one.
+            (deep / "stdx.chir.cjo").write_bytes(b"package")
+            (deep / "libstdx.chir.a").write_bytes(b"archive")
+            self.assertEqual(install_cangjie_sdk.stdx_root(directory), shallow)
             if os.name != "nt":
-                (incomplete / "libflatbuffers.a").unlink()
-                (incomplete / "libflatbuffers.a").symlink_to(complete / "libflatbuffers.a")
-                self.assertEqual(install_cangjie_sdk.stdx_root(directory), complete)
+                (shallow / "libstdx.chir.a").unlink()
+                (shallow / "libstdx.chir.a").symlink_to(deep / "libstdx.chir.a")
+                self.assertEqual(install_cangjie_sdk.stdx_root(directory), deep)
+                (shallow / "stdx.chir.cjo").unlink()
+                (shallow / "stdx.chir.cjo").symlink_to(deep / "stdx.chir.cjo")
+                self.assertEqual(install_cangjie_sdk.stdx_root(directory), deep)
 
 
 if __name__ == "__main__":
