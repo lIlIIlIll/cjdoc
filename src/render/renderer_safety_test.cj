@@ -541,6 +541,13 @@ class RendererSafetyTest {
                 symbolIds: [contractId, ownerId, secretId])],
             files: [FileDoc("src/api.cj", moduleId, "fixture")],
             declarations: [contract, reader, privateReader])
+        // The full index has the private target even though the published
+        // projection must not. Identity comparison cannot depend on href.
+        let projection = RenderProjection(document)
+        @Expect(projection.allIndex.contains(secretId), true)
+        @Expect(projection.visibleIndex.contains(secretId), false)
+        let links = HtmlTypeLinkIndex(document, projection)
+        @Expect(links.sameUnfilteredTarget(reader.typeRelationships[1].target, secretId), true)
         let page = rendererSafetyContent(HtmlDocumentationRenderer().render(document),
             "html/${symbolPagePath(reader)}")
         @Expect(page.contains("class=\"symbol-relationships\""), true)

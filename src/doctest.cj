@@ -258,11 +258,22 @@ internal func runBoundedProcess(command: String, arguments: Array<String>, worki
         }
         let _ = claimDoctestWatchdogTimeout(process, state)
     }
+    // Claim an output/read failure *inside* the worker that detects it.
+    // Waiting for stdout first must not let an overflowing stderr remain
+    // unobserved until the watchdog converts the failure to a timeout.
     let stdoutFuture: Future<Array<Byte>> = spawn {
-        readProcessPipe(process.stdOutPipe, maxOutputBytes)
+        try { readProcessPipe(process.stdOutPipe, maxOutputBytes) }
+        catch (error: Exception) {
+            markDoctestPipeFailure(process, state, started, timeoutMs)
+            throw error
+        }
     }
     let stderrFuture: Future<Array<Byte>> = spawn {
-        readProcessPipe(process.stdErrPipe, maxOutputBytes)
+        try { readProcessPipe(process.stdErrPipe, maxOutputBytes) }
+        catch (error: Exception) {
+            markDoctestPipeFailure(process, state, started, timeoutMs)
+            throw error
+        }
     }
     var stdout = Array<Byte>()
     var stderr = Array<Byte>()

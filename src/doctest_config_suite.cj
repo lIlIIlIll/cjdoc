@@ -17,6 +17,19 @@ private func doctestSlowCommand(): (String, Array<String>) {
     ("/bin/sh", ["-c", "sleep 0.9"])
 }
 
+@When[os == "Windows"]
+private func doctestStderrOverflowCommand(): (String, Array<String>, Int64) {
+    ("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+        "[Console]::Error.WriteLine('exceeds-bound'); Start-Sleep -Seconds 5"], 2500)
+}
+
+@When[os != "Windows"]
+private func doctestStderrOverflowCommand(): (String, Array<String>, Int64) {
+    // Avoid spawning a second process that could inherit a pipe after the
+    // bounded shell is terminated by the output-limit watchdog.
+    ("/bin/sh", ["-c", "printf 'exceeds-bound' 1>&2; while :; do :; done"], 700)
+}
+
 @Test
 class DoctestConfigSuite {
     @TestCase
@@ -53,6 +66,19 @@ class DoctestConfigSuite {
             }
             let capped = runBoundedProcess("cjc", ["-v"], root, 5000, 1)
             @Expect(capped.outputLimit, true)
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
+    func stderrOverflowWinsBeforeBlockedStdoutTimesOut(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            let (command, arguments, timeoutMs) = doctestStderrOverflowCommand()
+            let result = runBoundedProcess(command, arguments, root, timeoutMs, 1)
+            @Expect(result.outputLimit, true)
+            @Expect(result.timedOut, false)
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
