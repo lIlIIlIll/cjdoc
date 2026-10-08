@@ -66,10 +66,7 @@ private func sameReaderRelationshipTarget(typeRelation: TypeRelationship,
         case Some(id) =>
             match ((typeLinkIndex.targetUrl(typeRef), typeLinkIndex.targetUrlForSymbolId(id))) {
                 case (Some(left), Some(right)) => left == right
-                case _ => match ((index.get(id), typeRef.semantic.canonical)) {
-                    case (Some(target), Some(canonical)) => target.qualifiedName == canonical
-                    case _ => false
-                }
+                case _ => typeLinkIndex.sameUnfilteredTarget(typeRef, id)
             }
         case None => false
     }
@@ -101,6 +98,17 @@ internal func appendReaderRelationships(out: RenderTextBuffer,
     for (relationship in symbol.typeRelationships) {
         var suppress = false
         for (navigation in symbol.symbolRelationships) {
+            // The published index deliberately cannot resolve a filtered target.
+            // When a hidden navigation edge has the same kind and *exact* source
+            // spelling, drop the weaker source row rather than disclosing its
+            // name. Do not suppress a separately resolved, visible TypeRef.
+            if (!readerSymbolRelationshipIsVisible(index, navigation) &&
+                relationship.kind == navigation.kind &&
+                typeLinkIndex.targetUrl(relationship.target).isNone() &&
+                relationship.target.spelling.trimAscii() == navigation.targetDisplay.trimAscii()) {
+                suppress = true
+                break
+            }
             if (!sameReaderRelationshipTarget(relationship, navigation, index, typeLinkIndex)) {
                 continue
             }
