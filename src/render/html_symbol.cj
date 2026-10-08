@@ -64,9 +64,9 @@ private func sameReaderRelationshipTarget(typeRelation: TypeRelationship,
     }
     match (symbolRelation.targetSymbolId) {
         case Some(id) =>
-            match (typeLinkIndex.targetUrl(typeRef), typeLinkIndex.targetUrlForSymbolId(id)) {
+            match ((typeLinkIndex.targetUrl(typeRef), typeLinkIndex.targetUrlForSymbolId(id))) {
                 case (Some(left), Some(right)) => left == right
-                case _ => match (index.get(id), typeRef.semantic.canonical) {
+                case _ => match ((index.get(id), typeRef.semantic.canonical)) {
                     case (Some(target), Some(canonical)) => target.qualifiedName == canonical
                     case _ => false
                 }
