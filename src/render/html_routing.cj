@@ -438,8 +438,12 @@ internal class HtmlTypeLinkIndex {
     private let symbolIdByCanonical = HashMap<String, String>()
     private let urlBySymbolId = HashMap<String, String>()
     private let reverseUsagesByTarget = HashMap<String, ArrayList<HtmlTypeUsage>>()
+    // Identity comparison only: never publish the non-visible target through
+    // a URL, search hit, label, or inverse relationship.
+    private let allSymbols: HashMap<String, SymbolDoc>
 
     init(documentation: DocumentationSet, projection: RenderProjection) {
+        allSymbols = projection.allIndex
         let moduleNameById = HashMap<String, String>()
         for (module in documentation.modules) { moduleNameById[module.id] = module.name }
         for (symbol in projection.visibleSymbols) {
@@ -480,6 +484,17 @@ internal class HtmlTypeLinkIndex {
                 let rightKey = "${right.source.qualifiedName}|${right.source.id}|${right.kind}"
                 leftKey < rightKey
             }, stable: true)
+        }
+    }
+
+    // The visible link index intentionally excludes private declarations.
+    // Relationship coalescing must nevertheless recognize the same filtered
+    // target so its weaker source-side spelling is suppressed, not exposed.
+    internal func sameUnfilteredTarget(typeRef: TypeRef, symbolId: String): Bool {
+        match ((allSymbols.get(symbolId), typeRef.semantic.canonical)) {
+            case (Some(target), Some(canonical)) =>
+                canonical == target.id || canonical == target.qualifiedName
+            case _ => false
         }
     }
 

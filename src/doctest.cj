@@ -219,10 +219,27 @@ private func processText(bytes: Array<Byte>): String {
 private func markDoctestPipeFailure(process: SubProcess, state: AtomicInt64,
     started: MonoTime, timeoutMs: Int64): Unit {
     let expired = (MonoTime.now() - started).toMilliseconds() >= timeoutMs
-    let failureState: Int64 = if (expired) { 2 } else { 3 }
+    // A blocked reader can wake after the deadline even when the child had
+    // already exited. Do not retroactively call a completed child a timeout.
+    let failureState: Int64 = if (expired && process.isAlive()) { 2 } else { 3 }
     if (state.compareAndSwap(0, failureState)) {
         try { process.terminate(force: true) } catch (_: Exception) { () }
     }
+}
+
+// Claim a timeout only while the child is still running. The reader can be
+// descheduled after both pipes reach EOF; in that case the child is already
+// finished even if the watchdog first runs after the wall-clock deadline.
+internal func claimDoctestWatchdogTimeout(process: SubProcess, state: AtomicInt64): Bool {
+    if (!process.isAlive()) { return false }
+    if (!state.compareAndSwap(0, 2)) { return false }
+    // The child could exit between the first liveness probe and the CAS.
+    if (!process.isAlive()) {
+        let _ = state.compareAndSwap(2, 0)
+        return false
+    }
+    try { process.terminate(force: true) } catch (_: Exception) { () }
+    true
 }
 
 // Draining both pipes must precede wait(): SubProcess.wait may close pipe
@@ -239,9 +256,7 @@ internal func runBoundedProcess(command: String, arguments: Array<String>, worki
         while ((MonoTime.now() - started).toMilliseconds() < timeoutMs && state.load() == 0) {
             sleep(Duration.millisecond * 25)
         }
-        if (state.compareAndSwap(0, 2)) {
-            try { process.terminate(force: true) } catch (_: Exception) { () }
-        }
+        let _ = claimDoctestWatchdogTimeout(process, state)
     }
     let stdoutFuture: Future<Array<Byte>> = spawn {
         readProcessPipe(process.stdOutPipe, maxOutputBytes)

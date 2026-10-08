@@ -518,8 +518,11 @@ class RendererSafetyTest {
             SemanticInfo("partial", "ast"), typeRelationships: [
                 TypeRelationship("superType", TypeRef("named", "Readable",
                     SemanticType("partial", provider: Some("ast")))),
+                // A resolved semantic TypeRef and the symbol edge both point
+                // to a filtered declaration. Neither may leak its spelling.
                 TypeRelationship("extendedBy", TypeRef("named", "fixture.PrivateReader",
-                    SemanticType("partial", provider: Some("ast"))))
+                    SemanticType("resolved", canonical: Some("fixture.PrivateReader"),
+                        provider: Some("ast"))))
             ], symbolRelationships: [
                 SymbolRelationship("superType", "Readable", "resolved",
                     targetSymbolId: Some(contractId)),

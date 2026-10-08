@@ -4,6 +4,8 @@ import std.unittest.*
 import std.unittest.testmacro.*
 import std.env.*
 import std.fs.*
+import std.process.*
+import std.sync.*
 
 @When[os == "Windows"]
 private func doctestSlowCommand(): (String, Array<String>) {
@@ -69,6 +71,23 @@ class DoctestConfigSuite {
                 @Expect(result.timedOut, true)
                 @Expect(result.outputLimit, false)
             }
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    // Deterministic regression for a watchdog being descheduled until after
+    // a short-lived child has already exited and been reaped.
+    @TestCase
+    func watchdogDoesNotTimeoutAnAlreadyExitedChild(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            let process = launch("cjc", ["-v"], workingDirectory: Some(root),
+                stdOut: Pipe, stdErr: Pipe)
+            let _ = process.wait()
+            let state = AtomicInt64(0)
+            @Expect(claimDoctestWatchdogTimeout(process, state), false)
+            @Expect(state.load(), 0)
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
