@@ -504,9 +504,9 @@ class RendererSafetyTest {
         let moduleId = "cjdoc:module:v1:reader-relationships"
         let source = SourceRange("src/api.cj", SourcePosition(1, 1, 0),
             SourcePosition(1, 24, 23))
-        let contractId = "cjdoc:v2:reader-relationships::fixture::interface:Readable#g0()"
-        let ownerId = "cjdoc:v2:reader-relationships::fixture::class:TextReader#g0()"
-        let secretId = "cjdoc:v2:reader-relationships::fixture::class:PrivateReader#g0()"
+        let contractId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Areader-relationships::fixture::interface:Readable#g0()"
+        let ownerId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Areader-relationships::fixture::class:TextReader#g0()"
+        let secretId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Areader-relationships::fixture::class:PrivateReader#g0()"
         let contract = SymbolDoc(contractId, "interface", "Readable", "fixture.Readable",
             "fixture", moduleId, "public", source, "public interface Readable",
             SemanticInfo("partial", "ast"))
@@ -517,7 +517,8 @@ class RendererSafetyTest {
             "fixture", moduleId, "public", source, "public class TextReader <: Readable",
             SemanticInfo("partial", "ast"), typeRelationships: [
                 TypeRelationship("superType", TypeRef("named", "Readable",
-                    SemanticType("resolved", canonical: Some("fixture.Readable"))))
+                    SemanticType("resolved", canonical: Some("fixture.Readable"),
+                        provider: Some("ast"))))
             ], symbolRelationships: [
                 SymbolRelationship("implements", "fixture.Readable", "resolved",
                     targetSymbolId: Some(contractId)),
@@ -526,10 +527,13 @@ class RendererSafetyTest {
             ])
         let document = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
             ProjectInfo("reader-relationships"), ConfigurationSnapshot(audience: "external"),
+            providers: [ProviderInfo("ast", "builtin", moduleId, "partial",
+                SemanticCapabilities(false, false, false, true, false, relationships: true))],
             modules: [ModuleDoc(moduleId, "reader-relationships", "root", "",
                 packageNames: ["fixture"])],
-            packages: [PackageDoc("fixture", moduleId,
+            packages: [PackageDoc("fixture", moduleId, sourceFiles: ["src/api.cj"],
                 symbolIds: [contractId, ownerId, secretId])],
+            files: [FileDoc("src/api.cj", moduleId, "fixture")],
             declarations: [contract, reader, privateReader])
         let page = rendererSafetyContent(HtmlDocumentationRenderer().render(document),
             "html/${symbolPagePath(reader)}")
@@ -551,7 +555,7 @@ class RendererSafetyTest {
         let source = SourceRange("src/generic.cj", SourcePosition(1, 1, 0),
             SourcePosition(1, 63, 62))
         let raw = "public func addAll(entries: Array<String>): Unit"
-        let symbol = SymbolDoc("cjdoc:v2:generic-display::fixture::function:addAll#g0()",
+        let symbol = SymbolDoc("cjdoc:v2:cjdoc%3Amodule%3Av1%3Ageneric-display::fixture::function:addAll#g0()",
             "function", "addAll", "fixture.addAll", "fixture", moduleId,
             "public", source, raw, SemanticInfo("partial", "ast"),
             parameters: [ParameterDoc("entries", TypeRef("named", "Array < String >",
@@ -559,9 +563,13 @@ class RendererSafetyTest {
             documentation: Some(DocComment("raw", "", "", MarkdownNode("document"))))
         let doc = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
             ProjectInfo("generic-display"), ConfigurationSnapshot(),
+            providers: [ProviderInfo("ast", "builtin", moduleId, "partial",
+                SemanticCapabilities(false, false, false, false, false))],
             modules: [ModuleDoc(moduleId, "generic-display", "root", "",
                 packageNames: ["fixture"])],
-            packages: [PackageDoc("fixture", moduleId, symbolIds: [symbol.id])],
+            packages: [PackageDoc("fixture", moduleId, sourceFiles: ["src/generic.cj"],
+                symbolIds: [symbol.id])],
+            files: [FileDoc("src/generic.cj", moduleId, "fixture")],
             declarations: [symbol])
         let page = rendererSafetyContent(HtmlDocumentationRenderer().render(doc),
             "html/${symbolPagePath(symbol)}")
