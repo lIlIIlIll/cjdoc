@@ -86,6 +86,50 @@ class SourcePipelineSuite4 {
     }
 
     @TestCase
+    func acceptsMultilineAndClosureDefaultParametersInWorker(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            Directory.create(temporary.join("src"), recursive: true)
+            File.writeTo(temporary.join("cjpm.toml"), """
+                [package]
+                name = "default_parameters"
+                cjc-version = "1.3.0"
+                version = "0.1.0"
+                output-type = "static"
+                """.toArray())
+            File.writeTo(temporary.join("src/api.cj"), (
+                "package default_parameters\n" +
+                "public func multiline(value!: Int64 = 1\n): Int64 { value }\n" +
+                "public class Handler { public init(handler!: (Int64) -> Int64 = { value => value }) {} }\n"
+            ).toArray())
+            let documentation = DocumentationEngine().generate(GenerationRequest(
+                temporary.toString(), lintProfile: "off", audience: "all",
+                astPreflightExecutable: TEST_AST_PREFLIGHT))
+            @Expect(documentation.status, "complete")
+            @Expect(containsDiagnostic(documentation, "CJDOC1011"), false)
+            @Expect(containsDiagnostic(documentation, "CJDOC1020"), false)
+            let multiline = declarationNamed(documentation, "multiline")
+            @Expect(multiline.parameters[0].defaultExpression.isSome(), true)
+            let handler = declarationNamed(documentation, "Handler")
+            @Expect(handler.kind, "class")
+        } finally {
+            let _ = removeIfExists(temporary, recursive: true)
+        }
+    }
+
+    @TestCase
+    func defaultTokenComparisonIgnoresNewlinesButRejectsChangedValues(): Unit {
+        let source = cangjieLex("1\n")
+        @Expect(cachedDefaultMatchesSourceTokens("1", source, 0, source.size), true)
+        @Expect(cachedDefaultMatchesSourceTokens("2", source, 0, source.size), false)
+        let closure = cangjieLex("{ value => value }")
+        @Expect(cachedDefaultMatchesSourceTokens("{\nvalue => value\n}", closure,
+            0, closure.size), true)
+        @Expect(cachedDefaultMatchesSourceTokens("{ value => 0 }", closure,
+            0, closure.size), false)
+    }
+
+    @TestCase
     func bodylessMethodDoesNotConsumePropertyInitializer(): Unit {
         let source = """
             interface Recovery {
