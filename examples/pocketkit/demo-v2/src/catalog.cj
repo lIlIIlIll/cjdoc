@@ -181,6 +181,34 @@ public class TextCatalog {
      * @param limit 最大条目数，默认为二十。
      * @return 长度不超过 limit 的可选文本数组，数组内实际返回 Some。
      * @throws IllegalArgumentException start 不在 0..=size 或 limit 小于零。
+     * @example 按位置与上限取窗口
+     * ```cangjie
+     * let catalog = TextCatalog(["a", "b", "c", "d"])
+     * let page = catalog.window(start: 1, limit: 2)
+     * assert(page.size == 2)
+     * assert(page[0] == Some("b"))
+     * assert(page[1] == Some("c"))
+     * ```
+     * @example 默认参数与末尾短窗口
+     * ```cangjie
+     * let catalog = TextCatalog(["a", "b", "c"])
+     * // limit 默认是 20；start 默认是 0。起始位置等于 size 时返回空窗口，
+     * // 末尾窗口可以短于 limit，不需要调用方补齐。
+     * assert(catalog.window().size == 3)
+     * assert(catalog.window(start: 2).size == 1)
+     * assert(catalog.window(start: 3).size == 0)
+     * ```
+     * @example 越界参数抛出异常
+     * ```cangjie
+     * let catalog = TextCatalog(["a"])
+     * // start 大于 size 或 limit 小于零都会抛出；已在契约中声明。
+     * try {
+     *     catalog.window(start: 2)
+     *     assert(false)
+     * } catch (e: IllegalArgumentException) {
+     *     assert(e.message == "invalid window")
+     * }
+     * ```
      */
     public func window(start!: Int64 = 0, limit!: Int64 = 20): Array<?String> {
         if (start < 0 || start > values.size || limit < 0) { throw IllegalArgumentException("invalid window") }
