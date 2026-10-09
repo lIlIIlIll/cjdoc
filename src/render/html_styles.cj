@@ -346,40 +346,46 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
 .member-detail-actions a{display:inline-flex;align-items:center;min-height:30px}
 @media(max-width:760px){.throws-row{grid-template-columns:minmax(0,1fr);gap:.15rem}.throws-row dd{padding-bottom:.1rem}.member-overload-group{padding:.25rem .45rem .3rem}}
 
-/* Compact member actions form one low-priority toolbar, not a prose paragraph.
-   Keep the copy button's existing text-feedback and no-JS static links intact. */
+/* The member detail toolbar is intentionally icon-only: controls are
+   equally sized and leave contract text as the primary reading content. */
 .member-detail .member-detail-actions{
-    display:flex;align-items:stretch;justify-content:flex-end;flex-wrap:wrap;gap:0;
-    width:max-content;max-width:100%;margin:.05rem 0 .55rem auto;
-    border:1px solid var(--line);border-radius:7px;background:var(--surface);
-    font-size:.76rem
+    display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;
+    gap:.15rem;width:max-content;max-width:100%;margin:.05rem 0 .4rem auto;
+    padding:.14rem;border:1px solid var(--line);border-radius:8px;
+    background:var(--surface)
 }
 .member-detail .member-detail-actions .member-action{
-    display:inline-flex;align-items:center;justify-content:center;gap:.35rem;
-    min-height:36px;margin:0;padding:.32rem .65rem;border:0;border-radius:0;
-    background:transparent;color:var(--muted);font:inherit;font-weight:600;
-    text-decoration:none;white-space:nowrap;cursor:pointer
-}
-.member-detail .member-detail-actions .member-action + .member-action{
-    border-inline-start:1px solid var(--line)
+    display:inline-flex;align-items:center;justify-content:center;
+    flex:0 0 38px;width:38px;height:38px;min-width:38px;min-height:38px;
+    margin:0;padding:0;border:1px solid transparent;border-radius:6px;
+    background:transparent;color:var(--muted);line-height:1;
+    text-decoration:none;cursor:pointer
 }
 .member-detail .member-detail-actions .member-action:hover{
-    background:var(--surface-subtle);color:var(--accent)
+    background:var(--surface-subtle);color:var(--accent);
+    text-decoration:none
 }
 .member-detail .member-detail-actions .member-action:focus-visible{
-    position:relative;z-index:1;outline:2px solid var(--accent);outline-offset:-2px
+    position:relative;z-index:1;outline:2px solid var(--accent);
+    outline-offset:1px
 }
-.member-detail .member-detail-actions .member-permalink::before{content:"↗";font-size:.92rem;line-height:1}
-.member-detail .member-detail-actions .member-source-link::before{content:"</>";font:650 .65rem/1 var(--code-font)}
-.member-detail .member-detail-actions .member-action-copy::before{content:"⧉";font-size:.95rem;line-height:1}
+.member-detail .member-detail-actions .member-action-glyph{
+    display:block;width:18px;height:18px;flex:none;pointer-events:none
+}
 .member-detail .member-detail-actions .copy-link[data-copied="true"]{
     color:var(--success);background:var(--surface-subtle)
 }
 .member-detail .member-detail-actions [data-cjdoc-copy-link-fallback]{
-    flex:1 0 100%;min-width:0;max-width:100%;margin:0;padding:.4rem;border:0;
-    border-top:1px solid var(--line);background:var(--surface);color:var(--ink)
+    flex:1 0 100%;min-width:0;max-width:100%;width:100%;margin:0;
+    padding:.4rem;border:0;border-top:1px solid var(--line);
+    background:var(--surface);color:var(--ink)
 }
 @media(max-width:760px){
-    .member-detail .member-detail-actions{margin-inline-start:0}
+    .member-detail .member-detail-actions{margin-inline-start:auto}
 }
+/* A single documented contract does not need a redundant classification
+   table beneath its concrete condition heading. */
+.behavior-contracts .behavior-contract-single>:first-child{margin-top:0}
+.behavior-contracts .behavior-contract-single>:last-child{margin-bottom:0}
+
 """

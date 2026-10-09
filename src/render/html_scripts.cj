@@ -735,14 +735,24 @@ internal let HTML_SEARCH_SCRIPT = """
     return copied;
   };
   for (const button of document.querySelectorAll("[data-cjdoc-copy-link]")) {
-    const label = button.textContent;
+    const iconOnly = button.classList.contains("member-action-copy");
+    const label = iconOnly ? button.getAttribute("aria-label") : button.textContent;
+    const status = iconOnly ? button.parentElement.querySelector("[data-cjdoc-copy-status]") : null;
     button.addEventListener("click", async () => {
       const url = new URL(button.dataset.cjdocCopyLink, window.location.href).href;
       const copied = await copyText(url);
+      const message = copied ? (isChinese ? "链接已复制" : "Link copied")
+        : (isChinese ? "请选择并复制链接" : "Select and copy the link");
       button.dataset.copyLinkResult = copied ? "copied" : "manual";
       button.dataset.copied = copied ? "true" : "false";
-      button.textContent = copied ? (isChinese ? "链接已复制" : "Link copied")
-        : (isChinese ? "请选择并复制链接" : "Select and copy the link");
+      if (iconOnly) {
+        // Preserve the SVG; expose transient feedback through a live region.
+        button.setAttribute("aria-label", message);
+        button.title = message;
+        if (status) status.textContent = message;
+      } else {
+        button.textContent = message;
+      }
       if (!copied) {
         let field = button.parentElement.querySelector("[data-cjdoc-copy-link-fallback]");
         if (!field) {
@@ -757,7 +767,16 @@ internal let HTML_SEARCH_SCRIPT = """
         field.focus();
         field.select();
       }
-      window.setTimeout(() => { button.textContent = label; button.dataset.copied = "false"; }, 1800);
+      window.setTimeout(() => {
+        if (iconOnly) {
+          button.setAttribute("aria-label", label);
+          button.title = label;
+          if (status) status.textContent = "";
+        } else {
+          button.textContent = label;
+        }
+        button.dataset.copied = "false";
+      }, 1800);
     });
   }
   for (const code of document.querySelectorAll("pre > code")) {
