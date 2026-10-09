@@ -27,7 +27,8 @@ private func overloadLayoutDocumentation(): DocumentationSet {
                 defaultExpression: Some("10"))
         ], documentation: Some(DocComment("raw", "Append an integer", "",
             MarkdownNode("document"), tags: [
-                DocTag("throws", "IllegalArgumentException", "radix must equal 10")
+                DocTag("throws", "IllegalArgumentException", "radix must equal 10"),
+                DocTag("postcondition", "", "new entry matches value.toString()")
             ])))
     let stringAdd = SymbolDoc(stringId, "function", "add", "fixture.Catalog.add", "fixture",
         moduleId, "public", source, "public func add(value: String): Unit",
@@ -79,6 +80,10 @@ class HtmlOverloadContractLayoutTest {
         @Expect(html.contains("<dl class=\"throws-list\""), true)
         @Expect(html.contains("class=\"throws-row\""), true)
         @Expect(html.contains("radix must equal 10"), true)
+        @Expect(html.contains("behavior-contract-single"), true)
+        @Expect(html.contains(">Postcondition</h3>"), true)
+        @Expect(html.contains("new entry matches value.toString()"), true)
+        @Expect(!html.contains(">Behavior contracts</h3>"), true)
         @Expect(!html.contains("class=\"badge reference-state\""), true)
     }
 

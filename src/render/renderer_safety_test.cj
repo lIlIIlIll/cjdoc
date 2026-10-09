@@ -435,7 +435,27 @@ class RendererSafetyTest {
         @Expect(symbolHtml.contains(
             "<details class=\"declaration-summary member-detail\""), true)
         @Expect(symbolHtml.contains("data-cjdoc-member"), true)
-        @Expect(symbolHtml.contains("class=\"member-permalink\""), true)
+        @Expect(symbolHtml.contains("class=\"member-detail-actions\" role=\"group\" aria-label=\"Member actions\""), true)
+        @Expect(symbolHtml.contains("class=\"member-action member-permalink\""), true)
+        @Expect(symbolHtml.contains("class=\"member-action member-action-copy copy-link\""), true)
+        @Expect(symbolHtml.contains("aria-label=\"Open standalone API page\" title=\"Open standalone API page\""), true)
+        @Expect(symbolHtml.contains("aria-label=\"Copy link\" title=\"Copy link\""), true)
+        @Expect(symbolHtml.contains("class=\"member-action-glyph\""), true)
+        @Expect(symbolHtml.contains("aria-hidden=\"true\" focusable=\"false\""), true)
+        @Expect(symbolHtml.contains("data-cjdoc-copy-status role=\"status\""), true)
+        @Expect(symbolHtml.contains("role=\"status\" aria-live=\"polite\""), true)
+        // The full page may contain an unrelated, text-labelled copy button.
+        // Check only the member toolbar: its actions must stay icon-only.
+        let actionMarkup = symbolHtml.split("<div class=\"member-detail-actions\"")[1].split("</div>")[0]
+        @Expect(actionMarkup.contains(">Standalone</a>"), false)
+        @Expect(actionMarkup.contains(">Copy link</button>"), false)
+        @Expect(symbolHtml.contains("class=\"member-action member-source-link\""), false)
+        @Expect(symbolHtml.indexOf("</summary><div class=\"member-detail-body\">").getOrThrow() <
+            symbolHtml.indexOf("class=\"member-detail-actions\"").getOrThrow(), true)
+        @Expect(css.contains(".member-detail .member-detail-actions .member-action-glyph{"), true)
+        @Expect(css.contains("min-width:38px;min-height:38px"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("if (iconOnly) {"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("if (status) status.textContent = message;"), true)
     }
 
     @TestCase

@@ -255,23 +255,71 @@ private func behaviorContractLabel(name: String, locale: String): String {
     } else { name }
 }
 
+// The single-kind heading is the reader's entry point, not an internal
+// "behavior contracts" category followed by a redundant label.
+private func behaviorContractHeading(name: String, locale: String): String {
+    if (locale == "zh-CN") { return behaviorContractLabel(name, locale) }
+    match (name) {
+        case "precondition" => "Precondition"
+        case "postcondition" => "Postcondition"
+        case "invariant" => "Invariant"
+        case "performance" => "Performance"
+        case "state" => "State"
+        case "concurrency" => "Concurrency"
+        case "platform" => "Platform"
+        case "compatibility" => "Compatibility"
+        case "error" => "Error behavior"
+        case _ => name
+    }
+}
+
 internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: DocComment,
     locale: String, anchor: String): Unit {
-    var hasContracts = false
+    var contractCount: Int64 = 0
+    var soleContract: ?DocTag = None
     for (tag in comment.tags) {
-        if (isBehaviorContractTag(tag.name)) { hasContracts = true; break }
+        if (!isBehaviorContractTag(tag.name)) { continue }
+        contractCount++
+        if (contractCount == 1) { soleContract = Some(tag) }
     }
-    if (!hasContracts) { return }
+    if (contractCount == 0) { return }
+
+    // Keep the previously published heading anchor stable, including when
+    // the visible heading becomes more specific.
     let headingId = escapeHtml(anchor + "--behavior-contracts-heading")
     out.append("<section class=\"behavior-contracts\" aria-labelledby=\"${headingId}\">\n")
-    out.append("<h3 id=\"${headingId}\">" + label(locale, "Behavior contracts", "行为契约") + "</h3><dl>\n")
+    if (contractCount == 1) {
+        match (soleContract) {
+            case Some(tag) =>
+                out.append("<h3 id=\"${headingId}\">" +
+                    escapeHtml(behaviorContractHeading(tag.name, locale)) +
+                    "</h3><div class=\"behavior-contract-single\">")
+                if (!tag.subject.isEmpty()) {
+                    out.append("<p class=\"behavior-contract-subject\"><code>" +
+                        escapeHtml(tag.subject) + "</code></p>")
+                }
+                if (tag.description.trimAscii().isEmpty()) {
+                    out.append("<span class=\"badge\" data-state=\"incomplete\">" +
+                        label(locale, "incomplete", "不完整") + "</span>")
+                } else {
+                    appendStructuredTextHtml(out, tag.description)
+                }
+                out.append("</div></section>\n")
+            case None => ()
+        }
+        return
+    }
+
+    out.append("<h3 id=\"${headingId}\">" +
+        label(locale, "Behavioral constraints", "行为约束") + "</h3><dl>\n")
     for (tag in comment.tags) {
         if (!isBehaviorContractTag(tag.name)) { continue }
         out.append("<dt><code>" + escapeHtml(behaviorContractLabel(tag.name, locale)) + "</code>")
         if (!tag.subject.isEmpty()) { out.append(" <code>" + escapeHtml(tag.subject) + "</code>") }
         out.append("</dt><dd>")
         if (tag.description.trimAscii().isEmpty()) {
-            out.append("<span class=\"badge\" data-state=\"incomplete\">" + label(locale, "incomplete", "不完整") + "</span>")
+            out.append("<span class=\"badge\" data-state=\"incomplete\">" +
+                label(locale, "incomplete", "不完整") + "</span>")
         } else {
             appendStructuredTextHtml(out, tag.description)
         }

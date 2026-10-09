@@ -345,4 +345,47 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
 .member-detail .member-detail-actions{align-items:center;gap:.3rem .8rem;margin:.05rem 0 .4rem;font-size:.75rem}
 .member-detail-actions a{display:inline-flex;align-items:center;min-height:30px}
 @media(max-width:760px){.throws-row{grid-template-columns:minmax(0,1fr);gap:.15rem}.throws-row dd{padding-bottom:.1rem}.member-overload-group{padding:.25rem .45rem .3rem}}
+
+/* The member detail toolbar is intentionally icon-only: controls are
+   equally sized and leave contract text as the primary reading content. */
+.member-detail .member-detail-actions{
+    display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;
+    gap:.15rem;width:max-content;max-width:100%;margin:.05rem 0 .4rem auto;
+    padding:.14rem;border:1px solid var(--line);border-radius:8px;
+    background:var(--surface)
+}
+.member-detail .member-detail-actions .member-action{
+    display:inline-flex;align-items:center;justify-content:center;
+    flex:0 0 38px;width:38px;height:38px;min-width:38px;min-height:38px;
+    margin:0;padding:0;border:1px solid transparent;border-radius:6px;
+    background:transparent;color:var(--muted);line-height:1;
+    text-decoration:none;cursor:pointer
+}
+.member-detail .member-detail-actions .member-action:hover{
+    background:var(--surface-subtle);color:var(--accent);
+    text-decoration:none
+}
+.member-detail .member-detail-actions .member-action:focus-visible{
+    position:relative;z-index:1;outline:2px solid var(--accent);
+    outline-offset:1px
+}
+.member-detail .member-detail-actions .member-action-glyph{
+    display:block;width:18px;height:18px;flex:none;pointer-events:none
+}
+.member-detail .member-detail-actions .copy-link[data-copied="true"]{
+    color:var(--success);background:var(--surface-subtle)
+}
+.member-detail .member-detail-actions [data-cjdoc-copy-link-fallback]{
+    flex:1 0 100%;min-width:0;max-width:100%;width:100%;margin:0;
+    padding:.4rem;border:0;border-top:1px solid var(--line);
+    background:var(--surface);color:var(--ink)
+}
+@media(max-width:760px){
+    .member-detail .member-detail-actions{margin-inline-start:auto}
+}
+/* A single documented contract does not need a redundant classification
+   table beneath its concrete condition heading. */
+.behavior-contracts .behavior-contract-single>:first-child{margin-top:0}
+.behavior-contracts .behavior-contract-single>:last-child{margin-bottom:0}
+
 """
