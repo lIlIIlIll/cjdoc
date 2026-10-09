@@ -16,6 +16,7 @@ const vm = require("node:vm");
 (async () => {
   const inserted = [];
   const button = {dataset: {cjdocCopyLink: "../members/Client.read.html"}, textContent:"复制链接", events:{},
+    classList: {contains: () => false}, // The page-level text button is not an icon-only member action.
     addEventListener(name, handler) { this.events[name] = handler; },
     parentElement: {querySelector: () => inserted[0] || null},
     insertAdjacentElement(_, node) { inserted.push(node); }};
