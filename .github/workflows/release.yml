@@ -81,6 +81,12 @@ jobs:
             --destination "${RUNNER_TEMP}/cangjie-sdk-sts-stdx" \
             --github-output "${GITHUB_OUTPUT}"
 
+      - name: Export authenticated stdx environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+
       - name: Run release gate
         shell: bash
         env:
@@ -89,8 +95,9 @@ jobs:
           CJDOC_RELEASE_COMMIT: ${{ github.sha }}
         run: |
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           . scripts/with_sts_o1_cjpm.sh
-          python scripts/with_stdx.py --variant static -- scripts/release_check.sh
+          bash scripts/release_check.sh
 
   platform-acceptance:
     name: ${{ matrix.platform }} / Cangjie 1.2.0 STS + stdx
@@ -151,6 +158,12 @@ jobs:
             --destination "${RUNNER_TEMP}/cangjie-sdk-sts-stdx" \
             --github-output "${GITHUB_OUTPUT}"
 
+      - name: Export authenticated stdx environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+
       - name: Run platform acceptance
         shell: bash
         env:
@@ -160,8 +173,9 @@ jobs:
             xattr -dr com.apple.quarantine "${CANGJIE_SDK_ROOT}" || true
           fi
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           . scripts/with_sts_o1_cjpm.sh
-          python scripts/with_stdx.py --variant static -- scripts/check.sh
+          bash scripts/check.sh
 
   package:
     name: Package / ${{ matrix.platform }}
@@ -226,6 +240,12 @@ jobs:
             --destination "${RUNNER_TEMP}/cangjie-sdk-sts-stdx" \
             --github-output "${GITHUB_OUTPUT}"
 
+      - name: Export authenticated stdx environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+
       - name: Build deterministic package
         shell: bash
         env:
@@ -239,12 +259,11 @@ jobs:
             xattr -dr com.apple.quarantine "${CANGJIE_SDK_ROOT}" || true
           fi
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           python scripts/verify_release.py >/dev/null
           python scripts/verify_repository_inputs.py --require-tracked >/dev/null
           . scripts/with_sts_o1_cjpm.sh
-          # with_stdx.py supplies the sidecar environment; the wrapper stays on
-          # PATH, so this cjpm build still runs at -O1.
-          python scripts/with_stdx.py --variant static -- cjpm build --jobs 1
+          cjpm build --jobs 1
           python scripts/verify_release.py >/dev/null
           python scripts/verify_repository_inputs.py --require-tracked \
             --legacy-binary target/release/bin/main >/dev/null
