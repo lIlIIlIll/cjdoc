@@ -24,6 +24,26 @@ HEADINGS = {
         ("分类、匹配状态与证据直接来自原生 diff，不在展示层重新判定。版本通过本次真实输入快照与原生文档索引绑定。 ", "Classifications, matching states and evidence come directly from the native diff. Versions are bound to the exact input snapshots and native indices. "),
 }
 
+# Reader-facing wording for the raw native diff vocabulary. Raw values stay in
+# data-* attributes and the raw JSON block for traceability.
+DIFF_CLASSIFICATIONS = {
+    "additive": ("新增", "Added"),
+    "breaking": ("破坏性变化", "Breaking"),
+    "potentially-breaking": ("可能破坏兼容", "Potentially breaking"),
+    "documentation-only": ("仅文档变化", "Documentation only"),
+    "metadata-only": ("仅元数据变化", "Metadata only"),
+    "unchanged": ("未变化", "Unchanged"),
+}
+
+DIFF_MATCH_STATES = {
+    "added": ("新增声明", "Added declaration"),
+    "removed": ("删除声明", "Removed declaration"),
+    "exact": ("签名与结构一致", "Signature and structure match"),
+    "fallback": ("按名称回退匹配", "Matched by name fallback"),
+    "changed": ("签名变化", "Signature changed"),
+}
+
+
 ZH = {
     "semanticLinks counts explicit comment references and @see links only; signature type links are reported separately in diagnostics. A zero denominator means no applicable items; the original percentage remains in the raw report.":
         "注释引用解析率仅统计注释中的显式引用与 @see；签名类型链接另列在诊断中。分母为零表示无适用项，原始百分比仍保留在原始报告中。",

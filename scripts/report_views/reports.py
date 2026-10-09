@@ -119,6 +119,14 @@ def declaration_link(root: Path, origin: Path, mapping: dict, symbol_id: str | N
     return f'<a href="{escaped(href)}" data-report-symbol="{escaped(symbol_id)}">{escaped(label)}: {source_text(entry["qualifiedName"])}</a>'
 
 
+def _diff_value(value: str) -> str:
+    """Human-readable diff value. Native type/parameter encodings are internal
+    status strings, so each segment is rendered as its own source spelling."""
+    text = str(value)
+    parts = [part for part in text.split("|") if part]
+    return "\n".join(parts) if len(parts) > 1 else text
+
+
 def table(headers: tuple[str, ...], rows: list[list[str]]) -> str:
     return '<div class="report-table-scroll"><table><thead><tr>' + ''.join(
         '<th scope="col">' + escaped(title) + '</th>' for title in headers
@@ -301,7 +309,20 @@ def diff_view(raw: dict | None, origin: Path, baseline: Path | None, current: Pa
             continue
         output += f'<article id="api-change-{number}" class="report-change" data-diff-classification="{escaped(entry["classification"])}"><h3>{escaped(entry["classification"])}</h3>'
         output += '<p>' + declaration_link(baseline, origin, old, entry["oldId"], "Before") + '<br>' + declaration_link(current, origin, new, entry["newId"], "After") + '</p>'
-        output += '<p>matchState: ' + escaped(entry["matchState"]) + '</p><pre>' + escaped(json.dumps({"reasons": entry["reasons"], "evidence": entry["evidence"]}, ensure_ascii=False, indent=2)) + '</pre></article>'
+        output += '<p>matchState: ' + escaped(entry["matchState"]) + '</p>'
+        # Reader path: the native reason sentences and the changed fields are
+        # shown as text. Raw evidence stays behind a disclosure for traceability.
+        if entry["reasons"]:
+            output += '<ul data-diff-reasons>' + ''.join(
+                '<li>' + escaped(reason) + '</li>' for reason in entry["reasons"]) + '</ul>'
+        changed = [item for item in entry["evidence"] if item.get("state") != "resolved"
+                   or item.get("before") != item.get("after")]
+        if changed:
+            rows = [[escaped(item["field"]),
+                     escaped("" if item.get("before") is None else _diff_value(item["before"])),
+                     escaped("" if item.get("after") is None else _diff_value(item["after"]))] for item in changed]
+            output += table(("Field", "Before", "After"), rows)
+        output += '<details data-diff-evidence><summary>Raw diff evidence</summary><pre>' + escaped(json.dumps({"reasons": entry["reasons"], "evidence": entry["evidence"]}, ensure_ascii=False, indent=2)) + '</pre></details></article>'
     return output + '</section>'
 
 
