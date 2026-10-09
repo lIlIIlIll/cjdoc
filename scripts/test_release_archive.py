@@ -56,6 +56,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 "source_commit": commit,
                 "sdk_version": "1.1.3",
                 "sdk_sha256": SDK_SHA256,
+                "release_version": "0.7.0",
             }
             asset = package_release.build_archive(
                 repo, binary, "linux-x64", output, **options
@@ -104,6 +105,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                     source_commit="f" * 40,
                     sdk_version="1.1.3",
                     sdk_sha256=SDK_SHA256,
+                    release_version="0.7.0",
                 )
 
             readme = repo / "README.md"
@@ -128,6 +130,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
             asset = package_release.build_archive(
                 repo, binary, "linux-x64", output,
                 source_commit=commit, sdk_version="1.3.0", sdk_sha256=SDK_SHA256,
+                release_version="0.7.0",
                 stdx_version="1.3.0", stdx_sha256="b" * 64,
             )
             manifest, _, _ = verify_release_package.inspect_archive(
@@ -287,6 +290,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                     package_release.build_archive(
                     repo, binary, "linux-x64", repo / "target/release-package",
                         source_commit=commit, sdk_version="1.1.3", sdk_sha256=SDK_SHA256,
+                        release_version="0.7.0",
                     )
             self.assertFalse(
                 (repo / "target/release-package/cjdoc-0.7.0-linux-x64.tar.gz").exists()
@@ -319,9 +323,83 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                     package_release.build_archive(
                         repo, binary, "linux-x64", output,
                         source_commit=commit, sdk_version="1.1.3",
-                        sdk_sha256=SDK_SHA256,
+                        sdk_sha256=SDK_SHA256, release_version="0.7.0",
                     )
             self.assertFalse((output / "cjdoc-0.7.0-linux-x64.tar.gz").exists())
             self.assertFalse((output / "cjdoc-0.7.0-linux-x64.tar.gz.sha256").exists())
 
 
+
+
+    def test_release_version_may_carry_prerelease_suffix(self) -> None:
+        """A pre-release tag names its assets, while the binary keeps the stable core."""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo, commit = self.make_release_repo(root / "repo")
+            binary = root / "main"
+            binary.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "if sys.argv[1:] == ['--version']:\n"
+                "    print('cjdoc 0.7.0')\n"
+                "elif sys.argv[1:] == ['schema', 'list']:\n"
+                "    print('doc-ir\\ndoc-ir-v7\\ndoc-ir-v8')\n"
+                "else:\n"
+                "    raise SystemExit(2)\n",
+                encoding="utf-8",
+            )
+            binary.chmod(0o755)
+            output = repo / "target/release-package"
+            options = {
+                "source_commit": commit,
+                "sdk_version": "1.1.3",
+                "sdk_sha256": SDK_SHA256,
+                "release_version": "0.7.0-rc.1",
+            }
+            asset = package_release.build_archive(repo, binary, "linux-x64", output, **options)
+            self.assertEqual(asset.name, "cjdoc-0.7.0-rc.1-linux-x64.tar.gz")
+            self.assertTrue((output / "cjdoc-0.7.0-rc.1-linux-x64.tar.gz.sha256").is_file())
+            sdk_root = self.make_fake_sdk(root / "sdk")
+            # The packaged binary still reports the stable core, so the smoke check
+            # compares against the core rather than the pre-release spelling.
+            evidence = verify_release_package.verify_archive(
+                asset, "linux-x64", "0.7.0-rc.1", "1.1.3", SDK_SHA256, commit,
+                smoke=os.name != "nt", repository=repo, sdk_root=sdk_root,
+                sdk_marker_verified=True,
+            )
+            # Extracting and running the payload needs a POSIX host, so the smoke
+            # evidence is only present where the sibling test also asserts it.
+            if os.name != "nt":
+                self.assertEqual(evidence["smoke"]["version"], "cjdoc 0.7.0")
+
+    def test_release_version_core_must_match_package_version(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo, commit = self.make_release_repo(root / "repo")
+            binary = root / "main"
+            binary.write_bytes(b"binary")
+            with self.assertRaisesRegex(ValueError, "does not match package version"):
+                package_release.build_archive(
+                    repo, binary, "linux-x64", repo / "target/release-package",
+                    source_commit=commit, sdk_version="1.1.3",
+                    sdk_sha256=SDK_SHA256, release_version="0.8.0-rc.1",
+                )
+
+    def test_release_version_rejects_malformed_or_empty_suffix(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo, commit = self.make_release_repo(root / "repo")
+            binary = root / "main"
+            binary.write_bytes(b"binary")
+            for value in ("0.7.0-", "0.7", "0.7.0-rc..1", "v0.7.0"):
+                with self.subTest(release_version=value):
+                    with self.assertRaises(ValueError):
+                        package_release.build_archive(
+                            repo, binary, "linux-x64", repo / "target/release-package",
+                            source_commit=commit, sdk_version="1.1.3",
+                            sdk_sha256=SDK_SHA256, release_version=value,
+                        )
+
+
+if __name__ == "__main__":
+    unittest.main()

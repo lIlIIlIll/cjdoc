@@ -18,6 +18,7 @@ try:
     )
     from .release_package_contracts import (
         COMMIT,
+        RELEASE_SEMVER,
         REPOSITORY_PAYLOAD,
         SCHEMA_PAYLOAD,
         SEMVER,
@@ -36,6 +37,7 @@ except ImportError:  # Direct module execution.
     )
     from release_package_contracts import (
         COMMIT,
+        RELEASE_SEMVER,
         REPOSITORY_PAYLOAD,
         SCHEMA_PAYLOAD,
         SEMVER,
@@ -92,8 +94,8 @@ def inspect_archive(path: Path, platform_name: str, version: str,
                     stdx_version: str | None = None,
                     stdx_sha256: str | None = None) -> tuple[dict[str, object], dict[str, ArchiveMember], str]:
     path = lexical_absolute(path)
-    if not SEMVER.fullmatch(version):
-        raise ValueError("release package version must be a stable three-part SemVer")
+    if not RELEASE_SEMVER.fullmatch(version):
+        raise ValueError("release package version must be a SemVer release version")
     if not SHA256.fullmatch(sdk_sha256):
         raise ValueError("SDK archive SHA-256 must be lowercase 64-hex")
     if (stdx_version is None) != (stdx_sha256 is None):

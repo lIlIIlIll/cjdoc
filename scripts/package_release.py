@@ -24,11 +24,13 @@ sys.dont_write_bytecode = True
 try:
     from .verify_release_package import verify_archive
     from .install_cangjie_sdk import validate_cached_sdk_root, validate_combined_sdk_root
+    from .release_package_contracts import RELEASE_SEMVER, release_version_from_tag
     from .safe_output_root import safe_output_directory, safe_output_file, safe_regular_file
     from .worktree_identity import exact_worktree_identity
 except ImportError:  # Direct script execution.
     from verify_release_package import verify_archive
     from install_cangjie_sdk import validate_cached_sdk_root, validate_combined_sdk_root
+    from release_package_contracts import RELEASE_SEMVER, release_version_from_tag
     from safe_output_root import safe_output_directory, safe_output_file, safe_regular_file
     from worktree_identity import exact_worktree_identity
 
@@ -225,12 +227,19 @@ def write_tar_gz(path: Path, root_name: str, payload: dict[str, tuple[bytes, int
 
 def build_archive(repo: Path, binary: Path, platform_name: str, output: Path,
                   *, source_commit: str, sdk_version: str, sdk_sha256: str,
+                  release_version: str,
                   stdx_version: str | None = None,
                   stdx_sha256: str | None = None) -> Path:
     if not COMMIT.fullmatch(source_commit):
         raise ValueError("source commit must be a lowercase 40-hex commit")
     verify_source_commit(repo, source_commit)
     version = committed_package_version(repo, source_commit)
+    if not RELEASE_SEMVER.fullmatch(release_version):
+        raise ValueError("release version must be a SemVer release version")
+    if release_version.split("-", 1)[0] != version:
+        raise ValueError(
+            f"release version {release_version!r} does not match package version {version!r}"
+        )
     if not SHA256.fullmatch(sdk_sha256):
         raise ValueError("SDK archive SHA-256 must be lowercase 64-hex")
     if not sdk_version:
@@ -238,7 +247,7 @@ def build_archive(repo: Path, binary: Path, platform_name: str, output: Path,
     windows = platform_name.startswith("windows-")
     extension = ".zip" if windows else ".tar.gz"
     output = safe_output_directory(repo, output, create=True)
-    asset = output / f"cjdoc-{version}-{platform_name}{extension}"
+    asset = output / f"cjdoc-{release_version}-{platform_name}{extension}"
     checksum = asset.with_name(f"{asset.name}.sha256")
     # A failed rebuild must not leave a prior package that can be mistaken for
     # evidence from this attempt. Validate both exact paths before removing either.
@@ -247,8 +256,8 @@ def build_archive(repo: Path, binary: Path, platform_name: str, output: Path,
     asset.unlink(missing_ok=True)
     checksum.unlink(missing_ok=True)
     verify_source_commit(repo, source_commit)
-    root_name = f"cjdoc-{version}"
-    payload = collect_payload(repo, binary, windows, version, platform_name,
+    root_name = f"cjdoc-{release_version}"
+    payload = collect_payload(repo, binary, windows, release_version, platform_name,
                               source_commit, sdk_version, sdk_sha256,
                               stdx_version, stdx_sha256)
     verify_source_commit(repo, source_commit)
@@ -295,6 +304,7 @@ def main() -> int:
                         choices=("linux-x64", "windows-x64", "macos-arm64"))
     parser.add_argument("--output", type=Path, default=repo / "target/release-package")
     parser.add_argument("--source-commit", default=os.environ.get("CJDOC_RELEASE_COMMIT"))
+    parser.add_argument("--release-tag", default=os.environ.get("CJDOC_RELEASE_TAG"))
     parser.add_argument("--sdk-version", required=True)
     parser.add_argument("--sdk-sha256", required=True)
     parser.add_argument("--stdx-version")
@@ -310,6 +320,13 @@ def main() -> int:
             raise ValueError("source commit must be a lowercase 40-hex commit")
         verify_source_commit(repo, args.source_commit)
         version = committed_package_version(repo, args.source_commit)
+        if not args.release_tag:
+            raise ValueError("--release-version or CJDOC_RELEASE_TAG is required")
+        release_version = release_version_from_tag(args.release_tag)
+        if release_version.split("-", 1)[0] != version:
+            raise ValueError(
+                f"release tag {args.release_tag!r} does not match package version v{version}"
+            )
         if args.sdk_root is None:
             raise ValueError("--sdk-root or CANGJIE_SDK_ROOT is required")
         if not SHA256.fullmatch(args.sdk_sha256):
@@ -329,11 +346,12 @@ def main() -> int:
             source_commit=args.source_commit,
             sdk_version=args.sdk_version,
             sdk_sha256=args.sdk_sha256,
+            release_version=release_version,
             stdx_version=args.stdx_version,
             stdx_sha256=args.stdx_sha256,
         )
         package_evidence = verify_archive(
-            asset, args.platform, version, args.sdk_version, args.sdk_sha256,
+            asset, args.platform, release_version, args.sdk_version, args.sdk_sha256,
             args.source_commit, smoke=True, repository=repo,
             sdk_root=args.sdk_root, sdk_marker_verified=True,
             stdx_version=args.stdx_version, stdx_sha256=args.stdx_sha256,

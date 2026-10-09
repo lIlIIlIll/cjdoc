@@ -17,7 +17,10 @@ except ImportError:  # Direct script execution.
     from safe_output_root import lexical_absolute, safe_regular_file, verify_directory_chain
 
 
-SEMVER = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+RELEASE_SEMVER = re.compile(
+    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+    r"(?:-(?:[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$"
+)
 PLATFORMS = {"linux-x64": "", "macos-arm64": "", "windows-x64": ".exe"}
 MAX_BINARY_BYTES = 512 * 1024 * 1024
 
@@ -52,8 +55,8 @@ def publish_no_replace(temporary: Path, destination: Path) -> None:
 def package(binary: Path, output: Path, platform: str, version: str) -> tuple[Path, Path]:
     if platform not in PLATFORMS:
         raise ValueError(f"unsupported platform: {platform}")
-    if SEMVER.fullmatch(version) is None:
-        raise ValueError("version must be semantic version without a v prefix")
+    if RELEASE_SEMVER.fullmatch(version) is None:
+        raise ValueError("version must be a semantic version without a v prefix")
     binary = safe_regular_file(binary, description="cjdoc executable")
     metadata = binary.lstat()
     if metadata.st_size < 1 or metadata.st_size > MAX_BINARY_BYTES:

@@ -36,6 +36,7 @@ try:
         SCHEMA_PAYLOAD,
         SEMVER,
         SHA256,
+        release_core,
     )
     from .release_package_payload import (
         _inside,
@@ -68,6 +69,7 @@ except ImportError:  # Direct script execution.
         SCHEMA_PAYLOAD,
         SEMVER,
         SHA256,
+        release_core,
     )
     from release_package_payload import (
         _inside,
@@ -224,7 +226,7 @@ def run_smoke(binary: Path, version: str,
                 (result.stderr or result.stdout).strip()
             )
         output = result.stdout.strip()
-        if name == "version" and output != f"cjdoc {version}":
+        if name == "version" and output != f"cjdoc {release_core(version)}":
             raise ValueError("extracted binary --version does not match the package")
         if name == "schema" and "doc-ir-v8" not in output.splitlines():
             raise ValueError("extracted binary schema list omits doc-ir-v8")
