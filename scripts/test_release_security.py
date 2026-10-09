@@ -125,22 +125,15 @@ class ReleaseSecurityTest(ReleaseToolsTestSupport, unittest.TestCase):
         workflow = (PROJECT_ROOT / ".github/workflows/release.yml").read_text(
             encoding="utf-8"
         )
-        daily = workflow.split("\n  daily-acceptance:\n", 1)[1].split(
-            "\n  package:\n", 1
-        )[0]
         package = workflow.split("\n  package:\n", 1)[1].split("\n  publish:\n", 1)[0]
         publish = workflow.split("\n  publish:\n", 1)[1]
-        self.assertIn(
-            "if: ${{ vars.CANGJIE_DAILY_1_3_LINUX_X64_URL != '' && "
-            "vars.CANGJIE_DAILY_1_3_LINUX_X64_SHA256 != '' && "
-            "vars.CANGJIE_DAILY_STDX_1_3_LINUX_X64_URL != '' && "
-            "vars.CANGJIE_DAILY_STDX_1_3_LINUX_X64_SHA256 != '' }}",
-            daily,
-        )
-        self.assertIn("needs.daily-acceptance.result == 'success'", package)
-        self.assertIn("needs.daily-acceptance.result == 'skipped'", package)
+        # The tag-release toolchain is pinned inline, so a release never depends on
+        # repository variables being configured.
+        self.assertNotIn("vars.CANGJIE", workflow)
+        self.assertIn('CJDOC_STS_LINUX_X64_SHA256: "8c5fd944', workflow)
         self.assertIn("needs.release-gate.result == 'success'", package)
         self.assertIn("needs.platform-acceptance.result == 'success'", package)
+        self.assertIn("needs: [release-gate, platform-acceptance]", package)
         self.assertIn("contents: read", package)
         self.assertIn("persist-credentials: false", package)
         self.assertIn(
