@@ -48,6 +48,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Enable Windows long paths
+        if: runner.os == 'Windows'
+        shell: bash
+        run: git config --global core.longpaths true
+
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -81,6 +86,15 @@ jobs:
             --destination "${RUNNER_TEMP}/cangjie-sdk-sts-stdx" \
             --github-output "${GITHUB_OUTPUT}"
 
+      - name: Export authenticated stdx environment
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          set -euo pipefail
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+
       - name: Run release gate
         shell: bash
         env:
@@ -89,7 +103,9 @@ jobs:
           CJDOC_RELEASE_COMMIT: ${{ github.sha }}
         run: |
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
-          python scripts/with_stdx.py --variant static -- scripts/release_check.sh
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
+          . scripts/with_sts_o1_cjpm.sh
+          bash scripts/release_check.sh
 
   platform-acceptance:
     name: ${{ matrix.platform }} / Cangjie 1.2.0 STS + stdx
@@ -116,6 +132,11 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+
+      - name: Enable Windows long paths
+        if: runner.os == 'Windows'
+        shell: bash
+        run: git config --global core.longpaths true
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -150,6 +171,15 @@ jobs:
             --destination "${RUNNER_TEMP}/cangjie-sdk-sts-stdx" \
             --github-output "${GITHUB_OUTPUT}"
 
+      - name: Export authenticated stdx environment
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          set -euo pipefail
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+
       - name: Run platform acceptance
         shell: bash
         env:
@@ -159,7 +189,9 @@ jobs:
             xattr -dr com.apple.quarantine "${CANGJIE_SDK_ROOT}" || true
           fi
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
-          python scripts/with_stdx.py --variant static -- scripts/check.sh
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
+          . scripts/with_sts_o1_cjpm.sh
+          bash scripts/check.sh
 
   package:
     name: Package / ${{ matrix.platform }}
@@ -198,6 +230,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Enable Windows long paths
+        if: runner.os == 'Windows'
+        shell: bash
+        run: git config --global core.longpaths true
+
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -224,6 +261,15 @@ jobs:
             --destination "${RUNNER_TEMP}/cangjie-sdk-sts-stdx" \
             --github-output "${GITHUB_OUTPUT}"
 
+      - name: Export authenticated stdx environment
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          set -euo pipefail
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+
       - name: Build deterministic package
         shell: bash
         env:
@@ -237,10 +283,11 @@ jobs:
             xattr -dr com.apple.quarantine "${CANGJIE_SDK_ROOT}" || true
           fi
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           python scripts/verify_release.py >/dev/null
           python scripts/verify_repository_inputs.py --require-tracked >/dev/null
-          python scripts/with_stdx.py --variant static -- \
-            cjpm build
+          . scripts/with_sts_o1_cjpm.sh
+          cjpm build --jobs 1
           python scripts/verify_release.py >/dev/null
           python scripts/verify_repository_inputs.py --require-tracked \
             --legacy-binary target/release/bin/main >/dev/null
@@ -285,6 +332,11 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Enable Windows long paths
+        if: runner.os == 'Windows'
+        shell: bash
+        run: git config --global core.longpaths true
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
