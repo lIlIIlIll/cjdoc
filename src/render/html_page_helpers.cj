@@ -84,6 +84,12 @@ internal func appendSummaryHtml(out: RenderTextBuffer, comment: DocComment,
     }
 }
 
+// Stable, content-independent anchors for author documentation blocks, so a
+// search hit can land on the matched block rather than only the member page.
+internal func docBlockAnchor(symbol: SymbolDoc, block: String): String {
+    symbolAnchor(symbol) + "--" + block
+}
+
 internal func appendDocumentationIntroductionHtml(out: RenderTextBuffer, symbol: SymbolDoc,
     rootPrefix: String, assetLookup: HashMap<String, String>, headingBase: Int64,
     locale: String): Unit {
@@ -125,7 +131,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
     match (symbol.documentation) {
         case Some(comment) =>
             if (!symbol.parameters.isEmpty()) {
-                out.append("<h3>${label(locale, "Parameters", "参数")}</h3><dl class=\"parameter-list\">\n")
+                out.append("<h3 id=\"${docBlockAnchor(symbol, "parameters")}\">${label(locale, "Parameters", "参数")}</h3><dl class=\"parameter-list\">\n")
                 for (parameter in symbol.parameters) {
                     out.append("<div class=\"parameter-row\"><dt class=\"parameter-declaration\"><code class=\"parameter-name\">${escapeHtml(parameter.name)}</code><span class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
                     appendTypeRefCodeHtml(out, parameter.typeRef, typeLinkIndex, rootPrefix, locale,
@@ -149,7 +155,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             }
             match (symbol.returnType) {
                 case Some(returnType) => if (!isUnitType(returnType)) {
-                    out.append("<h3>${label(locale, "Returns", "返回值")}</h3><div class=\"return-value\">")
+                    out.append("<h3 id=\"${docBlockAnchor(symbol, "return")}\">${label(locale, "Returns", "返回值")}</h3><div class=\"return-value\">")
                     appendTypeRefCodeHtml(out, returnType, typeLinkIndex, rootPrefix, locale,
                         className: "return-type")
                     match (findTag(comment, "return")) {
@@ -166,7 +172,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             var hasThrows = false
             for (tag in comment.tags) { if (tag.name == "throws") { hasThrows = true; break } }
             if (hasThrows) {
-                out.append("<h3>${label(locale, "Throws", "异常")}</h3><dl class=\"throws-list\">\n")
+                out.append("<h3 id=\"${docBlockAnchor(symbol, "throws")}\">${label(locale, "Throws", "异常")}</h3><dl class=\"throws-list\">\n")
                 for (tag in comment.tags) {
                     if (tag.name == "throws") {
                         out.append("<div class=\"throws-row\"><dt>")
@@ -228,7 +234,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
         case None =>
             out.append("<p class=\"empty-state\">${label(locale, "No documentation is available for this declaration.", "此声明暂无文档。")}</p>\n")
             if (!symbol.parameters.isEmpty()) {
-                out.append("<h3>${label(locale, "Parameters", "参数")}</h3><dl class=\"parameter-list\">\n")
+                out.append("<h3 id=\"${docBlockAnchor(symbol, "parameters")}\">${label(locale, "Parameters", "参数")}</h3><dl class=\"parameter-list\">\n")
                 for (parameter in symbol.parameters) {
                     out.append("<div class=\"parameter-row\"><dt class=\"parameter-declaration\"><code class=\"parameter-name\">${escapeHtml(parameter.name)}</code><span class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
                     appendTypeRefCodeHtml(out, parameter.typeRef, typeLinkIndex, rootPrefix, locale,
@@ -243,7 +249,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             }
             match (symbol.returnType) {
                 case Some(returnType) => if (!isUnitType(returnType)) {
-                    out.append("<h3>${label(locale, "Returns", "返回值")}</h3><div class=\"return-value\">")
+                    out.append("<h3 id=\"${docBlockAnchor(symbol, "return")}\">${label(locale, "Returns", "返回值")}</h3><div class=\"return-value\">")
                     appendTypeRefCodeHtml(out, returnType, typeLinkIndex, rootPrefix, locale,
                         className: "return-type")
                     out.append("</div>\n")

@@ -19,7 +19,7 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "b65d3bee9cc5f981c82b38101be3cc122bb73f3c2a2e48114d82e247e72ed345"
+CANONICAL_SEARCH_JS_SHA256 = "870a3661fc39358f72379562ed894cee809a07c80e267c58e3392a646aee502e"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "79fe532a96603bce52c49d9fd92cea58503875a0c61f5d3475f11c337f960642"
 CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "c3d8038e8c37d201ff30c2bb7018bd7b88730a22046e26918fb173752d16938a"
 
@@ -252,7 +252,7 @@ def main() -> int:
         or strict_loads(embedded_search, description="embedded HTML search index") != search
     ):
         raise ValueError("search-index.js payload differs from search-index.json")
-    if search.get("schemaVersion") != "cjdoc.search-index/6":
+    if search.get("schemaVersion") != "cjdoc.search-index/7":
         raise ValueError("unexpected search index schemaVersion")
     entries = search.get("entries")
     if not isinstance(entries, list):
@@ -265,7 +265,7 @@ def main() -> int:
     required = {"id", "canonicalId", "exposure", "name", "qualifiedName", "kind",
                 "packageName", "summary", "href", "moduleId", "moduleName", "ownerName",
                 "parameterTypes", "returnType", "returnCanonical"}
-    allowed = required | {"bindings", "externalDocs"}
+    allowed = required | {"bindings", "externalDocs", "body", "sections"}
     for entry in entries:
         fields = set(entry)
         if not required.issubset(fields) or not fields.issubset(allowed):
