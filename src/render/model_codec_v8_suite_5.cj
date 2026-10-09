@@ -43,8 +43,8 @@ class ModelCodecV8Suite5 {
             parameters: [ParameterDoc("left", intType), ParameterDoc("right", arrayType)],
             declarations: declarations)
         let html = codecRenderedText(HtmlDocumentationRenderer().render(documentation))
-        @Expect(html.contains("<dt><code>left</code></dt>"))
-        @Expect(html.contains("<dt><code>right</code></dt>"))
+        @Expect(html.contains("<dt class=\"parameter-declaration\"><code class=\"parameter-name\">left</code>"))
+        @Expect(html.contains("<dt class=\"parameter-declaration\"><code class=\"parameter-name\">right</code>"))
         @Expect(html.contains("<a class=\"type-link\" href=\"../symbols/symbol-"))
         @Expect(html.contains(">Int64</a>"))
         @Expect(html.contains(">Array</a>&lt;<a class=\"type-link\" href=\"../symbols/symbol-"))

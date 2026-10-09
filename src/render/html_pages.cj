@@ -315,7 +315,7 @@ internal func appendMemberSection(out: RenderTextBuffer,
         case "Nested extensions" => "嵌套扩展"
         case _ => "其他成员"
     }
-    let overloadLabel = label(locale, "Overloads", "重载")
+    let overloadCountLabel = label(locale, "overloads", "个重载")
     let overloadCounts = HashMap<String, Int64>()
     for (entry in browser.entries) {
         if (memberSectionTitle(entry.symbol) != title) { continue }
@@ -326,7 +326,7 @@ internal func appendMemberSection(out: RenderTextBuffer,
         }
     }
     var opened = false
-    var previousKey = ""
+    var activeOverloadKey = ""
     for (entry in browser.entries) {
         let member = entry.symbol
         if (memberSectionTitle(member) != title) { continue }
@@ -340,15 +340,25 @@ internal func appendMemberSection(out: RenderTextBuffer,
             case Some(value) => value
             case None => 0
         }
-        if (count > 1 && previousKey != overloadKey) {
-            out.append("<p class=\"overload-group-label\"><span>" +
-                escapeHtml(overloadLabel) + "</span> <code>" +
-                escapeHtml(member.name) + "</code> · " + count.toString() + "</p>\n")
+        if (!activeOverloadKey.isEmpty() && activeOverloadKey != overloadKey) {
+            out.append("</div>\n")
+            activeOverloadKey = ""
         }
-        previousKey = overloadKey
+        if (count > 1 && activeOverloadKey.isEmpty()) {
+            let groupTitleId = "overloads-" + symbolAnchor(member)
+            out.append("<div class=\"member-overload-group\" role=\"group\" aria-labelledby=\"" +
+                escapeHtml(groupTitleId) + "\" data-cjdoc-overload-group data-overload-total=\"" +
+                count.toString() + "\">")
+            out.append("<h3 class=\"overload-group-label\" id=\"" +
+                escapeHtml(groupTitleId) + "\"><code>" + escapeHtml(member.name) +
+                "</code><span class=\"overload-count\" data-cjdoc-overload-count>" +
+                count.toString() + " " + escapeHtml(overloadCountLabel) + "</span></h3>\n")
+            activeOverloadKey = overloadKey
+        }
         appendInlineMemberDetail(out, documentation, projection, index, entry,
             assetLookup, typeLinkIndex, "../", locale)
     }
+    if (!activeOverloadKey.isEmpty()) { out.append("</div>\n") }
     if (opened) { out.append("</section>\n") }
 }
 
