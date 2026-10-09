@@ -1139,7 +1139,8 @@ private func conceptualMarkdownBodyHtml(documentation: public_model.Documentatio
     try {
         let parsed = parseStandaloneMarkdown(markdown)
         public_render.renderStandaloneMarkdownHtml(parsed,
-            sourceLinks: conceptualSourceLinks(parsed, page, pages))
+            sourceLinks: conceptualSourceLinks(parsed, page, pages),
+            pageTitle: Some(page.title))
     } catch (_: Exception) {
         let source = public_model.SourceRange(page.source, public_model.SourcePosition(1, 1, 0),
             public_model.SourcePosition(1, 1, 0))

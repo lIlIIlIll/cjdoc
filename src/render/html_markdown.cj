@@ -18,12 +18,51 @@ private func safeMappedRelativeLinkDestination(value: String): Bool {
 }
 
 public func renderStandaloneMarkdownHtml(node: MarkdownNode,
-    sourceLinks!: HashMap<String, String> = HashMap<String, String>()): String {
+    sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
+    pageTitle!: ?String = None): String {
     let context = HtmlMarkdownContext(2, sourceLinks: sourceLinks)
     collectMarkdownHeadings(node, "standalone", HashMap<String, Int64>(), context)
     let out = RenderTextBuffer()
-    appendMarkdownNodeHtml(out, node, HashMap<String, String>(), "", context)
+    appendStandaloneMarkdownHtml(out, node, context, pageTitle)
     out.toString()
+}
+
+// Suppress exactly the Markdown's own leading level-1 heading when the page
+// shell already rendered the same title as the page <h1>. A differently titled
+// or absent leading heading is untouched, and any later heading — including one
+// repeating the same text — keeps the heading stream and its shareable anchor.
+private func standaloneTitleHeadingIndex(node: MarkdownNode, pageTitle: ?String): ?Int64 {
+    let title = match (pageTitle) {
+        case Some(value) => value
+        case None => return None
+    }
+    for (index in 0..node.children.size) {
+        let child = node.children[index]
+        if (child.kind != "heading") { return None }
+        let sourceLevel = match (child.metadata) {
+            case Some(metadata) => match (metadata.headingLevel) {
+                case Some(value) => value
+                case None => 1
+            }
+            case None => 1
+        }
+        if (sourceLevel != 1) { return None }
+        return if (markdownNodeText(child) == title) { Some(index) } else { None }
+    }
+    None
+}
+
+private func appendStandaloneMarkdownHtml(out: RenderTextBuffer, node: MarkdownNode,
+    context: HtmlMarkdownContext, pageTitle: ?String): Unit {
+    match (standaloneTitleHeadingIndex(node, pageTitle)) {
+        case Some(index) =>
+            for (childIndex in 0..node.children.size) {
+                if (childIndex == index) { context.nextHeading++; continue }
+                appendMarkdownNodeHtml(out, node.children[childIndex], HashMap<String, String>(), "", context)
+            }
+        case None =>
+            appendMarkdownNodeHtml(out, node, HashMap<String, String>(), "", context)
+    }
 }
 
 /** Resolve a source Markdown fragment using the same heading IDs as standalone HTML. */
