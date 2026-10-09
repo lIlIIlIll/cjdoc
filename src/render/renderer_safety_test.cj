@@ -444,8 +444,11 @@ class RendererSafetyTest {
         @Expect(symbolHtml.contains("aria-hidden=\"true\" focusable=\"false\""), true)
         @Expect(symbolHtml.contains("data-cjdoc-copy-status role=\"status\""), true)
         @Expect(symbolHtml.contains("role=\"status\" aria-live=\"polite\""), true)
-        @Expect(symbolHtml.contains(">Standalone</a>"), false)
-        @Expect(symbolHtml.contains(">Copy link</button>"), false)
+        // The full page may contain an unrelated, text-labelled copy button.
+        // Check only the member toolbar: its actions must stay icon-only.
+        let actionMarkup = symbolHtml.split("<div class=\"member-detail-actions\"")[1].split("</div>")[0]
+        @Expect(actionMarkup.contains(">Standalone</a>"), false)
+        @Expect(actionMarkup.contains(">Copy link</button>"), false)
         @Expect(symbolHtml.contains("class=\"member-action member-source-link\""), false)
         @Expect(symbolHtml.indexOf("</summary><div class=\"member-detail-body\">").getOrThrow() <
             symbolHtml.indexOf("class=\"member-detail-actions\"").getOrThrow(), true)
