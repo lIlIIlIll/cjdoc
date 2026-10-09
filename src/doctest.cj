@@ -378,7 +378,8 @@ private func extractSnippets(symbol: public_model.SymbolDoc, tag: public_model.D
     snippets.toArray()
 }
 
-private func collectSnippets(documentation: public_model.DocumentationSet): Array<DoctestSnippet> {
+// internal for the regression suite: ids must stay unique per @example tag.
+internal func collectSnippets(documentation: public_model.DocumentationSet): Array<DoctestSnippet> {
     let snippets = ArrayList<DoctestSnippet>()
     for (symbol in documentation.declarations) {
         match (symbol.documentation) {
@@ -394,6 +395,9 @@ private func collectSnippets(documentation: public_model.DocumentationSet): Arra
                     } else {
                         snippets.add(all: found)
                     }
+                    // Advance per @example tag: ids must stay unique even when one
+                    // symbol carries several examples.
+                    exampleIndex++
                     if (snippets.size > DOCTEST_MAX_RESULTS) {
                         throw IllegalArgumentException("doctest result limit exceeded")
                     }
