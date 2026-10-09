@@ -4,13 +4,27 @@ import cjdoc.model.*
 import std.unittest.*
 import std.unittest.testmacro.*
 
+// Reader-facing artifacts only. The offline search index is machine-facing
+// index data: RDR-02 requires public contract prose (including @return) in the
+// corpus so body keywords are findable, while reader pages must still not
+// render a Returns section for a Unit-returning symbol.
+private func suite5ReaderText(artifacts: Array<RenderArtifact>): String {
+    let out = StringBuilder()
+    for (artifact in artifacts) {
+        if (artifact.isBinary || artifact.path == "html/search-index.json" ||
+            artifact.path == "html/search-index.js") { continue }
+        out.append(artifact.content)
+    }
+    out.toString()
+}
+
 @Test
 class ModelCodecV8Suite5 {
     @TestCase
     func renderersPreserveClosedMarkdownMetadataAndSuppressUnitReturns(): Unit {
         let documentation = codecRendererFixture()
         let markdown = codecRenderedText(MarkdownDocumentationRenderer().render(documentation))
-        let html = codecRenderedText(HtmlDocumentationRenderer().render(documentation))
+        let html = suite5ReaderText(HtmlDocumentationRenderer().render(documentation))
         @Expect(markdown.contains("##### Topic"))
         @Expect(markdown.contains("3) [x] First\n\n4) Second"))
         @Expect(markdown.contains("| :---: |"))

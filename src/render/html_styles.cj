@@ -260,6 +260,8 @@ pre{position:relative;margin:1rem 0;padding:1.1rem 3.3rem 1.1rem 1rem;overflow:a
 .declaration-summary p{margin-top:0;max-width:72ch}
 .declaration-group{margin-top:2.5rem}
 .search-summary{display:block;color:var(--muted);font-size:.8rem;line-height:1.5;white-space:normal}
+.search-hit-body{display:block;margin-top:.25rem;padding-left:.5rem;border-left:2px solid var(--line-strong);color:var(--muted);font-size:.8rem;line-height:1.5;white-space:normal;overflow-wrap:anywhere}
+.search-hit-field{color:var(--accent);font-weight:650}
 
 """
 

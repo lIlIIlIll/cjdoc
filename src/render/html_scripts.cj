@@ -164,12 +164,31 @@ internal let HTML_SEARCH_SCRIPT = """
     if (qualified.startsWith(query)) return 3;
     const haystack = (entry.qualifiedName + " " + entry.kind + " " + entry.packageName + " " + (entry.ownerName || "") + " " + (entry.parameterTypes || []).join(" ") + " " + (entry.returnType || "") + " " + entry.summary).toLocaleLowerCase();
     const words = wordParts(haystack);
+    const body = (entry.body || "").toLocaleLowerCase();
     if (terms.every((term) => words.some((word) => word.startsWith(term)))) return 4;
     if (terms.length === 1 && (acronym(entry.name) === query || acronym(entry.qualifiedName) === query)) return 5;
     if (terms.every((term) => haystack.includes(term))) return 6;
     const queryLength = [...query].length;
     if (terms.length === 1 && queryLength >= 4 && queryLength <= 128 && hasOneSpellingError(entry, query)) return 7;
+    // Body and contract prose ranks below every name/structured-field match, so a
+    // page that merely mentions the word cannot displace an exact symbol result.
+    if (body && terms.every((term) => body.includes(term))) return 8;
     return -1;
+  };
+  const bodySnippet = (text, term) => {
+    const at = text.toLocaleLowerCase().indexOf(term);
+    if (at < 0) return text.slice(0, 120);
+    const from = Math.max(0, at - 12);
+    const to = Math.min(text.length, at + term.length + 48);
+    return (from > 0 ? "…" : "") + text.slice(from, to) + (to < text.length ? "…" : "");
+  };
+  const matchedBodySnippet = (entry, parsed) => {
+    if (!entry.body) return null;
+    const terms = parsed.terms.map((term) => term.toLocaleLowerCase()).filter(Boolean);
+    if (!terms.length) return null;
+    const body = entry.body.toLocaleLowerCase();
+    if (!terms.every((term) => body.includes(term))) return null;
+    return bodySnippet(entry.body, terms[0]);
   };
 
 
@@ -209,9 +228,13 @@ internal let HTML_SEARCH_SCRIPT = """
         (!selectedPackage || item.entry.packageName === selectedPackage))
       .sort((left, right) => left.rank - right.rank ||
         left.entry.qualifiedName.localeCompare(right.entry.qualifiedName) || left.entry.id.localeCompare(right.entry.id));
-    visible = matches.slice(0, 20).map((item) => item.entry);
+    visible = matches.slice(0, 20);
     const signatures = globalThis.__CJDOC_SEARCH_SIGNATURES__ || {};
-    for (const entry of visible) {
+    for (const match of visible) {
+      const entry = match.entry;
+      const bodyText = matchedBodySnippet(entry, parsedQuery);
+      const fieldLabel = match.rank === 8
+        ? (isChinese ? "正文" : "Body text") : "";
       const item = document.createElement("li");
       const link = document.createElement("a");
       const head = document.createElement("span");
@@ -241,6 +264,18 @@ internal let HTML_SEARCH_SCRIPT = """
       const signatureText = signatures[entry.id] || signatures[entry.canonicalId] || "";
       if (signatureText) { signature.className = "search-result-signature"; signature.textContent = signatureText; link.append(signature); }
       if (entry.summary) { summary.className = "search-summary"; summary.textContent = entry.summary; link.append(summary); }
+      if (bodyText) {
+        const bodyLine = document.createElement("span");
+        bodyLine.className = "search-hit-body";
+        if (fieldLabel) {
+          const field = document.createElement("span");
+          field.className = "search-hit-field";
+          field.textContent = fieldLabel + " ";
+          bodyLine.append(field);
+        }
+        bodyLine.append(document.createTextNode(bodyText));
+        link.append(bodyLine);
+      }
       item.append(link);
       results.append(item);
     }
@@ -266,7 +301,7 @@ internal let HTML_SEARCH_SCRIPT = """
     }
   };
   const index = globalThis.__CJDOC_SEARCH_INDEX__;
-  entries = index && index.schemaVersion === "cjdoc.search-index/6" && Array.isArray(index.entries)
+  entries = index && index.schemaVersion === "cjdoc.search-index/7" && Array.isArray(index.entries)
     ? index.entries : [];
   addOptions(kindFilter, entries.map((entry) => entry.kind));
   addOptions(packageFilter, entries.map((entry) => entry.packageName));
