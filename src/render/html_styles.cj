@@ -345,4 +345,41 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
 .member-detail .member-detail-actions{align-items:center;gap:.3rem .8rem;margin:.05rem 0 .4rem;font-size:.75rem}
 .member-detail-actions a{display:inline-flex;align-items:center;min-height:30px}
 @media(max-width:760px){.throws-row{grid-template-columns:minmax(0,1fr);gap:.15rem}.throws-row dd{padding-bottom:.1rem}.member-overload-group{padding:.25rem .45rem .3rem}}
+
+/* Compact member actions form one low-priority toolbar, not a prose paragraph.
+   Keep the copy button's existing text-feedback and no-JS static links intact. */
+.member-detail .member-detail-actions{
+    display:flex;align-items:stretch;justify-content:flex-end;flex-wrap:wrap;gap:0;
+    width:max-content;max-width:100%;margin:.05rem 0 .55rem auto;
+    border:1px solid var(--line);border-radius:7px;background:var(--surface);
+    font-size:.76rem
+}
+.member-detail .member-detail-actions .member-action{
+    display:inline-flex;align-items:center;justify-content:center;gap:.35rem;
+    min-height:36px;margin:0;padding:.32rem .65rem;border:0;border-radius:0;
+    background:transparent;color:var(--muted);font:inherit;font-weight:600;
+    text-decoration:none;white-space:nowrap;cursor:pointer
+}
+.member-detail .member-detail-actions .member-action + .member-action{
+    border-inline-start:1px solid var(--line)
+}
+.member-detail .member-detail-actions .member-action:hover{
+    background:var(--surface-subtle);color:var(--accent)
+}
+.member-detail .member-detail-actions .member-action:focus-visible{
+    position:relative;z-index:1;outline:2px solid var(--accent);outline-offset:-2px
+}
+.member-detail .member-detail-actions .member-permalink::before{content:"↗";font-size:.92rem;line-height:1}
+.member-detail .member-detail-actions .member-source-link::before{content:"</>";font:650 .65rem/1 var(--code-font)}
+.member-detail .member-detail-actions .member-action-copy::before{content:"⧉";font-size:.95rem;line-height:1}
+.member-detail .member-detail-actions .copy-link[data-copied="true"]{
+    color:var(--success);background:var(--surface-subtle)
+}
+.member-detail .member-detail-actions [data-cjdoc-copy-link-fallback]{
+    flex:1 0 100%;min-width:0;max-width:100%;margin:0;padding:.4rem;border:0;
+    border-top:1px solid var(--line);background:var(--surface);color:var(--ink)
+}
+@media(max-width:760px){
+    .member-detail .member-detail-actions{margin-inline-start:0}
+}
 """

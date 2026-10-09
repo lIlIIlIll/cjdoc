@@ -271,7 +271,23 @@ test.describe('generated HTML reference', () => {
     await labelDetail.locator('.member-detail-summary').click();
     await expect(labelDetail).toHaveAttribute('open', '');
     await expect(labelDetail.locator('.api-usages')).toContainText('Getting started');
-    await expect(labelDetail.locator('.member-source-link')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
+    const actions = labelDetail.locator('.member-detail-actions');
+    await expect(actions).toHaveAttribute('role', 'group');
+    await expect(actions).toHaveAttribute('aria-label', 'Member actions');
+    await expect(actions.locator('.member-action')).toHaveCount(3);
+    await expect(actions.locator('.member-permalink')).toHaveText('Standalone');
+    await expect(actions.locator('.member-source-link')).toHaveText('Source');
+    await expect(actions.locator('.member-source-link')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
+    await expect(actions.locator('[data-cjdoc-copy-link]')).toHaveText('Copy link');
+    const minActionHeight = await actions.locator('.member-action').evaluateAll(
+      (elements) => Math.min(...elements.map(element => element.getBoundingClientRect().height))
+    );
+    expect(minActionHeight).toBeGreaterThanOrEqual(36);
+    await actions.locator('.member-action-copy').focus();
+    await expect(actions.locator('.member-action-copy')).toBeFocused();
+    await actions.locator('.member-action-copy').click();
+    await expect(actions.locator('.member-action-copy')).toHaveAttribute('data-copied', 'true');
+    await expect(actions.locator('.member-action-copy')).toContainText('Link copied');
     await expect(normalizeDetail).toHaveAttribute('open', '');
     await expect(page.locator('.overload-group-label')).toHaveCount(2);
     const overloadGroups = page.locator('[data-cjdoc-overload-group]');

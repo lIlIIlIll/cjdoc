@@ -435,7 +435,15 @@ class RendererSafetyTest {
         @Expect(symbolHtml.contains(
             "<details class=\"declaration-summary member-detail\""), true)
         @Expect(symbolHtml.contains("data-cjdoc-member"), true)
-        @Expect(symbolHtml.contains("class=\"member-permalink\""), true)
+        @Expect(symbolHtml.contains("class=\"member-detail-actions\" role=\"group\" aria-label=\"Member actions\""), true)
+        @Expect(symbolHtml.contains("class=\"member-action member-permalink\""), true)
+        @Expect(symbolHtml.contains("class=\"member-action member-action-copy copy-link\""), true)
+        @Expect(symbolHtml.contains(">Standalone</a>"), true)
+        @Expect(symbolHtml.contains(">Copy link</button>"), true)
+        @Expect(symbolHtml.contains("class=\"member-action member-source-link\""), false)
+        @Expect(symbolHtml.indexOf("</summary><div class=\"member-detail-body\">").getOrThrow() <
+            symbolHtml.indexOf("class=\"member-detail-actions\"").getOrThrow(), true)
+        @Expect(css.contains(".member-detail .member-detail-actions .member-action{"), true)
     }
 
     @TestCase

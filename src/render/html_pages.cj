@@ -216,7 +216,7 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     rootPrefix: String, locale: String): Unit {
     let member = entry.symbol
     let anchor = symbolAnchor(member)
-    let standaloneLabel = label(locale, "Open standalone page", "打开独立页面")
+    let standaloneLabel = label(locale, "Standalone", "独立页")
     out.append("<details class=\"declaration-summary member-detail\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\" data-member-origin=\"${escapeHtml(entry.origin)}\">")
     out.append("<summary class=\"member-detail-summary\"><span class=\"member-summary-main\">")
     if (!member.headerSpelling.isEmpty()) {
@@ -261,18 +261,25 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
             case None => ()
         }
     }
-    out.append("<div class=\"member-detail-actions\"><a class=\"member-permalink\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(member))}\">${standaloneLabel}</a>")
-    out.append("<button class=\"copy-link\" type=\"button\" data-cjdoc-copy-link=\"${rootPrefix}${escapeHtml(symbolReadablePagePath(member))}\">${label(locale, "Copy link", "复制链接")}</button>")
+    // Keep independent navigation and copy actions below <summary> so each
+    // remains keyboard accessible without nesting controls in the accordion.
+    out.append("<div class=\"member-detail-actions\" role=\"group\" aria-label=\"" +
+        label(locale, "Member actions", "成员操作") + "\">")
+    out.append("<a class=\"member-action member-permalink\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(member))}\"" +
+        " aria-label=\"" + label(locale, "Open standalone API page", "打开独立 API 页面") + "\">" +
+        standaloneLabel + "</a>")
     match (findProjectedModule(projection, member.moduleId)) {
         case Some(module) => match (sourceUrl(documentation.project, module, member.source)) {
-            case Some(url) => out.append("<a class=\"member-source-link\" href=\"" +
-                escapeHtml(url) + "\" rel=\"noreferrer\">" +
-                label(locale, "View source", "查看源码") + "</a>")
+            case Some(url) => out.append("<a class=\"member-action member-source-link\" href=\"" +
+                escapeHtml(url) + "\" rel=\"noreferrer\" aria-label=\"" +
+                label(locale, "View source code", "查看源码") + "\">" +
+                label(locale, "Source", "源码") + "</a>")
             case None => ()
         }
         case None => ()
     }
-    out.append("</div>")
+    out.append("<button class=\"member-action member-action-copy copy-link\" type=\"button\" data-cjdoc-copy-link=\"${rootPrefix}${escapeHtml(symbolReadablePagePath(member))}\">" +
+        label(locale, "Copy link", "复制链接") + "</button></div>")
     appendDocumentationHtml(out, index, member, rootPrefix, assetLookup, typeLinkIndex,
         headingBase: 3, locale: locale)
     appendReaderRelationships(out, index, member, rootPrefix, typeLinkIndex, locale,
