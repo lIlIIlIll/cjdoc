@@ -367,7 +367,10 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 smoke=os.name != "nt", repository=repo, sdk_root=sdk_root,
                 sdk_marker_verified=True,
             )
-            self.assertEqual(evidence["smoke"]["version"], "cjdoc 0.7.0")
+            # Extracting and running the payload needs a POSIX host, so the smoke
+            # evidence is only present where the sibling test also asserts it.
+            if os.name != "nt":
+                self.assertEqual(evidence["smoke"]["version"], "cjdoc 0.7.0")
 
     def test_release_version_core_must_match_package_version(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
