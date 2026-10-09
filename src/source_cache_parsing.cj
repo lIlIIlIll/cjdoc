@@ -223,8 +223,11 @@ internal func sourceParseWorkerParse(input: SourceInputFile, fallbackPackageName
                 return sourceParseWorkerFailure(input, "CJDOC1012",
                     "source expression exceeds the safe std.ast binary-expression depth; file skipped")
             }
-            return sourceParseWorkerFailure(input, "CJDOC1011",
-                "std.ast parser rejected the source; file skipped")
+            // AST syntax errors are serialized as source diagnostics by the worker.
+            // A nonzero worker status instead means the worker failed to produce a
+            // valid response (for example cache validation or encoding failed).
+            return sourceParseWorkerFailure(input, "CJDOC1020",
+                "source parser worker failed before returning a valid response; file skipped")
         }
         let response = readFileBounded(outputPath, MAX_SOURCE_CACHE_BYTES)
         let capturedSourceIndex = CapturedSourceIndex(source)
