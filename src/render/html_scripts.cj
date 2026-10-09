@@ -190,6 +190,18 @@ internal let HTML_SEARCH_SCRIPT = """
     if (!terms.every((term) => body.includes(term))) return null;
     return bodySnippet(entry.body, terms[0]);
   };
+  // The documented block that matched, with the anchor it renders at. Terms are
+  // matched against each block's own text, never against the anchor name.
+  const matchedSection = (entry, parsed) => {
+    if (!Array.isArray(entry.sections) || !entry.sections.length) return null;
+    const terms = parsed.terms.map((term) => term.toLocaleLowerCase()).filter(Boolean);
+    if (!terms.length) return null;
+    for (const section of entry.sections) {
+      const text = (section.text || "").toLocaleLowerCase();
+      if (terms.every((term) => text.includes(term))) return section;
+    }
+    return null;
+  };
 
 
   const select = (next) => {
@@ -233,6 +245,7 @@ internal let HTML_SEARCH_SCRIPT = """
     for (const match of visible) {
       const entry = match.entry;
       const bodyText = matchedBodySnippet(entry, parsedQuery);
+      const section = matchedSection(entry, parsedQuery);
       const fieldLabel = match.rank === 8
         ? (isChinese ? "正文" : "Body text") : "";
       const item = document.createElement("li");
@@ -246,7 +259,7 @@ internal let HTML_SEARCH_SCRIPT = """
       item.id = "cjdoc-search-result-" + results.children.length;
       item.setAttribute("role", "option");
       item.setAttribute("aria-selected", "false");
-      link.href = root + entry.href;
+      link.href = root + entry.href + (section ? "#" + section.anchor : "");
       head.className = "search-result-head";
       name.className = "search-result-name";
       name.textContent = entry.name;

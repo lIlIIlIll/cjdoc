@@ -93,4 +93,16 @@ class SearchBodyCorpusTest {
         @Expect(rendered.contains("…"), true)
         @Expect(rendered.contains("末尾标记"), false)
     }
+
+    @TestCase
+    func sectionsCarryTheMemberBlockAnchorForDeepLinks(): Unit {
+        let index = corpusIndex()
+        // A @return block deep-links to the anchored Returns heading, not the page top.
+        @Expect(index.contains("\"sections\""), true)
+        @Expect(index.contains("\"kind\": \"return\""), true)
+        @Expect(index.contains("--return\""), true)
+        // Blocks without a stable element are not offered as a deep link.
+        @Expect(index.contains("\"kind\": \"description\""), false)
+        @Expect(index.contains("--description\""), false)
+    }
 }
