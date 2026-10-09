@@ -4,6 +4,10 @@ import cjdoc.model.*
 import std.collection.*
 import std.sort.*
 
+// The index is emitted both as standalone JSON and inline inside a <script>
+// element. `<`, `>` and `&` become JSON string escapes so a value containing
+// `</script>` or `<script>` can never terminate the element or execute: the
+// client decodes them back to the original characters before matching.
 internal func appendSearchJsonString(out: RenderTextBuffer, value: String): Unit {
     let digits = "0123456789abcdef"
     out.append("\"")
@@ -16,6 +20,9 @@ internal func appendSearchJsonString(out: RenderTextBuffer, value: String): Unit
             case '\n' => out.append("\\n")
             case '\r' => out.append("\\r")
             case '\t' => out.append("\\t")
+            case '<' => out.append("\\u003c")
+            case '>' => out.append("\\u003e")
+            case '&' => out.append("\\u0026")
             case _ =>
                 let code = UInt32(rune)
                 if (code < 0x20u32) {
@@ -49,6 +56,34 @@ internal func appendOptionalSearchString(out: RenderTextBuffer, value: ?String):
         case Some(text) => appendSearchJsonString(out, text)
         case None => out.append("null")
     }
+}
+
+// Public prose and behavior contracts beyond the summary. Derived from the
+// Markdown AST (the documentation source of truth) plus tag descriptions such
+// as @param/@return, never from the raw comment fields. Bounded so a single
+// verbose member cannot inflate the offline search payload.
+internal let SEARCH_BODY_EXCERPT_LIMIT: Int64 = 2000
+
+internal func searchBodyText(symbol: SymbolDoc): String {
+    let comment = match (symbol.documentation) {
+        case Some(value) => value
+        case None => return ""
+    }
+    let out = RenderTextBuffer()
+    out.append(markdownNodeText(comment.markdown))
+    for (tag in comment.tags) {
+        if (tag.description.isEmpty()) { continue }
+        out.append(" ")
+        out.append(tag.description)
+    }
+    searchTextExcerpt(out.toString(), maximum: SEARCH_BODY_EXCERPT_LIMIT)
+}
+
+internal func appendSearchBody(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
+    // Emitted unconditionally so every entry has a stable shape, matching how
+    // `returnType` is present as null rather than omitted.
+    out.append(", \"body\": ")
+    appendSearchJsonString(out, searchBodyText(symbol))
 }
 
 internal func searchModuleName(documentation: DocumentationSet, moduleId: String): ?String {
@@ -99,7 +134,7 @@ internal func appendSearchMetadata(out: RenderTextBuffer, documentation: Documen
 internal func renderSearchIndex(documentation: DocumentationSet,
     projection: RenderProjection): String {
     let out = RenderTextBuffer()
-    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/6\",\n  \"entries\": [")
+    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/7\",\n  \"entries\": [")
     var first = true
     let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(visible, lessThan: { left, right => left.id < right.id }, stable: true)
@@ -119,6 +154,7 @@ internal func renderSearchIndex(documentation: DocumentationSet,
             case None => ""
         }
         out.append(", \"summary\": "); appendSearchJsonString(out, summary)
+        appendSearchBody(out, declaration)
         out.append(", \"href\": ")
         appendSearchJsonString(out,
             symbolUrl(projection.visibleIndex, declaration))
@@ -147,6 +183,7 @@ internal func renderSearchIndex(documentation: DocumentationSet,
                                 case None => ""
                             }
                             out.append(", \"summary\": "); appendSearchJsonString(out, summary)
+                            appendSearchBody(out, target)
                             out.append(", \"href\": ")
                             appendSearchJsonString(out,
                                 symbolUrl(projection.visibleIndex, target))

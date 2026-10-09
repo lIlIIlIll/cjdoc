@@ -990,7 +990,9 @@ private func conceptualSearchIndex(base: String, pages: ArrayList<ConceptualPage
         out.append(conceptualJsonString(page.title))
         out.append(",\"qualifiedName\":")
         out.append(conceptualJsonString(page.route))
-        out.append(",\"kind\":\"concept\",\"packageName\":\"\",\"summary\":\"\",\"href\":")
+        out.append(",\"kind\":\"concept\",\"packageName\":\"\",\"summary\":\"\",\"body\":")
+        out.append(conceptualJsonString(conceptualSearchBody(page)))
+        out.append(",\"href\":")
         out.append(conceptualJsonString(page.route))
         out.append(",\"moduleId\":\"conceptual\",\"moduleName\":null,\"ownerName\":null,\"parameterTypes\":[],\"returnType\":null,\"returnCanonical\":null")
         out.append(",\"bindings\":[")
@@ -1024,6 +1026,28 @@ private func conceptualSearchIndex(base: String, pages: ArrayList<ConceptualPage
     }
     out.append(suffix)
     out.toString()
+}
+
+private func conceptualSearchBody(page: ConceptualPage): String {
+    let text = conceptualMarkdownWithoutBindings(page.markdown)
+    let out = StringBuilder()
+    var count: Int64 = 0
+    for (rune in text.runes()) {
+        if (count >= 2000) { out.append("…"); break }
+        out.append(rune)
+        count++
+    }
+    out.toString()
+}
+
+// The concept body carries guide prose, so it needs the same inline-<script>
+// safety as the symbol index: escape the JSON string, then neutralize the three
+// characters that can terminate a <script> element. escapeJsonString only ever
+// emits alphanumerics, punctuation and \u escapes, so an inserted \u003c is
+// never re-escaped.
+private func conceptualSearchBodyJson(page: ConceptualPage): String {
+    public_render.escapeJsonString(conceptualSearchBody(page))
+        .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 }
 
 private func conceptualNavigationHtml(locale: String): String {
