@@ -127,14 +127,14 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             if (!symbol.parameters.isEmpty()) {
                 out.append("<h3>${label(locale, "Parameters", "参数")}</h3><dl class=\"parameter-list\">\n")
                 for (parameter in symbol.parameters) {
-                    out.append("<div class=\"parameter-row\"><dt><code>${escapeHtml(parameter.name)}</code></dt><dd class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
+                    out.append("<div class=\"parameter-row\"><dt class=\"parameter-declaration\"><code class=\"parameter-name\">${escapeHtml(parameter.name)}</code><span class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
                     appendTypeRefCodeHtml(out, parameter.typeRef, typeLinkIndex, rootPrefix, locale,
                         className: "parameter-type-code")
                     match (parameter.defaultExpression) {
                         case Some(defaultExpression) => out.append(" <span class=\"parameter-default\">= <code>" + escapeHtml(defaultExpression) + "</code></span>")
                         case None => ()
                     }
-                    out.append("</dd>")
+                    out.append("</span></dt>")
                     out.append("<dd class=\"parameter-description\">")
                     match (parameter.documentation) {
                         case Some(value) => appendStructuredTextHtml(out, value)
@@ -166,10 +166,10 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             var hasThrows = false
             for (tag in comment.tags) { if (tag.name == "throws") { hasThrows = true; break } }
             if (hasThrows) {
-                out.append("<h3>${label(locale, "Throws", "异常")}</h3><dl>\n")
+                out.append("<h3>${label(locale, "Throws", "异常")}</h3><dl class=\"throws-list\">\n")
                 for (tag in comment.tags) {
                     if (tag.name == "throws") {
-                        out.append("<dt>")
+                        out.append("<div class=\"throws-row\"><dt>")
                         match (tag.targetSymbolId) {
                             case Some(targetId) => match (findSymbol(index, targetId)) {
                                 case Some(target) => out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(tag.subject)}</code></a>")
@@ -177,12 +177,15 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                             }
                             case None => out.append("<code>${escapeHtml(tag.subject)}</code>")
                         }
-                        if (tag.referenceState != "resolved") {
-                            out.append(" <span class=\"badge reference-state\" data-state=\"${escapeHtml(tag.referenceState)}\">${escapeHtml(htmlReferenceStateLabel(tag.referenceState, locale))}</span>")
+                        // Missing documentation links are not API behavior.
+                        // Preserve true ambiguity locally, but keep the reason readable.
+                        if (tag.referenceState == "ambiguous") {
+                            out.append(" <span class=\"reference-state-note\" data-state=\"ambiguous\">" +
+                                escapeHtml(htmlReferenceStateLabel(tag.referenceState, locale)) + "</span>")
                         }
                         out.append("</dt><dd>")
                         appendStructuredTextHtml(out, tag.description)
-                        out.append("</dd>\n")
+                        out.append("</dd></div>\n")
                     }
                 }
                 out.append("</dl>\n")
@@ -227,15 +230,14 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             if (!symbol.parameters.isEmpty()) {
                 out.append("<h3>${label(locale, "Parameters", "参数")}</h3><dl class=\"parameter-list\">\n")
                 for (parameter in symbol.parameters) {
-                    out.append("<div class=\"parameter-row\"><dt><code>${escapeHtml(parameter.name)}</code></dt><dd class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
+                    out.append("<div class=\"parameter-row\"><dt class=\"parameter-declaration\"><code class=\"parameter-name\">${escapeHtml(parameter.name)}</code><span class=\"parameter-type\"><span class=\"parameter-colon\">:</span>")
                     appendTypeRefCodeHtml(out, parameter.typeRef, typeLinkIndex, rootPrefix, locale,
                         className: "parameter-type-code")
                     match (parameter.defaultExpression) {
                         case Some(defaultExpression) => out.append(" <span class=\"parameter-default\">= <code>" + escapeHtml(defaultExpression) + "</code></span>")
                         case None => ()
                     }
-                    out.append("</dd>")
-                    out.append("<dd class=\"parameter-description\"></dd></div>\n")
+                    out.append("</span></dt><dd class=\"parameter-description\"></dd></div>\n")
                 }
                 out.append("</dl>\n")
             }

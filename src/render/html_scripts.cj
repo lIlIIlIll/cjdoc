@@ -790,6 +790,7 @@ internal let HTML_SEARCH_SCRIPT = """
   const originFilter = document.querySelector("[data-cjdoc-member-origin]");
   const memberRows = [...document.querySelectorAll("[data-cjdoc-member]")];
   const memberGroups = [...document.querySelectorAll("[data-cjdoc-member-group]")];
+  const overloadGroups = [...document.querySelectorAll("[data-cjdoc-overload-group]")];
   const memberStatus = document.querySelector("[data-cjdoc-member-filter-status]");
   const expandMembers = document.querySelector("[data-cjdoc-members-expand]");
   const collapseMembers = document.querySelector("[data-cjdoc-members-collapse]");
@@ -811,6 +812,21 @@ internal let HTML_SEARCH_SCRIPT = """
       const matches = queryMatches && originMatches;
       row.hidden = !matches;
       if (matches) visible += 1;
+    }
+    // Group boundaries remain in the DOM while filtering, but never leave
+    // empty visual cards or claim that all overloads matched the filter.
+    for (const group of overloadGroups) {
+      const matches = [...group.querySelectorAll(":scope > [data-cjdoc-member]")]
+        .filter((member) => !member.hidden).length;
+      const total = Number(group.dataset.overloadTotal);
+      const label = group.querySelector("[data-cjdoc-overload-count]");
+      group.hidden = matches === 0;
+      if (label && Number.isFinite(total) && total > 0) {
+        label.textContent = matches === total
+          ? (isChinese ? total + " 个重载" : total + " overloads")
+          : (isChinese ? matches + " / " + total + " 个重载" :
+              matches + " of " + total + " overloads");
+      }
     }
     for (const group of memberGroups) {
       group.hidden = !group.querySelector("[data-cjdoc-member]:not([hidden])");

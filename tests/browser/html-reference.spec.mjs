@@ -274,9 +274,24 @@ test.describe('generated HTML reference', () => {
     await expect(labelDetail.locator('.member-source-link')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
     await expect(normalizeDetail).toHaveAttribute('open', '');
     await expect(page.locator('.overload-group-label')).toHaveCount(2);
+    const overloadGroups = page.locator('[data-cjdoc-overload-group]');
+    await expect(overloadGroups).toHaveCount(2);
     const pingDetails = page.locator('details[data-cjdoc-member][data-member-name="ping"]');
-    await expect(pingDetails).toHaveCount(2);
+    const pingGroup = overloadGroups.filter({ has: pingDetails.first() });
+    await expect(pingGroup).toHaveCount(1);
+    await expect(pingGroup).toHaveAttribute('data-overload-total', '2');
+    await expect(pingGroup.locator('details[data-cjdoc-member][data-member-name="ping"]')).toHaveCount(2);
+    await expect(pingGroup.locator('[data-cjdoc-overload-count]')).toHaveText('2 overloads');
     await expect(page.locator('details[data-cjdoc-member][data-member-name="convert"]')).toHaveCount(2);
+    // Filtering does not leave empty groups or falsely report that both match.
+    await memberFilter.fill('ping(value: Int64)');
+    await expect(pingGroup.locator('[data-cjdoc-overload-count]')).toHaveText('1 of 2 overloads');
+    await expect(pingGroup.locator('details[data-cjdoc-member][data-member-name="ping"]:not([hidden])')).toHaveCount(1);
+    await memberFilter.fill('doesNotExist');
+    await expect(pingGroup).toBeHidden();
+    await memberFilter.fill('');
+    await expect(pingGroup.locator('[data-cjdoc-overload-count]')).toHaveText('2 overloads');
+    await expect(pingGroup).toBeVisible();
     await pingDetails.nth(0).locator('.member-detail-summary').click();
     await pingDetails.nth(1).locator('.member-detail-summary').click();
     await expect(pingDetails.nth(0)).toHaveAttribute('open', '');
