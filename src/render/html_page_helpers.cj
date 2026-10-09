@@ -267,8 +267,8 @@ internal func appendSymbolArticle(out: RenderTextBuffer,
         locale: locale)
     appendDocumentationHtml(out, index, symbol, rootPrefix, assetLookup,
         typeLinkIndex, headingBase: 2, locale: locale)
-    appendDeclarationMetadata(out, index, symbol, rootPrefix, assetLookup, typeLinkIndex,
-        locale: locale)
+    appendReaderRelationships(out, index, symbol, rootPrefix, typeLinkIndex, locale,
+        headingTag: "h3")
     appendReverseTypeUsages(out, index, typeLinkIndex, symbol, rootPrefix, locale)
     out.append("</article>\n")
 }

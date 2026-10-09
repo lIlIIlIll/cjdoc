@@ -15,66 +15,145 @@ internal func appendReverseTypeUsages(out: RenderTextBuffer,
     out.append("</ul></details>")
 }
 
-internal func appendDeclarationMetadata(out: RenderTextBuffer,
+// The public reference is a reader surface, not a dump of compiler/provider
+// metadata. Keep raw identities, source locations and resolution provenance in
+// Doc IR and diagnostics outputs. Only API relationships belong on this page.
+private func appendRelationshipUncertainty(out: RenderTextBuffer,
+    state: String, locale: String): Unit {
+    match (state) {
+        case "resolved" => ()
+        case "ambiguous" => out.append(" <span class=\"relation-note\">${label(locale, "Relationship target is ambiguous", "关联目标不明确")}</span>")
+        case _ => out.append(" <span class=\"relation-note\">${label(locale, "Relationship not fully established", "关联关系尚未完全确认")}</span>")
+    }
+}
+
+// Human-facing labels should not expose internal relation-kind spellings.
+internal func readerRelationshipLabel(kind: String, locale: String): String {
+    if (locale == "zh-CN") {
+        if (kind == "subType") { return "子类型" }
+        return htmlKindLabel(kind, locale)
+    }
+    match (kind) {
+        case "superType" => "Parent type"
+        case "subType" => "Subtype"
+        case "extensionTarget" => "Extension target"
+        case "genericConstraint" => "Generic constraint"
+        case "extendedBy" => "Extended by"
+        case "inheritedMember" => "Inherited member"
+        case "implements" => "Implements"
+        case "implementedBy" => "Implemented by"
+        case "override" => "Overrides"
+        case "overriddenBy" => "Overridden by"
+        case "overrides" => "Overrides"
+        case "inherits" => "Inherits"
+        case _ => htmlKindLabel(kind, locale)
+    }
+}
+
+// The source records the type spelling; navigation may independently attach a
+// resolved SymbolId to the same edge. Compare identities when both are known,
+// falling back to *exact* source spelling only for an unresolved TypeRef.
+// Different kinds and distinct resolved targets must remain separate rows.
+private func sameReaderRelationshipTarget(typeRelation: TypeRelationship,
+    symbolRelation: SymbolRelationship, index: HashMap<String, SymbolDoc>,
+    typeLinkIndex: HtmlTypeLinkIndex): Bool {
+    if (typeRelation.kind != symbolRelation.kind) { return false }
+    let typeRef = typeRelation.target
+    if (typeRef.semantic.state != "resolved") {
+        return typeRef.spelling.trimAscii() == symbolRelation.targetDisplay.trimAscii()
+    }
+    match (symbolRelation.targetSymbolId) {
+        case Some(id) =>
+            match ((typeLinkIndex.targetUrl(typeRef), typeLinkIndex.targetUrlForSymbolId(id))) {
+                case (Some(left), Some(right)) => left == right
+                case _ => typeLinkIndex.sameUnfilteredTarget(typeRef, id)
+            }
+        case None => false
+    }
+}
+
+// Prefer the resolved navigation edge; otherwise preserve the source TypeRef
+// whenever it carries at least as much information as the symbol edge.
+private func preferReaderSymbolRelationship(typeRelation: TypeRelationship,
+    symbolRelation: SymbolRelationship): Bool {
+    if (symbolRelation.state == "resolved") { return true }
+    if (typeRelation.target.semantic.state == "resolved") { return false }
+    if (symbolRelation.state == "ambiguous") { return true }
+    symbolRelation.state == "partial" && typeRelation.target.semantic.state == "unavailable"
+}
+
+private func readerSymbolRelationshipIsVisible(index: HashMap<String, SymbolDoc>,
+    relationship: SymbolRelationship): Bool {
+    match (relationship.targetSymbolId) {
+        case Some(id) => findSymbol(index, id).isSome()
+        case None => true
+    }
+}
+
+internal func appendReaderRelationships(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
-    assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    locale!: String = "en"): Unit {
-    out.append("<details class=\"declaration-metadata\"><summary>${label(locale, "Declaration metadata", "声明元数据")}</summary><p class=\"meta\"><span class=\"badge\" data-state=\"${escapeHtml(symbol.semantic.state)}\">${label(locale, "Semantic information", "语义信息")}: ${escapeHtml(htmlStateLabel(symbol.semantic.state, locale))}</span>")
-    match (symbol.ownerId) {
-        case Some(ownerId) => match (findSymbol(index, ownerId)) {
-            case Some(owner) => out.append(" ${label(locale, "Owner", "所属类型")}: <a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, owner))}\"><code>${escapeHtml(owner.qualifiedName)}</code></a> ·")
-            case None => out.append(" ${label(locale, "Owner", "所属类型")}: <code>${escapeHtml(ownerId)}</code> ·")
-        }
-        case None => ()
-    }
-    out.append(" <code>${escapeHtml(symbol.source.path)}:${symbol.source.start.line}:${symbol.source.start.column}</code></p>\n")
-    out.append("<p class=\"meta\">${label(locale, "Kind", "类别")}: ${escapeHtml(htmlKindLabel(symbol.kind, locale))} · ${label(locale, "Visibility", "可见性")}: <code>${escapeHtml(symbol.visibility)}</code></p>")
-    if (symbol.sourceApiSignature.state == "unavailable") {
-        out.append("<p class=\"signature-context\">${label(locale, "Source signature tokens unavailable; showing the recorded declaration.", "源码签名词元未提供；显示记录的声明原文。")}</p>")
-    }
-    if (!symbol.genericParameters.isEmpty()) {
-        out.append("<p class=\"meta\">${label(locale, "Generic parameters", "泛型参数")}: ")
-        var first = true
-        for (parameter in symbol.genericParameters) {
-            if (!first) { out.append(", ") }; first = false
-            out.append("<code>${escapeHtml(parameter)}</code>")
-        }
-        out.append("</p>\n")
-    }
-    if (!symbol.annotations.isEmpty()) {
-        out.append("<p class=\"meta\">${label(locale, "Annotations", "注解")}: ")
-        var first = true
-        for (annotation in symbol.annotations) {
-            if (!first) { out.append(" ") }; first = false
-            out.append("<code>${escapeHtml(annotation.spelling)}</code>")
-        }
-        out.append("</p>\n")
-    }
-    if (!symbol.typeRelationships.isEmpty() || !symbol.symbolRelationships.isEmpty()) {
-        out.append("<dl class=\"relationships\">")
-        for (relationship in symbol.typeRelationships) {
-            out.append("<dt>${escapeHtml(htmlKindLabel(relationship.kind, locale))}</dt><dd>")
-            match (typeLinkIndex.targetUrl(relationship.target)) {
-                case Some(url) => out.append("<a href=\"${rootPrefix}${escapeHtml(url)}\"><code>${escapeHtml(relationship.target.spelling)}</code></a>")
-                case None => out.append("<code>${escapeHtml(relationship.target.spelling)}</code>")
+    typeLinkIndex: HtmlTypeLinkIndex, locale: String,
+    headingTag!: String = "h2"): Unit {
+    let rows = RenderTextBuffer()
+    for (relationship in symbol.typeRelationships) {
+        var suppress = false
+        for (navigation in symbol.symbolRelationships) {
+            // The published index deliberately cannot resolve a filtered target.
+            // When a hidden navigation edge has the same kind and *exact* source
+            // spelling, drop the weaker source row rather than disclosing its
+            // name. Do not suppress a separately resolved, visible TypeRef.
+            if (!readerSymbolRelationshipIsVisible(index, navigation) &&
+                relationship.kind == navigation.kind &&
+                typeLinkIndex.targetUrl(relationship.target).isNone() &&
+                relationship.target.spelling.trimAscii() == navigation.targetDisplay.trimAscii()) {
+                suppress = true
+                break
             }
-            out.append(" <span class=\"badge\" data-state=\"${escapeHtml(relationship.target.semantic.state)}\">${escapeHtml(htmlStateLabel(relationship.target.semantic.state, locale))}</span></dd>")
-        }
-        for (relationship in symbol.symbolRelationships) {
-            out.append("<dt>${escapeHtml(htmlKindLabel(relationship.kind, locale))}</dt><dd>")
-            match (relationship.targetSymbolId) {
-                case Some(targetId) => match (findSymbol(index, targetId)) {
-                    case Some(target) =>
-                        out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(relationship.targetDisplay)}</code></a>")
-                    case None => out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
-                }
-                case None => out.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
+            if (!sameReaderRelationshipTarget(relationship, navigation, index, typeLinkIndex)) {
+                continue
             }
-            out.append(" <span class=\"badge\" data-state=\"${escapeHtml(relationship.state)}\">${escapeHtml(htmlStateLabel(relationship.state, locale))}</span></dd>")
+            // Do not disclose a filtered target through its weaker source edge.
+            if (!readerSymbolRelationshipIsVisible(index, navigation) ||
+                preferReaderSymbolRelationship(relationship, navigation)) {
+                suppress = true
+                break
+            }
         }
-        out.append("</dl>\n")
+        if (suppress) { continue }
+        rows.append("<dt>${escapeHtml(readerRelationshipLabel(relationship.kind, locale))}</dt><dd>")
+        appendTypeRefCodeHtml(rows, relationship.target, typeLinkIndex, rootPrefix, locale)
+        appendRelationshipUncertainty(rows, relationship.target.semantic.state, locale)
+        rows.append("</dd>")
     }
-    out.append("<p class=\"meta\">${label(locale, "Symbol ID", "符号标识")}: <code>${escapeHtml(symbol.id)}</code></p></details>")
+    for (relationship in symbol.symbolRelationships) {
+        if (!readerSymbolRelationshipIsVisible(index, relationship)) { continue }
+        var superseded = false
+        for (source in symbol.typeRelationships) {
+            if (sameReaderRelationshipTarget(source, relationship, index, typeLinkIndex) &&
+                !preferReaderSymbolRelationship(source, relationship)) {
+                superseded = true
+                break
+            }
+        }
+        if (superseded) { continue }
+        rows.append("<dt>${escapeHtml(readerRelationshipLabel(relationship.kind, locale))}</dt><dd>")
+        match (relationship.targetSymbolId) {
+            case Some(targetId) => match (findSymbol(index, targetId)) {
+                case Some(target) => rows.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(relationship.targetDisplay)}</code></a>")
+                // The visibility check above already discarded filtered targets.
+                case None => ()
+            }
+            case None => rows.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
+        }
+        appendRelationshipUncertainty(rows, relationship.state, locale)
+        rows.append("</dd>")
+    }
+    let content = rows.toString()
+    if (content.isEmpty()) { return }
+    out.append("<section class=\"symbol-relationships\" aria-label=\"${label(locale, "Type and member relationships", "类型与成员关系")}\">")
+    out.append("<${headingTag}>${label(locale, "Relationships", "关联关系")}</${headingTag}><dl>")
+    out.append(content)
+    out.append("</dl></section>\n")
 }
 
 internal func appendSymbolMetadata(out: RenderTextBuffer,

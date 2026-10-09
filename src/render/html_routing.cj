@@ -421,6 +421,23 @@ internal func packageRelativeTypeName(symbol: SymbolDoc): String {
     ""
 }
 
+// Use the same identity keys for reader relationship reconciliation and
+// public type navigation. Only the visible index may supply published URLs.
+private func registerTypeLinkKeys(index: HashMap<String, String>, symbol: SymbolDoc,
+    moduleNameById: HashMap<String, String>): Unit {
+    registerTypeLinkKey(index, symbol.id, symbol.id)
+    registerTypeLinkKey(index, symbol.qualifiedName, symbol.id)
+    match (moduleNameById.get(symbol.moduleId)) {
+        case Some(moduleName) =>
+            registerTypeLinkKey(index, "${moduleName}.${symbol.qualifiedName}", symbol.id)
+            let relative = packageRelativeTypeName(symbol)
+            if (!relative.isEmpty()) {
+                registerTypeLinkKey(index, "${moduleName}.${relative}", symbol.id)
+            }
+        case None => ()
+    }
+}
+
 internal class HtmlTypeUsage {
     let source: SymbolDoc
     let kind: String
@@ -436,27 +453,24 @@ internal class HtmlTypeLinkIndex {
     // href is always derived from the matched SymbolId through the existing
     // routing layer.
     private let symbolIdByCanonical = HashMap<String, String>()
+    // Only for comparing identities during rendering; never used for public links.
+    // Ambiguous canonical keys map to the empty sentinel, not an arbitrary target.
+    private let unfilteredSymbolIdByCanonical = HashMap<String, String>()
     private let urlBySymbolId = HashMap<String, String>()
     private let reverseUsagesByTarget = HashMap<String, ArrayList<HtmlTypeUsage>>()
 
     init(documentation: DocumentationSet, projection: RenderProjection) {
         let moduleNameById = HashMap<String, String>()
         for (module in documentation.modules) { moduleNameById[module.id] = module.name }
+        for (symbol in projection.allIndex.values()) {
+            if (isTypeDeclaration(symbol)) {
+                registerTypeLinkKeys(unfilteredSymbolIdByCanonical, symbol, moduleNameById)
+            }
+        }
         for (symbol in projection.visibleSymbols) {
             urlBySymbolId[symbol.id] = symbolUrl(projection.visibleIndex, symbol)
             if (!isTypeDeclaration(symbol)) { continue }
-            registerTypeLinkKey(symbolIdByCanonical, symbol.id, symbol.id)
-            registerTypeLinkKey(symbolIdByCanonical, symbol.qualifiedName, symbol.id)
-            match (moduleNameById.get(symbol.moduleId)) {
-                case Some(moduleName) =>
-                    registerTypeLinkKey(symbolIdByCanonical,
-                        "${moduleName}.${symbol.qualifiedName}", symbol.id)
-                    let relative = packageRelativeTypeName(symbol)
-                    if (!relative.isEmpty()) {
-                        registerTypeLinkKey(symbolIdByCanonical, "${moduleName}.${relative}", symbol.id)
-                    }
-                case None => ()
-            }
+            registerTypeLinkKeys(symbolIdByCanonical, symbol, moduleNameById)
         }
         for (symbol in projection.visibleSymbols) {
             for (parameter in symbol.parameters) {
@@ -480,6 +494,19 @@ internal class HtmlTypeLinkIndex {
                 let rightKey = "${right.source.qualifiedName}|${right.source.id}|${right.kind}"
                 leftKey < rightKey
             }, stable: true)
+        }
+    }
+
+    // Private declarations can be matched without exposing their identity.
+    // Reconcile exactly the same canonical forms accepted by visible links.
+    internal func sameUnfilteredTarget(typeRef: TypeRef, symbolId: String): Bool {
+        if (typeRef.semantic.state != "resolved") { return false }
+        match (typeRef.semantic.canonical) {
+            case Some(canonical) => match (unfilteredSymbolIdByCanonical.get(canonical)) {
+                case Some(id) => !id.isEmpty() && id == symbolId
+                case None => false
+            }
+            case None => false
         }
     }
 
@@ -570,6 +597,18 @@ internal func typeGenericSuffix(spelling: String): String {
     else { spelling[genericEnd + 1..] }
 }
 
+// Some source/AST providers record a generic type's spelling with trivia around
+// angle brackets. Normalize only this display spelling; source signatures and
+// semantic identities must remain byte-for-byte intact. Function arrows and
+// generic constraints are deliberately left untouched.
+internal func genericTypeDisplaySpelling(spelling: String): String {
+    if (!spelling.contains("<") || spelling.contains("->") || spelling.contains("<:")) {
+        return spelling
+    }
+    spelling.replace(" <", "<").replace("< ", "<")
+        .replace(" >", ">").replace("> ", ">").replace(" ,", ",")
+}
+
 internal func appendTypeAtomHtml(out: RenderTextBuffer, typeRef: TypeRef,
     spelling: String, typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String): Unit {
     match (typeLinkIndex.targetUrl(typeRef)) {
@@ -584,7 +623,8 @@ internal func appendTypeRefContentHtml(out: RenderTextBuffer, typeRef: TypeRef,
     match (typeRef.spelling.indexOf("<")) {
         case Some(_) =>
             if (typeRef.arguments.isEmpty()) {
-                appendTypeAtomHtml(out, typeRef, typeRef.spelling, typeLinkIndex, rootPrefix)
+                appendTypeAtomHtml(out, typeRef,
+                    genericTypeDisplaySpelling(typeRef.spelling), typeLinkIndex, rootPrefix)
                 return
             }
             appendTypeAtomHtml(out, typeRef, typeHeadSpelling(typeRef.spelling),

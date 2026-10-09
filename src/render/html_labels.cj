@@ -34,7 +34,10 @@ internal func htmlKindLabel(kind: String, locale: String): String {
         case "multi" => "多项导入"
         case "inherits" => "继承"
         case "overrides" => "重写"
+        case "override" => "重写"
+        case "overriddenBy" => "被重写"
         case "implements" => "实现"
+        case "implementedBy" => "被实现"
         case _ => kind
     }
 }
@@ -80,7 +83,9 @@ internal func htmlContextLabel(symbol: SymbolDoc): String {
         var first = true
         for (parameter in symbol.parameters) {
             if (!first) { out.append(", ") }; first = false
-            out.append(parameter.typeRef.spelling)
+            // Context labels are reader-facing, unlike the original TypeRef and
+            // source signature. Keep generic trivia consistent with the type table.
+            out.append(genericTypeDisplaySpelling(parameter.typeRef.spelling))
         }
         out.append(")")
     }

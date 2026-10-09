@@ -4,6 +4,31 @@ import std.unittest.*
 import std.unittest.testmacro.*
 import std.env.*
 import std.fs.*
+import std.process.*
+import std.sync.*
+
+@When[os == "Windows"]
+private func doctestSlowCommand(): (String, Array<String>) {
+    ("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Milliseconds 900"])
+}
+
+@When[os != "Windows"]
+private func doctestSlowCommand(): (String, Array<String>) {
+    ("/bin/sh", ["-c", "sleep 0.9"])
+}
+
+@When[os == "Windows"]
+private func doctestStderrOverflowCommand(): (String, Array<String>, Int64) {
+    ("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+        "[Console]::Error.WriteLine('exceeds-bound'); Start-Sleep -Seconds 5"], 2500)
+}
+
+@When[os != "Windows"]
+private func doctestStderrOverflowCommand(): (String, Array<String>, Int64) {
+    // Avoid spawning a second process that could inherit a pipe after the
+    // bounded shell is terminated by the output-limit watchdog.
+    ("/bin/sh", ["-c", "printf 'exceeds-bound' 1>&2; while :; do :; done"], 700)
+}
 
 @Test
 class DoctestConfigSuite {
@@ -23,6 +48,75 @@ class DoctestConfigSuite {
         @Expect(config.timeoutMs, 1500)
         @Expect(config.memoryMb, 4096)
         @Expect(config.jobs, 4)
+    }
+
+    // Short-lived children once raced SubProcess.wait() closing their pipes,
+    // so check the same bounded reader with repeated fast exits.
+    @TestCase
+    func subprocessPipesDrainBeforeReapingShortLivedChildren(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            for (_ in 0..12) {
+                let result = runBoundedProcess("cjc", ["-v"], root, 5000,
+                    DOCTEST_MAX_OUTPUT_BYTES)
+                @Expect(result.exitCode, 0)
+                @Expect(result.timedOut, false)
+                @Expect(result.outputLimit, false)
+                @Expect(!result.stdout.isEmpty() || !result.stderr.isEmpty(), true)
+            }
+            let capped = runBoundedProcess("cjc", ["-v"], root, 5000, 1)
+            @Expect(capped.outputLimit, true)
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
+    func stderrOverflowWinsBeforeBlockedStdoutTimesOut(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            let (command, arguments, timeoutMs) = doctestStderrOverflowCommand()
+            let result = runBoundedProcess(command, arguments, root, timeoutMs, 1)
+            @Expect(result.outputLimit, true)
+            @Expect(result.timedOut, false)
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
+    func subprocessPipeWaitDeadlineRemainsTimeoutNotOutputLimit(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            let (command, arguments) = doctestSlowCommand()
+            // Non-multiples of 25 ms exercise the gap before the watchdog poll.
+            let deadlines: Array<Int64> = [71, 83, 97]
+            for (timeout in deadlines) {
+                let result = runBoundedProcess(command, arguments, root, timeout,
+                    DOCTEST_MAX_OUTPUT_BYTES)
+                @Expect(result.timedOut, true)
+                @Expect(result.outputLimit, false)
+            }
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    // Deterministic regression for a watchdog being descheduled until after
+    // a short-lived child has already exited and been reaped.
+    @TestCase
+    func watchdogDoesNotTimeoutAnAlreadyExitedChild(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            let process = launch("cjc", ["-v"], workingDirectory: Some(root),
+                stdOut: Pipe, stdErr: Pipe)
+            let _ = process.wait()
+            let state = AtomicInt64(0)
+            @Expect(claimDoctestWatchdogTimeout(process, state), false)
+            @Expect(state.load(), 0)
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
     }
 
     @TestCase

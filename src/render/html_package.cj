@@ -26,7 +26,9 @@ internal func appendPackageMetadata(out: RenderTextBuffer, pkg: ProjectedPackage
                     if (!firstTarget) { out.append(", ") }; firstTarget = false
                     match (findSymbol(index, targetId)) {
                         case Some(target) => out.append("<a href=\"../${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(target.qualifiedName)}</code></a>")
-                        case None => out.append("<code>${escapeHtml(targetId)}</code>")
+                        case None => out.append(label(locale,
+                            "Target not present in this documentation",
+                            "目标未包含在当前文档中"))
                     }
                 }
                 out.append(" <span class=\"badge\">${escapeHtml(htmlStateLabel(reExport.state, locale))}</span></li>\n")
@@ -39,10 +41,4 @@ internal func appendPackageMetadata(out: RenderTextBuffer, pkg: ProjectedPackage
         for (path in pkg.sourceFiles) { out.append("<li><code>${escapeHtml(path)}</code></li>\n") }
         out.append("</ul></details>\n")
     }
-}
-
-internal func appendPackageDeclarationMetadata(out: RenderTextBuffer, symbol: SymbolDoc,
-    locale: String): Unit {
-    if (symbol.semantic.state == "resolved") { return }
-    out.append("<details class=\"declaration-metadata\"><summary>${label(locale, "Declaration metadata", "声明元数据")}</summary><p class=\"meta\">${label(locale, "Semantic information", "语义信息")}: ${escapeHtml(htmlStateLabel(symbol.semantic.state, locale))}</p></details>\n")
 }
