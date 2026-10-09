@@ -522,6 +522,16 @@ class RendererSafetyTest {
                 // to a filtered declaration. Neither may leak its spelling.
                 TypeRelationship("extendedBy", TypeRef("named", "fixture.PrivateReader",
                     SemanticType("resolved", canonical: Some("fixture.PrivateReader"),
+                        provider: Some("ast")))),
+                // These valid module-qualified canonical names still denote the
+                // hidden target although neither display matches its qualified name.
+                TypeRelationship("extendedBy", TypeRef("named", "SecretAlias",
+                    SemanticType("resolved",
+                        canonical: Some("reader-relationships.fixture.PrivateReader"),
+                        provider: Some("ast")))),
+                TypeRelationship("extendedBy", TypeRef("named", "RelativeAlias",
+                    SemanticType("resolved",
+                        canonical: Some("reader-relationships.PrivateReader"),
                         provider: Some("ast"))))
             ], symbolRelationships: [
                 SymbolRelationship("superType", "Readable", "resolved",
@@ -548,6 +558,9 @@ class RendererSafetyTest {
         @Expect(projection.visibleIndex.contains(secretId), false)
         let links = HtmlTypeLinkIndex(document, projection)
         @Expect(links.sameUnfilteredTarget(reader.typeRelationships[1].target, secretId), true)
+        @Expect(links.sameUnfilteredTarget(reader.typeRelationships[2].target, secretId), true)
+        @Expect(links.sameUnfilteredTarget(reader.typeRelationships[3].target, secretId), true)
+        @Expect(links.sameUnfilteredTarget(reader.typeRelationships[2].target, contractId), false)
         let page = rendererSafetyContent(HtmlDocumentationRenderer().render(document),
             "html/${symbolPagePath(reader)}")
         @Expect(page.contains("class=\"symbol-relationships\""), true)
@@ -555,6 +568,8 @@ class RendererSafetyTest {
         @Expect(page.contains("fixture.Readable"), true)
         @Expect(page.contains("Target not present in this documentation"), false)
         @Expect(page.contains("fixture.PrivateReader"), false)
+        @Expect(page.contains("SecretAlias"), false)
+        @Expect(page.contains("RelativeAlias"), false)
         @Expect(page.contains("Extended by"), false)
         @Expect(page.contains("Parent type"), true)
         // The source TypeRef is partial, but its navigation edge has an exact

@@ -421,6 +421,23 @@ internal func packageRelativeTypeName(symbol: SymbolDoc): String {
     ""
 }
 
+// Use the same identity keys for reader relationship reconciliation and
+// public type navigation. Only the visible index may supply published URLs.
+private func registerTypeLinkKeys(index: HashMap<String, String>, symbol: SymbolDoc,
+    moduleNameById: HashMap<String, String>): Unit {
+    registerTypeLinkKey(index, symbol.id, symbol.id)
+    registerTypeLinkKey(index, symbol.qualifiedName, symbol.id)
+    match (moduleNameById.get(symbol.moduleId)) {
+        case Some(moduleName) =>
+            registerTypeLinkKey(index, "${moduleName}.${symbol.qualifiedName}", symbol.id)
+            let relative = packageRelativeTypeName(symbol)
+            if (!relative.isEmpty()) {
+                registerTypeLinkKey(index, "${moduleName}.${relative}", symbol.id)
+            }
+        case None => ()
+    }
+}
+
 internal class HtmlTypeUsage {
     let source: SymbolDoc
     let kind: String
@@ -436,31 +453,24 @@ internal class HtmlTypeLinkIndex {
     // href is always derived from the matched SymbolId through the existing
     // routing layer.
     private let symbolIdByCanonical = HashMap<String, String>()
+    // Only for comparing identities during rendering; never used for public links.
+    // Ambiguous canonical keys map to the empty sentinel, not an arbitrary target.
+    private let unfilteredSymbolIdByCanonical = HashMap<String, String>()
     private let urlBySymbolId = HashMap<String, String>()
     private let reverseUsagesByTarget = HashMap<String, ArrayList<HtmlTypeUsage>>()
-    // Identity comparison only: never publish the non-visible target through
-    // a URL, search hit, label, or inverse relationship.
-    private let allSymbols: HashMap<String, SymbolDoc>
 
     init(documentation: DocumentationSet, projection: RenderProjection) {
-        allSymbols = projection.allIndex
         let moduleNameById = HashMap<String, String>()
         for (module in documentation.modules) { moduleNameById[module.id] = module.name }
+        for (symbol in projection.allIndex.values()) {
+            if (isTypeDeclaration(symbol)) {
+                registerTypeLinkKeys(unfilteredSymbolIdByCanonical, symbol, moduleNameById)
+            }
+        }
         for (symbol in projection.visibleSymbols) {
             urlBySymbolId[symbol.id] = symbolUrl(projection.visibleIndex, symbol)
             if (!isTypeDeclaration(symbol)) { continue }
-            registerTypeLinkKey(symbolIdByCanonical, symbol.id, symbol.id)
-            registerTypeLinkKey(symbolIdByCanonical, symbol.qualifiedName, symbol.id)
-            match (moduleNameById.get(symbol.moduleId)) {
-                case Some(moduleName) =>
-                    registerTypeLinkKey(symbolIdByCanonical,
-                        "${moduleName}.${symbol.qualifiedName}", symbol.id)
-                    let relative = packageRelativeTypeName(symbol)
-                    if (!relative.isEmpty()) {
-                        registerTypeLinkKey(symbolIdByCanonical, "${moduleName}.${relative}", symbol.id)
-                    }
-                case None => ()
-            }
+            registerTypeLinkKeys(symbolIdByCanonical, symbol, moduleNameById)
         }
         for (symbol in projection.visibleSymbols) {
             for (parameter in symbol.parameters) {
@@ -487,14 +497,16 @@ internal class HtmlTypeLinkIndex {
         }
     }
 
-    // The visible link index intentionally excludes private declarations.
-    // Relationship coalescing must nevertheless recognize the same filtered
-    // target so its weaker source-side spelling is suppressed, not exposed.
+    // Private declarations can be matched without exposing their identity.
+    // Reconcile exactly the same canonical forms accepted by visible links.
     internal func sameUnfilteredTarget(typeRef: TypeRef, symbolId: String): Bool {
-        match ((allSymbols.get(symbolId), typeRef.semantic.canonical)) {
-            case (Some(target), Some(canonical)) =>
-                canonical == target.id || canonical == target.qualifiedName
-            case _ => false
+        if (typeRef.semantic.state != "resolved") { return false }
+        match (typeRef.semantic.canonical) {
+            case Some(canonical) => match (unfilteredSymbolIdByCanonical.get(canonical)) {
+                case Some(id) => !id.isEmpty() && id == symbolId
+                case None => false
+            }
+            case None => false
         }
     }
 
