@@ -89,6 +89,7 @@ jobs:
           CJDOC_RELEASE_COMMIT: ${{ github.sha }}
         run: |
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          . scripts/with_sts_o1_cjpm.sh
           python scripts/with_stdx.py --variant static -- scripts/release_check.sh
 
   platform-acceptance:
@@ -159,6 +160,7 @@ jobs:
             xattr -dr com.apple.quarantine "${CANGJIE_SDK_ROOT}" || true
           fi
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          . scripts/with_sts_o1_cjpm.sh
           python scripts/with_stdx.py --variant static -- scripts/check.sh
 
   package:
@@ -239,8 +241,10 @@ jobs:
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           python scripts/verify_release.py >/dev/null
           python scripts/verify_repository_inputs.py --require-tracked >/dev/null
-          python scripts/with_stdx.py --variant static -- \
-            cjpm build
+          . scripts/with_sts_o1_cjpm.sh
+          # with_stdx.py supplies the sidecar environment; the wrapper stays on
+          # PATH, so this cjpm build still runs at -O1.
+          python scripts/with_stdx.py --variant static -- cjpm build --jobs 1
           python scripts/verify_release.py >/dev/null
           python scripts/verify_repository_inputs.py --require-tracked \
             --legacy-binary target/release/bin/main >/dev/null
