@@ -20,12 +20,14 @@ try:
     from .safe_output_root import lexical_absolute, safe_output_file, verify_directory_chain
     from .strict_json import strict_dumps, strict_load
     from .repository_input_contracts import CURRENT_GOLDEN_VERSION
+    from .release_package_contracts import release_core, release_version_from_tag
     from .verify_repository_inputs import required_repository_paths, verify_repository_inputs
     from .worktree_identity import exact_worktree_identity
 except ImportError:  # Direct script execution.
     from safe_output_root import lexical_absolute, safe_output_file, verify_directory_chain
     from strict_json import strict_dumps, strict_load
     from repository_input_contracts import CURRENT_GOLDEN_VERSION
+    from release_package_contracts import release_core, release_version_from_tag
     from verify_repository_inputs import required_repository_paths, verify_repository_inputs
     from worktree_identity import exact_worktree_identity
 
@@ -120,8 +122,11 @@ def verify_repository(repo: Path, tag: str | None,
         raise ValueError("package.version must be a stable three-part SemVer")
     if tag is None:
         raise ValueError("release tag is required")
-    if tag != f"v{version}":
-        raise ValueError(f"release tag {tag!r} does not match package version v{version}")
+    release_version = release_version_from_tag(tag)
+    if release_core(release_version) != version:
+        raise ValueError(
+            f"release tag {tag!r} does not match package version v{version}"
+        )
     repository_inputs = verify_repository_inputs(repo, require_tracked=True)
     git_identity = verify_git_identity(repo, tag, expected_commit)
 
@@ -192,6 +197,7 @@ def verify_repository(repo: Path, tag: str | None,
     return {
         "schemaVersion": "cjdoc.release-evidence/2",
         "version": version,
+        "releaseVersion": release_version,
         "tag": tag,
         **git_identity,
         "docIrSchemaVersion": expected,

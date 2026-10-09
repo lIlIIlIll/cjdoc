@@ -247,6 +247,7 @@ jobs:
           python scripts/package_release.py \
             --platform "${{ matrix.platform }}" \
             --source-commit "${CJDOC_RELEASE_COMMIT}" \
+            --release-tag "${CJDOC_RELEASE_TAG}" \
             --sdk-version "1.2.0" \
             --sdk-sha256 "${CANGJIE_SDK_SHA256}" \
             --stdx-version "1.2.0" \
@@ -375,6 +376,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           asset_dir="${RUNNER_TEMP}/release-assets"
+          # A pre-release tag (vX.Y.Z-<suffix>) publishes as a GitHub pre-release
+          # and never takes the "Latest" pointer away from the newest stable
+          # release. The stable core must still match cjpm.toml package.version,
+          # which verify_release.py enforces before packaging.
+          case "${GITHUB_REF_NAME}" in
+            *-*) release_flags="--prerelease" ;;
+            *)   release_flags="--latest" ;;
+          esac
+          echo "release_flags=${release_flags}"
           require_draft() {
             test "$(gh release view "${GITHUB_REF_NAME}" \
               --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)" = "true"
@@ -392,7 +402,8 @@ jobs:
           else
             verify_remote_tag
             gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
-              --verify-tag --draft --generate-notes --title "cjdoc ${GITHUB_REF_NAME}"
+              --verify-tag --draft --generate-notes \
+              --title "cjdoc ${GITHUB_REF_NAME}"
           fi
           verify_remote_tag
           require_draft
@@ -407,4 +418,4 @@ jobs:
           verify_remote_tag
           require_draft
           gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
-            --draft=false --latest
+            --draft=false ${release_flags}

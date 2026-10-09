@@ -4,7 +4,34 @@ import re
 
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
+# The cjpm.toml package version: the Cangjie toolchain rejects a pre-release
+# suffix here, so `package.version` stays a stable three-part SemVer.
 SEMVER = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+# A release version may carry a SemVer pre-release suffix (`0.7.2-rc.1`). The
+# release tag, the packaged asset names and the release manifest use this
+# spelling; `package.version` and the binary `--version` output keep the stable
+# core, so a release still proves which source produced it.
+RELEASE_SEMVER = re.compile(
+    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+    r"(?:-(?:[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$"
+)
+
+
+def release_core(release_version: str) -> str:
+    """Return the stable three-part core of a release version."""
+    return release_version.split("-", 1)[0]
+
+
+def release_version_from_tag(tag: str) -> str:
+    """Return the release version carried by an exact `v`-prefixed release tag."""
+    if not tag.startswith("v"):
+        raise ValueError(f"release tag {tag!r} must start with 'v'")
+    value = tag[1:]
+    if not RELEASE_SEMVER.fullmatch(value):
+        raise ValueError(
+            f"release tag {tag!r} is not v followed by a SemVer release version"
+        )
+    return value
 MAX_MEMBERS = 128
 MAX_ARCHIVE_SIZE = 512 * 1024 * 1024
 MAX_MEMBER_SIZE = 512 * 1024 * 1024
