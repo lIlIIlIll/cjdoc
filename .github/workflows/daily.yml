@@ -5,22 +5,11 @@ on:
     - cron: "17 18 * * *"
   workflow_dispatch:
     inputs:
-      sdk_url:
-        description: Checksum-pinned Cangjie 1.3 SDK URL
+      sdk_version:
+        description: Cangjie STS version to accept
         required: false
         type: string
-      sdk_sha256:
-        description: Lowercase SHA-256 for the Cangjie 1.3 SDK archive
-        required: false
-        type: string
-      stdx_url:
-        description: Checksum-pinned matching stdx 1.3 archive URL
-        required: false
-        type: string
-      stdx_sha256:
-        description: Lowercase SHA-256 for the matching stdx archive
-        required: false
-        type: string
+        default: "1.2.0"
 
 permissions:
   contents: read
@@ -31,17 +20,14 @@ concurrency:
 
 jobs:
   acceptance:
-    name: linux-x64 / configured daily SDK
+    name: linux-x64 / Cangjie ${{ inputs.sdk_version || '1.2.0' }} STS
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
       CJDOC_PYTHON: python
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUTF8: "1"
-      CANGJIE_SDK_URL: ${{ inputs.sdk_url || vars.CANGJIE_DAILY_1_3_LINUX_X64_URL }}
-      CANGJIE_SDK_SHA256: ${{ inputs.sdk_sha256 || vars.CANGJIE_DAILY_1_3_LINUX_X64_SHA256 }}
-      CANGJIE_STDX_URL: ${{ inputs.stdx_url || vars.CANGJIE_DAILY_STDX_1_3_LINUX_X64_URL }}
-      CANGJIE_STDX_SHA256: ${{ inputs.stdx_sha256 || vars.CANGJIE_DAILY_STDX_1_3_LINUX_X64_SHA256 }}
+      CANGJIE_SDK_VERSION: ${{ inputs.sdk_version || '1.2.0' }}
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -53,43 +39,35 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Require a checksum-pinned daily SDK
-        shell: bash
-        run: |
-          test -n "${CANGJIE_SDK_URL}"
-          [[ "${CANGJIE_SDK_SHA256}" =~ ^[0-9a-f]{64}$ ]]
-
-      - name: Restore daily Cangjie SDK
-        id: sdk-cache
+      - name: Restore cjv toolchain cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: ${{ runner.temp }}/cangjie-sdk-daily-1.3-stdx
-          key: cangjie-sdk-daily-linux-x64-${{ inputs.sdk_sha256 || vars.CANGJIE_DAILY_1_3_LINUX_X64_SHA256 }}-${{ inputs.stdx_sha256 || vars.CANGJIE_DAILY_STDX_1_3_LINUX_X64_SHA256 }}-v4-authenticated-archive
+          path: ${{ runner.temp }}/setup-cangjie-cjv
+          key: cjv-home-${{ runner.os }}-${{ env.CANGJIE_SDK_VERSION }}-v1
 
-      - name: Install checksum-pinned daily Cangjie SDK
-        id: sdk
+      - name: Set up Cangjie STS SDK with stdx
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571 # v3.2.0
+        with:
+          channel: sts
+          version: ${{ env.CANGJIE_SDK_VERSION }}
+          components: stdx
+          cjv-version: v0.3.2
+
+      - name: Export authenticated stdx environment and record toolchain
         shell: bash
         run: |
-          test -n "${CANGJIE_SDK_URL}"
-          [[ "${CANGJIE_SDK_SHA256}" =~ ^[0-9a-f]{64}$ ]]
-          test -n "${CANGJIE_STDX_URL}"
-          [[ "${CANGJIE_STDX_SHA256}" =~ ^[0-9a-f]{64}$ ]]
-          python scripts/install_cangjie_sdk.py \
-            --url "${CANGJIE_SDK_URL}" \
-            --sha256 "${CANGJIE_SDK_SHA256}" \
-            --stdx-url "${CANGJIE_STDX_URL}" \
-            --stdx-sha256 "${CANGJIE_STDX_SHA256}" \
-            --destination "${RUNNER_TEMP}/cangjie-sdk-daily-1.3-stdx" \
-            --github-output "${GITHUB_OUTPUT}"
-
-      - name: Run v8 acceptance and real-repository smoke
-        shell: bash
-        env:
-          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
-        run: |
-          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          set -euo pipefail
+          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+          echo "resolved_cangjie_version=${CANGJIE_SDK_VERSION}"
+          echo "runner_image=${ImageOS:-unknown} runner_image_version=${ImageVersion:-unknown}"
           cjc -v
           cjpm -v
+
+      - name: Run acceptance and real-repository smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           python scripts/with_stdx.py --variant static -- scripts/check.sh
           python scripts/with_stdx.py --variant static -- \
             python scripts/real_repository_smoke.py --project .

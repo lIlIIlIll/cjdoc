@@ -322,7 +322,7 @@ cjpm -v
 ./cjdoc --version
 ```
 
-仓库根目录的 `./cjdoc` launcher 在 binary 不存在时会尝试默认构建；SDK 1.2.0 下应先完成上面的构建步骤。维护者运行 `scripts/check.sh` 时，使用 [CI workflow](../.github/workflows/ci.yml) 中同一 SDK、sidecar 和临时 `-O1` 包装步骤。Tag 发布流程仍单独配置 Cangjie 1.3.0；其验收与当前源码/Pages 构建分开，见 [`docs/release-process.md`](release-process.md)。
+仓库根目录的 `./cjdoc` launcher 在 binary 不存在时会尝试默认构建；SDK 1.2.0 下应先完成上面的构建步骤。维护者运行 `scripts/check.sh` 时，使用 [CI workflow](../.github/workflows/ci.yml) 中同一 SDK、sidecar 和临时 `-O1` 包装步骤。Tag 发布流程使用同一个钉死的 Cangjie 1.2.0 STS 与匹配 stdx，归档 URL 与 SHA-256 内联在 workflow 中；见 [`docs/release-process.md`](release-process.md)。
 
 ## 能力边界
 

@@ -2,7 +2,7 @@
 
 ## Verification baseline
 
-The current integration uses a same-version Cangjie 1.3.0 compiler and `stdx` sidecar. The repository wrapper authenticates the compiler and sidecar artifacts, verifies their target/version, and exposes the selected sidecar through `CANGJIE_STDX_PATH`. The project does not modify the SDK, compiler, std, or stdx sources.
+The current integration uses the same pinned Cangjie 1.2.0 STS compiler and its matching `stdx` sidecar. The repository wrapper authenticates the compiler and sidecar artifacts, verifies their target/version, and exposes the selected sidecar through `CANGJIE_STDX_PATH`. The project does not modify the SDK, compiler, std, or stdx sources.
 
 The probe and fixture evidence is repository-relative:
 

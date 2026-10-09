@@ -71,25 +71,17 @@ Run-example capability also varies by platform. Linux uses a hard address-space 
 
 The workflow triggers for both `main` and `dev`. Before SDK setup it verifies that the complete current v11 golden set and every frozen v6-v10 migration input, published schemas, notices, licenses and vendor provenance files are tracked. Restored SDK caches retain both checksum-pinned archives as well as the extracted tree. Every hit rechecks both archive hashes, re-runs bounded archive preflight, re-extracts into a temporary directory, and compares that authenticated extraction with the marker and cached tree. A missing archive, a forged self-consistent marker/tree, or a directory-shaped hit without authenticated metadata fails closed. Checkout credentials are not persisted in the worktree.
 
-[`daily.yml`](../.github/workflows/daily.yml) runs a Linux x64 daily compiler and matching stdx sidecar on a schedule and by manual dispatch. Scheduled runs fail closed unless these repository variables contain matching archive URLs and lowercase SHA-256 values:
-
-- `CANGJIE_DAILY_1_3_LINUX_X64_URL`
-- `CANGJIE_DAILY_1_3_LINUX_X64_SHA256`
-- `CANGJIE_DAILY_STDX_1_3_LINUX_X64_URL`
-- `CANGJIE_DAILY_STDX_1_3_LINUX_X64_SHA256`
-
-Manual runs may supply the same four values as workflow inputs. Updating an archive URL without its checksum, or leaving either archive pair incomplete, is not a valid daily result.
+[`daily.yml`](../.github/workflows/daily.yml) runs the same pinned Cangjie 1.2.0 STS compiler and matching stdx sidecar on a schedule and by manual dispatch, so the scheduled job is self-sufficient and needs no repository configuration. The version is declared in the workflow `env` as `CANGJIE_SDK_VERSION` and can be overridden per manual run through the `sdk_version` input; `Zxilly/setup-cangjie` resolves and checksum-verifies the archive through its version manifest. The job records `cjc -v`, `cjpm -v` and the resolved version, then runs `scripts/check.sh` and the real-repository smoke.
 
 ## Tag release workflow
 
-[`release.yml`](../.github/workflows/release.yml) is the only automated publisher. It still configures Cangjie 1.3.0 compiler/stdx archives through repository variables, separately from the current 1.2.0 STS source/CI/Pages workflow. Passing those 1.2.0 jobs does not verify the tag-release toolchain. A `v*` tag starts, in order:
+[`release.yml`](../.github/workflows/release.yml) is the only automated publisher. It uses the same pinned Cangjie 1.2.0 STS compiler and matching stdx sidecar as source builds, CI and Pages; the exact archive URLs and SHA-256 values are inlined in the workflow `env` (`CJDOC_STS_*`), so a release never depends on repository variables. The stdx component carries no checksum in the upstream manifest, so its SHA-256 is pinned to the archive this repository verified. A `v*` tag starts, in order:
 
-1. the full Linux release gate on stable Cangjie 1.3.0 and its matching stdx sidecar;
-2. stable Windows x64 and macOS ARM64 acceptance with their matching sidecars;
-3. configured daily Linux acceptance and real-repository smoke when all four checksum-pinned daily variables are present; otherwise this optional forward-compatibility job is explicitly skipped;
-4. deterministic packages for Linux x64, Windows x64 and macOS ARM64 in `contents: read` jobs. Each package records compiler and stdx version/checksum provenance in the v3 manifest, carries a SHA-256 sidecar, and is uploaded only as a digest-checked Actions artifact;
-5. one `contents: write` publisher downloads those artifacts, re-verifies the exact tag checkout, exact asset set, every SHA-256 sidecar, every internal package manifest and every repository-derived payload byte;
-6. only after verification, that publisher creates or confirms a draft, confirms it is still draft immediately before upload and again immediately before changing it to a public release.
+1. the full Linux release gate on the pinned Cangjie 1.2.0 STS compiler and its matching stdx sidecar;
+2. Windows x64 and macOS ARM64 acceptance with their matching sidecars;
+3. deterministic packages for Linux x64, Windows x64 and macOS ARM64 in `contents: read` jobs. Each package records compiler and stdx version/checksum provenance in the v3 manifest, carries a SHA-256 sidecar, and is uploaded only as a digest-checked Actions artifact;
+4. one `contents: write` publisher downloads those artifacts, re-verifies the exact tag checkout, exact asset set, every SHA-256 sidecar, every internal package manifest and every repository-derived payload byte;
+5. only after verification, that publisher creates or confirms a draft, confirms it is still draft immediately before upload and again immediately before changing it to a public release.
 
 The tag must equal `v` plus the stable `package.version`, resolve to checked-out `HEAD`, and (in hosted CI) match `github.sha`; immediately before draft creation, asset upload and publication the publisher recursively peels the live GitHub tag ref through any annotated-tag chain and requires the final commit to remain `github.sha`. Before and after build/package gates, every HEAD/index/worktree entry is compared by Git mode and blob identity; `assume-unchanged`, `skip-worktree`, index drift, missing/modified tracked files, and ignored or untracked input paths are rejected. Only narrowly enumerated generated outputs below `target/`, build caches, Python bytecode caches and probe outputs are excluded. Git dependencies must use audited 40-hex `commitId` values, the lock and third-party notices/licenses must match, and the vendored yjson manifest must bind its license, upstream notice, adapted `cjpm.toml`, and an exact inventory with no extra native/script/build inputs. The current schema alias must be v8, byte-frozen v6/v7 schemas and all 18 migration inputs plus semantic receipts must remain tracked, and the performance baseline must be frozen with `purpose: hard-ceiling`. Any failed gate leaves the release unpublished; packaging failures occur before a draft is created.
 
