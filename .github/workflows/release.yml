@@ -83,8 +83,11 @@ jobs:
 
       - name: Export authenticated stdx environment
         shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
         run: |
           set -euo pipefail
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
       - name: Run release gate
@@ -160,8 +163,11 @@ jobs:
 
       - name: Export authenticated stdx environment
         shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
         run: |
           set -euo pipefail
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
       - name: Run platform acceptance
@@ -242,8 +248,11 @@ jobs:
 
       - name: Export authenticated stdx environment
         shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
         run: |
           set -euo pipefail
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
       - name: Build deterministic package
