@@ -89,6 +89,12 @@ class HtmlOverloadContractLayoutTest {
         @Expect(script.contains("matches === total"), true)
         @Expect(script.contains("group.hidden = matches === 0"), true)
         @Expect(script.contains("matches + \" / \" + total"), true)
-        @Expect(!script.contains("group.open ="), true)
+        // Other navigation groups legitimately assign group.open. Only the
+        // overload filtering block must avoid adding another accordion layer.
+        let start = script.indexOf("for (const group of overloadGroups) {").getOrThrow()
+        let end = script.indexOf("for (const group of memberGroups) {").getOrThrow()
+        @Expect(start < end, true)
+        let overloadFilter = script[start..end]
+        @Expect(!overloadFilter.contains("group.open ="), true)
     }
 }
