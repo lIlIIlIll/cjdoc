@@ -330,11 +330,23 @@ internal let HTML_SEARCH_SCRIPT = """
     if (searchStatus) searchStatus.hidden = true;
   };
   render();
+  // While an input method editor composes (for example Chinese pinyin), the
+  // intermediate text must not drive the result list, and Enter must commit the
+  // composition rather than open a result.
+  let composing = false;
+  const isComposing = (event) => composing || (event && event.isComposing === true);
+  input.addEventListener("compositionstart", () => { composing = true; });
+  input.addEventListener("compositionend", () => { composing = false; render(); });
   input.addEventListener("focus", () => { if (input.value.trim()) render(); });
-  input.addEventListener("input", render);
+  input.addEventListener("input", (event) => { if (isComposing(event)) return; render(); });
   if (kindFilter) kindFilter.addEventListener("change", render);
   if (packageFilter) packageFilter.addEventListener("change", render);
   input.addEventListener("keydown", (event) => {
+    // Escape stays usable mid-composition; navigation and activation do not.
+    if (isComposing(event)) {
+      if (event.key === "Escape") { input.value = ""; render(); input.blur(); }
+      return;
+    }
     if (event.key === "ArrowDown") { event.preventDefault(); select(selected + 1); }
     else if (event.key === "ArrowUp") { event.preventDefault(); select(selected < 0 ? visible.length - 1 : selected - 1); }
     else if (event.key === "Enter" && selected >= 0) { const active = results.children[selected]; const link = active && active.querySelector("a"); if (link) { event.preventDefault(); link.click(); } }
