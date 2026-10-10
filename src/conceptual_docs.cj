@@ -796,8 +796,23 @@ private func conceptualMarkdownPage(page: ConceptualPage, pages: ArrayList<Conce
     out.toString()
 }
 
+// The concept search entry is only ever consumed inside the inlined
+// `<script>` payload, so every string is escaped for that context: valid JSON
+// text with `<`, `>` and `&` neutralized, which the client's JSON.parse
+// decodes back to the original characters. Reuses the same mechanism as the
+// symbol index.
 private func conceptualJsonString(value: String): String {
+    conceptualScriptSafeJson(value)
+}
+
+// Escape a JSON string so it can be embedded in a `<script>` element without
+// terminating it. `escapeJsonString` emits the JSON text; the three characters
+// that can end or re-open a script element are then replaced with their
+// escapes. `escapeJsonString` never emits a literal `\`, so the replacement is
+// unambiguous and cannot double-escape an existing sequence.
+private func conceptualScriptSafeJson(value: String): String {
     public_render.escapeJsonString(value)
+        .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 }
 
 private func externalSearchObjectEnd(value: String, start: Int64): ?Int64 {
@@ -1038,16 +1053,6 @@ private func conceptualSearchBody(page: ConceptualPage): String {
         count++
     }
     out.toString()
-}
-
-// The concept body carries guide prose, so it needs the same inline-<script>
-// safety as the symbol index: escape the JSON string, then neutralize the three
-// characters that can terminate a <script> element. escapeJsonString only ever
-// emits alphanumerics, punctuation and \u escapes, so an inserted \u003c is
-// never re-escaped.
-private func conceptualSearchBodyJson(page: ConceptualPage): String {
-    public_render.escapeJsonString(conceptualSearchBody(page))
-        .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 }
 
 private func conceptualNavigationHtml(locale: String): String {

@@ -67,6 +67,27 @@ private func createShowcaseBindingProject(): Path {
     root
 }
 
+// A guide that carries hostile markup in author-controlled text, so the
+// search payload built from it is checked for inline-<script> safety.
+private func createHostileGuideProject(): Path {
+    let root = Directory.createTemp(getTempDirectory())
+    Directory.create(root.join("docs"))
+    File.writeTo(root.join("cjdoc.toml"), """
+        [docs]
+        index = "docs/index.md"
+        [[docs.pages]]
+        source = "docs/guide.md"
+        route = "concepts/guides/hostile"
+        title = "Hostile guide"
+        """.toArray())
+    File.writeTo(root.join("docs/index.md"), "# Hostile fixture\n".toArray())
+    File.writeTo(root.join("docs/guide.md"), ("# Hostile guide\n\n" +
+        "<!-- cjdoc-bind target=\"fixture.Box.add\" selector=\"signature:public func add(value: String): Unit\" " +
+        "language=\"</span><a href=phish>click</a>\" -->\n\n" +
+        "```html\n<script>alert(1)</script>\n```\n").toArray())
+    root
+}
+
 @Test
 class ConceptualShowcaseTest {
     @TestCase
@@ -155,5 +176,28 @@ class ConceptualShowcaseTest {
         hostile["missing.md"] = "//example.test/escape"
         let rendered = api_render.renderStandaloneMarkdownHtml(parsed, sourceLinks: hostile)
         @Expect(!rendered.contains("href="))
+    }
+
+    @TestCase
+    func guideSearchPayloadCannotTerminateTheInlineScriptElement(): Unit {
+        let root = createHostileGuideProject()
+        try {
+            let documentation = showcaseBindingFixture()
+            let pages = conceptualPagesForProject(root.toString(), documentation)
+            let artifacts = api_render.HtmlDocumentationRenderer().render(documentation)
+            let rendered = appendConceptualArtifacts(root.toString(), documentation,
+                ["html"], artifacts, pages, locale: "en")
+            let script = artifactContent(rendered, "html/search-index.js")
+            // Author-controlled text must never reach the payload as raw markup.
+            @Expect(script.contains("</script>"), false)
+            @Expect(script.contains("<a href=phish"), false)
+            @Expect(script.contains("\\u003c"), true)
+            // Escaping is decode-equivalent: the standalone JSON keeps the value.
+            let json = artifactContent(rendered, "html/search-index.json")
+            @Expect(json.contains("</span>"), false)
+            @Expect(json.contains("\\u003c/span\\u003e"), true)
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
     }
 }
