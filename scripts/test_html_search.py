@@ -82,7 +82,7 @@ const entry = (name, packageName = "net", type = "class") => ({id: packageName +
  name, qualifiedName: packageName + "." + name, packageName, kind: type,
  summary: "<script>literal preview</script>", href: "symbols/" + name + ".html"});
 const context = {document, window, requestAnimationFrame: callback => callback(),
- location: {pathname: "/fixture/index.html"}, performance: {getEntriesByType: () => []}, __CJDOC_SEARCH_INDEX__: {schemaVersion: "cjdoc.search-index/7",
+ location: {pathname: "/fixture/index.html"}, performance: {getEntriesByType: () => []}, __CJDOC_SEARCH_INDEX__: {schemaVersion: "cjdoc.search-index/8",
 entries: [entry("HttpClientBuilder"), entry("HTTPConnectionBuffer"), entry("httpclientbuilder"),
  entry("HttpClientBuilder", "other"), entry("send", "net", "function"), entry("BuilderTools"),
  entry("Nova"), entry("a".repeat(128)), entry("a".repeat(129))]}};

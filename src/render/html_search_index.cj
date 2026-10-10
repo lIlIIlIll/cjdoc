@@ -98,8 +98,12 @@ internal func appendSearchSections(out: RenderTextBuffer, symbol: SymbolDoc): Un
         case None => return
     }
     let blocks = ArrayList<(String, String, String)>()
-    if (hasCommentTag(comment, "param")) { addSearchSectionBlock(blocks, comment, symbol, "param", "parameters") }
-    if (hasCommentTag(comment, "return")) { addSearchSectionBlock(blocks, comment, symbol, "return", "return") }
+    // A section is only recorded when the member page actually renders that
+    // heading, so a hit always deep-links to a real element. The page renders
+    // Parameters only with parameters, Returns only with a non-Unit return
+    // type, and Throws only with a throws tag.
+    if (!symbol.parameters.isEmpty() && hasCommentTag(comment, "param")) { addSearchSectionBlock(blocks, comment, symbol, "param", "parameters") }
+    if (hasRenderedReturnHeading(symbol) && hasCommentTag(comment, "return")) { addSearchSectionBlock(blocks, comment, symbol, "return", "return") }
     if (hasCommentTag(comment, "throws")) { addSearchSectionBlock(blocks, comment, symbol, "throws", "throws") }
     if (blocks.isEmpty()) { return }
     out.append(", \"sections\": [")
@@ -119,6 +123,15 @@ internal func appendSearchSections(out: RenderTextBuffer, symbol: SymbolDoc): Un
 private func hasCommentTag(comment: DocComment, name: String): Bool {
     for (tag in comment.tags) { if (tag.name == name) { return true } }
     false
+}
+
+// The member page renders a Returns heading only when a return type is present
+// and is not Unit; `appendDocumentationHtml` omits it otherwise.
+private func hasRenderedReturnHeading(symbol: SymbolDoc): Bool {
+    match (symbol.returnType) {
+        case Some(returnType) => !isUnitType(returnType)
+        case None => false
+    }
 }
 
 private func addSearchSectionBlock(blocks: ArrayList<(String, String, String)>, comment: DocComment,
@@ -181,7 +194,7 @@ internal func appendSearchMetadata(out: RenderTextBuffer, documentation: Documen
 internal func renderSearchIndex(documentation: DocumentationSet,
     projection: RenderProjection): String {
     let out = RenderTextBuffer()
-    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/7\",\n  \"entries\": [")
+    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/8\",\n  \"entries\": [")
     var first = true
     let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(visible, lessThan: { left, right => left.id < right.id }, stable: true)

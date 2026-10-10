@@ -794,4 +794,42 @@ class RendererSafetyTest {
         @Expect(!html.contains(" style=\""))
         @Expect(css.contains(".align-right{text-align:right}"))
     }
+
+    @TestCase
+    func searchSectionsOnlyCoverRenderedHeadings(): Unit {
+        let moduleId = "cjdoc:module:v1:renderer-safety"
+        let source = SourceRange("src/api.cj", SourcePosition(1, 1, 0), SourcePosition(1, 24, 23))
+        let markdown = MarkdownNode("document")
+        // A return on a Unit function renders no Returns heading, so no section
+        // may point at one; a parameter tag on a parameterless function is
+        // likewise dropped. A real non-Unit return keeps its section.
+        @Expect(searchSectionsFor(markdown, moduleId, source, "unit", "function",
+            Some(TypeRef("source", "Unit", SemanticType("unavailable"))), [],
+            [DocTag("return", "", "returned value")]).contains("\"sections\""), false)
+        @Expect(searchSectionsFor(markdown, moduleId, source, "bare", "function",
+            Some(TypeRef("source", "Bool", SemanticType("unavailable"))), [],
+            [DocTag("param", "", "a parameter")]).contains("\"sections\""), false)
+        @Expect(searchSectionsFor(markdown, moduleId, source, "value", "function",
+            Some(TypeRef("source", "Bool", SemanticType("unavailable"))), [],
+            [DocTag("return", "", "returned value")]).contains("\"sections\""), true)
+    }
+
+    private func searchSectionsFor(markdown: MarkdownNode, moduleId: String, source: SourceRange,
+        name: String, kind: String, returnType: ?TypeRef, parameters: Array<ParameterDoc>,
+        tags: Array<DocTag>): String {
+        let symbolId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arenderer-safety::fixture::${kind}:${name}#g0()"
+        let symbol = SymbolDoc(symbolId, kind, name, "fixture." + name, "fixture", moduleId,
+            "public", source, "public func ${name}(): Unit", SemanticInfo("partial", "ast"),
+            parameters: parameters, returnType: returnType,
+            documentation: Some(DocComment("raw", "summary", "", markdown, tags: tags)))
+        let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
+            ProjectInfo("renderer-safety"), ConfigurationSnapshot(lintProfile: "off"),
+            providers: [ProviderInfo("ast", "builtin", moduleId, "partial",
+                SemanticCapabilities(false, false, false, false, false))],
+            modules: [ModuleDoc(moduleId, "renderer-safety", "root", "", packageNames: ["fixture"])],
+            packages: [PackageDoc("fixture", moduleId, sourceFiles: ["src/api.cj"], symbolIds: [symbolId])],
+            files: [FileDoc("src/api.cj", moduleId, "fixture")], declarations: [symbol])
+        rendererSafetyContent(HtmlDocumentationRenderer().render(documentation),
+            "html/search-index.json")
+    }
 }

@@ -45,6 +45,7 @@ class SearchBodyCorpusTest {
         let read = SymbolDoc("fixture::function:read#g0()", "function", "read",
             "fixture.TextReader.read", "fixture", moduleId, "public", searchCorpusSource(2),
             "public func read(): ?String", SemanticInfo("partial", "ast"),
+            returnType: Some(TypeRef("source", "?String", SemanticType("unavailable"), nullable: true)),
             documentation: Some(readReturn))
         let go = SymbolDoc("fixture::function:go#g0()", "function", "go", "fixture.go",
             "fixture", moduleId, "public", searchCorpusSource(3), "public func go(): Unit",

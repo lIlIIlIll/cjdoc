@@ -314,7 +314,7 @@ internal let HTML_SEARCH_SCRIPT = """
     }
   };
   const index = globalThis.__CJDOC_SEARCH_INDEX__;
-  entries = index && index.schemaVersion === "cjdoc.search-index/7" && Array.isArray(index.entries)
+  entries = index && index.schemaVersion === "cjdoc.search-index/8" && Array.isArray(index.entries)
     ? index.entries : [];
   addOptions(kindFilter, entries.map((entry) => entry.kind));
   addOptions(packageFilter, entries.map((entry) => entry.packageName));

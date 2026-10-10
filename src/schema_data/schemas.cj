@@ -313,12 +313,12 @@ public let SEARCH_INDEX_SCHEMA = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index.schema.json",
-  "title": "cjdoc search index v7",
+  "title": "cjdoc search index v8",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "entries"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.search-index/7"},
+    "schemaVersion": {"const": "cjdoc.search-index/8"},
     "entries": {
       "type": "array",
       "items": {
