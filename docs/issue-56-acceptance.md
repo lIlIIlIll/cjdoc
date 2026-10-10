@@ -25,7 +25,7 @@
 | RDR-03.4 去除次要重复 | 已交付 | 生成器版本/IR schema 仅在页脚次级位置（见 2.1） |
 | RDR-04.1 首页单一入口 | 已交付 | PR #76（合并重复的「从指南开始/从这里开始」） |
 | RDR-06.2 关键样例补齐 | 已交付 | PR #75（`window` 三个可运行示例，逐例执行 4→7 通过） |
-| RDR-06.3 就地逐例证据 | **未完成** | 见第 3 节 |
+| RDR-06.3 就地逐例证据 | 已交付 | PR #80（成员页逐例状态徽标 + 原始证据入口，5 徽标/4 页面，状态取自原生 runner） |
 | RDR-07.2 可读变化说明 | 已交付 | PR #78（native reasons 与字段级 Before/After 文本化，原始 JSON 折叠保留） |
 | RDR-08.2 界面本地化 | 已交付 | PR #72、PR #77（外部文档状态徽标 52→0 处原始内部词） |
 
@@ -112,12 +112,15 @@
 `canonical` 的本地可链接身份字段 + 能力声明），并同步 Doc IR/schema/golden。
 属于需要明确范围批准的设计变更，本次未擅自实施。
 
-### RDR-06.3 就地逐例证据
+### RDR-06.3 就地逐例证据（已交付，PR #80）
 
-`doctest/results.json` 目前只在独立的 `validation.html` 报告中呈现，成员页上没有逐例
-状态入口。实现需要在生成流程中把 doctest 结果传入 HTML 渲染器（当前调用顺序为
-先跑 doctest、再渲染，但渲染入口 `renderArtifacts` 未接收该结果），并定义示例身份与
-成员页的稳定绑定。属于跨模块改动，本次未完成。
+原生 doctest 结果现已传入 HTML 渲染器：`cli_runner` 构造 `symbolId + 示例标题 → status`
+证据表，成员页与内联成员详情在每个 `@example` 旁渲染状态徽标与「原始执行证据」入口。
+
+实测：demo-v2（zh-CN，`doctest.mode=deny`）生成出 **5 个状态徽标、分布在 4 个页面**，
+状态全部为 `passed`，与 `doctest/results.json` 的 4 条 `passed` 记录一致。
+未匹配的示例不显示任何状态（不推断验证结论）；单测覆盖空证据、标题不匹配、符号不匹配。
+状态严格取自原生 runner 记录，未把 compile-only / expected-failure 转换为成功。
 
 ### 完整 `check.sh`
 
@@ -132,4 +135,4 @@ CI 的 `Zxilly/setup-cangjie` 官方 stdx 组件，而非代码改动。
 - 展示层不重算兼容性分类，不把 `potentially-breaking`/`partial` 提升为确定结论；
 - 未修改 compiler/std/stdx，未解析 CHIR 文本；
 - 所有改动保留离线、确定性、audience/cfg 隔离与既有安全约束；
-- 本表不宣称 Issue #56 已满足全部关闭条件：RDR-01.1–.3、RDR-06.3 仍未完成。
+- 本表不宣称 Issue #56 已满足全部关闭条件：**RDR-01.1–.3 仍未完成**（架构受限，见第 3 节）。
