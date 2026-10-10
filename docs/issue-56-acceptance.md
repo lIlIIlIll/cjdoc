@@ -128,10 +128,30 @@ daily 1.1.0-alpha，其 stdx 确实未交付 `stdx.chir`）：
 即 `Array<Token>` 中的 `Token` 被解析为限定名 `pocketkit.parsing.Token`，可与
 `pocketkit.io.Token` 区分——这正是 AST 拼写无法判定的同名歧义。
 
-**因此 RDR-01.1–.3 的阻塞已从「架构不允许」降级为「实现尚未进行」**：路径是让
-`chir_provider` 在 CHIR 可用时提供 canonical 类型身份（含结构化 `arguments`），
-并保守回绑；CHIR 不可用时保持现状 partial/unavailable。G6 的缺失意味着回绑仍须
-以既有「保守绑定 + 诊断」方式进行，不可用 location 直接对齐。
+**因此 RDR-01.1–.3 的阻塞已从「架构不允许」降级为「实现尚未进行」**。
+
+已定位到精确的缺口，不再需要猜测：
+
+1. `tools/chir-worker/src/main.cj:105` 目前只把 `funcSrcCodeType.paramTypes.size`
+   写进 `ChirWorkerFunctionRecord`；**CHIR 已解析出的限定类型名与泛型结构被丢弃**，
+   从未跨越 worker 协议边界。
+2. `tools/chir-protocol/src/protocol.cj:245` 的 `function=` 记录只有 9 个字段，
+   没有类型字段可承载这些身份。
+3. `src/chir_provider.cj:130` 声明 `SemanticCapabilities(..., canonicalTypes: false)`，
+   并只用 `partialChirType(view.typeSpelling)` 构造类型——即回到源码拼写，
+   因此 renderer 的 `state == "resolved"` 门槛永远不满足。
+
+实现路径（按依赖顺序）：
+
+- 扩展 worker 记录，携带每个参数与返回值的限定类型名及递归 `typeArgs`；
+- 扩展协议编解码（字段数、编码、解析）并保持向后兼容的字段计数校验；
+- provider 在 worker 提供类型身份时声明 `canonicalTypes: true` 并构造含
+  `arguments` 的 `TypeRef`（`state` 严格按证据给，不猜测）；
+- 同步 Doc IR/schema/golden，并为「CHIR 不可用时保持 partial/unavailable」补回归。
+
+G6 的缺失（`Function` 无公开 location）不阻塞该路径：绑定 CHIR 记录到源码声明
+所用的 package / owner / name / arity 均已可用（G2、G5 实测 PASS），回绑继续沿用
+既有「保守绑定 + 诊断」方式。
 
 同时实测表明仅解析**原子类型**收益很低：示例中 42 处类型拼写，35 处为原子类型且多为
 `Unit`(11)、`String`(6)、`Bool`(5)、`Int64` 等无本地声明的内建类型，只有 `TextReader`
