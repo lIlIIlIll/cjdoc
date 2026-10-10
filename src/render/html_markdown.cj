@@ -367,8 +367,56 @@ internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: D
     out.append("</dl></section>\n")
 }
 
+// A map that is present but has no entry for an example means the example's
+// result was not recorded, which differs from doctests being disabled. This
+// reserved key marks a map built from an actual doctest run; no real key can
+// collide with it, since every symbol id is non-empty.
+public let EXAMPLE_EVIDENCE_RAN_MARKER = "\u{0}doctest-ran"
+
+// Per-example execution status, keyed by "symbolId\u{0}title". The value is the
+// native doctest status. Only statuses the native runner actually recorded are
+// shown; an example without an entry is left unlabelled rather than guessed.
+internal func appendExampleEvidenceHtml(out: RenderTextBuffer, symbol: SymbolDoc, tag: DocTag,
+    evidence: HashMap<String, String>, locale: String,
+    evidenceRootPrefix!: String = "../../"): Unit {
+    match (evidence.get(exampleEvidenceKey(symbol.id, tag.subject))) {
+        case None =>
+            // When doctests ran, an example with no result is evidence that was
+            // not recorded, which a reader must not mistake for a verified or
+            // merely absent claim. When no doctests ran at all there is no
+            // marker and no claim system is active, so nothing is shown.
+            if (!evidence.contains(EXAMPLE_EVIDENCE_RAN_MARKER)) { return }
+            out.append("<p class=\"example-evidence\"><span class=\"badge\" data-example-state=\"unverified\">")
+            out.append(label(locale, "Not verified by execution", "未经执行验证"))
+            out.append("</span></p>")
+        case Some(status) =>
+            let wording = match (status) {
+                case "passed" => label(locale, "Verified by execution", "已执行验证")
+                case "failed" => label(locale, "Execution failed", "执行失败")
+                case "timeout" => label(locale, "Execution timed out", "执行超时")
+                case "skipped" => label(locale, "Not executed", "未执行")
+                case _ => status
+            }
+            out.append("<p class=\"example-evidence\"><span class=\"badge\" data-example-state=\"")
+            out.append(escapeHtml(status))
+            out.append("\">")
+            out.append(escapeHtml(wording))
+            out.append("</span> <a href=\"" + evidenceRootPrefix + "doctest/results.json\">")
+            out.append(label(locale, "Raw execution evidence", "原始执行证据"))
+            out.append("</a></p>")
+    }
+}
+
+// Shared between the renderer and the CLI that builds the evidence map, so both
+// sides derive the same key.
+public func exampleEvidenceKey(symbolId: String, title: String): String {
+    symbolId + "\u{0}" + title
+}
+
 internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: DocComment,
-    locale: String, headingLevel!: Int64 = 3): Unit {
+    locale: String, headingLevel!: Int64 = 3, symbol!: ?SymbolDoc = None,
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>(),
+    exampleEvidenceRootPrefix!: String = "../../"): Unit {
     var hasExamples = false
     for (tag in comment.tags) { if (tag.name == "example") { hasExamples = true; break } }
     if (!hasExamples) { return }
@@ -378,6 +426,11 @@ internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: Do
         out.append("<div class=\"example-block\">")
         if (!tag.subject.isEmpty()) {
             out.append("<h${min(6, headingLevel + 1)} class=\"example-title\">${escapeHtml(tag.subject)}</h${min(6, headingLevel + 1)}>")
+        }
+        match (symbol) {
+            case Some(value) => appendExampleEvidenceHtml(out, value, tag, exampleEvidence, locale,
+                evidenceRootPrefix: exampleEvidenceRootPrefix)
+            case None => ()
         }
         if (trimExampleBlankLines(tag.description).isEmpty()) {
             let emptyLabel = label(locale, "No example content.", "示例内容为空。")

@@ -115,6 +115,15 @@ def assemble(output: Path) -> Path:
         if old not in content:
             raise ValueError("native validation page has no expected doctest evidence link")
         page.write_text(content.replace(old, 'href="doctest/results.json"'), encoding="utf-8")
+        # Member pages carry the same evidence link, written one level deeper for
+        # the standalone layout. The artifact now sits inside html/, so the link
+        # loses one hop here instead of pointing back out of the published tree.
+        for symbol in sorted((root / "symbols").glob("*.html")):
+            member = symbol.read_text(encoding="utf-8")
+            if 'href="../../doctest/results.json"' in member:
+                symbol.write_text(member.replace(
+                    'href="../../doctest/results.json"', 'href="../doctest/results.json"'),
+                    encoding="utf-8")
     return root
 
 
