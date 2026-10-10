@@ -5,6 +5,8 @@ import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
 import cjdoc.model as public_model
+import cjdoc.provider as public_provider
+import std.collection.*
 
 private func chirTestOptions(compilerExecutable!: String = "cjc"): ChirOptions {
     ChirOptions(compilerExecutable: compilerExecutable,
@@ -436,5 +438,18 @@ class ChirPublicContracts {
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
+    }
+
+    @TestCase
+    func nestedDisplaySpellingFollowsTheSourceTokenChoice(): Unit {
+        // The source wrote the qualified form, so the nested argument keeps it and
+        // can match the signature token.
+        @Expect(chirTypeDisplaySpelling("qtest.Token", "Array < qtest.Token >"), "qtest.Token")
+        // The source wrote the short form; dropping the package prefix keeps the
+        // match without inventing a qualified spelling the author never used.
+        @Expect(chirTypeDisplaySpelling("qtest.Token", "Array < Token >"), "Token")
+        // Neither form can match a source token here, so the short name is used
+        // and simply yields no link rather than a wrong one.
+        @Expect(chirTypeDisplaySpelling("a.b.Token", "Array < Other >"), "Token")
     }
 }
