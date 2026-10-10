@@ -33,6 +33,7 @@ Stages:
   python-tools  python -m unittest discover -s scripts (minus preflight modules)
   cli           CLI, schema, golden, HTML, output-safety and fixture contracts
   provider      provider-plugin fixture run
+  smoke         real-repository smoke against a fresh two-run output tree
 
 Common options:
   --repo DIR           repository root (default: this script's parent)
