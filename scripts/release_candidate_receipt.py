@@ -49,8 +49,10 @@ def canonical_json(value: object) -> bytes:
 def run(command: list[str], *, check: bool = True) -> str:
     try:
         completed = subprocess.run(command, text=True, capture_output=True)
-    except FileNotFoundError as error:
-        raise SystemExit(f"release receipt: command failed: {command[0]} is not available: {error}")
+    except OSError as error:
+        # Missing tool, wrong executable format (WinError 193) and permission
+        # errors are all reported conditions, never a bare traceback.
+        raise SystemExit(f"release receipt: command failed: {command[0]} could not run: {error}")
     if check and completed.returncode != 0:
         raise SystemExit(f"release receipt: command failed: {' '.join(command)}: {completed.stderr.strip()}")
     return (completed.stdout + completed.stderr).strip()

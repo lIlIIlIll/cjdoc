@@ -15,13 +15,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ci_stage
 
 
-def write_binary(path: Path, body: str = "#!/bin/sh\necho 'cjdoc 0.7.2'\n") -> Path:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
-
-
 class StageRecordTest(unittest.TestCase):
     def test_records_are_timed_appended_and_never_lose_history(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -69,25 +62,32 @@ class StageRecordTest(unittest.TestCase):
 
 
 class IdentityGateTest(unittest.TestCase):
+    """The gate must work wherever the suite runs, so the "binary" is a real program."""
+
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        self.binary = write_binary(self.root / "main")
+        # `sys.executable` is a genuinely executable program on every platform,
+        # which keeps the digest/version assertions meaningful everywhere.
+        self.binary = Path(sys.executable)
+        self.version_output = subprocess.run(
+            [str(self.binary), "--version"], capture_output=True, text=True).stdout.strip()
 
-    def manifest(self, *, version: str = "cjdoc 0.7.2") -> Path:
+    def manifest(self, *, version: str | None = None) -> Path:
         document = {
             "schemaVersion": ci_stage.BUILD_MANIFEST_SCHEMA,
             "mainBinary": {"path": "main", "sha256": ci_stage.sha256_file(self.binary),
-                           "size": self.binary.stat().st_size, "versionOutput": version},
+                           "size": self.binary.stat().st_size,
+                           "versionOutput": self.version_output if version is None else version},
         }
         path = self.root / "build-manifest.json"
         path.write_text(json.dumps(document), encoding="utf-8")
         return path
 
-    def run_gate(self, manifest: Path, *extra: str) -> int:
+    def run_gate(self, manifest: Path, *, runnable: bool = True) -> int:
         return ci_stage.verify_identity(manifest, self.binary, None, None,
-                                        require_runnable="--skip-version-check" not in extra)
+                                        require_runnable=runnable)
 
     def test_matching_identity_passes(self) -> None:
         self.assertEqual(self.run_gate(self.manifest()), 0)
@@ -113,24 +113,19 @@ class IdentityGateTest(unittest.TestCase):
         path.write_text(json.dumps(document), encoding="utf-8")
         self.assertEqual(self.run_gate(path), 1)
 
-    def test_unrunnable_binary_fails_by_default_but_is_allowed_explicitly(self) -> None:
-        """A digest-only check must be an explicit, recorded choice."""
+    def test_a_file_that_cannot_execute_is_reported_not_a_crash(self) -> None:
+        """A non-program is a reported mismatch by default and allowed only explicitly."""
+        not_a_program = self.root / "not-a-program"
+        not_a_program.write_text("this is not an executable program\n", encoding="utf-8")
         document = json.loads(self.manifest().read_text(encoding="utf-8"))
-        document["mainBinary"]["versionOutput"] = "cjdoc 0.7.2"
-        path = self.root / "unrunnable.json"
-        path.write_text(json.dumps(document), encoding="utf-8")
-        broken = write_binary(self.root / "broken", "")  # empty file: cannot exec
-        self.assertEqual(
-            ci_stage.verify_identity(path, broken, None, None, require_runnable=True), 1)
-        # With the digest corrected for the actual file, skipping the run check passes.
         document["mainBinary"].update({
-            "sha256": ci_stage.sha256_file(broken), "size": broken.stat().st_size,
-            "versionOutput": "cjdoc 0.7.2"})
+            "sha256": ci_stage.sha256_file(not_a_program),
+            "size": not_a_program.stat().st_size})
+        path = self.root / "not-a-program.json"
         path.write_text(json.dumps(document), encoding="utf-8")
+        self.assertEqual(ci_stage.verify_identity(path, not_a_program, None, None), 1)
         self.assertEqual(
-            ci_stage.verify_identity(path, broken, None, None, require_runnable=True), 1)
-        self.assertEqual(
-            ci_stage.verify_identity(path, broken, None, None, require_runnable=False), 0)
+            ci_stage.verify_identity(path, not_a_program, None, None, require_runnable=False), 0)
 
     def test_wrong_manifest_schema_is_rejected(self) -> None:
         path = self.root / "wrong.json"
