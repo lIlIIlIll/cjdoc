@@ -99,7 +99,9 @@ esac
 
 run_stage() {
     local id="$1" kind="$2"
-    local inner_args=("${original_args[@]}")
+    # macOS ships bash 3.2, where an empty array expanded under `set -u` is an
+    # unbound-variable error. The `+` guard keeps a zero-argument gate working.
+    local inner_args=(${original_args[@]+"${original_args[@]}"})
     # The inner process learns its stage from --inner, so drop the stage token
     # that the caller may have spelled out explicitly.
     if [[ ${#inner_args[@]} -gt 0 && "${inner_args[0]}" != -* ]]; then
@@ -107,7 +109,8 @@ run_stage() {
     fi
     "${python_cmd}" "${repo}/scripts/ci_stage.py" run \
         --id "${id}" --kind "${kind}" --evidence "${evidence_dir}" \
-        -- "${BASH:-bash}" "${self_path}" --inner "${id}" "${inner_args[@]}"
+        -- "${BASH:-bash}" "${self_path}" --inner "${id}" \
+        ${inner_args[@]+"${inner_args[@]}"}
 }
 
 # Map a stage name to its ci_stage kind.
@@ -260,11 +263,14 @@ stage_build() {
     refuse_existing_outputs worker
     # Keep project compilation single-job; STS 1.2.0's bundled llc has crashed under concurrent CI jobs.
     cjpm build --jobs 1
+    # Resolve the real executable name. Windows produces `main.exe`, and the
+    # `-f main` test can succeed on a non-executable stub, so the `.exe` spelling
+    # is preferred whenever it exists.
     local binary="${repo}/target/release/bin/main"
-    if [[ -x "${binary}" || ( -f "${binary}" && ( "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ) ) ]]; then
-        :
-    elif [[ -f "${binary}.exe" ]]; then
+    if [[ -f "${binary}.exe" ]]; then
         binary="${binary}.exe"
+    elif [[ -x "${binary}" ]] || [[ -f "${binary}" && ( "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ) ]]; then
+        :
     else
         echo "cjdoc binary is missing or not executable: ${binary}" >&2
         exit 1
