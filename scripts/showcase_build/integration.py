@@ -13,6 +13,7 @@ from showcase_contract.contract import check_regressions, resolve_plan
 from showcase_contract.offline import create_archive
 from showcase_contract.site import ContractError, Site, canonical_json, load_json
 from . import homepage, legacy, manifest, navigation, report_pages, reports
+from . import stage_timing
 from .packaging import copy_sources, source_archive, tool_version
 
 FORMATS = ("html", "json", "markdown", "api-surface", "coverage", "symbol-index")
@@ -96,37 +97,48 @@ def publish_compatibility(repo: Path, site: Path, current: Path, result: dict) -
 
 def build(repo: Path, binary: Path, project: Path, site: Path, work: Path,
           provenance: dict, previous: Path | None = None) -> dict:
-    versions = {"cjdoc": tool_version([str(binary), "--version"], repo),
-                "cjc": tool_version(["cjc", "-v"], repo),
-                "cjpm": tool_version(["cjpm", "-v"], repo),
-                "cjdocSha256": hashlib.sha256(binary.read_bytes()).hexdigest()}
+    with stage_timing.phase("showcase.tool-versions"):
+        versions = {"cjdoc": tool_version([str(binary), "--version"], repo),
+                    "cjc": tool_version(["cjc", "-v"], repo),
+                    "cjpm": tool_version(["cjpm", "-v"], repo),
+                    "cjdocSha256": hashlib.sha256(binary.read_bytes()).hexdigest()}
     current = work / "api"
-    generate_api(binary, project, current, provenance, repo)
+    with stage_timing.phase("showcase.api"):
+        generate_api(binary, project, current, provenance, repo)
     source = work / "source"
-    copy_sources(repo, source)
+    with stage_timing.phase("showcase.source-copy"):
+        copy_sources(repo, source)
+    # PocketKit records its own locale/version phases inside reproduce.build().
     result = reproduce_module(repo).build(binary, source / "examples/pocketkit", work / "generated",
                                           repository=provenance["repository"],
                                           revision=provenance["revision"], repository_root=source)
-    shutil.copytree(repo / "site", site)
-    not_found = site / "404.html"
-    base = "/" + provenance["repository"].rstrip("/").rsplit("/", 1)[-1] + "/"
-    not_found.write_text(not_found.read_text(encoding="utf-8").replace("__PAGES_BASE__", base), encoding="utf-8")
-    publish_examples(result, site, provenance)
-    publish_compatibility(repo, site, current, result)
-    legacy.publish(binary, repo, site, work)
-    from check_showcase_authoring import check as check_authoring
-    check_authoring(binary, source / "examples/pocketkit", site / "artifacts/authoring.json")
+    with stage_timing.phase("showcase.site-copy"):
+        shutil.copytree(repo / "site", site)
+        not_found = site / "404.html"
+        base = "/" + provenance["repository"].rstrip("/").rsplit("/", 1)[-1] + "/"
+        not_found.write_text(not_found.read_text(encoding="utf-8").replace("__PAGES_BASE__", base), encoding="utf-8")
+    with stage_timing.phase("showcase.reports"):
+        publish_examples(result, site, provenance)
+        publish_compatibility(repo, site, current, result)
+        legacy.publish(binary, repo, site, work)
+    with stage_timing.phase("showcase.authoring"):
+        from check_showcase_authoring import check as check_authoring
+        check_authoring(binary, source / "examples/pocketkit", site / "artifacts/authoring.json")
     if hashlib.sha256(binary.read_bytes()).hexdigest() != versions["cjdocSha256"]:
         raise ContractError("native executable changed during showcase generation")
-    navigation.publish(site)
-    homepage.downloads(site)
-    download = source_archive(source, site, {**provenance, "tools": versions})
-    plan = manifest.compile_plan(repo, site)
-    resolved = resolve_plan(plan, Site(site), repo, provenance["revision"])
-    from showcase_contract.baseline import check_baseline
-    check_baseline(load_json(repo / "site/showcase-baseline.json"), resolved)
+    with stage_timing.phase("showcase.navigation"):
+        navigation.publish(site)
+    with stage_timing.phase("showcase.downloads"):
+        homepage.downloads(site)
+        download = source_archive(source, site, {**provenance, "tools": versions})
+    with stage_timing.phase("showcase.plan-baseline"):
+        plan = manifest.compile_plan(repo, site)
+        resolved = resolve_plan(plan, Site(site), repo, provenance["revision"])
+        from showcase_contract.baseline import check_baseline
+        check_baseline(load_json(repo / "site/showcase-baseline.json"), resolved)
     if previous is not None:
-        check_regressions(load_json(previous), resolved)
+        with stage_timing.phase("showcase.regressions"):
+            check_regressions(load_json(previous), resolved)
     metadata = {"schemaVersion": "cjdoc.showcase/2", "source": provenance, "tools": versions,
                 "currentDocIr": reports.IR, "locales": ["zh-CN", "en"],
                 "exampleVersions": ["demo-v1", "demo-v2"], "sourceDownload": download,
@@ -135,9 +147,13 @@ def build(repo: Path, binary: Path, project: Path, site: Path, work: Path,
     (site / "showcase-plan.json").write_bytes(canonical_json(plan))
     (site / "showcase-features.json").write_bytes(canonical_json(resolved))
     (site / "build.json").write_bytes(canonical_json(metadata))
-    homepage.publish(repo, site, resolved, metadata)
-    create_archive(site)
-    Site(site).validate_links()
+    with stage_timing.phase("showcase.homepage"):
+        homepage.publish(repo, site, resolved, metadata)
+    with stage_timing.phase("showcase.offline-archive"):
+        create_archive(site)
+    with stage_timing.phase("showcase.link-validate"):
+        Site(site).validate_links()
+    stage_timing.flush()
     return metadata
 
 
