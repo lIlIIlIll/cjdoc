@@ -441,15 +441,28 @@ class ChirPublicContracts {
     }
 
     @TestCase
-    func nestedDisplaySpellingFollowsTheSourceTokenChoice(): Unit {
-        // The source wrote the qualified form, so the nested argument keeps it and
-        // can match the signature token.
-        @Expect(chirTypeDisplaySpelling("qtest.Token", "Array < qtest.Token >"), "qtest.Token")
-        // The source wrote the short form; dropping the package prefix keeps the
-        // match without inventing a qualified spelling the author never used.
-        @Expect(chirTypeDisplaySpelling("qtest.Token", "Array < Token >"), "Token")
-        // Neither form can match a source token here, so the short name is used
-        // and simply yields no link rather than a wrong one.
-        @Expect(chirTypeDisplaySpelling("a.b.Token", "Array < Other >"), "Token")
+    func sourceTypeArgumentsAreReadAtTheirOwnPositions(): Unit {
+        // Each argument keeps the exact spelling written at its own position, so
+        // two arguments resolving to the same type still match their own source
+        // tokens and both receive links.
+        let pair = chirSourceTypeArguments("Pair < dep.Token , Token >")
+        @Expect(pair.size, 2)
+        @Expect(pair[0], "dep.Token")
+        @Expect(pair[1], "Token")
+        // Nested lists stay intact and are not split at their inner comma.
+        let nested = chirSourceTypeArguments("Map < String , List < Int64 , dep.Token > >")
+        @Expect(nested.size, 2)
+        @Expect(nested[0], "String")
+        @Expect(nested[1], "List < Int64 , dep.Token >")
+        // A display with no argument list has no arguments.
+        @Expect(chirSourceTypeArguments("Token").size, 0)
+    }
+
+    @TestCase
+    func sourceTypeHeadKeepsTheWrittenName(): Unit {
+        // The head keeps the source spelling, so an outer type written with a
+        // package prefix still matches its source tokens.
+        @Expect(chirSourceTypeHead("dep.List < Token >"), "dep.List")
+        @Expect(chirSourceTypeHead("Token"), "Token")
     }
 }

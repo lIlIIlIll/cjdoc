@@ -3,7 +3,7 @@ package cjdoc_chir_protocol
 import std.collection.*
 import std.fs.*
 
-public let CHIR_WORKER_PROTOCOL = "cjdoc-chir-worker/1"
+public let CHIR_WORKER_PROTOCOL = "cjdoc-chir-worker/2"
 public let MAX_CHIR_REQUEST_BYTES: Int64 = 4 * 1024 * 1024
 public let MAX_CHIR_RESPONSE_BYTES: Int64 = 16 * 1024 * 1024
 
@@ -26,15 +26,26 @@ public class ChirTypeNode {
 public class ChirWorkerSignatureRecord {
     public let packageName: String
     public let name: String
+    public let ownerKind: String
+    public let ownerPackageName: String
     public let ownerName: String
+    public let targetPackageName: String
+    public let targetName: String
+    public let genericArity: Int64
     public let paramCount: Int64
     public let types: ArrayList<ChirTypeNode>
 
-    public init(packageName: String, name: String, ownerName: String, paramCount: Int64,
-        types: ArrayList<ChirTypeNode>) {
+    public init(packageName: String, name: String, ownerKind: String, ownerPackageName: String,
+        ownerName: String, targetPackageName: String, targetName: String, genericArity: Int64,
+        paramCount: Int64, types: ArrayList<ChirTypeNode>) {
         this.packageName = packageName
         this.name = name
+        this.ownerKind = ownerKind
+        this.ownerPackageName = ownerPackageName
         this.ownerName = ownerName
+        this.targetPackageName = targetPackageName
+        this.targetName = targetName
+        this.genericArity = genericArity
         this.paramCount = paramCount
         this.types = types
     }
@@ -291,22 +302,25 @@ private func parseMemberRecord(value: String): ChirWorkerMemberRecord {
 
 private func parseSignatureRecord(value: String): ChirWorkerSignatureRecord {
     let fields = value.split("\t")
-    if (fields.size < 5) {
+    if (fields.size < 10) {
         throw IllegalArgumentException("CHIR worker signature record is malformed")
     }
-    let paramCount = parseWorkerCount(fields[3])
-    let typeCount = parseWorkerCount(fields[4])
-    if (fields.size != 5 + typeCount * 2) {
+    let genericArity = parseWorkerCount(fields[7])
+    let paramCount = parseWorkerCount(fields[8])
+    let typeCount = parseWorkerCount(fields[9])
+    if (fields.size != 10 + typeCount * 2) {
         throw IllegalArgumentException("CHIR worker signature record type count is inconsistent")
     }
     let types = ArrayList<ChirTypeNode>()
     var index: Int64 = 0
     while (index < typeCount) {
-        types.add(ChirTypeNode(parseWorkerCount(fields[5 + index * 2]),
-            recordValue(fields[6 + index * 2])))
+        types.add(ChirTypeNode(parseWorkerCount(fields[10 + index * 2]),
+            recordValue(fields[11 + index * 2])))
         index++
     }
-    ChirWorkerSignatureRecord(fields[0], fields[1], recordValue(fields[2]), paramCount, types)
+    ChirWorkerSignatureRecord(fields[0], fields[1], fields[2], recordValue(fields[3]),
+        recordValue(fields[4]), recordValue(fields[5]), recordValue(fields[6]), genericArity,
+        paramCount, types)
 }
 
 private func parseTypeRecord(value: String): ChirWorkerTypeRecord {
@@ -362,7 +376,12 @@ public func writeChirWorkerSuccess(path: Path, summary: ChirWorkerSummary): Unit
         let fields = ArrayList<String>()
         fields.add(chirRecordValue(record.packageName))
         fields.add(chirRecordValue(record.name))
+        fields.add(chirRecordValue(record.ownerKind))
+        fields.add(chirRecordValue(record.ownerPackageName))
         fields.add(chirRecordValue(record.ownerName))
+        fields.add(chirRecordValue(record.targetPackageName))
+        fields.add(chirRecordValue(record.targetName))
+        fields.add(record.genericArity.toString())
         fields.add(record.paramCount.toString())
         fields.add(record.types.size.toString())
         for (node in record.types) {
