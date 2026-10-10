@@ -427,5 +427,255 @@ class InstallCangjieSdkTest(unittest.TestCase):
                 self.assertEqual(install_cangjie_sdk.stdx_root(directory), deep)
 
 
+class CombinedCacheTest(unittest.TestCase):
+    """The combined compiler+stdx cache is the release path; prove it fails closed."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name).resolve()
+        self.destination = self.root / "sdk-cache"
+        self.sdk = self.destination / "cangjie"
+        (self.sdk / "bin").mkdir(parents=True)
+        (self.sdk / "envsetup.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+        (self.sdk / "bin/cjc").write_bytes(b"compiler")
+        (self.sdk / "bin/cjpm").write_bytes(b"package manager")
+        self.stdx = self.destination / "linux_x86_64_cjnative/static/stdx"
+        self.stdx.mkdir(parents=True)
+        (self.stdx / "stdx.chir.cjo").write_bytes(b"package")
+        (self.stdx / "libstdx.chir.a").write_bytes(b"archive")
+        self.compiler_name = "cangjie-sdk-linux-x64.tar.gz"
+        self.stdx_name = "cangjie-stdx-linux-x64.zip"
+        self.compiler_sha256 = self.write_archive(self.sdk, "compiler")
+        self.stdx_sha256 = self.write_archive(self.stdx, "stdx")
+        # A real compiler identity requires a runnable cjc; stub the query so the
+        # cache tests stay hermetic while still exercising marker validation.
+        with mock.patch.object(install_cangjie_sdk, "compiler_identity",
+                               return_value=("1.2.0 (cjnative)", "x86_64-unknown-linux-gnu")):
+            install_cangjie_sdk.write_combined_cache_marker(
+                self.destination, self.sdk, self.stdx, self.compiler_name,
+                self.compiler_sha256, self.stdx_name, self.stdx_sha256,
+                "1.2.0 (cjnative)", "x86_64-unknown-linux-gnu")
+
+    def write_archive(self, source_root: Path, stem: str) -> str:
+        archive = self.root / f"{stem}-source.zip"
+        with zipfile.ZipFile(archive, "w") as package:
+            for path in sorted(source_root.rglob("*")):
+                relative = path.relative_to(self.destination).as_posix()
+                if path.is_dir():
+                    package.writestr(relative + "/", b"")
+                elif path.is_file():
+                    package.writestr(relative, path.read_bytes())
+        name = (install_cangjie_sdk.CACHE_ARCHIVE if stem == "compiler"
+                else install_cangjie_sdk.STDX_CACHE_ARCHIVE)
+        cached = self.destination / name
+        cached.write_bytes(archive.read_bytes())
+        return hashlib.sha256(cached.read_bytes()).hexdigest()
+
+    def validate(self) -> tuple[Path, Path]:
+        return install_cangjie_sdk.validate_combined_cache(
+            self.destination, self.compiler_name, self.compiler_sha256,
+            self.stdx_name, self.stdx_sha256)
+
+    def marker(self) -> Path:
+        return self.destination / CACHE_MARKER
+
+    def restore_marker(self) -> None:
+        """Rewrite the pristine marker; the authentic archives are never touched."""
+        with mock.patch.object(install_cangjie_sdk, "compiler_identity",
+                               return_value=("1.2.0 (cjnative)", "x86_64-unknown-linux-gnu")):
+            install_cangjie_sdk.write_combined_cache_marker(
+                self.destination, self.sdk, self.stdx, self.compiler_name,
+                self.compiler_sha256, self.stdx_name, self.stdx_sha256,
+                "1.2.0 (cjnative)", "x86_64-unknown-linux-gnu")
+
+    def marker_document(self) -> dict:
+        return json.loads(self.marker().read_text(encoding="utf-8"))
+
+    def rewrite_marker(self, mutate) -> None:
+        document = self.marker_document()
+        mutate(document)
+        self.marker().write_text(json.dumps(document, sort_keys=True), encoding="utf-8")
+
+    def test_authentic_cache_resolves_both_roots(self) -> None:
+        sdk, stdx = self.validate()
+        self.assertEqual(sdk, self.sdk)
+        self.assertEqual(stdx, self.stdx)
+
+    def test_missing_corrupt_and_unknown_marker_fields_fail(self) -> None:
+        original = self.marker().read_text(encoding="utf-8")
+        malformed = (
+            (lambda: self.marker().unlink(), "no verified compiler/stdx marker"),
+            (lambda: self.marker().write_text("{not json", encoding="utf-8"), "marker"),
+            (lambda: self.rewrite_marker(lambda d: d.__setitem__("schemaVersion", "other/1")),
+             "marker schema"),
+            (lambda: self.rewrite_marker(lambda d: d.update({"unexpected": 1})), "marker schema"),
+            (lambda: self.rewrite_marker(lambda d: d.pop("stdxArtifacts")), "marker schema"),
+            (lambda: self.rewrite_marker(lambda d: d.pop("treeSha256")), "marker schema"),
+        )
+        for mutate, pattern in malformed:
+            with self.subTest(pattern=pattern):
+                self.marker().write_text(original, encoding="utf-8")
+                mutate()
+                with self.assertRaisesRegex(ValueError, pattern):
+                    self.validate()
+        self.marker().write_text(original, encoding="utf-8")
+
+    def test_duplicate_marker_key_is_rejected(self) -> None:
+        original = self.marker().read_text(encoding="utf-8")
+        try:
+            document = json.loads(original)
+            text = json.dumps(document, sort_keys=True)
+            self.marker().write_text(text[:-1] + ',"treeSha256":"' + "0" * 64 + '"}',
+                                     encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "marker"):
+                self.validate()
+        finally:
+            self.marker().write_text(original, encoding="utf-8")
+
+    def test_archive_name_hash_and_presence_mismatches_fail(self) -> None:
+        with self.assertRaisesRegex(ValueError, "does not match the requested archives"):
+            install_cangjie_sdk.validate_combined_cache(
+                self.destination, "different-name.tar.gz", self.compiler_sha256,
+                self.stdx_name, self.stdx_sha256)
+        with self.assertRaisesRegex(ValueError, "does not match the requested archives"):
+            install_cangjie_sdk.validate_combined_cache(
+                self.destination, self.compiler_name, "9" * 64,
+                self.stdx_name, self.stdx_sha256)
+        archive = self.destination / install_cangjie_sdk.STDX_CACHE_ARCHIVE
+        original = archive.read_bytes()
+        archive.write_bytes(original + b"trailing")
+        with self.assertRaisesRegex(ValueError, "SHA256 mismatch"):
+            self.validate()
+        archive.write_bytes(original)
+        archive.unlink()
+        self.assertRaises(ValueError, self.validate)
+        archive.write_bytes(original)
+
+    def test_symlinked_and_special_archive_entries_fail(self) -> None:
+        archive = self.destination / install_cangjie_sdk.CACHE_ARCHIVE
+        original = archive.read_bytes()
+        if os.name != "nt":
+            archive.unlink()
+            archive.symlink_to(self.root / "elsewhere")
+            try:
+                self.assertRaises(ValueError, self.validate)
+            finally:
+                archive.unlink()
+        archive.write_bytes(original)
+        archive.unlink()
+        archive.mkdir()
+        try:
+            self.assertRaises(ValueError, self.validate)
+        finally:
+            archive.rmdir()
+            archive.write_bytes(original)
+
+    def test_tampered_compiler_stdx_and_added_entries_fail(self) -> None:
+        compiler = self.sdk / "bin/cjc"
+        original_compiler = compiler.read_bytes()
+        compiler.write_bytes(b"modified compiler")
+        with self.assertRaisesRegex(ValueError, "tree digest"):
+            self.validate()
+        compiler.write_bytes(original_compiler)
+
+        # Any byte change to the stdx payload changes the authenticated tree, which
+        # is checked before the per-artifact digests.
+        artifact = self.stdx / "libstdx.chir.a"
+        original_artifact = artifact.read_bytes()
+        artifact.write_bytes(b"modified archive")
+        with self.assertRaisesRegex(ValueError, "tree digest"):
+            self.validate()
+        artifact.write_bytes(original_artifact)
+
+        extra = self.sdk / "bin/new-tool"
+        extra.write_bytes(b"unexpected addition")
+        with self.assertRaisesRegex(ValueError, "tree digest"):
+            self.validate()
+        extra.unlink()
+
+    def test_stdx_artifact_digest_is_checked_against_the_marker(self) -> None:
+        # Keep the tree digest honest so the artifact digest check itself is exercised.
+        def drop_one_artifact(document: dict) -> None:
+            document["stdxArtifacts"] = {
+                name: digest for name, digest in document["stdxArtifacts"].items()
+                if name != "libstdx.chir.a"}
+            document["treeSha256"] = install_cangjie_sdk.tree_sha256(self.destination)
+
+        self.rewrite_marker(drop_one_artifact)
+        with self.assertRaisesRegex(ValueError, "stdx artifact digest"):
+            self.validate()
+
+    def test_deleted_and_permission_drifted_entries_fail(self) -> None:
+        removed = self.sdk / "bin/cjpm"
+        original = removed.read_bytes()
+        removed.unlink()
+        with self.assertRaisesRegex(ValueError, "tree digest"):
+            self.validate()
+        removed.write_bytes(original)
+
+        if os.name != "nt":
+            directory = self.sdk / "bin"
+            mode = stat.S_IMODE(directory.stat().st_mode)
+            directory.chmod(0o700 if mode != 0o700 else 0o755)
+            try:
+                with self.assertRaisesRegex(ValueError, "tree digest"):
+                    self.validate()
+            finally:
+                directory.chmod(mode)
+
+    def test_self_consistent_forged_marker_cannot_hide_a_modified_tree(self) -> None:
+        (self.sdk / "bin/cjc").write_bytes(b"forged compiler")
+
+        def recompute(document: dict) -> None:
+            document["stdxArtifacts"] = install_cangjie_sdk.stdx_artifact_digests(self.stdx)
+            document["treeSha256"] = install_cangjie_sdk.tree_sha256(self.destination)
+
+        self.rewrite_marker(recompute)
+        # The marker now describes the modified tree exactly, but the
+        # checksum-pinned archives no longer reproduce it, so authentication
+        # still fails instead of trusting the marker's self-description.
+        with self.assertRaisesRegex(ValueError, "authenticated archives do not match"):
+            self.validate()
+
+    def test_root_escape_and_wrong_root_binding_fail(self) -> None:
+        self.rewrite_marker(lambda document: document.update(sdkRoot="../outside"))
+        with self.assertRaisesRegex(ValueError, "root is unsafe"):
+            self.validate()
+        # Pointing the stdx root at a real but non-stdx directory must not resolve.
+        self.restore_marker()
+        self.rewrite_marker(lambda document: document.update(stdxRoot="cangjie"))
+        with self.assertRaisesRegex(ValueError, "stdx root"):
+            self.validate()
+
+    def test_install_combined_reports_no_success_on_failure(self) -> None:
+        output = self.root / "github-output"
+        self.rewrite_marker(lambda document: document.update(compilerArchiveSha256="0" * 64))
+        args = mock.Mock(url="https://example.test/cangjie-sdk-linux-x64.tar.gz",
+                         sha256=self.compiler_sha256,
+                         stdx_url="https://example.test/cangjie-stdx-linux-x64.zip",
+                         stdx_sha256=self.stdx_sha256, stdx_archive_name=self.stdx_name,
+                         destination=self.destination, github_output=output)
+        with self.assertRaises(ValueError):
+            install_cangjie_sdk.install_combined(args)
+        self.assertFalse(output.exists())
+
+    def test_warm_marker_matches_a_cold_extraction_identity(self) -> None:
+        """A warm restore must describe the same tree and stdx a cold extract yields."""
+        marker = self.marker_document()
+        fresh = self.root / "fresh"
+        fresh.mkdir()
+        for name in (install_cangjie_sdk.CACHE_ARCHIVE, install_cangjie_sdk.STDX_CACHE_ARCHIVE):
+            with zipfile.ZipFile(self.destination / name) as package:
+                package.extractall(fresh)
+        self.assertEqual(install_cangjie_sdk.tree_sha256(fresh), marker["treeSha256"])
+        fresh_stdx = install_cangjie_sdk.stdx_root(fresh)
+        self.assertIsNotNone(fresh_stdx)
+        self.assertEqual(install_cangjie_sdk.stdx_artifact_digests(fresh_stdx),
+                         marker["stdxArtifacts"])
+        self.assertEqual((marker["compilerVersion"], marker["compilerTarget"]),
+                         ("1.2.0 (cjnative)", "x86_64-unknown-linux-gnu"))
+
+
 if __name__ == "__main__":
     unittest.main()
