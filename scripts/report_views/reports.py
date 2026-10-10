@@ -130,6 +130,13 @@ DIFF_ENCODED_FIELDS = {"sourceApiSignature", "genericParameters"}
 DIFF_PLAIN_FIELDS = {"return", "visibility", "exposedName", "parameters"}
 # Reader-facing labels for the field column. These are presentation, so they are
 # localized by the page localizer; only values are protected source text.
+# Reader-facing suffix for a parameter field path, localized.
+_DIFF_PARAMETER_SUFFIX = {
+    "name": ("名称", "name"),
+    "default": ("默认值", "default"),
+    "type": ("类型", "type"),
+}
+
 DIFF_FIELD_LABELS = {
     "return": ("返回值", "return type"),
     "visibility": ("可见性", "visibility"),
@@ -171,9 +178,11 @@ def _diff_field(field: str, locale: str = "en") -> str:
     changed parameters are not shown as two identical `name` rows."""
     index = _diff_parameter_index(field)
     if index is not None:
-        suffix = field[field.find("]") + 1:].lstrip(".")
+        key = field[field.find("]") + 1:].lstrip(".")
+        entry = _DIFF_PARAMETER_SUFFIX.get(key)
+        suffix = "" if entry is None else (entry[0] if locale == "zh-CN" else entry[1])
         if locale == "zh-CN":
-            return f"参数 {index + 1} {suffix}"
+            return f"参数 {index + 1} {suffix}".strip() if suffix else f"参数 {index + 1}"
         return f"parameter {index + 1} {suffix}" if suffix else f"parameter {index + 1}"
     entry = DIFF_FIELD_LABELS.get(field)
     if entry is not None:
@@ -200,25 +209,37 @@ _PARAMETER_STATES = {"resolved", "partial", "unavailable", "ambiguous"}
 
 
 def _diff_parameter_list(text: str) -> list[str]:
-    """Decode `name:typeState:type:defaultState:default` entries joined by `|`.
-    A default expression can contain both `|` and `:`, so a split is accepted
-    only when both resulting sides still look like complete entries; otherwise
-    the whole value is shown verbatim rather than as phantom parameters."""
-    whole = _diff_parameter_entries(text)
-    if whole is not None:
-        return whole
-    fragments = text.split("|")
-    for cut in range(1, len(fragments)):
-        head = "|".join(fragments[:cut])
-        tail = "|".join(fragments[cut:])
-        decoded = _diff_parameter_entries(head)
-        if decoded is None:
-            continue
-        rest = _diff_parameter_entries(tail)
-        if rest is None:
-            continue
-        return decoded + rest
-    return [text]
+    """Decode one or more `name:state:type:state:default` entries joined by `|`.
+    A default expression can contain both `|` and `:`, so the reader is walked
+    left to right and each entry consumes exactly five colon-separated fields,
+    letting a default absorb the following fragments when needed. If the whole
+    value cannot be read this way it is shown verbatim, never as phantom rows."""
+    decoded = _diff_parameter_entries_consuming(text)
+    return decoded if decoded is not None else [text]
+
+
+def _diff_parameter_entries_consuming(value: str) -> list[str] | None:
+    """Read the entries left to right. Each entry is five fields; a field may
+    itself contain `|` (a default), so fragments are joined until the entry has
+    its five fields."""
+    parts, entry, start = [], "", 0
+    fragments = value.split("|")
+    index = 0
+    while index < len(fragments):
+        entry = fragments[index] if start == 0 else entry + "|" + fragments[index]
+        start += 1
+        if entry.count(":") >= 4:
+            pieces = entry.split(":", 4)
+            if (len(pieces) != 5 or pieces[0] == ""
+                    or pieces[1] not in _PARAMETER_STATES
+                    or pieces[3] not in _PARAMETER_STATES):
+                return None
+            parts.append(pieces[0] + ": " + pieces[2])
+            entry, start = "", 0
+        index += 1
+    if start != 0:
+        return None
+    return parts
 
 
 def _diff_parameter_entries(value: str) -> list[str] | None:

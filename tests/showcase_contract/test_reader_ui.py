@@ -142,7 +142,7 @@ class ReaderUiTests(unittest.TestCase):
         # Each evidence segment is its own line in the cell.
         # A readable parameter field is shown; the opaque fingerprint is left to
         # the raw-evidence disclosure rather than the reader table.
-        self.assertIn('参数 1 name', view)
+        self.assertIn('参数 1 名称', view)
         self.assertNotIn("sourceFingerprint", view.split("<details")[0])
         # A signature token whose own text is a pipe is not mis-split.
         self.assertIn('<span data-report-source-text>|</span>', view.split("<details")[0])
