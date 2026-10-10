@@ -260,4 +260,24 @@ class ConceptualShowcaseTest {
             let _ = removeIfExists(root, recursive: true)
         }
     }
+
+    @TestCase
+    func homePageShowsOneReaderEntryInsteadOfTwoStartHereHeadings(): Unit {
+        let root = createShowcaseBindingProject()
+        try {
+            let documentation = showcaseBindingFixture()
+            let pages = conceptualPagesForProject(root.toString(), documentation)
+            let artifacts = api_render.renderDocumentationFormatsWithOptions(documentation, ["html"], locale: "en")
+            let index = conceptualIndexNavigation(root.toString(), "html",
+                artifactContent(artifacts, "html/index.html"), locale: "en")
+            // The conceptual documentation link stays reachable, but it no longer
+            // adds a second "start here" heading beside the quick-start section.
+            @Expect(index.contains("concepts/index.html"), true)
+            @Expect(index.contains("data-conceptual-entry"), true)
+            @Expect(index.split("Start here").size, 2)
+            @Expect(index.contains("Start with the guide"), false)
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
 }

@@ -18,13 +18,16 @@ internal func renderHtmlIndex(documentation: DocumentationSet, projection: Rende
     appendPageStart(out, pageTitle, "",
         documentation, projection, locale: locale, docVersion: docVersion)
     out.append("<header class=\"page-header\"><h1>${escapeHtml(documentation.project.name)} ${apiDocumentationLabel}</h1></header>\n")
+    // One reader entry point only. The conceptual-documentation entry is merged
+    // into this section by injectConceptualNavigation, so the page never stacks
+    // two headings that both tell the reader to start here.
     out.append("<section class=\"quick-start\" aria-labelledby=\"quick-start-title\"><h2 id=\"quick-start-title\">")
     out.append(startHereLabel)
     out.append("</h2><p>")
     out.append(startHereCopy)
     out.append("</p><a href=\"#packages\">")
     out.append(browseApiLabel)
-    out.append("</a></section>\n")
+    out.append("</a><div class=\"conceptual-entry\" data-conceptual-entry></div></section>\n")
     if (!projection.modules.isEmpty()) {
         out.append("<h2 id=\"modules\">")
         out.append(modulesLabel)

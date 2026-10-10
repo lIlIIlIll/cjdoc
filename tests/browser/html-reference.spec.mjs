@@ -107,7 +107,7 @@ test.describe('generated HTML reference', () => {
     await openIndex(page);
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'overview');
     await expect(page.locator('main h1')).toContainText('API documentation');
-    await expect(page.locator('.conceptual-entry')).toContainText('Start with the guide');
+    await expect(page.locator('.conceptual-entry')).toContainText('Open conceptual documentation');
     await expect(page.locator('.quick-start')).toContainText('Browse the API index');
     await expect(page.locator('.package-index a')).toHaveCount(2);
     await expect(page.locator('.sidebar-link[aria-current="page"]')).toContainText('Overview');

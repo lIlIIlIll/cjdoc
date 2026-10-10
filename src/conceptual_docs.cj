@@ -1067,14 +1067,14 @@ private func conceptualNavigationHtml(locale: String): String {
     let title = if (locale == "zh-CN") { "从指南开始" } else { "Start with the guide" }
     let copy = if (locale == "zh-CN") { "先阅读项目指南，再浏览完整的生成 API 索引。" } else { "Read the project guide before browsing the full generated API index." }
     let link = if (locale == "zh-CN") { "打开概念文档" } else { "Open conceptual documentation" }
+    // Rendered into the single home entry slot rather than as a second section,
+    // so the page presents one "start here" entry with both destinations.
     let out = StringBuilder()
-    out.append("<section class=\"conceptual-entry\" aria-labelledby=\"conceptual-entry-title\"><h2 id=\"conceptual-entry-title\">")
-    out.append(title)
-    out.append("</h2><p>")
+    out.append("<p>")
     out.append(copy)
     out.append("</p><a href=\"concepts/index.html\">")
     out.append(link)
-    out.append("</a></section>\n")
+    out.append("</a>\n")
     out.toString()
 }
 
@@ -1349,14 +1349,26 @@ internal func renderConceptualDocumentationArtifacts(documentation: public_model
 }
 
 private func injectConceptualNavigation(content: String, locale: String): String {
+    // Fill the home page's single entry slot. Without a home page (any other
+    // artifact) fall back to a standalone section so the link is never lost.
+    let slot = "<div class=\"conceptual-entry\" data-conceptual-entry></div>"
+    match (content.indexOf(slot)) {
+        case Some(index) => return content[..index] + "<div class=\"conceptual-entry\" data-conceptual-entry>" +
+            conceptualNavigationHtml(locale) + "</div>" + content[index + slot.size..]
+        case None => ()
+    }
+    let standalone = "<section class=\"conceptual-entry\" aria-labelledby=\"conceptual-entry-title\">" +
+        "<h2 id=\"conceptual-entry-title\">" +
+        (if (locale == "zh-CN") { "从指南开始" } else { "Start with the guide" }) +
+        "</h2>" + conceptualNavigationHtml(locale) + "</section>"
     let marker = "</header>\n<section class=\"quick-start\""
     match (content.indexOf(marker)) {
-        case Some(index) => content[..index] + conceptualNavigationHtml(locale) + content[index..]
+        case Some(index) => content[..index] + standalone + content[index..]
         case None =>
             let mainMarker = "<main class=\"docs-main\""
             match (content.indexOf(mainMarker)) {
-                case Some(index) => content[..index] + conceptualNavigationHtml(locale) + content[index..]
-                case None => content + "\n" + conceptualNavigationHtml(locale)
+                case Some(index) => content[..index] + standalone + content[index..]
+                case None => content + "\n" + standalone
             }
     }
 }
