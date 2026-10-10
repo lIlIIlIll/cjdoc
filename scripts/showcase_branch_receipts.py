@@ -57,6 +57,12 @@ def collect(site: Path, site_sha256: str, build_manifest: Path,
     manifest_path = sealed.file("showcase-features.json")
     manifest = load_json(manifest_path)
     build = load_json(build_manifest)
+    # Two distinct artifacts are involved:
+    #   * `ci-build/build-manifest.json` — the identity of the executables that
+    #     produced this site (`mainBinary`/`workerBinary`).
+    #   * the site's own `build.json` — the showcase build metadata, which is
+    #     where the shipped source archive digest lives (`sourceDownload`).
+    site_build = load_json(sealed.file("build.json"))
 
     branches: dict[str, dict[str, str]] = {}
     source = load_json(source_evidence)
@@ -89,7 +95,7 @@ def collect(site: Path, site_sha256: str, build_manifest: Path,
         "siteSha256": actual,
         "revision": manifest["revision"],
         "manifestSha256": hashlib.sha256(canonical_json(manifest)).hexdigest(),
-        "sourceArchiveSha256": build["sourceDownload"]["sha256"],
+        "sourceArchiveSha256": site_build["sourceDownload"]["sha256"],
         "binarySha256": build["mainBinary"]["sha256"],
         "branches": branches,
     }
