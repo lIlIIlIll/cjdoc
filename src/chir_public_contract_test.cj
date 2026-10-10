@@ -7,6 +7,7 @@ import std.unittest.testmacro.*
 import cjdoc.model as public_model
 import cjdoc.provider as public_provider
 import std.collection.*
+import cjdoc_chir_protocol.*
 
 private func chirTestOptions(compilerExecutable!: String = "cjc"): ChirOptions {
     ChirOptions(compilerExecutable: compilerExecutable,
@@ -456,6 +457,23 @@ class ChirPublicContracts {
         @Expect(nested[1], "List < Int64 , dep.Token >")
         // A display with no argument list has no arguments.
         @Expect(chirSourceTypeArguments("Token").size, 0)
+    }
+
+    @TestCase
+    func nestedResolvedTypeKeepsEachArgumentSpelling(): Unit {
+        // A doubly nested generic: each level keeps the spelling written at its
+        // own source position, and the canonical identity survives at each node.
+        let nodes = ArrayList<ChirTypeNode>()
+        nodes.add(ChirTypeNode(0, "std.core.Array"))
+        nodes.add(ChirTypeNode(1, "pkg.Inner"))
+        nodes.add(ChirTypeNode(2, "pkg.Token"))
+        let built = chirTypeRefFromNodes(nodes, 0, "Array < Inner < Token > >")
+        @Expect(built.spelling, "Array")
+        @Expect(built.arguments.size, 1)
+        @Expect(built.arguments[0].spelling, "Inner")
+        @Expect(built.arguments[0].arguments.size, 1)
+        @Expect(built.arguments[0].arguments[0].spelling, "Token")
+        @Expect(built.arguments[0].arguments[0].semantic.canonical, Some("pkg.Token"))
     }
 
     @TestCase
