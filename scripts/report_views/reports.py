@@ -122,15 +122,20 @@ def declaration_link(root: Path, origin: Path, mapping: dict, symbol_id: str | N
     return f'<a href="{escaped(href)}" data-report-symbol="{escaped(symbol_id)}">{escaped(label)}: {source_text(entry["qualifiedName"])}</a>'
 
 
-# Evidence fields whose value is source-visible and worth showing old/new. The
-# other fields carry opaque fingerprints, symbol ids, or resolution-state
-# encodings that mean nothing to a reader; the raw-evidence disclosure still
-# preserves every field.
-DIFF_READABLE_FIELDS = {"return", "genericParameters", "sourceApiSignature", "visibility", "exposedName"}
+# Evidence fields whose value is a `TAG:byteLength:text` token list. Their lengths
+# let a token contain a `|` without corrupting the encoding, so they are decoded
+# by length; every other field is a plain source string and is shown verbatim.
+DIFF_ENCODED_FIELDS = {"sourceApiSignature", "genericParameters", "relationships", "targetIds"}
+DIFF_PLAIN_FIELDS = {"return", "visibility", "exposedName", "parameters"}
+
+
+def _diff_absent() -> str:
+    """A missing side of a change is shown as absent, never as a Python None."""
+    return '<span data-report-absent>' + escaped("—") + '</span>'
 
 
 def _diff_readable(field: str) -> bool:
-    if field in DIFF_READABLE_FIELDS:
+    if field in DIFF_ENCODED_FIELDS or field in DIFF_PLAIN_FIELDS:
         return True
     # A parameter's name and default value are source-visible; its type field is
     # the opaque `name:typeState:type:defaultState:default` encoding.
@@ -138,41 +143,68 @@ def _diff_readable(field: str) -> bool:
             and (field.endswith(".name") or field.endswith(".default")))
 
 
-def _diff_value(value: str) -> str:
-    """Render one evidence value on its own lines. Every rendered part stays
-    protected source text, so localization never rewrites identifiers."""
-    parts = _diff_segments(value)
-    if not parts:
-        return ""
-    return "<br>".join(source_text(part) for part in parts)
-
-
-def _diff_segments(value: str) -> list[str]:
-    text = str(value)
-    if "|" not in text:
-        return [text]
-    # `TAG:length:text` tokens embed their own text length, so a token whose text
-    # is `|` (such as the BITOR operator) is read by length rather than split on.
-    parts, index = [], 0
-    while index < len(text):
-        tag_end = text.find(":", index)
-        length_end = text.find(":", tag_end + 1) if tag_end >= 0 else -1
-        if tag_end < 0 or length_end < 0 or not text[tag_end + 1:length_end].isdigit():
-            return [part for part in text.split("|") if part]
-        start = length_end + 1
-        end = start + int(text[tag_end + 1:length_end])
-        if end > len(text):
-            return [part for part in text.split("|") if part]
-        parts.append(text[start:end])
-        index = end + 1 if end < len(text) and text[end] == "|" else end
-    return parts
+def _diff_parameter_index(field: str) -> int | None:
+    if not field.startswith("parameters["):
+        return None
+    close = field.find("]")
+    if close < 0:
+        return None
+    try:
+        return int(field[len("parameters["):close])
+    except ValueError:
+        return None
 
 
 def _diff_field(field: str) -> str:
-    """A parameter field reads `parameters[0].type`; anything else is opaque."""
-    if field.startswith("parameters[") and "]" in field:
-        return field[field.index("]") + 1:].lstrip(".") or field
-    return field
+    """A readable label for the field. A parameter keeps its position, so two
+    changed parameters are not shown as two identical `name` rows."""
+    index = _diff_parameter_index(field)
+    if index is not None:
+        suffix = field[field.find("]") + 1:].lstrip(".")
+        return f"parameter {index + 1} {suffix}" if suffix else f"parameter {index + 1}"
+    return "parameters" if field == "parameters" else field
+
+
+def _diff_value(field: str, value) -> str:
+    """Render one evidence value on its own lines. Every rendered part stays
+    protected source text, so localization never rewrites identifiers."""
+    if value is None:
+        return _diff_absent()
+    text = str(value)
+    if field == "parameters":
+        # A whole parameter list: `name:typeState:type:defaultState:default`,
+        # one per pipe-separated entry. Show each parameter's name and type.
+        entries = text.split("|")
+        rendered = []
+        for entry in entries:
+            pieces = entry.split(":")
+            rendered.append(pieces[0] + ": " + pieces[2] if len(pieces) >= 3 else entry)
+        return "<br>".join(source_text(part) for part in rendered) if rendered else ""
+    if field in DIFF_ENCODED_FIELDS:
+        parts = _diff_token_segments(text)
+    else:
+        parts = [text]
+    return "<br>".join(source_text(part) for part in parts)
+
+
+def _diff_token_segments(text: str) -> list[str]:
+    """Decode a `TAG:byteLength:text` token list. The length counts UTF-8 bytes,
+    so the value is walked as bytes; a token whose own text is `|` (such as the
+    BITOR operator) then survives without splitting on it."""
+    data = text.encode("utf-8")
+    parts, index = [], 0
+    while index < len(data):
+        tag_end = data.find(b":", index)
+        length_end = data.find(b":", tag_end + 1) if tag_end >= 0 else -1
+        if tag_end < 0 or length_end < 0 or not data[tag_end + 1:length_end].isdigit():
+            return [part for part in text.split("|") if part]
+        start = length_end + 1
+        end = start + int(data[tag_end + 1:length_end])
+        if end > len(data):
+            return [part for part in text.split("|") if part]
+        parts.append(data[start:end].decode("utf-8", "replace"))
+        index = end + 1 if end < len(data) and data[end:end + 1] == b"|" else end
+    return parts
 
 
 def table(headers: tuple[str, ...], rows: list[list[str]]) -> str:
@@ -381,8 +413,8 @@ def diff_view(raw: dict | None, origin: Path, baseline: Path | None, current: Pa
                    and (item.get("state") != "resolved" or item.get("before") != item.get("after"))]
         if changed:
             rows = [[source_text(_diff_field(item["field"])),
-                     _diff_value(item["before"]),
-                     _diff_value(item["after"])] for item in changed]
+                     _diff_value(item["field"], item.get("before")),
+                     _diff_value(item["field"], item.get("after"))] for item in changed]
             output += table((DIFF_TABLE_HEADINGS[0 if locale == "zh-CN" else 1][0],
                              DIFF_TABLE_HEADINGS[0 if locale == "zh-CN" else 1][1],
                              DIFF_TABLE_HEADINGS[0 if locale == "zh-CN" else 1][2]), rows)

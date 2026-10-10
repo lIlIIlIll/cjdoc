@@ -130,7 +130,9 @@ class ReaderUiTests(unittest.TestCase):
                                  "before": "a1b2", "after": "c3d4"},
                                 {"field": "sourceApiSignature", "state": "partial",
                                  "before": "BITOR:1:||IDENTIFIER:6:Failed",
-                                 "after": "IDENTIFIER:6:Failed"}]}]}
+                                 "after": "IDENTIFIER:6:Failed"},
+                                {"field": "parameters[0].default", "state": "changed",
+                                 "before": None, "after": "flags | Default"}]}]}
         view = diff_view(raw, self.root, baseline, current, locale="zh-CN")
         # Reader-facing wording replaces the native vocabulary, which stays in
         # the data-* attribute and the raw evidence block.
@@ -140,11 +142,15 @@ class ReaderUiTests(unittest.TestCase):
         # Each evidence segment is its own line in the cell.
         # A readable parameter field is shown; the opaque fingerprint is left to
         # the raw-evidence disclosure rather than the reader table.
-        self.assertIn('<span data-report-source-text>name</span>', view)
+        self.assertIn('<span data-report-source-text>parameter 1 name</span>', view)
         self.assertNotIn("sourceFingerprint", view.split("<details")[0])
         # A signature token whose own text is a pipe is not mis-split.
-        self.assertIn('<span data-report-source-text>|</span><br>'
-                      '<span data-report-source-text>Failed</span>', view.split("<details")[0])
+        self.assertIn('<span data-report-source-text>|</span>', view.split("<details")[0])
+        self.assertIn('<span data-report-source-text>Failed</span>', view.split("<details")[0])
+        # A missing side is shown as absent, never as a Python None.
+        self.assertNotIn('>None<', view)
+        # A plain source value keeps its own pipe.
+        self.assertIn('<span data-report-source-text>flags | Default</span>', view)
         # The new table UI is localized while source values are protected.
         self.assertIn("字段", view)
         self.assertIn("原始差异证据", view)
