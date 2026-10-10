@@ -360,27 +360,38 @@ if manifest:
 PY
 }
 
+# Cleanup guards live at script scope: a nested function cannot read a `local`
+# declared by its caller under `set -u`, and macOS ships bash 3.2.
+native_cleaned=0
+cli_cleaned=0
+
 stage_native() {
     cd "${repo}"
     require_identity
     refuse_existing_outputs fixtures
-    local created="${fixture_project_root}"
-    local cleaned=0
     cleanup_native() {
-        if [[ "${cleaned}" == "1" ]]; then
+        if [[ "${native_cleaned}" == "1" ]]; then
             return 0
         fi
-        cleaned=1
-        while IFS= read -r relative; do
-            [[ -z "${relative}" ]] && continue
-            remove_owned_outputs "${relative}"
+        native_cleaned=1
+        while IFS= read -r owned; do
+            [[ -z "${owned}" ]] && continue
+            remove_owned_outputs "${owned}"
         done < <(existing_build_outputs fixtures)
     }
     trap cleanup_native EXIT
     export CJDOC_CHIR_WORKER="${worker_binary:-${worker_project}/target/release/bin/main}"
-    cjpm test --jobs 1
-    cleanup_native
-    trap - EXIT
+    # Remove this stage's fixture outputs even when the tests fail, then keep the
+    # original exit status so a failing suite is never reported as a pass.
+    if cjpm test --jobs 1; then
+        cleanup_native
+        trap - EXIT
+    else
+        status=$?
+        cleanup_native
+        trap - EXIT
+        return "${status}"
+    fi
 }
 
 stage_python_tools() {
@@ -406,6 +417,7 @@ if not names:
 print(" ".join(f"scripts.{name}" for name in names))
 PY
 )"
+    modules="${modules//$'\r'/}"
     # shellcheck disable=SC2086 - the module list is deliberately word-split.
     PYTHONPATH="${repo}/scripts${PYTHONPATH:+:${PYTHONPATH}}" \
         "${python_cmd}" -m unittest ${modules}
@@ -425,15 +437,14 @@ stage_cli() {
         rm -rf "${check_dir}"
     fi
     mkdir -p "${check_dir}/schemas"
-    local cleaned=0
     cleanup_cli() {
-        if [[ "${cleaned}" == "1" ]]; then
+        if [[ "${cli_cleaned}" == "1" ]]; then
             return 0
         fi
-        cleaned=1
-        while IFS= read -r relative; do
-            [[ -z "${relative}" ]] && continue
-            remove_owned_outputs "${relative}"
+        cli_cleaned=1
+        while IFS= read -r owned; do
+            [[ -z "${owned}" ]] && continue
+            remove_owned_outputs "${owned}"
         done < <(existing_build_outputs fixtures)
     }
     trap cleanup_cli EXIT
