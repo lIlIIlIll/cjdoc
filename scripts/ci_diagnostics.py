@@ -53,43 +53,57 @@ def candidate_files(repo: Path, target: Path) -> list[tuple[str, Path]]:
     return candidates
 
 
-def collect(repo: Path, target: Path, out: Path, *, max_bytes: int, max_files: int) -> dict:
+def collect(repo: Path, targets: list[Path], out: Path, *, max_bytes: int, max_files: int) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     repository = repo.resolve()
     files: list[dict[str, object]] = []
     omitted: list[dict[str, object]] = []
+    collected: set[str] = set()
     total = 0
-    available = target.is_dir()
-    for label, source in candidate_files(repo, target) if available else []:
-        size = source.stat().st_size
-        if len(files) >= max_files:
-            omitted.append({"label": label, "reason": "file budget exhausted"})
+    available = any(target.is_dir() for target in targets)
+    for index, target in enumerate(targets):
+        if not target.is_dir():
             continue
-        if total + size > max_bytes:
-            omitted.append({"label": label, "reason": "byte budget exhausted", "size": size})
-            continue
-        try:
-            relative = source.resolve().relative_to(repository).as_posix()
-        except ValueError:
-            omitted.append({"label": label, "reason": "outside the repository root"})
-            continue
-        destination = out / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, destination)
-        files.append({"label": label, "path": relative, "sha256": sha256_file(destination), "size": size})
-        total += size
+        # The golden directory is shared by every root, so the same expected file
+        # must never be collected twice; identical sources collapse to one entry.
+        prefix = "" if len(targets) == 1 else f"root{index}/"
+        for label, source in candidate_files(repo, target):
+            key = str(source.resolve())
+            if key in collected:
+                continue
+            collected.add(key)
+            size = source.stat().st_size
+            if len(files) >= max_files:
+                omitted.append({"label": label, "reason": "file budget exhausted"})
+                continue
+            if total + size > max_bytes:
+                omitted.append({"label": label, "reason": "byte budget exhausted", "size": size})
+                continue
+            try:
+                relative = source.resolve().relative_to(repository).as_posix()
+            except ValueError:
+                relative = f"{prefix}external/{source.name}"
+            else:
+                relative = f"{prefix}{relative}"
+            destination = out / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, destination)
+            files.append({"label": f"{prefix}{label}", "path": relative,
+                          "sha256": sha256_file(destination), "size": size})
+            total += size
     document = {
         "schemaVersion": DIAGNOSTICS_SCHEMA,
         "kind": "failure",
         "acceptedBaseline": False,
         "origin": ORIGIN,
         "available": available,
+        "searchedRoots": [str(target) for target in targets],
         "files": files,
         "omitted": omitted,
         "limits": {"maxBytes": max_bytes, "maxFiles": max_files},
     }
     if not available:
-        document["reason"] = "target/acceptance was not produced by the failing run"
+        document["reason"] = "no acceptance output directory was produced by the failing run"
     (out / "diagnostics.json").write_text(
         json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8", newline="\n")
@@ -101,12 +115,13 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     collect_parser = commands.add_parser("collect")
     collect_parser.add_argument("--repo", type=Path, required=True)
-    collect_parser.add_argument("--target", type=Path, required=True)
+    collect_parser.add_argument("--target", type=Path, action="append", required=True,
+                               help="acceptance output root; repeat for stage-private roots")
     collect_parser.add_argument("--out", type=Path, required=True)
     collect_parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
     collect_parser.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES)
     args = parser.parse_args()
-    document = collect(args.repo, args.target, args.out,
+    document = collect(args.repo, list(args.target), args.out,
                        max_bytes=args.max_bytes, max_files=args.max_files)
     # A missing acceptance directory is reported, never re-failed: the upload
     # step's `if-no-files-found: error` is what proves the bundle was written.

@@ -138,7 +138,10 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/ci_diagnostics.py collect \
-            --repo . --target target/acceptance --out "${RUNNER_TEMP}/ci-diagnostics"
+            --repo . \
+            --target target/acceptance \
+            --target "${RUNNER_TEMP}/cjdoc-stage-cli" \
+            --out "${RUNNER_TEMP}/ci-diagnostics"
 
       - name: Upload acceptance diagnostics
         if: failure()
