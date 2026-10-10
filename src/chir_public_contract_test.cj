@@ -5,6 +5,9 @@ import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
 import cjdoc.model as public_model
+import cjdoc.provider as public_provider
+import std.collection.*
+import cjdoc_chir_protocol.*
 
 private func chirTestOptions(compilerExecutable!: String = "cjc"): ChirOptions {
     ChirOptions(compilerExecutable: compilerExecutable,
@@ -436,5 +439,48 @@ class ChirPublicContracts {
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
+    }
+
+    @TestCase
+    func sourceTypeArgumentsAreReadAtTheirOwnPositions(): Unit {
+        // Each argument keeps the exact spelling written at its own position, so
+        // two arguments resolving to the same type still match their own source
+        // tokens and both receive links.
+        let pair = chirSourceTypeArguments("Pair < dep.Token , Token >")
+        @Expect(pair.size, 2)
+        @Expect(pair[0], "dep.Token")
+        @Expect(pair[1], "Token")
+        // Nested lists stay intact and are not split at their inner comma.
+        let nested = chirSourceTypeArguments("Map < String , List < Int64 , dep.Token > >")
+        @Expect(nested.size, 2)
+        @Expect(nested[0], "String")
+        @Expect(nested[1], "List < Int64 , dep.Token >")
+        // A display with no argument list has no arguments.
+        @Expect(chirSourceTypeArguments("Token").size, 0)
+    }
+
+    @TestCase
+    func nestedResolvedTypeKeepsEachArgumentSpelling(): Unit {
+        // A doubly nested generic: each level keeps the spelling written at its
+        // own source position, and the canonical identity survives at each node.
+        let nodes = ArrayList<ChirTypeNode>()
+        nodes.add(ChirTypeNode(0, "std.core.Array"))
+        nodes.add(ChirTypeNode(1, "pkg.Inner"))
+        nodes.add(ChirTypeNode(2, "pkg.Token"))
+        let built = chirTypeRefFromNodes(nodes, 0, "Array < Inner < Token > >")
+        @Expect(built.spelling, "Array")
+        @Expect(built.arguments.size, 1)
+        @Expect(built.arguments[0].spelling, "Inner")
+        @Expect(built.arguments[0].arguments.size, 1)
+        @Expect(built.arguments[0].arguments[0].spelling, "Token")
+        @Expect(built.arguments[0].arguments[0].semantic.canonical, Some("pkg.Token"))
+    }
+
+    @TestCase
+    func sourceTypeHeadKeepsTheWrittenName(): Unit {
+        // The head keeps the source spelling, so an outer type written with a
+        // package prefix still matches its source tokens.
+        @Expect(chirSourceTypeHead("dep.List < Token >"), "dep.List")
+        @Expect(chirSourceTypeHead("Token"), "Token")
     }
 }

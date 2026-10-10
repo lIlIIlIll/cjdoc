@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import subprocess
 import sys
@@ -94,13 +95,19 @@ def compare_outputs(site: Path, generated: Path) -> list[dict]:
     return comparisons
 
 
-def check(site: Path, binary: Path, evidence: Path) -> dict:
+def check(site: Path, binary: Path, evidence: Path, expect_site_sha256: str | None = None) -> dict:
     site, binary, evidence = site.resolve(), binary.resolve(), evidence.resolve()
     if evidence.is_relative_to(site) or site.is_relative_to(evidence):
         raise ContractError("source evidence must be outside the immutable final site")
     if evidence.exists():
         raise ContractError("source evidence destination must be new")
     before = Site(site).digest()
+    if expect_site_sha256 is not None:
+        if not re.fullmatch(r"[0-9a-f]{64}", expect_site_sha256):
+            raise ContractError("--expect-site-sha256 must be a lowercase SHA-256 digest")
+        if before != expect_site_sha256:
+            raise ContractError(
+                f"sealed site digest {before} does not match the expected {expect_site_sha256}")
     metadata = load_json(site / "build.json")
     if digest(binary) != metadata["tools"]["cjdocSha256"]:
         raise ContractError("source reproduction requires the exact generating native executable")
@@ -134,8 +141,10 @@ def main() -> int:
     parser.add_argument("--site", type=Path, required=True)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
+    parser.add_argument("--expect-site-sha256",
+                        help="fail unless the sealed site digest matches this SHA-256")
     args = parser.parse_args()
-    check(args.site, args.binary, args.evidence)
+    check(args.site, args.binary, args.evidence, args.expect_site_sha256)
     print("Downloaded source reproduced the published native core artifacts and results.")
     return 0
 

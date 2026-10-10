@@ -127,7 +127,9 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
     }
     func analyzeModule(moduleId: String,
         declarations: ReadOnlyList<public_provider.SourceDeclarationView>): public_provider.SemanticBatch {
-        let capabilities = public_model.SemanticCapabilities(true, true, true, false, false)
+        // CHIR resolves qualified type identities for signatures, so canonical
+        // type data is supplied when the worker returns it.
+        let capabilities = public_model.SemanticCapabilities(true, true, true, true, false)
         let diagnostics = ArrayList<public_model.Diagnostic>()
         if (identityVersion.contains("unknown-cjc")) {
             diagnostics.add(public_model.Diagnostic("warning", "CJDOC2101",
@@ -189,17 +191,43 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
             if (matchState == 3) { notReliablyMapped++ }
             let semanticState = if (matchState == 2) { "ambiguous" }
                 else if (backed) { "partial" } else { "unavailable" }
+            let resolved = chirResolvedSignature(summary, view, declarations)
             let parameters = ArrayList<public_provider.SemanticParameter>()
             if (backed) {
+                var parameterIndex: Int64 = 0
                 for (parameter in view.parameters) {
-                    parameters.add(public_provider.SemanticParameter(parameter.name,
-                        partialChirType(parameter.typeSpelling)))
+                    // A resolved type is used only when the worker reported one at
+                    // this position; otherwise the source spelling stays partial.
+                    let typeRef = match (resolved) {
+                        case Some(value) => match (value.parameterType(parameterIndex)) {
+                            case Some(node) => chirTypeRefFromNodes(value.nodes, node,
+                                parameter.typeSpelling)
+                            case None => partialChirType(parameter.typeSpelling)
+                        }
+                        case None => partialChirType(parameter.typeSpelling)
+                    }
+                    parameters.add(public_provider.SemanticParameter(parameter.name, typeRef))
+                    parameterIndex++
                 }
             }
             let returnType: ?public_model.TypeRef = if (backed) {
-                match (view.returnTypeSpelling) {
-                    case Some(spelling) => Some(partialChirType(spelling))
+                let fromWorker: ?public_model.TypeRef = match (resolved) {
+                    case Some(value) => match (value.returnNode) {
+                        case Some(node) => Some(chirTypeRefFromNodes(value.nodes, node,
+                            match (view.returnTypeSpelling) {
+                                case Some(spelling) => spelling
+                                case None => ""
+                            }))
+                        case None => None
+                    }
                     case None => None
+                }
+                match (fromWorker) {
+                    case Some(value) => Some(value)
+                    case None => match (view.returnTypeSpelling) {
+                        case Some(spelling) => Some(partialChirType(spelling))
+                        case None => None
+                    }
                 }
             } else {
                 None
@@ -238,6 +266,10 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
             public_model.SemanticType("partial", provider: Some("chir")))
     }
 
+
+// A CHIR-resolved signature for one declaration: the pre-order node list plus
+// the top-level node index of each parameter and of the return type. Nodes are
+// matched positionally by owner/name, never by spelling.
     private func chirBacksDeclaration(summary: ChirWorkerSummary,
         view: public_provider.SourceDeclarationView,
         declarations: ReadOnlyList<public_provider.SourceDeclarationView>): Int64 {
@@ -680,4 +712,233 @@ private func chirDiagnosticDetail(message: String): String {
         if (message.startsWith(prefix)) { return message[prefix.size..].trimAscii() }
     }
     message
+}
+
+private class ChirResolvedSignature {
+    let nodes: ArrayList<ChirTypeNode>
+    let parameters: ArrayList<Int64>
+    let returnNode: ?Int64
+
+    init(nodes: ArrayList<ChirTypeNode>, parameters: ArrayList<Int64>, returnNode: ?Int64) {
+        this.nodes = nodes
+        this.parameters = parameters
+        this.returnNode = returnNode
+    }
+
+    func parameterType(index: Int64): ?Int64 {
+        if (index < 0 || index >= parameters.size) { return None }
+        Some(parameters[index])
+    }
+}
+
+private func chirResolvedSignature(summary: ChirWorkerSummary,
+    view: public_provider.SourceDeclarationView,
+    declarations: ReadOnlyList<public_provider.SourceDeclarationView>): ?ChirResolvedSignature {
+    // Match the same owner and shape constraints the declaration binding uses, so
+    // two same-named declarations (or equal-shaped overloads) in one package
+    // cannot take each other's resolved types.
+    let owner = sourceOwnerIdentityOf(view, declarations)
+    var targetPackageName = ""
+    if (owner[0] == "extend") {
+        let targetMatch = chirExtensionTargetMatch(summary, owner[1], owner[3])
+        if (targetMatch[0] != 1) { return None }
+        targetPackageName = targetMatch[1]
+    }
+    var matched: ?ChirWorkerSignatureRecord = None
+    for (record in summary.signatureRecords) {
+        if (record.packageName != view.packageName || record.name != view.name) { continue }
+        if (!chirSignatureOwnerMatches(record, owner, targetPackageName)) { continue }
+        if (record.genericArity != view.genericArity) { continue }
+        if (record.paramCount != view.parameters.size) { continue }
+        // More than one record fits: the identity is ambiguous, so no resolved
+        // type is claimed at all.
+        if (matched.isSome()) { return None }
+        matched = Some(record)
+    }
+    let record = match (matched) {
+        case Some(value) => value
+        case None => return None
+    }
+    let parameters = ArrayList<Int64>()
+    var index: Int64 = 0
+    var topLevel: Int64 = 0
+    for (node in record.types) {
+        if (node.depth == 0) {
+            if (topLevel < record.paramCount) { parameters.add(index) }
+            topLevel++
+        }
+        index++
+    }
+    if (parameters.size != record.paramCount) { return None }
+    let returnNode: ?Int64 = if (topLevel > record.paramCount) {
+        Some(topLevelNodeIndex(record.types, record.paramCount))
+    } else {
+        None
+    }
+    Some(ChirResolvedSignature(record.types, parameters, returnNode))
+}
+
+// The same owner comparison the declaration binding applies, so a signature
+// record can only back the declaration its function record backed.
+private func chirSignatureOwnerMatches(record: ChirWorkerSignatureRecord,
+    owner: (String, String, String, String), targetPackageName: String): Bool {
+    if (owner[0] == "none") { return record.ownerKind == "none" }
+    if (owner[0] == "type") {
+        return record.ownerKind == "type" && record.ownerPackageName == owner[1] &&
+            record.ownerName == owner[2]
+    }
+    if (owner[0] == "extend") {
+        return record.ownerKind == "extend" && record.ownerPackageName == owner[1] &&
+            record.targetPackageName == targetPackageName && record.targetName == owner[2]
+    }
+    false
+}
+
+// The owner identity of a declaration, resolved through the declaration list.
+// Mirrors the class-private helper; kept at file scope because the signature
+// lookup is a free function.
+private func sourceOwnerIdentityOf(view: public_provider.SourceDeclarationView,
+    declarations: ReadOnlyList<public_provider.SourceDeclarationView>): (String, String, String, String) {
+    let ownerId = match (view.ownerId) {
+        case Some(value) => value
+        case None => return ("none", "", "", "")
+    }
+    for (candidate in declarations) {
+        if (candidate.id != ownerId) { continue }
+        if (candidate.kind == "extend") {
+            return ("extend", candidate.packageName, chirOwnerBaseName(candidate.name), candidate.name)
+        }
+        return ("type", candidate.packageName, candidate.name, "")
+    }
+    ("unknown", "", "", "")
+}
+
+// The extension owner name the worker records: the extended type's simple name,
+// with any generic argument list removed.
+private func chirOwnerBaseName(value: String): String {
+    let base = match (value.indexOf("<")) {
+        case Some(index) => value[..index].trimAscii()
+        case None => value.trimAscii()
+    }
+    let components = base.split(".")
+    if (components.isEmpty()) { return base }
+    components[components.size - 1].trimAscii()
+}
+
+// Top-level node index of the (count)th depth-0 entry.
+private func topLevelNodeIndex(nodes: ArrayList<ChirTypeNode>, count: Int64): Int64 {
+    var seen: Int64 = 0
+    var index: Int64 = 0
+    while (index < nodes.size) {
+        if (nodes[index].depth == 0) {
+            if (seen == count) { return index }
+            seen++
+        }
+        index++
+    }
+    -1
+}
+
+// Rebuild a TypeRef from the flattened node list. The node's own subtree is the
+// run of following nodes with greater depth. The source-visible spelling of each
+// node is taken from its own position in the source display, so the renderer's
+// positional token match succeeds; the resolved identity stays in `canonical`,
+// and the renderer decides whether a link target exists.
+internal func chirTypeRefFromNodes(nodes: ArrayList<ChirTypeNode>, start: Int64,
+    sourceDisplay: String): public_model.TypeRef {
+    if (start < 0 || start >= nodes.size) {
+        return public_model.TypeRef("source", "",
+            public_model.SemanticType("unavailable"))
+    }
+    let head = nodes[start]
+    let children = ArrayList<Int64>()
+    let childDepth = head.depth + 1
+    var index = start + 1
+    while (index < nodes.size && nodes[index].depth >= childDepth) {
+        if (nodes[index].depth == childDepth) { children.add(index) }
+        // Skip the whole child subtree.
+        var cursor = index + 1
+        while (cursor < nodes.size && nodes[cursor].depth > nodes[index].depth) { cursor++ }
+        index = cursor
+    }
+    // Each argument keeps the spelling written at its own source position. The
+    // source and resolved structures are trusted to agree only when their
+    // argument counts match; otherwise no display is claimed, which yields no
+    // link rather than a wrong one.
+    let sourceArguments = chirSourceTypeArguments(sourceDisplay)
+    let arguments = ArrayList<public_model.TypeRef>()
+    var childIndex: Int64 = 0
+    for (child in children) {
+        let childDisplay = if (sourceArguments.size == children.size) {
+            sourceArguments[childIndex]
+        } else {
+            ""
+        }
+        arguments.add(chirTypeRefFromNodes(nodes, child, childDisplay))
+        childIndex++
+    }
+    let display = if (sourceDisplay.trimAscii().isEmpty()) {
+        chirUnqualifiedName(head.qualifiedName)
+    } else {
+        chirSourceTypeHead(sourceDisplay)
+    }
+    return public_model.TypeRef("source", display,
+        public_model.SemanticType("resolved", canonical: Some(head.qualifiedName),
+            provider: Some("chir")),
+        arguments: arguments.toArray())
+}
+
+// The head of a source type display: everything before its first argument list.
+internal func chirSourceTypeHead(display: String): String {
+    let open = display.indexOf("<")
+    match (open) {
+        case Some(index) => display[..index].trimAscii()
+        case None => display.trimAscii()
+    }
+}
+
+// The top-level argument spellings of a source type display, each verbatim.
+internal func chirSourceTypeArguments(display: String): Array<String> {
+    let result = ArrayList<String>()
+    let open = match (display.indexOf("<")) {
+        case Some(index) => index
+        case None => return []
+    }
+    var depth: Int64 = 0
+    var index = open
+    var end: Int64 = -1
+    while (index < display.size) {
+        let byte = display[index]
+        if (byte == b'<') { depth++ }
+        else if (byte == b'>') {
+            depth--
+            if (depth == 0) { end = index; break }
+        }
+        index++
+    }
+    if (end < 0) { return [] }
+    var start = open + 1
+    depth = 0
+    index = start
+    while (index < end) {
+        let byte = display[index]
+        if (byte == b'<') { depth++ }
+        else if (byte == b'>') { depth-- }
+        else if (byte == b',' && depth == 0) {
+            result.add(display[start..index].trimAscii())
+            start = index + 1
+        }
+        index++
+    }
+    result.add(display[start..end].trimAscii())
+    result.toArray()
+}
+
+private func chirUnqualifiedName(qualifiedName: String): String {
+    var index = qualifiedName.size
+    while (index > 0) {
+        index--
+        if (qualifiedName[index] == b'.') { return qualifiedName[index + 1..] }
+    }
+    qualifiedName
 }

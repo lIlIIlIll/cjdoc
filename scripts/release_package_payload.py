@@ -135,16 +135,24 @@ def inspect_archive(path: Path, platform_name: str, version: str,
     except ValueError as error:
         raise ValueError(f"release manifest is invalid: {error}") from error
     schema_version = manifest.get("schemaVersion") if isinstance(manifest, dict) else None
-    if not isinstance(manifest, dict) or set(manifest) != {
-        "schemaVersion", "version", "platform", "sourceCommit", "runtime", "files"
-    } or schema_version not in {
-        "cjdoc.release-package/2", "cjdoc.release-package/3"
+    v4 = schema_version == "cjdoc.release-package/4"
+    base_keys = {"schemaVersion", "version", "platform", "sourceCommit", "runtime", "files"}
+    required_keys = base_keys | ({"releaseTag", "sourceTree", "candidateReceiptSha256"} if v4 else set())
+    if not isinstance(manifest, dict) or set(manifest) != required_keys or schema_version not in {
+        "cjdoc.release-package/2", "cjdoc.release-package/3", "cjdoc.release-package/4"
     }:
         raise ValueError("unknown release package manifest schema")
     if manifest.get("version") != version or manifest.get("platform") != platform_name:
         raise ValueError("release package identity does not match its declared target")
     if manifest.get("sourceCommit") != source_commit:
         raise ValueError("release package source commit does not match")
+    if v4:
+        if not isinstance(manifest.get("releaseTag"), str) or not manifest["releaseTag"]:
+            raise ValueError("release package v4 requires its release tag")
+        if not COMMIT.fullmatch(manifest.get("sourceTree") or ""):
+            raise ValueError("release package v4 requires its source tree")
+        if not SHA256.fullmatch(manifest.get("candidateReceiptSha256") or ""):
+            raise ValueError("release package v4 requires its candidate receipt digest")
     runtime = manifest.get("runtime")
     if schema_version == "cjdoc.release-package/2":
         if stdx_version is not None:
@@ -192,6 +200,8 @@ def inspect_archive(path: Path, platform_name: str, version: str,
         "licenses/markdown-MIT.txt",
         "licenses/yjson-Apache-2.0.txt",
     } | SCHEMA_PAYLOAD
+    if v4:
+        expected_payload = expected_payload | {"release-candidate.json"}
     if actual_payload != expected_payload:
         raise ValueError(
             "release package payload set mismatch: missing=" +
@@ -209,7 +219,33 @@ def inspect_archive(path: Path, platform_name: str, version: str,
                 f"release package member mode mismatch: {name} "
                 f"must be {expected_mode:04o}, got {member.mode:04o}"
             )
+    if v4:
+        _verify_candidate_receipt(manifest, relative_members, executable_name)
     return manifest, relative_members, executable_name
+
+
+def _verify_candidate_receipt(manifest: dict, members: dict[str, ArchiveMember],
+                              executable_name: str) -> None:
+    """Bind the packaged binary to the candidate receipt that accepted it."""
+    receipt_member = members["release-candidate.json"]
+    if receipt_member.content is None:
+        raise ValueError("release candidate receipt was not captured during bounded inspection")
+    if sha256_bytes(receipt_member.content) != manifest["candidateReceiptSha256"]:
+        raise ValueError("release candidate receipt digest does not match the manifest")
+    try:
+        receipt = strict_loads(receipt_member.content, description="release candidate receipt")
+    except ValueError as error:
+        raise ValueError(f"release candidate receipt is invalid: {error}") from error
+    if not isinstance(receipt, dict) or receipt.get("schemaVersion") != "cjdoc.release-candidate/1":
+        raise ValueError("unexpected release candidate receipt schema")
+    binary = receipt.get("binary")
+    if not isinstance(binary, dict) or binary.get("sha256") != members[executable_name].sha256:
+        raise ValueError("packaged executable does not match the accepted candidate binary")
+    source = receipt.get("source") or {}
+    if source.get("commit") != manifest["sourceCommit"] or source.get("tree") != manifest["sourceTree"]:
+        raise ValueError("release candidate receipt source does not match the package")
+    if source.get("tag") != manifest["releaseTag"]:
+        raise ValueError("release candidate receipt tag does not match the package")
 
 
 def prepare_extraction_target(root: Path, relative: str) -> Path:

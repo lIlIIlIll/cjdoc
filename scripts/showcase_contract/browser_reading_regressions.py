@@ -215,12 +215,17 @@ def run_reading_regressions(page, member_url: str) -> list[str]:
             "same-hash links reveal excluded members below the measured sticky header"]
 
 
-def run(site_path: Path, evidence_path: Path, executable=None, channel=None):
+def run(site_path: Path, evidence_path: Path, executable=None, channel=None,
+        expect_site_sha256: str | None = None):
     from playwright.sync_api import sync_playwright
     site = Site(site_path)
     output = evidence_path.resolve()
     if output.is_relative_to(site.root) or site.root.is_relative_to(output):
         raise ValueError("reading evidence must be outside the generated site")
+    mutation_before = site.digest()
+    if expect_site_sha256 is not None and mutation_before != expect_site_sha256:
+        raise ValueError(f"reading evidence site {mutation_before} does not match the sealed "
+                         f"digest {expect_site_sha256}")
     output.mkdir(parents=True, exist_ok=False)
     manifest = load_json(site.file("showcase-features.json"))
     feature = next(item for item in manifest["features"] if item["id"] == "compact-members")
@@ -265,7 +270,13 @@ def run(site_path: Path, evidence_path: Path, executable=None, channel=None):
                             context.close()
         finally:
             browser.close()
-    (output / "results.json").write_text(json.dumps({"revision": manifest["revision"], "results": results}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    site_sha256_after = Site(site_path).digest()
+    if site_sha256_after != mutation_before:
+        raise ValueError("reading evidence site changed during run")
+    (output / "results.json").write_text(json.dumps(
+        {"revision": manifest["revision"], "siteSha256": mutation_before,
+         "siteSha256After": site_sha256_after, "results": results},
+        ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def main(argv=None):
@@ -274,8 +285,10 @@ def main(argv=None):
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--chromium")
     parser.add_argument("--channel", help="optional installed browser channel, e.g. msedge")
+    parser.add_argument("--expect-site-sha256",
+                        help="fail unless the sealed site digest matches this SHA-256")
     args = parser.parse_args(argv)
-    run(args.site, args.evidence, args.chromium, args.channel)
+    run(args.site, args.evidence, args.chromium, args.channel, args.expect_site_sha256)
     return 0
 
 

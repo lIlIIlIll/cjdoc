@@ -55,6 +55,8 @@ fi
 
 "${python_cmd}" - "${staging_dir}" <<'PY'
 import hashlib
+import json
+import os
 from pathlib import Path
 import sys
 from scripts.strict_json import strict_dumps, strict_load
@@ -80,12 +82,17 @@ binary_sha256 = performance.get("binarySha256")
 if real_repository.get("binarySha256") != binary_sha256:
     raise SystemExit("release evidence binary hashes do not match")
 receipt = {
-    "schemaVersion": "cjdoc.release-gate/2",
+    "schemaVersion": "cjdoc.release-gate/3",
     "identity": {
         "tag": metadata.get("tag"),
         "commit": commit,
         "tree": metadata.get("tree"),
         "binarySha256": binary_sha256,
+        # The release candidate receipt re-checks these so a cached toolchain
+        # cannot silently substitute a different SDK or stdx archive.
+        "sdkVersion": os.environ.get("CJDOC_TOOLCHAIN_VERSION", ""),
+        "stdxDigest": os.environ.get("CJDOC_STDX_DIGEST", ""),
+        "toolchainFingerprint": os.environ.get("CJDOC_TOOLCHAIN_FINGERPRINT", ""),
     },
     "gates": {
         path.stem: hashlib.sha256(path.read_bytes()).hexdigest()

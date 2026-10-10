@@ -13,8 +13,10 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import importlib.metadata
 import json
 from pathlib import Path
+import sys
 import tempfile
 import threading
+import time
 from urllib.parse import unquote, urlsplit
 
 from .browser_journeys import JOURNEYS as API_JOURNEYS
@@ -226,7 +228,16 @@ def exercise(browser, target: dict, key: tuple, base: str, site: Site, output: P
         context.close()
 
 
-def run(site_path: Path, evidence_path: Path, executable: str | None = None) -> None:
+def run(site_path: Path, evidence_path: Path, executable: str | None = None,
+        shard: tuple[dict, int, str, int] | None = None) -> None:
+    """Run every (or one shard's) declared journey against the final site.
+
+    `shard` carries (plan, shardIndex, runId, runAttempt). Shard mode records the
+    same per-case evidence plus elapsedMs timings and defers full coverage
+    checking to `merge`, which calls the unmodified validate_evidence() gate.
+    """
+    from . import browser_sharding
+
     site = Site(site_path)
     if any(parent.is_symlink() for parent in evidence_path.absolute().parents):
         raise ContractError("symlink in browser evidence destination")
@@ -240,6 +251,18 @@ def run(site_path: Path, evidence_path: Path, executable: str | None = None) -> 
     try:
         manifest = load_json(site.file("showcase-features.json"))
         cases = registered_cases(manifest)
+        if shard is not None:
+            plan, shard_index, run_id, run_attempt = shard
+            if plan.get("runId") != run_id:
+                raise ContractError(f"plan is for run {plan.get('runId')}, not {run_id}")
+            browser_sharding.verify_plan_against(plan, site_path)
+            unknown = [entry["key"] for entry in browser_sharding.shard_cases(plan, shard_index)
+                       if tuple(entry["key"]) not in cases]
+            if unknown:
+                raise ContractError(f"plan refers to unknown browser cases: {unknown[:3]}")
+            order = {key: number for number, key in enumerate(cases)}
+            planned = [tuple(entry["key"]) for entry in browser_sharding.shard_cases(plan, shard_index)]
+            cases = {key: cases[key] for key in sorted(planned, key=lambda item: order[item])}
         site.validate_links()
         fingerprint = site.digest()
         sizes = {"siteBytes": sum(path.stat().st_size for path in site.root.rglob("*") if path.is_file()),
@@ -248,7 +271,7 @@ def run(site_path: Path, evidence_path: Path, executable: str | None = None) -> 
             if value > BUDGETS[name]:
                 raise ContractError("final controlled showcase exceeds size budget: " + name)
         from playwright.sync_api import sync_playwright
-        results, homes = [], {}
+        results, homes, timings = [], {}, []
         with tempfile.TemporaryDirectory(prefix="cjdoc-offline-test-") as temporary, ExitStack() as stack:
             offline = extract_archive(site.file(ARCHIVE), Path(temporary) / "site", site)
             bases = {prefix: stack.enter_context(serve(site.root, prefix)) for prefix in ("/", "/cjdoc-preview/")}
@@ -264,18 +287,66 @@ def run(site_path: Path, evidence_path: Path, executable: str | None = None) -> 
                         current = offline if key[3] == "file" else site
                         base = offline.root.as_uri() + "/" if key[3] == "file" else bases[prefix]
                         print(f"[{number}/{len(cases)}] {' / '.join(key)}", flush=True)
-                        results.append(exercise(browser, target, key, base, current, output, homes))
+                        started = time.perf_counter()
+                        record = exercise(browser, target, key, base, current, output, homes)
+                        timings.append({"key": list(key),
+                                        "elapsedMs": round((time.perf_counter() - started) * 1000, 3)})
+                        results.append(record)
                     browser_version = browser.version
                 finally:
                     browser.close()
         if Site(site_path).digest() != fingerprint:
             raise ContractError("final published tree changed during browser verification")
+        runner = {"name": "cjdoc-final-showcase-browser",
+                  "version": importlib.metadata.version("playwright"),
+                  "browser": "chromium", "browserVersion": browser_version}
+        if shard is not None:
+            plan, shard_index, run_id, run_attempt = shard
+            expected = [entry["key"] for entry in browser_sharding.shard_cases(plan, shard_index)]
+            completed = [[record[field] for field in
+                          ("featureId", "targetId", "scenarioId", "mode", "locale", "version")]
+                         for record in results]
+            attachments = sorted(
+                ({"relativePath": path.relative_to(output).as_posix(),
+                  "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+                 for path in output.rglob("*.png")),
+                key=lambda item: item["relativePath"])
+            document = {
+                "schemaVersion": browser_sharding.SHARD_SCHEMA,
+                "planSha256": plan["planSha256"],
+                "shardIndex": shard_index,
+                "shardCount": plan["shardCount"],
+                "runId": run_id,
+                "runAttempt": run_attempt,
+                "revision": plan["revision"],
+                "siteSha256": fingerprint,
+                "manifestSha256": plan["manifestSha256"],
+                "binarySha256": plan["binarySha256"],
+                "sourceArchiveSha256": plan["sourceArchiveSha256"],
+                "runner": runner,
+                "budgets": BUDGETS,
+                "siteMetrics": sizes,
+                "expectedCases": expected,
+                "completedCases": completed,
+                "homepages": list(homes.values()),
+                "results": results,
+                "attachments": attachments,
+                "status": "passed",
+            }
+            (output / "shard.json").write_text(
+                json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8", newline="\n")
+            (output / "timings.json").write_text(
+                json.dumps(browser_sharding.timing_document({"results": timings}),
+                           ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8", newline="\n")
+            print(f"browser shard {shard_index}/{plan['shardCount']} passed; run merge to verify coverage")
+            return
         evidence = {"schemaVersion": "cjdoc.showcase-evidence/2", "revision": manifest["revision"],
                     "manifestSha256": hashlib.sha256(canonical_json(manifest)).hexdigest(),
                     "siteSha256": fingerprint, "budgets": BUDGETS, "siteMetrics": sizes,
                     "homepages": list(homes.values()),
-                    "runner": {"name": "cjdoc-final-showcase-browser", "version": importlib.metadata.version("playwright"),
-                               "browser": "chromium", "browserVersion": browser_version}, "results": results}
+                    "runner": runner, "results": results}
         validate_evidence(manifest, evidence, site, output)
         (output / "results.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     except Exception as error:
@@ -285,6 +356,11 @@ def run(site_path: Path, evidence_path: Path, executable: str | None = None) -> 
 
 
 def main(argv=None) -> int:
+    from . import browser_sharding
+
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] in (["plan"], ["run"], ["merge"]):
+        return shard_main(argv)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--site", type=Path, required=True)
     parser.add_argument("--evidence", type=Path, required=True)
@@ -297,6 +373,66 @@ def main(argv=None) -> int:
         return 1
     print("All declared final-tree browser journeys passed. Run the static/evidence gate before upload.")
     return 0
+
+
+def shard_main(argv: list[str]) -> int:
+    """`plan`, `run --shard-index` and `merge` for the sharded acceptance."""
+    from . import browser_sharding
+
+    command, rest = argv[0], argv[1:]
+    parser = argparse.ArgumentParser(prog=f"showcase_contract.browser {command}")
+    if command == "plan":
+        parser.add_argument("--site", type=Path, required=True)
+        parser.add_argument("--output", type=Path, required=True)
+        parser.add_argument("--shards", type=int, default=browser_sharding.SHARD_COUNT)
+        parser.add_argument("--run-id", required=True)
+        parser.add_argument("--history", type=Path)
+    elif command == "run":
+        parser.add_argument("--site", type=Path, required=True)
+        parser.add_argument("--plan", type=Path, required=True)
+        parser.add_argument("--shard-index", type=int, required=True)
+        parser.add_argument("--run-id", required=True)
+        parser.add_argument("--run-attempt", type=int, default=1)
+        parser.add_argument("--evidence", type=Path, required=True)
+        parser.add_argument("--chromium", help="optional installed Chromium executable")
+    else:
+        parser.add_argument("--site", type=Path, required=True)
+        parser.add_argument("--plan", type=Path, required=True)
+        parser.add_argument("--shard-result", action="append", default=[], metavar="N=FILE")
+        parser.add_argument("--evidence", type=Path, required=True)
+        parser.add_argument("--receipt", type=Path, required=True)
+    args = parser.parse_args(rest)
+    try:
+        if command == "plan":
+            document = browser_sharding.build_plan(args.site, args.run_id, args.shards, args.history)
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                                   encoding="utf-8", newline="\n")
+            print(f"browser shard plan written: {args.output} ({len(document['cases'])} cases, "
+                  f"{len(document['homeKeys'])} homepage groups)")
+            return 0
+        if command == "run":
+            plan = browser_sharding.load_plan(args.plan)
+            if plan["runId"] != args.run_id:
+                raise browser_sharding.ContractError(
+                    f"plan is for run {plan['runId']}, not {args.run_id}")
+            run(args.site, args.evidence, args.chromium,
+                shard=(plan, args.shard_index, args.run_id, args.run_attempt))
+            return 0
+
+        def parse_shard_result(value: str) -> tuple[int, Path]:
+            index, _, path = value.partition("=")
+            if not path:
+                raise browser_sharding.ContractError(f"--shard-result needs N=FILE, got {value!r}")
+            return int(index), Path(path)
+
+        shard_files = dict(parse_shard_result(value) for value in args.shard_result)
+        receipt = browser_sharding.merge(args.plan, shard_files, args.site, args.evidence, args.receipt)
+        print(f"merged {len(receipt['shards'])} browser shards; full evidence gate passed")
+        return 0
+    except Exception as error:
+        print(f"Showcase browser sharding FAILED: {error}")
+        return 1
 
 
 if __name__ == "__main__":

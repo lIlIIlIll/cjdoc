@@ -125,30 +125,31 @@ class ReleaseSecurityTest(ReleaseToolsTestSupport, unittest.TestCase):
         workflow = (PROJECT_ROOT / ".github/workflows/release.yml").read_text(
             encoding="utf-8"
         )
-        package = workflow.split("\n  package:\n", 1)[1].split("\n  publish:\n", 1)[0]
+        candidate = workflow.split("\n  release-candidate:\n", 1)[1].split("\n  publish:\n", 1)[0]
         publish = workflow.split("\n  publish:\n", 1)[1]
         # The tag-release toolchain is pinned inline, so a release never depends on
         # repository variables being configured.
         self.assertNotIn("vars.CANGJIE", workflow)
         self.assertIn('CJDOC_STS_LINUX_X64_SHA256: "8c5fd944', workflow)
-        self.assertIn("needs.release-gate.result == 'success'", package)
-        self.assertIn("needs.platform-acceptance.result == 'success'", package)
-        self.assertIn("needs: [release-gate, platform-acceptance]", package)
-        self.assertIn("contents: read", package)
-        self.assertIn("persist-credentials: false", package)
+        # One candidate job per platform: build once, accept, receipt, package.
+        self.assertIn("bash scripts/release_check.sh", candidate)
+        self.assertIn("scripts/release_candidate_receipt.py", candidate)
+        self.assertIn("scripts/package_release.py", candidate)
         self.assertIn(
             "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-            package,
+            candidate,
         )
-        self.assertNotIn("GH_TOKEN", package)
-        self.assertNotIn("gh release", package)
-        self.assertEqual(package.count("python scripts/verify_release.py"), 2)
-        build_offset = package.index("cjpm build")
-        self.assertLess(package.index("python scripts/verify_release.py"), build_offset)
-        self.assertGreater(package.rindex("python scripts/verify_release.py"), build_offset)
+        self.assertNotIn("GH_TOKEN", candidate)
+        self.assertNotIn("gh release", candidate)
+        # The packaged binary is the one the acceptance gates verified: identity is
+        # re-checked both before and after the single build.
+        self.assertEqual(candidate.count("python scripts/verify_release.py"), 2)
+        build_offset = candidate.index("cjpm build")
+        self.assertLess(candidate.index("python scripts/verify_release.py"), build_offset)
+        self.assertGreater(candidate.rindex("python scripts/verify_release.py"), build_offset)
         self.assertEqual(workflow.count("contents: write"), 1)
         self.assertIn(
-            "if: ${{ always() && needs.package.result == 'success' }}", publish
+            "if: ${{ always() && needs.release-candidate.result == 'success' }}", publish
         )
         self.assertIn("persist-credentials: false", publish)
         self.assertIn(
@@ -156,10 +157,12 @@ class ReleaseSecurityTest(ReleaseToolsTestSupport, unittest.TestCase):
             publish,
         )
         self.assertNotIn("skip-decompress", publish)
+        # Publish never rebuilds or repackages: it verifies what the candidates produced.
         self.assertNotIn("cjpm build", publish)
         self.assertNotIn("package_release.py", publish)
+        self.assertIn("cjdoc.release-candidate/1", publish)
         self.assertLess(
-            publish.index("Verify exact tag and all package artifacts"),
+            publish.index("Verify exact tag, every receipt and all package artifacts"),
             publish.index("Upload to draft and publish"),
         )
         self.assertGreaterEqual(publish.count("require_draft"), 4)

@@ -7,6 +7,7 @@ files are never rewritten. Existing output directories are never removed.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 from pathlib import Path
@@ -150,9 +151,45 @@ def validate_diagnostic_examples(output: Path) -> None:
             raise ValueError("explanatory example must retain its native no-code skip")
 
 
+@contextmanager
+def _null_phase(_stage_id: str, _kind: str = "site-assemble"):
+    """No-op phase used when the repository timing helper is unavailable."""
+    yield {}
+
+
+class _NullTiming:
+    """Stand-in with the same surface as `showcase_build.stage_timing`.
+
+    Defined at module scope: a class body that assigns `phase` shadows the name
+    for its own right-hand side, so the context manager cannot be defined inline.
+    """
+
+    phase = staticmethod(_null_phase)
+
+    @staticmethod
+    def flush() -> None:
+        return None
+
+
+def timing_module():
+    """Return the showcase timing helper, or the no-op stand-in.
+
+    `reproduce.py` also ships inside the downloadable source archive, where the
+    repository's `showcase_build` package is absent. Timing is diagnostic only,
+    so a missing helper must never break standalone reproduction.
+    """
+    try:
+        from showcase_build import stage_timing
+    except ImportError:
+        return _NullTiming
+    return stage_timing
+
+
 def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] = LOCALES,
           repository: str | None = None, revision: str | None = None,
           repository_root: Path | None = None) -> dict:
+    stage_timing = timing_module()
+
     binary, source, output = binary.resolve(), source.resolve(), output.resolve()
     if not binary.is_file():
         raise FileNotFoundError(binary)
@@ -164,58 +201,67 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
     before = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in managed}
     output.mkdir(parents=True)
     options = dict(repository=repository, revision=revision, repository_root=repository_root)
-    checks = check_directive_examples(binary, source, output)
-    support = generate(binary, source / "support-v1", output / "support", locale="en",
-                       version="support-v1", **options)
-    index = support / "html/symbol-index.json"
-    data = json.loads(index.read_text(encoding="utf-8"))
-    if data.get("schemaVersion") != "cjdoc.symbol-index/1" or data.get("version") != "support-v1":
-        raise ValueError("independent dependency index has the wrong schema/version")
-    for version in VERSIONS:
-        shutil.copyfile(index, source / version / "docs/support-symbol-index.json")
+    with stage_timing.phase("pocketkit.check-modes"):
+        checks = check_directive_examples(binary, source, output)
+    with stage_timing.phase("pocketkit.support-index"):
+        support = generate(binary, source / "support-v1", output / "support", locale="en",
+                           version="support-v1", **options)
+        index = support / "html/symbol-index.json"
+        data = json.loads(index.read_text(encoding="utf-8"))
+        if data.get("schemaVersion") != "cjdoc.symbol-index/1" or data.get("version") != "support-v1":
+            raise ValueError("independent dependency index has the wrong schema/version")
+        # The support index is a real generated input for both versions, so it must
+        # be in place before any demo generation starts.
+        for version in VERSIONS:
+            shutil.copyfile(index, source / version / "docs/support-symbol-index.json")
     result = {"support": support, "checks": checks, "locales": {}}
     for locale in locales:
         directory = output / locale
         directory.mkdir()
         generated = {}
         for version in VERSIONS:
-            generated[version] = generate(binary, source / version, directory / version,
-                                          locale=locale, version=version, **options)
-            assemble(generated[version])
+            with stage_timing.phase(f"pocketkit.generate:{locale}:{version}"):
+                generated[version] = generate(binary, source / version, directory / version,
+                                              locale=locale, version=version, **options)
+                assemble(generated[version])
         diff = directory / "api-diff.json"
-        run([str(binary), "diff", "--baseline",
-             str(generated["demo-v1"] / "api-surface/api-surface.json"), "--current",
-             str(generated["demo-v2"] / "api-surface/api-surface.json"), "--format", "json"],
-            source, output=diff)
+        with stage_timing.phase(f"pocketkit.diff:{locale}"):
+            run([str(binary), "diff", "--baseline",
+                 str(generated["demo-v1"] / "api-surface/api-surface.json"), "--current",
+                 str(generated["demo-v2"] / "api-surface/api-surface.json"), "--format", "json"],
+                source, output=diff)
         composed = directory / "composed"
-        run([str(binary), "versions", "compose", "--output", str(composed),
-             "--version", "demo-v1=" + str(generated["demo-v1"] / "html"),
-             "--version", "demo-v2=" + str(generated["demo-v2"] / "html"),
-             "--diff", "demo-v2=" + str(diff), "--latest", "demo-v2"], source)
-        versions = json.loads((composed / "versions.json").read_text(encoding="utf-8"))
-        if versions.get("schemaVersion") != "cjdoc.versions/1":
-            raise ValueError("unsupported native versions manifest")
-        records = {entry["id"]: entry for entry in versions["versions"]}
-        if set(records) != set(VERSIONS):
-            raise ValueError("native composition did not retain both example snapshots")
-        roots = {}
-        for version in VERSIONS:
-            relative = Path(records[version]["basePath"])
-            if relative.is_absolute() or ".." in relative.parts:
-                raise ValueError("unsafe native version base path")
-            root = composed / relative
-            # Copy after compose: support-v1 must not acquire PocketKit's version selector.
-            shutil.copytree(support / "html", root / "dependencies/support-v1")
-            roots[version] = root
-        diagnostics = generate(binary, source / "diagnostics", directory / "diagnostics",
-                               locale=locale, version="diagnostics", **options)
-        validate_diagnostic_examples(diagnostics)
-        assemble(diagnostics)
+        with stage_timing.phase(f"pocketkit.compose:{locale}"):
+            run([str(binary), "versions", "compose", "--output", str(composed),
+                 "--version", "demo-v1=" + str(generated["demo-v1"] / "html"),
+                 "--version", "demo-v2=" + str(generated["demo-v2"] / "html"),
+                 "--diff", "demo-v2=" + str(diff), "--latest", "demo-v2"], source)
+            versions = json.loads((composed / "versions.json").read_text(encoding="utf-8"))
+            if versions.get("schemaVersion") != "cjdoc.versions/1":
+                raise ValueError("unsupported native versions manifest")
+            records = {entry["id"]: entry for entry in versions["versions"]}
+            if set(records) != set(VERSIONS):
+                raise ValueError("native composition did not retain both example snapshots")
+            roots = {}
+            for version in VERSIONS:
+                relative = Path(records[version]["basePath"])
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise ValueError("unsafe native version base path")
+                root = composed / relative
+                # Copy after compose: support-v1 must not acquire PocketKit's version selector.
+                shutil.copytree(support / "html", root / "dependencies/support-v1")
+                roots[version] = root
+        with stage_timing.phase(f"pocketkit.diagnostics:{locale}"):
+            diagnostics = generate(binary, source / "diagnostics", directory / "diagnostics",
+                                   locale=locale, version="diagnostics", **options)
+            validate_diagnostic_examples(diagnostics)
+            assemble(diagnostics)
         result["locales"][locale] = dict(generated=generated, composed=composed,
                                          roots=roots, diff=diff, diagnostics=diagnostics)
     after = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in managed}
     if before != after:
         raise ValueError("managed example configuration changed during generation")
+    stage_timing.flush()
     return result
 
 
