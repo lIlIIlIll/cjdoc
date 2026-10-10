@@ -756,12 +756,16 @@ fi
 stage="${stage_id}"
 if [[ -z "${stage}" ]]; then
     # The zero-argument gate owns everything it built, so it leaves the worktree
-    # clean. The trap runs even when a stage fails: a leftover worker build tree
-    # would make every later invocation refuse in `refuse_existing_outputs`.
-    # Single-stage callers (CI and Pages) instead receive the worker binary through
-    # the candidate artifact and clean it when they package.
+    # clean: the worker build tree plus every fixture `target/` created by the
+    # native, cli and provider stages (the CHIR worker compiles fixture projects).
+    # A leftover tree makes the repository-input gate refuse and, in the release
+    # job, makes the candidate receipt's worktree identity fail.
     cleanup_full_gate() {
         remove_owned_outputs "${worker_project}/target"
+        while IFS= read -r owned; do
+            [[ -z "${owned}" ]] && continue
+            remove_owned_outputs "${owned}"
+        done < <(existing_build_outputs all)
     }
     trap 'status=$?; cleanup_full_gate; exit "${status}"' EXIT
     for stage in preflight build native python-tools cli provider; do
