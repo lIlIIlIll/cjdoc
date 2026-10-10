@@ -252,7 +252,7 @@ def main() -> int:
         or strict_loads(embedded_search, description="embedded HTML search index") != search
     ):
         raise ValueError("search-index.js payload differs from search-index.json")
-    if search.get("schemaVersion") != "cjdoc.search-index/7":
+    if search.get("schemaVersion") != "cjdoc.search-index/8":
         raise ValueError("unexpected search index schemaVersion")
     entries = search.get("entries")
     if not isinstance(entries, list):
