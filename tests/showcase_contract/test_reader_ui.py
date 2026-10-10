@@ -122,9 +122,15 @@ class ReaderUiTests(unittest.TestCase):
                "comparisonState": "complete", "summary": {},
                "entries": [{"classification": "potentially-breaking", "matchState": "fallback",
                             "oldId": "sym", "newId": "sym",
-                            "reasons": ["Parameter type changed"],
-                            "evidence": [{"field": "parameterTypes", "state": "changed",
-                                          "before": "String|Int64", "after": "String"}]}]}
+                            "reasons": ["Parameter name changed"],
+                            "evidence": [
+                                {"field": "parameters[0].name", "state": "partial",
+                                 "before": "left", "after": "right"},
+                                {"field": "sourceFingerprint", "state": "resolved",
+                                 "before": "a1b2", "after": "c3d4"},
+                                {"field": "sourceApiSignature", "state": "partial",
+                                 "before": "BITOR:1:||IDENTIFIER:6:Failed",
+                                 "after": "IDENTIFIER:6:Failed"}]}]}
         view = diff_view(raw, self.root, baseline, current, locale="zh-CN")
         # Reader-facing wording replaces the native vocabulary, which stays in
         # the data-* attribute and the raw evidence block.
@@ -132,10 +138,16 @@ class ReaderUiTests(unittest.TestCase):
         self.assertIn('data-diff-label="matchState">按名称回退匹配<', view)
         self.assertIn('data-diff-classification="potentially-breaking"', view)
         # Each evidence segment is its own line in the cell.
-        # Each segment is its own protected source line; segments are not
-        # translated and the break is explicit.
-        self.assertIn('<span data-report-source-text>String</span><br>', view)
-        self.assertIn('<span data-report-source-text>Int64</span>', view)
+        # A readable parameter field is shown; the opaque fingerprint is left to
+        # the raw-evidence disclosure rather than the reader table.
+        self.assertIn('<span data-report-source-text>name</span>', view)
+        self.assertNotIn("sourceFingerprint", view.split("<details")[0])
+        # A signature token whose own text is a pipe is not mis-split.
+        self.assertIn('<span data-report-source-text>|</span><br>'
+                      '<span data-report-source-text>Failed</span>', view.split("<details")[0])
+        # The new table UI is localized while source values are protected.
+        self.assertIn("字段", view)
+        self.assertIn("原始差异证据", view)
 
     def test_report_version_links_keep_category_and_expose_missing_report(self) -> None:
         for version in ("demo-v1", "demo-v2"):

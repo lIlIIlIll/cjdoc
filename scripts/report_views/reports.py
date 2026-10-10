@@ -13,7 +13,8 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .localization import DIFF_CLASSIFICATIONS, DIFF_MATCH_STATES, localize_ui
+from .localization import (DIFF_CLASSIFICATIONS, DIFF_MATCH_STATES, DIFF_RAW_LABEL,
+                           DIFF_TABLE_HEADINGS, localize_ui)
 
 from showcase_contract.site import ContractError, canonical_json, load_json, relative_path
 
@@ -121,16 +122,57 @@ def declaration_link(root: Path, origin: Path, mapping: dict, symbol_id: str | N
     return f'<a href="{escaped(href)}" data-report-symbol="{escaped(symbol_id)}">{escaped(label)}: {source_text(entry["qualifiedName"])}</a>'
 
 
+# Evidence fields whose value is source-visible and worth showing old/new. The
+# other fields carry opaque fingerprints, symbol ids, or resolution-state
+# encodings that mean nothing to a reader; the raw-evidence disclosure still
+# preserves every field.
+DIFF_READABLE_FIELDS = {"return", "genericParameters", "sourceApiSignature", "visibility", "exposedName"}
+
+
+def _diff_readable(field: str) -> bool:
+    if field in DIFF_READABLE_FIELDS:
+        return True
+    # A parameter's name and default value are source-visible; its type field is
+    # the opaque `name:typeState:type:defaultState:default` encoding.
+    return (field.startswith("parameters[")
+            and (field.endswith(".name") or field.endswith(".default")))
+
+
 def _diff_value(value: str) -> str:
-    """Human-readable diff value. Native type/parameter encodings are internal
-    status strings, so each segment is rendered as its own source spelling. The
-    separators become explicit line breaks, because table cells collapse
-    whitespace; each segment is escaped here so callers pass markup."""
-    text = str(value)
-    parts = [part for part in text.split("|") if part]
-    if len(parts) <= 1:
-        return source_text(text)
+    """Render one evidence value on its own lines. Every rendered part stays
+    protected source text, so localization never rewrites identifiers."""
+    parts = _diff_segments(value)
+    if not parts:
+        return ""
     return "<br>".join(source_text(part) for part in parts)
+
+
+def _diff_segments(value: str) -> list[str]:
+    text = str(value)
+    if "|" not in text:
+        return [text]
+    # `TAG:length:text` tokens embed their own text length, so a token whose text
+    # is `|` (such as the BITOR operator) is read by length rather than split on.
+    parts, index = [], 0
+    while index < len(text):
+        tag_end = text.find(":", index)
+        length_end = text.find(":", tag_end + 1) if tag_end >= 0 else -1
+        if tag_end < 0 or length_end < 0 or not text[tag_end + 1:length_end].isdigit():
+            return [part for part in text.split("|") if part]
+        start = length_end + 1
+        end = start + int(text[tag_end + 1:length_end])
+        if end > len(text):
+            return [part for part in text.split("|") if part]
+        parts.append(text[start:end])
+        index = end + 1 if end < len(text) and text[end] == "|" else end
+    return parts
+
+
+def _diff_field(field: str) -> str:
+    """A parameter field reads `parameters[0].type`; anything else is opaque."""
+    if field.startswith("parameters[") and "]" in field:
+        return field[field.index("]") + 1:].lstrip(".") or field
+    return field
 
 
 def table(headers: tuple[str, ...], rows: list[list[str]]) -> str:
@@ -331,14 +373,17 @@ def diff_view(raw: dict | None, origin: Path, baseline: Path | None, current: Pa
         if entry["reasons"]:
             output += '<ul data-diff-reasons>' + ''.join(
                 '<li>' + escaped(reason) + '</li>' for reason in entry["reasons"]) + '</ul>'
-        changed = [item for item in entry["evidence"] if item.get("state") != "resolved"
-                   or item.get("before") != item.get("after")]
+        changed = [item for item in entry["evidence"]
+                   if _diff_readable(item["field"])
+                   and (item.get("state") != "resolved" or item.get("before") != item.get("after"))]
         if changed:
-            rows = [[escaped(item["field"]),
-                     ("" if item.get("before") is None else _diff_value(item["before"])),
-                     ("" if item.get("after") is None else _diff_value(item["after"]))] for item in changed]
-            output += table(("Field", "Before", "After"), rows)
-        output += '<details data-diff-evidence><summary>Raw diff evidence</summary><pre>' + escaped(json.dumps({"reasons": entry["reasons"], "evidence": entry["evidence"]}, ensure_ascii=False, indent=2)) + '</pre></details></article>'
+            rows = [[source_text(_diff_field(item["field"])),
+                     _diff_value(item["before"]),
+                     _diff_value(item["after"])] for item in changed]
+            output += table((DIFF_TABLE_HEADINGS[0 if locale == "zh-CN" else 1][0],
+                             DIFF_TABLE_HEADINGS[0 if locale == "zh-CN" else 1][1],
+                             DIFF_TABLE_HEADINGS[0 if locale == "zh-CN" else 1][2]), rows)
+        output += '<details data-diff-evidence><summary>' + escaped(DIFF_RAW_LABEL[0 if locale == "zh-CN" else 1]) + '</summary><pre>' + escaped(json.dumps({"reasons": entry["reasons"], "evidence": entry["evidence"]}, ensure_ascii=False, indent=2)) + '</pre></details></article>'
     return output + '</section>'
 
 

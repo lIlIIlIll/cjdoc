@@ -35,6 +35,15 @@ DIFF_CLASSIFICATIONS = {
     "unchanged": ("未变化", "Unchanged"),
 }
 
+# The API-change evidence table and its disclosure, localized beside the raw
+# evidence that stays in the disclosure.
+DIFF_TABLE_HEADINGS = [
+    ("字段", "变更前", "变更后"),
+    ("Field", "Before", "After"),
+]
+
+DIFF_RAW_LABEL = ("原始差异证据", "Raw diff evidence")
+
 DIFF_MATCH_STATES = {
     "ambiguous": ("匹配歧义，未自动判定", "Ambiguous match, not auto-resolved"),
     "added": ("新增声明", "Added declaration"),
