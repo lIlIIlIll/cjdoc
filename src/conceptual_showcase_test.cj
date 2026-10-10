@@ -235,4 +235,29 @@ class ConceptualShowcaseTest {
             let _ = removeIfExists(root, recursive: true)
         }
     }
+
+    @TestCase
+    func bindingMarkerInsideATableKeepsTheTableIntact(): Unit {
+        // A marker placed between GFM table rows must not split the table: the
+        // chip goes into the cell, and the rows after it stay in one table.
+        let root = createShowcaseBindingProject()
+        try {
+            File.writeTo(root.join("docs/guide.md"), ("# Table binding\n\n" +
+                "| A | B |\n| - | - |\n| one | two |\n" +
+                "<!-- cjdoc-bind target=\"fixture.Box.add\" selector=\"signature:public func add(value: String): Unit\" -->\n" +
+                "| three | four |\n").toArray())
+            let documentation = showcaseBindingFixture()
+            let pages = conceptualPagesForProject(root.toString(), documentation)
+            let artifacts = appendConceptualArtifacts(root.toString(), documentation, ["html"],
+                api_render.renderDocumentationFormatsWithOptions(documentation, ["html"], locale: "en"),
+                pages, locale: "en")
+            let guide = artifactContent(artifacts, "html/concepts/guides/overload.html")
+            // One table for all three rows, and the chip rendered in place.
+            @Expect(guide.split("<table>").size, 2)
+            @Expect(guide.contains("class=\"inline-binding\""), true)
+            @Expect(guide.contains("cjdoc-inline-binding"), false)
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
 }

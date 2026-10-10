@@ -253,11 +253,10 @@ private func conceptualMarkdownWithoutBindings(markdown: String,
             // beyond the binding cap, produces no binding and so no placeholder.
             if (!target.isEmpty() && bindingIndex < CONCEPTUAL_BINDING_LIMIT) {
                 if (sentinels) {
-                    // Blank lines keep the placeholder its own Markdown block even
-                    // when the marker sits directly against prose.
-                    out.append("\n")
+                    // A bare block keeps the placeholder out of an adjacent
+                    // paragraph without breaking an enclosing table or list.
                     out.append(conceptualInlineBindingSentinel(bindingIndex))
-                    out.append("\n\n")
+                    out.append("\n")
                 }
                 bindingIndex++
             }
@@ -1284,9 +1283,19 @@ private func conceptualInlineBindings(html: String, page: ConceptualPage,
         let sentinel = conceptualInlineBindingSentinel(index)
         let chip = conceptualBindingChipHtml(page.bindings[index], documentation,
             conceptualRelativePrefix(page.route), locale, false)
-        let marker = "<p>${sentinel}</p>"
-        match (result.indexOf(marker)) {
-            case Some(at) => result = result[..at] + chip + result[at + marker.size..]
+        // Replace the bare token wherever it landed. When Markdown wrapped it in
+        // its own paragraph the wrapper is consumed too; when it sits inside a
+        // table cell or list item, only the token is replaced, so the enclosing
+        // container survives.
+        match (result.indexOf(sentinel)) {
+            case Some(at) =>
+                let before = result[..at]
+                let after = result[at + sentinel.size..]
+                if (before.endsWith("<p>") && after.startsWith("</p>")) {
+                    result = before[..before.size - 3] + chip + after[4..]
+                } else {
+                    result = before + chip + after
+                }
             case None => ()
         }
     }
