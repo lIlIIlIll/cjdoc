@@ -367,7 +367,9 @@ stage_python_tools() {
     # `unittest discover` has no exclusion switch, so the module list is built
     # explicitly: every scripts/test_*.py except the two modules the preflight
     # stage already ran. This keeps the covered set identical to the previous
-    # full discover while never executing a preflight test twice.
+    # full discover while never executing a preflight test twice. Discover used
+    # to add `scripts/` to sys.path for sibling imports such as
+    # `test_validate_html_site`, so PYTHONPATH preserves that behaviour.
     local modules
     modules="$("${python_cmd}" - "${repo}" <<'PY'
 from pathlib import Path
@@ -383,7 +385,8 @@ print(" ".join(f"scripts.{name}" for name in names))
 PY
 )"
     # shellcheck disable=SC2086 - the module list is deliberately word-split.
-    "${python_cmd}" -m unittest ${modules}
+    PYTHONPATH="${repo}/scripts${PYTHONPATH:+:${PYTHONPATH}}" \
+        "${python_cmd}" -m unittest ${modules}
 }
 
 stage_cli() {
