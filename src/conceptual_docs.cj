@@ -222,7 +222,8 @@ internal func conceptualInlineBindingSentinel(index: Int64): String {
     "cjdoc-inline-binding-" + index.toString()
 }
 
-private func conceptualMarkdownWithoutBindings(markdown: String): String {
+private func conceptualMarkdownWithoutBindings(markdown: String,
+    sentinels!: Bool = true): String {
     let out = StringBuilder()
     var fence = ""
     var bindingIndex: Int64 = 0
@@ -251,8 +252,13 @@ private func conceptualMarkdownWithoutBindings(markdown: String): String {
             // Mirror the collector exactly: a marker without a target, or one
             // beyond the binding cap, produces no binding and so no placeholder.
             if (!target.isEmpty() && bindingIndex < CONCEPTUAL_BINDING_LIMIT) {
-                out.append(conceptualInlineBindingSentinel(bindingIndex))
-                out.append("\n")
+                if (sentinels) {
+                    // Blank lines keep the placeholder its own Markdown block even
+                    // when the marker sits directly against prose.
+                    out.append("\n")
+                    out.append(conceptualInlineBindingSentinel(bindingIndex))
+                    out.append("\n\n")
+                }
                 bindingIndex++
             }
             continue
@@ -758,16 +764,15 @@ private func conceptualHtmlPage(documentation: public_model.DocumentationSet, pa
         source: Some(page.source), locale: locale, docVersion: docVersion)
 }
 private func conceptualBindingsMarkdown(page: ConceptualPage,
-    documentation: public_model.DocumentationSet): String {
+    documentation: public_model.DocumentationSet, locale: String): String {
     if (page.bindings.isEmpty()) { return "" }
-    let prefix = conceptualRelativePrefix(page.route)
     let out = StringBuilder()
     out.append("\n## API associations\n\n")
     for (binding in page.bindings) {
         out.append("- [")
-        out.append(binding.state)
+        out.append(conceptualBindingStateLabel(locale, binding.state))
         out.append("] ")
-    out.append(conceptualBindingTargetHtml(binding, documentation, prefix))
+        out.append(conceptualMarkdownBindingTarget(binding, documentation))
         out.append(" — ")
         out.append(public_render.escapeStandaloneHtml(binding.language))
         out.append(" line ")
@@ -782,7 +787,7 @@ private func conceptualBindingsMarkdown(page: ConceptualPage,
 }
 
 private func conceptualMarkdownPage(page: ConceptualPage, pages: ArrayList<ConceptualPage>,
-    documentation: public_model.DocumentationSet): String {
+    documentation: public_model.DocumentationSet, locale: String): String {
     let prefix = conceptualRelativePrefix(page.route)
     let conceptsHref = conceptualIndexHref(page.route).removeSuffix(".html") + ".md"
     let out = StringBuilder()
@@ -792,10 +797,10 @@ private func conceptualMarkdownPage(page: ConceptualPage, pages: ArrayList<Conce
     out.append(conceptsHref)
     out.append(">)\n\n")
     out.append("<!-- source: ${page.source} -->\n\n")
-    let markdown = conceptualMarkdownWithoutBindings(page.markdown)
+    let markdown = conceptualMarkdownWithoutBindings(page.markdown, sentinels: false)
     out.append(markdown)
     if (!markdown.endsWith("\n")) { out.append("\n") }
-    out.append(conceptualBindingsMarkdown(page, documentation))
+    out.append(conceptualBindingsMarkdown(page, documentation, locale))
     if (page.kind == "project") { out.append(conceptualProjectMarkdownNavigation(pages)) }
     out.toString()
 }
@@ -1048,7 +1053,7 @@ private func conceptualSearchIndex(base: String, pages: ArrayList<ConceptualPage
 }
 
 private func conceptualSearchBody(page: ConceptualPage): String {
-    let text = conceptualMarkdownWithoutBindings(page.markdown)
+    let text = conceptualMarkdownWithoutBindings(page.markdown, sentinels: false)
     let out = StringBuilder()
     var count: Int64 = 0
     for (rune in text.runes()) {
@@ -1120,6 +1125,7 @@ private func conceptualBindingStateLabel(locale: String, state: String): String 
         case "ambiguous" => conceptualBindingLabel(locale, "Ambiguous target", "目标不明确")
         case "unresolved" => conceptualBindingLabel(locale, "Target not found", "未找到目标")
         case "unavailable" => conceptualBindingLabel(locale, "Not available in this audience", "当前受众不可见")
+        case "conflict" => conceptualBindingLabel(locale, "Conflicting markers", "标记冲突")
         case _ => state
     }
 }
@@ -1135,6 +1141,27 @@ private func conceptualBindingScopeLabel(locale: String): String {
 // disclosure. Unknown targets stay plain text, never a guessed link.
 // The resolved API target of a binding, or its recorded spelling when no
 // visible symbol matched. Never a guessed link.
+// The Markdown projection links to the symbol's .md page, which is where the
+// API artifacts live for a Markdown render; the HTML helper would emit a dead
+// .html path here.
+private func conceptualMarkdownBindingTarget(binding: ConceptualApiBinding,
+    documentation: public_model.DocumentationSet): String {
+    match (binding.targetSymbolId) {
+        case Some(targetId) =>
+            var found: ?public_model.SymbolDoc = None
+            for (symbol in documentation.declarations) {
+                if (symbol.id == targetId) { found = Some(symbol); break }
+            }
+            match (found) {
+                case Some(symbol) =>
+                    return "[`" + public_render.escapeStandaloneHtml(symbol.qualifiedName) + "`](<" +
+                        conceptualMarkdownBindingPath(symbol, documentation) + ">)"
+                case None => return "`" + public_render.escapeStandaloneHtml(binding.target) + "`"
+            }
+        case None => return "`" + public_render.escapeStandaloneHtml(binding.target) + "`"
+    }
+}
+
 private func conceptualBindingTargetHtml(binding: ConceptualApiBinding,
     documentation: public_model.DocumentationSet, prefix: String): String {
     match (binding.targetSymbolId) {
@@ -1255,9 +1282,9 @@ private func conceptualInlineBindings(html: String, page: ConceptualPage,
     while (index > 0) {
         index--
         let sentinel = conceptualInlineBindingSentinel(index)
-        let marker = "<p>${sentinel}</p>"
         let chip = conceptualBindingChipHtml(page.bindings[index], documentation,
             conceptualRelativePrefix(page.route), locale, false)
+        let marker = "<p>${sentinel}</p>"
         match (result.indexOf(marker)) {
             case Some(at) => result = result[..at] + chip + result[at + marker.size..]
             case None => ()
@@ -1305,7 +1332,7 @@ internal func renderConceptualDocumentationArtifacts(documentation: public_model
             for (page in pages) {
                 let path = page.route.removePrefix("concepts/").removeSuffix(".html")
                 artifacts.add(public_render.RenderArtifact("markdown/concepts/${path}.md",
-                    "text/markdown; charset=utf-8", conceptualMarkdownPage(page, pages, documentation)))
+                    "text/markdown; charset=utf-8", conceptualMarkdownPage(page, pages, documentation, locale)))
             }
         }
     }

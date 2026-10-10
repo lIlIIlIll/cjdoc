@@ -408,7 +408,7 @@ test.describe('generated HTML reference', () => {
     await gotoFile(page, guideUrl);
     await expect(page.locator('.page-header h1')).toContainText('Getting started');
     await expect(page.locator('.breadcrumbs')).toContainText('Concepts');
-    await expect(page.locator('.conceptual-bindings')).toContainText('resolved');
+    await expect(page.locator('.conceptual-bindings')).toContainText('Linked');
     const boundApiLinks = page.locator('.conceptual-bindings a[href*="symbols/symbol-"]');
     await expect(boundApiLinks).toHaveCount(2);
     expect(await boundApiLinks.nth(0).getAttribute('href')).not.toBe(
@@ -416,7 +416,7 @@ test.describe('generated HTML reference', () => {
     );
     await expect(page.locator('.conceptual-bindings')).toContainText('</span><a href=phish>click</a>');
     await expect(page.locator('.conceptual-bindings a[href="phish"]')).toHaveCount(0);
-    await expect(page.locator('.conceptual-bindings')).toContainText('unavailable');
+    await expect(page.locator('.conceptual-bindings')).toContainText('Not available in this audience');
     await expect(page.locator('pre').filter({ hasText: 'cjdoc-bind target="html_reference_extra.ExtraBox"' })).toHaveCount(1);
     await expectStable(page);
   });
