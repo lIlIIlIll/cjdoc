@@ -355,8 +355,26 @@ stage_native() {
 stage_python_tools() {
     cd "${repo}"
     require_identity
-    "${python_cmd}" -m unittest discover -s scripts -p 'test_*.py' \
-        -e 'test_install_cangjie_sdk.py' -e 'test_with_stdx.py'
+    # `unittest discover` has no exclusion switch, so the module list is built
+    # explicitly: every scripts/test_*.py except the two modules the preflight
+    # stage already ran. This keeps the covered set identical to the previous
+    # full discover while never executing a preflight test twice.
+    local modules
+    modules="$("${python_cmd}" - "${repo}" <<'PY'
+from pathlib import Path
+import sys
+
+repo = Path(sys.argv[1])
+excluded = {"test_install_cangjie_sdk.py", "test_with_stdx.py"}
+names = sorted(path.stem for path in (repo / "scripts").glob("test_*.py")
+               if path.name not in excluded)
+if not names:
+    raise SystemExit("no script test modules found")
+print(" ".join(f"scripts.{name}" for name in names))
+PY
+)"
+    # shellcheck disable=SC2086 - the module list is deliberately word-split.
+    "${python_cmd}" -m unittest ${modules}
 }
 
 stage_cli() {
