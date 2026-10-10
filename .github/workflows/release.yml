@@ -37,84 +37,22 @@ env:
   CJDOC_STS_STDX_MACOS_ARM64_SHA256: "9264fc3a5e2c3372059acccdbf72c42ab2b57d2eaede9342da0ffdc76354b7fd"
 
 jobs:
-  release-gate:
-    name: Release gate / linux-x64 / Cangjie 1.2.0 STS + stdx
-    runs-on: ubuntu-22.04
-    timeout-minutes: 120
-    steps:
-      - name: Check out source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Enable Windows long paths
-        if: runner.os == 'Windows'
-        shell: bash
-        run: git config --global core.longpaths true
-
-      - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.12"
-
-      - name: Restore stable SDK
-        id: sdk-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ${{ runner.temp }}/cangjie-sdk-sts-stdx
-          key: cangjie-sdk-linux-x64-${{ env.CJDOC_STS_LINUX_X64_SHA256 }}-${{ env.CJDOC_STS_STDX_LINUX_X64_SHA256 }}-v5-authenticated-archive
-
-      - name: Install stable SDK
-        id: sdk
-        shell: bash
-        env:
-          CANGJIE_SDK_URL: ${{ env.CJDOC_STS_LINUX_X64_URL }}
-          CANGJIE_SDK_SHA256: ${{ env.CJDOC_STS_LINUX_X64_SHA256 }}
-          CANGJIE_STDX_URL: ${{ env.CJDOC_STS_STDX_LINUX_X64_URL }}
-          CANGJIE_STDX_SHA256: ${{ env.CJDOC_STS_STDX_LINUX_X64_SHA256 }}
-        run: |
-          test -n "${CANGJIE_SDK_URL}"
-          [[ "${CANGJIE_SDK_SHA256}" =~ ^[0-9a-f]{64}$ ]]
-          test -n "${CANGJIE_STDX_URL}"
-          [[ "${CANGJIE_STDX_SHA256}" =~ ^[0-9a-f]{64}$ ]]
-          python scripts/install_cangjie_sdk.py \
-            --url "${CANGJIE_SDK_URL}" \
-            --sha256 "${CANGJIE_SDK_SHA256}" \
-            --stdx-url "${CANGJIE_STDX_URL}" \
-            --stdx-sha256 "${CANGJIE_STDX_SHA256}" \
-            --destination "${RUNNER_TEMP}/cangjie-sdk-sts-stdx" \
-            --github-output "${GITHUB_OUTPUT}"
-
-      - name: Export authenticated stdx environment
-        shell: bash
-        env:
-          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
-        run: |
-          set -euo pipefail
-          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
-          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
-
-      - name: Run release gate
-        shell: bash
-        env:
-          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
-          CJDOC_RELEASE_TAG: ${{ github.ref_name }}
-          CJDOC_RELEASE_COMMIT: ${{ github.sha }}
-        run: |
-          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
-          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          . scripts/with_sts_o1_cjpm.sh
-          bash scripts/release_check.sh
-
-  platform-acceptance:
-    name: ${{ matrix.platform }} / Cangjie 1.2.0 STS + stdx
+  # One job per platform: build once, accept on that platform, write the release
+  # candidate receipt, then package the same binary. Nothing is rebuilt later.
+  release-candidate:
+    name: Release candidate / ${{ matrix.platform }} / Cangjie 1.2.0 STS + stdx
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
+          - platform: linux-x64
+            runner: ubuntu-22.04
+            sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.2.0.tar.gz&objectKey=6ab1e26eece1f87ff5befa73"
+            sdk_sha256: "8c5fd944cd9cc51ee63d4a240e3ecc4f540345dae1468e8b47c927ecf2ba998f"
+            stdx_url: "https://gitcode.com/Cangjie/cangjie_stdx/releases/download/v1.2.0.1/cangjie-stdx-linux-x64-1.2.0.1.zip"
+            stdx_sha256: "c036a192e8fd4206b84ca9a94611820bc66623198975f3dff874f748d65a8b47"
           - platform: windows-x64
             runner: windows-2025
             sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-windows-x64-1.2.0.zip&objectKey=6ab1eafae4bd101f57762f5e"
@@ -131,6 +69,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Enable Windows long paths
@@ -180,149 +119,124 @@ jobs:
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
-      - name: Run platform acceptance
+      - name: Run the platform acceptance gates
         shell: bash
         env:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
-        run: |
-          if [[ "${RUNNER_OS}" == "macOS" ]]; then
-            xattr -dr com.apple.quarantine "${CANGJIE_SDK_ROOT}" || true
-          fi
-          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
-          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          . scripts/with_sts_o1_cjpm.sh
-          bash scripts/check.sh
-
-  package:
-    name: Package / ${{ matrix.platform }}
-    needs: [release-gate, platform-acceptance]
-    if: ${{ always() && needs.release-gate.result == 'success' && needs.platform-acceptance.result == 'success' }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux-x64
-            runner: ubuntu-22.04
-            sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.2.0.tar.gz&objectKey=6ab1e26eece1f87ff5befa73"
-            sdk_sha256: "8c5fd944cd9cc51ee63d4a240e3ecc4f540345dae1468e8b47c927ecf2ba998f"
-            stdx_url: "https://gitcode.com/Cangjie/cangjie_stdx/releases/download/v1.2.0.1/cangjie-stdx-linux-x64-1.2.0.1.zip"
-            stdx_sha256: "c036a192e8fd4206b84ca9a94611820bc66623198975f3dff874f748d65a8b47"
-          - platform: windows-x64
-            runner: windows-2025
-            sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-windows-x64-1.2.0.zip&objectKey=6ab1eafae4bd101f57762f5e"
-            sdk_sha256: "7bd5088ad56fb03c1214e73ea076de5ac08580cc419a8cbd46a524ee1ca250bf"
-            stdx_url: "https://gitcode.com/Cangjie/cangjie_stdx/releases/download/v1.2.0.1/cangjie-stdx-windows-x64-1.2.0.1.zip"
-            stdx_sha256: "bb7ac563ca39213429e34113902343df68b45d862fb6a9ae1b5484583c7bea8a"
-          - platform: macos-arm64
-            runner: macos-15
-            sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-mac-aarch64-1.2.0.tar.gz&objectKey=6ab1e6451320215435b23d52"
-            sdk_sha256: "de88d6ba2185c94979e0ab2fe8ac1d81535dfdff3fcb51fbba71e4b99d851f97"
-            stdx_url: "https://gitcode.com/Cangjie/cangjie_stdx/releases/download/v1.2.0.1/cangjie-stdx-mac-aarch64-1.2.0.1.zip"
-            stdx_sha256: "9264fc3a5e2c3372059acccdbf72c42ab2b57d2eaede9342da0ffdc76354b7fd"
-    steps:
-      - name: Check out source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Enable Windows long paths
-        if: runner.os == 'Windows'
-        shell: bash
-        run: git config --global core.longpaths true
-
-      - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.12"
-
-      - name: Install stable SDK
-        id: sdk
-        shell: bash
-        env:
-          CANGJIE_SDK_URL: ${{ matrix.sdk_url }}
-          CANGJIE_SDK_SHA256: ${{ matrix.sdk_sha256 }}
-          CANGJIE_STDX_URL: ${{ matrix.stdx_url }}
-          CANGJIE_STDX_SHA256: ${{ matrix.stdx_sha256 }}
-        run: |
-          test -n "${CANGJIE_SDK_URL}"
-          [[ "${CANGJIE_SDK_SHA256}" =~ ^[0-9a-f]{64}$ ]]
-          test -n "${CANGJIE_STDX_URL}"
-          [[ "${CANGJIE_STDX_SHA256}" =~ ^[0-9a-f]{64}$ ]]
-          python scripts/install_cangjie_sdk.py \
-            --url "${CANGJIE_SDK_URL}" \
-            --sha256 "${CANGJIE_SDK_SHA256}" \
-            --stdx-url "${CANGJIE_STDX_URL}" \
-            --stdx-sha256 "${CANGJIE_STDX_SHA256}" \
-            --destination "${RUNNER_TEMP}/cangjie-sdk-sts-stdx" \
-            --github-output "${GITHUB_OUTPUT}"
-
-      - name: Export authenticated stdx environment
-        shell: bash
-        env:
-          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
-        run: |
-          set -euo pipefail
-          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
-          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
-
-      - name: Build deterministic package
-        shell: bash
-        env:
-          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
-          CANGJIE_SDK_SHA256: ${{ matrix.sdk_sha256 }}
-          CANGJIE_STDX_SHA256: ${{ matrix.stdx_sha256 }}
           CJDOC_RELEASE_TAG: ${{ github.ref_name }}
           CJDOC_RELEASE_COMMIT: ${{ github.sha }}
         run: |
+          set -euo pipefail
           if [[ "${RUNNER_OS}" == "macOS" ]]; then
             xattr -dr com.apple.quarantine "${CANGJIE_SDK_ROOT}" || true
           fi
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           python scripts/verify_release.py >/dev/null
-          python scripts/verify_repository_inputs.py --require-tracked >/dev/null
           . scripts/with_sts_o1_cjpm.sh
+          # Build exactly once and package this same binary. The acceptance gates
+          # below may run an incremental cjpm build, but the executable promoted
+          # to the release is the one this step produces and re-verifies.
           cjpm build --jobs 1
-          python scripts/verify_release.py >/dev/null
+          binary="target/release/bin/main"
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            binary="${binary}.exe"
+          fi
           python scripts/verify_repository_inputs.py --require-tracked \
-            --legacy-binary target/release/bin/main >/dev/null
+            --legacy-binary "${binary}" >/dev/null
+          python scripts/verify_release.py >/dev/null
+          if [[ "${{ matrix.platform }}" == "linux-x64" ]]; then
+            # The Linux candidate adds the real-repository smoke and the frozen
+            # performance ceiling, then promotes a cjdoc.release-gate/3 receipt.
+            bash scripts/release_check.sh
+          else
+            bash scripts/check.sh
+          fi
+
+      - name: Write the release candidate receipt
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+          CJDOC_RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          binary="target/release/bin/main"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            binary="${binary}.exe"
+          fi
+          gate_args=()
+          for gate in target/release-evidence/gate.json target/release-evidence/metadata.json; do
+            if [[ -f "${gate}" ]]; then
+              gate_args+=(--gate "${gate}")
+            fi
+          done
+          if [[ -f target/release-evidence/gate.json ]]; then
+            gate_args+=(--release-gate-receipt target/release-evidence/gate.json)
+          fi
+          python scripts/release_candidate_receipt.py \
+            --repo . \
+            --tag "${CJDOC_RELEASE_TAG}" \
+            --platform "${{ matrix.platform }}" \
+            --binary "${binary}" \
+            --sdk-version "1.2.0" \
+            --sdk-archive-sha256 "${{ matrix.sdk_sha256 }}" \
+            --stdx-version "1.2.0" \
+            --stdx-archive-sha256 "${{ matrix.stdx_sha256 }}" \
+            "${gate_args[@]}" \
+            --output "target/release-candidate/cjdoc-release-candidate-${{ matrix.platform }}.json"
+
+      - name: Build the deterministic package from the accepted binary
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+          CJDOC_RELEASE_TAG: ${{ github.ref_name }}
+          CJDOC_RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${RUNNER_OS}" == "macOS" ]]; then
+            xattr -dr com.apple.quarantine "${CANGJIE_SDK_ROOT}" || true
+          fi
+          source "${CANGJIE_SDK_ROOT}/envsetup.sh"
+          binary="target/release/bin/main"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            binary="${binary}.exe"
+          fi
+          version="${CJDOC_RELEASE_TAG#v}"
           python scripts/package_release.py \
             --platform "${{ matrix.platform }}" \
+            --binary "${binary}" \
+            --candidate-receipt target/release-candidate/cjdoc-release-candidate.json \
             --source-commit "${CJDOC_RELEASE_COMMIT}" \
             --release-tag "${CJDOC_RELEASE_TAG}" \
             --sdk-version "1.2.0" \
-            --sdk-sha256 "${CANGJIE_SDK_SHA256}" \
+            --sdk-sha256 "${{ matrix.sdk_sha256 }}" \
             --stdx-version "1.2.0" \
-            --stdx-sha256 "${CANGJIE_STDX_SHA256}" \
+            --stdx-sha256 "${{ matrix.stdx_sha256 }}" \
             --sdk-root "${CANGJIE_SDK_ROOT}"
-          version="${CJDOC_RELEASE_TAG#v}"
-          binary="target/release/bin/main"
-          if [[ "${{ matrix.platform }}" == "windows-x64" ]]; then
-            binary="${binary}.exe"
-          fi
           python scripts/package_standalone.py \
             --binary "${binary}" \
             --output target/release-package \
             --platform "${{ matrix.platform }}" \
             --version "${version}"
 
-      - name: Upload verified package artifact
+      - name: Upload the verified candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cjdoc-release-${{ matrix.platform }}
-          path: target/release-package/*
+          path: |
+            target/release-package/*
+            target/release-candidate/cjdoc-release-candidate.json
           if-no-files-found: error
           retention-days: 7
 
+  # The single cross-platform barrier. It runs only when every platform produced
+  # a successful candidate and receipt, and it verifies every receipt against the
+  # tagged commit before publishing.
   publish:
     name: Publish verified release
-    needs: package
-    if: ${{ always() && needs.package.result == 'success' }}
+    needs: release-candidate
+    if: ${{ always() && needs.release-candidate.result == 'success' }}
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -343,14 +257,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Download package artifacts
+      - name: Download candidate artifacts
         uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
         with:
           pattern: cjdoc-release-*
           path: ${{ runner.temp }}/release-assets
           merge-multiple: true
 
-      - name: Verify exact tag and all package artifacts
+      - name: Verify exact tag, every receipt and all package artifacts
         shell: bash
         run: |
           asset_dir="${RUNNER_TEMP}/release-assets"
@@ -360,6 +274,7 @@ jobs:
           python - "${asset_dir}" "${GITHUB_REF_NAME#v}" <<'PY'
           from pathlib import Path
           import hashlib
+          import json
           import re
           import sys
 
@@ -392,11 +307,40 @@ jobs:
               with asset.open("rb") as stream:
                   for block in iter(lambda: stream.read(1024 * 1024), b""):
                       digest.update(block)
-              actual = digest.hexdigest()
-              if actual != match.group(1):
+              if digest.hexdigest() != match.group(1):
                   raise SystemExit(f"checksum mismatch: {asset.name}")
           PY
           version="${GITHUB_REF_NAME#v}"
+          python - "${asset_dir}" "${version}" "${GITHUB_SHA}" "${GITHUB_REF_NAME}" <<'PY'
+          from pathlib import Path
+          import json
+          import sys
+
+          root = Path(sys.argv[1])
+          version, commit, tag = sys.argv[2], sys.argv[3], sys.argv[4]
+          platforms = ("linux-x64", "windows-x64", "macos-arm64")
+          receipts = {}
+          for platform in platforms:
+              matches = sorted(root.glob(f"cjdoc-release-candidate-{platform}*.json"))
+              if len(matches) != 1:
+                  raise SystemExit(
+                      f"expected exactly one {platform} candidate receipt, found {len(matches)}")
+              receipt = json.loads(matches[0].read_text(encoding="utf-8"))
+              if receipt.get("schemaVersion") != "cjdoc.release-candidate/1":
+                  raise SystemExit(f"{platform}: unexpected release candidate receipt schema")
+              source = receipt.get("source") or {}
+              # A receipt from another run attempt or commit must never be published.
+              if (source.get("commit"), source.get("tag")) != (commit, tag):
+                  raise SystemExit(f"{platform}: receipt is for a different commit or tag")
+              if source.get("releaseVersion") != version:
+                  raise SystemExit(f"{platform}: receipt version does not match the tag")
+              if (receipt.get("platform") or {}).get("id") != platform:
+                  raise SystemExit(f"{platform}: receipt declares a different platform")
+              receipts[platform] = receipt
+          hashes = {platform: receipt["binary"]["sha256"] for platform, receipt in receipts.items()}
+          if len(set(hashes.values())) != len(hashes):
+              raise SystemExit("candidate receipts reuse one binary digest across platforms")
+          PY
           python scripts/verify_release_package.py \
             --archive "${asset_dir}/cjdoc-${version}-linux-x64.tar.gz" \
             --platform linux-x64 --version "${version}" --sdk-version 1.2.0 \
@@ -457,14 +401,18 @@ jobs:
               --verify-tag --draft --generate-notes \
               --title "cjdoc ${GITHUB_REF_NAME}"
           fi
+          # Candidate receipts are evidence, not published assets. The exclusion
+          # below keeps the published asset set identical to the packaged files.
           verify_remote_tag
           require_draft
-          gh release upload "${GITHUB_REF_NAME}" "${asset_dir}"/* \
+          gh release upload "${GITHUB_REF_NAME}" \
+            $(find "${asset_dir}" -maxdepth 1 -type f ! -name 'cjdoc-release-candidate*.json' -printf '%p ') \
             --repo "${GITHUB_REPOSITORY}" --clobber
           require_draft
           gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
             --json assets --jq '.assets[].name' | sort >"${RUNNER_TEMP}/published-assets"
-          find "${asset_dir}" -maxdepth 1 -type f -printf '%f\n' | sort \
+          find "${asset_dir}" -maxdepth 1 -type f \
+            ! -name 'cjdoc-release-candidate*.json' -printf '%f\n' | sort \
             >"${RUNNER_TEMP}/expected-assets"
           cmp "${RUNNER_TEMP}/expected-assets" "${RUNNER_TEMP}/published-assets"
           verify_remote_tag
