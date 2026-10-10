@@ -201,7 +201,8 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                 appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(symbol))
             }
             appendDocumentationExamplesHtml(out, comment, locale, symbol: Some(symbol),
-                exampleEvidence: exampleEvidence)
+                exampleEvidence: exampleEvidence,
+                exampleEvidenceRootPrefix: rootPrefix + "../")
             var hasSee = false
             for (tag in comment.tags) { if (tag.name == "see") { hasSee = true; break } }
             if (hasSee) {

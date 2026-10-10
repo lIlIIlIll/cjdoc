@@ -30,6 +30,9 @@ class HtmlExampleEvidenceTest {
         @Expect(html.contains("data-example-state=\"passed\""), true)
         @Expect(html.contains("Verified by execution"), true)
         @Expect(html.contains("Raw execution evidence"), true)
+        // Member pages live under html/symbols, so the artifact beside html/ is
+        // two levels up; a shallower path would be a dead link.
+        @Expect(html.contains("href=\"../../doctest/results.json\""), true)
     }
 
     @TestCase

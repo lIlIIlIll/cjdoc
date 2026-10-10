@@ -44,7 +44,15 @@ internal func exampleEvidenceMap(report: ?DoctestReport): HashMap<String, String
     match (report) {
         case Some(value) =>
             for (result in value.results) {
-                evidence[public_render.exampleEvidenceKey(result.symbolId, result.title)] = result.status
+                let key = public_render.exampleEvidenceKey(result.symbolId, result.title)
+                // Several blocks can share one example title, and one block can
+                // fail while another passes. A key with conflicting statuses is
+                // dropped, so a failure never reads as verified.
+                match (evidence.get(key)) {
+                    case Some(existing) =>
+                        if (existing != result.status) { evidence.remove(key) }
+                    case None => evidence[key] = result.status
+                }
             }
         case None => ()
     }

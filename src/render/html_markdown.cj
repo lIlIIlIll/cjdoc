@@ -371,7 +371,8 @@ internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: D
 // native doctest status. Only statuses the native runner actually recorded are
 // shown; an example without an entry is left unlabelled rather than guessed.
 internal func appendExampleEvidenceHtml(out: RenderTextBuffer, symbol: SymbolDoc, tag: DocTag,
-    evidence: HashMap<String, String>, locale: String): Unit {
+    evidence: HashMap<String, String>, locale: String,
+    evidenceRootPrefix!: String = "../../"): Unit {
     match (evidence.get(exampleEvidenceKey(symbol.id, tag.subject))) {
         case None => ()
         case Some(status) =>
@@ -386,7 +387,7 @@ internal func appendExampleEvidenceHtml(out: RenderTextBuffer, symbol: SymbolDoc
             out.append(escapeHtml(status))
             out.append("\">")
             out.append(escapeHtml(wording))
-            out.append("</span> <a href=\"../doctest/results.json\">")
+            out.append("</span> <a href=\"" + evidenceRootPrefix + "doctest/results.json\">")
             out.append(label(locale, "Raw execution evidence", "原始执行证据"))
             out.append("</a></p>")
     }
@@ -400,7 +401,8 @@ public func exampleEvidenceKey(symbolId: String, title: String): String {
 
 internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: DocComment,
     locale: String, headingLevel!: Int64 = 3, symbol!: ?SymbolDoc = None,
-    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): Unit {
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>(),
+    exampleEvidenceRootPrefix!: String = "../../"): Unit {
     var hasExamples = false
     for (tag in comment.tags) { if (tag.name == "example") { hasExamples = true; break } }
     if (!hasExamples) { return }
@@ -412,7 +414,8 @@ internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: Do
             out.append("<h${min(6, headingLevel + 1)} class=\"example-title\">${escapeHtml(tag.subject)}</h${min(6, headingLevel + 1)}>")
         }
         match (symbol) {
-            case Some(value) => appendExampleEvidenceHtml(out, value, tag, exampleEvidence, locale)
+            case Some(value) => appendExampleEvidenceHtml(out, value, tag, exampleEvidence, locale,
+                evidenceRootPrefix: exampleEvidenceRootPrefix)
             case None => ()
         }
         if (trimExampleBlankLines(tag.description).isEmpty()) {

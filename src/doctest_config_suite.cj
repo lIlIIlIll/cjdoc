@@ -8,6 +8,7 @@ import std.env.*
 import std.fs.*
 import std.process.*
 import std.sync.*
+import cjdoc.render as public_render
 
 @When[os == "Windows"]
 private func doctestSlowCommand(): (String, Array<String>) {
@@ -179,4 +180,33 @@ class DoctestConfigSuite {
         for (snippet in snippets) { let _ = ids.add(snippet.id) }
         @Expect(ids.size, 3)
     }
+
+    @TestCase
+    func conflictingExampleStatusesCarryNoClaim(): Unit {
+        // Two blocks can share one example title; one may fail while another
+        // passes. The key is dropped so a failure never renders as verified.
+        let key = public_render.exampleEvidenceKey("sym", "case")
+        let cases = [
+            doctestEvidenceResult(key, "sym", "case", "passed"),
+            doctestEvidenceResult(key, "sym", "case", "failed"),
+        ]
+        let report = DoctestReport(DoctestConfig(), cases)
+        let evidence = exampleEvidenceMap(Some(report))
+        @Expect(evidence.contains(key), false)
+    }
+
+    @TestCase
+    func oneStatusPerKeyKeepsItsClaim(): Unit {
+        let key = public_render.exampleEvidenceKey("sym", "case")
+        let report = DoctestReport(DoctestConfig(), [doctestEvidenceResult(key, "sym", "case", "passed")])
+        let evidence = exampleEvidenceMap(Some(report))
+        @Expect(evidence.get(key), Some("passed"))
+    }
+}
+
+private func doctestEvidenceResult(id: String, symbolId: String, title: String,
+    status: String): DoctestCaseResult {
+    let snippet = DoctestSnippet(id, symbolId, "fixture", "fixture.api", title, "cj", "let a = 1")
+    DoctestCaseResult(snippet, status)
+ (fix(example): keep per-block status distinct and fix the evidence link)
 }
