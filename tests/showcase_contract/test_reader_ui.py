@@ -132,7 +132,10 @@ class ReaderUiTests(unittest.TestCase):
         self.assertIn('data-diff-label="matchState">按名称回退匹配<', view)
         self.assertIn('data-diff-classification="potentially-breaking"', view)
         # Each evidence segment is its own line in the cell.
-        self.assertIn("String<br>Int64", view)
+        # Each segment is its own protected source line; segments are not
+        # translated and the break is explicit.
+        self.assertIn('<span data-report-source-text>String</span><br>', view)
+        self.assertIn('<span data-report-source-text>Int64</span>', view)
 
     def test_report_version_links_keep_category_and_expose_missing_report(self) -> None:
         for version in ("demo-v1", "demo-v2"):

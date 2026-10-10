@@ -39,7 +39,7 @@ DIFF_MATCH_STATES = {
     "ambiguous": ("匹配歧义，未自动判定", "Ambiguous match, not auto-resolved"),
     "added": ("新增声明", "Added declaration"),
     "removed": ("删除声明", "Removed declaration"),
-    "exact": ("签名与结构一致", "Signature and structure match"),
+    "exact": ("按稳定标识精确匹配", "Matched by exact identity"),
     "fallback": ("按名称回退匹配", "Matched by name fallback"),
     "changed": ("签名变化", "Signature changed"),
 }

@@ -129,8 +129,8 @@ def _diff_value(value: str) -> str:
     text = str(value)
     parts = [part for part in text.split("|") if part]
     if len(parts) <= 1:
-        return escaped(text)
-    return "<br>".join(escaped(part) for part in parts)
+        return source_text(text)
+    return "<br>".join(source_text(part) for part in parts)
 
 
 def table(headers: tuple[str, ...], rows: list[list[str]]) -> str:
