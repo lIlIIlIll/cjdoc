@@ -289,9 +289,9 @@ import sys
 sys.path.insert(0, str(Path(sys.argv[1]) / "scripts"))
 from ci_stage import BUILD_MANIFEST_SCHEMA, runtime_platform, sha256_file, stage_environment
 
-repo = Path(sys.argv[1])
-binary, worker, manifest = Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4]
-main_out = sys.argv[5]
+repo = Path(sys.argv[1]).resolve()
+binary, worker = Path(sys.argv[2]).resolve(), Path(sys.argv[3]).resolve()
+manifest, main_out = sys.argv[4], sys.argv[5]
 
 def record(path: Path, *, with_version: bool) -> dict[str, object]:
     entry: dict[str, object] = {"path": path.relative_to(repo).as_posix(),
@@ -324,7 +324,7 @@ document = {
     "runAttempt": environment["runAttempt"],
     "job": environment["job"],
 }
-if main_out and main_out != repo / "target/release/bin/main":
+if main_out and Path(main_out).resolve() != repo / "target/release/bin/main":
     raise SystemExit("--main-binary-out must be target/release/bin/main")
 if manifest:
     manifest_path = Path(manifest)
