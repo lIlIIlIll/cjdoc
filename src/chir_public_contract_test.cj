@@ -522,6 +522,16 @@ class ChirPublicContracts {
     }
 
     @TestCase
+    func functionTypeReturnIsNotAnOuterArgumentList(): Unit {
+        // The `<` belongs to the function type's return, not to the outer type,
+        // so there is no outer argument to pair and no wrong link is produced.
+        @Expect(chirSourceTypeArguments("() -> Box < Token >").size, 0)
+        @Expect(chirSourceTypeArguments("(Int64) -> Array < Token >").size, 0)
+        // A real outer generic still yields its arguments.
+        @Expect(chirSourceTypeArguments("Box < Token >").size, 1)
+    }
+
+    @TestCase
     func compactSpellingRemovesOnlyWhitespace(): Unit {
         // The renderer compares a signature range against this spelling with
         // whitespace removed, so the complete source subtree is kept.

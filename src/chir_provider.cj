@@ -938,6 +938,16 @@ internal func chirSourceTypeArguments(display: String): Array<String> {
         case Some(index) => index
         case None => return []
     }
+    // Only the outermost type's argument list counts. A function or tuple type
+    // such as `() -> Box<Token>` has a `<` inside its return, not as its own
+    // argument list, so a structural delimiter before the bracket rules it out.
+    var head: Int64 = 0
+    while (head < open) {
+        let byte = display[head]
+        if (byte == b'(' || byte == b'[' || byte == b'{') { return [] }
+        if (byte == b'-' && head + 1 < open && display[head + 1] == b'>') { return [] }
+        head++
+    }
     var angle: Int64 = 0
     var other: Int64 = 0
     var index = open
