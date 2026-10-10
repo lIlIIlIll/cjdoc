@@ -1315,10 +1315,15 @@ private func conceptualExternalUsageHtml(symbol: public_model.SymbolDoc,
             out.append(conceptualBindingLabel(locale, "Open external reference", "打开外部参考"))
             out.append("</a>")
         } else if (qualifiedAmbiguous) {
-            out.append("<span class=\"badge\" data-state=\"ambiguous\">ambiguous</span>")
+            // Reader-facing wording; the raw state stays in data-state.
+            out.append("<span class=\"badge\" data-state=\"ambiguous\">")
+            out.append(conceptualBindingLabel(locale, "Ambiguous reference", "引用不明确"))
+            out.append("</span>")
         } else {
-            out.append("<span class=\"badge\" data-state=\"unavailable\">")
+            out.append("<span class=\"badge\" data-state=\"")
             out.append(public_render.escapeStandaloneHtml(resolver.state))
+            out.append("\">")
+            out.append(conceptualBindingLabel(locale, "No external reference", "无外部参考"))
             out.append("</span> ")
             out.append(public_render.escapeStandaloneHtml(resolver.reason))
         }
