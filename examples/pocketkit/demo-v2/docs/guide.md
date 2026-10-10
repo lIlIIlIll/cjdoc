@@ -34,8 +34,7 @@ and reading a closed session throws. There is no operating-system file descripto
 ## 复现与本地生成 / Reproduce and author locally
 
 本页只讲如何使用 PocketKit。安装 SDK、复现展示产物与本地 `serve` 属于维护者职责，
-见 [复现与本地生成 / Reproduce and author locally](reproduce.md)、
-[SDK 与工具链要求 / SDK and toolchain](../../../README.md)。
+见 [复现与本地生成 / Reproduce and author locally](reproduce.md)，其中包含 SDK 与工具链要求。
 This page covers using PocketKit only. Installing the SDK, reproducing showcase artifacts and the
 local `serve` workflow are maintainer tasks: see the reproduction guide.
 
