@@ -41,16 +41,21 @@ private func renderArtifacts(documentation: public_model.DocumentationSet,
 // no execution claim at all rather than an inferred one.
 internal func exampleEvidenceMap(report: ?DoctestReport): HashMap<String, String> {
     let evidence = HashMap<String, String>()
+    // Keys whose results disagree. A conflicting key must stay without a claim
+    // even if a later result would otherwise match, so a pass can never mask an
+    // earlier failure.
+    let conflicting = HashSet<String>()
     match (report) {
         case Some(value) =>
             for (result in value.results) {
                 let key = public_render.exampleEvidenceKey(result.symbolId, result.title)
-                // Several blocks can share one example title, and one block can
-                // fail while another passes. A key with conflicting statuses is
-                // dropped, so a failure never reads as verified.
+                if (conflicting.contains(key)) { continue }
                 match (evidence.get(key)) {
                     case Some(existing) =>
-                        if (existing != result.status) { evidence.remove(key) }
+                        if (existing != result.status) {
+                            evidence.remove(key)
+                            conflicting.add(key)
+                        }
                     case None => evidence[key] = result.status
                 }
             }
@@ -77,7 +82,8 @@ internal func renderArtifactsWithCommandFallback(documentation: public_model.Doc
             case Some(request) =>
                 let fallback = boundGeneratedDocumentation(documentation, request, force: true)
                 (fallback, renderArtifacts(fallback, formats, locale: locale,
-                    markdownLayout: markdownLayout, docVersion: docVersion))
+                    markdownLayout: markdownLayout, docVersion: docVersion,
+                    exampleEvidence: exampleEvidence))
             case None => throw error
         }
     }

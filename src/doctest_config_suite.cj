@@ -196,6 +196,19 @@ class DoctestConfigSuite {
     }
 
     @TestCase
+    func aPassAfterAFailureCannotRestoreAClaim(): Unit {
+        // passed, failed, passed: the middle failure must keep the key without a
+        // claim, so a later pass cannot present the block as verified.
+        let key = public_render.exampleEvidenceKey("sym", "case")
+        let report = DoctestReport(DoctestConfig(), [
+            doctestEvidenceResult(key, "sym", "case", "passed"),
+            doctestEvidenceResult(key, "sym", "case", "failed"),
+            doctestEvidenceResult(key, "sym", "case", "passed"),
+        ])
+        @Expect(exampleEvidenceMap(Some(report)).contains(key), false)
+    }
+
+    @TestCase
     func oneStatusPerKeyKeepsItsClaim(): Unit {
         let key = public_render.exampleEvidenceKey("sym", "case")
         let report = DoctestReport(DoctestConfig(), [doctestEvidenceResult(key, "sym", "case", "passed")])
@@ -208,5 +221,4 @@ private func doctestEvidenceResult(id: String, symbolId: String, title: String,
     status: String): DoctestCaseResult {
     let snippet = DoctestSnippet(id, symbolId, "fixture", "fixture.api", title, "cj", "let a = 1")
     DoctestCaseResult(snippet, status)
- (fix(example): keep per-block status distinct and fix the evidence link)
 }
