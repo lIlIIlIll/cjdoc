@@ -89,7 +89,7 @@ jobs:
           . scripts/with_sts_o1_cjpm.sh
           bash scripts/check.sh build --repo . \
             --main-binary-out target/release/bin/main \
-            --worker-binary-out tools/chir-worker/target/release/bin/main \
+            --worker-binary-out target/release/bin/chir-worker-main \
             --manifest target/ci-build/build-manifest.json
           python scripts/ci_stage.py summarize --evidence target/ci-evidence \
             --output "${RUNNER_TEMP}/ci-stage-summary.md" || true
@@ -110,13 +110,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # The candidate ships both executables plus the identity manifest, and
-          # removes the owned worker build tree so the consumer can re-verify a
-          # clean worktree directory before running the remaining stages.
+          # The candidate ships both executables (the worker staged under target/)
+          # plus the identity manifest. The owned worker build tree is removed
+          # afterwards so the repository-input gate sees a clean worktree; it is
+          # never part of the artifact.
           tar --format=ustar --owner=0 --group=0 --numeric-owner \
             -C "${GITHUB_WORKSPACE}" -cf "${RUNNER_TEMP}/cjdoc-linux-candidate.tar" \
-            target/release/bin/main target/ci-build/build-manifest.json \
-            tools/chir-worker/target/release/bin/main
+            target/release/bin/main target/release/bin/chir-worker-main \
+            target/ci-build/build-manifest.json
           rm -rf tools/chir-worker/target
 
       - name: Upload the Linux candidate
