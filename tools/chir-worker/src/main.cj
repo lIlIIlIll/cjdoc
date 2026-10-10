@@ -114,8 +114,12 @@ private func deserializeAndSummarizeChir(bytes: Array<Byte>, packageName: String
                 if (typeArgs.size > funcType.paramTypes.size) {
                     appendChirTypeNodes(nodes, typeArgs[typeArgs.size - 1], 0)
                 }
+                // The signature record carries the same owner shape as the
+                // function record, including the extension target, so the
+                // provider can match it to its declaration the same way.
                 summary.signatureRecords.add(ChirWorkerSignatureRecord(
-                    value.packageName, value.srcCodeName, ownerName,
+                    value.packageName, value.srcCodeName, ownerKind, ownerPackageName, ownerName,
+                    targetPackageName, targetName, value.genericTypeParams.size,
                     funcType.paramTypes.size, nodes))
             }
             for (value in chirPackage.allCustomTypeDefs) {
