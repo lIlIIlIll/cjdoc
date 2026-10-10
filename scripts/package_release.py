@@ -143,11 +143,51 @@ def committed_package_version(repo: Path, source_commit: str) -> str:
     return version
 
 
+def verify_candidate_receipt(receipt: dict, binary_content: bytes, platform_name: str,
+                             source_commit: str, sdk_sha256: str,
+                             stdx_sha256: str | None) -> tuple[str, str, str]:
+    """Return (tag, tree, receipt digest) after binding the receipt to this package.
+
+    The receipt is the only accepted proof that this exact binary passed this
+    platform's acceptance gates, so every identity it claims is re-checked here
+    rather than trusted.
+    """
+    if not isinstance(receipt, dict) or receipt.get("schemaVersion") != "cjdoc.release-candidate/1":
+        raise ValueError("unexpected release candidate receipt schema")
+    source = receipt.get("source")
+    if not isinstance(source, dict) or not COMMIT.fullmatch(str(source.get("commit") or "")) or \
+            not COMMIT.fullmatch(str(source.get("tree") or "")):
+        raise ValueError("release candidate receipt must carry its full commit and tree")
+    if source["commit"] != source_commit:
+        raise ValueError("release candidate receipt is for a different source commit")
+    if not isinstance(source.get("tag"), str) or not source["tag"]:
+        raise ValueError("release candidate receipt must carry its release tag")
+    platform = receipt.get("platform")
+    if not isinstance(platform, dict) or platform.get("id") != platform_name:
+        raise ValueError("release candidate receipt is for a different platform")
+    toolchain = receipt.get("toolchain")
+    if not isinstance(toolchain, dict) or toolchain.get("sdkArchiveSha256") != sdk_sha256:
+        raise ValueError("release candidate receipt used a different SDK archive")
+    if stdx_sha256 is not None and toolchain.get("stdxArchiveSha256") != stdx_sha256:
+        raise ValueError("release candidate receipt used a different stdx archive")
+    binary = receipt.get("binary")
+    if not isinstance(binary, dict):
+        raise ValueError("release candidate receipt omits its binary identity")
+    actual = sha256_bytes(binary_content)
+    if binary.get("sha256") != actual:
+        raise ValueError("release candidate receipt does not describe the packaged binary")
+    if binary.get("size") != len(binary_content):
+        raise ValueError("release candidate receipt binary size does not match the package")
+    canonical = (json.dumps(receipt, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode()
+    return source["tag"], source["tree"], sha256_bytes(canonical)
+
+
 def collect_payload(repo: Path, binary: Path, windows: bool, version: str,
                     platform_name: str, source_commit: str,
                     sdk_version: str, sdk_sha256: str,
                     stdx_version: str | None = None,
-                    stdx_sha256: str | None = None) -> dict[str, tuple[bytes, int]]:
+                    stdx_sha256: str | None = None,
+                    candidate_receipt: dict | None = None) -> dict[str, tuple[bytes, int]]:
     if (stdx_version is None) != (stdx_sha256 is None):
         raise ValueError("stdx version and checksum must be supplied together")
     if stdx_version is not None:
@@ -156,8 +196,9 @@ def collect_payload(repo: Path, binary: Path, windows: bool, version: str,
         if not SHA256.fullmatch(stdx_sha256 or ""):
             raise ValueError("stdx archive SHA-256 must be lowercase 64-hex")
     executable_name = "cjdoc.exe" if windows else "cjdoc"
+    executable_content = binary.read_bytes()
     payload: dict[str, tuple[bytes, int]] = {
-        executable_name: (binary.read_bytes(), 0o755),
+        executable_name: (executable_content, 0o755),
         "README.md": (committed_file(repo, source_commit, "README.md"), 0o644),
         "LICENSE": (committed_file(repo, source_commit, "LICENSE"), 0o644),
         "THIRD_PARTY_NOTICES.md": (
@@ -194,6 +235,21 @@ def collect_payload(repo: Path, binary: Path, windows: bool, version: str,
             for name, (content, _) in sorted(payload.items())
         },
     }
+    if candidate_receipt is not None:
+        tag, tree, receipt_digest = verify_candidate_receipt(
+            candidate_receipt, executable_content, platform_name, source_commit,
+            sdk_sha256, stdx_sha256)
+        manifest.update({
+            "schemaVersion": "cjdoc.release-package/4",
+            "releaseTag": tag,
+            "sourceTree": tree,
+            "candidateReceiptSha256": receipt_digest,
+        })
+        receipt_content = (json.dumps(candidate_receipt, ensure_ascii=False,
+                                      sort_keys=True, indent=2) + "\n").encode()
+        payload["release-candidate.json"] = (receipt_content, 0o644)
+        manifest["files"]["release-candidate.json"] = {
+            "sha256": sha256_bytes(receipt_content), "size": len(receipt_content)}
     manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
     payload["release-manifest.json"] = (manifest_bytes, 0o644)
     return payload
@@ -225,14 +281,32 @@ def write_tar_gz(path: Path, root_name: str, payload: dict[str, tuple[bytes, int
                     archive.addfile(info, io.BytesIO(content))
 
 
+def _verify_receipt_against_worktree(receipt: dict, identity: dict[str, object],
+                                     version: str) -> None:
+    """Bind the receipt to the live source worktree before packing anything."""
+    if not isinstance(receipt, dict) or receipt.get("schemaVersion") != "cjdoc.release-candidate/1":
+        raise ValueError("unexpected release candidate receipt schema")
+    source = receipt.get("source")
+    if not isinstance(source, dict):
+        raise ValueError("release candidate receipt omits its source identity")
+    if source.get("commit") != identity["headCommit"] or source.get("tree") != identity["tree"]:
+        raise ValueError("release candidate receipt is for a different source commit or tree")
+    if source.get("dirty") is True:
+        raise ValueError("release candidate receipt was produced from a dirty worktree")
+    release_version = str(source.get("releaseVersion") or "")
+    if release_version.split("-", 1)[0] != version:
+        raise ValueError("release candidate receipt version does not match cjpm.toml")
+
+
 def build_archive(repo: Path, binary: Path, platform_name: str, output: Path,
                   *, source_commit: str, sdk_version: str, sdk_sha256: str,
                   release_version: str,
                   stdx_version: str | None = None,
-                  stdx_sha256: str | None = None) -> Path:
+                  stdx_sha256: str | None = None,
+                  candidate_receipt: dict | None = None) -> Path:
     if not COMMIT.fullmatch(source_commit):
         raise ValueError("source commit must be a lowercase 40-hex commit")
-    verify_source_commit(repo, source_commit)
+    identity = verify_source_commit(repo, source_commit)
     version = committed_package_version(repo, source_commit)
     if not RELEASE_SEMVER.fullmatch(release_version):
         raise ValueError("release version must be a SemVer release version")
@@ -244,6 +318,8 @@ def build_archive(repo: Path, binary: Path, platform_name: str, output: Path,
         raise ValueError("SDK archive SHA-256 must be lowercase 64-hex")
     if not sdk_version:
         raise ValueError("SDK version is missing")
+    if candidate_receipt is not None:
+        _verify_receipt_against_worktree(candidate_receipt, identity, version)
     windows = platform_name.startswith("windows-")
     extension = ".zip" if windows else ".tar.gz"
     output = safe_output_directory(repo, output, create=True)
@@ -259,7 +335,7 @@ def build_archive(repo: Path, binary: Path, platform_name: str, output: Path,
     root_name = f"cjdoc-{release_version}"
     payload = collect_payload(repo, binary, windows, release_version, platform_name,
                               source_commit, sdk_version, sdk_sha256,
-                              stdx_version, stdx_sha256)
+                              stdx_version, stdx_sha256, candidate_receipt)
     verify_source_commit(repo, source_commit)
     with tempfile.NamedTemporaryFile(dir=output, prefix=f".{asset.name}.", delete=False) as stream:
         temporary = Path(stream.name)
@@ -311,6 +387,8 @@ def main() -> int:
     parser.add_argument("--stdx-sha256")
     parser.add_argument("--sdk-root", type=Path,
                         default=Path(configured_sdk_root) if configured_sdk_root else None)
+    parser.add_argument("--candidate-receipt", type=Path,
+                        help="cjdoc.release-candidate/1 receipt that accepted this binary")
     args = parser.parse_args()
     try:
         binary = resolve_binary(args.binary)
@@ -341,6 +419,9 @@ def main() -> int:
         else:
             validate_combined_sdk_root(args.sdk_root, args.sdk_sha256, args.stdx_sha256)
         verify_binary_version(binary, version)
+        candidate_receipt = None
+        if args.candidate_receipt is not None:
+            candidate_receipt = json.loads(Path(args.candidate_receipt).read_text(encoding="utf-8"))
         asset = build_archive(
             repo, binary, args.platform, args.output,
             source_commit=args.source_commit,
@@ -349,6 +430,7 @@ def main() -> int:
             release_version=release_version,
             stdx_version=args.stdx_version,
             stdx_sha256=args.stdx_sha256,
+            candidate_receipt=candidate_receipt,
         )
         package_evidence = verify_archive(
             asset, args.platform, release_version, args.sdk_version, args.sdk_sha256,
