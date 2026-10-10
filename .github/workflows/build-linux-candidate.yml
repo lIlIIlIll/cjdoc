@@ -110,9 +110,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # The candidate ships both executables plus the identity manifest, and
+          # removes the owned worker build tree so the consumer can re-verify a
+          # clean worktree directory before running the remaining stages.
           tar --format=ustar --owner=0 --group=0 --numeric-owner \
             -C "${GITHUB_WORKSPACE}" -cf "${RUNNER_TEMP}/cjdoc-linux-candidate.tar" \
-            target/release/bin/main target/ci-build/build-manifest.json
+            target/release/bin/main target/ci-build/build-manifest.json \
+            tools/chir-worker/target/release/bin/main
+          rm -rf tools/chir-worker/target
 
       - name: Upload the Linux candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

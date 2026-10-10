@@ -274,18 +274,19 @@ stage_build() {
         echo "CHIR worker executable was not produced at ${worker}" >&2
         exit 1
     fi
-    if [[ -n "${manifest}" ]]; then
-        "${python_cmd}" - "${repo}" "${binary}" "${worker}" "${manifest}" "${main_binary_out}" <<'PY'
+    # The build stage owns both binaries and the worker target directory it just
+    # created, so it records them and then removes only what it made. Consumers
+    # receive the binaries through the candidate artifact instead of rebuilding.
+    "${python_cmd}" - "${repo}" "${binary}" "${worker}" "${manifest:-}" "${main_binary_out}" <<'PY'
 from pathlib import Path
 import json
-import os
 import subprocess
 import sys
 sys.path.insert(0, str(Path(sys.argv[1]) / "scripts"))
 from ci_stage import BUILD_MANIFEST_SCHEMA, runtime_platform, sha256_file, stage_environment
 
 repo = Path(sys.argv[1])
-binary, worker, manifest = Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4])
+binary, worker, manifest = Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4]
 main_out = sys.argv[5]
 
 def record(path: Path, *, with_version: bool) -> dict[str, object]:
@@ -321,12 +322,13 @@ document = {
 }
 if main_out and main_out != repo / "target/release/bin/main":
     raise SystemExit("--main-binary-out must be target/release/bin/main")
-manifest.parent.mkdir(parents=True, exist_ok=True)
-manifest.write_text(json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-                    encoding="utf-8", newline="\n")
-print(f"build manifest written: {manifest}")
+if manifest:
+    manifest_path = Path(manifest)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                             encoding="utf-8", newline="\n")
+    print(f"build manifest written: {manifest_path}")
 PY
-    fi
 }
 
 stage_native() {
