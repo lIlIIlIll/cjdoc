@@ -710,10 +710,14 @@ private func versionLatestIndex(sites: ArrayList<VersionSite>, latest: String): 
 
 private func rewriteComposedDoctestEvidence(html: String, site: VersionSite,
     outputPath: String, filePath: String): String {
-    if (!site.hasPath("doctest/results.json") || filePath != "validation.html") { return html }
+    if (!site.hasPath("doctest/results.json")) { return html }
+    // Member pages carry the link too, one level below the version root, so both
+    // depths are rewritten to the composed location.
+    if (!html.contains("doctest/results.json")) { return html }
     let evidencePath = versionOutputPath(site, "doctest/results.json")
-    let href = versionRelativeHref(outputPath, evidencePath)
-    html.replace("href=\"../doctest/results.json\"", "href=\"" + public_render.escapeStandaloneHtml(href) + "\"")
+    let href = public_render.escapeStandaloneHtml(versionRelativeHref(outputPath, evidencePath))
+    html.replace("href=\"../../doctest/results.json\"", "href=\"" + href + "\"")
+        .replace("href=\"../doctest/results.json\"", "href=\"" + href + "\"")
 }
 
 private func attachComposedApiDiffEvidence(html: String, site: VersionSite,

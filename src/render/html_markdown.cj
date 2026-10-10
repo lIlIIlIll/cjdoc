@@ -374,7 +374,15 @@ internal func appendExampleEvidenceHtml(out: RenderTextBuffer, symbol: SymbolDoc
     evidence: HashMap<String, String>, locale: String,
     evidenceRootPrefix!: String = "../../"): Unit {
     match (evidence.get(exampleEvidenceKey(symbol.id, tag.subject))) {
-        case None => ()
+        case None =>
+            // When doctests ran, an example with no result is evidence that was
+            // not recorded, which a reader must not mistake for a verified or
+            // merely absent claim. When no doctests ran at all the map is empty
+            // and no claim system is active, so nothing is shown.
+            if (evidence.isEmpty()) { return }
+            out.append("<p class=\"example-evidence\"><span class=\"badge\" data-example-state=\"unverified\">")
+            out.append(label(locale, "Not verified by execution", "未经执行验证"))
+            out.append("</span></p>")
         case Some(status) =>
             let wording = match (status) {
                 case "passed" => label(locale, "Verified by execution", "已执行验证")

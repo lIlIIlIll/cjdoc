@@ -52,15 +52,22 @@ class HtmlExampleEvidenceTest {
     @TestCase
     func unrecordedOrMismatchedExamplesCarryNoClaim(): Unit {
         let symbolId = "cjdoc:v2:example::fixture::function:api#g0()"
+        // No doctests ran at all: no claim system is active, so no badge.
         let empty = HashMap<String, String>()
         @Expect(exampleEvidenceHtml(symbolId, "no result", empty, "en").contains("example-evidence"), false)
-        // A status recorded for a different title or symbol must not be reused.
+        // Doctests ran (the map is not empty) but this example has no result, so
+        // it is marked unverified rather than silently claiming nothing.
         let other = HashMap<String, String>()
         other[exampleEvidenceKey(symbolId, "other title")] = "passed"
-        @Expect(exampleEvidenceHtml(symbolId, "this title", other, "en").contains("example-evidence"), false)
+        let unverified = exampleEvidenceHtml(symbolId, "this title", other, "en")
+        @Expect(unverified.contains('data-example-state="unverified"'), true)
+        @Expect(unverified.contains("Not verified by execution"), true)
+        // A status recorded for a different title or symbol must not be reused.
         let otherSymbol = HashMap<String, String>()
         otherSymbol[exampleEvidenceKey("cjdoc:v2:example::other#g0()", "this title")] = "passed"
-        @Expect(exampleEvidenceHtml(symbolId, "this title", otherSymbol, "en").contains("example-evidence"), false)
+        let mismatched = exampleEvidenceHtml(symbolId, "this title", otherSymbol, "en")
+        @Expect(mismatched.contains('data-example-state="passed"'), false)
+        @Expect(mismatched.contains('data-example-state="unverified"'), true)
     }
 
     @TestCase
