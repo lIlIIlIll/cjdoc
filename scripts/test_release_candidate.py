@@ -201,27 +201,30 @@ class ReleaseAssetLayoutTest(unittest.TestCase):
     def workflow(self) -> str:
         return (PROJECT_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
-    def upload_step(self) -> dict:
-        import yaml
+    def candidate_job(self) -> str:
+        return self.workflow().split("\n  release-candidate:\n", 1)[1].split("\n  publish:\n", 1)[0]
 
-        document = yaml.safe_load(self.workflow())
-        for step in document["jobs"]["release-candidate"]["steps"]:
-            if step.get("name") == "Upload the verified candidate":
-                return step
-        raise AssertionError("the candidate upload step is missing")
+    def block(self, job: str, step_name: str) -> str:
+        """Return the text of one step, up to the next step at the same indent."""
+        marker = f"      - name: {step_name}"
+        self.assertIn(marker, job)
+        body = job.split(marker, 1)[1]
+        return body.split("\n      - name:", 1)[0]
 
     def test_candidate_upload_uses_one_flat_directory(self) -> None:
-        with_yaml = self.upload_step().get("with", {})
-        self.assertEqual(with_yaml.get("path"), "target/release-assets",
-                         "the artifact root must be one flat directory")
-        self.assertEqual(with_yaml.get("if-no-files-found"), "error")
+        # No PyYAML dependency: the CI runner does not install it.
+        upload = self.block(self.candidate_job(), "Upload the verified candidate")
+        self.assertIn("path: target/release-assets", upload)
+        self.assertIn("if-no-files-found: error", upload)
         # Two sibling upload paths would silently make `target/` the ancestor and
-        # nest the payload below `release-package/` and `release-candidate/`.
-        self.assertNotIn("release-package/*", str(with_yaml))
+        # nest the payload below `release-package/` and `release-candidate/`
+        # (upload-artifact uses the least common ancestor of multiple paths).
+        self.assertNotIn("release-package/*", upload)
+        self.assertNotIn("release-candidate/", upload)
 
     def test_staging_copies_package_and_receipt_into_the_flat_root(self) -> None:
-        candidate = self.workflow().split("\n  release-candidate:\n", 1)[1].split("\n  publish:\n", 1)[0]
-        staging = candidate.split("name: Stage the release assets", 1)[1].split("- name: Upload", 1)[0]
+        candidate = self.candidate_job()
+        staging = self.block(candidate, "Stage the release assets in one flat directory")
         self.assertIn("target/release-assets", staging)
         self.assertIn("cp -p target/release-package/* target/release-assets/", staging)
         self.assertIn("cjdoc-release-candidate-${{ matrix.platform }}.json", staging)
