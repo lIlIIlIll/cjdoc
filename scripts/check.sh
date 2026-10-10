@@ -278,9 +278,10 @@ stage_build() {
         echo "CHIR worker executable was not produced at ${worker}" >&2
         exit 1
     fi
-    # The build stage owns both binaries and the worker target directory it just
-    # created, so it records them and then removes only what it made. Consumers
-    # receive the binaries through the candidate artifact instead of rebuilding.
+    # The build stage owns both executables and the worker build directory it just
+    # created. It copies the worker binary into a stage-owned staging directory,
+    # records both identities there, then removes only the worker build tree, so
+    # a consumer receives ready binaries instead of rebuilding anything.
     "${python_cmd}" - "${repo}" "${binary}" "${worker}" "${manifest:-}" "${main_binary_out}" <<'PY'
 from pathlib import Path
 import json
@@ -333,9 +334,6 @@ if manifest:
                              encoding="utf-8", newline="\n")
     print(f"build manifest written: {manifest_path}")
 PY
-    # The build stage owns the worker build directory it just created, so it
-    # removes only that path; the binaries travel with the candidate artifact.
-    remove_owned_outputs "${worker_project}/target"
 }
 
 stage_native() {
@@ -715,6 +713,10 @@ if [[ -z "${stage}" ]]; then
     for stage in preflight build native python-tools cli provider; do
         run_stage "${stage}" "$(stage_kind "${stage}")"
     done
+    # The zero-argument gate owns everything it built, so it leaves the worktree
+    # clean. Single-stage callers (CI and Pages) instead receive the worker binary
+    # through the candidate artifact and clean it when they package.
+    remove_owned_outputs "${worker_project}/target"
 else
     run_stage "${stage}" "$(stage_kind "${stage}")"
 fi
