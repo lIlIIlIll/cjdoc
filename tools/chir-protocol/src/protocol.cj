@@ -7,6 +7,39 @@ public let CHIR_WORKER_PROTOCOL = "cjdoc-chir-worker/1"
 public let MAX_CHIR_REQUEST_BYTES: Int64 = 4 * 1024 * 1024
 public let MAX_CHIR_RESPONSE_BYTES: Int64 = 16 * 1024 * 1024
 
+// One resolved type in a signature, in pre-order, with its depth in the
+// argument tree. `qualifiedName` is the name CHIR resolved, which distinguishes
+// same-spelled types from different packages.
+public class ChirTypeNode {
+    public let depth: Int64
+    public let qualifiedName: String
+
+    public init(depth: Int64, qualifiedName: String) {
+        this.depth = depth
+        this.qualifiedName = qualifiedName
+    }
+}
+
+// The parameter/return type structure CHIR resolved for one declaration. The
+// first `paramCount` top-level entries are the parameters, in source order; the
+// remaining top-level entry, when present, is the return type.
+public class ChirWorkerSignatureRecord {
+    public let packageName: String
+    public let name: String
+    public let ownerName: String
+    public let paramCount: Int64
+    public let types: ArrayList<ChirTypeNode>
+
+    public init(packageName: String, name: String, ownerName: String, paramCount: Int64,
+        types: ArrayList<ChirTypeNode>) {
+        this.packageName = packageName
+        this.name = name
+        this.ownerName = ownerName
+        this.paramCount = paramCount
+        this.types = types
+    }
+}
+
 public class ChirWorkerFunctionRecord {
     public let packageName: String
     public let name: String
@@ -85,6 +118,7 @@ public class ChirWorkerSummary {
     public let memberRecords = ArrayList<ChirWorkerMemberRecord>()
     public let typeRecords = ArrayList<ChirWorkerTypeRecord>()
     public let extendRecords = ArrayList<ChirWorkerExtendRecord>()
+    public let signatureRecords = ArrayList<ChirWorkerSignatureRecord>()
     public let enumCaseRecords = ArrayList<ChirWorkerEnumCaseRecord>()
     public var functionCount: Int64 = 0
     public var typeCount: Int64 = 0
@@ -145,6 +179,7 @@ public func readChirWorkerResponse(text: String): ChirWorkerSummary {
                 errorSeen = true
                 failure = value
             case "function" => summary.functionRecords.add(parseFunctionRecord(value))
+            case "signature" => summary.signatureRecords.add(parseSignatureRecord(value))
             case "member" => summary.memberRecords.add(parseMemberRecord(value))
             case "type" => summary.typeRecords.add(parseTypeRecord(value))
             case "extend" => summary.extendRecords.add(parseExtendRecord(value))
@@ -254,6 +289,26 @@ private func parseMemberRecord(value: String): ChirWorkerMemberRecord {
     ChirWorkerMemberRecord(fields[0], fields[1], recordValue(fields[2]), recordValue(fields[3]))
 }
 
+private func parseSignatureRecord(value: String): ChirWorkerSignatureRecord {
+    let fields = value.split("\t")
+    if (fields.size < 5) {
+        throw IllegalArgumentException("CHIR worker signature record is malformed")
+    }
+    let paramCount = parseWorkerCount(fields[3])
+    let typeCount = parseWorkerCount(fields[4])
+    if (fields.size != 5 + typeCount * 2) {
+        throw IllegalArgumentException("CHIR worker signature record type count is inconsistent")
+    }
+    let types = ArrayList<ChirTypeNode>()
+    var index: Int64 = 0
+    while (index < typeCount) {
+        types.add(ChirTypeNode(parseWorkerCount(fields[5 + index * 2]),
+            recordValue(fields[6 + index * 2])))
+        index++
+    }
+    ChirWorkerSignatureRecord(fields[0], fields[1], recordValue(fields[2]), paramCount, types)
+}
+
 private func parseTypeRecord(value: String): ChirWorkerTypeRecord {
     let fields = recordFields(value, 2)
     ChirWorkerTypeRecord(fields[0], fields[1])
@@ -302,6 +357,26 @@ public func writeChirWorkerSuccess(path: Path, summary: ChirWorkerSummary): Unit
         lines.add("member=" + chirRecordValue(record.packageName) + "\t" +
             chirRecordValue(record.name) + "\t" + chirRecordValue(record.ownerPackageName) + "\t" +
             chirRecordValue(record.ownerName))
+    }
+    for (record in summary.signatureRecords) {
+        let fields = ArrayList<String>()
+        fields.add(chirRecordValue(record.packageName))
+        fields.add(chirRecordValue(record.name))
+        fields.add(chirRecordValue(record.ownerName))
+        fields.add(record.paramCount.toString())
+        fields.add(record.types.size.toString())
+        for (node in record.types) {
+            fields.add(node.depth.toString())
+            fields.add(chirRecordValue(node.qualifiedName))
+        }
+        let joined = StringBuilder()
+        var firstField = true
+        for (field in fields) {
+            if (!firstField) { joined.append("\t") }
+            firstField = false
+            joined.append(field)
+        }
+        lines.add("signature=" + joined.toString())
     }
     for (record in summary.typeRecords) {
         lines.add("type=" + chirRecordValue(record.packageName) + "\t" +

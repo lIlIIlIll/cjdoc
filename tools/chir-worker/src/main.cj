@@ -99,10 +99,24 @@ private func deserializeAndSummarizeChir(bytes: Array<Byte>, packageName: String
                         }
                     case None => ()
                 }
+                let funcType = value.funcSrcCodeType
                 summary.functionRecords.add(ChirWorkerFunctionRecord(
                     value.packageName, value.srcCodeName, ownerKind, ownerPackageName, ownerName,
                     targetPackageName, targetName, value.genericTypeParams.size,
-                    value.funcSrcCodeType.paramTypes.size))
+                    funcType.paramTypes.size))
+                let nodes = ArrayList<ChirTypeNode>()
+                for (parameterType in funcType.paramTypes) {
+                    appendChirTypeNodes(nodes, parameterType, 0)
+                }
+                // The final type argument is the return type; the earlier ones
+                // are the parameters, which were emitted above.
+                let typeArgs = funcType.typeArgs
+                if (typeArgs.size > funcType.paramTypes.size) {
+                    appendChirTypeNodes(nodes, typeArgs[typeArgs.size - 1], 0)
+                }
+                summary.signatureRecords.add(ChirWorkerSignatureRecord(
+                    value.packageName, value.srcCodeName, ownerName,
+                    funcType.paramTypes.size, nodes))
             }
             for (value in chirPackage.allCustomTypeDefs) {
                 if (value.isImported() || value.packageName != packageName) { continue }
@@ -161,6 +175,14 @@ private func deserializeAndSummarizeChir(bytes: Array<Byte>, packageName: String
             releaseArrayRawData(handle)
         }
     }
+}
+
+
+// Pre-order flattening of a resolved CHIR type, keeping each node's depth so the
+// consumer can rebuild the argument tree without re-parsing any spelling.
+private func appendChirTypeNodes(nodes: ArrayList<ChirTypeNode>, value: Type, depth: Int64): Unit {
+    nodes.add(ChirTypeNode(depth, value.qualifiedName))
+    for (argument in value.typeArgs) { appendChirTypeNodes(nodes, argument, depth + 1) }
 }
 
 private func chirCustomTypeIdentity(value: Type): (String, String) {
