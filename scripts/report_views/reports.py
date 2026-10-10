@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .localization import (DIFF_CLASSIFICATIONS, DIFF_MATCH_STATES, DIFF_RAW_LABEL,
-                           DIFF_TABLE_HEADINGS, localize_ui)
+                           DIFF_REASONS, DIFF_TABLE_HEADINGS, localize_ui)
 
 from showcase_contract.site import ContractError, canonical_json, load_json, relative_path
 
@@ -124,9 +124,20 @@ def declaration_link(root: Path, origin: Path, mapping: dict, symbol_id: str | N
 
 # Evidence fields whose value is a `TAG:byteLength:text` token list. Their lengths
 # let a token contain a `|` without corrupting the encoding, so they are decoded
-# by length; every other field is a plain source string and is shown verbatim.
-DIFF_ENCODED_FIELDS = {"sourceApiSignature", "genericParameters", "relationships", "targetIds"}
+# by length.
+DIFF_ENCODED_FIELDS = {"sourceApiSignature", "genericParameters"}
+# Source-visible fields that are not token lists and are shown verbatim.
 DIFF_PLAIN_FIELDS = {"return", "visibility", "exposedName", "parameters"}
+# Reader-facing labels for the field column. These are presentation, so they are
+# localized by the page localizer; only values are protected source text.
+DIFF_FIELD_LABELS = {
+    "return": ("返回值", "return type"),
+    "visibility": ("可见性", "visibility"),
+    "exposedName": ("对外名称", "exposed name"),
+    "genericParameters": ("泛型参数", "generic parameters"),
+    "sourceApiSignature": ("源码签名", "source API signature"),
+    "parameters": ("参数", "parameters"),
+}
 
 
 def _diff_absent() -> str:
@@ -155,14 +166,19 @@ def _diff_parameter_index(field: str) -> int | None:
         return None
 
 
-def _diff_field(field: str) -> str:
-    """A readable label for the field. A parameter keeps its position, so two
+def _diff_field(field: str, locale: str = "en") -> str:
+    """A localized label for the field. A parameter keeps its position, so two
     changed parameters are not shown as two identical `name` rows."""
     index = _diff_parameter_index(field)
     if index is not None:
         suffix = field[field.find("]") + 1:].lstrip(".")
+        if locale == "zh-CN":
+            return f"参数 {index + 1} {suffix}"
         return f"parameter {index + 1} {suffix}" if suffix else f"parameter {index + 1}"
-    return "parameters" if field == "parameters" else field
+    entry = DIFF_FIELD_LABELS.get(field)
+    if entry is not None:
+        return entry[0] if locale == "zh-CN" else entry[1]
+    return field
 
 
 def _diff_value(field: str, value) -> str:
@@ -172,19 +188,38 @@ def _diff_value(field: str, value) -> str:
         return _diff_absent()
     text = str(value)
     if field == "parameters":
-        # A whole parameter list: `name:typeState:type:defaultState:default`,
-        # one per pipe-separated entry. Show each parameter's name and type.
-        entries = text.split("|")
-        rendered = []
-        for entry in entries:
-            pieces = entry.split(":")
-            rendered.append(pieces[0] + ": " + pieces[2] if len(pieces) >= 3 else entry)
-        return "<br>".join(source_text(part) for part in rendered) if rendered else ""
+        return "<br>".join(source_text(part) for part in _diff_parameter_list(text))
     if field in DIFF_ENCODED_FIELDS:
         parts = _diff_token_segments(text)
     else:
         parts = [text]
     return "<br>".join(source_text(part) for part in parts)
+
+
+def _diff_parameter_list(text: str) -> list[str]:
+    """The native list is `name:typeState:type:defaultState:default` joined by
+    `|`, but a default expression can itself contain `|`. Only split where the
+    following fragment looks like a fresh entry (it has a colon); otherwise the
+    fragment continues the current default. If the shape still cannot be read,
+    the whole value is shown verbatim rather than as phantom parameters."""
+    fragments = text.split("|")
+    entries, current = [], fragments[0]
+    for fragment in fragments[1:]:
+        if ":" in fragment:
+            entries.append(current)
+            current = fragment
+        else:
+            current = current + "|" + fragment
+    entries.append(current)
+    rendered = []
+    for entry in entries:
+        pieces = entry.split(":")
+        # A well-formed entry has name, typeState, type, defaultState, default.
+        if len(pieces) >= 3 and entry.count(":") >= 4:
+            rendered.append(pieces[0] + ": " + pieces[2])
+        else:
+            return [text]
+    return rendered
 
 
 def _diff_token_segments(text: str) -> list[str]:
@@ -407,12 +442,14 @@ def diff_view(raw: dict | None, origin: Path, baseline: Path | None, current: Pa
         # shown as text. Raw evidence stays behind a disclosure for traceability.
         if entry["reasons"]:
             output += '<ul data-diff-reasons>' + ''.join(
-                '<li>' + escaped(reason) + '</li>' for reason in entry["reasons"]) + '</ul>'
+                '<li data-diff-reason="' + escaped(reason) + '">'
+                + _diff_label(DIFF_REASONS, reason, locale) + '</li>'
+                for reason in entry["reasons"]) + '</ul>'
         changed = [item for item in entry["evidence"]
                    if _diff_readable(item["field"])
                    and (item.get("state") != "resolved" or item.get("before") != item.get("after"))]
         if changed:
-            rows = [[source_text(_diff_field(item["field"])),
+            rows = [[escaped(_diff_field(item["field"], locale)),
                      _diff_value(item["field"], item.get("before")),
                      _diff_value(item["field"], item.get("after"))] for item in changed]
             output += table((DIFF_TABLE_HEADINGS[0 if locale == "zh-CN" else 1][0],

@@ -137,12 +137,12 @@ class ReaderUiTests(unittest.TestCase):
         # Reader-facing wording replaces the native vocabulary, which stays in
         # the data-* attribute and the raw evidence block.
         self.assertIn('data-diff-label="classification">潜在不兼容变化<', view)
-        self.assertIn('data-diff-label="matchState" data-diff-match-state="fallback">按名称回退匹配<', view)
+        self.assertIn('data-diff-label="matchState" data-diff-match-state="fallback">按回退键匹配<', view)
         self.assertIn('data-diff-classification="potentially-breaking"', view)
         # Each evidence segment is its own line in the cell.
         # A readable parameter field is shown; the opaque fingerprint is left to
         # the raw-evidence disclosure rather than the reader table.
-        self.assertIn('<span data-report-source-text>parameter 1 name</span>', view)
+        self.assertIn('参数 1 name', view)
         self.assertNotIn("sourceFingerprint", view.split("<details")[0])
         # A signature token whose own text is a pipe is not mis-split.
         self.assertIn('<span data-report-source-text>|</span>', view.split("<details")[0])

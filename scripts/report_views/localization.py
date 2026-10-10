@@ -37,6 +37,42 @@ DIFF_CLASSIFICATIONS = {
 
 # The API-change evidence table and its disclosure, localized beside the raw
 # evidence that stays in the disclosure.
+# Native reason sentences are a controlled vocabulary, so they are mapped for
+# display; the raw sentences stay in the evidence disclosure.
+DIFF_REASONS = {
+    "declaration added": ("新增声明", "Declaration added"),
+    "declaration removed": ("删除声明", "Declaration removed"),
+    "exposure added": ("新增对外暴露", "Exposure added"),
+    "exposure removed": ("移除对外暴露", "Exposure removed"),
+    "exposure name changed": ("对外名称变化", "Exposure name changed"),
+    "exposure resolution state changed": ("对外解析状态变化", "Exposure resolution state changed"),
+    "exposure targets changed": ("对外目标变化", "Exposure targets changed"),
+    "exposure fallback match is ambiguous": ("对外按回退键匹配存在歧义", "Exposure fallback match is ambiguous"),
+    "exposure identity match is ambiguous": ("对外标识匹配存在歧义", "Exposure identity match is ambiguous"),
+    "fallback match is ambiguous": ("按回退键匹配存在歧义", "Fallback match is ambiguous"),
+    "parameter count changed": ("参数数量变化", "Parameter count changed"),
+    "parameter name changed": ("参数名变化", "Parameter name changed"),
+    "parameter type contract changed": ("参数类型契约变化", "Parameter type contract changed"),
+    "optional parameters added": ("新增可选参数", "Optional parameters added"),
+    "default value changed": ("默认值变化", "Default value changed"),
+    "default value became unavailable": ("默认值变为不可用", "Default value became unavailable"),
+    "return contract changed": ("返回契约变化", "Return contract changed"),
+    "generic contract changed": ("泛型契约变化", "Generic contract changed"),
+    "type or symbol relationships changed": ("类型或符号关系变化", "Type or symbol relationships changed"),
+    "enum exhaustiveness evidence changed": ("枚举穷尽性证据变化", "Enum exhaustiveness evidence changed"),
+    "source API signature changed": ("源码 API 签名变化", "Source API signature changed"),
+    "visibility changed": ("可见性变化", "Visibility changed"),
+    "visibility narrowed": ("可见性收窄", "Visibility narrowed"),
+    "documentation changed": ("文档变化", "Documentation changed"),
+    "metadata changed": ("元数据变化", "Metadata changed"),
+    "source provenance changed": ("来源溯源变化", "Source provenance changed"),
+    "enum case added to exhaustive enum": ("穷尽枚举新增成员", "Enum case added to an exhaustive enum"),
+    "enum case added with new enum": ("新增枚举及其成员", "Enum case added with a new enum"),
+    "signature changed": ("签名变化", "Signature changed"),
+    "type changed": ("类型变化", "Type changed"),
+    "return type changed": ("返回类型变化", "Return type changed"),
+}
+
 DIFF_TABLE_HEADINGS = [
     ("字段", "变更前", "变更后"),
     ("Field", "Before", "After"),
@@ -49,7 +85,7 @@ DIFF_MATCH_STATES = {
     "added": ("新增声明", "Added declaration"),
     "removed": ("删除声明", "Removed declaration"),
     "exact": ("按稳定标识精确匹配", "Matched by exact identity"),
-    "fallback": ("按名称回退匹配", "Matched by name fallback"),
+    "fallback": ("按回退键匹配", "Matched by fallback key"),
     "changed": ("签名变化", "Signature changed"),
 }
 
