@@ -52,22 +52,31 @@ class HtmlExampleEvidenceTest {
     @TestCase
     func unrecordedOrMismatchedExamplesCarryNoClaim(): Unit {
         let symbolId = "cjdoc:v2:example::fixture::function:api#g0()"
-        // No doctests ran at all: no claim system is active, so no badge.
+        // No doctests ran at all (no run marker): no claim system, so no badge.
         let empty = HashMap<String, String>()
         @Expect(exampleEvidenceHtml(symbolId, "no result", empty, "en").contains("example-evidence"), false)
-        // Doctests ran (the map is not empty) but this example has no result, so
-        // it is marked unverified rather than silently claiming nothing.
+        // Doctests ran but produced no entry for this example: unverified, not
+        // indistinguishable from a disabled run.
+        let ranEmpty = HashMap<String, String>()
+        ranEmpty[EXAMPLE_EVIDENCE_RAN_MARKER] = "ran"
+        let ranUnverified = exampleEvidenceHtml(symbolId, "no result", ranEmpty, "en")
+        @Expect(ranUnverified.contains('data-example-state="unverified"'), true)
+        @Expect(ranUnverified.contains("Not verified by execution"), true)
+        // Doctests ran but recorded a different title: this example is unverified
+        // rather than claiming the other example's status.
         let other = HashMap<String, String>()
+        other[EXAMPLE_EVIDENCE_RAN_MARKER] = "ran"
         other[exampleEvidenceKey(symbolId, "other title")] = "passed"
-        let unverified = exampleEvidenceHtml(symbolId, "this title", other, "en")
-        @Expect(unverified.contains('data-example-state="unverified"'), true)
-        @Expect(unverified.contains("Not verified by execution"), true)
-        // A status recorded for a different title or symbol must not be reused.
+        let otherTitle = exampleEvidenceHtml(symbolId, "this title", other, "en")
+        @Expect(otherTitle.contains('data-example-state="passed"'), false)
+        @Expect(otherTitle.contains('data-example-state="unverified"'), true)
+        // A status recorded for a different symbol must not be reused.
         let otherSymbol = HashMap<String, String>()
+        otherSymbol[EXAMPLE_EVIDENCE_RAN_MARKER] = "ran"
         otherSymbol[exampleEvidenceKey("cjdoc:v2:example::other#g0()", "this title")] = "passed"
-        let mismatched = exampleEvidenceHtml(symbolId, "this title", otherSymbol, "en")
-        @Expect(mismatched.contains('data-example-state="passed"'), false)
-        @Expect(mismatched.contains('data-example-state="unverified"'), true)
+        let otherSymbolHtml = exampleEvidenceHtml(symbolId, "this title", otherSymbol, "en")
+        @Expect(otherSymbolHtml.contains('data-example-state="passed"'), false)
+        @Expect(otherSymbolHtml.contains('data-example-state="unverified"'), true)
     }
 
     @TestCase

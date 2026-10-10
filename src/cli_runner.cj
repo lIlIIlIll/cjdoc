@@ -47,6 +47,10 @@ internal func exampleEvidenceMap(report: ?DoctestReport): HashMap<String, String
     let conflicting = HashSet<String>()
     match (report) {
         case Some(value) =>
+            // Mark that a run happened, so an example without a result renders as
+            // unverified rather than being indistinguishable from disabled
+            // doctests.
+            evidence[public_render.EXAMPLE_EVIDENCE_RAN_MARKER] = "ran"
             for (result in value.results) {
                 let key = public_render.exampleEvidenceKey(result.symbolId, result.title)
                 if (conflicting.contains(key)) { continue }
