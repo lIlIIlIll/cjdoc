@@ -129,12 +129,17 @@ daily 1.1.0-alpha，其 stdx 确实未交付 `stdx.chir`）：
 `pocketkit.io.Token` 区分——这正是 AST 拼写无法判定的同名歧义。
 
 **结论：阻塞已解除，实现已交付（PR #81）。** 摘要：协议新增携带类型节点树的 `signature=`
-记录；worker 发射 pre-order 节点（depth + 限定名）；provider 重建结构化 `TypeRef`
-并声明 `canonicalTypes: true`；`spelling` 保留源码可见短名，解析结果只进 `canonical`。
-实测：`parse` 的 `Array<Token>` 内层 `Token` → `canonical = pocketkit.parsing.Token`
-（与 `pocketkit.io.Token` 可区分）并渲染为真实链接；26 个参数类型 + 35 个返回类型
-resolved；默认（无 `--semantic chir`）golden 字节不变；官方组件下 `cjpm test`
-330 PASSED / 0 FAILED。
+记录（协议版本升为 `cjdoc-chir-worker/2`，避免旧解码器把新字段当未知字段而整包失去
+CHIR）；worker 发射 pre-order 节点（depth + 限定名）并携带与函数记录一致的 owner 形状
+（含 extend 目标）与泛型 arity；provider 按同样的 owner/形状/arity 规则匹配，歧义时拒绝；
+每个节点的 `spelling` 保留其**完整源码子树**（去空白），解析身份只进 `canonical`，
+因此渲染层按位置对齐后既能链接外层也能链接嵌套实参。
+实测：`wrap(items: Array<Token>): Array<Token>` 的两处 `Array<Token>` 内层 `Token`
+均渲染为真实链接（`canonical = genprobe.Token`）；`parse` 的 `Array<Token>` 内层
+`Token` → `canonical = pocketkit.parsing.Token`（与 `pocketkit.io.Token` 可区分）；
+扩展方法 `byteLength` 的返回由 `partial` 变为 `resolved(Int64)`；非泛型自定义类型
+（如 `TextReader`）不再产生幻影子实参；默认（无 `--semantic chir`）golden 字节不变；
+官方组件下 `cjpm test` 334 PASSED / 0 FAILED。
 
 以下为定位该缺口时所依据的详细证据。
 
