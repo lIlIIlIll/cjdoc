@@ -202,7 +202,7 @@ jobs:
             --sdk-archive-sha256 "${{ matrix.sdk_sha256 }}" \
             --stdx-version "1.2.0" \
             --stdx-archive-sha256 "${{ matrix.stdx_sha256 }}" \
-            "${gate_args[@]}" \
+            ${gate_args[@]+"${gate_args[@]}"} \
             --output "target/release-candidate/cjdoc-release-candidate-${{ matrix.platform }}.json"
 
       - name: Build the deterministic package from the accepted binary
