@@ -13,6 +13,8 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .localization import DIFF_CLASSIFICATIONS, DIFF_MATCH_STATES, localize_ui
+
 from showcase_contract.site import ContractError, canonical_json, load_json, relative_path
 
 IR = "cjdoc.doc-ir/11"
@@ -121,10 +123,14 @@ def declaration_link(root: Path, origin: Path, mapping: dict, symbol_id: str | N
 
 def _diff_value(value: str) -> str:
     """Human-readable diff value. Native type/parameter encodings are internal
-    status strings, so each segment is rendered as its own source spelling."""
+    status strings, so each segment is rendered as its own source spelling. The
+    separators become explicit line breaks, because table cells collapse
+    whitespace; each segment is escaped here so callers pass markup."""
     text = str(value)
     parts = [part for part in text.split("|") if part]
-    return "\n".join(parts) if len(parts) > 1 else text
+    if len(parts) <= 1:
+        return escaped(text)
+    return "<br>".join(escaped(part) for part in parts)
 
 
 def table(headers: tuple[str, ...], rows: list[list[str]]) -> str:
@@ -284,7 +290,17 @@ def diagnostics_view(ir: dict, root: Path, mapping: dict) -> str:
     return output + '</section>'
 
 
-def diff_view(raw: dict | None, origin: Path, baseline: Path | None, current: Path | None) -> str:
+def _diff_label(mapping: dict, value: str, locale: str) -> str:
+    """Reader-facing wording for a native diff value, falling back to the raw
+    value when the vocabulary gains a term the mapping does not know yet."""
+    entry = mapping.get(value)
+    if entry is None:
+        return escaped(value)
+    return escaped(entry[0] if locale == "zh-CN" else entry[1])
+
+
+def diff_view(raw: dict | None, origin: Path, baseline: Path | None, current: Path | None,
+              locale: str = "en") -> str:
     output = '<section id="api-diff"><h2>API 变化 / API diff</h2>'
     if raw is None:
         return output + '<p>Not attached for this version. This is not a completed diff demonstration.</p></section>'
@@ -307,9 +323,9 @@ def diff_view(raw: dict | None, origin: Path, baseline: Path | None, current: Pa
     for number, entry in enumerate(raw["entries"]):
         if entry["classification"] == "unchanged":
             continue
-        output += f'<article id="api-change-{number}" class="report-change" data-diff-classification="{escaped(entry["classification"])}"><h3>{escaped(entry["classification"])}</h3>'
+        output += f'<article id="api-change-{number}" class="report-change" data-diff-classification="{escaped(entry["classification"])}"><h3 data-diff-label="classification">{_diff_label(DIFF_CLASSIFICATIONS, entry["classification"], locale)}</h3>'
         output += '<p>' + declaration_link(baseline, origin, old, entry["oldId"], "Before") + '<br>' + declaration_link(current, origin, new, entry["newId"], "After") + '</p>'
-        output += '<p>matchState: ' + escaped(entry["matchState"]) + '</p>'
+        output += '<p>matchState: <span data-diff-label="matchState">' + _diff_label(DIFF_MATCH_STATES, entry["matchState"], locale) + '</span></p>'
         # Reader path: the native reason sentences and the changed fields are
         # shown as text. Raw evidence stays behind a disclosure for traceability.
         if entry["reasons"]:
@@ -319,8 +335,8 @@ def diff_view(raw: dict | None, origin: Path, baseline: Path | None, current: Pa
                    or item.get("before") != item.get("after")]
         if changed:
             rows = [[escaped(item["field"]),
-                     escaped("" if item.get("before") is None else _diff_value(item["before"])),
-                     escaped("" if item.get("after") is None else _diff_value(item["after"]))] for item in changed]
+                     ("" if item.get("before") is None else _diff_value(item["before"])),
+                     ("" if item.get("after") is None else _diff_value(item["after"]))] for item in changed]
             output += table(("Field", "Before", "After"), rows)
         output += '<details data-diff-evidence><summary>Raw diff evidence</summary><pre>' + escaped(json.dumps({"reasons": entry["reasons"], "evidence": entry["evidence"]}, ensure_ascii=False, indent=2)) + '</pre></details></article>'
     return output + '</section>'
@@ -364,11 +380,10 @@ def publish(root: Path, revision: str, version: str, locale: str, *, baseline: P
     body += ' · '.join(f'<a href="#{part}">{part}</a>' for part in ("doctest", "api-diff", "coverage", "diagnostics", "provenance")) + '</nav>'
     body += doctest_view(data.get("doctest/results.json"), ir, root, mapping)
     body += native_check_view(root)
-    body += diff_view(data.get("machine/api-diff.json"), root, baseline, current)
+    body += diff_view(data.get("machine/api-diff.json"), root, baseline, current, locale)
     body += coverage_view(data["machine/coverage.json"]) + quality_view(data["machine/quality.json"], root, mapping)
     body += diagnostics_view(ir, root, mapping)
     body += '<section id="provenance"><h2>构建来源 / Provenance</h2><p><a href="report-provenance.json">Exact input hashes</a></p><details><summary>Input hashes and build metadata</summary><pre>' + escaped(json.dumps(provenance, ensure_ascii=False, indent=2)) + '</pre></details></section>'
-    from .localization import localize_ui
     body = localize_ui(body, locale)
     page = root / "validation.html"
     original = page.read_text(encoding="utf-8")
@@ -377,7 +392,7 @@ def publish(root: Path, revision: str, version: str, locale: str, *, baseline: P
     updated = updated.replace('</head>', '<link rel="stylesheet" href="report.css"><script defer src="report.js"></script></head>', 1)
     page.write_text(updated, encoding="utf-8")
     (root / "report.js").write_text(FILTER_SCRIPT, encoding="utf-8")
-    (root / "report.css").write_text('.validation-page{min-width:0}.validation-page section{scroll-margin-top:5rem;margin-block:2rem}.validation-page pre{white-space:pre-wrap;overflow-wrap:anywhere}.validation-page code{overflow-wrap:anywhere}.report-table-scroll{max-width:100%;overflow:auto}.report-case,.report-change,.report-diagnostic{border:1px solid var(--border-color,currentColor);padding:1rem;margin-block:1rem;border-radius:.5rem}.report-diagnostic[hidden]{display:none}.report-diagnostic h3,.report-diagnostic p{margin-block:.35rem}.report-filter{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.report-filter input{flex:1;min-width:12rem;padding:.5rem}.validation-page table{width:100%;border-collapse:collapse}.validation-page td,.validation-page th{text-align:start;vertical-align:top;padding:.5rem;border-bottom:1px solid currentColor}', encoding="utf-8")
+    (root / "report.css").write_text('.validation-page{min-width:0}.validation-page section{scroll-margin-top:5rem;margin-block:2rem}.validation-page pre{white-space:pre-wrap;overflow-wrap:anywhere}.validation-page code{overflow-wrap:anywhere}.report-table-scroll{max-width:100%;overflow:auto}.report-case,.report-change,.report-diagnostic{border:1px solid var(--border-color,currentColor);padding:1rem;margin-block:1rem;border-radius:.5rem}.report-diagnostic[hidden]{display:none}.report-diagnostic h3,.report-diagnostic p{margin-block:.35rem}.report-filter{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.report-filter input{flex:1;min-width:12rem;padding:.5rem}.validation-page table{width:100%;border-collapse:collapse}.validation-page td,.validation-page th{text-align:start;vertical-align:top;padding:.5rem;border-bottom:1px solid currentColor}.report-change td{white-space:pre-line}.report-change td{white-space:pre-line}', encoding="utf-8")
 
 
 def verify(root: Path, revision: str) -> None:

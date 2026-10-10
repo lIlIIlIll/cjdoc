@@ -15,7 +15,8 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 from report_views.localization import localize_ui
 from report_views.pages import PageTitle
-from report_views.reports import FILTER_SCRIPT, coverage_view, declaration_link, diagnostics_view
+from report_views.reports import (FILTER_SCRIPT, coverage_view, declaration_link,
+                                  diagnostics_view, diff_view)
 from showcase_build.homepage import cards, getting_started
 from showcase_build.navigation import SCRIPT, VersionLinks
 from showcase_contract.browser_reports import expected_coverage_rows
@@ -97,6 +98,41 @@ class ReaderUiTests(unittest.TestCase):
         expected = expected_coverage_rows(raw, True)
         self.assertEqual(expected[1][1], "all")
         self.assertEqual(expected[2][1], "symbols")
+
+    def test_api_diff_view_localizes_labels_and_keeps_evidence_lines(self) -> None:
+        baseline = self.root / "baseline"
+        current = self.root / "current"
+        for root, version in ((baseline, "1.0.0"), (current, "1.1.0")):
+            (root / "machine").mkdir(parents=True)
+            (root / "symbols").mkdir(parents=True)
+            (root / "symbols" / "changed.html").write_text("page", encoding="utf-8")
+            (root / "symbol-index.json").write_text(json.dumps({
+                "schemaVersion": "cjdoc.symbol-index/1",
+                "project": {"name": "fixture", "audience": "external"},
+                "version": version,
+                "entries": [{"id": "sym", "href": "symbols/changed.html",
+                             "qualifiedName": "fixture.changed"}]}), encoding="utf-8")
+            (root / "machine" / "api-surface.json").write_text(json.dumps({
+                "schemaVersion": "cjdoc.api-surface/2", "project": "fixture",
+                "audience": "external", "cfgProfile": "default", "collectionState": "complete"}),
+                encoding="utf-8")
+        identity = {"project": "fixture", "audience": "external", "cfgProfile": "default",
+                    "schemaVersion": "cjdoc.api-surface/2", "collectionState": "complete"}
+        raw = {"baseline": dict(identity), "current": dict(identity),
+               "comparisonState": "complete", "summary": {},
+               "entries": [{"classification": "potentially-breaking", "matchState": "fallback",
+                            "oldId": "sym", "newId": "sym",
+                            "reasons": ["Parameter type changed"],
+                            "evidence": [{"field": "parameterTypes", "state": "changed",
+                                          "before": "String|Int64", "after": "String"}]}]}
+        view = diff_view(raw, self.root, baseline, current, locale="zh-CN")
+        # Reader-facing wording replaces the native vocabulary, which stays in
+        # the data-* attribute and the raw evidence block.
+        self.assertIn('data-diff-label="classification">潜在不兼容变化<', view)
+        self.assertIn('data-diff-label="matchState">按名称回退匹配<', view)
+        self.assertIn('data-diff-classification="potentially-breaking"', view)
+        # Each evidence segment is its own line in the cell.
+        self.assertIn("String<br>Int64", view)
 
     def test_report_version_links_keep_category_and_expose_missing_report(self) -> None:
         for version in ("demo-v1", "demo-v2"):

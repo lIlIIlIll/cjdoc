@@ -27,15 +27,16 @@ HEADINGS = {
 # Reader-facing wording for the raw native diff vocabulary. Raw values stay in
 # data-* attributes and the raw JSON block for traceability.
 DIFF_CLASSIFICATIONS = {
-    "additive": ("新增", "Added"),
-    "breaking": ("破坏性变化", "Breaking"),
-    "potentially-breaking": ("可能破坏兼容", "Potentially breaking"),
+    "additive": ("新增兼容变化", "Added"),
+    "breaking": ("不兼容变化", "Breaking"),
+    "potentially-breaking": ("潜在不兼容变化", "Potentially breaking"),
     "documentation-only": ("仅文档变化", "Documentation only"),
     "metadata-only": ("仅元数据变化", "Metadata only"),
     "unchanged": ("未变化", "Unchanged"),
 }
 
 DIFF_MATCH_STATES = {
+    "ambiguous": ("匹配歧义，未自动判定", "Ambiguous match, not auto-resolved"),
     "added": ("新增声明", "Added declaration"),
     "removed": ("删除声明", "Removed declaration"),
     "exact": ("签名与结构一致", "Signature and structure match"),
