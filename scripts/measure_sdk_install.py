@@ -78,10 +78,13 @@ class _Measurement:
 
 def variant_a_warm(cache: Path, compiler_name: str, compiler_sha256: str,
                    stdx_name: str, stdx_sha256: str) -> dict:
-    """Warm hit: validate the cached tree, which re-extracts both archives."""
+    """Warm validation of the cached tree, which re-extracts both archives.
+
+    This times only what the script itself performs. Fetching and unpacking the
+    cache is done by the workflow's `actions/cache` step and is therefore *not*
+    included here; `cacheRestoreMs` is reported by the workflow separately.
+    """
     clock = Clock()
-    with clock.measure("cacheRestoreMs"):
-        pass  # the caller restored the cache directory before this measurement
     with clock.measure("validateMs"):
         sdk, stdx = validate_combined_cache(
             cache, compiler_name, compiler_sha256, stdx_name, stdx_sha256)
@@ -90,7 +93,7 @@ def variant_a_warm(cache: Path, compiler_name: str, compiler_sha256: str,
 
 def variant_b_warm(archive_dir: Path, compiler_name: str, compiler_sha256: str,
                    stdx_name: str, stdx_sha256: str) -> dict:
-    """Warm hit: verify both archives, then extract into a fresh directory."""
+    """Warm verification and fresh extraction from the two raw archives."""
     clock = Clock()
     with clock.measure("hashMs"):
         verify_sha256(archive_dir / compiler_name, compiler_sha256)
@@ -221,6 +224,13 @@ def main() -> int:
     report = {
         "schemaVersion": MEASURE_SCHEMA,
         "cycles": args.cycles,
+        "measures": ["hashMs", "validateMs", "extractMs", "totalMs"],
+        "notMeasured": ["cacheRestoreMs"],
+        "scope": ("Times only the work this script performs. Fetching and unpacking "
+                  "the cache is done by the workflow's actions/cache step and is not "
+                  "included, so this is post-restore validation plus extraction timing, "
+                  "not end-to-end cache-hit cost. Do not promote a cache shape on this "
+                  "number alone."),
         "variants": {
             name: {"samples": samples[name],
                    "medianMs": round(statistics.median([item["totalMs"] for item in samples[name]]), 3)

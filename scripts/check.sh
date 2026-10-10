@@ -755,13 +755,20 @@ fi
 
 stage="${stage_id}"
 if [[ -z "${stage}" ]]; then
+    # The zero-argument gate owns everything it built, so it leaves the worktree
+    # clean. The trap runs even when a stage fails: a leftover worker build tree
+    # would make every later invocation refuse in `refuse_existing_outputs`.
+    # Single-stage callers (CI and Pages) instead receive the worker binary through
+    # the candidate artifact and clean it when they package.
+    cleanup_full_gate() {
+        remove_owned_outputs "${worker_project}/target"
+    }
+    trap 'status=$?; cleanup_full_gate; exit "${status}"' EXIT
     for stage in preflight build native python-tools cli provider; do
         run_stage "${stage}" "$(stage_kind "${stage}")"
     done
-    # The zero-argument gate owns everything it built, so it leaves the worktree
-    # clean. Single-stage callers (CI and Pages) instead receive the worker binary
-    # through the candidate artifact and clean it when they package.
-    remove_owned_outputs "${worker_project}/target"
+    cleanup_full_gate
+    trap - EXIT
 else
     run_stage "${stage}" "$(stage_kind "${stage}")"
 fi
