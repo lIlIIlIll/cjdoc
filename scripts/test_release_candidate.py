@@ -25,6 +25,15 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.repo, self.commit = self.make_release_repo(self.root / "repo")
+        # The receipt hashes the -O1 wrapper, which the release repo fixture does
+        # not otherwise need.
+        wrapper = self.repo / "scripts/with_sts_o1_cjpm.sh"
+        wrapper.parent.mkdir(parents=True, exist_ok=True)
+        wrapper.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+        self.git(self.repo, "add", "-A")
+        self.git(self.repo, "-c", "user.name=t", "-c", "user.email=t@example.test",
+                 "commit", "-q", "-m", "add wrapper")
+        self.commit = self.git(self.repo, "rev-parse", "HEAD")
         self.binary = self.root / "cjdoc"
         self.binary.write_text("#!/bin/sh\necho 'cjdoc 0.7.0'\n", encoding="utf-8")
         self.binary.chmod(0o755)
