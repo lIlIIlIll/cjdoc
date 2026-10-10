@@ -241,5 +241,23 @@ class ReleaseAssetLayoutTest(unittest.TestCase):
         self.assertNotIn("rglob", publish)
 
 
+class ReleaseGateCleanlinessTest(unittest.TestCase):
+    """The candidate receipt hashes the worktree, so the gates must leave it clean."""
+
+    def test_the_full_gate_cleans_every_tree_it_builds(self) -> None:
+        check = (PROJECT_ROOT / "scripts/check.sh").read_text(encoding="utf-8")
+        # The CHIR worker compiles fixture projects, which creates `target/`
+        # directories under the fixtures; a leftover one makes the receipt's
+        # `exact_worktree_identity` fail with "unexpected ignored/untracked".
+        gate = check.split('stage="${stage_id}"', 1)[1]
+        self.assertIn("cleanup_full_gate()", gate)
+        self.assertIn('remove_owned_outputs "${worker_project}/target"', gate)
+        self.assertIn("existing_build_outputs all", gate)
+        # Cleanup must be trapped, not only run after success.
+        # Compare on the single-quoted trap body without embedding its quotes.
+        self.assertIn("cleanup_full_gate; exit", gate)
+        self.assertIn("trap ", gate)
+
+
 if __name__ == "__main__":
     unittest.main()
