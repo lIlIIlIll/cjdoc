@@ -345,6 +345,7 @@ jobs:
   source-reproduction:
     name: Reproduce the downloaded source bundle
     needs: assemble-site
+    if: ${{ !cancelled() && needs.assemble-site.result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
@@ -421,6 +422,7 @@ jobs:
   browser-shard:
     name: Browser shard ${{ matrix.shard }}
     needs: assemble-site
+    if: ${{ !cancelled() && needs.assemble-site.result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     strategy:
@@ -516,6 +518,7 @@ jobs:
   reading-regressions:
     name: Check API reading regressions
     needs: assemble-site
+    if: ${{ !cancelled() && needs.assemble-site.result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
@@ -578,6 +581,11 @@ jobs:
   verify-site:
     name: Verify the final site and every branch
     needs: [assemble-site, source-reproduction, browser-shard, reading-regressions]
+    if: ${{ !cancelled()
+           && needs.assemble-site.result == 'success'
+           && needs.source-reproduction.result == 'success'
+           && needs.browser-shard.result == 'success'
+           && needs.reading-regressions.result == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
@@ -691,7 +699,8 @@ jobs:
 
   deploy:
     name: Publish showcase
-    if: github.event_name != 'pull_request'
+    if: ${{ !cancelled() && github.event_name != 'pull_request'
+           && needs.verify-site.result == 'success' }}
     permissions:
       pages: write
       id-token: write
