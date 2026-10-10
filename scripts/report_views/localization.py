@@ -24,6 +24,76 @@ HEADINGS = {
         ("分类、匹配状态与证据直接来自原生 diff，不在展示层重新判定。版本通过本次真实输入快照与原生文档索引绑定。 ", "Classifications, matching states and evidence come directly from the native diff. Versions are bound to the exact input snapshots and native indices. "),
 }
 
+# Reader-facing wording for the raw native diff vocabulary. Raw values stay in
+# data-* attributes and the raw JSON block for traceability.
+DIFF_CLASSIFICATIONS = {
+    "additive": ("新增兼容变化", "Added"),
+    "breaking": ("不兼容变化", "Breaking"),
+    "potentially-breaking": ("潜在不兼容变化", "Potentially breaking"),
+    "documentation-only": ("仅文档变化", "Documentation only"),
+    "metadata-only": ("仅元数据变化", "Metadata only"),
+    "unchanged": ("未变化", "Unchanged"),
+}
+
+# The API-change evidence table and its disclosure, localized beside the raw
+# evidence that stays in the disclosure.
+# Native reason sentences are a controlled vocabulary, so they are mapped for
+# display; the raw sentences stay in the evidence disclosure.
+DIFF_REASONS = {
+    "declaration added": ("新增声明", "Declaration added"),
+    "declaration removed": ("删除声明", "Declaration removed"),
+    "exposure added": ("新增对外暴露", "Exposure added"),
+    "exposure removed": ("移除对外暴露", "Exposure removed"),
+    "exposure name changed": ("对外名称变化", "Exposure name changed"),
+    "exposure resolution state changed": ("对外解析状态变化", "Exposure resolution state changed"),
+    "exposure targets changed": ("对外目标变化", "Exposure targets changed"),
+    "exposure fallback match is ambiguous": ("对外按回退键匹配存在歧义", "Exposure fallback match is ambiguous"),
+    "exposure identity match is ambiguous": ("对外标识匹配存在歧义", "Exposure identity match is ambiguous"),
+    "fallback match is ambiguous": ("按回退键匹配存在歧义", "Fallback match is ambiguous"),
+    "parameter count changed": ("参数数量变化", "Parameter count changed"),
+    "parameter name changed": ("参数名变化", "Parameter name changed"),
+    "parameter type contract changed": ("参数类型契约变化", "Parameter type contract changed"),
+    "optional parameters added": ("新增可选参数", "Optional parameters added"),
+    "default value changed": ("默认值变化", "Default value changed"),
+    "default value became unavailable": ("默认值变为不可用", "Default value became unavailable"),
+    "return contract changed": ("返回契约变化", "Return contract changed"),
+    "generic contract changed": ("泛型契约变化", "Generic contract changed"),
+    "type or symbol relationships changed": ("类型或符号关系变化", "Type or symbol relationships changed"),
+    "enum exhaustiveness evidence changed": ("枚举穷尽性证据变化", "Enum exhaustiveness evidence changed"),
+    "source API signature changed": ("源码 API 签名变化", "Source API signature changed"),
+    "visibility changed": ("可见性变化", "Visibility changed"),
+    "visibility narrowed": ("可见性收窄", "Visibility narrowed"),
+    "documentation changed": ("文档变化", "Documentation changed"),
+    "metadata changed": ("元数据变化", "Metadata changed"),
+    "source provenance changed": ("来源溯源变化", "Source provenance changed"),
+    "enum case added to exhaustive enum": ("穷尽枚举新增成员", "Enum case added to an exhaustive enum"),
+    "enum case added with new enum": ("新增枚举及其成员", "Enum case added with a new enum"),
+    "enum case exhaustiveness evidence is incomplete": ("枚举穷尽性证据不完整", "Enum exhaustiveness evidence is incomplete"),
+    "enum case addition has incomplete collection evidence": ("枚举新增的采集证据不完整", "Enum case addition has incomplete collection evidence"),
+    "enum case exhaustiveness is unavailable": ("枚举穷尽性不可用", "Enum exhaustiveness is unavailable"),
+    "enum case owner is unavailable": ("枚举所有者不可用", "Enum case owner is unavailable"),
+    "signature changed": ("签名变化", "Signature changed"),
+    "type changed": ("类型变化", "Type changed"),
+    "return type changed": ("返回类型变化", "Return type changed"),
+}
+
+DIFF_TABLE_HEADINGS = [
+    ("字段", "变更前", "变更后"),
+    ("Field", "Before", "After"),
+]
+
+DIFF_RAW_LABEL = ("原始差异证据", "Raw diff evidence")
+
+DIFF_MATCH_STATES = {
+    "ambiguous": ("匹配歧义，未自动判定", "Ambiguous match, not auto-resolved"),
+    "added": ("新增声明", "Added declaration"),
+    "removed": ("删除声明", "Removed declaration"),
+    "exact": ("按稳定标识精确匹配", "Matched by exact identity"),
+    "fallback": ("按回退键匹配", "Matched by fallback key"),
+    "changed": ("签名变化", "Signature changed"),
+}
+
+
 ZH = {
     "semanticLinks counts explicit comment references and @see links only; signature type links are reported separately in diagnostics. A zero denominator means no applicable items; the original percentage remains in the raw report.":
         "注释引用解析率仅统计注释中的显式引用与 @see；签名类型链接另列在诊断中。分母为零表示无适用项，原始百分比仍保留在原始报告中。",

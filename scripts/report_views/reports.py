@@ -13,6 +13,9 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .localization import (DIFF_CLASSIFICATIONS, DIFF_MATCH_STATES, DIFF_RAW_LABEL,
+                           DIFF_REASONS, DIFF_TABLE_HEADINGS, localize_ui)
+
 from showcase_contract.site import ContractError, canonical_json, load_json, relative_path
 
 IR = "cjdoc.doc-ir/11"
@@ -117,6 +120,155 @@ def declaration_link(root: Path, origin: Path, mapping: dict, symbol_id: str | N
     entry = mapping[symbol_id]
     href = os.path.relpath(root / relative_path(entry["href"]), origin).replace(os.sep, "/")
     return f'<a href="{escaped(href)}" data-report-symbol="{escaped(symbol_id)}">{escaped(label)}: {source_text(entry["qualifiedName"])}</a>'
+
+
+# Evidence fields whose value is a `TAG:byteLength:text` token list. Their lengths
+# let a token contain a `|` without corrupting the encoding, so they are decoded
+# by length.
+DIFF_ENCODED_FIELDS = {"sourceApiSignature", "genericParameters"}
+# Source-visible fields that are not token lists and are shown verbatim.
+DIFF_PLAIN_FIELDS = {"return", "visibility", "exposedName", "parameters"}
+# Reader-facing labels for the field column. These are presentation, so they are
+# localized by the page localizer; only values are protected source text.
+# Reader-facing suffix for a parameter field path, localized.
+_DIFF_PARAMETER_SUFFIX = {
+    "name": ("名称", "name"),
+    "default": ("默认值", "default"),
+    "type": ("类型", "type"),
+}
+
+DIFF_FIELD_LABELS = {
+    "return": ("返回值", "return type"),
+    "visibility": ("可见性", "visibility"),
+    "exposedName": ("对外名称", "exposed name"),
+    "genericParameters": ("泛型参数", "generic parameters"),
+    "sourceApiSignature": ("源码签名", "source API signature"),
+    "parameters": ("参数", "parameters"),
+}
+
+
+def _diff_absent() -> str:
+    """A missing side of a change is shown as absent, never as a Python None."""
+    return '<span data-report-absent>' + escaped("—") + '</span>'
+
+
+def _diff_readable(field: str) -> bool:
+    if field in DIFF_ENCODED_FIELDS or field in DIFF_PLAIN_FIELDS:
+        return True
+    # A parameter's name and default value are source-visible; its type field is
+    # the opaque `name:typeState:type:defaultState:default` encoding.
+    return (field.startswith("parameters[")
+            and (field.endswith(".name") or field.endswith(".default")))
+
+
+def _diff_parameter_index(field: str) -> int | None:
+    if not field.startswith("parameters["):
+        return None
+    close = field.find("]")
+    if close < 0:
+        return None
+    try:
+        return int(field[len("parameters["):close])
+    except ValueError:
+        return None
+
+
+def _diff_field(field: str, locale: str = "en") -> str:
+    """A localized label for the field. A parameter keeps its position, so two
+    changed parameters are not shown as two identical `name` rows."""
+    index = _diff_parameter_index(field)
+    if index is not None:
+        key = field[field.find("]") + 1:].lstrip(".")
+        entry = _DIFF_PARAMETER_SUFFIX.get(key)
+        suffix = "" if entry is None else (entry[0] if locale == "zh-CN" else entry[1])
+        if locale == "zh-CN":
+            return f"参数 {index + 1} {suffix}".strip() if suffix else f"参数 {index + 1}"
+        return f"parameter {index + 1} {suffix}" if suffix else f"parameter {index + 1}"
+    entry = DIFF_FIELD_LABELS.get(field)
+    if entry is not None:
+        return entry[0] if locale == "zh-CN" else entry[1]
+    return field
+
+
+def _diff_value(field: str, value) -> str:
+    """Render one evidence value on its own lines. Every rendered part stays
+    protected source text, so localization never rewrites identifiers."""
+    if value is None:
+        return _diff_absent()
+    text = str(value)
+    if field == "parameters":
+        return "<br>".join(source_text(part) for part in _diff_parameter_list(text))
+    if field in DIFF_ENCODED_FIELDS:
+        parts = _diff_token_segments(text)
+    else:
+        parts = [text]
+    return "<br>".join(source_text(part) for part in parts)
+
+
+_PARAMETER_STATES = {"resolved", "partial", "unavailable", "ambiguous"}
+
+
+def _diff_parameter_list(text: str) -> list[str]:
+    """Decode one or more `name:state:type:state:default` entries joined by `|`.
+    A default expression can contain both `|` and `:`, so the reader is walked
+    left to right and each entry consumes exactly five colon-separated fields,
+    letting a default absorb the following fragments when needed. If the whole
+    value cannot be read this way it is shown verbatim, never as phantom rows."""
+    decoded = _diff_parameter_entries_consuming(text)
+    return decoded if decoded is not None else [text]
+
+
+def _diff_parameter_entries_consuming(value: str) -> list[str] | None:
+    """Read the entries left to right. Each entry is five fields; a field may
+    itself contain `|` (a default), so fragments are joined until the entry has
+    its five fields."""
+    parts, entry, start = [], "", 0
+    fragments = value.split("|")
+    index = 0
+    while index < len(fragments):
+        entry = fragments[index] if start == 0 else entry + "|" + fragments[index]
+        start += 1
+        if entry.count(":") >= 4:
+            pieces = entry.split(":", 4)
+            if (len(pieces) != 5 or pieces[0] == ""
+                    or pieces[1] not in _PARAMETER_STATES
+                    or pieces[3] not in _PARAMETER_STATES):
+                return None
+            parts.append(pieces[0] + ": " + pieces[2])
+            entry, start = "", 0
+        index += 1
+    if start != 0:
+        return None
+    return parts
+
+
+def _diff_parameter_entries(value: str) -> list[str] | None:
+    """One or more `name:state:type:state:default` entries, or None if not."""
+    pieces = value.split(":")
+    if len(pieces) != 5 or pieces[0] == "" or pieces[1] not in _PARAMETER_STATES \
+            or pieces[3] not in _PARAMETER_STATES:
+        return None
+    return [pieces[0] + ": " + pieces[2]]
+
+
+def _diff_token_segments(text: str) -> list[str]:
+    """Decode a `TAG:byteLength:text` token list. The length counts UTF-8 bytes,
+    so the value is walked as bytes; a token whose own text is `|` (such as the
+    BITOR operator) then survives without splitting on it."""
+    data = text.encode("utf-8")
+    parts, index = [], 0
+    while index < len(data):
+        tag_end = data.find(b":", index)
+        length_end = data.find(b":", tag_end + 1) if tag_end >= 0 else -1
+        if tag_end < 0 or length_end < 0 or not data[tag_end + 1:length_end].isdigit():
+            return [part for part in text.split("|") if part]
+        start = length_end + 1
+        end = start + int(data[tag_end + 1:length_end])
+        if end > len(data):
+            return [part for part in text.split("|") if part]
+        parts.append(data[start:end].decode("utf-8", "replace"))
+        index = end + 1 if end < len(data) and data[end:end + 1] == b"|" else end
+    return parts
 
 
 def table(headers: tuple[str, ...], rows: list[list[str]]) -> str:
@@ -276,7 +428,17 @@ def diagnostics_view(ir: dict, root: Path, mapping: dict) -> str:
     return output + '</section>'
 
 
-def diff_view(raw: dict | None, origin: Path, baseline: Path | None, current: Path | None) -> str:
+def _diff_label(mapping: dict, value: str, locale: str) -> str:
+    """Reader-facing wording for a native diff value, falling back to the raw
+    value when the vocabulary gains a term the mapping does not know yet."""
+    entry = mapping.get(value)
+    if entry is None:
+        return escaped(value)
+    return escaped(entry[0] if locale == "zh-CN" else entry[1])
+
+
+def diff_view(raw: dict | None, origin: Path, baseline: Path | None, current: Path | None,
+              locale: str = "en") -> str:
     output = '<section id="api-diff"><h2>API 变化 / API diff</h2>'
     if raw is None:
         return output + '<p>Not attached for this version. This is not a completed diff demonstration.</p></section>'
@@ -299,9 +461,30 @@ def diff_view(raw: dict | None, origin: Path, baseline: Path | None, current: Pa
     for number, entry in enumerate(raw["entries"]):
         if entry["classification"] == "unchanged":
             continue
-        output += f'<article id="api-change-{number}" class="report-change" data-diff-classification="{escaped(entry["classification"])}"><h3>{escaped(entry["classification"])}</h3>'
+        output += f'<article id="api-change-{number}" class="report-change" data-diff-classification="{escaped(entry["classification"])}"><h3 data-diff-label="classification">{_diff_label(DIFF_CLASSIFICATIONS, entry["classification"], locale)}</h3>'
         output += '<p>' + declaration_link(baseline, origin, old, entry["oldId"], "Before") + '<br>' + declaration_link(current, origin, new, entry["newId"], "After") + '</p>'
-        output += '<p>matchState: ' + escaped(entry["matchState"]) + '</p><pre>' + escaped(json.dumps({"reasons": entry["reasons"], "evidence": entry["evidence"]}, ensure_ascii=False, indent=2)) + '</pre></article>'
+        output += ('<p>matchState: <span data-diff-label="matchState" data-diff-match-state="'
+                   + escaped(entry["matchState"]) + '">'
+                   + _diff_label(DIFF_MATCH_STATES, entry["matchState"], locale) + '</span></p>'
+                   )
+        # Reader path: the native reason sentences and the changed fields are
+        # shown as text. Raw evidence stays behind a disclosure for traceability.
+        if entry["reasons"]:
+            output += '<ul data-diff-reasons>' + ''.join(
+                '<li data-diff-reason="' + escaped(reason) + '">'
+                + _diff_label(DIFF_REASONS, reason, locale) + '</li>'
+                for reason in entry["reasons"]) + '</ul>'
+        changed = [item for item in entry["evidence"]
+                   if _diff_readable(item["field"])
+                   and (item.get("state") != "resolved" or item.get("before") != item.get("after"))]
+        if changed:
+            rows = [[escaped(_diff_field(item["field"], locale)),
+                     _diff_value(item["field"], item.get("before")),
+                     _diff_value(item["field"], item.get("after"))] for item in changed]
+            output += table((DIFF_TABLE_HEADINGS[0 if locale == "zh-CN" else 1][0],
+                             DIFF_TABLE_HEADINGS[0 if locale == "zh-CN" else 1][1],
+                             DIFF_TABLE_HEADINGS[0 if locale == "zh-CN" else 1][2]), rows)
+        output += '<details data-diff-evidence><summary>' + escaped(DIFF_RAW_LABEL[0 if locale == "zh-CN" else 1]) + '</summary><pre>' + escaped(json.dumps({"reasons": entry["reasons"], "evidence": entry["evidence"]}, ensure_ascii=False, indent=2)) + '</pre></details></article>'
     return output + '</section>'
 
 
@@ -343,11 +526,10 @@ def publish(root: Path, revision: str, version: str, locale: str, *, baseline: P
     body += ' · '.join(f'<a href="#{part}">{part}</a>' for part in ("doctest", "api-diff", "coverage", "diagnostics", "provenance")) + '</nav>'
     body += doctest_view(data.get("doctest/results.json"), ir, root, mapping)
     body += native_check_view(root)
-    body += diff_view(data.get("machine/api-diff.json"), root, baseline, current)
+    body += diff_view(data.get("machine/api-diff.json"), root, baseline, current, locale)
     body += coverage_view(data["machine/coverage.json"]) + quality_view(data["machine/quality.json"], root, mapping)
     body += diagnostics_view(ir, root, mapping)
     body += '<section id="provenance"><h2>构建来源 / Provenance</h2><p><a href="report-provenance.json">Exact input hashes</a></p><details><summary>Input hashes and build metadata</summary><pre>' + escaped(json.dumps(provenance, ensure_ascii=False, indent=2)) + '</pre></details></section>'
-    from .localization import localize_ui
     body = localize_ui(body, locale)
     page = root / "validation.html"
     original = page.read_text(encoding="utf-8")
@@ -356,7 +538,7 @@ def publish(root: Path, revision: str, version: str, locale: str, *, baseline: P
     updated = updated.replace('</head>', '<link rel="stylesheet" href="report.css"><script defer src="report.js"></script></head>', 1)
     page.write_text(updated, encoding="utf-8")
     (root / "report.js").write_text(FILTER_SCRIPT, encoding="utf-8")
-    (root / "report.css").write_text('.validation-page{min-width:0}.validation-page section{scroll-margin-top:5rem;margin-block:2rem}.validation-page pre{white-space:pre-wrap;overflow-wrap:anywhere}.validation-page code{overflow-wrap:anywhere}.report-table-scroll{max-width:100%;overflow:auto}.report-case,.report-change,.report-diagnostic{border:1px solid var(--border-color,currentColor);padding:1rem;margin-block:1rem;border-radius:.5rem}.report-diagnostic[hidden]{display:none}.report-diagnostic h3,.report-diagnostic p{margin-block:.35rem}.report-filter{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.report-filter input{flex:1;min-width:12rem;padding:.5rem}.validation-page table{width:100%;border-collapse:collapse}.validation-page td,.validation-page th{text-align:start;vertical-align:top;padding:.5rem;border-bottom:1px solid currentColor}', encoding="utf-8")
+    (root / "report.css").write_text('.validation-page{min-width:0}.validation-page section{scroll-margin-top:5rem;margin-block:2rem}.validation-page pre{white-space:pre-wrap;overflow-wrap:anywhere}.validation-page code{overflow-wrap:anywhere}.report-table-scroll{max-width:100%;overflow:auto}.report-case,.report-change,.report-diagnostic{border:1px solid var(--border-color,currentColor);padding:1rem;margin-block:1rem;border-radius:.5rem}.report-diagnostic[hidden]{display:none}.report-diagnostic h3,.report-diagnostic p{margin-block:.35rem}.report-filter{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}.report-filter input{flex:1;min-width:12rem;padding:.5rem}.validation-page table{width:100%;border-collapse:collapse}.validation-page td,.validation-page th{text-align:start;vertical-align:top;padding:.5rem;border-bottom:1px solid currentColor}.report-change td{white-space:pre-line}.report-change td{white-space:pre-line}', encoding="utf-8")
 
 
 def verify(root: Path, revision: str) -> None:

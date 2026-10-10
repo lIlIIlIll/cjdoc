@@ -82,7 +82,9 @@ def diff(journey: Journey):
     for number, entry in enumerate(expected):
         if rows.nth(number).get_attribute("data-diff-classification") != entry["classification"]:
             raise AssertionError("diff view reclassified a native change")
-        require_text(rows.nth(number), entry["matchState"])
+        state = rows.nth(number).locator("[data-diff-match-state]")
+        if state.get_attribute("data-diff-match-state") != entry["matchState"]:
+            raise AssertionError("diff view changed a native match state")
     links = page.locator("#api-diff [data-report-symbol]")
     for label, version in ((("变更前" if chinese else "Before"), "demo-v1"),
                            (("变更后" if chinese else "After"), "demo-v2")):
