@@ -77,7 +77,7 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             "returnCanonical": "std.core.Unit",
         }
         search_text = json.dumps(
-            {"schemaVersion": "cjdoc.search-index/7", "entries": [entry]},
+            {"schemaVersion": "cjdoc.search-index/8", "entries": [entry]},
             separators=(",", ":"),
         )
         (root / "search-index.json").write_text(

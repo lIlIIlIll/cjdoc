@@ -84,6 +84,66 @@ internal func appendSearchBody(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
     // `returnType` is present as null rather than omitted.
     out.append(", \"body\": ")
     appendSearchJsonString(out, searchBodyText(symbol))
+    appendSearchSections(out, symbol)
+}
+
+// Per-block prose for the blocks that render at a stable, unconditional anchor
+// on the member page, so a hit can deep-link to the answer instead of the page
+// top. These blocks are a subset of `body`, which carries all matchable prose;
+// the description body has no element of its own, so it is matched through
+// `body` but is not used as a deep link.
+internal func appendSearchSections(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
+    let comment = match (symbol.documentation) {
+        case Some(value) => value
+        case None => return
+    }
+    let blocks = ArrayList<(String, String, String)>()
+    // A section is only recorded when the member page actually renders that
+    // heading, so a hit always deep-links to a real element. The page renders
+    // Parameters only with parameters, Returns only with a non-Unit return
+    // type, and Throws only with a throws tag.
+    if (!symbol.parameters.isEmpty() && hasCommentTag(comment, "param")) { addSearchSectionBlock(blocks, comment, symbol, "param", "parameters") }
+    if (hasRenderedReturnHeading(symbol) && hasCommentTag(comment, "return")) { addSearchSectionBlock(blocks, comment, symbol, "return", "return") }
+    if (hasCommentTag(comment, "throws")) { addSearchSectionBlock(blocks, comment, symbol, "throws", "throws") }
+    if (blocks.isEmpty()) { return }
+    out.append(", \"sections\": [")
+    var first = true
+    for ((kind, anchorId, text) in blocks) {
+        if (!first) { out.append(",") }
+        first = false
+        out.append("{\"kind\": "); appendSearchJsonString(out, kind)
+        out.append(", \"anchor\": "); appendSearchJsonString(out, anchorId)
+        out.append(", \"text\": ")
+        appendSearchJsonString(out, searchTextExcerpt(text, maximum: SEARCH_BODY_EXCERPT_LIMIT))
+        out.append("}")
+    }
+    out.append("]")
+}
+
+private func hasCommentTag(comment: DocComment, name: String): Bool {
+    for (tag in comment.tags) { if (tag.name == name) { return true } }
+    false
+}
+
+// The member page renders a Returns heading only when a return type is present
+// and is not Unit; `appendDocumentationHtml` omits it otherwise.
+private func hasRenderedReturnHeading(symbol: SymbolDoc): Bool {
+    match (symbol.returnType) {
+        case Some(returnType) => !isUnitType(returnType)
+        case None => false
+    }
+}
+
+private func addSearchSectionBlock(blocks: ArrayList<(String, String, String)>, comment: DocComment,
+    symbol: SymbolDoc, tagName: String, kind: String): Unit {
+    let collected = StringBuilder()
+    for (tag in comment.tags) {
+        if (tag.name != tagName || tag.description.isEmpty()) { continue }
+        if (collected.size > 0) { collected.append(" ") }
+        collected.append(tag.description)
+    }
+    if (collected.size == 0) { return }
+    blocks.add((kind, docBlockAnchor(symbol, kind), collected.toString()))
 }
 
 internal func searchModuleName(documentation: DocumentationSet, moduleId: String): ?String {
@@ -134,7 +194,7 @@ internal func appendSearchMetadata(out: RenderTextBuffer, documentation: Documen
 internal func renderSearchIndex(documentation: DocumentationSet,
     projection: RenderProjection): String {
     let out = RenderTextBuffer()
-    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/7\",\n  \"entries\": [")
+    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/8\",\n  \"entries\": [")
     var first = true
     let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(visible, lessThan: { left, right => left.id < right.id }, stable: true)
