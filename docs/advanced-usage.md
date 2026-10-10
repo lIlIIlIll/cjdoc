@@ -314,6 +314,8 @@ cjdoc schema doc-ir > doc-ir.schema.json
 
 复现 Linux 展示构建时，按该工作流准备 SDK 和 sidecar，再执行完整的 “Build cjdoc” 步骤。SDK 1.2.0 的 `llc` 在默认优化级别处理 markdown/yjson 时会崩溃；该步骤临时设置 `override-compile-option = "-O1"`，并在结束时恢复原清单。不要省略这个处理而直接使用默认构建命令。完整展示复现与验收说明见同一仓库 revision 的 `docs/showcase-contract.md`。
 
+该候选项现在只由一个 reusable workflow [`build-linux-candidate.yml`](../.github/workflows/build-linux-candidate.yml) 构建一次，CI 的 Linux 验收与 Pages 都复用它，因此 SDK 安装、stdx sidecar 认证和 `-O1` 处理只有一处定义；产物同时携带 `build-manifest.json`，消费方在解包后会重新校验二进制摘要、大小与 `--version`，身份不符即失败。
+
 构建完成后，在同一 SDK 环境下从仓库根目录确认工具版本：
 
 ```bash
