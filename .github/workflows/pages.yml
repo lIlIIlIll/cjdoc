@@ -331,6 +331,10 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
+          # The published tree contains hidden files such as .nojekyll. Artifact
+          # upload drops them by default, which would change the tree digest that
+          # showcase-site.sha256 seals, so they must be included.
+          include-hidden-files: true
           # One anchored root, so consumers see a stable, unambiguous layout:
           # showcase-site/, showcase-site.sha256/, ci-build/, release/bin/main.
           path: |
