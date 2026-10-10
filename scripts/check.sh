@@ -184,23 +184,25 @@ from pathlib import Path
 import stat
 import sys
 
-fixture_root = Path(sys.argv[1])
-worker_project = Path(sys.argv[2])
+fixture_root = Path(sys.argv[1]).resolve()
+worker_project = Path(sys.argv[2]).resolve()
 scope = sys.argv[3]
 found: list[str] = []
 if scope in {"", "fixtures", "all"}:
     for entry in sorted(fixture_root.rglob("target"), key=lambda item: item.relative_to(fixture_root).as_posix()):
-        if entry.is_symlink() or (entry.exists() and stat.S_ISDIR(entry.lstat().st_mode)):
-            found.append(entry.relative_to(fixture_root.parent.parent).as_posix())
+        if entry.is_symlink():
+            found.append(str(entry))
+        elif entry.exists() and stat.S_ISDIR(entry.lstat().st_mode):
+            found.append(str(entry))
     # A regular file or special node named `target` is also a refusal: deleting it
     # could destroy user data that merely looks like a build directory.
     for entry in sorted(fixture_root.rglob("target")):
         if not entry.is_symlink() and entry.exists() and not stat.S_ISDIR(entry.lstat().st_mode):
-            found.append(entry.relative_to(fixture_root.parent.parent).as_posix())
+            found.append(str(entry))
 if scope in {"", "worker", "all"}:
     candidate = worker_project / "target"
     if candidate.is_symlink() or candidate.exists():
-        found.append(candidate.relative_to(worker_project.parent.parent).as_posix())
+        found.append(str(candidate))
 print("\n".join(sorted(set(found))))
 PY
 }
@@ -365,7 +367,7 @@ stage_native() {
         cleaned=1
         while IFS= read -r relative; do
             [[ -z "${relative}" ]] && continue
-            remove_owned_outputs "${repo_root}/${relative}"
+            remove_owned_outputs "${relative}"
         done < <(existing_build_outputs fixtures)
     }
     trap cleanup_native EXIT
@@ -425,7 +427,7 @@ stage_cli() {
         cleaned=1
         while IFS= read -r relative; do
             [[ -z "${relative}" ]] && continue
-            remove_owned_outputs "${repo_root}/${relative}"
+            remove_owned_outputs "${relative}"
         done < <(existing_build_outputs fixtures)
     }
     trap cleanup_cli EXIT
