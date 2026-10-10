@@ -210,7 +210,10 @@ internal class ChirSemanticProviderFactory <: public_provider.SemanticProviderFa
                     parameterIndex++
                 }
             }
-            let returnType: ?public_model.TypeRef = if (backed) {
+            // A declaration with no source return type (a constructor) has no
+            // return in the source API, even though CHIR reports the implicit
+            // Unit; only a declaration that declares a return type gets one.
+            let returnType: ?public_model.TypeRef = if (backed && view.returnTypeSpelling.isSome()) {
                 let fromWorker: ?public_model.TypeRef = match (resolved) {
                     case Some(value) => match (value.returnNode) {
                         case Some(node) => Some(chirTypeRefFromNodes(value.nodes, node,
@@ -859,15 +862,35 @@ internal func chirTypeRefFromNodes(nodes: ArrayList<ChirTypeNode>, start: Int64,
             public_model.SemanticType("resolved", canonical: Some(head.qualifiedName),
                 provider: Some("chir")))
     }
-    let children = ArrayList<Int64>()
+    let rawChildren = ArrayList<Int64>()
     let childDepth = head.depth + 1
     var index = start + 1
     while (index < nodes.size && nodes[index].depth >= childDepth) {
-        if (nodes[index].depth == childDepth) { children.add(index) }
+        if (nodes[index].depth == childDepth) { rawChildren.add(index) }
         // Skip the whole child subtree.
         var cursor = index + 1
         while (cursor < nodes.size && nodes[cursor].depth > nodes[index].depth) { cursor++ }
         index = cursor
+    }
+    // CHIR wraps generic arguments in a node repeating the type's own name
+    // (`Box<Token>` becomes Box, Box, Token). A child that repeats its parent is
+    // that wrapper, not a real argument, so descend through it. A wrapper with no
+    // inner node (a non-generic custom type) contributes no argument at all.
+    let children = ArrayList<Int64>()
+    for (child in rawChildren) {
+        var candidate = child
+        var guard: Int64 = 0
+        while (guard < public_model.DOC_IR_MAX_TYPE_DEPTH &&
+            nodes[candidate].qualifiedName == head.qualifiedName) {
+            let inner = chirFirstChildNode(nodes, candidate)
+            match (inner) {
+                case Some(value) => candidate = value
+                case None => candidate = -1
+            }
+            if (candidate < 0) { break }
+            guard++
+        }
+        if (candidate >= 0) { children.add(candidate) }
     }
     // Each argument keeps the spelling written at its own position. The source
     // and resolved structures are trusted to agree only when their argument
@@ -882,13 +905,24 @@ internal func chirTypeRefFromNodes(nodes: ArrayList<ChirTypeNode>, start: Int64,
         for (_ in children) { argumentDisplays.add("") }
     } else if (sourceArguments.size == children.size) {
         for (argumentDisplay in sourceArguments) { argumentDisplays.add(argumentDisplay) }
+    } else if (sourceArguments.size == rawChildren.size) {
+        // Unwrapping did not reconcile the counts; the raw children are the best
+        // available reading of CHIR's structure.
+        for (argumentDisplay in sourceArguments) { argumentDisplays.add(argumentDisplay) }
     }
     let arguments = ArrayList<public_model.TypeRef>()
-    var childIndex: Int64 = 0
-    for (child in children) {
-        if (childIndex >= argumentDisplays.size) { break }
-        arguments.add(chirTypeRefFromNodes(nodes, child, argumentDisplays[childIndex]))
-        childIndex++
+    if (sourceArguments.size == rawChildren.size && sourceArguments.size != children.size) {
+        for (childIndex in 0..argumentDisplays.size) {
+            arguments.add(chirTypeRefFromNodes(nodes, rawChildren[childIndex],
+                argumentDisplays[childIndex]))
+        }
+    } else {
+        var childIndex: Int64 = 0
+        for (child in children) {
+            if (childIndex >= argumentDisplays.size) { break }
+            arguments.add(chirTypeRefFromNodes(nodes, child, argumentDisplays[childIndex]))
+            childIndex++
+        }
     }
     // The spelling is the complete source subtree with whitespace removed, so the
     // renderer's whole-range comparison against the source tokens succeeds and it
@@ -960,6 +994,18 @@ internal func chirSourceTypeArguments(display: String): Array<String> {
     }
     result.add(display[start..end].trimAscii())
     result.toArray()
+}
+
+// The first direct child of a node in the flattened pre-order list.
+private func chirFirstChildNode(nodes: ArrayList<ChirTypeNode>, index: Int64): ?Int64 {
+    let childDepth = nodes[index].depth + 1
+    var cursor = index + 1
+    while (cursor < nodes.size) {
+        if (nodes[cursor].depth == childDepth) { return Some(cursor) }
+        if (nodes[cursor].depth < childDepth) { return None }
+        cursor++
+    }
+    None
 }
 
 private func chirUnqualifiedName(qualifiedName: String): String {
