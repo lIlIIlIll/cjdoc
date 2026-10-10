@@ -692,10 +692,20 @@ if path.exists() or path.is_symlink():
     raise SystemExit(f"smoke evidence must be a new file: {path}")
 path.parent.mkdir(parents=True, exist_ok=True)
 PY
-    "${python_cmd}" scripts/with_stdx.py --variant static -- \
+    # Callers export an authenticated stdx environment, which always includes a
+    # CJDOC_STDX_DIGEST (see with_stdx.py --print-env). Re-resolving here would be
+    # redundant and would fail on an SDK layout the caller already resolved, so
+    # only wrap when nothing was authenticated.
+    if [[ -n "${CJDOC_STDX_DIGEST:-}" && -n "${CJDOC_STDX_PATH:-}" ]]; then
         "${python_cmd}" scripts/real_repository_smoke.py \
-        --project "${repo}" --binary "${main_binary:-${repo}/target/release/bin/main}" \
-        --evidence "${smoke_evidence}"
+            --project "${repo}" --binary "${main_binary:-${repo}/target/release/bin/main}" \
+            --evidence "${smoke_evidence}"
+    else
+        "${python_cmd}" scripts/with_stdx.py --variant static -- \
+            "${python_cmd}" scripts/real_repository_smoke.py \
+            --project "${repo}" --binary "${main_binary:-${repo}/target/release/bin/main}" \
+            --evidence "${smoke_evidence}"
+    fi
 }
 
 cd "${repo}"
