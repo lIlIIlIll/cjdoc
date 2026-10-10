@@ -136,6 +136,27 @@ const moduleLinks = results.children.map(item => item.children[0]);
 assert.deepEqual(moduleLinks.map(link => link.children[1].textContent), ["net.Client · sdk-a", "net.Client · sdk-b"]);
 assert.equal(moduleLinks[0].children[1].title, "net.overloaded · sdk-a · cjdoc:module:a");
 assert.notEqual(moduleLinks[0].children[2].textContent, moduleLinks[1].children[2].textContent);
+// An input method editor must not drive results with intermediate text, and
+// Enter during composition commits instead of opening a result.
+input.value = ""; input.events.input();
+input.events.compositionstart();
+input.value = "Ht"; input.events.input({isComposing: true});
+assert.equal(results.children.length, 0);
+input.events.compositionend();
+input.value = "Http"; input.events.input();
+assert(search("Http").includes("HttpClientBuilder"));
+input.events.keydown({key: "ArrowDown", preventDefault() {}});
+input.events.compositionstart();
+// Enter during composition must not activate the highlighted result.
+results.children[0].children[0].clicked = undefined;
+input.events.keydown({key: "Enter", preventDefault() {}, isComposing: true});
+assert.equal(results.children[0].children[0].clicked, undefined);
+input.events.compositionend();
+// Committing the composition re-renders for the committed text, so the
+// selection restarts; the reader picks again before opening.
+input.events.keydown({key: "ArrowDown", preventDefault() {}});
+input.events.keydown({key: "Enter", preventDefault() {}});
+assert(results.children[0].children[0].clicked);
 '''
         script = "const SCRIPT = " + __import__("json").dumps(canonical_search_script()) + ";\n" + harness
         result = subprocess.run(["node"], input=script, text=True, encoding="utf-8", capture_output=True)
