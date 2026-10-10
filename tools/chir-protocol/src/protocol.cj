@@ -7,6 +7,10 @@ public let CHIR_WORKER_PROTOCOL = "cjdoc-chir-worker/2"
 public let MAX_CHIR_REQUEST_BYTES: Int64 = 4 * 1024 * 1024
 public let MAX_CHIR_RESPONSE_BYTES: Int64 = 16 * 1024 * 1024
 
+// The deepest type nesting a signature record may describe. Matches the Doc IR
+// model limit so a record can never exceed what the model can represent.
+public let MAX_CHIR_SIGNATURE_DEPTH: Int64 = 64
+
 // One resolved type in a signature, in pre-order, with its depth in the
 // argument tree. `qualifiedName` is the name CHIR resolved, which distinguishes
 // same-spelled types from different packages.
@@ -313,10 +317,21 @@ private func parseSignatureRecord(value: String): ChirWorkerSignatureRecord {
     }
     let types = ArrayList<ChirTypeNode>()
     var index: Int64 = 0
+    var previousDepth: Int64 = -1
     while (index < typeCount) {
-        types.add(ChirTypeNode(parseWorkerCount(fields[10 + index * 2]),
-            recordValue(fields[11 + index * 2])))
+        let depth = parseWorkerCount(fields[10 + index * 2])
+        // A pre-order tree never descends more than one level at a time and never
+        // exceeds the model's depth limit; rejecting here keeps a malformed or
+        // hostile record from being rebuilt at all.
+        if (depth > MAX_CHIR_SIGNATURE_DEPTH || depth > previousDepth + 1) {
+            throw IllegalArgumentException("CHIR worker signature record type depth is invalid")
+        }
+        previousDepth = depth
+        types.add(ChirTypeNode(depth, recordValue(fields[11 + index * 2])))
         index++
+    }
+    if (typeCount > 0 && types[0].depth != 0) {
+        throw IllegalArgumentException("CHIR worker signature record must start at depth zero")
     }
     ChirWorkerSignatureRecord(fields[0], fields[1], fields[2], recordValue(fields[3]),
         recordValue(fields[4]), recordValue(fields[5]), recordValue(fields[6]), genericArity,

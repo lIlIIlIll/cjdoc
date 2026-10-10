@@ -468,19 +468,32 @@ class ChirPublicContracts {
         nodes.add(ChirTypeNode(1, "pkg.Inner"))
         nodes.add(ChirTypeNode(2, "pkg.Token"))
         let built = chirTypeRefFromNodes(nodes, 0, "Array < Inner < Token > >")
-        @Expect(built.spelling, "Array")
+        @Expect(built.spelling, "Array<Inner<Token>>")
         @Expect(built.arguments.size, 1)
-        @Expect(built.arguments[0].spelling, "Inner")
+        @Expect(built.arguments[0].spelling, "Inner<Token>")
         @Expect(built.arguments[0].arguments.size, 1)
         @Expect(built.arguments[0].arguments[0].spelling, "Token")
         @Expect(built.arguments[0].arguments[0].semantic.canonical, Some("pkg.Token"))
     }
 
     @TestCase
-    func sourceTypeHeadKeepsTheWrittenName(): Unit {
-        // The head keeps the source spelling, so an outer type written with a
-        // package prefix still matches its source tokens.
-        @Expect(chirSourceTypeHead("dep.List < Token >"), "dep.List")
-        @Expect(chirSourceTypeHead("Token"), "Token")
+    func compactSpellingRemovesOnlyWhitespace(): Unit {
+        // The renderer compares a signature range against this spelling with
+        // whitespace removed, so the complete source subtree is kept.
+        @Expect(chirCompactSpelling("Array < Token >"), "Array<Token>")
+        @Expect(chirCompactSpelling("dep.List < Inner < Token > >"), "dep.List<Inner<Token>>")
+    }
+
+    @TestCase
+    func tupleArgumentIsNotSplitOnItsInnerComma(): Unit {
+        // A comma inside a tuple argument is not a generic separator, so the
+        // argument count still agrees with CHIR.
+        let tuple = chirSourceTypeArguments("Array < (Int64, String) >")
+        @Expect(tuple.size, 1)
+        @Expect(tuple[0], "(Int64, String)")
+        // A function type argument is also kept whole.
+        let fn = chirSourceTypeArguments("Box < (Int64, String) -> Bool >")
+        @Expect(fn.size, 1)
+        @Expect(fn[0], "(Int64, String) -> Bool")
     }
 }

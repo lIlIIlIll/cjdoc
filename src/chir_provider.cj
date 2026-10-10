@@ -851,6 +851,14 @@ internal func chirTypeRefFromNodes(nodes: ArrayList<ChirTypeNode>, start: Int64,
             public_model.SemanticType("unavailable"))
     }
     let head = nodes[start]
+    // Defense in depth: never recurse past the model's type-depth limit, even if
+    // a worker returns a longer chain. The decode step already rejects such
+    // records, so this only bounds a trusted-but-wrong worker.
+    if (head.depth >= public_model.DOC_IR_MAX_TYPE_DEPTH) {
+        return public_model.TypeRef("source", chirUnqualifiedName(head.qualifiedName),
+            public_model.SemanticType("resolved", canonical: Some(head.qualifiedName),
+                provider: Some("chir")))
+    }
     let children = ArrayList<Int64>()
     let childDepth = head.depth + 1
     var index = start + 1
@@ -861,26 +869,35 @@ internal func chirTypeRefFromNodes(nodes: ArrayList<ChirTypeNode>, start: Int64,
         while (cursor < nodes.size && nodes[cursor].depth > nodes[index].depth) { cursor++ }
         index = cursor
     }
-    // Each argument keeps the spelling written at its own source position. The
-    // source and resolved structures are trusted to agree only when their
-    // argument counts match; otherwise no display is claimed, which yields no
-    // link rather than a wrong one.
+    // Each argument keeps the spelling written at its own position. The source
+    // and resolved structures are trusted to agree only when their argument
+    // counts match; CHIR also reports a self-referential child for some
+    // non-generic custom types, which the source display rules out. When they
+    // disagree, no arguments are claimed, which yields no link rather than a
+    // wrong one.
     let sourceArguments = chirSourceTypeArguments(sourceDisplay)
+    var argumentDisplays = ArrayList<String>()
+    if (sourceDisplay.trimAscii().isEmpty()) {
+        // No source display to compare against; keep CHIR's structure.
+        for (_ in children) { argumentDisplays.add("") }
+    } else if (sourceArguments.size == children.size) {
+        for (argumentDisplay in sourceArguments) { argumentDisplays.add(argumentDisplay) }
+    }
     let arguments = ArrayList<public_model.TypeRef>()
     var childIndex: Int64 = 0
     for (child in children) {
-        let childDisplay = if (sourceArguments.size == children.size) {
-            sourceArguments[childIndex]
-        } else {
-            ""
-        }
-        arguments.add(chirTypeRefFromNodes(nodes, child, childDisplay))
+        if (childIndex >= argumentDisplays.size) { break }
+        arguments.add(chirTypeRefFromNodes(nodes, child, argumentDisplays[childIndex]))
         childIndex++
     }
+    // The spelling is the complete source subtree with whitespace removed, so the
+    // renderer's whole-range comparison against the source tokens succeeds and it
+    // can then recurse into `arguments`. A node with no matching source display
+    // keeps its unqualified name, which simply fails to match and yields no link.
     let display = if (sourceDisplay.trimAscii().isEmpty()) {
         chirUnqualifiedName(head.qualifiedName)
     } else {
-        chirSourceTypeHead(sourceDisplay)
+        chirCompactSpelling(sourceDisplay)
     }
     return public_model.TypeRef("source", display,
         public_model.SemanticType("resolved", canonical: Some(head.qualifiedName),
@@ -888,43 +905,54 @@ internal func chirTypeRefFromNodes(nodes: ArrayList<ChirTypeNode>, start: Int64,
         arguments: arguments.toArray())
 }
 
-// The head of a source type display: everything before its first argument list.
-internal func chirSourceTypeHead(display: String): String {
-    let open = display.indexOf("<")
-    match (open) {
-        case Some(index) => display[..index].trimAscii()
-        case None => display.trimAscii()
+// A source type display with all whitespace removed, matching how the renderer
+// compares a signature range against a TypeRef spelling.
+internal func chirCompactSpelling(display: String): String {
+    let kept = ArrayList<Byte>()
+    for (byte in display.toArray()) {
+        if (byte == b' ' || byte == b'\t' || byte == b'\r' || byte == b'\n') { continue }
+        kept.add(byte)
     }
+    String.fromUtf8(kept.toArray())
 }
 
-// The top-level argument spellings of a source type display, each verbatim.
+// The top-level argument spellings of a source type display, each verbatim. Only
+// angle brackets open a generic argument list; a comma inside a tuple, function,
+// or other bracketed group is not a separator, so every supported delimiter is
+// tracked before splitting.
 internal func chirSourceTypeArguments(display: String): Array<String> {
     let result = ArrayList<String>()
     let open = match (display.indexOf("<")) {
         case Some(index) => index
         case None => return []
     }
-    var depth: Int64 = 0
+    var angle: Int64 = 0
+    var other: Int64 = 0
     var index = open
     var end: Int64 = -1
     while (index < display.size) {
         let byte = display[index]
-        if (byte == b'<') { depth++ }
-        else if (byte == b'>') {
-            depth--
-            if (depth == 0) { end = index; break }
-        }
+        if (byte == b'<') { angle++ }
+        else if (byte == b'>' && !(index > open && display[index - 1] == b'-')) {
+            if (angle == 0 && other == 0) { return [] }
+            angle--
+            if (angle == 0) { end = index; break }
+        } else if (byte == b'(' || byte == b'[' || byte == b'{') { other++ }
+        else if (byte == b')' || byte == b']' || byte == b'}') { if (other > 0) { other-- } }
         index++
     }
     if (end < 0) { return [] }
     var start = open + 1
-    depth = 0
+    angle = 0
+    other = 0
     index = start
     while (index < end) {
         let byte = display[index]
-        if (byte == b'<') { depth++ }
-        else if (byte == b'>') { depth-- }
-        else if (byte == b',' && depth == 0) {
+        if (byte == b'<') { angle++ }
+        else if (byte == b'>' && !(index > start && display[index - 1] == b'-')) { angle-- }
+        else if (byte == b'(' || byte == b'[' || byte == b'{') { other++ }
+        else if (byte == b')' || byte == b']' || byte == b'}') { if (other > 0) { other-- } }
+        else if (byte == b',' && angle == 0 && other == 0) {
             result.add(display[start..index].trimAscii())
             start = index + 1
         }
