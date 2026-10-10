@@ -196,30 +196,38 @@ def _diff_value(field: str, value) -> str:
     return "<br>".join(source_text(part) for part in parts)
 
 
+_PARAMETER_STATES = {"resolved", "partial", "unavailable", "ambiguous"}
+
+
 def _diff_parameter_list(text: str) -> list[str]:
-    """The native list is `name:typeState:type:defaultState:default` joined by
-    `|`, but a default expression can itself contain `|`. Only split where the
-    following fragment looks like a fresh entry (it has a colon); otherwise the
-    fragment continues the current default. If the shape still cannot be read,
+    """Decode `name:typeState:type:defaultState:default` entries joined by `|`.
+    A default expression can contain both `|` and `:`, so a split is accepted
+    only when both resulting sides still look like complete entries; otherwise
     the whole value is shown verbatim rather than as phantom parameters."""
+    whole = _diff_parameter_entries(text)
+    if whole is not None:
+        return whole
     fragments = text.split("|")
-    entries, current = [], fragments[0]
-    for fragment in fragments[1:]:
-        if ":" in fragment:
-            entries.append(current)
-            current = fragment
-        else:
-            current = current + "|" + fragment
-    entries.append(current)
-    rendered = []
-    for entry in entries:
-        pieces = entry.split(":")
-        # A well-formed entry has name, typeState, type, defaultState, default.
-        if len(pieces) >= 3 and entry.count(":") >= 4:
-            rendered.append(pieces[0] + ": " + pieces[2])
-        else:
-            return [text]
-    return rendered
+    for cut in range(1, len(fragments)):
+        head = "|".join(fragments[:cut])
+        tail = "|".join(fragments[cut:])
+        decoded = _diff_parameter_entries(head)
+        if decoded is None:
+            continue
+        rest = _diff_parameter_entries(tail)
+        if rest is None:
+            continue
+        return decoded + rest
+    return [text]
+
+
+def _diff_parameter_entries(value: str) -> list[str] | None:
+    """One or more `name:state:type:state:default` entries, or None if not."""
+    pieces = value.split(":")
+    if len(pieces) != 5 or pieces[0] == "" or pieces[1] not in _PARAMETER_STATES \
+            or pieces[3] not in _PARAMETER_STATES:
+        return None
+    return [pieces[0] + ": " + pieces[2]]
 
 
 def _diff_token_segments(text: str) -> list[str]:
