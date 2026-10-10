@@ -1,5 +1,7 @@
 package cjdoc
 
+import cjdoc.model as public_model
+import std.collection.*
 import std.unittest.*
 import std.unittest.testmacro.*
 import std.env.*
@@ -142,5 +144,39 @@ class DoctestConfigSuite {
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
+    }
+
+    @TestCase
+    func severalExamplesOnOneSymbolKeepUniqueResultIds(): Unit {
+        let moduleId = "cjdoc:module:v1:doctest-examples"
+        let symbolId = "cjdoc:v2:example::fixture::function:multi#g0()"
+        let source = public_model.SourceRange("src/api.cj", public_model.SourcePosition(1, 1, 0),
+            public_model.SourcePosition(1, 2, 1))
+        let tags = [
+            public_model.DocTag("example", "first", "```cj\nlet a = 1\n```"),
+            public_model.DocTag("example", "second", "```cj\nlet b = 2\n```"),
+            public_model.DocTag("example", "third", "```cj\nlet c = 3\n```")
+        ]
+        let symbol = public_model.SymbolDoc(symbolId, "function", "multi", "fixture.multi",
+            "fixture", moduleId, "public", source, "public func multi(): Unit",
+            public_model.SemanticInfo("partial", "ast"),
+            documentation: Some(public_model.DocComment("raw", "s", "",
+                public_model.MarkdownNode("document", children: []), tags: tags)))
+        let documentation = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "test"),
+            "complete", public_model.ProjectInfo("doctest-examples"),
+            public_model.ConfigurationSnapshot(lintProfile: "off"),
+            providers: [public_model.ProviderInfo("ast", "builtin", moduleId, "partial",
+                public_model.SemanticCapabilities(false, false, false, false, false))],
+            modules: [public_model.ModuleDoc(moduleId, "doctest-examples", "root", "",
+                packageNames: ["fixture"])],
+            packages: [public_model.PackageDoc("fixture", moduleId, sourceFiles: ["src/api.cj"],
+                symbolIds: [symbolId])],
+            files: [public_model.FileDoc("src/api.cj", moduleId, "fixture")],
+            declarations: [symbol])
+        let snippets = collectSnippets(documentation)
+        @Expect(snippets.size, 3)
+        let ids = HashSet<String>()
+        for (snippet in snippets) { let _ = ids.add(snippet.id) }
+        @Expect(ids.size, 3)
     }
 }
