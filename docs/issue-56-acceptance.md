@@ -11,7 +11,7 @@
 | 工作项 | 状态 | 实现 / 证据 |
 | --- | --- | --- |
 | RDR-01.4 关系入口位于默读区域 | 已交付 | 由上游 PR #58 合入（`symbol-relationships` 位于成员浏览器之前、关系名本地化）；本次复核未重复实现 |
-| RDR-01.1–.3 签名类型链接与复合类型 | 未完成（能力已具备，实现未做） | 见第 3 节；CHIR 可行性已于本轮实测复测（G1/G2/G3/G5/G7 PASS） |
+| RDR-01.1–.3 签名类型链接与复合类型 | 已交付 | PR #81（CHIR 解析身份贯入 Doc IR；复合类型内部类型可链接；默认路径不变） |
 | RDR-02.1 检索语料 | 已交付 | PR #67（`body` 字段，来源 Markdown AST + 标签说明） |
 | RDR-02.3 排序可解释 | 已交付 | PR #67（正文命中为第 8 档，低于所有名称/结构化档位） |
 | RDR-02.4 命中证据与安全 | 已交付 | PR #67（字段标签 + 真实片段）与 PR #69（内联脚本转义） |
@@ -94,7 +94,7 @@
 
 ## 3. 未完成项与阻塞
 
-### RDR-01.1–.3 签名类型链接（能力已验证，实现未完成）
+### RDR-01.1–.3 签名类型链接（已交付，PR #81）
 
 现状：所有源码 `TypeRef` 为 `state="partial"`、`canonical=null`、`arguments=[]`；渲染层
 `HtmlTypeLinkIndex.targetUrl()` 仅接受 `state == "resolved"` 且 canonical 精确匹配的类型。
@@ -128,7 +128,15 @@ daily 1.1.0-alpha，其 stdx 确实未交付 `stdx.chir`）：
 即 `Array<Token>` 中的 `Token` 被解析为限定名 `pocketkit.parsing.Token`，可与
 `pocketkit.io.Token` 区分——这正是 AST 拼写无法判定的同名歧义。
 
-**因此 RDR-01.1–.3 的阻塞已从「架构不允许」降级为「实现尚未进行」**。
+**结论：阻塞已解除，实现已交付（PR #81）。** 摘要：协议新增携带类型节点树的 `signature=`
+记录；worker 发射 pre-order 节点（depth + 限定名）；provider 重建结构化 `TypeRef`
+并声明 `canonicalTypes: true`；`spelling` 保留源码可见短名，解析结果只进 `canonical`。
+实测：`parse` 的 `Array<Token>` 内层 `Token` → `canonical = pocketkit.parsing.Token`
+（与 `pocketkit.io.Token` 可区分）并渲染为真实链接；26 个参数类型 + 35 个返回类型
+resolved；默认（无 `--semantic chir`）golden 字节不变；官方组件下 `cjpm test`
+330 PASSED / 0 FAILED。
+
+以下为定位该缺口时所依据的详细证据。
 
 已定位到精确的缺口，不再需要猜测：
 
@@ -198,4 +206,4 @@ macOS 曾出现一次 runner 卡顿（同一 job 65 分钟未完成），**原�
 - 展示层不重算兼容性分类，不把 `potentially-breaking`/`partial` 提升为确定结论；
 - 未修改 compiler/std/stdx，未解析 CHIR 文本；
 - 所有改动保留离线、确定性、audience/cfg 隔离与既有安全约束；
-- 本表不宣称 Issue #56 已满足全部关闭条件：**RDR-01.1–.3 仍未完成**（能力已验证，实现未做，见第 3 节）。
+- RDR-01～RDR-08 各项均已交付；完整关闭条件仍以 Issue 正文为准，本表不代替关闭判定。
