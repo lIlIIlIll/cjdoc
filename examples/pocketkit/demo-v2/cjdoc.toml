@@ -12,6 +12,13 @@ source = "docs/guide.md"
 route = "concepts/guides/first-catalogue"
 title = "目录与资源入门 / Catalogue and lifetime"
 
+# Maintainer-facing reproduction and local authoring steps are separated from
+# the caller-facing usage guide.
+[[docs.pages]]
+source = "docs/reproduce.md"
+route = "concepts/guides/reproduce"
+title = "复现与本地生成 / Reproduce and author locally"
+
 [external-docs.pocket_support]
 index = "docs/support-symbol-index.json"
 base-url = "./dependencies/support-v1"

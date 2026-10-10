@@ -22,6 +22,8 @@ These are author documentation gaps, not evidence that the APIs have no further 
 
 [目录与资源入门 / Catalogue and lifetime](guide.md)
 
+[复现与本地生成 / Reproduce and author locally](reproduce.md)
+
 与 demo-v1 相比：新增 nonEmpty，删除 legacyCount，整数 add 重载增加命名默认参数 radix，
 并澄清 snapshot 的说明。这些变化由原生 API diff 实际比较，不以本段文字代替报告。
 
