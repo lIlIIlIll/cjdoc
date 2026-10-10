@@ -252,6 +252,10 @@ stage_build() {
         "${python_cmd}" "${repo}/scripts/safe_output_root.py" --repo "${repo}" \
             --directory "$(dirname "${main_binary_out}")" --allow-missing >/dev/null
     fi
+    # An ignored-but-present worker build tree makes the repository-input gate
+    # fail closed, and deleting a pre-existing one could destroy user data, so
+    # refuse first and clean only what this stage creates.
+    refuse_existing_outputs worker
     # Keep project compilation single-job; STS 1.2.0's bundled llc has crashed under concurrent CI jobs.
     cjpm build --jobs 1
     local binary="${repo}/target/release/bin/main"
@@ -329,6 +333,9 @@ if manifest:
                              encoding="utf-8", newline="\n")
     print(f"build manifest written: {manifest_path}")
 PY
+    # The build stage owns the worker build directory it just created, so it
+    # removes only that path; the binaries travel with the candidate artifact.
+    remove_owned_outputs "${worker_project}/target"
 }
 
 stage_native() {
