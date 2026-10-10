@@ -37,13 +37,18 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Classify the pull-request diff
+      - name: Classify the pushed change range
         id: classify
         shell: bash
         run: |
           set -euo pipefail
+          # A pull request compares against its base; a push compares against the
+          # event's `before` commit, so a multi-commit push classifies every commit
+          # in the range instead of only the last one. Anything we cannot resolve
+          # falls back to the full matrix inside the script.
+          base="${{ github.event.pull_request.base.sha || github.event.before || 'HEAD^' }}"
           python scripts/ci_changes.py \
-            --base "${{ github.event.pull_request.base.sha || 'HEAD^' }}" \
+            --base "${base}" \
             --head "${{ github.sha }}" \
             --event "${{ github.event_name }}" \
             --ref "${{ github.ref }}" \
