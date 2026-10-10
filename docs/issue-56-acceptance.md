@@ -45,7 +45,7 @@
 
 ### 2.2 搜索（RDR-02.2 固定查询）
 
-`cjdoc.search-index/7`，60 条条目：
+`cjdoc.search-index/8`，60 条条目：
 
 | 查询 | 命中 |
 | --- | --- |
