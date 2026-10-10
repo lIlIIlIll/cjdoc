@@ -138,8 +138,14 @@ CHIR）；worker 发射 pre-order 节点（depth + 限定名）并携带与函�
 均渲染为真实链接（`canonical = genprobe.Token`）；`parse` 的 `Array<Token>` 内层
 `Token` → `canonical = pocketkit.parsing.Token`（与 `pocketkit.io.Token` 可区分）；
 扩展方法 `byteLength` 的返回由 `partial` 变为 `resolved(Int64)`；非泛型自定义类型
-（如 `TextReader`）不再产生幻影子实参；默认（无 `--semantic chir`）golden 字节不变；
-官方组件下 `cjpm test` 334 PASSED / 0 FAILED。
+（如 `TextReader`）不再产生幻影子实参；`Box<Box<Token>>` 保留真实内层 `Box`；
+构造器不再被赋予隐式 `Unit` 返回；泛型实参参与身份派生；`() -> Box<Token>` 一类
+函数类型不再把返回值误当作外层实参；默认（无 `--semantic chir`）golden 字节不变；
+官方组件下 `cjpm test` 338 PASSED / 0 FAILED。
+
+CHIR 在 `typeArgs` 中会为自定义类型附带一个与本类型同名的**自包装节点**
+（`Box<Token>` 展开为 `Box, Box, Token`），实现按「唯一自包装子节点」判定并只下钻一层，
+因此既去除幻影实参又不会吞掉真实同名实参（`Box<Box<Token>>`）。
 
 以下为定位该缺口时所依据的详细证据。
 
