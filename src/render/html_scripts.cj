@@ -245,7 +245,10 @@ internal let HTML_SEARCH_SCRIPT = """
     for (const match of visible) {
       const entry = match.entry;
       const bodyText = matchedBodySnippet(entry, parsedQuery);
-      const section = matchedSection(entry, parsedQuery);
+      // A section fragment is only correct for a body-text hit (rank 8). A
+      // name or structured-field match belongs at the member top, even when the
+      // same query word also appears in a documented block.
+      const section = match.rank === 8 ? matchedSection(entry, parsedQuery) : null;
       const fieldLabel = match.rank === 8
         ? (isChinese ? "正文" : "Body text") : "";
       const item = document.createElement("li");
