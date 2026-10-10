@@ -17,7 +17,7 @@ import sys
 
 sys.dont_write_bytecode = True
 
-PLANNED_JOBS = ("candidate-linux", "candidate-other")
+PLANNED_JOBS = ("changes", "candidate-linux", "linux-acceptance", "candidate-other")
 
 
 def needs_results(raw: str) -> dict[str, dict[str, object]]:
@@ -30,22 +30,29 @@ def needs_results(raw: str) -> dict[str, dict[str, object]]:
     return value
 
 
-def planned_set(plan_raw: str) -> tuple[set[str], str]:
+def planned_set(plan_raw: str) -> tuple[set[str], set[str], str]:
+    """Return (planned jobs, routable jobs, basis).
+
+    A job that the plan cannot route (the classifier itself) is always required.
+    """
+    routable = set(PLANNED_JOBS) - {"changes"}
     if not plan_raw:
-        return set(PLANNED_JOBS), "no plan supplied; requiring every gated job"
+        return set(PLANNED_JOBS), routable, "no plan supplied; requiring every gated job"
     try:
         plan = json.loads(plan_raw)
     except ValueError as error:
         raise SystemExit(f"ci_required.py: --plan is not JSON: {error}")
     if plan.get("mode") != "classified":
-        return set(PLANNED_JOBS), "plan is not classified; requiring every gated job"
+        return set(PLANNED_JOBS), routable, "plan is not classified; requiring every gated job"
     job_set = plan.get("jobSet")
-    if not isinstance(job_set, dict) or set(job_set) != set(PLANNED_JOBS):
-        raise SystemExit("ci_required.py: plan jobSet does not cover the gated jobs")
-    return {name for name, needed in job_set.items() if needed}, "classified plan"
+    if not isinstance(job_set, dict) or set(job_set) != routable:
+        raise SystemExit("ci_required.py: plan jobSet does not cover the routable jobs")
+    needed = {name for name, required in job_set.items() if required} | {"changes"}
+    return needed, routable, "classified plan"
 
 
-def evaluate(outcomes: dict[str, dict[str, object]], planned: set[str]) -> list[str]:
+def evaluate(outcomes: dict[str, dict[str, object]], planned: set[str],
+             routable: set[str]) -> list[str]:
     problems: list[str] = []
     for job in PLANNED_JOBS:
         outcome = outcomes.get(job)
@@ -54,7 +61,7 @@ def evaluate(outcomes: dict[str, dict[str, object]], planned: set[str]) -> list[
                 problems.append(f"{job}: planned but missing from the needs graph")
             continue
         result = outcome.get("result")
-        if job in planned:
+        if job in planned or job not in routable:
             if result != "success":
                 problems.append(f"{job}: required job reported {result!r}")
         elif result not in {"success", "skipped"}:
@@ -67,8 +74,8 @@ def main() -> int:
     parser.add_argument("--outcome-json", required=True)
     parser.add_argument("--plan", default="")
     args = parser.parse_args()
-    planned, basis = planned_set(args.plan)
-    problems = evaluate(needs_results(args.outcome_json), planned)
+    planned, routable, basis = planned_set(args.plan)
+    problems = evaluate(needs_results(args.outcome_json), planned, routable)
     if problems:
         for problem in problems:
             print(f"CI required gate failed: {problem}", file=sys.stderr)

@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/pages.yml'
+      - '.github/workflows/build-linux-candidate.yml'
       - 'site/**'
       - 'examples/**'
       - 'scripts/**'
@@ -21,6 +22,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/pages.yml'
+      - '.github/workflows/build-linux-candidate.yml'
       - 'site/**'
       - 'examples/**'
       - 'scripts/**'
@@ -35,6 +37,15 @@ on:
       - 'vendor/**'
       - 'tests/fixtures/projects/html_reference/**'
   workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: CI run whose Linux candidate to reuse (empty = local build)
+        type: string
+        default: ""
+      candidate_run_attempt:
+        description: Attempt number of the reused CI run
+        type: string
+        default: "1"
 
 permissions:
   contents: read
@@ -53,10 +64,22 @@ env:
   CANGJIE_SDK_VERSION: "1.2.0"
 
 jobs:
-  build:
-    name: Build showcase
+  # Build the Linux candidate through the same reusable workflow CI uses, so the
+  # toolchain, the stdx sidecar and the -O1 workaround have one definition. The
+  # candidate carries an identity manifest that every consumer re-verifies.
+  build-candidate:
+    name: Build Linux candidate
+    uses: ./.github/workflows/build-linux-candidate.yml
+    with:
+      cangjie_sdk_version: "1.2.0"
+
+  # Generate the final site exactly once and seal it. Every branch below reads
+  # this one artifact and can never regenerate or mutate it.
+  assemble-site:
+    name: Assemble final site
+    needs: build-candidate
     runs-on: ubuntu-22.04
-    timeout-minutes: 70
+    timeout-minutes: 30
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -70,45 +93,150 @@ jobs:
           cache: pip
           cache-dependency-path: scripts/requirements-showcase.txt
 
-      - name: Verify tracked repository inputs
-        run: python scripts/verify_repository_inputs.py --require-tracked
+      - name: Download the Linux candidate
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.build-candidate.outputs.artifact_name }}
+          path: ${{ runner.temp }}/candidate
 
-      - name: Preserve exact tracked source inputs
+      - name: Unpack and re-verify the candidate identity
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p target/showcase-inputs
-          git archive --format=tar.gz --output=target/showcase-inputs/source.tar.gz HEAD
-          git rev-parse HEAD > target/showcase-inputs/revision.txt
-          sha256sum target/showcase-inputs/source.tar.gz > target/showcase-inputs/SHA256SUMS
+          tar -C . -xf "${RUNNER_TEMP}/candidate/cjdoc-linux-candidate.tar"
+          chmod +x target/release/bin/main
+          python scripts/ci_stage.py verify-identity \
+            --manifest target/ci-build/build-manifest.json \
+            --main-binary target/release/bin/main --repo .
+          test "$(target/release/bin/main --version | tr -d '\r')" = \
+            "cjdoc $(python -c 'import tomllib;print(tomllib.load(open("cjpm.toml","rb"))["package"]["version"])')"
 
-      - name: Upload reproducible source inputs
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - name: Assemble the final site once
+        shell: bash
+        env:
+          SHOWCASE_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
+          SHOWCASE_REVISION: ${{ github.sha }}
+          CJDOC_CI_EVIDENCE: ${{ runner.temp }}/ci-evidence
+        run: |
+          set -euo pipefail
+          python scripts/ci_stage.py run --id site-assemble --kind site-assemble \
+            --evidence "${CJDOC_CI_EVIDENCE}" -- \
+            python scripts/build_showcase.py \
+              --binary target/release/bin/main \
+              --output target/showcase-site \
+              --repository-url "${SHOWCASE_REPOSITORY_URL}" \
+              --revision "${SHOWCASE_REVISION}"
+
+      - name: Fingerprint the sealed site
+        shell: bash
+        env:
+          PYTHONPATH: scripts
+        run: |
+          set -euo pipefail
+          python -m showcase_contract fingerprint --site target/showcase-site \
+            > target/showcase-site.sha256
+          cat target/showcase-site.sha256
+
+      - name: Upload timing evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: cjdoc-showcase-inputs-${{ github.run_id }}-${{ github.run_attempt }}
-          path: target/showcase-inputs/
+          name: ci-timing-pages-assemble-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-evidence/
           retention-days: 7
           if-no-files-found: error
 
-      - name: Test showcase contracts
-        run: python -m unittest discover -s tests/showcase_contract -v
-
-      - name: Restore cjv toolchain cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Upload the sealed site with its generating binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          # setup-cangjie keeps its toolchains in CJV_HOME under RUNNER_TEMP.
-          # A warm hit makes `cjv install` a no-op instead of a fresh download.
-          path: ${{ runner.temp }}/setup-cangjie-cjv
-          key: cjv-home-${{ runner.os }}-${{ env.CANGJIE_SDK_VERSION }}-v1
+          name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
+          # One anchored root, so consumers see a stable, unambiguous layout:
+          # showcase-site/, showcase-site.sha256/, ci-build/, release/bin/main.
+          path: |
+            target/showcase-site
+            target/showcase-site.sha256
+            target/ci-build
+            target/release/bin/main
+          retention-days: 7
+          if-no-files-found: error
 
-      - name: Set up Cangjie SDK 1.2.0 with stdx
-        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571 # v3.2.0
+  # Reproduce the published source archive with the exact generating binary.
+  source-reproduction:
+    name: Reproduce the downloaded source bundle
+    needs: assemble-site
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          channel: sts
-          version: ${{ env.CANGJIE_SDK_VERSION }}
-          components: stdx
-          # Pinned so a future cjv release cannot change resolution silently.
-          cjv-version: v0.3.2
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Download the sealed site
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sealed
+
+      - name: Reproduce the source bundle
+        shell: bash
+        env:
+          CJDOC_CI_EVIDENCE: ${{ runner.temp }}/ci-evidence
+        run: |
+          set -euo pipefail
+          sealed="${RUNNER_TEMP}/sealed"
+          chmod +x "${sealed}/release/bin/main"
+          python scripts/ci_stage.py verify-identity \
+            --manifest "${sealed}/ci-build/build-manifest.json" \
+            --main-binary "${sealed}/release/bin/main"
+          mkdir -p target
+          python scripts/ci_stage.py run --id source-reproduction --kind source-reproduction \
+            --evidence "${CJDOC_CI_EVIDENCE}" -- \
+            python scripts/check_showcase_source.py \
+              --site "${sealed}/showcase-site" \
+              --binary "${sealed}/release/bin/main" \
+              --evidence target/showcase-source-evidence.json \
+              --expect-site-sha256 "$(cat "${sealed}/showcase-site.sha256")"
+
+      - name: Upload source reproduction evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cjdoc-showcase-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/showcase-source-evidence.json
+            target/showcase-source-evidence.log
+          retention-days: 7
+          if-no-files-found: error
+
+  # Two independent browser shards. Homepage groups stay whole, so each shard
+  # observes exactly the same per-group state a single-process run would.
+  browser-shard:
+    name: Browser shard ${{ matrix.shard }}
+    needs: assemble-site
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements-showcase.txt
 
       - name: Restore Playwright browsers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -125,6 +253,8 @@ jobs:
           key: noto-cjk-fonts-${{ runner.os }}-1.20220127-v1
 
       - name: Install browser acceptance dependencies
+        env:
+          CACHE_HIT_FONTS: ${{ steps.font-cache.outputs.cache-hit }}
         run: |
           python -m pip install --disable-pip-version-check psutil -r scripts/requirements-showcase.txt
           python -m playwright install --with-deps chromium
@@ -144,85 +274,187 @@ jobs:
             sudo fc-cache -f >/dev/null
           fi
           test -s /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
-        env:
-          CACHE_HIT_FONTS: ${{ steps.font-cache.outputs.cache-hit }}
 
-      - name: Export authenticated stdx environment
+      - name: Download the sealed site
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sealed
+
+      - name: Plan and run the browser shard
+        shell: bash
+        env:
+          PYTHONPATH: scripts
+          CJDOC_CI_EVIDENCE: ${{ runner.temp }}/ci-evidence
+        run: |
+          set -euo pipefail
+          sealed="${RUNNER_TEMP}/sealed"
+          python -m showcase_contract.browser plan \
+            --site "${sealed}/showcase-site" --shards 2 \
+            --run-id "${GITHUB_RUN_ID}" --output target/browser-plan.json
+          python scripts/ci_stage.py run --id "browser-shard-${{ matrix.shard }}" --kind browser-shard \
+            --evidence "${CJDOC_CI_EVIDENCE}" -- \
+            python -m showcase_contract.browser run \
+              --site "${sealed}/showcase-site" --plan target/browser-plan.json \
+              --shard-index "${{ matrix.shard }}" --run-id "${GITHUB_RUN_ID}" \
+              --run-attempt "${GITHUB_RUN_ATTEMPT}" \
+              --evidence "target/browser-shard-${{ matrix.shard }}"
+
+      - name: Upload the shard evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cjdoc-showcase-browser-shard-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/browser-plan.json
+            target/browser-shard-${{ matrix.shard }}
+          retention-days: 7
+          if-no-files-found: error
+
+  reading-regressions:
+    name: Check API reading regressions
+    needs: assemble-site
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: scripts/requirements-showcase.txt
+
+      - name: Restore Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('scripts/requirements-showcase.txt') }}
+
+      - name: Install browser acceptance dependencies
+        run: |
+          python -m pip install --disable-pip-version-check psutil -r scripts/requirements-showcase.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Download the sealed site
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sealed
+
+      - name: Check reading regressions against the sealed site
+        shell: bash
+        env:
+          PYTHONPATH: scripts
+          CJDOC_CI_EVIDENCE: ${{ runner.temp }}/ci-evidence
+        run: |
+          set -euo pipefail
+          sealed="${RUNNER_TEMP}/sealed"
+          python scripts/ci_stage.py run --id reading-regressions --kind reading \
+            --evidence "${CJDOC_CI_EVIDENCE}" -- \
+            python -m showcase_contract.browser_reading_regressions \
+              --site "${sealed}/showcase-site" \
+              --evidence target/showcase-reading-evidence \
+              --expect-site-sha256 "$(cat "${sealed}/showcase-site.sha256")"
+
+      - name: Upload reading evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cjdoc-showcase-reading-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/showcase-reading-evidence
+          retention-days: 7
+          if-no-files-found: error
+
+  # Fan-in gate: every branch must have produced evidence bound to the same
+  # sealed site, and the merged browser evidence must pass the unmodified
+  # full-coverage gate before anything is published.
+  verify-site:
+    name: Verify the final site and every branch
+    needs: [assemble-site, source-reproduction, browser-shard, reading-regressions]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Download the sealed site
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sealed
+
+      - name: Download both browser shards
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          pattern: cjdoc-showcase-browser-shard-*
+          path: ${{ runner.temp }}/branches
+          merge-multiple: true
+
+      - name: Download source reproduction evidence
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: cjdoc-showcase-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/branches/source
+
+      - name: Download reading evidence
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: cjdoc-showcase-reading-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/branches/reading
+
+      - name: Require every branch artifact and bind it to the sealed site
         shell: bash
         run: |
           set -euo pipefail
-          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+          sealed="${RUNNER_TEMP}/sealed"
+          branches="${RUNNER_TEMP}/branches"
+          test -f "${sealed}/showcase-site.sha256"
+          test -f "${branches}/browser-plan.json"
+          for file in "${branches}/browser-shard-0/shard.json" \
+                      "${branches}/browser-shard-1/shard.json" \
+                      "${branches}/source/showcase-source-evidence.json" \
+                      "${branches}/reading/results.json"; do
+            test -f "${file}"
+          done
+          python scripts/showcase_branch_receipts.py \
+            --site "${sealed}/showcase-site" \
+            --site-sha256 "$(cat "${sealed}/showcase-site.sha256")" \
+            --build-manifest "${sealed}/ci-build/build-manifest.json" \
+            --source-evidence "${branches}/source/showcase-source-evidence.json" \
+            --reading-evidence "${branches}/reading/results.json" \
+            --receipt "${branches}/branch-receipt.json"
 
-      - name: Build cjdoc
-        shell: bash
-        run: |
-          set -euo pipefail
-          cjc -v
-          cjpm -v
-          # STS 1.2.0's llc crashes at -O2 on markdown/yjson; use the CI -O1 workaround.
-          python scripts/with_stdx.py --variant static -- python - <<'PYTHON'
-          from pathlib import Path
-          import subprocess
-
-          manifest = Path("cjpm.toml")
-          contents = manifest.read_bytes()
-          needle = b'override-compile-option = ""'
-          if contents.count(needle) != 1:
-              raise SystemExit("expected one default compile override in cjpm.toml")
-          try:
-              manifest.write_bytes(contents.replace(needle, b'override-compile-option = "-O1"', 1))
-              subprocess.run(["cjpm", "build", "--jobs", "1"], check=True)
-          finally:
-              manifest.write_bytes(contents)
-          PYTHON
-
-      - name: Build showcase site
-        shell: bash
-        env:
-          SHOWCASE_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
-          SHOWCASE_REVISION: ${{ github.sha }}
-        run: |
-          python scripts/build_showcase.py \
-            --binary target/release/bin/main \
-            --output target/showcase-site \
-            --repository-url "${SHOWCASE_REPOSITORY_URL}" \
-            --revision "${SHOWCASE_REVISION}"
-
-      - name: Reproduce downloaded source bundle with native cjdoc
-        shell: bash
-        run: |
-          python scripts/check_showcase_source.py \
-            --site target/showcase-site \
-            --binary target/release/bin/main \
-            --evidence target/showcase-source-evidence.json
-
-      - name: Run browser acceptance against the final site
+      - name: Merge shards and run the unmodified full evidence gate
         shell: bash
         env:
           PYTHONPATH: scripts
         run: |
-          python -m showcase_contract.browser \
-            --site target/showcase-site \
-            --evidence target/showcase-evidence
-
-      - name: Verify final site and browser evidence before publishing
-        shell: bash
-        env:
-          PYTHONPATH: scripts
-        run: |
+          set -euo pipefail
+          sealed="${RUNNER_TEMP}/sealed"
+          branches="${RUNNER_TEMP}/branches"
+          python -m showcase_contract.browser merge \
+            --site "${sealed}/showcase-site" \
+            --plan "${branches}/browser-plan.json" \
+            --shard-result "0=${branches}/browser-shard-0/shard.json" \
+            --shard-result "1=${branches}/browser-shard-1/shard.json" \
+            --evidence target/showcase-evidence \
+            --receipt "${branches}/browser-merge-receipt.json"
           python -m showcase_contract verify \
-            --site target/showcase-site \
+            --site "${sealed}/showcase-site" \
             --evidence target/showcase-evidence/results.json \
             --baseline site/showcase-baseline.json
-
-      - name: Check API reading regressions against the final site
-        shell: bash
-        env:
-          PYTHONPATH: scripts
-        run: |
-          python -m showcase_contract.browser_reading_regressions \
-            --site target/showcase-site \
-            --evidence target/showcase-reading-evidence
 
       - name: Upload validation evidence
         if: always()
@@ -230,11 +462,8 @@ jobs:
         with:
           name: cjdoc-showcase-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            target/showcase-evidence/
-            target/showcase-reading-evidence/
-            target/showcase-source-evidence.json
-            target/showcase-source-evidence.log
-            target/showcase-site/artifacts/showcase-stage-report.json
+            target/showcase-evidence
+            ${{ runner.temp }}/branches
           retention-days: 30
           if-no-files-found: warn
 
@@ -246,14 +475,14 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: target/showcase-site
+          path: ${{ runner.temp }}/sealed/showcase-site
 
       - name: Upload PR preview
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cjdoc-showcase-preview-${{ github.run_id }}-${{ github.run_attempt }}
-          path: target/showcase-site
+          path: ${{ runner.temp }}/sealed/showcase-site
           include-hidden-files: true
           retention-days: 7
           if-no-files-found: error
@@ -264,7 +493,7 @@ jobs:
     permissions:
       pages: write
       id-token: write
-    needs: build
+    needs: verify-site
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     environment:
