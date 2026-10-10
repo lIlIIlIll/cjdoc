@@ -34,7 +34,8 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
         self.git(self.repo, "-c", "user.name=t", "-c", "user.email=t@example.test",
                  "commit", "-q", "-m", "add wrapper")
         self.commit = self.git(self.repo, "rev-parse", "HEAD")
-        self.binary = self.root / "cjdoc"
+        self.binary = self.repo / "target/release/bin/main"
+        self.binary.parent.mkdir(parents=True, exist_ok=True)
         self.binary.write_text("#!/bin/sh\necho 'cjdoc 0.7.0'\n", encoding="utf-8")
         self.binary.chmod(0o755)
 
