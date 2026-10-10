@@ -172,11 +172,14 @@ def read_zip(path: Path) -> dict[str, ArchiveMember]:
                 raise ValueError(f"release archive contains a duplicate member: {normalized}")
             total = checked_size(normalized, info.file_size, total)
             capture = is_manifest_candidate(normalized)
+            # Both captured members are small JSON identities. The candidate receipt
+            # is bounded by the same limit as the manifest so an oversized one cannot
+            # be buffered whole and then decoded into another large allocation.
+            if capture and info.file_size > MAX_MANIFEST_SIZE:
+                raise ValueError(f"release archive metadata member exceeds the verification limit: {normalized}")
             if is_release_manifest(normalized):
                 if manifest_seen:
                     raise ValueError("release archive contains multiple manifest candidates")
-                if info.file_size > MAX_MANIFEST_SIZE:
-                    raise ValueError("release manifest exceeds the verification limit")
                 manifest_seen = True
             with archive.open(info, "r") as stream:
                 digest, content = read_member_stream(
@@ -214,11 +217,11 @@ def read_tar(path: Path, *, compressed: bool) -> dict[str, ArchiveMember]:
             if stream is None:
                 raise ValueError(f"release archive member cannot be read: {normalized}")
             capture = is_manifest_candidate(normalized)
+            if capture and info.size > MAX_MANIFEST_SIZE:
+                raise ValueError(f"release archive metadata member exceeds the verification limit: {normalized}")
             if is_release_manifest(normalized):
                 if manifest_seen:
                     raise ValueError("release archive contains multiple manifest candidates")
-                if info.size > MAX_MANIFEST_SIZE:
-                    raise ValueError("release manifest exceeds the verification limit")
                 manifest_seen = True
             with stream:
                 digest, content = read_member_stream(

@@ -53,7 +53,8 @@ def candidate_files(repo: Path, target: Path) -> list[tuple[str, Path]]:
     return candidates
 
 
-def collect(repo: Path, targets: list[Path], out: Path, *, max_bytes: int, max_files: int) -> dict:
+def collect(repo: Path, targets: list[Path], out: Path, *,
+            max_bytes: int = DEFAULT_MAX_BYTES, max_files: int = DEFAULT_MAX_FILES) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     repository = repo.resolve()
     files: list[dict[str, object]] = []
@@ -82,9 +83,15 @@ def collect(repo: Path, targets: list[Path], out: Path, *, max_bytes: int, max_f
             try:
                 relative = source.resolve().relative_to(repository).as_posix()
             except ValueError:
-                relative = f"{prefix}external/{source.name}"
-            else:
-                relative = f"{prefix}{relative}"
+                # A stage-private root lives outside the repository. Keeping its
+                # path relative to that root preserves the fixture layout, so
+                # same-named files such as docs.json cannot collide.
+                try:
+                    relative = "external/" + source.resolve().relative_to(
+                        target.resolve()).as_posix()
+                except ValueError:
+                    relative = f"external/{source.name}"
+            relative = f"{prefix}{relative}"
             destination = out / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, destination)
