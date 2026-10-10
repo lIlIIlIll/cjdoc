@@ -7,6 +7,7 @@ files are never rewritten. Existing output directories are never removed.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 from pathlib import Path
@@ -141,8 +142,28 @@ def validate_diagnostic_examples(output: Path) -> None:
             raise ValueError("explanatory example must retain its native no-code skip")
 
 
+@contextmanager
+def _null_phase(_stage_id: str, _kind: str = "site-assemble"):
+    """No-op phase used when the repository timing helper is unavailable."""
+    yield {}
+
+
+class _NullTiming:
+    """Stand-in with the same surface as `showcase_build.stage_timing`.
+
+    Defined at module scope: a class body that assigns `phase` shadows the name
+    for its own right-hand side, so the context manager cannot be defined inline.
+    """
+
+    phase = staticmethod(_null_phase)
+
+    @staticmethod
+    def flush() -> None:
+        return None
+
+
 def timing_module():
-    """Return the showcase timing helper, or a no-op stand-in.
+    """Return the showcase timing helper, or the no-op stand-in.
 
     `reproduce.py` also ships inside the downloadable source archive, where the
     repository's `showcase_build` package is absent. Timing is diagnostic only,
@@ -151,20 +172,7 @@ def timing_module():
     try:
         from showcase_build import stage_timing
     except ImportError:
-        from contextlib import contextmanager
-
-        @contextmanager
-        def phase(_stage_id, _kind="site-assemble"):
-            yield {}
-
-        class _NoOp:
-            phase = staticmethod(phase)
-
-            @staticmethod
-            def flush():
-                return None
-
-        return _NoOp
+        return _NullTiming
     return stage_timing
 
 

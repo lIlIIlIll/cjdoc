@@ -63,5 +63,40 @@ class NegativeExampleGateTests(unittest.TestCase):
                 self.validate(report)
 
 
+class StandaloneTimingTests(unittest.TestCase):
+    """The shipped source archive has no `showcase_build`; timing must degrade."""
+
+    def test_timing_falls_back_when_the_repository_package_is_absent(self) -> None:
+        import builtins
+
+        real_import = builtins.__import__
+
+        def refuse_showcase_build(name, *args, **kwargs):
+            if name == "showcase_build" or name.startswith("showcase_build."):
+                raise ImportError("simulated standalone source archive")
+            return real_import(name, *args, **kwargs)
+
+        module = importlib.util.module_from_spec(SPEC)
+        SPEC.loader.exec_module(module)
+
+        # The block must stay in force while timing_module() resolves the helper,
+        # which is the call that failed inside the shipped archive.
+        builtins.__import__ = refuse_showcase_build
+        try:
+            timing = module.timing_module()
+        finally:
+            builtins.__import__ = real_import
+
+        self.assertIs(timing, module._NullTiming)
+        with timing.phase("probe") as record:
+            self.assertIsInstance(record, dict)
+        self.assertIsNone(timing.flush())
+
+    def test_repository_package_still_supplies_real_timing(self) -> None:
+        timing = REPRODUCE.timing_module()
+        self.assertTrue(hasattr(timing, "phase"))
+        self.assertTrue(hasattr(timing, "flush"))
+
+
 if __name__ == "__main__":
     unittest.main()
