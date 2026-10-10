@@ -94,7 +94,7 @@
 | showcase 契约测试 `tests/showcase_contract` | 是 | 158 OK |
 | v11 golden（`scripts/check.sh` 内） | 是（`check.sh` 与 CI） | 通过 |
 | v6–v10 严格迁移（`scripts/check.sh` 内） | 是 | 通过 |
-| 真实仓库 smoke（`scripts/real_repository_smoke.py`） | **未单独运行** | 依赖 `check.sh` 之外的独立环境，本机与 CI 均未单独执行；不作为本表证据 |
+| 真实仓库 smoke（`scripts/real_repository_smoke.py`） | CI 是（`ci.yml` linux-x64 在 `check.sh` 之后运行 `--project .`）；本机否 | CI linux-x64 通过；本机未单独执行 |
 | 浏览器端到端（showcase job） | 是 | 324/324 + 12/12 |
 | `scripts/check.sh` 完整门禁 | 是 | `cjdoc acceptance gate passed` |
 
