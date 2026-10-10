@@ -263,11 +263,29 @@ internal func identityType(typeRef: TypeRef): String {
     match (typeRef.canonical) {
         case Some(canonical) =>
             if (typeRef.state == "resolved") {
-                return canonical
+                // A generic type's identity includes its arguments, so
+                // Array<Token> and Array<String> are not interchangeable when a
+                // same-shaped overload is added later.
+                return identityTypeIdentity(canonical, typeRef.arguments)
             }
         case None => ()
     }
     return typeRef.display
+}
+
+private func identityTypeIdentity(canonical: String, arguments: ArrayList<TypeRef>): String {
+    if (arguments.isEmpty()) { return canonical }
+    let builder = StringBuilder()
+    builder.append(canonical)
+    builder.append("<")
+    var index: Int64 = 0
+    for (argument in arguments) {
+        if (index > 0) { builder.append(",") }
+        builder.append(identityType(argument))
+        index++
+    }
+    builder.append(">")
+    builder.toString()
 }
 
 internal func memberIdentity(symbol: SymbolDoc, scope: IdentityGenericScope): String {

@@ -5,6 +5,9 @@ import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
 import cjdoc.model as public_model
+import cjdoc.provider as public_provider
+import std.collection.*
+import cjdoc_chir_protocol.*
 
 private func chirTestOptions(compilerExecutable!: String = "cjc"): ChirOptions {
     ChirOptions(compilerExecutable: compilerExecutable,
@@ -436,5 +439,116 @@ class ChirPublicContracts {
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
+    }
+
+    @TestCase
+    func sourceTypeArgumentsAreReadAtTheirOwnPositions(): Unit {
+        // Each argument keeps the exact spelling written at its own position, so
+        // two arguments resolving to the same type still match their own source
+        // tokens and both receive links.
+        let pair = chirSourceTypeArguments("Pair < dep.Token , Token >")
+        @Expect(pair.size, 2)
+        @Expect(pair[0], "dep.Token")
+        @Expect(pair[1], "Token")
+        // Nested lists stay intact and are not split at their inner comma.
+        let nested = chirSourceTypeArguments("Map < String , List < Int64 , dep.Token > >")
+        @Expect(nested.size, 2)
+        @Expect(nested[0], "String")
+        @Expect(nested[1], "List < Int64 , dep.Token >")
+        // A display with no argument list has no arguments.
+        @Expect(chirSourceTypeArguments("Token").size, 0)
+    }
+
+    @TestCase
+    func nestedResolvedTypeKeepsEachArgumentSpelling(): Unit {
+        // A doubly nested generic: each level keeps the spelling written at its
+        // own source position, and the canonical identity survives at each node.
+        let nodes = ArrayList<ChirTypeNode>()
+        nodes.add(ChirTypeNode(0, "std.core.Array"))
+        nodes.add(ChirTypeNode(1, "pkg.Inner"))
+        nodes.add(ChirTypeNode(2, "pkg.Token"))
+        let built = chirTypeRefFromNodes(nodes, 0, "Array < Inner < Token > >")
+        @Expect(built.spelling, "Array<Inner<Token>>")
+        @Expect(built.arguments.size, 1)
+        @Expect(built.arguments[0].spelling, "Inner<Token>")
+        @Expect(built.arguments[0].arguments.size, 1)
+        @Expect(built.arguments[0].arguments[0].spelling, "Token")
+        @Expect(built.arguments[0].arguments[0].semantic.canonical, Some("pkg.Token"))
+    }
+
+    @TestCase
+    func chirSelfWrapperIsUnwrappedIntoOneArgument(): Unit {
+        // CHIR reports Box<Token> as Box, Box, Token. The repeated node is a
+        // self wrapper, so the single real argument is Token, not Box.
+        let nodes = ArrayList<ChirTypeNode>()
+        nodes.add(ChirTypeNode(0, "pkg.Box"))
+        nodes.add(ChirTypeNode(1, "pkg.Box"))
+        nodes.add(ChirTypeNode(2, "pkg.Token"))
+        let built = chirTypeRefFromNodes(nodes, 0, "Box < Token >")
+        @Expect(built.arguments.size, 1)
+        @Expect(built.arguments[0].spelling, "Token")
+        @Expect(built.arguments[0].semantic.canonical, Some("pkg.Token"))
+    }
+
+    @TestCase
+    func chirSelfWrapperWithoutInnerNodeYieldsNoArgument(): Unit {
+        // A non-generic custom type arrives as the type followed by itself; the
+        // wrapper has no inner node, so there is no argument to claim.
+        let nodes = ArrayList<ChirTypeNode>()
+        nodes.add(ChirTypeNode(0, "pkg.TextReader"))
+        nodes.add(ChirTypeNode(1, "pkg.TextReader"))
+        let built = chirTypeRefFromNodes(nodes, 0, "TextReader")
+        @Expect(built.arguments.size, 0)
+        @Expect(built.semantic.canonical, Some("pkg.TextReader"))
+    }
+
+    @TestCase
+    func nestedSameNamedArgumentIsPreserved(): Unit {
+        // Box<Box<Token>> arrives as Box, Box, Box, Box, Token. Unwrapping only
+        // the sole self wrapper keeps the genuine inner Box instead of
+        // swallowing it and attaching Token to the Box<Token> spelling.
+        let nodes = ArrayList<ChirTypeNode>()
+        nodes.add(ChirTypeNode(0, "p.Box"))
+        nodes.add(ChirTypeNode(1, "p.Box"))
+        nodes.add(ChirTypeNode(2, "p.Box"))
+        nodes.add(ChirTypeNode(3, "p.Box"))
+        nodes.add(ChirTypeNode(4, "p.Token"))
+        let built = chirTypeRefFromNodes(nodes, 0, "Box < Box < Token >>")
+        @Expect(built.arguments.size, 1)
+        @Expect(built.arguments[0].spelling, "Box<Token>")
+        @Expect(built.arguments[0].semantic.canonical, Some("p.Box"))
+        @Expect(built.arguments[0].arguments.size, 1)
+        @Expect(built.arguments[0].arguments[0].semantic.canonical, Some("p.Token"))
+    }
+
+    @TestCase
+    func functionTypeReturnIsNotAnOuterArgumentList(): Unit {
+        // The `<` belongs to the function type's return, not to the outer type,
+        // so there is no outer argument to pair and no wrong link is produced.
+        @Expect(chirSourceTypeArguments("() -> Box < Token >").size, 0)
+        @Expect(chirSourceTypeArguments("(Int64) -> Array < Token >").size, 0)
+        // A real outer generic still yields its arguments.
+        @Expect(chirSourceTypeArguments("Box < Token >").size, 1)
+    }
+
+    @TestCase
+    func compactSpellingRemovesOnlyWhitespace(): Unit {
+        // The renderer compares a signature range against this spelling with
+        // whitespace removed, so the complete source subtree is kept.
+        @Expect(chirCompactSpelling("Array < Token >"), "Array<Token>")
+        @Expect(chirCompactSpelling("dep.List < Inner < Token > >"), "dep.List<Inner<Token>>")
+    }
+
+    @TestCase
+    func tupleArgumentIsNotSplitOnItsInnerComma(): Unit {
+        // A comma inside a tuple argument is not a generic separator, so the
+        // argument count still agrees with CHIR.
+        let tuple = chirSourceTypeArguments("Array < (Int64, String) >")
+        @Expect(tuple.size, 1)
+        @Expect(tuple[0], "(Int64, String)")
+        // A function type argument is also kept whole.
+        let fn = chirSourceTypeArguments("Box < (Int64, String) -> Bool >")
+        @Expect(fn.size, 1)
+        @Expect(fn[0], "(Int64, String) -> Bool")
     }
 }

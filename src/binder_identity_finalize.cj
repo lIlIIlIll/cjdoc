@@ -189,8 +189,13 @@ internal func copySemanticIdentityToDoc(source: SourceDeclaration, semantic: Sem
         let sourceParameter = source.parameters[index]
         let typeRef = if (index < semantic.parameters.size) {
             let provided = semantic.parameters[index].typeRef
+            // The nested arguments carry identity too (Array<Int64> and
+            // Array<String> differ by child canonical), so the preflight
+            // projection must keep them or it would read two distinct
+            // declarations as a collision.
             TypeRef(sourceParameter.typeSpelling, canonical: provided.canonical, state: provided.state,
-                kind: provided.kind, nullable: provided.nullable)
+                kind: provided.kind, nullable: provided.nullable,
+                arguments: provided.arguments.toArray())
         } else {
             typeRefFromSourceSpelling(sourceParameter.typeSpelling)
         }
