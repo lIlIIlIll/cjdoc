@@ -121,11 +121,11 @@ jobs:
           . scripts/with_sts_o1_cjpm.sh
           identity=target/ci-build/build-manifest.json
           bash scripts/check.sh native --repo . --identity "${identity}" \
-            --worker-binary tools/chir-worker/target/release/bin/main
+            --worker-binary target/release/bin/chir-worker-main
           bash scripts/check.sh python-tools --repo . --identity "${identity}"
           bash scripts/check.sh cli --repo . --identity "${identity}" \
             --main-binary target/release/bin/main \
-            --worker-binary tools/chir-worker/target/release/bin/main \
+            --worker-binary target/release/bin/chir-worker-main \
             --output-root "${RUNNER_TEMP}/cjdoc-stage-cli"
           bash scripts/check.sh provider --repo . --identity "${identity}"
           bash scripts/check.sh smoke --repo . --identity "${identity}" \
