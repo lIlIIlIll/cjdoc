@@ -135,7 +135,7 @@ class ReaderUiTests(unittest.TestCase):
         # Reader-facing wording replaces the native vocabulary, which stays in
         # the data-* attribute and the raw evidence block.
         self.assertIn('data-diff-label="classification">潜在不兼容变化<', view)
-        self.assertIn('data-diff-label="matchState">按名称回退匹配<', view)
+        self.assertIn('data-diff-label="matchState" data-diff-match-state="fallback">按名称回退匹配<', view)
         self.assertIn('data-diff-classification="potentially-breaking"', view)
         # Each evidence segment is its own line in the cell.
         # A readable parameter field is shown; the opaque fingerprint is left to

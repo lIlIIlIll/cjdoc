@@ -367,7 +367,10 @@ def diff_view(raw: dict | None, origin: Path, baseline: Path | None, current: Pa
             continue
         output += f'<article id="api-change-{number}" class="report-change" data-diff-classification="{escaped(entry["classification"])}"><h3 data-diff-label="classification">{_diff_label(DIFF_CLASSIFICATIONS, entry["classification"], locale)}</h3>'
         output += '<p>' + declaration_link(baseline, origin, old, entry["oldId"], "Before") + '<br>' + declaration_link(current, origin, new, entry["newId"], "After") + '</p>'
-        output += '<p>matchState: <span data-diff-label="matchState">' + _diff_label(DIFF_MATCH_STATES, entry["matchState"], locale) + '</span></p>'
+        output += ('<p>matchState: <span data-diff-label="matchState" data-diff-match-state="'
+                   + escaped(entry["matchState"]) + '">'
+                   + _diff_label(DIFF_MATCH_STATES, entry["matchState"], locale) + '</span></p>'
+                   )
         # Reader path: the native reason sentences and the changed fields are
         # shown as text. Raw evidence stays behind a disclosure for traceability.
         if entry["reasons"]:
