@@ -190,5 +190,53 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
         self.assertEqual(document["platform"]["id"], host_platform)
 
 
+class ReleaseAssetLayoutTest(unittest.TestCase):
+    """The candidate artifact root must be flat: `publish` reads a flat directory.
+
+    `upload-artifact` preserves the structure below the least common ancestor of
+    the given paths, so two sibling directories silently nest the payload and the
+    publisher then finds no assets. These assertions pin both sides together.
+    """
+
+    def workflow(self) -> str:
+        return (PROJECT_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    def upload_step(self) -> dict:
+        import yaml
+
+        document = yaml.safe_load(self.workflow())
+        for step in document["jobs"]["release-candidate"]["steps"]:
+            if step.get("name") == "Upload the verified candidate":
+                return step
+        raise AssertionError("the candidate upload step is missing")
+
+    def test_candidate_upload_uses_one_flat_directory(self) -> None:
+        with_yaml = self.upload_step().get("with", {})
+        self.assertEqual(with_yaml.get("path"), "target/release-assets",
+                         "the artifact root must be one flat directory")
+        self.assertEqual(with_yaml.get("if-no-files-found"), "error")
+        # Two sibling upload paths would silently make `target/` the ancestor and
+        # nest the payload below `release-package/` and `release-candidate/`.
+        self.assertNotIn("release-package/*", str(with_yaml))
+
+    def test_staging_copies_package_and_receipt_into_the_flat_root(self) -> None:
+        candidate = self.workflow().split("\n  release-candidate:\n", 1)[1].split("\n  publish:\n", 1)[0]
+        staging = candidate.split("name: Stage the release assets", 1)[1].split("- name: Upload", 1)[0]
+        self.assertIn("target/release-assets", staging)
+        self.assertIn("cp -p target/release-package/* target/release-assets/", staging)
+        self.assertIn("cjdoc-release-candidate-${{ matrix.platform }}.json", staging)
+        # Staging must run after packaging so the files it copies exist.
+        self.assertLess(
+            candidate.index("name: Build the deterministic package"),
+            candidate.index("name: Stage the release assets"))
+
+    def test_the_publisher_only_reads_flat_asset_files(self) -> None:
+        publish = self.workflow().split("\n  publish:\n", 1)[1]
+        # A recursive search would hide a nested layout instead of failing loudly.
+        self.assertIn("root.iterdir()", publish)
+        self.assertIn('root.glob("*.sha256")', publish)
+        self.assertNotIn("rglob", publish)
+
+
 if __name__ == "__main__":
     unittest.main()

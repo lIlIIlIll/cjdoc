@@ -239,13 +239,33 @@ jobs:
             --platform "${{ matrix.platform }}" \
             --version "${version}"
 
+      - name: Stage the release assets in one flat directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          # upload-artifact preserves the path structure below the least common
+          # ancestor of the given paths. Two sibling directories would therefore
+          # nest `release-package/` and `release-candidate/`, while `publish`
+          # inspects a flat asset directory. Stage into a single directory so the
+          # artifact root is flat and the two sides agree.
+          rm -rf target/release-assets
+          mkdir -p target/release-assets
+          cp -p target/release-package/* target/release-assets/
+          cp -p "target/release-candidate/cjdoc-release-candidate-${{ matrix.platform }}.json" \
+            target/release-assets/
+          # Fail here rather than at publish if an expected file is missing.
+          test -s "target/release-assets/cjdoc-release-candidate-${{ matrix.platform }}.json"
+          ls -1 target/release-assets
+
       - name: Upload the verified candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cjdoc-release-${{ matrix.platform }}
-          path: |
-            target/release-package/*
-            target/release-candidate/cjdoc-release-candidate-${{ matrix.platform }}.json
+          # A single search path makes that directory the artifact root, so the
+          # staged files land flat. Two sibling paths would instead use their least
+          # common ancestor (`target/`) and nest the payload, which the publisher's
+          # flat `iterdir()`/`glob("*.sha256")` lookups would reject.
+          path: target/release-assets
           if-no-files-found: error
           retention-days: 7
 
