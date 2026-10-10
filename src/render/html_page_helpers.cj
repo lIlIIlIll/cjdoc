@@ -124,7 +124,8 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
     headingBase!: Int64 = 3, includeContracts!: Bool = true,
-    includeIntroduction!: Bool = true, locale!: String = "en"): Unit {
+    includeIntroduction!: Bool = true, locale!: String = "en",
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): Unit {
     if (includeIntroduction) {
         appendDocumentationIntroductionHtml(out, symbol, rootPrefix, assetLookup, headingBase, locale)
     }
@@ -199,7 +200,8 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             if (includeContracts) {
                 appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(symbol))
             }
-            appendDocumentationExamplesHtml(out, comment, locale)
+            appendDocumentationExamplesHtml(out, comment, locale, symbol: Some(symbol),
+                exampleEvidence: exampleEvidence)
             var hasSee = false
             for (tag in comment.tags) { if (tag.name == "see") { hasSee = true; break } }
             if (hasSee) {
@@ -262,7 +264,8 @@ internal func appendSymbolArticle(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
     linkTitle!: Bool = false,
-    locale!: String = "en"): Unit {
+    locale!: String = "en",
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): Unit {
     let isMember = symbol.ownerId.isSome()
     let titleTag = "h3"
     let tocRole = if (isMember) { "member" } else { "api" }
@@ -274,7 +277,7 @@ internal func appendSymbolArticle(out: RenderTextBuffer,
     appendSymbolMetadata(out, index, symbol, rootPrefix, assetLookup, typeLinkIndex,
         locale: locale)
     appendDocumentationHtml(out, index, symbol, rootPrefix, assetLookup,
-        typeLinkIndex, headingBase: 2, locale: locale)
+        typeLinkIndex, headingBase: 2, locale: locale, exampleEvidence: exampleEvidence)
     appendReaderRelationships(out, index, symbol, rootPrefix, typeLinkIndex, locale,
         headingTag: "h3")
     appendReverseTypeUsages(out, index, typeLinkIndex, symbol, rootPrefix, locale)

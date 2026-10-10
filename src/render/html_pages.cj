@@ -234,7 +234,8 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, entry: HtmlMemberEntry,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    rootPrefix: String, locale: String): Unit {
+    rootPrefix: String, locale: String,
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): Unit {
     let member = entry.symbol
     let anchor = symbolAnchor(member)
     let standaloneLabel = label(locale, "Open standalone API page", "打开独立 API 页面")
@@ -314,7 +315,7 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     out.append("</button><span class=\"sr-only\" data-cjdoc-copy-status " +
         "role=\"status\" aria-live=\"polite\"></span></div>")
     appendDocumentationHtml(out, index, member, rootPrefix, assetLookup, typeLinkIndex,
-        headingBase: 3, locale: locale)
+        headingBase: 3, locale: locale, exampleEvidence: exampleEvidence)
     appendReaderRelationships(out, index, member, rootPrefix, typeLinkIndex, locale,
         headingTag: "h3")
     appendReverseTypeUsages(out, index, typeLinkIndex, member, rootPrefix, locale)
@@ -341,7 +342,8 @@ internal func appendMemberSection(out: RenderTextBuffer,
     documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, browser: HtmlMemberBrowser,
     title: String, assetLookup: HashMap<String, String>,
-    typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
+    typeLinkIndex: HtmlTypeLinkIndex, locale: String,
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): Unit {
     let sectionLabel = match (title) {
         case "Constructors" => "构造器"
         case "Properties" => "属性"
@@ -396,7 +398,7 @@ internal func appendMemberSection(out: RenderTextBuffer,
             activeOverloadKey = overloadKey
         }
         appendInlineMemberDetail(out, documentation, projection, index, entry,
-            assetLookup, typeLinkIndex, "../", locale)
+            assetLookup, typeLinkIndex, "../", locale, exampleEvidence: exampleEvidence)
     }
     if (!activeOverloadKey.isEmpty()) { out.append("</div>\n") }
     if (opened) { out.append("</section>\n") }
@@ -423,7 +425,8 @@ internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<Strin
 internal func renderSymbolPage(documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    locale!: String = "en", docVersion!: ?String = None): String {
+    locale!: String = "en", docVersion!: ?String = None,
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): String {
     let out = RenderTextBuffer()
     appendPageStart(out, symbol.qualifiedName, "../", documentation, projection, locale: locale,
         currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)),
@@ -478,14 +481,14 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
                 "Nested classes", "Nested structs", "Nested interfaces", "Nested enums",
                 "Nested extensions", "Other members"]) {
                 appendMemberSection(out, documentation, projection, index, browser,
-                    title, assetLookup, typeLinkIndex, locale)
+                    title, assetLookup, typeLinkIndex, locale, exampleEvidence: exampleEvidence)
             }
             out.append("</section>\n")
         }
     }
     appendDocumentationHtml(out, index, symbol, "../", assetLookup,
         typeLinkIndex, headingBase: 4, locale: locale, includeContracts: !isTypeDeclaration(symbol),
-        includeIntroduction: !isTypeDeclaration(symbol))
+        includeIntroduction: !isTypeDeclaration(symbol), exampleEvidence: exampleEvidence)
     if (!isTypeDeclaration(symbol)) {
         appendReaderRelationships(out, index, symbol, "../", typeLinkIndex, locale)
     }

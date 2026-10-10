@@ -28,23 +28,42 @@ internal func orderedFormats(options: NewCliOptions): Array<String> {
 }
 
 private func renderArtifacts(documentation: public_model.DocumentationSet,
-    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site", docVersion!: ?String = None):
+    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site", docVersion!: ?String = None,
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()):
     Array<public_render.RenderArtifact> {
     public_render.renderDocumentationFormatsWithOptions(documentation, formats,
-        locale: locale, markdownLayout: markdownLayout, docVersion: docVersion)
+        locale: locale, markdownLayout: markdownLayout, docVersion: docVersion,
+        exampleEvidence: exampleEvidence)
+}
+
+// Per-example execution status keyed by "symbolId\u{0}title", taken from the
+// native doctest report. Empty when doctests are disabled, so member pages show
+// no execution claim at all rather than an inferred one.
+internal func exampleEvidenceMap(report: ?DoctestReport): HashMap<String, String> {
+    let evidence = HashMap<String, String>()
+    match (report) {
+        case Some(value) =>
+            for (result in value.results) {
+                evidence[public_render.exampleEvidenceKey(result.symbolId, result.title)] = result.status
+            }
+        case None => ()
+    }
+    evidence
 }
 
 internal func renderArtifactsWithCommandFallback(documentation: public_model.DocumentationSet,
     formats: Array<String>, generationRequest: ?GenerationRequest,
     locale!: String = "zh-CN", markdownLayout!: String = "site",
-    docVersion!: ?String = None, injectResourceLimitForTest!: Bool = false):
+    docVersion!: ?String = None, injectResourceLimitForTest!: Bool = false,
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()):
         (public_model.DocumentationSet, Array<public_render.RenderArtifact>) {
     try {
         if (injectResourceLimitForTest) {
             throw public_render.RenderResourceLimitException("injected renderer resource limit")
         }
         (documentation, renderArtifacts(documentation, formats, locale: locale,
-            markdownLayout: markdownLayout, docVersion: docVersion))
+            markdownLayout: markdownLayout, docVersion: docVersion,
+            exampleEvidence: exampleEvidence))
     } catch (error: public_render.RenderResourceLimitException) {
         match (generationRequest) {
             case Some(request) =>
@@ -446,7 +465,8 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
     if (options.command != "check") {
         let (renderedDocumentation, renderedArtifacts) = renderArtifactsWithCommandFallback(documentation,
             orderedFormats(options), generationRequest, locale: options.locale,
-            markdownLayout: options.markdownLayout, docVersion: options.docVersion)
+            markdownLayout: options.markdownLayout, docVersion: options.docVersion,
+            exampleEvidence: exampleEvidenceMap(doctestReport))
         documentation = renderedDocumentation
         let artifactList = ArrayList<public_render.RenderArtifact>()
         if (generationRequest.isSome()) {

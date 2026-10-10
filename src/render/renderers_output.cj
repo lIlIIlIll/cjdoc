@@ -14,7 +14,8 @@ public class HtmlDocumentationRenderer <: DocumentationRenderer {
 }
 
 internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
-    documentation: DocumentationSet, locale!: String = "en", docVersion!: ?String = None): Unit {
+    documentation: DocumentationSet, locale!: String = "en", docVersion!: ?String = None,
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): Unit {
         validateTypedDocumentationSet(documentation)
         let projection = RenderProjection(documentation)
         let index = projection.visibleIndex
@@ -48,7 +49,8 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
                 renderSymbolAlias(symbol, locale))
             artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
                 renderSymbolPage(documentation, projection, index, symbol, assetLookup,
-                    typeLinkIndex, locale: locale, docVersion: docVersion))
+                    typeLinkIndex, locale: locale, docVersion: docVersion,
+                    exampleEvidence: exampleEvidence))
         }
         appendAssetArtifacts(artifacts, projectedAssets, "html")
 }
@@ -269,7 +271,8 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
 }
 
 public func renderDocumentationFormatsWithOptions(documentation: DocumentationSet,
-    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site", docVersion!: ?String = None):
+    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site", docVersion!: ?String = None,
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()):
     Array<RenderArtifact> {
     if (locale != "zh-CN" && locale != "en") {
         throw IllegalArgumentException("locale must be zh-CN or en")
@@ -286,7 +289,8 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
             } else {
                 appendMarkdownSiteArtifacts(artifacts, documentation, locale)
             }
-            case "html" => appendHtmlArtifacts(artifacts, documentation, locale: locale, docVersion: docVersion)
+            case "html" => appendHtmlArtifacts(artifacts, documentation, locale: locale,
+                docVersion: docVersion, exampleEvidence: exampleEvidence)
             case "api-surface" => appendApiSurfaceArtifacts(artifacts, documentation)
             case "coverage" => appendCoverageArtifacts(artifacts, documentation)
             case "symbol-index" => appendSymbolIndexArtifacts(artifacts, documentation, version: docVersion)
