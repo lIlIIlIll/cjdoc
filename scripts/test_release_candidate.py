@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path, PurePosixPath
+import platform
 import subprocess
 import sys
 import tarfile
@@ -166,9 +167,12 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
 
     def test_receipt_script_writes_a_stable_receipt_from_the_worktree(self):
         output = self.repo / "target/release-candidate/cjdoc-release-candidate.json"
+        # The receipt must name the host platform, whatever platform runs the suite.
+        host_platform = {"Linux": "linux-x64", "Darwin": "macos-arm64",
+                         "Windows": "windows-x64"}.get(platform.system(), PLATFORM)
         command = [
             sys.executable, str(PROJECT_ROOT / "scripts/release_candidate_receipt.py"),
-            "--repo", str(self.repo), "--tag", "v0.7.0", "--platform", PLATFORM,
+            "--repo", str(self.repo), "--tag", "v0.7.0", "--platform", host_platform,
             "--binary", str(self.binary),
             "--sdk-archive-sha256", SDK_SHA256, "--stdx-archive-sha256", STDX_SHA256,
             "--sdk-version", "1.2.0", "--stdx-version", "1.2.0",
@@ -183,7 +187,7 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
         self.assertEqual(document["schemaVersion"], release_candidate_receipt.RECEIPT_SCHEMA)
         self.assertEqual(document["source"]["commit"], self.commit)
         self.assertEqual(document["binary"]["versionOutput"], "cjdoc 0.7.0")
-        self.assertEqual(document["platform"]["id"], PLATFORM)
+        self.assertEqual(document["platform"]["id"], host_platform)
 
 
 if __name__ == "__main__":
