@@ -85,12 +85,24 @@
 | `scripts/validate_html_site.py` | 通过（如 51 pages / 24 entries、90 pages / 46 entries） |
 | 确定性 | 两次生成除 doctest 耗时字段外零差异 |
 
-### 2.7 CI
+### 2.7 各验证层级
+
+| 层级 | 本次是否运行 | 结果 |
+| --- | --- | --- |
+| 单元测试 `cjpm test` | 是（每个 PR 分支） | 335–345 PASSED / 0 FAILED（随分支增减） |
+| Python 脚本测试 `python3 -m unittest discover -s scripts` | 是 | 118 OK |
+| showcase 契约测试 `tests/showcase_contract` | 是 | 158 OK |
+| v11 golden（`scripts/check.sh` 内） | 是（`check.sh` 与 CI） | 通过 |
+| v6–v10 严格迁移（`scripts/check.sh` 内） | 是 | 通过 |
+| 真实仓库 smoke（`scripts/real_repository_smoke.py`） | **未单独运行** | 依赖 `check.sh` 之外的独立环境，本机与 CI 均未单独执行；不作为本表证据 |
+| 浏览器端到端（showcase job） | 是 | 324/324 + 12/12 |
+| `scripts/check.sh` 完整门禁 | 是 | `cjdoc acceptance gate passed` |
+
+### 2.8 CI
 
 | PR | 说明 |
 | --- | --- |
-| #69 / #70 / #74 / #77 / #78 | 三平台 + showcase 全绿 |
-| #75 / #76 | 栈式 PR（base 为前置分支，非 main）；#75 三平台 + showcase 全绿，#76 的 showcase 已验证通过 |
+| #69 / #70 / #72 / #73 / #74 / #75 / #76 / #77 / #78 / #80 / #85 | 三平台 + showcase 全绿（栈式 PR 在 rebase 到 main 后同样跑三平台） |
 
 ## 3. 未完成项与阻塞
 
