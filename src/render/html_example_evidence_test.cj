@@ -88,4 +88,20 @@ class HtmlExampleEvidenceTest {
         @Expect(html.contains("已执行验证"), true)
         @Expect(html.contains("data-example-state=\"passed\""), true)
     }
+
+    @TestCase
+    func hostileStatusValuesCannotInjectMarkup(): Unit {
+        let symbolId = "cjdoc:v2:example::fixture::function:api#g0()"
+        let hostile = "\"><script>alert(1)</script>&<b>"
+        let evidence = HashMap<String, String>()
+        evidence[exampleEvidenceKey(symbolId, "case")] = hostile
+        let html = exampleEvidenceHtml(symbolId, "case", evidence, "en")
+        // The value reaches both an attribute and visible text, so neither may
+        // carry raw markup.
+        @Expect(html.contains("<script>"), false)
+        @Expect(html.contains("&lt;script&gt;"), true)
+        @Expect(html.contains("data-example-state=\"\">"), false)
+        @Expect(html.contains("&quot;&gt;"), true)
+        @Expect(html.contains("&amp;"), true)
+    }
 }
