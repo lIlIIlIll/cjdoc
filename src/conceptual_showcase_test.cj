@@ -200,4 +200,64 @@ class ConceptualShowcaseTest {
             let _ = removeIfExists(root, recursive: true)
         }
     }
+
+    @TestCase
+    func bindingChipsRenderBesideTheBlockAndKeepTechnicalDetailCollapsed(): Unit {
+        let root = createShowcaseBindingProject()
+        try {
+            for (locale in ["en", "zh-CN"]) {
+                let documentation = showcaseBindingFixture()
+                let pages = conceptualPagesForProject(root.toString(), documentation)
+                let artifacts = appendConceptualArtifacts(root.toString(), documentation, ["html"],
+                    api_render.renderDocumentationFormatsWithOptions(documentation, ["html"], locale: locale),
+                    pages, locale: locale)
+                let guide = artifactContent(artifacts, "html/concepts/guides/overload.html")
+                // Exactly one reader-facing chip, placed before the page-level index.
+                @Expect(guide.split("class=\"inline-binding\"").size, 2)
+                let chipAt = guide.indexOf("class=\"inline-binding\"").getOrThrow()
+                let indexAt = guide.indexOf("id=\"conceptual-bindings-heading\"").getOrThrow()
+                @Expect(chipAt < indexAt, true)
+                // The chip carries reader wording, never the raw IR state word.
+                let chip = guide[chipAt..]
+                // Reader-facing state text is localized, never the raw IR word.
+                let valueAt = chip.indexOf("data-state=\"resolved\">").getOrThrow()
+                let valueStart = valueAt + "data-state=\"resolved\">".size
+                let valueEnd = chip.indexOf("</span>", valueStart).getOrThrow()
+                let visible = chip[valueStart..valueEnd]
+                @Expect(visible == "resolved", false)
+                @Expect(visible.size > 0, true)
+                // Maintenance detail stays behind the disclosure, after the chip.
+                @Expect(chip.indexOf("binding-details").getOrThrow() >
+                    chip.indexOf("</span>").getOrThrow(), true)
+                @Expect(guide.contains("state: resolved"), true)
+            }
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
+    func bindingMarkerInsideATableKeepsTheTableIntact(): Unit {
+        // A marker placed between GFM table rows must not split the table: the
+        // chip goes into the cell, and the rows after it stay in one table.
+        let root = createShowcaseBindingProject()
+        try {
+            File.writeTo(root.join("docs/guide.md"), ("# Table binding\n\n" +
+                "| A | B |\n| - | - |\n| one | two |\n" +
+                "<!-- cjdoc-bind target=\"fixture.Box.add\" selector=\"signature:public func add(value: String): Unit\" -->\n" +
+                "| three | four |\n").toArray())
+            let documentation = showcaseBindingFixture()
+            let pages = conceptualPagesForProject(root.toString(), documentation)
+            let artifacts = appendConceptualArtifacts(root.toString(), documentation, ["html"],
+                api_render.renderDocumentationFormatsWithOptions(documentation, ["html"], locale: "en"),
+                pages, locale: "en")
+            let guide = artifactContent(artifacts, "html/concepts/guides/overload.html")
+            // One table for all three rows, and the chip rendered in place.
+            @Expect(guide.split("<table>").size, 2)
+            @Expect(guide.contains("class=\"inline-binding\""), true)
+            @Expect(guide.contains("cjdoc-inline-binding"), false)
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
 }
