@@ -282,7 +282,8 @@ stage_build() {
     # created. It copies the worker binary into a stage-owned staging directory,
     # records both identities there, then removes only the worker build tree, so
     # a consumer receives ready binaries instead of rebuilding anything.
-    "${python_cmd}" - "${repo}" "${binary}" "${worker}" "${manifest:-}" "${main_binary_out}" <<'PY'
+    "${python_cmd}" - "${repo}" "${binary}" "${worker}" "${manifest:-}" "${main_binary_out}" \
+        "${worker_binary_out}" <<'PY'
 from pathlib import Path
 import json
 import subprocess
@@ -292,7 +293,8 @@ from ci_stage import BUILD_MANIFEST_SCHEMA, runtime_platform, sha256_file, stage
 
 repo = Path(sys.argv[1]).resolve()
 binary, worker = Path(sys.argv[2]).resolve(), Path(sys.argv[3]).resolve()
-manifest, main_out = sys.argv[4], sys.argv[5]
+manifest, main_out, worker_out = sys.argv[4], sys.argv[5], sys.argv[6]
+canonical_worker = repo / "tools/chir-worker/target/release/bin/main"
 
 def record(path: Path, *, with_version: bool) -> dict[str, object]:
     entry: dict[str, object] = {"path": path.relative_to(repo).as_posix(),
@@ -327,6 +329,20 @@ document = {
 }
 if main_out and Path(main_out).resolve() != repo / "target/release/bin/main":
     raise SystemExit("--main-binary-out must be target/release/bin/main")
+if worker_out:
+    # The worker output path names the canonical location `--worker-binary`
+    # expects, plus the copy the candidate artifact carries. Any other spelling
+    # would make the two sides disagree, so only these are accepted.
+    resolved_worker_out = Path(worker_out).resolve()
+    if resolved_worker_out not in {canonical_worker, binary.parent / "chir-worker-main"}:
+        raise SystemExit(
+            "--worker-binary-out must be tools/chir-worker/target/release/bin/main "
+            "or the sibling target/release/bin/chir-worker-main")
+    if resolved_worker_out != worker:
+        resolved_worker_out.parent.mkdir(parents=True, exist_ok=True)
+        resolved_worker_out.write_bytes(worker.read_bytes())
+        resolved_worker_out.chmod(worker.stat().st_mode & 0o777)
+        document["workerBinary"] = record(resolved_worker_out, with_version=False)
 if manifest:
     manifest_path = Path(manifest)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
