@@ -477,6 +477,32 @@ class ChirPublicContracts {
     }
 
     @TestCase
+    func chirSelfWrapperIsUnwrappedIntoOneArgument(): Unit {
+        // CHIR reports Box<Token> as Box, Box, Token. The repeated node is a
+        // self wrapper, so the single real argument is Token, not Box.
+        let nodes = ArrayList<ChirTypeNode>()
+        nodes.add(ChirTypeNode(0, "pkg.Box"))
+        nodes.add(ChirTypeNode(1, "pkg.Box"))
+        nodes.add(ChirTypeNode(2, "pkg.Token"))
+        let built = chirTypeRefFromNodes(nodes, 0, "Box < Token >")
+        @Expect(built.arguments.size, 1)
+        @Expect(built.arguments[0].spelling, "Token")
+        @Expect(built.arguments[0].semantic.canonical, Some("pkg.Token"))
+    }
+
+    @TestCase
+    func chirSelfWrapperWithoutInnerNodeYieldsNoArgument(): Unit {
+        // A non-generic custom type arrives as the type followed by itself; the
+        // wrapper has no inner node, so there is no argument to claim.
+        let nodes = ArrayList<ChirTypeNode>()
+        nodes.add(ChirTypeNode(0, "pkg.TextReader"))
+        nodes.add(ChirTypeNode(1, "pkg.TextReader"))
+        let built = chirTypeRefFromNodes(nodes, 0, "TextReader")
+        @Expect(built.arguments.size, 0)
+        @Expect(built.semantic.canonical, Some("pkg.TextReader"))
+    }
+
+    @TestCase
     func compactSpellingRemovesOnlyWhitespace(): Unit {
         // The renderer compares a signature range against this spelling with
         // whitespace removed, so the complete source subtree is kept.
