@@ -206,7 +206,10 @@ if scope in {"", "worker", "all"}:
     candidate = worker_project / "target"
     if candidate.is_symlink() or candidate.exists():
         found.append(str(candidate))
-print("\n".join(sorted(set(found))))
+import sys as _sys
+# Emit LF-only explicitly: Windows text-mode print() writes CRLF, and a trailing
+# CR would make every consumer address a non-existent path.
+_sys.stdout.write("\n".join(sorted(set(found))) + "\n")
 PY
 }
 
@@ -375,6 +378,7 @@ stage_native() {
         fi
         native_cleaned=1
         while IFS= read -r owned; do
+            owned="${owned%$'\r'}"
             [[ -z "${owned}" ]] && continue
             remove_owned_outputs "${owned}"
         done < <(existing_build_outputs fixtures)
@@ -443,6 +447,7 @@ stage_cli() {
         fi
         cli_cleaned=1
         while IFS= read -r owned; do
+            owned="${owned%$'\r'}"
             [[ -z "${owned}" ]] && continue
             remove_owned_outputs "${owned}"
         done < <(existing_build_outputs fixtures)
@@ -763,6 +768,7 @@ if [[ -z "${stage}" ]]; then
     cleanup_full_gate() {
         remove_owned_outputs "${worker_project}/target"
         while IFS= read -r owned; do
+            owned="${owned%$'\r'}"
             [[ -z "${owned}" ]] && continue
             remove_owned_outputs "${owned}"
         done < <(existing_build_outputs all)
