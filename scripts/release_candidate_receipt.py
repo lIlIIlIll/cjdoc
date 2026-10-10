@@ -118,6 +118,10 @@ def main() -> int:
     binary = args.binary.resolve()
     if not binary.is_file():
         parser.error(f"release candidate binary is missing: {binary}")
+    try:
+        binary_relative = binary.relative_to(args.repo.resolve()).as_posix()
+    except ValueError:
+        parser.error(f"release candidate binary must live inside the repository: {binary}")
     version = run([str(binary), "--version"]).splitlines()[0]
     gates = gate_digests(list(args.gate))
     if args.release_gate_receipt is not None:
@@ -144,7 +148,7 @@ def main() -> int:
         "build": {"command": ["cjpm", "build", "--jobs", "1"],
                   "effectiveCompileOptions": list(args.compile_option),
                   "buildConfigurationSha256": build_configuration_digest(args.repo, list(args.compile_option))},
-        "binary": {"path": binary.relative_to(args.repo.resolve()).as_posix(),
+        "binary": {"path": binary_relative,
                    "sha256": sha256_file(binary), "size": binary.stat().st_size,
                    "versionOutput": version},
         "execution": {"runId": os.environ.get("GITHUB_RUN_ID", ""),
