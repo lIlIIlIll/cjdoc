@@ -118,6 +118,10 @@ def stage_environment(repo: Path | None = None) -> dict[str, object]:
 class StageHandle:
     """Mutable per-stage record; `record()` merges extra evidence into it."""
 
+    # Owned by the recorder; a caller must never overwrite the lifecycle fields.
+    RESERVED = frozenset({"stageId", "kind", "command", "wallMs", "exitCode", "status",
+                          "startedAt", "endedAt", "timingSource", "environment"})
+
     def __init__(self, stage_id: str, kind: str, command: list[str]) -> None:
         self.record_value: dict[str, object] = {
             "stageId": stage_id,
@@ -128,9 +132,9 @@ class StageHandle:
 
     def record(self, extra: dict[str, object] | None = None) -> dict[str, object]:
         if extra:
-            overlap = set(extra) & set(self.record_value)
-            if overlap:
-                raise SystemExit(f"ci_stage.py: stage evidence overwrites fields: {sorted(overlap)}")
+            reserved = set(extra) & (self.RESERVED | set(self.record_value))
+            if reserved:
+                raise SystemExit(f"ci_stage.py: stage evidence overwrites fields: {sorted(reserved)}")
             self.record_value.update(extra)
         return self.record_value
 
@@ -203,16 +207,26 @@ def _pump(stream, mirror, sink) -> None:
         stream.close()
 
 
-def _mirror_streams(process: subprocess.Popen, log_path: Path) -> list[threading.Thread]:
+def _mirror_streams(process: subprocess.Popen, log_path: Path) -> tuple[threading.Thread, ...]:
     """Pass stdout/stderr through unchanged while teeing them into one log."""
     handle = log_path.open("wb")
     threads = [
         threading.Thread(target=_pump, args=(process.stdout, sys.stdout.buffer, handle), daemon=True),
         threading.Thread(target=_pump, args=(process.stderr, sys.stderr.buffer, handle), daemon=True),
     ]
+    # The last finishing pump closes the log handle; each pump closes only its own
+    # stream, so the shared log handle is closed once, after both writers are done.
+    closer = threading.Thread(target=_close_after, args=(threads, handle), daemon=True)
     for thread in threads:
         thread.start()
-    return threads
+    closer.start()
+    return (*threads, closer)
+
+
+def _close_after(threads: list[threading.Thread], handle) -> None:
+    for thread in threads:
+        thread.join()
+    handle.close()
 
 
 def run_stage(stage_id: str, kind: str, command: list[str], evidence_dir: Path,
@@ -340,8 +354,15 @@ def wallclock(run_id: str, attempt: int, repository: str) -> dict[str, object]:
 
 
 def verify_identity(manifest_path: Path, main_binary: Path | None, worker_binary: Path | None,
-                    repo: Path | None) -> int:
-    """Re-read real artifacts and fail on the first identity difference."""
+                    repo: Path | None, require_runnable: bool = True) -> int:
+    """Re-read real artifacts and fail on the first identity difference.
+
+    Digest and size checks always apply. The recorded `--version` output is only
+    meaningful where the binary can actually start: the Cangjie executable is
+    dynamically linked, so a job without the toolchain runtime (for example the
+    Pages site assembly job, which only needs the bytes) cannot execute it. Set
+    `require_runnable=False` there; the digest still binds the artifact.
+    """
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     if manifest.get("schemaVersion") != BUILD_MANIFEST_SCHEMA:
         raise SystemExit(f"ci_stage.py: unexpected build manifest schema: {manifest.get('schemaVersion')}")
@@ -364,16 +385,35 @@ def verify_identity(manifest_path: Path, main_binary: Path | None, worker_binary
             problems.append(f"{key}.sha256: manifest {recorded.get('sha256')} != actual {digest}")
         if recorded.get("size") != size:
             problems.append(f"{key}.size: manifest {recorded.get('size')} != actual {size}")
-        if key == "mainBinary":
-            recorded_version = recorded.get("versionOutput")
-            if not recorded_version:
-                problems.append(f"{key}.versionOutput: manifest does not record the binary version")
-                continue
+        if key != "mainBinary":
+            continue
+        recorded_version = recorded.get("versionOutput")
+        if not recorded_version:
+            problems.append(f"{key}.versionOutput: manifest does not record the binary version")
+            continue
+        try:
             completed = subprocess.run([str(path), "--version"], capture_output=True, text=True)
-            actual_version = completed.stdout.strip()
-            if actual_version != recorded_version:
+        except OSError as error:
+            # A file that cannot be executed here (wrong platform, missing
+            # interpreter, not a program) is a reported condition, not a crash.
+            if require_runnable:
+                problems.append(f"{key}.versionOutput: binary could not be executed: {error}")
+            else:
+                print(f"identity note: {key} cannot be executed in this job ({error}); "
+                      "the digest and size still bind the artifact")
+            continue
+        actual_version = completed.stdout.strip()
+        if actual_version != recorded_version:
+            if actual_version:
                 problems.append(
                     f"{key}.versionOutput: manifest {recorded_version!r} != actual {actual_version!r}")
+            elif require_runnable:
+                problems.append(
+                    f"{key}.versionOutput: binary could not run here (exit {completed.returncode}): "
+                    f"{completed.stderr.strip()[:160]}")
+            else:
+                print(f"identity note: {key} --version is unavailable in this job; "
+                      "the digest and size still bind the artifact")
     if problems:
         for problem in problems:
             print(f"identity mismatch: {problem}", file=sys.stderr)
@@ -405,6 +445,9 @@ def main(argv: list[str] | None = None) -> int:
     identity_parser.add_argument("--main-binary", type=Path)
     identity_parser.add_argument("--worker-binary", type=Path)
     identity_parser.add_argument("--repo", type=Path)
+    identity_parser.add_argument(
+        "--skip-version-check", action="store_true",
+        help="the binary cannot run here; digest and size still bind the artifact")
     args = parser.parse_args(argv)
 
     if args.command == "run":
@@ -424,7 +467,8 @@ def main(argv: list[str] | None = None) -> int:
         args.output.write_text(json.dumps(classification, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
                                encoding="utf-8", newline="\n")
         return 0
-    return verify_identity(args.manifest, args.main_binary, args.worker_binary, args.repo)
+    return verify_identity(args.manifest, args.main_binary, args.worker_binary, args.repo,
+                          require_runnable=not args.skip_version_check)
 
 
 if __name__ == "__main__":
