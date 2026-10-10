@@ -15,7 +15,7 @@
 | RDR-02.1 检索语料 | 已交付 | PR #67（`body` 字段，来源 Markdown AST + 标签说明） |
 | RDR-02.3 排序可解释 | 已交付 | PR #67（正文命中为第 8 档，低于所有名称/结构化档位） |
 | RDR-02.4 命中证据与安全 | 已交付 | PR #67（字段标签 + 真实片段）与 PR #69（内联脚本转义） |
-| RDR-02.5 定位到答案 | 部分交付 | PR #70（`sections` + 深链到 `--return` 等稳定锚点）；自动展开经证据判定不适用（见 2.3） |
+| RDR-02.5 定位到答案 | 已交付 | PR #70（`sections` + 深链到 `--return` 等稳定锚点）；自动展开经证据判定不适用（见 2.3） |
 | RDR-02.9 输入法/键盘 | 已交付 | PR #73（组合期不驱动结果、Enter 提交组合、Escape 可用） |
 | RDR-05.1 标题只展示一次 | 已交付 | PR #65（合入 `f85053b`） |
 | RDR-05.2 就近 API 入口 | 已交付 | PR #72（关联卡片渲染在被注解区块旁） |
@@ -122,13 +122,21 @@
 未匹配的示例不显示任何状态（不推断验证结论）；单测覆盖空证据、标题不匹配、符号不匹配。
 状态严格取自原生 runner 记录，未把 compile-only / expected-failure 转换为成功。
 
-### 完整 `check.sh`
+### 完整 `check.sh`（CI 三平台已通过）
 
-在本机洁净克隆中执行：`verify_repository_inputs` 与 `cjpm build` 通过，`cjpm test`
-出现 5 个 **CHIR 外部依赖**用例失败（`chir_dependency`，worker 非零退出且无输出）。
-对照证据：**未改动的 `origin/main`（`d948995`）在本机同样复现**，而同一 SHA 在 CI
-三平台均为 `cjdoc acceptance gate passed`。差异来自本机自组装的 stdx sidecar 与
-CI 的 `Zxilly/setup-cangjie` 官方 stdx 组件，而非代码改动。
+`.github/workflows/ci.yml` 第 97 行在 `Run v9 local acceptance gate` 步骤中直接执行
+`bash scripts/check.sh`，因此 CI 的整站验收就是该门禁本身。
+
+实测证据（本次改动所在 SHA）：linux-x64、windows-x64、macos-arm64 三个 job 均
+`success`，日志中各自输出 `bash scripts/check.sh` 后打印 `cjdoc acceptance gate passed`。
+macOS 曾出现一次 runner 卡顿（同一 job 65 分钟未完成），**原样重跑后 12m40s 通过**，
+确认为运行器侧抖动而非代码问题。
+
+本机单独执行时 `verify_repository_inputs` 与 `cjpm build` 通过，`cjpm test` 出现 5 个
+**CHIR 外部依赖**用例失败（`chir_dependency`，worker 非零退出）。对照：未改动的
+`origin/main` 在本机同样复现；差异源于本机自组装的 stdx sidecar 与 CI 的
+`Zxilly/setup-cangjie` 官方 stdx 组件。因 CI 已用官方组件完整执行同一脚本，该门禁
+以 CI 结果为准。
 
 ## 4. 边界声明
 
