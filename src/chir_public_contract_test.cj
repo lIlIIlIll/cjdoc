@@ -503,6 +503,25 @@ class ChirPublicContracts {
     }
 
     @TestCase
+    func nestedSameNamedArgumentIsPreserved(): Unit {
+        // Box<Box<Token>> arrives as Box, Box, Box, Box, Token. Unwrapping only
+        // the sole self wrapper keeps the genuine inner Box instead of
+        // swallowing it and attaching Token to the Box<Token> spelling.
+        let nodes = ArrayList<ChirTypeNode>()
+        nodes.add(ChirTypeNode(0, "p.Box"))
+        nodes.add(ChirTypeNode(1, "p.Box"))
+        nodes.add(ChirTypeNode(2, "p.Box"))
+        nodes.add(ChirTypeNode(3, "p.Box"))
+        nodes.add(ChirTypeNode(4, "p.Token"))
+        let built = chirTypeRefFromNodes(nodes, 0, "Box < Box < Token >>")
+        @Expect(built.arguments.size, 1)
+        @Expect(built.arguments[0].spelling, "Box<Token>")
+        @Expect(built.arguments[0].semantic.canonical, Some("p.Box"))
+        @Expect(built.arguments[0].arguments.size, 1)
+        @Expect(built.arguments[0].arguments[0].semantic.canonical, Some("p.Token"))
+    }
+
+    @TestCase
     func compactSpellingRemovesOnlyWhitespace(): Unit {
         // The renderer compares a signature range against this spelling with
         // whitespace removed, so the complete source subtree is kept.
