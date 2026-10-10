@@ -29,6 +29,7 @@ jobs:
       PYTHONUTF8: "1"
       cjHeapSize: "512MB"
       CANGJIE_SDK_VERSION: ${{ inputs.sdk_version || '1.2.0' }}
+      CJDOC_CI_EVIDENCE: ${{ github.workspace }}/target/ci-evidence
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -44,7 +45,10 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ runner.temp }}/setup-cangjie-cjv
-          key: cjv-home-${{ runner.os }}-${{ env.CANGJIE_SDK_VERSION }}-v1
+          # The key carries the arch, the channel/components/cjv pin and a digest of the
+          # workflow files, so a configuration change must miss the cache. No
+          # restore-keys: a cross-configuration reuse would hide a channel change.
+          key: cjv-${{ runner.os }}-${{ runner.arch }}-${{ env.CANGJIE_SDK_VERSION }}-sts-stdx-cjv0.3.2-${{ hashFiles('.github/workflows/build-linux-candidate.yml', '.github/workflows/ci.yml', '.github/workflows/pages.yml', '.github/workflows/daily.yml') }}
 
       - name: Set up Cangjie STS SDK with stdx
         uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571 # v3.2.0
@@ -73,3 +77,20 @@ jobs:
           bash scripts/check.sh
           python scripts/with_stdx.py --variant static -- \
             python scripts/real_repository_smoke.py --project .
+
+      - name: Write the timing summary
+        if: always()
+        shell: bash
+        run: |
+          python scripts/ci_stage.py summarize --evidence target/ci-evidence \
+            --output "${RUNNER_TEMP}/ci-stage-summary.md" || true
+          cat "${RUNNER_TEMP}/ci-stage-summary.md" >> "${GITHUB_STEP_SUMMARY}" || true
+
+      - name: Upload timing evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ci-timing-daily-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/ci-evidence/
+          retention-days: 7
+          if-no-files-found: error

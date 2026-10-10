@@ -24,7 +24,8 @@ import sys
 sys.dont_write_bytecode = True
 
 CHANGES_SCHEMA = "cjdoc.ci-changes/1"
-ALL_JOBS = ("candidate-linux", "candidate-other", "docs-only")
+# Every gated job name. `required` and `docs-only` are gates, not build work.
+ALL_JOBS = ("candidate-linux", "linux-acceptance", "candidate-other")
 # path prefix -> flags it turns on. Missing prefixes are `native`, so an
 # unclassified path is impossible to overlook.
 RULES: tuple[tuple[str, frozenset[str]], ...] = (
@@ -56,10 +57,11 @@ def classify_paths(paths: list[str]) -> dict[str, bool]:
         docs = docs or "docs" in rule
     jobs = {
         "candidate-linux": native or site,
+        "linux-acceptance": native,
         "candidate-other": native,
-        "docs-only": docs and not (native or site),
     }
-    return {"native": native, "site": site, "docs": docs, "jobSet": {name: jobs[name] for name in ALL_JOBS}}
+    return {"native": native, "site": site, "docs": docs,
+            "jobSet": {name: jobs[name] for name in ALL_JOBS}}
 
 
 def diff_paths(repo: Path, base: str, head: str) -> list[str]:

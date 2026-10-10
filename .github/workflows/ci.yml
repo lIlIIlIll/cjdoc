@@ -15,28 +15,178 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  acceptance:
-    name: ${{ matrix.platform }} / Cangjie 1.2.0 STS + stdx release/1.2
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 110
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux-x64
-            runner: ubuntu-22.04
-          - platform: windows-x64
-            runner: windows-2022
-          - platform: macos-arm64
-            runner: macos-15
+  # Only ever skips heavy jobs that are provably unrelated. An empty, unknown or
+  # incomplete diff falls back to running the complete matrix.
+  changes:
+    name: Classify changes
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      native: ${{ steps.classify.outputs.native }}
+      site: ${{ steps.classify.outputs.site }}
+      plan: ${{ steps.classify.outputs.plan }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Classify the pull-request diff
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci_changes.py \
+            --base "${{ github.event.pull_request.base.sha || 'HEAD^' }}" \
+            --head "${{ github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --ref "${{ github.ref }}" \
+            --out "${GITHUB_OUTPUT}"
+
+  # The Linux candidate is built once by the reusable workflow, so CI and Pages
+  # share one definition of the pinned toolchain and the -O1 workaround.
+  candidate-linux:
+    name: Linux candidate
+    needs: changes
+    if: ${{ needs.changes.outputs.native == 'true' }}
+    uses: ./.github/workflows/build-linux-candidate.yml
+    with:
+      cangjie_sdk_version: "1.2.0"
+
+  linux-acceptance:
+    name: linux-x64 / Cangjie 1.2.0 STS + stdx
+    needs: [changes, candidate-linux]
+    if: ${{ needs.changes.outputs.native == 'true' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 110
     env:
       CJDOC_PYTHON: python
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUTF8: "1"
       cjHeapSize: "512MB"
       CANGJIE_SDK_VERSION: "1.2.0"
+      CJDOC_CI_EVIDENCE: ${{ github.workspace }}/target/ci-evidence
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Restore cjv toolchain cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/setup-cangjie-cjv
+          key: cjv-${{ runner.os }}-${{ runner.arch }}-${{ env.CANGJIE_SDK_VERSION }}-sts-stdx-cjv0.3.2-${{ hashFiles('.github/workflows/build-linux-candidate.yml', '.github/workflows/ci.yml', '.github/workflows/pages.yml', '.github/workflows/daily.yml') }}
+
+      - name: Set up Cangjie STS SDK with stdx
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571 # v3.2.0
+        with:
+          channel: sts
+          version: ${{ env.CANGJIE_SDK_VERSION }}
+          components: stdx
+          cjv-version: v0.3.2
+
+      - name: Export authenticated stdx environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+
+      - name: Download the Linux candidate
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ needs.candidate-linux.outputs.artifact_name }}
+          path: ${{ runner.temp }}/cjdoc-candidate
+
+      - name: Run the remaining acceptance stages
+        shell: bash
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          tar -C . -xf "${RUNNER_TEMP}/cjdoc-candidate/cjdoc-linux-candidate.tar"
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
+          . scripts/with_sts_o1_cjpm.sh
+          identity=target/ci-build/build-manifest.json
+          bash scripts/check.sh native --repo . --identity "${identity}" \
+            --worker-binary tools/chir-worker/target/release/bin/main
+          bash scripts/check.sh python-tools --repo . --identity "${identity}"
+          bash scripts/check.sh cli --repo . --identity "${identity}" \
+            --main-binary target/release/bin/main \
+            --worker-binary tools/chir-worker/target/release/bin/main \
+            --output-root "${RUNNER_TEMP}/cjdoc-stage-cli"
+          bash scripts/check.sh provider --repo . --identity "${identity}"
+          bash scripts/check.sh smoke --repo . --identity "${identity}" \
+            --main-binary target/release/bin/main \
+            --output-root "${RUNNER_TEMP}/cjdoc-stage-smoke"
+
+      - name: Collect bounded acceptance diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci_diagnostics.py collect \
+            --repo . --target target/acceptance --out "${RUNNER_TEMP}/ci-diagnostics"
+
+      - name: Upload acceptance diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-diagnostics-linux-x64
+          path: ${{ runner.temp }}/ci-diagnostics
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Write the timing summary
+        if: always()
+        shell: bash
+        run: |
+          python scripts/ci_stage.py summarize --evidence target/ci-evidence \
+            --output "${RUNNER_TEMP}/ci-stage-summary.md" || true
+          cat "${RUNNER_TEMP}/ci-stage-summary.md" >> "${GITHUB_STEP_SUMMARY}" || true
+
+      - name: Upload timing evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-timing-ci-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/ci-evidence/
+          retention-days: 7
+          if-no-files-found: error
+
+  candidate-other:
+    name: ${{ matrix.platform }} / Cangjie 1.2.0 STS + stdx
+    needs: changes
+    if: ${{ needs.changes.outputs.native == 'true' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            runner: windows-2022
+          - platform: macos-arm64
+            runner: macos-15
+    env:
+      CJDOC_PYTHON: python
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUTF8: "1"
+      cjHeapSize: "512MB"
+      CANGJIE_SDK_VERSION: "1.2.0"
+      CJDOC_CI_EVIDENCE: ${{ github.workspace }}/target/ci-evidence
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,17 +203,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Verify tracked repository inputs
-        run: python scripts/verify_repository_inputs.py --require-tracked
-
-      - name: Test SDK installer
-        run: python -m unittest scripts/test_install_cangjie_sdk.py
-
       - name: Restore cjv toolchain cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/setup-cangjie-cjv
-          key: cjv-home-${{ runner.os }}-${{ env.CANGJIE_SDK_VERSION }}-v1
+          key: cjv-${{ runner.os }}-${{ runner.arch }}-${{ env.CANGJIE_SDK_VERSION }}-sts-stdx-cjv0.3.2-${{ hashFiles('.github/workflows/build-linux-candidate.yml', '.github/workflows/ci.yml', '.github/workflows/pages.yml', '.github/workflows/daily.yml') }}
 
       - name: Set up Cangjie STS SDK with stdx
         uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571 # v3.2.0
@@ -79,7 +223,6 @@ jobs:
           set -euo pipefail
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
-
       - name: Snapshot pristine source-edge fixture
         id: source-edge-snapshot
         if: matrix.platform == 'macos-arm64'
@@ -88,17 +231,16 @@ jobs:
           cp -p tests/fixtures/projects/source_edges/src/fixture.cj \
             "${RUNNER_TEMP}/source-edge-fixture.cj"
 
-      - name: Run v9 local acceptance gate
+      - name: Run the acceptance gate
         shell: bash
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          RUNNER_TEMP: ${{ runner.temp }}
         run: |
           set -euo pipefail
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           . scripts/with_sts_o1_cjpm.sh
           bash scripts/check.sh
-          if [[ "${{ matrix.platform }}" == 'linux-x64' ]]; then
-            python scripts/with_stdx.py --variant static -- \
-              python scripts/real_repository_smoke.py --project .
-          fi
 
       - name: Restore pristine source-edge fixture
         id: restore-source-edge
@@ -108,27 +250,46 @@ jobs:
           cp -p "${RUNNER_TEMP}/source-edge-fixture.cj" \
             tests/fixtures/projects/source_edges/src/fixture.cj
 
-      - name: Generate updated v11 golden candidate
-        id: update-goldens-candidate
-        if: failure() && matrix.platform == 'linux-x64'
+      - name: Write the timing summary
+        if: always()
+        shell: bash
+        run: |
+          python scripts/ci_stage.py summarize --evidence target/ci-evidence \
+            --output "${RUNNER_TEMP}/ci-stage-summary.md" || true
+          cat "${RUNNER_TEMP}/ci-stage-summary.md" >> "${GITHUB_STEP_SUMMARY}" || true
+
+      - name: Upload timing evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-timing-ci-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/ci-evidence/
+          retention-days: 7
+          if-no-files-found: error
+
+  # The single required check name. It re-reads the raw job results and the plan
+  # and fails on any planned job that did not report success.
+  required:
+    name: CI required
+    if: always()
+    needs: [changes, candidate-linux, linux-acceptance, candidate-other]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Enforce the planned job outcomes
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -x target/release/bin/main || ! -f target/acceptance/unsupported/first/docs.json ]]; then
-            echo "candidate=false" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          bash scripts/update_goldens.sh
-          echo "candidate=true" >> "${GITHUB_OUTPUT}"
-
-      - name: Upload generated v11 unsupported golden candidate
-        if: failure() && steps.update-goldens-candidate.outputs.candidate == 'true' && matrix.platform == 'linux-x64'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: unsupported-golden-v11-candidate
-          path: tests/fixtures/golden-v11/unsupported.docs.json
-          if-no-files-found: ignore
-          retention-days: 1
-
-
+          python scripts/ci_required.py \
+            --outcome-json '${{ toJSON(needs) }}' \
+            --plan '${{ needs.changes.outputs.plan }}'
