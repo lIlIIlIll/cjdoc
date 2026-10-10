@@ -119,6 +119,14 @@ jobs:
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
+      - name: Snapshot pristine source-edge fixture
+        id: source-edge-snapshot
+        if: matrix.platform == 'macos-arm64'
+        shell: bash
+        run: |
+          cp -p tests/fixtures/projects/source_edges/src/fixture.cj \
+            "${RUNNER_TEMP}/source-edge-fixture.cj"
+
       - name: Run the platform acceptance gates
         shell: bash
         env:
@@ -152,6 +160,17 @@ jobs:
           else
             bash scripts/check.sh
           fi
+
+      - name: Restore pristine source-edge fixture
+        id: restore-source-edge
+        if: always() && matrix.platform == 'macos-arm64' && steps.source-edge-snapshot.outcome == 'success'
+        shell: bash
+        run: |
+          # The acceptance gate may renormalize this tracked CRLF fixture. The
+          # candidate receipt records worktree cleanliness and the packager
+          # rejects a dirty worktree, so restore it before sealing the receipt.
+          cp -p "${RUNNER_TEMP}/source-edge-fixture.cj" \
+            tests/fixtures/projects/source_edges/src/fixture.cj
 
       - name: Write the release candidate receipt
         shell: bash
@@ -206,7 +225,7 @@ jobs:
           python scripts/package_release.py \
             --platform "${{ matrix.platform }}" \
             --binary "${binary}" \
-            --candidate-receipt target/release-candidate/cjdoc-release-candidate.json \
+            --candidate-receipt "target/release-candidate/cjdoc-release-candidate-${{ matrix.platform }}.json" \
             --source-commit "${CJDOC_RELEASE_COMMIT}" \
             --release-tag "${CJDOC_RELEASE_TAG}" \
             --sdk-version "1.2.0" \
@@ -226,7 +245,7 @@ jobs:
           name: cjdoc-release-${{ matrix.platform }}
           path: |
             target/release-package/*
-            target/release-candidate/cjdoc-release-candidate.json
+            target/release-candidate/cjdoc-release-candidate-${{ matrix.platform }}.json
           if-no-files-found: error
           retention-days: 7
 
@@ -311,13 +330,15 @@ jobs:
                   raise SystemExit(f"checksum mismatch: {asset.name}")
           PY
           version="${GITHUB_REF_NAME#v}"
-          python - "${asset_dir}" "${version}" "${GITHUB_SHA}" "${GITHUB_REF_NAME}" <<'PY'
+          python - "${asset_dir}" "${version}" "${GITHUB_SHA}" "${GITHUB_REF_NAME}" \
+                  "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" <<'PY'
           from pathlib import Path
           import json
           import sys
 
           root = Path(sys.argv[1])
           version, commit, tag = sys.argv[2], sys.argv[3], sys.argv[4]
+          run_id, run_attempt = sys.argv[5], int(sys.argv[6])
           platforms = ("linux-x64", "windows-x64", "macos-arm64")
           receipts = {}
           for platform in platforms:
@@ -329,11 +350,17 @@ jobs:
               if receipt.get("schemaVersion") != "cjdoc.release-candidate/1":
                   raise SystemExit(f"{platform}: unexpected release candidate receipt schema")
               source = receipt.get("source") or {}
-              # A receipt from another run attempt or commit must never be published.
               if (source.get("commit"), source.get("tag")) != (commit, tag):
                   raise SystemExit(f"{platform}: receipt is for a different commit or tag")
               if source.get("releaseVersion") != version:
                   raise SystemExit(f"{platform}: receipt version does not match the tag")
+              # A rerun can still see artifacts from an earlier attempt, so the
+              # execution identity must match this run before anything is published.
+              execution = receipt.get("execution") or {}
+              if str(execution.get("runId")) != run_id or execution.get("runAttempt") != run_attempt:
+                  raise SystemExit(
+                      f"{platform}: receipt is from run {execution.get('runId')} attempt "
+                      f"{execution.get('runAttempt')}, not this run {run_id} attempt {run_attempt}")
               if (receipt.get("platform") or {}).get("id") != platform:
                   raise SystemExit(f"{platform}: receipt declares a different platform")
               receipts[platform] = receipt
