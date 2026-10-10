@@ -364,12 +364,16 @@ def verify_identity(manifest_path: Path, main_binary: Path | None, worker_binary
             problems.append(f"{key}.sha256: manifest {recorded.get('sha256')} != actual {digest}")
         if recorded.get("size") != size:
             problems.append(f"{key}.size: manifest {recorded.get('size')} != actual {size}")
-        if key == "mainBinary" and recorded.get("versionOutput"):
+        if key == "mainBinary":
+            recorded_version = recorded.get("versionOutput")
+            if not recorded_version:
+                problems.append(f"{key}.versionOutput: manifest does not record the binary version")
+                continue
             completed = subprocess.run([str(path), "--version"], capture_output=True, text=True)
             actual_version = completed.stdout.strip()
-            if actual_version != recorded["versionOutput"]:
+            if actual_version != recorded_version:
                 problems.append(
-                    f"{key}.versionOutput: manifest {recorded['versionOutput']!r} != actual {actual_version!r}")
+                    f"{key}.versionOutput: manifest {recorded_version!r} != actual {actual_version!r}")
     if problems:
         for problem in problems:
             print(f"identity mismatch: {problem}", file=sys.stderr)
