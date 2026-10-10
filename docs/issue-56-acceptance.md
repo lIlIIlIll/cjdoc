@@ -11,7 +11,7 @@
 | 工作项 | 状态 | 实现 / 证据 |
 | --- | --- | --- |
 | RDR-01.4 关系入口位于默读区域 | 已交付 | 由上游 PR #58 合入（`symbol-relationships` 位于成员浏览器之前、关系名本地化）；本次复核未重复实现 |
-| RDR-01.1–.3 签名类型链接与复合类型 | 未完成（架构受限） | 见第 3 节；受项目自身架构决策（Gate C）限制 |
+| RDR-01.1–.3 签名类型链接与复合类型 | 未完成（能力已具备，实现未做） | 见第 3 节；CHIR 可行性已于本轮实测复测（G1/G2/G3/G5/G7 PASS） |
 | RDR-02.1 检索语料 | 已交付 | PR #67（`body` 字段，来源 Markdown AST + 标签说明） |
 | RDR-02.3 排序可解释 | 已交付 | PR #67（正文命中为第 8 档，低于所有名称/结构化档位） |
 | RDR-02.4 命中证据与安全 | 已交付 | PR #67（字段标签 + 真实片段）与 PR #69（内联脚本转义） |
@@ -94,15 +94,44 @@
 
 ## 3. 未完成项与阻塞
 
-### RDR-01.1–.3 签名类型链接（架构受限）
+### RDR-01.1–.3 签名类型链接（能力已验证，实现未完成）
 
 现状：所有源码 `TypeRef` 为 `state="partial"`、`canonical=null`、`arguments=[]`；渲染层
 `HtmlTypeLinkIndex.targetUrl()` 仅接受 `state == "resolved"` 且 canonical 精确匹配的类型。
 因此参数/返回/属性类型目前无法解析为链接。
 
-**这不是遗漏，而是项目自身已记录的架构决策**：`docs/research/api-capability-matrix.md`
-的 CHIR Gate 结论为 Gate C（G2–G7 未通过），并明确「所有 AST 类型均标为 `partial` 或
-`unavailable`，不会伪装为 `resolved`」。把 AST 类型标为 resolved 将直接违反该决策。
+**此前记录的「Gate C 架构受限」结论已过期，本轮实测复测如下**（STS 1.2.0 +
+stdx release/1.2，`docs/research/api-capability-matrix.md` 的结论基于 20260829
+daily 1.1.0-alpha，其 stdx 确实未交付 `stdx.chir`）：
+
+| Gate | 旧结论 | 本轮实测 |
+| --- | --- | --- |
+| G1 读取 CHIR | PASS | PASS（`--emit-chir=raw` 产出 `.chir`） |
+| G2 枚举声明 | FAIL | **PASS**（functions/classes/structs/enums/extends 可枚举） |
+| G3 access level | FAIL | **PASS**（`isPublic()` 可区分：public=2 / nonPublic=6） |
+| G5 declaration owner | FAIL | **PASS**（`declaredParent.srcCodeName` 可用） |
+| G6 source location | FAIL | FAIL（`Function` 仍无公开 location） |
+| G7 普通项目依赖 stdx.chir | FAIL | **PASS**（`import stdx.chir.*` 编译运行成功） |
+
+并且 CHIR 能给出 **AST 无法提供的限定类型身份与泛型结构**。实测 `parse` 的
+`funcSrcCodeType` 递归展开：
+
+```text
+(std.core.String,std.core.String,Bool)->std.core.Array (n=4)
+  std.core.String (n=0)
+  std.core.String (n=0)
+  Bool (n=0)
+  std.core.Array (n=1)
+    pocketkit.parsing.Token (n=0)
+```
+
+即 `Array<Token>` 中的 `Token` 被解析为限定名 `pocketkit.parsing.Token`，可与
+`pocketkit.io.Token` 区分——这正是 AST 拼写无法判定的同名歧义。
+
+**因此 RDR-01.1–.3 的阻塞已从「架构不允许」降级为「实现尚未进行」**：路径是让
+`chir_provider` 在 CHIR 可用时提供 canonical 类型身份（含结构化 `arguments`），
+并保守回绑；CHIR 不可用时保持现状 partial/unavailable。G6 的缺失意味着回绑仍须
+以既有「保守绑定 + 诊断」方式进行，不可用 location 直接对齐。
 
 同时实测表明仅解析**原子类型**收益很低：示例中 42 处类型拼写，35 处为原子类型且多为
 `Unit`(11)、`String`(6)、`Bool`(5)、`Int64` 等无本地声明的内建类型，只有 `TextReader`
@@ -121,6 +150,12 @@
 状态全部为 `passed`，与 `doctest/results.json` 的 4 条 `passed` 记录一致。
 未匹配的示例不显示任何状态（不推断验证结论）；单测覆盖空证据、标题不匹配、符号不匹配。
 状态严格取自原生 runner 记录，未把 compile-only / expected-failure 转换为成功。
+
+### CHIR 复测环境（第 3 节数据的来源）
+
+复测使用 CI 同款官方组件（`Zxilly/setup-cangjie` 缓存中的 STS 1.2.0 与
+`stdx release/1.2`），通过 `scripts/with_stdx.py` 认证；probe 以 `cjpm` 构建并运行，
+逐项输出即上表数据。旧 Gate C 结论所依据的 20260829 daily 已不适用于当前工具链。
 
 ### 完整 `check.sh`（CI 三平台已通过）
 
@@ -143,4 +178,4 @@ macOS 曾出现一次 runner 卡顿（同一 job 65 分钟未完成），**原�
 - 展示层不重算兼容性分类，不把 `potentially-breaking`/`partial` 提升为确定结论；
 - 未修改 compiler/std/stdx，未解析 CHIR 文本；
 - 所有改动保留离线、确定性、audience/cfg 隔离与既有安全约束；
-- 本表不宣称 Issue #56 已满足全部关闭条件：**RDR-01.1–.3 仍未完成**（架构受限，见第 3 节）。
+- 本表不宣称 Issue #56 已满足全部关闭条件：**RDR-01.1–.3 仍未完成**（能力已验证，实现未做，见第 3 节）。
