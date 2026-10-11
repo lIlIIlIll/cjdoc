@@ -32,6 +32,17 @@ def write(root: Path, name: str, content: object) -> Path:
     return path
 
 
+def filesystem_is_case_sensitive(root: Path) -> bool:
+    """Probe the filesystem: two names differing only in case may be one file."""
+    probe = root / "casesensitivity-probe"
+    probe.mkdir(parents=True, exist_ok=True)
+    (probe / "a").write_text("x", encoding="utf-8")
+    sensitive = not (probe / "A").exists()
+    (probe / "a").unlink()
+    probe.rmdir()
+    return sensitive
+
+
 class ContractTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
@@ -318,6 +329,10 @@ class ContractTests(unittest.TestCase):
             Site(self.site)
 
     def test_case_colliding_names_rejected(self) -> None:
+        # On a case-insensitive filesystem these two names are one file, so the
+        # collision cannot be created on disk and this check is untestable here.
+        if not filesystem_is_case_sensitive(self.root):
+            self.skipTest("filesystem is case-insensitive; cannot materialise a case collision")
         write(self.site, "INDEX.html", "duplicate portable name")
         with self.assertRaisesRegex(ContractError, "case-colliding"):
             Site(self.site)
