@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .contract import validate_manifest
 from .scenarios import SCENARIOS
-from .site import ContractError, Site, canonical_json, load_json, relative_path
+from .site import ContractError, Site, canonical_json, load_json, relative_path, symlinked_parent
 
 PLAN_SCHEMA = "cjdoc.showcase-browser-plan/1"
 SHARD_SCHEMA = "cjdoc.showcase-browser-shard/1"
@@ -275,10 +275,12 @@ def merge(plan_path: Path, shard_files: dict[int, Path], site_path: Path, eviden
                    home["ownerShard"] for home in plan["homeKeys"]}
 
     # The merged evidence destination follows the same rules as a shard run: it
-    # must be new, must not sit inside the published site, and must not be
-    # reached through a symlink. Otherwise stale files survive alongside the new
-    # results, and a symlink could redirect the write outside the evidence tree.
-    if any(parent.is_symlink() for parent in Path(evidence_root).absolute().parents):
+    # must be new, must not sit inside the published site, and must not be reached
+    # through a symlink. Otherwise stale files survive alongside the new results,
+    # and a symlink could redirect the write outside the evidence tree. The shared
+    # helper normalizes the macOS system aliases first, so a `tempfile` path is
+    # not mistaken for an attacker-controlled link.
+    if symlinked_parent(Path(evidence_root)) is not None:
         raise ContractError("symlink in merged browser evidence destination")
     root = Path(evidence_root).resolve()
     if root.is_relative_to(site.root) or site.root.is_relative_to(root):

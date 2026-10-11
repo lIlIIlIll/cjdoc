@@ -179,6 +179,26 @@ class ShardingTests(unittest.TestCase):
                         shard=(load_json(self.plan_path), 0, "synthetic-run", 1))
         self.assertEqual((evidence / "results.json").read_text(), "stale")
 
+    def test_merge_refuses_a_symlinked_or_existing_destination(self):
+        self.run_shard(0)
+        self.run_shard(1)
+        shards = {index: self.root / f"shard-{index}/shard.json" for index in (0, 1)}
+        # An existing directory must not be adopted: stale files would survive
+        # alongside the new results.
+        existing = self.root / "existing-merge"
+        existing.mkdir()
+        with self.assertRaisesRegex(ContractError, "new directory"):
+            browser_sharding.merge(self.plan_path, shards, self.site, existing,
+                                   self.root / "existing-receipt.json")
+        # A destination reached through a genuine symlink must be refused.
+        real = self.root / "real-target"
+        real.mkdir()
+        link = self.root / "linked-target"
+        link.symlink_to(real, target_is_directory=True)
+        with self.assertRaisesRegex(ContractError, "symlink"):
+            browser_sharding.merge(self.plan_path, shards, self.site, link / "merged",
+                                   self.root / "link-receipt.json")
+
     def test_merge_rejects_missing_duplicate_stale_and_tampered_shards(self):
         self.run_shard(0)
         self.run_shard(1)
