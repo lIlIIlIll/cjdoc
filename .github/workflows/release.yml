@@ -320,6 +320,11 @@ jobs:
           root = Path(sys.argv[1])
           version = sys.argv[2]
           expected = set()
+          # The three per-platform candidate receipts are evidence, not published
+          # assets: they are verified by the next step and excluded from the
+          # upload. They must be present here and nothing else may be.
+          for platform in ("linux-x64", "windows-x64", "macos-arm64"):
+              expected.add(f"cjdoc-release-candidate-{platform}.json")
           for platform, extension in (("linux-x64", ".tar.gz"),
                                       ("windows-x64", ".zip"),
                                       ("macos-arm64", ".tar.gz")):
