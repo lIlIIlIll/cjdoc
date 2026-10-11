@@ -196,20 +196,61 @@ def write_stage_evidence(path: Path, records: list[dict]) -> None:
     os.replace(temporary, path)
 
 
+# Retained stage logs are diagnostic evidence, not a transcript: a verbose
+# compiler or test loop must not fill the runner disk or blow the artifact limit.
+LOG_HEAD_BYTES = 262_144
+LOG_TAIL_BYTES = 262_144
+
+
+class _BoundedLog:
+    """Append-only log that keeps a bounded head and tail of the stream."""
+
+    def __init__(self, path: Path) -> None:
+        self.handle = path.open("wb")
+        self.head = bytearray()
+        self.tail = bytearray()
+        self.skipped = 0
+
+    def write(self, block: bytes) -> None:
+        if len(self.head) < LOG_HEAD_BYTES:
+            room = LOG_HEAD_BYTES - len(self.head)
+            self.head.extend(block[:room])
+            block = block[room:]
+        if not block:
+            return
+        self.tail.extend(block)
+        overflow = len(self.tail) - LOG_TAIL_BYTES
+        if overflow > 0:
+            del self.tail[:overflow]
+            self.skipped += overflow
+
+    def flush(self) -> None:
+        return None
+
+    def close(self) -> None:
+        if self.skipped:
+            self.handle.write(
+                f"\n... {self.skipped} bytes omitted by the log bound ...\n".encode("utf-8"))
+        self.handle.write(bytes(self.head))
+        self.handle.write(bytes(self.tail))
+        self.handle.close()
+
+
 def _pump(stream, mirror, sink) -> None:
     try:
         for line in iter(stream.readline, b""):
+            # The console always receives the full stream; only the retained file
+            # is bounded.
             mirror.write(line)
             mirror.flush()
             sink.write(line)
-            sink.flush()
     finally:
         stream.close()
 
 
 def _mirror_streams(process: subprocess.Popen, log_path: Path) -> tuple[threading.Thread, ...]:
-    """Pass stdout/stderr through unchanged while teeing them into one log."""
-    handle = log_path.open("wb")
+    """Pass stdout/stderr through unchanged while teeing them into one bounded log."""
+    handle = _BoundedLog(log_path)
     threads = [
         threading.Thread(target=_pump, args=(process.stdout, sys.stdout.buffer, handle), daemon=True),
         threading.Thread(target=_pump, args=(process.stderr, sys.stderr.buffer, handle), daemon=True),

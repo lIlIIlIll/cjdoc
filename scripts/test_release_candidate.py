@@ -339,5 +339,47 @@ class GateAndTimingGuardTest(unittest.TestCase):
         self.assertIn("except (OSError, ValueError):", timing)
 
 
+class HardeningRegressionTest(unittest.TestCase):
+    """Guards for the review findings that could silently weaken evidence."""
+
+    def test_merge_requires_a_fresh_non_symlink_output(self) -> None:
+        sharding = (PROJECT_ROOT / "scripts/showcase_contract/browser_sharding.py").read_text(
+            encoding="utf-8")
+        merge = sharding.split("def merge(", 1)[1]
+        self.assertIn("symlink in merged browser evidence destination", merge)
+        self.assertIn("must be a new directory", merge)
+        self.assertIn("must be separate trees", merge)
+        # `exist_ok=True` would adopt a stale directory instead of refusing it.
+        self.assertNotIn("mkdir(parents=True, exist_ok=True)", merge)
+
+    def test_diagnostics_reject_symlinked_candidates(self) -> None:
+        diagnostics = (PROJECT_ROOT / "scripts/ci_diagnostics.py").read_text(encoding="utf-8")
+        self.assertIn("def _acceptable_source(", diagnostics)
+        self.assertIn("source.is_symlink()", diagnostics)
+        # A resolved source must stay under a scanned root.
+        self.assertIn("resolved.is_relative_to(root.resolve())", diagnostics)
+
+    def test_stage_logs_are_bounded(self) -> None:
+        stage = (PROJECT_ROOT / "scripts/ci_stage.py").read_text(encoding="utf-8")
+        self.assertIn("class _BoundedLog", stage)
+        self.assertIn("LOG_HEAD_BYTES", stage)
+        self.assertIn("LOG_TAIL_BYTES", stage)
+        # The console still receives everything; only the file is capped.
+        self.assertIn("bytes omitted by the log bound", stage)
+
+    def test_pages_selects_the_successful_attempt(self) -> None:
+        pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
+        resolver = pages.split("Decide the candidate source", 1)[1].split("- name:", 1)[0]
+        # A rerun's success carries its own attempt number.
+        self.assertIn("attempt", resolver)
+        self.assertIn("databaseId,attempt", resolver)
+
+    def test_the_standalone_build_cleans_up_after_failure(self) -> None:
+        check = (PROJECT_ROOT / "scripts/check.sh").read_text(encoding="utf-8")
+        build = check.split("stage_build()", 1)[1].split("\nstage_", 1)[0]
+        self.assertIn("cleanup_build_worker", build)
+        self.assertIn("trap cleanup_build_worker EXIT", build)
+
+
 if __name__ == "__main__":
     unittest.main()

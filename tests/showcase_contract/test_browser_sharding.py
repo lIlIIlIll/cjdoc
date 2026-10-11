@@ -120,10 +120,13 @@ class ShardingTests(unittest.TestCase):
         browser.run(self.site, evidence, None, shard=(load_json(self.plan_path), index, run_id, run_attempt))
         return evidence
 
-    def merge(self, shards: list[int], *, evidence: str = "merged"):
+    def merge(self, shards: list[int], *, evidence: str | None = None):
+        # Every merge must target a fresh directory, so each call gets its own.
+        self._merge_counter = getattr(self, "_merge_counter", 0) + 1
+        name = evidence or f"merged-{self._merge_counter}"
         return browser_sharding.merge(
             self.plan_path, {index: self.root / f"shard-{index}/shard.json" for index in shards},
-            self.site, self.root / evidence, self.root / f"{evidence}-receipt.json")
+            self.site, self.root / name, self.root / f"{name}-receipt.json")
 
     def test_plan_is_deterministic_and_groups_stay_whole(self):
         first = browser_sharding.build_plan(self.site, "synthetic-run", 2)
@@ -148,8 +151,11 @@ class ShardingTests(unittest.TestCase):
     def test_two_shards_reproduce_the_single_process_case_set(self):
         self.run_shard(0)
         self.run_shard(1)
+        before = {path.name for path in self.root.iterdir()}
         receipt = self.merge([0, 1])
-        merged = load_json(self.root / "merged/results.json")
+        merged_dir = next(path for path in self.root.iterdir()
+                          if path.is_dir() and (path / "results.json").is_file())
+        merged = load_json(merged_dir / "results.json")
         expected = browser.registered_cases(load_json(self.site / "showcase-features.json"))
         self.assertEqual({tuple(case[field] for field in browser_sharding.CASE_FIELDS)
                           for case in merged["results"]}, set(expected))
@@ -201,7 +207,7 @@ class ShardingTests(unittest.TestCase):
                 shard_path.write_text(json.dumps(shard), encoding="utf-8")
                 try:
                     with self.assertRaisesRegex(ContractError, pattern):
-                        self.merge([0, 1], evidence="merged-tampered")
+                        self.merge([0, 1])
                 finally:
                     shard_path.write_text(original, encoding="utf-8")
 
@@ -231,7 +237,7 @@ class ShardingTests(unittest.TestCase):
         shard["results"].append(shard["results"][0])
         path.write_text(json.dumps(shard), encoding="utf-8")
         with self.assertRaisesRegex(ContractError, "duplicate case"):
-            self.merge([0, 1], evidence="merged-duplicate")
+            self.merge([0, 1])
 
     def test_merge_rejects_a_stale_site(self):
         self.run_shard(0)
@@ -239,7 +245,7 @@ class ShardingTests(unittest.TestCase):
         (self.site / "index.html").write_text('<html lang="en"><body id="home">Changed</body></html>',
                                               encoding="utf-8")
         with self.assertRaisesRegex(ContractError, "stale"):
-            self.merge([0, 1], evidence="merged-stale")
+            self.merge([0, 1])
 
     def test_merge_rejects_a_changed_attachment(self):
         self.run_shard(0)
@@ -247,7 +253,7 @@ class ShardingTests(unittest.TestCase):
         image = next((self.root / "shard-0").glob("*.png"))
         image.write_bytes(home_fixture.png_bytes(8, 8))
         with self.assertRaisesRegex(ContractError, "attachment changed"):
-            self.merge([0, 1], evidence="merged-tampered-image")
+            self.merge([0, 1])
 
     def test_merge_rejects_a_non_png_attachment(self):
         self.run_shard(0)
@@ -261,7 +267,7 @@ class ShardingTests(unittest.TestCase):
         shard["attachments"][0]["sha256"] = hashlib.sha256(image.read_bytes()).hexdigest()
         path.write_text(json.dumps(shard), encoding="utf-8")
         with self.assertRaisesRegex(ContractError, "not a PNG"):
-            self.merge([0, 1], evidence="merged-notpng")
+            self.merge([0, 1])
 
     def test_merge_rejects_a_shard_result_symlink(self):
         self.run_shard(0)

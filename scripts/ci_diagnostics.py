@@ -31,25 +31,50 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _acceptable_source(source: Path, roots: list[Path]) -> bool:
+    """A diagnostic candidate must be a regular non-symlink file under a scanned root.
+
+    A symlink would let the bundle copy a file from outside both the stage root
+    and the repository while labelling it acceptance output.
+    """
+    if source.is_symlink() or not source.is_file():
+        return False
+    resolved = source.resolve()
+    for root in roots:
+        try:
+            if resolved.is_relative_to(root.resolve()):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def candidate_files(repo: Path, target: Path) -> list[tuple[str, Path]]:
-    """Enumerate the labelled failure inputs in a stable order."""
+    """Enumerate the labelled failure inputs in a stable order.
+
+    Only files that are physically inside `target` or the repository's golden
+    directory are eligible; symlinks are rejected rather than followed.
+    """
+    allowed = [target, repo / "tests/fixtures/golden-v11"]
     candidates: list[tuple[str, Path]] = []
     for fixture in sorted({path.name for path in target.glob("*") if path.is_dir()}):
         fixture_root = target / fixture
         for label, relative in (("actual-first", "first/docs.json"), ("actual-second", "second/docs.json")):
             path = fixture_root / relative
-            if path.is_file():
+            if _acceptable_source(path, allowed):
                 candidates.append((f"{fixture}/{label}", path))
         for stderr in sorted(fixture_root.glob("*.stderr")):
-            candidates.append((f"{fixture}/{stderr.name}", stderr))
+            if _acceptable_source(stderr, allowed):
+                candidates.append((f"{fixture}/{stderr.name}", stderr))
         diff = fixture_root / "golden.diff"
-        if diff.is_file():
+        if _acceptable_source(diff, allowed):
             candidates.append((f"{fixture}/golden.diff", diff))
         expected = repo / "tests/fixtures/golden-v11" / f"{fixture}.docs.json"
-        if expected.is_file():
+        if _acceptable_source(expected, allowed):
             candidates.append((f"{fixture}/expected-golden", expected))
     for record in sorted(target.glob("*.json")):
-        candidates.append((f"stage-evidence/{record.name}", record))
+        if _acceptable_source(record, [target]):
+            candidates.append((f"stage-evidence/{record.name}", record))
     return candidates
 
 

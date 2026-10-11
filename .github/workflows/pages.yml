@@ -126,15 +126,28 @@ jobs:
             run_id="${EXPLICIT_RUN_ID}"
             attempt="${EXPLICIT_RUN_ATTEMPT:-1}"
           else
-            # Only a single unambiguous successful run for this exact commit may
-            # be adopted; several candidates means the choice is not tractable.
-            mapfile -t candidates < <(gh run list --workflow ci.yml --commit "${GITHUB_SHA}" \
-              --status success --limit 20 --json databaseId,headSha --jq '.[].databaseId')
+            # CI and Pages are triggered by the same push and start together, so
+            # an immediately-successful CI run usually does not exist yet. Wait
+            # briefly for this commit's CI run rather than duplicating the build.
+            deadline=$(( $(date +%s) + 900 ))
+            while :; do
+              mapfile -t candidates < <(gh run list --workflow ci.yml --commit "${GITHUB_SHA}" \
+                --status success --limit 20 --json databaseId,attempt \
+                --jq '.[] | "\(.databaseId) \(.attempt // 1)"')
+              [[ ${#candidates[@]} -gt 0 ]] && break
+              [[ $(date +%s) -ge ${deadline} ]] && break
+              echo "waiting for this commit's CI run to succeed..."
+              sleep 30
+            done
             if [[ ${#candidates[@]} -ne 1 ]]; then
               local_build "expected exactly one successful CI run, found ${#candidates[@]}"
               exit 0
             fi
-            run_id="${candidates[0]}"
+            # A rerun's success lives in its own attempt, so the attempt number
+            # must travel with the run id: attempt 1's artifact may belong to a
+            # run that only passed later on attempt 2.
+            run_id="${candidates[0]%% *}"
+            attempt="${candidates[0]##* }"
           fi
           artifact="cjdoc-linux-candidate-${run_id}-${attempt}"
           # Bind the decision to the exact commit and tree the artifact claims.

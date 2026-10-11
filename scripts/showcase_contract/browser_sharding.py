@@ -274,8 +274,19 @@ def merge(plan_path: Path, shard_files: dict[int, Path], site_path: Path, eviden
     home_owners = {(home["locale"], home["width"], home["height"], home["mode"], home["prefix"]):
                    home["ownerShard"] for home in plan["homeKeys"]}
 
+    # The merged evidence destination follows the same rules as a shard run: it
+    # must be new, must not sit inside the published site, and must not be
+    # reached through a symlink. Otherwise stale files survive alongside the new
+    # results, and a symlink could redirect the write outside the evidence tree.
+    if any(parent.is_symlink() for parent in Path(evidence_root).absolute().parents):
+        raise ContractError("symlink in merged browser evidence destination")
     root = Path(evidence_root).resolve()
-    root.mkdir(parents=True, exist_ok=True)
+    if root.is_relative_to(site.root) or site.root.is_relative_to(root):
+        raise ContractError("browser evidence and final site must be separate trees")
+    if Path(evidence_root).exists() or Path(evidence_root).is_symlink():
+        raise ContractError("merged browser evidence output must be a new directory "
+                            "(no stale results reuse)")
+    root.mkdir(parents=True)
     results: list[dict] = []
     homepages: list[dict] = []
     runner = budgets = site_metrics = None

@@ -262,8 +262,20 @@ stage_build() {
     fi
     # An ignored-but-present worker build tree makes the repository-input gate
     # fail closed, and deleting a pre-existing one could destroy user data, so
-    # refuse first and clean only what this stage creates.
+    # refuse first and clean only what this stage creates. The tree did not exist
+    # a moment ago, so a failure from here on owns it: without this trap a
+    # transient compiler failure would leave it behind and the very next
+    # invocation would stop at `refuse_existing_outputs`.
     refuse_existing_outputs worker
+    build_worker_cleaned=0
+    cleanup_build_worker() {
+        if [[ "${build_worker_cleaned}" == "1" ]]; then
+            return 0
+        fi
+        build_worker_cleaned=1
+        remove_owned_outputs "$(worker_target_path)"
+    }
+    trap cleanup_build_worker EXIT
     # Keep project compilation single-job; STS 1.2.0's bundled llc has crashed under concurrent CI jobs.
     cjpm build --jobs 1
     # Resolve the real executable name. Windows produces `main.exe`, and the
@@ -359,12 +371,25 @@ if manifest:
                              encoding="utf-8", newline="\n")
     print(f"build manifest written: {manifest_path}")
 PY
+    # Success: the stage deliberately keeps the worker tree so the packaging step
+    # can copy the binary out of it, so the failure-only trap is disarmed here.
+    build_worker_cleaned=1
+    trap - EXIT
 }
 
 # Cleanup guards live at script scope: a nested function cannot read a `local`
 # declared by its caller under `set -u`, and macOS ships bash 3.2.
 native_cleaned=0
 cli_cleaned=0
+
+# Cleanup guards live at script scope: a nested function cannot read a
+# `local` declared by its caller under `set -u`, and macOS ships bash 3.2.
+build_worker_cleaned=0
+
+# The worker build directory, i.e. what `refuse_existing_outputs worker` guards.
+worker_target_path() {
+    printf '%s' "${worker_project}/target"
+}
 
 # Resolve the worker executable the same way in every stage. On Windows the build
 # produces `main.exe`, so the unsuffixed spelling must never be exported.
