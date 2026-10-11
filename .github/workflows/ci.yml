@@ -296,8 +296,14 @@ jobs:
 
       - name: Enforce the planned job outcomes
         shell: bash
+        env:
+          # The plan is JSON that may contain quotes (for example Git's quoted
+          # stderr), so it must travel through the environment rather than being
+          # interpolated into a single-quoted shell word.
+          CJDOC_PLAN: ${{ needs.changes.outputs.plan }}
+          CJDOC_NEEDS: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
           python scripts/ci_required.py \
-            --outcome-json '${{ toJSON(needs) }}' \
-            --plan '${{ needs.changes.outputs.plan }}'
+            --outcome-json "${CJDOC_NEEDS}" \
+            --plan "${CJDOC_PLAN}"

@@ -86,8 +86,11 @@ def assign_home_groups(groups: dict[tuple, list], costs: dict[tuple, float]) -> 
         for index, home in enumerate(ordered):
             assignment[home] = index % SHARD_COUNT
         return assignment, "equal-home-groups"
+    # Longest-processing-time first: the assignment is only balanced when the
+    # heaviest groups are placed while both shards are still empty.
     loads = [0.0] * SHARD_COUNT
-    for home in ordered:
+    by_cost = sorted(ordered, key=lambda home: -sum(costs.get(key, 0.0) for key in groups[home]))
+    for home in by_cost:
         cost = sum(costs.get(key, 0.0) for key in groups[home])
         target = min(range(SHARD_COUNT), key=lambda shard: (loads[shard], shard))
         assignment[home] = target

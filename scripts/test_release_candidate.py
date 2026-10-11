@@ -381,5 +381,33 @@ class HardeningRegressionTest(unittest.TestCase):
         self.assertIn("trap cleanup_build_worker EXIT", build)
 
 
+class RoutingAndSelectionTest(unittest.TestCase):
+    """Guards for plan transport, LPT ordering and the bounded candidate wait."""
+
+    def test_ci_passes_the_plan_through_the_environment(self) -> None:
+        ci = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        required = ci.split("Enforce the planned job outcomes", 1)[1]
+        # Shell interpolation would break on JSON containing quotes.
+        self.assertNotIn("--plan '${{", required)
+        self.assertIn("CJDOC_PLAN: ${{ needs.changes.outputs.plan }}", required)
+        self.assertIn('--plan "${CJDOC_PLAN}"', required)
+
+    def test_history_weighted_assignment_places_heaviest_first(self) -> None:
+        sharding = (PROJECT_ROOT / "scripts/showcase_contract/browser_sharding.py").read_text(
+            encoding="utf-8")
+        weighted = sharding.split("history-weighted", 1)[0]
+        # Longest-processing-time requires descending cost order.
+        self.assertIn("by_cost", weighted)
+        self.assertIn("sorted(ordered, key=lambda home: -sum(", weighted)
+
+    def test_the_candidate_wait_fits_inside_its_job_timeout(self) -> None:
+        pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
+        resolve = pages.split("resolve-candidate:", 1)[1].split("\n  local-candidate:", 1)[0]
+        timeout = int(resolve.split("timeout-minutes:", 1)[1].split("\n", 1)[0].strip())
+        wait = int(pages.split("deadline=$(( $(date +%s) + ", 1)[1].split(" ))", 1)[0])
+        self.assertGreater(timeout * 60, wait,
+                           f"job timeout {timeout}m must exceed the {wait}s wait")
+
+
 if __name__ == "__main__":
     unittest.main()

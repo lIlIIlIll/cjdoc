@@ -78,7 +78,10 @@ jobs:
   resolve-candidate:
     name: Resolve Linux candidate source
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    # Must exceed the bounded wait below (15 min), otherwise the wait can never
+    # reach its deadline and the job is killed instead of falling back to a
+    # local build.
+    timeout-minutes: 20
     outputs:
       reuse: ${{ steps.resolve.outputs.reuse }}
       run_id: ${{ steps.resolve.outputs.run_id }}
