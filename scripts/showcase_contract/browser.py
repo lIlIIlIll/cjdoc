@@ -27,7 +27,7 @@ from .contract import validate_manifest
 from .evidence import _expected_cases, validate_evidence
 from .offline import ARCHIVE, extract_archive
 from .scenarios import SCENARIOS, BUDGETS
-from .site import ContractError, Site, canonical_json, load_json
+from .site import ContractError, Site, canonical_json, load_json, symlinked_parent
 
 BEHAVIORS = {**API_JOURNEYS, **REPORT_JOURNEYS}
 
@@ -239,7 +239,7 @@ def run(site_path: Path, evidence_path: Path, executable: str | None = None,
     from . import browser_sharding
 
     site = Site(site_path)
-    if any(parent.is_symlink() for parent in evidence_path.absolute().parents):
+    if symlinked_parent(evidence_path) is not None:
         raise ContractError("symlink in browser evidence destination")
     output = evidence_path.resolve()
     if output.is_relative_to(site.root) or site.root.is_relative_to(output):

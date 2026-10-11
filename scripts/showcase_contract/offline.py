@@ -14,7 +14,7 @@ import sys
 import tempfile
 import zipfile
 
-from .site import ContractError, Site, canonical_json, relative_path
+from .site import ContractError, Site, canonical_json, relative_path, symlinked_parent
 
 ARCHIVE = "downloads/showcase-offline.zip"
 MAX_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
@@ -53,33 +53,6 @@ def create_archive(root: Path) -> Path:
     return destination
 
 
-# macOS exposes `/var` and `/tmp` as system aliases of `/private/...`, so every
-# `tempfile` location contains a symlink component. These are documented system
-# aliases, not attacker-controlled links, so they are normalized away before the
-# symlink check. Kept in step with `scripts/safe_output_root.py`.
-_DARWIN_SYSTEM_ALIASES = {
-    Path("/var"): Path("/private/var"),
-    Path("/tmp"): Path("/private/tmp"),
-}
-
-
-def _normalized_destination(destination: Path) -> Path:
-    """Return an absolute destination with darwin system aliases normalized."""
-    candidate = Path(os.path.abspath(os.fspath(destination)))
-    if sys.platform == "darwin":
-        for alias, canonical in _DARWIN_SYSTEM_ALIASES.items():
-            try:
-                relative = candidate.relative_to(alias)
-            except ValueError:
-                continue
-            try:
-                if alias.is_symlink() and alias.resolve(strict=True) == canonical:
-                    return canonical / relative
-            except OSError:
-                pass
-    return candidate
-
-
 def extract_archive(archive_path: Path, destination: Path, expected: Site) -> Site:
     """Extract to a new directory; reject extras, missing files and unsafe paths.
 
@@ -90,9 +63,8 @@ def extract_archive(archive_path: Path, destination: Path, expected: Site) -> Si
     if destination.exists() or destination.is_symlink():
         raise ContractError("offline extraction requires a fresh directory")
     # A symlink component would make the extraction path untrustworthy, but the
-    # macOS system aliases above are legitimate, so normalize those first.
-    destination = _normalized_destination(destination)
-    if any(parent.is_symlink() for parent in destination.parents):
+    # macOS system aliases are legitimate, so they are normalized first.
+    if symlinked_parent(destination) is not None:
         raise ContractError("symlink in offline extraction destination")
     resolved = destination.resolve()
     if resolved.is_relative_to(expected.root) or expected.root.is_relative_to(resolved):
