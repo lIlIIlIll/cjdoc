@@ -64,9 +64,18 @@ def classify_paths(paths: list[str]) -> dict[str, bool]:
             "jobSet": {name: jobs[name] for name in ALL_JOBS}}
 
 
-def diff_paths(repo: Path, base: str, head: str) -> list[str]:
+def diff_paths(repo: Path, base: str, head: str, *, two_dot: bool = False) -> list[str]:
+    """List changed paths.
+
+    A push range must be compared with two dots: `A...B` resolves to
+    `merge-base(A, B)..B`, which on a force push (no merge base on the pushed
+    branch) can report files that the pushed tip does not actually contain, or
+    miss ones it does. Pull requests keep the three-dot form so the comparison
+    is against the merge base, as GitHub's own PR diff does.
+    """
+    spec = f"{base}..{head}" if two_dot else f"{base}...{head}"
     completed = subprocess.run(
-        ["git", "-C", str(repo), "diff", "--name-only", "--no-renames", f"{base}...{head}"],
+        ["git", "-C", str(repo), "diff", "--name-only", "--no-renames", spec],
         capture_output=True, text=True)
     if completed.returncode != 0:
         raise SystemExit(f"ci_changes.py: git diff failed: {completed.stderr.strip()}")
@@ -86,7 +95,9 @@ def plan_for(repo: Path, base: str, head: str, event: str, ref: str) -> dict[str
     if event == "push" and ref.endswith("/main"):
         return full_plan("main pushes always run the complete matrix")
     try:
-        paths = diff_paths(repo, base, head)
+        # A push compares its two endpoints; a pull request compares against the
+        # merge base so unrelated base-branch commits are not attributed here.
+        paths = diff_paths(repo, base, head, two_dot=event == "push")
     except SystemExit as error:
         return full_plan(str(error))
     if not paths:

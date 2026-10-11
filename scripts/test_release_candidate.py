@@ -251,7 +251,7 @@ class ReleaseGateCleanlinessTest(unittest.TestCase):
         # `exact_worktree_identity` fail with "unexpected ignored/untracked".
         gate = check.split('stage="${stage_id}"', 1)[1]
         self.assertIn("cleanup_full_gate()", gate)
-        self.assertIn('remove_owned_outputs "${worker_project}/target"', gate)
+        # `all` covers the worker tree as well as every fixture tree.
         self.assertIn("existing_build_outputs all", gate)
         # Cleanup must be trapped, not only run after success.
         # Compare on the single-quoted trap body without embedding its quotes.
@@ -282,6 +282,61 @@ class PublishAssetSetTest(unittest.TestCase):
         self.assertIn("receipt is from run", publish)
         # Not published: both the upload and the asset comparison exclude them.
         self.assertEqual(publish.count("! -name 'cjdoc-release-candidate*.json'"), 2)
+
+
+class ReleaseArtifactScopeTest(unittest.TestCase):
+    """A rerun keeps earlier attempts' artifacts; downloads must not mix them."""
+
+    def release_workflow(self) -> str:
+        return (PROJECT_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    def test_candidate_artifacts_are_scoped_to_run_and_attempt(self) -> None:
+        workflow = self.release_workflow()
+        candidate = workflow.split("\n  release-candidate:\n", 1)[1].split("\n  publish:\n", 1)[0]
+        upload = candidate.split("name: Upload the verified candidate", 1)[1]
+        self.assertIn(
+            "cjdoc-release-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}",
+            upload)
+
+    def test_publish_downloads_only_the_current_attempt(self) -> None:
+        publish = self.release_workflow().split("\n  publish:\n", 1)[1]
+        self.assertIn("pattern: cjdoc-release-*-${{ github.run_id }}-${{ github.run_attempt }}",
+                      publish)
+        self.assertNotIn("pattern: cjdoc-release-*\n", publish)
+
+
+class GateAndTimingGuardTest(unittest.TestCase):
+    """Dropped suites and conditional-cleanup regressions must stay visible."""
+
+    def check(self) -> str:
+        return (PROJECT_ROOT / "scripts/check.sh").read_text(encoding="utf-8")
+
+    def test_the_gate_runs_the_showcase_contract_suite(self) -> None:
+        gate = self.check()
+        # The Pages refactor dropped this suite from pages.yml; the staged gate
+        # must keep running it or those tests run nowhere.
+        self.assertIn("discover -s tests/showcase_contract", gate)
+        python_tools = gate.split("stage_python_tools()", 1)[1].split("\nstage_", 1)[0]
+        self.assertIn("discover -s tests/showcase_contract", python_tools)
+
+    def test_the_full_gate_protects_pre_existing_build_trees(self) -> None:
+        gate = self.check()
+        full_gate = gate.split('stage="${stage_id}"', 1)[1]
+        self.assertIn("preexisting_outputs=", full_gate)
+        # The guard must consult that snapshot before removing anything.
+        self.assertIn("preexisting_outputs", full_gate)
+        self.assertIn("grep -Fxq", full_gate)
+
+    def test_every_stage_resolves_the_windows_worker_name(self) -> None:
+        gate = self.check()
+        self.assertIn("resolve_worker_binary()", gate)
+        # The unsuffixed spelling must not be exported on its own anywhere.
+        self.assertNotIn('CJDOC_CHIR_WORKER="${worker_binary:-${worker_project}/target/release/bin/main}"',
+                         gate)
+
+    def test_malformed_timing_evidence_never_aborts_a_build(self) -> None:
+        timing = (PROJECT_ROOT / "scripts/showcase_build/stage_timing.py").read_text(encoding="utf-8")
+        self.assertIn("except (OSError, ValueError):", timing)
 
 
 if __name__ == "__main__":

@@ -68,7 +68,12 @@ def flush() -> None:
     try:
         existing: list[dict] = []
         if path.exists():
-            document = json.loads(path.read_text(encoding="utf-8"))
+            try:
+                document = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                # Truncated or otherwise invalid evidence must not abort a build:
+                # this module is diagnostic only, so start a fresh record set.
+                document = None
             if isinstance(document, dict) and isinstance(document.get("stages"), list):
                 existing = document["stages"]
         seen = {(item.get("stageId"), item.get("startedAt")) for item in existing}

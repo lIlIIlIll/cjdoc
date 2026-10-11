@@ -280,10 +280,8 @@ stage_build() {
     fi
     "${python_cmd}" scripts/verify_repository_inputs.py --repo "${repo}" \
         --require-tracked --legacy-binary "${binary}"
-    local worker="${worker_project}/target/release/bin/main"
-    if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
-        worker="${worker}.exe"
-    fi
+    local worker
+    worker="$(resolve_worker_binary)"
     (cd "${worker_project}" && cjpm build --jobs 1)
     if [[ ! -x "${worker}" && ! ( -f "${worker}" && ( "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ) ) ]]; then
         echo "CHIR worker executable was not produced at ${worker}" >&2
@@ -368,6 +366,18 @@ PY
 native_cleaned=0
 cli_cleaned=0
 
+# Resolve the worker executable the same way in every stage. On Windows the build
+# produces `main.exe`, so the unsuffixed spelling must never be exported.
+resolve_worker_binary() {
+    local candidate="${worker_project}/target/release/bin/main"
+    if [[ -f "${candidate}.exe" ]]; then
+        candidate="${candidate}.exe"
+    elif [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
+        candidate="${candidate}.exe"
+    fi
+    printf '%s' "${candidate}"
+}
+
 stage_native() {
     cd "${repo}"
     require_identity
@@ -384,7 +394,7 @@ stage_native() {
         done < <(existing_build_outputs fixtures)
     }
     trap cleanup_native EXIT
-    export CJDOC_CHIR_WORKER="${worker_binary:-${worker_project}/target/release/bin/main}"
+    export CJDOC_CHIR_WORKER="${worker_binary:-$(resolve_worker_binary)}"
     # Remove this stage's fixture outputs even when the tests fail, then keep the
     # original exit status so a failing suite is never reported as a pass.
     if cjpm test --jobs 1; then
@@ -401,12 +411,14 @@ stage_native() {
 stage_python_tools() {
     cd "${repo}"
     require_identity
+    # Two suites must both run, and neither may be silently dropped:
+    #   * `scripts/test_*.py` — the repository tooling tests;
+    #   * `tests/showcase_contract/` — the showcase contract tests, which the
+    #     Pages refactor dropped from `pages.yml` and which nothing else ran.
     # `unittest discover` has no exclusion switch, so the module list is built
     # explicitly: every scripts/test_*.py except the two modules the preflight
-    # stage already ran. This keeps the covered set identical to the previous
-    # full discover while never executing a preflight test twice. Discover used
-    # to add `scripts/` to sys.path for sibling imports such as
-    # `test_validate_html_site`, so PYTHONPATH preserves that behaviour.
+    # stage already ran. Discover used to add `scripts/` to sys.path for sibling
+    # imports such as `test_validate_html_site`, so PYTHONPATH keeps that.
     local modules
     modules="$("${python_cmd}" - "${repo}" <<'PY'
 from pathlib import Path
@@ -421,10 +433,16 @@ if not names:
 print(" ".join(f"scripts.{name}" for name in names))
 PY
 )"
+    # Python on Windows writes CRLF to stdout, so strip any trailing CR before the
+    # value is used as a module name.
     modules="${modules//$'\r'/}"
     # shellcheck disable=SC2086 - the module list is deliberately word-split.
     PYTHONPATH="${repo}/scripts${PYTHONPATH:+:${PYTHONPATH}}" \
         "${python_cmd}" -m unittest ${modules}
+    # The showcase suite lives outside `scripts/` and adds its own directory to
+    # `sys.path`, so it needs discovery by path rather than by module name.
+    PYTHONPATH="${repo}/scripts${PYTHONPATH:+:${PYTHONPATH}}" \
+        "${python_cmd}" -m unittest discover -s tests/showcase_contract -p 'test_*.py'
 }
 
 stage_cli() {
@@ -461,10 +479,7 @@ stage_cli() {
         fi
     fi
     if [[ -z "${worker_binary}" ]]; then
-        worker_binary="${worker_project}/target/release/bin/main"
-        if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
-            worker_binary="${worker_binary}.exe"
-        fi
+        worker_binary="$(resolve_worker_binary)"
     fi
     export CJDOC_CHIR_WORKER="${worker_binary}"
     local binary="${main_binary}"
@@ -760,16 +775,26 @@ fi
 
 stage="${stage_id}"
 if [[ -z "${stage}" ]]; then
-    # The zero-argument gate owns everything it built, so it leaves the worktree
+    # The zero-argument gate owns everything it BUILT, so it leaves the worktree
     # clean: the worker build tree plus every fixture `target/` created by the
-    # native, cli and provider stages (the CHIR worker compiles fixture projects).
-    # A leftover tree makes the repository-input gate refuse and, in the release
-    # job, makes the candidate receipt's worktree identity fail.
+    # native, cli and provider stages (the CHIR worker compiles fixture
+    # projects). A leftover tree makes the repository-input gate refuse and, in
+    # the release job, makes the candidate receipt's worktree identity fail.
+    #
+    # Trees that already existed before the gate started are NOT owned by it.
+    # `stage_build`/`stage_native` refuse to proceed in that case, and the trap
+    # must not delete the very tree that caused the refusal.
+    preexisting_outputs="$(existing_build_outputs all)"
     cleanup_full_gate() {
-        remove_owned_outputs "${worker_project}/target"
+        # `existing_build_outputs all` already covers the worker tree, so the
+        # guard below protects a pre-existing one too.
         while IFS= read -r owned; do
             owned="${owned%$'\r'}"
             [[ -z "${owned}" ]] && continue
+            # Only remove trees this run created.
+            if printf '%s\n' "${preexisting_outputs}" | grep -Fxq -- "${owned}"; then
+                continue
+            fi
             remove_owned_outputs "${owned}"
         done < <(existing_build_outputs all)
     }

@@ -260,7 +260,7 @@ jobs:
       - name: Upload the verified candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: cjdoc-release-${{ matrix.platform }}
+          name: cjdoc-release-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}
           # A single search path makes that directory the artifact root, so the
           # staged files land flat. Two sibling paths would instead use their least
           # common ancestor (`target/`) and nest the payload, which the publisher's
@@ -299,7 +299,11 @@ jobs:
       - name: Download candidate artifacts
         uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
         with:
-          pattern: cjdoc-release-*
+          # Scoped to this run and attempt: a rerun keeps the earlier attempt's
+          # `cjdoc-release-*` artifacts, and `merge-multiple` resolves same-named
+          # files last-writer-wins, which could mix stale binaries with current
+          # receipts (both self-consistent) into the publication.
+          pattern: cjdoc-release-*-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-assets
           merge-multiple: true
 
