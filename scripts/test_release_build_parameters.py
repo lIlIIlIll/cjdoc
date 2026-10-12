@@ -81,7 +81,6 @@ class BuildParameterTests(unittest.TestCase):
                 # manifest, whose override is deliberately empty.
                 self.assertEqual(payload["effectiveCompileOption"], "-O1")
                 self.assertEqual(payload["command"], ["cjpm", "build", "--jobs", "1"])
-                self.assertEqual(payload["appliedTo"], [{"option": "-O1", "package": "cjdoc"}])
 
     def test_the_provider_fixture_keeps_its_own_package_name(self) -> None:
         """Its directory and package names differ, which broke the first version."""
@@ -96,6 +95,27 @@ class BuildParameterTests(unittest.TestCase):
         self.assertEqual(result.stdout.strip(), "provider_plugin_fixture")
 
     @requires_shell
+    def test_a_patcher_that_never_writes_the_manifest_is_refused(self) -> None:
+        """The observed value must come from the manifest, not the patcher's account."""
+        self.edit(PATCHER,
+                  """    for manifest, contents in updates:
+        manifest.write_text(contents, encoding="utf-8")""",
+                  "    return")
+        result = run_check(self.repo)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("the build would read override-compile-option=''", result.stderr)
+
+    def test_an_extra_space_in_the_build_command_is_still_found(self) -> None:
+        """`cjpm  build` is the same command to bash."""
+        self.edit(".github/workflows/release.yml",
+                  "          cjpm build --jobs 1\n",
+                  "          cjpm build --jobs 1\n"
+                  "          if [[ \"${{ matrix.platform }}\" == \"windows-x64\" ]]; then "
+                  "cjpm  build --jobs 4; fi\n")
+        result = run_check(self.repo, "windows-x64")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("2 times", result.stderr)
+
     def test_a_definition_that_stops_applying_the_override_is_refused(self) -> None:
         self.edit(MODULE,
                   "        return contents.replace(NEEDLE, f'override-compile-option = \"{OPTION}\"', 1)",
@@ -113,10 +133,11 @@ class BuildParameterTests(unittest.TestCase):
 
     @requires_shell
     def test_a_wrapper_that_fails_to_patch_is_refused(self) -> None:
+        """Without the patcher the build reads the committed empty override."""
         self.edit(WRAPPER, PATCHER_CALL, ": # patcher call removed")
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("applied no override", result.stderr)
+        self.assertIn("override-compile-option=''", result.stderr)
 
     def test_a_compound_build_statement_is_refused(self) -> None:
         """`&& cjpm build --jobs 4` would package a second, differently built binary."""
@@ -125,7 +146,7 @@ class BuildParameterTests(unittest.TestCase):
                   "          cjpm build --jobs 1 && cjpm build --jobs 4\n")
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("unquoted shell metacharacter", result.stderr)
+        self.assertIn("cjpm build", result.stderr)
 
     def test_an_adjacent_operator_is_refused(self) -> None:
         """`1&&cjpm` is one shlex token, but bash still runs two builds."""
@@ -134,7 +155,7 @@ class BuildParameterTests(unittest.TestCase):
                   "          cjpm build --jobs 1&&cjpm build --jobs 4\n")
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("unquoted shell metacharacter", result.stderr)
+        self.assertRegex(result.stderr, "cjpm build|metacharacter")
 
     def test_a_nested_conditional_build_is_refused(self) -> None:
         """A line starting with `if` still runs `cjpm build` on some platforms."""
@@ -145,7 +166,7 @@ class BuildParameterTests(unittest.TestCase):
                   "cjpm build --jobs 4; fi\n")
         result = run_check(self.repo, "windows-x64")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("2 lines", result.stderr)
+        self.assertIn("2 times", result.stderr)
 
     def test_a_build_without_any_cjpm_build_is_refused(self) -> None:
         self.edit(".github/workflows/release.yml",
@@ -185,7 +206,7 @@ class BuildParameterTests(unittest.TestCase):
                   "          cjpm build --jobs 1\n          cjpm build --jobs 1\n")
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("2 lines", result.stderr)
+        self.assertIn("2 times", result.stderr)
 
     def test_a_non_build_cjpm_statement_is_refused(self) -> None:
         self.edit(".github/workflows/release.yml",

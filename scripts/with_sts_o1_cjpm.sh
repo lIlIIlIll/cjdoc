@@ -73,9 +73,8 @@ if [[ "$current_directory" == "${provider_fixture}" ]]; then
   patch_fixture_entry=1
 fi
 # The rewrite lives in scripts/apply_sts_override.py so CI-08.3 can run this same
-# call path rather than pattern-matching this file's text. The receipt records the
-# option actually applied.
-arguments=("${manifest}" "${backup_dir}" --receipt "${runner_temp}/cjdoc-sts-override-receipt.json")
+# call path rather than pattern-matching this file's text.
+arguments=("${manifest}" "${backup_dir}")
 if [[ "${patch_fixture_entry}" == "1" ]]; then
   arguments+=(--manifest-path "${current_directory}/cjpm.toml")
 fi
