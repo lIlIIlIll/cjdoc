@@ -69,18 +69,25 @@ class InvocationVerificationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("-O2", result.stderr)
 
-    def test_two_builds_are_refused(self) -> None:
-        self.write(record(), record(argv=["build", "--jobs", "4"]))
+    def test_a_second_build_under_another_option_is_refused(self) -> None:
+        """The acceptance gates rebuild; a differently optioned build invalidates it."""
+        self.write(record(), record(option="-O2"))
         result = self.check()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("2 `cjpm build`", result.stderr)
+        self.assertIn("-O2", result.stderr)
+
+    def test_several_builds_under_the_required_option_pass(self) -> None:
+        self.write(record(), record(), record())
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["builds"], 3)
 
     def test_no_build_at_all_is_refused(self) -> None:
         """A build that bypassed the wrapper leaves no record, which must not pass."""
         self.write(record(argv=["test"]))
         result = self.check()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("0 `cjpm build`", result.stderr)
+        self.assertIn("no `cjpm build`", result.stderr)
 
     def test_an_empty_log_is_refused(self) -> None:
         self.write()
@@ -125,7 +132,7 @@ class InvocationVerificationTests(unittest.TestCase):
         result = run([str(SCRIPT), "--log", str(self.log), "--since", "0",
                       "--binary", str(binary)])
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("not the one the recorded build produced", result.stderr)
+        self.assertIn("not the one the last recorded build produced", result.stderr)
 
     def test_a_binary_matching_the_recorded_build_passes(self) -> None:
         binary = Path(self.temporary.name) / "main"
@@ -152,10 +159,10 @@ class InvocationVerificationTests(unittest.TestCase):
 
     def test_a_second_build_disguised_in_the_text_is_still_recorded(self) -> None:
         """The record comes from what ran, so disguising the spelling changes nothing."""
-        self.write(record(), record(argv=["build", "--jobs", "4"]))
+        self.write(record(), record(option="-O2"))
         result = self.check()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("2 `cjpm build`", result.stderr)
+        self.assertIn("-O2", result.stderr)
 
     def test_the_wrapper_resolves_the_windows_executable_suffix(self) -> None:
         """Windows produces `main.exe`; the digest must be of the built file."""
@@ -173,6 +180,10 @@ class InvocationVerificationTests(unittest.TestCase):
         verify_at = candidate.index("verify_build_invocations.py")
         self.assertLess(build_at, verify_at,
                         "the invocations must be checked after the build runs")
+        # The acceptance gates rebuild, so the binding must happen at packaging time.
+        package_at = candidate.index("name: Build the deterministic package")
+        self.assertLess(package_at, verify_at,
+                        "the final binary must be bound to its build when packaged")
 
 
 if __name__ == "__main__":
