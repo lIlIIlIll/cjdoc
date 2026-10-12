@@ -140,9 +140,12 @@ internal func appendReaderRelationships(out: RenderTextBuffer,
         let display = if (relationship.kind == "extensionTarget") {
             genericTypeDisplaySpelling(relationship.targetDisplay)
         } else { relationship.targetDisplay }
+        let linkClass = if (relationship.kind == "extensionTarget") {
+            " class=\"type-link relation-target\""
+        } else { "" }
         match (relationship.targetSymbolId) {
             case Some(targetId) => match (findSymbol(index, targetId)) {
-                case Some(target) => rows.append("<a class=\"type-link relation-target\" href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(display)}</code></a>")
+                case Some(target) => rows.append("<a${linkClass} href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(display)}</code></a>")
                 // The visibility check above already discarded filtered targets.
                 case None => ()
             }
