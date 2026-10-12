@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -124,6 +125,32 @@ class BuildParameterTests(unittest.TestCase):
         build_at = candidate.index("\n          cjpm build --jobs 1")
         self.assertLess(check_at, build_at,
                         "the parameters must be validated before anything is built")
+
+    def test_the_workflows_exact_invocation_actually_runs(self) -> None:
+        """The workflow line must be executable, not merely present.
+
+        Checking only that the script is named would pass with an argument the
+        parser rejects, and with `set -euo pipefail` that stops the job before the
+        build — so no release is ever produced.
+        """
+        workflow = (self.repo / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        candidate = workflow.split("\n  release-candidate:\n", 1)[1].split("\n  publish:\n", 1)[0]
+        # Collect the invocation including its shell line continuations.
+        lines = [line.strip() for line in candidate.splitlines()]
+        starts = [index for index, line in enumerate(lines)
+                  if line.startswith("python scripts/release_build_parameters.py")]
+        self.assertEqual(len(starts), 1, "expected exactly one invocation to exercise")
+        invocation = lines[starts[0]]
+        index = starts[0]
+        while invocation.endswith("\\"):
+            index += 1
+            invocation = invocation[:-1].rstrip() + " " + lines[index]
+        invocation = invocation.replace("${{ matrix.platform }}", "linux-x64")
+        invocation = invocation.removeprefix("python ")
+        result = subprocess.run([sys.executable, *shlex.split(invocation)], cwd=self.repo,
+                                capture_output=True, text=True, timeout=600)
+        self.assertEqual(result.returncode, 0,
+                         f"the workflow invocation failed: {result.stderr.strip()}")
 
 
 if __name__ == "__main__":

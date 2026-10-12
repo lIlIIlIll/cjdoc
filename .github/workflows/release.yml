@@ -152,7 +152,7 @@ jobs:
           # reuse another candidate's test conclusions. Fail here instead of
           # letting a divergent parameter slip through unnoticed.
           python scripts/release_build_parameters.py --repo . \
-            --platform "${{ matrix.platform }}" --expect-compile-option "-O1"
+            --platform "${{ matrix.platform }}"
           cjpm build --jobs 1
           binary="target/release/bin/main"
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
