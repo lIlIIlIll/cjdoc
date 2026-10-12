@@ -1,26 +1,20 @@
 #!/usr/bin/env python3
-"""Assert the release build parameters are uniform across platforms (CI-08.3).
+"""Confirm the pinned STS build override is the one the release would apply (CI-08.3).
 
-#82 requires that if a platform needs different package build parameters, it must
-produce its **own** candidate and be accepted against it, rather than reusing
-another candidate's test conclusions. Today all three platforms share one build
-command and one override, so the requirement holds by construction — but only an
-absence enforced it. This check makes the determination explicit and fails loudly
-the moment a platform diverges without the matching work.
+This is the *observation* half of CI-08.3, and it deliberately says nothing about
+the workflow's text. It runs `scripts/with_sts_o1_cjpm.sh` with a probe `cjpm` on
+PATH and reads back the override from the manifest at the moment the wrapper
+delegates to the build — so the value comes from the artefact the release would
+consume, not from a pattern in a file.
 
-Both facts are observed, each from the thing that actually decides:
-
-* the compile option is read from **the manifest the real `cjpm` would read**, at the
-  moment the wrapper delegates to it. A probe `cjpm` on PATH stands in for the real
-  one and reports `override-compile-option` from `cjpm.toml`. The wrapper is executed
-  rather than described, so its arguments, conditions and the rewrite itself are all
-  exercised. Reading a receipt written by the patcher would not do: that is the
-  patcher's own account, and it stays correct even if the manifest is never written;
-* the build command is taken from the candidate job, where exactly one
-  `cjpm\\s+build` may appear and it must be a bare `cjpm build …` line. Whitespace is
-  normalised first, since `cjpm  build` is the same command to bash, and a build
-  nested in `if …; then …; fi` is rejected because it would run on some platforms
-  only.
+Why the command text is not checked here: enumerating ways a build can be spelled,
+nested, aliased, shadowed or referenced indirectly is not a finite job, and each
+round of it produced a false voucher. The question "did every build run with the
+vouched command and option, and is the packaged binary the one that build produced?"
+is answered from the record the wrapper writes as it runs — see
+`verify_build_invocations.py`, which is the guard. A build routed around the wrapper
+leaves no record, and one that replaced the binary changes its digest, so neither
+depends on recognising a spelling.
 
 Executing the wrapper requires a usable POSIX shell. The release candidate job runs
 on `ubuntu-22.04`, so that is the platform this is written for; where no shell can
@@ -34,7 +28,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import shlex
 import shutil
 import subprocess
@@ -44,22 +37,12 @@ import tempfile
 sys.dont_write_bytecode = True
 
 PLATFORMS = ("linux-x64", "windows-x64", "macos-arm64")
-WORKFLOW = Path(".github/workflows/release.yml")
 WRAPPER = Path("scripts/with_sts_o1_cjpm.sh")
 PATCHER = Path("scripts/apply_sts_override.py")
 OVERRIDE_MODULE = Path("scripts/sts_compile_override.py")
-CANDIDATE_JOB = "\n  release-candidate:\n"
-PUBLISH_JOB = "\n  publish:\n"
-# The option the pinned toolchain needs, and therefore the one the release requires.
 REQUIRED_OPTION = "-O1"
-# Unquoted metacharacters that turn one visible statement into several, or into a
-# conditional one. A uniform command cannot contain any of them.
-SHELL_CONTROL = "&|;<>`()"
-CJPM_BUILD = re.compile(r"\bcjpm\s+build\b")
 OBSERVED_PREFIX = "CJDOC_OBSERVED_OPTION="
 
-# A `cjpm` that reports the manifest the wrapper has just patched, exactly as the
-# real cjpm would read it. `__PYTHON__` is resolved to the running interpreter.
 PROBE_CJPM = '''#!/usr/bin/env bash
 set -euo pipefail
 case "${1:-}" in
@@ -84,91 +67,6 @@ class ParameterError(SystemExit):
             f"release build parameters: {platform} {detail}; a platform with distinct "
             "build parameters must produce its own candidate and run its own acceptance "
             "against that candidate (CI-08.3)")
-
-
-def discover_build_command(workflow: Path) -> list[str]:
-    """The single `cjpm build` the candidate job runs, or a refusal."""
-    text = workflow.read_text(encoding="utf-8")
-    if CANDIDATE_JOB not in text or PUBLISH_JOB not in text:
-        raise SystemExit(f"release build parameters: {workflow} has no expected job layout")
-    candidate = text.split(CANDIDATE_JOB, 1)[1].split(PUBLISH_JOB, 1)[0]
-    # Join shell continuations first: a multi-line invocation is still one statement,
-    # and a dangling backslash also makes shlex raise.
-    executable = candidate.replace("\\\n", " ")
-    lines = []
-    for raw in executable.splitlines():
-        stripped = raw.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        # Normalise whitespace: `cjpm  build` is the same command to bash.
-        lines.append(re.sub(r"\s+", " ", stripped))
-
-    builds = [line for line in lines if CJPM_BUILD.findall(line)]
-    if not builds:
-        raise SystemExit(
-            f"release build parameters: {workflow} candidate job never runs `cjpm build`, "
-            "so its build parameters cannot be established (CI-08.3)")
-
-    # Enumerating the ways a build can be disguised has failed repeatedly — a
-    # `name()` function, the bare `function name { }` form, an alias, the wrapper's
-    # exported real binary, a nested `bash -c` — because each round only added a
-    # pattern. The job is held to one invariant instead: apart from sourcing the
-    # wrapper, `cjpm` may be named exactly once, on the build line itself. Every
-    # disguise above adds a mention and is refused by the same rule, rather than
-    # needing its own spelling.
-    sources_wrapper = re.compile(r"\.\s+\S*with_sts_o1_cjpm\.sh")
-    mentions = [line for line in lines if re.search(r"cjpm", line, re.IGNORECASE)]
-    unexpected = [line for line in mentions if line not in builds and not sources_wrapper.fullmatch(line)]
-    if unexpected:
-        raise SystemExit(
-            f"release build parameters: the candidate job mentions `cjpm` outside the "
-            f"build line ({unexpected[0]!r}), so the command that actually runs cannot be "
-            "vouched for; keep the one bare build and let the wrapper supply everything "
-            "else (CI-08.3)")
-    builds = [line for line in builds if CJPM_BUILD.findall(line)]
-    total = sum(len(CJPM_BUILD.findall(line)) for line in builds)
-    if total != 1:
-        raise SystemExit(
-            f"release build parameters: {workflow} candidate job runs `cjpm build` "
-            f"{total} times, so the per-platform build parameters are no longer uniform "
-            "and this check cannot vouch for them (CI-08.3)")
-    statement = builds[0]
-    # `if …; then cjpm build …; fi` is a conditional build: it runs on some platforms
-    # and not others, which is exactly what the uniformity claim must exclude.
-    if not statement.startswith("cjpm build"):
-        raise SystemExit(
-            f"release build parameters: the candidate job's build line is {statement!r}, "
-            "which is not a bare `cjpm build`; a build nested in a shell construct can "
-            "run on some platforms only (CI-08.3)")
-    command = shlex.split(statement)
-    # Operators are found inside tokens too: `cjpm build --jobs 1&&cjpm build --jobs 4`
-    # has ordinary tokens, yet bash runs two builds and packages the latter.
-    control = []
-    index = 0
-    while index < len(statement):
-        character = statement[index]
-        if character in "'\"":
-            closing = statement.find(character, index + 1)
-            index = len(statement) if closing < 0 else closing + 1
-            continue
-        if character in SHELL_CONTROL:
-            control.append(character)
-        index += 1
-    if control:
-        raise SystemExit(
-            f"release build parameters: the candidate job's build statement contains the "
-            f"unquoted shell metacharacter {control[0]!r}, so it may run more than one "
-            "build or build something other than one uniform command; make the single "
-            "build explicit and give any platform that needs different parameters its "
-            "own candidate (CI-08.3)")
-    expansions = [token for token in command if "$" in token or "`" in token]
-    if expansions:
-        raise SystemExit(
-            f"release build parameters: the candidate job builds with an interpolated "
-            f"argument {expansions[0]!r}, so the effective parameters can differ per "
-            "platform; make each platform's build explicit and give it its own "
-            "candidate (CI-08.3)")
-    return command
 
 
 def usable_shell() -> str | None:
@@ -197,12 +95,7 @@ def shell_is_usable() -> bool:
 
 
 def observed_option(repo: Path) -> str:
-    """Run the wrapper and return the option the real `cjpm` would have read.
-
-    The wrapper is the artefact under test, so it is executed. A probe `cjpm` reports
-    the manifest at the moment the wrapper delegates to the build, which is the value
-    the release would actually be compiled with.
-    """
+    """Run the wrapper and return the option the real `cjpm` would have read."""
     shell = usable_shell()
     if shell is None:
         raise SystemExit(
@@ -230,20 +123,18 @@ def observed_option(repo: Path) -> str:
             "GITHUB_WORKSPACE": str(staging),
             "RUNNER_TEMP": str(runner_temp),
             "CJDOC_STS_OVERRIDE_MODULE": str(repo / "scripts"),
-            # The probe runs the real wrapper, which records its invocations. In CI the
-            # release step exports the production log path before running `check.sh`,
-            # whose unit stage runs this check — so inheriting it would append fake
-            # records to the release's evidence and the packaging verifier would then
-            # reject them. Keep the probe's records in the staging directory.
-            "CJDOC_STS_INVOCATION_LOG": str(staging / "probe-invocations.jsonl"),
             # Pin the patcher to the interpreter running this check: it is guaranteed
             # to exist, while a bare `python`/`python3` may not on every runner.
             "CJDOC_PYTHON": sys.executable,
+            # The probe runs the real wrapper, which records its invocations. In CI the
+            # release step exports the production log path before running `check.sh`,
+            # whose unit stage runs this check — inheriting it would append fake records
+            # to the release's evidence. Keep the probe's records in the staging
+            # directory.
+            "CJDOC_STS_INVOCATION_LOG": str(staging / "probe-invocations.jsonl"),
             "PATH": f"{probe_bin}{os.pathsep}{environment.get('PATH', '')}",
         })
-        # Keep the wrapper's output: without it a failure here is indistinguishable
-        # from a genuinely missing override.
-        command = f". {shlex.quote(str(repo / WRAPPER))} && cjpm build"
+        command = f". {shlex.quote(str(repo / WRAPPER))} && cjpm build --jobs 1"
         try:
             result = subprocess.run([shell, "-c", command], cwd=staging, env=environment,
                                     capture_output=True, text=True, timeout=900)
@@ -251,8 +142,9 @@ def observed_option(repo: Path) -> str:
             raise SystemExit(f"release build parameters: could not run {WRAPPER}: {error}")
         if result.returncode != 0:
             raise SystemExit(
-                f"release build parameters: {WRAPPER} exited {result.returncode} during the "
-                f"probe: {(result.stderr or result.stdout).strip()[-2000:]}")
+                f"release build parameters: {WRAPPER} exited {result.returncode} while "
+                f"observing the override: "
+                f"{(result.stderr or result.stdout).strip()[-2000:]}")
         observed = [line for line in result.stdout.splitlines()
                     if line.startswith(OBSERVED_PREFIX)]
         if len(observed) != 1:
@@ -269,13 +161,12 @@ def observed_option(repo: Path) -> str:
         return option if isinstance(option, str) else "<none>"
 
 
-def check(repo: Path, platform: str, workflow: Path) -> dict[str, object]:
+def check(repo: Path, platform: str) -> dict[str, object]:
     if platform not in PLATFORMS:
         raise SystemExit(f"release build parameters: unknown platform {platform!r}")
     for required in (WRAPPER, PATCHER, OVERRIDE_MODULE):
         if not (repo / required).is_file():
             raise SystemExit(f"release build parameters: missing {required}")
-    command = discover_build_command(workflow)
     option = observed_option(repo)
     if option != REQUIRED_OPTION:
         raise ParameterError(
@@ -285,7 +176,6 @@ def check(repo: Path, platform: str, workflow: Path) -> dict[str, object]:
     return {
         "schemaVersion": "cjdoc.release-build-parameters/1",
         "platform": platform,
-        "command": command,
         "effectiveCompileOption": option,
         "wrapper": WRAPPER.as_posix(),
         "wrapperSha256": hashlib.sha256((repo / WRAPPER).read_bytes()).hexdigest(),
@@ -297,11 +187,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument("--platform", required=True, choices=PLATFORMS)
-    parser.add_argument("--workflow", type=Path)
     args = parser.parse_args()
     repo = args.repo.resolve()
-    workflow = (args.workflow.resolve() if args.workflow else repo / WORKFLOW)
-    print(json.dumps(check(repo, args.platform, workflow), ensure_ascii=False, sort_keys=True))
+    print(json.dumps(check(repo, args.platform), ensure_ascii=False, sort_keys=True))
     return 0
 
 
