@@ -25,6 +25,10 @@ cjpm -v
 # CI-08.3 uniformity check so the two cannot drift apart.
 cjdoc_scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export CJDOC_STS_OVERRIDE_MODULE="${cjdoc_scripts_dir}"
+# When a log path is configured, the wrapper records every build/test/run it
+# performs. CI-08.3 compares that record across platforms instead of parsing the
+# workflow's text, so a build routed around `cjpm build` still shows up.
+export CJDOC_STS_INVOCATION_LOG="${CJDOC_STS_INVOCATION_LOG:-${runner_temp:-/tmp}/cjdoc-sts-invocations.jsonl}"
 
 runner_temp="${RUNNER_TEMP}"
 real_cjpm="$(command -v cjpm)"
@@ -79,10 +83,17 @@ if [[ "${patch_fixture_entry}" == "1" ]]; then
   arguments+=(--manifest-path "${current_directory}/cjpm.toml")
 fi
 "${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/apply_sts_override.py" "${arguments[@]}"
+effective="$("${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/sts_compile_override.py" "${manifest}")"
 set +e
 "${CJDOC_REAL_CJPM}" "$@"
 status=$?
 set -e
+# Recorded after the run: the digest is of the binary this invocation produced, so a
+# later build that replaced it changes what the release must match.
+"${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/log_invocation.py" \
+  --log "${CJDOC_STS_INVOCATION_LOG}" --package cjdoc \
+  --option="${effective}" --binary "${workspace}/target/release/bin/main" \
+  -- "$@" || true
 exit "${status}"
 SH
 chmod +x "${wrapper_dir}/cjpm"

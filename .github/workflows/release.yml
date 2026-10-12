@@ -153,11 +153,21 @@ jobs:
           # letting a divergent parameter slip through unnoticed.
           python scripts/release_build_parameters.py --repo . \
             --platform "${{ matrix.platform }}"
+          # Snapshot the wrapper's invocation log, then build; afterwards CI-08.3
+          # verifies what the build really ran rather than only what is written here.
+          export CJDOC_STS_INVOCATION_LOG="${RUNNER_TEMP}/cjdoc-sts-invocations.jsonl"
+          : > "${CJDOC_STS_INVOCATION_LOG}"
+          invocation_offset="$(wc -c < "${CJDOC_STS_INVOCATION_LOG}" | tr -d ' ')"
           cjpm build --jobs 1
           binary="target/release/bin/main"
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
             binary="${binary}.exe"
           fi
+          # Bind the packaged binary to the recorded build: a second build that
+          # replaced it would no longer match.
+          python scripts/verify_build_invocations.py \
+            --log "${CJDOC_STS_INVOCATION_LOG}" --since "${invocation_offset}" \
+            --binary "${binary}"
           python scripts/verify_repository_inputs.py --require-tracked \
             --legacy-binary "${binary}" >/dev/null
           python scripts/verify_release.py >/dev/null
