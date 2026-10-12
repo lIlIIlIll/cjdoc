@@ -79,6 +79,41 @@ class HtmlSignatureMappingTest {
     }
 
     @TestCase
+    func commaDefaultLiteralHighlightsWithoutBecomingAParameterSeparator(): Unit {
+        let raw = "public func accept(label!: String = \",\", item!: Token): Token"
+        let tokens = ArrayList<String>(signatureTestTokens())
+        tokens[9] = "STRING_LITERAL:3:\",\""
+        let documentation = signatureTestDocument(raw, tokens: tokens.toArray())
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
+        let spans = linkedSignatureSpans(documentation.declarations[1], links)
+        @Expect(spans.size, 2)
+        @Expect(raw[spans[0].start..spans[0].end], "Token")
+        let out = RenderTextBuffer()
+        appendLinkedSignatureHtml(out, documentation.declarations[1], links, "../")
+        let html = out.toString()
+        @Expect(html.contains("<span class=\"code-keyword\">public</span>"), true)
+        @Expect(html.contains("<span class=\"code-keyword\">func</span>"), true)
+        @Expect(html.contains("<span class=\"code-string\">&quot;,&quot;</span>"), true)
+        @Expect(html.contains("class=\"type-link signature-type-link\""), true)
+    }
+
+    @TestCase
+    func sourceLiteralMarkupIsEscapedWhenHighlighted(): Unit {
+        let literal = "\"<img src=x onerror=alert(1)>\""
+        let raw = "public func accept(label!: String = " + literal + ", item!: Token): Token"
+        let tokens = ArrayList<String>(signatureTestTokens())
+        tokens[9] = "STRING_LITERAL:${literal.size}:${literal}"
+        let documentation = signatureTestDocument(raw, tokens: tokens.toArray())
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
+        let out = RenderTextBuffer()
+        appendLinkedSignatureHtml(out, documentation.declarations[1], links, "../")
+        let html = out.toString()
+        @Expect(html.contains("<img"), false)
+        @Expect(html.contains("&lt;img src=x onerror=alert(1)&gt;"), true)
+        @Expect(html.contains("<span class=\"code-string\">"), true)
+    }
+
+    @TestCase
     func staleTokenWitnessFailsClosed(): Unit {
         let raw = "public func accept(label!: String = \"different\", item!: Token): Token"
         let documentation = signatureTestDocument(raw)
