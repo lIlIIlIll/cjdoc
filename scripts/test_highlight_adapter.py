@@ -16,7 +16,23 @@ def request(identifier, code="print(42)\n", language="python"):
     return {"protocol": PROTOCOL, "id": identifier, "language": language, "code": code}
 
 
-@unittest.skipUnless(shutil.which("node"), "Node.js is needed to execute the highlight adapter")
+PINNED_DEPENDENCY = ROOT / "tools" / "highlight" / "node_modules" / "highlight.js"
+
+
+def adapter_dependencies_installed():
+    """The adapter runs only after its pinned dependency is provisioned offline.
+
+    Ordinary repository gates must not install packages or touch the network, so
+    these cases are skipped until `tools/highlight` has been provisioned from its
+    lockfile (see tools/highlight/README.md). Skipping keeps the check honest:
+    a missing dependency is reported as unverified rather than as a pass.
+    """
+    return shutil.which("node") is not None and PINNED_DEPENDENCY.is_dir()
+
+
+@unittest.skipUnless(adapter_dependencies_installed(),
+    "Node.js and the pinned highlight.js dependency must be provisioned offline")
+
 class HighlightAdapterTest(unittest.TestCase):
     def start_worker(self):
         worker = subprocess.Popen([shutil.which("node"), str(ADAPTER)], cwd=ROOT,
