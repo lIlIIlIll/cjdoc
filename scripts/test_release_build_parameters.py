@@ -136,6 +136,25 @@ class BuildParameterTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("unquoted shell metacharacter", result.stderr)
 
+    def test_a_nested_conditional_build_is_refused(self) -> None:
+        """A line starting with `if` still runs `cjpm build` on some platforms."""
+        self.edit(".github/workflows/release.yml",
+                  "          cjpm build --jobs 1\n",
+                  "          cjpm build --jobs 1\n"
+                  "          if [[ \"${{ matrix.platform }}\" == \"windows-x64\" ]]; then "
+                  "cjpm build --jobs 4; fi\n")
+        result = run_check(self.repo, "windows-x64")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("2 lines", result.stderr)
+
+    def test_a_build_without_any_cjpm_build_is_refused(self) -> None:
+        self.edit(".github/workflows/release.yml",
+                  "          cjpm build --jobs 1\n",
+                  "          cjpm test\n")
+        result = run_check(self.repo)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("never runs", result.stderr)
+
     def test_a_quoted_metacharacter_is_allowed(self) -> None:
         """Only unquoted operators change what the shell runs."""
         self.edit(".github/workflows/release.yml",
@@ -166,7 +185,7 @@ class BuildParameterTests(unittest.TestCase):
                   "          cjpm build --jobs 1\n          cjpm build --jobs 1\n")
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("2 cjpm statements", result.stderr)
+        self.assertIn("2 lines", result.stderr)
 
     def test_a_non_build_cjpm_statement_is_refused(self) -> None:
         self.edit(".github/workflows/release.yml",
@@ -174,7 +193,7 @@ class BuildParameterTests(unittest.TestCase):
                   "          cjpm test\n")
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("plain `cjpm build`", result.stderr)
+        self.assertIn("never runs", result.stderr)
 
     def test_a_missing_wrapper_is_refused(self) -> None:
         (self.repo / WRAPPER).unlink()

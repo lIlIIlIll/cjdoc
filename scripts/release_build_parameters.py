@@ -84,38 +84,56 @@ class ParameterError(SystemExit):
 
 
 def discover_build_command(workflow: Path) -> list[str]:
-    """The single `cjpm` statement the candidate job runs, or a refusal."""
+    """The single `cjpm build` the candidate job runs, or a refusal.
+
+    The search is over every `cjpm build` token in the candidate job, not over the
+    statements whose first word is `cjpm`: a nested `if ...; then cjpm build --jobs 4;
+    fi` on its own line starts with `if`, yet bash would run it and the workflow could
+    package the binary it produces.
+    """
     text = workflow.read_text(encoding="utf-8")
     if CANDIDATE_JOB not in text or PUBLISH_JOB not in text:
         raise SystemExit(f"release build parameters: {workflow} has no expected job layout")
     candidate = text.split(CANDIDATE_JOB, 1)[1].split(PUBLISH_JOB, 1)[0]
     # Join shell continuations first: a multi-line invocation is still one statement,
-    # and splitting a dangling backslash raises in shlex.
-    joined = candidate.replace("\\\n", " ")
-    statements = [line.strip() for line in joined.splitlines()
-                  if line.strip() and not line.strip().startswith("#")]
-    calls = [line for line in statements if shlex.split(line)[0] == "cjpm"]
-    if len(calls) != 1:
+    # and a dangling backslash also makes shlex raise.
+    executable = candidate.replace("\\\n", " ")
+    lines = [line.strip() for line in executable.splitlines()
+             if line.strip() and not line.strip().startswith("#")]
+
+    builds = [line for line in lines if "cjpm build" in line]
+    if not builds:
         raise SystemExit(
-            f"release build parameters: {workflow} candidate job has {len(calls)} cjpm "
-            "statements, so the per-platform build parameters are no longer uniform and "
-            "this check cannot vouch for them (CI-08.3)")
-    command = shlex.split(calls[0])
+            f"release build parameters: {workflow} candidate job never runs `cjpm build`, "
+            "so its build parameters cannot be established (CI-08.3)")
+    if len(builds) != 1:
+        raise SystemExit(
+            f"release build parameters: {workflow} candidate job runs `cjpm build` on "
+            f"{len(builds)} lines, so the per-platform build parameters are no longer "
+            "uniform and this check cannot vouch for them (CI-08.3)")
+    statement = builds[0]
+    # `&&`, `;` or `|` would let one line run several builds; a leading `if`/`then`/
+    # `case` would run it conditionally, i.e. on some platforms and not others.
+    command = shlex.split(statement)
+    if command[0] != "cjpm":
+        raise SystemExit(
+            f"release build parameters: the candidate job's build line is {statement!r}, "
+            "which is not a bare `cjpm build`; a build nested in a shell construct can "
+            "run on some platforms only (CI-08.3)")
     if command[:2] != ["cjpm", "build"]:
         raise SystemExit(
             f"release build parameters: the candidate job's build statement is "
-            f"{calls[0]!r}, not a plain `cjpm build` (CI-08.3)")
-    # Control operators are searched for inside tokens as well: `cjpm build --jobs
-    # 1&&cjpm build --jobs 4` is a single shlex token pair, yet bash runs two builds
+            f"{statement!r}, not a plain `cjpm build` (CI-08.3)")
+    # Operators are searched for inside tokens as well: `cjpm build --jobs 1&&cjpm
+    # build --jobs 4` is one line whose tokens are ordinary, yet bash runs two builds
     # and packages the latter while this check still saw one command.
-    statement = calls[0]
     found = []
     index = 0
     while index < len(statement):
         character = statement[index]
-        if character == "'" or character == '"':
-            end = statement.find(character, index + 1)
-            index = len(statement) if end < 0 else end + 1
+        if character in "'\"":
+            closing = statement.find(character, index + 1)
+            index = len(statement) if closing < 0 else closing + 1
             continue
         if character in SHELL_CONTROL:
             found.append(character)
