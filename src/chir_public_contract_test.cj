@@ -522,6 +522,26 @@ class ChirPublicContracts {
     }
 
     @TestCase
+    func severalTypeArgumentsStayUnderTheSingleSelfWrapper(): Unit {
+        // Measured against the SDK: `Pair<Int64, String>` arrives as
+        // `Pair, Pair(args=2), Int64, String` — several arguments still hang
+        // under ONE self node, so unwrapping exactly one level is sufficient and
+        // does not rely on the argument count.
+        let nodes = ArrayList<ChirTypeNode>()
+        nodes.add(ChirTypeNode(0, "pkg.Pair"))
+        nodes.add(ChirTypeNode(1, "pkg.Pair"))
+        nodes.add(ChirTypeNode(2, "pkg.Int64"))
+        nodes.add(ChirTypeNode(2, "std.core.String"))
+        let built = chirTypeRefFromNodes(nodes, 0, "Pair < Int64 , String >")
+        @Expect(built.spelling, "Pair<Int64,String>")
+        @Expect(built.arguments.size, 2)
+        @Expect(built.arguments[0].spelling, "Int64")
+        @Expect(built.arguments[1].spelling, "String")
+        @Expect(built.arguments[0].semantic.canonical, Some("pkg.Int64"))
+        @Expect(built.arguments[1].semantic.canonical, Some("std.core.String"))
+    }
+
+    @TestCase
     func functionTypeReturnIsNotAnOuterArgumentList(): Unit {
         // The `<` belongs to the function type's return, not to the outer type,
         // so there is no outer argument to pair and no wrong link is produced.
