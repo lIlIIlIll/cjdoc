@@ -1,0 +1,59 @@
+name: Highlight development inputs
+
+# Temporary development bootstrap. Removed from the implementation PR diff.
+on:
+  push:
+    branches: [feat/issue-100-static-highlighting]
+    paths: [.github/workflows/highlight-bootstrap.yml]
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571
+        with:
+          channel: sts
+          version: '1.2.0'
+          components: stdx
+          cjv-version: v0.3.2
+      - name: Freeze public development inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/highlight-inputs"
+          mkdir -p "$out/dependencies" "$out/npm"
+          git bundle create "$out/cjdoc.bundle" HEAD
+          sdk="$(dirname "$(dirname "$(readlink -f "$(command -v cjc)")")")"
+          cjc -v
+          cjpm -v
+          tar -C "$sdk" -czf "$out/sdk.tar.gz" .
+          python3 scripts/with_stdx.py --variant static --print-env -- > "$out/stdx-env.txt"
+          stdx="$(sed -n 's/^CJDOC_STDX_PATH=//p' "$out/stdx-env.txt")"
+          test -n "$stdx"
+          tar -C "$stdx" -czf "$out/stdx.tar.gz" .
+          for spec in 'markdown db4f9527944b589db8436669f1d255192388cee2' 'yjson 54b4965dee0f0b96710cbc678ec5ec9a126b055c'; do
+            read -r name revision <<< "$spec"
+            git clone --quiet "https://github.com/lIlIIlIll/${name}.git" "${RUNNER_TEMP}/${name}"
+            git -C "${RUNNER_TEMP}/${name}" archive --format=tar.gz "$revision" > "$out/dependencies/${name}.tar.gz"
+          done
+          cd "$out/npm"
+          npm init -y >/dev/null
+          npm install --ignore-scripts --save-exact highlight.js@11.12.0
+          node -e "console.log(require('highlight.js/package.json').version)"
+          tar -czf "$out/highlight-npm.tar.gz" package.json package-lock.json node_modules
+          cd "$GITHUB_WORKSPACE"
+          git rev-parse HEAD > "$out/revision.txt"
+          sha256sum "$out"/*.gz "$out/cjdoc.bundle" > "$out/SHA256SUMS"
+          rm -rf "$out/npm"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: highlight-development-inputs-${{ github.run_id }}
+          path: ${{ runner.temp }}/highlight-inputs/
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
