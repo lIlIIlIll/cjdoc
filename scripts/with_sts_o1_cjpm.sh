@@ -21,6 +21,11 @@ fi
 cjc -v
 cjpm -v
 
+# The override rules live in scripts/sts_compile_override.py, shared with the
+# CI-08.3 uniformity check so the two cannot drift apart.
+cjdoc_scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export CJDOC_STS_OVERRIDE_MODULE="${cjdoc_scripts_dir}"
+
 runner_temp="${RUNNER_TEMP}"
 real_cjpm="$(command -v cjpm)"
 if command -v cygpath >/dev/null 2>&1; then
@@ -69,9 +74,12 @@ if [[ "$current_directory" == "${provider_fixture}" ]]; then
 fi
 python - "${manifest}" "${backup_dir}" "${patch_fixture_entry}" <<'PY'
 from pathlib import Path
+import os
 import shutil
 import sys
-import tomllib
+
+sys.path.insert(0, os.environ["CJDOC_STS_OVERRIDE_MODULE"])
+from sts_compile_override import apply_to
 
 root_manifest = Path(sys.argv[1])
 backup_dir = Path(sys.argv[2])
@@ -80,32 +88,8 @@ manifests = [(root_manifest, "cjdoc")]
 if patch_fixture_entry:
     manifests.append((Path.cwd() / "cjpm.toml", "provider_plugin_fixture"))
 
-needle = 'override-compile-option = ""'
-updates = []
-for manifest, expected_name in manifests:
-    contents = manifest.read_text(encoding="utf-8")
-    package = tomllib.loads(contents).get("package")
-    if not isinstance(package, dict) or package.get("name") != expected_name:
-        raise SystemExit(f"unexpected package manifest for {expected_name}")
-    override = package.get("override-compile-option")
-    if override == "-O1":
-        updated = contents
-    elif override == "":
-        if contents.count(needle) != 1:
-            raise SystemExit(f"expected one default override-compile-option in {manifest}")
-        updated = contents.replace(needle, 'override-compile-option = "-O1"', 1)
-    elif override is None:
-        package_header = "[package]\n"
-        if contents.count(package_header) != 1:
-            raise SystemExit(f"expected one package table in {manifest}")
-        updated = contents.replace(
-            package_header,
-            package_header + '  override-compile-option = "-O1"\n',
-            1,
-        )
-    else:
-        raise SystemExit(f"unexpected compile override for {expected_name}")
-    updates.append((manifest, updated))
+updates = [(manifest, apply_to(manifest.read_text(encoding="utf-8"), expected))
+           for manifest, expected in manifests]
 
 backup_dir.mkdir(parents=True, exist_ok=True)
 paths_file = backup_dir / "manifest-paths"

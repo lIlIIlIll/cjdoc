@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Contract tests for the CI-08.3 uniform build-parameter check.
 
-These exercise the check against the *real* repository artefacts — a copy of the
-tree is mutated and the check is run in a subprocess, because the interesting
-failures (a wrapper that stops applying the override, a workflow that gains a
-platform-specific argument) can only be observed behaviourally.
+These exercise the check against a real copy of the repository with targeted
+mutations. They are deliberately shell-free: the release matrix builds on Windows,
+where `bash` may only resolve to an unconfigured WSL, so the check must not depend
+on executing the wrapper.
 """
 
 from __future__ import annotations
@@ -20,7 +20,8 @@ import unittest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = PROJECT_ROOT / "scripts/release_build_parameters.py"
-PROBE_MARKER = "CJDOC_PROBE_OVERRIDE="
+MODULE = "scripts/sts_compile_override.py"
+WRAPPER = "scripts/with_sts_o1_cjpm.sh"
 
 
 def run_check(repo: Path, platform: str = "linux-x64",
@@ -32,7 +33,7 @@ def run_check(repo: Path, platform: str = "linux-x64",
 
 
 class BuildParameterTests(unittest.TestCase):
-    """The check must confirm uniformity from real artefacts, and refuse to guess."""
+    """Uniformity must be established from real artefacts, and refused when unprovable."""
 
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
@@ -54,71 +55,67 @@ class BuildParameterTests(unittest.TestCase):
                 result = run_check(self.repo, platform)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 payload = json.loads(result.stdout)
-                # The option comes from probing the wrapper, not from the manifest.
+                # The option is computed through the wrapper's own function, not
+                # read from cjpm.toml, whose override is deliberately empty.
                 self.assertEqual(payload["effectiveCompileOption"], "-O1")
                 self.assertEqual(payload["command"], ["cjpm", "build", "--jobs", "1"])
 
-    def test_the_probe_leaves_the_manifest_untouched(self) -> None:
-        before = (self.repo / "cjpm.toml").read_bytes()
-        self.assertEqual(run_check(self.repo).returncode, 0)
-        self.assertEqual((self.repo / "cjpm.toml").read_bytes(), before)
+    def test_the_check_does_not_depend_on_a_shell(self) -> None:
+        """Windows has no guaranteed bash, so the check must not exec one."""
+        source = SCRIPT.read_text(encoding="utf-8")
+        self.assertNotIn("subprocess", source)
+        self.assertNotIn("os.system", source)
+        # The shell this check must not need is named only to justify avoiding it.
+        self.assertLessEqual(source.count("bash"), 1)
 
-    def test_a_wrapper_that_stops_applying_the_override_is_refused(self) -> None:
-        # Comments still mention -O1, so a text search would pass; only running the
-        # wrapper reveals that the override is no longer applied.
-        self.edit("scripts/with_sts_o1_cjpm.sh",
-                  """        if contents.count(needle) != 1:
-            raise SystemExit(f"expected one default override-compile-option in {manifest}")
-        updated = contents.replace(needle, 'override-compile-option = "-O1"', 1)""",
-                  """        updated = contents""")
-        result = run_check(self.repo)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("override-compile-option=''", result.stderr)
-
-    def test_a_wrapper_that_applies_a_different_option_is_refused(self) -> None:
-        # Rewrite the applied option only; the wrapper still runs to completion.
-        self.edit("scripts/with_sts_o1_cjpm.sh",
-                  """updated = contents.replace(needle, 'override-compile-option = "-O1"', 1)""",
-                  """updated = contents.replace(needle, 'override-compile-option = "-O2"', 1)""")
+    def test_a_different_applied_option_is_refused(self) -> None:
+        # The shared definition is the only way the effective option can change,
+        # so changing it there must be caught.
+        self.edit(MODULE, 'OPTION = "-O1"', 'OPTION = "-O2"')
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("-O2", result.stderr)
 
+    def test_the_wrapper_must_delegate_to_the_shared_definition(self) -> None:
+        """A second copy of the rewrite could drift from what the check computes."""
+        self.edit(WRAPPER,
+                  "from sts_compile_override import apply_to",
+                  "def apply_to(contents, expected_name):\n        return contents")
+        result = run_check(self.repo)
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_the_wrapper_may_not_carry_its_own_rewrite(self) -> None:
+        self.edit(WRAPPER,
+                  "updates = [(manifest, apply_to(manifest.read_text(encoding=\"utf-8\"), expected))",
+                  "updates = [(manifest, manifest.read_text(encoding=\"utf-8\").replace("
+                  "'override-compile-option = \"\"', 'override-compile-option = \"-O1\"', 1))")
+        result = run_check(self.repo)
+        self.assertNotEqual(result.returncode, 0)
+
     def test_a_platform_specific_argument_is_refused(self) -> None:
-        # The invocation still starts with the uniform prefix the old check
+        # The invocation still starts with the uniform prefix the first version
         # searched for, but the effective command now differs per platform.
         self.edit(".github/workflows/release.yml",
-                  '          cjpm build --jobs 1\n',
-                  '          extra=()\n'
-                  '          if [[ "${{ matrix.platform }}" == "macos-arm64" ]]; then\n'
-                  '            extra+=("--cfg" "target=apple")\n'
-                  '          fi\n'
-                  '          cjpm build --jobs 1 ${extra[@]+"${extra[@]}"}\n')
+                  "          cjpm build --jobs 1\n",
+                  "          extra=()\n"
+                  "          if [[ \"${{ matrix.platform }}\" == \"macos-arm64\" ]]; then\n"
+                  "            extra+=(\"--cfg\" \"target=apple\")\n"
+                  "          fi\n"
+                  "          cjpm build --jobs 1 ${extra[@]+\"${extra[@]}\"}\n")
         result = run_check(self.repo, "macos-arm64")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("interpolated argument", result.stderr)
 
     def test_two_build_commands_in_the_candidate_job_are_refused(self) -> None:
         self.edit(".github/workflows/release.yml",
-                  '          cjpm build --jobs 1\n',
-                  '          cjpm build --jobs 1\n          cjpm build --jobs 1\n')
+                  "          cjpm build --jobs 1\n",
+                  "          cjpm build --jobs 1\n          cjpm build --jobs 1\n")
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("2 cjpm commands", result.stderr)
 
-    def test_the_probe_uses_the_configured_interpreter(self) -> None:
-        """`python3` is a Unix alias and is absent on the Windows release job."""
-        source = SCRIPT.read_text(encoding="utf-8")
-        probe = source.split("PROBE_CJPM = ", 1)[1].split(chr(39) * 3, 2)[1]
-        self.assertNotIn("python3 ", probe,
-                         "the probe must not assume a Unix-style interpreter name")
-        self.assertIn("{{interpreter}}", probe)
-        # The placeholder must never survive into the executed command.
-        result = run_check(self.repo)
-        self.assertEqual(result.returncode, 0, result.stderr)
-
     def test_a_missing_wrapper_is_refused(self) -> None:
-        (self.repo / "scripts/with_sts_o1_cjpm.sh").unlink()
+        (self.repo / WRAPPER).unlink()
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("missing", result.stderr)
@@ -126,6 +123,17 @@ class BuildParameterTests(unittest.TestCase):
     def test_an_unknown_platform_is_refused(self) -> None:
         result = run_check(self.repo, "solaris-sparc")
         self.assertNotEqual(result.returncode, 0)
+
+    def test_a_manifest_with_an_unexpected_option_is_refused(self) -> None:
+        self.edit("cjpm.toml", 'override-compile-option = ""',
+                  'override-compile-option = "-O3"')
+        result = run_check(self.repo)
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_the_probe_leaves_the_manifest_untouched(self) -> None:
+        before = (self.repo / "cjpm.toml").read_bytes()
+        self.assertEqual(run_check(self.repo).returncode, 0)
+        self.assertEqual((self.repo / "cjpm.toml").read_bytes(), before)
 
     def test_the_release_workflow_calls_the_check_before_building(self) -> None:
         workflow = (self.repo / ".github/workflows/release.yml").read_text(encoding="utf-8")
@@ -146,7 +154,6 @@ class BuildParameterTests(unittest.TestCase):
         """
         workflow = (self.repo / ".github/workflows/release.yml").read_text(encoding="utf-8")
         candidate = workflow.split("\n  release-candidate:\n", 1)[1].split("\n  publish:\n", 1)[0]
-        # Collect the invocation including its shell line continuations.
         lines = [line.strip() for line in candidate.splitlines()]
         starts = [index for index, line in enumerate(lines)
                   if line.startswith("python scripts/release_build_parameters.py")]
