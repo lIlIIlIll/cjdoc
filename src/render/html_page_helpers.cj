@@ -273,7 +273,7 @@ internal func appendSymbolArticle(out: RenderTextBuffer,
     out.append("<article class=\"symbol-entry\" id=\"${symbolAnchor(symbol)}\"><${titleTag} class=\"symbol-title\" data-cjdoc-toc-role=\"${tocRole}\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\">")
     if (linkTitle) {
         out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, symbol))}\"><code>${escapeHtml(readerQualifiedName(symbol))}</code></a>")
-    } else { out.append("<code>${escapeHtml(symbol.qualifiedName)}</code>") }
+    } else { out.append("<code>${escapeHtml(readerQualifiedName(symbol))}</code>") }
     out.append("</${titleTag}>\n")
     appendSymbolMetadata(out, index, symbol, rootPrefix, assetLookup, typeLinkIndex,
         locale: locale)
