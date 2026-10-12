@@ -89,10 +89,16 @@ set +e
 status=$?
 set -e
 # Recorded after the run: the digest is of the binary this invocation produced, so a
-# later build that replaced it changes what the release must match.
+# later build that replaced it changes what the release must match. Windows produces
+# `main.exe`, so the suffix is resolved now that the build has run, as the build gate
+# does — checking before the build would always miss it.
+cjdoc_binary="${workspace}/target/release/bin/main"
+if [[ -f "${cjdoc_binary}.exe" ]]; then
+  cjdoc_binary="${cjdoc_binary}.exe"
+fi
 "${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/log_invocation.py" \
   --log "${CJDOC_STS_INVOCATION_LOG}" --package cjdoc \
-  --option="${effective}" --binary "${workspace}/target/release/bin/main" \
+  --option="${effective}" --binary "${cjdoc_binary}" \
   -- "$@" || true
 exit "${status}"
 SH

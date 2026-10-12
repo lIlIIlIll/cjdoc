@@ -150,6 +150,21 @@ class InvocationVerificationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("recorded no produced binary", result.stderr)
 
+    def test_a_second_build_disguised_in_the_text_is_still_recorded(self) -> None:
+        """The record comes from what ran, so disguising the spelling changes nothing."""
+        self.write(record(), record(argv=["build", "--jobs", "4"]))
+        result = self.check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("2 `cjpm build`", result.stderr)
+
+    def test_the_wrapper_resolves_the_windows_executable_suffix(self) -> None:
+        """Windows produces `main.exe`; the digest must be of the built file."""
+        wrapper = (PROJECT_ROOT / "scripts" / "with_sts_o1_cjpm.sh").read_text(encoding="utf-8")
+        self.assertIn("main.exe", wrapper)
+        # The suffix is resolved after the build, not before it exists.
+        run_at = wrapper.index('"${CJDOC_REAL_CJPM}" "$@"')
+        self.assertLess(run_at, wrapper.index("cjdoc_binary="))
+
     def test_the_workflow_verifies_the_invocations_after_the_build(self) -> None:
         workflow = (PROJECT_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         candidate = workflow.split("\n  release-candidate:\n", 1)[1].split("\n  publish:\n", 1)[0]
