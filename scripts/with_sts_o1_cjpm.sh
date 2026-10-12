@@ -90,26 +90,38 @@ fi
 # The manifest of the package being built, patched by the step above when it is the
 # workspace root. `--declared` reports what the manifest holds now, which is what this
 # `cjpm` will read — an auxiliary project's manifest is not patched and reports none.
-effective="$("${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/sts_compile_override.py" \
-  --declared "${current_directory}/cjpm.toml")"
+case "${1:-}" in
+  build) record_invocation=1 ;;
+  # `test` and `run` are not the release's build; recording them would also make a
+  # failing logger able to break the suite, so only the build is recorded.
+  *) record_invocation=0 ;;
+esac
 set +e
 "${CJDOC_REAL_CJPM}" "$@"
 status=$?
 set -e
-# Recorded after the run: the digest is of the binary this invocation produced, so a
-# later build that replaced it changes what the release must match. Windows produces
-# `main.exe`, so the suffix is resolved now that the build has run, as the build gate
-# does — checking before the build would always miss it.
-cjdoc_binary="${workspace}/target/release/bin/main"
-if [[ -f "${cjdoc_binary}.exe" ]]; then
-  cjdoc_binary="${cjdoc_binary}.exe"
+if [[ "${record_invocation}" == "1" ]]; then
+  # The option is read back from the manifest this invocation actually consumes,
+  # which is not the workspace root when cjpm runs inside an auxiliary project such
+  # as tools/chir-worker. Reporting the root's value would record an -O1 build whose
+  # `cjpm` in fact read an unpatched manifest.
+  effective="$("${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/sts_compile_override.py" \
+    --declared "${current_directory}/cjpm.toml")"
+  # Recorded after the run: the digest is of the binary this invocation produced, so a
+  # later build that replaced it changes what the release must match. Windows produces
+  # `main.exe`, so the suffix is resolved now that the build has run, as the build gate
+  # does — checking before the build would always miss it.
+  cjdoc_binary="${workspace}/target/release/bin/main"
+  if [[ -f "${cjdoc_binary}.exe" ]]; then
+    cjdoc_binary="${cjdoc_binary}.exe"
+  fi
+  # Not best-effort: if the record is incomplete, the release evidence is incomplete,
+  # and a later rebuild could then go unrecorded while its digest still matched.
+  "${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/log_invocation.py" \
+    --log "${CJDOC_STS_INVOCATION_LOG}" --manifest "${current_directory}/cjpm.toml" \
+    --option="${effective}" --binary "${cjdoc_binary}" \
+    -- "$@"
 fi
-# Not best-effort: if the record is incomplete, the release evidence is incomplete,
-# and a later rebuild could then go unrecorded while its digest still matched.
-"${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/log_invocation.py" \
-  --log "${CJDOC_STS_INVOCATION_LOG}" --manifest "${current_directory}/cjpm.toml" \
-  --option="${effective}" --binary "${cjdoc_binary}" \
-  -- "$@"
 exit "${status}"
 SH
 chmod +x "${wrapper_dir}/cjpm"

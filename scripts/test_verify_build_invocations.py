@@ -218,6 +218,15 @@ class InvocationVerificationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("-O2", result.stderr)
 
+    def test_the_wrapper_records_only_builds(self) -> None:
+        """Recording `test`/`run` would let a logger failure break the suite."""
+        wrapper = (PROJECT_ROOT / "scripts" / "with_sts_o1_cjpm.sh").read_text(encoding="utf-8")
+        self.assertIn('build) record_invocation=1', wrapper)
+        self.assertIn("record_invocation", wrapper)
+        # The logger is guarded by the flag, so a non-build invocation never reaches it.
+        guard = wrapper.index('if [[ "${record_invocation}" == "1" ]]')
+        self.assertLess(guard, wrapper.index("log_invocation.py"))
+
     def test_the_wrapper_resolves_the_windows_executable_suffix(self) -> None:
         """Windows produces `main.exe`; the digest must be of the built file."""
         wrapper = (PROJECT_ROOT / "scripts" / "with_sts_o1_cjpm.sh").read_text(encoding="utf-8")
