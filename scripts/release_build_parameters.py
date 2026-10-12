@@ -163,7 +163,13 @@ def observed_receipt(repo: Path) -> dict:
             "release candidate job (CI-08.3)")
     manifest = (repo / "cjpm.toml").read_bytes()
     with tempfile.TemporaryDirectory(prefix="cjdoc-build-params-") as temporary:
-        staging = Path(temporary)
+        # Resolve symlinks: the wrapper decides whether to patch by comparing `$PWD`
+        # with `$GITHUB_WORKSPACE`, and on macOS `getcwd()` reports the physical path
+        # (`/private/var/...`) while `tempfile` hands out the aliased one (`/var/...`).
+        # Left unresolved the two never match, the wrapper passes straight through to
+        # the real `cjpm`, and no override is applied — which is how this failed on the
+        # macOS leg while Linux passed.
+        staging = Path(temporary).resolve()
         (staging / "cjpm.toml").write_bytes(manifest)
         runner_temp = staging / "runner-temp"
         probe_bin = runner_temp / "probe-bin"
@@ -183,7 +189,10 @@ def observed_receipt(repo: Path) -> dict:
             "CJDOC_PYTHON": sys.executable,
             "PATH": f"{probe_bin}{os.pathsep}{environment.get('PATH', '')}",
         })
-        command = (f". {shlex.quote(str(repo / WRAPPER))} >/dev/null 2>&1 && cjpm build")
+        # Keep the wrapper's output: without it a failure here is indistinguishable
+        # from a genuinely missing override, which is exactly how the macOS leg
+        # failed once already.
+        command = (f". {shlex.quote(str(repo / WRAPPER))} && cjpm build")
         try:
             result = subprocess.run([shell, "-c", command], cwd=staging, env=environment,
                                     capture_output=True, text=True, timeout=900)
@@ -192,7 +201,7 @@ def observed_receipt(repo: Path) -> dict:
         if result.returncode != 0:
             raise SystemExit(
                 f"release build parameters: {WRAPPER} exited {result.returncode} during the "
-                f"probe: {result.stderr.strip() or result.stdout.strip()}")
+                f"probe: {(result.stderr or result.stdout).strip()[-2000:]}")
         if "CJDOC_RECEIPT_MISSING" in result.stdout:
             raise SystemExit(
                 f"release build parameters: {WRAPPER} applied no override during the probe, "
@@ -202,7 +211,8 @@ def observed_receipt(repo: Path) -> dict:
         if len(found) != 1:
             raise SystemExit(
                 f"release build parameters: could not read the override receipt from "
-                f"{WRAPPER}: {result.stdout.strip() or result.stderr.strip()}")
+                f"{WRAPPER}; wrapper output was: "
+                f"{(result.stdout + result.stderr).strip()[-2000:]}")
         receipt = json.loads(found[0].split("=", 1)[1])
         # The rewrite must leave the tree it touched as it found it.
         if (staging / "cjpm.toml").read_bytes() != manifest:
