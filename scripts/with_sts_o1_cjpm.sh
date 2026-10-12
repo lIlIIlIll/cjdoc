@@ -72,34 +72,13 @@ provider_fixture="${workspace}/tests/fixtures/projects/provider_plugin"
 if [[ "$current_directory" == "${provider_fixture}" ]]; then
   patch_fixture_entry=1
 fi
-python - "${manifest}" "${backup_dir}" "${patch_fixture_entry}" <<'PY'
-from pathlib import Path
-import os
-import shutil
-import sys
-
-sys.path.insert(0, os.environ["CJDOC_STS_OVERRIDE_MODULE"])
-from sts_compile_override import apply_to
-
-root_manifest = Path(sys.argv[1])
-backup_dir = Path(sys.argv[2])
-patch_fixture_entry = sys.argv[3] == "1"
-manifests = [(root_manifest, "cjdoc")]
-if patch_fixture_entry:
-    manifests.append((Path.cwd() / "cjpm.toml", "provider_plugin_fixture"))
-
-updates = [(manifest, apply_to(manifest.read_text(encoding="utf-8"), expected))
-           for manifest, expected in manifests]
-
-backup_dir.mkdir(parents=True, exist_ok=True)
-paths_file = backup_dir / "manifest-paths"
-for index, (manifest, _) in enumerate(updates):
-    shutil.copy2(manifest, backup_dir / f"{index}.toml")
-    with paths_file.open("ab") as stream:
-        stream.write(str(manifest).encode("utf-8") + b"\0")
-for manifest, contents in updates:
-    manifest.write_text(contents, encoding="utf-8")
-PY
+# The rewrite lives in scripts/apply_sts_override.py so CI-08.3 can exercise this
+# same call path rather than pattern-matching this file's text.
+args=("${manifest}" "${backup_dir}" "${patch_fixture_entry}")
+if [[ "${patch_fixture_entry}" == "1" ]]; then
+  args+=(--manifest-path "${current_directory}/cjpm.toml")
+fi
+"${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/apply_sts_override.py" "${args[@]}"
 set +e
 "${CJDOC_REAL_CJPM}" "$@"
 status=$?

@@ -30,7 +30,9 @@ import json
 from pathlib import Path
 import importlib.util
 import shlex
+import subprocess
 import sys
+import tempfile
 
 sys.dont_write_bytecode = True
 
@@ -57,6 +59,7 @@ def load_override_module(repo: Path):
 PLATFORMS = ("linux-x64", "windows-x64", "macos-arm64")
 WORKFLOW = Path(".github/workflows/release.yml")
 WRAPPER = Path("scripts/with_sts_o1_cjpm.sh")
+PATCHER = Path("scripts/apply_sts_override.py")
 CANDIDATE_JOB = "\n  release-candidate:\n"
 PUBLISH_JOB = "\n  publish:\n"
 ROOT_PACKAGE = "cjdoc"
@@ -101,32 +104,60 @@ def discover_build_command(workflow: Path) -> list[str]:
     return command
 
 
-def verify_wrapper_delegates(wrapper: Path) -> None:
-    """The wrapper must apply the override through the shared definition.
+def wrapper_patch_command(wrapper: Path) -> str:
+    """The executable line by which the wrapper applies the override.
 
-    This check computes the effective option with `sts_compile_override.apply_to`,
-    so its verdict is only meaningful while the wrapper calls that same function.
-    A wrapper that grew its own copy of the rewrite could drift from it — and the
-    check would keep reporting a uniform option that is not what gets built.
+    The wrapper must delegate to `scripts/apply_sts_override.py`; if it stops doing
+    so, or grows its own inline rewrite, the option this check computes is no longer
+    the option that gets built and the uniformity claim would be worthless.
     """
     text = wrapper.read_text(encoding="utf-8")
-    imports = [line for line in text.splitlines()
-               if line.lstrip().startswith(("from sts_compile_override import",
-                                            "import sts_compile_override"))]
-    if not imports:
+    lines = [line.strip() for line in text.splitlines()
+             if line.strip() and not line.lstrip().startswith("#")]
+    delegates = [line for line in lines if PATCHER.name in line]
+    if len(delegates) != 1:
         raise SystemExit(
-            f"release build parameters: {WRAPPER} no longer applies the override through "
-            "scripts/sts_compile_override.py, so the effective option cannot be "
-            "established and the platforms cannot be shown to be uniform (CI-08.3)")
-    # A mention in prose is fine (the header explains the override); an actual
-    # rewrite is not, so only executable lines are inspected.
-    executable = [line for line in text.splitlines()
-                  if "override-compile-option" in line and not line.lstrip().startswith("#")]
-    if executable:
+            f"release build parameters: {WRAPPER} does not invoke {PATCHER} exactly once, "
+            "so the effective option cannot be established and the platforms cannot be "
+            "shown to be uniform (CI-08.3)")
+    inline = [line for line in lines if "override-compile-option" in line
+              and PATCHER.name not in line]
+    if inline:
         raise SystemExit(
             f"release build parameters: {WRAPPER} contains its own override rewrite in "
             "addition to the shared definition; the two can drift, so the uniformity "
             "claim is unprovable (CI-08.3)")
+    return delegates[0]
+
+
+def effective_option(repo: Path, wrapper: Path, override) -> str:
+    """Run the wrapper's own patch command and read back what it applies.
+
+    Executing the command — rather than searching the wrapper's text, or calling the
+    shared function directly — means the value is taken from the real call path, in
+    Python, so it also works on the Windows and macOS release legs.
+    """
+    wrapper_patch_command(wrapper)
+    manifest = repo / "cjpm.toml"
+    before = manifest.read_bytes()
+    with tempfile.TemporaryDirectory(prefix="cjdoc-build-params-") as temporary:
+        staging = Path(temporary)
+        target = staging / "cjpm.toml"
+        target.write_bytes(before)
+        backup_dir = staging / "backup"
+        command = [sys.executable, str(repo / PATCHER), str(target), str(backup_dir)]
+        result = subprocess.run(command, cwd=repo, capture_output=True, text=True,
+                                timeout=600)
+        if result.returncode != 0:
+            raise SystemExit(
+                f"release build parameters: {PATCHER} failed with {result.returncode}: "
+                f"{result.stderr.strip() or result.stdout.strip()}")
+        option = override.applied_option(target.read_text(encoding="utf-8"), ROOT_PACKAGE)
+        if target.read_bytes() == before:
+            raise SystemExit(
+                f"release build parameters: {PATCHER} applied no override to cjpm.toml, so "
+                "the release would build with the committed default (CI-08.3)")
+    return option
 
 
 def check(repo: Path, platform: str, workflow: Path) -> dict[str, object]:
@@ -135,14 +166,14 @@ def check(repo: Path, platform: str, workflow: Path) -> dict[str, object]:
     if not (repo / WRAPPER).is_file():
         raise SystemExit(f"release build parameters: missing {WRAPPER}")
     command = discover_build_command(workflow)
-    verify_wrapper_delegates(repo / WRAPPER)
     override = load_override_module(repo)
-    manifest = repo / "cjpm.toml"
-    effective = override.applied_option(manifest.read_text(encoding="utf-8"), ROOT_PACKAGE)
-    # Two independent facts: the option the wrapper applies must be the one the
-    # release workflow and #82 mandate, and the applied value must equal it. Without
-    # the first the shared definition could change and every platform would still
-    # agree with itself.
+    if not (repo / PATCHER).is_file():
+        raise SystemExit(f"release build parameters: missing {PATCHER}")
+    effective = effective_option(repo, repo / WRAPPER, override)
+    # Two independent facts: the definition the release mandates must still be the
+    # required option, and the value the wrapper's own call path produces must equal
+    # it. Without the first, the shared definition could change and every platform
+    # would still agree with itself.
     if override.OPTION != REQUIRED_OPTION:
         raise ParameterError(
             platform,

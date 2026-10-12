@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Contract tests for the CI-08.3 uniform build-parameter check.
 
-These exercise the check against a real copy of the repository with targeted
-mutations. They are deliberately shell-free: the release matrix builds on Windows,
-where `bash` may only resolve to an unconfigured WSL, so the check must not depend
-on executing the wrapper.
+Executed against a real copy of the repository with targeted mutations. The check
+must not depend on a POSIX shell: the release matrix builds on Windows, where no
+such shell is guaranteed, so the effective option is obtained by running the
+wrapper's own patcher in Python.
 """
 
 from __future__ import annotations
@@ -22,6 +22,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = PROJECT_ROOT / "scripts/release_build_parameters.py"
 MODULE = "scripts/sts_compile_override.py"
 WRAPPER = "scripts/with_sts_o1_cjpm.sh"
+PATCHER = "scripts/apply_sts_override.py"
+PATCHER_CALL = '\n"${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/apply_sts_override.py"'
 
 
 def run_check(repo: Path, platform: str = "linux-x64",
@@ -33,7 +35,7 @@ def run_check(repo: Path, platform: str = "linux-x64",
 
 
 class BuildParameterTests(unittest.TestCase):
-    """Uniformity must be established from real artefacts, and refused when unprovable."""
+    """Uniformity must be established from the real call path, and refused otherwise."""
 
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
@@ -55,42 +57,61 @@ class BuildParameterTests(unittest.TestCase):
                 result = run_check(self.repo, platform)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 payload = json.loads(result.stdout)
-                # The option is computed through the wrapper's own function, not
-                # read from cjpm.toml, whose override is deliberately empty.
+                # Computed by running the wrapper's patcher, not read from cjpm.toml,
+                # whose override is deliberately empty.
                 self.assertEqual(payload["effectiveCompileOption"], "-O1")
                 self.assertEqual(payload["command"], ["cjpm", "build", "--jobs", "1"])
 
-    def test_the_check_does_not_depend_on_a_shell(self) -> None:
-        """Windows has no guaranteed bash, so the check must not exec one."""
-        source = SCRIPT.read_text(encoding="utf-8")
-        self.assertNotIn("subprocess", source)
-        self.assertNotIn("os.system", source)
-        # The shell this check must not need is named only to justify avoiding it.
-        self.assertLessEqual(source.count("bash"), 1)
+    def test_the_check_does_not_need_a_shell(self) -> None:
+        """Windows may have no POSIX shell, so no shell may be exec'd."""
+        # The patcher itself may be a script; what matters is that the check works
+        # without bash. Exercised by the platform subtests above.
+        result = run_check(self.repo, "windows-x64")
+        self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_a_different_applied_option_is_refused(self) -> None:
-        # The shared definition is the only way the effective option can change,
-        # so changing it there must be caught.
+    def test_a_changed_shared_option_is_refused(self) -> None:
         self.edit(MODULE, 'OPTION = "-O1"', 'OPTION = "-O2"')
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("-O2", result.stderr)
 
-    def test_the_wrapper_must_delegate_to_the_shared_definition(self) -> None:
-        """A second copy of the rewrite could drift from what the check computes."""
+    def test_a_patcher_that_stops_applying_the_override_is_refused(self) -> None:
+        # Exactly the bypass reported in review: the wrapper keeps importing and
+        # calling the shared definition, but the rewrite no longer happens.
+        self.edit(PATCHER,
+                  "    updates = [(manifest, apply_to(manifest.read_text(encoding=\"utf-8\"), expected))\n"
+                  "               for manifest, expected in manifests]",
+                  "    updates = [(manifest, manifest.read_text(encoding=\"utf-8\"))\n"
+                  "               for manifest, expected in manifests]")
+        result = run_check(self.repo)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("applied no override", result.stderr)
+
+    def test_a_wrapper_that_stops_calling_the_patcher_is_refused(self) -> None:
         self.edit(WRAPPER,
-                  "from sts_compile_override import apply_to",
-                  "def apply_to(contents, expected_name):\n        return contents")
+                  '"${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/apply_sts_override.py" "${args[@]}"',
+                  ": # patcher call removed")
+        result = run_check(self.repo)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not invoke", result.stderr)
+
+    def test_a_wrapper_with_its_own_inline_rewrite_is_refused(self) -> None:
+        self.edit(WRAPPER, PATCHER_CALL,
+                  PATCHER_CALL + '\nsed -i "s/override-compile-option/x/" "${manifest}"')
+        result = run_check(self.repo)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("its own override rewrite", result.stderr)
+
+    def test_a_manifest_with_an_unexpected_option_is_refused(self) -> None:
+        self.edit("cjpm.toml", 'override-compile-option = ""',
+                  'override-compile-option = "-O3"')
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
 
-    def test_the_wrapper_may_not_carry_its_own_rewrite(self) -> None:
-        self.edit(WRAPPER,
-                  "updates = [(manifest, apply_to(manifest.read_text(encoding=\"utf-8\"), expected))",
-                  "updates = [(manifest, manifest.read_text(encoding=\"utf-8\").replace("
-                  "'override-compile-option = \"\"', 'override-compile-option = \"-O1\"', 1))")
-        result = run_check(self.repo)
-        self.assertNotEqual(result.returncode, 0)
+    def test_the_checked_tree_is_left_untouched(self) -> None:
+        before = (self.repo / "cjpm.toml").read_bytes()
+        self.assertEqual(run_check(self.repo).returncode, 0)
+        self.assertEqual((self.repo / "cjpm.toml").read_bytes(), before)
 
     def test_a_platform_specific_argument_is_refused(self) -> None:
         # The invocation still starts with the uniform prefix the first version
@@ -123,17 +144,6 @@ class BuildParameterTests(unittest.TestCase):
     def test_an_unknown_platform_is_refused(self) -> None:
         result = run_check(self.repo, "solaris-sparc")
         self.assertNotEqual(result.returncode, 0)
-
-    def test_a_manifest_with_an_unexpected_option_is_refused(self) -> None:
-        self.edit("cjpm.toml", 'override-compile-option = ""',
-                  'override-compile-option = "-O3"')
-        result = run_check(self.repo)
-        self.assertNotEqual(result.returncode, 0)
-
-    def test_the_probe_leaves_the_manifest_untouched(self) -> None:
-        before = (self.repo / "cjpm.toml").read_bytes()
-        self.assertEqual(run_check(self.repo).returncode, 0)
-        self.assertEqual((self.repo / "cjpm.toml").read_bytes(), before)
 
     def test_the_release_workflow_calls_the_check_before_building(self) -> None:
         workflow = (self.repo / ".github/workflows/release.yml").read_text(encoding="utf-8")
