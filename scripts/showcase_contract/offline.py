@@ -10,10 +10,11 @@ import hashlib
 import os
 from pathlib import Path
 import stat
+import sys
 import tempfile
 import zipfile
 
-from .site import ContractError, Site, canonical_json, relative_path
+from .site import ContractError, Site, canonical_json, relative_path, symlinked_parent
 
 ARCHIVE = "downloads/showcase-offline.zip"
 MAX_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
@@ -61,7 +62,9 @@ def extract_archive(archive_path: Path, destination: Path, expected: Site) -> Si
     """
     if destination.exists() or destination.is_symlink():
         raise ContractError("offline extraction requires a fresh directory")
-    if any(parent.is_symlink() for parent in destination.absolute().parents):
+    # A symlink component would make the extraction path untrustworthy, but the
+    # macOS system aliases are legitimate, so they are normalized first.
+    if symlinked_parent(destination) is not None:
         raise ContractError("symlink in offline extraction destination")
     resolved = destination.resolve()
     if resolved.is_relative_to(expected.root) or expected.root.is_relative_to(resolved):

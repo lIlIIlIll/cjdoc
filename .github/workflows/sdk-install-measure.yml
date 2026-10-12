@@ -1,0 +1,101 @@
+name: SDK install measurement
+
+# Measurement only. This workflow never changes the default SDK install path; it
+# collects the paired cold/warm samples needed before any such change is proposed.
+on:
+  workflow_dispatch:
+    inputs:
+      cycles:
+        description: Successful warm samples required per variant (minimum 5)
+        type: string
+        default: "5"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-install-measure-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUTF8: "1"
+
+jobs:
+  measure:
+    name: Measure both combined cache shapes
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Download the pinned compiler and stdx archives
+        env:
+          CANGJIE_SDK_URL: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.2.0.tar.gz&objectKey=6ab1e26eece1f87ff5befa73"
+          CANGJIE_STDX_URL: "https://gitcode.com/Cangjie/cangjie_stdx/releases/download/v1.2.0.1/cangjie-stdx-linux-x64-1.2.0.1.zip"
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/archives"
+          curl --fail --location --silent --show-error \
+            "${CANGJIE_SDK_URL}" -o "${RUNNER_TEMP}/archives/cangjie-sdk-linux-x64-1.2.0.tar.gz"
+          curl --fail --location --silent --show-error \
+            "${CANGJIE_STDX_URL}" -o "${RUNNER_TEMP}/archives/cangjie-stdx-linux-x64.zip"
+          # Pin both archives to the exact bytes the release path authenticates.
+          echo "8c5fd944cd9cc51ee63d4a240e3ecc4f540345dae1468e8b47c927ecf2ba998f  ${RUNNER_TEMP}/archives/cangjie-sdk-linux-x64-1.2.0.tar.gz" | sha256sum -c -
+          echo "c036a192e8fd4206b84ca9a94611820bc66623198975f3dff874f748d65a8b47  ${RUNNER_TEMP}/archives/cangjie-stdx-linux-x64.zip" | sha256sum -c -
+
+      - name: Measure both variants
+        run: |
+          python scripts/measure_sdk_install.py \
+            --workdir "${RUNNER_TEMP}/sdk-measure" \
+            --compiler-archive "${RUNNER_TEMP}/archives/cangjie-sdk-linux-x64-1.2.0.tar.gz" \
+            --compiler-sha256 "8c5fd944cd9cc51ee63d4a240e3ecc4f540345dae1468e8b47c927ecf2ba998f" \
+            --compiler-name "cangjie-sdk-linux-x64-1.2.0.tar.gz" \
+            --stdx-archive "${RUNNER_TEMP}/archives/cangjie-stdx-linux-x64.zip" \
+            --stdx-sha256 "c036a192e8fd4206b84ca9a94611820bc66623198975f3dff874f748d65a8b47" \
+            --stdx-name "cangjie-stdx-linux-x64.zip" \
+            --cycles "${{ inputs.cycles || '5' }}" \
+            --out target/ci-evidence/sdk-install-measure.json
+
+      - name: Summarize the measurement
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          file=target/ci-evidence/sdk-install-measure.json
+          if [ -f "${file}" ]; then
+            {
+              echo "### SDK cache shape measurement"
+              echo
+              echo "| variant | paired samples | median ms |"
+              echo "| --- | ---: | ---: |"
+              python - "${file}" <<'PY'
+          import json
+          import sys
+
+          document = json.load(open(sys.argv[1], encoding="utf-8"))
+          for name, variant in document["variants"].items():
+              print(f"| {name} | {len(variant['samples'])} | {variant['medianMs']} |")
+          print()
+          print(f"identity equal under both variants: {document['identityEqualUnderBothVariants']}")
+          print(f"recorded failures: {len(document['failures'])}")
+          PY
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Upload the measurement
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sdk-install-measure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/ci-evidence/sdk-install-measure.json
+          retention-days: 30
+          if-no-files-found: error

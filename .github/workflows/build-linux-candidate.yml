@@ -1,0 +1,129 @@
+name: Build Linux candidate
+
+# Single source of truth for the pinned Linux toolchain: the STS 1.2.0 compiler,
+# the matching authenticated static stdx sidecar and the -O1 compile workaround.
+# CI and Pages both call this workflow instead of repeating the setup inline.
+on:
+  workflow_call:
+    inputs:
+      cangjie_sdk_version:
+        type: string
+        default: "1.2.0"
+      checkout_ref:
+        type: string
+        default: ""
+    outputs:
+      artifact_name:
+        value: ${{ jobs.build.outputs.artifact_name }}
+      manifest_name:
+        value: ${{ jobs.build.outputs.manifest_name }}
+      main_binary_sha256:
+        value: ${{ jobs.build.outputs.main_binary_sha256 }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Linux candidate / Cangjie ${{ inputs.cangjie_sdk_version }} STS + stdx
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      CJDOC_PYTHON: python
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUTF8: "1"
+      cjHeapSize: "512MB"
+      CANGJIE_SDK_VERSION: ${{ inputs.cangjie_sdk_version }}
+      CJDOC_CI_EVIDENCE: ${{ github.workspace }}/target/ci-evidence
+    outputs:
+      artifact_name: cjdoc-linux-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+      manifest_name: build-manifest.json
+      main_binary_sha256: ${{ steps.build.outputs.main_binary_sha256 }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify tracked repository inputs
+        run: python scripts/verify_repository_inputs.py --require-tracked
+
+      - name: Restore cjv toolchain cache
+        id: cjv-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/setup-cangjie-cjv
+          # The key carries the arch, the channel/components/cjv pin and a digest
+          # of the workflow files, so a configuration change must miss the cache.
+          key: cjv-${{ runner.os }}-${{ runner.arch }}-${{ env.CANGJIE_SDK_VERSION }}-sts-stdx-cjv0.3.2-${{ hashFiles('.github/workflows/build-linux-candidate.yml', '.github/workflows/ci.yml', '.github/workflows/pages.yml', '.github/workflows/daily.yml') }}
+
+      - name: Set up Cangjie STS SDK with stdx
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571 # v3.2.0
+        with:
+          channel: sts
+          version: ${{ env.CANGJIE_SDK_VERSION }}
+          components: stdx
+          cjv-version: v0.3.2
+
+      - name: Export authenticated stdx environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+
+      - name: Build the Linux candidate
+        id: build
+        shell: bash
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
+          . scripts/with_sts_o1_cjpm.sh
+          bash scripts/check.sh build --repo . \
+            --main-binary-out target/release/bin/main \
+            --worker-binary-out target/release/bin/chir-worker-main \
+            --manifest target/ci-build/build-manifest.json
+          python scripts/ci_stage.py summarize --evidence target/ci-evidence \
+            --output "${RUNNER_TEMP}/ci-stage-summary.md" || true
+          cat "${RUNNER_TEMP}/ci-stage-summary.md" >> "${GITHUB_STEP_SUMMARY}" || true
+          digest="$(python -c "import hashlib,sys;print(hashlib.sha256(open('target/release/bin/main','rb').read()).hexdigest())")"
+          echo "main_binary_sha256=${digest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload timing evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-timing-build-linux-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/ci-evidence/
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Package the candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The candidate ships both executables (the worker staged under target/)
+          # plus the identity manifest. The owned worker build tree is removed
+          # afterwards so the repository-input gate sees a clean worktree; it is
+          # never part of the artifact.
+          tar --format=ustar --owner=0 --group=0 --numeric-owner \
+            -C "${GITHUB_WORKSPACE}" -cf "${RUNNER_TEMP}/cjdoc-linux-candidate.tar" \
+            target/release/bin/main target/release/bin/chir-worker-main \
+            target/ci-build/build-manifest.json
+          rm -rf tools/chir-worker/target
+
+      - name: Upload the Linux candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cjdoc-linux-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cjdoc-linux-candidate.tar
+          retention-days: 7
+          if-no-files-found: error

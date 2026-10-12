@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+from pathlib import Path
 import unittest
 
 import test_contract
@@ -21,7 +22,10 @@ class ArchiveCliTests(unittest.TestCase):
         f = self.fixture
         with contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(main(["archive", "--site", str(f.site)]), 0)
-        self.assertEqual(output.getvalue().strip(), str(f.site / ARCHIVE))
+        # Compare resolved paths: Windows may hand back an 8.3 short name
+        # (`RUNNER~1`) for the same file that the fixture spells out in full.
+        self.assertEqual(Path(output.getvalue().strip()).resolve(),
+                         (f.site / ARCHIVE).resolve())
         extracted = extract_archive(f.site / ARCHIVE, f.root / "unpacked", Site(f.site))
         self.assertEqual(extracted.file("index.html").read_bytes(), (f.site / "index.html").read_bytes())
 

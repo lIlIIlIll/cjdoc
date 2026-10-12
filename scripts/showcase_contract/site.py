@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import sys
 from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlsplit
@@ -54,6 +56,42 @@ def relative_path(value: object) -> str:
     if any(part in ("", ".", "..") for part in value.split("/")):
         raise ContractError(f"noncanonical artifact path: {value!r}")
     return value
+
+
+# macOS exposes `/var` and `/tmp` as system aliases of `/private/...`, so every
+# `tempfile` location contains a symlink component. These are documented system
+# aliases rather than attacker-controlled links, so they are normalized before a
+# destination is checked for symlink components. Kept in step with
+# `scripts/safe_output_root.py`.
+_DARWIN_SYSTEM_ALIASES = {
+    Path("/var"): Path("/private/var"),
+    Path("/tmp"): Path("/private/tmp"),
+}
+
+
+def normalized_destination(path: Path) -> Path:
+    """Absolute path with darwin system aliases replaced by their canonical form."""
+    candidate = Path(os.path.abspath(os.fspath(path)))
+    if sys.platform == "darwin":
+        for alias, canonical in _DARWIN_SYSTEM_ALIASES.items():
+            try:
+                relative = candidate.relative_to(alias)
+            except ValueError:
+                continue
+            try:
+                if alias.is_symlink() and alias.resolve(strict=True) == canonical:
+                    return canonical / relative
+            except OSError:
+                pass
+    return candidate
+
+
+def symlinked_parent(path: Path) -> Path | None:
+    """Return the first symlinked component of `path`, or None when it is clean."""
+    for parent in normalized_destination(path).parents:
+        if parent.is_symlink():
+            return parent
+    return None
 
 
 class HtmlDocument(HTMLParser):

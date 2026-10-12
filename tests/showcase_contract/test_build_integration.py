@@ -28,7 +28,10 @@ class BuildIntegrationTests(unittest.TestCase):
     def write(self, relative: str, value: str | dict) -> Path:
         path = self.root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(value) if isinstance(value, dict) else value, encoding="utf-8")
+        # Pin the newline so the bytes under test are identical on every
+        # platform; Windows text mode would otherwise turn "\n" into "\r\n".
+        path.write_text(json.dumps(value) if isinstance(value, dict) else value,
+                        encoding="utf-8", newline="\n")
         return path
 
     def test_source_download_preserves_paths_license_and_exact_configuration(self) -> None:

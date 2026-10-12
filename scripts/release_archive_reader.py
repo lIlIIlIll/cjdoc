@@ -127,9 +127,24 @@ def read_member_stream(stream, *, name: str, expected_size: int,
     return digest.hexdigest(), bytes(captured) if captured is not None else None
 
 
+CAPTURED_MEMBERS = ("release-manifest.json", "release-candidate.json")
+MANIFEST_MEMBER = "release-manifest.json"
+
+
 def is_manifest_candidate(name: str) -> bool:
+    """Members whose bytes must be retained for identity cross-checks.
+
+    The release manifest and the release candidate receipt both carry identities
+    that later verification re-derives, so both are captured. Only
+    ``release-manifest.json`` is subject to the single-manifest rule.
+    """
     parts = PurePosixPath(name).parts
-    return len(parts) == 2 and parts[1] == "release-manifest.json"
+    return len(parts) == 2 and parts[1] in CAPTURED_MEMBERS
+
+
+def is_release_manifest(name: str) -> bool:
+    parts = PurePosixPath(name).parts
+    return len(parts) == 2 and parts[1] == MANIFEST_MEMBER
 
 
 def read_zip(path: Path) -> dict[str, ArchiveMember]:
@@ -157,11 +172,14 @@ def read_zip(path: Path) -> dict[str, ArchiveMember]:
                 raise ValueError(f"release archive contains a duplicate member: {normalized}")
             total = checked_size(normalized, info.file_size, total)
             capture = is_manifest_candidate(normalized)
-            if capture:
+            # Both captured members are small JSON identities. The candidate receipt
+            # is bounded by the same limit as the manifest so an oversized one cannot
+            # be buffered whole and then decoded into another large allocation.
+            if capture and info.file_size > MAX_MANIFEST_SIZE:
+                raise ValueError(f"release archive metadata member exceeds the verification limit: {normalized}")
+            if is_release_manifest(normalized):
                 if manifest_seen:
                     raise ValueError("release archive contains multiple manifest candidates")
-                if info.file_size > MAX_MANIFEST_SIZE:
-                    raise ValueError("release manifest exceeds the verification limit")
                 manifest_seen = True
             with archive.open(info, "r") as stream:
                 digest, content = read_member_stream(
@@ -199,11 +217,11 @@ def read_tar(path: Path, *, compressed: bool) -> dict[str, ArchiveMember]:
             if stream is None:
                 raise ValueError(f"release archive member cannot be read: {normalized}")
             capture = is_manifest_candidate(normalized)
-            if capture:
+            if capture and info.size > MAX_MANIFEST_SIZE:
+                raise ValueError(f"release archive metadata member exceeds the verification limit: {normalized}")
+            if is_release_manifest(normalized):
                 if manifest_seen:
                     raise ValueError("release archive contains multiple manifest candidates")
-                if info.size > MAX_MANIFEST_SIZE:
-                    raise ValueError("release manifest exceeds the verification limit")
                 manifest_seen = True
             with stream:
                 digest, content = read_member_stream(
