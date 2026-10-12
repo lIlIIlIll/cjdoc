@@ -75,24 +75,27 @@ def verify(records: list[dict], expected_option: str, binary: Path | None,
     for build in builds:
         if build.get("schemaVersion") != SCHEMA:
             raise SystemExit(f"build invocations: unexpected record {build!r} (CI-08.3)")
-        # A single build under other parameters is enough to invalidate the release,
-        # whichever step ran it.
-        if build.get("option") != expected_option:
-            raise SystemExit(
-                f"build invocations: a build ran with override-compile-option="
-                f"{build.get('option')!r}, not the required {expected_option!r} (CI-08.3)")
-    # Root-package builds must have run the same arguments as the command the
-    # workflow vouches for. Checking only the option would accept `--jobs 4` in a
-    # second build, which produces a differently built binary under the same option.
-    # Auxiliary builds (the CHIR worker) are a different package and are exempt.
-    # Only the root package carries the vouched command. Auxiliary builds (the CHIR
-    # worker) legitimately differ, and the wrapper labels them from their own
-    # manifest, so they are compared on nothing but the option.
+    # Root-package builds must have run the same arguments and option as the command
+    # the workflow vouches for. Checking the option without the arguments would accept
+    # `--jobs 4` in a second build, which produces a differently built binary.
+    # Auxiliary builds (the CHIR worker) are recorded for completeness but read their
+    # own manifest, which carries no override to apply, so they are held to neither.
     root = [build for build in builds if build.get("package") == package]
     if not root:
         raise SystemExit(
             f"build invocations: no recorded build produced {package!r}, so the packaged "
             "binary's parameters are unrecorded (CI-08.3)")
+    for build in root:
+        if build.get("option") != expected_option:
+            raise SystemExit(
+                f"build invocations: a {package} build ran with override-compile-option="
+                f"{build.get('option')!r}, not the required {expected_option!r} (CI-08.3)")
+    for build in (other for other in builds if other.get("package") != package):
+        if build.get("option") not in (expected_option, "<none>"):
+            raise SystemExit(
+                f"build invocations: an auxiliary build of {build.get('package')!r} ran "
+                f"with override-compile-option={build.get('option')!r}, which is neither "
+                f"the pinned {expected_option!r} nor an untouched manifest (CI-08.3)")
     if expected_argv is not None:
         for build in root:
             if build.get("argv") != expected_argv:

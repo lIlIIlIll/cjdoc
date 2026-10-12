@@ -83,7 +83,15 @@ if [[ "${patch_fixture_entry}" == "1" ]]; then
   arguments+=(--manifest-path "${current_directory}/cjpm.toml")
 fi
 "${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/apply_sts_override.py" "${arguments[@]}"
-effective="$("${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/sts_compile_override.py" "${manifest}")"
+# The option is read back from the manifest this invocation actually consumes, which
+# is not the workspace root when cjpm runs inside an auxiliary project such as
+# tools/chir-worker. Reporting the root's value here would record an -O1 build whose
+# `cjpm` in fact read an unpatched manifest.
+# The manifest of the package being built, patched by the step above when it is the
+# workspace root. `--declared` reports what the manifest holds now, which is what this
+# `cjpm` will read — an auxiliary project's manifest is not patched and reports none.
+effective="$("${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/sts_compile_override.py" \
+  --declared "${current_directory}/cjpm.toml")"
 set +e
 "${CJDOC_REAL_CJPM}" "$@"
 status=$?

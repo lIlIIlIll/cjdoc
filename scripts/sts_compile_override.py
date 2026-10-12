@@ -62,6 +62,22 @@ def apply_to(contents: str) -> str:
     raise SystemExit(f"unexpected compile override {override!r}")
 
 
+def declared_option(contents: str) -> str:
+    """The override a manifest declares *now*, without modelling the rewrite.
+
+    Used where the question is what a given `cjpm` invocation will actually read: the
+    wrapper patches the workspace manifest, but `cjpm` run inside an auxiliary project
+    (for example `tools/chir-worker`) reads that project's own manifest, which may
+    declare no override at all. Applying the rewrite here would report the value the
+    root manifest receives rather than the one the invocation consumes.
+    """
+    package = tomllib.loads(contents).get("package")
+    if not isinstance(package, dict):
+        raise SystemExit("manifest has no [package] table")
+    option = package.get("override-compile-option")
+    return option if isinstance(option, str) else "<none>"
+
+
 def applied_option(contents: str) -> str:
     """The override cjpm would actually use, read back from the rewritten text."""
     rewritten = tomllib.loads(apply_to(contents))
@@ -70,10 +86,13 @@ def applied_option(contents: str) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Report the override a manifest would build with.")
+    parser = argparse.ArgumentParser(description="Report a manifest's compile override.")
     parser.add_argument("manifest", type=Path)
+    parser.add_argument("--declared", action="store_true",
+                        help="report what the manifest declares now, not the rewrite")
     args = parser.parse_args()
-    print(applied_option(args.manifest.read_text(encoding="utf-8")))
+    contents = args.manifest.read_text(encoding="utf-8")
+    print(declared_option(contents) if args.declared else applied_option(contents))
     return 0
 
 

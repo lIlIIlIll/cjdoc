@@ -147,12 +147,26 @@ class InvocationVerificationTests(unittest.TestCase):
         self.assertEqual(json.loads(self.log.read_text().splitlines()[0])["package"],
                          "cjdoc_chir_worker")
 
-    def test_an_auxiliary_build_is_recorded_but_not_argument_compared(self) -> None:
-        """The CHIR worker builds with the same arguments today, but is not the release."""
-        self.write(record(), record(argv=["build", "--jobs", "1"], package="cjdoc_chir_worker"))
+    def test_an_auxiliary_build_is_recorded_but_not_held_to_the_vouched_command(self) -> None:
+        """The CHIR worker reads its own manifest, which has no override to apply."""
+        self.write(record(),
+                   record(option="<none>", argv=["build", "--jobs", "1"],
+                          package="cjdoc_chir_worker"))
         result = self.check()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["builds"], 2)
+
+    def test_an_auxiliary_build_with_an_unexpected_option_is_refused(self) -> None:
+        self.write(record(), record(option="-O2", package="cjdoc_chir_worker"))
+        result = self.check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("auxiliary build", result.stderr)
+
+    def test_the_root_build_is_still_required_to_use_the_option(self) -> None:
+        self.write(record(option="<none>"))
+        result = self.check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not the required", result.stderr)
 
     def test_a_release_without_a_root_build_is_refused(self) -> None:
         self.write(record(package="cjdoc_chir_worker"))

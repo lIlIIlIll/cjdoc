@@ -230,6 +230,12 @@ def observed_option(repo: Path) -> str:
             "GITHUB_WORKSPACE": str(staging),
             "RUNNER_TEMP": str(runner_temp),
             "CJDOC_STS_OVERRIDE_MODULE": str(repo / "scripts"),
+            # The probe runs the real wrapper, which records its invocations. In CI the
+            # release step exports the production log path before running `check.sh`,
+            # whose unit stage runs this check — so inheriting it would append fake
+            # records to the release's evidence and the packaging verifier would then
+            # reject them. Keep the probe's records in the staging directory.
+            "CJDOC_STS_INVOCATION_LOG": str(staging / "probe-invocations.jsonl"),
             # Pin the patcher to the interpreter running this check: it is guaranteed
             # to exist, while a bare `python`/`python3` may not on every runner.
             "CJDOC_PYTHON": sys.executable,
