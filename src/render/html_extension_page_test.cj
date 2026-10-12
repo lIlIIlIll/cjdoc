@@ -87,7 +87,7 @@ class HtmlExtensionPageTest {
         let extension = documentation.declarations[1]
         let target = documentation.declarations[0]
         let member = documentation.declarations[4]
-        @Expect(member.ownerId, Some(extension.id))
+        @Expect(member.ownerId.getOrThrow(), extension.id)
         for (locale in ["en", "zh-CN"]) {
             let html = renderedExtensionPage(documentation, extension, locale)
             @Expect(html.contains("data-cjdoc-member-browser"), true)
