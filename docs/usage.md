@@ -20,7 +20,7 @@ target/doc/markdown/index.md
 ```
 
 打开 `target/doc/html/index.html` 就能查看 HTML 站点。它是静态文件，不需要启动服务器。
-代码高亮的语言、配置、离线适配器与安全边界见 [静态代码高亮](highlighting.md)。
+代码高亮的语言、配置、离线适配器与安全边界见 [`docs/research/highlighting.md`](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/research/highlighting.md)（面向维护者）。
 
 ## GitHub 源码链接与 HTML 站点
 
