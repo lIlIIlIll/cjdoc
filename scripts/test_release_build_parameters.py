@@ -9,6 +9,7 @@ that a false voucher is refused.
 
 from __future__ import annotations
 
+import functools
 import json
 from pathlib import Path
 import shlex
@@ -19,6 +20,24 @@ import tempfile
 import unittest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+import release_build_parameters as params  # noqa: E402
+
+
+def requires_shell(test):
+    """Skip where the wrapper cannot run: observing it needs a POSIX shell.
+
+    The release candidate job is `ubuntu-22.04`, so that is where this check does
+    its work. On Windows `bash` resolves to the WSL launcher and refuses every
+    command, which must not be reported as a parameter divergence.
+    """
+    @functools.wraps(test)
+    def wrapper(self, *args, **kwargs):
+        if not params.shell_is_usable():
+            self.skipTest("no usable POSIX shell: the wrapper's override cannot be observed")
+        return test(self, *args, **kwargs)
+    return wrapper
 SCRIPT = PROJECT_ROOT / "scripts/release_build_parameters.py"
 MODULE = "scripts/sts_compile_override.py"
 WRAPPER = "scripts/with_sts_o1_cjpm.sh"
@@ -51,6 +70,7 @@ class BuildParameterTests(unittest.TestCase):
         self.assertEqual(text.count(old), 1, f"anchor missing in {relative}")
         path.write_text(text.replace(old, new, 1), encoding="utf-8")
 
+    @requires_shell
     def test_a_uniform_tree_passes_for_every_platform(self) -> None:
         for platform in ("linux-x64", "windows-x64", "macos-arm64"):
             with self.subTest(platform=platform):
@@ -75,6 +95,7 @@ class BuildParameterTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "provider_plugin_fixture")
 
+    @requires_shell
     def test_a_definition_that_stops_applying_the_override_is_refused(self) -> None:
         self.edit(MODULE,
                   "        return contents.replace(NEEDLE, f'override-compile-option = \"{OPTION}\"', 1)",
@@ -83,12 +104,14 @@ class BuildParameterTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("not the required", result.stderr)
 
+    @requires_shell
     def test_a_changed_shared_option_is_refused(self) -> None:
         self.edit(MODULE, 'OPTION = "-O1"', 'OPTION = "-O2"')
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("-O2", result.stderr)
 
+    @requires_shell
     def test_a_wrapper_that_fails_to_patch_is_refused(self) -> None:
         self.edit(WRAPPER, PATCHER_CALL, ": # patcher call removed")
         result = run_check(self.repo)
@@ -142,6 +165,7 @@ class BuildParameterTests(unittest.TestCase):
         result = run_check(self.repo, "solaris-sparc")
         self.assertNotEqual(result.returncode, 0)
 
+    @requires_shell
     def test_the_checked_tree_is_left_untouched(self) -> None:
         before = (self.repo / "cjpm.toml").read_bytes()
         self.assertEqual(run_check(self.repo).returncode, 0)
@@ -157,6 +181,7 @@ class BuildParameterTests(unittest.TestCase):
         self.assertLess(check_at, build_at,
                         "the parameters must be validated before anything is built")
 
+    @requires_shell
     def test_the_workflows_exact_invocation_actually_runs(self) -> None:
         """The workflow line must be executable, not merely present.
 

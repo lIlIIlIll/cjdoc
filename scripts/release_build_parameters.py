@@ -123,6 +123,31 @@ def discover_build_command(workflow: Path) -> list[str]:
     return command
 
 
+def usable_shell() -> str | None:
+    """A POSIX shell that can actually run a command, or None.
+
+    `shutil.which` is not enough: on Windows `bash` resolves to the WSL launcher,
+    which exists but refuses every command when no distribution is installed.
+    """
+    for name in ("bash", "sh"):
+        candidate = shutil.which(name)
+        if candidate is None:
+            continue
+        try:
+            probe = subprocess.run([candidate, "-c", "exit 0"], capture_output=True,
+                                   text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if probe.returncode == 0:
+            return candidate
+    return None
+
+
+def shell_is_usable() -> bool:
+    """Whether the wrapper's override can be observed on this machine."""
+    return usable_shell() is not None
+
+
 def observed_receipt(repo: Path) -> dict:
     """Run the wrapper and return the receipt its patch step produced.
 
@@ -130,11 +155,12 @@ def observed_receipt(repo: Path) -> dict:
     A fake `cjpm` on PATH stands in for the real one and prints the receipt, which
     is written before the build would start.
     """
-    if shutil.which("bash") is None and shutil.which("sh") is None:
+    shell = usable_shell()
+    if shell is None:
         raise SystemExit(
-            "release build parameters: no POSIX shell is available, so the wrapper's "
-            "override cannot be observed; this check is written for the Linux release "
-            "candidate job (CI-08.3)")
+            "release build parameters: no usable POSIX shell is available, so the "
+            "wrapper's override cannot be observed; this check is written for the Linux "
+            "release candidate job (CI-08.3)")
     manifest = (repo / "cjpm.toml").read_bytes()
     with tempfile.TemporaryDirectory(prefix="cjdoc-build-params-") as temporary:
         staging = Path(temporary)
@@ -151,12 +177,15 @@ def observed_receipt(repo: Path) -> dict:
             "GITHUB_WORKSPACE": str(staging),
             "RUNNER_TEMP": str(runner_temp),
             "CJDOC_STS_OVERRIDE_MODULE": str(repo / "scripts"),
+            # Pin both the wrapper's patcher call and the probe `cjpm` to the
+            # interpreter running this check: it is guaranteed to exist, while a
+            # bare `python`/`python3` may not on every runner.
+            "CJDOC_PYTHON": sys.executable,
             "PATH": f"{probe_bin}{os.pathsep}{environment.get('PATH', '')}",
         })
-        environment.pop("CJDOC_PYTHON", None)
         command = (f". {shlex.quote(str(repo / WRAPPER))} >/dev/null 2>&1 && cjpm build")
         try:
-            result = subprocess.run(["bash", "-c", command], cwd=staging, env=environment,
+            result = subprocess.run([shell, "-c", command], cwd=staging, env=environment,
                                     capture_output=True, text=True, timeout=900)
         except (OSError, subprocess.SubprocessError) as error:
             raise SystemExit(f"release build parameters: could not run {WRAPPER}: {error}")
