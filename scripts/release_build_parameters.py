@@ -103,6 +103,18 @@ def discover_build_command(workflow: Path) -> list[str]:
         # Normalise whitespace: `cjpm  build` is the same command to bash.
         lines.append(re.sub(r"\s+", " ", stripped))
 
+    # A shell function or alias named `cjpm` replaces the executable at the call
+    # site, so the literal command would be a fiction: the workflow could still build
+    # with different parameters. Reject any such definition in the build context.
+    shadowing = [line for line in lines
+                 if re.match(r"^(?:function\s+)?cjpm\s*\(\s*\)", line)
+                 or re.match(r"^alias\s+cjpm=", line)]
+    if shadowing:
+        raise SystemExit(
+            f"release build parameters: the candidate job defines {shadowing[0]!r}, so the "
+            "`cjpm` that actually runs is not the released toolchain's and the build "
+            "parameters cannot be vouched for (CI-08.3)")
+
     found = [(line, CJPM_BUILD.findall(line)) for line in lines]
     total = sum(len(matches) for _, matches in found)
     if total == 0:

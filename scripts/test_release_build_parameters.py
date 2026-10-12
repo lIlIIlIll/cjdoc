@@ -176,6 +176,25 @@ class BuildParameterTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("never runs", result.stderr)
 
+    def test_a_shadowing_cjpm_function_is_refused(self) -> None:
+        """A function named `cjpm` replaces the executable at the call site."""
+        self.edit(".github/workflows/release.yml",
+                  "          cjpm build --jobs 1\n",
+                  '          cjpm() { command "${CJDOC_REAL_CJPM}" build --jobs 4; }\n'
+                  "          cjpm build --jobs 1\n")
+        result = run_check(self.repo, "windows-x64")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("defines", result.stderr)
+
+    def test_a_cjpm_alias_is_refused(self) -> None:
+        self.edit(".github/workflows/release.yml",
+                  "          cjpm build --jobs 1\n",
+                  "          alias cjpm=other\n"
+                  "          cjpm build --jobs 1\n")
+        result = run_check(self.repo)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("defines", result.stderr)
+
     def test_a_quoted_metacharacter_is_allowed(self) -> None:
         """Only unquoted operators change what the shell runs."""
         self.edit(".github/workflows/release.yml",
