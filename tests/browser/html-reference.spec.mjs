@@ -530,7 +530,9 @@ test.describe('generated HTML reference', () => {
       await expect(page).toHaveURL(typeUrl);
       await page.goBack();
       await expect(page).toHaveURL(extensionUrl);
-      await ownMember.locator('summary').click();
+      if (!(await ownMember.evaluate(node => node.open))) {
+        await ownMember.locator('summary').click();
+      }
       await ownMember.locator('.member-permalink').click();
       await expect(page.locator('.breadcrumbs a').filter({ hasText: 'Extension ReferenceBox<T>' })).toHaveCount(1);
       await page.goBack();
