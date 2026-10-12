@@ -423,8 +423,15 @@ class PagesCandidatePolicyTest(unittest.TestCase):
         resolver = self.resolver()
         # An explicit run id bypasses `--status success`, so it is validated here.
         self.assertIn("is not a CI workflow run", resolver)
-        self.assertIn("not a successful CI run", resolver)
+        self.assertIn("not a successful CI attempt", resolver)
         self.assertIn('"${run_sha}" != "${GITHUB_SHA}"', resolver)
+
+    def test_validation_reads_the_selected_attempt_not_the_latest(self) -> None:
+        resolver = self.resolver()
+        # The run-level API reports the newest attempt, so a run that only passed
+        # on attempt 2 would validate attempt 1 and reuse its artifact.
+        self.assertIn('gh run view "${run_id}" --attempt "${attempt}"', resolver)
+        self.assertNotIn('actions/runs/${run_id}"', resolver)
 
     def test_the_automatic_path_waits_and_records_the_attempt(self) -> None:
         resolver = self.resolver()

@@ -162,26 +162,29 @@ jobs:
           fi
           artifact="cjdoc-linux-candidate-${run_id}-${attempt}"
           # Bind the decision to the exact commit and tree the artifact claims,
-          # and to a run that actually succeeded: an explicit run id bypasses the
-          # automatic `--status success` filter, so it must be validated here.
-          if ! gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" \
-              --jq '[.head_sha, .status, .conclusion, (.name // ""), (.path // "")] | @tsv' \
+          # and to the SELECTED ATTEMPT: the run-level API reports the latest
+          # attempt's conclusion, so a run that succeeded only on attempt 2 would
+          # otherwise validate attempt 1 and reuse its artifact. `gh run view
+          # --attempt` is the only way to read one attempt's own status.
+          if ! gh run view "${run_id}" --attempt "${attempt}" \
+              --json headSha,status,conclusion,workflowName,headBranch \
+              --jq '[.headSha, .status, .conclusion, (.workflowName // "")] | @tsv' \
               > "${RUNNER_TEMP}/run-info" 2>/dev/null; then
-            local_build "cannot read run ${run_id}"
+            local_build "cannot read run ${run_id} attempt ${attempt}"
             exit 0
           fi
-          IFS=$'\t' read -r run_sha run_status run_conclusion run_name run_path \
+          IFS=$'\t' read -r run_sha run_status run_conclusion run_name \
             < "${RUNNER_TEMP}/run-info"
           if [[ "${run_sha}" != "${GITHUB_SHA}" ]]; then
-            local_build "run ${run_id} is for another commit"
+            local_build "run ${run_id} attempt ${attempt} is for another commit"
             exit 0
           fi
-          if [[ "${run_path}" != *".github/workflows/ci.yml"* && "${run_name}" != "CI" ]]; then
+          if [[ "${run_name}" != "CI" ]]; then
             local_build "run ${run_id} is not a CI workflow run"
             exit 0
           fi
           if [[ "${run_status}" != "completed" || "${run_conclusion}" != "success" ]]; then
-            local_build "run ${run_id} is ${run_status}/${run_conclusion}, not a successful CI run"
+            local_build "run ${run_id} attempt ${attempt} is ${run_status}/${run_conclusion}, not a successful CI attempt"
             exit 0
           fi
           if ! gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${artifact}" \
