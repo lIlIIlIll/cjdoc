@@ -66,7 +66,7 @@ internal func appendContextSidebar(out: RenderTextBuffer, projection: RenderProj
     var moreHref = ""
     match (owner) {
         case Some(value) =>
-            contextTitle = value.name
+            contextTitle = readerSymbolTitle(value, locale)
             localMembers = match (currentSymbol) {
                 case Some(symbol) => symbol.id == value.id
                 case None => false

@@ -58,7 +58,7 @@ internal func appendPackageSections(out: RenderTextBuffer, sections: PackageSect
         out.append("<section class=\"declaration-group\"><h2 id=\"${group.id}\" data-cjdoc-toc-role=\"group\">${label(locale, group.title, group.chineseTitle)}</h2>\n")
         for (symbol in group.symbols) {
             if (isContainerDeclaration(symbol)) {
-                out.append("<section class=\"declaration-summary\"><h3 data-cjdoc-toc-role=\"api\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><a href=\"../${escapeHtml(symbolPagePath(symbol))}\"><code>${escapeHtml(symbol.name)}</code></a></h3>")
+                out.append("<section class=\"declaration-summary\"><h3 data-cjdoc-toc-role=\"api\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><a href=\"../${escapeHtml(symbolPagePath(symbol))}\"><code>${escapeHtml(readerSymbolTitle(symbol, locale))}</code></a></h3>")
                 match (symbol.documentation) {
                     case Some(comment) => out.append("<p>${escapeHtml(documentationSummary(comment))}</p>")
                     case None => ()

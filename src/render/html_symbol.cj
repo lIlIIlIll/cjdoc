@@ -137,13 +137,19 @@ internal func appendReaderRelationships(out: RenderTextBuffer,
         }
         if (superseded) { continue }
         rows.append("<dt>${escapeHtml(readerRelationshipLabel(relationship.kind, locale))}</dt><dd>")
+        let display = if (relationship.kind == "extensionTarget") {
+            genericTypeDisplaySpelling(relationship.targetDisplay)
+        } else { relationship.targetDisplay }
+        let linkClass = if (relationship.kind == "extensionTarget") {
+            " class=\"type-link relation-target\""
+        } else { "" }
         match (relationship.targetSymbolId) {
             case Some(targetId) => match (findSymbol(index, targetId)) {
-                case Some(target) => rows.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(relationship.targetDisplay)}</code></a>")
+                case Some(target) => rows.append("<a${linkClass} href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(display)}</code></a>")
                 // The visibility check above already discarded filtered targets.
                 case None => ()
             }
-            case None => rows.append("<code>${escapeHtml(relationship.targetDisplay)}</code>")
+            case None => rows.append("<code>${escapeHtml(display)}</code>")
         }
         appendRelationshipUncertainty(rows, relationship.state, locale)
         rows.append("</dd>")

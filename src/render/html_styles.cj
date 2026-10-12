@@ -330,7 +330,10 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
 .skip-link:focus{transform:translateY(0);outline:2px solid var(--ink);outline-offset:2px}
 .brand-copy{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brand{min-width:0}
 .api-title-row{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}.api-title-row h1{margin:0;min-width:0}.copy-link{min-height:30px;padding:.25rem .5rem;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--muted);font-size:.76rem}.copy-link:hover{color:var(--accent);border-color:var(--accent)}.copy-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.copy-link[data-copied="true"]{color:var(--success)}
-.api-page-header{margin-bottom:1rem}.api-page-header .symbol-kind{margin:.3rem 0;font-size:.8rem}.api-page-header .symbol-summary{margin:.5rem 0 .75rem}.api-page-header .signature-block{margin:.65rem 0;padding:.8rem 3rem .8rem .85rem;line-height:1.55}.api-page-header .source-action{margin:.4rem 0}
+.api-page-header{margin-bottom:1rem}
+.api-extension-header .api-title-row h1{font-size:clamp(1.65rem,2.7vw,2.45rem);line-height:1.25}
+.symbol-relationships .relation-target{text-decoration:underline;text-decoration-color:var(--line-strong);text-underline-offset:.16em}
+.symbol-relationships .relation-target:hover,.symbol-relationships .relation-target:focus-visible{text-decoration-color:currentColor;outline-offset:2px}.api-page-header .symbol-kind{margin:.3rem 0;font-size:.8rem}.api-page-header .symbol-summary{margin:.5rem 0 .75rem}.api-page-header .signature-block{margin:.65rem 0;padding:.8rem 3rem .8rem .85rem;line-height:1.55}.api-page-header .source-action{margin:.4rem 0}
 .member-detail>summary{grid-template-columns:.8rem minmax(0,1fr) auto;align-items:baseline;column-gap:.55rem}
 .member-detail>summary:before{content:"";grid-column:1;grid-row:1;align-self:start;width:.4rem;height:.4rem;margin:.35rem 0 0 .05rem;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg)}
 .member-detail[open]>summary:before{transform:rotate(45deg)}

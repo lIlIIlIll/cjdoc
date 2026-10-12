@@ -2,6 +2,27 @@ package cjdoc.render
 
 import cjdoc.model.*
 
+// An extension is a declaration, not a new type definition. Its reader title
+// must identify the declaration while preserving the exact source/IR spelling
+// for signatures, symbol identity, and navigation.
+internal func readerSymbolName(symbol: SymbolDoc): String {
+    if (symbol.kind == "extend") { return genericTypeDisplaySpelling(symbol.name) }
+    symbol.name
+}
+
+internal func readerSymbolTitle(symbol: SymbolDoc, locale: String): String {
+    let name = readerSymbolName(symbol)
+    if (symbol.kind == "extend") { return "${label(locale, "Extension", "扩展")} ${name}" }
+    name
+}
+
+internal func readerQualifiedName(symbol: SymbolDoc): String {
+    if (symbol.kind == "extend") {
+        return genericTypeDisplaySpelling(symbol.qualifiedName)
+    }
+    symbol.qualifiedName
+}
+
 // Display labels only: IR identifiers and source spellings remain unchanged.
 internal func htmlKindLabel(kind: String, locale: String): String {
     if (locale != "zh-CN") { return kind }
