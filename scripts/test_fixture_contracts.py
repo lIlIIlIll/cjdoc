@@ -23,6 +23,9 @@ CANGJIE_CONTRACT_FIXTURES = {
 CLI_CONTRACT_FIXTURES = {
     "cached_dependencies", "conditional_complex", "deep_binary", "duplicate",
     "lint_quality", "override", "path_dependencies_invalid", "workspace_invalid",
+    # Lexical shapes for generation-time highlighting (issue #100); owned by the
+    # highlight acceptance gate rather than by a golden or Cangjie contract.
+    "highlight",
 }
 
 
