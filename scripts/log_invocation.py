@@ -7,7 +7,7 @@ what is compared is what the wrapper actually ran and produced: a build routed
 around `cjpm build` leaves no record, and a later build that overwrote the binary
 changes the digest the packaged artefact must match.
 
-Usage: log_invocation.py --log FILE --package NAME --option OPTION [--binary PATH] -- ARGS...
+Usage: log_invocation.py --log FILE --manifest FILE --option OPTION [--binary PATH] -- ARGS...
 """
 
 from __future__ import annotations
@@ -47,7 +47,8 @@ def append(log: Path, record: dict) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--log", type=Path, required=True)
-    parser.add_argument("--package", required=True)
+    parser.add_argument("--manifest", type=Path, required=True,
+                        help="the manifest being built; its package name is recorded")
     parser.add_argument("--option", required=True)
     parser.add_argument("--binary", type=Path)
     parser.add_argument("args", nargs=argparse.REMAINDER)
@@ -58,9 +59,14 @@ def main() -> int:
         binary = binary_digest(ns.binary)
         # A `build` that produced no binary cannot be the release's build; recording
         # the absence lets the check refuse rather than assume.
+    # Read the package from the manifest, not from the caller: the wrapper patches
+    # the workspace manifest but may be invoked from an auxiliary project, and
+    # mislabelling that build would let it slip past the argument comparison.
+    import tomllib
+    package = tomllib.loads(ns.manifest.read_text(encoding="utf-8")).get("package", {})
     append(ns.log, {
         "schemaVersion": SCHEMA,
-        "package": ns.package,
+        "package": package.get("name", ""),
         "option": ns.option,
         "argv": argv,
         "binary": binary,

@@ -96,10 +96,12 @@ cjdoc_binary="${workspace}/target/release/bin/main"
 if [[ -f "${cjdoc_binary}.exe" ]]; then
   cjdoc_binary="${cjdoc_binary}.exe"
 fi
+# Not best-effort: if the record is incomplete, the release evidence is incomplete,
+# and a later rebuild could then go unrecorded while its digest still matched.
 "${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/log_invocation.py" \
-  --log "${CJDOC_STS_INVOCATION_LOG}" --package cjdoc \
+  --log "${CJDOC_STS_INVOCATION_LOG}" --manifest "${current_directory}/cjpm.toml" \
   --option="${effective}" --binary "${cjdoc_binary}" \
-  -- "$@" || true
+  -- "$@"
 exit "${status}"
 SH
 chmod +x "${wrapper_dir}/cjpm"

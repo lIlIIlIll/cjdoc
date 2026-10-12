@@ -85,15 +85,22 @@ def verify(records: list[dict], expected_option: str, binary: Path | None,
     # workflow vouches for. Checking only the option would accept `--jobs 4` in a
     # second build, which produces a differently built binary under the same option.
     # Auxiliary builds (the CHIR worker) are a different package and are exempt.
+    # Only the root package carries the vouched command. Auxiliary builds (the CHIR
+    # worker) legitimately differ, and the wrapper labels them from their own
+    # manifest, so they are compared on nothing but the option.
+    root = [build for build in builds if build.get("package") == package]
+    if not root:
+        raise SystemExit(
+            f"build invocations: no recorded build produced {package!r}, so the packaged "
+            "binary's parameters are unrecorded (CI-08.3)")
     if expected_argv is not None:
-        for build in builds:
-            if build.get("package") != package or build.get("argv") != expected_argv:
+        for build in root:
+            if build.get("argv") != expected_argv:
                 raise SystemExit(
-                    f"build invocations: a recorded build ran "
-                    f"{' '.join(build.get('argv') or [])!r} for package "
-                    f"{build.get('package')!r}, not the vouched "
-                    f"{' '.join(expected_argv)!r} for {package!r} (CI-08.3)")
-    last = builds[-1]
+                    f"build invocations: a {package} build ran "
+                    f"{' '.join(build.get('argv') or [])!r}, not the vouched "
+                    f"{' '.join(expected_argv)!r} (CI-08.3)")
+    last = root[-1]
     if binary is not None:
         # Binding the packaged artefact to the last recorded build closes the gap a
         # later, unrecorded build would leave.

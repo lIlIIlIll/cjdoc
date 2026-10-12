@@ -24,10 +24,11 @@ def run(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run([sys.executable, *args], capture_output=True, text=True, timeout=300)
 
 
-def record(option: str = "-O1", argv: list[str] | None = None) -> str:
+def record(option: str = "-O1", argv: list[str] | None = None,
+           package: str = "cjdoc") -> str:
     return json.dumps({
         "schemaVersion": "cjdoc.sts-invocation/1",
-        "package": "cjdoc",
+        "package": package,
         "option": option,
         "argv": argv or ["build", "--jobs", "1"],
         "platform": "Linux",
@@ -121,18 +122,43 @@ class InvocationVerificationTests(unittest.TestCase):
         self.assertIn("shrank", result.stderr)
 
     def test_the_logger_appends_a_parseable_record(self) -> None:
-        result = run([str(LOGGER), "--log", str(self.log), "--package", "cjdoc",
+        manifest = Path(self.temporary.name) / "cjpm.toml"
+        manifest.write_text('[package]\n  name = "cjdoc"\n  cjdoc-test = true\n',
+                            encoding="utf-8")
+        result = run([str(LOGGER), "--log", str(self.log), "--manifest", str(manifest),
                       "--option=-O1", "--", "build", "--jobs", "1"])
         self.assertEqual(result.returncode, 0, result.stderr)
-        entries = [json.loads(line) for line in self.log.read_text().splitlines()]
-        self.assertEqual(len(entries), 1)
-        entry = entries[0]
+        entry = json.loads(self.log.read_text().splitlines()[0])
         self.assertEqual(entry["schemaVersion"], "cjdoc.sts-invocation/1")
+        # The package comes from the manifest, so an auxiliary project is not
+        # mislabelled as the root package.
         self.assertEqual(entry["package"], "cjdoc")
         self.assertEqual(entry["option"], "-O1")
         self.assertEqual(entry["argv"], ["build", "--jobs", "1"])
-        # No --binary was given, so no digest is claimed.
         self.assertIsNone(entry["binary"])
+
+    def test_the_logger_labels_an_auxiliary_package_from_its_manifest(self) -> None:
+        manifest = Path(self.temporary.name) / "cjpm.toml"
+        manifest.write_text('[package]\n  name = "cjdoc_chir_worker"\n  cjdoc-test = true\n',
+                            encoding="utf-8")
+        result = run([str(LOGGER), "--log", str(self.log), "--manifest", str(manifest),
+                      "--option=-O1", "--", "build", "--jobs", "1"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(self.log.read_text().splitlines()[0])["package"],
+                         "cjdoc_chir_worker")
+
+    def test_an_auxiliary_build_is_recorded_but_not_argument_compared(self) -> None:
+        """The CHIR worker builds with the same arguments today, but is not the release."""
+        self.write(record(), record(argv=["build", "--jobs", "1"], package="cjdoc_chir_worker"))
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["builds"], 2)
+
+    def test_a_release_without_a_root_build_is_refused(self) -> None:
+        self.write(record(package="cjdoc_chir_worker"))
+        result = self.check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no recorded build produced", result.stderr)
 
     def test_a_binary_that_the_recorded_build_did_not_produce_is_refused(self) -> None:
         binary = Path(self.temporary.name) / "main"
