@@ -30,7 +30,7 @@ jobs:
 
           main(): Unit {
               let signatures: Array<String> = [
-                  "public func join(separator!: String = \",\" ): String",
+                  "public func join(separator!: String = \",\"): String",
                   "public func join(separator!: String): String",
                   "public func join(separator!: String = \"hello\"): String"
               ]
