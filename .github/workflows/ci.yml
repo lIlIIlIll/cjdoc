@@ -125,6 +125,10 @@ jobs:
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           . scripts/with_sts_o1_cjpm.sh
           identity=target/ci-build/build-manifest.json
+          # `native` and `python-tools` assume the preflight stage already ran:
+          # `python-tools` excludes the SDK-installer and stdx unit tests because
+          # preflight owns them. Skip it here and those tests never run on Linux.
+          bash scripts/check.sh preflight --repo .
           bash scripts/check.sh native --repo . --identity "${identity}" \
             --worker-binary target/release/bin/chir-worker-main
           bash scripts/check.sh python-tools --repo . --identity "${identity}"

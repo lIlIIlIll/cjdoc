@@ -432,5 +432,29 @@ class PagesCandidatePolicyTest(unittest.TestCase):
         self.assertIn("databaseId,attempt", resolver)
 
 
+class StagedGateAndReceiptTest(unittest.TestCase):
+    """Every stage of the gate, and every branch, must actually be exercised."""
+
+    def test_linux_gate_runs_preflight_before_python_tools(self) -> None:
+        ci = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        linux = ci.split("Run the remaining acceptance stages", 1)[1].split("\n      - name:", 1)[0]
+        # `python-tools` excludes the SDK-installer and stdx tests because
+        # preflight owns them, so preflight must run in this job too.
+        self.assertIn("check.sh preflight", linux)
+        self.assertLess(linux.index("check.sh preflight"), linux.index("check.sh python-tools"))
+
+    def test_branch_receipt_is_created_after_the_browser_merge(self) -> None:
+        pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
+        verify = pages.split("verify-site:", 1)[1]
+        self.assertIn("showcase_branch_receipts.py", verify)
+        receipt_step = verify.index("Bind every branch including the merged browser evidence")
+        merge_step = verify.index("Merge shards and run the unmodified full evidence gate")
+        self.assertLess(merge_step, receipt_step,
+                        "the receipt cannot cover the browser branch before the merge runs")
+        # And the browser branch must actually be named in it.
+        self.assertIn("--branch \"browser=target/showcase-evidence/results.json\"",
+                      verify[receipt_step:])
+
+
 if __name__ == "__main__":
     unittest.main()

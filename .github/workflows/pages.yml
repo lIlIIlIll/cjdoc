@@ -686,13 +686,6 @@ jobs:
                       "${branches}/reading/results.json"; do
             test -f "${file}"
           done
-          python scripts/showcase_branch_receipts.py \
-            --site "${sealed}/showcase-site" \
-            --site-sha256 "$(cat "${sealed}/showcase-site.sha256")" \
-            --build-manifest "${sealed}/ci-build/build-manifest.json" \
-            --source-evidence "${branches}/source/showcase-source-evidence.json" \
-            --reading-evidence "${branches}/reading/results.json" \
-            --receipt "${branches}/branch-receipt.json"
 
       - name: Merge shards and run the unmodified full evidence gate
         shell: bash
@@ -713,6 +706,26 @@ jobs:
             --site "${sealed}/showcase-site" \
             --evidence target/showcase-evidence/results.json \
             --baseline site/showcase-baseline.json
+
+      - name: Bind every branch including the merged browser evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          sealed="${RUNNER_TEMP}/sealed"
+          branches="${RUNNER_TEMP}/branches"
+          # Created after the merge on purpose: the receipt must cover the browser
+          # branch too, and a merge failure must leave it absent rather than
+          # uploaded by the `if: always()` step as an apparently valid receipt
+          # listing only the two branches that happened to pass.
+          python scripts/showcase_branch_receipts.py \
+            --site "${sealed}/showcase-site" \
+            --site-sha256 "$(cat "${sealed}/showcase-site.sha256")" \
+            --build-manifest "${sealed}/ci-build/build-manifest.json" \
+            --source-evidence "${branches}/source/showcase-source-evidence.json" \
+            --reading-evidence "${branches}/reading/results.json" \
+            --branch "browser=target/showcase-evidence/results.json" \
+            --branch "browser-merge=${branches}/browser-merge-receipt.json" \
+            --receipt "${branches}/branch-receipt.json"
 
       - name: Upload validation evidence
         if: always()
