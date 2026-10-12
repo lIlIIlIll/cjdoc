@@ -5,7 +5,7 @@ import std.collection.*
 import std.fs.*
 import std.sync.AtomicInt64
 
-internal let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v14"
+internal let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v15"
 internal let MAX_SOURCE_FILE_BYTES: Int64 = 32 * 1024 * 1024
 internal let MAX_SOURCE_CACHE_BYTES: Int64 = 64 * 1024 * 1024
 internal let MAX_SOURCE_CACHE_ITEMS: Int64 = 100000
@@ -130,12 +130,38 @@ internal func rangeContains(outer: SourceLocation, inner: SourceLocation): Bool 
 
 
 
+// Store the exact source spelling for each lexer token in the existing
+// kind:byteLength:spelling witness. Token.value is the decoded payload for
+// string literals (and can be empty), not the raw spelling with delimiters.
+// The next *lexer* token, including comments/newlines, bounds the slice;
+// only inter-token whitespace is removed from its end.
 internal func sourceApiSignatureTokens(signature: String): Array<String> {
     let result = ArrayList<String>()
     try {
-        for (token in cangjieLex(signature)) {
-            if (token.kind == COMMENT || token.kind == NL || token.value.isEmpty()) { continue }
-            result.add("${token.kind}:${token.value.size}:${token.value}")
+        let sourceIndex = IndexedSourceBuffer(signature)
+        let tokens = cangjieLex(signature)
+        var previousEnd: Int64 = 0
+        for (position in 0..tokens.size) {
+            let token = tokens[position]
+            if (token.kind == COMMENT || token.kind == NL ||
+                (token.value.isEmpty() && token.kind != STRING_LITERAL)) { continue }
+            let start = sourceIndex.byteOffsetFromLexerPosition(
+                Int64(token.pos.line), Int64(token.pos.column))
+            let limit = if (position + 1 < tokens.size) {
+                let following = tokens[position + 1]
+                sourceIndex.byteOffsetFromLexerPosition(
+                    Int64(following.pos.line), Int64(following.pos.column))
+            } else { signature.size }
+            if (start < previousEnd || start < 0 || limit <= start ||
+                limit > signature.size) { return [] }
+            var end = limit
+            while (end > start && (signature[end - 1] == b' ' ||
+                signature[end - 1] == b'\t' || signature[end - 1] == b'\r' ||
+                signature[end - 1] == b'\n')) { end-- }
+            if (end == start) { return [] }
+            let spelling = signature[start..end]
+            result.add("${token.kind}:${spelling.size}:${spelling}")
+            previousEnd = end
         }
     } catch (_: Exception) {
         return []
