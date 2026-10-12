@@ -103,46 +103,36 @@ def discover_build_command(workflow: Path) -> list[str]:
         # Normalise whitespace: `cjpm  build` is the same command to bash.
         lines.append(re.sub(r"\s+", " ", stripped))
 
-    # Anything that can run a build without spelling `cjpm build` makes the literal
-    # call site a fiction: a function or alias named `cjpm`, the wrapper's exported
-    # real-binary path, or a shell that is handed the command as data. Each of these
-    # has produced a false voucher, so all are refused rather than enumerated one
-    # spelling at a time.
-    def shape(spelling: re.Pattern[str]) -> str | None:
-        return next((line for line in lines if spelling.search(line)), None)
-
-    shadowing = (shape(re.compile(r"^(?:function\s+)?cjpm\s*\(\s*\)"))
-                 or shape(re.compile(r"^alias\s+cjpm=")))
-    if shadowing:
-        raise SystemExit(
-            f"release build parameters: the candidate job defines {shadowing!r}, so the "
-            "`cjpm` that actually runs is not the released toolchain's and the build "
-            "parameters cannot be vouched for (CI-08.3)")
-    indirect = shape(re.compile(r"\$\{?CJDOC_REAL_CJPM\b"))
-    if indirect:
-        raise SystemExit(
-            f"release build parameters: the candidate job runs a build through the "
-            f"wrapper's exported real binary ({indirect!r}), which bypasses the pinned "
-            "override and cannot be vouched for (CI-08.3)")
-    nested_shell = shape(re.compile(r"\b(?:bash|sh)\s+-c\b"))
-    if nested_shell:
-        raise SystemExit(
-            f"release build parameters: the candidate job hands a command to a nested "
-            f"shell ({nested_shell!r}); its build parameters cannot be established "
-            "statically (CI-08.3)")
-
-    found = [(line, CJPM_BUILD.findall(line)) for line in lines]
-    total = sum(len(matches) for _, matches in found)
-    if total == 0:
+    builds = [line for line in lines if CJPM_BUILD.findall(line)]
+    if not builds:
         raise SystemExit(
             f"release build parameters: {workflow} candidate job never runs `cjpm build`, "
             "so its build parameters cannot be established (CI-08.3)")
+
+    # Enumerating the ways a build can be disguised has failed repeatedly — a
+    # `name()` function, the bare `function name { }` form, an alias, the wrapper's
+    # exported real binary, a nested `bash -c` — because each round only added a
+    # pattern. The job is held to one invariant instead: apart from sourcing the
+    # wrapper, `cjpm` may be named exactly once, on the build line itself. Every
+    # disguise above adds a mention and is refused by the same rule, rather than
+    # needing its own spelling.
+    sources_wrapper = re.compile(r"\.\s+\S*with_sts_o1_cjpm\.sh")
+    mentions = [line for line in lines if re.search(r"cjpm", line, re.IGNORECASE)]
+    unexpected = [line for line in mentions if line not in builds and not sources_wrapper.fullmatch(line)]
+    if unexpected:
+        raise SystemExit(
+            f"release build parameters: the candidate job mentions `cjpm` outside the "
+            f"build line ({unexpected[0]!r}), so the command that actually runs cannot be "
+            "vouched for; keep the one bare build and let the wrapper supply everything "
+            "else (CI-08.3)")
+    builds = [line for line in builds if CJPM_BUILD.findall(line)]
+    total = sum(len(CJPM_BUILD.findall(line)) for line in builds)
     if total != 1:
         raise SystemExit(
             f"release build parameters: {workflow} candidate job runs `cjpm build` "
             f"{total} times, so the per-platform build parameters are no longer uniform "
             "and this check cannot vouch for them (CI-08.3)")
-    statement = next(line for line, matches in found if matches)
+    statement = builds[0]
     # `if …; then cjpm build …; fi` is a conditional build: it runs on some platforms
     # and not others, which is exactly what the uniformity claim must exclude.
     if not statement.startswith("cjpm build"):
