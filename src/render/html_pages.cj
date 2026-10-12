@@ -81,7 +81,7 @@ internal func renderHtmlIndex(documentation: DocumentationSet, projection: Rende
 internal func appendDeclarationRow(out: RenderTextBuffer, symbol: SymbolDoc,
     rootPrefix: String, locale!: String = "en"): Unit {
     out.append("<article class=\"declaration-summary\" data-cjdoc-member data-member-name=\"${escapeHtml(symbol.name)}\" data-member-kind=\"${escapeHtml(symbol.kind)}\"><a class=\"declaration-row-link\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(symbol))}\">")
-    out.append("<div class=\"declaration-summary-head\"><code>${escapeHtml(readerSymbolTitle(symbol, locale))}</code><span class=\"declaration-kind\">${escapeHtml(htmlKindLabel(symbol.kind, locale))}</span></div>")
+    out.append("<div class=\"declaration-summary-head\"><code>${escapeHtml(readerSymbolName(symbol))}</code><span class=\"declaration-kind\">${escapeHtml(htmlKindLabel(symbol.kind, locale))}</span></div>")
     match (symbol.documentation) {
         case Some(comment) =>
             let summary = summaryPlainText(comment)
@@ -271,7 +271,7 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
                 out.append("<p class=\"member-origin\">" +
                     escapeHtml(memberOriginLabel(entry.origin, locale)) + " · <a href=\"" +
                     rootPrefix + escapeHtml(symbolPagePath(declaredBy)) + "\"><code>" +
-                    escapeHtml(declaredBy.qualifiedName) + "</code></a></p>")
+                    escapeHtml(readerQualifiedName(declaredBy)) + "</code></a></p>")
                 if (entry.origin == "extension") {
                     out.append("<p class=\"extension-conditions\">" +
                         label(locale,
