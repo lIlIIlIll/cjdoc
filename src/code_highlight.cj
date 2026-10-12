@@ -5,8 +5,57 @@ import std.collection.*
 
 internal let MAX_HIGHLIGHT_BLOCK_BYTES: Int64 = 256 * 1024
 internal let MAX_HIGHLIGHT_SPANS_PER_BLOCK: Int64 = 65536
+internal let MAX_HIGHLIGHT_TOTAL_SPANS: Int64 = 8192
+internal let MAX_HIGHLIGHT_TOTAL_BYTES: Int64 = 4 * 1024 * 1024
+internal let MAX_HIGHLIGHT_TOTAL_PREPARED_BYTES: Int64 = 4 * 1024 * 1024
 internal let CANGJIE_HIGHLIGHT_ENGINE = "cjdoc-cangjie-lexer"
 internal let CANGJIE_HIGHLIGHT_REVISION = "2"
+
+// Shared by signatures, comment fences and @example trees in projection order.
+// Charge conservative codec/pretty-JSON overhead, not just source or compact JSON.
+internal class HighlightGenerationBudget {
+    private let byteLimit: Int64
+    private var preparedBytes: Int64 = 0
+    private var metadataBytes: Int64 = 0
+    private var spans: Int64 = 0
+    private var exhausted: Bool = false
+
+    init(byteLimit!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES) {
+        let capped = if (byteLimit < 0) { 0 } else if (byteLimit > MAX_HIGHLIGHT_TOTAL_BYTES) {
+            MAX_HIGHLIGHT_TOTAL_BYTES
+        } else { byteLimit }
+        this.byteLimit = if (capped > public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES) {
+            public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES
+        } else { capped }
+    }
+
+    func prepare(source: String, language: String): ?public_model.CodeHighlight {
+        if (exhausted) { return None }
+        if (byteLimit == 0 || source.size > MAX_HIGHLIGHT_TOTAL_PREPARED_BYTES - preparedBytes) {
+            exhausted = true
+            return None
+        }
+        preparedBytes += source.size
+        let value = publicCodeHighlight(source, language)
+        // Bound object/key/number and pretty-indent costs even at the maximum
+        // generated Markdown depth; language includes worst-case JSON escaping.
+        let bytes = 4096 + 6 * value.language.size + 2048 * value.spans.size
+        if (value.spans.size > MAX_HIGHLIGHT_TOTAL_SPANS - spans ||
+            bytes > byteLimit - metadataBytes) {
+            exhausted = true
+            return None
+        }
+        spans += value.spans.size
+        metadataBytes += bytes
+        Some(value)
+    }
+
+    func diagnostics(): Array<public_model.Diagnostic> {
+        if (!exhausted) { return [] }
+        [public_model.Diagnostic("warning", "CJDOC3028",
+            "highlight metadata was omitted after the total resource budget was exhausted; code text was preserved")]
+    }
+}
 
 internal enum CodeKind {
     Keyword | Type | StringLiteral | Number | Literal | Comment | Operator |

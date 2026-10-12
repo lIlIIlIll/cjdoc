@@ -56,8 +56,12 @@ internal let MARKDOWN_FALLBACK_TEXT = "Documentation omitted because Markdown re
 
 internal class MarkdownGenerationContext {
     let highlightMode: String
+    let highlightBudget: HighlightGenerationBudget
 
-    init(highlightMode!: String = "auto") { this.highlightMode = highlightMode }
+    init(highlightMode!: String = "auto", highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES) {
+        this.highlightMode = highlightMode
+        this.highlightBudget = HighlightGenerationBudget(byteLimit: highlightBytes)
+    }
     private var nodes: Int64 = 0
     private var textBytes: Int64 = 0
     private let diagnosticsStorage = ArrayList<public_model.Diagnostic>()
@@ -104,7 +108,14 @@ internal class MarkdownGenerationContext {
     }
 
     func diagnostics(): Array<public_model.Diagnostic> {
-        diagnosticsStorage.toArray()
+        let result = ArrayList<public_model.Diagnostic>(diagnosticsStorage.toArray())
+        result.add(all: highlightBudget.diagnostics())
+        result.toArray()
+    }
+
+    func highlight(source: String, language: String): ?public_model.CodeHighlight {
+        if (highlightMode == "off") { return None }
+        highlightBudget.prepare(source, language)
     }
 }
 
@@ -208,8 +219,7 @@ internal func publicMarkdownMetadata(node: NodeRef, context: MarkdownGenerationC
                     .MarkdownNodeMetadata
                     .forCodeBlock(publicCodeBlockKind(value.codeKind), fenceCharacter, value.fenceLength, value.infoRaw,
                         value.language, value.attributesRaw,
-                        codeHighlight: if (context.highlightMode == "off") { None } else {
-                            Some(publicCodeHighlight(value.literal, value.language)) }))
+                        codeHighlight: context.highlight(value.literal, value.language)))
         case NodeKind.Table =>
             let alignments = ArrayList<String>()
             let sourceAlignments = node.asTable().getOrThrow().alignments

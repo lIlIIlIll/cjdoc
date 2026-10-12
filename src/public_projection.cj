@@ -1,6 +1,7 @@
 package cjdoc
 
 import cjdoc.model as public_model
+import cjdoc.render as public_render
 import cjdoc.quality.*
 import std.collection.*
 import std.sort.*
@@ -203,8 +204,7 @@ internal func publicSymbol(value: SymbolDoc, sourceMapper: PublicSourceMapper,
         },
         origin: public_model.DeclarationOrigin(kind: value.origin.kind,
             macroSymbolId: value.origin.macroSymbolId),
-        signatureHighlight: if (markdownContext.highlightMode == "off") { None } else {
-            Some(publicCodeHighlight(value.sourceSignature, "cangjie")) },
+        signatureHighlight: markdownContext.highlight(value.sourceSignature, "cangjie"),
         sourceApiSignature: if (value.sourceApiSignatureTokens.isEmpty()) {
             public_model.SourceApiSignature("unavailable")
         } else {
@@ -219,10 +219,11 @@ internal class PublicDeclarationProjection {
     let renderableIds: HashSet<String>
 
     init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
-        providerStatesByModule: HashMap<String, String>, audience: String, highlightMode!: String = "auto") {
+        providerStatesByModule: HashMap<String, String>, audience: String, highlightMode!: String = "auto",
+        highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES) {
         let declarations = ArrayList<public_model.SymbolDoc>()
         let assetCollector = LocalAssetCollector(documentation.sourceFileOrigins)
-        let markdownContext = MarkdownGenerationContext(highlightMode: highlightMode)
+        let markdownContext = MarkdownGenerationContext(highlightMode: highlightMode, highlightBytes: highlightBytes)
         let renderableIds = renderableSymbolIds(documentation, audience)
         for (symbol in documentation.symbols) {
             declarations.add(publicSymbol(symbol, sourceMapper, providerStatesByModule,
@@ -319,14 +320,14 @@ internal class PublicDiagnosticProjection {
 }
 
 internal func publicDocumentation(documentation: DocumentationSet,
-    request: GenerationRequest): public_model.DocumentationSet {
+    request: GenerationRequest, highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES): public_model.DocumentationSet {
     let sourceMapper = PublicSourceMapper(origins: documentation.sourceFileOrigins.toArray())
     let repositoryRoot = repositoryRootForRequest(request)
     let moduleProjection = PublicModuleProjection(documentation, sourceMapper,
         repositoryRoot: repositoryRoot)
     let providerProjection = PublicProviderProjection(documentation)
     let declarationProjection = PublicDeclarationProjection(documentation, sourceMapper,
-        providerProjection.statesByModule, request.audience)
+        providerProjection.statesByModule, request.audience, highlightBytes: highlightBytes)
     let semanticLinkDiagnostics = resolvePublicSemanticLinks(declarationProjection.declarations, request.audience,
         request.projectRoot)
     let sourceProjection = PublicSourceProjection(documentation, sourceMapper)
@@ -350,5 +351,12 @@ internal func publicDocumentation(documentation: DocumentationSet,
         orphanDocComments: sourceProjection.orphanDocComments,
         macroInvocations: sourceProjection.macroInvocations, unsupportedDeclarations: sourceProjection.unsupported,
         diagnostics: diagnosticProjection.diagnostics)
+    // A fixed highlight allowance cannot assume the rest of the bundle is small.
+    // Preserve all declarations/text without optional highlighting before the
+    // existing fallback, if the stricter whole-document codec boundary is hit.
+    if (highlightBytes > 0 &&
+        !public_render.docIrFitsEncodedBudget(candidate, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
+        return publicDocumentation(documentation, request, highlightBytes: 0)
+    }
     boundGeneratedDocumentation(candidate, request)
 }
