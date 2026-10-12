@@ -267,16 +267,37 @@ internal func linkedSignatureSpans(symbol: SymbolDoc,
     spans
 }
 
+private func signatureTokenClass(kind: String, spelling: String): String {
+    let identifierKind = codeBuiltinIdentifierKind(kind, spelling)
+    if (!identifierKind.isEmpty()) { return codeKindClass(identifierKind) }
+    if (kind != "RUNE" && (kind.contains("STRING") || kind.contains("RUNE") || kind.contains("CHAR"))) {
+        return codeKindClass("string")
+    }
+    if (kind.contains("LITERAL")) { return codeKindClass("number") }
+    match (kind) {
+        case "PUBLIC" | "PROTECTED" | "PRIVATE" | "INTERNAL" | "CLASS" | "STRUCT" |
+            "INTERFACE" | "ENUM" | "EXTEND" | "TYPE" | "FUNC" | "INIT" | "PROP" |
+            "LET" | "VAR" | "CONST" | "STATIC" | "MUT" | "OPEN" | "OVERRIDE" |
+            "ABSTRACT" | "OPERATOR" | "WHERE" | "FOREIGN" | "UNSAFE" | "MACRO" => codeKindClass("keyword")
+        case "INT8" | "INT16" | "INT32" | "INT64" | "INTNATIVE" | "UINT8" |
+            "UINT16" | "UINT32" | "UINT64" | "UINTNATIVE" | "FLOAT16" | "FLOAT32" |
+            "FLOAT64" | "BOOLEAN" | "RUNE" | "UNIT" | "NOTHING" | "VARRAY" | "THISTYPE" => codeKindClass("type")
+        case _ => ""
+    }
+}
+
 private func appendSignatureRangeHtml(out: RenderTextBuffer, raw: String,
-    tokens: ArrayList<HtmlSignatureToken>, start: Int64, end: Int64): Unit {
+    tokens: ArrayList<HtmlSignatureToken>, start: Int64, end: Int64,
+    highlight!: ?CodeHighlight = None): Unit {
+    if (let Some(prepared) <- highlight) {
+        appendCodeHighlightRangeHtml(out, raw, prepared, start, end)
+        return
+    }
     var position = start
     for (token in tokens) {
         if (token.start < start || token.end > end) { continue }
         out.append(escapeHtml(raw[position..token.start]))
-        var className = htmlCodeWordClass(token.value)
-        if (token.kind.contains("STRING") || token.kind.contains("RUNE") || token.kind.contains("CHAR")) {
-            className = "code-string"
-        } else if (token.kind.contains("LITERAL")) { className = "code-number" }
+        let className = signatureTokenClass(token.kind, token.value)
         appendHtmlCodeToken(out, token.value, className)
         position = token.end
     }
@@ -284,23 +305,31 @@ private func appendSignatureRangeHtml(out: RenderTextBuffer, raw: String,
 }
 
 internal func appendSignatureTextHtml(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
+    if (let Some(prepared) <- symbol.signatureHighlight) {
+        if (!prepared.matchesSource(symbol.headerSpelling)) {
+            appendHtmlEscapedValue(out, symbol.headerSpelling); return
+        }
+    }
     appendSignatureRangeHtml(out, symbol.headerSpelling, alignedSignatureTokens(symbol),
-        0, symbol.headerSpelling.size)
+        0, symbol.headerSpelling.size, highlight: symbol.signatureHighlight)
 }
 
 internal func appendLinkedSignatureHtml(out: RenderTextBuffer, symbol: SymbolDoc,
     links: HtmlTypeLinkIndex, rootPrefix: String): Unit {
     let raw = symbol.headerSpelling
+    if (let Some(prepared) <- symbol.signatureHighlight) {
+        if (!prepared.matchesSource(raw)) { appendHtmlEscapedValue(out, raw); return }
+    }
     let tokens = alignedSignatureTokens(symbol)
     var position: Int64 = 0
     for (span in linkedSignatureSpans(symbol, links)) {
         if (span.start < position) { continue }
-        appendSignatureRangeHtml(out, raw, tokens, position, span.start)
+        appendSignatureRangeHtml(out, raw, tokens, position, span.start, highlight: symbol.signatureHighlight)
         out.append("<a class=\"type-link signature-type-link\" href=\"" +
             escapeHtml(rootPrefix + span.url) + "\">")
-        appendSignatureRangeHtml(out, raw, tokens, span.start, span.end)
+        appendSignatureRangeHtml(out, raw, tokens, span.start, span.end, highlight: symbol.signatureHighlight)
         out.append("</a>")
         position = span.end
     }
-    appendSignatureRangeHtml(out, raw, tokens, position, raw.size)
+    appendSignatureRangeHtml(out, raw, tokens, position, raw.size, highlight: symbol.signatureHighlight)
 }

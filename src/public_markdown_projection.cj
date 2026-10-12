@@ -55,6 +55,9 @@ internal let MAX_GENERATED_MARKDOWN_TOTAL_BYTES: Int64 = 16 * 1024 * 1024
 internal let MARKDOWN_FALLBACK_TEXT = "Documentation omitted because Markdown resource limits were exceeded."
 
 internal class MarkdownGenerationContext {
+    let highlightMode: String
+
+    init(highlightMode!: String = "auto") { this.highlightMode = highlightMode }
     private var nodes: Int64 = 0
     private var textBytes: Int64 = 0
     private let diagnosticsStorage = ArrayList<public_model.Diagnostic>()
@@ -204,7 +207,9 @@ internal func publicMarkdownMetadata(node: NodeRef, context: MarkdownGenerationC
                 public_model
                     .MarkdownNodeMetadata
                     .forCodeBlock(publicCodeBlockKind(value.codeKind), fenceCharacter, value.fenceLength, value.infoRaw,
-                        value.language, value.attributesRaw))
+                        value.language, value.attributesRaw,
+                        codeHighlight: if (context.highlightMode == "off") { None } else {
+                            Some(publicCodeHighlight(value.literal, value.language)) }))
         case NodeKind.Table =>
             let alignments = ArrayList<String>()
             let sourceAlignments = node.asTable().getOrThrow().alignments
@@ -351,12 +356,18 @@ internal func publicMarkdown(body: String, assetCollector: LocalAssetCollector, 
     publicMarkdownNode(result.document.root(), result.source, assetCollector, sourcePath, declarationSource, symbolId,
         context, 0)
 }
-public func parseStandaloneMarkdown(body: String): public_model.MarkdownNode {
+public func parseStandaloneMarkdown(body: String, highlightMode!: String = "auto"): public_model.MarkdownNode {
     let source = public_model.SourceRange("conceptual.md", public_model.SourcePosition(1, 1, 0),
         public_model.SourcePosition(1, 1, 0))
     let assets = LocalAssetCollector(ArrayList<SourceFileOrigin>())
-    let context = MarkdownGenerationContext()
+    let context = MarkdownGenerationContext(highlightMode: highlightMode)
     publicMarkdown(body, assets, "conceptual.md", source, "cjdoc:conceptual", context)
+}
+
+private func markdownHasCodeBlock(node: public_model.MarkdownNode): Bool {
+    if (node.kind == "code_block") { return true }
+    for (child in node.children) { if (markdownHasCodeBlock(child)) { return true } }
+    false
 }
 
 internal func publicComment(value: DocComment, assetCollector: LocalAssetCollector, sourcePath: String,
@@ -372,7 +383,13 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
             tags.add(publicTagForAudience(tag, renderableIds))
         }
         for (tag in value.examples) {
-            tags.add(publicTagForAudience(tag, renderableIds))
+            let tree = publicMarkdown(tag.description, assetCollector, sourcePath,
+                declarationSource, symbolId, context)
+            let ordinary = publicTagForAudience(tag, renderableIds)
+            tags.add(public_model.DocTag(ordinary.name, ordinary.subject, ordinary.description,
+                referenceState: ordinary.referenceState, targetSymbolId: ordinary.targetSymbolId,
+                directives: ordinary.directives,
+                exampleMarkdown: if (markdownHasCodeBlock(tree)) { Some(tree) } else { None }))
         }
         match (value.returns) {
             case Some(tag) => tags.add(publicTagForAudience(tag, renderableIds))

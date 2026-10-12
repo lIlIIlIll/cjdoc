@@ -42,6 +42,7 @@ SCHEMA_FILES = (
     "doc-ir.schema.json",
     "doc-ir-v9.schema.json",
     "doc-ir-v11.schema.json",
+    "doc-ir-v12.schema.json",
     "doc-ir-v10.schema.json",
     "doc-ir-v6.schema.json",
     "doc-ir-v7.schema.json",

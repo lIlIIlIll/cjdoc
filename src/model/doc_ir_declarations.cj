@@ -181,10 +181,11 @@ public class DocTag {
     public let referenceState: String
     public let targetSymbolId: ?String
     public let directives: String
+    public let exampleMarkdown: ?MarkdownNode
 
     public init(name: String, subject: String, description: String,
         referenceState!: String = "unavailable", targetSymbolId!: ?String = None,
-        directives!: String = "") {
+        directives!: String = "", exampleMarkdown!: ?MarkdownNode = None) {
         if (!isSemanticState(referenceState)) { throw IllegalArgumentException("invalid reference state") }
         this.name = name
         this.subject = subject
@@ -192,6 +193,12 @@ public class DocTag {
         this.referenceState = referenceState
         this.targetSymbolId = targetSymbolId
         this.directives = directives
+        if (let Some(tree) <- exampleMarkdown) {
+            if (name != "example" || tree.kind != "document") {
+                throw IllegalArgumentException("example Markdown requires an example document")
+            }
+        }
+        this.exampleMarkdown = exampleMarkdown
     }
 }
 

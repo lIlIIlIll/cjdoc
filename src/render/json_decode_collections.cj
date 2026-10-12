@@ -19,7 +19,7 @@ internal func decodeSymbol(node: JsonNode, path: String, legacyV6: Bool, legacy:
         ["id", "kind", "name", "qualifiedName", "packageName", "moduleId", "ownerId", "visibility",
             "genericParameters", "parameters", "returnType", "annotations", "typeRelationships",
             "symbolRelationships", "documentation", "source", "headerSpelling", "sourceApiSignature",
-            "semantic", "origin", "enumNonExhaustive"]
+            "semantic", "origin", "enumNonExhaustive", "signatureHighlight"]
     }
     let value = strictObject(node, path, keys)
     let parameters = ArrayList<ParameterDoc>()
@@ -78,7 +78,7 @@ internal func decodeSymbol(node: JsonNode, path: String, legacyV6: Bool, legacy:
         } else {
             decodeSourceApiSignature(required(value, "sourceApiSignature", path),
                 "${path}.sourceApiSignature")
-        })
+        }, signatureHighlight: optionalCodeHighlightAt(value, "signatureHighlight", path))
 }
 
 internal func decodeModules(root: JsonObject, legacy: Bool, repositoryMetadata: Bool): Array<ModuleDoc> {

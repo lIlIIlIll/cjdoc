@@ -413,7 +413,7 @@ class RendererSafetyTest {
         @Expect(css.contains(".parameter-type{white-space:normal;overflow-wrap:anywhere}"), true)
 
         @Expect(packageHtml.contains("class=\"declaration-group\""), true)
-        @Expect(packageHtml.contains("class=\"declaration-signature\">public func api(): Unit"), true)
+        @Expect(uncoloredCode(packageHtml).contains("class=\"declaration-signature\">public func api(): Unit"), true)
         @Expect(!packageHtml.contains("semantic: resolved"), true)
         @Expect(!packageHtml.contains("src/fixture.cj:1:"), true)
         @Expect(packageHtml.contains("data-cjdoc-sidebar-filter"), true)

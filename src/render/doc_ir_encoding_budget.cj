@@ -152,6 +152,9 @@ internal func consumeMarkdownMetadataEncoding(value: MarkdownNodeMetadata, path:
     budget.consumeOptionalString(value.infoRaw, "${path}.infoRaw")
     budget.consumeOptionalString(value.language, "${path}.language")
     budget.consumeOptionalString(value.attributesRaw, "${path}.attributesRaw")
+    if (let Some(highlight) <- value.codeHighlight) {
+        consumeCodeHighlightEncoding(highlight, "${path}.codeHighlight", jsonDepth + 1, budget)
+    }
     budget.consumeOptionalString(value.tableAlignment, "${path}.alignment")
     budget.consumeOptionalString(value.semanticTarget, "${path}.target")
     budget.consumeOptionalString(value.semanticState, "${path}.state")
@@ -205,6 +208,9 @@ internal func consumeTagEncoding(value: DocTag, path: String,
     if (!value.directives.isEmpty()) {
         budget.consumeString(value.directives, "${path}.directives")
     }
+    if (let Some(markdown) <- value.exampleMarkdown) {
+        consumeMarkdownEncoding(markdown, "${path}.exampleMarkdown", 0, 5, budget)
+    }
 }
 
 internal func consumeCommentEncoding(value: DocComment, path: String, jsonDepth: Int64,
@@ -230,6 +236,9 @@ internal func consumeSymbolEncoding(value: SymbolDoc, path: String,
         ("moduleId", value.moduleId), ("visibility", value.visibility),
         ("headerSpelling", value.headerSpelling)]) {
         budget.consumeString(text, "${path}.${name}")
+    }
+    if (let Some(highlight) <- value.signatureHighlight) {
+        consumeCodeHighlightEncoding(highlight, "${path}.signatureHighlight", 3, budget)
     }
     budget.consumeOptionalString(value.ownerId, "${path}.ownerId")
     consumeRangeEncoding(value.source, "${path}.source", budget, jsonDepth: 3)

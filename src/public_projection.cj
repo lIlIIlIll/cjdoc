@@ -203,6 +203,8 @@ internal func publicSymbol(value: SymbolDoc, sourceMapper: PublicSourceMapper,
         },
         origin: public_model.DeclarationOrigin(kind: value.origin.kind,
             macroSymbolId: value.origin.macroSymbolId),
+        signatureHighlight: if (markdownContext.highlightMode == "off") { None } else {
+            Some(publicCodeHighlight(value.sourceSignature, "cangjie")) },
         sourceApiSignature: if (value.sourceApiSignatureTokens.isEmpty()) {
             public_model.SourceApiSignature("unavailable")
         } else {
@@ -217,10 +219,10 @@ internal class PublicDeclarationProjection {
     let renderableIds: HashSet<String>
 
     init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
-        providerStatesByModule: HashMap<String, String>, audience: String) {
+        providerStatesByModule: HashMap<String, String>, audience: String, highlightMode!: String = "auto") {
         let declarations = ArrayList<public_model.SymbolDoc>()
         let assetCollector = LocalAssetCollector(documentation.sourceFileOrigins)
-        let markdownContext = MarkdownGenerationContext()
+        let markdownContext = MarkdownGenerationContext(highlightMode: highlightMode)
         let renderableIds = renderableSymbolIds(documentation, audience)
         for (symbol in documentation.symbols) {
             declarations.add(publicSymbol(symbol, sourceMapper, providerStatesByModule,

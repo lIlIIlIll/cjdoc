@@ -19,7 +19,7 @@ private func signatureTestTokens(): Array<String> {
 }
 
 private func signatureTestDocument(raw: String,
-    tokens!: Array<String> = signatureTestTokens()): DocumentationSet {
+    tokens!: Array<String> = signatureTestTokens(), highlight!: ?CodeHighlight = None): DocumentationSet {
     let moduleId = "cjdoc:module:v1:signature-test"
     let tokenId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Asignature-test::fixture::class:Token#g0()"
     let functionId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Asignature-test::fixture::function:accept#g0(String,Token)"
@@ -36,7 +36,7 @@ private func signatureTestDocument(raw: String,
             ParameterDoc("item", tokenType)
         ],
         returnType: Some(tokenType),
-        sourceApiSignature: SourceApiSignature("available", tokens: tokens))
+        sourceApiSignature: SourceApiSignature("available", tokens: tokens), signatureHighlight: highlight)
     DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("signature-test"),
         ConfigurationSnapshot(lintProfile: "off"),
         modules: [ModuleDoc(moduleId, "signature-test", "root", "", packageNames: ["fixture"])],
@@ -46,6 +46,44 @@ private func signatureTestDocument(raw: String,
 
 @Test
 class HtmlSignatureMappingTest {
+    @TestCase
+    func persistedDisplaySpansMergeInsideExistingTypeLinks(): Unit {
+        let raw = "public func accept(label!: String = \"Token\", item!: Token): Token"
+        let literalStart = raw.indexOf("\"Token\"").getOrThrow()
+        let prepared = CodeHighlight("cangjie", contractFingerprint(raw), raw.size,
+            "cjdoc-cangjie-lexer", "1", "complete", None,
+            [CodeSpan(0, 6, "keyword"), CodeSpan(7, 11, "keyword"),
+                CodeSpan(literalStart, literalStart + 7, "string")])
+        let document = signatureTestDocument(raw, highlight: Some(prepared))
+        let links = HtmlTypeLinkIndex(document, RenderProjection(document))
+        let out = RenderTextBuffer()
+        appendLinkedSignatureHtml(out, document.declarations[1], links, "../")
+        let html = out.toString()
+        @Expect(html.contains("<span class=\"code-string\">&quot;Token&quot;</span>"))
+        @Expect(html.contains("class=\"type-link signature-type-link\""))
+        @Expect(!html.contains("&quot;<a"))
+        @Expect(uncoloredCode(html).contains("&quot;Token&quot;"))
+        let staleDocument = signatureTestDocument(raw + " ", highlight: Some(prepared))
+        let stale = RenderTextBuffer()
+        appendSignatureTextHtml(stale, staleDocument.declarations[1])
+        @Expect(stale.toString(), escapeHtml(raw + " "))
+    }
+
+    @TestCase
+    func persistedCommentSpansDoNotDependOnSkippedWitnessTrivia(): Unit {
+        let raw = "public /* nested /* inner */ end */ func accept(label!: String = \"Token\", item!: Token): Token"
+        let commentStart = raw.indexOf("/*").getOrThrow()
+        let commentEnd = raw.indexOf(" func").getOrThrow()
+        let prepared = CodeHighlight("cangjie", contractFingerprint(raw), raw.size,
+            "cjdoc-cangjie-lexer", "2", "complete", None,
+            [CodeSpan(0, 6, "keyword"), CodeSpan(commentStart, commentEnd, "comment")])
+        let document = signatureTestDocument(raw, highlight: Some(prepared))
+        let out = RenderTextBuffer()
+        appendSignatureTextHtml(out, document.declarations[1])
+        @Expect(uncoloredCode(out.toString()), escapeHtml(raw))
+        @Expect(out.toString().contains("<span class=\"code-comment\">/* nested /* inner */ end */</span>"))
+    }
+
     @TestCase
     func namedParameterAndReturnLinksNeverSelectDefaultLiteral(): Unit {
         let raw = "public func accept(label!: String = \"Token\", item!: Token): Token"

@@ -2,6 +2,79 @@ package cjdoc.model
 
 import std.collection.*
 
+// STS 1.2.0 std.core.cjo declares String/Array; the builtin-name probe
+// confirms String/Array/Char lex as IDENTIFIER (highlight-builtin-identifiers.txt).
+// This closed presentation list never creates semantic type identity or links.
+public func codeBuiltinIdentifierKind(kind: String, spelling: String): String {
+    if (kind != "IDENTIFIER") { return "" }
+    match (spelling) {
+        case "String" | "Array" | "Char" => "type"
+        case _ => ""
+    }
+}
+
+public class CodeSpan {
+    public let startByte: Int64
+    public let endByte: Int64
+    public let kind: String
+    public init(startByte: Int64, endByte: Int64, kind: String) {
+        if (startByte < 0 || endByte <= startByte || codeKindClass(kind).isEmpty()) {
+            throw IllegalArgumentException("invalid code span")
+        }
+        this.startByte = startByte; this.endByte = endByte; this.kind = kind
+    }
+}
+
+// Presentation metadata is independent of declaration and source-contract identity.
+public class CodeHighlight {
+    public let language: String
+    public let sourceHash: String
+    public let byteLength: Int64
+    public let engineId: String
+    public let engineRevision: String
+    public let state: String
+    public let reason: ?String
+    private let spansStorage: ArrayList<CodeSpan>
+    public init(language: String, sourceHash: String, byteLength: Int64, engineId: String,
+        engineRevision: String, state: String, reason: ?String, spans: Array<CodeSpan>) {
+        if (byteLength < 0 || sourceHash.isEmpty() || engineId.isEmpty() || engineRevision.isEmpty() ||
+            (state != "complete" && state != "partial" && state != "plain") ||
+            (state == "plain" && (reason.isNone() || !spans.isEmpty())) || spans.size > 65536) {
+            throw IllegalArgumentException("invalid code highlight")
+        }
+        if (let Some(value) <- reason) {
+            let reasons = ["disabled", "no-language", "unsupported", "missing-metadata", "backend-unavailable",
+                "invalid-spans", "resource-limit", "lexer-failed", "unterminated-token"]
+            if (!reasons.contains(value)) { throw IllegalArgumentException("invalid code highlight reason") }
+        }
+        var previousEnd: Int64 = 0
+        for (span in spans) {
+            if (span.startByte < previousEnd || span.endByte > byteLength) {
+                throw IllegalArgumentException("invalid code highlight spans")
+            }
+            previousEnd = span.endByte
+        }
+        if (sourceHash.size != 64) { throw IllegalArgumentException("invalid highlight source hash") }
+        for (byte in sourceHash.toArray()) {
+            if (!((byte >= b'0' && byte <= b'9') || (byte >= b'a' && byte <= b'f'))) {
+                throw IllegalArgumentException("invalid highlight source hash")
+            }
+        }
+        this.language = language; this.sourceHash = sourceHash; this.byteLength = byteLength
+        this.engineId = engineId; this.engineRevision = engineRevision; this.state = state
+        this.reason = reason; this.spansStorage = ArrayList<CodeSpan>(spans)
+    }
+    public prop spans: ReadOnlyList<CodeSpan> { get() { spansStorage } }
+    public func matchesSource(raw: String): Bool {
+        if (raw.size != byteLength || contractFingerprint(raw) != sourceHash) { return false }
+        for (span in spansStorage) {
+            if ((raw[span.startByte] & 0xC0) == 0x80 ||
+                (span.endByte < raw.size && (raw[span.endByte] & 0xC0) == 0x80)) { return false }
+        }
+        true
+    }
+}
+
 public class MarkdownNodeMetadata {
     public let kind: String
     public let headingLevel: ?Int64
@@ -16,6 +89,7 @@ public class MarkdownNodeMetadata {
     public let infoRaw: ?String
     public let language: ?String
     public let attributesRaw: ?String
+    public let codeHighlight: ?CodeHighlight
     public let tableHeader: ?Bool
     public let tableAlignment: ?String
     public var semanticTarget: ?String
@@ -32,7 +106,7 @@ public class MarkdownNodeMetadata {
         tableAlignments!: Array<String> = [], tableHeader!: ?Bool = None,
         tableAlignment!: ?String = None, semanticTarget!: ?String = None,
         semanticState!: ?String = None, semanticTargetSymbolId!: ?String = None,
-        semanticExternalUrl!: ?String = None) {
+        semanticExternalUrl!: ?String = None, codeHighlight!: ?CodeHighlight = None) {
         this.kind = kind
         this.headingLevel = headingLevel
         this.listKind = listKind
@@ -46,6 +120,7 @@ public class MarkdownNodeMetadata {
         this.infoRaw = infoRaw
         this.language = language
         this.attributesRaw = attributesRaw
+        this.codeHighlight = codeHighlight
         this.tableAlignmentsStorage = ArrayList<String>(tableAlignments)
         this.tableHeader = tableHeader
         this.tableAlignment = tableAlignment
@@ -71,10 +146,11 @@ public class MarkdownNodeMetadata {
 
     public static func forCodeBlock(codeKind: String, fenceCharacter: ?String,
         fenceLength: Int64, infoRaw: String, language: String,
-        attributesRaw: String): MarkdownNodeMetadata {
+        attributesRaw: String, codeHighlight!: ?CodeHighlight = None): MarkdownNodeMetadata {
         MarkdownNodeMetadata("code_block", codeKind: Some(codeKind),
             fenceCharacter: fenceCharacter, fenceLength: Some(fenceLength),
-            infoRaw: Some(infoRaw), language: Some(language), attributesRaw: Some(attributesRaw))
+            infoRaw: Some(infoRaw), language: Some(language), attributesRaw: Some(attributesRaw),
+            codeHighlight: codeHighlight)
     }
 
     public static func forTable(alignments: Array<String>): MarkdownNodeMetadata {
@@ -206,6 +282,7 @@ public class SymbolDoc {
     public let source: SourceRange
     public let headerSpelling: String
     public let sourceApiSignature: SourceApiSignature
+    public let signatureHighlight: ?CodeHighlight
     public let semantic: SemanticInfo
     public let origin: DeclarationOrigin
     public let enumNonExhaustive: ?Bool
@@ -223,7 +300,8 @@ public class SymbolDoc {
         annotations!: Array<AnnotationDoc> = [], typeRelationships!: Array<TypeRelationship> = [],
         symbolRelationships!: Array<SymbolRelationship> = [], documentation!: ?DocComment = None,
         origin!: DeclarationOrigin = DeclarationOrigin(),
-        sourceApiSignature!: SourceApiSignature = SourceApiSignature("unavailable")) {
+        sourceApiSignature!: SourceApiSignature = SourceApiSignature("unavailable"),
+        signatureHighlight!: ?CodeHighlight = None) {
         this.id = id
         this.kind = kind
         this.name = name
@@ -235,6 +313,7 @@ public class SymbolDoc {
         this.source = source
         this.headerSpelling = headerSpelling
         this.sourceApiSignature = sourceApiSignature
+        this.signatureHighlight = signatureHighlight
         this.semantic = semantic
         this.returnType = returnType
         this.documentation = documentation
@@ -255,7 +334,8 @@ public class SymbolDoc {
         annotations!: Array<AnnotationDoc> = [], typeRelationships!: Array<TypeRelationship> = [],
         symbolRelationships!: Array<SymbolRelationship> = [], documentation!: ?DocComment = None,
         origin!: DeclarationOrigin = DeclarationOrigin(),
-        sourceApiSignature!: SourceApiSignature = SourceApiSignature("unavailable")) {
+        sourceApiSignature!: SourceApiSignature = SourceApiSignature("unavailable"),
+        signatureHighlight!: ?CodeHighlight = None) {
         this.id = id
         this.kind = kind
         this.name = name
@@ -272,6 +352,7 @@ public class SymbolDoc {
         this.documentation = documentation
         this.origin = origin
         this.enumNonExhaustive = enumNonExhaustive
+        this.signatureHighlight = signatureHighlight
         this.genericParametersStorage = ArrayList<String>(genericParameters)
         this.parametersStorage = ArrayList<ParameterDoc>(parameters)
         this.annotationsStorage = ArrayList<AnnotationDoc>(annotations)

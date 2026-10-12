@@ -136,6 +136,7 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
         fail("$.schemaVersion", "expected string")
     }
     let schemaText = if (version == DOC_IR_SCHEMA_VERSION) { DOC_IR_SCHEMA }
+        else if (version == DOC_IR_V11_SCHEMA_VERSION) { DOC_IR_V11_SCHEMA }
         else if (version == DOC_IR_V10_SCHEMA_VERSION) { DOC_IR_V10_SCHEMA }
         else if (version == DOC_IR_V9_SCHEMA_VERSION) { DOC_IR_V9_SCHEMA }
         else if (version == DOC_IR_V8_SCHEMA_VERSION) { DOC_IR_V8_SCHEMA }
@@ -143,7 +144,8 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
         else if (version == DOC_IR_V6_SCHEMA_VERSION) { DOC_IR_V6_SCHEMA }
         else {
             fail("$.schemaVersion",
-                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V10_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
+                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V11_SCHEMA_VERSION}', " +
+                "'${DOC_IR_V10_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
                 "'${DOC_IR_V8_SCHEMA_VERSION}', '${DOC_IR_V7_SCHEMA_VERSION}', or " +
                 "'${DOC_IR_V6_SCHEMA_VERSION}'")
         }
@@ -317,15 +319,17 @@ internal func migratedOptionalSymbolId(value: ?String, legacy: Bool,
 }
 
 internal func decodeTag(node: JsonNode, path: String, legacy: Bool,
-    legacyIds: HashMap<String, String>): DocTag {
+    legacyIds: HashMap<String, String>, legacyMarkdown: Bool,
+    assetReferences: HashMap<String, String>): DocTag {
     let value = strictObject(node, path,
-        ["name", "subject", "description", "referenceState", "targetSymbolId", "directives"])
+        ["name", "subject", "description", "referenceState", "targetSymbolId", "directives", "exampleMarkdown"])
     DocTag(stringAt(value, "name", path), stringAt(value, "subject", path),
         stringAt(value, "description", path),
         referenceState: stringAt(value, "referenceState", path),
         targetSymbolId: migratedOptionalSymbolId(nullableStringAt(value, "targetSymbolId", path),
             legacy, legacyIds, "${path}.targetSymbolId"),
-        directives: defaultStringAt(value, "directives", path))
+        directives: defaultStringAt(value, "directives", path),
+        exampleMarkdown: optionalExampleMarkdownAt(value, path, legacyMarkdown, assetReferences))
 }
 
 internal func decodeMarkdownMetadata(node: JsonNode, kind: String,
@@ -344,11 +348,12 @@ internal func decodeMarkdownMetadata(node: JsonNode, kind: String,
             MarkdownNodeMetadata.forListItem(stringAt(value, "taskState", path))
         case "code_block" =>
             let value = strictObject(node, path,
-                ["codeKind", "fenceCharacter", "fenceLength", "infoRaw", "language", "attributesRaw"])
+                ["codeKind", "fenceCharacter", "fenceLength", "infoRaw", "language", "attributesRaw", "codeHighlight"])
             MarkdownNodeMetadata.forCodeBlock(stringAt(value, "codeKind", path),
                 nullableStringAt(value, "fenceCharacter", path), intAt(value, "fenceLength", path),
                 stringAt(value, "infoRaw", path), stringAt(value, "language", path),
-                stringAt(value, "attributesRaw", path))
+                stringAt(value, "attributesRaw", path),
+                codeHighlight: optionalCodeHighlightAt(value, "codeHighlight", path))
         case "table" =>
             let value = strictObject(node, path, ["alignments"])
             MarkdownNodeMetadata.forTable(stringsAt(value, "alignments", path))
@@ -416,7 +421,8 @@ internal func decodeComment(node: JsonNode, path: String, legacyIdsRequired: Boo
     let tags = ArrayList<DocTag>()
     var index: Int64 = 0
     for (tag in jsonArrayValues(arrayAt(value, "tags", path))) {
-        tags.add(decodeTag(tag, "${path}.tags[${index}]", legacyIdsRequired, legacyIds)); index++
+        tags.add(decodeTag(tag, "${path}.tags[${index}]", legacyIdsRequired, legacyIds,
+            legacyMarkdown, assetReferences)); index++
     }
     DocComment(stringAt(value, "rawText", path), stringAt(value, "summary", path),
         stringAt(value, "description", path),

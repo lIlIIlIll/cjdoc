@@ -92,7 +92,7 @@ class HtmlExtensionPageTest {
             let html = renderedExtensionPage(documentation, extension, locale)
             @Expect(html.contains("data-cjdoc-member-browser"), true)
             @Expect(html.split("data-member-name=\"byteLength\"").size, 2)
-            @Expect(html.contains("public func byteLength(): Int64"), true)
+            @Expect(uncoloredCode(html).contains("public func byteLength(): Int64"), true)
             @Expect(html.contains("UTF-8 byte count"), true)
             @Expect(html.contains("data-member-name=\"otherOnly\""), false)
             @Expect(html.contains("data-member-name=\"hidden\""), false)

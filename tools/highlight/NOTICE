@@ -1,0 +1,10 @@
+cjdoc optional Highlight.js adapter
+
+Highlight.js 11.11.1: https://github.com/highlightjs/highlight.js
+Copyright (c) 2006, Ivan Sagalaev. All rights reserved.
+Core and the JSON, Bash, Python, TOML/INI and YAML grammars are BSD-3-Clause.
+The complete upstream license is included in highlight.js-LICENSE.
+The adapter uses only these explicitly registered upstream grammar modules;
+the upstream npm archive also contains other grammars, which are not loaded.
+Keep this notice and license with any separately distributed adapter package.
+Do not distribute this generation-time package as generated website assets.

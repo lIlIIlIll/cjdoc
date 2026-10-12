@@ -244,6 +244,7 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
                 if (!tag.directives.isEmpty() && tag.name != "example") {
                     domainFail(tagPath, "directives are only allowed on @example tags")
                 }
+                validateExampleMarkdown(tag, "${tagPath}.exampleMarkdown")
                 match (tag.targetSymbolId) {
                     case Some(targetId) => if (!byId.contains(targetId)) {
                         domainFail(tagPath, "unknown target SymbolId")
@@ -419,6 +420,12 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         if (let Some(comment) <- declaration.documentation) {
             validateMarkdownAssetReferences(comment.markdown,
                 "$.declarations[${index}].documentation.markdown", assetIds)
+            for (tag in comment.tags) {
+                if (let Some(markdown) <- tag.exampleMarkdown) {
+                    validateMarkdownAssetReferences(markdown,
+                        "$.declarations[${index}].documentation.tags.exampleMarkdown", assetIds)
+                }
+            }
         }
         index++
     }

@@ -109,7 +109,7 @@ def quality(journey: Journey):
     for row, value in zip(rows.all(), originals):
         if value["total"] == 0 and row.locator("[data-reported-percent]").get_attribute("data-reported-percent") != str(value["percent"]):
             raise AssertionError("zero-denominator presentation lost the native reported percentage")
-    ir = journey.raw('#diagnostics a[href$="docs.json"]', "cjdoc.doc-ir/11")
+    ir = journey.raw('#diagnostics a[href$="docs.json"]', "cjdoc.doc-ir/12")
     if page.locator("#diagnostics .report-diagnostic").count() != len(ir["diagnostics"]):
         raise AssertionError("quality page dropped native diagnostics")
     lint = journey.raw('#quality a[href$="quality.json"]', "cjdoc.documentation-quality/1")
@@ -129,7 +129,7 @@ def quality(journey: Journey):
 
 def diagnostics(journey: Journey):
     page = journey.page
-    ir = journey.raw('#diagnostics a[href$="docs.json"]', "cjdoc.doc-ir/11")
+    ir = journey.raw('#diagnostics a[href$="docs.json"]', "cjdoc.doc-ir/12")
     native = ir["diagnostics"]
     if not native or page.locator("#diagnostics .report-diagnostic").count() != len(native):
         raise AssertionError("boundary demonstration has no complete native diagnostics")

@@ -220,7 +220,7 @@ internal func isExampleFenceClosing(line: String, fence: ExampleFenceOpening): B
 }
 
 internal func appendExampleCodeHtml(out: RenderTextBuffer, code: String, language: String): Unit {
-    let normalizedLanguage = if (language == "cj") { "cangjie" } else { language }
+    let normalizedLanguage = normalizeCodeLanguage(language)
     out.append("<pre><code")
     if (!normalizedLanguage.isEmpty()) {
         out.append(" class=\"language-${htmlStableSlug(normalizedLanguage)}\"")
@@ -436,7 +436,10 @@ internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: Do
             let emptyLabel = label(locale, "No example content.", "示例内容为空。")
             out.append("<p class=\"empty-state\">${emptyLabel}</p>\n")
         } else {
-            appendExampleHtml(out, tag.description)
+            match (tag.exampleMarkdown) {
+                case Some(tree) => out.append(renderStandaloneMarkdownHtml(tree))
+                case None => appendExampleHtml(out, tag.description)
+            }
         }
         out.append("</div>\n")
     }
@@ -552,10 +555,12 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
         case "code_block" =>
             out.append("<pre><code")
             var displayLanguage = ""
+            var preparedHighlight: ?CodeHighlight = None
             if (let Some(metadata) <- node.metadata) {
                 if (metadata.kind == "code_block") {
-                    let language = metadata.language.getOrThrow()
+                    let language = normalizeCodeLanguage(metadata.language.getOrThrow())
                     displayLanguage = language
+                    preparedHighlight = metadata.codeHighlight
                     if (!language.isEmpty()) {
                         out.append(" class=\"language-${htmlStableSlug(language)}\"")
                         out.append(" data-language=\"${escapeHtml(language)}\"")
@@ -566,7 +571,7 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
                 }
             }
             out.append(">")
-            appendHighlightedCodeHtml(out, node.literal, displayLanguage)
+            appendHighlightedCodeHtml(out, node.literal, displayLanguage, highlight: preparedHighlight)
             out.append("</code></pre>\n")
         case "thematic_break" => out.append("<hr>\n")
         case "block_quote" =>
