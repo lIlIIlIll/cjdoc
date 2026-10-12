@@ -409,5 +409,28 @@ class RoutingAndSelectionTest(unittest.TestCase):
                            f"job timeout {timeout}m must exceed the {wait}s wait")
 
 
+class PagesCandidatePolicyTest(unittest.TestCase):
+    """The resolver's policy is security relevant, so pin each branch."""
+
+    def resolver(self) -> str:
+        pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
+        return pages.split("Decide the candidate source", 1)[1].split("\n      - name:", 1)[0]
+
+    def test_an_empty_dispatch_input_builds_locally(self) -> None:
+        self.assertIn('workflow_dispatch without candidate_run_id builds locally', self.resolver())
+
+    def test_explicit_runs_must_be_successful_ci_runs(self) -> None:
+        resolver = self.resolver()
+        # An explicit run id bypasses `--status success`, so it is validated here.
+        self.assertIn("is not a CI workflow run", resolver)
+        self.assertIn("not a successful CI run", resolver)
+        self.assertIn('"${run_sha}" != "${GITHUB_SHA}"', resolver)
+
+    def test_the_automatic_path_waits_and_records_the_attempt(self) -> None:
+        resolver = self.resolver()
+        self.assertIn("deadline=$(( $(date +%s) + ", resolver)
+        self.assertIn("databaseId,attempt", resolver)
+
+
 if __name__ == "__main__":
     unittest.main()

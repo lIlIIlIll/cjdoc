@@ -123,11 +123,19 @@ jobs:
             local_build "pull requests never reuse a cross-run artifact"
             exit 0
           fi
+          # A manual dispatch that leaves `candidate_run_id` empty asks for a
+          # local build; it must not enter the automatic CI-run discovery below.
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -z "${EXPLICIT_RUN_ID}" ]]; then
+            local_build "workflow_dispatch without candidate_run_id builds locally"
+            exit 0
+          fi
           attempt=1
           run_id=""
+          explicit=0
           if [[ -n "${EXPLICIT_RUN_ID}" ]]; then
             run_id="${EXPLICIT_RUN_ID}"
             attempt="${EXPLICIT_RUN_ATTEMPT:-1}"
+            explicit=1
           else
             # CI and Pages are triggered by the same push and start together, so
             # an immediately-successful CI run usually does not exist yet. Wait
@@ -153,14 +161,27 @@ jobs:
             attempt="${candidates[0]##* }"
           fi
           artifact="cjdoc-linux-candidate-${run_id}-${attempt}"
-          # Bind the decision to the exact commit and tree the artifact claims.
+          # Bind the decision to the exact commit and tree the artifact claims,
+          # and to a run that actually succeeded: an explicit run id bypasses the
+          # automatic `--status success` filter, so it must be validated here.
           if ! gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}" \
-              --jq '.head_sha' > "${RUNNER_TEMP}/head-sha" 2>/dev/null; then
+              --jq '[.head_sha, .status, .conclusion, (.name // ""), (.path // "")] | @tsv' \
+              > "${RUNNER_TEMP}/run-info" 2>/dev/null; then
             local_build "cannot read run ${run_id}"
             exit 0
           fi
-          if [[ "$(cat "${RUNNER_TEMP}/head-sha")" != "${GITHUB_SHA}" ]]; then
+          IFS=$'\t' read -r run_sha run_status run_conclusion run_name run_path \
+            < "${RUNNER_TEMP}/run-info"
+          if [[ "${run_sha}" != "${GITHUB_SHA}" ]]; then
             local_build "run ${run_id} is for another commit"
+            exit 0
+          fi
+          if [[ "${run_path}" != *".github/workflows/ci.yml"* && "${run_name}" != "CI" ]]; then
+            local_build "run ${run_id} is not a CI workflow run"
+            exit 0
+          fi
+          if [[ "${run_status}" != "completed" || "${run_conclusion}" != "success" ]]; then
+            local_build "run ${run_id} is ${run_status}/${run_conclusion}, not a successful CI run"
             exit 0
           fi
           if ! gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${artifact}" \
