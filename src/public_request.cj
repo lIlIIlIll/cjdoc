@@ -70,6 +70,8 @@ public class GenerationRequest {
     public let astPreflightExecutable: ?String
     public let chir: ?ChirOptions
     public let cjpmCacheRoot: ?String
+    public let highlightAdapter: ?String
+    public let highlightNode: ?String
     private let dependencySourcesStorage: ArrayList<DependencySourceInput>
     private let cfgValuesStorage: ArrayList<CfgValue>
     private let providerFactoriesStorage: ArrayList<public_provider.SemanticProviderFactory>
@@ -81,7 +83,8 @@ public class GenerationRequest {
         dependencySources!: Array<DependencySourceInput> = [], cfgValues!: Array<CfgValue> = [],
         providerFactories!: Array<public_provider.SemanticProviderFactory> = [], cacheDirectory!: ?String = None,
         cacheFingerprint!: ?String = None, astPreflightExecutable!: ?String = None,
-        chir!: ?ChirOptions = None, cjpmCacheRoot!: ?String = None) {
+        chir!: ?ChirOptions = None, cjpmCacheRoot!: ?String = None,
+        highlightAdapter!: ?String = None, highlightNode!: ?String = None) {
         if (projectRoot.isEmpty()) {
             throw IllegalArgumentException("project root cannot be empty")
         }
@@ -103,6 +106,7 @@ public class GenerationRequest {
         if (repositoryRoot.isSome() && repository.isNone()) {
             throw IllegalArgumentException("repository root requires repository metadata")
         }
+        let _ = highlightExternalOptions(highlightAdapter, highlightNode)
         this.projectRoot = projectRoot
         this.repository = repository
         this.repositoryRoot = normalizeRepositoryRoot(repositoryRoot)
@@ -117,6 +121,8 @@ public class GenerationRequest {
         this.astPreflightExecutable = astPreflightExecutable
         this.chir = chir
         this.cjpmCacheRoot = cjpmCacheRoot
+        this.highlightAdapter = highlightAdapter
+        this.highlightNode = highlightNode
         this.dependencySourcesStorage = ArrayList<DependencySourceInput>(dependencySources)
         let normalizedCfg = CfgProfile(values: cfgValues)
         this.cfgValuesStorage = ArrayList<CfgValue>(normalizedCfg.values.toArray())

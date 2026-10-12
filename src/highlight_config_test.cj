@@ -110,16 +110,18 @@ class HighlightHostCliTest {
     }
 
     @TestCase
-    func validHostPathsFailClosedUntilExecutionIsImplemented(): Unit {
+    func validHostPathsRequirePairedAuthorization(): Unit {
         for (flag in ["--highlight-adapter", "--highlight-node"]) {
             let error = @AssertThrows[IllegalArgumentException](
                 parseNewCli(["generate", flag, highlightTestHostPath()]))
-            @Expect(error.message, "external highlighting adapter execution is not available in this revision")
+            @Expect(error.message, "--highlight-adapter and --highlight-node must be supplied together")
             let wrongCommand = @AssertThrows[IllegalArgumentException](
                 parseNewCli(["render", "--input", "docs.json", flag, highlightTestHostPath()]))
             @Expect(wrongCommand.message, "highlight host options are only valid for generate and check")
         }
         @Expect(parseNewCli(["generate"]).highlightAdapter.isNone(), true)
         @Expect(parseNewCli(["generate"]).highlightNode.isNone(), true)
+        @Expect(parseNewCli(["generate", "--highlight-adapter", highlightTestHostPath(),
+            "--highlight-node", highlightTestHostPath()]).highlightAdapter.isSome(), true)
     }
 }

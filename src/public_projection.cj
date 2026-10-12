@@ -220,10 +220,11 @@ internal class PublicDeclarationProjection {
 
     init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
         providerStatesByModule: HashMap<String, String>, audience: String, highlightMode!: String = "auto",
-        highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES) {
+        highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES, externalOptions!: ?HighlightExternalOptions = None) {
         let declarations = ArrayList<public_model.SymbolDoc>()
         let assetCollector = LocalAssetCollector(documentation.sourceFileOrigins)
-        let markdownContext = MarkdownGenerationContext(highlightMode: highlightMode, highlightBytes: highlightBytes)
+        let markdownContext = MarkdownGenerationContext(highlightMode: highlightMode, highlightBytes: highlightBytes,
+            externalOptions: externalOptions)
         let renderableIds = renderableSymbolIds(documentation, audience)
         for (symbol in documentation.symbols) {
             declarations.add(publicSymbol(symbol, sourceMapper, providerStatesByModule,
@@ -327,7 +328,8 @@ internal func publicDocumentation(documentation: DocumentationSet,
         repositoryRoot: repositoryRoot)
     let providerProjection = PublicProviderProjection(documentation)
     let declarationProjection = PublicDeclarationProjection(documentation, sourceMapper,
-        providerProjection.statesByModule, request.audience, highlightBytes: highlightBytes)
+        providerProjection.statesByModule, request.audience, highlightBytes: highlightBytes,
+        externalOptions: highlightExternalOptions(request.highlightAdapter, request.highlightNode))
     let semanticLinkDiagnostics = resolvePublicSemanticLinks(declarationProjection.declarations, request.audience,
         request.projectRoot)
     let sourceProjection = PublicSourceProjection(documentation, sourceMapper)

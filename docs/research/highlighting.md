@@ -48,7 +48,7 @@ Shell 家族**不统一**：`sh`、`zsh`、`fish`、`powershell` 不会被改成
 
 ## 外部适配器：离线预安装与授权
 
-外部 grammar 包是生成时的可选依赖，不是网站资源。固定版本为 **Node.js 26.10.0**、**Highlight.js 11.11.1**，映射修订 **`cjdoc-map-1`**，协议 **`cjdoc-highlight/1`**。包、锁文件、SHA-512 完整性与 BSD-3-Clause 许可证说明见 [`tools/highlight/README.md`](../tools/highlight/README.md)。
+外部 grammar 包是生成时的可选依赖，不是网站资源。固定版本为 **Node.js 26.10.0**、**Highlight.js 11.11.1**，映射修订 **`cjdoc-map-1`**，协议 **`cjdoc-highlight/1`**。包、锁文件、SHA-512 完整性与 BSD-3-Clause 许可证说明见 [`tools/highlight/README.md`](../../tools/highlight/README.md)。
 
 在 npm 缓存已预置该锁文件归档的机器上，独立于文档生成进行离线安装：
 
@@ -60,9 +60,13 @@ node --test
 
 缓存缺少归档时会安装失败；先在受控的联网准备阶段明确安装，再分发锁文件安装得到的依赖。生成器不能自动运行 npm、下载 grammar 或访问网络。默认 Cangjie 高亮不依赖这个步骤。
 
-宿主授权接口是 `--highlight-adapter <absolute path>` 和 `--highlight-node <absolute path>`，仅用于 `generate` / `check`。路径必须非空、绝对，不能拼接 shell 元字符或命令；含空格的路径应由调用 shell 引号保护为单个参数。不能从项目配置、`PATH` 搜索或代码块内容获得执行授权。外部执行只能通过这些显式宿主标志授权，并以 executable + argv 启动，不通过 shell。
+宿主授权接口是 `--highlight-adapter <absolute path>` 和 `--highlight-node <absolute path>`，仅用于 `generate` / `check`。路径必须非空、绝对，不能拼接 shell 元字符或命令；含空格的路径应由调用 shell 引号保护为单个参数。不能从项目配置、`PATH` 搜索或代码块内容获得执行授权。外部执行只能通过这些显式宿主标志授权；既有有界监督器使用固定脚本和独立 executable / argv 元素，不把任何用户值拼成 shell 命令。
 
-**当前修订不提供 Cangjie 到外部进程的执行连接。** CLI 检查这些标志的路径后会显式拒绝合法路径，报告 `external highlighting adapter execution is not available in this revision`；它们不是已生效的开关。安装适配器不改变这个边界。未安装、未授权或尚未连接的外部后端保持纯文本，并以 `backend-unavailable` 解释，不能伪造 `complete`。
+两个标志必须同时提供；公开 API 等价授权为 GenerationRequest 的 highlightAdapter / highlightNode 两个命名可选参数（非空绝对路径）。生成层对每个外部语言块启动一次固定 argv 的 Node 进程，仅传入适配器路径；stdin 转发一条换行终止 JSON 并向目标提供 EOF，stdout 必须恰好返回一条换行终止响应。SDK 管道流没有公开 close 方法，因此沿用固定监督器脚本转发精确字节数；计数仅来自程序格式化的请求 Array.size，不来自代码、语言或宿主路径。每块 deadline 为 **5 秒**，stdout 独立限制为 **3 MiB** 加换行，stderr 保留有界前缀并继续排空。成功等待退出，失败或超时终止隔离进程组并等待。此修订不采用适配器可复用 worker 模式：复用已有一次性有界生命周期，避免跨块状态与守护进程清理；不缓存瞬态失败。
+
+主进程严格拒绝重复 JSON 键、未知字段、额外响应、缺少换行、错误类型、协议/id/语言/固定引擎身份或修订不匹配、错误状态和未知原因。主进程重新计算原文 UTF-8 SHA-256 与字节长度，验证全部范围的数量、分类词汇、正长度、顺序、不重叠、边界和 UTF-8 字符边界。失败整块纯文本，不附加部分 spans。未授权、进程缺失、崩溃或非零退出为 backend-unavailable；不接受适配器 HTML。
+
+概念指南代码块在生成时仅在内存中高亮，其高亮元数据不持久化到 Doc IR；从 docs.json 执行后续 render 不会重放指南。API 注释与 @example 的持久化范围可以离线重渲染。最终网站及后续 render 都不需要 Node。
 
 ## 持久化、原因和资源边界
 
@@ -84,7 +88,7 @@ Doc IR **`cjdoc.doc-ir/12`** 的可选 `codeHighlight` / `signatureHighlight` �
 
 旧版本 Doc IR 缺少元数据时按纯文本 / `missing-metadata` 兼容降级，不捏造已完成高亮。高亮是展示元数据，不改变源码 API contract 指纹。
 
-可选适配器的固定预算为：每块 **262144 UTF-8 字节（256 KiB）**、最多 **65536 spans**、每条输入 JSONL **2097152 字节（2 MiB）**、每条输出 JSONL **3145728 字节（3 MiB）**，不含结尾换行。超限整块纯文本，不截断源码或返回伪造部分 spans。宿主连接还必须独立限制读取、执行 deadline 和 stderr，并在成功与失败路径等待或终止后等待子进程；本修订不声称已经实现这些宿主运行时保证。适配器协议拒绝非法请求的 `malformed-json`、`invalid-request`、`unsupported-language` 是协议层原因，不是 Doc IR 原因词汇；不能直接持久化为上述模型原因。
+可选适配器的固定预算为：每块 **262144 UTF-8 字节（256 KiB）**、最多 **65536 spans**、每条输入 JSONL **2097152 字节（2 MiB）**、每条输出 JSONL **3145728 字节（3 MiB）**，不含结尾换行。超限整块纯文本，不截断源码或返回部分 spans。协议原因 unsupported-language 映射到 Doc IR 的 unsupported；invalid-request / malformed-json 映射到 backend-unavailable；resource-limit / invalid-spans 保留对应模型原因；未知原因拒绝整个响应。
 
 生成期的签名、注释围栏和 `@example` Markdown 子树共享同一个总预算：最多 **8192 spans**、**4 MiB 高亮元数据预算**和 **4 MiB 原始代码准备量**。元数据预算包含 JSON 对象与缩进的保守开销，不只是代码长度。按已有符号、注释和代码块遍历顺序分配；首次超限后，不再附加任何后续高亮元数据，并仅报告一次 `warning[CJDOC3028]`。不截断源码或 spans；缺少元数据的代码按 `plain` / `missing-metadata` 渲染。
 

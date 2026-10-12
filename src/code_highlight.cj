@@ -19,8 +19,10 @@ internal class HighlightGenerationBudget {
     private var metadataBytes: Int64 = 0
     private var spans: Int64 = 0
     private var exhausted: Bool = false
+    private let externalOptions: ?HighlightExternalOptions
 
-    init(byteLimit!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES) {
+    init(byteLimit!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES, externalOptions!: ?HighlightExternalOptions = None) {
+        this.externalOptions = externalOptions
         let capped = if (byteLimit < 0) { 0 } else if (byteLimit > MAX_HIGHLIGHT_TOTAL_BYTES) {
             MAX_HIGHLIGHT_TOTAL_BYTES
         } else { byteLimit }
@@ -36,7 +38,7 @@ internal class HighlightGenerationBudget {
             return None
         }
         preparedBytes += source.size
-        let value = publicCodeHighlight(source, language)
+        let value = publicCodeHighlight(source, language, externalOptions: externalOptions)
         // Bound object/key/number and pretty-indent costs even at the maximum
         // generated Markdown depth; language includes worst-case JSON escaping.
         let bytes = 4096 + 6 * value.language.size + 2048 * value.spans.size
@@ -97,15 +99,17 @@ internal func highlightByteBoundary(source: String, offset: Int64): Bool {
 
 internal class CodeHighlight {
     let language: String
-    let engineId: String = CANGJIE_HIGHLIGHT_ENGINE
-    let engineRevision: String = CANGJIE_HIGHLIGHT_REVISION
+    let engineId: String
+    let engineRevision: String
     let state: CodeHighlightState
     let reason: ?String
     let byteLength: Int64
     private let spansStorage: ArrayList<CodeSpan>
 
     init(source: String, language: String, spans: Array<CodeSpan>,
-        state: CodeHighlightState, reason: ?String) {
+        state: CodeHighlightState, reason: ?String, engineId!: String = CANGJIE_HIGHLIGHT_ENGINE,
+        engineRevision!: String = CANGJIE_HIGHLIGHT_REVISION) {
+        this.engineId = engineId; this.engineRevision = engineRevision
         var previousEnd: Int64 = 0
         if (spans.size > MAX_HIGHLIGHT_SPANS_PER_BLOCK) {
             throw IllegalArgumentException("resource-limit")
@@ -125,9 +129,11 @@ internal class CodeHighlight {
     func spans(): ReadOnlyList<CodeSpan> { spansStorage }
 }
 
-internal func publicCodeHighlight(source: String, language: String): public_model.CodeHighlight {
+internal func publicCodeHighlight(source: String, language: String,
+    externalOptions!: ?HighlightExternalOptions = None): public_model.CodeHighlight {
     let normalized = public_model.normalizeCodeLanguage(language)
-    let value = highlightCode(source, normalized, public_model.codeLanguageBackend(normalized))
+    let value = highlightCode(source, normalized, public_model.codeLanguageBackend(normalized),
+        externalOptions: externalOptions)
     let spans = ArrayList<public_model.CodeSpan>()
     for (span in value.spans()) {
         spans.add(public_model.CodeSpan(span.startByte, span.endByte, codeKindName(span.kind)))
@@ -141,7 +147,8 @@ internal func publicCodeHighlight(source: String, language: String): public_mode
         value.engineId, value.engineRevision, state, value.reason, spans.toArray())
 }
 
-internal func highlightCode(source: String, language: String, backend: String): CodeHighlight {
+internal func highlightCode(source: String, language: String, backend: String,
+    externalOptions!: ?HighlightExternalOptions = None): CodeHighlight {
     if (source.size > MAX_HIGHLIGHT_BLOCK_BYTES) {
         return CodeHighlight(source, language, [], CodeHighlightState.Plain, Some("resource-limit"))
     }
@@ -149,6 +156,9 @@ internal func highlightCode(source: String, language: String, backend: String): 
         if (backend == "builtin") {
             let (spans, state, reason) = cangjieHighlightSpans(source)
             return CodeHighlight(source, language, spans, state, reason)
+        }
+        if (backend == "external") {
+            if (let Some(options) <- externalOptions) { return externalCodeHighlight(source, language, options) }
         }
         let reason = if (backend == "external") { "backend-unavailable" }
             else if (language.isEmpty()) { "no-language" } else { "unsupported" }

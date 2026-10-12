@@ -432,7 +432,8 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
             cacheDirectory: selectedCache,
             astPreflightExecutable: astPreflightExecutable,
             chir: chirOptions,
-            cjpmCacheRoot: options.cjpmCacheRoot))
+            cjpmCacheRoot: options.cjpmCacheRoot,
+            highlightAdapter: options.highlightAdapter, highlightNode: options.highlightNode))
     }
     var sourceOrigins: Array<SourceFileOrigin> = []
     var documentation = match (generationRequest) {
@@ -492,7 +493,8 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
             artifactList.add(all: appendConceptualArtifacts(options.project, documentation,
                 orderedFormats(options), renderedArtifacts, conceptualPages,
                 locale: options.locale, docVersion: options.docVersion,
-                markdownLayout: options.markdownLayout))
+                markdownLayout: options.markdownLayout,
+                externalOptions: highlightExternalOptions(options.highlightAdapter, options.highlightNode)))
         } else {
             artifactList.add(all: renderedArtifacts)
         }

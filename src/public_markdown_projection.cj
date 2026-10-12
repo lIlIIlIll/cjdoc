@@ -58,9 +58,10 @@ internal class MarkdownGenerationContext {
     let highlightMode: String
     let highlightBudget: HighlightGenerationBudget
 
-    init(highlightMode!: String = "auto", highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES) {
+    init(highlightMode!: String = "auto", highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES,
+        externalOptions!: ?HighlightExternalOptions = None) {
         this.highlightMode = highlightMode
-        this.highlightBudget = HighlightGenerationBudget(byteLimit: highlightBytes)
+        this.highlightBudget = HighlightGenerationBudget(byteLimit: highlightBytes, externalOptions: externalOptions)
     }
     private var nodes: Int64 = 0
     private var textBytes: Int64 = 0
@@ -366,11 +367,13 @@ internal func publicMarkdown(body: String, assetCollector: LocalAssetCollector, 
     publicMarkdownNode(result.document.root(), result.source, assetCollector, sourcePath, declarationSource, symbolId,
         context, 0)
 }
-public func parseStandaloneMarkdown(body: String, highlightMode!: String = "auto"): public_model.MarkdownNode {
+public func parseStandaloneMarkdown(body: String, highlightMode!: String = "auto",
+    highlightAdapter!: ?String = None, highlightNode!: ?String = None): public_model.MarkdownNode {
     let source = public_model.SourceRange("conceptual.md", public_model.SourcePosition(1, 1, 0),
         public_model.SourcePosition(1, 1, 0))
     let assets = LocalAssetCollector(ArrayList<SourceFileOrigin>())
-    let context = MarkdownGenerationContext(highlightMode: highlightMode)
+    let context = MarkdownGenerationContext(highlightMode: highlightMode,
+        externalOptions: highlightExternalOptions(highlightAdapter, highlightNode))
     publicMarkdown(body, assets, "conceptual.md", source, "cjdoc:conceptual", context)
 }
 

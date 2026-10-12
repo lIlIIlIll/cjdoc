@@ -1264,8 +1264,8 @@ private func conceptualBindingsHtml(page: ConceptualPage,
 
 private func conceptualMarkdownBodyHtml(documentation: public_model.DocumentationSet,
     page: ConceptualPage, pages: ArrayList<ConceptualPage>, markdown: String,
-    locale: String): String {
-    let rendered = conceptualMarkdownBodyHtmlRaw(documentation, page, pages, markdown)
+    locale: String, externalOptions!: ?HighlightExternalOptions = None): String {
+    let rendered = conceptualMarkdownBodyHtmlRaw(documentation, page, pages, markdown, externalOptions: externalOptions)
     conceptualInlineBindings(rendered, page, documentation, locale)
 }
 
@@ -1303,9 +1303,12 @@ private func conceptualInlineBindings(html: String, page: ConceptualPage,
 }
 
 private func conceptualMarkdownBodyHtmlRaw(documentation: public_model.DocumentationSet,
-    page: ConceptualPage, pages: ArrayList<ConceptualPage>, markdown: String): String {
+    page: ConceptualPage, pages: ArrayList<ConceptualPage>, markdown: String,
+    externalOptions!: ?HighlightExternalOptions = None): String {
     try {
-        let parsed = parseStandaloneMarkdown(markdown)
+        let parsed = parseStandaloneMarkdown(markdown,
+            highlightAdapter: externalOptions.map({ options => options.adapterPath }),
+            highlightNode: externalOptions.map({ options => options.nodeExecutable }))
         public_render.renderStandaloneMarkdownHtml(parsed,
             sourceLinks: conceptualSourceLinks(parsed, page, pages),
             pageTitle: Some(page.title))
@@ -1321,13 +1324,15 @@ private func conceptualMarkdownBodyHtmlRaw(documentation: public_model.Documenta
 
 internal func renderConceptualDocumentationArtifacts(documentation: public_model.DocumentationSet,
     formats: Array<String>, pages: ArrayList<ConceptualPage>, locale!: String = "en",
-    docVersion!: ?String = None, markdownLayout!: String = "site"): Array<public_render.RenderArtifact> {
+    docVersion!: ?String = None, markdownLayout!: String = "site",
+    externalOptions!: ?HighlightExternalOptions = None): Array<public_render.RenderArtifact> {
     let artifacts = ArrayList<public_render.RenderArtifact>()
     for (format in formats) {
         if (format == "html") {
             for (page in pages) {
                 let markdown = conceptualMarkdownWithoutBindings(page.markdown)
-                let body = conceptualMarkdownBodyHtml(documentation, page, pages, markdown, locale)
+                let body = conceptualMarkdownBodyHtml(documentation, page, pages, markdown, locale,
+                    externalOptions: externalOptions)
                 let bindings = conceptualBindingsHtml(page, documentation, locale)
                 let pageBody = if (page.kind == "project") {
                     body + conceptualProjectHtmlNavigation(pages) + bindings
@@ -1675,7 +1680,7 @@ internal func appendConceptualArtifacts(projectRoot: String,
     documentation: public_model.DocumentationSet, formats: Array<String>,
     baseArtifacts: Array<public_render.RenderArtifact>, pages: ArrayList<ConceptualPage>,
     locale!: String = "en", docVersion!: ?String = None,
-    markdownLayout!: String = "site"): Array<public_render.RenderArtifact> {
+    markdownLayout!: String = "site", externalOptions!: ?HighlightExternalOptions = None): Array<public_render.RenderArtifact> {
     var hasHtml = false
     var hasMarkdown = false
     for (format in formats) {
@@ -1759,6 +1764,6 @@ internal func appendConceptualArtifacts(projectRoot: String,
         }
     }
     result.add(all: renderConceptualDocumentationArtifacts(documentation, formats, pages,
-        locale: locale, docVersion: docVersion, markdownLayout: markdownLayout))
+        locale: locale, docVersion: docVersion, markdownLayout: markdownLayout, externalOptions: externalOptions))
     result.toArray()
 }
