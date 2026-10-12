@@ -499,6 +499,57 @@ test.describe('generated HTML reference', () => {
     expect(metrics.average).toBeLessThan(72);
   });
 
+  test('extension page exposes owned members and accurate navigation in file and HTTP modes', async ({ page, browser }) => {
+    let offlineExtensionUrl;
+    for (const start of [indexUrl, httpBaseUrl + 'index.html']) {
+      await page.goto(start);
+      await expectStable(page);
+      await page.locator('.package-index a').first().click();
+      await referenceBoxClassLink(page).click();
+      const typeUrl = page.url();
+      const extensionMember = page.locator(
+        'details[data-cjdoc-member][data-member-origin="extension"][data-member-name="extensionMarker"]'
+      );
+      await expect(extensionMember).toHaveCount(1);
+      await extensionMember.locator('summary').click();
+      await extensionMember.locator('.member-origin a').click();
+      const extensionUrl = page.url();
+      if (start === indexUrl) offlineExtensionUrl = extensionUrl;
+      await expect(page.locator('main h1')).toContainText('Extension ReferenceBox<T>');
+      await expect(page.locator('.breadcrumbs li[aria-current="page"]')).toContainText('Extension');
+      const ownMember = page.locator('details[data-cjdoc-member][data-member-name="extensionMarker"]');
+      await expect(ownMember).toHaveCount(1);
+      await expect(page.locator('.sidebar-context a[href^="#"]')).toHaveCount(1);
+      await ownMember.locator('summary').click();
+      await expect(ownMember.locator('.member-detail-body')).toBeVisible();
+      await expect(ownMember).toContainText('Member supplied by an extension.');
+      await expect(ownMember.locator('.member-permalink')).toHaveAttribute('href', /symbol-/);
+      const target = page.locator('.symbol-relationships a.relation-target');
+      await expect(target).toHaveCount(1);
+      await target.click();
+      await expect(page).toHaveURL(typeUrl);
+      await page.goBack();
+      await expect(page).toHaveURL(extensionUrl);
+      await ownMember.locator('summary').click();
+      await ownMember.locator('.member-permalink').click();
+      await expect(page.locator('.breadcrumbs a').filter({ hasText: 'Extension ReferenceBox<T>' })).toHaveCount(1);
+      await page.goBack();
+      await expectStable(page);
+    }
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    try {
+      const offlinePage = await context.newPage();
+      await offlinePage.goto(offlineExtensionUrl);
+      const member = offlinePage.locator('details[data-cjdoc-member][data-member-name="extensionMarker"]');
+      await expect(member).toHaveCount(1);
+      await member.locator('summary').click();
+      await expect(member.locator('.member-detail-body')).toBeVisible();
+      await expect(offlinePage.locator('.symbol-relationships a.relation-target')).toHaveCount(1);
+    } finally {
+      await context.close();
+    }
+  });
+
   test('tablet reference content is visible without a viewport-sized blank row', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await openIndex(page);
