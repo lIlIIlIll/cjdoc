@@ -81,7 +81,7 @@ internal func renderHtmlIndex(documentation: DocumentationSet, projection: Rende
 internal func appendDeclarationRow(out: RenderTextBuffer, symbol: SymbolDoc,
     rootPrefix: String, locale!: String = "en"): Unit {
     out.append("<article class=\"declaration-summary\" data-cjdoc-member data-member-name=\"${escapeHtml(symbol.name)}\" data-member-kind=\"${escapeHtml(symbol.kind)}\"><a class=\"declaration-row-link\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(symbol))}\">")
-    out.append("<div class=\"declaration-summary-head\"><code>${escapeHtml(symbol.name)}</code><span class=\"declaration-kind\">${escapeHtml(htmlKindLabel(symbol.kind, locale))}</span></div>")
+    out.append("<div class=\"declaration-summary-head\"><code>${escapeHtml(readerSymbolTitle(symbol, locale))}</code><span class=\"declaration-kind\">${escapeHtml(htmlKindLabel(symbol.kind, locale))}</span></div>")
     match (symbol.documentation) {
         case Some(comment) =>
             let summary = summaryPlainText(comment)
@@ -421,7 +421,7 @@ internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<Strin
     while (position > 0) {
         position--
         let owner = owners[position]
-        out.append("<li><a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, owner))}\"><code>${escapeHtml(owner.name)}</code></a></li>")
+        out.append("<li><a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, owner))}\"><code>${escapeHtml(readerSymbolTitle(owner, locale))}</code></a></li>")
     }
 }
 
@@ -431,14 +431,19 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     locale!: String = "en", docVersion!: ?String = None,
     exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): String {
     let out = RenderTextBuffer()
-    appendPageStart(out, symbol.qualifiedName, "../", documentation, projection, locale: locale,
+    let pageTitle = if (symbol.kind == "extend") {
+        "${label(locale, "Extension", "扩展")} ${readerQualifiedName(symbol)}"
+    } else { symbol.qualifiedName }
+    let hasMemberPage = isTypeDeclaration(symbol) || symbol.kind == "extend"
+    appendPageStart(out, pageTitle, "../", documentation, projection, locale: locale,
         currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)),
         currentRoute: "api", docVersion: docVersion, currentSymbol: Some(symbol))
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li>")
     out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">${label(locale, "Package", "包")} <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     appendOwnerBreadcrumbs(out, index, symbol, "../", locale)
-    out.append("<li aria-current=\"page\"><code>${escapeHtml(symbol.name)}</code></li></ol></nav>\n")
-    out.append("<header class=\"page-header api-page-header\"><div class=\"api-title-row\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(symbol.name)}</code></h1>")
+    out.append("<li aria-current=\"page\"><code>${escapeHtml(readerSymbolTitle(symbol, locale))}</code></li></ol></nav>\n")
+    let headerClass = if (symbol.kind == "extend") { " api-extension-header" } else { "" }
+    out.append("<header class=\"page-header api-page-header${headerClass}\"><div class=\"api-title-row\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(readerSymbolTitle(symbol, locale))}</code></h1>")
     out.append("<button class=\"copy-link\" type=\"button\" data-cjdoc-copy-link=\"../${escapeHtml(symbolReadablePagePath(symbol))}\">${label(locale, "Copy link", "复制链接")}</button></div>")
     out.append("<p class=\"symbol-kind\">${escapeHtml(htmlKindLabel(symbol.kind, locale))}</p>")
     appendSymbolMetadata(out, index, symbol, "../", assetLookup, typeLinkIndex,
@@ -451,7 +456,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
         case None => ()
     }
     out.append("</header>\n")
-    if (isTypeDeclaration(symbol)) {
+    if (hasMemberPage) {
         appendDocumentationIntroductionHtml(out, symbol, "../", assetLookup, 4, locale)
         match (symbol.documentation) {
             case Some(comment) => appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(symbol))
@@ -487,12 +492,16 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
                     title, assetLookup, typeLinkIndex, locale, exampleEvidence: exampleEvidence)
             }
             out.append("</section>\n")
+        } else if (symbol.kind == "extend") {
+            out.append("<p class=\"empty-state\">" +
+                label(locale, "No visible members for this audience.",
+                    "当前受众范围内没有可展示的成员。") + "</p>\n")
         }
     }
     appendDocumentationHtml(out, index, symbol, "../", assetLookup,
-        typeLinkIndex, headingBase: 4, locale: locale, includeContracts: !isTypeDeclaration(symbol),
-        includeIntroduction: !isTypeDeclaration(symbol), exampleEvidence: exampleEvidence)
-    if (!isTypeDeclaration(symbol)) {
+        typeLinkIndex, headingBase: 4, locale: locale, includeContracts: !hasMemberPage,
+        includeIntroduction: !hasMemberPage, exampleEvidence: exampleEvidence)
+    if (!hasMemberPage) {
         appendReaderRelationships(out, index, symbol, "../", typeLinkIndex, locale)
     }
     appendReverseTypeUsages(out, index, typeLinkIndex, symbol, "../", locale)
