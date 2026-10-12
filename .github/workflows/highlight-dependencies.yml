@@ -1,0 +1,36 @@
+name: Highlight pinned dependencies
+on:
+  push:
+    branches: [feat/issue-100-static-highlighting]
+    paths: [.github/workflows/highlight-dependencies.yml]
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Fetch exact public dependency revisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/highlight-dependency-bundles"
+          mkdir -p "$out"
+          for spec in 'markdown db4f9527944b589db8436669f1d255192388cee2' 'yjson 54b4965dee0f0b96710cbc678ec5ec9a126b055c' 'yjson_macros fec0adce41f73d037d876cbac7a28aee8108bb5c'; do
+            read -r name revision <<< "$spec"
+            dir="${RUNNER_TEMP}/$name"
+            git init -q "$dir"
+            git -C "$dir" fetch --quiet --depth 1 "https://github.com/lIlIIlIll/${name}.git" "$revision"
+            git -C "$dir" checkout --quiet --detach FETCH_HEAD
+            git -C "$dir" bundle create "$out/${name}.bundle" HEAD
+            git -C "$dir" rev-parse HEAD > "$out/${name}.revision"
+          done
+          cd "$out"
+          sha256sum *.bundle > SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: highlight-dependency-bundles-${{ github.run_id }}
+          path: ${{ runner.temp }}/highlight-dependency-bundles/
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
