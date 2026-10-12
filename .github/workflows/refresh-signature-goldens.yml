@@ -57,6 +57,8 @@ jobs:
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           . scripts/with_sts_o1_cjpm.sh
           bash scripts/update_goldens.sh
+          # Snapshot preparation may normalize this tracked fixture; golden refresh must not include it.
+          git restore -- tests/fixtures/projects/source_edges/src/fixture.cj
           git diff --stat
           python3 - <<'PY'
           import subprocess
