@@ -125,7 +125,28 @@ class BuildParameterTests(unittest.TestCase):
                   "          cjpm build --jobs 1 && cjpm build --jobs 4\n")
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("'&&'", result.stderr)
+        self.assertIn("unquoted shell metacharacter", result.stderr)
+
+    def test_an_adjacent_operator_is_refused(self) -> None:
+        """`1&&cjpm` is one shlex token, but bash still runs two builds."""
+        self.edit(".github/workflows/release.yml",
+                  "          cjpm build --jobs 1\n",
+                  "          cjpm build --jobs 1&&cjpm build --jobs 4\n")
+        result = run_check(self.repo)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unquoted shell metacharacter", result.stderr)
+
+    def test_a_quoted_metacharacter_is_allowed(self) -> None:
+        """Only unquoted operators change what the shell runs."""
+        self.edit(".github/workflows/release.yml",
+                  "          cjpm build --jobs 1\n",
+                  '          cjpm build --jobs 1 "--cfg" "a&&b"\n')
+        result = run_check(self.repo)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_the_repository_ships_no_duplicate_release_workflow(self) -> None:
+        """A second copy would silently never run."""
+        self.assertFalse((self.repo / "scripts/release.yml").exists())
 
     def test_a_platform_specific_argument_is_refused(self) -> None:
         self.edit(".github/workflows/release.yml",

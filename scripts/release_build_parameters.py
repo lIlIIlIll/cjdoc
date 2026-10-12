@@ -51,9 +51,11 @@ CANDIDATE_JOB = "\n  release-candidate:\n"
 PUBLISH_JOB = "\n  publish:\n"
 # The option the pinned toolchain needs, and therefore the one the release requires.
 REQUIRED_OPTION = "-O1"
-# Shell tokens that turn one visible `cjpm` statement into several, or into a
-# conditional one. A uniform command cannot contain any of them.
-SHELL_CONTROL = {"&&", "||", ";", "|", "&", ">", ">>", "<", "2>", "2>&1"}
+# Shell metacharacters that turn one visible `cjpm` statement into several, or into
+# a conditional one. A uniform command cannot contain any of them, and they are
+# detected *inside* tokens too: `1&&cjpm` is one shlex token but bash still treats
+# the adjacent `&&` as a control operator.
+SHELL_CONTROL = "&|;<>`()"
 PROBE_CJPM = """#!/usr/bin/env bash
 set -euo pipefail
 case "${1:-}" in
@@ -103,14 +105,26 @@ def discover_build_command(workflow: Path) -> list[str]:
         raise SystemExit(
             f"release build parameters: the candidate job's build statement is "
             f"{calls[0]!r}, not a plain `cjpm build` (CI-08.3)")
-    # `&& cjpm build --jobs 4` splits into ordinary tokens, so control operators
-    # must be rejected explicitly: bash would run both builds and package the latter
-    # while this check still reported one uniform command.
-    found = sorted({token for token in command if token in SHELL_CONTROL})
+    # Control operators are searched for inside tokens as well: `cjpm build --jobs
+    # 1&&cjpm build --jobs 4` is a single shlex token pair, yet bash runs two builds
+    # and packages the latter while this check still saw one command.
+    statement = calls[0]
+    found = []
+    index = 0
+    while index < len(statement):
+        character = statement[index]
+        if character == "'" or character == '"':
+            end = statement.find(character, index + 1)
+            index = len(statement) if end < 0 else end + 1
+            continue
+        if character in SHELL_CONTROL:
+            found.append(character)
+        index += 1
     if found:
         raise SystemExit(
-            f"release build parameters: the candidate job's build statement contains "
-            f"{found[0]!r}, so it may run more than one build; make the single build "
+            f"release build parameters: the candidate job's build statement contains the "
+            f"unquoted shell metacharacter {found[0]!r}, so it may run more than one build "
+            "or build something other than one uniform command; make the single build "
             "explicit and give any platform that needs different parameters its own "
             "candidate (CI-08.3)")
     expansions = [token for token in command if "$" in token or "`" in token]
@@ -118,7 +132,7 @@ def discover_build_command(workflow: Path) -> list[str]:
         raise SystemExit(
             f"release build parameters: the candidate job builds with an interpolated "
             f"argument {expansions[0]!r}, so the effective parameters can differ per "
-            "platform; make each platform's build explicit and give it its own "
+            f"platform; make each platform's build explicit and give it its own "
             "candidate (CI-08.3)")
     return command
 
