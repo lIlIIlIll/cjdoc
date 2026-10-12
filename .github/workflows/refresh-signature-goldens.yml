@@ -1,0 +1,72 @@
+name: Temporary regenerate source-signature v11 goldens
+
+on:
+  push:
+    branches:
+      - test/lexer-join-20261012
+    paths:
+      - '.github/workflows/refresh-signature-goldens.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out PR fix branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/signature-literal-source-spelling-20261012
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Set up Cangjie 1.2.0 STS with stdx
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571 # v3.2.0
+        with:
+          channel: sts
+          version: '1.2.0'
+          components: stdx
+          cjv-version: v0.3.2
+
+      - name: Export stdx environment
+        run: python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+
+      - name: Download matching CI Linux candidate
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: cjdoc-linux-candidate-38204465816-1
+          run-id: 38204465816
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: ${{ runner.temp }}/cjdoc-candidate
+
+      - name: Generate and push v11 golden files
+        shell: bash
+        env:
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          tar -C . -xf "${RUNNER_TEMP}/cjdoc-candidate/cjdoc-linux-candidate.tar"
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
+          . scripts/with_sts_o1_cjpm.sh
+          bash scripts/update_goldens.sh
+          git diff --stat
+          python3 - <<'PY'
+          import subprocess
+          changed = subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines()
+          if not changed or any(not f.startswith('tests/fixtures/golden-v11/') for f in changed):
+              raise SystemExit(f'Unexpected generated diff: {changed}')
+          print('Generated v11 files:', changed)
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tests/fixtures/golden-v11/
+          git commit -m "test: regenerate Doc IR v11 goldens for raw signature lexemes"
+          git push origin HEAD:refs/heads/fix/signature-literal-source-spelling-20261012
