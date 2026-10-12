@@ -23,7 +23,7 @@ SCRIPT = PROJECT_ROOT / "scripts/release_build_parameters.py"
 MODULE = "scripts/sts_compile_override.py"
 WRAPPER = "scripts/with_sts_o1_cjpm.sh"
 PATCHER = "scripts/apply_sts_override.py"
-PATCHER_CALL = "${CJDOC_PYTHON:-python} ${CJDOC_STS_OVERRIDE_MODULE}/apply_sts_override.py ${arguments}"
+PATCHER_CALL = '"${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/apply_sts_override.py" "${arguments[@]}"'
 
 
 def run_check(repo: Path, platform: str = "linux-x64",
