@@ -75,7 +75,7 @@ internal func renderSymbolAlias(symbol: SymbolDoc, locale: String): String {
     let target = symbolPagePath(symbol)["symbols/".size..]
     let out = RenderTextBuffer()
     out.append("<!doctype html><html lang=\"${escapeHtml(locale)}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'\">")
-    out.append("<title>${escapeHtml(symbol.qualifiedName)}</title><link rel=\"canonical\" href=\"${escapeHtml(target)}\"></head><body data-cjdoc-route=\"symbol-alias\"><main>")
+    out.append("<title>${escapeHtml(readerQualifiedName(symbol))}</title><link rel=\"canonical\" href=\"${escapeHtml(target)}\"></head><body data-cjdoc-route=\"symbol-alias\"><main>")
     out.append("<a data-cjdoc-alias-target href=\"${escapeHtml(target)}\">${escapeHtml(label(locale, "Open API documentation", "打开 API 文档"))}: ${escapeHtml(symbol.qualifiedName)}</a></main><script src=\"../symbol-alias.js\" defer></script></body></html>")
     out.toString()
 }
