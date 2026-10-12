@@ -18,7 +18,7 @@ class SourceSignatureLexemeTest {
         let signature = "public func join(separator!: String = \",\"): String"
         let lexed = cangjieLex(signature)
         @Expect(lexed.size, 13)
-        @Expect(lexed[9].kind, STRING_LITERAL)
+        @Expect(lexed[9].kind.toString(), "STRING_LITERAL")
         @Expect(lexed[9].value, ",")
 
         let witness = sourceApiSignatureTokens(signature)
