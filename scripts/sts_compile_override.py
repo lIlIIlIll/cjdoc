@@ -8,10 +8,11 @@ and yjson dependencies, so every build/test/run is performed with
 restoring them from a trap.
 
 This module owns that rewrite so the wrapper and the CI-08.3 uniformity check
-share one definition: the check computes the effective option by running
-`apply_to` on the real manifest rather than by searching the wrapper's text or
-repeating a constant, and no shell behaviour has to be probed (which is not
-portable — the release matrix builds on Windows, where `bash` may be absent).
+share one definition. The package name is read from each manifest and checked
+against `KNOWN_PACKAGES`, never supplied by the caller: deriving it from a path
+gave the wrong answer for the provider fixture, whose directory and package names
+differ, and a caller-supplied name would let the wrapper be pointed at a manifest
+the release does not build.
 """
 
 from __future__ import annotations
@@ -25,15 +26,27 @@ sys.dont_write_bytecode = True
 
 OPTION = "-O1"
 NEEDLE = 'override-compile-option = ""'
-MANIFEST_PACKAGE = {"cjpm.toml": "cjdoc", "tests/fixtures/projects/provider_plugin/cjpm.toml":
-                    "provider_plugin_fixture"}
+# The only packages the release build compiles. Membership is the guard: it keeps
+# the rewrite from touching an unrelated manifest that happens to be reachable.
+KNOWN_PACKAGES = ("cjdoc", "provider_plugin_fixture")
 
 
-def apply_to(contents: str, expected_name: str) -> str:
+def manifest_package(contents: str) -> str:
+    """The package a manifest declares, which must be one the release builds."""
+    package = tomllib.loads(contents).get("package")
+    if not isinstance(package, dict):
+        raise SystemExit("manifest has no [package] table")
+    name = package.get("name")
+    if name not in KNOWN_PACKAGES:
+        raise SystemExit(f"unexpected package manifest {name!r}")
+    return str(name)
+
+
+def apply_to(contents: str) -> str:
     """Return `contents` as cjpm sees it during a wrapped invocation."""
     package = tomllib.loads(contents).get("package")
-    if not isinstance(package, dict) or package.get("name") != expected_name:
-        raise SystemExit(f"unexpected package manifest for {expected_name}")
+    assert isinstance(package, dict)  # manifest_package validated the shape
+    manifest_package(contents)
     override = package.get("override-compile-option")
     if override == OPTION:
         return contents
@@ -46,12 +59,12 @@ def apply_to(contents: str, expected_name: str) -> str:
         if contents.count(header) != 1:
             raise SystemExit("expected one package table")
         return contents.replace(header, f'{header}  override-compile-option = "{OPTION}"\n', 1)
-    raise SystemExit(f"unexpected compile override for {expected_name}")
+    raise SystemExit(f"unexpected compile override {override!r}")
 
 
-def applied_option(contents: str, expected_name: str) -> str:
+def applied_option(contents: str) -> str:
     """The override cjpm would actually use, read back from the rewritten text."""
-    rewritten = tomllib.loads(apply_to(contents, expected_name))
+    rewritten = tomllib.loads(apply_to(contents))
     option = rewritten["package"].get("override-compile-option")
     return option if isinstance(option, str) else "<none>"
 
@@ -59,9 +72,8 @@ def applied_option(contents: str, expected_name: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Report the override a manifest would build with.")
     parser.add_argument("manifest", type=Path)
-    parser.add_argument("--package", required=True)
     args = parser.parse_args()
-    print(applied_option(args.manifest.read_text(encoding="utf-8"), args.package))
+    print(applied_option(args.manifest.read_text(encoding="utf-8")))
     return 0
 
 

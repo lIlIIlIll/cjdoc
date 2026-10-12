@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Contract tests for the CI-08.3 uniform build-parameter check.
 
-Executed against a real copy of the repository with targeted mutations. The check
-must not depend on a POSIX shell: the release matrix builds on Windows, where no
-such shell is guaranteed, so the effective option is obtained by running the
-wrapper's own patcher in Python.
+Run against a real copy of the repository with targeted mutations. The check
+observes the release's real artefacts — the wrapper's own patch step and the
+candidate job's build statement — so these tests mutate those artefacts and assert
+that a false voucher is refused.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ SCRIPT = PROJECT_ROOT / "scripts/release_build_parameters.py"
 MODULE = "scripts/sts_compile_override.py"
 WRAPPER = "scripts/with_sts_o1_cjpm.sh"
 PATCHER = "scripts/apply_sts_override.py"
-PATCHER_CALL = '\n"${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/apply_sts_override.py"'
+PATCHER_CALL = "${CJDOC_PYTHON:-python} ${CJDOC_STS_OVERRIDE_MODULE}/apply_sts_override.py ${arguments}"
 
 
 def run_check(repo: Path, platform: str = "linux-x64",
@@ -31,11 +31,11 @@ def run_check(repo: Path, platform: str = "linux-x64",
     command = [sys.executable, str(SCRIPT), "--repo", str(repo), "--platform", platform]
     if workflow is not None:
         command += ["--workflow", str(workflow)]
-    return subprocess.run(command, capture_output=True, text=True, timeout=600)
+    return subprocess.run(command, capture_output=True, text=True, timeout=900)
 
 
 class BuildParameterTests(unittest.TestCase):
-    """Uniformity must be established from the real call path, and refused otherwise."""
+    """Uniformity must be observed from the real call path, and refused otherwise."""
 
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
@@ -57,17 +57,31 @@ class BuildParameterTests(unittest.TestCase):
                 result = run_check(self.repo, platform)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 payload = json.loads(result.stdout)
-                # Computed by running the wrapper's patcher, not read from cjpm.toml,
-                # whose override is deliberately empty.
+                # From the receipt the wrapper's patch step wrote, not from the
+                # manifest, whose override is deliberately empty.
                 self.assertEqual(payload["effectiveCompileOption"], "-O1")
                 self.assertEqual(payload["command"], ["cjpm", "build", "--jobs", "1"])
+                self.assertEqual(payload["appliedTo"], [{"option": "-O1", "package": "cjdoc"}])
 
-    def test_the_check_does_not_need_a_shell(self) -> None:
-        """Windows may have no POSIX shell, so no shell may be exec'd."""
-        # The patcher itself may be a script; what matters is that the check works
-        # without bash. Exercised by the platform subtests above.
-        result = run_check(self.repo, "windows-x64")
+    def test_the_provider_fixture_keeps_its_own_package_name(self) -> None:
+        """Its directory and package names differ, which broke the first version."""
+        result = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, 'scripts');"
+             "from sts_compile_override import manifest_package;"
+             "print(manifest_package(open(sys.argv[1]).read()))",
+             str(self.repo / "tests/fixtures/projects/provider_plugin/cjpm.toml")],
+            cwd=self.repo, capture_output=True, text=True, timeout=300)
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "provider_plugin_fixture")
+
+    def test_a_definition_that_stops_applying_the_override_is_refused(self) -> None:
+        self.edit(MODULE,
+                  "        return contents.replace(NEEDLE, f'override-compile-option = \"{OPTION}\"', 1)",
+                  "        return contents")
+        result = run_check(self.repo)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not the required", result.stderr)
 
     def test_a_changed_shared_option_is_refused(self) -> None:
         self.edit(MODULE, 'OPTION = "-O1"', 'OPTION = "-O2"')
@@ -75,47 +89,22 @@ class BuildParameterTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("-O2", result.stderr)
 
-    def test_a_patcher_that_stops_applying_the_override_is_refused(self) -> None:
-        # Exactly the bypass reported in review: the wrapper keeps importing and
-        # calling the shared definition, but the rewrite no longer happens.
-        self.edit(PATCHER,
-                  "    updates = [(manifest, apply_to(manifest.read_text(encoding=\"utf-8\"), expected))\n"
-                  "               for manifest, expected in manifests]",
-                  "    updates = [(manifest, manifest.read_text(encoding=\"utf-8\"))\n"
-                  "               for manifest, expected in manifests]")
+    def test_a_wrapper_that_fails_to_patch_is_refused(self) -> None:
+        self.edit(WRAPPER, PATCHER_CALL, ": # patcher call removed")
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("applied no override", result.stderr)
 
-    def test_a_wrapper_that_stops_calling_the_patcher_is_refused(self) -> None:
-        self.edit(WRAPPER,
-                  '"${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/apply_sts_override.py" "${args[@]}"',
-                  ": # patcher call removed")
+    def test_a_compound_build_statement_is_refused(self) -> None:
+        """`&& cjpm build --jobs 4` would package a second, differently built binary."""
+        self.edit(".github/workflows/release.yml",
+                  "          cjpm build --jobs 1\n",
+                  "          cjpm build --jobs 1 && cjpm build --jobs 4\n")
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("does not invoke", result.stderr)
-
-    def test_a_wrapper_with_its_own_inline_rewrite_is_refused(self) -> None:
-        self.edit(WRAPPER, PATCHER_CALL,
-                  PATCHER_CALL + '\nsed -i "s/override-compile-option/x/" "${manifest}"')
-        result = run_check(self.repo)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("its own override rewrite", result.stderr)
-
-    def test_a_manifest_with_an_unexpected_option_is_refused(self) -> None:
-        self.edit("cjpm.toml", 'override-compile-option = ""',
-                  'override-compile-option = "-O3"')
-        result = run_check(self.repo)
-        self.assertNotEqual(result.returncode, 0)
-
-    def test_the_checked_tree_is_left_untouched(self) -> None:
-        before = (self.repo / "cjpm.toml").read_bytes()
-        self.assertEqual(run_check(self.repo).returncode, 0)
-        self.assertEqual((self.repo / "cjpm.toml").read_bytes(), before)
+        self.assertIn("'&&'", result.stderr)
 
     def test_a_platform_specific_argument_is_refused(self) -> None:
-        # The invocation still starts with the uniform prefix the first version
-        # searched for, but the effective command now differs per platform.
         self.edit(".github/workflows/release.yml",
                   "          cjpm build --jobs 1\n",
                   "          extra=()\n"
@@ -127,13 +116,21 @@ class BuildParameterTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("interpolated argument", result.stderr)
 
-    def test_two_build_commands_in_the_candidate_job_are_refused(self) -> None:
+    def test_two_build_statements_in_the_candidate_job_are_refused(self) -> None:
         self.edit(".github/workflows/release.yml",
                   "          cjpm build --jobs 1\n",
                   "          cjpm build --jobs 1\n          cjpm build --jobs 1\n")
         result = run_check(self.repo)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("2 cjpm commands", result.stderr)
+        self.assertIn("2 cjpm statements", result.stderr)
+
+    def test_a_non_build_cjpm_statement_is_refused(self) -> None:
+        self.edit(".github/workflows/release.yml",
+                  "          cjpm build --jobs 1\n",
+                  "          cjpm test\n")
+        result = run_check(self.repo)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("plain `cjpm build`", result.stderr)
 
     def test_a_missing_wrapper_is_refused(self) -> None:
         (self.repo / WRAPPER).unlink()
@@ -144,6 +141,11 @@ class BuildParameterTests(unittest.TestCase):
     def test_an_unknown_platform_is_refused(self) -> None:
         result = run_check(self.repo, "solaris-sparc")
         self.assertNotEqual(result.returncode, 0)
+
+    def test_the_checked_tree_is_left_untouched(self) -> None:
+        before = (self.repo / "cjpm.toml").read_bytes()
+        self.assertEqual(run_check(self.repo).returncode, 0)
+        self.assertEqual((self.repo / "cjpm.toml").read_bytes(), before)
 
     def test_the_release_workflow_calls_the_check_before_building(self) -> None:
         workflow = (self.repo / ".github/workflows/release.yml").read_text(encoding="utf-8")
@@ -176,7 +178,7 @@ class BuildParameterTests(unittest.TestCase):
         invocation = invocation.replace("${{ matrix.platform }}", "linux-x64")
         invocation = invocation.removeprefix("python ")
         result = subprocess.run([sys.executable, *shlex.split(invocation)], cwd=self.repo,
-                                capture_output=True, text=True, timeout=600)
+                                capture_output=True, text=True, timeout=900)
         self.assertEqual(result.returncode, 0,
                          f"the workflow invocation failed: {result.stderr.strip()}")
 

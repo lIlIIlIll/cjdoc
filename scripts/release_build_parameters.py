@@ -8,18 +8,22 @@ command and one override, so the requirement holds by construction — but only 
 absence enforced it. This check makes the determination explicit and fails loudly
 the moment a platform diverges without the matching work.
 
-Two facts are established from real artefacts rather than from prose:
+Both facts are observed rather than modelled:
 
 * the build command is **parsed out of the release workflow's candidate job** and
-  must be a plain literal, so a platform-specific invocation cannot hide behind a
-  matching prefix;
-* the effective compile option is computed by running the **same function the
-  `-O1` wrapper runs** (`scripts/sts_compile_override.apply_to`) over the real
-  manifest. It is not read from `cjpm.toml`, which deliberately commits `""`, and
-  it is not searched for in the wrapper's text, whose comments already contain the
-  literal. It is also not probed by executing the wrapper, because that would make
-  the check depend on a POSIX shell on every platform — and the release matrix builds on
-  Windows, where no POSIX shell is guaranteed.
+  must be a single, plain `cjpm` statement — a compound shell line or an
+  interpolated argument would let the effective command differ per platform while
+  still looking uniform;
+* the effective compile option is read from the **receipt the wrapper's own patch
+  step writes** while the wrapper runs. That means the value comes from the real
+  call path: the wrapper is executed, it invokes `scripts/apply_sts_override.py`,
+  and the check only reads the result. Searching the wrapper's text, restating a
+  constant, or re-running the patcher with arguments reconstructed here would all
+  vouch for something the release does not actually do.
+
+Executing the wrapper requires a POSIX shell. The release candidate job runs on
+`ubuntu-22.04`, so this is the platform the check is written for; where no shell is
+available it refuses instead of passing by default.
 """
 
 from __future__ import annotations
@@ -27,44 +31,44 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
-import importlib.util
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
 
 sys.dont_write_bytecode = True
 
-OVERRIDE_MODULE = Path("scripts/sts_compile_override.py")
-
-
-def load_override_module(repo: Path):
-    """Load the shared definition from the repository under test.
-
-    Importing it from this script's own directory would verify a different tree
-    than the one being released — and in CI the two are the same, so the mistake
-    would be invisible there and only surface as a wrong voucher under mutation.
-    """
-    path = repo / OVERRIDE_MODULE
-    if not path.is_file():
-        raise SystemExit(f"release build parameters: missing {OVERRIDE_MODULE}")
-    spec = importlib.util.spec_from_file_location("cjdoc_sts_compile_override", path)
-    if spec is None or spec.loader is None:
-        raise SystemExit(f"release build parameters: cannot load {OVERRIDE_MODULE}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
 PLATFORMS = ("linux-x64", "windows-x64", "macos-arm64")
 WORKFLOW = Path(".github/workflows/release.yml")
 WRAPPER = Path("scripts/with_sts_o1_cjpm.sh")
 PATCHER = Path("scripts/apply_sts_override.py")
+OVERRIDE_MODULE = Path("scripts/sts_compile_override.py")
+RECEIPT_NAME = "cjdoc-sts-override-receipt.json"
 CANDIDATE_JOB = "\n  release-candidate:\n"
 PUBLISH_JOB = "\n  publish:\n"
-ROOT_PACKAGE = "cjdoc"
-# The option the pinned toolchain needs (see scripts/sts_compile_override.py).
+# The option the pinned toolchain needs, and therefore the one the release requires.
 REQUIRED_OPTION = "-O1"
+# Shell tokens that turn one visible `cjpm` statement into several, or into a
+# conditional one. A uniform command cannot contain any of them.
+SHELL_CONTROL = {"&&", "||", ";", "|", "&", ">", ">>", "<", "2>", "2>&1"}
+PROBE_CJPM = """#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  -v|--version) exit 0 ;;
+esac
+"${CJDOC_PYTHON:-python3}" - "${RUNNER_TEMP}/%s" <<'PY'
+import json, sys
+from pathlib import Path
+receipt = Path(sys.argv[1])
+if not receipt.is_file():
+    print("CJDOC_RECEIPT_MISSING")
+else:
+    print("CJDOC_RECEIPT=" + json.dumps(json.loads(receipt.read_text(encoding="utf-8"))))
+PY
+""" % RECEIPT_NAME
 
 
 class ParameterError(SystemExit):
@@ -78,118 +82,130 @@ class ParameterError(SystemExit):
 
 
 def discover_build_command(workflow: Path) -> list[str]:
-    """Return the single `cjpm` invocation the candidate job actually runs."""
+    """The single `cjpm` statement the candidate job runs, or a refusal."""
     text = workflow.read_text(encoding="utf-8")
     if CANDIDATE_JOB not in text or PUBLISH_JOB not in text:
         raise SystemExit(f"release build parameters: {workflow} has no expected job layout")
     candidate = text.split(CANDIDATE_JOB, 1)[1].split(PUBLISH_JOB, 1)[0]
-    calls = [line.strip() for line in candidate.splitlines()
-             if line.strip().startswith("cjpm ")]
+    # Join shell continuations first: a multi-line invocation is still one statement,
+    # and splitting a dangling backslash raises in shlex.
+    joined = candidate.replace("\\\n", " ")
+    statements = [line.strip() for line in joined.splitlines()
+                  if line.strip() and not line.strip().startswith("#")]
+    calls = [line for line in statements if shlex.split(line)[0] == "cjpm"]
     if len(calls) != 1:
         raise SystemExit(
-            f"release build parameters: {workflow} candidate job runs {len(calls)} cjpm "
-            "commands, so the per-platform build parameters are no longer uniform and "
+            f"release build parameters: {workflow} candidate job has {len(calls)} cjpm "
+            "statements, so the per-platform build parameters are no longer uniform and "
             "this check cannot vouch for them (CI-08.3)")
     command = shlex.split(calls[0])
-    # A conditional or interpolated invocation (e.g. an `extra` array selected per
-    # platform) yields a different effective command per platform while still
-    # looking uniform here. Require a plain literal so the recorded command is the
-    # one that actually runs on every platform.
+    if command[:2] != ["cjpm", "build"]:
+        raise SystemExit(
+            f"release build parameters: the candidate job's build statement is "
+            f"{calls[0]!r}, not a plain `cjpm build` (CI-08.3)")
+    # `&& cjpm build --jobs 4` splits into ordinary tokens, so control operators
+    # must be rejected explicitly: bash would run both builds and package the latter
+    # while this check still reported one uniform command.
+    found = sorted({token for token in command if token in SHELL_CONTROL})
+    if found:
+        raise SystemExit(
+            f"release build parameters: the candidate job's build statement contains "
+            f"{found[0]!r}, so it may run more than one build; make the single build "
+            "explicit and give any platform that needs different parameters its own "
+            "candidate (CI-08.3)")
     expansions = [token for token in command if "$" in token or "`" in token]
     if expansions:
         raise SystemExit(
-            f"release build parameters: {workflow} builds with an interpolated argument "
-            f"{expansions[0]!r}, so the effective parameters can differ per platform; "
-            "make each platform's build explicit and give it its own candidate (CI-08.3)")
+            f"release build parameters: the candidate job builds with an interpolated "
+            f"argument {expansions[0]!r}, so the effective parameters can differ per "
+            "platform; make each platform's build explicit and give it its own "
+            "candidate (CI-08.3)")
     return command
 
 
-def wrapper_patch_command(wrapper: Path) -> str:
-    """The executable line by which the wrapper applies the override.
+def observed_receipt(repo: Path) -> dict:
+    """Run the wrapper and return the receipt its patch step produced.
 
-    The wrapper must delegate to `scripts/apply_sts_override.py`; if it stops doing
-    so, or grows its own inline rewrite, the option this check computes is no longer
-    the option that gets built and the uniformity claim would be worthless.
+    The wrapper is the artefact under test, so it is executed rather than described.
+    A fake `cjpm` on PATH stands in for the real one and prints the receipt, which
+    is written before the build would start.
     """
-    text = wrapper.read_text(encoding="utf-8")
-    lines = [line.strip() for line in text.splitlines()
-             if line.strip() and not line.lstrip().startswith("#")]
-    delegates = [line for line in lines if PATCHER.name in line]
-    if len(delegates) != 1:
+    if shutil.which("bash") is None and shutil.which("sh") is None:
         raise SystemExit(
-            f"release build parameters: {WRAPPER} does not invoke {PATCHER} exactly once, "
-            "so the effective option cannot be established and the platforms cannot be "
-            "shown to be uniform (CI-08.3)")
-    inline = [line for line in lines if "override-compile-option" in line
-              and PATCHER.name not in line]
-    if inline:
-        raise SystemExit(
-            f"release build parameters: {WRAPPER} contains its own override rewrite in "
-            "addition to the shared definition; the two can drift, so the uniformity "
-            "claim is unprovable (CI-08.3)")
-    return delegates[0]
-
-
-def effective_option(repo: Path, wrapper: Path, override) -> str:
-    """Run the wrapper's own patch command and read back what it applies.
-
-    Executing the command — rather than searching the wrapper's text, or calling the
-    shared function directly — means the value is taken from the real call path, in
-    Python, so it also works on the Windows and macOS release legs.
-    """
-    wrapper_patch_command(wrapper)
-    manifest = repo / "cjpm.toml"
-    before = manifest.read_bytes()
+            "release build parameters: no POSIX shell is available, so the wrapper's "
+            "override cannot be observed; this check is written for the Linux release "
+            "candidate job (CI-08.3)")
+    manifest = (repo / "cjpm.toml").read_bytes()
     with tempfile.TemporaryDirectory(prefix="cjdoc-build-params-") as temporary:
         staging = Path(temporary)
-        target = staging / "cjpm.toml"
-        target.write_bytes(before)
-        backup_dir = staging / "backup"
-        command = [sys.executable, str(repo / PATCHER), str(target), str(backup_dir)]
-        result = subprocess.run(command, cwd=repo, capture_output=True, text=True,
-                                timeout=600)
+        (staging / "cjpm.toml").write_bytes(manifest)
+        runner_temp = staging / "runner-temp"
+        probe_bin = runner_temp / "probe-bin"
+        probe_bin.mkdir(parents=True)
+        for name, body in (("cjpm", PROBE_CJPM), ("cjc", "#!/usr/bin/env bash\nexit 0\n")):
+            binary = probe_bin / name
+            binary.write_text(body, encoding="utf-8")
+            binary.chmod(0o755)
+        environment = dict(os.environ)
+        environment.update({
+            "GITHUB_WORKSPACE": str(staging),
+            "RUNNER_TEMP": str(runner_temp),
+            "CJDOC_STS_OVERRIDE_MODULE": str(repo / "scripts"),
+            "PATH": f"{probe_bin}{os.pathsep}{environment.get('PATH', '')}",
+        })
+        environment.pop("CJDOC_PYTHON", None)
+        command = (f". {shlex.quote(str(repo / WRAPPER))} >/dev/null 2>&1 && cjpm build")
+        try:
+            result = subprocess.run(["bash", "-c", command], cwd=staging, env=environment,
+                                    capture_output=True, text=True, timeout=900)
+        except (OSError, subprocess.SubprocessError) as error:
+            raise SystemExit(f"release build parameters: could not run {WRAPPER}: {error}")
         if result.returncode != 0:
             raise SystemExit(
-                f"release build parameters: {PATCHER} failed with {result.returncode}: "
-                f"{result.stderr.strip() or result.stdout.strip()}")
-        option = override.applied_option(target.read_text(encoding="utf-8"), ROOT_PACKAGE)
-        if target.read_bytes() == before:
+                f"release build parameters: {WRAPPER} exited {result.returncode} during the "
+                f"probe: {result.stderr.strip() or result.stdout.strip()}")
+        if "CJDOC_RECEIPT_MISSING" in result.stdout:
             raise SystemExit(
-                f"release build parameters: {PATCHER} applied no override to cjpm.toml, so "
-                "the release would build with the committed default (CI-08.3)")
-    return option
+                f"release build parameters: {WRAPPER} applied no override during the probe, "
+                "so the release would build with the committed default (CI-08.3)")
+        found = [line for line in result.stdout.splitlines()
+                 if line.startswith("CJDOC_RECEIPT=")]
+        if len(found) != 1:
+            raise SystemExit(
+                f"release build parameters: could not read the override receipt from "
+                f"{WRAPPER}: {result.stdout.strip() or result.stderr.strip()}")
+        receipt = json.loads(found[0].split("=", 1)[1])
+        # The rewrite must leave the tree it touched as it found it.
+        if (staging / "cjpm.toml").read_bytes() != manifest:
+            raise SystemExit(
+                "release build parameters: the wrapper did not restore the manifest it "
+                "patched, so the build parameters cannot be trusted")
+        return receipt
 
 
 def check(repo: Path, platform: str, workflow: Path) -> dict[str, object]:
     if platform not in PLATFORMS:
         raise SystemExit(f"release build parameters: unknown platform {platform!r}")
-    if not (repo / WRAPPER).is_file():
-        raise SystemExit(f"release build parameters: missing {WRAPPER}")
+    for required in (WRAPPER, PATCHER, OVERRIDE_MODULE):
+        if not (repo / required).is_file():
+            raise SystemExit(f"release build parameters: missing {required}")
     command = discover_build_command(workflow)
-    override = load_override_module(repo)
-    if not (repo / PATCHER).is_file():
-        raise SystemExit(f"release build parameters: missing {PATCHER}")
-    effective = effective_option(repo, repo / WRAPPER, override)
-    # Two independent facts: the definition the release mandates must still be the
-    # required option, and the value the wrapper's own call path produces must equal
-    # it. Without the first, the shared definition could change and every platform
-    # would still agree with itself.
-    if override.OPTION != REQUIRED_OPTION:
+    receipt = observed_receipt(repo)
+    option = receipt.get("option")
+    if receipt.get("schemaVersion") != "cjdoc.sts-override-receipt/1" or not option:
+        raise SystemExit(
+            f"release build parameters: unexpected override receipt {receipt!r} (CI-08.3)")
+    if option != REQUIRED_OPTION:
         raise ParameterError(
             platform,
-            f"the shared override definition now applies {override.OPTION!r}, but the "
-            f"release requires {REQUIRED_OPTION!r}")
-    if effective != REQUIRED_OPTION:
-        raise ParameterError(
-            platform,
-            f"would build with override-compile-option={effective!r}, "
-            f"not the required {REQUIRED_OPTION!r}")
+            f"the wrapper's patch step applied {option!r}, not the required "
+            f"{REQUIRED_OPTION!r}")
     return {
         "schemaVersion": "cjdoc.release-build-parameters/1",
         "platform": platform,
         "command": command,
-        "effectiveCompileOption": effective,
-        "overrideModule": OVERRIDE_MODULE.as_posix(),
+        "effectiveCompileOption": option,
+        "appliedTo": receipt.get("applied"),
         "wrapper": WRAPPER.as_posix(),
         "wrapperSha256": hashlib.sha256((repo / WRAPPER).read_bytes()).hexdigest(),
         "uniformAcross": list(PLATFORMS),
