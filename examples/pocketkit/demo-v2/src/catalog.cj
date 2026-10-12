@@ -303,7 +303,7 @@ public class Entry<T> {
     public init(value: T) { this.value = value }
 }
 
-/** 文本专用扩展；目标约束是 Entry<String>，不推断其他实例也适用。 */
+/** 为 `Entry<String>` 增加 `byteLength()`，用于计算保存文本的 UTF-8 字节数。 */
 extend Entry<String> {
     /** @return 保存文本的 UTF-8 字节数，而不是 Unicode 标量数。 */
     public func byteLength(): Int64 { value.size }
