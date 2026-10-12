@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import shlex
 import sys
 
 sys.dont_write_bytecode = True
@@ -59,7 +60,9 @@ def read_since(log: Path, offset: int) -> list[dict]:
     return records
 
 
-def verify(records: list[dict], expected_option: str, binary: Path | None) -> dict[str, object]:
+def verify(records: list[dict], expected_option: str, binary: Path | None,
+           expected_argv: list[str] | None = None,
+           package: str = "cjdoc") -> dict[str, object]:
     if not records:
         raise SystemExit(
             "build invocations: the build performed no `cjpm` invocation, so the release "
@@ -78,6 +81,18 @@ def verify(records: list[dict], expected_option: str, binary: Path | None) -> di
             raise SystemExit(
                 f"build invocations: a build ran with override-compile-option="
                 f"{build.get('option')!r}, not the required {expected_option!r} (CI-08.3)")
+    # Root-package builds must have run the same arguments as the command the
+    # workflow vouches for. Checking only the option would accept `--jobs 4` in a
+    # second build, which produces a differently built binary under the same option.
+    # Auxiliary builds (the CHIR worker) are a different package and are exempt.
+    if expected_argv is not None:
+        for build in builds:
+            if build.get("package") != package or build.get("argv") != expected_argv:
+                raise SystemExit(
+                    f"build invocations: a recorded build ran "
+                    f"{' '.join(build.get('argv') or [])!r} for package "
+                    f"{build.get('package')!r}, not the vouched "
+                    f"{' '.join(expected_argv)!r} for {package!r} (CI-08.3)")
     last = builds[-1]
     if binary is not None:
         # Binding the packaged artefact to the last recorded build closes the gap a
@@ -111,8 +126,14 @@ def main() -> int:
     parser.add_argument("--since", type=int, default=0)
     parser.add_argument("--expect-compile-option", default="-O1")
     parser.add_argument("--binary", type=Path)
+    parser.add_argument("--expect-command", default="cjpm build --jobs 1",
+                        help="the command the release vouches for, space separated")
+    parser.add_argument("--package", default="cjdoc")
     args = parser.parse_args()
-    result = verify(read_since(args.log, args.since), args.expect_compile_option, args.binary)
+    # Records hold the arguments as passed to the wrapper, without the program name.
+    expected = shlex.split(args.expect_command)[1:]
+    result = verify(read_since(args.log, args.since), args.expect_compile_option, args.binary,
+                    expected, args.package)
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 

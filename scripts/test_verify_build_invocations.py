@@ -76,6 +76,20 @@ class InvocationVerificationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("-O2", result.stderr)
 
+    def test_a_build_with_other_arguments_is_refused(self) -> None:
+        """Same option, different arguments: a differently built binary."""
+        self.write(record(), record(argv=["build", "--jobs", "4"]))
+        result = self.check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--jobs 4", result.stderr)
+
+    def test_a_non_build_invocation_is_not_compared(self) -> None:
+        """`cjpm test` runs through the wrapper too, and is not the packaged build."""
+        self.write(record(), record(argv=["test", "--jobs", "1"]))
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["builds"], 1)
+
     def test_several_builds_under_the_required_option_pass(self) -> None:
         self.write(record(), record(), record())
         result = self.check()
