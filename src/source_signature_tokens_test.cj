@@ -1,5 +1,6 @@
 package cjdoc
 
+import cjdoc.render as api_render
 import std.ast.*
 import std.unittest.*
 import std.unittest.testmacro.*
@@ -50,6 +51,16 @@ class SourceSignatureLexemeTest {
         @Expect(hasSourceSignatureToken(tokens, "STRING_LITERAL:7:\"Token\""), true)
         @Expect(hasSourceSignatureToken(tokens, "IDENTIFIER:4:item"), true)
         @Expect(tokens[tokens.size - 1], "IDENTIFIER:5:Token")
+    }
+
+    @TestCase
+    func literalSourceWitnessSurvivesDocIrJsonRoundTrip(): Unit {
+        let original = generateFixture("frontend_regressions")
+        let restored = api_render.decodeDocIr(api_render.encodeDocIr(original))
+        let declaration = declarationNamed(restored, "defaulted")
+        @Expect(declaration.sourceApiSignature.state, "available")
+        @Expect(hasSourceSignatureToken(declaration.sourceApiSignature.tokens.toArray(),
+            "STRING_LITERAL:7:\"cjdoc\""), true)
     }
 
     @TestCase
