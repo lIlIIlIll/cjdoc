@@ -120,6 +120,9 @@ def build(repo: Path, binary: Path, project: Path, site: Path, work: Path,
     with stage_timing.phase("showcase.reports"):
         publish_examples(result, site, provenance)
         publish_compatibility(repo, site, current, result)
+    # `legacy` is a separately listed surface in the issue's phase inventory, so it
+    # is timed on its own instead of being folded into the report phase.
+    with stage_timing.phase("showcase.legacy"):
         legacy.publish(binary, repo, site, work)
     with stage_timing.phase("showcase.authoring"):
         from check_showcase_authoring import check as check_authoring
