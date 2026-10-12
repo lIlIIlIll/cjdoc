@@ -106,6 +106,17 @@ class BuildParameterTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("2 cjpm commands", result.stderr)
 
+    def test_the_probe_uses_the_configured_interpreter(self) -> None:
+        """`python3` is a Unix alias and is absent on the Windows release job."""
+        source = SCRIPT.read_text(encoding="utf-8")
+        probe = source.split("PROBE_CJPM = ", 1)[1].split(chr(39) * 3, 2)[1]
+        self.assertNotIn("python3 ", probe,
+                         "the probe must not assume a Unix-style interpreter name")
+        self.assertIn("{{interpreter}}", probe)
+        # The placeholder must never survive into the executed command.
+        result = run_check(self.repo)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_a_missing_wrapper_is_refused(self) -> None:
         (self.repo / "scripts/with_sts_o1_cjpm.sh").unlink()
         result = run_check(self.repo)

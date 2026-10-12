@@ -50,7 +50,7 @@ set -euo pipefail
 case "${{1:-}}" in
   -v|--version) exit 0 ;;
 esac
-python3 - "${{GITHUB_WORKSPACE}}/cjpm.toml" <<'PY'
+{{interpreter}} - "${{GITHUB_WORKSPACE}}/cjpm.toml" <<'PY'
 import json, sys, tomllib
 from pathlib import Path
 package = tomllib.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["package"]
@@ -58,6 +58,11 @@ print("{PROBE_MARKER}" + json.dumps(package.get("override-compile-option")))
 PY
 '''
 PROBE_CJC = "#!/usr/bin/env bash\nexit 0\n"
+
+
+def probe_interpreter() -> str:
+    """The interpreter the workflows configure for probes to run under."""
+    return os.environ.get("CJDOC_PYTHON") or sys.executable or "python"
 
 
 class ParameterError(SystemExit):
@@ -101,7 +106,9 @@ def probe_effective_option(repo: Path, workspace: Path, runner_temp: Path) -> st
     """Run the wrapper and read the override as it applies during the call."""
     probe_dir = runner_temp / "probe-bin"
     probe_dir.mkdir(parents=True, exist_ok=True)
-    for name, body in (("cjpm", PROBE_CJPM), ("cjc", PROBE_CJC)):
+    bodies = (("cjpm", PROBE_CJPM.replace("{interpreter}", probe_interpreter())),
+              ("cjc", PROBE_CJC))
+    for name, body in bodies:
         binary = probe_dir / name
         binary.write_text(body, encoding="utf-8")
         binary.chmod(0o755)
