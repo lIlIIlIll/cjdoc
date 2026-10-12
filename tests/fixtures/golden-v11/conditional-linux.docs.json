@@ -135,7 +135,7 @@
           "LSQUARE:1:[",
           "IDENTIFIER:2:os",
           "EQUAL:2:==",
-          "STRING_LITERAL:5:Linux",
+          "STRING_LITERAL:7:\"Linux\"",
           "RSQUARE:1:]",
           "FUNC:4:func",
           "IDENTIFIER:12:platformName",

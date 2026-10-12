@@ -2074,7 +2074,7 @@
           "LSQUARE:1:[",
           "IDENTIFIER:7:message",
           "COLON:1::",
-          "STRING_LITERAL:18:Use parse instead.",
+          "STRING_LITERAL:20:\"Use parse instead.\"",
           "RSQUARE:1:]",
           "PUBLIC:6:public",
           "FUNC:4:func",
