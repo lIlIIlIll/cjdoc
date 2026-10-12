@@ -1,5 +1,7 @@
 package cjdoc.render
 
+import cjdoc.model.normalizeCodeLanguage
+
 // Presentation only. These classes never contribute declarations, links, or IR.
 internal func htmlCodeWordClass(word: String): String {
     match (word) {
@@ -34,7 +36,7 @@ private func htmlCodeWordByte(byte: Byte): Bool {
 // original text as a whole. Non-ASCII bytes stay in one source slice unchanged.
 internal func appendHighlightedCodeHtml(out: RenderTextBuffer, raw: String,
     language: String): Unit {
-    if (language != "cj" && language != "cangjie") {
+    if (normalizeCodeLanguage(language) != "cangjie") {
         appendHtmlEscapedValue(out, raw); return
     }
     let colored = RenderTextBuffer()
