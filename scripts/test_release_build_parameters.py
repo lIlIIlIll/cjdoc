@@ -195,6 +195,26 @@ class BuildParameterTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("defines", result.stderr)
 
+    def test_a_build_via_the_exported_real_binary_is_refused(self) -> None:
+        """The wrapper exports its real cjpm, so it can be invoked without `cjpm`."""
+        self.edit(".github/workflows/release.yml",
+                  "          cjpm build --jobs 1\n",
+                  "          cjpm build --jobs 1\n"
+                  "          if [[ \"${{ matrix.platform }}\" == \"windows-x64\" ]]; then "
+                  '\"${CJDOC_REAL_CJPM}\" build --jobs 4; fi\n')
+        result = run_check(self.repo, "windows-x64")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("real binary", result.stderr)
+
+    def test_a_build_handed_to_a_nested_shell_is_refused(self) -> None:
+        self.edit(".github/workflows/release.yml",
+                  "          cjpm build --jobs 1\n",
+                  '          bash -c "cjpm build --jobs 4"\n'
+                  "          cjpm build --jobs 1\n")
+        result = run_check(self.repo)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("nested", result.stderr)
+
     def test_a_quoted_metacharacter_is_allowed(self) -> None:
         """Only unquoted operators change what the shell runs."""
         self.edit(".github/workflows/release.yml",

@@ -103,17 +103,33 @@ def discover_build_command(workflow: Path) -> list[str]:
         # Normalise whitespace: `cjpm  build` is the same command to bash.
         lines.append(re.sub(r"\s+", " ", stripped))
 
-    # A shell function or alias named `cjpm` replaces the executable at the call
-    # site, so the literal command would be a fiction: the workflow could still build
-    # with different parameters. Reject any such definition in the build context.
-    shadowing = [line for line in lines
-                 if re.match(r"^(?:function\s+)?cjpm\s*\(\s*\)", line)
-                 or re.match(r"^alias\s+cjpm=", line)]
+    # Anything that can run a build without spelling `cjpm build` makes the literal
+    # call site a fiction: a function or alias named `cjpm`, the wrapper's exported
+    # real-binary path, or a shell that is handed the command as data. Each of these
+    # has produced a false voucher, so all are refused rather than enumerated one
+    # spelling at a time.
+    def shape(spelling: re.Pattern[str]) -> str | None:
+        return next((line for line in lines if spelling.search(line)), None)
+
+    shadowing = (shape(re.compile(r"^(?:function\s+)?cjpm\s*\(\s*\)"))
+                 or shape(re.compile(r"^alias\s+cjpm=")))
     if shadowing:
         raise SystemExit(
-            f"release build parameters: the candidate job defines {shadowing[0]!r}, so the "
+            f"release build parameters: the candidate job defines {shadowing!r}, so the "
             "`cjpm` that actually runs is not the released toolchain's and the build "
             "parameters cannot be vouched for (CI-08.3)")
+    indirect = shape(re.compile(r"\$\{?CJDOC_REAL_CJPM\b"))
+    if indirect:
+        raise SystemExit(
+            f"release build parameters: the candidate job runs a build through the "
+            f"wrapper's exported real binary ({indirect!r}), which bypasses the pinned "
+            "override and cannot be vouched for (CI-08.3)")
+    nested_shell = shape(re.compile(r"\b(?:bash|sh)\s+-c\b"))
+    if nested_shell:
+        raise SystemExit(
+            f"release build parameters: the candidate job hands a command to a nested "
+            f"shell ({nested_shell!r}); its build parameters cannot be established "
+            "statically (CI-08.3)")
 
     found = [(line, CJPM_BUILD.findall(line)) for line in lines]
     total = sum(len(matches) for _, matches in found)
