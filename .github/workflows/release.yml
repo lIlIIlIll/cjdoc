@@ -145,6 +145,14 @@ jobs:
           # Build exactly once and package this same binary. The acceptance gates
           # below may run an incremental cjpm build, but the executable promoted
           # to the release is the one this step produces and re-verifies.
+          #
+          # 08.3: every platform must share these build parameters. If a platform
+          # ever needs different ones, the requirement is to build a *separate*
+          # candidate and run that platform's own acceptance against it — never to
+          # reuse another candidate's test conclusions. Fail here instead of
+          # letting a divergent parameter slip through unnoticed.
+          python scripts/release_build_parameters.py --repo . \
+            --platform "${{ matrix.platform }}" --expect-compile-option "-O1"
           cjpm build --jobs 1
           binary="target/release/bin/main"
           if [[ "${RUNNER_OS}" == "Windows" ]]; then
