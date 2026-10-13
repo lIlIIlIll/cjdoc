@@ -161,3 +161,46 @@ wall-clock classifications for the sampled runs are the `wallclock-*.json`
 documents produced by `scripts/ci_stage.py wallclock` and attached there. This
 document does not restate them, because a summary that drifts from the raw
 artifacts is worse than no summary.
+
+## Item-to-evidence map
+
+Each row names the item, the implementation that delivers it, the test or run
+that demonstrates it, and the exact revision or artifact the claim rests on.
+"Delivered" means the code and its tests exist and were executed; a row whose
+evidence is a pull request also names that request, because nothing here is
+merged until the maintainer merges it.
+
+| Item | Implementation | Demonstration | Evidence |
+| --- | --- | --- | --- |
+| 01.1-01.3 timing inventory | `scripts/ci_stage.py` (`run`, `summarize`), `showcase_build.stage_timing`, `ci-timing-*` artifacts | every stage and showcase phase writes `wallMs`, identity, cache state; Job Summary renders it | `showcase-stages.json` with 25 phase ids from run `38332333489` |
+| 01.4 wall-clock classes | `scripts/ci_stage.py wallclock` | separates queueing, job wall time, per-step wall time, re-run gaps | `wallclock-*.json` documents; queueing is reported separately (e.g. queuedMs 71 s on run `38363309607`) |
+| 01.5 workflow/script contract checks before expensive builds | `files: scripts/ci_required.py`, `scripts/ci_changes.py`, `scripts/test_ci_stage.py` | routing and the aggregate gate are unit- and contract-tested | `python -m unittest scripts.test_ci_stage` (13 tests, OK) |
+| 02.1 single sealed site | `pages.yml` `assemble-site` uploads `cjdoc-showcase-site-<run>-<attempt>` with a fingerprint | the site is generated once and every branch consumes that artifact | `Assemble final site` + `Verify the final site and every branch` in any Pages run |
+| 02.2-02.5 parallel final verification | `source-reproduction`, `browser-shard`, `reading-regressions`, `verify-site` | the three branches run in parallel and `verify-site` re-binds every branch to the sealed site | Pages jobs on run `38373947823` (all branches success, verify success) |
+| 03.1-03.8 browser sharding | `scripts/showcase_contract/browser_sharding.py`, `browser.py` | `tests/showcase_contract/test_browser_sharding.py` | 24 sharding tests OK, including negative cases and a real-data balance test |
+| 04.1-04.8 layered CI | `scripts/check.sh` stages driven by `ci.yml` | each consumer stage is handed the binary and identity it needs | `ci.yml` `linux-acceptance` stage list; `scripts/test_release_candidate.py` guards the layout |
+| 05.1 Pages starts at candidate readiness | `scripts/ci_candidate_source.py`, readiness marker in `build-linux-candidate.yml`, `pages.yml` adoption + `require-ready` | `scripts/test_ci_candidate_source.py`; live adoption of a real in-flight run | 18 unit tests OK; `resolve` returned `reuse: true` for run `38362363108` while its matrix was still running, and `require-ready` refused to publish (`in_progress`) |
+| 05.2-05.6 shared toolchain and identity | one reusable `build-linux-candidate.yml`; `ci_stage.py verify-identity` | the same workflow builds the candidate for CI and Pages; each consumer re-verifies the manifest | `verify-identity` runs in both the CI acceptance job and the Pages site job |
+| 06.1 showcase phase attribution | `showcase_build.stage_timing` phase ids | the per-phase table in this document | `showcase-stages.json` from run `38332333489` |
+| 06.2-06.3 overlap only what is independent | `scripts/showcase_build/parallel.py`, `integration.py` | real serial/overlapped A/B on one machine | 507.8 s and 476.4 s serial vs 391.4 s overlapped (1.22-1.30x), same binary and provenance |
+| 06.4 one extraction / many renders | not implemented | the capability it would call does not exist on this revision | `src/cli_options.cj`: `--locale must be zh-CN or en`; prerequisite is #64 |
+| 06.5-06.6 source ZIP reproduction and profiling | `check_showcase_source.py`, the phase attribution | the archive is re-run from the ZIP with the generating binary | `Reproduce the downloaded source bundle` job, plus the ≤ 6 s phase table |
+| 07.1-07.3, 07.5-07.6 cache correctness | `install_cangjie_sdk.py` marker + verified archives, `with_stdx.py` fingerprints, cache keys carrying arch/channel/component identity | cache tests and the cold/warm equality assertion of the measurement script | `scripts/test_install_cangjie_sdk.py`, `scripts/test_with_stdx.py`; `identityEqualUnderBothVariants: true` |
+| 07.4 cache shape measurement | `scripts/measure_sdk_install.py`, `sdk-install-measure.yml` | three dispatches of 5 paired cycles | see the CI-07.4 table above |
+| 08.1-08.6 release closure | `release.yml` per-platform candidate + receipt, `release_check.sh`, `verify_release.py` | `scripts/test_release_candidate.py`, `test_release_evidence.py`, `test_release_transaction.py` | those suites pass; a real tagged run on the merged `main` is still pending (see below) |
+| 09.1-09.5 failure feedback | `ci_diagnostics.py`, bounded log capture, no default golden regeneration | `scripts/test_ci_scripts.py` | diagnostics are collected on failure only, into a bounded directory |
+| 10.1-10.7 routing, cancellation and Daily | `ci_changes.py`, `ci_required.py`, concurrency groups, `daily.yml` | routing table and the aggregate-gate tests | `scripts.test_ci_scripts` and `scripts.test_ci_stage` |
+
+### Items that are not delivered
+
+Two rows above are deliberately not "delivered", and both are recorded rather
+than quietly closed:
+
+* **06.4** cannot be implemented on this revision: the multi-locale
+  single-extraction mode it requires does not exist until #64 lands.
+* **DONE-03 / DONE-04** cannot be satisfied by the history that exists. The
+  enumeration found exactly one source-matched warm Pages pair and no
+  source-matched Release samples at all, so the ≥5-pairs-per-cold/warm-cell
+  requirement is not met by any amount of re-reporting. The raw collection and
+  its limits are attached to #96; a successful tag run would add one sample, not
+  fill the cells.
