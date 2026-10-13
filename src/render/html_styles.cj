@@ -405,6 +405,9 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
 /* Without JavaScript, touch-sized views show the native links in normal flow.
    The compact disclosure is an enhancement installed after its listeners exist. */
 @media (hover:none), (pointer:coarse), (any-pointer:coarse), (max-width:760px){
+    /* The popup is overlaid but the content column clips overflow on mobile.
+       Reserve space inside the row so the final member's menu stays reachable. */
+    .member-row.member-actions-open{padding-block-end:12rem}
     .member-row>.member-detail>summary{padding-inline-end:.35rem}
     .member-row>.member-detail-actions{
         position:static;inset:auto;align-items:center;width:100%;max-width:100%;
