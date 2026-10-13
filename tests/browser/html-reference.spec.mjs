@@ -742,6 +742,17 @@ test.describe('generated HTML reference', () => {
     await detail.locator('.member-detail-summary').tap();
     await expect(detail).toHaveAttribute('open', '');
     expect(page.url()).toBe(before);
+    const last = page.locator('details[data-cjdoc-member]').last();
+    const lastActions = memberActions(last);
+    await lastActions.locator('[data-cjdoc-member-actions-toggle]').tap();
+    const lastMenu = lastActions.locator('.member-action-list');
+    await expect(lastMenu).toBeVisible();
+    const edges = await lastMenu.evaluate(node => ({
+      menuBottom: node.getBoundingClientRect().bottom,
+      columnBottom: node.closest('.content-column').getBoundingClientRect().bottom,
+    }));
+    expect(edges.menuBottom).toBeLessThanOrEqual(edges.columnBottom + 1);
+    await lastActions.locator('[data-cjdoc-member-actions-toggle]').tap();
     await expectStable(page);
     await context.close();
   });
