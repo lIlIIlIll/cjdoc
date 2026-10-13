@@ -1,9 +1,14 @@
 """Optional phase timing for the showcase generator.
 
-The showcase build is a long serial pipeline. Before any step is allowed to run
-concurrently it must be measured, so this module records per-phase wall time
-without changing behaviour: it never writes into the generated site, and it is a
-no-op when no evidence destination is configured.
+The showcase build records per-phase wall time without changing behaviour: it
+never writes into the generated site, and it is a no-op when no evidence
+destination is configured.
+
+Two pipeline branches now overlap, so `phase` and `flush` are called from more
+than one thread. The record list and the evidence file are guarded by one lock:
+without it a concurrent append and rewrite can lose a phase or interleave two
+temporary files. Timing stays diagnostic only -- a failure to persist evidence
+must never break generation.
 
 Evidence lands at ``$CJDOC_CI_EVIDENCE/showcase-stages.json`` (schema
 ``cjdoc.ci-stage/1`` through ``scripts/ci_stage.py`` when available) or at
@@ -16,9 +21,11 @@ from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
+from threading import Lock
 import time
 
 RECORDS: list[dict] = []
+_LOCK = Lock()
 
 
 def _repository_root() -> Path | None:
@@ -52,16 +59,24 @@ def phase(stage_id: str, kind: str = "site-assemble"):
     except BaseException:
         record.update({"wallMs": round((time.perf_counter() - started) * 1000, 3),
                        "exitCode": 1, "status": "failed"})
-        RECORDS.append(record)
+        with _LOCK:
+            RECORDS.append(record)
         flush()
         raise
     record.update({"wallMs": round((time.perf_counter() - started) * 1000, 3),
                    "exitCode": 0, "status": "passed"})
-    RECORDS.append(record)
+    with _LOCK:
+        RECORDS.append(record)
 
 
 def flush() -> None:
     """Persist accumulated records; never let timing break generation."""
+    with _LOCK:
+        _flush_locked()
+
+
+def _flush_locked() -> None:
+    """Rewrite the evidence file from the recorded phases. Caller holds _LOCK."""
     path = evidence_path()
     if path is None or not RECORDS:
         return
@@ -84,7 +99,9 @@ def flush() -> None:
                 seen.add(key)
                 merged.append(record)
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(path.name + f".tmp{os.getpid()}")
+        # The lock serializes writers, but a unique name keeps a leftover
+        # temporary from another process out of this write.
+        temporary = path.with_name(f"{path.name}.tmp{os.getpid()}.{len(RECORDS)}")
         temporary.write_text(
             json.dumps({"schemaVersion": "cjdoc.ci-stage/1", "stages": merged},
                        ensure_ascii=False, indent=2, sort_keys=True) + "\n",
