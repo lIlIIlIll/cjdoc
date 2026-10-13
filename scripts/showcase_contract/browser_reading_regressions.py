@@ -6,7 +6,7 @@ from contextlib import ExitStack
 import json
 import re
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit
 
 from .browser import serve
 from .browser_support import member_action
@@ -269,6 +269,35 @@ def run_reading_regressions(page, member_url: str) -> list[str]:
             "same-hash links reveal excluded members below the measured sticky header"]
 
 
+def check_no_script_member_links(browser, member_url: str):
+    """Native member links remain accessible on touch screens without JavaScript."""
+    from playwright.sync_api import expect
+    context = browser.new_context(
+        viewport={"width": 390, "height": 844},
+        has_touch=True, java_script_enabled=False)
+    try:
+        page = context.new_page()
+        page.set_default_timeout(10000)
+        page.goto(member_url, wait_until="load")
+        member = page.locator("details[data-cjdoc-member]").first
+        actions = member.locator("xpath=..").locator(":scope > .member-detail-actions")
+        expect(actions.locator(".member-actions-toggle")).to_be_hidden()
+        expect(actions.locator(".member-action-list")).to_be_visible()
+        link = actions.locator("a.member-permalink")
+        expect(link).to_be_visible()
+        source = page.locator(".member-detail-actions a.member-source-link").first
+        if source.count():
+            expect(source).to_be_visible()
+        expect(actions).to_have_css("position", "static")
+        if page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"):
+            raise AssertionError("no-script member links overflow the mobile viewport")
+        expected = urljoin(page.url, link.get_attribute("href"))
+        link.click()
+        expect(page).to_have_url(expected)
+    finally:
+        context.close()
+
+
 def run(site_path: Path, evidence_path: Path, executable=None, channel=None,
         expect_site_sha256: str | None = None):
     from playwright.sync_api import sync_playwright
@@ -294,7 +323,7 @@ def run(site_path: Path, evidence_path: Path, executable=None, channel=None,
             options["channel"] = channel
         browser = playwright.chromium.launch(**options)
         try:
-            for target in feature["targets"]:
+            for target_index, target in enumerate(feature["targets"]):
                 current_index = load_json(site.file(f"examples/{target['locale']}/{target['version']}/symbol-index.json"))
                 old_index = load_json(site.file(f"examples/{target['locale']}/demo-v1/symbol-index.json"))
                 for mode, base in bases.items():
@@ -313,6 +342,9 @@ def run(site_path: Path, evidence_path: Path, executable=None, channel=None,
                                                                     current_index, old_index,
                                                                     target["resolved"]["ownerSymbolId"],
                                                                     target["resolved"]["symbolId"])
+                            if target_index == 0 and width == 390:
+                                check_no_script_member_links(browser, base + target["resolved"]["href"])
+                                assertions.append("touch member links navigate without JavaScript")
                             if errors:
                                 raise AssertionError("; ".join(errors))
                             results.append({"case": key, "status": "passed", "assertions": assertions})
