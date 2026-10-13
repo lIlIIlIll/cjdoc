@@ -45,7 +45,18 @@ class ExampleMarkdownReviewTest {
         let documentation = DocumentationEngine().generate(
             GenerationRequest(PUBLIC_FIXTURE_PROJECTS + "example_assets", lintProfile: "off",
                 astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
-        @Assert(documentation.assets.size, 1)
+        // Local asset embedding is a Linux-only capability in this repository, so the
+        // published-path assertions only apply where it is enabled; the rendered code
+        // block is asserted on every platform.
+        if (!publicLocalAssetEmbeddingEnabled()) {
+            @Expect(documentation.assets.size, 0)
+            let hosted = api_render.HtmlDocumentationRenderer().render(documentation)
+            let hostedHtml = renderedContent(hosted)
+            @Expect(hostedHtml.contains("data-language=\"cangjie\""))
+            @Expect(!hostedHtml.contains("alt=\"pixel\""))
+            return
+        }
+        @Expect(documentation.assets.size, 1)
         @Expect(!publicHasDiagnostic(documentation, "CJDOC4026"))
         let artifacts = api_render.HtmlDocumentationRenderer().render(documentation)
         var publishedPath = ""
