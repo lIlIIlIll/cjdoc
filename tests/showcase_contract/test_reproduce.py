@@ -63,6 +63,38 @@ class NegativeExampleGateTests(unittest.TestCase):
                 self.validate(report)
 
 
+class DoctestEvidenceRelocationTests(unittest.TestCase):
+    def test_standalone_and_language_subtrees_keep_validation_and_member_links(self) -> None:
+        for locale in (None, "en", "zh-CN"):
+            with self.subTest(locale=locale), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory)
+                root = output / "html" if locale is None else output / "html" / locale
+                (root / "symbols").mkdir(parents=True)
+                (output / "doctest").mkdir()
+                (output / "doctest/results.json").write_bytes(b'{"results":[]}')
+                prefix = "../" if locale is None else "../../"
+                validation = root / "validation.html"
+                member = root / "symbols/api.html"
+                validation.write_text(f'<a href="{prefix}doctest/results.json">Evidence</a>')
+                member.write_text(f'<a href="../{prefix}doctest/results.json">Evidence</a>')
+                REPRODUCE.relocate_doctest_evidence(output, root)
+                self.assertEqual((root / "doctest/results.json").read_bytes(), b'{"results":[]}')
+                self.assertIn('href="doctest/results.json"', validation.read_text())
+                self.assertIn('href="../doctest/results.json"', member.read_text())
+                self.assertTrue((member.parent / "../doctest/results.json").is_file())
+
+    def test_unexpected_native_validation_link_still_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            root = output / "html/en"
+            root.mkdir(parents=True)
+            (output / "doctest").mkdir()
+            (output / "doctest/results.json").write_text("{}")
+            (root / "validation.html").write_text('<a href="missing.json">Evidence</a>')
+            with self.assertRaisesRegex(ValueError, "expected doctest evidence link"):
+                REPRODUCE.relocate_doctest_evidence(output, root)
+
+
 class StandaloneTimingTests(unittest.TestCase):
     """The shipped source archive has no `showcase_build`; timing must degrade."""
 

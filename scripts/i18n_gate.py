@@ -101,7 +101,7 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
     validation_project = work / "validation-project"
     shutil.copytree(project, validation_project, ignore=shutil.ignore_patterns("target"))
     (validation_project / "src/api.cj").write_text(
-        "package language_fixture\n/** Validation fixture. */\n"
+        "package language_fixture\n/** Validation fixture.\n * @example Explanation without executable code.\n */\n"
         "public func add(left: Int64, right: Int64): Int64 { left + right }\n")
     with (validation_project / "cjdoc.toml").open("a") as configuration:
         configuration.write('\n[doctest]\nmode = "warn"\n')
@@ -114,6 +114,13 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
         page = validation / "html" / language / "validation.html"
         assert 'href="../../doctest/results.json"' in page.read_text()
         assert (page.parent / "../../doctest/results.json").resolve() == evidence.resolve()
+
+        members = list((page.parent / "symbols").glob("*.html"))
+        evidence_pages = [member for member in members if 'class="example-evidence"' in member.read_text()]
+        assert evidence_pages, "native example evidence was not rendered"
+        for member in evidence_pages:
+            assert 'href="../../../doctest/results.json"' in member.read_text()
+            assert (member.parent / "../../../doctest/results.json").resolve() == evidence.resolve()
 
     # The imported IR must own every author variant and guide used below.
     shutil.rmtree(project)

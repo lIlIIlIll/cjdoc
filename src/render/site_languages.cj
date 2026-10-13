@@ -45,6 +45,12 @@ internal func renderAllDocumentationLanguages(documentation: DocumentationSet, f
             }
             let path = parts[0] + "/" + language + "/" + parts[1]
             var content = artifact.content
+            if (parts[0] == "html" && path.endsWith(".html")) {
+                // The report is shared outside html/, while reading pages gain a language directory.
+                let prefix = pageRootPrefix(parts[1])
+                content = content.replace("href=\"" + prefix + "../doctest/results.json\"",
+                    "href=\"" + prefix + "../../doctest/results.json\"")
+            }
             if (parts[0] == "html" && path.endsWith(".html") && content.contains("id=\"cjdoc-main\"")) {
                 let route = parts[1]
                 let identity = languagePageIdentity(documentation, route, language)

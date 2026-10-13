@@ -14,6 +14,11 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
     let identities = HashSet<String>()
     var localizedPages = false
     for (page in captured) {
+        if (page.language.isSome() && page.id.isEmpty()) {
+            value.appendDiagnostic(public_model.Diagnostic("error", "CJDOC3110",
+                "localized page '" + page.source + "' requires an explicit id; page omitted"))
+            continue
+        }
         let id = if (page.id.isEmpty()) { page.route } else { page.id }
         let language: ?String = if (page.language.isSome()) { page.language }
             else if (exists(Path(request.projectRoot).join(page.source))) { defaultLanguage } else { None }
@@ -22,9 +27,6 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
         if (!identities.add(identity)) {
             value.appendDiagnostic(public_model.Diagnostic("error", "CJDOC3110", "duplicate logical page '" + id + "' for language " + language.getOrDefault({ => "unknown" })))
             continue
-        }
-        if (page.language.isSome() && page.id.isEmpty()) {
-            value.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC3110", "localized page '" + page.source + "' has no explicit id; cross-language association unavailable"))
         }
         let targets = ArrayList<String>()
         let bindings = ArrayList<public_model.DocumentationPageBinding>()

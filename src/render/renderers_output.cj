@@ -106,6 +106,7 @@ internal func appendCoverageArtifacts(artifacts: RenderArtifactCollector,
     artifacts.addText("coverage/coverage.json", "application/json",
         renderDocumentationCoverageV2(documentation))
     appendDocumentationQualityArtifact(artifacts, documentation)
+    appendTranslationCoverageArtifact(artifacts, documentation)
 }
 
 public class ApiSurfaceDocumentationRenderer <: DocumentationRenderer {
@@ -308,7 +309,6 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
             case "api-surface" => appendApiSurfaceArtifacts(artifacts, documentation)
             case "coverage" =>
                 appendCoverageArtifacts(artifacts, documentation)
-                appendTranslationCoverageArtifact(artifacts, documentation)
             case "symbol-index" => appendSymbolIndexArtifacts(artifacts, localized, version: docVersion)
             case _ => throw IllegalArgumentException(
                 "unsupported documentation format '${format}'")

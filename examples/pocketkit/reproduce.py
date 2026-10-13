@@ -11,6 +11,7 @@ from contextlib import contextmanager
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -116,26 +117,27 @@ def assemble(output: Path, locale: str | None = None, *, binary: Path | None = N
                          (output / "coverage/quality.json", "quality.json")):
         shutil.copyfile(source, machine / name)
     shutil.copytree(output / "markdown" if locale is None else output / "markdown" / locale, machine / "markdown")
-    results = output / "doctest/results.json"
-    if results.is_file():
-        (root / "doctest").mkdir()
-        shutil.copyfile(results, root / "doctest/results.json")
-        page = root / "validation.html"
-        content = page.read_text(encoding="utf-8")
-        old = 'href="../doctest/results.json"'
-        if old not in content:
-            raise ValueError("native validation page has no expected doctest evidence link")
-        page.write_text(content.replace(old, 'href="doctest/results.json"'), encoding="utf-8")
-        # Member pages carry the same evidence link, written one level deeper for
-        # the standalone layout. The artifact now sits inside html/, so the link
-        # loses one hop here instead of pointing back out of the published tree.
-        for symbol in sorted((root / "symbols").glob("*.html")):
-            member = symbol.read_text(encoding="utf-8")
-            if 'href="../../doctest/results.json"' in member:
-                symbol.write_text(member.replace(
-                    'href="../../doctest/results.json"', 'href="../doctest/results.json"'),
-                    encoding="utf-8")
+    relocate_doctest_evidence(output, root)
     return root
+
+
+def relocate_doctest_evidence(output: Path, root: Path) -> None:
+    """Keep native evidence links valid when publishing one reading subtree."""
+    results = output / "doctest/results.json"
+    if not results.is_file():
+        return
+    published = root / "doctest/results.json"
+    published.parent.mkdir()
+    shutil.copyfile(results, published)
+    pages = [root / "validation.html", *sorted((root / "symbols").glob("*.html"))]
+    for page in pages:
+        old = f'href="{Path(os.path.relpath(results, page.parent)).as_posix()}"'
+        new = f'href="{Path(os.path.relpath(published, page.parent)).as_posix()}"'
+        content = page.read_text(encoding="utf-8")
+        if page.name == "validation.html" and old not in content:
+            raise ValueError("native validation page has no expected doctest evidence link")
+        if old in content:
+            page.write_text(content.replace(old, new), encoding="utf-8")
 
 
 def validate_diagnostic_examples(output: Path) -> None:

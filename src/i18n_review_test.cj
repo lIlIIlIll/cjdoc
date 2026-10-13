@@ -25,6 +25,51 @@ private func reviewMarkdownText(node: api_model.MarkdownNode): String {
 @Test
 class I18nReviewTest {
     @TestCase
+    func localizedPagesWithoutExplicitIdentityAreOmittedRatherThanPairedByRoute(): Unit {
+        let project = i18nTestProject("/** Summary. */")
+        try {
+            Directory.create(project.join("docs"))
+            File.writeTo(project.join("docs/en.md"), "# English guide".toArray())
+            File.writeTo(project.join("docs/zh.md"), "# 中文指南".toArray())
+            File.writeTo(project.join("cjdoc.toml"),
+                ("[i18n]\ndefault-language = \"zh-CN\"\nlanguages = [\"zh-CN\", \"en\"]\n" +
+                "[[docs.pages]]\nlanguage = \"en\"\nsource = \"docs/en.md\"\nroute = \"concepts/guides/shared.html\"\n" +
+                "[[docs.pages]]\nlanguage = \"zh-CN\"\nsource = \"docs/zh.md\"\nroute = \"concepts/guides/shared.html\"\n").toArray())
+            let documentation = i18nTestGenerate(project)
+            var errors: Int64 = 0
+            for (diagnostic in documentation.diagnostics) {
+                if (diagnostic.code == "CJDOC3110" && diagnostic.severity == "error" &&
+                    diagnostic.message.contains("requires an explicit id")) { errors++ }
+            }
+            @Expect(errors, 2)
+            for (page in documentation.pages) {
+                @Expect(page.source != "docs/en.md" && page.source != "docs/zh.md")
+            }
+        } finally { let _ = removeIfExists(project, recursive: true) }
+    }
+
+    @TestCase
+    func directCoverageRendererIncludesTheSameSingleTranslationReport(): Unit {
+        let project = i18nTestProject("/** 中文摘要。\n * @summary[lang=en] English summary.\n */")
+        try {
+            let documentation = i18nTestGenerate(project)
+            let direct = api_render.rendererFor("coverage").render(documentation)
+            let composite = api_render.renderDocumentationFormatsWithOptions(documentation, ["coverage"])
+            @Expect(direct.size, composite.size)
+            var translations: Int64 = 0
+            for (artifact in direct) {
+                var matches: Int64 = 0
+                for (other in composite where other.path == artifact.path) {
+                    @Expect(artifact.content, other.content); matches++
+                }
+                @Expect(matches, 1)
+                if (artifact.path == "coverage/translations.json") { translations++ }
+            }
+            @Expect(translations, 1)
+        } finally { let _ = removeIfExists(project, recursive: true) }
+    }
+
+    @TestCase
     func subjectOnlyReferencesKeepTheirResolvedTargetsInBothReadingLanguages(): Unit {
         let project = i18nTestProject("/** 中文摘要。\n * @see add\n * @throws Failure\n */",
             extra: "public class Failure <: Exception {}\n")
