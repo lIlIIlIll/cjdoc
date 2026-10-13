@@ -1,0 +1,260 @@
+"""CI-05.1 candidate readiness: resolution, marker binding and fail-closed paths.
+
+These tests use a scripted `gh` stand-in so the decision logic runs for real
+while the API is deterministic. The negative cases matter most: an ambiguous,
+contradictory, expired or foreign state must fall back or fail rather than pick
+a candidate by luck.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+import stat
+import sys
+import tempfile
+import unittest
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from scripts import ci_candidate_source as source  # noqa: E402
+
+COMMIT = "a" * 40
+TREE = "b" * 40
+
+
+def _fake_gh(tmp: Path, *, workflows=None, attempts=None, artifacts=None, runs=None):
+    """Install a scripted `gh` on PATH and return its request log.
+
+    The script answers only the three shapes this module uses:
+    `gh api <path>`, `gh run view <id> --attempt <n> --repo <repo> --json ...`.
+    """
+    log: list[list[str]] = []
+    bin_dir = tmp / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    script = bin_dir / "gh"
+    script.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "STATE = json.loads(os.environ['FAKE_GH_STATE'])\n"
+        "def emit(value):\n"
+        "    sys.stdout.write(json.dumps(value))\n"
+        "args = sys.argv[1:]\n"
+        "record = [a for a in args if not a.startswith('--')]\n"
+        "with open(os.environ['FAKE_GH_LOG'], 'a', encoding='utf-8') as log:\n"
+        "    log.write(json.dumps(args) + '\\n')\n"
+        "if args[:1] == ['api']:\n"
+        "    path = [a for a in args if not a.startswith('--')][1]\n"
+        "    emit(STATE['api'].get(path, {}))\n"
+        "elif args[:2] == ['run', 'view']:\n"
+        "    run_id = args[2]\n"
+        "    attempt = args[args.index('--attempt') + 1]\n"
+        "    emit(STATE['attempts'].get(f'{run_id}/{attempt}', {}))\n"
+        "else:\n"
+        "    sys.stderr.write('unsupported: ' + ' '.join(args))\n"
+        "    sys.exit(2)\n",
+        encoding="utf-8")
+    script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    state = {
+        "api": {
+            f"repos/o/r/actions/workflows/ci.yml/runs?head_sha={COMMIT}&per_page=100":
+                {"workflow_runs": runs or []},
+            **{path: {"artifacts": items} for path, items in (artifacts or {}).items()},
+        },
+        "attempts": attempts or {},
+    }
+    return bin_dir, state, log
+
+
+def _marker(run_id: int, attempt: int, migration: dict | None = None) -> dict:
+    return {"id": 1, "name": source.marker_name(run_id, attempt), "expired": False,
+            "size_in_bytes": 512, "workflow_run": {"id": run_id}, **(migration or {})}
+
+
+class ResolveTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+
+    def resolve(self, runs, artifacts, attempts, **kwargs):
+        bin_dir, state, log = _fake_gh(self.root, runs=runs, artifacts=artifacts, attempts=attempts)
+        log_path = self.root / "gh.log"
+        log_path.write_text("", encoding="utf-8")
+        with mock.patch.dict("os.environ", {"PATH": f"{bin_dir}:{Path('/usr/bin')}",
+                                            "FAKE_GH_STATE": json.dumps(state),
+                                            "FAKE_GH_LOG": str(log_path)}), \
+             mock.patch.object(source.time, "sleep", lambda _: None):
+            return source.resolve("o/r", COMMIT, "push", "", "", 0, 1, log=lambda _: None)
+
+    def test_adopts_the_single_ready_candidate(self):
+        runs = [{"id": 77, "name": "CI", "run_attempt": 1, "status": "completed", "conclusion": "success"}]
+        artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
+                     [_marker(77, 1)],
+                     "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
+                     [{"id": 9, "expired": False}]}
+        attempts = {"77/1": {"headSha": COMMIT, "status": "completed", "conclusion": "success"}}
+        resolved = self.resolve(runs, artifacts, attempts)
+        self.assertTrue(resolved["reuse"])
+        self.assertEqual(resolved["candidateSource"], "ci-artifact")
+        self.assertEqual(resolved["runId"], 77)
+        self.assertEqual(resolved["artifactName"], "cjdoc-linux-candidate-77-1")
+
+    def test_ambiguous_ready_candidates_fall_back(self):
+        runs = [{"id": 77, "name": "CI", "run_attempt": 1, "status": "completed", "conclusion": "success"},
+                {"id": 78, "name": "CI", "run_attempt": 1, "status": "completed", "conclusion": "success"}]
+        artifacts = {}
+        for run_id in (77, 78):
+            artifacts[f"repos/o/r/actions/artifacts?name={source.marker_name(run_id, 1)}"] = \
+                [_marker(run_id, 1)]
+            artifacts[f"repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-{run_id}-1"] = \
+                [{"id": run_id, "expired": False}]
+        attempts = {f"{run_id}/1": {"headSha": COMMIT, "status": "completed",
+                                    "conclusion": "success"} for run_id in (77, 78)}
+        resolved = self.resolve(runs, artifacts, attempts)
+        self.assertFalse(resolved["reuse"])
+        self.assertIn("exactly one ready CI candidate", resolved["reason"])
+
+    def test_pull_request_never_reuses(self):
+        resolved = source.resolve("o/r", COMMIT, "pull_request", "", "", 0, 1, log=lambda _: None)
+        self.assertFalse(resolved["reuse"])
+        self.assertEqual(resolved["candidateSource"], "local-build")
+
+    def test_dispatch_without_run_id_builds_locally(self):
+        resolved = source.resolve("o/r", COMMIT, "workflow_dispatch", "", "", 0, 1,
+                                  log=lambda _: None)
+        self.assertFalse(resolved["reuse"])
+
+    def test_a_candidate_without_a_live_artifact_is_not_ready(self):
+        runs = [{"id": 77, "name": "CI", "run_attempt": 1, "status": "completed", "conclusion": "success"}]
+        artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
+                     [_marker(77, 1)],
+                     "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
+                     [{"id": 9, "expired": True}]}
+        attempts = {"77/1": {"headSha": COMMIT, "status": "completed", "conclusion": "success"}}
+        resolved = self.resolve(runs, artifacts, attempts)
+        self.assertFalse(resolved["reuse"])
+
+    def test_a_marker_from_another_commit_is_ignored(self):
+        runs = [{"id": 77, "name": "CI", "run_attempt": 1, "status": "completed", "conclusion": "success"}]
+        artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
+                     [_marker(77, 1)],
+                     "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
+                     [{"id": 9, "expired": False}]}
+        attempts = {"77/1": {"headSha": "c" * 40, "status": "completed", "conclusion": "success"}}
+        resolved = self.resolve(runs, artifacts, attempts)
+        self.assertFalse(resolved["reuse"])
+
+    def test_a_run_that_only_succeeded_on_a_later_attempt_is_not_reused(self):
+        runs = [{"id": 77, "name": "CI", "run_attempt": 2, "status": "completed", "conclusion": "success"}]
+        artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 2)}":
+                     [_marker(77, 2)]}
+        attempts = {"77/2": {"headSha": COMMIT, "status": "completed",
+                             "conclusion": "failure"}}
+        resolved = self.resolve(runs, artifacts, attempts)
+        self.assertFalse(resolved["reuse"])
+
+
+class MarkerBindingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.tar = self.root / "cjdoc-linux-candidate.tar"
+        self.tar.write_bytes(b"candidate bytes")
+        self.marker_dir = self.root / "marker"
+
+    def publish(self) -> Path:
+        return source.mark("o/r", 5, 1, COMMIT, TREE, "cjdoc-linux-candidate-5-1",
+                           self.tar, self.marker_dir)
+
+    def verify(self, *, commit: str = COMMIT, artifact: str = "cjdoc-linux-candidate-5-1",
+               marker: dict | None = None):
+        bin_dir, state, log = _fake_gh(self.root, artifacts={
+            f"repos/o/r/actions/artifacts?name={source.marker_name(5, 1)}": [marker or _marker(5, 1)]})
+        log_path = self.root / "gh.log"
+        log_path.write_text("", encoding="utf-8")
+        with mock.patch.dict("os.environ", {"PATH": f"{bin_dir}:{Path('/usr/bin')}",
+                                            "FAKE_GH_STATE": json.dumps(state),
+                                            "FAKE_GH_LOG": str(log_path)}):
+            return source.verify_marker("o/r", 5, 1, self.marker_dir, self.tar, artifact, commit)
+
+    def test_round_trip_binds_the_candidate_bytes(self):
+        self.publish()
+        document = self.verify()
+        self.assertEqual(document["candidateTarSha256"], source.sha256_file(self.tar))
+        self.assertEqual(document["tree"], TREE)
+
+    def test_marker_rejects_a_changed_candidate(self):
+        self.publish()
+        self.tar.write_bytes(b"different bytes")
+        with self.assertRaises(source.ResolutionError):
+            self.verify()
+
+    def test_marker_rejects_another_commit(self):
+        self.publish()
+        with self.assertRaises(source.ResolutionError):
+            self.verify(commit="d" * 40)
+
+    def test_marker_rejects_a_missing_live_artifact(self):
+        self.publish()
+        with self.assertRaises(source.ResolutionError):
+            self.verify(marker={"id": 1, "name": "someone-elses-marker", "expired": False,
+                                "workflow_run": {"id": 5}})
+
+    def test_marker_rejects_a_short_commit(self):
+        with self.assertRaises(source.ResolutionError):
+            source.mark("o/r", 5, 1, "abc", TREE, "cjdoc-linux-candidate-5-1",
+                        self.tar, self.marker_dir)
+
+    def test_marker_rejects_a_missing_candidate_tar(self):
+        with self.assertRaises(source.ResolutionError):
+            source.mark("o/r", 5, 1, COMMIT, TREE, "cjdoc-linux-candidate-5-1",
+                        self.root / "absent.tar", self.marker_dir)
+
+
+class RequireReadyTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+
+    def require(self, runs, artifacts, attempts, **kwargs):
+        bin_dir, state, log = _fake_gh(self.root, runs=runs, artifacts=artifacts, attempts=attempts)
+        log_path = self.root / "gh.log"
+        log_path.write_text("", encoding="utf-8")
+        with mock.patch.dict("os.environ", {"PATH": f"{bin_dir}:{Path('/usr/bin')}",
+                                            "FAKE_GH_STATE": json.dumps(state),
+                                            "FAKE_GH_LOG": str(log_path)}):
+            return source.require_ready("o/r", COMMIT, "", "", "push")
+
+    def test_requires_a_ready_candidate(self):
+        runs = [{"id": 77, "name": "CI", "run_attempt": 1, "status": "completed", "conclusion": "success"}]
+        artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
+                     [_marker(77, 1)],
+                     "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
+                     [{"id": 9, "expired": False}]}
+        attempts = {"77/1": {"headSha": COMMIT, "status": "completed", "conclusion": "success"}}
+        self.assertEqual(self.require(runs, artifacts, attempts)["runId"], 77)
+
+    def test_a_later_matrix_failure_leaves_the_matrix_without_a_ready_candidate(self):
+        # The Linux candidate is live but the CI run as a whole failed, so its
+        # attempt does not report success and publication must be refused.
+        runs = [{"id": 77, "name": "CI", "run_attempt": 1, "status": "completed", "conclusion": "failure"}]
+        artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
+                     [_marker(77, 1)],
+                     "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
+                     [{"id": 9, "expired": False}]}
+        attempts = {"77/1": {"headSha": COMMIT, "status": "completed", "conclusion": "failure"}}
+        with self.assertRaises(source.ResolutionError):
+            self.require(runs, artifacts, attempts)
+
+    def test_no_ci_run_at_all_is_refused(self):
+        with self.assertRaises(source.ResolutionError):
+            self.require([], {}, {})
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -370,9 +370,11 @@ class HardeningRegressionTest(unittest.TestCase):
     def test_pages_selects_the_successful_attempt(self) -> None:
         pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
         resolver = pages.split("Decide the candidate source", 1)[1].split("- name:", 1)[0]
-        # A rerun's success carries its own attempt number.
-        self.assertIn("attempt", resolver)
-        self.assertIn("databaseId,attempt", resolver)
+        # The policy lives in a tested module now; the workflow only delegates, so
+        # the decision can be exercised without running a workflow (issue #82,
+        # CI-05.1). `scripts/test_ci_candidate_source.py` covers the branch policy.
+        self.assertIn("scripts/ci_candidate_source.py resolve", resolver)
+        self.assertIn("--explicit-run-attempt", resolver)
 
     def test_the_standalone_build_cleans_up_after_failure(self) -> None:
         check = (PROJECT_ROOT / "scripts/check.sh").read_text(encoding="utf-8")
@@ -404,39 +406,76 @@ class RoutingAndSelectionTest(unittest.TestCase):
         pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
         resolve = pages.split("resolve-candidate:", 1)[1].split("\n  local-candidate:", 1)[0]
         timeout = int(resolve.split("timeout-minutes:", 1)[1].split("\n", 1)[0].strip())
-        wait = int(pages.split("deadline=$(( $(date +%s) + ", 1)[1].split(" ))", 1)[0])
+        # The bounded wait moved into the resolver module with the rest of the
+        # policy, so this invariant now spans the module default and the job.
+        from scripts import ci_candidate_source
+        wait = ci_candidate_source.DEFAULT_DEADLINE_SECONDS
         self.assertGreater(timeout * 60, wait,
                            f"job timeout {timeout}m must exceed the {wait}s wait")
 
 
 class PagesCandidatePolicyTest(unittest.TestCase):
-    """The resolver's policy is security relevant, so pin each branch."""
+    """The resolver's policy is security relevant, so pin each branch.
+
+    The policy was inline shell in `pages.yml`; it now lives in
+    `scripts/ci_candidate_source.py` so each branch is exercised by a unit test
+    (see `scripts/test_ci_candidate_source.py`) instead of only at runtime. These
+    assertions keep the delegation wired and the fallback contract visible.
+    """
 
     def resolver(self) -> str:
         pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
         return pages.split("Decide the candidate source", 1)[1].split("\n      - name:", 1)[0]
 
+    def module(self) -> str:
+        return (PROJECT_ROOT / "scripts/ci_candidate_source.py").read_text(encoding="utf-8")
+
     def test_an_empty_dispatch_input_builds_locally(self) -> None:
-        self.assertIn('workflow_dispatch without candidate_run_id builds locally', self.resolver())
+        self.assertIn('workflow_dispatch without candidate_run_id builds locally', self.module())
 
     def test_explicit_runs_must_be_successful_ci_runs(self) -> None:
-        resolver = self.resolver()
-        # An explicit run id bypasses `--status success`, so it is validated here.
-        self.assertIn("is not a CI workflow run", resolver)
-        self.assertIn("not a successful CI attempt", resolver)
-        self.assertIn('"${run_sha}" != "${GITHUB_SHA}"', resolver)
+        module = self.module()
+        # An explicit run id bypasses run discovery, so it is validated separately.
+        self.assertIn("is not a CI workflow run", module)
+        self.assertIn("published no readiness marker", module)
+        self.assertIn("headSha", module)
 
     def test_validation_reads_the_selected_attempt_not_the_latest(self) -> None:
-        resolver = self.resolver()
+        module = self.module()
         # The run-level API reports the newest attempt, so a run that only passed
         # on attempt 2 would validate attempt 1 and reuse its artifact.
-        self.assertIn('gh run view "${run_id}" --attempt "${attempt}"', resolver)
-        self.assertNotIn('actions/runs/${run_id}"', resolver)
+        self.assertIn('"--attempt", str(run_attempt)', module)
+        self.assertNotIn('actions/runs/{run_id}"', module)
 
     def test_the_automatic_path_waits_and_records_the_attempt(self) -> None:
+        module = self.module()
+        self.assertIn("DEFAULT_DEADLINE_SECONDS", module)
+        self.assertIn("runAttempt", module)
         resolver = self.resolver()
-        self.assertIn("deadline=$(( $(date +%s) + ", resolver)
-        self.assertIn("databaseId,attempt", resolver)
+        self.assertIn("--out", resolver)
+
+    def test_pages_verifies_the_readiness_marker_from_the_producer(self) -> None:
+        pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
+        self.assertIn("Download the readiness marker", pages)
+        self.assertIn("ci_candidate_source.py verify", pages)
+        # Without an explicit run-id the download would silently read this run.
+        marker_download = pages.split("Download the readiness marker", 1)[1].split("\n      - name:", 1)[0]
+        self.assertIn("run-id: ${{ needs.resolve-candidate.outputs.run_id }}", marker_download)
+
+    def test_publication_rechecks_the_consumed_run(self) -> None:
+        pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
+        verify = pages.split("verify-site:", 1)[1]
+        # An early start must not become an early pass: the deployed run has to be
+        # the one whose CI conclusion is still success.
+        self.assertIn("ci_candidate_source.py require-ready", verify)
+        self.assertIn("needs.resolve-candidate.outputs.candidate_source", verify)
+
+    def test_the_readiness_marker_is_published_after_the_candidate_artifact(self) -> None:
+        candidate = (PROJECT_ROOT / ".github/workflows/build-linux-candidate.yml").read_text(
+            encoding="utf-8")
+        self.assertLess(candidate.index("Upload the Linux candidate"),
+                        candidate.index("Publish the readiness marker"),
+                        "a marker must never claim a candidate that is not uploaded yet")
 
 
 class StagedGateAndReceiptTest(unittest.TestCase):

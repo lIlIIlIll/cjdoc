@@ -12,6 +12,13 @@ on:
       checkout_ref:
         type: string
         default: ""
+      # Only CI publishes the readiness marker. Pages calls this workflow as its
+      # *fallback* when no CI candidate can be reused, and a marker published by a
+      # Pages run could never be consumed (consumers only observe `ci.yml` runs),
+      # so publishing one there would be a claim with no reader (CI-05.1).
+      publish_readiness_marker:
+        type: boolean
+        default: false
     outputs:
       artifact_name:
         value: ${{ jobs.build.outputs.artifact_name }}
@@ -19,6 +26,10 @@ on:
         value: ${{ jobs.build.outputs.manifest_name }}
       main_binary_sha256:
         value: ${{ jobs.build.outputs.main_binary_sha256 }}
+      # Published only after the candidate artifact in this same job succeeds, so
+      # the marker's existence is the readiness claim Pages consumes (CI-05.1).
+      readiness_marker_name:
+        value: ${{ jobs.build.outputs.readiness_marker_name }}
 
 permissions:
   contents: read
@@ -39,6 +50,7 @@ jobs:
       artifact_name: cjdoc-linux-candidate-${{ github.run_id }}-${{ github.run_attempt }}
       manifest_name: build-manifest.json
       main_binary_sha256: ${{ steps.build.outputs.main_binary_sha256 }}
+      readiness_marker_name: cjdoc-linux-candidate-ready-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -125,5 +137,35 @@ jobs:
         with:
           name: cjdoc-linux-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/cjdoc-linux-candidate.tar
+          retention-days: 7
+          if-no-files-found: error
+
+      # The readiness marker is published last on purpose: its existence is the
+      # claim that the candidate artifact is downloadable, so a consumer that sees
+      # it can always fetch the bytes it names (CI-05.1).
+      - name: Publish the readiness marker
+        if: ${{ inputs.publish_readiness_marker }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          marker_name="cjdoc-linux-candidate-ready-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "readiness_marker_name=${marker_name}" >> "${GITHUB_OUTPUT}"
+          python scripts/ci_candidate_source.py mark \
+            --repository "${GITHUB_REPOSITORY}" \
+            --run-id "${GITHUB_RUN_ID}" --run-attempt "${GITHUB_RUN_ATTEMPT}" \
+            --commit "${GITHUB_SHA}" --tree "$(git rev-parse HEAD^{tree})" \
+            --artifact-name "cjdoc-linux-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --candidate-tar "${RUNNER_TEMP}/cjdoc-linux-candidate.tar" \
+            --out-dir "${RUNNER_TEMP}/candidate-ready"
+
+      - name: Upload the readiness marker
+        if: ${{ inputs.publish_readiness_marker }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cjdoc-linux-candidate-ready-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-ready/
           retention-days: 7
           if-no-files-found: error
