@@ -119,6 +119,18 @@ def click_and_return(journey: Journey, link, expected_name: str, version: str | 
     journey.back(old)
 
 
+def member_action(member, selector: str):
+    """Find a member action outside native details, opening its touch disclosure."""
+    actions = member.locator("xpath=..").locator(":scope > .member-detail-actions")
+    toggle = actions.locator("[data-cjdoc-member-actions-toggle]")
+    if toggle.is_visible():
+        if toggle.get_attribute("aria-expanded") != "true":
+            toggle.click()
+    else:
+        member.locator("summary").first.hover()
+    return actions.locator(selector)
+
+
 def clipboard_code_matches(copied: str, source: str) -> bool:
     """Allow platform CRLF conversion while retaining outer-whitespace tolerance."""
     return copied.replace("\r\n", "\n").strip() == source.replace("\r\n", "\n").strip()
