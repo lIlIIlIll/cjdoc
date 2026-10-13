@@ -65,8 +65,9 @@ Two shapes were compared by `scripts/measure_sdk_install.py` (dispatch
 * **B — `cache-archives-only`**: the cache holds only the two pinned archives and
   every job extracts once into a fresh directory.
 
-Both dispatches ran 5 paired cycles and asserted that the identities produced by
-each shape are equal (`identityEqualUnderBothVariants: true` in both runs).
+Three dispatches ran 5 paired cycles each and asserted that the identities
+produced by each shape are equal (`identityEqualUnderBothVariants: true` in every
+run).
 
 | Dispatch | Shape | Samples | Median | Min | Max |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -74,14 +75,19 @@ each shape are equal (`identityEqualUnderBothVariants: true` in both runs).
 | `38216746376` | extracted+archives | 5 | 12 676 ms | 12 626 ms | 12 710 ms |
 | `38358957644` (2026-10-13) | archives-only | 5 | 12 209 ms | 12 156 ms | 12 271 ms |
 | `38358957644` | extracted+archives | 5 | 14 415 ms | 14 362 ms | 14 444 ms |
+| `38364098523` (2026-10-13) | archives-only | 5 | 10 497 ms | 10 489 ms | 10 512 ms |
+| `38364098523` | extracted+archives | 5 | 12 750 ms | 12 699 ms | 12 755 ms |
 
 **Decision: keep the current default shape.**
 
-Both dispatches show archives-only ahead of the current shape (by ~2.3 s and
-~2.2 s of median per-job cost, ≈16% of the measured work in the same direction),
-but they also show the machine itself varying by ~1.8 s between dispatches, and
-neither covers the dominant cost. The script declares its own limit and this is
-why the default is not moved on this evidence:
+All three dispatches put archives-only ahead of the current shape, by 2 253 ms,
+2 206 ms and 2 253 ms of median, i.e. 16.3-17.8% of the measured work each time,
+and the direction never flips. The measurement is nonetheless not sufficient to
+change the default, because the machine varies between dispatches by up to
+1 789 ms (the archives-only median moves from 10 420 ms to 12 209 ms between the
+first two dispatches) and because neither shape's dominant cost is covered. The
+script declares its own limit and this is why the default is not moved on this
+evidence:
 
 * `notMeasured: ["cacheRestoreMs"]` — cache fetch and unpack belong to
   `actions/cache` and are not timed here. Restoring a ~234 MB extracted SDK tree
