@@ -392,6 +392,57 @@ test.describe('generated HTML reference', () => {
     await expectStable(page);
   });
 
+  test('package filter never creates an empty selectable option for conceptual entries', async ({ page }) => {
+    await openIndex(page);
+    // Conceptual pages intentionally have no package; the index fixture must
+    // exercise that case or this regression would pass vacuously.
+    const emptyPackageEntries = await page.evaluate(() =>
+      (globalThis.__CJDOC_SEARCH_INDEX__?.entries || [])
+        .filter(entry => entry.packageName === '').length);
+    expect(emptyPackageEntries).toBeGreaterThan(0);
+
+    const packageFilter = page.locator('[data-cjdoc-package]');
+    const kindFilter = page.locator('[data-cjdoc-kind]');
+    await expect(packageFilter).toHaveAttribute('aria-label', 'Filter by package');
+    await expect(packageFilter.locator('option').first()).toHaveText('All packages');
+    await expect(packageFilter.locator('option[value=""]')).toHaveCount(1);
+    await expect(kindFilter.locator('option[value=""]')).toHaveCount(1);
+
+    const options = await packageFilter.locator('option').evaluateAll(elements =>
+      elements.map(option => ({value: option.value, label: option.textContent.trim()})));
+    expect(options.length).toBeGreaterThan(1);
+    expect(options.slice(1).every(option => option.value.trim() && option.label)).toBe(true);
+
+    // The first ArrowDown/select action must not choose the formerly injected
+    // empty option, which appeared as a blank control with the focus ring.
+    await packageFilter.selectOption({index: 1});
+    await expect(packageFilter).not.toHaveValue('');
+    await expect(packageFilter).toHaveValue(options[1].value);
+    await packageFilter.selectOption('');
+    await expect(packageFilter).toHaveValue('');
+
+    // Omitting a package is legitimate for conceptual search hits.
+    await page.locator('[data-cjdoc-search]').fill('Getting started');
+    await expect(page.locator('[data-cjdoc-results] [role="option"]')).not.toHaveCount(0);
+  });
+
+  test('Chinese package filter retains a readable default and nonblank choices', async ({ page }) => {
+    test.skip(!zhIndexUrl, 'CJDOC_HTML_FIXTURE_ZH is not configured');
+    pageErrors.set(page, []);
+    page.on('pageerror', error => pageErrors.get(page).push(String(error)));
+    await page.goto(zhIndexUrl);
+    await expectStable(page);
+    const packageFilter = page.locator('[data-cjdoc-package]');
+    await expect(packageFilter.locator('option').first()).toHaveText('全部包');
+    await expect(packageFilter.locator('option[value=""]')).toHaveCount(1);
+    const labels = await packageFilter.locator('option').evaluateAll(elements =>
+      elements.slice(1).map(option => option.textContent.trim()));
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels.every(Boolean)).toBe(true);
+    await packageFilter.selectOption({index: 1});
+    await expect(packageFilter).not.toHaveValue('');
+  });
+
   test('conceptual pages share the shell and work without search', async ({ page }) => {
     await openIndex(page);
     const conceptUrl = new URL('concepts/index.html', indexUrl).href;
