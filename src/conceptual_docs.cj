@@ -14,6 +14,11 @@ internal class ConceptualPageSpec {
     var source = ""
     var route = ""
     var title = ""
+    var id = ""
+    var language: ?String = None
+    var kind = "guide"
+    var packageName = ""
+    let sections = ArrayList<public_model.DocumentationSection>()
 
     init(source!: String = "", route!: String = "", title!: String = "") {
         this.source = source
@@ -57,6 +62,10 @@ internal class ConceptualPage {
     let kind: String
     let markdown: String
     let bindings = ArrayList<ConceptualApiBinding>()
+    var id = ""
+    var language: ?String = None
+    var packageName = ""
+    let sections = ArrayList<public_model.DocumentationSection>()
 
     init(source: String, route: String, title: String, kind: String, markdown: String) {
         this.source = source
@@ -222,7 +231,7 @@ internal func conceptualInlineBindingSentinel(index: Int64): String {
     "cjdoc-inline-binding-" + index.toString()
 }
 
-private func conceptualMarkdownWithoutBindings(markdown: String,
+internal func conceptualMarkdownWithoutBindings(markdown: String,
     sentinels!: Bool = true): String {
     let out = StringBuilder()
     var fence = ""
@@ -268,7 +277,7 @@ private func conceptualMarkdownWithoutBindings(markdown: String,
     out.toString()
 }
 
-private func conceptualVisibleForAudience(symbol: public_model.SymbolDoc,
+internal func conceptualVisibleForAudience(symbol: public_model.SymbolDoc,
     documentation: public_model.DocumentationSet): Bool {
     var current: ?public_model.SymbolDoc = Some(symbol)
     while (current.isSome()) {
@@ -372,6 +381,10 @@ private func loadConceptualDocsConfig(projectRoot: String): ConceptualDocsConfig
             continue
         }
         if (line.startsWith("[") && line.endsWith("]")) {
+            if (line == "[docs.pages.sections]" && current.isSome()) {
+                section = "docs.pages.sections"
+                continue
+            }
             finishConceptualPage(config, current)
             current = None
             section = conceptualSection(line)
@@ -397,7 +410,17 @@ private func loadConceptualDocsConfig(projectRoot: String): ConceptualDocsConfig
                 page.route = conceptualValue(value)
             } else if (key == "title") {
                 page.title = conceptualValue(value)
+            } else if (key == "id") {
+                page.id = conceptualValue(value)
+            } else if (key == "language") {
+                page.language = Some(public_model.documentationLanguage(conceptualValue(value)))
+            } else if (key == "kind") {
+                page.kind = conceptualValue(value)
+            } else if (key == "package") {
+                page.packageName = conceptualValue(value)
             }
+        } else if (section == "docs.pages.sections" && current.isSome()) {
+            current.getOrThrow().sections.add(public_model.DocumentationSection(conceptualValue(key), conceptualValue(value)))
         } else if (section == "docs.packages") {
             let source = conceptualPathFromValue(value, "package overview")
             if (!conceptualSafeRelative(key)) {
@@ -642,7 +665,8 @@ private func conceptualPageFromSource(root: Path, source: String, route: String,
 
 private func conceptualAddPage(documentation: public_model.DocumentationSet,
     pages: ArrayList<ConceptualPage>, routes: HashSet<String>, page: ConceptualPage): Unit {
-    if (routes.add(page.route)) {
+    let routeKey = page.language.getOrDefault({ => "unknown" }) + ":" + page.route
+    if (routes.add(routeKey)) {
         if (pages.size >= CONCEPTUAL_MAX_PAGES) {
             throw IllegalArgumentException("conceptual documentation exceeds ${CONCEPTUAL_MAX_PAGES} pages")
         }
@@ -653,13 +677,15 @@ private func conceptualAddPage(documentation: public_model.DocumentationSet,
     let suffix = conceptualStableHash(page.kind + ":" + page.source + ":" + page.route)
     var candidate = stem + "--" + suffix + ".html"
     var serial: Int64 = 2
-    while (!routes.add(candidate)) {
+    while (!routes.add(page.language.getOrDefault({ => "unknown" }) + ":" + candidate)) {
         candidate = stem + "--" + suffix + "-" + serial.toString() + ".html"
         serial++
     }
     documentation.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC4060",
         "conceptual route collision at ${page.route}; emitted ${candidate}"))
     let routedPage = ConceptualPage(page.source, candidate, page.title, page.kind, page.markdown)
+    routedPage.id = page.id; routedPage.language = page.language; routedPage.packageName = page.packageName
+    routedPage.sections.add(all: page.sections)
     if (pages.size >= CONCEPTUAL_MAX_PAGES) {
         throw IllegalArgumentException("conceptual documentation exceeds ${CONCEPTUAL_MAX_PAGES} pages")
     }
@@ -710,7 +736,9 @@ private func conceptualPages(root: Path, documentation: public_model.Documentati
     }
     for (spec in config.pages) {
         let route = conceptualRoute(spec.route, "concepts/guides/${conceptualSlug(spec.source.removeSuffix(".md"))}")
-        let page = conceptualPageFromSource(root, spec.source, route, spec.title, "guide", spec.source)
+        let page = conceptualPageFromSource(root, spec.source, route, spec.title, spec.kind, spec.source)
+        page.id = spec.id; page.language = spec.language; page.packageName = spec.packageName
+        page.sections.add(all: spec.sections)
         conceptualAddPage(documentation, pages, routes, page)
     }
     for (page in pages) {
@@ -985,7 +1013,11 @@ private func externalSearchIndex(base: String, documentation: public_model.Docum
     }
 }
 
-private func conceptualSearchIndex(base: String, pages: ArrayList<ConceptualPage>): String {
+private func conceptualSearchIndex(base: String, pages: ArrayList<ConceptualPage>,
+    documentation: public_model.DocumentationSet): String {
+    // Current IR already contributed the selected captured pages and bindings.
+    // The source-side adapter only supplies them for documents without snapshots.
+    if (!documentation.pages.isEmpty()) { return base }
     let suffix = "\n  ]\n}\n"
     let emptySuffix = "\"entries\": []\n}\n"
     var prefix = ""
@@ -1727,7 +1759,7 @@ internal func appendConceptualArtifacts(projectRoot: String,
         HashMap<String, Int64>()
     }
     let conceptualSearch = if (config.enabled && hasHtml) {
-        conceptualSearchIndex(search, pages)
+        conceptualSearchIndex(search, pages, documentation)
     } else { search }
     let augmentedSearch = if (hasHtml) {
         externalSearchIndex(conceptualSearch, documentation, resolvers)

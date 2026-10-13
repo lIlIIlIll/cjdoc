@@ -328,7 +328,7 @@ cjpm -v
 
 ## 能力边界
 
-- 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/12`。
+- 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/13`。
 - 默认 `--semantic source` 使用 `std.ast` 和源码 lexer 做结构化源码遍历；注释仍来自原始源码，Doc IR 和 renderer 不依赖 CHIR。
 - `generate`/`check` 可显式使用 `--semantic chir`，并须通过 `--chir-worker <path>` 指向独立 worker executable。只有 `tools/chir-worker` package 导入 `stdx.chir`；core 通过受限文件协议调用它。worker 未配置或 CHIR 处理失败时保留 source declarations，并产生 `CJDOC2101`–`CJDOC2106` warning。
 - CHIR 逐个检查待编译的根包、workspace member 和已捕获依赖的 manifest。不支持的构建配置或编译选项产生 `CJDOC2102`，受影响的编译不会派发给 worker，源码/AST fallback 仍保留；TOML 注释不参与这项检查。
@@ -376,3 +376,7 @@ cjpm -v
 | `--agent-full` | `generate`, `render`, `serve` | 关闭 | 生成完整但有界的 `html/llms-full.txt` |
 | `--doc-version <id>` | `generate`, `render` | 无 | 把版本上下文写入 HTML agent 产物和 `html/version.json` |
 | `--force-owned` | `generate`, `render` | 关闭 | 显式采用已有输出目录内容 |
+
+## 多语言模型、迁移和版本组合
+
+Doc IR v13 保留所有作者变体，输入默认语言与读取语言分离。`--require-language en` 和 `[coverage.translation]` 提供独立翻译门槛；版本组合读取原生 `site-manifest.json`。配置、保守条目关联和格式版本见 [多语言文档](i18n.md)。

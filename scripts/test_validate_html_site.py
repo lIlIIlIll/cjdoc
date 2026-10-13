@@ -23,7 +23,9 @@ def canonical_search_script() -> str:
     marker = 'internal let HTML_SEARCH_SCRIPT = """\n'
     literal = source.split(marker, 1)[1].split('\n"""', 1)[0]
     # Decode doubled backslashes in Cangjie string literals before execution.
-    return literal.replace("\\\\", "\\") + "\n"
+    language = (SCRIPT.parent.parent / "src/render/html_language.cj").read_text(encoding="utf-8")
+    navigation = language.split('internal let LANGUAGE_NAVIGATION_SCRIPT = """\n', 1)[1].split('\n"""', 1)[0]
+    return literal.replace("\\\\", "\\") + "\n" + navigation.replace("\\\\", "\\") + "\n"
 
 
 def canonical_theme_bootstrap_script() -> str:

@@ -238,6 +238,13 @@ internal func markdownNodeText(node: MarkdownNode): String {
     out.toString().trimAscii()
 }
 
+internal func documentationTagPlainText(tag: DocTag): String {
+    match (tag.descriptionMarkdown) {
+        case Some(tree) => markdownNodeText(tree)
+        case None => tag.description
+    }
+}
+
 internal func appendEscapedMarkdownText(out: RenderTextBuffer, value: String): Unit {
     for (rune in value.runes()) {
         match (rune) {

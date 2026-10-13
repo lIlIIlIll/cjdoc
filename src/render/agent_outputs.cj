@@ -423,7 +423,14 @@ private func renderAgentFull(documentation: DocumentationSet,
 public func renderAgentReadableArtifacts(documentation: DocumentationSet,
     conceptualPages!: Array<AgentConceptualPage> = [], includeFull!: Bool = false,
     version!: ?String = None, includeValidation!: Bool = false): Array<RenderArtifact> {
-    let pages = agentNavigationPages(documentation, conceptualPages, includeValidation)
+    let concepts = ArrayList<AgentConceptualPage>(conceptualPages)
+    if (concepts.isEmpty()) {
+        let locale = documentation.readingLanguage.getOrDefault({ => "en" })
+        for (page in selectedDocumentationPages(documentation, locale)) {
+            concepts.add(AgentConceptualPage(page.route, page.title, page.kind, markdown: page.text))
+        }
+    }
+    let pages = agentNavigationPages(documentation, concepts.toArray(), includeValidation)
     let artifacts = ArrayList<RenderArtifact>()
     artifacts.add(RenderArtifact("html/navigation-index.json", "application/json",
         renderAgentNavigationIndex(documentation, pages, version)))
@@ -431,7 +438,7 @@ public func renderAgentReadableArtifacts(documentation: DocumentationSet,
         renderAgentLlms(documentation, pages, version)))
     if (includeFull) {
         artifacts.add(RenderArtifact("html/llms-full.txt", "text/plain; charset=utf-8",
-            renderAgentFull(documentation, conceptualPages, version)))
+            renderAgentFull(documentation, concepts.toArray(), version)))
     }
     artifacts.toArray()
 }

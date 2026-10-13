@@ -21,7 +21,7 @@ class NegativeExampleGateTests(unittest.TestCase):
         self.root = Path(temporary.name)
         (self.root / "doctest").mkdir()
         self.report = {
-            "schemaVersion": "cjdoc.doctest/1", "mode": "warn",
+            "schemaVersion": "cjdoc.doctest/2", "mode": "warn",
             "summary": {"passed": 0, "failed": 1, "timedOut": 0, "skipped": 1},
             "results": [
                 {"qualifiedName": "pocket_diagnostics.deliberateFailure", "status": "failed",

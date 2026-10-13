@@ -55,6 +55,12 @@ internal func topLevelParagraphIndex(comment: DocComment): Int64 {
 }
 
 internal func summaryPlainText(comment: DocComment): String {
+    if (!comment.localizedTexts.isEmpty()) {
+        for (tag in comment.tags where tag.name == "summary") {
+            if (let Some(tree) <- tag.descriptionMarkdown) { return markdownNodeText(tree).trimAscii() }
+        }
+        return comment.summary.trimAscii()
+    }
     match (summaryParagraph(comment)) {
         case Some(paragraph) => markdownNodeText(paragraph)
         case None =>
@@ -65,7 +71,15 @@ internal func summaryPlainText(comment: DocComment): String {
 }
 
 internal func appendSummaryHtml(out: RenderTextBuffer, comment: DocComment,
-    symbol: SymbolDoc, assetLookup: HashMap<String, String>, rootPrefix: String): Unit {
+    symbol: SymbolDoc, assetLookup: HashMap<String, String>, rootPrefix: String, locale!: String = "en"): Unit {
+    if (!comment.localizedTexts.isEmpty()) {
+        if (let Some(tag) <- findTag(comment, "summary")) {
+            out.append("<div class=\"symbol-summary\">")
+            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownHtmlContext(comment, symbol, 2))
+            out.append("</div>")
+        }
+        return
+    }
     match (summaryParagraph(comment)) {
         case Some(paragraph) =>
             let context = markdownHtmlContext(comment, symbol, 2)
@@ -100,9 +114,17 @@ internal func appendDocumentationIntroductionHtml(out: RenderTextBuffer, symbol:
     match (findTag(comment, "deprecated")) {
         case Some(tag) =>
             out.append("<aside class=\"callout\"><strong>${label(locale, "Deprecated.", "已弃用。")}</strong> ")
-            appendStructuredTextHtml(out, tag.description)
+            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownHtmlContext(comment, symbol, headingBase))
             out.append("</aside>\n")
         case None => ()
+    }
+    if (!comment.localizedTexts.isEmpty()) {
+        if (let Some(tag) <- findTag(comment, "description")) {
+            out.append("<div class=\"description\">")
+            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownHtmlContext(comment, symbol, headingBase))
+            out.append("</div>")
+        }
+        return
     }
     if (comment.markdown.kind == "paragraph") { return }
     let summaryIndex = topLevelParagraphIndex(comment)
@@ -148,10 +170,10 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                     }
                     out.append("</span></dt>")
                     out.append("<dd class=\"parameter-description\">")
-                    match (parameter.documentation) {
-                        case Some(value) => appendStructuredTextHtml(out, value)
-                        case None => match (findTag(comment, "param", subject: Some(parameter.name))) {
-                            case Some(tag) => appendStructuredTextHtml(out, tag.description)
+                    match (findTag(comment, "param", subject: Some(parameter.name))) {
+                        case Some(tag) => appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
+                        case None => match (parameter.documentation) {
+                            case Some(value) => appendStructuredTextHtml(out, value)
                             case None => ()
                         }
                     }
@@ -167,7 +189,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                     match (findTag(comment, "return")) {
                         case Some(tag) =>
                             out.append("<div class=\"return-description\">")
-                            appendStructuredTextHtml(out, tag.description)
+                            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
                             out.append("</div>")
                         case None => ()
                     }
@@ -196,14 +218,14 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                                 escapeHtml(htmlReferenceStateLabel(tag.referenceState, locale)) + "</span>")
                         }
                         out.append("</dt><dd>")
-                        appendStructuredTextHtml(out, tag.description)
+                        appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
                         out.append("</dd></div>\n")
                     }
                 }
                 out.append("</dl>\n")
             }
             if (includeContracts) {
-                appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(symbol))
+                appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(symbol), assetLookup: assetLookup, rootPrefix: rootPrefix, markdownContext: markdownContext)
             }
             appendDocumentationExamplesHtml(out, comment, locale, symbol: Some(symbol),
                 exampleEvidence: exampleEvidence,
@@ -225,7 +247,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                         case None => out.append("<code>${escapeHtml(tag.subject)}</code>")
                     }
                     if (!tag.description.isEmpty()) {
-                        out.append(" "); appendStructuredTextHtml(out, tag.description)
+                        out.append(" "); appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
                     }
                     out.append("</li>\n")
                 }
@@ -236,7 +258,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                 for (tag in comment.tags) {
                     if (tag.name != name) { continue }
                     if (!opened) { out.append("<h3>${escapeHtml(label(locale, tagHeading(name), match (name) { case "since" => "自版本"; case "author" => "作者"; case _ => "版本" }))}</h3><ul>\n"); opened = true }
-                    out.append("<li>"); appendStructuredTextHtml(out, tag.description); out.append("</li>\n")
+                    out.append("<li>"); appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext); out.append("</li>\n")
                 }
                 if (opened) { out.append("</ul>\n") }
             }

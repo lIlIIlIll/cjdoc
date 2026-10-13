@@ -41,12 +41,13 @@ internal class DocIrEncodingBudget {
         if (object) { consumeBytes(entries, path) }
     }
 
-    func consumeObject(path: String, depth!: Int64 = 0, fields!: Int64 = 32): Unit {
+    func consumeObject(path: String, depth!: Int64 = 0, fields!: Int64 = 32,
+        compactBytes!: Int64 = 448): Unit {
         if (schemaObjects >= DOC_IR_MAX_SCHEMA_OBJECTS) {
             domainFail(path, "JSON object occurrence budget exceeded")
         }
         schemaObjects++
-        consumeBytes(448, path)
+        consumeBytes(compactBytes, path)
         consumePrettyContainer(depth, fields, true, path)
     }
 
@@ -108,12 +109,17 @@ internal class DocIrEncodingBudget {
 internal func consumePositionEncoding(value: SourcePosition, path: String,
     budget: DocIrEncodingBudget, jsonDepth!: Int64 = 0): Unit {
     let _ = value
-    budget.consumeObject(path, depth: jsonDepth, fields: 3)
+    // Three Int64 values, their fixed keys and punctuation fit within 96 bytes
+    // even at the longest signed decimal spelling. Pretty whitespace is charged
+    // independently; a position does not need the generic 32-field allowance.
+    budget.consumeObject(path, depth: jsonDepth, fields: 3, compactBytes: 96)
 }
 
 internal func consumeRangeEncoding(value: SourceRange, path: String,
     budget: DocIrEncodingBudget, jsonDepth!: Int64 = 0): Unit {
-    budget.consumeObject(path, depth: jsonDepth, fields: 3)
+    // The fixed path/start/end keys, braces, colons and commas occupy 25 bytes;
+    // the path string and both positions are charged below.
+    budget.consumeObject(path, depth: jsonDepth, fields: 3, compactBytes: 25)
     budget.consumeString(value.path, "${path}.path")
     consumePositionEncoding(value.start, "${path}.start", budget, jsonDepth: jsonDepth + 1)
     consumePositionEncoding(value.end, "${path}.end", budget, jsonDepth: jsonDepth + 1)
@@ -211,6 +217,15 @@ internal func consumeTagEncoding(value: DocTag, path: String,
     if (let Some(markdown) <- value.exampleMarkdown) {
         consumeMarkdownEncoding(markdown, "${path}.exampleMarkdown", 0, 5, budget)
     }
+    if (!value.translationState.isEmpty()) {
+        budget.consumeString(value.translationState, path + ".translationState")
+        budget.consumeString(value.fieldId, path + ".fieldId")
+        budget.consumeOptionalString(value.contentLanguage, path + ".contentLanguage")
+    }
+    if (let Some(markdown) <- value.descriptionMarkdown) {
+        consumeMarkdownEncoding(markdown, path + ".descriptionMarkdown", 0, 5, budget)
+    }
+    if (!value.evidenceKey.isEmpty()) { budget.consumeString(value.evidenceKey, path + ".evidenceKey") }
 }
 
 internal func consumeCommentEncoding(value: DocComment, path: String, jsonDepth: Int64,
@@ -225,6 +240,9 @@ internal func consumeCommentEncoding(value: DocComment, path: String, jsonDepth:
     for (tag in value.tags) {
         consumeTagEncoding(tag, "${path}.tags[${index}]", budget)
         index++
+    }
+    if (value.defaultLanguage.isSome() || !value.localizedTexts.isEmpty()) {
+        consumeDocumentationTexts(value, path, jsonDepth, budget)
     }
 }
 
@@ -338,7 +356,24 @@ internal func validateDocIrEncodingBudget(documentation: DocumentationSet, limit
     budget.consumeString(documentation.configuration.audience, "$.configuration.audience")
     budget.consumeString(documentation.configuration.lintProfile, "$.configuration.lintProfile")
     budget.consumeString(documentation.configuration.cfgProfile, "$.configuration.cfgProfile")
+    if (let Some(options) <- documentation.languageOptions) {
+        budget.consumeObject("$.languageOptions", fields: 3)
+        budget.consumeString(options.defaultLanguage, "$.languageOptions.defaultLanguage")
+        budget.consumeString(options.missingTranslation, "$.languageOptions.missingTranslation")
+        budget.consumeCollection(options.languages.size, "$.languageOptions.languages")
+        for (language in options.languages) { budget.consumeString(language, "$.languageOptions.languages") }
+    }
 
+    if (!documentation.pages.isEmpty()) { consumeDocumentationPages(documentation, budget) }
+    budget.consumeCollection(documentation.externalDocumentation.size, "$.externalDocumentation")
+    for (reference in documentation.externalDocumentation) {
+        budget.consumeObject("$.externalDocumentation[]", fields: 9)
+        for (text in [reference.symbolId, reference.name, reference.state, reference.url, reference.reason,
+            reference.version, reference.index, reference.format, reference.fingerprint]) {
+            budget.consumeString(text, "$.externalDocumentation[]")
+        }
+    }
+    if (documentation.readingLanguage.isSome()) { budget.consumeOptionalString(documentation.readingLanguage, "$.readingLanguage") }
     budget.consumeCollection(documentation.providers.size, "$.providers")
     var index: Int64 = 0
     for (provider in documentation.providers) {

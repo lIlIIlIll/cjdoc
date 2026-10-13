@@ -3,13 +3,22 @@ package pocketkit
 import std.collection.*
 
 /**
- * 保存按插入顺序排列的文本条目 / An insertion-ordered text catalogue.
+ * 保存按插入顺序排列的文本条目。
  *
  * TextCatalog 保留重复值和空字符串；索引从零开始。实例不提供内部同步，调用方必须
  * 在并发修改与读取之间安排同步。这是作者提供的契约，不是语义分析器证明。
  * {@link Stamp} 是本库的标签；{@link pocket_support.SourceLabel} 属于独立文档集。
  * 本地优先查找不会把 pocket_support.Stamp 当成本地类型；外部字段
  * {@link pocket_support.SourceLabel.text} 也使用同一个固定版本的本地索引。
+ *
+ * @summary[lang=en] An insertion-ordered text catalogue.
+ * @description[lang=en] TextCatalog preserves duplicate values and empty strings. Indices start at zero.
+ *
+ * Instances do not synchronize access internally. Arrange synchronization between concurrent readers and writers.
+ * These are author-provided contracts; the semantic provider does not prove them.
+ *
+ * {@link Stamp} is a local label. External examples use {@link pocket_support.SourceLabel} from a separate documentation set.
+ * Its {@link pocket_support.SourceLabel.text} field uses the same fixed-version local index.
  *
  * @example 顺序、重复值和快照
  * ```cangjie
@@ -37,9 +46,12 @@ public class TextCatalog {
     public prop size: Int64 { get() { values.size } }
 
     /**
-     * 追加一条文本 / Append one string.
+     * 追加一条文本。
+     * @summary[lang=en] Append one string.
      * @param value 原样保存的条目，允许空字符串。
+     * @param[lang=en] value The text to store unchanged; empty strings are allowed.
      * @postcondition size 比调用前增加一。
+     * @postcondition[lang=en] size increases by one.
      * @example 追加后按位置读取
      * ```cj
      * let catalog = TextCatalog()
@@ -81,10 +93,15 @@ public class TextCatalog {
 
     /**
      * 返回指定索引的条目。
+     * @summary[lang=en] Read the entry at the requested index.
      * @param index 从零开始的索引。
+     * @param[lang=en] index The zero-based index.
      * @return 保存在该位置的文本。
+     * @return[lang=en] The text stored at that position.
      * @throws IllegalArgumentException index 小于零或不小于 size。
+     * @throws[lang=en] IllegalArgumentException index is negative or is not smaller than size.
      * @precondition 0 <= index < size。
+     * @precondition[lang=en] 0 <= index < size.
      */
     public func at(index: Int64): String {
         if (index < 0 || index >= values.size) { throw IllegalArgumentException("index outside catalogue") }

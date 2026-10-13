@@ -199,7 +199,7 @@ internal func publicSymbol(value: SymbolDoc, sourceMapper: PublicSourceMapper,
         symbolRelationships: symbolRelationships.toArray(), documentation: match (value.documentation) {
             case Some(comment) => Some(
                 publicComment(comment, assetCollector, value.source.path, declarationSource, value.id,
-                    markdownContext, renderableIds))
+                    markdownContext, renderableIds, sourceMapper))
             case None => None
         },
         origin: public_model.DeclarationOrigin(kind: value.origin.kind,
@@ -365,7 +365,9 @@ internal func publicDocumentation(documentation: DocumentationSet,
         declarations: declarationProjection.declarations, assets: declarationProjection.assetCollector.assets(),
         orphanDocComments: sourceProjection.orphanDocComments,
         macroInvocations: sourceProjection.macroInvocations, unsupportedDeclarations: sourceProjection.unsupported,
-        diagnostics: diagnosticProjection.diagnostics)
+        diagnostics: diagnosticProjection.diagnostics,
+        languageOptions: if (request.i18n.isSome()) { request.i18n }
+            else { loadDocumentationLanguages(request.projectRoot) })
     // A fixed highlight allowance cannot assume the rest of the bundle is small.
     // Preserve all declarations/text without optional highlighting before the
     // existing fallback, if the stricter whole-document codec boundary is hit.

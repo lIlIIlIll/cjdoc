@@ -26,6 +26,12 @@ support-v1。配置受版本控制，不会被整体覆盖。输出目录必须�
 Generated core API pages use the same CLI, sources and configurations as the published showcase.
 The Pages homepage and human-readable report presentation are publication layers, not handwritten API implementations.
 
+`demo-v1` / `demo-v2` 通过 `[i18n]` 和 `@tag[lang=en]` 保存作者提供的正文翻译。
+`--locale both` 是复现脚本选项；它调用原生 `generate --all-languages`，每个版本分析一次，
+再用原生站点清单组合语言与版本。原生 CLI 的 locale 值仍只有 `zh-CN` / `en`。
+入门指南有独立英文文件，TextCatalog 提供真实不同的摘要、参数、返回值、异常和行为契约文字。
+尚未翻译的字段保留带语言标记的原文；示例中的缺译与 `diagnostics` 的故意失败分别报告。
+
 ## 边界 / Boundaries
 
 源码作者说明不等于类型检查器证明。partial/unavailable/ambiguous 仍保持原状态。

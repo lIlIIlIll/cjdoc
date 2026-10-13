@@ -158,4 +158,22 @@ class ModelCodecV8Suite2 {
             decodeDocIr(codecV6ProviderMatrixJson(1, 1, sourcePrefix: "../escape")))
     }
 
+    @TestCase
+    func sourcePositionsUseTheirClosedShapeWithoutRejectingValidLargeDocuments(): Unit {
+        let position = SourcePosition(9223372036854775807, 9223372036854775807, 9223372036854775807)
+        let range = SourceRange("src/fixture.cj", position, position)
+        let diagnostics = ArrayList<Diagnostic>()
+        for (_ in 0..10000) {
+            diagnostics.add(Diagnostic("warning", "CJDOC3999", "Source position budget.", source: Some(range)))
+        }
+        let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "partial",
+            ProjectInfo("source-position-budget"), ConfigurationSnapshot(lintProfile: "off"),
+            diagnostics: diagnostics.toArray())
+        let limit = 12 * 1024 * 1024
+        @Expect(docIrFitsEncodedBudget(documentation, limit))
+        let encoded = encodeDocIr(documentation)
+        @Expect(encoded.size < limit)
+        @Expect(decodeDocIr(encoded).diagnostics.size, 10000)
+    }
+
 }

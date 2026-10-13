@@ -2,6 +2,7 @@ package cjdoc
 
 import std.collection.*
 import std.convert.Parsable
+import cjdoc.model as public_model
 
 internal class NewCliOptions {
     var command = ""
@@ -47,6 +48,8 @@ internal class NewCliOptions {
     var minParameterCoverage: ?Int64 = None
     var locale = "zh-CN"
     var localeExplicit = false
+    var allLanguages = false
+    let requiredLanguages = ArrayList<String>()
     var markdownLayout = "site"
     var markdownLayoutExplicit = false
     var docVersion: ?String = None
@@ -80,7 +83,7 @@ internal func newUsage(): String {
     "                 [--cfg NAME=VALUE] [--include-path-dependencies] [--include-cached-dependencies]\n" +
     "                 [--dependency-source NAME=PATH] [--cjpm-cache <dir>]\n" +
     "                 [--cache-dir <dir>|--no-cache] [--force-owned]\n" +
-    "                 [--locale zh-CN|en] [--markdown-layout site|single]\n" +
+    "                 [--locale zh-CN|en|--all-languages] [--require-language zh-CN|en]... [--markdown-layout site|single]\n" +
     "  cjdoc check [--project <dir>] [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
     "              [--chir-worker <executable>]\n" +
     "              [--highlight-adapter <absolute path> --highlight-node <absolute path>]\n" +
@@ -223,6 +226,12 @@ private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>,
         case "--locale" =>
             options.locale = requireCliValue(args, index, "--locale")
             options.localeExplicit = true
+            Some(index + 2)
+        case "--all-languages" =>
+            options.allLanguages = true
+            Some(index + 1)
+        case "--require-language" =>
+            options.requiredLanguages.add(public_model.documentationLanguage(requireCliValue(args, index, "--require-language")))
             Some(index + 2)
         case "--markdown-layout" =>
             options.markdownLayout = requireCliValue(args, index, "--markdown-layout")
@@ -397,6 +406,10 @@ private func validateCliOptions(options: NewCliOptions): Unit {
     if (options.locale != "zh-CN" && options.locale != "en") {
         throw IllegalArgumentException("--locale must be zh-CN or en")
     }
+    if (options.allLanguages && (options.localeExplicit || options.stdout || options.markdownLayout == "single" ||
+        (options.command != "generate" && options.command != "render"))) {
+        throw IllegalArgumentException("--all-languages supports generate/render directory output with site Markdown and conflicts with --locale")
+    }
     if (options.markdownLayout != "site" && options.markdownLayout != "single") {
         throw IllegalArgumentException("--markdown-layout must be site or single")
     }
@@ -410,7 +423,7 @@ private func validateCliOptions(options: NewCliOptions): Unit {
         options.checkExamples || options.includePathDependencies || options.includeCachedDependencies ||
         options.cacheDirectory.isSome() || options.noCache || options.cjpmCacheRoot.isSome() ||
         options.apiSurfaceBaseline.isSome() || options.minSymbolCoverage.isSome() ||
-        options.minParameterCoverage.isSome() ||
+        options.minParameterCoverage.isSome() || !options.requiredLanguages.isEmpty() ||
         !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty() ||
         options.jobsExplicit || options.audienceExplicit || options.lintProfileExplicit)) {
         throw IllegalArgumentException(
@@ -561,4 +574,3 @@ internal func parseNewCli(args: Array<String>): NewCliOptions {
     }
     parseDocumentOptions(args)
 }
-

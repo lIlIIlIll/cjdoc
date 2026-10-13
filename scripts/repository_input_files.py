@@ -153,8 +153,8 @@ def validate_schema_document(name: str, value: object) -> None:
                 )
         if properties["status"] != {"enum": ["complete", "partial"]}:
             raise ValueError(f"{name} schema status shape is invalid")
-        if name in ("doc-ir", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12"):
-            if name in ("doc-ir", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12") and "repository" not in definitions:
+        if name in ("doc-ir", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12", "doc-ir-v13"):
+            if name in ("doc-ir", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12", "doc-ir-v13") and "repository" not in definitions:
                 raise ValueError(f"{name} repository definition is missing")
             if not {
                 "codeBlockMetadata", "headingMetadata", "listMetadata",
@@ -197,7 +197,7 @@ def validate_schema_document(name: str, value: object) -> None:
             "packageName", "summary", "href"
         }
         expected_property_fields = expected_required_fields | {
-            "moduleId", "moduleName", "ownerName", "parameterTypes", "returnType", "returnCanonical", "bindings", "externalDocs", "body", "sections"
+            "moduleId", "moduleName", "ownerName", "parameterTypes", "returnType", "returnCanonical", "bindings", "externalDocs", "body", "sections", "fields"
         }
         if (
                 not isinstance(entries, dict)

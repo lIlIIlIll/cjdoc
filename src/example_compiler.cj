@@ -430,7 +430,15 @@ private func collectExampleTargets(documentation: DocumentationSet,
         if (!renderableIds.contains(symbol.id)) { continue }
         match (symbol.documentation) {
             case Some(comment) =>
-                for (tag in comment.examples) { collectExampleForTag(documentation, state, symbol, tag) }
+                if (comment.languageItems.isEmpty()) {
+                    for (tag in comment.examples) { collectExampleForTag(documentation, state, symbol, tag) }
+                } else {
+                    for (item in comment.languageItems) {
+                        if (item.tag.name == "example" && item.state != "invalid" && item.state != "conflict") {
+                            collectExampleForTag(documentation, state, symbol, item.tag)
+                        }
+                    }
+                }
             case None => ()
         }
     }

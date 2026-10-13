@@ -11,7 +11,7 @@ import std.sync.*
 import std.time.*
 import std.unicode.*
 
-internal let DOCTEST_SCHEMA_VERSION = "cjdoc.doctest/1"
+internal let DOCTEST_SCHEMA_VERSION = "cjdoc.doctest/2"
 internal let DOCTEST_MAX_RESULTS: Int64 = 100000
 internal let DOCTEST_MAX_OUTPUT_BYTES: Int64 = 8 * 1024 * 1024
 internal let DOCTEST_PIPE_CHUNK_BYTES: Int64 = 64 * 1024
@@ -24,9 +24,11 @@ internal class DoctestSnippet {
     public let title: String
     public let language: String
     public let code: String
+    public let documentationLanguage: ?String
+    public let evidenceKey: String
 
     init(id: String, symbolId: String, packageName: String, qualifiedName: String, title: String,
-        language: String, code: String) {
+        language: String, code: String, documentationLanguage!: ?String = None, evidenceKey!: String = "") {
         this.id = id
         this.symbolId = symbolId
         this.packageName = packageName
@@ -34,6 +36,7 @@ internal class DoctestSnippet {
         this.title = title
         this.language = language
         this.code = code
+        this.documentationLanguage = documentationLanguage; this.evidenceKey = evidenceKey
     }
 }
 
@@ -49,6 +52,8 @@ internal class DoctestCaseResult {
     public let stdout: String
     public let stderr: String
     public let message: String
+    public let documentationLanguage: ?String
+    public let evidenceKey: String
 
     init(snippet: DoctestSnippet, status: String, exitCode!: ?Int64 = None,
         durationMs!: Int64 = 0, stdout!: String = "", stderr!: String = "",
@@ -64,6 +69,7 @@ internal class DoctestCaseResult {
         this.stdout = stdout
         this.stderr = stderr
         this.message = message
+        this.documentationLanguage = snippet.documentationLanguage; this.evidenceKey = snippet.evidenceKey
     }
 }
 
@@ -401,7 +407,8 @@ private func extractSnippets(symbol: public_model.SymbolDoc, tag: public_model.D
                     let code = snippetCode(body)
                     snippets.add(DoctestSnippet(
                         symbol.id + ":example:" + exampleIndex.toString() + ":" + blockIndex.toString(),
-                        symbol.id, symbol.packageName, symbol.qualifiedName, tag.subject, active.language, code))
+                        symbol.id, symbol.packageName, symbol.qualifiedName, tag.subject, active.language, code,
+                        documentationLanguage: tag.contentLanguage, evidenceKey: tag.evidenceKey))
                     blockIndex++
                     body.clear()
                     fence = None
@@ -420,7 +427,8 @@ private func extractSnippets(symbol: public_model.SymbolDoc, tag: public_model.D
             let code = snippetCode(body)
             snippets.add(DoctestSnippet(
                 symbol.id + ":example:" + exampleIndex.toString() + ":" + blockIndex.toString(),
-                symbol.id, symbol.packageName, symbol.qualifiedName, tag.subject, active.language, code))
+                symbol.id, symbol.packageName, symbol.qualifiedName, tag.subject, active.language, code,
+                documentationLanguage: tag.contentLanguage, evidenceKey: tag.evidenceKey))
         case None => ()
     }
     snippets.toArray()
@@ -433,13 +441,22 @@ internal func collectSnippets(documentation: public_model.DocumentationSet): Arr
         match (symbol.documentation) {
             case Some(comment) =>
                 var exampleIndex: Int64 = 0
-                for (tag in comment.tags) {
+                let tags = ArrayList<public_model.DocTag>()
+                if (comment.localizedTexts.isEmpty()) { tags.add(all: comment.tags) }
+                else {
+                    for (text in comment.localizedTexts where text.kind == "example") {
+                        tags.add(public_model.DocTag("example", text.subject, text.text, directives: text.directives,
+                            contentLanguage: text.language, evidenceKey: public_model.documentationExampleKey(symbol.id, text)))
+                    }
+                }
+                for (tag in tags) {
                     if (tag.name != "example" || !tag.directives.isEmpty()) { continue }
                     let found = extractSnippets(symbol, tag, exampleIndex)
                     if (found.isEmpty()) {
                         snippets.add(DoctestSnippet(
                             symbol.id + ":example:" + exampleIndex.toString() + ":skipped",
-                            symbol.id, symbol.packageName, symbol.qualifiedName, tag.subject, "cj", ""))
+                            symbol.id, symbol.packageName, symbol.qualifiedName, tag.subject, "cj", "",
+                            documentationLanguage: tag.contentLanguage, evidenceKey: tag.evidenceKey))
                     } else {
                         snippets.add(all: found)
                     }
@@ -889,6 +906,9 @@ private func appendDoctestResult(out: StringBuilder, result: DoctestCaseResult):
     out.append(",\"qualifiedName\":"); appendJsonString(out, result.qualifiedName)
     out.append(",\"title\":"); appendJsonString(out, result.title)
     out.append(",\"language\":"); appendJsonString(out, result.language)
+    out.append(",\"documentationLanguage\":")
+    match (result.documentationLanguage) { case Some(language) => appendJsonString(out, language); case None => out.append("null") }
+    out.append(",\"evidenceKey\":"); appendJsonString(out, result.evidenceKey)
     out.append(",\"status\":"); appendJsonString(out, result.status)
     out.append(",\"exitCode\":"); appendOptionalInt(out, result.exitCode)
     out.append(",\"durationMs\":"); out.append(result.durationMs.toString())
@@ -917,6 +937,9 @@ internal func encodeDoctestReport(report: DoctestReport): String {
     out.append(",\"timeoutMs\":"); out.append(report.timeoutMs.toString())
     out.append(",\"memoryMb\":"); out.append(report.memoryMb.toString())
     out.append(",\"jobs\":"); out.append(report.jobs.toString())
+    let identity = ToolchainIdentity(compilerExecutable: Some("cjc"))
+    out.append(",\"environmentFingerprint\":")
+    appendJsonString(out, public_model.contractFingerprint(identity.sourceBackendFingerprint() + ":" + report.mode + ":" + report.timeoutMs.toString() + ":" + report.memoryMb.toString()))
     out.append(",\"summary\":{\"passed\":"); out.append(passed.toString())
     out.append(",\"failed\":"); out.append(failed.toString())
     out.append(",\"timedOut\":"); out.append(timedOut.toString())

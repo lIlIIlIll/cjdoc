@@ -313,7 +313,8 @@ private func behaviorContractHeading(name: String, locale: String): String {
 }
 
 internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: DocComment,
-    locale: String, anchor: String): Unit {
+    locale: String, anchor: String, assetLookup!: HashMap<String, String> = HashMap<String, String>(),
+    rootPrefix!: String = "", markdownContext!: HtmlMarkdownContext = HtmlMarkdownContext(2)): Unit {
     var contractCount: Int64 = 0
     var soleContract: ?DocTag = None
     for (tag in comment.tags) {
@@ -341,7 +342,7 @@ internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: D
                     out.append("<span class=\"badge\" data-state=\"incomplete\">" +
                         label(locale, "incomplete", "不完整") + "</span>")
                 } else {
-                    appendStructuredTextHtml(out, tag.description)
+                    appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
                 }
                 out.append("</div></section>\n")
             case None => ()
@@ -360,7 +361,7 @@ internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: D
             out.append("<span class=\"badge\" data-state=\"incomplete\">" +
                 label(locale, "incomplete", "不完整") + "</span>")
         } else {
-            appendStructuredTextHtml(out, tag.description)
+            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
         }
         out.append("</dd>\n")
     }
@@ -379,7 +380,8 @@ public let EXAMPLE_EVIDENCE_RAN_MARKER = "\u{0}doctest-ran"
 internal func appendExampleEvidenceHtml(out: RenderTextBuffer, symbol: SymbolDoc, tag: DocTag,
     evidence: HashMap<String, String>, locale: String,
     evidenceRootPrefix!: String = "../../"): Unit {
-    match (evidence.get(exampleEvidenceKey(symbol.id, tag.subject))) {
+    let key = if (tag.translationState.isEmpty()) { exampleEvidenceKey(symbol.id, tag.subject) } else { tag.evidenceKey }
+    match (evidence.get(key)) {
         case None =>
             // When doctests ran, an example with no result is evidence that was
             // not recorded, which a reader must not mistake for a verified or
@@ -429,6 +431,7 @@ internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: Do
         if (tag.name != "example") { continue }
         exampleIndex++
         out.append("<div class=\"example-block\">")
+        appendContentLanguageHtml(out, tag, locale)
         if (!tag.subject.isEmpty()) {
             out.append("<h${min(6, headingLevel + 1)} class=\"example-title\">${escapeHtml(tag.subject)}</h${min(6, headingLevel + 1)}>")
         }

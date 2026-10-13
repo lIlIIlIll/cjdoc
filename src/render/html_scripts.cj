@@ -321,7 +321,7 @@ internal let HTML_SEARCH_SCRIPT = """
     }
   };
   const index = globalThis.__CJDOC_SEARCH_INDEX__;
-  entries = index && index.schemaVersion === "cjdoc.search-index/8" && Array.isArray(index.entries)
+  entries = index && index.schemaVersion === "cjdoc.search-index/9" && Array.isArray(index.entries)
     ? index.entries : [];
   addOptions(kindFilter, entries.map((entry) => entry.kind));
   addOptions(packageFilter, entries.map((entry) => entry.packageName));
@@ -993,7 +993,7 @@ internal let HTML_SEARCH_SCRIPT = """
     const version = document.body.dataset.cjdocDocVersion || "";
     const audience = document.body.dataset.cjdocAudience || "";
     const cfg = document.body.dataset.cjdocCfg || "";
-    return "cjdoc-member-state:" + [project, version, audience, cfg, location.pathname].join("|");
+    return "cjdoc-member-state:" + [project, version, document.documentElement.lang, audience, cfg, location.pathname].join("|");
   })();
   const navigationEntry = performance.getEntriesByType("navigation")[0];
   const isHistoryNavigation = navigationEntry && navigationEntry.type === "back_forward";

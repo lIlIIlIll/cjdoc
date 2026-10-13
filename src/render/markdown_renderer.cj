@@ -341,18 +341,47 @@ private func markdownBehaviorContractLabel(name: String, locale: String): String
     }
 }
 
+private func appendDocumentationTagMarkdown(out: RenderTextBuffer, tag: DocTag,
+    assetLookup: HashMap<String, String>, locale: String, pagePath: String,
+    symbolIndex: ?HashMap<String, SymbolDoc>): Unit {
+    if (!tag.translationState.isEmpty()) {
+        out.append("_"); appendEscapedMarkdownText(out, contentLanguageLabel(tag, locale)); out.append("_.\n\n")
+    }
+    match (tag.descriptionMarkdown) {
+        case Some(tree) => appendMarkdownNodeMarkdown(out, tree, assetLookup, 4, pagePath: pagePath, symbolIndex: symbolIndex)
+        case None => appendEscapedMarkdownText(out, tag.description)
+    }
+}
+
+private func appendDocumentationListTagMarkdown(out: RenderTextBuffer, tag: DocTag,
+    assetLookup: HashMap<String, String>, locale: String, pagePath: String,
+    symbolIndex: ?HashMap<String, SymbolDoc>): Unit {
+    let content = RenderTextBuffer()
+    appendDocumentationTagMarkdown(content, tag, assetLookup, locale, pagePath, symbolIndex)
+    appendMarkdownPrefixedBlock(out, content.toString(), "", "    ")
+}
+
 internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComment,
     assetLookup: HashMap<String, String>, locale!: String = "en", pagePath!: String = "",
     symbolIndex!: ?HashMap<String, SymbolDoc> = None): Unit {
     for (tag in comment.tags) {
         if (tag.name == "deprecated") {
-            out.append("> **${label(locale, "Deprecated.", "已弃用。")}** ")
-            appendEscapedMarkdownText(out, tag.description)
-            out.append("\n\n")
+            let content = RenderTextBuffer()
+            content.append("**${label(locale, "Deprecated.", "已弃用。")}** ")
+            appendDocumentationTagMarkdown(content, tag, assetLookup, locale, pagePath, symbolIndex)
+            appendMarkdownPrefixedBlock(out, content.toString(), "> ", "> ")
+            out.append("\n")
             break
         }
     }
-    appendMarkdownNodeMarkdown(out, comment.markdown, assetLookup, 4, pagePath: pagePath, symbolIndex: symbolIndex)
+    if (comment.localizedTexts.isEmpty()) {
+        appendMarkdownNodeMarkdown(out, comment.markdown, assetLookup, 4, pagePath: pagePath, symbolIndex: symbolIndex)
+    } else {
+        for (tag in comment.tags where tag.name == "summary" || tag.name == "description") {
+            appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
+            out.append("\n\n")
+        }
+    }
     var hasExamples = false
     for (tag in comment.tags) { if (tag.name == "example") { hasExamples = true; break } }
     if (hasExamples) {
@@ -378,14 +407,14 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
         for (tag in comment.tags) {
             if (tag.name == "param") {
                 out.append("- "); appendMarkdownCodeSpan(out, tag.subject); out.append(" — ")
-                appendEscapedMarkdownText(out, tag.description); out.append("\n")
+                appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
             }
         }
         out.append("\n")
     }
     for (tag in comment.tags) {
         if (tag.name == "return") {
-            out.append("#### ${label(locale, "Returns", "返回值")}\n\n"); appendEscapedMarkdownText(out, tag.description); out.append("\n\n")
+            out.append("#### ${label(locale, "Returns", "返回值")}\n\n"); appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex); out.append("\n\n")
         }
     }
     var hasThrows = false
@@ -395,7 +424,7 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
         for (tag in comment.tags) {
             if (tag.name == "throws") {
                 out.append("- "); appendMarkdownCodeSpan(out, tag.subject); out.append(" — ")
-                appendEscapedMarkdownText(out, tag.description); out.append("\n")
+                appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
             }
         }
         out.append("\n")
@@ -420,7 +449,7 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
             if (tag.description.trimAscii().isEmpty()) {
                 out.append("**incomplete**")
             } else {
-                appendEscapedMarkdownText(out, tag.description)
+                appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
             }
             out.append("\n")
         }
@@ -433,7 +462,7 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
         for (tag in comment.tags) {
             if (tag.name == "see") { out.append("- "); appendMarkdownCodeSpan(out, tag.subject)
                 if (!tag.description.isEmpty()) {
-                    out.append(" — "); appendEscapedMarkdownText(out, tag.description)
+                    out.append(" — "); appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
                 }; out.append("\n") }
         }
         out.append("\n")
@@ -444,7 +473,7 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
         for (tag in comment.tags) {
             if (tag.name != name) { continue }
             if (!opened) { out.append("#### ${label(locale, heading, match (name) { case "since" => "自版本"; case "author" => "作者"; case _ => "版本" })}\n\n"); opened = true }
-            out.append("- "); appendEscapedMarkdownText(out, tag.description); out.append("\n")
+            out.append("- "); appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex); out.append("\n")
         }
         if (opened) { out.append("\n") }
     }
@@ -455,13 +484,15 @@ public class MarkdownDocumentationRenderer <: DocumentationRenderer {
 
     public func render(documentation: DocumentationSet): Array<RenderArtifact> {
         let artifacts = RenderArtifactCollector()
-        appendMarkdownArtifacts(artifacts, documentation)
+        let locale = documentation.readingLanguage.getOrDefault({ => "en" })
+        appendMarkdownArtifacts(artifacts, projectDocumentationLanguage(documentation, locale))
         artifacts.toArray()
     }
 }
 
 internal func appendMarkdownArtifacts(artifacts: RenderArtifactCollector,
     documentation: DocumentationSet): Unit {
+        let locale = documentation.readingLanguage.getOrDefault({ => "en" })
         validateTypedDocumentationSet(documentation)
         let out = RenderTextBuffer()
         let projection = RenderProjection(documentation)
@@ -479,7 +510,7 @@ internal func appendMarkdownArtifacts(artifacts: RenderArtifactCollector,
             appendMarkdownCodeBlock(out, declaration.headerSpelling, "cangjie", "`", 3)
             match (declaration.documentation) {
                 case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
-                    symbolIndex: Some(projection.visibleIndex))
+                    locale: locale, symbolIndex: Some(projection.visibleIndex))
                 case None => ()
             }
             out.append("- Kind: "); appendMarkdownCodeSpan(out, declaration.kind); out.append("\n")

@@ -41,22 +41,36 @@ fi
 from pathlib import Path
 from scripts.verify_repository_inputs import validate_schema_document
 from scripts.strict_json import strict_load
-for name in ("doc-ir-v6", "doc-ir-v7", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11"):
+for name in ("doc-ir-v6", "doc-ir-v7", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12"):
     validate_schema_document(name, strict_load(Path("docs/schema") / f"{name}.schema.json", description=name))
 PY
-"${python_cmd}" scripts/safe_output_root.py \
-    --repo "${repo_root}" --directory "${repo_root}/target" --create >/dev/null
-target_root="${repo_root}/target"
-update_dir="${target_root}/schema-update"
-"${python_cmd}" scripts/safe_output_root.py \
-    --repo "${repo_root}" --directory "${update_dir}" --allow-missing >/dev/null
-rm -rf "${update_dir}"
-"${python_cmd}" scripts/safe_output_root.py \
-    --repo "${repo_root}" --directory "${update_dir}" --create >/dev/null
+if [[ -n "${CJDOC_UPDATE_WORKDIR:-}" ]]; then
+    update_dir="${CJDOC_UPDATE_WORKDIR}"
+    "${python_cmd}" - "${update_dir}" <<'PYWORK'
+from pathlib import Path
+import sys
+from scripts.safe_output_root import lexical_absolute, verify_directory_chain
+work = lexical_absolute(Path(sys.argv[1]))
+verify_directory_chain(work.parent)
+if work.exists() or work.is_symlink():
+    raise SystemExit("update workdir already exists; refusing reuse")
+work.mkdir(mode=0o700)
+PYWORK
+else
+    "${python_cmd}" scripts/safe_output_root.py \
+        --repo "${repo_root}" --directory "${repo_root}/target" --create >/dev/null
+    target_root="${repo_root}/target"
+    update_dir="${target_root}/schema-update"
+    "${python_cmd}" scripts/safe_output_root.py \
+        --repo "${repo_root}" --directory "${update_dir}" --allow-missing >/dev/null
+    rm -rf "${update_dir}"
+    "${python_cmd}" scripts/safe_output_root.py \
+        --repo "${repo_root}" --directory "${update_dir}" --create >/dev/null
+fi
 test -d "${schema_dir}"
 stage_dir="$(mktemp -d "${schema_parent}/.schema.XXXXXX")"
 
-for schema_name in doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 doc-ir-v11; do
+for schema_name in doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 doc-ir-v11 doc-ir-v12; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${update_dir}/${schema_name}.schema.json"
     cmp "${schema_dir}/${schema_name}.schema.json" \
@@ -65,7 +79,7 @@ for schema_name in doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 doc-ir-v11
         "${stage_dir}/${schema_name}.schema.json"
 done
 
-for schema_name in doc-ir doc-ir-v12 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions; do
+for schema_name in doc-ir doc-ir-v13 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions api-surface-v2 api-surface-v3 api-diff-v1 doctest-results-v1 search-index-v8 versions-v1 translation-coverage site-manifest; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${stage_dir}/${schema_name}.schema.json"
 done

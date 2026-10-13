@@ -169,7 +169,7 @@ internal func appendSymbolMetadata(out: RenderTextBuffer,
     out.append("<div class=\"symbol-meta\">")
     if (includeSummary) {
         match (symbol.documentation) {
-            case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, rootPrefix)
+            case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, rootPrefix, locale: locale)
             case None => ()
         }
     }

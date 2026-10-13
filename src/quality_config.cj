@@ -1,5 +1,6 @@
 package cjdoc
 
+import cjdoc.model as public_model
 import std.collection.*
 import std.convert.Parsable
 import std.fs.*
@@ -73,6 +74,7 @@ internal class DocumentationQualityConfig {
     public let ruleSeverities = ArrayList<DocumentationRuleSeverity>()
     public let coverage = DocumentationCoverageThresholds()
     public let packageOverrides = ArrayList<DocumentationCoveragePackageOverride>()
+    public let translationThresholds = HashMap<String, Int64>()
 
     func severity(rule: String): String {
         for (entry in ruleSeverities) {
@@ -111,7 +113,7 @@ internal class DocumentationQualityConfig {
     }
 }
 
-private func qualityTomlValue(value: String): String {
+internal func qualityTomlLine(value: String): String {
     var cleaned = value.trimAscii()
     var quoted = false
     var escaped = false
@@ -131,6 +133,11 @@ private func qualityTomlValue(value: String): String {
         escaped = false
         index++
     }
+    cleaned
+}
+
+internal func qualityTomlValue(value: String): String {
+    let cleaned = qualityTomlLine(value)
     if (cleaned.startsWith("\"") && cleaned.endsWith("\"") && cleaned.size >= 2) {
         return cleaned.removePrefix("\"").removeSuffix("\"")
     }
@@ -190,7 +197,7 @@ internal func loadDocumentationQualityConfig(projectRoot: String): Documentation
         // Other consumers own [docs], [[docs.pages]], [external-docs.*],
         // and [doctest]. In particular, repeated array-table keys are valid
         // there and must never enter this parser's duplicate-key scope.
-        if (section != "lint" && section != "coverage" && packageOverride.isNone()) {
+        if (section != "lint" && section != "coverage" && section != "coverage.translation" && packageOverride.isNone()) {
             continue
         }
         let equals = line.indexOf("=")
@@ -212,6 +219,12 @@ internal func loadDocumentationQualityConfig(projectRoot: String): Documentation
             } else {
                 throw IllegalArgumentException("unknown [lint] setting '${key}'")
             }
+        } else if (section == "coverage.translation") {
+            let language = public_model.documentationLanguage(qualityTomlValue(key))
+            let threshold = qualityInteger(rawValue, key)
+            if (threshold < 0 || threshold > 100) { throw IllegalArgumentException("translation threshold must be in 0..100") }
+            if (config.translationThresholds.contains(language)) { throw IllegalArgumentException("duplicate translation language threshold") }
+            config.translationThresholds[language] = threshold
         } else if (section == "coverage") {
             config.coverage.set(key, qualityInteger(rawValue, key))
         } else if (packageOverride.isSome()) {

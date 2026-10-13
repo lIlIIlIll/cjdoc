@@ -259,9 +259,23 @@ internal func resolvePublicSemanticLinks(declarations: Array<public_model.Symbol
     for (symbol in declarations) {
         match (symbol.documentation) {
             case Some(comment) =>
-                resolveSemanticLinkNode(comment.markdown, symbol, declarations, index,
-                    audience, resolvers, config, diagnostics)
+                if (comment.localizedTexts.isEmpty()) {
+                    resolveSemanticLinkNode(comment.markdown, symbol, declarations, index,
+                        audience, resolvers, config, diagnostics)
+                }
+                for (text in comment.localizedTexts) {
+                    let start = diagnostics.size
+                    resolveSemanticLinkNode(text.markdown, symbol, declarations, index,
+                        audience, resolvers, config, diagnostics)
+                    for (index in start..diagnostics.size) {
+                        let diagnostic = diagnostics[index]
+                        diagnostics[index] = public_model.Diagnostic(diagnostic.severity, diagnostic.code,
+                            "language " + text.language.getOrDefault({ => "unknown" }) + ": " + diagnostic.message,
+                            source: diagnostic.source, symbolId: diagnostic.symbolId)
+                    }
+                }
                 for (tag in comment.tags) {
+                    if (!comment.localizedTexts.isEmpty()) { break }
                     if (let Some(tree) <- tag.exampleMarkdown) {
                         resolveSemanticLinkNode(tree, symbol, declarations, index,
                             audience, resolvers, config, diagnostics)

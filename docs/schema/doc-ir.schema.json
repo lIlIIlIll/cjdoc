@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-  "title": "cjdoc Doc IR v12",
+  "title": "cjdoc Doc IR v13",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "generator", "status", "project", "configuration", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/12"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/13"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "project": {"$ref": "#/$defs/project"},
@@ -21,7 +21,11 @@
     "macroInvocations": {"type": "array", "items": {"$ref": "#/$defs/macroInvocation"}},
     "unsupportedDeclarations": {"type": "array", "items": {"$ref": "#/$defs/unsupportedDeclaration"}},
     "unboundSemanticDeclarations": {"type": "array", "items": {"$ref": "#/$defs/unboundSemanticDeclaration"}},
-    "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}}
+    "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}},
+    "languageOptions": {"$ref": "#/$defs/documentationLanguageOptions"},
+    "pages": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/documentationPage"}},
+    "readingLanguage": {"enum": ["zh-CN", "en"]},
+    "externalDocumentation": {"type": "array", "items": {"$ref": "#/$defs/externalDocumentationReference"}}
   },
   "$defs": {
     "semanticLinkMetadata": {
@@ -42,6 +46,62 @@
           "pattern": "^https://github.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$"},
         "revision": {"type": "string", "minLength": 1}
       }
+    },
+    "documentationText": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fieldId", "kind", "subject", "language", "text", "markdown", "source", "state", "referenceState", "targetSymbolId", "directives"],
+      "properties": {
+        "fieldId": {"type": "string"}, "kind": {"type": "string"}, "subject": {"type": "string"},
+        "language": {"enum": ["zh-CN", "en", null]}, "text": {"type": "string"},
+        "markdown": {"$ref": "#/$defs/markdownNode"},
+        "source": {"anyOf": [{"$ref": "#/$defs/sourceRange"}, {"type": "null"}]},
+        "state": {"enum": ["valid", "empty", "conflict", "unpaired", "invalid"]},
+        "referenceState": {"$ref": "#/$defs/semanticState"},
+        "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"}, "directives": {"type": "string"}
+      }
+    },
+    "documentationLanguageOptions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["defaultLanguage", "languages", "missingTranslation"],
+      "properties": {
+        "defaultLanguage": {"enum": ["zh-CN", "en"]},
+        "languages": {"type": "array", "minItems": 1, "maxItems": 2, "uniqueItems": true, "items": {"enum": ["zh-CN", "en"]}},
+        "missingTranslation": {"enum": ["warn", "deny"]}
+      }
+    },
+    "documentationPage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "source", "route", "title", "kind", "packageName", "language", "defaultLanguage", "text", "markdown", "sections", "targetSymbolIds"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1}, "source": {"type": "string"}, "route": {"type": "string"},
+        "title": {"type": "string"}, "kind": {"enum": ["project", "package", "module", "guide"]},
+        "packageName": {"type": "string"}, "language": {"enum": ["zh-CN", "en", null]},
+        "defaultLanguage": {"enum": ["zh-CN", "en", null]}, "text": {"type": "string"},
+        "markdown": {"$ref": "#/$defs/markdownNode"},
+        "targetSymbolIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/symbolId"}},
+        "bindings": {"type": "array", "items": {"type": "object", "additionalProperties": false,
+          "required": ["target", "selector", "provenance", "version", "sourceLine", "language", "state", "targetSymbolId"],
+          "properties": {"target": {"type": "string"}, "selector": {"type": "string"}, "provenance": {"type": "string"},
+            "version": {"type": "string"}, "sourceLine": {"type": "integer", "minimum": 1}, "language": {"type": "string"},
+            "state": {"enum": ["resolved", "unresolved", "ambiguous", "unavailable", "conflict"]},
+            "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"}}}},
+        "sections": {"type": "array", "items": {"type": "object", "additionalProperties": false,
+          "required": ["id", "anchor"], "properties": {"id": {"type": "string"}, "anchor": {"type": "string"}}}}
+      }
+    },
+    "externalDocumentationReference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["symbolId", "name", "state", "url", "reason", "version", "index", "format", "fingerprint"],
+      "properties": {"symbolId": {"$ref": "#/$defs/symbolId"}, "name": {"type": "string", "minLength": 1},
+        "state": {"enum": ["available", "unavailable", "ambiguous"]}, "url": {"type": "string"},
+        "reason": {"type": "string"}, "version": {"type": "string"}, "index": {"type": "string"},
+        "format": {"type": "string"}, "fingerprint": {"type": "string"}},
+      "allOf": [
+        {"if": {"properties": {"state": {"const": "available"}}},
+          "then": {"properties": {"url": {"minLength": 1}}}},
+        {"if": {"properties": {"state": {"enum": ["unavailable", "ambiguous"]}}},
+          "then": {"properties": {"url": {"const": ""}}}}
+      ]
     },
     "semanticState": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
     "nullableString": {"type": ["string", "null"]},
@@ -195,7 +255,12 @@
         "description": {"type": "string"}, "referenceState": {"$ref": "#/$defs/semanticState"},
         "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"},
         "directives": {"type": "string"},
-        "exampleMarkdown": {"$ref": "#/$defs/markdownNode"}
+        "exampleMarkdown": {"$ref": "#/$defs/markdownNode"},
+        "contentLanguage": {"enum": ["zh-CN", "en", null]},
+        "translationState": {"enum": ["complete", "fallback", "empty-fallback", "conflict-fallback", "empty", "conflict", "missing", "unknown", "unpaired"]},
+        "fieldId": {"type": "string"},
+        "descriptionMarkdown": {"$ref": "#/$defs/markdownNode"},
+        "evidenceKey": {"type": "string"}
       }
     },
     "headingMetadata": {
@@ -313,7 +378,9 @@
       "required": ["rawText", "summary", "description", "markdown", "tags"],
       "properties": {
         "rawText": {"type": "string"}, "summary": {"type": "string"}, "description": {"type": "string"},
-        "markdown": {"$ref": "#/$defs/markdownNode"}, "tags": {"type": "array", "items": {"$ref": "#/$defs/tag"}}
+        "markdown": {"$ref": "#/$defs/markdownNode"}, "tags": {"type": "array", "items": {"$ref": "#/$defs/tag"}},
+        "defaultLanguage": {"enum": ["zh-CN", "en", null]},
+        "localizedTexts": {"type": "array", "items": {"$ref": "#/$defs/documentationText"}}
       }
     },
     "semanticInfo": {

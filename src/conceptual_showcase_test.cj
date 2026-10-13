@@ -7,6 +7,7 @@ import std.env.*
 import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
+import yjson.*
 
 private func showcaseBindingFixture(): api_model.DocumentationSet {
     let source = api_model.SourceRange("src/api.cj", api_model.SourcePosition(1, 1, 0),
@@ -90,6 +91,26 @@ private func createHostileGuideProject(): Path {
 
 @Test
 class ConceptualShowcaseTest {
+    @TestCase
+    func capturedGuideSearchEntriesAreNotAppendedAgainByTheSourceAdapter(): Unit {
+        let root = createShowcaseBindingProject()
+        try {
+            let documentation = captureDocumentationPages(showcaseBindingFixture(), GenerationRequest(root.toString()))
+            let pages = conceptualPagesForProject(root.toString(), documentation)
+            let base = api_render.renderDocumentationFormatsWithOptions(documentation, ["html"], locale: "en")
+            let artifacts = appendConceptualArtifacts(root.toString(), documentation, ["html"], base, pages, locale: "en")
+            let entries = JsonNode.parse(artifactContent(artifacts, "html/search-index.json")).asObject()
+                .get("entries").getOrThrow().asArray()
+            let ids = HashSet<String>()
+            var concepts: Int64 = 0
+            for (index in 0..entries.size()) {
+                let entry = entries.get(index).getOrThrow().asObject()
+                @Expect(ids.add(entry.get("id").getOrThrow().asString()))
+                if (entry.get("kind").getOrThrow().asString() == "concept") { concepts++ }
+            }
+            @Expect(concepts, documentation.pages.size)
+        } finally { let _ = removeIfExists(root, recursive: true) }
+    }
     @TestCase
     func exactOverloadGuidesStayOnTheirMemberInBothLocales(): Unit {
         let root = createShowcaseBindingProject()

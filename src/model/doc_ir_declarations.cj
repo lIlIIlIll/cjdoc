@@ -182,11 +182,24 @@ public class DocTag {
     public let targetSymbolId: ?String
     public let directives: String
     public let exampleMarkdown: ?MarkdownNode
+    public let contentLanguage: ?String
+    public let translationState: String
+    public let fieldId: String
+    public let descriptionMarkdown: ?MarkdownNode
+    public let evidenceKey: String
 
     public init(name: String, subject: String, description: String,
         referenceState!: String = "unavailable", targetSymbolId!: ?String = None,
-        directives!: String = "", exampleMarkdown!: ?MarkdownNode = None) {
+        directives!: String = "", exampleMarkdown!: ?MarkdownNode = None,
+        contentLanguage!: ?String = None, translationState!: String = "", fieldId!: String = "",
+        descriptionMarkdown!: ?MarkdownNode = None, evidenceKey!: String = "") {
         if (!isSemanticState(referenceState)) { throw IllegalArgumentException("invalid reference state") }
+        if (let Some(language) <- contentLanguage) {
+            if (documentationLanguage(language) != language) { throw IllegalArgumentException("content language must be normalized") }
+        }
+        if (!["", "complete", "fallback", "empty-fallback", "conflict-fallback", "empty", "conflict", "missing", "unknown", "unpaired"].contains(translationState)) {
+            throw IllegalArgumentException("invalid translation state")
+        }
         this.name = name
         this.subject = subject
         this.description = description
@@ -199,6 +212,10 @@ public class DocTag {
             }
         }
         this.exampleMarkdown = exampleMarkdown
+        this.contentLanguage = contentLanguage
+        this.translationState = translationState
+        this.fieldId = fieldId
+        this.descriptionMarkdown = descriptionMarkdown
+        this.evidenceKey = evidenceKey
     }
 }
-

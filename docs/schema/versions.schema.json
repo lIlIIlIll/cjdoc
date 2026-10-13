@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/versions.schema.json",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/versions-v2.schema.json",
   "title": "cjdoc composed documentation versions",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "project", "latest", "latestPolicy", "versions"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.versions/1"},
+    "schemaVersion": {"const": "cjdoc.versions/2"},
     "project": {"type": "string", "minLength": 1},
     "latest": {"type": "string", "minLength": 1},
     "latestPolicy": {"enum": ["explicit", "first-listed"]},
@@ -29,7 +29,8 @@
         "index": {"$ref": "#/$defs/safePath"},
         "symbolIndex": {"anyOf": [{"$ref": "#/$defs/safePath"}, {"type": "null"}]},
         "apiDiff": {"anyOf": [{"$ref": "#/$defs/safePath"}, {"type": "null"}]},
-        "release": {"type": "string", "minLength": 1}
+        "release": {"type": "string", "minLength": 1},
+        "languages": {"type": "array", "maxItems": 2, "items": {"type": "object", "additionalProperties": false, "required": ["language", "root", "index"], "properties": {"language": {"enum": ["en", "zh-CN"]}, "root": {"$ref": "#/$defs/safePath"}, "index": {"$ref": "#/$defs/safePath"}}}}
       }
     }
   }

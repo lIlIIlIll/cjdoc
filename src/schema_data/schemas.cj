@@ -309,7 +309,7 @@ public let CFG_MATRIX_SCHEMA = """
 }
 """
 
-public let SEARCH_INDEX_SCHEMA = """
+public let SEARCH_INDEX_V8_SCHEMA = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/search-index.schema.json",

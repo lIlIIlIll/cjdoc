@@ -59,7 +59,7 @@ private func appendSymbolIndexReferences(out: RenderTextBuffer, symbol: SymbolDo
                 out.append("{\"subject\":")
                 appendSearchJsonString(out, tag.subject)
                 out.append(",\"description\":")
-                appendSearchJsonString(out, tag.description)
+                appendSearchJsonString(out, documentationTagPlainText(tag))
                 out.append(",\"state\":")
                 appendSearchJsonString(out, tag.referenceState)
                 out.append(",\"targetId\":")

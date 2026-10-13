@@ -17,7 +17,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-from showcase_build.integration import install_output
+from showcase_build.integration import copy_composed_publication, install_output, publish_examples
+from showcase_build.manifest import roots
 from showcase_build.navigation import mount, markdown_declarations
 from showcase_build.packaging import copy_sources, source_archive
 from showcase_contract.site import ContractError
@@ -74,6 +75,27 @@ class BuildIntegrationTests(unittest.TestCase):
             install_output(self.root / "work/site", self.root / "output")
         self.assertEqual((self.root / "output/user.txt").read_text(), "preserve")
 
+    def test_composed_publication_keeps_native_routes_and_only_public_machine_ir(self) -> None:
+        self.write("composed/versions.json", {"versions": []})
+        self.write("composed/demo-v1/index.html", '<a href="html/en/index.html">en</a>')
+        self.write("composed/demo-v1/docs.json", {"authorOnly": "hidden documentation"})
+        self.write("composed/demo-v1/markdown/private.md", "hidden documentation")
+        self.write("composed/demo-v1/site-manifest.json", {"routes": []})
+        self.write("composed/demo-v1/html/en/index.html", "public page")
+        self.write("composed/demo-v1/html/en/machine/docs.json", {"public": True})
+        self.write("composed/demo-v2/api-diff.json", {"changes": []})
+        self.write("composed/demo-v1/doctest/results.json", {"results": []})
+        copy_composed_publication(self.root / "composed", self.root / "published")
+        self.assertTrue((self.root / "published/demo-v1/index.html").is_file())
+        self.assertTrue((self.root / "published/demo-v2/api-diff.json").is_file())
+        self.assertTrue((self.root / "published/demo-v1/doctest/results.json").is_file())
+        self.assertEqual(json.loads((self.root / "published/demo-v1/html/en/machine/docs.json").read_text()),
+                         {"public": True})
+        self.assertFalse((self.root / "published/demo-v1/docs.json").exists())
+        self.assertFalse((self.root / "published/demo-v1/markdown").exists())
+        self.assertFalse((self.root / "published/demo-v1/site-manifest.json").exists())
+        self.assertTrue((self.root / "composed/demo-v1/docs.json").is_file())
+
     def test_source_copy_rejects_symlink_ancestor_before_copying_bytes(self) -> None:
         self.write("private/src/api.cj", "private contents")
         (self.root / "repo/examples").mkdir(parents=True)
@@ -82,6 +104,32 @@ class BuildIntegrationTests(unittest.TestCase):
             with self.assertRaisesRegex(ContractError, "symlink"):
                 copy_sources(self.root / "repo", self.root / "download")
         self.assertFalse((self.root / "download").exists())
+
+    def test_bilingual_showcase_publishes_the_native_composition_once(self) -> None:
+        composed = self.root / "composed"
+        records, locales = [], {}
+        for version in ("demo-v1", "demo-v2"):
+            languages = []
+            for locale in ("en", "zh-CN"):
+                relative = f"{version}/html/{locale}"
+                self.write(f"composed/{relative}/index.html", f"{version}/{locale}")
+                languages.append({"language": locale, "root": relative})
+            records.append({"id": version, "basePath": version, "languages": languages})
+        self.write("composed/versions.json", {"schemaVersion": "cjdoc.versions/2", "versions": records})
+        for locale in ("en", "zh-CN"):
+            self.write(f"diagnostics/{locale}/html/index.html", "diagnostics")
+            locales[locale] = {"composed": composed, "roots": {
+                record["id"]: composed / record["languages"][0 if locale == "en" else 1]["root"]
+                for record in records}, "diff": self.root / "diff.json",
+                "diagnostics": self.root / "diagnostics" / locale}
+        site = self.root / "site"
+        with patch("showcase_build.integration.publish_reports") as reports:
+            publish_examples({"locales": locales}, site, {"revision": "a" * 40})
+        self.assertEqual(reports.call_count, 6)
+        self.assertEqual(len(list((site / "examples").rglob("index.html"))), 4)
+        for locale in ("en", "zh-CN"):
+            self.assertFalse((site / "examples" / locale).exists())
+            self.assertEqual(roots(site, locale)["demo-v2"], site / "examples/demo-v2/html" / locale)
 
     def test_failed_replacement_restores_owned_output(self) -> None:
         self.write("output/build.json", {"schemaVersion": "cjdoc.showcase/2"})

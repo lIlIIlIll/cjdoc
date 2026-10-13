@@ -4,6 +4,8 @@ cjdoc 是一个命令行工具：它读取 Cangjie 项目的源码和文档注�
 
 如果你第一次使用 cjdoc，先完成下面的快速开始。进阶任务见 [`docs/usage.md`](docs/usage.md) 和 [`docs/advanced-usage.md`](docs/advanced-usage.md)。
 
+作者正文的中英文写法、独立语言站点及缺译门槛见 [多语言文档](docs/i18n.md)。
+
 ## 快速开始
 
 ### 准备项目
@@ -179,7 +181,7 @@ cjdoc generate --project . --format html --audience all
 
 ## 当前边界
 
-- 当前输出版本是 `cjdoc.doc-ir/12`。输入端严格兼容已发布的 v6、v7、v8、v9、v10、v11；普通用户不需要直接编辑这个 JSON。
+- 当前输出版本是 `cjdoc.doc-ir/13`。输入端严格兼容已发布的 v6、v7、v8、v9、v10、v11、v12；普通用户不需要直接编辑这个 JSON。
 - 无法展开的宏、没有提供的条件编译输入和部分不支持的源码会产生诊断，并可能使结果标为 `partial`。
 - cjdoc 不会替你下载依赖源码。需要把依赖纳入文档时，按 [`docs/advanced-usage.md`](docs/advanced-usage.md) 的说明提供路径或 cache。
 

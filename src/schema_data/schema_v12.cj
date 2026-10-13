@@ -74,6 +74,3 @@ public let DOC_IR_V12_SCHEMA = DOC_IR_V11_SCHEMA
         "        \"enumNonExhaustive\": {\"type\": [\"boolean\", \"null\"]},\n" +
             docIrV12HighlightProperty("signatureHighlight"))
     .replace(DOC_IR_V12_TAG_ANCHOR, DOC_IR_V12_TAG_REPLACEMENT)
-
-public let DOC_IR_SCHEMA = DOC_IR_V12_SCHEMA
-    .replace(DOC_IR_V12_ID, DOC_IR_CURRENT_ID)

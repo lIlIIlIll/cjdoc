@@ -94,8 +94,8 @@ class MemberLinks(HTMLParser):
 def select_declaration(site, target: dict, pages: list[dict]) -> tuple[dict, dict]:
     """Match exact source spelling, then join native navigation by SymbolId."""
     ir = load_json(site.file(target["docIr"]))
-    if ir.get("schemaVersion") != "cjdoc.doc-ir/12":
-        raise ContractError("member selectors require the current cjdoc.doc-ir/12")
+    if ir.get("schemaVersion") != "cjdoc.doc-ir/13":
+        raise ContractError("member selectors require the current cjdoc.doc-ir/13")
     if (ir.get("project", {}).get("name") != target["project"]["name"]
             or ir.get("configuration", {}).get("audience") != target["project"]["audience"]
             or ir.get("generator", {}).get("name") != "cjdoc"):

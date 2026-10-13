@@ -8,7 +8,8 @@ public class HtmlDocumentationRenderer <: DocumentationRenderer {
 
     public func render(documentation: DocumentationSet): Array<RenderArtifact> {
         let artifacts = RenderArtifactCollector()
-        appendHtmlArtifacts(artifacts, documentation)
+        let locale = documentation.readingLanguage.getOrDefault({ => "en" })
+        appendHtmlArtifacts(artifacts, projectDocumentationLanguage(documentation, locale), locale: locale)
         artifacts.toArray()
     }
 }
@@ -24,21 +25,23 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         let assetLookup = buildAssetLookup(projectedAssets)
         validateHtmlRouting(projection, projectedAssets)
         let topLevelByPackage = groupTopLevelByPackage(projection)
-        let searchIndex = renderSearchIndex(documentation, projection)
+        let searchIndex = renderSearchIndex(documentation, projection, locale: locale)
         let searchSignatures = renderSearchSignatureIndex(documentation, projection)
         artifacts.addText("html/index.html", "text/html; charset=utf-8",
-            renderHtmlIndex(documentation, projection, locale: locale, docVersion: docVersion))
+            renderHtmlIndex(documentation, projection, locale: locale, docVersion: docVersion)
+                .replace("<div class=\"conceptual-entry\" data-conceptual-entry></div>",
+                    "<div class=\"conceptual-entry\" data-conceptual-entry>" + capturedConceptualEntryHtml(documentation, locale) + "</div>"))
         artifacts.addText("html/search-index.json", "application/json", searchIndex)
         artifacts.addText("html/symbol-index.json", "application/json",
             renderSymbolIndex(documentation, hrefPrefix: "", version: docVersion))
         artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
             renderSearchIndexScript(searchIndex, searchSignatures))
         artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8", HTML_THEME_BOOTSTRAP_SCRIPT)
-        artifacts.addText("html/search.js", "text/javascript; charset=utf-8", HTML_SEARCH_SCRIPT)
+        artifacts.addText("html/search.js", "text/javascript; charset=utf-8", HTML_SEARCH_SCRIPT + LANGUAGE_NAVIGATION_SCRIPT)
         artifacts.addText("html/symbol-alias.js", "text/javascript; charset=utf-8", HTML_SYMBOL_ALIAS_SCRIPT)
         artifacts.addText("html/style.css", "text/css; charset=utf-8",
             HTML_STYLE + HTML_RETURN_LAYOUT_STYLE + HTML_TYPE_LINK_STYLE + HTML_NAVIGATION_STYLE +
-                HTML_TOC_STYLE + HTML_LAYOUT_HARDENING_STYLE + HTML_EXAMPLE_STYLE + HTML_REFERENCE_BROWSER_STYLE)
+                HTML_TOC_STYLE + HTML_LAYOUT_HARDENING_STYLE + HTML_EXAMPLE_STYLE + HTML_REFERENCE_BROWSER_STYLE + HTML_LANGUAGE_STYLE)
         for (pkg in projection.packages) {
             artifacts.addText("html/${packagePagePath(pkg.source.moduleId, pkg.source.name)}",
                 "text/html; charset=utf-8",
@@ -47,10 +50,13 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         for (symbol in projection.visibleSymbols) {
             artifacts.addText("html/${symbolReadablePagePath(symbol)}", "text/html; charset=utf-8",
                 renderSymbolAlias(symbol, locale))
-            artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
-                renderSymbolPage(documentation, projection, index, symbol, assetLookup,
+            let rendered = renderSymbolPage(documentation, projection, index, symbol, assetLookup,
                     typeLinkIndex, locale: locale, docVersion: docVersion,
-                    exampleEvidence: exampleEvidence))
+                    exampleEvidence: exampleEvidence)
+            let links = capturedApiGuideLinks(documentation, symbol, locale) +
+                externalDocumentationHtml(documentation, symbol, locale)
+            artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
+                rendered.replace("</div></main>", links + "</div></main>"))
         }
         appendAssetArtifacts(artifacts, projectedAssets, "html")
 }
@@ -272,8 +278,12 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
 
 public func renderDocumentationFormatsWithOptions(documentation: DocumentationSet,
     formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site", docVersion!: ?String = None,
-    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()):
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>(), allLanguages!: Bool = false):
     Array<RenderArtifact> {
+    if (allLanguages) {
+        if (markdownLayout == "single") { throw IllegalArgumentException("all languages requires site Markdown") }
+        return renderAllDocumentationLanguages(documentation, formats, docVersion, exampleEvidence)
+    }
     if (locale != "zh-CN" && locale != "en") {
         throw IllegalArgumentException("locale must be zh-CN or en")
     }
@@ -281,42 +291,43 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
         throw IllegalArgumentException("Markdown layout must be site or single")
     }
     let artifacts = RenderArtifactCollector()
+    let localized = projectDocumentationLanguage(documentation, locale)
+    if (!docIrFitsEncodedBudget(localized, DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
+        throw RenderResourceLimitException("selected documentation exceeds the existing Doc IR budget")
+    }
     for (format in formats) {
         match (format) {
             case "json" => appendJsonArtifacts(artifacts, documentation)
             case "markdown" => if (markdownLayout == "single") {
-                appendMarkdownArtifacts(artifacts, documentation)
+                appendMarkdownArtifacts(artifacts, localized)
             } else {
-                appendMarkdownSiteArtifacts(artifacts, documentation, locale)
+                appendMarkdownSiteArtifacts(artifacts, localized, locale)
             }
-            case "html" => appendHtmlArtifacts(artifacts, documentation, locale: locale,
+            case "html" => appendHtmlArtifacts(artifacts, localized, locale: locale,
                 docVersion: docVersion, exampleEvidence: exampleEvidence)
             case "api-surface" => appendApiSurfaceArtifacts(artifacts, documentation)
-            case "coverage" => appendCoverageArtifacts(artifacts, documentation)
-            case "symbol-index" => appendSymbolIndexArtifacts(artifacts, documentation, version: docVersion)
+            case "coverage" =>
+                appendCoverageArtifacts(artifacts, documentation)
+                appendTranslationCoverageArtifact(artifacts, documentation)
+            case "symbol-index" => appendSymbolIndexArtifacts(artifacts, localized, version: docVersion)
             case _ => throw IllegalArgumentException(
                 "unsupported documentation format '${format}'")
         }
     }
+    if (markdownLayout != "single") { appendCapturedPageArtifacts(artifacts, localized, formats, locale, docVersion) }
     artifacts.toArray()
 }
 
 public func renderDocumentationFormats(documentation: DocumentationSet,
     formats: Array<String>): Array<RenderArtifact> {
-    let artifacts = RenderArtifactCollector()
-    for (format in formats) {
-        match (format) {
-            case "json" => appendJsonArtifacts(artifacts, documentation)
-            case "markdown" => appendMarkdownArtifacts(artifacts, documentation)
-            case "html" => appendHtmlArtifacts(artifacts, documentation)
-            case "api-surface" => appendApiSurfaceArtifacts(artifacts, documentation)
-            case "coverage" => appendCoverageArtifacts(artifacts, documentation)
-            case "symbol-index" => appendSymbolIndexArtifacts(artifacts, documentation)
-            case _ => throw IllegalArgumentException(
-                "unsupported documentation format '${format}'")
-        }
-    }
-    artifacts.toArray()
+    renderDocumentationFormatsWithOptions(documentation, formats, locale: "en", markdownLayout: "single")
+}
+
+/** Render all author variants through the same selection used by the CLI. */
+public func renderDocumentationWithLanguageOptions(documentation: DocumentationSet,
+    formats: Array<String>, options: LanguageRenderOptions): Array<RenderArtifact> {
+    renderDocumentationFormatsWithOptions(documentation, formats,
+        locale: options.locale, allLanguages: options.allLanguages)
 }
 
 public func rendererFor(format: String): DocumentationRenderer {

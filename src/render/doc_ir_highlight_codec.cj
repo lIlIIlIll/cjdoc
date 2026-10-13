@@ -101,7 +101,7 @@ internal func validateExampleMarkdown(value: DocTag, path: String): Unit {
                 domainFail(path, "example Markdown requires an @example tag and a document root")
             }
             validateMarkdown(markdown, path, 0)
-            if (!markdownContainsCode(markdown)) {
+            if (!markdownContainsCode(markdown) && value.translationState.isEmpty()) {
                 domainFail(path, "example Markdown must contain code")
             }
         case None => ()

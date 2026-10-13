@@ -178,8 +178,22 @@ def working_inventory_digest(
     if project.is_symlink() or not project.is_dir():
         raise ValueError("fixture inventory root must be a regular directory")
     digest = hashlib.sha256()
+    generated_roots: dict[Path, bool] = {}
     for path in sorted(project.rglob("*"), key=lambda item: item.relative_to(project).as_posix()):
         relative_path = path.relative_to(project)
+        parts = relative_path.parts
+        target_at = 1 if project == repository_root / FIXTURE_RELATIVE else 0
+        if len(parts) > target_at and parts[target_at] == "target":
+            generated = project.joinpath(*parts[:target_at + 1])
+            if generated not in generated_roots:
+                ignored = subprocess.run(
+                    ["git", "-C", str(repository_root), "check-ignore", "--quiet", "--",
+                     generated.relative_to(repository_root).as_posix()],
+                    capture_output=True, check=False,
+                )
+                generated_roots[generated] = ignored.returncode == 0
+            if generated_roots[generated]:
+                continue
         if project == repository_root and relative_path.parts[0] == ".git":
             continue
         if exclude is not None and (

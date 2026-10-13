@@ -18,10 +18,10 @@ from .localization import (DIFF_CLASSIFICATIONS, DIFF_MATCH_STATES, DIFF_RAW_LAB
 
 from showcase_contract.site import ContractError, canonical_json, load_json, relative_path
 
-IR = "cjdoc.doc-ir/12"
+IR = "cjdoc.doc-ir/13"
 COVERAGE = "cjdoc.documentation-coverage/2"
-DOCTEST = "cjdoc.doctest/1"
-DIFF = "cjdoc.api-diff/1"
+DOCTEST = "cjdoc.doctest/2"
+DIFF = "cjdoc.api-diff/2"
 QUALITY = "cjdoc.documentation-quality/1"
 
 FILTER_SCRIPT = '''"use strict";
@@ -451,7 +451,7 @@ def diff_view(raw: dict | None, origin: Path, baseline: Path | None, current: Pa
     if before["project"] != after["project"] or before["version"] == after["version"]:
         raise ContractError("API diff must compare two versions of the same project/audience")
     for name, root in (("baseline", baseline), ("current", current)):
-        snapshot = checked(root / "machine/api-surface.json", "cjdoc.api-surface/2")
+        snapshot = checked(root / "machine/api-surface.json", "cjdoc.api-surface/3")
         identity = {key: snapshot[key] for key in ("project", "audience", "cfgProfile", "schemaVersion", "collectionState")}
         if raw[name] != identity:
             raise ContractError("API diff snapshot identity mismatch: " + name)
@@ -507,7 +507,7 @@ def publish(root: Path, revision: str, version: str, locale: str, *, baseline: P
                 raise ContractError("diff presentation requires both exact snapshot directories")
             destination = "machine/diff-" + name + ".json"
             (root / destination).write_bytes((source / "machine/api-surface.json").read_bytes())
-            inputs[destination] = "cjdoc.api-surface/2"
+            inputs[destination] = "cjdoc.api-surface/3"
     data = {name: checked(root / name, schema) for name, schema in inputs.items()}
     ir = data["machine/docs.json"]
     raw_index, mapping = index(root, version)

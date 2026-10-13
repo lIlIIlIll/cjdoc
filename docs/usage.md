@@ -296,3 +296,7 @@ cjdoc generate --project . --format html --audience all
 ## 下一步
 
 需要处理 workspace、依赖、条件编译、缓存、多个输出格式或 CI 时，继续阅读 [`docs/advanced-usage.md`](advanced-usage.md)。
+
+## 生成中英文作者正文
+
+使用 `--locale en` 选择单语言读取视图，或配置 `[i18n]` 后用 `--all-languages` 分析一次并生成独立语言目录。语法、缺译策略和可运行示例见 [生成中英文文档](i18n.md)。

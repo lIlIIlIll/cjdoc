@@ -698,6 +698,9 @@ internal func projectAssets(documentation: DocumentationSet,
             case Some(comment) =>
                 collectReferencedAssets(comment.markdown, references, selected)
                 for (tag in comment.tags) {
+                    if (let Some(tree) <- tag.descriptionMarkdown) {
+                        collectReferencedAssets(tree, references, selected)
+                    }
                     if (tag.name != "example") { continue }
                     if (let Some(tree) <- tag.exampleMarkdown) {
                         collectReferencedAssets(tree, references, selected)

@@ -2,7 +2,7 @@
 
 ## 项目目标
 
-`cjdoc` 是纯仓颉实现的仓颉 API 文档生成器。源码声明、注释和位置以 `std.ast` 与 lexer 为真值，输出 schema-versioned、确定性的 Doc IR v12，并严格迁移受支持的 v6/v7/v8/v9/v10/v11 输入。
+`cjdoc` 是纯仓颉实现的仓颉 API 文档生成器。源码声明、注释和位置以 `std.ast` 与 lexer 为真值，输出 schema-versioned、确定性的 Doc IR v13，并严格迁移受支持的 v6/v7/v8/v9/v10/v11/v12 输入。
 `--semantic chir` 可选择内置 `stdx.chir` provider 做结构化语义补充；CHIR 不覆盖源码/注释真值，也不替代 source/AST fallback。
 
 ## 开始工作前
@@ -39,7 +39,7 @@ target/release/bin/main generate --project tests/fixtures/projects/basic --forma
 
 安装 `just` 后也可运行 `just doctor`、`just test`、`just check`、`just smoke`。
 
-`scripts/check.sh` 假设 SDK 环境已经准备好，并要求 Bash 和 Python 标准库。它覆盖 build、unit、v12 goldens、v6–v11 严格迁移、schema 同步、两次生成确定性、strict codec round-trip、多页 HTML 全站校验、资源限制、安全和外部 provider fixture。
+`scripts/check.sh` 假设 SDK 环境已经准备好，并要求 Bash 和 Python 标准库。它覆盖 build、unit、v13 goldens、v6–v12 严格迁移、schema 同步、两次生成确定性、strict codec round-trip、多页 HTML 全站校验、资源限制、安全和外部 provider fixture。
 
 ## 修改规则
 

@@ -45,6 +45,15 @@ SCHEMA_PAYLOAD = {
     "docs/schema/doc-ir-v9.schema.json",
     "docs/schema/doc-ir-v11.schema.json",
     "docs/schema/doc-ir-v12.schema.json",
+    "docs/schema/doc-ir-v13.schema.json",
+    "docs/schema/api-surface-v2.schema.json",
+    "docs/schema/api-surface-v3.schema.json",
+    "docs/schema/api-diff-v1.schema.json",
+    "docs/schema/doctest-results-v1.schema.json",
+    "docs/schema/search-index-v8.schema.json",
+    "docs/schema/versions-v1.schema.json",
+    "docs/schema/translation-coverage.schema.json",
+    "docs/schema/site-manifest.schema.json",
     "docs/schema/doc-ir-v10.schema.json",
     "docs/schema/doc-ir-v6.schema.json",
     "docs/schema/doc-ir-v7.schema.json",
@@ -69,4 +78,3 @@ REPOSITORY_PAYLOAD = {
     "licenses/yjson-Apache-2.0.txt": "vendor/yjson_algorithms/LICENSE",
     **{name: name for name in SCHEMA_PAYLOAD},
 }
-

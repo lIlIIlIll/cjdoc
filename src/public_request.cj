@@ -72,6 +72,8 @@ public class GenerationRequest {
     public let cjpmCacheRoot: ?String
     public let highlightAdapter: ?String
     public let highlightNode: ?String
+    public let i18n: ?public_model.DocumentationLanguageOptions
+    private let requiredLanguagesStorage: ArrayList<String>
     private let dependencySourcesStorage: ArrayList<DependencySourceInput>
     private let cfgValuesStorage: ArrayList<CfgValue>
     private let providerFactoriesStorage: ArrayList<public_provider.SemanticProviderFactory>
@@ -84,7 +86,8 @@ public class GenerationRequest {
         providerFactories!: Array<public_provider.SemanticProviderFactory> = [], cacheDirectory!: ?String = None,
         cacheFingerprint!: ?String = None, astPreflightExecutable!: ?String = None,
         chir!: ?ChirOptions = None, cjpmCacheRoot!: ?String = None,
-        highlightAdapter!: ?String = None, highlightNode!: ?String = None) {
+        highlightAdapter!: ?String = None, highlightNode!: ?String = None,
+        i18n!: ?public_model.DocumentationLanguageOptions = None, requiredLanguages!: Array<String> = []) {
         if (projectRoot.isEmpty()) {
             throw IllegalArgumentException("project root cannot be empty")
         }
@@ -123,6 +126,12 @@ public class GenerationRequest {
         this.cjpmCacheRoot = cjpmCacheRoot
         this.highlightAdapter = highlightAdapter
         this.highlightNode = highlightNode
+        this.i18n = i18n
+        this.requiredLanguagesStorage = ArrayList<String>()
+        for (language in requiredLanguages) {
+            let normalized = public_model.documentationLanguage(language)
+            if (!requiredLanguagesStorage.contains(normalized)) { requiredLanguagesStorage.add(normalized) }
+        }
         this.dependencySourcesStorage = ArrayList<DependencySourceInput>(dependencySources)
         let normalizedCfg = CfgProfile(values: cfgValues)
         this.cfgValuesStorage = ArrayList<CfgValue>(normalizedCfg.values.toArray())
@@ -134,6 +143,7 @@ public class GenerationRequest {
             dependencySourcesStorage
         }
     }
+    public prop requiredLanguages: ReadOnlyList<String> { get() { requiredLanguagesStorage } }
     public prop cfgValues: ReadOnlyList<CfgValue> {
         get() {
             cfgValuesStorage
