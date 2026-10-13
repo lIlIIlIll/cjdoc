@@ -292,7 +292,8 @@ test.describe('generated HTML reference', () => {
     await expect(actions).toHaveAttribute('role', 'group');
     await expect(actions).toHaveAttribute('aria-label', 'Member actions');
     await expect(actions.locator('.member-action')).toHaveCount(3);
-    await expect(actions.locator('.member-action-glyph[aria-hidden="true"]')).toHaveCount(3);
+    // The touch disclosure contributes one extra decorative glyph.
+    await expect(actions.locator('.member-action-glyph[aria-hidden="true"]')).toHaveCount(4);
     await expect(actions.locator('.member-permalink')).toHaveAttribute('aria-label', 'Open standalone API page');
     await expect(actions.locator('.member-permalink')).toHaveAttribute('title', 'Open standalone API page');
     await expect(actions.locator('.member-source-link')).toHaveAttribute('aria-label', 'View source code');
