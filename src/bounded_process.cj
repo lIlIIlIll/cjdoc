@@ -147,8 +147,25 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
     } catch (_: Exception) {
         terminateBoundedProcessTree(process, group, job)
     }
-    let output = standardOutput.get()
-    let error = standardError.get()
+    // The reads must be bounded too, not just the watchdog. `readBoundedProcessStream`
+    // ends at EOF, and EOF requires EVERY writer of the inherited pipe to close it.
+    // A descendant that escapes the supervisor's process group (for example a
+    // `setsid` process, or anything that daemonises) survives the group kill, keeps
+    // the pipe open, and would otherwise block the caller for as long as that
+    // descendant lives -- measured at 45 s for a 2 s timeout before this bound was
+    // added. Bounding the read makes the timeout total, which is what the caller
+    // was promised.
+    let deadline = Duration.millisecond * timeoutMilliseconds
+    let output = try {
+        standardOutput.get(deadline)
+    } catch (_: Exception) {
+        (Array<Byte>(), 0)
+    }
+    let error = try {
+        standardError.get(deadline)
+    } catch (_: Exception) {
+        (Array<Byte>(), 0)
+    }
     let exitCode = process.wait()
     let completed = state.compareAndSwap(0, 1)
     if (completed) { let _ = closeExampleProcessJob(job) }
