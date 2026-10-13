@@ -147,5 +147,53 @@ class IdentityGateTest(unittest.TestCase):
         self.assertIn("err", log)
 
 
+class GitHubReadTest(unittest.TestCase):
+    """`wallclock` reads a live API, so its transport must be reliable.
+
+    The real failure mode: a jobs listing is more than one API page, and
+    `gh api --paginate` prints one JSON document per page, which `json.loads`
+    rejects. A transient EOF on a large run must also be retried, otherwise the
+    evidence of an otherwise successful run is simply lost.
+    """
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        self.log = self.root / "calls.log"
+        self.log.write_text("", encoding="utf-8")
+
+    def fake_gh(self, script: str) -> None:
+        path = self.bin / "gh"
+        path.write_text("#!/usr/bin/env bash\n" + script, encoding="utf-8")
+        path.chmod(0o755)
+
+    def run_gh(self):
+        import os
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"PATH": f"{self.bin}:{os.environ['PATH']}"}), \
+             mock.patch.object(ci_stage.time, "sleep", lambda _: None):
+            return ci_stage._gh_json("repos/o/r/actions/runs/1/jobs")
+
+    def test_concatenated_pages_are_merged(self) -> None:
+        self.fake_gh('printf \'{"jobs": [1, 2]}{"jobs": [3]}\'\n')
+        self.assertEqual(self.run_gh(), {"jobs": [1, 2, 3]})
+
+    def test_a_transient_failure_is_retried(self) -> None:
+        self.fake_gh(
+            f'count=$(grep -c . "{self.log}" || true)\n'
+            f'echo called >> "{self.log}"\n'
+            'if [ "$count" -lt 1 ]; then echo "API rate limit" >&2; exit 1; fi\n'
+            'printf \'{"jobs": [7]}\'\n')
+        self.assertEqual(self.run_gh(), {"jobs": [7]})
+        self.assertEqual(len(self.log.read_text().splitlines()), 2)
+
+    def test_a_single_document_is_returned_unchanged(self) -> None:
+        self.fake_gh('printf \'{"jobs": [1]}\'\n')
+        self.assertEqual(self.run_gh(), {"jobs": [1]})
+
+
 if __name__ == "__main__":
     unittest.main()
