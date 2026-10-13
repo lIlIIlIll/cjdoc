@@ -120,15 +120,19 @@ def click_and_return(journey: Journey, link, expected_name: str, version: str | 
 
 
 def member_action(member, selector: str):
-    """Find a member action outside native details, opening its touch disclosure."""
+    """Reach sibling actions through their keyboard path, away from the sticky header."""
+    summary = member.locator("summary").first
+    # Playwright scrolling the hidden overlay itself to the viewport edge lets
+    # the sticky header or native summary intercept pointer events. Position the
+    # member heading, then focus the action so :focus-within keeps it visible.
+    summary.evaluate("node => node.scrollIntoView({block: 'center', behavior: 'instant'})")
     actions = member.locator("xpath=..").locator(":scope > .member-detail-actions")
     toggle = actions.locator("[data-cjdoc-member-actions-toggle]")
-    if toggle.is_visible():
-        if toggle.get_attribute("aria-expanded") != "true":
-            toggle.click()
-    else:
-        member.locator("summary").first.hover()
-    return actions.locator(selector)
+    if toggle.is_visible() and toggle.get_attribute("aria-expanded") != "true":
+        toggle.click()
+    action = actions.locator(selector)
+    action.focus()
+    return action
 
 
 def clipboard_code_matches(copied: str, source: str) -> bool:
