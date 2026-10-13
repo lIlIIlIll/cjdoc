@@ -183,7 +183,24 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
     } catch (_: Exception) {
         (Array<Byte>(), 0)
     }
-    let exitCode = process.wait()
+    // `process.wait()` is the wait on the supervisor (`bash`), whose script ends
+    // with `wait "$child"`. When the group kill misses a child that escaped the
+    // group, the supervisor itself never exits and this call would block past the
+    // timeout -- the same unbounded-wait class as the reads above. Collecting the
+    // status in a bounded future makes the timeout total here too: on expiry the
+    // caller reports 124 and the supervisor is terminated by the watchdog path.
+    let statusReader: Future<Int64> = spawn {
+        try {
+            process.wait()
+        } catch (_: Exception) {
+            -1
+        }
+    }
+    let exitCode = try {
+        statusReader.get(deadline)
+    } catch (_: Exception) {
+        124
+    }
     let completed = state.compareAndSwap(0, 1)
     if (completed) { let _ = closeExampleProcessJob(job) }
     watchdog.get()
