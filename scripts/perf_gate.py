@@ -316,6 +316,54 @@ def verify_hard_ceiling(baseline: dict[str, Any], results: list[dict[str, Any]])
         raise ValueError("performance hard ceiling failed:\n" + "\n".join(failures))
 
 
+def verify_document_identities(baseline: dict[str, Any], results: list[dict[str, Any]]) -> None:
+    """Check only that each profile emits the baseline's Doc IR.
+
+    Separate from `verify_hard_ceiling` on purpose: the checksum is a property of
+    the generator's output and is identical on any machine, while the elapsed/RSS
+    ceilings are calibrated against a fixed-CPU reference environment. Running the
+    identity half in ordinary CI catches a stale baseline or changed output at the
+    point the change lands, instead of only at release time under a tag.
+    """
+    expected = {profile["name"]: profile for profile in baseline["profiles"]}
+    failures: list[str] = []
+    for result in results:
+        profile = expected[result["name"]]
+        reference_checksum = profile.get("referenceDocsSha256")
+        if not isinstance(reference_checksum, str) or not re.fullmatch(r"[0-9a-f]{64}", reference_checksum):
+            failures.append(f"{result['name']}: invalid reference Doc IR checksum")
+        elif result.get("docsSha256") != reference_checksum:
+            failures.append(
+                f"{result['name']}: Doc IR checksum {result.get('docsSha256')} != {reference_checksum}"
+            )
+    if failures:
+        raise ValueError("performance Doc IR identity failed:\n" + "\n".join(failures))
+
+
+def measure_identities(binary: Path, profiles: list[dict[str, Any]], repo: Path,
+                       work: Path, cpu: int | None) -> list[dict[str, Any]]:
+    """Generate each profile once and report its Doc IR checksum.
+
+    Deliberately no timing: this is the CI-facing half of the gate.
+    """
+    results: list[dict[str, Any]] = []
+    for profile in profiles:
+        name = profile["name"]
+        output = work / name
+        run_checked([
+            str(binary), "generate", "--project", str(profile["resolvedProject"]),
+            "--format", "json", "--output", str(output), "--jobs", "1",
+        ], repo, cpu)
+        results.append({
+            "name": name,
+            "project": profile["project"],
+            "minDeclarations": profile["minDeclarations"],
+            "docsSha256": validate_document(output / "docs.json", profile["minDeclarations"]),
+            "variants": {},
+        })
+    return results
+
+
 # Compatibility for existing callers; this remains an absolute ceiling check,
 # never a comparable A/B regression verdict.
 def verify_limits(baseline: dict[str, Any], results: list[dict[str, Any]]) -> None:
@@ -346,6 +394,13 @@ def main() -> int:
     record.add_argument("--allow-dirty", action="store_true",
                         help="record explicitly untrusted dirty/unversioned identities")
 
+    identities = subparsers.add_parser("identities")
+    identities.add_argument("--binary", type=Path, default=repo / "target/release/bin/main")
+    identities.add_argument("--baseline", type=Path, default=repo / "tests/perf/baseline.json")
+    identities.add_argument("--evidence", type=Path,
+                            default=repo / "target/release-evidence/perf-identities.json")
+    identities.add_argument("--allow-candidate", action="store_true")
+
     check = subparsers.add_parser("check")
     check.add_argument("--binary", type=Path, default=repo / "target/release/bin/main")
     check.add_argument("--baseline", type=Path, default=repo / "tests/perf/baseline.json")
@@ -361,6 +416,37 @@ def main() -> int:
         cpu = fixed_cpu()
         if platform.system() == "Linux" and cpu is None:
             raise ValueError("Linux performance gate could not select a fixed CPU")
+        if args.command == "identities":
+            baseline_path = safe_regular_file(args.baseline, description="performance baseline")
+            baseline = strict_load(baseline_path, description="performance baseline")
+            if baseline.get("schemaVersion") != "cjdoc.perf-baseline/1":
+                raise ValueError("unknown performance baseline schema")
+            if baseline.get("state") != "frozen" and not args.allow_candidate:
+                raise ValueError("performance baseline is not frozen")
+            if baseline.get("purpose") != "hard-ceiling":
+                raise ValueError("performance baseline must declare purpose hard-ceiling")
+            profiles = load_profiles(baseline, repo)
+            evidence_path = safe_output_file(args.evidence, description="performance identity evidence")
+            evidence_path.unlink(missing_ok=True)
+            repository_identity = capture_source_identity(repo, allow_dirty=False)
+            with tempfile.TemporaryDirectory(prefix="identities-", dir=evidence_path.parent) as temporary:
+                results = measure_identities(binary, profiles, repo, Path(temporary), cpu)
+            verify_document_identities(baseline, results)
+            evidence = {
+                "schemaVersion": "cjdoc.perf-identities/1",
+                "kind": "identity-only",
+                "note": "elapsed/RSS ceilings are checked by `perf_gate.py check`, "
+                        "which needs the fixed-CPU reference environment",
+                "sourceCommit": repository_identity["headCommit"]
+                    if repository_identity["trustedCommit"] else None,
+                "binarySha256": sha256(binary),
+                "profiles": [{"name": result["name"], "docsSha256": result["docsSha256"]}
+                             for result in results],
+                "verdict": "passed",
+            }
+            atomic_json(evidence_path, evidence)
+            print(json.dumps(evidence, ensure_ascii=False, sort_keys=True))
+            return 0
         if args.command == "record":
             profiles = [parse_profile(value, repo) for value in args.profile]
             if len(profiles) < 2:
