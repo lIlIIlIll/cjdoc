@@ -72,7 +72,7 @@ class HtmlOverloadContractLayoutTest {
         @Expect(html.contains("data-overload-total=\"2\""), true)
         @Expect(html.contains("aria-labelledby=\"overloads-"), true)
         @Expect(html.split("data-member-name=\"add\"").size, 3)
-        @Expect(html.contains("</div>\n<details class=\"declaration-summary member-detail\" id=\"${symbolAnchor(addAll)}\""), true)
+        @Expect(html.contains("</div>\n<div class=\"member-row\"><details class=\"declaration-summary member-detail\" id=\"${symbolAnchor(addAll)}\""), true)
         @Expect(html.contains("data-member-name=\"addAll\""), true)
         @Expect(html.contains("class=\"parameter-declaration\""), true)
         @Expect(html.contains("<span class=\"parameter-default\">= <code>10</code></span>"), true)
