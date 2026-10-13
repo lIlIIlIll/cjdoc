@@ -154,45 +154,51 @@ class GitHubReadTest(unittest.TestCase):
     `gh api --paginate` prints one JSON document per page, which `json.loads`
     rejects. A transient EOF on a large run must also be retried, otherwise the
     evidence of an otherwise successful run is simply lost.
+
+    The `gh` subprocess is intercepted rather than shimmed on `PATH`: a shim has
+    to be an executable script, which is not portable, and on Windows the real
+    `gh` was executed instead. Interception runs the same decoding and retry code
+    on every platform.
     """
 
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        self.bin = self.root / "bin"
-        self.bin.mkdir()
-        self.log = self.root / "calls.log"
-        self.log.write_text("", encoding="utf-8")
-
-    def fake_gh(self, script: str) -> None:
-        path = self.bin / "gh"
-        path.write_text("#!/usr/bin/env bash\n" + script, encoding="utf-8")
-        path.chmod(0o755)
+        self.calls = 0
+        self.responder = None
 
     def run_gh(self):
-        import os
         from unittest import mock
-        with mock.patch.dict(os.environ, {"PATH": f"{self.bin}:{os.environ['PATH']}"}), \
+
+        def fake_run(args, **_kwargs):
+            self.calls += 1
+            argv = [str(item) for item in (args if isinstance(args, (list, tuple)) else [args])]
+            return self.responder(argv)
+
+        with mock.patch("subprocess.run", fake_run), \
              mock.patch.object(ci_stage.time, "sleep", lambda _: None):
             return ci_stage._gh_json("repos/o/r/actions/runs/1/jobs")
 
     def test_concatenated_pages_are_merged(self) -> None:
-        self.fake_gh('printf \'{"jobs": [1, 2]}{"jobs": [3]}\'\n')
+        self.responder = lambda argv: subprocess.CompletedProcess(
+            argv, 0, '{"jobs": [1, 2]}{"jobs": [3]}', "")
         self.assertEqual(self.run_gh(), {"jobs": [1, 2, 3]})
 
     def test_a_transient_failure_is_retried(self) -> None:
-        self.fake_gh(
-            f'count=$(grep -c . "{self.log}" || true)\n'
-            f'echo called >> "{self.log}"\n'
-            'if [ "$count" -lt 1 ]; then echo "API rate limit" >&2; exit 1; fi\n'
-            'printf \'{"jobs": [7]}\'\n')
+        def respond(argv):
+            if self.calls == 1:
+                return subprocess.CompletedProcess(argv, 1, "", "API rate limit")
+            return subprocess.CompletedProcess(argv, 0, '{"jobs": [7]}', "")
+
+        self.responder = respond
         self.assertEqual(self.run_gh(), {"jobs": [7]})
-        self.assertEqual(len(self.log.read_text().splitlines()), 2)
+        self.assertEqual(self.calls, 2)
 
     def test_a_single_document_is_returned_unchanged(self) -> None:
-        self.fake_gh('printf \'{"jobs": [1]}\'\n')
+        self.responder = lambda argv: subprocess.CompletedProcess(argv, 0, '{"jobs": [1]}', "")
         self.assertEqual(self.run_gh(), {"jobs": [1]})
+
 
 
 if __name__ == "__main__":

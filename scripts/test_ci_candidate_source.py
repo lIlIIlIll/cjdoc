@@ -26,37 +26,17 @@ TREE = "b" * 40
 
 
 def _fake_gh(tmp: Path, *, workflows=None, attempts=None, artifacts=None, runs=None):
-    """Install a scripted `gh` on PATH and return its request log.
+    """Intercept the `gh` subprocess instead of installing a shell shim.
 
-    The script answers only the three shapes this module uses:
-    `gh api <path>`, `gh run view <id> --attempt <n> --repo <repo> --json ...`.
+    A PATH shim has to be an executable script, which is not portable: on Windows
+    the `.py` file is not runnable as `gh`, so the real `gh` was executed and the
+    tests failed for the wrong reason. Patching `subprocess.run` runs the same
+    production code path (argument handling, JSON decoding, retry) on every
+    platform.
     """
+    import subprocess
+
     log: list[list[str]] = []
-    bin_dir = tmp / "bin"
-    bin_dir.mkdir(parents=True, exist_ok=True)
-    script = bin_dir / "gh"
-    script.write_text(
-        "#!/usr/bin/env python3\n"
-        "import json, os, sys\n"
-        "STATE = json.loads(os.environ['FAKE_GH_STATE'])\n"
-        "def emit(value):\n"
-        "    sys.stdout.write(json.dumps(value))\n"
-        "args = sys.argv[1:]\n"
-        "record = [a for a in args if not a.startswith('--')]\n"
-        "with open(os.environ['FAKE_GH_LOG'], 'a', encoding='utf-8') as log:\n"
-        "    log.write(json.dumps(args) + '\\n')\n"
-        "if args[:1] == ['api']:\n"
-        "    path = [a for a in args if not a.startswith('--')][1]\n"
-        "    emit(STATE['api'].get(path, {}))\n"
-        "elif args[:2] == ['run', 'view']:\n"
-        "    run_id = args[2]\n"
-        "    attempt = args[args.index('--attempt') + 1]\n"
-        "    emit(STATE['attempts'].get(f'{run_id}/{attempt}', {}))\n"
-        "else:\n"
-        "    sys.stderr.write('unsupported: ' + ' '.join(args))\n"
-        "    sys.exit(2)\n",
-        encoding="utf-8")
-    script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     state = {
         "api": {
             f"repos/o/r/actions/workflows/ci.yml/runs?head_sha={COMMIT}&per_page=100":
@@ -65,7 +45,22 @@ def _fake_gh(tmp: Path, *, workflows=None, attempts=None, artifacts=None, runs=N
         },
         "attempts": attempts or {},
     }
-    return bin_dir, state, log
+
+    def fake_run(args, **kwargs):
+        argv = [str(item) for item in (args if isinstance(args, (list, tuple)) else [args])]
+        log.append(argv)
+        if argv[:1] == ["gh"] and argv[1:2] == ["api"]:
+            path = next(item for item in argv[2:] if not item.startswith("-"))
+            payload = state["api"].get(path, {})
+            return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
+        if argv[:3] == ["gh", "run", "view"]:
+            run_id = argv[3]
+            attempt = argv[argv.index("--attempt") + 1] if "--attempt" in argv else "1"
+            payload = state["attempts"].get(f"{run_id}/{attempt}", {})
+            return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
+        return subprocess.CompletedProcess(argv, 1, "", f"unsupported: {argv}")
+
+    return fake_run, log
 
 
 def _marker(run_id: int, attempt: int, migration: dict | None = None) -> dict:
@@ -80,21 +75,13 @@ class ResolveTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
 
     def require_ready(self, runs, artifacts, attempts):
-        bin_dir, state, log = _fake_gh(self.root, runs=runs, artifacts=artifacts, attempts=attempts)
-        log_path = self.root / "gh.log"
-        log_path.write_text("", encoding="utf-8")
-        with mock.patch.dict("os.environ", {"PATH": f"{bin_dir}:{Path('/usr/bin')}",
-                                            "FAKE_GH_STATE": json.dumps(state),
-                                            "FAKE_GH_LOG": str(log_path)}):
+        fake_run, _ = _fake_gh(self.root, runs=runs, artifacts=artifacts, attempts=attempts)
+        with mock.patch("subprocess.run", fake_run):
             return source.require_ready("o/r", COMMIT, "", "", "push")
 
     def resolve(self, runs, artifacts, attempts, **kwargs):
-        bin_dir, state, log = _fake_gh(self.root, runs=runs, artifacts=artifacts, attempts=attempts)
-        log_path = self.root / "gh.log"
-        log_path.write_text("", encoding="utf-8")
-        with mock.patch.dict("os.environ", {"PATH": f"{bin_dir}:{Path('/usr/bin')}",
-                                            "FAKE_GH_STATE": json.dumps(state),
-                                            "FAKE_GH_LOG": str(log_path)}), \
+        fake_run, _ = _fake_gh(self.root, runs=runs, artifacts=artifacts, attempts=attempts)
+        with mock.patch("subprocess.run", fake_run), \
              mock.patch.object(source.time, "sleep", lambda _: None):
             return source.resolve("o/r", COMMIT, "push", "", "", 0, 1, log=lambda _: None)
 
@@ -211,13 +198,9 @@ class MarkerBindingTests(unittest.TestCase):
 
     def verify(self, *, commit: str = COMMIT, artifact: str = "cjdoc-linux-candidate-5-1",
                marker: dict | None = None):
-        bin_dir, state, log = _fake_gh(self.root, artifacts={
+        fake_run, _ = _fake_gh(self.root, artifacts={
             f"repos/o/r/actions/artifacts?name={source.marker_name(5, 1)}": [marker or _marker(5, 1)]})
-        log_path = self.root / "gh.log"
-        log_path.write_text("", encoding="utf-8")
-        with mock.patch.dict("os.environ", {"PATH": f"{bin_dir}:{Path('/usr/bin')}",
-                                            "FAKE_GH_STATE": json.dumps(state),
-                                            "FAKE_GH_LOG": str(log_path)}):
+        with mock.patch("subprocess.run", fake_run):
             return source.verify_marker("o/r", 5, 1, self.marker_dir, self.tar, artifact, commit)
 
     def test_round_trip_binds_the_candidate_bytes(self):
@@ -261,12 +244,8 @@ class RequireReadyTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
 
     def require(self, runs, artifacts, attempts, **kwargs):
-        bin_dir, state, log = _fake_gh(self.root, runs=runs, artifacts=artifacts, attempts=attempts)
-        log_path = self.root / "gh.log"
-        log_path.write_text("", encoding="utf-8")
-        with mock.patch.dict("os.environ", {"PATH": f"{bin_dir}:{Path('/usr/bin')}",
-                                            "FAKE_GH_STATE": json.dumps(state),
-                                            "FAKE_GH_LOG": str(log_path)}):
+        fake_run, _ = _fake_gh(self.root, runs=runs, artifacts=artifacts, attempts=attempts)
+        with mock.patch("subprocess.run", fake_run):
             return source.require_ready("o/r", COMMIT, "", "", "push")
 
     def test_requires_a_ready_candidate(self):
