@@ -433,7 +433,7 @@ class RendererSafetyTest {
         @Expect(symbolHtml.contains(
             "<h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"class Owner\">"), true)
         @Expect(symbolHtml.contains(
-            "<details class=\"declaration-summary member-detail\""), true)
+            "<div class=\"member-row\"><details class=\"declaration-summary member-detail\""), true)
         @Expect(symbolHtml.contains("data-cjdoc-member"), true)
         @Expect(symbolHtml.contains("class=\"member-detail-actions\" role=\"group\" aria-label=\"Member actions\""), true)
         @Expect(symbolHtml.contains("class=\"member-action member-permalink\""), true)
@@ -450,9 +450,14 @@ class RendererSafetyTest {
         @Expect(actionMarkup.contains(">Standalone</a>"), false)
         @Expect(actionMarkup.contains(">Copy link</button>"), false)
         @Expect(symbolHtml.contains("class=\"member-action member-source-link\""), false)
-        @Expect(symbolHtml.indexOf("</summary><div class=\"member-detail-body\">").getOrThrow() <
-            symbolHtml.indexOf("class=\"member-detail-actions\"").getOrThrow(), true)
-        @Expect(css.contains(".member-detail .member-detail-actions .member-action-glyph{"), true)
+        @Expect(symbolHtml.contains("</div></details><div class=\"member-detail-actions\""), true)
+        @Expect(symbolHtml.contains("data-cjdoc-member-actions-toggle aria-expanded=\"false\""), true)
+        @Expect(symbolHtml.contains("aria-controls=\"symbol-"), true)
+        @Expect(css.contains(".member-detail-actions .member-action-glyph{"), true)
+        @Expect(css.contains(".member-row:hover>.member-detail-actions"), true)
+        @Expect(css.contains("(any-pointer:coarse)"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("closeMemberActionBars(true)"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("memberRow.hidden = !matches"), true)
         @Expect(css.contains("min-width:38px;min-height:38px"), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("if (iconOnly) {"), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("if (status) status.textContent = message;"), true)
