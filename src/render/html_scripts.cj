@@ -309,7 +309,11 @@ internal let HTML_SEARCH_SCRIPT = """
 
   const addOptions = (selectElement, values) => {
     if (!selectElement) return;
-    for (const value of [...new Set(values)].sort((a, b) => a.localeCompare(b))) {
+    // Conceptual search entries have no package name. Do not append an empty
+    // <option> after the localized "All packages" placeholder: selecting it
+    // makes the filter appear blank while its value still means "all".
+    const choices = values.filter(value => typeof value === "string" && value.trim() !== "");
+    for (const value of [...new Set(choices)].sort((a, b) => a.localeCompare(b))) {
       const option = document.createElement("option");
       option.value = value;
       option.textContent = value;
