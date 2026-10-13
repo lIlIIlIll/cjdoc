@@ -73,7 +73,11 @@ class HtmlSignatureMappingTest {
             appendLinkedSignatureHtml(linked, subject, links, "../")
             if (let Some(value) <- highlight) {
                 if (!value.matchesSource(raw)) {
-                    @Expect(linked.toString(), escapeHtml(raw))
+                    // Stale metadata loses only its own colouring; the type links come
+                    // from the declaration model and must still be rendered, while no
+                    // witness colour may stand in for the untrusted ranges.
+                    @Expect(linked.toString().contains("class=\"type-link signature-type-link\""))
+                    @Expect(linked.toString().contains("code-"), false)
                     continue
                 }
             }

@@ -11,7 +11,8 @@ import cjdoc.model.codeBuiltinIdentifierKind
 private func cangjieCodeKind(kind: String, spelling: String): ?CodeKind {
     if (codeBuiltinIdentifierKind(kind, spelling) == "type") { return Some(CodeKind.Type) }
     match (kind) {
-        case "STRING_LITERAL" | "MULTILINE_RAW_STRING" | "SINGLE_QUOTED_STRING_LITERAL" => Some(CodeKind.StringLiteral)
+        case "STRING_LITERAL" | "MULTILINE_RAW_STRING" | "SINGLE_QUOTED_STRING_LITERAL" |
+            "RUNE_BYTE_LITERAL" | "MULTILINE_STRING" | "JSTRING_LITERAL" => Some(CodeKind.StringLiteral)
         case "INTEGER_LITERAL" | "FLOAT_LITERAL" => Some(CodeKind.Number)
         case "BOOL_LITERAL" => Some(CodeKind.Literal)
         case "COMMENT" => Some(CodeKind.Comment)
