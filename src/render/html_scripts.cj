@@ -902,6 +902,9 @@ internal let HTML_SEARCH_SCRIPT = """
     actions.addEventListener("focusout", (event) => {
       if (!actions.contains(event.relatedTarget)) closeMemberActionBars();
     });
+    // Enable the compact menu only after listeners are wired. Without JS the
+    // native links remain visible in the normal document flow.
+    actions.closest(".member-row")?.classList.add("member-actions-enhanced");
   }
   document.addEventListener("pointerdown", (event) => {
     if (!event.target.closest?.("[data-cjdoc-member-actions]")) closeMemberActionBars();
