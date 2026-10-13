@@ -243,35 +243,48 @@ private func appendInlineMemberActions(out: RenderTextBuffer,
     documentation: DocumentationSet, projection: RenderProjection,
     member: SymbolDoc, rootPrefix: String, locale: String): Unit {
     let actionId = symbolAnchor(member) + "-actions"
+    let summaryId = symbolAnchor(member) + "-summary"
+    let groupLabelId = actionId + "-group-label"
     let standaloneLabel = label(locale, "Open standalone API page", "打开独立 API 页面")
     let sourceLabel = label(locale, "View source code", "查看源码")
     let copyLabel = label(locale, "Copy link", "复制链接")
-    // Do not duplicate full source signatures inside aria-label and title.
-    // The adjacent native summary already identifies the exact overload.
+    // Name controls through the unique summary rather than duplicating its
+    // full signature in HTML attributes (which also differentiates overloads).
     let moreLabel = label(locale, "More actions for", "更多操作：") + " " + member.name
     out.append("<div class=\"member-detail-actions\" role=\"group\" aria-label=\"" +
-        label(locale, "Member actions", "成员操作") + "\" data-cjdoc-member-actions>")
+        label(locale, "Member actions", "成员操作") + "\" aria-labelledby=\"" +
+        escapeHtml(groupLabelId) + " " + escapeHtml(summaryId) +
+        "\" data-cjdoc-member-actions>")
+    out.append("<span class=\"sr-only\" id=\"" + escapeHtml(groupLabelId) + "\">" +
+        label(locale, "Member actions for", "成员操作：") + "</span>")
     out.append("<button class=\"member-actions-toggle\" type=\"button\" " +
         "data-cjdoc-member-actions-toggle aria-expanded=\"false\" aria-controls=\"" +
         escapeHtml(actionId) + "\" aria-label=\"" + escapeHtml(moreLabel) +
-        "\" title=\"" + escapeHtml(moreLabel) + "\">")
+        "\" title=\"" + escapeHtml(moreLabel) + "\" aria-labelledby=\"" +
+        escapeHtml(actionId) + "-more-label " + escapeHtml(summaryId) + "\">")
     appendMemberActionGlyph(out, "more")
+    out.append("<span class=\"sr-only\" id=\"" + escapeHtml(actionId) + "-more-label\">" +
+        label(locale, "More actions for", "更多操作：") + "</span>")
     out.append("</button><div class=\"member-action-list\" id=\"" + escapeHtml(actionId) + "\">")
     out.append("<a class=\"member-action member-permalink\" href=\"" +
         rootPrefix + escapeHtml(symbolPagePath(member)) + "\" aria-label=\"" +
-        escapeHtml(standaloneLabel) + "\" title=\"" + escapeHtml(standaloneLabel) + "\">")
+        escapeHtml(standaloneLabel) + "\" title=\"" + escapeHtml(standaloneLabel) +
+        "\" aria-labelledby=\"" + escapeHtml(actionId) + "-standalone-label " +
+        escapeHtml(summaryId) + "\">")
     appendMemberActionGlyph(out, "standalone")
-    out.append("<span class=\"member-action-label\" aria-hidden=\"true\">" +
-        escapeHtml(standaloneLabel) + "</span></a>")
+    out.append("<span class=\"member-action-label\" id=\"" + escapeHtml(actionId) +
+        "-standalone-label\">" + escapeHtml(standaloneLabel) + "</span></a>")
     match (findProjectedModule(projection, member.moduleId)) {
         case Some(module) => match (sourceUrl(documentation.project, module, member.source)) {
             case Some(url) =>
                 out.append("<a class=\"member-action member-source-link\" href=\"" +
                     escapeHtml(url) + "\" rel=\"noreferrer\" aria-label=\"" +
-                    escapeHtml(sourceLabel) + "\" title=\"" + escapeHtml(sourceLabel) + "\">")
+                    escapeHtml(sourceLabel) + "\" title=\"" + escapeHtml(sourceLabel) +
+                    "\" aria-labelledby=\"" + escapeHtml(actionId) + "-source-label " +
+                    escapeHtml(summaryId) + "\">")
                 appendMemberActionGlyph(out, "source")
-                out.append("<span class=\"member-action-label\" aria-hidden=\"true\">" +
-                    escapeHtml(sourceLabel) + "</span></a>")
+                out.append("<span class=\"member-action-label\" id=\"" + escapeHtml(actionId) +
+                    "-source-label\">" + escapeHtml(sourceLabel) + "</span></a>")
             case None => ()
         }
         case None => ()
@@ -279,10 +292,13 @@ private func appendInlineMemberActions(out: RenderTextBuffer,
     out.append("<button class=\"member-action member-action-copy copy-link\" type=\"button\" " +
         "data-cjdoc-copy-link=\"" + rootPrefix +
         escapeHtml(symbolReadablePagePath(member)) + "\" aria-label=\"" +
-        escapeHtml(copyLabel) + "\" title=\"" + escapeHtml(copyLabel) + "\">")
+        escapeHtml(copyLabel) + "\" title=\"" + escapeHtml(copyLabel) +
+        "\" aria-labelledby=\"" + escapeHtml(actionId) + "-copy-label " +
+        escapeHtml(summaryId) + "\">")
     appendMemberActionGlyph(out, "copy")
-    out.append("<span class=\"member-action-label\" aria-hidden=\"true\">" +
-        escapeHtml(copyLabel) + "</span></button><span class=\"sr-only\" data-cjdoc-copy-status " +
+    out.append("<span class=\"member-action-label\" id=\"" + escapeHtml(actionId) +
+        "-copy-label\">" + escapeHtml(copyLabel) +
+        "</span></button><span class=\"sr-only\" data-cjdoc-copy-status " +
         "role=\"status\" aria-live=\"polite\"></span></div></div>")
 }
 
@@ -295,7 +311,8 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     let member = entry.symbol
     let anchor = symbolAnchor(member)
     out.append("<div class=\"member-row\"><details class=\"declaration-summary member-detail\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\" data-member-origin=\"${escapeHtml(entry.origin)}\">")
-    out.append("<summary class=\"member-detail-summary\"><span class=\"member-summary-main\">")
+    out.append("<summary class=\"member-detail-summary\" id=\"" + escapeHtml(anchor) +
+        "-summary\"><span class=\"member-summary-main\">")
     if (!member.headerSpelling.isEmpty()) {
         out.append("<code class=\"declaration-signature\">")
         appendSignatureTextHtml(out, member)
