@@ -13,25 +13,61 @@ from .site import ContractError, load_json
 
 
 class MemberLinks(HTMLParser):
-    """Collect only permalinks nested in actual renderer member details."""
+    """Bind each member permalink to its native details anchor, not its name.
+
+    A member row contains sibling <details> and action controls. Tracking the
+    containing row prevents a source/overload link from being attributed to a
+    neighboring declaration when the details node closes before the actions.
+    """
 
     def __init__(self, source: str) -> None:
         super().__init__(convert_charrefs=True)
         self.details: list[str | None] = []
         self.members: list[tuple[str, str]] = []
+        self.div_depth = 0
+        self.row_depth: int | None = None
+        self.row_anchor: str | None = None
+        self.row_has_link = False
+        self.actions_depth: int | None = None
         self.feed(source)
         self.close()
-        if self.details:
-            raise ContractError("unclosed details element in generated member page")
+        if self.details or self.row_depth is not None or self.actions_depth is not None:
+            raise ContractError("unclosed native member structure in generated page")
 
     def handle_starttag(self, tag: str, attributes: list[tuple[str, str | None]]) -> None:
         attrs = dict(attributes)
-        if tag == "details":
-            self.details.append(attrs.get("id") if "data-cjdoc-member" in attrs else None)
-        if tag == "a" and "member-permalink" in (attrs.get("class") or "").split():
-            anchor = next((item for item in reversed(self.details) if item is not None), None)
+        classes = (attrs.get("class") or "").split()
+        if tag == "div":
+            self.div_depth += 1
+            if "member-row" in classes:
+                if self.row_depth is not None:
+                    raise ContractError("nested native member rows are not supported")
+                self.row_depth = self.div_depth
+                self.row_anchor = None
+                self.row_has_link = False
+            elif ("member-detail-actions" in classes and self.row_depth is not None
+                  and self.div_depth == self.row_depth + 1):
+                if not self.row_anchor or self.actions_depth is not None:
+                    raise ContractError("member actions have no unique preceding native anchor")
+                self.actions_depth = self.div_depth
+        elif tag == "details":
+            is_member = "data-cjdoc-member" in attrs
+            self.details.append(attrs.get("id") if is_member else None)
+            if is_member and self.row_depth is not None:
+                if self.row_anchor is not None or not attrs.get("id"):
+                    raise ContractError("member row must contain exactly one native details anchor")
+                self.row_anchor = attrs["id"]
+        elif tag == "a" and "member-permalink" in classes:
+            if self.row_depth is not None:
+                if self.actions_depth is None or self.row_has_link:
+                    raise ContractError("member permalink is outside its unique sibling actions")
+                anchor = self.row_anchor
+                self.row_has_link = True
+            else:
+                # Support older generated pages where actions lived inside details.
+                anchor = next((item for item in reversed(self.details) if item is not None), None)
             if not anchor or not attrs.get("href"):
-                raise ContractError("member permalink is missing its enclosing native anchor")
+                raise ContractError("member permalink is missing its native anchor or href")
             self.members.append((anchor, attrs["href"]))
 
     def handle_endtag(self, tag: str) -> None:
@@ -39,6 +75,18 @@ class MemberLinks(HTMLParser):
             if not self.details:
                 raise ContractError("unbalanced details element in generated member page")
             self.details.pop()
+        elif tag == "div":
+            if self.div_depth == 0:
+                raise ContractError("unbalanced div element in generated member page")
+            if self.actions_depth == self.div_depth:
+                self.actions_depth = None
+            if self.row_depth == self.div_depth:
+                if not self.row_anchor or not self.row_has_link:
+                    raise ContractError("member row is missing its native anchor or permalink")
+                self.row_depth = None
+                self.row_anchor = None
+                self.row_has_link = False
+            self.div_depth -= 1
 
 
 def select_declaration(site, target: dict, pages: list[dict]) -> tuple[dict, dict]:
