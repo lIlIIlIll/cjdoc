@@ -291,6 +291,21 @@ test.describe('generated HTML reference', () => {
     const actions = memberActions(labelDetail);
     await expect(actions).toHaveAttribute('role', 'group');
     await expect(actions).toHaveAttribute('aria-label', 'Member actions');
+    const labelSummaryId = await labelDetail.locator('.member-detail-summary').getAttribute('id');
+    expect(labelSummaryId).toMatch(/-summary$/);
+    await expect(actions).toHaveAttribute('aria-labelledby', new RegExp(labelSummaryId + '$'));
+    await expect(actions).toHaveAccessibleName(/Member actions for.*label/);
+    for (const selector of [
+      '.member-actions-toggle', '.member-permalink', '.member-source-link', '.member-action-copy',
+    ]) {
+      await expect(actions.locator(selector)).toHaveAttribute(
+        'aria-labelledby', new RegExp(labelSummaryId + '$')
+      );
+    }
+    await expect(actions.locator('.member-permalink'))
+      .toHaveAccessibleName(/Open standalone API page.*label/);
+    await expect(actions.locator('.member-source-link'))
+      .toHaveAccessibleName(/View source code.*label/);
     await expect(actions.locator('.member-action')).toHaveCount(3);
     // The touch disclosure contributes one extra decorative glyph.
     await expect(actions.locator('.member-action-glyph[aria-hidden="true"]')).toHaveCount(4);
@@ -323,6 +338,13 @@ test.describe('generated HTML reference', () => {
     await expect(pingGroup).toHaveCount(1);
     await expect(pingGroup).toHaveAttribute('data-overload-total', '2');
     await expect(pingGroup.locator('details[data-cjdoc-member][data-member-name="ping"]')).toHaveCount(2);
+    const pingSummaryIds = await pingDetails.locator('summary').evaluateAll(nodes => nodes.map(node => node.id));
+    expect(pingSummaryIds).toHaveLength(2);
+    expect(new Set(pingSummaryIds).size).toBe(2);
+    for (let index = 0; index < 2; index += 1) {
+      const group = memberActions(pingDetails.nth(index));
+      await expect(group).toHaveAttribute('aria-labelledby', new RegExp(pingSummaryIds[index] + '$'));
+    }
     await expect(pingGroup.locator('[data-cjdoc-overload-count]')).toHaveText('2 overloads');
     await expect(page.locator('details[data-cjdoc-member][data-member-name="convert"]')).toHaveCount(2);
     // Filtering does not leave empty groups or falsely report that both match.
