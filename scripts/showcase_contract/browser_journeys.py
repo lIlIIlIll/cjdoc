@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from urllib.parse import unquote, urljoin, urlsplit
 
-from .browser_support import Journey, click_and_return, copy_code, require_text, assert_native_symbol, assert_native_id, directory_navigation
+from .browser_support import Journey, click_and_return, copy_code, require_text, assert_native_symbol, assert_native_id, directory_navigation, member_action
 
 
 def selected_member(journey: Journey):
@@ -52,10 +52,7 @@ def members(journey: Journey):
     copy_code(journey, current.locator(".code-copy").first)
     # Follow an ordinary link and use real Back/Forward, preserving both contracts.
     origin = page.url
-    standalone = current.locator("a.member-permalink")
-    if standalone.count() != 1:
-        standalone = current.get_by_role("link", name="Open standalone page" if journey.target["locale"] == "en" else "打开独立页面")
-    journey.click(standalone)
+    journey.click(member_action(current, "a.member-permalink"))
     destination = page.url
     require_text(page.locator("main"), "add", "String")
     journey.back(origin)
