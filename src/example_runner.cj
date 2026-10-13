@@ -312,9 +312,35 @@ private func executeExampleProgram(executable: Path): ExampleProcessResult {
         MAX_EXAMPLE_RUN_OUTPUT_BYTES) }
     let standardError = spawn { => readBoundedExampleStream(process.stdErrPipe,
         MAX_EXAMPLE_RUN_OUTPUT_BYTES) }
-    let (outputBytes, outputTotal) = standardOutput.get()
-    let (errorBytes, errorTotal) = standardError.get()
-    let exitCode = process.wait()
+    // Bound every blocking stage by the run limit, exactly as bounded_process does.
+    // Each of these ends at EOF or at the child's own exit, and an example that
+    // escapes the example process group survives the group kill while keeping the
+    // inherited pipes open or the supervisor waiting: without a deadline the caller
+    // (and so the whole test process) blocks past the limit and the suite wedges
+    // with no output -- issue #116.
+    let deadline = Duration.millisecond * MAX_EXAMPLE_RUN_MILLISECONDS
+    let (outputBytes, outputTotal) = try {
+        standardOutput.get(deadline)
+    } catch (_: Exception) {
+        (Array<Byte>(), 0)
+    }
+    let (errorBytes, errorTotal) = try {
+        standardError.get(deadline)
+    } catch (_: Exception) {
+        (Array<Byte>(), 0)
+    }
+    let exitCode = try {
+        let statusReader: Future<Int64> = spawn {
+            try {
+                process.wait()
+            } catch (_: Exception) {
+                -1
+            }
+        }
+        statusReader.get(deadline)
+    } catch (_: Exception) {
+        124
+    }
     let completed = state.compareAndSwap(0, 1)
     if (completed) { let _ = closeExampleProcessJob(job) }
     watchdog.get()
