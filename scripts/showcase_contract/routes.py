@@ -66,8 +66,10 @@ class MemberLinks(HTMLParser):
             else:
                 # Support older generated pages where actions lived inside details.
                 anchor = next((item for item in reversed(self.details) if item is not None), None)
-            if not anchor or not attrs.get("href"):
-                raise ContractError("member permalink is missing its native anchor or href")
+            if not anchor:
+                raise ContractError("member permalink is missing its enclosing native anchor")
+            if not attrs.get("href"):
+                raise ContractError("member permalink is missing href")
             self.members.append((anchor, attrs["href"]))
 
     def handle_endtag(self, tag: str) -> None:
