@@ -21,6 +21,15 @@ fi
 cjc -v
 cjpm -v
 
+# The override rules live in scripts/sts_compile_override.py, shared with the
+# CI-08.3 uniformity check so the two cannot drift apart.
+cjdoc_scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export CJDOC_STS_OVERRIDE_MODULE="${cjdoc_scripts_dir}"
+# When a log path is configured, the wrapper records every build/test/run it
+# performs. CI-08.3 compares that record across platforms instead of parsing the
+# workflow's text, so a build routed around `cjpm build` still shows up.
+export CJDOC_STS_INVOCATION_LOG="${CJDOC_STS_INVOCATION_LOG:-${runner_temp:-/tmp}/cjdoc-sts-invocations.jsonl}"
+
 runner_temp="${RUNNER_TEMP}"
 real_cjpm="$(command -v cjpm)"
 if command -v cygpath >/dev/null 2>&1; then
@@ -67,59 +76,52 @@ provider_fixture="${workspace}/tests/fixtures/projects/provider_plugin"
 if [[ "$current_directory" == "${provider_fixture}" ]]; then
   patch_fixture_entry=1
 fi
-python - "${manifest}" "${backup_dir}" "${patch_fixture_entry}" <<'PY'
-from pathlib import Path
-import shutil
-import sys
-import tomllib
-
-root_manifest = Path(sys.argv[1])
-backup_dir = Path(sys.argv[2])
-patch_fixture_entry = sys.argv[3] == "1"
-manifests = [(root_manifest, "cjdoc")]
-if patch_fixture_entry:
-    manifests.append((Path.cwd() / "cjpm.toml", "provider_plugin_fixture"))
-
-needle = 'override-compile-option = ""'
-updates = []
-for manifest, expected_name in manifests:
-    contents = manifest.read_text(encoding="utf-8")
-    package = tomllib.loads(contents).get("package")
-    if not isinstance(package, dict) or package.get("name") != expected_name:
-        raise SystemExit(f"unexpected package manifest for {expected_name}")
-    override = package.get("override-compile-option")
-    if override == "-O1":
-        updated = contents
-    elif override == "":
-        if contents.count(needle) != 1:
-            raise SystemExit(f"expected one default override-compile-option in {manifest}")
-        updated = contents.replace(needle, 'override-compile-option = "-O1"', 1)
-    elif override is None:
-        package_header = "[package]\n"
-        if contents.count(package_header) != 1:
-            raise SystemExit(f"expected one package table in {manifest}")
-        updated = contents.replace(
-            package_header,
-            package_header + '  override-compile-option = "-O1"\n',
-            1,
-        )
-    else:
-        raise SystemExit(f"unexpected compile override for {expected_name}")
-    updates.append((manifest, updated))
-
-backup_dir.mkdir(parents=True, exist_ok=True)
-paths_file = backup_dir / "manifest-paths"
-for index, (manifest, _) in enumerate(updates):
-    shutil.copy2(manifest, backup_dir / f"{index}.toml")
-    with paths_file.open("ab") as stream:
-        stream.write(str(manifest).encode("utf-8") + b"\0")
-for manifest, contents in updates:
-    manifest.write_text(contents, encoding="utf-8")
-PY
+# The rewrite lives in scripts/apply_sts_override.py so CI-08.3 can run this same
+# call path rather than pattern-matching this file's text.
+arguments=("${manifest}" "${backup_dir}")
+if [[ "${patch_fixture_entry}" == "1" ]]; then
+  arguments+=(--manifest-path "${current_directory}/cjpm.toml")
+fi
+"${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/apply_sts_override.py" "${arguments[@]}"
+# The option is read back from the manifest this invocation actually consumes, which
+# is not the workspace root when cjpm runs inside an auxiliary project such as
+# tools/chir-worker. Reporting the root's value here would record an -O1 build whose
+# `cjpm` in fact read an unpatched manifest.
+# The manifest of the package being built, patched by the step above when it is the
+# workspace root. `--declared` reports what the manifest holds now, which is what this
+# `cjpm` will read — an auxiliary project's manifest is not patched and reports none.
+case "${1:-}" in
+  build) record_invocation=1 ;;
+  # `test` and `run` are not the release's build; recording them would also make a
+  # failing logger able to break the suite, so only the build is recorded.
+  *) record_invocation=0 ;;
+esac
 set +e
 "${CJDOC_REAL_CJPM}" "$@"
 status=$?
 set -e
+if [[ "${record_invocation}" == "1" ]]; then
+  # The option is read back from the manifest this invocation actually consumes,
+  # which is not the workspace root when cjpm runs inside an auxiliary project such
+  # as tools/chir-worker. Reporting the root's value would record an -O1 build whose
+  # `cjpm` in fact read an unpatched manifest.
+  effective="$("${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/sts_compile_override.py" \
+    --declared "${current_directory}/cjpm.toml")"
+  # Recorded after the run: the digest is of the binary this invocation produced, so a
+  # later build that replaced it changes what the release must match. Windows produces
+  # `main.exe`, so the suffix is resolved now that the build has run, as the build gate
+  # does — checking before the build would always miss it.
+  cjdoc_binary="${workspace}/target/release/bin/main"
+  if [[ -f "${cjdoc_binary}.exe" ]]; then
+    cjdoc_binary="${cjdoc_binary}.exe"
+  fi
+  # Not best-effort: if the record is incomplete, the release evidence is incomplete,
+  # and a later rebuild could then go unrecorded while its digest still matched.
+  "${CJDOC_PYTHON:-python}" "${CJDOC_STS_OVERRIDE_MODULE}/log_invocation.py" \
+    --log "${CJDOC_STS_INVOCATION_LOG}" --manifest "${current_directory}/cjpm.toml" \
+    --option="${effective}" --binary "${cjdoc_binary}" \
+    -- "$@"
+fi
 exit "${status}"
 SH
 chmod +x "${wrapper_dir}/cjpm"
