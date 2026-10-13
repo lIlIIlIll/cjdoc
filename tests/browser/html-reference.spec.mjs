@@ -753,6 +753,22 @@ test.describe('generated HTML reference', () => {
     }));
     expect(edges.menuBottom).toBeLessThanOrEqual(edges.columnBottom + 1);
     await lastActions.locator('[data-cjdoc-member-actions-toggle]').tap();
+    // At a 200% equivalent CSS viewport, the overlay must also remain inside
+    // the clipped content column horizontally, not just vertically.
+    await page.setViewportSize({ width: 195, height: 844 });
+    await lastActions.locator('[data-cjdoc-member-actions-toggle]').tap();
+    const narrow = await lastMenu.evaluate(node => {
+      const popup = node.getBoundingClientRect();
+      const column = node.closest('.content-column').getBoundingClientRect();
+      return {
+        left: popup.left, right: popup.right, bottom: popup.bottom,
+        columnLeft: column.left, columnRight: column.right, columnBottom: column.bottom,
+      };
+    });
+    expect(narrow.left).toBeGreaterThanOrEqual(narrow.columnLeft - 1);
+    expect(narrow.right).toBeLessThanOrEqual(narrow.columnRight + 1);
+    expect(narrow.bottom).toBeLessThanOrEqual(narrow.columnBottom + 1);
+    await lastActions.locator('[data-cjdoc-member-actions-toggle]').tap();
     await expectStable(page);
     await context.close();
   });
