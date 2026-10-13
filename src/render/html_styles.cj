@@ -402,37 +402,59 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
     padding:.4rem;border:0;border-top:1px solid var(--line);
     background:var(--surface);color:var(--ink)
 }
-/* Touch and narrow layouts use a persistent disclosure instead of hover-only controls. */
+/* Without JavaScript, touch-sized views show the native links in normal flow.
+   The compact disclosure is an enhancement installed after its listeners exist. */
 @media (hover:none), (pointer:coarse), (any-pointer:coarse), (max-width:760px){
-    .member-row>.member-detail>summary{padding-inline-end:3.25rem}
+    .member-row>.member-detail>summary{padding-inline-end:.35rem}
     .member-row>.member-detail-actions{
-        inset-block-start:.25rem;inset-inline-end:.2rem;
-        opacity:1;pointer-events:auto;padding:0;border:0;background:transparent
+        position:static;inset:auto;align-items:center;width:100%;max-width:100%;
+        margin:.15rem 0 .35rem;padding:0;border:0;border-radius:0;
+        background:transparent;opacity:1;pointer-events:auto
     }
-    .member-detail-actions .member-actions-toggle{
+    .member-detail-actions .member-action-list{
+        display:flex;position:static;inset:auto;flex-direction:row;
+        align-items:center;flex-wrap:wrap;gap:.25rem;
+        width:100%;min-width:0;max-width:100%;margin:0;padding:0;
+        border:0;border-radius:0;background:transparent;box-shadow:none
+    }
+    .member-detail-actions .member-action-list .member-action{
+        justify-content:flex-start;gap:.4rem;flex:0 1 auto;
+        width:auto;min-width:40px;min-height:40px;height:auto;
+        padding:.4rem .55rem;font-size:.82rem;line-height:1.4;text-align:start
+    }
+    .member-detail-actions .member-action-label{display:inline;white-space:normal}
+    .member-row.member-actions-enhanced>.member-detail>summary{padding-inline-end:3.25rem}
+    .member-row.member-actions-enhanced>.member-detail-actions{
+        position:absolute;inset-block-start:.25rem;inset-inline-end:.2rem;
+        width:max-content;max-width:100%;margin:0;padding:0;
+        border:0;border-radius:7px;background:transparent
+    }
+    .member-row.member-actions-enhanced .member-actions-toggle{
         display:inline-flex;align-items:center;justify-content:center;
         width:40px;height:40px;min-width:40px;margin:0;
         border:1px solid var(--line);border-radius:7px;
         background:var(--surface);color:var(--muted);cursor:pointer
     }
-    .member-detail-actions .member-actions-toggle:hover,
-    .member-detail-actions .member-actions-toggle[aria-expanded="true"]{
+    .member-row.member-actions-enhanced .member-actions-toggle:hover,
+    .member-row.member-actions-enhanced .member-actions-toggle[aria-expanded="true"]{
         background:var(--surface-subtle);color:var(--accent)
     }
-    .member-detail-actions .member-action-list{
+    .member-row.member-actions-enhanced .member-action-list{
         display:none;position:absolute;inset-block-start:calc(100% + .3rem);
         inset-inline-end:0;z-index:5;align-items:stretch;flex-direction:column;
-        gap:.1rem;min-width:12rem;max-width:min(18rem,calc(100vw - 1.5rem));
+        flex-wrap:nowrap;gap:.1rem;min-width:12rem;
+        max-width:min(18rem,calc(100vw - 1.5rem));
         padding:.25rem;border:1px solid var(--line-strong);border-radius:8px;
         background:var(--surface);box-shadow:var(--shadow)
     }
-    .member-detail-actions[data-open="true"] .member-action-list{display:flex}
-    .member-detail-actions .member-action-list .member-action{
+    .member-row.member-actions-enhanced .member-detail-actions[data-open="true"] .member-action-list{
+        display:flex
+    }
+    .member-row.member-actions-enhanced .member-action-list .member-action{
         justify-content:flex-start;gap:.6rem;flex:0 0 auto;
         width:100%;min-height:40px;height:auto;padding:.5rem .6rem;
         font-size:.82rem;line-height:1.4;text-align:start
     }
-    .member-detail-actions .member-action-label{display:inline;white-space:nowrap}
 }
 /* A single documented contract does not need a redundant classification
    table beneath its concrete condition heading. */
