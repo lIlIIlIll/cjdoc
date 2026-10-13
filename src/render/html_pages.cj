@@ -228,9 +228,61 @@ private func appendMemberActionGlyph(out: RenderTextBuffer, kind: String): Unit 
         case "source" =>
             out.append("<path d=\"m8 9-3 3 3 3\"/><path d=\"m16 9 3 3-3 3\"/>")
             out.append("<path d=\"m14 5-4 14\"/>")
+        case "more" =>
+            out.append("<circle cx=\"5\" cy=\"12\" r=\"1.3\"/>")
+            out.append("<circle cx=\"12\" cy=\"12\" r=\"1.3\"/>")
+            out.append("<circle cx=\"19\" cy=\"12\" r=\"1.3\"/>")
         case _ => ()
     }
     out.append("</svg>")
+}
+
+// Member controls are siblings of <details>: closed native details must not
+// hide their actions, and no interactive control nests inside <summary>.
+private func appendInlineMemberActions(out: RenderTextBuffer,
+    documentation: DocumentationSet, projection: RenderProjection,
+    member: SymbolDoc, rootPrefix: String, locale: String): Unit {
+    let actionId = symbolAnchor(member) + "-actions"
+    let standaloneLabel = label(locale, "Open standalone API page", "打开独立 API 页面")
+    let sourceLabel = label(locale, "View source code", "查看源码")
+    let copyLabel = label(locale, "Copy link", "复制链接")
+    let memberLabel = if (member.headerSpelling.isEmpty()) { member.name } else { member.headerSpelling }
+    let moreLabel = label(locale, "More actions for", "更多操作：") + " " + memberLabel
+    out.append("<div class=\"member-detail-actions\" role=\"group\" aria-label=\"" +
+        label(locale, "Member actions", "成员操作") + "\" data-cjdoc-member-actions>")
+    out.append("<button class=\"member-actions-toggle\" type=\"button\" " +
+        "data-cjdoc-member-actions-toggle aria-expanded=\"false\" aria-controls=\"" +
+        escapeHtml(actionId) + "\" aria-label=\"" + escapeHtml(moreLabel) +
+        "\" title=\"" + escapeHtml(moreLabel) + "\">")
+    appendMemberActionGlyph(out, "more")
+    out.append("</button><div class=\"member-action-list\" id=\"" + escapeHtml(actionId) + "\">")
+    out.append("<a class=\"member-action member-permalink\" href=\"" +
+        rootPrefix + escapeHtml(symbolPagePath(member)) + "\" aria-label=\"" +
+        escapeHtml(standaloneLabel) + "\" title=\"" + escapeHtml(standaloneLabel) + "\">")
+    appendMemberActionGlyph(out, "standalone")
+    out.append("<span class=\"member-action-label\" aria-hidden=\"true\">" +
+        escapeHtml(standaloneLabel) + "</span></a>")
+    match (findProjectedModule(projection, member.moduleId)) {
+        case Some(module) => match (sourceUrl(documentation.project, module, member.source)) {
+            case Some(url) =>
+                out.append("<a class=\"member-action member-source-link\" href=\"" +
+                    escapeHtml(url) + "\" rel=\"noreferrer\" aria-label=\"" +
+                    escapeHtml(sourceLabel) + "\" title=\"" + escapeHtml(sourceLabel) + "\">")
+                appendMemberActionGlyph(out, "source")
+                out.append("<span class=\"member-action-label\" aria-hidden=\"true\">" +
+                    escapeHtml(sourceLabel) + "</span></a>")
+            case None => ()
+        }
+        case None => ()
+    }
+    out.append("<button class=\"member-action member-action-copy copy-link\" type=\"button\" " +
+        "data-cjdoc-copy-link=\"" + rootPrefix +
+        escapeHtml(symbolReadablePagePath(member)) + "\" aria-label=\"" +
+        escapeHtml(copyLabel) + "\" title=\"" + escapeHtml(copyLabel) + "\">")
+    appendMemberActionGlyph(out, "copy")
+    out.append("<span class=\"member-action-label\" aria-hidden=\"true\">" +
+        escapeHtml(copyLabel) + "</span></button><span class=\"sr-only\" data-cjdoc-copy-status " +
+        "role=\"status\" aria-live=\"polite\"></span></div></div>")
 }
 
 internal func appendInlineMemberDetail(out: RenderTextBuffer,
@@ -241,8 +293,7 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): Unit {
     let member = entry.symbol
     let anchor = symbolAnchor(member)
-    let standaloneLabel = label(locale, "Open standalone API page", "打开独立 API 页面")
-    out.append("<details class=\"declaration-summary member-detail\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\" data-member-origin=\"${escapeHtml(entry.origin)}\">")
+    out.append("<div class=\"member-row\"><details class=\"declaration-summary member-detail\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\" data-member-origin=\"${escapeHtml(entry.origin)}\">")
     out.append("<summary class=\"member-detail-summary\"><span class=\"member-summary-main\">")
     if (!member.headerSpelling.isEmpty()) {
         out.append("<code class=\"declaration-signature\">")
@@ -287,43 +338,14 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
             case None => ()
         }
     }
-    // Keep navigation and copy controls outside <summary>. All three share
-    // the same icon-only presentation, while screen readers and hover users
-    // still receive precise localized action names.
-    let copyLabel = label(locale, "Copy link", "复制链接")
-    let sourceLabel = label(locale, "View source code", "查看源码")
-    out.append("<div class=\"member-detail-actions\" role=\"group\" aria-label=\"" +
-        label(locale, "Member actions", "成员操作") + "\">")
-    out.append("<a class=\"member-action member-permalink\" href=\"" +
-        rootPrefix + escapeHtml(symbolPagePath(member)) + "\" aria-label=\"" +
-        escapeHtml(standaloneLabel) + "\" title=\"" + escapeHtml(standaloneLabel) + "\">")
-    appendMemberActionGlyph(out, "standalone")
-    out.append("</a>")
-    match (findProjectedModule(projection, member.moduleId)) {
-        case Some(module) => match (sourceUrl(documentation.project, module, member.source)) {
-            case Some(url) =>
-                out.append("<a class=\"member-action member-source-link\" href=\"" +
-                    escapeHtml(url) + "\" rel=\"noreferrer\" aria-label=\"" +
-                    escapeHtml(sourceLabel) + "\" title=\"" + escapeHtml(sourceLabel) + "\">")
-                appendMemberActionGlyph(out, "source")
-                out.append("</a>")
-            case None => ()
-        }
-        case None => ()
-    }
-    out.append("<button class=\"member-action member-action-copy copy-link\" type=\"button\" " +
-        "data-cjdoc-copy-link=\"" + rootPrefix +
-        escapeHtml(symbolReadablePagePath(member)) + "\" aria-label=\"" +
-        escapeHtml(copyLabel) + "\" title=\"" + escapeHtml(copyLabel) + "\">")
-    appendMemberActionGlyph(out, "copy")
-    out.append("</button><span class=\"sr-only\" data-cjdoc-copy-status " +
-        "role=\"status\" aria-live=\"polite\"></span></div>")
     appendDocumentationHtml(out, index, member, rootPrefix, assetLookup, typeLinkIndex,
         headingBase: 3, locale: locale, exampleEvidence: exampleEvidence)
     appendReaderRelationships(out, index, member, rootPrefix, typeLinkIndex, locale,
         headingTag: "h3")
     appendReverseTypeUsages(out, index, typeLinkIndex, member, rootPrefix, locale)
-    out.append("</div></details>\n")
+    out.append("</div></details>")
+    appendInlineMemberActions(out, documentation, projection, member, rootPrefix, locale)
+    out.append("</div>\n")
 }
 
 internal func memberSectionTitle(symbol: SymbolDoc): String {
