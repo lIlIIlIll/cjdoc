@@ -141,6 +141,24 @@ jobs:
             --main-binary target/release/bin/main \
             --output-root "${RUNNER_TEMP}/cjdoc-stage-smoke"
 
+      # The Doc IR identity half of the performance gate. It is machine-independent,
+      # so unlike the elapsed/RSS ceilings it can run on every push: a change that
+      # alters the generator's output without refreshing tests/perf/baseline.json
+      # then fails here instead of only at release time under a tag, which is how
+      # main previously sat in an unreleasable state while CI stayed green.
+      - name: Verify the performance Doc IR identities
+        shell: bash
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
+          . scripts/with_sts_o1_cjpm.sh
+          python scripts/perf_gate.py identities \
+            --binary target/release/bin/main \
+            --evidence target/ci-evidence/perf-identities.json
+
       - name: Collect bounded acceptance diagnostics
         if: failure()
         shell: bash
