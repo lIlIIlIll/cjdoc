@@ -26,6 +26,9 @@ CLI_CONTRACT_FIXTURES = {
     # Lexical shapes for generation-time highlighting (issue #100); owned by the
     # highlight acceptance gate rather than by a golden or Cangjie contract.
     "highlight",
+    # Committed sources for the retained @example asset case; a temporary project
+    # root resolves local images differently across platforms.
+    "example_assets",
 }
 
 

@@ -8,23 +8,12 @@ import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
 
-// Minimal valid 1x1 GIF89a image used by the retained-example asset case.
-private let EXAMPLE_REVIEW_GIF: Array<Byte> = [
-    0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0xf0, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x21, 0xf9, 0x04, 0x01, 0x00, 0x00, 0x00,
-    0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x02, 0x02,
-    0x44, 0x01, 0x00, 0x3b
-]
-
 private func exampleReviewDocumentation(examples: String): api_model.DocumentationSet {
     let root = Directory.createTemp(getTempDirectory())
     try {
         Directory.create(root.join("src"))
         File.writeTo(root.join("cjpm.toml"),
             "[package]\nname = \"example_review\"\nversion = \"0.1.0\"\ncjc-version = \"1.1.0\"\noutput-type = \"static\"\n".toArray())
-        // A self-contained 1x1 GIF keeps this case independent of checkout line-ending
-        // or attribute handling for a binary fixture file.
-        File.writeTo(root.join("src/pixel.gif"), EXAMPLE_REVIEW_GIF)
         File.writeTo(root.join("src/api.cj"), ("package example_review\n/**\n * Main docs.\n" +
             examples + "\n */\npublic func api(): Unit {}\npublic class SomeType {}\n").toArray())
         DocumentationEngine().generate(GenerationRequest(root.toString(), lintProfile: "off",
@@ -49,8 +38,13 @@ private func exampleReviewSemanticNodes(node: api_model.MarkdownNode,
 class ExampleMarkdownReviewTest {
     @TestCase
     func retainedCodeAndImageUsePublishedAssetPath(): Unit {
-        let documentation = exampleReviewDocumentation(
-            " * @example Image and code\n * ![pixel](pixel.gif)\n *\n * ```cj\n * let n = 1\n * ```")
+        // Uses a committed fixture project: local-image resolution depends on the
+        // project root, and a temporary root is canonicalized differently per
+        // platform, which would make this case assert the environment, not the
+        // documented behaviour.
+        let documentation = DocumentationEngine().generate(
+            GenerationRequest(PUBLIC_FIXTURE_PROJECTS + "example_assets", lintProfile: "off",
+                astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
         @Assert(documentation.assets.size, 1)
         @Expect(!publicHasDiagnostic(documentation, "CJDOC4026"))
         let artifacts = api_render.HtmlDocumentationRenderer().render(documentation)
