@@ -318,34 +318,61 @@ private func executeExampleProgram(executable: Path): ExampleProcessResult {
     // inherited pipes open or the supervisor waiting: without a deadline the caller
     // (and so the whole test process) blocks past the limit and the suite wedges
     // with no output -- issue #116.
-    let deadline = Duration.millisecond * MAX_EXAMPLE_RUN_MILLISECONDS
-    let (outputBytes, outputTotal) = try {
-        standardOutput.get(deadline)
-    } catch (_: Exception) {
-        (Array<Byte>(), 0)
+    // ONE absolute deadline for all three waits, so the run limit is the limit for
+    // the whole call rather than per stage (three full waits would allow ~30 s).
+    let deadline = DateTime.now() + Duration.millisecond * MAX_EXAMPLE_RUN_MILLISECONDS
+    // Never pass an exhausted budget to `get`: `Future.get(Duration.Zero)` waits with
+    // no timeout at all, so "expired" must be handled explicitly.
+    func expired(): Bool {
+        (deadline - DateTime.now()).toMilliseconds() <= 0
     }
-    let (errorBytes, errorTotal) = try {
-        standardError.get(deadline)
-    } catch (_: Exception) {
-        (Array<Byte>(), 0)
+    func remaining(): Duration {
+        Duration.millisecond * (deadline - DateTime.now()).toMilliseconds()
     }
-    let exitCode = try {
-        let statusReader: Future<Int64> = spawn {
-            try {
-                process.wait()
-            } catch (_: Exception) {
-                -1
-            }
+    var readExpired = false
+    let (outputBytes, outputTotal) = if (expired()) {
+        readExpired = true
+        (Array<Byte>(), 0)
+    } else {
+        try {
+            standardOutput.get(remaining())
+        } catch (_: Exception) {
+            readExpired = true
+            (Array<Byte>(), 0)
         }
-        statusReader.get(deadline)
-    } catch (_: Exception) {
+    }
+    let (errorBytes, errorTotal) = if (expired()) {
+        readExpired = true
+        (Array<Byte>(), 0)
+    } else {
+        try {
+            standardError.get(remaining())
+        } catch (_: Exception) {
+            readExpired = true
+            (Array<Byte>(), 0)
+        }
+    }
+    let exitCode = if (expired()) {
         124
+    } else {
+        try {
+            let statusReader: Future<Int64> = spawn {
+                try {
+                    process.wait()
+                } catch (_: Exception) {
+                    -1
+                }
+            }
+            statusReader.get(remaining())
+        } catch (_: Exception) {
+            124
+        }
     }
     let completed = state.compareAndSwap(0, 1)
     if (completed) { let _ = closeExampleProcessJob(job) }
     watchdog.get()
-    ExampleProcessResult(exitCode, outputBytes, errorBytes, outputTotal, errorTotal,
-        !completed && state.load() == 2)
+    ExampleProcessResult(if (readExpired) { 124 } else { exitCode }, outputBytes, errorBytes,
+        outputTotal, errorTotal, readExpired || (!completed && state.load() == 2))
 }
 
 private func isRunnableExampleFile(path: Path): Bool {

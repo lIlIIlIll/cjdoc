@@ -90,7 +90,7 @@ class ResolveTests(unittest.TestCase):
         artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
                      [_marker(77, 1)],
                      "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
-                     [{"id": 9, "expired": False}]}
+                     [{"id": 9, "expired": False, "workflow_run": {"id": 77}}]}
         attempts = {"77/1": {"headSha": COMMIT, "status": "completed", "conclusion": "success"}}
         resolved = self.resolve(runs, artifacts, attempts)
         self.assertTrue(resolved["reuse"])
@@ -106,7 +106,7 @@ class ResolveTests(unittest.TestCase):
             artifacts[f"repos/o/r/actions/artifacts?name={source.marker_name(run_id, 1)}"] = \
                 [_marker(run_id, 1)]
             artifacts[f"repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-{run_id}-1"] = \
-                [{"id": run_id, "expired": False}]
+                [{"id": run_id, "expired": False, "workflow_run": {"id": run_id}}]
         attempts = {f"{run_id}/1": {"headSha": COMMIT, "status": "completed",
                                     "conclusion": "success"} for run_id in (77, 78)}
         resolved = self.resolve(runs, artifacts, attempts)
@@ -128,7 +128,7 @@ class ResolveTests(unittest.TestCase):
         artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
                      [_marker(77, 1)],
                      "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
-                     [{"id": 9, "expired": True}]}
+                     [{"id": 9, "expired": True, "workflow_run": {"id": 77}}]}
         attempts = {"77/1": {"headSha": COMMIT, "status": "completed", "conclusion": "success"}}
         resolved = self.resolve(runs, artifacts, attempts)
         self.assertFalse(resolved["reuse"])
@@ -138,7 +138,7 @@ class ResolveTests(unittest.TestCase):
         artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
                      [_marker(77, 1)],
                      "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
-                     [{"id": 9, "expired": False}]}
+                     [{"id": 9, "expired": False, "workflow_run": {"id": 77}}]}
         attempts = {"77/1": {"headSha": "c" * 40, "status": "completed", "conclusion": "success"}}
         resolved = self.resolve(runs, artifacts, attempts)
         self.assertFalse(resolved["reuse"])
@@ -151,7 +151,7 @@ class ResolveTests(unittest.TestCase):
         artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
                      [_marker(77, 1)],
                      "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
-                     [{"id": 9, "expired": False}]}
+                     [{"id": 9, "expired": False, "workflow_run": {"id": 77}}]}
         attempts = {"77/1": {"headSha": COMMIT, "status": "in_progress", "conclusion": None}}
         resolved = self.resolve(runs, artifacts, attempts)
         self.assertTrue(resolved["reuse"], resolved)
@@ -166,7 +166,7 @@ class ResolveTests(unittest.TestCase):
         artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
                      [_marker(77, 1)],
                      "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
-                     [{"id": 9, "expired": False}]}
+                     [{"id": 9, "expired": False, "workflow_run": {"id": 77}}]}
         attempts = {"77/1": {"headSha": COMMIT, "status": "completed",
                              "conclusion": "failure"}}
         resolved = self.resolve(runs, artifacts, attempts)
@@ -253,7 +253,7 @@ class RequireReadyTests(unittest.TestCase):
         artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
                      [_marker(77, 1)],
                      "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
-                     [{"id": 9, "expired": False}]}
+                     [{"id": 9, "expired": False, "workflow_run": {"id": 77}}]}
         attempts = {"77/1": {"headSha": COMMIT, "status": "completed", "conclusion": "success"}}
         self.assertEqual(self.require(runs, artifacts, attempts)["runId"], 77)
 
@@ -264,7 +264,7 @@ class RequireReadyTests(unittest.TestCase):
         artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
                      [_marker(77, 1)],
                      "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
-                     [{"id": 9, "expired": False}]}
+                     [{"id": 9, "expired": False, "workflow_run": {"id": 77}}]}
         attempts = {"77/1": {"headSha": COMMIT, "status": "completed", "conclusion": "failure"}}
         with self.assertRaises(source.ResolutionError):
             self.require(runs, artifacts, attempts)

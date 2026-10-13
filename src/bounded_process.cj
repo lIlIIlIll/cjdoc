@@ -172,16 +172,45 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
     // descendant lives -- measured at 45 s for a 2 s timeout before this bound was
     // added. Bounding the read makes the timeout total, which is what the caller
     // was promised.
-    let deadline = Duration.millisecond * timeoutMilliseconds
-    let output = try {
-        standardOutput.get(deadline)
-    } catch (_: Exception) {
-        (Array<Byte>(), 0)
+    // ONE absolute deadline for every bounded wait, not one full timeout each: with
+    // separate `Duration` arguments a caller's 5 s limit becomes 10 s (both reads)
+    // plus the status wait whenever an escaped descendant keeps both pipes open.
+    let deadline = DateTime.now() + Duration.millisecond * timeoutMilliseconds
+    // An exhausted budget must NEVER be handed to `get`: `Future.get(Duration.Zero)`
+    // waits without any timeout, so clamping to zero would turn "already expired"
+    // into "wait forever". Treat exhaustion explicitly instead.
+    func expired(): Bool {
+        (deadline - DateTime.now()).toMilliseconds() <= 0
     }
-    let error = try {
-        standardError.get(deadline)
-    } catch (_: Exception) {
+    func remaining(): Duration {
+        Duration.millisecond * (deadline - DateTime.now()).toMilliseconds()
+    }
+    var readExpired = false
+    let output = if (expired()) {
+        readExpired = true
         (Array<Byte>(), 0)
+    } else {
+        try {
+            standardOutput.get(remaining())
+        } catch (_: Exception) {
+            // A read that expires means the call did NOT complete inside the timeout,
+            // so record it: otherwise a child that already exited successfully could
+            // let the status wait return 0 and the call would report success with
+            // truncated output instead of 124.
+            readExpired = true
+            (Array<Byte>(), 0)
+        }
+    }
+    let error = if (expired()) {
+        readExpired = true
+        (Array<Byte>(), 0)
+    } else {
+        try {
+            standardError.get(remaining())
+        } catch (_: Exception) {
+            readExpired = true
+            (Array<Byte>(), 0)
+        }
     }
     // `process.wait()` is the wait on the supervisor (`bash`), whose script ends
     // with `wait "$child"`. When the group kill misses a child that escaped the
@@ -196,13 +225,17 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
             -1
         }
     }
-    let exitCode = try {
-        statusReader.get(deadline)
-    } catch (_: Exception) {
+    let exitCode = if (expired()) {
         124
+    } else {
+        try {
+            statusReader.get(remaining())
+        } catch (_: Exception) {
+            124
+        }
     }
     let completed = state.compareAndSwap(0, 1)
     if (completed) { let _ = closeExampleProcessJob(job) }
     watchdog.get()
-    (if (completed) { exitCode } else { 124 }, output[0], error[0])
+    (if (completed && !readExpired) { exitCode } else { 124 }, output[0], error[0])
 }

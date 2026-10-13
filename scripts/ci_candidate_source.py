@@ -44,6 +44,9 @@ CANDIDATE_WORKFLOW_NAME = "CI"
 CANDIDATE_ARTIFACT_PREFIX = "cjdoc-linux-candidate"
 DEFAULT_DEADLINE_SECONDS = 900
 DEFAULT_POLL_SECONDS = 30
+# The publication gate waits for the consumed attempt to become terminal; it is
+# bounded so a genuinely stuck CI run still fails the deployment.
+DEFAULT_GATE_SECONDS = 1800
 _SHA256 = frozenset("0123456789abcdef")
 
 
@@ -95,32 +98,43 @@ def _decode_stream(text: str) -> list[object]:
 
 
 def gh_api(path: str, *, paginate: bool = True, tries: int = 5) -> object:
-    """Read one REST resource, retrying the transient failures `gh` reports."""
+    """Read one REST resource, retrying the transient failures `gh` reports.
+
+    A truncated body is one of those transient failures: `gh api` can exit 0 with
+    a cut-off page, so a JSON decode error must be retried exactly like a nonzero
+    status. Treating it as fatal would abort candidate discovery (or the
+    publication check) on the very flakiness the retry loop exists for.
+    """
     args = ["gh", "api"] + (["--paginate"] if paginate else []) + [path]
     last = ""
     for attempt in range(tries):
         completed = subprocess.run(args, capture_output=True, text=True)
         if completed.returncode == 0:
-            values = _decode_stream(completed.stdout)
-            if not paginate:
-                return values[0] if values else {}
-            if not values:
-                return {}
-            if len(values) == 1:
-                return values[0]
-            merged: dict[str, object] = {}
-            for value in values:
-                if not isinstance(value, dict):
-                    continue
-                for key, item in value.items():
-                    if isinstance(item, list):
-                        merged.setdefault(key, [])
-                        assert isinstance(merged[key], list)
-                        merged[key].extend(item)
-                    else:
-                        merged.setdefault(key, item)
-            return merged
-        last = completed.stderr.strip()
+            try:
+                values = _decode_stream(completed.stdout)
+            except ValueError as error:
+                last = f"malformed JSON response: {error}"
+            else:
+                if not paginate:
+                    return values[0] if values else {}
+                if not values:
+                    return {}
+                if len(values) == 1:
+                    return values[0]
+                merged: dict[str, object] = {}
+                for value in values:
+                    if not isinstance(value, dict):
+                        continue
+                    for key, item in value.items():
+                        if isinstance(item, list):
+                            merged.setdefault(key, [])
+                            assert isinstance(merged[key], list)
+                            merged[key].extend(item)
+                        else:
+                            merged.setdefault(key, item)
+                return merged
+        else:
+            last = completed.stderr.strip()
         if attempt + 1 < tries:
             time.sleep(2 * (attempt + 1))
     raise ResolutionError(f"ci_candidate_source.py: gh api {path} failed: {last[:400]}")
@@ -226,14 +240,31 @@ def inspect_candidates(repository: str, commit: str, *, require_success: bool = 
                 unmarked += 1
             continue
         for marker in markers:
-            status = attempt_status(repository, run_id, run["attempt"])
+            try:
+                status = attempt_status(repository, run_id, run["attempt"])
+            except ResolutionError as error:
+                # A transient CLI/API failure while reading a candidate must not
+                # abort resolution: the contract is to fall back to a local build,
+                # and a later poll may still read it. The publication gate stays
+                # fail-closed because `require_ready` calls this same code and
+                # raises when nothing is ready.
+                failed.append({"id": run_id, "attempt": run["attempt"],
+                               "reason": f"unreadable attempt: {error}"})
+                continue
             problems = attempt_problems(status, commit, require_success=require_success)
             if problems:
-                failed.append({"id": run_id, "attempt": run["attempt"],
-                               "reason": problems[0]})
+                # An adoption-time rejection because the attempt is still running is
+                # "not ready yet", not "failed": during the early-start window the
+                # marker exists precisely while the matrix is unfinished, so it must
+                # keep the caller waiting instead of ending the wait with a fallback.
+                if not require_success and _still_running(status):
+                    pending = True
+                else:
+                    failed.append({"id": run_id, "attempt": run["attempt"],
+                                   "reason": problems[0]})
                 continue
             artifact = f"{CANDIDATE_ARTIFACT_PREFIX}-{run_id}-{run['attempt']}"
-            if not live_candidate_artifact(repository, artifact):
+            if not live_candidate_artifact(repository, artifact, run_id):
                 failed.append({"id": run_id, "attempt": run["attempt"],
                                "reason": "missing candidate artifact"})
                 continue
@@ -244,9 +275,22 @@ def inspect_candidates(repository: str, commit: str, *, require_success: bool = 
     return {"ready": ready, "failed": failed, "pending": pending, "unmarked": unmarked}
 
 
-def live_candidate_artifact(repository: str, name: str) -> bool:
+def live_candidate_artifact(repository: str, name: str, run_id: int) -> bool:
+    """Whether the given run still owns a live artifact with this exact name.
+
+    The artifact list is queried by name repository-wide, so another run that
+    happens to have an unexpired artifact of the same encoded name must not count:
+    the Pages download is restricted to the selected run, and committing to reuse
+    on a foreign artifact would fail the reuse job with no local fallback left.
+    """
     payload = gh_api(f"repos/{repository}/actions/artifacts?name={name}")
-    return any(not artifact.get("expired") for artifact in _items(payload, "artifacts"))
+    for artifact in _items(payload, "artifacts"):
+        if artifact.get("expired"):
+            continue
+        owner = artifact.get("workflow_run") or {}
+        if owner.get("id") == run_id:
+            return True
+    return False
 
 
 def resolve(repository: str, commit: str, event: str, explicit_run_id: str,
@@ -260,7 +304,11 @@ def resolve(repository: str, commit: str, event: str, explicit_run_id: str,
         return {"reuse": False, "reason": "workflow_dispatch without candidate_run_id builds locally",
                 "candidateSource": "local-build"}
     if explicit_run_id:
-        attempt = int(explicit_run_attempt or 1)
+        try:
+            attempt = int(explicit_run_attempt or 1)
+        except ValueError:
+            return {"reuse": False, "candidateSource": "local-build",
+                    "reason": f"candidate_run_attempt is not numeric: {explicit_run_attempt!r}"}
         return _explicit_candidate(repository, commit, explicit_run_id, attempt)
     deadline = time.time() + max(0, deadline_seconds)
     while True:
@@ -274,7 +322,13 @@ def resolve(repository: str, commit: str, event: str, explicit_run_id: str,
         if len(choices) > 1:
             return {"reuse": False, "candidateSource": "local-build",
                     "reason": f"expected exactly one ready CI candidate, found {len(choices)}"}
-        if not state["pending"]:
+        # "No run registered yet" is not proof that CI will not run: Pages and CI are
+        # started independently by the same push, so the first query can legitimately
+        # see nothing. Only a terminal, conclusive state may end the wait early;
+        # otherwise honour the deadline so scheduling order cannot duplicate the
+        # Linux build. A run that already concluded without success is terminal, and
+        # a successful-but-silent one predates the marker step, so both fall through.
+        if not state["pending"] and (state["failed"] or state.get("unmarked")):
             if state.get("unmarked"):
                 reason = (f"{state['unmarked']} successful CI run(s) published no readiness "
                           "marker (revision predates markers?)")
@@ -289,6 +343,11 @@ def resolve(repository: str, commit: str, event: str, explicit_run_id: str,
                     "reason": f"no ready CI candidate within {deadline_seconds}s"}
         log("waiting for this commit's Linux candidate readiness marker...")
         time.sleep(max(1, poll_seconds))
+
+
+def _still_running(status: dict) -> bool:
+    """Whether this attempt has not reached a terminal state yet."""
+    return status.get("status") != "completed"
 
 
 def attempt_problems(status: dict, commit: str, *, require_success: bool = True) -> list[str]:
@@ -334,7 +393,7 @@ def _explicit_candidate(repository: str, commit: str, run_id: str, attempt: int,
         return {"reuse": False, "candidateSource": "local-build",
                 "reason": f"run {run_id} attempt {attempt} published no readiness marker"}
     artifact = f"{CANDIDATE_ARTIFACT_PREFIX}-{numeric}-{attempt}"
-    if not live_candidate_artifact(repository, artifact):
+    if not live_candidate_artifact(repository, artifact, numeric):
         return {"reuse": False, "candidateSource": "local-build",
                 "reason": f"run {run_id} attempt {attempt} has no live {artifact}"}
     return {"reuse": True, "candidateSource": "ci-artifact", "runId": numeric,
@@ -439,28 +498,55 @@ def verify_marker(repository: str, run_id: int, run_attempt: int, marker_dir: Pa
 # -------------------------------------------------------------- require-ready
 
 def require_ready(repository: str, commit: str, explicit_run_id: str,
-                  explicit_run_attempt: str, event: str) -> dict:
+                  explicit_run_attempt: str, event: str,
+                  deadline_seconds: int = DEFAULT_GATE_SECONDS,
+                  poll_seconds: int = DEFAULT_POLL_SECONDS, log=print) -> dict:
     """Prove the consumed branch really passed before a site may be published.
 
     The fast path may start Pages early, but publication must still see a CI run
     that finished successfully for this commit and whose Linux candidate was the
     one consumed.
+
+    The consumed attempt's status is a point-in-time reading, so this waits (bounded)
+    for it to become terminal instead of failing on the first look: Pages can
+    legitimately reach this gate while the consumed CI workflow is still finishing,
+    and failing here would throw away an otherwise successful deployment. It still
+    fails closed if the attempt ultimately does not succeed.
     """
     if explicit_run_id:
-        attempt = int(explicit_run_attempt or 1)
-        resolved = _explicit_candidate(repository, commit, explicit_run_id, attempt,
-                                       require_success=True)
-        if not resolved["reuse"]:
-            raise ResolutionError("ci_candidate_source.py: explicitly requested candidate "
-                                  f"{explicit_run_id}/{attempt} is not usable: {resolved['reason']}")
-        return resolved
-    state = inspect_candidates(repository, commit, require_success=True)
-    if len(state["ready"]) != 1:
-        raise ResolutionError(
-            f"ci_candidate_source.py: expected exactly one ready CI candidate for {commit}, "
-            f"found {len(state['ready'])} (pending={state['pending']}, "
-            f"failed={state['failed'][:3]})")
-    return state["ready"][0]
+        try:
+            attempt = int(explicit_run_attempt or 1)
+        except ValueError:
+            raise ResolutionError(
+                f"ci_candidate_source.py: candidate_run_attempt is not numeric: "
+                f"{explicit_run_attempt!r}")
+        deadline = time.time() + max(0, deadline_seconds)
+        while True:
+            status = attempt_status(repository, int(explicit_run_id), attempt)
+            problems = attempt_problems(status, commit, require_success=True)
+            if not problems:
+                resolved = _explicit_candidate(repository, commit, explicit_run_id, attempt,
+                                               require_success=True)
+                if resolved["reuse"]:
+                    return resolved
+                problems = [resolved["reason"]]
+            if not _still_running(status) or time.time() >= deadline:
+                raise ResolutionError("ci_candidate_source.py: explicitly requested candidate "
+                                      f"{explicit_run_id}/{attempt} is not usable: {problems[0]}")
+            log(f"waiting for run {explicit_run_id} attempt {attempt} to finish...")
+            time.sleep(max(1, poll_seconds))
+    deadline = time.time() + max(0, deadline_seconds)
+    while True:
+        state = inspect_candidates(repository, commit, require_success=True)
+        if len(state["ready"]) == 1:
+            return state["ready"][0]
+        if not state["pending"] or time.time() >= deadline:
+            raise ResolutionError(
+                f"ci_candidate_source.py: expected exactly one ready CI candidate for {commit}, "
+                f"found {len(state['ready'])} (pending={state['pending']}, "
+                f"failed={state['failed'][:3]})")
+        log("waiting for the consumed CI run to finish successfully...")
+        time.sleep(max(1, poll_seconds))
 
 
 # ---------------------------------------------------------------------- CLI
