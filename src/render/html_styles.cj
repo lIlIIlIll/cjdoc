@@ -445,8 +445,10 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
     .member-row.member-actions-enhanced .member-action-list{
         display:none;position:absolute;inset-block-start:calc(100% + .3rem);
         inset-inline-end:0;z-index:5;align-items:stretch;flex-direction:column;
-        flex-wrap:nowrap;gap:.1rem;min-width:12rem;
-        max-width:min(18rem,calc(100vw - 1.5rem));
+        flex-wrap:nowrap;gap:.1rem;
+        /* Subtract mobile main padding and the trigger's right inset at 200% zoom. */
+        min-width:min(12rem,calc(100vw - 2.25rem));
+        max-width:min(18rem,calc(100vw - 2.25rem));
         padding:.25rem;border:1px solid var(--line-strong);border-radius:8px;
         background:var(--surface);box-shadow:var(--shadow)
     }
