@@ -55,6 +55,23 @@ async function referenceBoxClassHref(page) {
   return link.getAttribute('href');
 }
 
+// The member controls are siblings of native <details>, never children
+// of its hidden body or its interactive <summary>.
+function memberActions(member) {
+  return member.locator('xpath=..').locator(':scope > .member-detail-actions');
+}
+
+async function openReferenceBox(page) {
+  await openIndex(page);
+  const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+  const packageUrl = new URL(packageHref, indexUrl).href;
+  await gotoFile(page, packageUrl);
+  const classHref = await referenceBoxClassHref(page);
+  const classUrl = new URL(classHref, packageUrl).href;
+  await gotoFile(page, classUrl);
+  return classUrl;
+}
+
 let httpServer;
 let httpBaseUrl;
 
@@ -239,11 +256,11 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-member-filter-status]')).toContainText('matching member');
     const normalizeForRestore = page.locator('details[data-cjdoc-member][data-member-name="normalize"]');
     await normalizeForRestore.locator('.member-detail-summary').click();
-    const restoreHref = await normalizeForRestore.locator('.member-permalink').getAttribute('href');
+    const restoreHref = await memberActions(normalizeForRestore).locator('.member-permalink').getAttribute('href');
     expect(restoreHref).toBeTruthy();
     await page.evaluate(() => window.scrollTo(0, Math.min(520, document.documentElement.scrollHeight - innerHeight)));
     const readingY = await page.evaluate(() => window.scrollY);
-    await normalizeForRestore.locator('.member-permalink').click();
+    await memberActions(normalizeForRestore).locator('.member-permalink').click();
     await expect(page.locator('.sibling-members')).toBeVisible();
     await page.goBack();
     await page.waitForTimeout(50);
@@ -271,7 +288,7 @@ test.describe('generated HTML reference', () => {
     await labelDetail.locator('.member-detail-summary').click();
     await expect(labelDetail).toHaveAttribute('open', '');
     await expect(labelDetail.locator('.api-usages')).toContainText('Getting started');
-    const actions = labelDetail.locator('.member-detail-actions');
+    const actions = memberActions(labelDetail);
     await expect(actions).toHaveAttribute('role', 'group');
     await expect(actions).toHaveAttribute('aria-label', 'Member actions');
     await expect(actions.locator('.member-action')).toHaveCount(3);
@@ -283,7 +300,7 @@ test.describe('generated HTML reference', () => {
     await expect(actions.locator('.member-source-link')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
     await expect(actions.locator('.member-action-copy')).toHaveAttribute('aria-label', 'Copy link');
     await expect(actions.locator('.member-action-copy')).toHaveAttribute('title', 'Copy link');
-    await expect(actions.locator('.member-action')).toHaveText(['', '', '']);
+    await expect(actions.locator('.member-action-label')).toHaveText(['Open standalone API page', 'View source code', 'Copy link']);
     const minActionHeight = await actions.locator('.member-action').evaluateAll(
       (elements) => Math.min(...elements.map(element => element.getBoundingClientRect().height))
     );
@@ -365,7 +382,7 @@ test.describe('generated HTML reference', () => {
 
     await expect(page.locator('.source-action')).not.toHaveCount(0);
     await expect(page.locator('.source-action a')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
-    const memberHref = await normalizeDetail.locator('.member-permalink').getAttribute('href');
+    const memberHref = await memberActions(normalizeDetail).locator('.member-permalink').getAttribute('href');
     const memberUrl = new URL(memberHref, classUrl).href;
     await gotoFile(page, memberUrl);
     await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
@@ -385,7 +402,7 @@ test.describe('generated HTML reference', () => {
     await expect(copyButton).toHaveAttribute('data-copied', 'true');
 
     await gotoFile(page, classUrl);
-    const labelHref = await page.locator('details[data-cjdoc-member][data-member-name="label"] .member-permalink').getAttribute('href');
+    const labelHref = await memberActions(page.locator('details[data-cjdoc-member][data-member-name="label"]')).locator('.member-permalink').getAttribute('href');
     expect(labelHref).toBeTruthy();
     await gotoFile(page, new URL(labelHref, classUrl).href);
     await expect(page.locator('.api-usages')).toContainText('Getting started');
@@ -523,7 +540,7 @@ test.describe('generated HTML reference', () => {
       await ownMember.locator('summary').click();
       await expect(ownMember.locator('.member-detail-body')).toBeVisible();
       await expect(ownMember).toContainText('Member supplied by an extension.');
-      await expect(ownMember.locator('.member-permalink')).toHaveAttribute('href', /symbol-/);
+      await expect(memberActions(ownMember).locator('.member-permalink')).toHaveAttribute('href', /symbol-/);
       const target = page.locator('.symbol-relationships a.relation-target');
       await expect(target).toHaveCount(1);
       await target.click();
@@ -533,7 +550,7 @@ test.describe('generated HTML reference', () => {
       if (!(await ownMember.evaluate(node => node.open))) {
         await ownMember.locator('summary').click();
       }
-      await ownMember.locator('.member-permalink').click();
+      await memberActions(ownMember).locator('.member-permalink').click();
       await expect(page.locator('.breadcrumbs a').filter({ hasText: 'Extension ReferenceBox<T>' })).toHaveCount(1);
       await page.goBack();
       await expectStable(page);
@@ -621,7 +638,7 @@ test.describe('generated HTML reference', () => {
     const classHref = await referenceBoxClassHref(page);
     const classUrl = new URL(classHref, packageUrl).href;
     await gotoFile(page, classUrl);
-    const memberHref = await page.locator('[data-cjdoc-member][data-member-name="normalize"] .member-permalink').getAttribute('href');
+    const memberHref = await memberActions(page.locator('[data-cjdoc-member][data-member-name="normalize"]')).locator('.member-permalink').getAttribute('href');
     const memberUrl = new URL(memberHref, classUrl).href;
     const urls = [
       packageUrl,
@@ -642,6 +659,54 @@ test.describe('generated HTML reference', () => {
     }
   });
 
+  test('member header actions work when collapsed and remain stable on hover and focus', async ({ page }) => {
+    const classUrl = await openReferenceBox(page);
+    const member = page.locator('details[data-cjdoc-member][data-member-name="label"]');
+    const summary = member.locator('summary');
+    const actions = memberActions(member);
+    await expect(member).not.toHaveAttribute('open', '');
+    await expect(actions).toHaveCount(1);
+    await expect(actions.locator('.member-action')).toHaveCount(3);
+    await expect(actions).toHaveCSS('opacity', '0');
+    const before = await summary.boundingBox();
+    await summary.hover();
+    await expect(actions).toHaveCSS('opacity', '1');
+    const after = await summary.boundingBox();
+    expect(Math.abs(after.width - before.width)).toBeLessThan(1);
+    expect(Math.abs(after.height - before.height)).toBeLessThan(1);
+    await actions.locator('.member-action-copy').click();
+    await expect(actions.locator('.member-action-copy')).toHaveAttribute('data-copied', 'true');
+    await expect(member).not.toHaveAttribute('open', '');
+    expect(page.url()).toBe(classUrl);
+
+    await summary.focus();
+    await page.keyboard.press('Tab');
+    await expect(actions.locator('.member-permalink')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(actions.locator('.member-source-link')).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(actions.locator('.member-action-copy')).toBeFocused();
+    await expect(actions).toHaveCSS('opacity', '1');
+
+    await summary.click();
+    await expect(member).toHaveAttribute('open', '');
+    await expect(member.locator('.member-detail-body')).toBeVisible();
+    await expect(member.locator('.member-detail-actions')).toHaveCount(0);
+    await expect(actions).toHaveCount(1);
+    await actions.locator('.member-action-copy').focus();
+    await expect(member).toHaveAttribute('open', '');
+
+    // Each overload must retain its own permanent and copy target.
+    const ping = page.locator('details[data-cjdoc-member][data-member-name="ping"]');
+    const first = memberActions(ping.nth(0));
+    const second = memberActions(ping.nth(1));
+    expect(await first.locator('.member-permalink').getAttribute('href'))
+      .not.toBe(await second.locator('.member-permalink').getAttribute('href'));
+    expect(await first.locator('.member-action-copy').getAttribute('data-cjdoc-copy-link'))
+      .not.toBe(await second.locator('.member-action-copy').getAttribute('data-cjdoc-copy-link'));
+    await expectStable(page);
+  });
+
   test('touch can open a member without navigating away', async ({ browser }) => {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
     const page = await context.newPage();
@@ -654,6 +719,25 @@ test.describe('generated HTML reference', () => {
     await page.goto(new URL(classHref, page.url()).href);
     const before = page.url();
     const detail = page.locator('[data-cjdoc-member][data-member-name="normalize"]');
+    const actions = memberActions(detail);
+    const toggle = actions.locator('[data-cjdoc-member-actions-toggle]');
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await toggle.tap();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(actions.locator('.member-permalink')).toBeVisible();
+    await expect(actions.locator('.member-source-link')).toBeVisible();
+    await expect(actions.locator('.member-action-copy')).toBeVisible();
+    await actions.locator('.member-action-copy').tap();
+    await expect(detail).not.toHaveAttribute('open', '');
+    await toggle.focus();
+    await page.keyboard.press('Escape');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(toggle).toBeFocused();
+    await toggle.tap();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await page.touchscreen.tap(5, 830);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await detail.locator('.member-detail-summary').tap();
     await expect(detail).toHaveAttribute('open', '');
     expect(page.url()).toBe(before);
