@@ -24,7 +24,9 @@ on-error = "warn"
 
 `mode = "off"` 要求禁用高亮；`on-error` 表达高亮失败时的警告或错误策略，而不是 doctest 策略。配置读取上限为 **64 KiB**，复用项目的有界读取路径。未知键、重复键、无效模式、无效错误策略、空数组、空语言和规范化后的重复语言都是显式配置错误。此读取器沿用 doctest 的单行 section/value 风格；语言数组使用双引号，不支持多行数组或转义语言名。
 
-语言名按 ASCII 去除首尾空白并转为小写，再规范化别名。未知语言可以作为配置数据保留，但不因此获得后端。`languages = ["cj", "cangjie"]` 是重复错误。**配置语言不授权执行程序**：即使列表包含 Python 等外部语言，没有宿主显式授权也只能得到有原因的纯文本结果。项目里的 `cjdoc.toml` 不能指定可执行程序、安装依赖或获得网络权限。
+语言名按 ASCII 去除首尾空白并转为小写，再规范化别名。未知语言可以作为配置数据保留，但不因此获得后端。`languages = ["cj", "cangjie"]` 是重复错误。生成阶段的实际生效范围由配置决定，而不是由渲染器或默认值决定：`mode = "off"` 时生成端完全不再附加高亮元数据（签名与代码块都没有），网页只显示转义后的纯文本；`languages` 只声明哪些语言允许进行高亮工作，未列入的语言得到显式 `plain` 结果（原因 `disabled`），而不是被静默跳过或伪装成成功；`on-error = "error"` 时高亮后端的失败会让本次运行失败（`error[CJDOC4027]` 并使文档 `partial`），`warn` 时只记录警告；不受支持、被关闭或缺少元数据等预期纯文本结果不会触发该升级。渲染端只消费已持久化的元数据，因此这些开关都不需要在阅读时重新运行任何东西。
+
+**配置语言不授权执行程序**：即使列表包含 Python 等外部语言，没有宿主显式授权也只能得到有原因的纯文本结果。项目里的 `cjdoc.toml` 不能指定可执行程序、安装依赖或获得网络权限。
 
 ## 语言和别名
 
@@ -45,6 +47,8 @@ on-error = "warn"
 Shell 家族**不统一**：`sh`、`zsh`、`fish`、`powershell` 不会被改成 `bash`。`output` 是展示输出文本，不是可执行代码；高亮不会改变它的 doctest 输出比较含义。
 
 内置 Cangjie 路径使用 lexer，不是按字符串或正则猜关键词的启发式着色。范围始终引用原始源码字节，不使用已解码的 token 值重建字符串；注释、引号、转义和 Unicode 拼写保持不变。插值字符串整体作为字符串 token，不声称为插值内部表达式提供独立高亮。lexer 抛错时整块降级为纯文本，不编造部分范围。`complete` 仅表示高亮流程完成，不表示语法合法或编译成功。
+
+布尔字面量 `true` / `false` 使用 lexer 的 `BOOL_LITERAL` 分类，对应展示类别 `literal`；不改变 `String` / `Array` / `Char` 的已测量内置标识符例外列表。
 
 ## 外部适配器：离线预安装与授权
 
@@ -86,9 +90,11 @@ Doc IR **`cjdoc.doc-ir/12`** 的可选 `codeHighlight` / `signatureHighlight` �
 | `lexer-failed` | lexer 失败 |
 | `unterminated-token` | token 未闭合 |
 
-旧版本 Doc IR 缺少元数据时按纯文本 / `missing-metadata` 兼容降级，不捏造已完成高亮。高亮是展示元数据，不改变源码 API contract 指纹。
+旧版本 Doc IR 的代码块缺少元数据时按纯文本 / `missing-metadata` 兼容降级，不捏造已完成高亮。签名另有预先存在的持久化 `SourceApiSignature` token witness：`signatureHighlight` 缺失时保留 witness 着色，这不是高亮数据；存在但原文校验失败时仅转义原文、不着色；存在且有效时只使用该高亮的范围，绝不混入 witness 的颜色。高亮是展示元数据，不改变源码 API contract 指纹。
 
 可选适配器的固定预算为：每块 **262144 UTF-8 字节（256 KiB）**、最多 **65536 spans**、每条输入 JSONL **2097152 字节（2 MiB）**、每条输出 JSONL **3145728 字节（3 MiB）**，不含结尾换行。超限整块纯文本，不截断源码或返回部分 spans。协议原因 unsupported-language 映射到 Doc IR 的 unsupported；invalid-request / malformed-json 映射到 backend-unavailable；resource-limit / invalid-spans 保留对应模型原因；未知原因拒绝整个响应。
+
+`@example` 只解析一次：生成端先用同一个 Markdown 引擎解析，再在受限深度/节点预算（深度 48、100000 节点）内检查是否含代码块；超限则退回旧路径。含代码的示例渲染为一个投影树，其中的本地图片、标题锚点与语义链接与正文一样参与资源发布、去重和链接解析；不含代码的示例沿用既有的 `description` 纯文本渲染（该路径本来也不产生 `<img>`），因此不会收集或发布用不到的资源。旧版本 Doc IR 的代码块缺少元数据时按 `plain` / `missing-metadata` 降级。
 
 生成期的签名、注释围栏和 `@example` Markdown 子树共享同一个总预算：最多 **8192 spans**、**4 MiB 高亮元数据预算**和 **4 MiB 原始代码准备量**。元数据预算包含 JSON 对象与缩进的保守开销，不只是代码长度。按已有符号、注释和代码块遍历顺序分配；首次超限后，不再附加任何后续高亮元数据，并仅报告一次 `warning[CJDOC3028]`。不截断源码或 spans；缺少元数据的代码按 `plain` / `missing-metadata` 渲染。
 

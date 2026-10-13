@@ -58,10 +58,14 @@ internal class MarkdownGenerationContext {
     let highlightMode: String
     let highlightBudget: HighlightGenerationBudget
 
-    init(highlightMode!: String = "auto", highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES,
+    init(highlightMode!: String = "auto", highlightLanguages!: ?HighlightConfig = None,
+        highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES,
         externalOptions!: ?HighlightExternalOptions = None) {
         this.highlightMode = highlightMode
-        this.highlightBudget = HighlightGenerationBudget(byteLimit: highlightBytes, externalOptions: externalOptions)
+        this.highlightBudget = HighlightGenerationBudget(byteLimit: highlightBytes,
+            highlightLanguages: highlightLanguages,
+            onError: match (highlightLanguages) { case Some(value) => value.onError case None => "warn" },
+            externalOptions: externalOptions)
     }
     private var nodes: Int64 = 0
     private var textBytes: Int64 = 0
@@ -111,6 +115,7 @@ internal class MarkdownGenerationContext {
     func diagnostics(): Array<public_model.Diagnostic> {
         let result = ArrayList<public_model.Diagnostic>(diagnosticsStorage.toArray())
         result.add(all: highlightBudget.diagnostics())
+        result.add(all: highlightBudget.escalationDiagnostics())
         result.toArray()
     }
 
@@ -377,10 +382,41 @@ public func parseStandaloneMarkdown(body: String, highlightMode!: String = "auto
     publicMarkdown(body, assets, "conceptual.md", source, "cjdoc:conceptual", context)
 }
 
-private func markdownHasCodeBlock(node: public_model.MarkdownNode): Bool {
-    if (node.kind == "code_block") { return true }
-    for (child in node.children) { if (markdownHasCodeBlock(child)) { return true } }
-    false
+// Inspect the already parsed AST before allowing asset collection. Discarded
+// examples keep the legacy description path and must have no collector effects.
+private func exampleMarkdownCodeInspection(node: NodeRef, depth: Int64,
+    remaining: Int64): (Bool, Int64) {
+    if (depth > MAX_GENERATED_MARKDOWN_DEPTH || remaining <= 0) {
+        throw IllegalArgumentException("example Markdown inspection exceeds node/depth budget")
+    }
+    var hasCode = match (node.kind) { case NodeKind.CodeBlock => true case _ => false }
+    var left = remaining - 1
+    let children = node.children()
+    var index: Int64 = 0
+    while (index < children.size) {
+        let (childHasCode, childRemaining) = exampleMarkdownCodeInspection(children[index], depth + 1, left)
+        hasCode = hasCode || childHasCode
+        left = childRemaining
+        index++
+    }
+    (hasCode, left)
+}
+
+private func publicExampleMarkdown(body: String, assetCollector: LocalAssetCollector, sourcePath: String,
+    declarationSource: public_model.SourceRange, symbolId: String,
+    context: MarkdownGenerationContext): ?public_model.MarkdownNode {
+    if (body.isEmpty()) { return None }
+    let result = MarkdownEngine.builder().profile(MarkdownProfile.gfmModernV1()).build().parse(body)
+    let root = result.document.root()
+    let hasCode = try {
+        let (found, _) = exampleMarkdownCodeInspection(root, 0, MAX_GENERATED_MARKDOWN_NODES)
+        found
+    } catch (_: IllegalArgumentException) {
+        return None
+    }
+    if (!hasCode) { return None }
+    Some(publicMarkdownNode(root, result.source, assetCollector, sourcePath,
+        declarationSource, symbolId, context, 0))
 }
 
 internal func publicComment(value: DocComment, assetCollector: LocalAssetCollector, sourcePath: String,
@@ -396,13 +432,13 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
             tags.add(publicTagForAudience(tag, renderableIds))
         }
         for (tag in value.examples) {
-            let tree = publicMarkdown(tag.description, assetCollector, sourcePath,
+            let tree = publicExampleMarkdown(tag.description, assetCollector, sourcePath,
                 declarationSource, symbolId, context)
             let ordinary = publicTagForAudience(tag, renderableIds)
             tags.add(public_model.DocTag(ordinary.name, ordinary.subject, ordinary.description,
                 referenceState: ordinary.referenceState, targetSymbolId: ordinary.targetSymbolId,
                 directives: ordinary.directives,
-                exampleMarkdown: if (markdownHasCodeBlock(tree)) { Some(tree) } else { None }))
+                exampleMarkdown: tree))
         }
         match (value.returns) {
             case Some(tag) => tags.add(publicTagForAudience(tag, renderableIds))

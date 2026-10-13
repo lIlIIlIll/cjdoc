@@ -13,6 +13,7 @@ private func cangjieCodeKind(kind: String, spelling: String): ?CodeKind {
     match (kind) {
         case "STRING_LITERAL" | "MULTILINE_RAW_STRING" | "SINGLE_QUOTED_STRING_LITERAL" => Some(CodeKind.StringLiteral)
         case "INTEGER_LITERAL" | "FLOAT_LITERAL" => Some(CodeKind.Number)
+        case "BOOL_LITERAL" => Some(CodeKind.Literal)
         case "COMMENT" => Some(CodeKind.Comment)
         case "IS" | "AS" | "STRUCT" | "ENUM" | "PACKAGE" | "IMPORT" |
             "CLASS" | "INTERFACE" | "FUNC" | "MACRO" | "QUOTE" | "LET" |

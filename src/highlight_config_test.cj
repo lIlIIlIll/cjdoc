@@ -42,6 +42,19 @@ class HighlightConfigTest {
     }
 
     @TestCase
+    func languageSelectionNormalizesCandidatesWithoutAuthorizingOthers(): Unit {
+        let defaults = HighlightConfig()
+        @Expect(defaults.allowsLanguage(" CJ "))
+        @Expect(!defaults.allowsLanguage("python"))
+        @Expect(!defaults.allowsLanguage("text"))
+        let selected = HighlightConfig(languages: ["CJ", "py"])
+        @Expect(selected.allowsLanguage("cangjie"))
+        @Expect(selected.allowsLanguage(" PYTHON "))
+        @Expect(!selected.allowsLanguage("javascript"))
+    }
+
+
+    @TestCase
     func rejectsInvalidModesAndErrorPoliciesWithKey(): Unit {
         for (setting in ["mode = \"automatic\"", "mode = \"\"", "mode =",
             "on-error = \"ignore\"", "on-error = \"\"", "on-error ="]) {

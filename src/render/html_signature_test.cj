@@ -46,6 +46,45 @@ private func signatureTestDocument(raw: String,
 
 @Test
 class HtmlSignatureMappingTest {
+
+    @TestCase
+    func signatureColourDistinguishesAbsentStaleAndValidHighlight(): Unit {
+        let raw = "public func accept(label!: String = \"Token\", item!: Token): Token"
+        let prepared = CodeHighlight("cangjie", contractFingerprint(raw), raw.size,
+            "cjdoc-cangjie-lexer", "1", "complete", None, [CodeSpan(0, 6, "comment")])
+        let stale = CodeHighlight("cangjie", contractFingerprint(raw + " "), raw.size + 1,
+            "cjdoc-cangjie-lexer", "1", "complete", None, [CodeSpan(0, 6, "comment")])
+        let witnessHtml = "<span class=\"code-keyword\">public</span> " +
+            "<span class=\"code-keyword\">func</span> accept(label!: " +
+            "<span class=\"code-type\">String</span> = " +
+            "<span class=\"code-string\">&quot;Token&quot;</span>, item!: Token): Token"
+        let validHtml = "<span class=\"code-comment\">public</span>" + escapeHtml(raw[6..])
+        let cases: Array<(?CodeHighlight, String)> = [
+            (None, witnessHtml), (Some(stale), escapeHtml(raw)), (Some(prepared), validHtml)
+        ]
+        for ((highlight, expected) in cases) {
+            let document = signatureTestDocument(raw, highlight: highlight)
+            let subject = document.declarations[1]
+            let out = RenderTextBuffer()
+            appendSignatureTextHtml(out, subject)
+            @Expect(out.toString(), expected)
+            let linked = RenderTextBuffer()
+            let links = HtmlTypeLinkIndex(document, RenderProjection(document))
+            appendLinkedSignatureHtml(linked, subject, links, "../")
+            if (let Some(value) <- highlight) {
+                if (!value.matchesSource(raw)) {
+                    @Expect(linked.toString(), escapeHtml(raw))
+                    continue
+                }
+            }
+            @Expect(linked.toString().contains("class=\"type-link signature-type-link\""))
+            @Expect(linked.toString().contains("code-comment"), highlight.isSome())
+            @Expect(linked.toString().contains("code-keyword"), highlight.isNone())
+            @Expect(linked.toString().contains("code-type"), highlight.isNone())
+            @Expect(linked.toString().contains("code-string"), highlight.isNone())
+        }
+    }
+
     @TestCase
     func persistedDisplaySpansMergeInsideExistingTypeLinks(): Unit {
         let raw = "public func accept(label!: String = \"Token\", item!: Token): Token"

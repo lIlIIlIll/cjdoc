@@ -39,6 +39,20 @@ class CodeHighlightLexerTest {
     }
 
     @TestCase
+    func booleanLiteralsKeepTheirOriginalLiteralColour(): Unit {
+        let source = "let a = true\nlet b = false"
+        let literals = highlightedSpellings(source, "literal")
+        @Assert(literals.size, 2)
+        @Expect(literals[0], "true")
+        @Expect(literals[1], "false")
+        let html = api_render.renderStandaloneMarkdownHtml(
+            parseStandaloneMarkdown("~~~cj\n" + source + "\n~~~\n"))
+        @Expect(html.contains("<span class=\"code-literal\">true</span>"))
+        @Expect(html.contains("<span class=\"code-literal\">false</span>"))
+    }
+
+
+    @TestCase
     func interpolationIsOneOriginalLiteral(): Unit {
         let literal = "\"a $" + "{x + 1} b\""
         let texts = highlightedSpellings("let s = " + literal, "string")

@@ -19,10 +19,18 @@ internal class HighlightGenerationBudget {
     private var metadataBytes: Int64 = 0
     private var spans: Int64 = 0
     private var exhausted: Bool = false
+    private var backendFailed: Bool = false
     private let externalOptions: ?HighlightExternalOptions
+    private let highlightLanguages: ?HighlightConfig
+    private let onError: String
 
-    init(byteLimit!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES, externalOptions!: ?HighlightExternalOptions = None) {
+    init(byteLimit!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES,
+        highlightLanguages!: ?HighlightConfig = None,
+        onError!: String = "warn",
+        externalOptions!: ?HighlightExternalOptions = None) {
+        this.onError = onError
         this.externalOptions = externalOptions
+        this.highlightLanguages = highlightLanguages
         let capped = if (byteLimit < 0) { 0 } else if (byteLimit > MAX_HIGHLIGHT_TOTAL_BYTES) {
             MAX_HIGHLIGHT_TOTAL_BYTES
         } else { byteLimit }
@@ -33,6 +41,17 @@ internal class HighlightGenerationBudget {
 
     func prepare(source: String, language: String): ?public_model.CodeHighlight {
         if (exhausted) { return None }
+        // A language the project did not opt into still produces a record, marked
+        // `disabled` rather than `unsupported`: the issue requires the plain state
+        // to distinguish "turned off here" from "no backend for this language",
+        // and an absent record would erase that difference.
+        if (let Some(configured) <- highlightLanguages) {
+            if (!configured.allowsLanguage(language)) {
+                let disabled = publicCodeHighlight(source, language, disabledReason: Some("disabled"))
+                metadataBytes += 4096 + 6 * disabled.language.size
+                return Some(disabled)
+            }
+        }
         if (byteLimit == 0 || source.size > MAX_HIGHLIGHT_TOTAL_PREPARED_BYTES - preparedBytes) {
             exhausted = true
             return None
@@ -49,7 +68,31 @@ internal class HighlightGenerationBudget {
         }
         spans += value.spans.size
         metadataBytes += bytes
+        recordBackendFailure(value)
         Some(value)
+    }
+
+    // Only a failed backend counts as a highlight error. A language that is
+    // unsupported, switched off, or missing metadata is an intended plain result,
+    // and genuinely unterminated source is a property of the code, not of the
+    // highlighting pipeline, so `on-error = "error"` must not fail those runs.
+    private func recordBackendFailure(value: public_model.CodeHighlight): Unit {
+        if (value.state != "plain") { return }
+        match (value.reason) {
+            case Some("backend-unavailable") | Some("lexer-failed") | Some("invalid-spans") =>
+                backendFailed = true
+            case _ => ()
+        }
+    }
+
+    func onErrorName(): String { onError }
+
+    // Escalation for `[highlight].on-error = "error"`: the same failure that is a
+    // warning by default must be able to fail the run explicitly.
+    func escalationDiagnostics(): Array<public_model.Diagnostic> {
+        if (onError != "error" || !backendFailed) { return [] }
+        [public_model.Diagnostic("error", "CJDOC4027",
+            "highlighting backend failed and [highlight].on-error is \"error\"; code text was preserved")]
     }
 
     func diagnostics(): Array<public_model.Diagnostic> {
@@ -130,10 +173,11 @@ internal class CodeHighlight {
 }
 
 internal func publicCodeHighlight(source: String, language: String,
-    externalOptions!: ?HighlightExternalOptions = None): public_model.CodeHighlight {
+    externalOptions!: ?HighlightExternalOptions = None,
+    disabledReason!: ?String = None): public_model.CodeHighlight {
     let normalized = public_model.normalizeCodeLanguage(language)
     let value = highlightCode(source, normalized, public_model.codeLanguageBackend(normalized),
-        externalOptions: externalOptions)
+        externalOptions: externalOptions, disabledReason: disabledReason)
     let spans = ArrayList<public_model.CodeSpan>()
     for (span in value.spans()) {
         spans.add(public_model.CodeSpan(span.startByte, span.endByte, codeKindName(span.kind)))
@@ -148,9 +192,17 @@ internal func publicCodeHighlight(source: String, language: String,
 }
 
 internal func highlightCode(source: String, language: String, backend: String,
-    externalOptions!: ?HighlightExternalOptions = None): CodeHighlight {
+    externalOptions!: ?HighlightExternalOptions = None,
+    disabledReason!: ?String = None): CodeHighlight {
     if (source.size > MAX_HIGHLIGHT_BLOCK_BYTES) {
         return CodeHighlight(source, language, [], CodeHighlightState.Plain, Some("resource-limit"))
+    }
+    // A configured-off language outranks the backend vocabulary: the block is not
+    // colored because the project said so, not because a backend was missing.
+    if (let Some(reason) <- disabledReason) {
+        if (!language.isEmpty()) {
+            return CodeHighlight(source, language, [], CodeHighlightState.Plain, Some(reason))
+        }
     }
     try {
         if (backend == "builtin") {

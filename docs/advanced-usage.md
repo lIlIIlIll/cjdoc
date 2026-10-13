@@ -328,7 +328,7 @@ cjpm -v
 
 ## 能力边界
 
-- 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/11`。
+- 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/12`。
 - 默认 `--semantic source` 使用 `std.ast` 和源码 lexer 做结构化源码遍历；注释仍来自原始源码，Doc IR 和 renderer 不依赖 CHIR。
 - `generate`/`check` 可显式使用 `--semantic chir`，并须通过 `--chir-worker <path>` 指向独立 worker executable。只有 `tools/chir-worker` package 导入 `stdx.chir`；core 通过受限文件协议调用它。worker 未配置或 CHIR 处理失败时保留 source declarations，并产生 `CJDOC2101`–`CJDOC2106` warning。
 - CHIR 逐个检查待编译的根包、workspace member 和已捕获依赖的 manifest。不支持的构建配置或编译选项产生 `CJDOC2102`，受影响的编译不会派发给 worker，源码/AST fallback 仍保留；TOML 注释不参与这项检查。

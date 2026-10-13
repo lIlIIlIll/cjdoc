@@ -293,6 +293,8 @@ private func appendSignatureRangeHtml(out: RenderTextBuffer, raw: String,
         appendCodeHighlightRangeHtml(out, raw, prepared, start, end)
         return
     }
+    // Without highlight data, presentation uses the persisted signature token
+    // witness, independently of the optional code-highlighting feature.
     var position = start
     for (token in tokens) {
         if (token.start < start || token.end > end) { continue }

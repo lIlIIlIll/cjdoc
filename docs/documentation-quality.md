@@ -42,7 +42,7 @@ cjdoc generate --project . --format coverage
 `--min-parameter-coverage` 阈值继续使用 presence coverage，不作为质量门禁。
 
 可通过 `cjdoc schema documentation-quality` 查看报告 schema。Doc IR 当前为
-`cjdoc.doc-ir/11`；生成的 coverage 报告使用 v2，v1 schema 保留给既有消费者。
+`cjdoc.doc-ir/12`；生成的 coverage 报告使用 v2，v1 schema 保留给既有消费者。
 
 
 

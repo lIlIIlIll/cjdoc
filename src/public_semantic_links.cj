@@ -258,8 +258,15 @@ internal func resolvePublicSemanticLinks(declarations: Array<public_model.Symbol
     let diagnostics = ArrayList<public_model.Diagnostic>()
     for (symbol in declarations) {
         match (symbol.documentation) {
-            case Some(comment) => resolveSemanticLinkNode(comment.markdown, symbol, declarations, index,
-                audience, resolvers, config, diagnostics)
+            case Some(comment) =>
+                resolveSemanticLinkNode(comment.markdown, symbol, declarations, index,
+                    audience, resolvers, config, diagnostics)
+                for (tag in comment.tags) {
+                    if (let Some(tree) <- tag.exampleMarkdown) {
+                        resolveSemanticLinkNode(tree, symbol, declarations, index,
+                            audience, resolvers, config, diagnostics)
+                    }
+                }
             case None => ()
         }
     }

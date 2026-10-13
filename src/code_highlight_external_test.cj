@@ -120,7 +120,12 @@ class CodeHighlightExternalTest {
         let root = Directory.createTemp(getTempDirectory())
         try {
             Directory.create(root.join("src"))
-            File.writeTo(root.join("cjpm.toml"), "[package]\nname = \"external_test\"\nversion = \"1.0.0\"\noutput-type = \"static\"\n".toArray())
+            // Highlighting a language is opt-in per project, so the fixture declares the
+            // languages it expects to highlight instead of relying on a default list.
+            File.writeTo(root.join("cjpm.toml"), ("[package]\nname = \"external_test\"\nversion = \"1.0.0\"\n" +
+                "output-type = \"static\"\n").toArray())
+            File.writeTo(root.join("cjdoc.toml"),
+                "[highlight]\nmode = \"static\"\nlanguages = [\"cangjie\", \"python\", \"json\"]\n".toArray())
             File.writeTo(root.join("src/lib.cj"), ("package external_test\n/**\n * Examples.\n *\n" +
                 " * ```python\n * True\n * ```\n *\n * ```json\n * true\n * ```\n */\npublic func example(): Unit {}\n").toArray())
             let (exitCode, output, _) = executeWithBoundedOutput(canonicalize("target/release/bin/main").toString(),

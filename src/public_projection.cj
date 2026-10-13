@@ -220,10 +220,12 @@ internal class PublicDeclarationProjection {
 
     init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
         providerStatesByModule: HashMap<String, String>, audience: String, highlightMode!: String = "auto",
+        highlightLanguages!: ?HighlightConfig = None,
         highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES, externalOptions!: ?HighlightExternalOptions = None) {
         let declarations = ArrayList<public_model.SymbolDoc>()
         let assetCollector = LocalAssetCollector(documentation.sourceFileOrigins)
-        let markdownContext = MarkdownGenerationContext(highlightMode: highlightMode, highlightBytes: highlightBytes,
+        let markdownContext = MarkdownGenerationContext(highlightMode: highlightMode,
+            highlightLanguages: highlightLanguages, highlightBytes: highlightBytes,
             externalOptions: externalOptions)
         let renderableIds = renderableSymbolIds(documentation, audience)
         for (symbol in documentation.symbols) {
@@ -300,7 +302,12 @@ internal class PublicDiagnosticProjection {
         if (markdownContext.incomplete) {
             incompleteSource = true
         }
-        diagnostics.add(all: markdownContext.diagnostics())
+        for (diagnostic in markdownContext.diagnostics()) {
+            // Any error diagnostic here must make the document partial; a complete
+            // status with an error-bearing diagnostic is an invalid domain state.
+            if (diagnostic.severity == "error") { hasError = true }
+            diagnostics.add(diagnostic)
+        }
         for (diagnostic in semanticLinkDiagnostics) {
             if (diagnostic.severity == "error") { hasError = true }
             diagnostics.add(diagnostic)
@@ -327,8 +334,14 @@ internal func publicDocumentation(documentation: DocumentationSet,
     let moduleProjection = PublicModuleProjection(documentation, sourceMapper,
         repositoryRoot: repositoryRoot)
     let providerProjection = PublicProviderProjection(documentation)
+    // The project's own `[highlight]` policy decides whether any display data is
+    // produced at all, so an unavailable or invalid configuration never silently
+    // degrades into "highlight everything".
+    let highlightConfig = loadHighlightConfig(request.projectRoot)
     let declarationProjection = PublicDeclarationProjection(documentation, sourceMapper,
         providerProjection.statesByModule, request.audience, highlightBytes: highlightBytes,
+        highlightMode: if (highlightConfig.mode == "off") { "off" } else { "auto" },
+        highlightLanguages: highlightConfig,
         externalOptions: highlightExternalOptions(request.highlightAdapter, request.highlightNode))
     let semanticLinkDiagnostics = resolvePublicSemanticLinks(declarationProjection.declarations, request.audience,
         request.projectRoot)

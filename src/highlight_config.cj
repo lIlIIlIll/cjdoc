@@ -40,6 +40,10 @@ internal class HighlightConfig {
         this.languages = normalized.toArray()
         this.onError = onError
     }
+
+    public func allowsLanguage(language: String): Bool {
+        languages.contains(normalizeCodeLanguage(language))
+    }
 }
 
 // Kept identical to doctest's file-private comment scanner: quoted # is data.
