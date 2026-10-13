@@ -188,12 +188,21 @@ def attempt_status(repository: str, run_id: int, run_attempt: int) -> dict:
 
 # ------------------------------------------------------------------ resolve
 
-def inspect_candidates(repository: str, commit: str) -> dict:
+def inspect_candidates(repository: str, commit: str, *, require_success: bool = False) -> dict:
     """Find every ready candidate for the commit.
 
-    A candidate is ready when its marker exists, the selected attempt reports a
-    successful CI conclusion for this exact commit, and the backing candidate
-    artifact is still live. Ready candidates are returned sorted by run id.
+    Readiness and success are deliberately different questions:
+
+    * **Readiness** (adoption, `require_success=False`) is what the marker proves:
+      the Linux candidate passed and its bytes are downloadable. The rest of the
+      CI matrix may still be running — that is the whole point of CI-05.1, which
+      exists so Pages need not wait for Windows and macOS.
+    * **Success** (publication, `require_success=True`) additionally requires the
+      run's own attempt to have finished successfully, so a later matrix failure
+      still blocks deployment.
+
+    Both require the marker, a live candidate artifact, and an attempt that
+    belongs to this commit and to the `CI` workflow.
     """
     ready: list[dict] = []
     failed: list[dict] = []
@@ -218,7 +227,7 @@ def inspect_candidates(repository: str, commit: str) -> dict:
             continue
         for marker in markers:
             status = attempt_status(repository, run_id, run["attempt"])
-            problems = attempt_problems(status, commit)
+            problems = attempt_problems(status, commit, require_success=require_success)
             if problems:
                 failed.append({"id": run_id, "attempt": run["attempt"],
                                "reason": problems[0]})
@@ -229,7 +238,8 @@ def inspect_candidates(repository: str, commit: str) -> dict:
                                "reason": "missing candidate artifact"})
                 continue
             ready.append({"runId": run_id, "runAttempt": run["attempt"],
-                          "artifactName": artifact, "markerName": marker["name"]})
+                          "artifactName": artifact, "markerName": marker["name"],
+                          "runConclusion": status.get("conclusion")})
     ready.sort(key=lambda item: (item["runId"], item["runAttempt"]))
     return {"ready": ready, "failed": failed, "pending": pending, "unmarked": unmarked}
 
@@ -281,12 +291,16 @@ def resolve(repository: str, commit: str, event: str, explicit_run_id: str,
         time.sleep(max(1, poll_seconds))
 
 
-def attempt_problems(status: dict, commit: str) -> list[str]:
+def attempt_problems(status: dict, commit: str, *, require_success: bool = True) -> list[str]:
     """Why this attempt may not be adopted, if anything.
 
     The workflow name is checked too: `gh run view` accepts any run id, so an id
     that names some other workflow (or a run from another repository's number
     space) must be refused instead of being trusted for the artifact name.
+
+    `require_success=False` is the adoption check: the attempt must exist for this
+    commit but may still be running. `require_success=True` is the publication
+    check, which additionally demands a successful, completed attempt.
     """
     problems: list[str] = []
     name = status.get("workflowName")
@@ -294,20 +308,24 @@ def attempt_problems(status: dict, commit: str) -> list[str]:
         problems.append(f"run {name!r} is not a CI workflow run")
     if status.get("headSha") not in {None, "", commit}:
         problems.append(f"run is for another commit: {status.get('headSha')}")
-    if status.get("status") != "completed" or status.get("conclusion") != "success":
+    if status.get("status") == "completed" and status.get("conclusion") not in {None, "success"}:
+        problems.append(f"CI attempt concluded {status.get('conclusion')}")
+    if require_success and (status.get("status") != "completed"
+                            or status.get("conclusion") != "success"):
         problems.append(f"run attempt is {status.get('status')}/{status.get('conclusion')}, "
                         "not a successful completed CI attempt")
     return problems
 
 
-def _explicit_candidate(repository: str, commit: str, run_id: str, attempt: int) -> dict:
+def _explicit_candidate(repository: str, commit: str, run_id: str, attempt: int,
+                        *, require_success: bool = True) -> dict:
     try:
         numeric = int(run_id)
     except ValueError:
         return {"reuse": False, "candidateSource": "local-build",
                 "reason": f"candidate_run_id is not numeric: {run_id!r}"}
     status = attempt_status(repository, numeric, attempt)
-    problems = attempt_problems(status, commit)
+    problems = attempt_problems(status, commit, require_success=require_success)
     if problems:
         return {"reuse": False, "candidateSource": "local-build",
                 "reason": f"run {run_id} attempt {attempt}: {problems[0]}"}
@@ -320,7 +338,8 @@ def _explicit_candidate(repository: str, commit: str, run_id: str, attempt: int)
         return {"reuse": False, "candidateSource": "local-build",
                 "reason": f"run {run_id} attempt {attempt} has no live {artifact}"}
     return {"reuse": True, "candidateSource": "ci-artifact", "runId": numeric,
-            "runAttempt": attempt, "artifactName": artifact, "markerName": markers[0]["name"]}
+            "runAttempt": attempt, "artifactName": artifact,
+            "markerName": markers[0]["name"], "runConclusion": status.get("conclusion")}
 
 
 def write_outputs(path: Path, document: dict) -> None:
@@ -429,12 +448,13 @@ def require_ready(repository: str, commit: str, explicit_run_id: str,
     """
     if explicit_run_id:
         attempt = int(explicit_run_attempt or 1)
-        resolved = _explicit_candidate(repository, commit, explicit_run_id, attempt)
+        resolved = _explicit_candidate(repository, commit, explicit_run_id, attempt,
+                                       require_success=True)
         if not resolved["reuse"]:
             raise ResolutionError("ci_candidate_source.py: explicitly requested candidate "
                                   f"{explicit_run_id}/{attempt} is not usable: {resolved['reason']}")
         return resolved
-    state = inspect_candidates(repository, commit)
+    state = inspect_candidates(repository, commit, require_success=True)
     if len(state["ready"]) != 1:
         raise ResolutionError(
             f"ci_candidate_source.py: expected exactly one ready CI candidate for {commit}, "

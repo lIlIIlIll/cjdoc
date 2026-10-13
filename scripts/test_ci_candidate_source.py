@@ -79,6 +79,15 @@ class ResolveTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
 
+    def require_ready(self, runs, artifacts, attempts):
+        bin_dir, state, log = _fake_gh(self.root, runs=runs, artifacts=artifacts, attempts=attempts)
+        log_path = self.root / "gh.log"
+        log_path.write_text("", encoding="utf-8")
+        with mock.patch.dict("os.environ", {"PATH": f"{bin_dir}:{Path('/usr/bin')}",
+                                            "FAKE_GH_STATE": json.dumps(state),
+                                            "FAKE_GH_LOG": str(log_path)}):
+            return source.require_ready("o/r", COMMIT, "", "", "push")
+
     def resolve(self, runs, artifacts, attempts, **kwargs):
         bin_dir, state, log = _fake_gh(self.root, runs=runs, artifacts=artifacts, attempts=attempts)
         log_path = self.root / "gh.log"
@@ -146,6 +155,36 @@ class ResolveTests(unittest.TestCase):
         attempts = {"77/1": {"headSha": "c" * 40, "status": "completed", "conclusion": "success"}}
         resolved = self.resolve(runs, artifacts, attempts)
         self.assertFalse(resolved["reuse"])
+
+    def test_a_still_running_matrix_is_adopted_but_cannot_publish(self):
+        # The crux of CI-05.1: the marker exists, so the candidate may be consumed
+        # while Windows/macOS are still running...
+        runs = [{"id": 77, "name": "CI", "run_attempt": 1, "status": "in_progress",
+                 "conclusion": None}]
+        artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
+                     [_marker(77, 1)],
+                     "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
+                     [{"id": 9, "expired": False}]}
+        attempts = {"77/1": {"headSha": COMMIT, "status": "in_progress", "conclusion": None}}
+        resolved = self.resolve(runs, artifacts, attempts)
+        self.assertTrue(resolved["reuse"], resolved)
+        self.assertEqual(resolved["runConclusion"], None)
+        # ...but it must never publish until the run really succeeded.
+        with self.assertRaises(source.ResolutionError):
+            self.require_ready(runs, artifacts, attempts)
+
+    def test_a_run_that_concluded_with_failure_is_not_adopted(self):
+        runs = [{"id": 77, "name": "CI", "run_attempt": 1, "status": "completed",
+                 "conclusion": "failure"}]
+        artifacts = {f"repos/o/r/actions/artifacts?name={source.marker_name(77, 1)}":
+                     [_marker(77, 1)],
+                     "repos/o/r/actions/artifacts?name=cjdoc-linux-candidate-77-1":
+                     [{"id": 9, "expired": False}]}
+        attempts = {"77/1": {"headSha": COMMIT, "status": "completed",
+                             "conclusion": "failure"}}
+        resolved = self.resolve(runs, artifacts, attempts)
+        self.assertFalse(resolved["reuse"])
+        self.assertIn("concluded failure", resolved["reason"])
 
     def test_a_run_that_only_succeeded_on_a_later_attempt_is_not_reused(self):
         runs = [{"id": 77, "name": "CI", "run_attempt": 2, "status": "completed", "conclusion": "success"}]
