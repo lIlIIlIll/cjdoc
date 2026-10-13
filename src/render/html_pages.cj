@@ -246,8 +246,9 @@ private func appendInlineMemberActions(out: RenderTextBuffer,
     let standaloneLabel = label(locale, "Open standalone API page", "打开独立 API 页面")
     let sourceLabel = label(locale, "View source code", "查看源码")
     let copyLabel = label(locale, "Copy link", "复制链接")
-    let memberLabel = if (member.headerSpelling.isEmpty()) { member.name } else { member.headerSpelling }
-    let moreLabel = label(locale, "More actions for", "更多操作：") + " " + memberLabel
+    // Do not duplicate full source signatures inside aria-label and title.
+    // The adjacent native summary already identifies the exact overload.
+    let moreLabel = label(locale, "More actions for", "更多操作：") + " " + member.name
     out.append("<div class=\"member-detail-actions\" role=\"group\" aria-label=\"" +
         label(locale, "Member actions", "成员操作") + "\" data-cjdoc-member-actions>")
     out.append("<button class=\"member-actions-toggle\" type=\"button\" " +
