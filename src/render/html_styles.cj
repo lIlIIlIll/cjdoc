@@ -287,8 +287,8 @@ internal let HTML_LAYOUT_HARDENING_STYLE = """
 .member-overload-group .overload-group-label code{color:var(--ink);font-size:inherit}
 .member-overload-group .overload-count{color:var(--muted);font-size:.76rem;font-weight:600}
 .member-overload-group .member-detail{margin:0;border-color:var(--line)}
-.member-overload-group .member-detail:first-of-type{border-top:1px solid var(--line)}
-.member-overload-group .member-detail:last-child{border-bottom:0}
+.member-overload-group .member-row:first-of-type>.member-detail{border-top:1px solid var(--line)}
+.member-overload-group .member-row:last-child>.member-detail{border-bottom:0}
 .member-overload-group .member-detail>summary{padding:.55rem .35rem}
 .member-overload-group .member-detail[open]>summary{background:var(--surface)}.behavior-contracts{margin:1.15rem 0;padding:.8rem 0;border-top:1px solid var(--line)}.behavior-contracts h3{margin:.05rem 0 .6rem;font-size:1rem}.behavior-contracts dl{display:grid;grid-template-columns:minmax(9rem,max-content) minmax(0,1fr);gap:.4rem .9rem;margin:0}.behavior-contracts dt{font:650 .78rem/1.5 var(--code-font);overflow-wrap:anywhere}.behavior-contracts dd{margin:0;min-width:0}.behavior-contracts dd .badge{font-size:.72rem}.signature-context{margin:.35rem 0 .9rem;color:var(--muted);font-size:.78rem}.signature-context .badge{margin-left:.35rem}.parameter-default{margin-left:.35rem;color:var(--muted);font-size:.78rem}.conceptual-bindings{margin:2rem 0;padding:1rem 0;border-top:1px solid var(--line)}.conceptual-bindings h2{margin:.1rem 0 .6rem}.binding-scope{color:var(--muted);font-size:.82rem}.conceptual-bindings ul{margin:.6rem 0 0;padding-left:1.3rem}.conceptual-bindings li{padding:.25rem 0;overflow-wrap:anywhere}.binding-state{display:inline-block;margin-right:.35rem;color:var(--muted);font-size:.75rem}.binding-meta{display:block;margin-left:0;color:var(--muted);font-size:.75rem;overflow-wrap:anywhere;word-break:break-word}
 .binding-version{margin-left:.4rem;color:var(--muted);font-size:.75rem}
@@ -297,7 +297,7 @@ internal let HTML_LAYOUT_HARDENING_STYLE = """
 .binding-details[open]>summary{margin-bottom:.2rem}.external-documentation{margin:1.15rem 0;padding:.8rem 0;border-top:1px solid var(--line)}.external-documentation h2{margin:.05rem 0 .6rem;font-size:1rem}.external-documentation ul{margin:.4rem 0;padding-left:1.3rem}.validation-page{max-width:1100px}.validation-page table{width:100%;border-collapse:collapse}.validation-page th,.validation-page td{padding:.45rem .55rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.validation-message{color:var(--muted);font-size:.8rem}
 @media(max-width:760px){.reference-context{padding:.45rem .9rem;gap:.45rem .7rem}.reference-context span{font-size:.68rem}}@media(max-width:760px){.member-browser-toolbar{align-items:stretch;flex-direction:column}.member-browser-toolbar input,.member-browser-toolbar select{min-width:0;max-width:none;width:100%}}
 .reference-build-details{margin-left:auto}.reference-build-details>summary{cursor:pointer;color:var(--muted);font-weight:650}.reference-build-details>div{display:flex;gap:.65rem .9rem;flex-wrap:wrap;margin-top:.4rem}
-.member-group{margin:var(--api-section-gap) 0}.member-group>h2{margin:var(--api-section-gap) 0 .3rem}.member-detail{border-bottom:1px solid var(--line);scroll-margin-top:5.5rem}.member-detail:first-of-type{border-top:1px solid var(--line)}.member-detail>summary{list-style:none;cursor:pointer;padding:var(--api-row-padding) .35rem;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.18rem .75rem;align-items:baseline;border-radius:6px}.member-detail>summary::-webkit-details-marker{display:none}.member-detail>summary:hover,.member-detail>summary:focus-visible{background:var(--surface-subtle)}.member-detail[open]>summary{background:var(--surface-subtle)}.member-summary-main{min-width:0}.member-detail .declaration-signature{display:block;max-width:100%;overflow:visible;text-overflow:clip;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink);font:600 .82rem/1.45 var(--code-font)}.member-summary-description{grid-column:1/-1;color:var(--muted);font-size:.82rem;line-height:1.45}.member-detail-body{padding:.35rem .7rem 1.15rem 1.1rem;border-left:2px solid var(--accent-soft)}.member-detail-body p{display:block;-webkit-line-clamp:unset;overflow:visible}.member-detail-actions{display:flex;justify-content:flex-end;margin:.2rem 0 .45rem}.member-permalink{font-size:.78rem}.compact-signature{margin:.45rem 0 .85rem;padding:.75rem 2.8rem .75rem .8rem}.member-group[hidden]{display:none}.member-origin,.extension-conditions{margin:.35rem 0;color:var(--muted);font-size:.8rem}.extension-signature{margin:.35rem 0 .6rem}.context-links{display:grid;gap:.08rem}.context-item{display:block;padding:.28rem .45rem;border-radius:5px;color:var(--muted);text-decoration:none;overflow-wrap:anywhere}.context-item:hover,.context-item:focus-visible{background:var(--surface-subtle);color:var(--ink);text-decoration:none}.context-item.is-current{background:var(--accent-soft);color:var(--accent-strong);font-weight:650}.context-item code{padding:0;border:0;background:transparent;color:inherit;font-size:.78rem}.sidebar-context{padding-bottom:.25rem}.sidebar-limit{margin:.45rem .25rem;color:var(--muted);font-size:.75rem}
+.member-group{margin:var(--api-section-gap) 0}.member-group>h2{margin:var(--api-section-gap) 0 .3rem}.member-detail{border-bottom:1px solid var(--line);scroll-margin-top:5.5rem}.member-detail:first-of-type{border-top:1px solid var(--line)}.member-detail>summary{list-style:none;cursor:pointer;padding:var(--api-row-padding) .35rem;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.18rem .75rem;align-items:baseline;border-radius:6px}.member-detail>summary::-webkit-details-marker{display:none}.member-detail>summary:hover,.member-detail>summary:focus-visible{background:var(--surface-subtle)}.member-detail[open]>summary{background:var(--surface-subtle)}.member-summary-main{min-width:0}.member-detail .declaration-signature{display:block;max-width:100%;overflow:visible;text-overflow:clip;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink);font:600 .82rem/1.45 var(--code-font)}.member-summary-description{grid-column:1/-1;color:var(--muted);font-size:.82rem;line-height:1.45}.member-detail-body{padding:.35rem .7rem 1.15rem 1.1rem;border-left:2px solid var(--accent-soft)}.member-detail-body p{display:block;-webkit-line-clamp:unset;overflow:visible}.member-permalink{font-size:.78rem}.compact-signature{margin:.45rem 0 .85rem;padding:.75rem 2.8rem .75rem .8rem}.member-group[hidden]{display:none}.member-origin,.extension-conditions{margin:.35rem 0;color:var(--muted);font-size:.8rem}.extension-signature{margin:.35rem 0 .6rem}.context-links{display:grid;gap:.08rem}.context-item{display:block;padding:.28rem .45rem;border-radius:5px;color:var(--muted);text-decoration:none;overflow-wrap:anywhere}.context-item:hover,.context-item:focus-visible{background:var(--surface-subtle);color:var(--ink);text-decoration:none}.context-item.is-current{background:var(--accent-soft);color:var(--accent-strong);font-weight:650}.context-item code{padding:0;border:0;background:transparent;color:inherit;font-size:.78rem}.sidebar-context{padding-bottom:.25rem}.sidebar-limit{margin:.45rem .25rem;color:var(--muted);font-size:.75rem}
 @media(max-width:760px){.reference-build-details{width:100%;margin-left:0}.reference-build-details>div{display:grid;grid-template-columns:1fr}.member-detail>summary{grid-template-columns:minmax(0,1fr) auto;padding:.55rem .15rem}.member-detail-body{padding:.3rem .2rem 1rem .7rem}.symbol-meta,.contextual-metadata,.member-browser,.symbol-relationships dl,.behavior-contracts dl{grid-template-columns:minmax(0,1fr)}.symbol-relationships dt,.symbol-relationships dd,.symbol-relationships code,.reverse-type-usages code,.member-origin code,.extension-signature code{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-word}}
 """
 
@@ -351,46 +351,88 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
 .throws-row dd>:first-child{margin-top:0}
 .throws-row dd>:last-child{margin-bottom:0}
 .reference-state-note{display:inline-block;margin-left:.25rem;color:var(--muted);font-size:.75rem}
-.member-detail .member-detail-actions{align-items:center;gap:.3rem .8rem;margin:.05rem 0 .4rem;font-size:.75rem}
-.member-detail-actions a{display:inline-flex;align-items:center;min-height:30px}
+
+
 @media(max-width:760px){.throws-row{grid-template-columns:minmax(0,1fr);gap:.15rem}.throws-row dd{padding-bottom:.1rem}.member-overload-group{padding:.25rem .45rem .3rem}}
 
-/* The member detail toolbar is intentionally icon-only: controls are
-   equally sized and leave contract text as the primary reading content. */
-.member-detail .member-detail-actions{
-    display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;
-    gap:.15rem;width:max-content;max-width:100%;margin:.05rem 0 .4rem auto;
-    padding:.14rem;border:1px solid var(--line);border-radius:8px;
-    background:var(--surface)
+/* Native details owns only expansion. Sibling actions stay reachable even
+   when the member is closed; reserve their width without shifting signatures. */
+.member-row{position:relative;min-width:0;margin:1.25rem 0}
+.member-row[hidden]{display:none}
+.member-row>.member-detail{margin:0;border-top:0}
+.member-group>.member-row:first-of-type>.member-detail{border-top:1px solid var(--line)}
+.member-overload-group>.member-row{margin:0}
+.member-row>.member-detail>summary{padding-inline-end:8.5rem}
+.member-row:focus-within,.member-row.member-actions-open{z-index:3}
+.member-row>.member-detail-actions{
+    position:absolute;inset-block-start:.3rem;inset-inline-end:.3rem;
+    display:flex;align-items:center;width:max-content;max-width:100%;
+    margin:0;padding:.12rem;border:1px solid var(--line);border-radius:8px;
+    background:var(--surface);opacity:0;pointer-events:none
 }
-.member-detail .member-detail-actions .member-action{
+.member-row:hover>.member-detail-actions,
+.member-row:focus-within>.member-detail-actions{
+    opacity:1;pointer-events:auto
+}
+.member-detail-actions .member-actions-toggle{display:none}
+.member-detail-actions .member-action-list{display:flex;align-items:center;gap:.12rem}
+.member-detail-actions .member-action{
     display:inline-flex;align-items:center;justify-content:center;
     flex:0 0 38px;width:38px;height:38px;min-width:38px;min-height:38px;
     margin:0;padding:0;border:1px solid transparent;border-radius:6px;
     background:transparent;color:var(--muted);line-height:1;
     text-decoration:none;cursor:pointer
 }
-.member-detail .member-detail-actions .member-action:hover{
-    background:var(--surface-subtle);color:var(--accent);
-    text-decoration:none
+.member-detail-actions .member-action:hover{
+    background:var(--surface-subtle);color:var(--accent);text-decoration:none
 }
-.member-detail .member-detail-actions .member-action:focus-visible{
-    position:relative;z-index:1;outline:2px solid var(--accent);
-    outline-offset:1px
+.member-detail-actions .member-action:focus-visible,
+.member-detail-actions .member-actions-toggle:focus-visible{
+    outline:2px solid var(--accent);outline-offset:1px
 }
-.member-detail .member-detail-actions .member-action-glyph{
+.member-detail-actions .member-action-glyph{
     display:block;width:18px;height:18px;flex:none;pointer-events:none
 }
-.member-detail .member-detail-actions .copy-link[data-copied="true"]{
+.member-detail-actions .member-action-label{display:none}
+.member-detail-actions .copy-link[data-copied="true"]{
     color:var(--success);background:var(--surface-subtle)
 }
-.member-detail .member-detail-actions [data-cjdoc-copy-link-fallback]{
+.member-detail-actions [data-cjdoc-copy-link-fallback]{
     flex:1 0 100%;min-width:0;max-width:100%;width:100%;margin:0;
     padding:.4rem;border:0;border-top:1px solid var(--line);
     background:var(--surface);color:var(--ink)
 }
-@media(max-width:760px){
-    .member-detail .member-detail-actions{margin-inline-start:auto}
+/* Touch and narrow layouts use a persistent disclosure instead of hover-only controls. */
+@media (hover:none), (pointer:coarse), (any-pointer:coarse), (max-width:760px){
+    .member-row>.member-detail>summary{padding-inline-end:3.25rem}
+    .member-row>.member-detail-actions{
+        inset-block-start:.25rem;inset-inline-end:.2rem;
+        opacity:1;pointer-events:auto;padding:0;border:0;background:transparent
+    }
+    .member-detail-actions .member-actions-toggle{
+        display:inline-flex;align-items:center;justify-content:center;
+        width:40px;height:40px;min-width:40px;margin:0;
+        border:1px solid var(--line);border-radius:7px;
+        background:var(--surface);color:var(--muted);cursor:pointer
+    }
+    .member-detail-actions .member-actions-toggle:hover,
+    .member-detail-actions .member-actions-toggle[aria-expanded="true"]{
+        background:var(--surface-subtle);color:var(--accent)
+    }
+    .member-detail-actions .member-action-list{
+        display:none;position:absolute;inset-block-start:calc(100% + .3rem);
+        inset-inline-end:0;z-index:5;align-items:stretch;flex-direction:column;
+        gap:.1rem;min-width:12rem;max-width:min(18rem,calc(100vw - 1.5rem));
+        padding:.25rem;border:1px solid var(--line-strong);border-radius:8px;
+        background:var(--surface);box-shadow:var(--shadow)
+    }
+    .member-detail-actions[data-open="true"] .member-action-list{display:flex}
+    .member-detail-actions .member-action-list .member-action{
+        justify-content:flex-start;gap:.6rem;flex:0 0 auto;
+        width:100%;min-height:40px;height:auto;padding:.5rem .6rem;
+        font-size:.82rem;line-height:1.4;text-align:start
+    }
+    .member-detail-actions .member-action-label{display:inline;white-space:nowrap}
 }
 /* A single documented contract does not need a redundant classification
    table beneath its concrete condition heading. */
