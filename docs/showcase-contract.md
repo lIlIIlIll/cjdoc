@@ -184,6 +184,48 @@ PYTHONPATH=scripts python -m showcase_contract verify \
 | S-05 构建和发布链路 | `build_showcase.py`、输入追踪、Pages workflow、离线包 |
 | S-06 最终 Pages 测试 | `showcase_contract.browser`、最终目录 verify、截图和 metrics |
 
+## 浏览器分片与历史耗时
+
+Pages 的两个浏览器分片按完整首页组分配，未选择历史时保持原有的稳定交替分组。
+计划中的 `homeKeys[].ownerCase` 是注册顺序中该组的第一个 case，
+`ownerShard` 指明由哪个分片产生共享首页截图。该组后续 case 复用首页观测，
+不会因负载均衡改变 activation 次数或每个 case 的 metrics。
+严格 merge 校验首页所有权、唯一性、完整覆盖以及截图 digest，再调用原有完整 evidence gate。
+
+每个成功分片产生 `timings.json`。用 merge 的可选 `--timings PATH` 生成
+`cjdoc.browser-timing/1` 历史；必须恰好包含计划中所有 case，每个 case 一次，
+每个分片的观测须与自己的计划一致。缺失文件、重复或未知 case、错误 schema、
+负值、非数值和非有限耗时都会失败，不能采用部分历史。
+
+在已有同一计划的两份分片证据后执行：
+
+```sh
+PYTHONPATH=scripts python -m showcase_contract.browser merge \
+  --site target/showcase-site --plan target/browser-plan.json \
+  --shard-result 0=target/browser-shard-0/shard.json \
+  --shard-result 1=target/browser-shard-1/shard.json \
+  --evidence target/showcase-evidence --receipt target/browser-merge-receipt.json \
+  --timings target/browser-timing-history.json
+```
+
+输出包含分配 mode，且生成 `browser-timing-history.json`。
+下一次 plan 传入 `--history target/browser-timing-history.json`，就会按实测 case 耗时总和
+对完整首页组执行 longest-processing-time 分配，mode 为 `history-weighted`。
+如果 case 清单发生变化，旧历史不再完整，必须先执行一次不带历史的新 run。
+
+Pages 的 `verify-site` 将完整历史放入 validation evidence，并单独上传为
+`cjdoc-showcase-browser-history-<run-id>-<attempt>`，保留 30 天。
+手动 dispatch 时，填入可选字符串输入 `browser_history_run_id` 和
+`browser_history_run_attempt`（默认 `1`）。工作流只下载这个 run/attempt 的确切同名 artifact，
+不搜索“最近成功”。不填 run id 时仍按 `equal-home-groups` 分配；指定的历史缺失、
+过期或无效时明确失败，无自动 fallback。
+
+每个分片上传 `browser-history-selection.json`（run id、attempt、artifact 名与 historySource）、
+使用的历史原文及 `browser-plan.json`；validation evidence 收集这些文件。
+计划的 `assignment.historySource` 是包含所选 run/attempt 的稳定相对路径，
+可与 selection 和 `assignment.groupCosts` 对照审计。
+
+
 ## 证据分层
 
 Python 单元测试使用合成导航和报告，不能证明仓颉编译、doctest、真实生成页面或浏览器
