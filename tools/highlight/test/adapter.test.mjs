@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { PROTOCOL, ENGINE, LIMITS, handleRequest, responseFromHtml } from '../adapter.mjs';
 
 const request = (language, code, id = 1) => ({ protocol: PROTOCOL, id, language, code });
@@ -105,4 +108,27 @@ test('subprocess stdout consists only of serial protocol lines', () => {
     assert.equal(response.id, id);
     reconstruct(response, requests[id].code);
   });
+});
+
+// A symlinked adapter path is a normal way to authorize a pinned install, and
+// Node resolves the main module through symlinks while leaving process.argv[1]
+// unresolved. Before the resolved-path check this subprocess exited 0 with no
+// response, which the caller could only read as "no highlighting". The link
+// lives beside the adapter so its pinned dependency still resolves.
+test('adapter responds when invoked through a symlink', () => {
+  const directory = mkdtempSync(join(dirname(fileURLToPath(new URL('../adapter.mjs', import.meta.url))), 'link-'));
+  const link = join(directory, 'alias.mjs');
+  symlinkSync(fileURLToPath(new URL('../adapter.mjs', import.meta.url)), link);
+  try {
+    const value = request('python', 'x = 1\n', 'symlink');
+    const result = spawnSync(process.execPath, [link],
+      {input: JSON.stringify(value) + '\n', encoding: 'utf8'});
+    assert.equal(result.status, 0, result.stderr);
+    const response = JSON.parse(result.stdout.trimEnd());
+    assert.equal(response.id, 'symlink');
+    assert.equal(response.state, 'complete');
+    reconstruct(response, value.code);
+  } finally {
+    rmSync(directory, {recursive: true, force: true});
+  }
 });

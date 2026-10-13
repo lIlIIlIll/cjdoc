@@ -5,6 +5,7 @@ import python from 'highlight.js/lib/languages/python';
 import toml from 'highlight.js/lib/languages/ini';
 import yaml from 'highlight.js/lib/languages/yaml';
 import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 export const PROTOCOL = 'cjdoc-highlight/1';
@@ -174,7 +175,21 @@ export async function run() {
   if (length || overflow) await processLine(overflow ? null : Buffer.concat(chunks, length), overflow);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Node resolves the main module through symlinks for import.meta.url but leaves
+// process.argv[1] as the invoked path, so an authorized adapter reached through a
+// symlink must be compared after resolution. A path-equality check would skip
+// run(), exit 0 with no response, and silently degrade every external block.
+function isMainModule() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   run().catch(() => {
     process.stderr.write('cjdoc-highlight: worker I/O failure\n');
     process.exitCode = 2;
