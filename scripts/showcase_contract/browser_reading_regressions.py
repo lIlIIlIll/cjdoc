@@ -106,6 +106,21 @@ def check_member_toolbar(page):
         toggle.click()
         page.mouse.click(5, 5)
         expect(toggle).to_have_attribute("aria-expanded", "false")
+        # The content column clips overflow: the final member's popup must
+        # enlarge its row enough that the entire menu remains in the scroll area.
+        last_member = page.locator("details[data-cjdoc-member]").last
+        last_actions = last_member.locator("xpath=..").locator(":scope > .member-detail-actions")
+        last_toggle = last_actions.locator("[data-cjdoc-member-actions-toggle]")
+        last_toggle.click()
+        menu = last_actions.locator(".member-action-list")
+        expect(menu).to_be_visible()
+        bounds = menu.evaluate("""node => ({
+          menuBottom: node.getBoundingClientRect().bottom,
+          columnBottom: node.closest('.content-column').getBoundingClientRect().bottom
+        })""")
+        if bounds["menuBottom"] > bounds["columnBottom"] + 1:
+            raise AssertionError("last member action menu is clipped by the content column")
+        last_toggle.click()
     else:
         expect(actions).to_have_css("opacity", "0")
         before = member.locator("summary").bounding_box()
