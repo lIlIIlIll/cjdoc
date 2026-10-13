@@ -746,6 +746,37 @@ test.describe('generated HTML reference', () => {
     await context.close();
   });
 
+  test('touch keeps member navigation links usable without JavaScript', async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 }, hasTouch: true, javaScriptEnabled: false,
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto(indexUrl);
+      const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+      await page.goto(new URL(packageHref, indexUrl).href);
+      const classHref = await referenceBoxClassHref(page);
+      await page.goto(new URL(classHref, page.url()).href);
+      const member = page.locator('details[data-cjdoc-member][data-member-name="normalize"]');
+      const actions = memberActions(member);
+      await expect(member).not.toHaveAttribute('open', '');
+      await expect(actions.locator('.member-actions-toggle')).toBeHidden();
+      await expect(actions.locator('.member-action-list')).toBeVisible();
+      await expect(actions.locator('.member-permalink')).toBeVisible();
+      await expect(actions.locator('.member-source-link')).toBeVisible();
+      await expect(actions).toHaveCSS('position', 'static');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth))
+        .toBeLessThanOrEqual(391);
+      const origin = page.url();
+      const href = await actions.locator('.member-permalink').getAttribute('href');
+      await actions.locator('.member-permalink').tap();
+      await expect(page).toHaveURL(new URL(href, origin).href);
+      await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
+    } finally {
+      await context.close();
+    }
+  });
+
   test('version root and selector preserve explicit document identity', async ({ page }) => {
     test.skip(!versionIndexUrl, 'CJDOC_VERSION_FIXTURE is not configured');
     pageErrors.set(page, []);
