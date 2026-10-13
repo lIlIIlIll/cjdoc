@@ -872,6 +872,48 @@ internal let HTML_SEARCH_SCRIPT = """
       }, 1400);
     });
   }
+  // Member actions are outside native <details>, so they work while collapsed.
+  // On devices without a reliable hover state, a small disclosure keeps them discoverable.
+  const memberActionBars = [...document.querySelectorAll("[data-cjdoc-member-actions]")];
+  const closeMemberActionBars = (restoreFocus = false) => {
+    for (const actions of memberActionBars) {
+      if (actions.dataset.open !== "true") continue;
+      actions.dataset.open = "false";
+      actions.closest(".member-row")?.classList.remove("member-actions-open");
+      const toggle = actions.querySelector("[data-cjdoc-member-actions-toggle]");
+      if (toggle) {
+        toggle.setAttribute("aria-expanded", "false");
+        if (restoreFocus) toggle.focus();
+      }
+    }
+  };
+  for (const actions of memberActionBars) {
+    const toggle = actions.querySelector("[data-cjdoc-member-actions-toggle]");
+    if (!toggle) continue;
+    toggle.addEventListener("click", () => {
+      const opening = actions.dataset.open !== "true";
+      closeMemberActionBars();
+      if (!opening) return;
+      actions.dataset.open = "true";
+      toggle.setAttribute("aria-expanded", "true");
+      actions.closest(".member-row")?.classList.add("member-actions-open");
+    });
+    actions.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || actions.dataset.open !== "true") return;
+      event.preventDefault();
+      closeMemberActionBars(true);
+    });
+    actions.addEventListener("focusout", (event) => {
+      if (!actions.contains(event.relatedTarget)) closeMemberActionBars();
+    });
+    // Enable the compact menu only after listeners are wired. Without JS the
+    // native links remain visible in the normal document flow.
+    actions.closest(".member-row")?.classList.add("member-actions-enhanced");
+  }
+  document.addEventListener("pointerdown", (event) => {
+    if (!event.target.closest?.("[data-cjdoc-member-actions]")) closeMemberActionBars();
+  });
+
   const memberFilter = document.querySelector("[data-cjdoc-member-filter]");
   const originFilter = document.querySelector("[data-cjdoc-member-origin]");
   const memberRows = [...document.querySelectorAll("[data-cjdoc-member]")];
@@ -887,6 +929,7 @@ internal let HTML_SEARCH_SCRIPT = """
   };
   let memberTargetNotice = "";
   const applyMemberFilter = () => {
+    closeMemberActionBars();
     const query = memberFilter ? memberFilter.value.trim().toLocaleLowerCase() : "";
     const origin = originFilter ? originFilter.value : "";
     let visible = 0;
@@ -897,12 +940,14 @@ internal let HTML_SEARCH_SCRIPT = """
       const originMatches = !origin || row.dataset.memberOrigin === origin;
       const matches = queryMatches && originMatches;
       row.hidden = !matches;
+      const memberRow = row.closest(".member-row");
+      if (memberRow) memberRow.hidden = !matches;
       if (matches) visible += 1;
     }
     // Group boundaries remain in the DOM while filtering, but never leave
     // empty visual cards or claim that all overloads matched the filter.
     for (const group of overloadGroups) {
-      const matches = [...group.querySelectorAll(":scope > [data-cjdoc-member]")]
+      const matches = [...group.querySelectorAll(":scope > .member-row > [data-cjdoc-member]")]
         .filter((member) => !member.hidden).length;
       const total = Number(group.dataset.overloadTotal);
       const label = group.querySelector("[data-cjdoc-overload-count]");

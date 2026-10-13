@@ -4,10 +4,12 @@ from __future__ import annotations
 import argparse
 from contextlib import ExitStack
 import json
+import re
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit
 
 from .browser import serve
+from .browser_support import member_action
 from .browser_reading_navigation import run_navigation_regressions
 from .site import Site, load_json
 
@@ -76,11 +78,76 @@ def check_sidebar_filters(page):
     _drawer(page, False)
 
 
+def check_member_toolbar(page):
+    """Exercise the native collapsed header controls on desktop and touch-width sites."""
+    from playwright.sync_api import expect
+    member = page.locator("details[data-cjdoc-member]:not([open])").first
+    expect(member).to_have_count(1)
+    actions = member.locator("xpath=..").locator(":scope > .member-detail-actions")
+    expect(actions).to_have_count(1)
+    expect(member.locator(".member-detail-actions")).to_have_count(0)
+    expect(actions.locator(".member-permalink")).to_have_count(1)
+    expect(actions.locator(".member-action-copy")).to_have_count(1)
+    expect(actions.locator(".member-permalink")).to_have_attribute(
+        "aria-label", re.compile(r".+"))
+    origin = page.url
+    if page.viewport_size["width"] <= 760:
+        toggle = actions.locator("[data-cjdoc-member-actions-toggle]")
+        expect(toggle).to_be_visible()
+        expect(toggle).to_have_attribute("aria-expanded", "false")
+        toggle.click()
+        expect(toggle).to_have_attribute("aria-expanded", "true")
+        expect(actions.locator(".member-permalink")).to_be_visible()
+        expect(actions.locator(".member-action-copy")).to_be_visible()
+        toggle.focus()
+        page.keyboard.press("Escape")
+        expect(toggle).to_have_attribute("aria-expanded", "false")
+        expect(toggle).to_be_focused()
+        toggle.click()
+        page.mouse.click(5, 5)
+        expect(toggle).to_have_attribute("aria-expanded", "false")
+        # The content column clips overflow: the final member's popup must
+        # enlarge its row enough that the entire menu remains in the scroll area.
+        last_member = page.locator("details[data-cjdoc-member]").last
+        last_actions = last_member.locator("xpath=..").locator(":scope > .member-detail-actions")
+        last_toggle = last_actions.locator("[data-cjdoc-member-actions-toggle]")
+        last_toggle.click()
+        menu = last_actions.locator(".member-action-list")
+        expect(menu).to_be_visible()
+        bounds = menu.evaluate("""node => ({
+          menuBottom: node.getBoundingClientRect().bottom,
+          columnBottom: node.closest('.content-column').getBoundingClientRect().bottom
+        })""")
+        if bounds["menuBottom"] > bounds["columnBottom"] + 1:
+            raise AssertionError("last member action menu is clipped by the content column")
+        last_toggle.click()
+    else:
+        expect(actions).to_have_css("opacity", "0")
+        before = member.locator("summary").bounding_box()
+        member.locator("summary").hover()
+        expect(actions).to_have_css("opacity", "1")
+        after = member.locator("summary").bounding_box()
+        if abs(after["width"] - before["width"]) > 1 or abs(after["height"] - before["height"]) > 1:
+            raise AssertionError("member actions shifted the signature on hover")
+        actions.locator(".member-permalink").focus()
+        expect(actions).to_have_css("opacity", "1")
+    copy = member_action(member, ".member-action-copy")
+    copy.click()
+    expect(copy).to_have_attribute("data-copy-link-result", re.compile("copied|manual"))
+    expect(member).not_to_have_attribute("open", "")
+    if page.url != origin:
+        raise AssertionError("member action changed the current document route")
+    page.mouse.click(5, 5)
+
+
 def check_member_filters_and_actions(page):
     from playwright.sync_api import expect
     field = page.locator("[data-cjdoc-member-filter]")
     field.fill("find")
     expect(_visible_members(page)).to_have_count(2)
+    expect(page.locator(".member-row:not([hidden]) > details[data-cjdoc-member]")).to_have_count(2)
+    for row in page.locator(".member-row[hidden]").all():
+        expect(row.locator(".member-detail-actions")).to_be_hidden()
     _toc_matches_content(page)
     hidden_open = page.locator("[data-cjdoc-member][hidden][open]").count()
     page.locator("[data-cjdoc-members-expand]").click()
@@ -109,7 +176,7 @@ def _member_round_trip(page, member):
     summary = member.locator("summary").first
     if member.get_attribute("open") is None:
         summary.click()
-    member.locator("a.member-permalink").click()
+    member_action(member, "a.member-permalink").click()
     page.wait_for_load_state("load")
     if unquote(page.url) == unquote(origin):
         raise AssertionError("standalone member navigation did not occur")
@@ -176,7 +243,7 @@ def check_filtered_hash_and_header(page, member_url):
     from playwright.sync_api import expect
     page.goto(member_url, wait_until="load")
     anchor = unquote(urlsplit(member_url).fragment)
-    target = page.locator('[data-cjdoc-member]').filter(has=page.locator("a.member-permalink"))
+    target = page.locator("details[data-cjdoc-member]")
     target = next(item for item in target.all() if item.get_attribute("id") == anchor)
     page.locator("[data-cjdoc-member-filter]").fill("find")
     expect(target).to_be_hidden()
@@ -201,18 +268,49 @@ def check_filtered_hash_and_header(page, member_url):
 
 def run_reading_regressions(page, member_url: str) -> list[str]:
     page.goto(member_url, wait_until="load")
+    check_member_toolbar(page)
     check_sidebar_filters(page)
     check_member_filters_and_actions(page)
     check_member_history(page, member_url)
     check_search_and_sidebar_history(page, member_url)
     check_filtered_hash_and_header(page, member_url)
-    return ["sidebar filters hide nonmatches and retain their state through Back",
+    return ["member header actions work while collapsed on mouse and touch-sized screens",
+            "sidebar filters hide nonmatches and retain their state through Back",
             "both TOCs track text and origin filters, including zero matches and reset",
             "bulk expand/collapse acts only on visible members",
             "Back preserves member filters and disclosure state with and without a URL hash",
             "history-restored category filters agree with their visible select value",
             "search results retain distinct signatures without duplicate internal context",
             "same-hash links reveal excluded members below the measured sticky header"]
+
+
+def check_no_script_member_links(browser, member_url: str):
+    """Native member links remain accessible on touch screens without JavaScript."""
+    from playwright.sync_api import expect
+    context = browser.new_context(
+        viewport={"width": 390, "height": 844},
+        has_touch=True, java_script_enabled=False)
+    try:
+        page = context.new_page()
+        page.set_default_timeout(10000)
+        page.goto(member_url, wait_until="load")
+        member = page.locator("details[data-cjdoc-member]").first
+        actions = member.locator("xpath=..").locator(":scope > .member-detail-actions")
+        expect(actions.locator(".member-actions-toggle")).to_be_hidden()
+        expect(actions.locator(".member-action-list")).to_be_visible()
+        link = actions.locator("a.member-permalink")
+        expect(link).to_be_visible()
+        source = page.locator(".member-detail-actions a.member-source-link").first
+        if source.count():
+            expect(source).to_be_visible()
+        expect(actions).to_have_css("position", "static")
+        if page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"):
+            raise AssertionError("no-script member links overflow the mobile viewport")
+        expected = urljoin(page.url, link.get_attribute("href"))
+        link.click()
+        expect(page).to_have_url(expected)
+    finally:
+        context.close()
 
 
 def run(site_path: Path, evidence_path: Path, executable=None, channel=None,
@@ -240,7 +338,7 @@ def run(site_path: Path, evidence_path: Path, executable=None, channel=None,
             options["channel"] = channel
         browser = playwright.chromium.launch(**options)
         try:
-            for target in feature["targets"]:
+            for target_index, target in enumerate(feature["targets"]):
                 current_index = load_json(site.file(f"examples/{target['locale']}/{target['version']}/symbol-index.json"))
                 old_index = load_json(site.file(f"examples/{target['locale']}/demo-v1/symbol-index.json"))
                 for mode, base in bases.items():
@@ -259,6 +357,9 @@ def run(site_path: Path, evidence_path: Path, executable=None, channel=None,
                                                                     current_index, old_index,
                                                                     target["resolved"]["ownerSymbolId"],
                                                                     target["resolved"]["symbolId"])
+                            if target_index == 0 and width == 390:
+                                check_no_script_member_links(browser, base + target["resolved"]["href"])
+                                assertions.append("touch member links navigate without JavaScript")
                             if errors:
                                 raise AssertionError("; ".join(errors))
                             results.append({"case": key, "status": "passed", "assertions": assertions})

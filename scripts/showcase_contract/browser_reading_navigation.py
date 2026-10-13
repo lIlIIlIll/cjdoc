@@ -4,6 +4,8 @@ from __future__ import annotations
 import re
 from urllib.parse import unquote, urljoin, urlsplit
 
+from .browser_support import member_action
+
 
 def _native(index: dict, identity: str) -> dict:
     matches = [entry for entry in index["entries"] if entry["id"] == identity]
@@ -105,10 +107,13 @@ def _copy_url(page, button) -> str:
 def check_readable_links(page, member_url: str, current_index: dict, owner_id: str, member_id: str):
     from playwright.sync_api import expect
     version_root = urljoin(member_url, "../")
-    for identity, selector in ((owner_id, ".api-title-row [data-cjdoc-copy-link]"),
-                               (member_id, "[data-cjdoc-member][open] [data-cjdoc-copy-link]")):
+    for identity in (owner_id, member_id):
         page.goto(member_url, wait_until="load")
-        button = page.locator(selector).first
+        if identity == owner_id:
+            button = page.locator(".api-title-row [data-cjdoc-copy-link]").first
+        else:
+            member = page.locator(f'[id="{_anchor(member_id)}"]')
+            button = member_action(member, "[data-cjdoc-copy-link]")
         alias = _copy_url(page, button)
         filename = urlsplit(alias).path.rsplit("/", 1)[-1]
         if filename.startswith("symbol-") or "TextCatalog" not in filename or len(filename) > 96:

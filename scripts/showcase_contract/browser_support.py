@@ -119,6 +119,22 @@ def click_and_return(journey: Journey, link, expected_name: str, version: str | 
     journey.back(old)
 
 
+def member_action(member, selector: str):
+    """Reach sibling actions through their keyboard path, away from the sticky header."""
+    summary = member.locator("summary").first
+    # Playwright scrolling the hidden overlay itself to the viewport edge lets
+    # the sticky header or native summary intercept pointer events. Position the
+    # member heading, then focus the action so :focus-within keeps it visible.
+    summary.evaluate("node => node.scrollIntoView({block: 'center', behavior: 'instant'})")
+    actions = member.locator("xpath=..").locator(":scope > .member-detail-actions")
+    toggle = actions.locator("[data-cjdoc-member-actions-toggle]")
+    if toggle.is_visible() and toggle.get_attribute("aria-expanded") != "true":
+        toggle.click()
+    action = actions.locator(selector)
+    action.focus()
+    return action
+
+
 def clipboard_code_matches(copied: str, source: str) -> bool:
     """Allow platform CRLF conversion while retaining outer-whitespace tolerance."""
     return copied.replace("\r\n", "\n").strip() == source.replace("\r\n", "\n").strip()
