@@ -78,22 +78,39 @@ private func launchBoundedProcess(command: String, arguments: Array<String>,
 }
 
 @When[os != "Windows"]
-private func boundedProcessGroup(process: SubProcess): Int64 {
-    let buffer = Array<Byte>(1, repeat: 0)
-    var pid: Int64 = 0
-    var count: Int64 = 0
-    while (process.stdOutPipe.read(buffer) == 1) {
-        if (buffer[0] == b'\n' && pid > 0) { return pid }
-        if (buffer[0] < b'0' || buffer[0] > b'9' || count >= 10) { break }
-        pid = pid * 10 + Int64(buffer[0] - b'0')
-        count++
+private func boundedProcessGroup(process: SubProcess, timeoutMilliseconds: Int64): Int64 {
+    // The supervisor writes one line naming the isolated group, and this read runs
+    // BEFORE the watchdog is started, so it must carry its own deadline: a
+    // supervisor that never prints would otherwise block here forever and the outer
+    // `timeoutMilliseconds` could never fire. This is the same class of unbounded
+    // read as the trailing stream reads below, and issue #116 stalled in exactly
+    // the "child launches but never answers" state.
+    let reader: Future<Int64> = spawn {
+        let buffer = Array<Byte>(1, repeat: 0)
+        var pid: Int64 = 0
+        var count: Int64 = 0
+        while (process.stdOutPipe.read(buffer) == 1) {
+            if (buffer[0] == b'\n' && pid > 0) { return pid }
+            if (buffer[0] < b'0' || buffer[0] > b'9' || count >= 10) { break }
+            pid = pid * 10 + Int64(buffer[0] - b'0')
+            count++
+        }
+        0
     }
-    throw IllegalStateException("process supervisor did not provide an isolated process group")
+    let pid = try {
+        reader.get(Duration.millisecond * timeoutMilliseconds)
+    } catch (_: Exception) {
+        0
+    }
+    if (pid <= 0) {
+        throw IllegalStateException("process supervisor did not provide an isolated process group")
+    }
+    pid
 }
 
 @When[os == "Windows"]
-private func boundedProcessGroup(process: SubProcess): Int64 {
-    let _ = process
+private func boundedProcessGroup(process: SubProcess, timeoutMilliseconds: Int64): Int64 {
+    let _ = (process, timeoutMilliseconds)
     0
 }
 
@@ -123,7 +140,7 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
         try { process.terminate(force: true) } catch (_: Exception) {}
         throw error
     }
-    let group = try { boundedProcessGroup(process) } catch (error: Exception) {
+    let group = try { boundedProcessGroup(process, timeoutMilliseconds) } catch (error: Exception) {
         terminateBoundedProcessTree(process, 0, job)
         throw error
     }
