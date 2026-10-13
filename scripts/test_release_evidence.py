@@ -74,6 +74,62 @@ class ReleaseEvidenceTest(ReleaseToolsTestSupport, unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Doc IR checksum"):
             perf_gate.verify_hard_ceiling(baseline, result)
 
+    def test_identity_check_ignores_timing_but_requires_the_doc_ir(self) -> None:
+        """The CI-facing half: no fixed-CPU environment is available there."""
+        baseline = {"profiles": [{
+            "name": "basic",
+            "referenceDocsSha256": "a" * 64,
+            "variants": {"cold": {"maxElapsedMs": 1, "maxPeakRssKiB": 1}},
+        }]}
+        # A run far over every ceiling still passes: only the identity is checked.
+        result = [{
+            "name": "basic", "docsSha256": "a" * 64,
+            "variants": {"cold": {"maxElapsedMs": 10_000, "maxPeakRssKiB": 10_000}},
+        }]
+        perf_gate.verify_document_identities(baseline, result)
+
+    def test_identity_check_rejects_a_stale_baseline(self) -> None:
+        baseline = {"profiles": [{"name": "basic", "referenceDocsSha256": "a" * 64}]}
+        result = [{"name": "basic", "docsSha256": "b" * 64}]
+        with self.assertRaisesRegex(ValueError, "Doc IR identity failed"):
+            perf_gate.verify_document_identities(baseline, result)
+
+    def test_identity_check_rejects_a_malformed_reference(self) -> None:
+        baseline = {"profiles": [{"name": "basic", "referenceDocsSha256": "not-a-digest"}]}
+        result = [{"name": "basic", "docsSha256": "b" * 64}]
+        with self.assertRaisesRegex(ValueError, "invalid reference Doc IR checksum"):
+            perf_gate.verify_document_identities(baseline, result)
+
+    def test_identity_check_covers_every_profile(self) -> None:
+        """One stale profile must fail, not just the first."""
+        baseline = {"profiles": [
+            {"name": "basic", "referenceDocsSha256": "a" * 64},
+            {"name": "self", "referenceDocsSha256": "c" * 64},
+        ]}
+        result = [
+            {"name": "basic", "docsSha256": "a" * 64},
+            {"name": "self", "docsSha256": "d" * 64},
+        ]
+        with self.assertRaisesRegex(ValueError, "self: Doc IR checksum"):
+            perf_gate.verify_document_identities(baseline, result)
+
+    def test_ci_verifies_the_doc_ir_identities_on_every_push(self) -> None:
+        """Otherwise a stale baseline is only discovered at release time."""
+        workflow = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertIn("perf_gate.py identities", workflow)
+        # It runs in the Linux acceptance job, before the timing artifact upload.
+        job = workflow.split("\n  linux-acceptance:\n", 1)[1].split("\n  candidate-other:\n", 1)[0]
+        self.assertIn("perf_gate.py identities", job)
+        self.assertLess(job.index("perf_gate.py identities"),
+                        job.index("Upload timing evidence"))
+
+    def test_the_identity_gate_does_not_replace_the_release_ceiling(self) -> None:
+        """Both halves must remain reachable: identity in CI, ceilings at release."""
+        ci = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        self.assertNotIn("perf_gate.py check", ci)
+        release = (PROJECT_ROOT / "scripts/release_check.sh").read_text(encoding="utf-8")
+        self.assertIn("perf_gate.py check", release)
+
     def test_recorded_performance_baseline_is_explicitly_a_hard_ceiling(self) -> None:
         results = [{
             "name": "basic", "project": ".", "minDeclarations": 1,
