@@ -338,7 +338,7 @@ test.describe('generated HTML reference', () => {
     await expect(pingGroup).toHaveCount(1);
     await expect(pingGroup).toHaveAttribute('data-overload-total', '2');
     await expect(pingGroup.locator('details[data-cjdoc-member][data-member-name="ping"]')).toHaveCount(2);
-    const pingSummaryIds = await pingDetails.locator('summary').evaluateAll(nodes => nodes.map(node => node.id));
+    const pingSummaryIds = await pingDetails.locator(':scope > .member-detail-summary').evaluateAll(nodes => nodes.map(node => node.id));
     expect(pingSummaryIds).toHaveLength(2);
     expect(new Set(pingSummaryIds).size).toBe(2);
     for (let index = 0; index < 2; index += 1) {
