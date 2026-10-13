@@ -695,7 +695,14 @@ internal func projectAssets(documentation: DocumentationSet,
     let selected = HashSet<String>()
     for (symbol in projection.visibleSymbols) {
         match (symbol.documentation) {
-            case Some(comment) => collectReferencedAssets(comment.markdown, references, selected)
+            case Some(comment) =>
+                collectReferencedAssets(comment.markdown, references, selected)
+                for (tag in comment.tags) {
+                    if (tag.name != "example") { continue }
+                    if (let Some(tree) <- tag.exampleMarkdown) {
+                        collectReferencedAssets(tree, references, selected)
+                    }
+                }
             case None => ()
         }
     }

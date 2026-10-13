@@ -38,12 +38,16 @@ private func readBoundedProcessStream(stream: InputStream,
 
 @When[os != "Windows"]
 private func launchBoundedProcess(command: String, arguments: Array<String>,
-    workingDirectory: ?Path): SubProcess {
+    workingDirectory: ?Path, inputBytes: Int64): SubProcess {
     let wrapperArguments = ArrayList<String>()
     wrapperArguments.add("-c")
     // The child blocks until its isolated group has been recorded by the parent.
-    wrapperArguments.add("set -m; (IFS= read -r release; exec \"$@\" </dev/null) <&0 & child=$!; printf '%s\\n' \"$child\"; wait \"$child\"")
+    // The count is formatted only from the caller byte array's size, never request text.
+    // STS pipe streams expose no public close; forwarding exactly this count supplies EOF.
+    // Disable inner job control so the stdin forwarder and target remain in that group.
+    wrapperArguments.add("set -m; (set +m; IFS= read -r release; count=$1; shift; if [ \"$count\" = 0 ]; then exec \"$@\" </dev/null; else head -c \"$count\" | \"$@\"; fi) <&0 & child=$!; printf '%s\\n' \"$child\"; wait \"$child\"")
     wrapperArguments.add("cjdoc-process-supervisor")
+    wrapperArguments.add(inputBytes.toString())
     wrapperArguments.add(command)
     wrapperArguments.add(all: arguments)
     launch("/bin/bash", wrapperArguments.toArray(), workingDirectory: workingDirectory,
@@ -52,9 +56,17 @@ private func launchBoundedProcess(command: String, arguments: Array<String>,
 
 @When[os == "Windows"]
 private func launchBoundedProcess(command: String, arguments: Array<String>,
-    workingDirectory: ?Path): SubProcess {
+    workingDirectory: ?Path, inputBytes: Int64): SubProcess {
     let script = StringBuilder()
-    script.append("$ErrorActionPreference='Stop'; if ([Console]::In.Read() -lt 0) { exit 125 }; & '")
+    if (inputBytes > 0) {
+        script.append("$OutputEncoding = New-Object System.Text.UTF8Encoding $false; [Console]::InputEncoding = $OutputEncoding; ")
+    }
+    script.append("$ErrorActionPreference='Stop'; if ([Console]::In.ReadLine() -eq $null) { exit 125 }; ")
+    if (inputBytes > 0) {
+        // The optional payload is one newline-terminated UTF-8 protocol request.
+        script.append("[Console]::In.ReadLine() | ")
+    }
+    script.append("& '")
     script.append(command.replace("'", "''")); script.append("'")
     for (argument in arguments) {
         script.append(" '"); script.append(argument.replace("'", "''")); script.append("'")
@@ -104,21 +116,15 @@ private func terminateBoundedProcessTree(process: SubProcess, group: Int64,
 
 internal func executeWithBoundedOutput(command: String, arguments: Array<String>,
     workingDirectory!: ?Path = None,
-    timeoutMilliseconds!: Int64 = BOUNDED_PROCESS_TIMEOUT_MILLISECONDS): (Int64, Array<Byte>, Array<Byte>) {
-    let process = launchBoundedProcess(command, arguments, workingDirectory)
+    timeoutMilliseconds!: Int64 = BOUNDED_PROCESS_TIMEOUT_MILLISECONDS,
+    standardInput!: Array<Byte> = [], outputLimit!: Int64 = BOUNDED_PROCESS_OUTPUT_BYTES): (Int64, Array<Byte>, Array<Byte>) {
+    let process = launchBoundedProcess(command, arguments, workingDirectory, standardInput.size)
     let job = try { createExampleProcessJob(process) } catch (error: Exception) {
         try { process.terminate(force: true) } catch (_: Exception) {}
         throw error
     }
     let group = try { boundedProcessGroup(process) } catch (error: Exception) {
         terminateBoundedProcessTree(process, 0, job)
-        throw error
-    }
-    try {
-        process.stdInPipe.write("\n".toArray())
-        process.stdInPipe.flush()
-    } catch (error: Exception) {
-        terminateBoundedProcessTree(process, group, job)
         throw error
     }
     let state = AtomicInt64(0)
@@ -131,9 +137,16 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
         if (state.compareAndSwap(0, 2)) { terminateBoundedProcessTree(process, group, job) }
     }
     let standardOutput = spawn { => readBoundedProcessStream(process.stdOutPipe,
-        BOUNDED_PROCESS_OUTPUT_BYTES) }
+        outputLimit) }
     let standardError = spawn { => readBoundedProcessStream(process.stdErrPipe,
         BOUNDED_PROCESS_OUTPUT_BYTES) }
+    try {
+        process.stdInPipe.write("\n".toArray())
+        process.stdInPipe.write(standardInput)
+        process.stdInPipe.flush()
+    } catch (_: Exception) {
+        terminateBoundedProcessTree(process, group, job)
+    }
     let output = standardOutput.get()
     let error = standardError.get()
     let exitCode = process.wait()

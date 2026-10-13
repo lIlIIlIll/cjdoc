@@ -24,10 +24,12 @@ public func decodeDocIr(text: String): DocumentationSet {
     let legacyV8 = version == DOC_IR_V8_SCHEMA_VERSION
     let legacyV9 = version == DOC_IR_V9_SCHEMA_VERSION
     let legacyV10 = version == DOC_IR_V10_SCHEMA_VERSION
+    let legacyV11 = version == DOC_IR_V11_SCHEMA_VERSION
     let current = version == DOC_IR_SCHEMA_VERSION
-    let modern = legacyV9 || legacyV10 || current
+    let modern = legacyV9 || legacyV10 || legacyV11 || current
     if (!legacy && !legacyV8 && !modern) {
-        fail("$.schemaVersion", "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V10_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
+        fail("$.schemaVersion", "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V11_SCHEMA_VERSION}', " +
+            "'${DOC_IR_V10_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
             "'${DOC_IR_V8_SCHEMA_VERSION}', '${DOC_IR_V7_SCHEMA_VERSION}', or " +
             "'${DOC_IR_V6_SCHEMA_VERSION}'")
     }

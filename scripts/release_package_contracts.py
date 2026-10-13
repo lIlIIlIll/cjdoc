@@ -44,6 +44,7 @@ SCHEMA_PAYLOAD = {
     "docs/schema/doc-ir.schema.json",
     "docs/schema/doc-ir-v9.schema.json",
     "docs/schema/doc-ir-v11.schema.json",
+    "docs/schema/doc-ir-v12.schema.json",
     "docs/schema/doc-ir-v10.schema.json",
     "docs/schema/doc-ir-v6.schema.json",
     "docs/schema/doc-ir-v7.schema.json",

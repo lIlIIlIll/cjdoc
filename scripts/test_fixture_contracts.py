@@ -23,6 +23,12 @@ CANGJIE_CONTRACT_FIXTURES = {
 CLI_CONTRACT_FIXTURES = {
     "cached_dependencies", "conditional_complex", "deep_binary", "duplicate",
     "lint_quality", "override", "path_dependencies_invalid", "workspace_invalid",
+    # Lexical shapes for generation-time highlighting (issue #100); owned by the
+    # highlight acceptance gate rather than by a golden or Cangjie contract.
+    "highlight",
+    # Committed sources for the retained @example asset case; a temporary project
+    # root resolves local images differently across platforms.
+    "example_assets",
 }
 
 
@@ -50,7 +56,7 @@ class FixtureContractTest(unittest.TestCase):
             document = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             self.fail(f"{fixture} did not emit one valid JSON document: {error}; stderr={result.stderr}")
-        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/11")
+        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/12")
         self.assertEqual(document.get("generator"), {
             "name": "cjdoc", "version": self.package_version,
         })

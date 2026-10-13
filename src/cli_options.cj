@@ -10,6 +10,8 @@ internal class NewCliOptions {
     var cjcExecutable = "cjc"
     var cjcExplicit = false
     var chirWorkerExecutable: ?String = None
+    var highlightAdapter: ?String = None
+    var highlightNode: ?String = None
     let chirImportPaths = ArrayList<String>()
     var project = "."
     var projectExplicit = false
@@ -72,6 +74,7 @@ internal func newUsage(): String {
     "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout] [--doc-version <version>]\n" +
     "                 [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
     "                 [--chir-worker <executable>]\n" +
+    "                 [--highlight-adapter <absolute path> --highlight-node <absolute path>]\n" +
     "                 [--audience external|package|all] [--lint-profile off|standard|strict] [--jobs 1..64]\n" +
     "                 [--check-examples]\n" +
     "                 [--cfg NAME=VALUE] [--include-path-dependencies] [--include-cached-dependencies]\n" +
@@ -80,6 +83,7 @@ internal func newUsage(): String {
     "                 [--locale zh-CN|en] [--markdown-layout site|single]\n" +
     "  cjdoc check [--project <dir>] [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
     "              [--chir-worker <executable>]\n" +
+    "              [--highlight-adapter <absolute path> --highlight-node <absolute path>]\n" +
     "              [--deny-warnings] [--lint-profile off|standard|strict] [--check-examples]\n" +
     "              [--api-surface-baseline <file>] [--min-symbol-coverage 0..100] [--min-parameter-coverage 0..100]\n" +
     "  cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
@@ -128,8 +132,44 @@ private func requireNonEmptyCliValue(args: Array<String>, index: Int64, option: 
     value
 }
 
+private func requireHighlightHostPath(args: Array<String>, index: Int64, option: String): String {
+    let value = requireNonEmptyCliValue(args, index, option)
+    // Paths are argv values, never shell command strings.
+    for (byte in value.toArray()) {
+        if (byte < 32 || byte == 127 || byte == b';' || byte == b'|' || byte == b'&' ||
+            byte == b'$' || byte == b'`' || byte == b'<' || byte == b'>' ||
+            byte == b'"' || byte == b'\'' || byte == b'(' || byte == b')' ||
+            byte == b'*' || byte == b'?' || byte == b'[' || byte == b']' ||
+            byte == b'{' || byte == b'}' || byte == b'!' || byte == b'#' || byte == b'~') {
+            throw IllegalArgumentException("${option} requires a path without shell metacharacters")
+        }
+    }
+    if (!highlightHostPathIsAbsolute(value)) {
+        throw IllegalArgumentException("${option} requires an absolute path")
+    }
+    value
+}
+
+@When[os != "Windows"]
+internal func highlightHostPathIsAbsolute(value: String): Bool { value.startsWith("/") }
+
+@When[os == "Windows"]
+internal func highlightHostPathIsAbsolute(value: String): Bool {
+    if (value.startsWith("\\\\")) { return true }
+    value.size >= 3 && ((value[0] >= b'A' && value[0] <= b'Z') ||
+        (value[0] >= b'a' && value[0] <= b'z')) && value[1] == b':' &&
+        (value[2] == b'\\' || value[2] == b'/')
+}
+
+
 private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>, index: Int64): ?Int64 {
     match (args[index]) {
+        case "--highlight-adapter" =>
+            options.highlightAdapter = Some(requireHighlightHostPath(args, index, "--highlight-adapter"))
+            Some(index + 2)
+        case "--highlight-node" =>
+            options.highlightNode = Some(requireHighlightHostPath(args, index, "--highlight-node"))
+            Some(index + 2)
         case "--cjc" =>
             options.cjcExecutable = requireNonEmptyCliValue(args, index, "--cjc")
             options.cjcExplicit = true
@@ -316,6 +356,14 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
     }
 }
 private func validateCliOptions(options: NewCliOptions): Unit {
+    if (options.highlightAdapter.isSome() || options.highlightNode.isSome()) {
+        if (options.command != "generate" && options.command != "check") {
+            throw IllegalArgumentException("highlight host options are only valid for generate and check")
+        }
+        if (options.highlightAdapter.isNone() || options.highlightNode.isNone()) {
+            throw IllegalArgumentException("--highlight-adapter and --highlight-node must be supplied together")
+        }
+    }
     if (options.command == "diff") { validateDiffOptions(options); return }
     if (options.denyBreakingApi || options.denyPotentiallyBreakingApi) {
         throw IllegalArgumentException("API deny flags are only valid for diff")

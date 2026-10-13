@@ -220,7 +220,7 @@ internal func isExampleFenceClosing(line: String, fence: ExampleFenceOpening): B
 }
 
 internal func appendExampleCodeHtml(out: RenderTextBuffer, code: String, language: String): Unit {
-    let normalizedLanguage = if (language == "cj") { "cangjie" } else { language }
+    let normalizedLanguage = normalizeCodeLanguage(language)
     out.append("<pre><code")
     if (!normalizedLanguage.isEmpty()) {
         out.append(" class=\"language-${htmlStableSlug(normalizedLanguage)}\"")
@@ -416,13 +416,18 @@ public func exampleEvidenceKey(symbolId: String, title: String): String {
 internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: DocComment,
     locale: String, headingLevel!: Int64 = 3, symbol!: ?SymbolDoc = None,
     exampleEvidence!: HashMap<String, String> = HashMap<String, String>(),
-    exampleEvidenceRootPrefix!: String = "../../"): Unit {
+    exampleEvidenceRootPrefix!: String = "../../",
+    assetLookup!: HashMap<String, String> = HashMap<String, String>(), rootPrefix!: String = "",
+    markdownContext!: HtmlMarkdownContext = HtmlMarkdownContext(2)): Unit {
     var hasExamples = false
     for (tag in comment.tags) { if (tag.name == "example") { hasExamples = true; break } }
     if (!hasExamples) { return }
     out.append("<h${headingLevel}>${label(locale, "Examples", "示例")}</h${headingLevel}><div class=\"example-list\">\n")
+    var exampleIndex: Int64 = 0
+    let symbolPrefix = match (symbol) { case Some(value) => symbolAnchor(value) case None => "examples" }
     for (tag in comment.tags) {
         if (tag.name != "example") { continue }
+        exampleIndex++
         out.append("<div class=\"example-block\">")
         if (!tag.subject.isEmpty()) {
             out.append("<h${min(6, headingLevel + 1)} class=\"example-title\">${escapeHtml(tag.subject)}</h${min(6, headingLevel + 1)}>")
@@ -436,7 +441,19 @@ internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: Do
             let emptyLabel = label(locale, "No example content.", "示例内容为空。")
             out.append("<p class=\"empty-state\">${emptyLabel}</p>\n")
         } else {
-            appendExampleHtml(out, tag.description)
+            match (tag.exampleMarkdown) {
+                case Some(tree) =>
+                    // Share the enclosing heading stream, but scope source fragments
+                    // to this example so repeated #usage links stay local.
+                    let enclosingTargets = markdownContext.fragmentTargets
+                    markdownContext.fragmentTargets = HashMap<String, String>()
+                    markdownContext.nextHeading = markdownContext.headingIds.size
+                    collectMarkdownHeadings(tree, "${symbolPrefix}--example-${exampleIndex}",
+                        HashMap<String, Int64>(), markdownContext)
+                    appendMarkdownNodeHtml(out, tree, assetLookup, rootPrefix, markdownContext)
+                    markdownContext.fragmentTargets = enclosingTargets
+                case None => appendExampleHtml(out, tag.description)
+            }
         }
         out.append("</div>\n")
     }
@@ -474,7 +491,7 @@ internal class HtmlMarkdownContext {
     let headingBase: Int64
     let allowExternalLinks: Bool
     let headingIds = ArrayList<String>()
-    let fragmentTargets = HashMap<String, String>()
+    var fragmentTargets = HashMap<String, String>()
     let usedHeadingSlugs = HashSet<String>()
     let sourceLinks: HashMap<String, String>
     var nextHeading: Int64 = 0
@@ -493,13 +510,13 @@ internal func collectMarkdownHeadings(node: MarkdownNode, anchorPrefix: String,
         let base = markdownFragmentSlug(markdownNodeText(node))
         var occurrence = match (counts.get(base)) { case Some(value) => value case None => 0 }
         var slug = if (occurrence == 0) { base } else { "${base}-${occurrence}" }
-        while (context.usedHeadingSlugs.contains(slug)) {
+        while (context.usedHeadingSlugs.contains("${anchorPrefix}--doc-${slug}")) {
             occurrence++
             slug = "${base}-${occurrence}"
         }
         counts[base] = occurrence + 1
-        let _ = context.usedHeadingSlugs.add(slug)
         let target = "${anchorPrefix}--doc-${slug}"
+        let _ = context.usedHeadingSlugs.add(target)
         context.headingIds.add(target)
         context.fragmentTargets["#${slug}"] = target
     }
@@ -552,10 +569,12 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
         case "code_block" =>
             out.append("<pre><code")
             var displayLanguage = ""
+            var preparedHighlight: ?CodeHighlight = None
             if (let Some(metadata) <- node.metadata) {
                 if (metadata.kind == "code_block") {
-                    let language = metadata.language.getOrThrow()
+                    let language = normalizeCodeLanguage(metadata.language.getOrThrow())
                     displayLanguage = language
+                    preparedHighlight = metadata.codeHighlight
                     if (!language.isEmpty()) {
                         out.append(" class=\"language-${htmlStableSlug(language)}\"")
                         out.append(" data-language=\"${escapeHtml(language)}\"")
@@ -566,7 +585,7 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
                 }
             }
             out.append(">")
-            appendHighlightedCodeHtml(out, node.literal, displayLanguage)
+            appendHighlightedCodeHtml(out, node.literal, displayLanguage, highlight: preparedHighlight)
             out.append("</code></pre>\n")
         case "thematic_break" => out.append("<hr>\n")
         case "block_quote" =>

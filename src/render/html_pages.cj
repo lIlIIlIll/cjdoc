@@ -279,8 +279,9 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
                             "成员受扩展目标与约束限制；此处不推断对具体实例的适用性。") +
                         "</p>")
                     if (!declaredBy.headerSpelling.isEmpty()) {
-                        out.append("<pre class=\"extension-signature\"><code>" +
-                            escapeHtml(declaredBy.headerSpelling) + "</code></pre>")
+                        out.append("<pre class=\"extension-signature\"><code>")
+                        appendSignatureTextHtml(out, declaredBy)
+                        out.append("</code></pre>")
                     }
                 }
             case None => ()

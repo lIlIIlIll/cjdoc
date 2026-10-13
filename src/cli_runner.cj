@@ -224,7 +224,7 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 }
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndoc-ir-v11\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndocumentation-quality\ndoctest-results\nversions\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndoc-ir-v11\ndoc-ir-v12\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndocumentation-quality\ndoctest-results\nversions\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA
@@ -232,6 +232,7 @@ internal func schemaTextForCli(name: String): String {
         case "doc-ir-v9" => DOC_IR_V9_SCHEMA
         case "doc-ir-v10" => DOC_IR_V10_SCHEMA
         case "doc-ir-v11" => DOC_IR_V11_SCHEMA
+        case "doc-ir-v12" => DOC_IR_V12_SCHEMA
         case "diagnostics" => DIAGNOSTICS_SCHEMA
         case "cfg-matrix" => CFG_MATRIX_SCHEMA
         case "search-index" => SEARCH_INDEX_SCHEMA
@@ -431,7 +432,8 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
             cacheDirectory: selectedCache,
             astPreflightExecutable: astPreflightExecutable,
             chir: chirOptions,
-            cjpmCacheRoot: options.cjpmCacheRoot))
+            cjpmCacheRoot: options.cjpmCacheRoot,
+            highlightAdapter: options.highlightAdapter, highlightNode: options.highlightNode))
     }
     var sourceOrigins: Array<SourceFileOrigin> = []
     var documentation = match (generationRequest) {
@@ -491,7 +493,8 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
             artifactList.add(all: appendConceptualArtifacts(options.project, documentation,
                 orderedFormats(options), renderedArtifacts, conceptualPages,
                 locale: options.locale, docVersion: options.docVersion,
-                markdownLayout: options.markdownLayout))
+                markdownLayout: options.markdownLayout,
+                externalOptions: highlightExternalOptions(options.highlightAdapter, options.highlightNode)))
         } else {
             artifactList.add(all: renderedArtifacts)
         }

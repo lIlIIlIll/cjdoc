@@ -34,3 +34,17 @@ bound by `vendor/yjson_algorithms/vendor-manifest.toml`.
 - License: Apache-2.0
 - Repository license text: `vendor/yjson_algorithms/LICENSE`
 - Binary-archive license text: `licenses/yjson-Apache-2.0.txt`
+
+## Highlight.js 11.11.1 (optional generation-time adapter)
+
+The separately installed package under `tools/highlight` uses Highlight.js core
+and the JSON, Bash, Python, TOML/INI and YAML grammars. It is not statically
+incorporated into cjdoc and must not be copied into generated websites.
+
+- Upstream: <https://github.com/highlightjs/highlight.js>
+- Release: <https://github.com/highlightjs/highlight.js/releases/tag/11.11.1>
+- License: BSD-3-Clause (core and all five grammars)
+- Repository license text: `third_party/licenses/highlight.js-LICENSE`
+- Adapter-package license text: `tools/highlight/highlight.js-LICENSE`
+- Adapter notice: `tools/highlight/NOTICE`
+- Exact archive checksum: SHA-512 integrity in `tools/highlight/package-lock.json`

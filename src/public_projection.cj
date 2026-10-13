@@ -1,6 +1,7 @@
 package cjdoc
 
 import cjdoc.model as public_model
+import cjdoc.render as public_render
 import cjdoc.quality.*
 import std.collection.*
 import std.sort.*
@@ -203,6 +204,7 @@ internal func publicSymbol(value: SymbolDoc, sourceMapper: PublicSourceMapper,
         },
         origin: public_model.DeclarationOrigin(kind: value.origin.kind,
             macroSymbolId: value.origin.macroSymbolId),
+        signatureHighlight: markdownContext.highlight(value.sourceSignature, "cangjie"),
         sourceApiSignature: if (value.sourceApiSignatureTokens.isEmpty()) {
             public_model.SourceApiSignature("unavailable")
         } else {
@@ -217,10 +219,14 @@ internal class PublicDeclarationProjection {
     let renderableIds: HashSet<String>
 
     init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
-        providerStatesByModule: HashMap<String, String>, audience: String) {
+        providerStatesByModule: HashMap<String, String>, audience: String, highlightMode!: String = "auto",
+        highlightLanguages!: ?HighlightConfig = None,
+        highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES, externalOptions!: ?HighlightExternalOptions = None) {
         let declarations = ArrayList<public_model.SymbolDoc>()
         let assetCollector = LocalAssetCollector(documentation.sourceFileOrigins)
-        let markdownContext = MarkdownGenerationContext()
+        let markdownContext = MarkdownGenerationContext(highlightMode: highlightMode,
+            highlightLanguages: highlightLanguages, highlightBytes: highlightBytes,
+            externalOptions: externalOptions)
         let renderableIds = renderableSymbolIds(documentation, audience)
         for (symbol in documentation.symbols) {
             declarations.add(publicSymbol(symbol, sourceMapper, providerStatesByModule,
@@ -296,7 +302,12 @@ internal class PublicDiagnosticProjection {
         if (markdownContext.incomplete) {
             incompleteSource = true
         }
-        diagnostics.add(all: markdownContext.diagnostics())
+        for (diagnostic in markdownContext.diagnostics()) {
+            // Any error diagnostic here must make the document partial; a complete
+            // status with an error-bearing diagnostic is an invalid domain state.
+            if (diagnostic.severity == "error") { hasError = true }
+            diagnostics.add(diagnostic)
+        }
         for (diagnostic in semanticLinkDiagnostics) {
             if (diagnostic.severity == "error") { hasError = true }
             diagnostics.add(diagnostic)
@@ -317,14 +328,21 @@ internal class PublicDiagnosticProjection {
 }
 
 internal func publicDocumentation(documentation: DocumentationSet,
-    request: GenerationRequest): public_model.DocumentationSet {
+    request: GenerationRequest, highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES): public_model.DocumentationSet {
     let sourceMapper = PublicSourceMapper(origins: documentation.sourceFileOrigins.toArray())
     let repositoryRoot = repositoryRootForRequest(request)
     let moduleProjection = PublicModuleProjection(documentation, sourceMapper,
         repositoryRoot: repositoryRoot)
     let providerProjection = PublicProviderProjection(documentation)
+    // The project's own `[highlight]` policy decides whether any display data is
+    // produced at all, so an unavailable or invalid configuration never silently
+    // degrades into "highlight everything".
+    let highlightConfig = loadHighlightConfig(request.projectRoot)
     let declarationProjection = PublicDeclarationProjection(documentation, sourceMapper,
-        providerProjection.statesByModule, request.audience)
+        providerProjection.statesByModule, request.audience, highlightBytes: highlightBytes,
+        highlightMode: if (highlightConfig.mode == "off") { "off" } else { "auto" },
+        highlightLanguages: highlightConfig,
+        externalOptions: highlightExternalOptions(request.highlightAdapter, request.highlightNode))
     let semanticLinkDiagnostics = resolvePublicSemanticLinks(declarationProjection.declarations, request.audience,
         request.projectRoot)
     let sourceProjection = PublicSourceProjection(documentation, sourceMapper)
@@ -348,5 +366,12 @@ internal func publicDocumentation(documentation: DocumentationSet,
         orphanDocComments: sourceProjection.orphanDocComments,
         macroInvocations: sourceProjection.macroInvocations, unsupportedDeclarations: sourceProjection.unsupported,
         diagnostics: diagnosticProjection.diagnostics)
+    // A fixed highlight allowance cannot assume the rest of the bundle is small.
+    // Preserve all declarations/text without optional highlighting before the
+    // existing fallback, if the stricter whole-document codec boundary is hit.
+    if (highlightBytes > 0 &&
+        !public_render.docIrFitsEncodedBudget(candidate, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
+        return publicDocumentation(documentation, request, highlightBytes: 0)
+    }
     boundGeneratedDocumentation(candidate, request)
 }

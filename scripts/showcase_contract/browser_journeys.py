@@ -283,7 +283,7 @@ def authoring(journey: Journey):
 
 def machine(journey: Journey):
     target = journey.target
-    ir = journey.raw('[data-machine-format="json"]', "cjdoc.doc-ir/11")
+    ir = journey.raw('[data-machine-format="json"]', "cjdoc.doc-ir/12")
     selected = [item for item in ir["declarations"] if item["id"] == target["resolved"]["symbolId"]]
     if len(selected) != 1 or selected[0]["headerSpelling"] != target["signature"]:
         raise AssertionError("HTML and machine Doc IR disagree on the selected native declaration")

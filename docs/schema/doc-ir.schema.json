@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-  "title": "cjdoc Doc IR v11",
+  "title": "cjdoc Doc IR v12",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "generator", "status", "project", "configuration", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/11"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/12"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "project": {"$ref": "#/$defs/project"},
@@ -194,7 +194,8 @@
         "name": {"type": "string", "minLength": 1}, "subject": {"type": "string"},
         "description": {"type": "string"}, "referenceState": {"$ref": "#/$defs/semanticState"},
         "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"},
-        "directives": {"type": "string"}
+        "directives": {"type": "string"},
+        "exampleMarkdown": {"$ref": "#/$defs/markdownNode"}
       }
     },
     "headingMetadata": {
@@ -230,7 +231,29 @@
         "fenceCharacter": {"type": ["string", "null"], "enum": ["`", "~", null]},
         "fenceLength": {"type": "integer", "minimum": 0, "maximum": 1024},
         "infoRaw": {"type": "string", "not": {"pattern": "[\\r\\n]"}}, "language": {"type": "string"},
-        "attributesRaw": {"type": "string"}
+        "attributesRaw": {"type": "string"},
+        "codeHighlight": {
+          "type": "object", "additionalProperties": false,
+          "required": ["language", "sourceHash", "byteLength", "engineId", "engineRevision", "state", "reason", "spans"],
+          "properties": {
+            "language": {"type": "string"},
+            "sourceHash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "byteLength": {"type": "integer", "minimum": 0},
+            "engineId": {"type": "string", "minLength": 1},
+            "engineRevision": {"type": "string", "minLength": 1},
+            "state": {"enum": ["complete", "partial", "plain"]},
+            "reason": {"type": ["string", "null"], "enum": ["disabled", "no-language", "unsupported", "missing-metadata", "backend-unavailable", "invalid-spans", "resource-limit", "lexer-failed", "unterminated-token", null]},
+            "spans": {"type": "array", "maxItems": 65536, "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["startByte", "endByte", "kind"],
+              "properties": {
+                "startByte": {"type": "integer", "minimum": 0},
+                "endByte": {"type": "integer", "minimum": 1},
+                "kind": {"enum": ["keyword", "type", "string", "number", "literal", "comment", "operator", "punctuation", "function", "property", "meta"]}
+              }
+            }}
+          }
+        }
       },
       "allOf": [
         {"if": {"properties": {"codeKind": {"const": "indented"}}},
@@ -365,7 +388,29 @@
         "source": {"$ref": "#/$defs/sourceRange"}, "headerSpelling": {"type": "string"},
         "sourceApiSignature": {"$ref": "#/$defs/sourceApiSignature"},
         "semantic": {"$ref": "#/$defs/semanticInfo"}, "origin": {"$ref": "#/$defs/origin"},
-        "enumNonExhaustive": {"type": ["boolean", "null"]}
+        "enumNonExhaustive": {"type": ["boolean", "null"]},
+        "signatureHighlight": {
+          "type": "object", "additionalProperties": false,
+          "required": ["language", "sourceHash", "byteLength", "engineId", "engineRevision", "state", "reason", "spans"],
+          "properties": {
+            "language": {"type": "string"},
+            "sourceHash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "byteLength": {"type": "integer", "minimum": 0},
+            "engineId": {"type": "string", "minLength": 1},
+            "engineRevision": {"type": "string", "minLength": 1},
+            "state": {"enum": ["complete", "partial", "plain"]},
+            "reason": {"type": ["string", "null"], "enum": ["disabled", "no-language", "unsupported", "missing-metadata", "backend-unavailable", "invalid-spans", "resource-limit", "lexer-failed", "unterminated-token", null]},
+            "spans": {"type": "array", "maxItems": 65536, "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["startByte", "endByte", "kind"],
+              "properties": {
+                "startByte": {"type": "integer", "minimum": 0},
+                "endByte": {"type": "integer", "minimum": 1},
+                "kind": {"enum": ["keyword", "type", "string", "number", "literal", "comment", "operator", "punctuation", "function", "property", "meta"]}
+              }
+            }}
+          }
+        }
       }
     },
     "asset": {

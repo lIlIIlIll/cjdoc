@@ -119,6 +119,10 @@ private func appendTag(out: StringBuilder, value: DocTag): Unit {
     if (!value.directives.isEmpty()) {
         out.append(",\"directives\":${escapeJsonString(value.directives)}")
     }
+    if (let Some(markdown) <- value.exampleMarkdown) {
+        out.append(",\"exampleMarkdown\":")
+        appendMarkdown(out, markdown)
+    }
     out.append("}")
 }
 
@@ -138,7 +142,12 @@ private func appendMarkdownMetadata(out: StringBuilder, value: MarkdownNodeMetad
             out.append("\"fenceLength\":${value.fenceLength.getOrThrow()},")
             out.append("\"infoRaw\":${escapeJsonString(value.infoRaw.getOrThrow())},")
             out.append("\"language\":${escapeJsonString(value.language.getOrThrow())},")
-            out.append("\"attributesRaw\":${escapeJsonString(value.attributesRaw.getOrThrow())}}")
+            out.append("\"attributesRaw\":${escapeJsonString(value.attributesRaw.getOrThrow())}")
+            if (let Some(highlight) <- value.codeHighlight) {
+                out.append(",\"codeHighlight\":")
+                appendCodeHighlight(out, highlight)
+            }
+            out.append("}")
         case "table" =>
             out.append("{\"alignments\":")
             appendStrings(out, value.tableAlignments)
@@ -268,6 +277,10 @@ private func appendSymbol(out: StringBuilder, value: SymbolDoc): Unit {
     out.append("\"canonicalSignature\":${nullableString(value.semantic.canonicalSignature)}},\"origin\":")
     appendOrigin(out, value.origin)
     out.append(",\"enumNonExhaustive\":${nullableBool(value.enumNonExhaustive)}")
+    if (let Some(highlight) <- value.signatureHighlight) {
+        out.append(",\"signatureHighlight\":")
+        appendCodeHighlight(out, highlight)
+    }
     out.append("}")
 }
 

@@ -140,6 +140,9 @@ internal func validateMarkdownMetadata(node: MarkdownNode, path: String): Unit {
             if (value.kind != node.kind) {
                 domainFail("${path}.metadata", "metadata kind does not match Markdown node kind")
             }
+            if (value.codeHighlight.isSome() && node.kind != "code_block") {
+                domainFail("${path}.metadata.codeHighlight", "highlight is only allowed on code blocks")
+            }
             match (node.kind) {
                 case "heading" =>
                     let level = value.headingLevel.getOrThrow()

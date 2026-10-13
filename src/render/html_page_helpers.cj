@@ -92,7 +92,7 @@ internal func docBlockAnchor(symbol: SymbolDoc, block: String): String {
 
 internal func appendDocumentationIntroductionHtml(out: RenderTextBuffer, symbol: SymbolDoc,
     rootPrefix: String, assetLookup: HashMap<String, String>, headingBase: Int64,
-    locale: String): Unit {
+    locale: String, context!: ?HtmlMarkdownContext = None): Unit {
     let comment = match (symbol.documentation) {
         case Some(value) => value
         case None => return
@@ -109,7 +109,10 @@ internal func appendDocumentationIntroductionHtml(out: RenderTextBuffer, symbol:
     if (comment.markdown.children.isEmpty() ||
         (comment.markdown.children.size == 1 && summaryIndex == 0)) { return }
     out.append("<div class=\"description\">")
-    let markdownContext = markdownHtmlContext(comment, symbol, headingBase)
+    let markdownContext = match (context) {
+        case Some(value) => value
+        case None => markdownHtmlContext(comment, symbol, headingBase)
+    }
     var childIndex: Int64 = 0
     for (child in comment.markdown.children) {
         if (childIndex != summaryIndex) {
@@ -126,11 +129,13 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
     headingBase!: Int64 = 3, includeContracts!: Bool = true,
     includeIntroduction!: Bool = true, locale!: String = "en",
     exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): Unit {
-    if (includeIntroduction) {
-        appendDocumentationIntroductionHtml(out, symbol, rootPrefix, assetLookup, headingBase, locale)
-    }
     match (symbol.documentation) {
         case Some(comment) =>
+            let markdownContext = markdownHtmlContext(comment, symbol, headingBase)
+            if (includeIntroduction) {
+                appendDocumentationIntroductionHtml(out, symbol, rootPrefix, assetLookup, headingBase, locale,
+                    context: Some(markdownContext))
+            }
             if (!symbol.parameters.isEmpty()) {
                 out.append("<h3 id=\"${docBlockAnchor(symbol, "parameters")}\">${label(locale, "Parameters", "参数")}</h3><dl class=\"parameter-list\">\n")
                 for (parameter in symbol.parameters) {
@@ -202,7 +207,8 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             }
             appendDocumentationExamplesHtml(out, comment, locale, symbol: Some(symbol),
                 exampleEvidence: exampleEvidence,
-                exampleEvidenceRootPrefix: rootPrefix + "../")
+                exampleEvidenceRootPrefix: rootPrefix + "../", assetLookup: assetLookup,
+                rootPrefix: rootPrefix, markdownContext: markdownContext)
             var hasSee = false
             for (tag in comment.tags) { if (tag.name == "see") { hasSee = true; break } }
             if (hasSee) {
