@@ -401,6 +401,8 @@ def shard_main(argv: list[str]) -> int:
         parser.add_argument("--shard-result", action="append", default=[], metavar="N=FILE")
         parser.add_argument("--evidence", type=Path, required=True)
         parser.add_argument("--receipt", type=Path, required=True)
+        parser.add_argument("--timings", type=Path,
+                            help="write complete timing history from every shard's timings.json")
     args = parser.parse_args(rest)
     try:
         if command == "plan":
@@ -409,7 +411,7 @@ def shard_main(argv: list[str]) -> int:
             args.output.write_text(json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
                                    encoding="utf-8", newline="\n")
             print(f"browser shard plan written: {args.output} ({len(document['cases'])} cases, "
-                  f"{len(document['homeKeys'])} homepage groups)")
+                  f"{len(document['homeKeys'])} homepage groups; mode={document['assignment']['mode']})")
             return 0
         if command == "run":
             plan = browser_sharding.load_plan(args.plan)
@@ -427,8 +429,18 @@ def shard_main(argv: list[str]) -> int:
             return int(index), Path(path)
 
         shard_files = dict(parse_shard_result(value) for value in args.shard_result)
+        plan = browser_sharding.load_plan(args.plan)
+        history = browser_sharding.merge_timings(
+            plan, {index: path.parent / "timings.json" for index, path in shard_files.items()}
+        ) if args.timings else None
         receipt = browser_sharding.merge(args.plan, shard_files, args.site, args.evidence, args.receipt)
-        print(f"merged {len(receipt['shards'])} browser shards; full evidence gate passed")
+        if args.timings:
+            args.timings.parent.mkdir(parents=True, exist_ok=True)
+            args.timings.write_text(json.dumps(history, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                                    encoding="utf-8", newline="\n")
+            print(f"browser timing history written: {args.timings}")
+        print(f"merged {len(receipt['shards'])} browser shards; full evidence gate passed; "
+              f"mode={plan['assignment']['mode']}")
         return 0
     except Exception as error:
         print(f"Showcase browser sharding FAILED: {error}")

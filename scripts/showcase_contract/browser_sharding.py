@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 
 from .contract import validate_manifest
@@ -52,24 +53,47 @@ def _validate_shard_count(shards: int) -> None:
 
 
 def history_costs(history: Path | None) -> dict[tuple, float]:
-    """Per-case elapsedMs history keyed by case key."""
+    """Reject ambiguous observations before they can affect group placement."""
     if history is None:
         return {}
-    document = load_json(Path(history))
+    return _timing_costs(load_json(Path(history)), "browser timing history")
+
+
+def _timing_costs(document: dict, label: str) -> dict[tuple, float]:
     if document.get("schemaVersion") != TIMING_SCHEMA:
-        raise ContractError("browser timing history has an unexpected schema")
+        raise ContractError(f"{label} has an unexpected schemaVersion; expected {TIMING_SCHEMA}")
     timings = document.get("timings")
     if not isinstance(timings, list):
-        raise ContractError("browser timing history is missing its timings list")
+        raise ContractError(f"{label} is missing its timings list")
     costs: dict[tuple, float] = {}
-    for entry in timings:
-        if not isinstance(entry, dict) or not isinstance(entry.get("key"), list):
-            raise ContractError("browser timing history has a malformed entry")
+    for index, entry in enumerate(timings):
+        key = entry.get("key") if isinstance(entry, dict) else None
+        if (not isinstance(key, list) or len(key) != len(CASE_FIELDS)
+                or not all(isinstance(part, str) for part in key)):
+            raise ContractError(f"{label} entry {index} has a malformed case key")
+        identity = tuple(key)
+        if identity in costs:
+            raise ContractError(f"{label} has a duplicate timing case key: {identity}")
         elapsed = entry.get("elapsedMs")
-        if not isinstance(elapsed, (int, float)) or isinstance(elapsed, bool) or elapsed < 0:
-            raise ContractError("browser timing history has an invalid elapsedMs")
-        costs[tuple(entry["key"])] = float(elapsed)
+        try:
+            valid = (isinstance(elapsed, (int, float)) and not isinstance(elapsed, bool)
+                     and elapsed >= 0 and math.isfinite(elapsed))
+        except OverflowError:
+            valid = False
+        if not valid:
+            raise ContractError(f"{label} has an invalid elapsedMs for {identity}: {elapsed!r}; "
+                                "expected a finite nonnegative number")
+        costs[identity] = float(elapsed)
     return costs
+
+
+def _require_timing_keys(costs: dict[tuple, float], expected: set[tuple], label: str) -> None:
+    unknown = sorted(costs.keys() - expected)
+    if unknown:
+        raise ContractError(f"{label} contains unknown cases ({len(unknown)}): {unknown[:3]}")
+    missing = sorted(expected - costs.keys())
+    if missing:
+        raise ContractError(f"{label} is missing cases ({len(missing)}): {missing[:3]}")
 
 
 def assign_home_groups(groups: dict[tuple, list], costs: dict[tuple, float]) -> tuple[dict[tuple, int], str]:
@@ -125,6 +149,10 @@ def build_plan(site_path: Path, run_id: str, shards: int = SHARD_COUNT,
     if not groups:
         raise ContractError("no homepage groups to shard; refusing a vacuous plan")
     costs = history_costs(history)
+    if history is not None:
+        # A changed scenario inventory needs a new complete observation, not a
+        # silent zero-cost estimate for cases missing from an older run.
+        _require_timing_keys(costs, set(cases), "browser timing history")
     assignment, mode = assign_home_groups(groups, costs)
     home_entries = []
     for home in sorted(groups, key=home_identity):
@@ -194,6 +222,45 @@ def timing_document(shard: dict) -> dict:
     return {"schemaVersion": TIMING_SCHEMA,
             "timings": [{"key": case["key"], "elapsedMs": case["elapsedMs"]}
                         for case in shard["results"]]}
+
+
+def merge_timings(plan: dict, timing_files: dict[int, Path]) -> dict:
+    """Produce complete history so a later plan cannot silently use partial costs.
+
+    Each shard must supply its own planned cases exactly once. Canonical plan
+    order makes the combined history independent of artifact download order.
+    """
+    shards = list(range(plan["shardCount"]))
+    if sorted(timing_files) != shards:
+        raise ContractError(f"timing merge needs exactly shards {shards}, got {sorted(timing_files)}")
+    expected = {tuple(entry["key"]) for entry in plan["cases"]}
+    costs: dict[tuple, float] = {}
+    for index in shards:
+        path = Path(timing_files[index])
+        label = f"shard {index} timings"
+        if path.is_symlink() or not path.is_file():
+            raise ContractError(f"{label} document is missing or a symlink: {path.name}")
+        try:
+            observed = _timing_costs(load_json(path), label)
+        except ContractError as error:
+            raise ContractError(f"{label} document {path.name}: {error}") from error
+        duplicates = sorted(costs.keys() & observed.keys())
+        if duplicates:
+            raise ContractError(f"duplicate timing case key across shards: {duplicates[0]}")
+        unknown = sorted(observed.keys() - expected)
+        if unknown:
+            raise ContractError(f"{label} contains unknown cases ({len(unknown)}): {unknown[:3]}")
+        owned = {tuple(entry["key"]) for entry in shard_cases(plan, index)}
+        foreign = sorted(observed.keys() - owned)
+        if foreign:
+            raise ContractError(f"{label} reports a case owned by another shard: {foreign[0]}")
+        _require_timing_keys(observed, owned, label)
+        costs.update(observed)
+    _require_timing_keys(costs, expected, "combined browser timings")
+    return {"schemaVersion": TIMING_SCHEMA,
+            "timings": [{"key": entry["key"], "elapsedMs": costs[tuple(entry["key"])]}
+                        for entry in plan["cases"]]}
+
 
 
 def verify_attachment(root: Path, attachment: dict) -> str:

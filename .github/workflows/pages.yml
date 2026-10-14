@@ -46,6 +46,16 @@ on:
         description: Attempt number of the reused CI run
         type: string
         default: "1"
+      browser_history_run_id:
+        description: Prior Pages run supplying browser timings (empty = equal homepage groups)
+        required: false
+        type: string
+        default: ""
+      browser_history_run_attempt:
+        description: Exact attempt of the prior Pages run (no automatic discovery or fallback)
+        required: false
+        type: string
+        default: "1"
 
 permissions:
   contents: read
@@ -475,17 +485,81 @@ jobs:
           name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/sealed
 
+      - name: Select the explicitly requested browser history
+        id: browser-history
+        shell: bash
+        env:
+          HISTORY_RUN_ID: ${{ inputs.browser_history_run_id }}
+          HISTORY_RUN_ATTEMPT: ${{ inputs.browser_history_run_attempt || '1' }}
+        run: |
+          set -euo pipefail
+          mkdir -p target
+          history_source=""
+          artifact=""
+          if [[ -n "${HISTORY_RUN_ID}" ]]; then
+            if [[ ! "${HISTORY_RUN_ID}" =~ ^[1-9][0-9]*$ || ! "${HISTORY_RUN_ATTEMPT}" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Browser history requires a positive run id and attempt number"
+              exit 1
+            fi
+            history_dir="target/browser-history/${HISTORY_RUN_ID}-${HISTORY_RUN_ATTEMPT}"
+            history_source="${history_dir}/browser-timing-history.json"
+            artifact="cjdoc-showcase-browser-history-${HISTORY_RUN_ID}-${HISTORY_RUN_ATTEMPT}"
+            {
+              echo "selected=true"
+              echo "history_dir=${history_dir}"
+              echo "history_source=${history_source}"
+              echo "artifact_name=${artifact}"
+            } >> "${GITHUB_OUTPUT}"
+          fi
+          export HISTORY_SOURCE="${history_source}" HISTORY_ARTIFACT="${artifact}"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          selected = bool(os.environ["HISTORY_RUN_ID"])
+          selection = {
+              "mode": "history-weighted" if selected else "equal-home-groups",
+              "runId": os.environ["HISTORY_RUN_ID"] if selected else None,
+              "runAttempt": int(os.environ["HISTORY_RUN_ATTEMPT"]) if selected else None,
+              "artifactName": os.environ["HISTORY_ARTIFACT"] or None,
+              "historySource": os.environ["HISTORY_SOURCE"] or None,
+          }
+          Path("target/browser-history-selection.json").write_text(
+              json.dumps(selection, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          print(json.dumps(selection, sort_keys=True))
+          PY
+
+      - name: Download only the selected run and attempt's browser history
+        if: steps.browser-history.outputs.selected == 'true'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: ${{ steps.browser-history.outputs.artifact_name }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.browser_history_run_id }}
+          path: ${{ steps.browser-history.outputs.history_dir }}
+
       - name: Plan and run the browser shard
         shell: bash
         env:
           PYTHONPATH: scripts
           CJDOC_CI_EVIDENCE: ${{ runner.temp }}/ci-evidence
+          BROWSER_HISTORY_SOURCE: ${{ steps.browser-history.outputs.history_source }}
         run: |
           set -euo pipefail
           sealed="${RUNNER_TEMP}/sealed"
+          history_args=()
+          if [[ -n "${BROWSER_HISTORY_SOURCE}" ]]; then
+            # A selected but unavailable/invalid/incomplete history fails closed.
+            if [[ ! -f "${BROWSER_HISTORY_SOURCE}" ]]; then
+              echo "::error::Selected browser history is missing ${BROWSER_HISTORY_SOURCE}"
+              exit 1
+            fi
+            history_args=(--history "${BROWSER_HISTORY_SOURCE}")
+          fi
           python -m showcase_contract.browser plan \
             --site "${sealed}/showcase-site" --shards 2 \
-            --run-id "${GITHUB_RUN_ID}" --output target/browser-plan.json
+            --run-id "${GITHUB_RUN_ID}" --output target/browser-plan.json "${history_args[@]}"
           python scripts/ci_stage.py run --id "browser-shard-${{ matrix.shard }}" --kind browser-shard \
             --evidence "${CJDOC_CI_EVIDENCE}" -- \
             python -m showcase_contract.browser run \
@@ -501,6 +575,8 @@ jobs:
           name: cjdoc-showcase-browser-shard-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             target/browser-plan.json
+            target/browser-history-selection.json
+            target/browser-history
             target/browser-shard-${{ matrix.shard }}
           retention-days: 7
           if-no-files-found: error
@@ -669,7 +745,8 @@ jobs:
             --shard-result "0=${branches}/browser-shard-0/shard.json" \
             --shard-result "1=${branches}/browser-shard-1/shard.json" \
             --evidence target/showcase-evidence \
-            --receipt "${branches}/browser-merge-receipt.json"
+            --receipt "${branches}/browser-merge-receipt.json" \
+            --timings target/browser-timing-history.json
           python -m showcase_contract verify \
             --site "${sealed}/showcase-site" \
             --evidence target/showcase-evidence/results.json \
@@ -695,6 +772,15 @@ jobs:
             --branch "browser-merge=${branches}/browser-merge-receipt.json" \
             --receipt "${branches}/branch-receipt.json"
 
+      - name: Upload complete browser history for explicit future reuse
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cjdoc-showcase-browser-history-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/browser-timing-history.json
+          retention-days: 30
+          if-no-files-found: error
+
+
       - name: Upload validation evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -702,6 +788,7 @@ jobs:
           name: cjdoc-showcase-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             target/showcase-evidence
+            target/browser-timing-history.json
             ${{ runner.temp }}/branches
           retention-days: 30
           if-no-files-found: warn

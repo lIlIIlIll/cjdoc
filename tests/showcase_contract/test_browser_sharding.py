@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 import hashlib
 import json
+import io
 from pathlib import Path
 import sys
 import tempfile
@@ -127,6 +128,19 @@ class ShardingTests(unittest.TestCase):
         return browser_sharding.merge(
             self.plan_path, {index: self.root / f"shard-{index}/shard.json" for index in shards},
             self.site, self.root / name, self.root / f"{name}-receipt.json")
+
+    def write_timings(self) -> dict[int, Path]:
+        plan = load_json(self.plan_path)
+        files = {}
+        for index in range(plan["shardCount"]):
+            path = self.root / f"timings-{index}.json"
+            document = browser_sharding.timing_document({
+                "results": [{"key": entry["key"], "elapsedMs": number + 0.5}
+                            for number, entry in enumerate(browser_sharding.shard_cases(plan, index))]})
+            path.write_text(json.dumps(document), encoding="utf-8")
+            files[index] = path
+        return files
+
 
     def test_plan_is_deterministic_and_groups_stay_whole(self):
         first = browser_sharding.build_plan(self.site, "synthetic-run", 2)
@@ -313,6 +327,176 @@ class ShardingTests(unittest.TestCase):
         weighted = browser_sharding.build_plan(self.site, "synthetic-run", 2, history_path)
         self.assertEqual(weighted["assignment"]["mode"], "history-weighted")
         self.assertEqual({entry["shard"] for entry in weighted["cases"]}, {0, 1})
+
+    def test_recorded_shard_timings_merge_and_feed_the_next_plan(self):
+        for index in (0, 1):
+            self.run_shard(index)
+        plan = load_json(self.plan_path)
+        files = {index: self.root / f"shard-{index}/timings.json" for index in (0, 1)}
+        history = browser_sharding.merge_timings(plan, files)
+        self.assertEqual(history["schemaVersion"], browser_sharding.TIMING_SCHEMA)
+        self.assertEqual([entry["key"] for entry in history["timings"]],
+                         [entry["key"] for entry in plan["cases"]])
+        self.assertEqual({tuple(entry["key"]) for entry in history["timings"]},
+                         {tuple(entry["key"]) for entry in plan["cases"]})
+        history_path = self.root / "browser-timing-history.json"
+        output = io.StringIO()
+        with mock.patch("sys.stdout", output):
+            status = browser.shard_main([
+                "merge", "--site", str(self.site), "--plan", str(self.plan_path),
+                "--shard-result", f"0={self.root / 'shard-0/shard.json'}",
+                "--shard-result", f"1={self.root / 'shard-1/shard.json'}",
+                "--evidence", str(self.root / "merged-history"),
+                "--receipt", str(self.root / "history-receipt.json"),
+                "--timings", str(history_path)])
+        self.assertEqual(status, 0, output.getvalue())
+        self.assertIn("mode=equal-home-groups", output.getvalue())
+        self.assertEqual(load_json(history_path), history)
+        weighted = browser_sharding.build_plan(self.site, "synthetic-run", 2, history_path)
+        self.assertEqual(weighted["assignment"]["mode"], "history-weighted")
+        self.assertEqual(weighted["assignment"]["historySource"], str(history_path))
+        self.assertEqual([home["ownerCase"] for home in weighted["homeKeys"]],
+                         [home["ownerCase"] for home in plan["homeKeys"]])
+        # The weighted schedule moves whole groups without changing which case
+        # produces homepage screenshots or any case's recorded metrics.
+        self.plan_path.write_text(json.dumps(weighted), encoding="utf-8")
+        weighted_roots = {index: self.run_shard(index, directory=f"weighted-shard-{index}")
+                          for index in (0, 1)}
+        browser_sharding.merge(
+            self.plan_path, {index: path / "shard.json" for index, path in weighted_roots.items()},
+            self.site, self.root / "weighted-merged", self.root / "weighted-receipt.json")
+        equal = load_json(self.root / "merged-history/results.json")
+        balanced = load_json(self.root / "weighted-merged/results.json")
+        self.assertEqual(len(equal["homepages"]), len(balanced["homepages"]))
+        for before, after in zip(equal["results"], balanced["results"]):
+            for field in (*browser_sharding.CASE_FIELDS, "activations", "documentNavigations", "metrics"):
+                self.assertEqual(before[field], after[field], field)
+            self.assertEqual([Path(picture["path"]).name for picture in before["screenshots"]],
+                             [Path(picture["path"]).name for picture in after["screenshots"]])
+
+    def test_timing_merge_rejects_duplicate_case_keys(self):
+        files = self.write_timings()
+        originals = {index: path.read_text() for index, path in files.items()}
+        for index in (0, 1):
+            with self.subTest(duplicate_shard=index):
+                for shard, path in files.items():
+                    path.write_text(originals[shard], encoding="utf-8")
+                document = load_json(files[index])
+                document["timings"].append(load_json(files[0])["timings"][0])
+                files[index].write_text(json.dumps(document), encoding="utf-8")
+                with self.assertRaisesRegex(ContractError, "duplicate timing case key"):
+                    browser_sharding.merge_timings(load_json(self.plan_path), files)
+
+    def test_timing_merge_requires_every_shard_document(self):
+        files = self.write_timings()
+        with self.assertRaisesRegex(ContractError, "needs exactly shards"):
+            browser_sharding.merge_timings(load_json(self.plan_path), {0: files[0]})
+        files[1].unlink()
+        with self.assertRaisesRegex(ContractError, "shard 1 timings document is missing"):
+            browser_sharding.merge_timings(load_json(self.plan_path), files)
+
+    def test_timing_merge_rejects_unknown_cases(self):
+        files = self.write_timings()
+        document = load_json(files[0])
+        document["timings"][0]["key"][0] = "unknown-feature"
+        files[0].write_text(json.dumps(document), encoding="utf-8")
+        with self.assertRaisesRegex(ContractError, "shard 0 timings contains unknown cases"):
+            browser_sharding.merge_timings(load_json(self.plan_path), files)
+
+    def test_timing_merge_rejects_missing_cases(self):
+        files = self.write_timings()
+        document = load_json(files[0])
+        document["timings"].pop()
+        files[0].write_text(json.dumps(document), encoding="utf-8")
+        with self.assertRaisesRegex(ContractError, "shard 0 timings is missing cases"):
+            browser_sharding.merge_timings(load_json(self.plan_path), files)
+
+    def test_timing_merge_rejects_wrong_schema(self):
+        files = self.write_timings()
+        document = load_json(files[0])
+        document["schemaVersion"] = "cjdoc.browser-timing/0"
+        files[0].write_text(json.dumps(document), encoding="utf-8")
+        with self.assertRaisesRegex(ContractError, "unexpected schemaVersion"):
+            browser_sharding.merge_timings(load_json(self.plan_path), files)
+
+    def test_timing_merge_rejects_negative_elapsed_ms(self):
+        files = self.write_timings()
+        document = load_json(files[0])
+        document["timings"][0]["elapsedMs"] = -0.001
+        files[0].write_text(json.dumps(document), encoding="utf-8")
+        with self.assertRaisesRegex(ContractError, "invalid elapsedMs.*finite nonnegative number"):
+            browser_sharding.merge_timings(load_json(self.plan_path), files)
+
+    def test_timing_merge_rejects_nonnumeric_nonfinite_and_malformed_entries(self):
+        files = self.write_timings()
+        original = files[0].read_text()
+        for value in (True, "100", None, float("nan"), float("inf"), 1e309):
+            with self.subTest(elapsedMs=value):
+                document = json.loads(original)
+                document["timings"][0]["elapsedMs"] = value
+                files[0].write_text(json.dumps(document), encoding="utf-8")
+                with self.assertRaisesRegex(ContractError, "invalid elapsedMs|nonfinite JSON"):
+                    browser_sharding.merge_timings(load_json(self.plan_path), files)
+        for key in (None, [["nested"]], ["short"], [1] * len(browser_sharding.CASE_FIELDS)):
+            with self.subTest(key=key):
+                document = json.loads(original)
+                document["timings"][0]["key"] = key
+                files[0].write_text(json.dumps(document), encoding="utf-8")
+                with self.assertRaisesRegex(ContractError, "malformed case key"):
+                    browser_sharding.merge_timings(load_json(self.plan_path), files)
+
+    def test_plan_rejects_partial_unknown_or_duplicate_history(self):
+        files = self.write_timings()
+        history = browser_sharding.merge_timings(load_json(self.plan_path), files)
+        history_path = self.root / "invalid-history.json"
+        for mutate, pattern in (
+            (lambda doc: doc["timings"].pop(), "missing cases"),
+            (lambda doc: doc["timings"][0]["key"].__setitem__(0, "unknown"), "unknown cases"),
+            (lambda doc: doc["timings"].append(doc["timings"][0]), "duplicate timing case key"),
+        ):
+            with self.subTest(pattern=pattern):
+                document = json.loads(json.dumps(history))
+                mutate(document)
+                history_path.write_text(json.dumps(document), encoding="utf-8")
+                with self.assertRaisesRegex(ContractError, pattern):
+                    browser_sharding.build_plan(self.site, "synthetic-run", 2, history_path)
+
+
+
+class HistoricalTimingBalanceTests(unittest.TestCase):
+    def test_real_pages_timings_are_at_least_as_balanced_as_equal_groups(self):
+        # Captured from lIlIIlIll/cjdoc Pages run 38332333489, attempt 1:
+        # gh run download 38332333489 -n cjdoc-showcase-browser-shard-0-38332333489-1 -D <shard-0>
+        # gh run download 38332333489 -n cjdoc-showcase-browser-shard-1-38332333489-1 -D <shard-1>
+        # The payloads are browser-shard-<N>/timings.json. homeKey was joined
+        # by the full six-field identity from that run's browser-plan.json.
+        # Full downloads timed out locally; ranged reads retrieved these exact
+        # ZIP members. No generated or rescaled timing values are substituted.
+        path = ROOT / "tests/showcase_contract/browser_timing_pages_38332333489_1.json"
+        history = load_json(path)
+        self.assertEqual(history["source"]["runId"], "38332333489")
+        self.assertEqual(history["source"]["runAttempt"], 1)
+        costs = browser_sharding.history_costs(path)
+        groups: dict[tuple, list] = {}
+        for entry in history["timings"]:
+            groups.setdefault(tuple(entry["homeKey"]), []).append(tuple(entry["key"]))
+        self.assertEqual(len(costs), 324)
+        self.assertEqual(len(groups), 18)
+        equal, equal_mode = browser_sharding.assign_home_groups(groups, {})
+        weighted, weighted_mode = browser_sharding.assign_home_groups(groups, costs)
+        self.assertEqual(equal_mode, "equal-home-groups")
+        self.assertEqual(weighted_mode, "history-weighted")
+
+        def loads(assignment: dict[tuple, int]) -> list[float]:
+            return [sum(costs[key] for home, keys in groups.items()
+                        if assignment[home] == shard for key in keys)
+                    for shard in range(browser_sharding.SHARD_COUNT)]
+
+        equal_max, weighted_max = max(loads(equal)), max(loads(weighted))
+        self.assertEqual(round(equal_max, 3), 332003.311)
+        self.assertLessEqual(weighted_max, equal_max,
+                             f"real Pages history regressed balance: {weighted_max} > {equal_max}")
+
 
 
 @contextmanager
