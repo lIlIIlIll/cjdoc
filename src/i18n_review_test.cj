@@ -25,6 +25,21 @@ private func reviewMarkdownText(node: api_model.MarkdownNode): String {
 @Test
 class I18nReviewTest {
     @TestCase
+    func explanationOnlyExamplesDoNotPrepareACompilerContext(): Unit {
+        let project = i18nTestProject("/** Summary.\n * @example Explanation without executable code.\n */")
+        try {
+            let documentation = i18nTestGenerate(project)
+            // An absent project cannot be compiled; prose-only examples need no compiler context.
+            let report = runDoctests(documentation, DoctestConfig(mode: "warn"), project.join("evidence"),
+                projectRoot: project.join("absent-project"))
+            @Expect(report.results.size, 1)
+            @Expect(report.results[0].status, "skipped")
+            @Expect(report.results[0].message, "no executable Cangjie fence")
+            @Expect(report.results[0].exitCode.isNone())
+        } finally { let _ = removeIfExists(project, recursive: true) }
+    }
+
+    @TestCase
     func capturedGuideResourceFailureKeepsABoundedSourceFreePage(): Unit {
         let project = i18nTestProject("/** API remains available. */")
         try {

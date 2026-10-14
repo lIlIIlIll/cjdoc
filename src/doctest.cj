@@ -877,7 +877,12 @@ internal func runDoctests(documentation: public_model.DocumentationSet, config: 
     if (!exists(outputRoot)) { Directory.create(outputRoot, recursive: true) }
     let workRoot = Directory.createTemp(outputRoot)
     try {
-        let projectContext = if (snippets.isEmpty()) {
+        var hasExecutableCode = false
+        for (snippet in snippets where !snippet.code.trimAscii().isEmpty()) {
+            hasExecutableCode = true
+            break
+        }
+        let projectContext = if (!hasExecutableCode) {
             None<DoctestProjectContext>
         } else {
             prepareProjectContext(documentation, projectRoot, sourceOrigins, config, workRoot, cfgValues)
