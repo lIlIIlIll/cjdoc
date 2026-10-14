@@ -176,14 +176,18 @@ class LocalAssetCollector {
         for (source in sourceFiles) { origins[source.logicalPath] = source }
     }
 
+    func registerSource(origin: SourceFileOrigin): Unit {
+        origins[origin.logicalPath] = origin
+    }
+
     private func fail(sourcePath: String, destination: String,
         source: public_model.SourceRange, symbolId: String, reason: String): Unit {
         incomplete = true
-        let key = "${symbolId.size}:${symbolId}${destination}"
+        let key = "${sourcePath.size}:${sourcePath}${symbolId.size}:${symbolId}${destination}"
         if (!failedReferences.add(key)) { return }
         diagnosticsStorage.add(public_model.Diagnostic("warning", "CJDOC4026",
             "local documentation image '${destination}' from '${sourcePath}' was omitted: ${reason}",
-            source: Some(source), symbolId: Some(symbolId)))
+            source: Some(source), symbolId: if (symbolId.isEmpty()) { None } else { Some(symbolId) }))
     }
 
     private func failCached(referenceKey: String, actualPath: ?String,

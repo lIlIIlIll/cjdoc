@@ -50,12 +50,15 @@ internal func capturedConceptualEntryHtml(documentation: DocumentationSet, local
 internal func appendCapturedPageArtifacts(artifacts: RenderArtifactCollector, documentation: DocumentationSet,
     formats: Array<String>, locale: String, version: ?String): Unit {
     let pages = selectedDocumentationPages(documentation, locale)
+    let assets = projectAssets(documentation, RenderProjection(documentation), pages: pages)
+    let assetLookup = buildAssetLookup(assets)
     let links = HashMap<String, String>()
     for (page in pages) { links[page.source] = page.route }
     for (page in pages) {
         let prefix = pageRootPrefix(page.route)
         let sourceLinks = capturedPageSourceLinks(documentation, page, pages)
-        var body = renderStandaloneMarkdownHtml(page.markdown, sourceLinks: sourceLinks, pageTitle: Some(page.title))
+        var body = renderStandaloneMarkdownHtmlWithAssets(page.markdown, assetLookup, prefix,
+            sourceLinks: sourceLinks, pageTitle: Some(page.title))
         for (section in page.sections) {
             if (let Some(anchor) <- documentationSectionAnchor(page.markdown, section.anchor)) {
                 // The explicit semantic id sits at the real heading position.
@@ -92,7 +95,7 @@ internal func appendCapturedPageArtifacts(artifacts: RenderArtifactCollector, do
         if (formats.contains("markdown")) {
             let markdown = RenderTextBuffer()
             let markdownLinks = capturedPageSourceLinks(documentation, page, pages, markdown: true)
-            appendMarkdownNodeMarkdown(markdown, page.markdown, HashMap<String, String>(), 1,
+            appendMarkdownNodeMarkdown(markdown, page.markdown, buildAssetLookup(assets, prefix: prefix), 1,
                 capturedLinks: Some(markdownLinks))
             artifacts.addText("markdown/" + page.route.removeSuffix(".html") + ".md", "text/markdown; charset=utf-8",
                 markdown.toString() + "\n\n" + label(locale, "Content language: ", "内容语言：") + page.language.getOrDefault({ => "unknown" }) + "\n")

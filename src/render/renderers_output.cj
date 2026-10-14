@@ -21,7 +21,8 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         let projection = RenderProjection(documentation)
         let index = projection.visibleIndex
         let typeLinkIndex = HtmlTypeLinkIndex(documentation, projection)
-        let projectedAssets = projectAssets(documentation, projection)
+        let projectedAssets = projectAssets(documentation, projection,
+            pages: selectedDocumentationPages(documentation, locale))
         let assetLookup = buildAssetLookup(projectedAssets)
         validateHtmlRouting(projection, projectedAssets)
         let topLevelByPackage = groupTopLevelByPackage(projection)
@@ -168,7 +169,8 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
     documentation: DocumentationSet, locale: String): Unit {
     validateTypedDocumentationSet(documentation)
     let projection = RenderProjection(documentation)
-    let projectedAssets = projectAssets(documentation, projection)
+    let projectedAssets = projectAssets(documentation, projection,
+        pages: selectedDocumentationPages(documentation, locale))
     let assetLookup = nestedAssetLookup(projectedAssets)
     let topLevelByPackage = groupTopLevelByPackage(projection)
     let membersByOwner = groupMembersByOwner(projection)

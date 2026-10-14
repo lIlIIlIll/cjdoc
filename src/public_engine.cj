@@ -32,7 +32,7 @@ internal func generateDocumentationWithSource(request: GenerationRequest,
         compileDocumentationExamples(documentation, request.audience)
     }
     sortDocumentationDeterministically(documentation)
-    let captured = boundGeneratedDocumentation(captureDocumentationPages(publicDocumentation(documentation, request), request), request)
+    let captured = publicDocumentation(documentation, request, capturePages: true)
     let result = boundGeneratedDocumentation(withTranslationDiagnostics(captured, request), request)
     validateGeneratedDocIr(result)
     GeneratedDocumentation(documentation, result)
@@ -70,7 +70,7 @@ public class DocumentationEngine {
             compileDocumentationExamples(documentation, request.audience)
         }
         sortDocumentationDeterministically(documentation)
-        let captured = boundGeneratedDocumentation(captureDocumentationPages(publicDocumentation(documentation, request), request), request)
+        let captured = publicDocumentation(documentation, request, capturePages: true)
         let result = boundGeneratedDocumentation(withTranslationDiagnostics(captured, request), request)
         validateGeneratedDocIr(result)
         result

@@ -241,6 +241,23 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         if (let Some(comment) <- declaration.documentation) {
             let validFields = HashSet<String>()
             for (text in comment.localizedTexts) {
+                let paired = ["valid", "empty", "conflict"].contains(text.state)
+                if (paired && text.fieldId.isEmpty()) {
+                    domainFail("$.documentation.localizedTexts.fieldId", "paired field identity is missing")
+                }
+                if (paired && ["summary", "description", "param"].contains(text.kind)) {
+                    let subject = if (text.kind == "param") { text.subject } else { "" }
+                    if (text.fieldId != declaration.id + ":doc:" + text.kind + ":" + subject) {
+                        domainFail("$.documentation.localizedTexts.fieldId", "field identity does not match its selector")
+                    }
+                }
+                if (text.state == "valid" && text.kind == "param") {
+                    var knownParameter = false
+                    for (parameter in declaration.parameters) {
+                        if (parameter.name == text.subject) { knownParameter = true; break }
+                    }
+                    if (!knownParameter) { domainFail("$.documentation.localizedTexts.subject", "unknown parameter") }
+                }
                 if (text.state == "valid" && !text.fieldId.isEmpty() &&
                     !validFields.add(text.fieldId + ":" + text.language.getOrDefault({ => "unknown" }))) {
                     domainFail("$.documentation.localizedTexts", "duplicate valid language field")

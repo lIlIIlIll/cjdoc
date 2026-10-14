@@ -20,10 +20,18 @@ private func safeMappedRelativeLinkDestination(value: String): Bool {
 public func renderStandaloneMarkdownHtml(node: MarkdownNode,
     sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
     pageTitle!: ?String = None): String {
+    renderStandaloneMarkdownHtmlWithAssets(node, HashMap<String, String>(), "",
+        sourceLinks: sourceLinks, pageTitle: pageTitle)
+}
+
+internal func renderStandaloneMarkdownHtmlWithAssets(node: MarkdownNode,
+    assetLookup: HashMap<String, String>, rootPrefix: String,
+    sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
+    pageTitle!: ?String = None): String {
     let context = HtmlMarkdownContext(2, sourceLinks: sourceLinks)
     collectMarkdownHeadings(node, "standalone", HashMap<String, Int64>(), context)
     let out = RenderTextBuffer()
-    appendStandaloneMarkdownHtml(out, node, context, pageTitle)
+    appendStandaloneMarkdownHtml(out, node, context, pageTitle, assetLookup, rootPrefix)
     out.toString()
 }
 
@@ -53,15 +61,16 @@ private func standaloneTitleHeadingIndex(node: MarkdownNode, pageTitle: ?String)
 }
 
 private func appendStandaloneMarkdownHtml(out: RenderTextBuffer, node: MarkdownNode,
-    context: HtmlMarkdownContext, pageTitle: ?String): Unit {
+    context: HtmlMarkdownContext, pageTitle: ?String,
+    assetLookup: HashMap<String, String>, rootPrefix: String): Unit {
     match (standaloneTitleHeadingIndex(node, pageTitle)) {
         case Some(index) =>
             for (childIndex in 0..node.children.size) {
                 if (childIndex == index) { context.nextHeading++; continue }
-                appendMarkdownNodeHtml(out, node.children[childIndex], HashMap<String, String>(), "", context)
+                appendMarkdownNodeHtml(out, node.children[childIndex], assetLookup, rootPrefix, context)
             }
         case None =>
-            appendMarkdownNodeHtml(out, node, HashMap<String, String>(), "", context)
+            appendMarkdownNodeHtml(out, node, assetLookup, rootPrefix, context)
     }
 }
 

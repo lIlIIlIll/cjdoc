@@ -6,8 +6,9 @@ import std.collection.*
 import std.fs.*
 
 internal func captureDocumentationPages(value: public_model.DocumentationSet,
-    request: GenerationRequest): public_model.DocumentationSet {
+    request: GenerationRequest, assetCollector!: ?LocalAssetCollector = None): public_model.DocumentationSet {
     let pages = ArrayList<public_model.DocumentationPage>()
+    let previousAssetDiagnostics = assetCollector.map({ collector => collector.diagnostics().size }).getOrDefault({ => 0 })
     let captured = conceptualPagesForProject(request.projectRoot, value)
     let options = value.languageOptions
     let defaultLanguage: ?String = match (options) { case Some(profile) => Some(profile.defaultLanguage); case None => None }
@@ -36,7 +37,7 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
                 binding.provenance, binding.version, binding.sourceLine, language: binding.language,
                 state: binding.state, targetSymbolId: binding.targetSymbolId))
         }
-        let (text, tree) = capturePageMarkdown(value, page, request)
+        let (text, tree) = capturePageMarkdown(value, page, request, assetCollector)
         let sections = ArrayList<public_model.DocumentationSection>()
         let sectionIds = HashSet<String>()
         for (section in page.sections) {
@@ -49,9 +50,19 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
             defaultLanguage: defaultLanguage, packageName: page.packageName,
             sections: sections.toArray(), targetSymbolIds: targets.toArray(), bindings: bindings.toArray()))
     }
-    public_model.DocumentationSet(value.generator, value.status, value.project, value.configuration,
+    if (let Some(collector) <- assetCollector) {
+        let diagnostics = collector.diagnostics()
+        for (index in previousAssetDiagnostics..diagnostics.size) { value.appendDiagnostic(diagnostics[index]) }
+    }
+    let assets = match (assetCollector) {
+        case Some(collector) => collector.assets()
+        case None => value.assets.toArray()
+    }
+    let status = if (value.status == "complete" && assetCollector.isSome() &&
+        assetCollector.getOrThrow().incomplete) { "partial" } else { value.status }
+    public_model.DocumentationSet(value.generator, status, value.project, value.configuration,
         providers: value.providers.toArray(), modules: value.modules.toArray(), packages: value.packages.toArray(),
-        files: value.files.toArray(), declarations: value.declarations.toArray(), assets: value.assets.toArray(),
+        files: value.files.toArray(), declarations: value.declarations.toArray(), assets: assets,
         orphanDocComments: value.orphanDocComments.toArray(), macroInvocations: value.macroInvocations.toArray(),
         unsupportedDeclarations: value.unsupportedDeclarations.toArray(),
         unboundSemanticDeclarations: value.unboundSemanticDeclarations.toArray(), diagnostics: value.diagnostics.toArray(),
@@ -61,10 +72,20 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
 }
 
 private func capturePageMarkdown(value: public_model.DocumentationSet,
-    page: ConceptualPage, request: GenerationRequest): (String, public_model.MarkdownNode) {
+    page: ConceptualPage, request: GenerationRequest,
+    assetCollector: ?LocalAssetCollector): (String, public_model.MarkdownNode) {
     try {
         let text = conceptualMarkdownWithoutBindings(page.markdown, sentinels: false)
-        (text, parseStandaloneMarkdown(text, highlightAdapter: request.highlightAdapter, highlightNode: request.highlightNode))
+        if (let Some(collector) <- assetCollector) {
+            if (page.source.endsWith(".md")) {
+                if (let Some(origin) <- capturedPageSourceOrigin(page.source, request.projectRoot)) {
+                    collector.registerSource(origin)
+                }
+                return (text, parseCapturedPageMarkdown(text, collector, page.source, request))
+            }
+        }
+        let collector = LocalAssetCollector(ArrayList<SourceFileOrigin>())
+        (text, parseCapturedPageMarkdown(text, collector, page.source, request))
     } catch (_: Exception) {
         let source = public_model.SourceRange(page.source, public_model.SourcePosition(1, 1, 0),
             public_model.SourcePosition(1, 1, 0))
@@ -73,6 +94,21 @@ private func capturePageMarkdown(value: public_model.DocumentationSet,
             source: Some(source)))
         (MARKDOWN_FALLBACK_TEXT, fallbackPublicMarkdown())
     }
+}
+
+// Only source pages already read inside the project can supply image origins.
+// Synthetic overviews never acquire a guessed filesystem location.
+private func capturedPageSourceOrigin(source: String, projectRoot: String): ?SourceFileOrigin {
+    let root = canonicalize(Path(projectRoot))
+    let path = root.join(source).normalize()
+    if (!exists(path)) { return None }
+    let info = FileInfo(path)
+    if (!info.isRegular() || info.isSymbolicLink()) { return None }
+    let actualRoot = normalizedHostPath(root.toString())
+    let actualPath = normalizedHostPath(path.toString())
+    if (actualPath == actualRoot || !hostPathIsWithin(actualRoot, actualPath) ||
+        normalizedHostPath(canonicalize(path).toString()) != actualPath) { return None }
+    Some(SourceFileOrigin(source, actualPath, actualRoot, "", ""))
 }
 
 private func captureExternalDocumentationReferences(value: public_model.DocumentationSet,

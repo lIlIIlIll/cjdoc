@@ -53,7 +53,11 @@ public class LanguageRenderOptions {
     }
 }
 
-/** One author-provided field, retaining its language and captured source. */
+/**
+ * One author-provided field, retaining its language and captured source.
+ * Valid, empty and conflicting paired fields require a field identity.
+ * Independent and invalid entries may retain an empty identity.
+ */
 public class DocumentationText {
     public let fieldId: String
     public let kind: String
@@ -78,6 +82,9 @@ public class DocumentationText {
         }
         if (markdown.kind != "document" || !["valid", "empty", "conflict", "unpaired", "invalid"].contains(state)) {
             throw IllegalArgumentException("invalid localized documentation field")
+        }
+        if (fieldId.isEmpty() && ["valid", "empty", "conflict"].contains(state)) {
+            throw IllegalArgumentException("paired localized documentation requires a field identity")
         }
         if (!["summary", "description", "param", "return", "throws", "see", "deprecated", "example",
             "precondition", "postcondition", "invariant", "performance", "state", "concurrency", "platform", "compatibility", "error"].contains(kind)) {

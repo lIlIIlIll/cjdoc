@@ -328,7 +328,8 @@ internal class PublicDiagnosticProjection {
 }
 
 internal func publicDocumentation(documentation: DocumentationSet,
-    request: GenerationRequest, highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES): public_model.DocumentationSet {
+    request: GenerationRequest, highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES,
+    capturePages!: Bool = false): public_model.DocumentationSet {
     let sourceMapper = PublicSourceMapper(origins: documentation.sourceFileOrigins.toArray())
     let repositoryRoot = repositoryRootForRequest(request)
     let moduleProjection = PublicModuleProjection(documentation, sourceMapper,
@@ -373,7 +374,10 @@ internal func publicDocumentation(documentation: DocumentationSet,
     // existing fallback, if the stricter whole-document codec boundary is hit.
     if (highlightBytes > 0 &&
         !public_render.docIrFitsEncodedBudget(candidate, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
-        return publicDocumentation(documentation, request, highlightBytes: 0)
+        return publicDocumentation(documentation, request, highlightBytes: 0, capturePages: capturePages)
     }
-    boundGeneratedDocumentation(candidate, request)
+    let result = if (capturePages) {
+        captureDocumentationPages(candidate, request, assetCollector: Some(declarationProjection.assetCollector))
+    } else { candidate }
+    boundGeneratedDocumentation(result, request)
 }

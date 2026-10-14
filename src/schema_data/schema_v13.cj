@@ -12,7 +12,11 @@ private let LOCALIZED_DOC_SCHEMA = """
         "state": {"enum": ["valid", "empty", "conflict", "unpaired", "invalid"]},
         "referenceState": {"$ref": "#/$defs/semanticState"},
         "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"}, "directives": {"type": "string"}
-      }
+      },
+      "allOf": [
+        {"if": {"properties": {"state": {"enum": ["valid", "empty", "conflict"]}}},
+          "then": {"properties": {"fieldId": {"minLength": 1}}}}
+      ]
     },
     "documentationLanguageOptions": {
       "type": "object", "additionalProperties": false,

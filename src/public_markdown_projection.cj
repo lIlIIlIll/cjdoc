@@ -382,6 +382,18 @@ public func parseStandaloneMarkdown(body: String, highlightMode!: String = "auto
     publicMarkdown(body, assets, "conceptual.md", source, "cjdoc:conceptual", context)
 }
 
+internal func parseCapturedPageMarkdown(body: String, assetCollector: LocalAssetCollector,
+    sourcePath: String, request: GenerationRequest): public_model.MarkdownNode {
+    let source = public_model.SourceRange(sourcePath, public_model.SourcePosition(1, 1, 0),
+        public_model.SourcePosition(1, 1, 0))
+    let highlightConfig = loadHighlightConfig(request.projectRoot)
+    let context = MarkdownGenerationContext(
+        highlightMode: if (highlightConfig.mode == "off") { "off" } else { "auto" },
+        highlightLanguages: highlightConfig,
+        externalOptions: highlightExternalOptions(request.highlightAdapter, request.highlightNode))
+    publicMarkdown(body, assetCollector, sourcePath, source, "", context)
+}
+
 // Inspect the already parsed AST before allowing asset collection. Discarded
 // examples keep the legacy description path and must have no collector effects.
 private func exampleMarkdownCodeInspection(node: NodeRef, depth: Int64,
