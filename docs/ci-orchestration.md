@@ -53,6 +53,40 @@ This is the attribution item CI-06.1 asked for: the generation cost is
 overwhelmingly one phase, and the remaining phases are an order of magnitude
 smaller. "6 min 41 s" for site generation was never one uniform cost.
 
+### Re-measured after #64 and #110
+
+The table above is the pre-#64 shape, taken from `38332333489` (2026-10-12). Two
+changes moved it, so the attribution is repeated on the merged `main`
+(`2d840445`, three independent runs):
+
+| Phase | `38630501893` | `38616758091` | `38612144866` |
+| --- | ---: | ---: | ---: |
+| `showcase.api` | 413.5 s (64.4%) | 424.1 s (63.9%) | 409.6 s (64.7%) |
+| `pocketkit.generate:all:demo-v2` | 66.5 s (10.4%) | 69.3 s (10.4%) | 68.0 s (10.7%) |
+| `pocketkit.generate:all:demo-v1` | 66.1 s (10.3%) | 63.7 s (9.6%) | 62.7 s (9.9%) |
+| `showcase.authoring` | 48.9 s (7.6%) | 49.6 s (7.5%) | 47.6 s (7.5%) |
+| phase total | 641.9 s | 663.7 s | 633.6 s |
+
+What changed:
+
+* The four `pocketkit.generate:*` phases (one per locale and version, 60.2 s
+  combined) are now **two** `pocketkit.generate:all:*` phases. That is CI-06.4's
+  one-extraction-many-renders arriving via #64, and it is why the per-locale
+  generation cost disappeared as a separate line.
+* `pocketkit.compose:*` and `pocketkit.diagnostics:*` no longer appear as their own
+  phases; version composition runs once and the per-language projections are part
+  of the single generation.
+* The phase total is larger than the pre-#64 415.5 s because more work is now
+  inside `site-assemble` (the authorized translations and the version composition
+  that #64 added), not because a phase became slower.
+
+The conclusion of the original attribution is unchanged and now stronger: one phase
+(`showcase.api`, this repository documenting itself) is roughly two thirds of the
+generation cost, and every other phase except authoring is under 1.2%. That is the
+evidence behind 06.6 -- the repeated directory walks, link validation, hashing,
+copying and compression are each individually timed and each is a rounding error
+against 413 s, so optimizing them cannot move the total meaningfully.
+
 ## CI-07.4: combined SDK cache shape
 
 Two shapes were compared by `scripts/measure_sdk_install.py` (dispatch
