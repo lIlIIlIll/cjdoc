@@ -2,15 +2,21 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 from pathlib import Path
 import sys
 import tempfile
+import textwrap
 import unittest
+import time
+import subprocess
+import signal
 from unittest.mock import patch
 import zipfile
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
 from showcase_build.integration import install_output
 from showcase_build.navigation import mount, markdown_declarations
 from showcase_build.packaging import copy_sources, source_archive
@@ -139,3 +145,129 @@ class BuildIntegrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class CoordinatorSignalCleanupTests(unittest.TestCase):
+    """A cancelled coordinator must not leave an isolated group running.
+
+    Run in a real subprocess: the handler deliberately re-raises the signal once the
+    groups are gone, so delivering it in-process would kill the test runner.
+    """
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_a_signal_stops_further_launches(self) -> None:
+        """No new detached session may start after the handler has run."""
+        from showcase_build import parallel
+
+        # Inherit SIG_IGN so the handler returns instead of re-raising into the
+        # test runner; the cancellation flag is what this asserts.
+        previous = signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        try:
+            runner = parallel.BranchRunner()
+            runner._on_signal(signal.SIGTERM, None)
+            self.assertTrue(runner.cancelled)
+            with self.assertRaises(parallel.CancelledError):
+                runner.run(["/bin/true"])
+        finally:
+            signal.signal(signal.SIGTERM, previous)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_a_signal_while_the_lock_is_held_does_not_deadlock(self) -> None:
+        """The handler runs on the interrupted thread, which may already hold the lock."""
+        helper = textwrap.dedent(
+            """
+            import signal, subprocess, sys, time
+            sys.path.insert(0, sys.argv[1])
+            from showcase_build.parallel import BranchRunner
+            runner = BranchRunner()
+            child = subprocess.Popen(["/bin/bash", "-c", "exec -a marker-%d sleep 30" % __import__("os").getpid()],
+                                     start_new_session=True)
+            with runner._lock:
+                runner._processes.add(child)
+                print("held", flush=True)
+                # The signal arrives while this thread owns the lock.
+                time.sleep(30)
+            """)
+        coordinator = subprocess.Popen(
+            [sys.executable, "-c", helper, str(ROOT / "scripts")],
+            stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(coordinator.stdout.readline().strip(), "held")
+            coordinator.send_signal(signal.SIGTERM)
+            coordinator.wait(timeout=10)
+            self.assertIsNotNone(coordinator.returncode,
+                                 "the coordinator deadlocked instead of cancelling")
+        finally:
+            if coordinator.poll() is None:
+                coordinator.kill()
+                coordinator.wait(timeout=10)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_an_ignored_signal_is_not_turned_into_a_fatal_one(self) -> None:
+        """An inherited SIG_IGN must survive: the coordinator keeps running."""
+        helper = textwrap.dedent(
+            """
+            import signal, sys, time
+            sys.path.insert(0, sys.argv[1])
+            from showcase_build.parallel import BranchRunner
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            runner = BranchRunner()
+            print("ready", flush=True)
+            time.sleep(30)
+            """)
+        coordinator = subprocess.Popen(
+            [sys.executable, "-c", helper, str(ROOT / "scripts")],
+            stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(coordinator.stdout.readline().strip(), "ready")
+            coordinator.send_signal(signal.SIGINT)
+            # It must still be there: resetting the disposition would have killed it.
+            with self.assertRaises(subprocess.TimeoutExpired):
+                coordinator.wait(timeout=2)
+        finally:
+            coordinator.kill()
+            coordinator.wait(timeout=10)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_sigterm_kills_a_registered_group_before_exiting(self) -> None:
+        helper = textwrap.dedent(
+            """
+            import os, subprocess, sys, time
+            sys.path.insert(0, sys.argv[1])
+            from showcase_build.parallel import BranchRunner
+            runner = BranchRunner()
+            marker = sys.argv[2]
+            child = subprocess.Popen(["/bin/bash", "-c", f"exec -a {marker} sleep 30"],
+                                     start_new_session=True)
+            with runner._lock:
+                runner._processes.add(child)
+            print("ready", flush=True)
+            time.sleep(30)
+            """)
+        marker = f"cjdoc-signal-cleanup-{os.getpid()}"
+        coordinator = subprocess.Popen(
+            [sys.executable, "-c", helper, str(ROOT / "scripts"), marker],
+            stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(coordinator.stdout.readline().strip(), "ready")
+            coordinator.send_signal(signal.SIGTERM)
+            self.assertIsNotNone(coordinator.wait(timeout=10),
+                                 "the coordinator ignored SIGTERM")
+            # The detached child shares the runner's group registration, so if the
+            # handler did not kill it, it is still alive now.
+            deadline = time.monotonic() + 5
+            alive = True
+            while time.monotonic() < deadline:
+                probe = subprocess.run(["pgrep", "-f", marker],
+                                       capture_output=True, text=True)
+                alive = bool(probe.stdout.strip())
+                if not alive:
+                    break
+                time.sleep(0.1)
+            self.assertFalse(alive, "the registered group survived the coordinator")
+        finally:
+            if coordinator.poll() is None:
+                coordinator.kill()
+                coordinator.wait(timeout=10)
+            subprocess.run(["pkill", "-f", marker], check=False)

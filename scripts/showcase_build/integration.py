@@ -15,6 +15,7 @@ from showcase_contract.site import ContractError, Site, canonical_json, load_jso
 from . import homepage, legacy, manifest, navigation, report_pages, reports
 from . import stage_timing
 from .packaging import copy_sources, source_archive, tool_version
+from .parallel import BranchRunner
 
 FORMATS = ("html", "json", "markdown", "api-surface", "coverage", "symbol-index")
 
@@ -26,7 +27,8 @@ def copy_file(source: Path, destination: Path) -> None:
     shutil.copy2(source, destination)
 
 
-def generate_api(binary: Path, project: Path, output: Path, provenance: dict, repo: Path) -> None:
+def generate_api(binary: Path, project: Path, output: Path, provenance: dict, repo: Path,
+                 runner=subprocess) -> None:
     command = [str(binary), "generate", "--project", str(project)]
     for name in FORMATS:
         command += ["--format", name]
@@ -36,7 +38,7 @@ def generate_api(binary: Path, project: Path, output: Path, provenance: dict, re
         command += ["--repository-url", provenance["repository"], "--repository-revision",
                     provenance["revision"], "--repository-root", str(project)]
     print("+ " + " ".join(command), flush=True)
-    subprocess.run(command, cwd=repo, check=True)
+    runner.run(command, cwd=repo, check=True)
 
 
 def reproduce_module(repo: Path):
@@ -103,15 +105,26 @@ def build(repo: Path, binary: Path, project: Path, site: Path, work: Path,
                     "cjpm": tool_version(["cjpm", "-v"], repo),
                     "cjdocSha256": hashlib.sha256(binary.read_bytes()).hexdigest()}
     current = work / "api"
-    with stage_timing.phase("showcase.api"):
-        generate_api(binary, project, current, provenance, repo)
     source = work / "source"
-    with stage_timing.phase("showcase.source-copy"):
-        copy_sources(repo, source)
-    # PocketKit records its own locale/version phases inside reproduce.build().
-    result = reproduce_module(repo).build(binary, source / "examples/pocketkit", work / "generated",
-                                          repository=provenance["repository"],
-                                          revision=provenance["revision"], repository_root=source)
+
+    def api_branch(runner):
+        with stage_timing.phase("showcase.api"):
+            generate_api(binary, project, current, provenance, repo, runner)
+
+    def pocketkit_branch(runner):
+        with stage_timing.phase("showcase.source-copy"):
+            copy_sources(repo, source)
+        # This module is private to the branch, not installed in sys.modules.
+        # Leave the independently reproduced source archive byte-for-byte intact.
+        reproduce = reproduce_module(repo)
+        reproduce.subprocess = runner
+        return reproduce.build(binary, source / "examples/pocketkit", work / "generated",
+                               repository=provenance["repository"],
+                               revision=provenance["revision"], repository_root=source)
+
+    # API needs only immutable inputs. PocketKit fixes its own support index
+    # before its serial locale/version chain. Join both before sharing the site.
+    result = BranchRunner().pair(api_branch, pocketkit_branch)
     with stage_timing.phase("showcase.site-copy"):
         shutil.copytree(repo / "site", site)
         not_found = site / "404.html"
