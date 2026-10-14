@@ -347,6 +347,10 @@ private func appendDocumentationTagMarkdown(out: RenderTextBuffer, tag: DocTag,
     if (!tag.translationState.isEmpty()) {
         out.append("_"); appendEscapedMarkdownText(out, contentLanguageLabel(tag, locale)); out.append("_.\n\n")
     }
+    if (tag.name == "example") {
+        appendMarkdownExampleContent(out, tag.description)
+        return
+    }
     match (tag.descriptionMarkdown) {
         case Some(tree) => appendMarkdownNodeMarkdown(out, tree, assetLookup, 4, pagePath: pagePath, symbolIndex: symbolIndex)
         case None => appendEscapedMarkdownText(out, tag.description)
@@ -394,8 +398,8 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
                 out.append("\n\n")
             }
             let content = trimExampleBlankLines(tag.description)
-            if (!content.isEmpty()) {
-                appendMarkdownExampleContent(out, content)
+            if (!content.isEmpty() || !tag.translationState.isEmpty()) {
+                appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
                 out.append("\n")
             }
         }

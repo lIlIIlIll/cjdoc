@@ -100,11 +100,6 @@ public func translationCoverageFor(documentation: DocumentationSet, language: St
             for (text in comment.localizedTexts) {
                 if (["summary", "param", "return"].contains(text.kind)) { continue }
                 if (text.state == "unpaired") {
-                    var originalExists = false
-                    for (candidate in comment.localizedTexts) {
-                        if (candidate.kind == text.kind && candidate.language == comment.defaultLanguage) { originalExists = true }
-                    }
-                    if (originalExists && text.language != comment.defaultLanguage) { continue }
                     let originalComplete = text.language == Some(locale) && text.language == comment.defaultLanguage && !text.text.trimAscii().isEmpty()
                     report.add(TranslationCoverageEntry(symbol.id, "", text.kind, text.subject,
                         if (originalComplete) { "complete" } else { "unpaired" }, text.language, text.source))
