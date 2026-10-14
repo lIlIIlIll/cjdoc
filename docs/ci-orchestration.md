@@ -93,28 +93,29 @@ What changed:
   `site-assemble`; they do not establish that no phase regressed, and no phase is
   claimed to have stayed flat.
 
-The conclusion of the original attribution is unchanged and now stronger. Three
-phases dominate and they are all real generation work, not duplicated overhead:
-`showcase.api` (this repository documenting itself) is roughly two thirds of the
-cost, the two `pocketkit.generate:all:*` extractions are about 10% each (they are
-one extraction per version, already reduced from four by CI-06.4), and
-`showcase.authoring` is about 7.5%.
-
-Shares against the elapsed stage: `showcase.api` is about 82% (the largest single
-cost, and it is on the critical path because the PocketKit branch runs alongside it),
-the two `pocketkit.generate:all:*` extractions about 13% each, and
-`showcase.authoring` about 9.6%.
+Two phases dominate and both are real generation work, not duplicated overhead:
+`showcase.api` (this repository documenting itself) is about 82% of the elapsed
+stage, and the two `pocketkit.generate:all:*` extractions are about 13% each (one
+extraction per version, already reduced from four by CI-06.4).
+`showcase.authoring` is about 9.6%. Measured shares, not shares of the summed phase
+durations.
 
 The phases 06.6 actually names -- `showcase.site-copy`, `showcase.homepage`,
 `showcase.source-copy`, `showcase.downloads`, `showcase.link-validate`,
 `showcase.offline-archive`, `showcase.reports`, `showcase.navigation` -- total
 **25.4-25.8 s, about 5% of the elapsed stage**, with no single one above 1.6%. That
-is the evidence behind 06.6: they are individually timed, none is on the critical
-path while `showcase.api` runs concurrently with the PocketKit branch, and removing
-all of them entirely could not move the stage by more than that 5%. The two PocketKit
-generation phases are explicitly NOT in that group; they are the second-largest cost
-and were reduced by removing extra extractions (CI-06.4), not by micro-optimizing
-file work.
+is the evidence behind 06.6: they are individually timed, and removing all of them
+entirely could not move the stage by more than that 5%.
+
+They are not, however, hidden behind the concurrent API work. Only
+`showcase.source-copy` runs inside the overlapping branch; `BranchRunner().pair(...)`
+joins the API and PocketKit branches before `site-copy`, `reports`, `navigation`,
+`downloads`, `homepage`, `offline-archive` and `link-validate`, which therefore all
+run serially on the stage's critical path
+(`scripts/showcase_build/integration.py`). Their combined 5% is what bounds them,
+not any concurrency. The two PocketKit generation phases are explicitly NOT in that
+group; they are the second-largest cost and were reduced by removing extra
+extractions (CI-06.4), not by micro-optimizing file work.
 
 ## CI-07.4: combined SDK cache shape
 
@@ -203,9 +204,10 @@ CI-06.2/06.4/06.6 are decided from the phase table above:
   `main` against the stage's own elapsed time (the section above): the repeated
   directory walks, link validation, hashing, copying and compression that this item
   names total about 25 s, roughly 5% of a 498-515 s `site-assemble`, with no single
-  phase above 1.6%; `showcase.api` alone is about 82% and runs concurrently with the
-  PocketKit branch. Removing all of them could not move the stage by more than that
-  5%, so none justifies a risky optimization. (The pre-#64 figures for this bullet
+  phase above 1.6%; `showcase.api` alone is about 82%. They run serially after the
+  concurrent API/PocketKit branches join, so they are on the critical path -- their
+  combined 5% is what bounds what optimizing them could achieve, and it is not worth
+  a risky optimization. (The pre-#64 figures for this bullet
   were "≤ 6 s against a 254 s `showcase.api`"; both have since grown, and the phase
   table above carries the current numbers and the correct denominator.)
 * **06.2** overlaps the phases the table shows to be independent: self-API
