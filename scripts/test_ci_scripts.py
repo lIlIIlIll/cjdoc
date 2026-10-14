@@ -6,7 +6,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import subprocess
+import os
 import sys
+import time
 import tempfile
 import unittest
 
@@ -195,3 +197,42 @@ class DiagnosticsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RunWithTimeoutTests(unittest.TestCase):
+    """The portable bound: pass through, expire at 124, and kill the group."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.script = Path(__file__).resolve().parent / "run_with_timeout.py"
+
+    def run_wrapper(self, timeout: str, *command: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(self.script), timeout, "--", *command],
+            capture_output=True, text=True)
+
+    def test_a_fast_command_passes_through_with_its_own_status(self) -> None:
+        done = self.run_wrapper("30", sys.executable, "-c", "import sys; sys.exit(3)")
+        self.assertEqual(done.returncode, 3)
+
+    def test_an_expired_command_reports_124_like_timeout_does(self) -> None:
+        done = self.run_wrapper("1", sys.executable, "-c", "import time; time.sleep(60)")
+        self.assertEqual(done.returncode, 124, done.stderr)
+        self.assertIn("exceeded 1s", done.stderr)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_expiry_kills_a_child_that_stays_in_the_group(self) -> None:
+        marker = f"cjdoc-timeout-wrapper-{os.getpid()}"
+        done = self.run_wrapper(
+            "1", "/bin/bash", "-c", f'sh -c "exec -a {marker} sleep 60" & sleep 60')
+        self.assertEqual(done.returncode, 124)
+        deadline = time.monotonic() + 5
+        survivors = "1"
+        while time.monotonic() < deadline:
+            probe = subprocess.run(["pgrep", "-f", marker], capture_output=True, text=True)
+            survivors = probe.stdout.strip()
+            if not survivors:
+                break
+            time.sleep(0.1)
+        self.assertEqual(survivors, "", "the group outlived the deadline")

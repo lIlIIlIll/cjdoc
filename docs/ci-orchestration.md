@@ -163,18 +163,37 @@ merged only with its own full acceptance run green on linux, Windows and macOS.
 Two failures were diagnosed while landing them, and both are recorded here because
 they were previously reported with the wrong cause:
 
-* **The intermittent stall is not one unbounded read.** `linux-x64` and macOS both
-  wedged on a single case with the whole process tree parked in `futex_do_wait` and
-  no runnable thread. Five genuine unbounded waits were fixed (stream reads, the
-  supervisor handshake, `process.wait()`, both example-runner equivalents), each
-  proven by `BoundedProcessTimeoutTest.escapingDescendantCannotOutliveTheTimeout`
-  (45 s on the old code, 2.01 s after). The residual stall survived all five, so
-  `check.sh` now bounds the native suite with GNU `timeout` (40 minutes, more than
-  twice the longest healthy run) and refreshes a process-tree snapshot while it
-  runs; the snapshot is collected by `ci_diagnostics.py` into the failure artifact.
-  A wedge therefore fails naming the phase with the tree it left behind, instead of
-  consuming the 110-minute job budget with no output. The stall has not recurred
-  since `check.sh` gained the bound.
+* **The intermittent stall is not one unbounded read.** The same case
+  (`SourcePipelineSuite6.headerlessDependencyUsesItsModuleNameForSerialAndParallelJobs`)
+  wedged on `linux-x64` and on macOS, twice inside one day, for unrelated revisions
+  whose only delta was a Doc IR digest. Five genuine unbounded waits were fixed
+  (stream reads, the supervisor handshake, `process.wait()`, and the example-runner
+  stream and status waits). The executed evidence is per path, not one test for all
+  five: `BoundedProcessTimeoutTest.escapingDescendantCannotOutliveTheTimeout` covers
+  the trailing-read path (45 s on the old code, 2.01 s after), and
+  `DoctestConfigSuite` covers the doctest path
+  (`subprocessPipeWaitDeadlineRemainsTimeoutNotOutputLimit`,
+  `subprocessPipesDrainBeforeReapingShortLivedChildren`); the handshake bound is
+  enforced by construction and was checked with a 1 ms budget during review.
+  The residual stall survived all five.
+
+  Diagnosis was Linux-only and came from outside the tests: the whole process tree
+  (`cjpm` -> `std.testrunner` -> its workers) was parked in `futex_do_wait` with no
+  runnable thread, reproduced locally once, and it is not reproducible. The macOS
+  stalls were observed through their symptom only (a job with no output for over an
+  hour and leftover processes); no wait channel was captured there, and macOS has no
+  `wchan` column, so the futex diagnosis is explicitly a Linux finding.
+
+  The mitigation runs on every platform. `check.sh` bounds the native suite at 40
+  minutes (more than twice the longest healthy run) through
+  `scripts/run_with_timeout.py`, a Python wrapper used because macOS has no `timeout`
+  binary and Git Bash resolves Windows' unrelated `timeout.exe`; Python is already a
+  requirement on all three runners. It kills the command's process group on expiry
+  and exits 124, so a wedge fails naming the phase on Linux and macOS alike instead
+  of consuming the job budget. It refreshes a process-tree snapshot while the stage
+  runs, which `ci_diagnostics.py` collects into the failure artifact. A descendant
+  that starts its own session escapes the group, as it does in the supervisor path;
+  the wrapper does not claim otherwise.
 
 * **`Out of memory` is a capacity limit, not a leak.** The generator documenting
   *this* repository exceeded the 512MB default (`active units 127779 of 131072`,
