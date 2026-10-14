@@ -313,6 +313,42 @@ class RunWithTimeoutTests(unittest.TestCase):
         self.assertEqual(survivors, "", "a worker outlived the deadline and its leader")
 
     @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_a_hangup_kills_the_child_group(self) -> None:
+        """A run that loses its terminal must not leave the command behind."""
+        marker = f"cjdoc-timeout-hup-{os.getpid()}"
+        wrapper = subprocess.Popen(
+            [sys.executable, str(self.script), "60", "--",
+             "/bin/bash", "-c", f'sh -c "exec -a {marker} sleep 60" & sleep 60'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=self.short_grace())
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                                  text=True).stdout.strip():
+                    break
+                time.sleep(0.05)
+            self.assertTrue(
+                subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                               text=True).stdout.strip(),
+                "the child never started")
+            wrapper.send_signal(signal.SIGHUP)
+            wrapper.wait(timeout=30)
+            deadline = time.monotonic() + 5
+            survivors = "1"
+            while time.monotonic() < deadline:
+                survivors = subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                                           text=True).stdout.strip()
+                if not survivors:
+                    break
+                time.sleep(0.1)
+            self.assertEqual(survivors, "", "the child group survived SIGHUP")
+        finally:
+            if wrapper.poll() is None:
+                wrapper.kill()
+                wrapper.wait(timeout=10)
+            subprocess.run(["pkill", "-f", marker], check=False)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
     def test_interrupting_the_wrapper_kills_the_child_group(self) -> None:
         """SIGTERM to the wrapper must not leave the command running."""
         marker = f"cjdoc-timeout-interrupt-{os.getpid()}"

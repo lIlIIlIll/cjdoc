@@ -167,7 +167,13 @@ def _install_signal_cleanup(process: subprocess.Popen) -> dict:
         signal.signal(signum, signal.SIG_DFL)
         os.kill(os.getpid(), signum)
 
-    for signum in (signal.SIGTERM, signal.SIGINT):
+    # SIGHUP too: a local run that loses its terminal or SSH session receives it,
+    # and the command -- in its own session -- would not, so it would survive as an
+    # orphan mutating build and fixture outputs.
+    handled = [signal.SIGTERM, signal.SIGINT]
+    if hasattr(signal, "SIGHUP"):
+        handled.append(signal.SIGHUP)
+    for signum in handled:
         try:
             previous[signum] = signal.signal(signum, handler)
         except (ValueError, OSError):
