@@ -246,7 +246,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                         }
                         case None => out.append("<code>${escapeHtml(tag.subject)}</code>")
                     }
-                    if (!tag.description.isEmpty()) {
+                    if (!tag.description.isEmpty() || !tag.translationState.isEmpty()) {
                         out.append(" "); appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
                     }
                     out.append("</li>\n")

@@ -473,7 +473,7 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
         out.append("#### ${label(locale, "See also", "另请参阅")}\n\n")
         for (tag in comment.tags) {
             if (tag.name == "see") { out.append("- "); appendMarkdownCodeSpan(out, tag.subject)
-                if (!tag.description.isEmpty()) {
+                if (!tag.description.isEmpty() || !tag.translationState.isEmpty()) {
                     out.append(" — "); appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
                 }; out.append("\n") }
         }

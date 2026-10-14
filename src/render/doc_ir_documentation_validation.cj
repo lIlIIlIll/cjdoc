@@ -245,7 +245,7 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
                 if (paired && text.fieldId.isEmpty()) {
                     domainFail("$.documentation.localizedTexts.fieldId", "paired field identity is missing")
                 }
-                if (paired && ["summary", "description", "param"].contains(text.kind)) {
+                if (paired && ["summary", "description", "param", "return"].contains(text.kind)) {
                     let subject = if (text.kind == "param") { text.subject } else { "" }
                     if (text.fieldId != declaration.id + ":doc:" + text.kind + ":" + subject) {
                         domainFail("$.documentation.localizedTexts.fieldId", "field identity does not match its selector")
