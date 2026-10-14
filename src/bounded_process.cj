@@ -97,10 +97,15 @@ private func boundedProcessGroup(process: SubProcess, timeoutMilliseconds: Int64
         }
         0
     }
-    let pid = try {
-        reader.get(Duration.millisecond * timeoutMilliseconds)
-    } catch (_: Exception) {
+    // An exhausted budget must not become `Duration.Zero`, which waits forever.
+    let pid = if (timeoutMilliseconds <= 0) {
         0
+    } else {
+        try {
+            reader.get(Duration.millisecond * timeoutMilliseconds)
+        } catch (_: Exception) {
+            0
+        }
     }
     if (pid <= 0) {
         throw IllegalStateException("process supervisor did not provide an isolated process group")
@@ -131,27 +136,58 @@ private func terminateBoundedProcessTree(process: SubProcess, group: Int64,
     }
 }
 
+// The deadline helpers are shared by the handshake, the watchdog and every wait so
+// there is exactly one budget for the whole call. An exhausted budget must NEVER be
+// handed to `get`: `Future.get(Duration.Zero)` waits without any timeout, so
+// clamping to zero would turn "already expired" into "wait forever".
+private func expired(deadline: DateTime): Bool {
+    (deadline - DateTime.now()).toMilliseconds() <= 0
+}
+
+private func remainingMilliseconds(deadline: DateTime): Int64 {
+    let left = (deadline - DateTime.now()).toMilliseconds()
+    if (left < 0) { 0 } else { left }
+}
+
+private func remainingDuration(deadline: DateTime): Duration {
+    Duration.millisecond * remainingMilliseconds(deadline)
+}
+
 internal func executeWithBoundedOutput(command: String, arguments: Array<String>,
     workingDirectory!: ?Path = None,
     timeoutMilliseconds!: Int64 = BOUNDED_PROCESS_TIMEOUT_MILLISECONDS,
     standardInput!: Array<Byte> = [], outputLimit!: Int64 = BOUNDED_PROCESS_OUTPUT_BYTES): (Int64, Array<Byte>, Array<Byte>) {
+    // ONE absolute deadline for the whole call, established before the handshake.
+    // The handshake previously received a full `timeoutMilliseconds` of its own and
+    // the reads/status a second full budget, so a slow supervisor could stretch the
+    // advertised bound to nearly twice its value.
+    let deadline = DateTime.now() + Duration.millisecond * timeoutMilliseconds
     let process = launchBoundedProcess(command, arguments, workingDirectory, standardInput.size)
     let job = try { createExampleProcessJob(process) } catch (error: Exception) {
         try { process.terminate(force: true) } catch (_: Exception) {}
         throw error
     }
-    let group = try { boundedProcessGroup(process, timeoutMilliseconds) } catch (error: Exception) {
+    let group = try { boundedProcessGroup(process, remainingMilliseconds(deadline)) } catch (error: Exception) {
         terminateBoundedProcessTree(process, 0, job)
         throw error
     }
     let state = AtomicInt64(0)
+    let expiredFlag = AtomicBool(false)
     let watchdog = spawn {
-        var waited: Int64 = 0
-        while (waited < timeoutMilliseconds && state.load() == 0) {
+        while (state.load() == 0 && !expiredFlag.load()) {
+            if (expired(deadline)) {
+                // Claiming the timeout state here is what makes the tree cleanup
+                // below correct: if a bounded read expired first, the state is still
+                // 0, and without this claim completion would later be recorded as
+                // normal and the escaped descendant would never be killed.
+                if (state.compareAndSwap(0, 2)) {
+                    expiredFlag.store(true)
+                    terminateBoundedProcessTree(process, group, job)
+                }
+                break
+            }
             sleep(Duration.millisecond * BOUNDED_PROCESS_POLL_MILLISECONDS)
-            waited += BOUNDED_PROCESS_POLL_MILLISECONDS
         }
-        if (state.compareAndSwap(0, 2)) { terminateBoundedProcessTree(process, group, job) }
     }
     let standardOutput = spawn { => readBoundedProcessStream(process.stdOutPipe,
         outputLimit) }
@@ -172,26 +208,13 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
     // descendant lives -- measured at 45 s for a 2 s timeout before this bound was
     // added. Bounding the read makes the timeout total, which is what the caller
     // was promised.
-    // ONE absolute deadline for every bounded wait, not one full timeout each: with
-    // separate `Duration` arguments a caller's 5 s limit becomes 10 s (both reads)
-    // plus the status wait whenever an escaped descendant keeps both pipes open.
-    let deadline = DateTime.now() + Duration.millisecond * timeoutMilliseconds
-    // An exhausted budget must NEVER be handed to `get`: `Future.get(Duration.Zero)`
-    // waits without any timeout, so clamping to zero would turn "already expired"
-    // into "wait forever". Treat exhaustion explicitly instead.
-    func expired(): Bool {
-        (deadline - DateTime.now()).toMilliseconds() <= 0
-    }
-    func remaining(): Duration {
-        Duration.millisecond * (deadline - DateTime.now()).toMilliseconds()
-    }
     var readExpired = false
-    let output = if (expired()) {
+    let output = if (expired(deadline)) {
         readExpired = true
         (Array<Byte>(), 0)
     } else {
         try {
-            standardOutput.get(remaining())
+            standardOutput.get(remainingDuration(deadline))
         } catch (_: Exception) {
             // A read that expires means the call did NOT complete inside the timeout,
             // so record it: otherwise a child that already exited successfully could
@@ -201,12 +224,12 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
             (Array<Byte>(), 0)
         }
     }
-    let error = if (expired()) {
+    let error = if (expired(deadline)) {
         readExpired = true
         (Array<Byte>(), 0)
     } else {
         try {
-            standardError.get(remaining())
+            standardError.get(remainingDuration(deadline))
         } catch (_: Exception) {
             readExpired = true
             (Array<Byte>(), 0)
@@ -225,17 +248,30 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
             -1
         }
     }
-    let exitCode = if (expired()) {
+    let exitCode = if (expired(deadline)) {
         124
     } else {
         try {
-            statusReader.get(remaining())
+            statusReader.get(remainingDuration(deadline))
         } catch (_: Exception) {
             124
         }
     }
-    let completed = state.compareAndSwap(0, 1)
-    if (completed) { let _ = closeExampleProcessJob(job) }
+    // Record completion only when nothing has already claimed the operation and no
+    // bounded wait expired. A read or status that expired means the call did NOT
+    // finish inside the timeout, so the tree is terminated first: a descendant that
+    // escaped the process group could otherwise keep running while the caller is
+    // told 124.
+    var completed = false
+    if (!readExpired && exitCode != 124) {
+        completed = state.compareAndSwap(0, 1)
+    }
+    if (!completed) {
+        if (state.compareAndSwap(0, 2)) { terminateBoundedProcessTree(process, group, job) }
+        expiredFlag.store(true)
+    } else {
+        let _ = closeExampleProcessJob(job)
+    }
     watchdog.get()
     (if (completed && !readExpired) { exitCode } else { 124 }, output[0], error[0])
 }

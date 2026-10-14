@@ -307,13 +307,19 @@ internal func runBoundedProcess(command: String, arguments: Array<String>, worki
     try { exitCode = process.wait() } catch (_: Exception) {
         let _ = state.compareAndSwap(0, 3)
     }
-    // Let the watchdog reach its own verdict before claiming completion: the
-    // watchdog can be descheduled past the deadline on a loaded runner, and
-    // claiming state 1 first would hide a genuine timeout behind truncated output
-    // (observed as `subprocessPipeWaitDeadlineRemainsTimeoutNotOutputLimit` failing
-    // with a 2.7 s, empty-output result).
+    // Record completion BEFORE joining the watchdog, but only when the deadline
+    // has not passed. The watchdog exits early only once `state` is non-zero, so
+    // leaving it at 0 here made every successful subprocess sleep out the whole
+    // timeout: 12 `cjc -v` calls with a 5 s limit measured 60.5 s.
+    //
+    // A genuine timeout must still win. When the deadline has already passed the
+    // watchdog is the only correct arbiter (it is also what the escaping-descendant
+    // and slow-child cases depend on), so completion is not recorded and the
+    // watchdog's own verdict is joined below. That preserves the earlier fix for
+    // `subprocessPipeWaitDeadlineRemainsTimeoutNotOutputLimit`, where claiming
+    // completion first reported a 2.7 s timeout as truncated success.
+    let finished = if (expired()) { false } else { state.compareAndSwap(0, 1) }
     watchdog.get()
-    let finished = state.compareAndSwap(0, 1)
     DoctestProcessResult(exitCode, processText(stdout), processText(stderr),
         !finished && state.load() == 2, outputLimit)
 }
