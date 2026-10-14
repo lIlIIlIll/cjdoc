@@ -152,6 +152,61 @@ CI-06.2/06.4/06.6 are decided from the phase table above:
   nothing to align a "one extraction" contract with, so #64 remains the
   prerequisite and this item stays open with this evidence.
 
+## Merged state and the two failure modes found while landing this
+
+The orchestration work merged to `main` in five pull requests: #106 (bounded
+subprocess waits, candidate readiness), #107 (shard balancing from real per-case
+timings), #110 (showcase branch overlap, coordinator signal cleanup), #119
+(native-stage evidence in failure diagnostics) and #120 (subprocess heap cap). Each
+merged only with its own full acceptance run green on linux, Windows and macOS.
+
+Two failures were diagnosed while landing them, and both are recorded here because
+they were previously reported with the wrong cause:
+
+* **The intermittent stall is not one unbounded read.** The same case
+  (`SourcePipelineSuite6.headerlessDependencyUsesItsModuleNameForSerialAndParallelJobs`)
+  wedged on `linux-x64` and on macOS, twice inside one day, for unrelated revisions
+  whose only delta was a Doc IR digest. Five genuine unbounded waits were fixed
+  (stream reads, the supervisor handshake, `process.wait()`, and the example-runner
+  stream and status waits). The executed evidence is per path, not one test for all
+  five: `BoundedProcessTimeoutTest.escapingDescendantCannotOutliveTheTimeout` covers
+  the trailing-read path (45 s on the old code, 2.01 s after), and
+  `DoctestConfigSuite` covers the doctest path
+  (`subprocessPipeWaitDeadlineRemainsTimeoutNotOutputLimit`,
+  `subprocessPipesDrainBeforeReapingShortLivedChildren`); the handshake bound is
+  enforced by construction and was checked with a 1 ms budget during review.
+  The residual stall survived all five.
+
+  Diagnosis was Linux-only and came from outside the tests: the whole process tree
+  (`cjpm` -> `std.testrunner` -> its workers) was parked in `futex_do_wait` with no
+  runnable thread, reproduced locally once, and it is not reproducible. The macOS
+  stalls were observed through their symptom only (a job with no output for over an
+  hour and leftover processes); no wait channel was captured there, and macOS has no
+  `wchan` column, so the futex diagnosis is explicitly a Linux finding.
+
+  The mitigation runs on every platform. `check.sh` bounds the native suite at 40
+  minutes (more than twice the longest healthy run) through
+  `scripts/run_with_timeout.py`, a Python wrapper used because macOS has no `timeout`
+  binary and Git Bash resolves Windows' unrelated `timeout.exe`; Python is already a
+  requirement on all three runners. It kills the command's process group on expiry
+  and exits 124, so a wedge fails naming the phase on Linux and macOS alike instead
+  of consuming the job budget. It refreshes a process-tree snapshot while the stage
+  runs, which `ci_diagnostics.py` collects into the failure artifact. A descendant
+  that starts its own session escapes the group, as it does in the supervisor path;
+  the wrapper does not claim otherwise.
+
+* **`Out of memory` is a capacity limit, not a leak.** The generator documenting
+  *this* repository exceeded the 512MB default (`active units 127779 of 131072`,
+  `objectCapacity` 10.6% live against 89% fragmented). Raising the ambient heap was
+  not sufficient on its own: `memoryBoundedCommand` caps every native child with
+  `prlimit --as`, and a child that inherits a heap larger than that cap cannot
+  reserve pages at all (`allocate create page failed! Out of Memory!`, measured from
+  `rc=0` at 512MB to `rc=1` at 2GB for the same command). The child heap is now
+  pinned to a quarter of the cap, which equals the previous effective value, and
+  only then is the ambient heap raised for the self-documentation stages
+  (`CJDOC_SMOKE_HEAP`, default 2GB, applied in `check.sh`, `release_check.sh` and
+  `daily.yml`).
+
 ## DONE-03/DONE-04: paired samples
 
 The issue requires ≥5 cold and ≥5 warm paired samples per workflow under matched
@@ -187,7 +242,7 @@ merged until the maintainer merges it.
 | 06.5-06.6 source ZIP reproduction and profiling | `check_showcase_source.py`, the phase attribution | the archive is re-run from the ZIP with the generating binary | `Reproduce the downloaded source bundle` job, plus the ≤ 6 s phase table |
 | 07.1-07.3, 07.5-07.6 cache correctness | `install_cangjie_sdk.py` marker + verified archives, `with_stdx.py` fingerprints, cache keys carrying arch/channel/component identity | cache tests and the cold/warm equality assertion of the measurement script | `scripts/test_install_cangjie_sdk.py`, `scripts/test_with_stdx.py`; `identityEqualUnderBothVariants: true` |
 | 07.4 cache shape measurement | `scripts/measure_sdk_install.py`, `sdk-install-measure.yml` | three dispatches of 5 paired cycles | see the CI-07.4 table above |
-| 08.1-08.6 release closure | `release.yml` per-platform candidate + receipt, `release_check.sh`, `verify_release.py` | `scripts/test_release_candidate.py`, `test_release_evidence.py`, `test_release_transaction.py` | those suites pass; a real tagged run on the merged `main` is still pending (see below) |
+| 08.1-08.6 release closure | `release.yml` per-platform candidate + receipt, `release_check.sh`, `verify_release.py` | `scripts/test_release_candidate.py`, `test_release_evidence.py`, `test_release_transaction.py` | those suites pass; the orchestration work is merged to `main`, but a real tagged run is still pending (see below) |
 | 09.1-09.5 failure feedback | `ci_diagnostics.py`, bounded log capture, no default golden regeneration | `scripts/test_ci_scripts.py` | diagnostics are collected on failure only, into a bounded directory |
 | 10.1-10.7 routing, cancellation and Daily | `ci_changes.py`, `ci_required.py`, concurrency groups, `daily.yml` | routing table and the aggregate-gate tests | `scripts.test_ci_scripts` and `scripts.test_ci_stage` |
 

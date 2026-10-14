@@ -427,18 +427,14 @@ stage_native() {
     # success) and KILL if the process ignores it; a generous limit keeps healthy
     # runs unaffected (the suite is ~5 min, allowances are far larger).
     native_timeout="${CJDOC_NATIVE_TIMEOUT_SECONDS:-2400}"
-    # Only GNU timeout is used: macOS has no `timeout` builtin and Git Bash can
-    # resolve Windows' unrelated `timeout.exe`, so the bound is applied only when
-    # the probe confirms GNU semantics. Without it the stage runs unbounded, as
-    # before, rather than mis-reporting a healthy suite.
-    # Cases exercise source/provider worker pools internally; schedule test
-    # cases with one unittest worker while retaining those concurrency checks.
-    native_bound=(cjpm test --jobs 1 --parallel 1)
-    if timeout --version >/dev/null 2>&1; then
-        native_bound=(timeout --signal=TERM --kill-after=60 "${native_timeout}" cjpm test --jobs 1 --parallel 1)
-    else
-        echo "GNU timeout unavailable: the native stage runs without a bound" >&2
-    fi
+    # The bound is portable on purpose. macOS has no `timeout` binary and Git Bash
+    # resolves Windows' unrelated `timeout.exe`, and the stage wedged on macOS too,
+    # so a shell-level bound would leave the platform that needs it uncovered. The
+    # wrapper kills the whole process group and exits 124 on expiry.
+    # Cases exercise source/provider worker pools internally; schedule test cases
+    # with one unittest worker while retaining those concurrency checks.
+    native_bound=("${python_cmd}" scripts/run_with_timeout.py "${native_timeout}" -- \
+        cjpm test --jobs 1 --parallel 1)
     # The suite has wedged on runners more than once, always the same way: one
     # case parks on futexes with no runnable thread and the log stops mid-suite.
     # The post-mortem cannot inspect a process that the bound above has already

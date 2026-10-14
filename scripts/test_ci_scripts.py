@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import signal
 import subprocess
+import os
 import sys
+import time
 import tempfile
 import unittest
 
@@ -191,6 +194,195 @@ class DiagnosticsTest(unittest.TestCase):
                                           max_bytes=1, max_files=1)
         self.assertTrue(document["omitted"])
         self.assertTrue(all("budget" in entry["reason"] for entry in document["omitted"]))
+
+
+
+class RunWithTimeoutTests(unittest.TestCase):
+    """The portable bound: pass through, expire at 124, and kill the group."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.script = Path(__file__).resolve().parent / "run_with_timeout.py"
+
+    def run_wrapper(self, timeout: str, *command: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(self.script), timeout, "--", *command],
+            capture_output=True, text=True, env=self.short_grace())
+
+    def short_grace(self) -> dict:
+        """`GRACE_SECONDS` is production-scale; tests must not wait it out."""
+        environment = dict(os.environ)
+        environment["CJDOC_TIMEOUT_GRACE_SECONDS"] = "5"
+        return environment
+
+    def test_a_fast_command_passes_through_with_its_own_status(self) -> None:
+        done = self.run_wrapper("30", sys.executable, "-c", "import sys; sys.exit(3)")
+        self.assertEqual(done.returncode, 3)
+
+    def test_an_expired_command_reports_124_like_timeout_does(self) -> None:
+        done = self.run_wrapper("1", sys.executable, "-c", "import time; time.sleep(60)")
+        self.assertEqual(done.returncode, 124, done.stderr)
+        self.assertIn("exceeded 1s", done.stderr)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_expiry_kills_a_child_that_stays_in_the_group(self) -> None:
+        marker = f"cjdoc-timeout-wrapper-{os.getpid()}"
+        done = self.run_wrapper(
+            "1", "/bin/bash", "-c", f'sh -c "exec -a {marker} sleep 60" & sleep 60')
+        self.assertEqual(done.returncode, 124)
+        deadline = time.monotonic() + 5
+        survivors = "1"
+        while time.monotonic() < deadline:
+            probe = subprocess.run(["pgrep", "-f", marker], capture_output=True, text=True)
+            survivors = probe.stdout.strip()
+            if not survivors:
+                break
+            time.sleep(0.1)
+        self.assertEqual(survivors, "", "the group outlived the deadline")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_expiry_signals_the_group_with_term_first(self) -> None:
+        """The command must get a chance to report and clean up before any KILL."""
+        marker = Path(self.temporary.name) / "trapped"
+        script = (
+            "import signal, sys, time\n"
+            "def handler(signum, frame):\n"
+            f"    open({str(marker)!r}, 'w').write('term')\n"
+            "    sys.exit(5)\n"
+            "signal.signal(signal.SIGTERM, handler)\n"
+            "time.sleep(60)\n")
+        done = self.run_wrapper("1", sys.executable, "-c", script)
+        self.assertEqual(done.returncode, 124)
+        self.assertTrue(marker.exists(),
+                        "the command never received SIGTERM before being killed")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_the_grace_covers_a_worker_after_its_leader_exits(self) -> None:
+        """A worker's own TERM handler must get the grace, not be killed at once."""
+        finished = Path(self.temporary.name) / "worker-finished"
+        marker = f"cjdoc-timeout-grace-{os.getpid()}"
+        worker = (
+            "import signal, sys, time\n"
+            "def handler(signum, frame):\n"
+            "    time.sleep(1)\n"
+            f"    open({str(finished)!r}, 'w').write('ok')\n"
+            "    sys.exit(0)\n"
+            "signal.signal(signal.SIGTERM, handler)\n"
+            "time.sleep(60)\n")
+        leader = (
+            "import subprocess, sys, time\n"
+            f"subprocess.Popen([sys.executable, '-c', {worker!r}])\n"
+            "time.sleep(60)\n")
+        # The leader obeys TERM and exits at once; only the grace can let the worker
+        # finish its handler.
+        done = subprocess.run(
+            [sys.executable, str(self.script), "1", "--",
+             sys.executable, "-c", leader],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=self.short_grace())
+        self.assertEqual(done.returncode, 124)
+        self.assertTrue(finished.exists(),
+                        "the worker was killed before its TERM handler completed")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_a_worker_that_ignores_term_dies_with_its_leader(self) -> None:
+        """The leader obeying TERM must not let a stubborn worker survive."""
+        marker = f"cjdoc-timeout-stubborn-{os.getpid()}"
+        # The leader runs to the deadline and obeys TERM; the worker ignores it and
+        # would keep the shared outputs open on its own.
+        script = Path(self.temporary.name) / "leader.sh"
+        script.write_text(
+            "sh -c 'trap \"\" TERM; exec -a "
+            f"{marker} sleep 60' &\n"
+            "sleep 60\n", encoding="utf-8")
+        # Output must NOT be captured: the stubborn worker inherits the pipe, so
+        # capturing would block until the worker exits on its own and the assertion
+        # below could never see it alive.
+        done = subprocess.run(
+            [sys.executable, str(self.script), "1", "--", "/bin/bash", str(script)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=self.short_grace())
+        self.assertEqual(done.returncode, 124)
+        deadline = time.monotonic() + 5
+        survivors = "1"
+        while time.monotonic() < deadline:
+            survivors = subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                                       text=True).stdout.strip()
+            if not survivors:
+                break
+            time.sleep(0.1)
+        self.assertEqual(survivors, "", "a worker outlived the deadline and its leader")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_a_hangup_kills_the_child_group(self) -> None:
+        """A run that loses its terminal must not leave the command behind."""
+        marker = f"cjdoc-timeout-hup-{os.getpid()}"
+        wrapper = subprocess.Popen(
+            [sys.executable, str(self.script), "60", "--",
+             "/bin/bash", "-c", f'sh -c "exec -a {marker} sleep 60" & sleep 60'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=self.short_grace())
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                                  text=True).stdout.strip():
+                    break
+                time.sleep(0.05)
+            self.assertTrue(
+                subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                               text=True).stdout.strip(),
+                "the child never started")
+            wrapper.send_signal(signal.SIGHUP)
+            wrapper.wait(timeout=30)
+            deadline = time.monotonic() + 5
+            survivors = "1"
+            while time.monotonic() < deadline:
+                survivors = subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                                           text=True).stdout.strip()
+                if not survivors:
+                    break
+                time.sleep(0.1)
+            self.assertEqual(survivors, "", "the child group survived SIGHUP")
+        finally:
+            if wrapper.poll() is None:
+                wrapper.kill()
+                wrapper.wait(timeout=10)
+            subprocess.run(["pkill", "-f", marker], check=False)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_interrupting_the_wrapper_kills_the_child_group(self) -> None:
+        """SIGTERM to the wrapper must not leave the command running."""
+        marker = f"cjdoc-timeout-interrupt-{os.getpid()}"
+        wrapper = subprocess.Popen(
+            [sys.executable, str(self.script), "60", "--",
+             "/bin/bash", "-c", f'sh -c "exec -a {marker} sleep 60" & sleep 60'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                                  text=True).stdout.strip():
+                    break
+                time.sleep(0.05)
+            self.assertTrue(
+                subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                               text=True).stdout.strip(),
+                "the child never started")
+            wrapper.send_signal(signal.SIGTERM)
+            wrapper.wait(timeout=30)
+            deadline = time.monotonic() + 5
+            survivors = "1"
+            while time.monotonic() < deadline:
+                survivors = subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                                           text=True).stdout.strip()
+                if not survivors:
+                    break
+                time.sleep(0.1)
+            self.assertEqual(survivors, "", "the child group survived the wrapper")
+        finally:
+            if wrapper.poll() is None:
+                wrapper.kill()
+                wrapper.wait(timeout=10)
+            subprocess.run(["pkill", "-f", marker], check=False)
 
 
 if __name__ == "__main__":
