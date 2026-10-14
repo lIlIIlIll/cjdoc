@@ -156,6 +156,37 @@ class CoordinatorSignalCleanupTests(unittest.TestCase):
     """
 
     @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_a_signal_while_the_lock_is_held_does_not_deadlock(self) -> None:
+        """The handler runs on the interrupted thread, which may already hold the lock."""
+        helper = textwrap.dedent(
+            """
+            import signal, subprocess, sys, time
+            sys.path.insert(0, sys.argv[1])
+            from showcase_build.parallel import BranchRunner
+            runner = BranchRunner()
+            child = subprocess.Popen(["/bin/bash", "-c", "exec -a marker-%d sleep 30" % __import__("os").getpid()],
+                                     start_new_session=True)
+            with runner._lock:
+                runner._processes.add(child)
+                print("held", flush=True)
+                # The signal arrives while this thread owns the lock.
+                time.sleep(30)
+            """)
+        coordinator = subprocess.Popen(
+            [sys.executable, "-c", helper, str(ROOT / "scripts")],
+            stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(coordinator.stdout.readline().strip(), "held")
+            coordinator.send_signal(signal.SIGTERM)
+            coordinator.wait(timeout=10)
+            self.assertIsNotNone(coordinator.returncode,
+                                 "the coordinator deadlocked instead of cancelling")
+        finally:
+            if coordinator.poll() is None:
+                coordinator.kill()
+                coordinator.wait(timeout=10)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
     def test_an_ignored_signal_is_not_turned_into_a_fatal_one(self) -> None:
         """An inherited SIG_IGN must survive: the coordinator keeps running."""
         helper = textwrap.dedent(

@@ -5,7 +5,7 @@ from concurrent.futures import CancelledError, ThreadPoolExecutor
 import os
 import signal
 import subprocess
-from threading import Lock
+from threading import RLock
 
 
 class BranchRunner:
@@ -17,7 +17,10 @@ class BranchRunner:
     """
 
     def __init__(self) -> None:
-        self._lock = Lock()
+        # Reentrant: the signal handler runs on whichever thread received the
+        # signal (including the main thread inside `with self._lock`), and a
+        # non-reentrant lock would deadlock there instead of cancelling.
+        self._lock = RLock()
         self._processes: set[subprocess.Popen] = set()
         self._error: BaseException | None = None
         self._traceback = None
