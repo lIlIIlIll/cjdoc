@@ -44,6 +44,18 @@ private let MAX_EXAMPLE_RUN_MEMORY_MB: Int64 = 2048
 private let MAX_EXAMPLE_RUN_MEMORY_BYTES: Int64 = MAX_EXAMPLE_RUN_MEMORY_MB * 1024 * 1024
 private let EXAMPLE_RUN_CHUNK_BYTES: Int64 = 8192
 private let EXAMPLE_RUN_POLL_MILLISECONDS: Int64 = 50
+
+// Shared by the watchdog and every wait so there is exactly one budget for the whole
+// example run, taken from the MONOTONIC clock: a corrected system clock must not
+// extend the limit or kill a healthy example early.
+private func exampleRemainingMilliseconds(started: MonoTime, timeoutMilliseconds: Int64): Int64 {
+    let left = timeoutMilliseconds - (MonoTime.now() - started).toMilliseconds()
+    if (left < 0) { 0 } else { left }
+}
+
+private func exampleExpired(started: MonoTime, timeoutMilliseconds: Int64): Bool {
+    exampleRemainingMilliseconds(started, timeoutMilliseconds) <= 0
+}
 // Deliberately distinct from the generated source (`__cjdoc_example.cj`) and the
 // compile-only archive (`__cjdoc_example.a`) that share this temporary directory, so
 // the artifact lookup cannot mistake either of them for the executable.
@@ -300,26 +312,101 @@ private func executeExampleProgram(executable: Path): ExampleProcessResult {
         throw error
     }
     let state = AtomicInt64(0)
+    // ONE absolute budget for the watchdog and all three waits, so the run limit
+    // is the limit for the whole call rather than per stage (separate full waits
+    // would allow roughly three times it).
+    let started = MonoTime.now()
+    let expiredFlag = AtomicBool(false)
     let watchdog = spawn {
-        var waited: Int64 = 0
-        while (waited < MAX_EXAMPLE_RUN_MILLISECONDS && state.load() == 0) {
+        while (state.load() == 0 && !expiredFlag.load()) {
+            if (exampleExpired(started, MAX_EXAMPLE_RUN_MILLISECONDS)) {
+                // Claiming the timeout state is what keeps cleanup correct: if the
+                // reads or the status wait expired first the state is still 0, and
+                // without this claim completion would be recorded as normal and the
+                // escaped example would keep running while the caller sees a
+                // plain exit-code failure rather than a timeout.
+                if (state.compareAndSwap(0, 2)) {
+                    expiredFlag.store(true)
+                    terminateExampleProcessTree(process, job)
+                }
+                break
+            }
             sleep(Duration.millisecond * EXAMPLE_RUN_POLL_MILLISECONDS)
-            waited += EXAMPLE_RUN_POLL_MILLISECONDS
         }
-        if (state.compareAndSwap(0, 2)) { terminateExampleProcessTree(process, job) }
     }
     let standardOutput = spawn { => readBoundedExampleStream(process.stdOutPipe,
         MAX_EXAMPLE_RUN_OUTPUT_BYTES) }
     let standardError = spawn { => readBoundedExampleStream(process.stdErrPipe,
         MAX_EXAMPLE_RUN_OUTPUT_BYTES) }
-    let (outputBytes, outputTotal) = standardOutput.get()
-    let (errorBytes, errorTotal) = standardError.get()
-    let exitCode = process.wait()
-    let completed = state.compareAndSwap(0, 1)
-    if (completed) { let _ = closeExampleProcessJob(job) }
+    // Bound every blocking stage by the run limit, exactly as bounded_process does.
+    // Each of these ends at EOF or at the child's own exit, and an example that
+    // escapes the example process group survives the group kill while keeping the
+    // inherited pipes open or the supervisor waiting: without a deadline the caller
+    // (and so the whole test process) blocks past the limit and the suite wedges
+    // with no output -- issue #116.
+    // Never pass an exhausted budget to `get`: `Future.get(Duration.Zero)` waits with
+    // no timeout, and a fresh clock read can land past the deadline even after the
+    // check above, so one read of the clock decides whether there is a budget at all.
+    func awaitStream(future: Future<(Array<Byte>, Int64)>): (Array<Byte>, Int64) {
+        let remainingMs = exampleRemainingMilliseconds(started, MAX_EXAMPLE_RUN_MILLISECONDS)
+        if (remainingMs <= 0) { return (Array<Byte>(), -1) }
+        try {
+            future.get(Duration.millisecond * remainingMs)
+        } catch (_: Exception) {
+            (Array<Byte>(), -1)
+        }
+    }
+    var readExpired = false
+    var (outputBytes, outputTotal) = awaitStream(standardOutput)
+    if (outputTotal < 0) {
+        readExpired = true
+        (outputBytes, outputTotal) = (Array<Byte>(), 0)
+    }
+    var (errorBytes, errorTotal) = awaitStream(standardError)
+    if (errorTotal < 0) {
+        readExpired = true
+        (errorBytes, errorTotal) = (Array<Byte>(), 0)
+    }
+    // Expiry is tracked separately from the code: an example that exits 124 by
+    // itself is an ordinary exit code and must keep its runtime-failure diagnostic
+    // rather than be relabelled as exceeding the run limit.
+    var statusExpired = false
+    var exitCode: Int64 = 124
+    let statusRemainingMs = exampleRemainingMilliseconds(started, MAX_EXAMPLE_RUN_MILLISECONDS)
+    if (statusRemainingMs <= 0) {
+        statusExpired = true
+    } else {
+        let statusReader: Future<Int64> = spawn {
+            try {
+                process.wait()
+            } catch (_: Exception) {
+                -1
+            }
+        }
+        try {
+            exitCode = statusReader.get(Duration.millisecond * statusRemainingMs)
+        } catch (_: Exception) {
+            statusExpired = true
+        }
+    }
+    // A read or status wait that expired means the call did NOT finish inside the
+    // limit, so the tree is terminated and the result is reported as a timeout even
+    // if `process.wait()` later returned a normal code. A delayed watchdog alone
+    // could otherwise be the only thing that would have claimed the timeout.
+    let expiredOverall = readExpired || statusExpired
+    var completed = false
+    if (!expiredOverall) {
+        completed = state.compareAndSwap(0, 1)
+    }
+    if (!completed) {
+        if (state.compareAndSwap(0, 2)) { terminateExampleProcessTree(process, job) }
+        expiredFlag.store(true)
+    } else {
+        let _ = closeExampleProcessJob(job)
+    }
     watchdog.get()
-    ExampleProcessResult(exitCode, outputBytes, errorBytes, outputTotal, errorTotal,
-        !completed && state.load() == 2)
+    ExampleProcessResult(if (expiredOverall) { 124 } else { exitCode }, outputBytes, errorBytes,
+        outputTotal, errorTotal, expiredOverall || state.load() == 2)
 }
 
 private func isRunnableExampleFile(path: Path): Bool {

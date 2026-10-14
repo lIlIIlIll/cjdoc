@@ -213,15 +213,25 @@ private func processText(bytes: Array<Byte>): String {
     try { String.fromUtf8(bytes) } catch (_: Exception) { "<non-UTF-8 output>" }
 }
 
-// A pipe Future.get deadline can expire just before the 25 ms watchdog poll.
-// Claim the process timeout immediately in that case; do not misclassify it as
-// an output-limit failure and suppress the watchdog's state transition.
+// A pipe `Future.get` deadline can expire just before the 25 ms watchdog poll.
+// Claim the timeout immediately in that case; do not misclassify it as an
+// output-limit failure and suppress the watchdog's state transition.
+//
+// The expiry is passed in, not re-derived from the child's liveness: a detached
+// descendant can keep a captured pipe open after the child itself has exited, and
+// then the deadline expires while `isAlive()` is already false. Judging by
+// liveness in that case reported `outputLimit` for a doctest that never exceeded
+// the byte cap.
+// Whether the bounded run has passed its deadline, from the monotonic clock.
+private func doctestDeadlineExpired(started: MonoTime, timeoutMs: Int64): Bool {
+    (MonoTime.now() - started).toMilliseconds() >= timeoutMs
+}
+
 private func markDoctestPipeFailure(process: SubProcess, state: AtomicInt64,
-    started: MonoTime, timeoutMs: Int64): Unit {
-    let expired = (MonoTime.now() - started).toMilliseconds() >= timeoutMs
-    // A blocked reader can wake after the deadline even when the child had
-    // already exited. Do not retroactively call a completed child a timeout.
-    let failureState: Int64 = if (expired && process.isAlive()) { 2 } else { 3 }
+    expired: Bool): Unit {
+    // A reader can also wake after the deadline when the child had already exited and
+    // the deadline was NOT the reason -- that is a real read failure, not a timeout.
+    let failureState: Int64 = if (expired) { 2 } else { 3 }
     if (state.compareAndSwap(0, failureState)) {
         try { process.terminate(force: true) } catch (_: Exception) { () }
     }
@@ -264,35 +274,73 @@ internal func runBoundedProcess(command: String, arguments: Array<String>, worki
     let stdoutFuture: Future<Array<Byte>> = spawn {
         try { readProcessPipe(process.stdOutPipe, maxOutputBytes) }
         catch (error: Exception) {
-            markDoctestPipeFailure(process, state, started, timeoutMs)
+            markDoctestPipeFailure(process, state,
+                doctestDeadlineExpired(started, timeoutMs))
             throw error
         }
     }
     let stderrFuture: Future<Array<Byte>> = spawn {
         try { readProcessPipe(process.stdErrPipe, maxOutputBytes) }
         catch (error: Exception) {
-            markDoctestPipeFailure(process, state, started, timeoutMs)
+            markDoctestPipeFailure(process, state,
+                doctestDeadlineExpired(started, timeoutMs))
             throw error
         }
     }
     var stdout = Array<Byte>()
     var stderr = Array<Byte>()
     var outputLimit = false
-    try { stdout = stdoutFuture.get(Duration.millisecond * timeoutMs) } catch (_: Exception) {
+    // ONE absolute deadline for both reads, not one full timeout each: two
+    // sequential full waits let a caller's limit become twice its value.
+    // The budget is read from the clock once and a nonpositive value is treated as
+    // expiration BEFORE `get`. Passing `Duration.Zero` would wait without any limit,
+    // so a deadline that expires between the check and the call -- with a detached
+    // descendant holding the pipe open -- could hang past the configured timeout.
+    func remainingMilliseconds(): Int64 {
+        timeoutMs - (MonoTime.now() - started).toMilliseconds()
+    }
+    func expired(): Bool {
+        remainingMilliseconds() <= 0
+    }
+    func awaitRead(future: Future<Array<Byte>>): ?Array<Byte> {
+        let remainingMs = remainingMilliseconds()
+        if (remainingMs <= 0) { return None }
+        try {
+            future.get(Duration.millisecond * remainingMs)
+        } catch (_: Exception) {
+            None
+        }
+    }
+    if (let Some(read) <- awaitRead(stdoutFuture)) {
+        stdout = read
+    } else {
         stdoutFuture.cancel()
-        markDoctestPipeFailure(process, state, started, timeoutMs)
+        markDoctestPipeFailure(process, state, expired())
         if (state.load() == 3) { outputLimit = true }
     }
-    try { stderr = stderrFuture.get(Duration.millisecond * timeoutMs) } catch (_: Exception) {
+    if (let Some(read) <- awaitRead(stderrFuture)) {
+        stderr = read
+    } else {
         stderrFuture.cancel()
-        markDoctestPipeFailure(process, state, started, timeoutMs)
+        markDoctestPipeFailure(process, state, expired())
         if (state.load() == 3) { outputLimit = true }
     }
     var exitCode: Int64 = -1
     try { exitCode = process.wait() } catch (_: Exception) {
         let _ = state.compareAndSwap(0, 3)
     }
-    let finished = state.compareAndSwap(0, 1)
+    // Record completion BEFORE joining the watchdog, but only when the deadline
+    // has not passed. The watchdog exits early only once `state` is non-zero, so
+    // leaving it at 0 here made every successful subprocess sleep out the whole
+    // timeout: 12 `cjc -v` calls with a 5 s limit measured 60.5 s.
+    //
+    // A genuine timeout must still win. When the deadline has already passed the
+    // watchdog is the only correct arbiter (it is also what the escaping-descendant
+    // and slow-child cases depend on), so completion is not recorded and the
+    // watchdog's own verdict is joined below. That preserves the earlier fix for
+    // `subprocessPipeWaitDeadlineRemainsTimeoutNotOutputLimit`, where claiming
+    // completion first reported a 2.7 s timeout as truncated success.
+    let finished = if (expired()) { false } else { state.compareAndSwap(0, 1) }
     watchdog.get()
     DoctestProcessResult(exitCode, processText(stdout), processText(stderr),
         !finished && state.load() == 2, outputLimit)

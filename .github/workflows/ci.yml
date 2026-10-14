@@ -63,6 +63,9 @@ jobs:
     uses: ./.github/workflows/build-linux-candidate.yml
     with:
       cangjie_sdk_version: "1.2.0"
+      # CI is the producer Pages waits for, so only CI publishes the readiness
+      # marker its consumer observes (CI-05.1).
+      publish_readiness_marker: true
 
   linux-acceptance:
     name: linux-x64 / Cangjie 1.2.0 STS + stdx
@@ -183,6 +186,9 @@ jobs:
         if: always()
         shell: bash
         run: |
+          # The readiness receipt names the marker this run published, so a Pages
+          # consumer can bind the candidate it reuses to one specific attempt.
+          echo "linux-candidate readiness marker: ${{ needs.candidate-linux.outputs.readiness_marker_name }}"
           python scripts/ci_stage.py summarize --evidence target/ci-evidence \
             --output "${RUNNER_TEMP}/ci-stage-summary.md" || true
           cat "${RUNNER_TEMP}/ci-stage-summary.md" >> "${GITHUB_STEP_SUMMARY}" || true

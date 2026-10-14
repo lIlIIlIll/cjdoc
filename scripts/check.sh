@@ -420,13 +420,70 @@ stage_native() {
     }
     trap cleanup_native EXIT
     export CJDOC_CHIR_WORKER="${worker_binary:-$(resolve_worker_binary)}"
+    # Bound the suite. The runner has repeatedly wedged inside `cjpm test` and
+    # consumed the whole 110-minute job budget with no output, so the stage now
+    # fails fast and names the phase instead of hiding behind the job timeout.
+    # `timeout` sends TERM first (the runner reports it as a failure, not a
+    # success) and KILL if the process ignores it; a generous limit keeps healthy
+    # runs unaffected (the suite is ~5 min, allowances are far larger).
+    native_timeout="${CJDOC_NATIVE_TIMEOUT_SECONDS:-2400}"
+    # Only GNU timeout is used: macOS has no `timeout` builtin and Git Bash can
+    # resolve Windows' unrelated `timeout.exe`, so the bound is applied only when
+    # the probe confirms GNU semantics. Without it the stage runs unbounded, as
+    # before, rather than mis-reporting a healthy suite.
+    native_bound=(cjpm test --jobs 1)
+    if timeout --version >/dev/null 2>&1; then
+        native_bound=(timeout --signal=TERM --kill-after=60 "${native_timeout}" cjpm test --jobs 1)
+    else
+        echo "GNU timeout unavailable: the native stage runs without a bound" >&2
+    fi
+    # The suite has wedged on runners more than once, always the same way: one
+    # case parks on futexes with no runnable thread and the log stops mid-suite.
+    # The post-mortem cannot inspect a process that the bound above has already
+    # killed, so keep refreshing a snapshot of the live process tree while the
+    # stage runs. On success it is deleted; on a wedge the newest snapshot is the
+    # one taken just before termination and is uploaded with the other
+    # diagnostics.
+    native_snapshot="${evidence_dir}/native-process-snapshot.txt"
+    # `wchan` and `etimes` are GNU extensions; macOS rejects the whole selection,
+    # so probe once and use the portable column set there. The process tree and
+    # its states are what identify the wedge; a missing kernel wait channel only
+    # costs one hint.
+    snapshot_columns=(pid,ppid,stat,etime,args)
+    if ps -o pid,p pid >/dev/null 2>&1 && ps -eo pid,wchan:1 >/dev/null 2>&1; then
+        snapshot_columns=(pid,ppid,stat,wchan:18,etimes,args)
+    fi
+    snapshot_ticker() {
+        while true; do
+            {
+                echo "sampledAt: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                ps -eo "$(IFS=,; echo "${snapshot_columns[*]}")" 2>/dev/null |
+                    grep -E "[s]td\.testrunner|[u]nittest_bin/|[c]jdoc-process-supervisor" || true
+            } > "${native_snapshot}.tmp" 2>/dev/null
+            mv -f "${native_snapshot}.tmp" "${native_snapshot}" 2>/dev/null || true
+            sleep 20
+        done
+    }
+    snapshot_ticker &
+    native_snapshot_ticker=$!
     # Remove this stage's fixture outputs even when the tests fail, then keep the
     # original exit status so a failing suite is never reported as a pass.
-    if cjpm test --jobs 1; then
+    status=0
+    "${native_bound[@]}" || status=$?
+    if [[ "${status}" == "0" ]]; then
+        kill "${native_snapshot_ticker}" 2>/dev/null || true
+        rm -f "${native_snapshot}" "${native_snapshot}.tmp" 2>/dev/null || true
         cleanup_native
         trap - EXIT
+    elif [[ "${status}" == "124" || "${status}" == "137" ]]; then
+        kill "${native_snapshot_ticker}" 2>/dev/null || true
+        echo "native stage exceeded ${native_timeout}s and was terminated" >&2
+        echo "process snapshot: ${native_snapshot}" >&2
+        cleanup_native
+        trap - EXIT
+        return 124
     else
-        status=$?
+        kill "${native_snapshot_ticker}" 2>/dev/null || true
         cleanup_native
         trap - EXIT
         return "${status}"

@@ -147,5 +147,81 @@ class IdentityGateTest(unittest.TestCase):
         self.assertIn("err", log)
 
 
+class GitHubReadTest(unittest.TestCase):
+    """`wallclock` reads a live API, so its transport must be reliable.
+
+    The real failure mode: a jobs listing is more than one API page, and
+    `gh api --paginate` prints one JSON document per page, which `json.loads`
+    rejects. A transient EOF on a large run must also be retried, otherwise the
+    evidence of an otherwise successful run is simply lost.
+
+    The `gh` subprocess is intercepted rather than shimmed on `PATH`: a shim has
+    to be an executable script, which is not portable, and on Windows the real
+    `gh` was executed instead. Interception runs the same decoding and retry code
+    on every platform.
+    """
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.calls = 0
+        self.responder = None
+
+    def run_gh(self):
+        from unittest import mock
+
+        def fake_run(args, **_kwargs):
+            self.calls += 1
+            argv = [str(item) for item in (args if isinstance(args, (list, tuple)) else [args])]
+            return self.responder(argv)
+
+        with mock.patch("subprocess.run", fake_run), \
+             mock.patch.object(ci_stage.time, "sleep", lambda _: None):
+            return ci_stage._gh_json("repos/o/r/actions/runs/1/jobs")
+
+    def test_concatenated_pages_are_merged(self) -> None:
+        self.responder = lambda argv: subprocess.CompletedProcess(
+            argv, 0, '{"jobs": [1, 2]}{"jobs": [3]}', "")
+        self.assertEqual(self.run_gh(), {"jobs": [1, 2, 3]})
+
+    def test_a_transient_failure_is_retried(self) -> None:
+        def respond(argv):
+            if self.calls == 1:
+                return subprocess.CompletedProcess(argv, 1, "", "API rate limit")
+            return subprocess.CompletedProcess(argv, 0, '{"jobs": [7]}', "")
+
+        self.responder = respond
+        self.assertEqual(self.run_gh(), {"jobs": [7]})
+        self.assertEqual(self.calls, 2)
+
+    def test_a_single_document_is_returned_unchanged(self) -> None:
+        self.responder = lambda argv: subprocess.CompletedProcess(argv, 0, '{"jobs": [1]}', "")
+        self.assertEqual(self.run_gh(), {"jobs": [1]})
+
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class TransientReadTests(unittest.TestCase):
+    """An empty successful `gh api` body is retried, not read as "no data"."""
+
+    def test_an_empty_body_is_retried_before_giving_up(self):
+        import subprocess
+        from unittest import mock
+        calls = {"n": 0}
+
+        def fake_run(args, **kwargs):
+            argv = [str(item) for item in (args if isinstance(args, (list, tuple)) else [args])]
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            return subprocess.CompletedProcess(argv, 0, json.dumps({"total_count": 3}), "")
+
+        with mock.patch("subprocess.run", fake_run), \
+             mock.patch.object(ci_stage.time, "sleep", lambda _: None):
+            payload = ci_stage._gh_json("repos/o/r/actions/runs/1", paginate=False)
+        self.assertEqual(calls["n"], 2, "an empty body must be retried")
+        self.assertEqual(payload, {"total_count": 3})

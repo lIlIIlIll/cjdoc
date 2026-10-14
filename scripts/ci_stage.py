@@ -340,11 +340,65 @@ def summarize(records: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _gh_json(path: str) -> object:
-    completed = subprocess.run(["gh", "api", "--paginate", path], capture_output=True, text=True)
-    if completed.returncode != 0:
-        raise SystemExit(f"ci_stage.py: gh api failed for {path}: {completed.stderr.strip()}")
-    return json.loads(completed.stdout)
+def _gh_json(path: str, *, paginate: bool = True, tries: int = 5) -> object:
+    """Read one REST resource.
+
+    `--paginate` concatenates the JSON of every page, so the response is decoded
+    as a stream instead of a single document; a jobs listing is routinely more
+    than one page. The API also returns transient EOFs on large runs, which would
+    otherwise lose the evidence of an otherwise successful run, so the read is
+    retried before giving up.
+    """
+    args = ["gh", "api"] + (["--paginate"] if paginate else []) + [path]
+    last = ""
+    for attempt in range(tries):
+        completed = subprocess.run(args, capture_output=True, text=True)
+        if completed.returncode == 0:
+            # A truncated or EMPTY body is a transient failure too: `gh api` can exit
+            # 0 with a cut-off page or no body at all (the EOF this retry loop exists
+            # for). Accepting an empty body would make the run endpoint abort with an
+            # unexpected payload and the jobs endpoint silently record no timing,
+            # losing exactly the evidence this command preserves, so it is retried
+            # and only then falls back to `{}`.
+            if not completed.stdout.strip():
+                last = "empty response body"
+            else:
+                try:
+                    decoder = json.JSONDecoder()
+                    text = completed.stdout
+                    values: list[object] = []
+                    index = 0
+                    while index < len(text):
+                        while index < len(text) and text[index] in " \t\r\n":
+                            index += 1
+                        if index >= len(text):
+                            break
+                        value, index = decoder.raw_decode(text, index)
+                        values.append(value)
+                except ValueError as error:
+                    last = f"malformed JSON response: {error}"
+                else:
+                    if not values:
+                        return {}
+                    if len(values) == 1:
+                        return values[0]
+                    merged: dict[str, object] = {}
+                    for value in values:
+                        if not isinstance(value, dict):
+                            continue
+                        for key, item in value.items():
+                            if isinstance(item, list):
+                                existing = merged.setdefault(key, [])
+                                if isinstance(existing, list):
+                                    existing.extend(item)
+                            else:
+                                merged.setdefault(key, item)
+                    return merged
+        else:
+            last = completed.stderr.strip()
+        if attempt + 1 < tries:
+            time.sleep(2 * (attempt + 1))
+    raise SystemExit(f"ci_stage.py: gh api failed for {path}: {last[:300]}")
 
 
 def _milliseconds(start: str | None, end: str | None) -> int:
@@ -356,7 +410,7 @@ def _milliseconds(start: str | None, end: str | None) -> int:
 
 def wallclock(run_id: str, attempt: int, repository: str) -> dict[str, object]:
     """Read-only wall-clock classification from the Actions jobs API."""
-    run = _gh_json(f"repos/{repository}/actions/runs/{run_id}")
+    run = _gh_json(f"repos/{repository}/actions/runs/{run_id}", paginate=False)
     if not isinstance(run, dict):
         raise SystemExit("ci_stage.py: unexpected run payload")
     jobs_payload = _gh_json(
