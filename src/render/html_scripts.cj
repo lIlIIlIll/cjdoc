@@ -66,6 +66,33 @@ internal let HTML_SEARCH_SCRIPT = """
   if (input && results) {
   const root = input.dataset.root || "";
   const searchArea = input.closest(".search-area");
+  const mobileSearchTrigger = document.querySelector("[data-cjdoc-search-trigger]");
+  const closeMobileSearch = (restoreFocus = false) => {
+    if (!mobileSearchTrigger) return;
+    document.documentElement.classList.remove("mobile-search-is-open");
+    mobileSearchTrigger.setAttribute("aria-expanded", "false");
+    mobileSearchTrigger.setAttribute("aria-label", isChinese ? "打开搜索" : "Open search");
+    if (restoreFocus) mobileSearchTrigger.focus();
+  };
+  const openMobileSearch = () => {
+    if (!mobileSearchTrigger) return;
+    document.documentElement.classList.add("mobile-search-is-open");
+    mobileSearchTrigger.setAttribute("aria-expanded", "true");
+    mobileSearchTrigger.setAttribute("aria-label", isChinese ? "关闭搜索" : "Close search");
+    input.focus();
+  };
+  if (mobileSearchTrigger) {
+    mobileSearchTrigger.addEventListener("click", () => {
+      if (mobileSearchTrigger.getAttribute("aria-expanded") === "true") {
+        closeMobileSearch(true);
+      } else { openMobileSearch(); }
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && mobileSearchTrigger.getAttribute("aria-expanded") === "true") {
+        closeMobileSearch(true);
+      }
+    });
+  }
   const kindFilter = document.querySelector("[data-cjdoc-kind]");
   const packageFilter = document.querySelector("[data-cjdoc-package]");
   const searchStatus = document.querySelector("[data-cjdoc-search-status]");
@@ -362,7 +389,9 @@ internal let HTML_SEARCH_SCRIPT = """
   document.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {
       event.preventDefault();
+      closeTheme(false);
       if (typeof closeMenu === "function") closeMenu(false);
+      openMobileSearch();
       input.focus();
       render();
     }
@@ -391,28 +420,81 @@ internal let HTML_SEARCH_SCRIPT = """
   }
   const themeToggle = document.querySelector("[data-cjdoc-theme-toggle]");
   const themePopover = document.querySelector("[data-cjdoc-theme-popover]");
+  const themeBackdrop = document.querySelector("[data-cjdoc-theme-backdrop]");
+  const themeClose = document.querySelector("[data-cjdoc-theme-close]");
+  const themeLabel = document.querySelector("[data-cjdoc-theme-label]");
   const themeButtons = [...document.querySelectorAll("[data-cjdoc-theme-value]")];
   const themeValues = new Set(["system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"]);
-  const darkThemes = new Set(["dark", "ocean", "terminal"]);
   const themePersistence = globalThis.__CJDOC_THEME__;
   const isKnownTheme = (value) => themeValues.has(value);
-  const readTheme = () => {
+  const selectedTheme = () => {
     const explicit = document.documentElement.dataset.theme;
-    if (isKnownTheme(explicit) && explicit !== "system") return explicit;
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    return isKnownTheme(explicit) ? explicit : "system";
   };
   const syncThemeControls = () => {
-    const explicit = document.documentElement.dataset.theme;
-    const selectedTheme = isKnownTheme(explicit) ? explicit : "system";
+    const selected = selectedTheme();
     for (const button of themeButtons) {
-      const active = button.dataset.cjdocThemeValue === selectedTheme;
-      button.setAttribute("aria-pressed", active ? "true" : "false");
+      button.setAttribute("aria-pressed", button.dataset.cjdocThemeValue === selected ? "true" : "false");
     }
-    if (themeToggle) themeToggle.dataset.mode = darkThemes.has(readTheme()) ? "dark" : "light";
+    if (themeLabel) {
+      const active = themeButtons.find((button) => button.dataset.cjdocThemeValue === selected);
+      if (active) {
+        themeLabel.textContent = (isChinese ? "主题：" : "Theme: ") + active.textContent.trim();
+        if (themeToggle) themeToggle.setAttribute("aria-label",
+          (isChinese ? "选择主题：" : "Select theme: ") + active.textContent.trim());
+      }
+    }
+  };
+  const isMobileTheme = () => Boolean(window.matchMedia &&
+    window.matchMedia("(max-width: 760px)").matches);
+  let themeModalActive = false;
+  let themeInertNodes = [];
+  const setThemeModal = (active) => {
+    if (!themePopover || themeModalActive === active) return;
+    themeModalActive = active;
+    if (active) {
+      themePopover.setAttribute("role", "dialog");
+      themePopover.setAttribute("aria-modal", "true");
+      const isolate = (node) => {
+        if (node === themePopover || node === themeBackdrop) return;
+        if (node.contains(themePopover) ||
+          (themeBackdrop && node.contains(themeBackdrop))) {
+          for (const child of node.children) isolate(child);
+        } else {
+          themeInertNodes.push([node, node.inert]);
+          node.inert = true;
+        }
+      };
+      if (document.body) for (const child of document.body.children) isolate(child);
+    } else {
+      for (const [node, previous] of themeInertNodes) node.inert = previous;
+      themeInertNodes = [];
+      themePopover.setAttribute("role", "group");
+      themePopover.removeAttribute("aria-modal");
+    }
+  };
+  const trapThemeFocus = (event) => {
+    if (!themeModalActive || themePopover.hidden || event.key !== "Tab") return;
+    const items = [...themePopover.querySelectorAll("button:not([disabled]), a[href], [tabindex]")]
+      .filter((node) => !node.hidden && node.tabIndex >= 0 && node.getClientRects().length > 0);
+    const first = items[0], last = items[items.length - 1];
+    if (!first) { event.preventDefault(); themePopover.focus(); return; }
+    if (event.shiftKey && (document.activeElement === first ||
+      !themePopover.contains(document.activeElement))) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last ||
+      !themePopover.contains(document.activeElement))) {
+      event.preventDefault();
+      first.focus();
+    }
   };
   const closeTheme = (restoreFocus = false) => {
     if (!themePopover || themePopover.hidden) return;
     themePopover.hidden = true;
+    if (themeBackdrop) themeBackdrop.hidden = true;
+    setThemeModal(false);
+    document.documentElement.classList.remove("theme-is-open");
     if (themeToggle) {
       themeToggle.setAttribute("aria-expanded", "false");
       if (restoreFocus) themeToggle.focus();
@@ -425,23 +507,35 @@ internal let HTML_SEARCH_SCRIPT = """
     if (themePersistence && typeof themePersistence.persist === "function") themePersistence.persist(next);
     else try { localStorage.setItem("cjdoc-theme", next); } catch (_) { /* optional */ }
     syncThemeControls();
-    closeTheme(false);
+    closeTheme(true);
   };
   if (themeToggle && themePopover) {
     syncThemeControls();
     themeToggle.addEventListener("click", () => {
       const open = themePopover.hidden;
       themePopover.hidden = !open;
+      if (themeBackdrop) themeBackdrop.hidden = !open;
+      document.documentElement.classList.toggle("theme-is-open", open);
+      setThemeModal(open && isMobileTheme());
       themeToggle.setAttribute("aria-expanded", open ? "true" : "false");
-      if (open) { const first = themePopover.querySelector("button"); if (first) first.focus(); }
+      if (open) {
+        const active = themePopover.querySelector('[aria-pressed="true"]');
+        if (active) active.focus();
+      }
     });
     for (const button of themeButtons) button.addEventListener("click", () => setTheme(button.dataset.cjdocThemeValue));
+    if (themeBackdrop) themeBackdrop.addEventListener("click", () => closeTheme(true));
+    if (themeClose) themeClose.addEventListener("click", () => closeTheme(true));
     document.addEventListener("click", (event) => {
       if (!themePopover.hidden && !themePopover.contains(event.target) && !themeToggle.contains(event.target)) closeTheme(false);
     });
     document.addEventListener("keydown", (event) => {
+      trapThemeFocus(event);
       if (event.key === "Escape" && !themePopover.hidden) { event.stopPropagation(); closeTheme(true); }
     }, true);
+    window.addEventListener("resize", () => {
+      if (!themePopover.hidden) setThemeModal(isMobileTheme());
+    });
   }
   const menu = document.querySelector("[data-cjdoc-menu]");
   const sidebar = document.querySelector("#cjdoc-sidebar");
@@ -534,6 +628,9 @@ internal let HTML_SEARCH_SCRIPT = """
         const name = item.querySelector("span")?.textContent || "";
         const visible = !query || name.toLocaleLowerCase().includes(query);
         item.hidden = !visible;
+        // Hide the entire package node, including its nested symbol list.
+        const entry = item.closest(".sidebar-package-entry");
+        if (entry) entry.hidden = !visible;
         if (visible) matched += 1;
       }
       total += matched;
@@ -564,24 +661,29 @@ internal let HTML_SEARCH_SCRIPT = """
     const context = sidebar.querySelector(".sidebar-context");
     const current = context && [...context.querySelectorAll("a")].find((link) =>
       link.classList.contains("is-current") || (window.location.hash && link.getAttribute("href") === window.location.hash));
-    const target = current || context || sidebar.querySelector(".sidebar-package.is-current");
+    const selectedSymbol = sidebar.querySelector(".sidebar-symbol.is-current");
+    const target = current || selectedSymbol || context || sidebar.querySelector(".sidebar-package.is-current");
     if (!target) return;
     sidebar.scrollTop = Math.max(0, sidebar.scrollTop + target.getBoundingClientRect().top -
       sidebar.getBoundingClientRect().top - sidebar.clientHeight / 3);
   };
   const syncRouteState = () => {
     const overview = document.querySelector(".sidebar-link[href$='index.html']");
+    const quickStart = document.querySelector(".sidebar-link[href*='#quick-start-title']");
     const api = document.querySelector(".sidebar-link[href*='#packages']");
     if (!overview || !api) return;
     const declaredRoute = document.body.dataset.cjdocRoute || "overview";
-    const onApi = declaredRoute === "api" || (declaredRoute === "overview" && window.location.hash === "#packages");
-    const onOverview = declaredRoute === "overview" && !onApi;
-    overview.classList.toggle("is-current", onOverview);
-    if (onOverview) overview.setAttribute("aria-current", "page");
-    else overview.removeAttribute("aria-current");
-    api.classList.toggle("is-current", onApi);
-    if (onApi) api.setAttribute("aria-current", "page");
-    else api.removeAttribute("aria-current");
+    const onApi = declaredRoute === "api" ||
+      (declaredRoute === "overview" && window.location.hash === "#packages");
+    const onQuickStart = declaredRoute === "overview" &&
+      window.location.hash === "#quick-start-title";
+    const onOverview = declaredRoute === "overview" && !onApi && !onQuickStart;
+    for (const [link, active] of [[overview, onOverview], [quickStart, onQuickStart], [api, onApi]]) {
+      if (!link) continue;
+      link.classList.toggle("is-current", active);
+      if (active) link.setAttribute("aria-current", "page");
+      else link.removeAttribute("aria-current");
+    }
   };
   syncRouteState();
   window.addEventListener("hashchange", syncRouteState);
@@ -591,8 +693,9 @@ internal let HTML_SEARCH_SCRIPT = """
   let syncTocVisibility = () => {};
   if (toc && content) {
     const tocList = toc.querySelector("ol");
-    const allHeadings = [...content.querySelectorAll("h1, h2, h3, h4, h5, h6")]
-      .filter((heading) => !heading.closest(".member-detail"));
+    const allHeadings = [...content.querySelectorAll("h1, h2, h3, h4, h5, h6, [data-cjdoc-toc-role='member']")]
+      .filter((heading) => !heading.closest(".member-detail") ||
+        heading.dataset.cjdocTocRole === "member");
     const semanticHeadings = allHeadings.filter((heading) => {
       const role = heading.dataset.cjdocTocRole;
       return role === "api-root" || role === "api" || role === "member" || role === "group";
@@ -623,19 +726,28 @@ internal let HTML_SEARCH_SCRIPT = """
       const explicit = heading.dataset.cjdocTocLabel;
       return (explicit || heading.textContent).trim().replace(/\\s+/g, " ");
     };
+    const tocTargetId = (heading) => {
+      if (heading.dataset.cjdocTocRole === "member") {
+        const member = heading.closest(".member-detail");
+        if (member && member.id) return member.id;
+      }
+      return heading.id;
+    };
     const createLink = (heading, className) => {
       const link = document.createElement("a");
       const sourceLink = heading.querySelector("a[href]");
-      const target = sourceLink ? sourceLink.getAttribute("href") : null;
+      const target = heading.dataset.cjdocTocRole === "member"
+        ? null : (sourceLink ? sourceLink.getAttribute("href") : null);
       link.className = "toc-link " + className;
-      link.setAttribute("href", target || "#" + heading.id);
-      link.dataset.tocTarget = heading.id;
+      const targetId = tocTargetId(heading);
+      link.setAttribute("href", target || "#" + targetId);
+      link.dataset.tocTarget = targetId;
       link.textContent = headingLabel(heading);
       return link;
     };
     const appendFlatItem = (heading, index) => {
       const item = document.createElement("li");
-      item.dataset.depth = heading.tagName === "H3" ? "3" : "2";
+      item.dataset.depth = heading.tagName === "H3" || heading.dataset.cjdocTocRole === "member" ? "3" : "2";
       item.append(createLink(heading, "toc-flat-link"));
       tocList.append(item);
     };
@@ -758,18 +870,18 @@ internal let HTML_SEARCH_SCRIPT = """
       const observer = new IntersectionObserver((entries) => {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
-          setActive(entry.target.id);
+          setActive(tocTargetId(entry.target));
         }
       }, {rootMargin: "-18% 0px -68% 0px", threshold: 0});
       for (const heading of headings) observer.observe(heading);
-      setActive(headings[0].id);
+      setActive(tocTargetId(headings[0]));
     } else if (headings.length) {
       const firstLink = tocList.querySelector("a");
       if (firstLink) firstLink.classList.add("is-active");
     }
     syncTocVisibility = () => {
       const visibleHeadings = headings.filter((heading) => !heading.closest("[hidden]"));
-      const visibleIds = new Set(visibleHeadings.map((heading) => heading.id));
+      const visibleIds = new Set(visibleHeadings.map(tocTargetId));
       for (const list of [tocList, mobileTocList]) {
         if (!list) continue;
         for (const link of list.querySelectorAll("[data-toc-target]")) {
@@ -779,7 +891,7 @@ internal let HTML_SEARCH_SCRIPT = """
       const active = tocList.querySelector(".is-active");
       if (active && !visibleIds.has(active.dataset.tocTarget)) {
         active.classList.remove("is-active");
-        if (visibleHeadings.length) updateActiveToc(visibleHeadings[0].id);
+        if (visibleHeadings.length) updateActiveToc(tocTargetId(visibleHeadings[0]));
       }
       toc.hidden = visibleHeadings.length === 0;
       if (mobileToc) mobileToc.hidden = visibleHeadings.length === 0;
@@ -960,7 +1072,14 @@ internal let HTML_SEARCH_SCRIPT = """
       }
     }
     for (const group of memberGroups) {
-      group.hidden = !group.querySelector("[data-cjdoc-member]:not([hidden])");
+      const members = [...group.querySelectorAll("[data-cjdoc-member]")];
+      const matches = members.filter((member) => !member.hidden).length;
+      group.hidden = matches === 0;
+      const label = group.querySelector(".member-group-count");
+      if (label) {
+        const count = matches === members.length ? members.length : matches + " / " + members.length;
+        label.textContent = count + (isChinese ? " 个成员" : " members");
+      }
     }
     syncTocVisibility();
     syncMemberActions();

@@ -200,10 +200,21 @@ def check_member_history(page, member_url):
         _toc_matches_content(page)
 
 
+def open_search_if_collapsed(page):
+    from playwright.sync_api import expect
+    search = page.locator("[data-cjdoc-search]")
+    if not search.is_visible():
+        trigger = page.locator("[data-cjdoc-search-trigger]")
+        expect(trigger).to_be_visible()
+        trigger.click()
+        expect(search).to_be_visible()
+    return search
+
+
 def check_search_and_sidebar_history(page, member_url):
     from playwright.sync_api import expect
     page.goto(member_url, wait_until="load")
-    search = page.locator("[data-cjdoc-search]")
+    search = open_search_if_collapsed(page)
     search.fill("name:find")
     _filters(page)
     kind = page.locator("[data-cjdoc-kind]")
@@ -211,6 +222,7 @@ def check_search_and_sidebar_history(page, member_url):
     expect(page.locator("[data-cjdoc-results] li")).to_have_count(0)
     _member_round_trip(page, page.locator("[data-cjdoc-member][open]").first)
     expect(kind).to_have_value("class")
+    search = open_search_if_collapsed(page)
     search.fill("name:find")
     expect(page.locator("[data-cjdoc-results] li")).to_have_count(0)
     _filters(page)

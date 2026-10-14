@@ -19,8 +19,8 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
     let apiClass = if (currentRoute == "api") { " is-current" } else { "" }
     let apiCurrent = if (currentRoute == "api") { " aria-current=\"page\"" } else { "" }
     out.append("<a class=\"sidebar-link${overviewClass}\" data-cjdoc-nav-link${overviewCurrent} href=\"${rootPrefix}index.html\">${label(locale, "Overview", "总览")}</a>")
+    out.append("<a class=\"sidebar-link\" data-cjdoc-nav-link href=\"${rootPrefix}index.html#quick-start-title\">${label(locale, "Quick start", "快速开始")}</a>")
     out.append("<a class=\"sidebar-link${apiClass}\" data-cjdoc-nav-link${apiCurrent} href=\"${rootPrefix}index.html#packages\">${label(locale, "API Reference", "API 参考")}</a></div>")
-    appendContextSidebar(out, projection, rootPrefix, locale, currentPackagePath, currentSymbol)
     if (!projection.modules.isEmpty()) {
         out.append("<div class=\"sidebar-section\"><p class=\"sidebar-label\">${label(locale, "Package reference", "包参考")}</p>")
         out.append("<label class=\"sidebar-filter-label\"><span class=\"sr-only\">${label(locale, "Filter packages", "筛选包")}</span><input class=\"sidebar-filter\" type=\"search\" placeholder=\"${label(locale, "Filter packages", "筛选包")}\" data-cjdoc-sidebar-filter></label>")
@@ -42,13 +42,94 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
                 }
                 let currentClass = if (isCurrent) { " is-current" } else { "" }
                 let currentAttribute = if (isCurrent) { " aria-current=\"page\"" } else { "" }
+                out.append("<div class=\"sidebar-package-entry\">")
                 out.append("<a class=\"sidebar-package${currentClass}\" data-cjdoc-nav-link${currentAttribute} href=\"${rootPrefix}${escapeHtml(packagePath)}\"><span>${escapeHtml(pkg.source.name)}</span><span class=\"sidebar-package-count\">${pkg.symbols.size}</span></a>")
+                if (isCurrent && currentSymbol.isSome()) {
+                    appendSidebarActiveSymbols(out, projection, pkg.source.moduleId,
+                        pkg.source.name, rootPrefix, locale, currentSymbol)
+                }
+                out.append("</div>")
             }
             out.append("</div></details>")
         }
         out.append("</div>")
     }
+    appendContextSidebar(out, projection, rootPrefix, locale, currentPackagePath, currentSymbol)
     out.append("</aside>")
+}
+
+
+internal func appendSidebarActiveSymbols(out: RenderTextBuffer, projection: RenderProjection,
+    moduleId: String, packageName: String, rootPrefix: String,
+    locale: String, currentSymbol: ?SymbolDoc): Unit {
+    match (projection.topLevelByPackage.get(routeKey(moduleId, packageName))) {
+        case Some(symbols) =>
+            out.append("<nav class=\"sidebar-symbols\" aria-label=\"" +
+                label(locale, "Declarations in this package", "当前包声明") + "\">")
+            // The cap must not hide the page being read when its declaration
+            // sorts after the first 256 entries.
+            var currentBeyondLimit = false
+            match (currentSymbol) {
+                case Some(selected) =>
+                    var position: Int64 = 0
+                    for (symbol in symbols) {
+                        if (position >= 256 && symbol.id == selected.id) {
+                            currentBeyondLimit = true
+                            break
+                        }
+                        position++
+                    }
+                case None => ()
+            }
+            let maximum: Int64 = if (currentBeyondLimit) { 255 } else { 256 }
+            var shown: Int64 = 0
+            let seenLabels = HashMap<String, Int64>()
+            for (symbol in symbols) {
+                let active = match (currentSymbol) {
+                    case Some(value) => value.id == symbol.id
+                    case None => false
+                }
+                // An extension target alone is not a unique declaration.
+                // Prefer a visible member signature, with an ordinal fallback.
+                var displayName = if (symbol.kind == "extend") {
+                    readerSymbolName(symbol)
+                } else { htmlContextLabel(symbol) }
+                if (symbol.kind == "extend") {
+                    match (projection.membersByOwner.get(symbol.id)) {
+                        case Some(members) =>
+                            if (!members.isEmpty()) {
+                                displayName += " · " + htmlContextLabel(members[0])
+                            }
+                        case None => ()
+                    }
+                }
+                let ordinal = match (seenLabels.get(displayName)) {
+                    case Some(previous) => previous + 1
+                    case None => 1
+                }
+                seenLabels[displayName] = ordinal
+                if (ordinal > 1) { displayName += " · #" + ordinal.toString() }
+                if (shown >= maximum && !active) { continue }
+                let activeClass = if (active) { " is-current" } else { "" }
+                let currentAttribute = if (active) { " aria-current=\"page\"" } else { "" }
+                // Full signatures remain on their pages, rather than in repeated sidebar metadata.
+                out.append("<a class=\"sidebar-symbol" + activeClass +
+                    "\"" + currentAttribute + " href=\"" +
+                    rootPrefix + escapeHtml(symbolPagePath(symbol)) + "\"><span class=\"sidebar-symbol-name\">" +
+                    escapeHtml(displayName) +
+                    "</span><span class=\"sidebar-symbol-kind\">" +
+                    escapeHtml(htmlKindLabel(symbol.kind, locale)) + "</span></a>")
+                shown++
+            }
+            if (symbols.size > 256) {
+                out.append("<a class=\"sidebar-symbol-more\" href=\"" +
+                    rootPrefix + escapeHtml(packagePagePath(moduleId, packageName)) +
+                    "#declarations\">" + label(locale, "Full package index", "查看完整包索引") +
+                    "</a>")
+            }
+            out.append("</nav>")
+        case None => ()
+    }
 }
 
 internal func appendContextSidebar(out: RenderTextBuffer, projection: RenderProjection,
@@ -59,6 +140,9 @@ internal func appendContextSidebar(out: RenderTextBuffer, projection: RenderProj
         case Some(symbol) => owner = memberContextOwner(projection, symbol)
         case None => ()
     }
+    // Top-level symbol pages use the package-symbol navigation above. Only
+    // package pages need the legacy full-package context listing.
+    if (currentSymbol.isSome() && owner.isNone()) { return }
 
     let targets = ArrayList<SymbolDoc>()
     var localMembers = false
@@ -129,6 +213,33 @@ internal func appendContextSidebar(out: RenderTextBuffer, projection: RenderProj
     out.append("</section>")
 }
 
+
+internal func appendHtmlThemeControl(out: RenderTextBuffer, locale: String, version: String): Unit {
+    out.append("<div class=\"top-actions\">")
+    if (!version.isEmpty()) {
+        out.append("<span class=\"version-label\">${escapeHtml(version)}</span>")
+    }
+    out.append("<span class=\"language-label\" lang=\"${escapeHtml(locale)}\">" +
+        label(locale, "English", "中文") + "</span><div class=\"theme-control\">")
+    out.append("<button class=\"theme-toggle\" type=\"button\" data-cjdoc-theme-toggle aria-controls=\"cjdoc-theme-popover\" aria-expanded=\"false\" aria-label=\"${label(locale, "Select theme: System", "选择主题：跟随系统")}\">")
+    out.append("<svg class=\"theme-palette-icon\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 3a9 9 0 1 0 0 18h1.5a2.5 2.5 0 0 0 2-4l-.7-.9a1.7 1.7 0 0 1 1.4-2.7h1.6a3.5 3.5 0 0 0 3.5-3.5A9 9 0 0 0 12 3Z\"></path><circle cx=\"13.5\" cy=\"6.5\" r=\"1\"></circle><circle cx=\"17.8\" cy=\"10.2\" r=\"1\"></circle><circle cx=\"7.7\" cy=\"8\" r=\"1\"></circle><circle cx=\"6.1\" cy=\"13.4\" r=\"1\"></circle></svg>")
+    out.append("<span class=\"theme-trigger-label\" data-cjdoc-theme-label>${label(locale, "Theme: System", "主题：跟随系统")}</span><span class=\"theme-chevron\" aria-hidden=\"true\">⌄</span></button>")
+    out.append("<button type=\"button\" class=\"theme-backdrop\" data-cjdoc-theme-backdrop tabindex=\"-1\" hidden aria-label=\"${label(locale, "Close theme selector", "关闭主题选择器")}\"></button>")
+    out.append("<div id=\"cjdoc-theme-popover\" class=\"theme-popover\" data-cjdoc-theme-popover role=\"group\" aria-label=\"${label(locale, "Choose theme", "选择主题")}\" hidden>")
+    out.append("<div class=\"theme-popover-header\"><strong>${label(locale, "Appearance", "外观主题")}</strong><button type=\"button\" class=\"theme-popover-close\" data-cjdoc-theme-close aria-label=\"${label(locale, "Close", "关闭")}\">×</button></div>")
+    out.append("<p class=\"theme-section-title\">${label(locale, "Basic modes", "基础模式")}</p>")
+    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"system\" aria-pressed=\"false\">${label(locale, "System", "跟随系统")}</button>")
+    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"light\" aria-pressed=\"false\">${label(locale, "Light", "浅色")}</button>")
+    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"dark\" aria-pressed=\"false\">${label(locale, "Dark", "深色")}</button>")
+    out.append("<p class=\"theme-section-title theme-presets-title\">${label(locale, "Color presets", "配色预设")}</p>")
+    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"paper\" aria-pressed=\"false\">${label(locale, "Paper", "纸色")}</button>")
+    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"ocean\" aria-pressed=\"false\">${label(locale, "Ocean", "海洋")}</button>")
+    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"forest\" aria-pressed=\"false\">${label(locale, "Forest", "森林")}</button>")
+    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"terminal\" aria-pressed=\"false\">${label(locale, "Terminal", "终端")}</button>")
+    out.append("<button type=\"button\" class=\"theme-option\" data-cjdoc-theme-value=\"violet\" aria-pressed=\"false\">${label(locale, "Violet", "紫罗兰")}</button>")
+    out.append("<p class=\"theme-help\">${label(locale, "System follows your device appearance.", "跟随系统会采用设备的外观设置。")}</p></div></div></div>")
+}
+
 internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: String,
     documentation: DocumentationSet, projection: RenderProjection,
     locale!: String = "en", currentPackagePath!: ?String = None,
@@ -144,21 +255,23 @@ internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: 
         case Some(value) => out.append(" data-cjdoc-doc-version=\"${escapeHtml(value)}\"")
         case None => ()
     }
+    if (currentSymbol.isSome()) { out.append(" data-cjdoc-page=\"symbol\"") }
     out.append(">\n<a class=\"skip-link\" href=\"#cjdoc-main\">${label(locale, "Skip to content", "跳到正文")}</a>\n")
     out.append("<header class=\"site-nav\"><div class=\"site-nav-inner\">")
-    out.append("<button class=\"nav-menu\" type=\"button\" data-cjdoc-menu aria-controls=\"cjdoc-sidebar\" aria-expanded=\"false\" aria-label=\"${label(locale, "Open navigation", "打开导航")}\">${label(locale, "Menu", "菜单")}</button>")
-    let brandSubtitle = match (docVersion) {
-        case Some(value) => value
-        case None => label(locale, "API docs", "API 文档")
-    }
-    out.append("<a class=\"brand\" href=\"${rootPrefix}index.html\"><span class=\"brand-copy\">${escapeHtml(documentation.project.name)}<span class=\"brand-subtitle\">${escapeHtml(brandSubtitle)}</span></span></a>")
+    out.append("<button class=\"nav-menu\" type=\"button\" data-cjdoc-menu aria-controls=\"cjdoc-sidebar\" aria-expanded=\"false\" aria-label=\"${label(locale, "Open navigation", "打开导航")}\"><svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M4 6h16M4 12h16M4 18h16\"/></svg></button>")
+    out.append("<a class=\"brand\" href=\"${rootPrefix}index.html\"><span class=\"brand-logo\">cjdoc</span><span class=\"brand-project\"> / ${escapeHtml(documentation.project.name)}</span></a>")
+    out.append("<button type=\"button\" class=\"mobile-search-trigger\" data-cjdoc-search-trigger aria-controls=\"cjdoc-search-input\" aria-expanded=\"false\" aria-label=\"${label(locale, "Open search", "打开搜索")}\"><svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m20 20-4-4\"/></svg></button>")
     out.append("<div class=\"site-search\"><div class=\"search-area\"><div class=\"search-shell\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"></circle><path d=\"m20 20-4-4\"></path></svg><label class=\"sr-only\" for=\"cjdoc-search-input\">${label(locale, "Search API", "搜索 API")}</label>")
-    out.append("<input id=\"cjdoc-search-input\" type=\"search\" placeholder=\"${label(locale, "Search docs", "搜索文档")}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"cjdoc-search-results\" aria-expanded=\"false\" data-cjdoc-search data-root=\"${rootPrefix}\"><kbd>Ctrl K</kbd></div>")
+    out.append("<input id=\"cjdoc-search-input\" type=\"search\" placeholder=\"${label(locale, "Search docs", "搜索文档")}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"cjdoc-search-results\" aria-expanded=\"false\" data-cjdoc-search data-root=\"${rootPrefix}\"><kbd>Ctrl + K</kbd></div>")
     out.append("<ul id=\"cjdoc-search-results\" class=\"search-results\" role=\"listbox\" data-cjdoc-results aria-live=\"polite\"></ul><p class=\"search-status-note\" data-cjdoc-search-status role=\"status\" hidden></p></div>")
     out.append("<button type=\"button\" class=\"search-filter-toggle\" data-cjdoc-filter-toggle aria-controls=\"cjdoc-search-filters\" aria-expanded=\"false\">${label(locale, "Filters", "筛选")}</button>")
     out.append("<div id=\"cjdoc-search-filters\" class=\"search-filters\"><label><span class=\"sr-only\">${label(locale, "Filter by kind", "按类别筛选")}</span><select data-cjdoc-kind aria-label=\"${label(locale, "Filter by kind", "按类别筛选")}\"><option value=\"\">${label(locale, "All kinds", "全部类别")}</option></select></label>")
     out.append("<label><span class=\"sr-only\">${label(locale, "Filter by package", "按包筛选")}</span><select data-cjdoc-package aria-label=\"${label(locale, "Filter by package", "按包筛选")}\"><option value=\"\">${label(locale, "All packages", "全部包")}</option></select></label></div></div>")
-    out.append("<div class=\"top-actions\"><div class=\"theme-control\"><button class=\"theme-toggle\" type=\"button\" data-cjdoc-theme-toggle aria-controls=\"cjdoc-theme-popover\" aria-expanded=\"false\" aria-label=\"${label(locale, "Switch theme", "切换主题")}\"><svg class=\"icon-sun\" width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><circle cx=\"12\" cy=\"12\" r=\"4\"></circle><path d=\"M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42\"></path></svg><svg class=\"icon-moon\" width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"><path d=\"M20.5 14.7A8.5 8.5 0 0 1 9.3 3.5 8.5 8.5 0 1 0 20.5 14.7Z\"></path></svg></button><div id=\"cjdoc-theme-popover\" class=\"theme-popover\" data-cjdoc-theme-popover role=\"group\" aria-label=\"${label(locale, "Theme", "主题")}\" hidden><button type=\"button\" data-cjdoc-theme-value=\"system\" aria-pressed=\"false\">${label(locale, "System", "跟随系统")}</button><button type=\"button\" data-cjdoc-theme-value=\"light\" aria-pressed=\"false\">${label(locale, "Light", "浅色")}</button><button type=\"button\" data-cjdoc-theme-value=\"dark\" aria-pressed=\"false\">${label(locale, "Dark", "深色")}</button><button type=\"button\" data-cjdoc-theme-value=\"paper\" aria-pressed=\"false\">${label(locale, "Paper", "纸色")}</button><button type=\"button\" data-cjdoc-theme-value=\"ocean\" aria-pressed=\"false\">${label(locale, "Ocean", "海洋")}</button><button type=\"button\" data-cjdoc-theme-value=\"forest\" aria-pressed=\"false\">${label(locale, "Forest", "森林")}</button><button type=\"button\" data-cjdoc-theme-value=\"terminal\" aria-pressed=\"false\">${label(locale, "Terminal", "终端")}</button><button type=\"button\" data-cjdoc-theme-value=\"violet\" aria-pressed=\"false\">${label(locale, "Violet", "紫罗兰")}</button></div></div></div>")
+    let headerVersion = match (docVersion) {
+        case Some(value) => value
+        case None => documentation.generator.version
+    }
+    appendHtmlThemeControl(out, locale, headerVersion)
     out.append("<span class=\"sr-only\" aria-label=\"${label(locale, "Theme", "主题")}\"></span>")
     out.append("</div></header>\n<div class=\"docs-layout\"><button class=\"nav-backdrop\" type=\"button\" data-cjdoc-menu-backdrop hidden aria-label=\"${label(locale, "Close navigation", "关闭导航")}\"></button>")
     appendHtmlSidebar(out, documentation, projection, rootPrefix, locale,

@@ -5,3 +5,54 @@ html[data-theme=ocean]{color-scheme:dark;--bg:#07111f;--surface:#0c1a2c;--ink:#e
 html[data-theme=forest]{--bg:#f1f5ef;--surface:#fbfdf8;--ink:#1d2c23;--muted:#5f7063;--line:#d5e0d4;--accent:#2f7758;--soft:#dfeee4}
 html[data-theme=violet]{--bg:#f6f3fb;--surface:#fff;--ink:#252235;--muted:#68627a;--line:#e1dced;--accent:#6848c7;--soft:#ebe5ff}
 html[data-theme=terminal]{color-scheme:dark;--bg:#07100b;--surface:#0b1710;--ink:#d9ffe7;--muted:#91b8a0;--line:#1b3b27;--accent:#69e69a;--soft:#123d25;--code:#050d08}
+
+/* The showcase uses the same eight-theme picker as generated API pages. */
+.showcase-theme-control{display:inline-flex;position:relative;vertical-align:middle}
+.showcase-theme-trigger{display:inline-flex;align-items:center;gap:.5rem;
+  min-height:38px;padding:.35rem .75rem;border:1px solid var(--line);border-radius:7px;
+  background:var(--surface);color:var(--ink);font-weight:650;font-size:.8rem;white-space:nowrap}
+.showcase-theme-trigger svg{flex:0 0 auto;color:var(--muted)}
+.showcase-theme-chevron{color:var(--muted)}
+.showcase-theme-backdrop{display:none}
+.showcase-theme-menu{position:absolute;z-index:60;top:calc(100% + .5rem);right:0;
+  width:17.5rem;max-width:calc(100vw - 1.6rem);padding:.75rem;
+  border:1px solid var(--line);border-radius:8px;background:var(--surface);
+  box-shadow:0 12px 32px rgb(0 0 0 / .13);white-space:normal}
+.showcase-theme-heading{display:flex;align-items:center;justify-content:space-between;
+  gap:.75rem;padding:0 .25rem .2rem;font-size:.88rem}
+.showcase-theme-close{display:none;border:0;background:var(--soft);
+  width:32px;height:32px;border-radius:50%;font-size:1.2rem}
+.showcase-theme-group{margin:.4rem .2rem;color:var(--muted);font-size:.72rem;font-weight:700}
+.showcase-theme-group.preset{margin-top:.6rem;padding-top:.65rem;border-top:1px solid var(--line)}
+.showcase-theme-option{display:flex;align-items:center;gap:.65rem;width:100%;min-height:36px;
+  padding:.45rem .55rem;border:1px solid transparent;border-radius:5px;
+  background:transparent;color:var(--ink);text-align:left;font-size:.8rem}
+.showcase-theme-option:before{content:'';width:16px;height:16px;flex:0 0 16px;
+  border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+.showcase-theme-option[data-showcase-theme-value='system']:before{background:#dfe6ef}
+.showcase-theme-option[data-showcase-theme-value='light']:before{background:#fff}
+.showcase-theme-option[data-showcase-theme-value='dark']:before{background:#10141b}
+.showcase-theme-option[data-showcase-theme-value='paper']:before{background:#f7f2e8}
+.showcase-theme-option[data-showcase-theme-value='ocean']:before{background:#07111f}
+.showcase-theme-option[data-showcase-theme-value='forest']:before{background:#f1f5ef}
+.showcase-theme-option[data-showcase-theme-value='terminal']:before{background:#07100b}
+.showcase-theme-option[data-showcase-theme-value='violet']:before{background:#f6f3fb}
+.showcase-theme-option[aria-pressed='true'],.showcase-theme-option:hover{
+  background:var(--soft);color:var(--accent)}
+.showcase-theme-option[aria-pressed='true']:after{content:'✓';margin-left:auto;font-weight:750}
+.showcase-theme-help{margin:.7rem .2rem .15rem;color:var(--muted);font-size:.72rem}
+.download-page nav{display:flex;align-items:center;flex-wrap:wrap;gap:1rem}
+[hidden]{display:none!important}
+@media(max-width:640px){
+  .showcase-theme-trigger{gap:.3rem;padding:.35rem .5rem;min-height:36px}
+  .showcase-theme-label{display:none}
+  .showcase-theme-backdrop:not([hidden]){display:block;position:fixed;z-index:59;
+    inset:0;width:100%;height:100%;border:0;border-radius:0;background:rgb(0 0 0 / .38)}
+  .showcase-theme-menu{position:fixed;z-index:60;top:auto;bottom:0;left:0;right:0;
+    width:100%;max-width:none;max-height:calc(100dvh - 2rem);overflow-y:auto;
+    padding:1rem .9rem max(1rem,env(safe-area-inset-bottom));border-radius:14px 14px 0 0}
+  .showcase-theme-menu:before{content:'';display:block;width:36px;height:4px;
+    margin:-.45rem auto .7rem;background:var(--line);border-radius:3px}
+  .showcase-theme-close{display:inline-grid;place-items:center}
+  html.showcase-theme-open{overflow:hidden}
+}

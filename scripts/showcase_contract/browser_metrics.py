@@ -52,12 +52,12 @@ def screenshots(journey, key: tuple, output: Path) -> list[dict]:
             journey.click(native)
             journey.click(page.locator(f'[data-cjdoc-theme-value="{theme}"]'))
         else:
-            toggle = page.locator("[data-showcase-theme]")
-            expect(toggle).to_have_count(1)
-            if page.locator("html").get_attribute("data-theme") != theme:
-                journey.click(toggle)
-                if page.locator("html").get_attribute("data-theme") != theme:
-                    journey.click(toggle)
+            trigger = page.locator("[data-showcase-theme]")
+            expect(trigger).to_have_count(1)
+            journey.click(trigger)
+            option = page.locator(f'[data-showcase-theme-value="{theme}"]')
+            expect(option).to_have_count(1)
+            journey.click(option)
         expect(page.locator("html")).to_have_attribute("data-theme", theme)
         if page.evaluate("document.documentElement.scrollWidth > innerWidth + 1"):
             raise AssertionError("theme switch introduced horizontal overflow")

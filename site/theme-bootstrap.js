@@ -10,8 +10,20 @@
   if (themes.includes(query)) value = query;
   else query = null;
   if (!themes.includes(value)) value = "system";
-  document.documentElement.dataset.theme = value === "system"
-    ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : value;
+  const media = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+  const resolved = () => value === "system"
+    ? (media && media.matches ? "dark" : "light") : value;
+  document.documentElement.dataset.themeChoice = value;
+  document.documentElement.dataset.theme = resolved();
+  if (media) {
+    const followSystem = () => {
+      if (document.documentElement.dataset.themeChoice === "system") {
+        document.documentElement.dataset.theme = media.matches ? "dark" : "light";
+      }
+    };
+    if (media.addEventListener) media.addEventListener("change", followSystem);
+    else if (media.addListener) media.addListener(followSystem);
+  }
   const state = {navigationTheme: query, listening: false};
   const propagate = () => {
     if (!state.navigationTheme || state.listening) return;

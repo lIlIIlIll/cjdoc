@@ -27,7 +27,8 @@ SCENARIOS.update({
 # Browser timings run from the real input/click event through completed UI
 # assertions. Pre-click scrolling is recorded separately. These are controlled
 # CI regression ceilings, not claims about end-user latency.
-BUDGETS = {"siteBytes": 80_000_000, "offlineBytes": 16_000_000,
+# The redesigned bilingual showcase measures 78.4 MB; allow about 27.5% growth.
+BUDGETS = {"siteBytes": 100_000_000, "offlineBytes": 16_000_000,
            "queryMs": 1500, "expandMs": 1000, "listHeight": 6000,
            "compactRowHeight": 220, "splitContentTop": 260,
            "homepageActivations": 1, "homepageDocumentNavigations": 1}
