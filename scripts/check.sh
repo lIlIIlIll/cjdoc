@@ -420,13 +420,36 @@ stage_native() {
     }
     trap cleanup_native EXIT
     export CJDOC_CHIR_WORKER="${worker_binary:-$(resolve_worker_binary)}"
+    # Bound the suite. The runner has repeatedly wedged inside `cjpm test` and
+    # consumed the whole 110-minute job budget with no output, so the stage now
+    # fails fast and names the phase instead of hiding behind the job timeout.
+    # `timeout` sends TERM first (the runner reports it as a failure, not a
+    # success) and KILL if the process ignores it; a generous limit keeps healthy
+    # runs unaffected (the suite is ~5 min, allowances are far larger).
+    native_timeout="${CJDOC_NATIVE_TIMEOUT_SECONDS:-2400}"
+    # Only GNU timeout is used: macOS has no `timeout` builtin and Git Bash can
+    # resolve Windows' unrelated `timeout.exe`, so the bound is applied only when
+    # the probe confirms GNU semantics. Without it the stage runs unbounded, as
+    # before, rather than mis-reporting a healthy suite.
+    native_bound=(cjpm test --jobs 1)
+    if timeout --version >/dev/null 2>&1; then
+        native_bound=(timeout --signal=TERM --kill-after=60 "${native_timeout}" cjpm test --jobs 1)
+    else
+        echo "GNU timeout unavailable: the native stage runs without a bound" >&2
+    fi
     # Remove this stage's fixture outputs even when the tests fail, then keep the
     # original exit status so a failing suite is never reported as a pass.
-    if cjpm test --jobs 1; then
+    status=0
+    "${native_bound[@]}" || status=$?
+    if [[ "${status}" == "0" ]]; then
         cleanup_native
         trap - EXIT
+    elif [[ "${status}" == "124" || "${status}" == "137" ]]; then
+        echo "native stage exceeded ${native_timeout}s and was terminated" >&2
+        cleanup_native
+        trap - EXIT
+        return 124
     else
-        status=$?
         cleanup_native
         trap - EXIT
         return "${status}"
