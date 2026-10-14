@@ -24,6 +24,9 @@ class BranchRunner:
         self._processes: set[subprocess.Popen] = set()
         self._error: BaseException | None = None
         self._traceback = None
+        # Set by the signal handler and by `fail()`; `run()` refuses to launch once
+        # it is set.
+        self.cancelled = False
         # A cancelled or SIGTERMed stage runs no `finally` and no `fail()`, and each
         # command owns its own POSIX session here, so the active cjdoc/compiler
         # groups would outlive their coordinator and keep holding pipes and
@@ -40,6 +43,10 @@ class BranchRunner:
 
     def _on_signal(self, signum, frame) -> None:
         with self._lock:
+            # Mark cancellation under the same lock `run()` checks, so a worker that
+            # is between two commands cannot slip in a new detached session after the
+            # registered groups were killed but before this handler re-raises.
+            self.cancelled = True
             for process in list(self._processes):
                 self._kill(process)
         previous = self._previous_handlers.get(signum, signal.SIG_DFL)
@@ -82,6 +89,7 @@ class BranchRunner:
             if self._error is not None:
                 return
             self._error = error
+            self.cancelled = True
             self._traceback = error.__traceback__
             for process in self._processes:
                 self._kill(process)
@@ -93,7 +101,7 @@ class BranchRunner:
                 raise ValueError("stdout/stderr cannot be combined with capture_output")
             kwargs.update(stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         with self._lock:
-            if self._error is not None:
+            if self._error is not None or self.cancelled:
                 raise CancelledError("showcase sibling branch failed")
             process = subprocess.Popen(command, start_new_session=os.name == "posix", **kwargs)
             self._processes.add(process)

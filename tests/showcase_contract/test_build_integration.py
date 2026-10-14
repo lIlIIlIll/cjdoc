@@ -156,6 +156,23 @@ class CoordinatorSignalCleanupTests(unittest.TestCase):
     """
 
     @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_a_signal_stops_further_launches(self) -> None:
+        """No new detached session may start after the handler has run."""
+        from showcase_build import parallel
+
+        # Inherit SIG_IGN so the handler returns instead of re-raising into the
+        # test runner; the cancellation flag is what this asserts.
+        previous = signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        try:
+            runner = parallel.BranchRunner()
+            runner._on_signal(signal.SIGTERM, None)
+            self.assertTrue(runner.cancelled)
+            with self.assertRaises(parallel.CancelledError):
+                runner.run(["/bin/true"])
+        finally:
+            signal.signal(signal.SIGTERM, previous)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
     def test_a_signal_while_the_lock_is_held_does_not_deadlock(self) -> None:
         """The handler runs on the interrupted thread, which may already hold the lock."""
         helper = textwrap.dedent(
