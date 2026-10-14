@@ -72,9 +72,13 @@ def candidate_files(repo: Path, target: Path) -> list[tuple[str, Path]]:
         expected = repo / "tests/fixtures/golden-v12" / f"{fixture}.docs.json"
         if _acceptable_source(expected, allowed):
             candidates.append((f"{fixture}/expected-golden", expected))
-    for record in sorted(target.glob("*.json")):
-        if _acceptable_source(record, [target]):
-            candidates.append((f"stage-evidence/{record.name}", record))
+    # Stage records are `.json`; a live process-tree snapshot is plain text. Both
+    # live directly in the evidence root and are labelled by their origin so the
+    # bundle never presents a snapshot as acceptance output.
+    for pattern in ("*.json", "*.txt"):
+        for record in sorted(target.glob(pattern)):
+            if _acceptable_source(record, [target]):
+                candidates.append((f"stage-evidence/{record.name}", record))
     return candidates
 
 
