@@ -1,6 +1,5 @@
 package cjdoc.model
 
-import std.collection.*
 import std.overflow.*
 
 private let SHA256_CONSTANTS: Array<UInt32> = [
@@ -37,15 +36,18 @@ public func contractFingerprint(value: String): String {
 }
 
 public func contractFingerprintBytes(input: Array<Byte>): String {
-    let data = ArrayList<Byte>()
-    data.add(all: input)
-    data.add(0x80)
-    while (data.size % 64 != 56) { data.add(0) }
+    // Complete input blocks can be read directly. Only the remainder and
+    // SHA padding need scratch storage, bounded to two 64-byte blocks.
+    let remainder = input.size % 64
+    let fullBytes = input.size - remainder
+    let tailSize: Int64 = if (remainder < 56) { 64 } else { 128 }
+    let tail = Array<Byte>(tailSize, repeat: 0)
+    for (index in 0..remainder) { tail[index] = input[fullBytes + index] }
+    tail[remainder] = 0x80
     let bitLength = UInt64(input.size).wrappingMul(8)
-    var shift: Int64 = 56
-    while (shift >= 0) {
-        data.add(UInt8((bitLength >> UInt64(shift)) & 0xFF))
-        shift -= 8
+    for (index in 0..8) {
+        let shift = UInt64((7 - index) * 8)
+        tail[tailSize - 8 + index] = UInt8((bitLength >> shift) & 0xFF)
     }
 
     var h0: UInt32 = 0x6a09e667
@@ -58,14 +60,16 @@ public func contractFingerprintBytes(input: Array<Byte>): String {
     var h7: UInt32 = 0x5be0cd19
 
     var chunk: Int64 = 0
-    while (chunk < data.size) {
+    while (chunk < fullBytes + tailSize) {
+        let block = if (chunk < fullBytes) { input } else { tail }
+        let blockOffset = if (chunk < fullBytes) { chunk } else { chunk - fullBytes }
         let words = Array<UInt32>(64, repeat: 0)
         for (index in 0..16) {
-            let offset = chunk + index * 4
-            words[index] = (UInt32(data[offset]) << 24) |
-                (UInt32(data[offset + 1]) << 16) |
-                (UInt32(data[offset + 2]) << 8) |
-                UInt32(data[offset + 3])
+            let offset = blockOffset + index * 4
+            words[index] = (UInt32(block[offset]) << 24) |
+                (UInt32(block[offset + 1]) << 16) |
+                (UInt32(block[offset + 2]) << 8) |
+                UInt32(block[offset + 3])
         }
         for (index in 16..64) {
             let s0 = rotateContractShaRight(words[index - 15], 7) ^
