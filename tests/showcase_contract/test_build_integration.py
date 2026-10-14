@@ -156,6 +156,32 @@ class CoordinatorSignalCleanupTests(unittest.TestCase):
     """
 
     @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_an_ignored_signal_is_not_turned_into_a_fatal_one(self) -> None:
+        """An inherited SIG_IGN must survive: the coordinator keeps running."""
+        helper = textwrap.dedent(
+            """
+            import signal, sys, time
+            sys.path.insert(0, sys.argv[1])
+            from showcase_build.parallel import BranchRunner
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            runner = BranchRunner()
+            print("ready", flush=True)
+            time.sleep(30)
+            """)
+        coordinator = subprocess.Popen(
+            [sys.executable, "-c", helper, str(ROOT / "scripts")],
+            stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(coordinator.stdout.readline().strip(), "ready")
+            coordinator.send_signal(signal.SIGINT)
+            # It must still be there: resetting the disposition would have killed it.
+            with self.assertRaises(subprocess.TimeoutExpired):
+                coordinator.wait(timeout=2)
+        finally:
+            coordinator.kill()
+            coordinator.wait(timeout=10)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
     def test_sigterm_kills_a_registered_group_before_exiting(self) -> None:
         helper = textwrap.dedent(
             """

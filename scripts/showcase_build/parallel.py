@@ -40,6 +40,12 @@ class BranchRunner:
             for process in list(self._processes):
                 self._kill(process)
         previous = self._previous_handlers.get(signum, signal.SIG_DFL)
+        if previous == signal.SIG_IGN:
+            # Python preserves an inherited ignored SIGINT (a background job, for
+            # example). Turning that into a fatal default here would kill a process
+            # whose environment explicitly asked to ignore the signal, so stop after
+            # the group cleanup and leave the disposition ignored.
+            return
         if callable(previous):
             previous(signum, frame)
             return
