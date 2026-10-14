@@ -834,12 +834,19 @@ PY
     # CJDOC_STDX_DIGEST (see with_stdx.py --print-env). Re-resolving here would be
     # redundant and would fail on an SDK layout the caller already resolved, so
     # only wrap when nothing was authenticated.
+    # This stage documents this repository itself with `--no-cache`, and that working
+    # set exceeds the workflow default: the job failed with `active units: 127779
+    # (523382784 B)` of `131072 (536870912 B)` and "region statistics when gc ends".
+    # Raise the ceiling HERE rather than for the whole job, because the example
+    # subprocesses in the unit-test stage derive their memory bound from the ambient
+    # heap and misbehave at a larger value.
+    local smoke_heap="${CJDOC_SMOKE_HEAP:-2GB}"
     if [[ -n "${CJDOC_STDX_DIGEST:-}" && -n "${CJDOC_STDX_PATH:-}" ]]; then
-        "${python_cmd}" scripts/real_repository_smoke.py \
+        cjHeapSize="${smoke_heap}" "${python_cmd}" scripts/real_repository_smoke.py \
             --project "${repo}" --binary "${main_binary:-${repo}/target/release/bin/main}" \
             --evidence "${smoke_evidence}"
     else
-        "${python_cmd}" scripts/with_stdx.py --variant static -- \
+        cjHeapSize="${smoke_heap}" "${python_cmd}" scripts/with_stdx.py --variant static -- \
             "${python_cmd}" scripts/real_repository_smoke.py \
             --project "${repo}" --binary "${main_binary:-${repo}/target/release/bin/main}" \
             --evidence "${smoke_evidence}"

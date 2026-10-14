@@ -293,6 +293,11 @@ jobs:
           SHOWCASE_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
           SHOWCASE_REVISION: ${{ github.sha }}
           CJDOC_CI_EVIDENCE: ${{ runner.temp }}/ci-evidence
+          # Same self-documentation working set as the CI acceptance stage: observed
+          # 128404 of 131072 units active (525942784 of 536870912 B), then "region
+          # statistics when gc ends" and exit 1. Scoped to this step; the compile and
+          # test jobs keep the default.
+          cjHeapSize: "2GB"
         run: |
           set -euo pipefail
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
