@@ -79,13 +79,7 @@ def _kill_tree(process: subprocess.Popen) -> None:
             except OSError:
                 pass
         return
-    subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-    if process.poll() is None:
-        try:
-            process.kill()
-        except OSError:
-            pass
+    _terminate_windows_tree_now(process)
 
 
 def _wait_for_group(process: subprocess.Popen, seconds: int) -> None:
@@ -105,6 +99,22 @@ def _wait_for_group(process: subprocess.Popen, seconds: int) -> None:
             return
         time.sleep(0.05)
     process.poll()
+
+
+def _terminate_windows_tree_now(process: subprocess.Popen) -> None:
+    """End the tree on Windows while its root still exists.
+
+    `taskkill /T` walks from the given PID, so the root must still be present when it
+    runs. Waiting out the grace here would let the root exit naturally and leave a
+    worker undiscoverable, so the tree is terminated immediately instead.
+    """
+    subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    if process.poll() is None:
+        try:
+            process.kill()
+        except OSError:
+            pass
 
 
 def _group_is_alive(process: subprocess.Popen) -> bool:
@@ -137,10 +147,13 @@ def _install_signal_cleanup(process: subprocess.Popen) -> dict:
 
     def handler(signum, frame) -> None:
         _signal_group(process, signal.SIGTERM)
-        _wait_for_group(process, _grace_seconds())
-        # The group is killed even when the leader obeyed TERM, because a worker in
-        # its session may not have, and the grace above already covered it.
-        _kill_tree(process)
+        if os.name == "nt":
+            _terminate_windows_tree_now(process)
+        else:
+            _wait_for_group(process, _grace_seconds())
+            # The group is killed even when the leader obeyed TERM, because a worker
+            # in its session may not have, and the grace above already covered it.
+            _kill_tree(process)
         try:
             process.wait(timeout=30)
         except subprocess.TimeoutExpired:
@@ -181,14 +194,22 @@ def run(command: list[str], timeout_seconds: int) -> int:
         print(f"run_with_timeout.py: command exceeded {timeout_seconds}s "
               f"(elapsed {elapsed}s); terminating it", file=sys.stderr, flush=True)
         _signal_group(process, signal.SIGTERM)
-        # The grace belongs to the GROUP: a worker may still be flushing results or
-        # running its own TERM handler after the leader has already exited.
-        _wait_for_group(process, _grace_seconds())
         grace = _grace_seconds()
-        if _group_is_alive(process):
-            print(f"run_with_timeout.py: the process group was still alive after "
-                  f"{grace}s; killing it", file=sys.stderr, flush=True)
-        _kill_tree(process)
+        if os.name == "nt":
+            # No graceful group signal exists, and `taskkill /T` needs a live root,
+            # so the tree is ended now rather than after a grace that could let the
+            # root exit.
+            print(f"run_with_timeout.py: terminating the process tree",
+                  file=sys.stderr, flush=True)
+            _terminate_windows_tree_now(process)
+        else:
+            # The grace belongs to the GROUP: a worker may still be flushing results
+            # or running its own TERM handler after the leader has already exited.
+            _wait_for_group(process, grace)
+            if _group_is_alive(process):
+                print(f"run_with_timeout.py: the process group was still alive after "
+                      f"{grace}s; killing it", file=sys.stderr, flush=True)
+            _kill_tree(process)
         try:
             process.wait(timeout=60)
         except subprocess.TimeoutExpired:
