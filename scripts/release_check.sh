@@ -37,7 +37,9 @@ else
     exit 1
 fi
 
-"${python_cmd}" scripts/real_repository_smoke.py \
+# This documents the whole repository, which exceeds the default heap; the same
+# ceiling `check.sh`'s smoke stage uses (see CJDOC_SMOKE_HEAP there).
+cjHeapSize="${CJDOC_SMOKE_HEAP:-2GB}" "${python_cmd}" scripts/real_repository_smoke.py \
     --binary "${binary}" \
     --project "${repo_root}" \
     --evidence "${staging_dir}/real-repository.json"
