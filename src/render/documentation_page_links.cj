@@ -46,18 +46,26 @@ private func capturedPageFragment(original: DocumentationPage, selected: Documen
 }
 
 private class CapturedPageLinkResolver {
-    let source: String
+    let page: DocumentationPage
     let prefix: String
     let markdown: Bool
     let originals = HashMap<String, DocumentationPage>()
     let selectedPages = HashMap<String, DocumentationPage>()
+    let ambiguousSources = HashSet<String>()
 
     init(documentation: DocumentationSet, page: DocumentationPage,
         pages: Array<DocumentationPage>, markdown: Bool) {
-        this.source = page.source; this.prefix = pageRootPrefix(page.route); this.markdown = markdown
+        this.page = page; this.prefix = pageRootPrefix(page.route); this.markdown = markdown
         for (original in documentation.pages) {
             for (selected in pages where original.id == selected.id) {
-                originals[original.source] = original
+                if (originals.contains(original.source) &&
+                    (originals[original.source].id != selected.id || original.source != selected.source)) {
+                    // A source path cannot identify one of several published pages.
+                    let _ = ambiguousSources.add(original.source)
+                    continue
+                }
+                // Shared-source variants of one logical page use the explicit reading selection.
+                originals[original.source] = if (original.source == selected.source) { selected } else { original }
                 selectedPages[original.source] = selected
             }
         }
@@ -66,8 +74,14 @@ private class CapturedPageLinkResolver {
     func collect(tree: MarkdownNode, result: HashMap<String, String>): Unit {
         if (tree.kind == "link") {
             let parts = tree.literal.split("#", 2)
-            let path = if (parts[0].isEmpty()) { source } else { capturedSourcePath(source, parts[0]) }
-            if (let Some(original) <- originals.get(path)) {
+            if (parts[0].isEmpty() && parts.size == 2) {
+                if (let Some(anchor) <- documentationSectionAnchor(page.markdown, parts[1])) {
+                    result[tree.literal] = "#" + if (markdown) { anchor.removePrefix("standalone--doc-") } else { anchor }
+                }
+            }
+            let path = if (parts[0].isEmpty()) { "" } else { capturedSourcePath(page.source, parts[0]) }
+            let target: ?DocumentationPage = if (ambiguousSources.contains(path)) { None } else { originals.get(path) }
+            if (let Some(original) <- target) {
                 let selected = selectedPages[path]
                 var fragment = if (parts.size == 2) { capturedPageFragment(original, selected, parts[1]) } else { "" }
                 if (markdown) { fragment = fragment.removePrefix("standalone--doc-") }

@@ -142,7 +142,8 @@ public class SymbolIndexDocumentationRenderer <: DocumentationRenderer {
 
     public func render(documentation: DocumentationSet): Array<RenderArtifact> {
         let artifacts = RenderArtifactCollector()
-        appendSymbolIndexArtifacts(artifacts, documentation)
+        let locale = documentation.readingLanguage.getOrDefault({ => "en" })
+        appendSymbolIndexArtifacts(artifacts, projectDocumentationLanguage(documentation, locale))
         artifacts.toArray()
     }
 }
