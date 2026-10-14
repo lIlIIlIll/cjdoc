@@ -1,0 +1,4 @@
+[package]
+name = "language_fixture"
+version = "0.1.0"
+output-type = "static"

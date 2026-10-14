@@ -8,6 +8,17 @@ import std.unittest.testmacro.*
 @Test
 class PublicResourceBudgetTest {
     @TestCase
+    func projectionFallbackUsesTheExistingDecoderDocumentLimit(): Unit {
+        let chunk = String.fromUtf8(Array<Byte>(1024 * 1024, repeat: b'y'))
+        let diagnostics = ArrayList<api_model.Diagnostic>()
+        for (_ in 0..35) { diagnostics.add(api_model.Diagnostic("warning", "CJDOC3999", chunk)) }
+        let documentation = api_model.DocumentationSet(api_model.GeneratorInfo("cjdoc", "test"), "partial",
+            api_model.ProjectInfo("decoder-budget"), api_model.ConfigurationSnapshot(lintProfile: "off"),
+            diagnostics: diagnostics.toArray())
+        @Expect(boundGeneratedDocumentation(documentation, GenerationRequest("unused", lintProfile: "off")).project.name,
+            "resource-limited")
+    }
+    @TestCase
     func projectionReplacesOversizedFieldsAndAggregateOutput(): Unit {
         let request = GenerationRequest("unused", lintProfile: "off")
         let oversizedField = String.fromUtf8(Array<Byte>(

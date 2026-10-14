@@ -59,7 +59,7 @@ private func appendSymbolIndexReferences(out: RenderTextBuffer, symbol: SymbolDo
                 out.append("{\"subject\":")
                 appendSearchJsonString(out, tag.subject)
                 out.append(",\"description\":")
-                appendSearchJsonString(out, tag.description)
+                appendSearchJsonString(out, documentationTagPlainText(tag))
                 out.append(",\"state\":")
                 appendSearchJsonString(out, tag.referenceState)
                 out.append(",\"targetId\":")
@@ -142,7 +142,8 @@ public class SymbolIndexDocumentationRenderer <: DocumentationRenderer {
 
     public func render(documentation: DocumentationSet): Array<RenderArtifact> {
         let artifacts = RenderArtifactCollector()
-        appendSymbolIndexArtifacts(artifacts, documentation)
+        let locale = documentation.readingLanguage.getOrDefault({ => "en" })
+        appendSymbolIndexArtifacts(artifacts, projectDocumentationLanguage(documentation, locale))
         artifacts.toArray()
     }
 }

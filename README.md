@@ -4,6 +4,8 @@ cjdoc 是一个命令行工具：它读取 Cangjie 项目的源码和文档注�
 
 如果你第一次使用 cjdoc，先完成下面的快速开始。进阶任务见 [`docs/usage.md`](docs/usage.md) 和 [`docs/advanced-usage.md`](docs/advanced-usage.md)。
 
+作者正文的中英文写法、独立语言站点及缺译门槛见 [多语言文档](docs/i18n.md)。
+
 ## 快速开始
 
 ### 准备项目
@@ -119,7 +121,7 @@ memory-mb = 2048    # Cangjie native backend requires at least 2048 MiB
 jobs = 1
 ```
 
-`generate` 会把结果写入 `target/doc/doctest/results.json`；`warn` 只报告失败，`deny` 返回退出码 `1`。每个示例在独立临时工作目录中通过参数数组启动编译器和程序，不经过 shell；`--stdout` 不能与启用的 doctest 同时使用。结果 schema 是 `cjdoc.doctest/1`。
+`generate` 会把结果写入 `target/doc/doctest/results.json`；`warn` 只报告失败，`deny` 返回退出码 `1`。每个示例在独立临时工作目录中通过参数数组启动编译器和程序，不经过 shell；`--stdout` 不能与启用的 doctest 同时使用。结果 schema 是 `cjdoc.doctest/2`。
 
 这条 legacy doctest 管线的正数内存限制依赖 `/usr/bin/prlimit` 或 `/bin/prlimit`。限制器不可用时（包括当前 macOS、Windows 环境），会在启动编译进程前明确拒绝；`warn` 不会绕过这项安全要求。
 
@@ -129,7 +131,7 @@ jobs = 1
 cjdoc diff --baseline api-surface.json --current api-surface-next.json --format text --deny-breaking-api
 ```
 
-`diff` 默认保留报告并返回 `0`；deny 选项让对应 breaking 分类返回 `1`，参数或 snapshot 错误返回 `2`。当前生成器输出 `cjdoc.api-surface/2`；v1 snapshot 仍可作为只读迁移输入，JSON diff 报告的版本是 `cjdoc.api-diff/1`。
+`diff` 默认保留报告并返回 `0`；deny 选项让对应 breaking 分类返回 `1`，参数或 snapshot 错误返回 `2`。当前生成器输出 `cjdoc.api-surface/3`；v1/v2 snapshot 仍可作为只读迁移输入，JSON diff 报告的版本是 `cjdoc.api-diff/2`。
 
 如果项目在 GitHub 上并希望声明页显示 `View source`，生成时显式提供仓库根和 revision：
 
@@ -179,7 +181,7 @@ cjdoc generate --project . --format html --audience all
 
 ## 当前边界
 
-- 当前输出版本是 `cjdoc.doc-ir/12`。输入端严格兼容已发布的 v6、v7、v8、v9、v10、v11；普通用户不需要直接编辑这个 JSON。
+- 当前输出版本是 `cjdoc.doc-ir/13`。输入端严格兼容已发布的 v6、v7、v8、v9、v10、v11、v12；普通用户不需要直接编辑这个 JSON。
 - 无法展开的宏、没有提供的条件编译输入和部分不支持的源码会产生诊断，并可能使结果标为 `partial`。
 - cjdoc 不会替你下载依赖源码。需要把依赖纳入文档时，按 [`docs/advanced-usage.md`](docs/advanced-usage.md) 的说明提供路径或 cache。
 

@@ -38,7 +38,7 @@ def members(journey: Journey):
         journey.expand(second)
     expect(current).to_have_attribute("open", "")
     expect(second).to_have_attribute("open", "")
-    require_text(current, "String", "增加一")
+    require_text(current, "String", "增加一" if journey.target["locale"] == "zh-CN" else "size increases by one")
     require_text(second, "Int64", "radix", "IllegalArgumentException")
     field = page.locator("[data-cjdoc-member-filter]")
     field.fill("cjdoc_no_such_member_58b0e6")
@@ -76,7 +76,7 @@ def types(journey: Journey):
     reader = page.url
     assert_native_symbol(journey, "pocketkit.io.TextReader")
     require_text(page.locator("main"), "TextReader", "Readable", "调用方")
-    link = page.get_by_role("link", name="pocketkit.io.Readable", exact=True)
+    link = page.locator(".symbol-relationships").get_by_role("link", name="Readable", exact=True)
     journey.click(link)
     assert_native_symbol(journey, "pocketkit.io.Readable")
     require_text(page.locator("main"), "Readable", "read", "close")
@@ -280,7 +280,7 @@ def authoring(journey: Journey):
 
 def machine(journey: Journey):
     target = journey.target
-    ir = journey.raw('[data-machine-format="json"]', "cjdoc.doc-ir/12")
+    ir = journey.raw('[data-machine-format="json"]', "cjdoc.doc-ir/13")
     selected = [item for item in ir["declarations"] if item["id"] == target["resolved"]["symbolId"]]
     if len(selected) != 1 or selected[0]["headerSpelling"] != target["signature"]:
         raise AssertionError("HTML and machine Doc IR disagree on the selected native declaration")

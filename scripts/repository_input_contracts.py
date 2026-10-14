@@ -14,6 +14,10 @@ LEGACY_SCHEMA_SHA256 = {
     6: "a8db4442d6587b7d93108109730b6c2840a13eb031c07632bcd59b8488033a0a",
     7: "814eae6a9145f986608795cca731874b54c6cafd05f6bbbed19053640c1b6943",
     8: "95c5c707c8dcadd2bf67ffe5f88b6365f10c8499701dc2979338cad5df404b5c",
+    9: "3d72ac96683c49a638713eb074b8b9a5e1f8b6ca6b825c173696c026d0479cfc",
+    10: "936936af60ce73cd421bb773a8190a501546e1f96ec193f2930b47fc7865f78e",
+    11: "f221ad1e88276241db683c94e899253f1ce9bd893f1959cbd23621c5011a0d59",
+    12: "31be45685d06ac0b16e309217bdb8aa652248a014bd53136e9457b4cc64a3964",
 }
 YJSON_LICENSE_SHA256 = "ff2bfac16f9884d002e66b1b2c75c20c626bc41ff31cdf411c5acdf224288295"
 YJSON_PACKAGE_MANIFEST_SHA256 = "b5500422a100a4bbfa44ec2bd93494a1b8ca545c51ebff37fce1719d484f1e95"
@@ -47,8 +51,8 @@ GOLDEN_NAMES = (
     "path-dependencies",
 )
 
-CURRENT_GOLDEN_VERSION = 12
-LEGACY_GOLDEN_VERSIONS = (6, 7, 8, 9, 10, 11)
+CURRENT_GOLDEN_VERSION = 13
+LEGACY_GOLDEN_VERSIONS = (6, 7, 8, 9, 10, 11, 12)
 
 SCHEMA_NAMES = (
     "doc-ir",
@@ -59,6 +63,7 @@ SCHEMA_NAMES = (
     "doc-ir-v10",
     "doc-ir-v11",
     "doc-ir-v12",
+    "doc-ir-v13",
     "diagnostics",
     "cfg-matrix",
     "search-index",
@@ -72,6 +77,9 @@ SCHEMA_NAMES = (
     "documentation-quality",
     "doctest-results",
     "versions",
+    "api-surface-v2", "api-surface-v3", "api-diff-v1", "doctest-results-v1",
+    "search-index-v8", "versions-v1", "translation-coverage", "site-manifest",
+    "api-diff-v2", "doctest-results-v2", "search-index-v9", "versions-v2",
 )
 SCHEMA_CONTRACTS = {
     "documentation-quality": (
@@ -195,8 +203,41 @@ SCHEMA_CONTRACTS = {
         "cjdoc.versions/1", ("schemaVersion", "project", "latest", "latestPolicy", "versions"),
     ),
 }
+# Published legacy schemas retain their original contracts.
+SCHEMA_CONTRACTS["doc-ir-v13"] = (
+    SCHEMA_CONTRACTS["doc-ir-v12"][0].replace("v12", "v13"),
+    "cjdoc.doc-ir/13", SCHEMA_CONTRACTS["doc-ir-v12"][2],
+)
+SCHEMA_CONTRACTS["doc-ir"] = (
+    SCHEMA_CONTRACTS["doc-ir"][0], "cjdoc.doc-ir/13", SCHEMA_CONTRACTS["doc-ir"][2],
+)
+for current, legacy in (("api-surface", "api-surface-v2"), ("api-diff", "api-diff-v1"),
+                        ("doctest-results", "doctest-results-v1"),
+                        ("search-index", "search-index-v8"), ("versions", "versions-v1")):
+    SCHEMA_CONTRACTS[legacy] = SCHEMA_CONTRACTS[current]
+for name, version in (("api-surface", 3), ("api-diff", 2), ("doctest-results", 2),
+                      ("search-index", 9), ("versions", 2)):
+    identifier, old_version, required = SCHEMA_CONTRACTS[name]
+    if name == "api-surface":
+        identifier = identifier.replace("v2", "v3")
+    else:
+        identifier = identifier.replace(".schema.json", f"-v{version}.schema.json")
+    if name == "doctest-results":
+        required = ("schemaVersion", "mode", "timeoutMs", "memoryMb", "jobs", "environmentFingerprint", "summary", "results")
+    SCHEMA_CONTRACTS[name] = (identifier, old_version.rsplit("/", 1)[0] + f"/{version}", required)
+for name, version in (("api-surface", 3), ("api-diff", 2), ("doctest-results", 2),
+                      ("search-index", 9), ("versions", 2)):
+    SCHEMA_CONTRACTS[f"{name}-v{version}"] = SCHEMA_CONTRACTS[name]
+for name, version, required in (
+    ("translation-coverage", "cjdoc.translation-coverage/1", ("schemaVersion", "languages")),
+    ("site-manifest", "cjdoc.site-manifest/1", ("schemaVersion", "project", "version", "routes")),
+):
+    SCHEMA_CONTRACTS[name] = (f"https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/{name}.schema.json", version, required)
 SCHEMA_OPTIONAL_PROPERTIES = {
     "symbol-index": ("version",),
+    "doc-ir": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
+    "doc-ir-v13": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
+    "site-manifest": ("defaultLanguage",),
 }
 DOC_IR_CORE_DEFS = {
     "asset", "comment", "configuration", "declaration", "diagnostic", "file",

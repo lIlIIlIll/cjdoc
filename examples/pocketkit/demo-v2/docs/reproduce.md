@@ -37,7 +37,7 @@ python3 examples/pocketkit/reproduce.py \
 
 `generated` 必须尚不存在。脚本先生成固定 `support-v1` 索引，再生成同库两个版本的
 中英文 HTML、JSON、Markdown、coverage、doctest、API diff，并调用原生版本组合。
-入口为 `generated/zh-CN/composed/index.html` 和 `generated/en/composed/index.html`。
+入口为 `generated/composed/index.html`；在版本页选择 English 或中文。
 该目录包含核心 API 页面与原始报告；展示首页和可读报告包装层由仓库的 Pages 构建生成。
 
 The output directory must not exist. Open the composed index for either language.

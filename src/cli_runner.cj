@@ -29,11 +29,11 @@ internal func orderedFormats(options: NewCliOptions): Array<String> {
 
 private func renderArtifacts(documentation: public_model.DocumentationSet,
     formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site", docVersion!: ?String = None,
-    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()):
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>(), allLanguages!: Bool = false):
     Array<public_render.RenderArtifact> {
     public_render.renderDocumentationFormatsWithOptions(documentation, formats,
         locale: locale, markdownLayout: markdownLayout, docVersion: docVersion,
-        exampleEvidence: exampleEvidence)
+        exampleEvidence: exampleEvidence, allLanguages: allLanguages)
 }
 
 // Per-example execution status keyed by "symbolId\u{0}title", taken from the
@@ -52,7 +52,7 @@ internal func exampleEvidenceMap(report: ?DoctestReport): HashMap<String, String
             // doctests.
             evidence[public_render.EXAMPLE_EVIDENCE_RAN_MARKER] = "ran"
             for (result in value.results) {
-                let key = public_render.exampleEvidenceKey(result.symbolId, result.title)
+                let key = if (result.evidenceKey.isEmpty()) { public_render.exampleEvidenceKey(result.symbolId, result.title) } else { result.evidenceKey }
                 if (conflicting.contains(key)) { continue }
                 match (evidence.get(key)) {
                     case Some(existing) =>
@@ -72,7 +72,7 @@ internal func renderArtifactsWithCommandFallback(documentation: public_model.Doc
     formats: Array<String>, generationRequest: ?GenerationRequest,
     locale!: String = "zh-CN", markdownLayout!: String = "site",
     docVersion!: ?String = None, injectResourceLimitForTest!: Bool = false,
-    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()):
+    exampleEvidence!: HashMap<String, String> = HashMap<String, String>(), allLanguages!: Bool = false):
         (public_model.DocumentationSet, Array<public_render.RenderArtifact>) {
     try {
         if (injectResourceLimitForTest) {
@@ -80,14 +80,14 @@ internal func renderArtifactsWithCommandFallback(documentation: public_model.Doc
         }
         (documentation, renderArtifacts(documentation, formats, locale: locale,
             markdownLayout: markdownLayout, docVersion: docVersion,
-            exampleEvidence: exampleEvidence))
+            exampleEvidence: exampleEvidence, allLanguages: allLanguages))
     } catch (error: public_render.RenderResourceLimitException) {
         match (generationRequest) {
             case Some(request) =>
                 let fallback = boundGeneratedDocumentation(documentation, request, force: true)
                 (fallback, renderArtifacts(fallback, formats, locale: locale,
                     markdownLayout: markdownLayout, docVersion: docVersion,
-                    exampleEvidence: exampleEvidence))
+                    exampleEvidence: exampleEvidence, allLanguages: allLanguages))
             case None => throw error
         }
     }
@@ -224,7 +224,7 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 }
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndoc-ir-v11\ndoc-ir-v12\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndocumentation-quality\ndoctest-results\nversions\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndoc-ir-v11\ndoc-ir-v12\ndoc-ir-v13\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-surface-v2\napi-surface-v3\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndocumentation-quality\ndoctest-results\nversions\napi-diff-v1\ndoctest-results-v1\nsearch-index-v8\nversions-v1\ntranslation-coverage\nsite-manifest\napi-diff-v2\ndoctest-results-v2\nsearch-index-v9\nversions-v2\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA
@@ -233,6 +233,7 @@ internal func schemaTextForCli(name: String): String {
         case "doc-ir-v10" => DOC_IR_V10_SCHEMA
         case "doc-ir-v11" => DOC_IR_V11_SCHEMA
         case "doc-ir-v12" => DOC_IR_V12_SCHEMA
+        case "doc-ir-v13" => DOC_IR_V13_SCHEMA
         case "diagnostics" => DIAGNOSTICS_SCHEMA
         case "cfg-matrix" => CFG_MATRIX_SCHEMA
         case "search-index" => SEARCH_INDEX_SCHEMA
@@ -240,6 +241,18 @@ internal func schemaTextForCli(name: String): String {
         case "navigation-index" => NAVIGATION_INDEX_SCHEMA
         case "api-surface" => API_SURFACE_SCHEMA
         case "api-surface-v1" => API_SURFACE_V1_SCHEMA
+        case "api-surface-v2" => API_SURFACE_V2_SCHEMA
+        case "api-surface-v3" => API_SURFACE_SCHEMA
+        case "api-diff-v2" => API_DIFF_SCHEMA
+        case "doctest-results-v2" => DOCTEST_RESULTS_SCHEMA
+        case "search-index-v9" => SEARCH_INDEX_SCHEMA
+        case "versions-v2" => VERSIONS_SCHEMA
+        case "api-diff-v1" => API_DIFF_V1_SCHEMA
+        case "doctest-results-v1" => DOCTEST_RESULTS_V1_SCHEMA
+        case "search-index-v8" => SEARCH_INDEX_V8_SCHEMA
+        case "translation-coverage" => TRANSLATION_COVERAGE_SCHEMA
+        case "site-manifest" => SITE_MANIFEST_SCHEMA
+        case "versions-v1" => VERSIONS_V1_SCHEMA
         case "api-diff" => API_DIFF_SCHEMA
         case "documentation-coverage-v1" => DOCUMENTATION_COVERAGE_V1_SCHEMA
         case "documentation-coverage" => DOCUMENTATION_COVERAGE_SCHEMA
@@ -289,6 +302,12 @@ private func validationLabel(locale: String, english: String, chinese: String): 
     if (locale == "zh-CN") { chinese } else { english }
 }
 
+private func usesLegacyConceptualPages(documentation: public_model.DocumentationSet): Bool {
+    if (documentation.languageOptions.isSome()) { return false }
+    for (page in documentation.pages) { if (page.language.isSome()) { return false } }
+    true
+}
+
 private func validationDocVersion(docVersion: ?String, locale: String): String {
     match (docVersion) {
         case Some(value) => value
@@ -317,7 +336,8 @@ private func appendValidationResultRow(out: StringBuilder, result: DoctestCaseRe
 }
 
 private func renderValidationHtml(documentation: public_model.DocumentationSet,
-    report: ?DoctestReport, docVersion: ?String, locale: String): String {
+    report: ?DoctestReport, docVersion: ?String, locale: String,
+    doctestHref!: String = "../doctest/results.json"): String {
     let validationTitle = validationLabel(locale, "Validation results", "验证结果")
     let documentationVersion = validationLabel(locale, "Documentation version", "文档版本")
     let diagnostics = validationLabel(locale, "Diagnostics", "诊断")
@@ -375,7 +395,9 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
             out.append(value.jobs.toString())
             out.append(". ")
             out.append(rawEvidence)
-            out.append(": <a href=\"../doctest/results.json\">doctest/results.json</a></p><table><thead><tr><th>")
+            out.append(": <a href=\"")
+            out.append(public_render.escapeStandaloneHtml(doctestHref))
+            out.append("\">doctest/results.json</a></p><table><thead><tr><th>")
             out.append(status)
             out.append("</th><th>")
             out.append(api)
@@ -433,7 +455,8 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
             astPreflightExecutable: astPreflightExecutable,
             chir: chirOptions,
             cjpmCacheRoot: options.cjpmCacheRoot,
-            highlightAdapter: options.highlightAdapter, highlightNode: options.highlightNode))
+            highlightAdapter: options.highlightAdapter, highlightNode: options.highlightNode,
+            requiredLanguages: options.requiredLanguages.toArray()))
     }
     var sourceOrigins: Array<SourceFileOrigin> = []
     var documentation = match (generationRequest) {
@@ -458,7 +481,7 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
     } else {
         DoctestConfig()
     }
-    let conceptualPages = if (generationRequest.isSome()) {
+    let conceptualPages = if (generationRequest.isSome() && usesLegacyConceptualPages(documentation)) {
         conceptualPagesForProject(options.project, documentation)
     } else {
         ArrayList<ConceptualPage>()
@@ -486,12 +509,16 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
         let (renderedDocumentation, renderedArtifacts) = renderArtifactsWithCommandFallback(documentation,
             orderedFormats(options), generationRequest, locale: options.locale,
             markdownLayout: options.markdownLayout, docVersion: options.docVersion,
-            exampleEvidence: exampleEvidenceMap(doctestReport))
+            exampleEvidence: exampleEvidenceMap(doctestReport), allLanguages: options.allLanguages)
         documentation = renderedDocumentation
         let artifactList = ArrayList<public_render.RenderArtifact>()
-        if (generationRequest.isSome()) {
+        if (generationRequest.isSome() && usesLegacyConceptualPages(documentation)) {
+            let base = ArrayList<public_render.RenderArtifact>()
+            for (artifact in renderedArtifacts) {
+                if (!artifact.path.startsWith("html/concepts/") && !artifact.path.startsWith("markdown/concepts/")) { base.add(artifact) }
+            }
             artifactList.add(all: appendConceptualArtifacts(options.project, documentation,
-                orderedFormats(options), renderedArtifacts, conceptualPages,
+                orderedFormats(options), base.toArray(), conceptualPages,
                 locale: options.locale, docVersion: options.docVersion,
                 markdownLayout: options.markdownLayout,
                 externalOptions: highlightExternalOptions(options.highlightAdapter, options.highlightNode)))
@@ -504,10 +531,20 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
             } else {
                 []
             }
-            artifactList.add(all: public_render.renderAgentReadableArtifacts(documentation,
-                conceptualPages: agentConceptualPages,
-                includeFull: options.agentFull, version: options.docVersion,
-                includeValidation: true))
+            if (options.allLanguages) {
+                for (language in documentation.languageOptions.getOrThrow().languages) {
+                    let selected = public_render.projectDocumentationLanguage(documentation, language)
+                    for (artifact in public_render.renderAgentReadableArtifacts(selected,
+                        includeFull: options.agentFull, version: options.docVersion, includeValidation: true)) {
+                        let parts = artifact.path.split("/", 2)
+                        artifactList.add(public_render.RenderArtifact(parts[0] + "/" + language + "/" + parts[1], artifact.mediaType, artifact.content))
+                    }
+                }
+            } else {
+                artifactList.add(all: public_render.renderAgentReadableArtifacts(public_render.projectDocumentationLanguage(documentation, options.locale),
+                    conceptualPages: agentConceptualPages, includeFull: options.agentFull,
+                    version: options.docVersion, includeValidation: true))
+            }
         }
         match (options.docVersion) {
             case Some(version) => appendDocumentVersionArtifact(artifactList, version, documentation.project.name)
@@ -522,11 +559,21 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
         var wantsHtml = false
         for (format in options.formats) { if (format == "html") { wantsHtml = true } }
         if (wantsHtml) {
-            artifactList.add(public_render.RenderArtifact(
-                "html/validation.html", "text/html; charset=utf-8",
-                renderValidationHtml(documentation, doctestReport, options.docVersion, options.locale)))
+            if (options.allLanguages) {
+                for (language in documentation.languageOptions.getOrThrow().languages) {
+                    artifactList.add(public_render.RenderArtifact("html/" + language + "/validation.html", "text/html; charset=utf-8",
+                        renderValidationHtml(public_render.projectDocumentationLanguage(documentation, language), doctestReport, options.docVersion, language,
+                            doctestHref: "../../doctest/results.json")))
+                }
+            } else {
+                artifactList.add(public_render.RenderArtifact("html/validation.html", "text/html; charset=utf-8",
+                    renderValidationHtml(public_render.projectDocumentationLanguage(documentation, options.locale), doctestReport, options.docVersion, options.locale)))
+            }
         }
-        artifacts = artifactList.toArray()
+        artifacts = if (options.allLanguages && wantsHtml) {
+            public_render.finalizeDocumentationLanguageArtifacts(documentation, artifactList.toArray(),
+                docVersion: options.docVersion)
+        } else { artifactList.toArray() }
     }
     printPublicDiagnostics(documentation)
     let diagnosticsExit = publicExitCode(documentation, options.denyWarnings)

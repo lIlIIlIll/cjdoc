@@ -361,6 +361,7 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     appendReaderRelationships(out, index, member, rootPrefix, typeLinkIndex, locale,
         headingTag: "h3")
     appendReverseTypeUsages(out, index, typeLinkIndex, member, rootPrefix, locale)
+    out.append(externalDocumentationHtml(documentation, member, locale))
     out.append("</div></details>")
     appendInlineMemberActions(out, documentation, projection, member, rootPrefix, locale)
     out.append("</div>\n")

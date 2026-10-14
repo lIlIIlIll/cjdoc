@@ -1,17 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doctest-results.schema.json",
-  "title": "cjdoc doctest results v1",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doctest-results-v2.schema.json",
+  "title": "cjdoc doctest results v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "mode", "timeoutMs", "memoryMb", "jobs", "summary", "results"],
+  "required": ["schemaVersion", "mode", "timeoutMs", "memoryMb", "jobs", "environmentFingerprint", "summary", "results"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doctest/1"},
+    "schemaVersion": {"const": "cjdoc.doctest/2"},
     "mode": {"enum": ["warn", "deny"]},
     "timeoutMs": {"type": "integer", "minimum": 1, "maximum": 600000},
     "memoryMb": {"type": "integer", "minimum": 2048, "maximum": 16384},
     "jobs": {"type": "integer", "minimum": 1, "maximum": 64},
     "summary": {"$ref": "#/$defs/summary"},
+    "environmentFingerprint": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "results": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/result"}}
   },
   "$defs": {
@@ -28,13 +29,13 @@
     },
     "result": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "symbolId", "qualifiedName", "title", "language", "status", "exitCode", "durationMs", "stdout", "stderr", "message"],
+      "required": ["id", "symbolId", "qualifiedName", "title", "language", "documentationLanguage", "evidenceKey", "status", "exitCode", "durationMs", "stdout", "stderr", "message"],
       "properties": {
         "id": {"type": "string", "minLength": 1},
         "symbolId": {"type": "string", "minLength": 1},
         "qualifiedName": {"type": "string", "minLength": 1},
         "title": {"type": "string"},
-        "language": {"const": "cj"},
+        "language": {"type": "string"}, "documentationLanguage": {"enum": ["zh-CN", "en", null]}, "evidenceKey": {"type": "string"},
         "status": {"enum": ["passed", "failed", "timeout", "skipped"]},
         "exitCode": {"$ref": "#/$defs/nullableInteger"},
         "durationMs": {"type": "integer", "minimum": 0},

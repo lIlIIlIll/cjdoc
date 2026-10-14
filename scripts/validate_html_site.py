@@ -19,7 +19,7 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "d65a257d255969a4026a6226ed7c356aee7eb78a40b066da4c86c5aa32672ea4"
+CANONICAL_SEARCH_JS_SHA256 = "d870b455f2e6a577c798e6f3cdffce5fcbcb30e169849ec15fb6e041df170cb7"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "79fe532a96603bce52c49d9fd92cea58503875a0c61f5d3475f11c337f960642"
 CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "c3d8038e8c37d201ff30c2bb7018bd7b88730a22046e26918fb173752d16938a"
 
@@ -150,10 +150,13 @@ def resolve_local(root: Path, source: Path, value: str) -> tuple[Path | None, st
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: validate_html_site.py <site-dir>", file=sys.stderr)
+    if len(sys.argv) not in (2, 4) or (len(sys.argv) == 4 and sys.argv[2] != "--publication-root"):
+        print("usage: validate_html_site.py <site-dir> [--publication-root <directory>]", file=sys.stderr)
         return 2
     root = Path(sys.argv[1]).resolve()
+    publication_root = Path(sys.argv[3]).resolve() if len(sys.argv) == 4 else root
+    if not root.is_relative_to(publication_root) or not publication_root.is_dir():
+        raise ValueError("language site must be inside its publication root")
     index = root / "index.html"
     if not index.is_file():
         raise ValueError("site must contain index.html")
@@ -189,15 +192,22 @@ def main() -> int:
 
     if not pages:
         raise ValueError("site must contain at least one HTML page")
-    for page, parser in pages.items():
+    for page, parser in list(pages.items()):
         for link in parser.links:
-            target, fragment = resolve_local(root, page, link)
+            target, fragment = resolve_local(publication_root, page, link)
             if target is None:
                 continue
             if not target.is_file():
                 raise ValueError(f"broken local link in {page.relative_to(root)}: {link}")
             if fragment:
                 target_parser = pages.get(target.resolve())
+                if target_parser is None and target.suffix == ".html" and not target.is_relative_to(root):
+                    target_parser = PageParser()
+                    target_parser.feed(target.read_text(encoding="utf-8"))
+                    target_parser.close()
+                    if target_parser.errors:
+                        raise ValueError(f"invalid linked language page: {target.relative_to(publication_root)}")
+                    pages[target.resolve()] = target_parser
                 if target_parser is None or fragment not in target_parser.ids:
                     raise ValueError(f"broken local anchor in {page.relative_to(root)}: {link}")
 
@@ -252,7 +262,7 @@ def main() -> int:
         or strict_loads(embedded_search, description="embedded HTML search index") != search
     ):
         raise ValueError("search-index.js payload differs from search-index.json")
-    if search.get("schemaVersion") != "cjdoc.search-index/8":
+    if search.get("schemaVersion") not in ("cjdoc.search-index/8", "cjdoc.search-index/9"):
         raise ValueError("unexpected search index schemaVersion")
     entries = search.get("entries")
     if not isinstance(entries, list):
@@ -265,7 +275,7 @@ def main() -> int:
     required = {"id", "canonicalId", "exposure", "name", "qualifiedName", "kind",
                 "packageName", "summary", "href", "moduleId", "moduleName", "ownerName",
                 "parameterTypes", "returnType", "returnCanonical"}
-    allowed = required | {"bindings", "externalDocs", "body", "sections"}
+    allowed = required | {"bindings", "externalDocs", "body", "sections", "fields"}
     for entry in entries:
         fields = set(entry)
         if not required.issubset(fields) or not fields.issubset(allowed):

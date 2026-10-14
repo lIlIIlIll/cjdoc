@@ -33,7 +33,7 @@ def expected_coverage_rows(raw: dict, chinese: bool) -> list[list[str]]:
 def doctest(journey: Journey):
     page = journey.page
     chinese = journey.target["locale"] == "zh-CN"
-    raw = journey.raw('#doctest a[href$="results.json"]', "cjdoc.doctest/1")
+    raw = journey.raw('#doctest a[href$="results.json"]', "cjdoc.doctest/2")
     if not raw["results"]:
         raise AssertionError("doctest demonstration contains no real execution results")
     summary = json.loads(page.locator('[data-report-summary="doctest"]').inner_text())
@@ -70,7 +70,7 @@ def doctest(journey: Journey):
 def diff(journey: Journey):
     page = journey.page
     chinese = journey.target["locale"] == "zh-CN"
-    raw = journey.raw('#api-diff a[href$="api-diff.json"]', "cjdoc.api-diff/1")
+    raw = journey.raw('#api-diff a[href$="api-diff.json"]', "cjdoc.api-diff/2")
     require_text(page.locator("#api-diff"), "demo-v1", "demo-v2", raw["comparisonState"])
     displayed = json.loads(page.locator('[data-report-summary="diff"]').inner_text())
     if displayed != raw["summary"]:
@@ -109,7 +109,7 @@ def quality(journey: Journey):
     for row, value in zip(rows.all(), originals):
         if value["total"] == 0 and row.locator("[data-reported-percent]").get_attribute("data-reported-percent") != str(value["percent"]):
             raise AssertionError("zero-denominator presentation lost the native reported percentage")
-    ir = journey.raw('#diagnostics a[href$="docs.json"]', "cjdoc.doc-ir/12")
+    ir = journey.raw('#diagnostics a[href$="docs.json"]', "cjdoc.doc-ir/13")
     if page.locator("#diagnostics .report-diagnostic").count() != len(ir["diagnostics"]):
         raise AssertionError("quality page dropped native diagnostics")
     lint = journey.raw('#quality a[href$="quality.json"]', "cjdoc.documentation-quality/1")
@@ -129,7 +129,7 @@ def quality(journey: Journey):
 
 def diagnostics(journey: Journey):
     page = journey.page
-    ir = journey.raw('#diagnostics a[href$="docs.json"]', "cjdoc.doc-ir/12")
+    ir = journey.raw('#diagnostics a[href$="docs.json"]', "cjdoc.doc-ir/13")
     native = ir["diagnostics"]
     if not native or page.locator("#diagnostics .report-diagnostic").count() != len(native):
         raise AssertionError("boundary demonstration has no complete native diagnostics")
@@ -142,7 +142,7 @@ def diagnostics(journey: Journey):
     if not first.locator("pre").is_visible():
         raise AssertionError("raw diagnostic evidence cannot be expanded")
     journey.click(first.locator("details summary"))
-    raw = journey.raw('#doctest a[href$="results.json"]', "cjdoc.doctest/1")
+    raw = journey.raw('#doctest a[href$="results.json"]', "cjdoc.doctest/2")
     states = {result["status"] for result in raw["results"]}
     if not {"failed", "skipped"}.issubset(states):
         raise AssertionError("boundary demonstration needs actual failed and skipped examples")

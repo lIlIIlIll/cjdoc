@@ -16,16 +16,17 @@ REPORTS = {"doctest", "diff", "coverage", "diagnostics"}
 
 
 def roots(site: Path, locale: str) -> dict[str, Path]:
-    composed = site / "examples" / locale
+    composed = site / "examples"
     manifest = load_json(composed / "versions.json")
-    if manifest.get("schemaVersion") != "cjdoc.versions/1":
+    if manifest.get("schemaVersion") != "cjdoc.versions/2":
         raise ContractError("unsupported native version composition")
     result = {}
     for record in manifest["versions"]:
         version = record["id"]
         if version in result:
             raise ContractError("duplicate native version")
-        result[version] = composed / relative_path(record["basePath"])
+        language = next((item for item in record.get("languages", []) if item["language"] == locale), None)
+        result[version] = composed / relative_path(language["root"] if language else record["basePath"])
     if set(result) != {"demo-v1", "demo-v2"}:
         raise ContractError("showcase needs the same library's two native versions")
     result["diagnostics"] = site / "diagnostics" / locale
@@ -81,7 +82,14 @@ def compile_plan(repo: Path, site: Path) -> dict:
                         navigation = load_json(root / "navigation-index.json")
                         target.update(kind="navigation", index=f"{relative}/navigation-index.json",
                                       project=navigation["project"])
-                        if "concept" in specification:
+                        if "pageId" in specification:
+                            ir = load_json(root / "machine/docs.json")
+                            candidates = [page for page in ir.get("pages", [])
+                                          if page["id"] == specification["pageId"] and page["language"] == locale]
+                            if len(candidates) != 1:
+                                raise ContractError("catalog logical guide needs exactly one authored language variant")
+                            target["match"] = {"kind": "concept", "title": candidates[0]["title"]}
+                        elif "concept" in specification:
                             target["match"] = {"kind": "concept", "title": specification["concept"]}
                         else:
                             ir = load_json(root / "machine/docs.json")

@@ -55,7 +55,7 @@ def candidate_files(repo: Path, target: Path) -> list[tuple[str, Path]]:
     Only files that are physically inside `target` or the repository's golden
     directory are eligible; symlinks are rejected rather than followed.
     """
-    allowed = [target, repo / "tests/fixtures/golden-v12"]
+    allowed = [target, repo / "tests/fixtures/golden-v13"]
     candidates: list[tuple[str, Path]] = []
     for fixture in sorted({path.name for path in target.glob("*") if path.is_dir()}):
         fixture_root = target / fixture
@@ -69,7 +69,7 @@ def candidate_files(repo: Path, target: Path) -> list[tuple[str, Path]]:
         diff = fixture_root / "golden.diff"
         if _acceptable_source(diff, allowed):
             candidates.append((f"{fixture}/golden.diff", diff))
-        expected = repo / "tests/fixtures/golden-v12" / f"{fixture}.docs.json"
+        expected = repo / "tests/fixtures/golden-v13" / f"{fixture}.docs.json"
         if _acceptable_source(expected, allowed):
             candidates.append((f"{fixture}/expected-golden", expected))
     # Stage records are `.json`; a live process-tree snapshot is plain text. Both

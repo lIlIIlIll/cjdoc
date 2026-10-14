@@ -136,6 +136,7 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
         fail("$.schemaVersion", "expected string")
     }
     let schemaText = if (version == DOC_IR_SCHEMA_VERSION) { DOC_IR_SCHEMA }
+        else if (version == DOC_IR_V12_SCHEMA_VERSION) { DOC_IR_V12_SCHEMA }
         else if (version == DOC_IR_V11_SCHEMA_VERSION) { DOC_IR_V11_SCHEMA }
         else if (version == DOC_IR_V10_SCHEMA_VERSION) { DOC_IR_V10_SCHEMA }
         else if (version == DOC_IR_V9_SCHEMA_VERSION) { DOC_IR_V9_SCHEMA }
@@ -322,14 +323,20 @@ internal func decodeTag(node: JsonNode, path: String, legacy: Bool,
     legacyIds: HashMap<String, String>, legacyMarkdown: Bool,
     assetReferences: HashMap<String, String>): DocTag {
     let value = strictObject(node, path,
-        ["name", "subject", "description", "referenceState", "targetSymbolId", "directives", "exampleMarkdown"])
+        ["name", "subject", "description", "referenceState", "targetSymbolId", "directives", "exampleMarkdown",
+            "contentLanguage", "translationState", "fieldId", "descriptionMarkdown", "evidenceKey"])
     DocTag(stringAt(value, "name", path), stringAt(value, "subject", path),
         stringAt(value, "description", path),
         referenceState: stringAt(value, "referenceState", path),
         targetSymbolId: migratedOptionalSymbolId(nullableStringAt(value, "targetSymbolId", path),
             legacy, legacyIds, "${path}.targetSymbolId"),
         directives: defaultStringAt(value, "directives", path),
-        exampleMarkdown: optionalExampleMarkdownAt(value, path, legacyMarkdown, assetReferences))
+        exampleMarkdown: optionalExampleMarkdownAt(value, path, legacyMarkdown, assetReferences),
+        contentLanguage: optionalDocumentationLanguage(value.get("contentLanguage"), path),
+        translationState: defaultStringAt(value, "translationState", path),
+        fieldId: defaultStringAt(value, "fieldId", path),
+        descriptionMarkdown: decodeOptionalDocumentationMarkdown(value.get("descriptionMarkdown"), path, assetReferences),
+        evidenceKey: defaultStringAt(value, "evidenceKey", path))
 }
 
 internal func decodeMarkdownMetadata(node: JsonNode, kind: String,
@@ -417,7 +424,8 @@ internal func decodeMarkdown(node: JsonNode, path: String, depth: Int64, legacy:
 internal func decodeComment(node: JsonNode, path: String, legacyIdsRequired: Bool,
     legacyMarkdown: Bool, legacyIds: HashMap<String, String>,
     assetReferences: HashMap<String, String>): DocComment {
-    let value = strictObject(node, path, ["rawText", "summary", "description", "markdown", "tags"])
+    let value = strictObject(node, path, ["rawText", "summary", "description", "markdown", "tags",
+        "defaultLanguage", "localizedTexts"])
     let tags = ArrayList<DocTag>()
     var index: Int64 = 0
     for (tag in jsonArrayValues(arrayAt(value, "tags", path))) {
@@ -428,7 +436,9 @@ internal func decodeComment(node: JsonNode, path: String, legacyIdsRequired: Boo
         stringAt(value, "description", path),
         decodeMarkdown(required(value, "markdown", path), "${path}.markdown", 0,
             legacyMarkdown, assetReferences),
-        tags: tags.toArray())
+        tags: tags.toArray(),
+        defaultLanguage: optionalDocumentationLanguage(value.get("defaultLanguage"), path),
+        localizedTexts: decodeDocumentationTexts(value.get("localizedTexts"), path, assetReferences))
 }
 
 internal func decodeParameter(node: JsonNode, path: String): ParameterDoc {
@@ -530,4 +540,3 @@ internal func decodeAnnotations(value: JsonObject, path: String, legacy: Bool): 
     }
     result.toArray()
 }
-

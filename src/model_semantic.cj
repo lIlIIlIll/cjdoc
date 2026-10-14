@@ -191,6 +191,9 @@ class DocComment {
     public var deprecated: ?String = None
     public let authors = ArrayList<String>()
     public var version: ?String = None
+    public var commentSource: ?SourceLocation = None
+    public var defaultLanguage: ?String = None
+    public let languageItems = ArrayList<LocalizedCommentItem>()
 
     public init(raw: String, summaryMarkdown: String, descriptionMarkdown: String) {
         this.raw = raw

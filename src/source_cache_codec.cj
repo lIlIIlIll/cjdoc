@@ -215,6 +215,8 @@ internal func cacheAddDocComment(writer: SourceCacheWriter, value: ?DocComment):
             cacheAddOptionalString(writer, doc.deprecated)
             cacheAddStrings(writer, doc.authors)
             cacheAddOptionalString(writer, doc.version)
+            writer.add(doc.commentSource.isSome())
+            if (let Some(source) <- doc.commentSource) { cacheAddLocation(writer, source) }
     }
 }
 
@@ -232,6 +234,7 @@ internal func cacheReadDocComment(reader: SourceCacheReader): ?DocComment {
     doc.deprecated = cacheReadOptionalString(reader)
     cacheReadStrings(reader, doc.authors)
     doc.version = cacheReadOptionalString(reader)
+    if (reader.nextBool()) { doc.commentSource = Some(cacheReadLocation(reader)) }
     return Some(doc)
 }
 

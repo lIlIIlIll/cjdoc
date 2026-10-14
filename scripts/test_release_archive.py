@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 import py_compile
 import shutil
@@ -11,11 +12,13 @@ import tarfile
 import tempfile
 import unittest
 from unittest import mock
+from urllib.parse import urlsplit
 import zipfile
 
 from scripts import package_release
 from scripts import perf_gate
 from scripts import real_repository_smoke
+from scripts import release_package_contracts
 from scripts import safe_output_root
 from scripts import source_identity
 from scripts import strict_json
@@ -34,6 +37,55 @@ from scripts.release_tools_test_support import (
 from scripts.verify_repository_inputs import GOLDEN_NAMES, SCHEMA_NAMES
 
 class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
+    def test_release_archives_include_current_schema_ids_and_frozen_legacy(self) -> None:
+        self.assertEqual(
+            {f"docs/schema/{name}" for name in package_release.SCHEMA_FILES},
+            release_package_contracts.SCHEMA_PAYLOAD,
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            repo, commit = self.make_release_repo(root / "repo")
+            binary = root / "main"
+            binary.write_bytes(b"binary")
+            aliases = [path for path in (repo / "docs/schema").glob("*.schema.json")
+                       if not re.search(r"-v[0-9]+\.schema\.json$", path.name)]
+            expected_schemas = {path.relative_to(repo).as_posix() for path in aliases}
+            for path in aliases:
+                schema_id = urlsplit(json.loads(path.read_text(encoding="utf-8"))["$id"])
+                self.assertIn("/docs/schema/", schema_id.path)
+                expected_schemas.add("docs/schema/" + schema_id.path.rsplit("/", 1)[-1])
+            expected_schemas.update(f"docs/schema/{name}.schema.json" for name in (
+                "doc-ir-v6", "doc-ir-v7", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10",
+                "doc-ir-v11", "doc-ir-v12", "api-surface-v1", "api-surface-v2",
+                "api-diff-v1", "doctest-results-v1", "search-index-v8", "versions-v1",
+            ))
+            for platform in ("linux-x64", "windows-x64"):
+                with self.subTest(platform=platform):
+                    asset = package_release.build_archive(
+                        repo, binary, platform, repo / "target/release-package",
+                        source_commit=commit, sdk_version="1.1.3",
+                        sdk_sha256=SDK_SHA256, release_version="0.7.0",
+                    )
+                    manifest, members, _ = verify_release_package.inspect_archive(
+                        asset, platform, "0.7.0", "1.1.3", SDK_SHA256, commit,
+                    )
+                    self.assertEqual(expected_schemas - members.keys(), set(),
+                                     "archive omits current $id or frozen legacy schemas")
+                    self.assertEqual(expected_schemas - manifest["files"].keys(), set(),
+                                     "manifest omits current $id or frozen legacy schemas")
+                    if platform.startswith("windows-"):
+                        with zipfile.ZipFile(asset) as archive:
+                            content = {name: archive.read("cjdoc-0.7.0/" + name)
+                                       for name in expected_schemas}
+                    else:
+                        with tarfile.open(asset, "r:gz") as archive:
+                            content = {}
+                            for name in expected_schemas:
+                                with archive.extractfile("cjdoc-0.7.0/" + name) as member:
+                                    content[name] = member.read()
+                    for name, value in content.items():
+                        self.assertEqual(value, (repo / name).read_bytes(), name)
+
     def test_release_archive_is_reproducible_manifested_and_smokeable(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

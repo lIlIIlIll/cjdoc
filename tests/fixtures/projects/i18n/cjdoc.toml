@@ -1,0 +1,21 @@
+[i18n]
+default-language = "zh-CN"
+languages = ["zh-CN", "en"]
+missing-translation = "warn"
+
+[[docs.pages]]
+id = "start"
+language = "zh-CN"
+source = "docs/zh-CN/start.md"
+route = "concepts/guides/start.html"
+[docs.pages.sections]
+usage = "开始使用"
+advanced = "高级用法"
+
+[[docs.pages]]
+id = "start"
+language = "en"
+source = "docs/en/start.md"
+route = "concepts/guides/start.html"
+[docs.pages.sections]
+usage = "usage"

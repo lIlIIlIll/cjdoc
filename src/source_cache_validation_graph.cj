@@ -21,6 +21,9 @@ internal func validateCachedDocComment(comment: ?DocComment): Unit {
             throw IllegalArgumentException("invalid cached documentation")
         }
         let expected = parseDocComment(value.raw)
+        // The lexer-derived binding pass validates this range independently;
+        // reparsing comment text alone has no file-position information.
+        expected.commentSource = value.commentSource
         let actualWriter = SourceCacheWriter()
         let expectedWriter = SourceCacheWriter()
         cacheAddDocComment(actualWriter, Some(value))
@@ -79,9 +82,11 @@ internal func validateCachedCommentBindings(parsed: ParsedSourceFile,
             commentIndex++
         }
         var expectedRaw: ?String = None
+        var expectedSource: ?SourceLocation = None
         if (let Some(comment) <- candidate) {
             if (!comment.bound && onlyWhitespaceBetween(source, comment.source, symbol.source)) {
                 expectedRaw = Some(comment.raw)
+                expectedSource = Some(comment.source)
                 comment.bound = true
             }
             candidate = None
@@ -93,6 +98,13 @@ internal func validateCachedCommentBindings(parsed: ParsedSourceFile,
                 case (Some(expected), Some(actual)) =>
                     if (actual.raw != expected) {
                         throw IllegalArgumentException("cached documentation is bound to the wrong source")
+                    }
+                    match ((expectedSource, actual.commentSource)) {
+                        case (Some(location), Some(cached)) =>
+                            if (!sameSourceRange(location, cached)) {
+                                throw IllegalArgumentException("cached comment range is not from captured source")
+                            }
+                        case _ => throw IllegalArgumentException("cached comment range is missing")
                     }
                 case (None, None) => ()
                 case _ => throw IllegalArgumentException("cached documentation binding mismatch")

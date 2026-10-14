@@ -75,10 +75,18 @@ def result_identity(path: Path) -> dict:
 def compare_outputs(site: Path, generated: Path) -> list[dict]:
     comparisons = []
     native_files = ("docs.json", "api-surface.json", "coverage.json", "quality.json")
+    versions = load_json(generated / "composed/versions.json")
+    if versions.get("schemaVersion") != "cjdoc.versions/2":
+        raise ContractError("source reproduction requires the native language manifest")
     for locale in ("zh-CN", "en"):
         documents = roots(site, locale)
         for version in ("demo-v1", "demo-v2", "diagnostics"):
-            actual = generated / locale / version / "html"
+            if version == "diagnostics":
+                actual = generated / locale / version / "html"
+            else:
+                record = next(item for item in versions["versions"] if item["id"] == version)
+                language = next(item for item in record["languages"] if item["language"] == locale)
+                actual = generated / "composed" / relative_path(language["root"])
             published = documents[version]
             files = ["machine/" + name for name in native_files]
             files += ["navigation-index.json", "symbol-index.json", "search-index.json", "llms.txt", "llms-full.txt"]
@@ -90,7 +98,7 @@ def compare_outputs(site: Path, generated: Path) -> list[dict]:
                 raise ContractError("source reproduction doctest identities/statuses differ")
             comparisons.append({"locale": locale, "version": version, "exactFiles": len(files),
                                 "doctest": "actual identities, statuses and exit codes match; durations are measured independently"})
-        if (generated / locale / "api-diff.json").read_bytes() != (documents["demo-v2"] / "machine/api-diff.json").read_bytes():
+        if (generated / "api-diff.json").read_bytes() != (documents["demo-v2"] / "machine/api-diff.json").read_bytes():
             raise ContractError("reproduced native API diff differs")
     return comparisons
 

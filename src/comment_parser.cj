@@ -1,9 +1,10 @@
 package cjdoc
 
-import markdown.{MarkdownEngine, MarkdownProfile, NodeKind, SourceSpan}
+import markdown.{MarkdownEngine, MarkdownProfile, NodeKind, NodeRef, SourceSpan}
 import std.collection.*
+import std.sort.*
 
-private func cleanDocLines(raw: String): ArrayList<String> {
+internal func cleanDocLines(raw: String): ArrayList<String> {
     var content = raw.trimAscii()
     if (content.startsWith("/**")) { content = content.removePrefix("/**") }
     if (content.endsWith("*/")) { content = content.removeSuffix("*/") }
@@ -29,14 +30,14 @@ private func cleanDocLines(raw: String): ArrayList<String> {
     return result
 }
 
-private func splitSubject(rest: String): (String, String) {
+internal func splitSubject(rest: String): (String, String) {
     let parts = rest.trimAscii().split(" ", 2, removeEmpty: true)
     if (parts.size == 0) { return ("", "") }
     if (parts.size == 1) { return (parts[0], "") }
     return (parts[0], parts[1].trimAscii())
 }
 
-private func splitReferenceSubject(rest: String): (String, String) {
+internal func splitReferenceSubject(rest: String): (String, String) {
     let value = rest.trimAscii()
     if (value.isEmpty()) { return ("", "") }
     var roundDepth: Int64 = 0
@@ -70,7 +71,7 @@ private func splitReferenceSubject(rest: String): (String, String) {
 // The group is returned verbatim, braces included: this parser must not interpret
 // it, because a malformed block has to reach the example gate and be reported as
 // CJDOC3033 rather than be silently reinterpreted as part of the title.
-private func splitExampleDirectives(rest: String): (String, String) {
+internal func splitExampleDirectives(rest: String): (String, String) {
     let value = rest.trimAscii()
     if (value.isEmpty()) { return (value, "") }
     var candidate: ?Int64 = None
@@ -140,7 +141,7 @@ private func isStructuredDocTag(tagText: String): Bool {
         behaviorContractName(tagText).isSome()
 }
 
-private func rawJoinLines(lines: ArrayList<String>): String {
+internal func rawJoinLines(lines: ArrayList<String>): String {
     let builder = StringBuilder()
     var index: Int64 = 0
     while (index < lines.size) {
@@ -151,13 +152,16 @@ private func rawJoinLines(lines: ArrayList<String>): String {
     builder.toString()
 }
 
-private class MarkdownBlockStructure {
+internal class MarkdownBlockStructure {
     let topLevelParagraphs: ArrayList<SourceSpan>
     let available: Bool
+    let protectedInline: ArrayList<SourceSpan>
 
-    init(topLevelParagraphs: ArrayList<SourceSpan>, available: Bool) {
+    init(topLevelParagraphs: ArrayList<SourceSpan>, available: Bool,
+        protectedInline!: ArrayList<SourceSpan> = ArrayList<SourceSpan>()) {
         this.topLevelParagraphs = topLevelParagraphs
         this.available = available
+        this.protectedInline = protectedInline
     }
 }
 
@@ -165,23 +169,41 @@ private class MarkdownBlockStructure {
 // deliberately delegates fenced/indented/list/blockquote structure to the same
 // GFM parser used by the public adapter instead of maintaining a second fence
 // state machine with subtly different CommonMark rules.
-private func markdownBlockStructure(source: String): MarkdownBlockStructure {
+internal func markdownBlockStructure(source: String): MarkdownBlockStructure {
     try {
         let parsed = MarkdownEngine.builder().profile(MarkdownProfile.gfmModernV1()).
             build().parse(source)
         let children = parsed.document.root().children()
         let paragraphs = ArrayList<SourceSpan>()
+        let protectedInline = ArrayList<SourceSpan>()
+        let pending = ArrayList<NodeRef>()
         var index: Int64 = 0
         while (index < children.size) {
             let child = children[index]
             match (child.kind) {
                 case NodeKind.Paragraph =>
                     if (let Some(span) <- child.span) { paragraphs.add(span) }
+                    pending.add(child)
                 case _ => ()
             }
             index++
         }
-        MarkdownBlockStructure(paragraphs, true)
+        var work: Int64 = 0
+        while (!pending.isEmpty()) {
+            if (work >= 100000) { throw IllegalArgumentException("Markdown tag-boundary work limit") }
+            work++
+            let node = pending[pending.size - 1]
+            pending.remove(at: pending.size - 1)
+            match (node.kind) {
+                case NodeKind.CodeSpan => if (let Some(span) <- node.span) { protectedInline.add(span) }
+                case _ => ()
+            }
+            let descendants = node.children()
+            var descendant: Int64 = 0
+            while (descendant < descendants.size) { pending.add(descendants[descendant]); descendant++ }
+        }
+        sort(protectedInline, lessThan: { left, right => left.startByte < right.startByte })
+        MarkdownBlockStructure(paragraphs, true, protectedInline: protectedInline)
     } catch (_: Exception) {
         // Malformed or resource-rejected Markdown must not promote apparent
         // tags out of unknown block structure.
@@ -189,13 +211,14 @@ private func markdownBlockStructure(source: String): MarkdownBlockStructure {
     }
 }
 
-private func topLevelParagraphLines(lines: ArrayList<String>,
+internal func topLevelParagraphLines(lines: ArrayList<String>,
     structure: MarkdownBlockStructure): Array<Bool> {
     let eligible = Array<Bool>(lines.size, repeat: false)
     if (!structure.available) { return eligible }
     var paragraphIndex: Int64 = 0
     var lineStart: Int64 = 0
     var lineIndex: Int64 = 0
+    var protectedIndex: Int64 = 0
     while (lineIndex < lines.size) {
         let lineEnd = lineStart + lines[lineIndex].size
         while (paragraphIndex < structure.topLevelParagraphs.size &&
@@ -206,13 +229,24 @@ private func topLevelParagraphLines(lines: ArrayList<String>,
             let span = structure.topLevelParagraphs[paragraphIndex]
             eligible[lineIndex] = lineStart < span.endByte && lineEnd > span.startByte
         }
+        var leading = lineStart
+        for (byte in lines[lineIndex].toArray()) {
+            if (byte != b' ' && byte != b'\t') { break }
+            leading++
+        }
+        while (protectedIndex < structure.protectedInline.size &&
+            structure.protectedInline[protectedIndex].endByte <= leading) { protectedIndex++ }
+        if (protectedIndex < structure.protectedInline.size) {
+            let span = structure.protectedInline[protectedIndex]
+            if (leading >= span.startByte && leading < span.endByte) { eligible[lineIndex] = false }
+        }
         lineStart = lineEnd + 1
         lineIndex++
     }
     eligible
 }
 
-private func splitMarkdownBody(body: ArrayList<String>): (String, String) {
+internal func splitMarkdownBody(body: ArrayList<String>): (String, String) {
     let source = rawJoinLines(body).trimAscii()
     if (source.isEmpty()) { return ("", "") }
     let structure = markdownBlockStructure(source)

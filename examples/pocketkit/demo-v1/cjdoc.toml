@@ -1,3 +1,8 @@
+[i18n]
+default-language = "zh-CN"
+languages = ["zh-CN", "en"]
+missing-translation = "warn"
+
 [doctest]
 mode = "deny"
 timeout-ms = 30000
@@ -8,6 +13,8 @@ jobs = 2
 index = "docs/index.md"
 
 [[docs.pages]]
+id = "first-catalogue"
+language = "zh-CN"
 source = "docs/guide.md"
 route = "concepts/guides/first-catalogue"
 title = "目录与资源入门 / Catalogue and lifetime"
@@ -25,3 +32,10 @@ severity = "warning"
 [coverage]
 symbols = 80
 parameters = 80
+
+[[docs.pages]]
+id = "first-catalogue"
+language = "en"
+source = "docs/en/guide.md"
+route = "concepts/guides/first-catalogue"
+title = "Catalogue and lifetime"

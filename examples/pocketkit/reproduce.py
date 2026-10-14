@@ -9,7 +9,9 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 import hashlib
+import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -83,8 +85,8 @@ def generate(binary: Path, project: Path, output: Path, *, locale: str,
     command = [str(binary), "generate", "--project", str(project)]
     for name in FORMATS:
         command += ["--format", name]
-    command += ["--output", str(output), "--locale", locale,
-                "--doc-version", version, "--agent-full", "--no-cache"]
+    command += ["--output", str(output), "--doc-version", version, "--agent-full", "--no-cache"]
+    command += ["--all-languages"] if locale == "all" else ["--locale", locale]
     if repository is not None:
         if not revision or repository_root is None:
             raise ValueError("source links require a revision and repository root")
@@ -95,43 +97,53 @@ def generate(binary: Path, project: Path, output: Path, *, locale: str,
     return output
 
 
-def assemble(output: Path) -> Path:
+def assemble(output: Path, locale: str | None = None, *, binary: Path | None = None) -> Path:
     """Copy native machine payloads alongside their own HTML, without changing IDs."""
-    root = output / "html"
+    root = output / "html" if locale is None else output / "html" / locale
     machine = root / "machine"
     machine.mkdir()
-    for source, name in ((output / "docs.json", "docs.json"),
-                         (output / "api-surface/api-surface.json", "api-surface.json"),
+    projection_path = Path(__file__).resolve().parents[2] / "scripts/publication_ir.py"
+    specification = importlib.util.spec_from_file_location("publication_ir", projection_path)
+    projection = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(projection)
+    author_ir = json.loads((output / "docs.json").read_text(encoding="utf-8"))
+    (machine / "docs.json").write_text(json.dumps(projection.project(author_ir), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if binary is not None:
+        run([str(binary), "render", "--input", str(machine / "docs.json"), "--format", "json", "--stdout"], output,
+            output=machine / "validated-docs.json")
+        (machine / "validated-docs.json").replace(machine / "docs.json")
+    for source, name in ((output / "api-surface/api-surface.json", "api-surface.json"),
                          (output / "coverage/coverage.json", "coverage.json"),
                          (output / "coverage/quality.json", "quality.json")):
         shutil.copyfile(source, machine / name)
-    shutil.copytree(output / "markdown", machine / "markdown")
-    results = output / "doctest/results.json"
-    if results.is_file():
-        (root / "doctest").mkdir()
-        shutil.copyfile(results, root / "doctest/results.json")
-        page = root / "validation.html"
-        content = page.read_text(encoding="utf-8")
-        old = 'href="../doctest/results.json"'
-        if old not in content:
-            raise ValueError("native validation page has no expected doctest evidence link")
-        page.write_text(content.replace(old, 'href="doctest/results.json"'), encoding="utf-8")
-        # Member pages carry the same evidence link, written one level deeper for
-        # the standalone layout. The artifact now sits inside html/, so the link
-        # loses one hop here instead of pointing back out of the published tree.
-        for symbol in sorted((root / "symbols").glob("*.html")):
-            member = symbol.read_text(encoding="utf-8")
-            if 'href="../../doctest/results.json"' in member:
-                symbol.write_text(member.replace(
-                    'href="../../doctest/results.json"', 'href="../doctest/results.json"'),
-                    encoding="utf-8")
+    shutil.copytree(output / "markdown" if locale is None else output / "markdown" / locale, machine / "markdown")
+    relocate_doctest_evidence(output, root)
     return root
+
+
+def relocate_doctest_evidence(output: Path, root: Path) -> None:
+    """Keep native evidence links valid when publishing one reading subtree."""
+    results = output / "doctest/results.json"
+    if not results.is_file():
+        return
+    published = root / "doctest/results.json"
+    published.parent.mkdir()
+    shutil.copyfile(results, published)
+    pages = [root / "validation.html", *sorted((root / "symbols").glob("*.html"))]
+    for page in pages:
+        old = f'href="{Path(os.path.relpath(results, page.parent)).as_posix()}"'
+        new = f'href="{Path(os.path.relpath(published, page.parent)).as_posix()}"'
+        content = page.read_text(encoding="utf-8")
+        if page.name == "validation.html" and old not in content:
+            raise ValueError("native validation page has no expected doctest evidence link")
+        if old in content:
+            page.write_text(content.replace(old, new), encoding="utf-8")
 
 
 def validate_diagnostic_examples(output: Path) -> None:
     """Accept only the two maintained negative outcomes from the native runner."""
     report = json.loads((output / "doctest/results.json").read_text(encoding="utf-8"))
-    if report.get("schemaVersion") != "cjdoc.doctest/1" or report.get("mode") != "warn":
+    if report.get("schemaVersion") != "cjdoc.doctest/2" or report.get("mode") != "warn":
         raise ValueError("diagnostic examples require the native warning-mode report")
     expected = {"pocket_diagnostics.deliberateFailure": "failed",
                 "pocket_diagnostics.explanatoryExample": "skipped"}
@@ -215,6 +227,44 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
         for version in VERSIONS:
             shutil.copyfile(index, source / version / "docs/support-symbol-index.json")
     result = {"support": support, "checks": checks, "locales": {}}
+    if set(locales) == set(LOCALES):
+        generated = {}
+        for version in VERSIONS:
+            with stage_timing.phase(f"pocketkit.generate:all:{version}"):
+                generated[version] = generate(binary, source / version, output / "native" / version,
+                                              locale="all", version=version, **options)
+                for locale in locales:
+                    assemble(generated[version], locale, binary=binary)
+        diff = output / "api-diff.json"
+        run([str(binary), "diff", "--baseline", str(generated["demo-v1"] / "api-surface/api-surface.json"),
+             "--current", str(generated["demo-v2"] / "api-surface/api-surface.json"), "--format", "json"],
+            source, output=diff)
+        composed = output / "composed"
+        run([str(binary), "versions", "compose", "--output", str(composed),
+             "--version", "demo-v1=" + str(generated["demo-v1"]),
+             "--version", "demo-v2=" + str(generated["demo-v2"]),
+             "--diff", "demo-v2=" + str(diff), "--latest", "demo-v2"], source)
+        versions = json.loads((composed / "versions.json").read_text(encoding="utf-8"))
+        if versions.get("schemaVersion") != "cjdoc.versions/2":
+            raise ValueError("unsupported native versions manifest")
+        for locale in locales:
+            roots = {}
+            for record in versions["versions"]:
+                language = next(item for item in record["languages"] if item["language"] == locale)
+                root = composed / language["root"]
+                shutil.copytree(support / "html", root / "dependencies/support-v1")
+                roots[record["id"]] = root
+            diagnostics = generate(binary, source / "diagnostics", output / locale / "diagnostics",
+                                   locale=locale, version="diagnostics", **options)
+            validate_diagnostic_examples(diagnostics)
+            assemble(diagnostics, binary=binary)
+            result["locales"][locale] = dict(generated=generated, composed=composed,
+                                              roots=roots, diff=diff, diagnostics=diagnostics)
+        after = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in managed}
+        if before != after:
+            raise ValueError("managed example configuration changed during generation")
+        stage_timing.flush()
+        return result
     for locale in locales:
         directory = output / locale
         directory.mkdir()
@@ -223,7 +273,7 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
             with stage_timing.phase(f"pocketkit.generate:{locale}:{version}"):
                 generated[version] = generate(binary, source / version, directory / version,
                                               locale=locale, version=version, **options)
-                assemble(generated[version])
+                assemble(generated[version], binary=binary)
         diff = directory / "api-diff.json"
         with stage_timing.phase(f"pocketkit.diff:{locale}"):
             run([str(binary), "diff", "--baseline",
@@ -237,7 +287,7 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
                  "--version", "demo-v2=" + str(generated["demo-v2"] / "html"),
                  "--diff", "demo-v2=" + str(diff), "--latest", "demo-v2"], source)
             versions = json.loads((composed / "versions.json").read_text(encoding="utf-8"))
-            if versions.get("schemaVersion") != "cjdoc.versions/1":
+            if versions.get("schemaVersion") != "cjdoc.versions/2":
                 raise ValueError("unsupported native versions manifest")
             records = {entry["id"]: entry for entry in versions["versions"]}
             if set(records) != set(VERSIONS):
@@ -255,7 +305,7 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
             diagnostics = generate(binary, source / "diagnostics", directory / "diagnostics",
                                    locale=locale, version="diagnostics", **options)
             validate_diagnostic_examples(diagnostics)
-            assemble(diagnostics)
+            assemble(diagnostics, binary=binary)
         result["locales"][locale] = dict(generated=generated, composed=composed,
                                          roots=roots, diff=diff, diagnostics=diagnostics)
     after = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in managed}

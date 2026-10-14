@@ -74,7 +74,13 @@ internal func searchBodyText(symbol: SymbolDoc): String {
     for (tag in comment.tags) {
         if (tag.description.isEmpty()) { continue }
         out.append(" ")
-        out.append(tag.description)
+        match (tag.descriptionMarkdown) {
+            case Some(tree) => out.append(markdownNodeText(tree))
+            case None => match (tag.exampleMarkdown) {
+                case Some(tree) => out.append(markdownNodeText(tree))
+                case None => out.append(tag.description)
+            }
+        }
     }
     searchTextExcerpt(out.toString(), maximum: SEARCH_BODY_EXCERPT_LIMIT)
 }
@@ -85,6 +91,17 @@ internal func appendSearchBody(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
     out.append(", \"body\": ")
     appendSearchJsonString(out, searchBodyText(symbol))
     appendSearchSections(out, symbol)
+    if (let Some(comment) <- symbol.documentation) {
+        if (!comment.localizedTexts.isEmpty()) {
+            out.append(", \"fields\": [")
+            var first = true
+            for (tag in comment.tags where !tag.translationState.isEmpty()) {
+                if (!first) { out.append(",") }; first = false
+                out.append("{\"kind\":${escapeJsonString(tag.name)},\"subject\":${escapeJsonString(tag.subject)},\"actualLanguage\":${nullableString(tag.contentLanguage)},\"state\":${escapeJsonString(tag.translationState)},\"text\":${escapeJsonString(searchTextExcerpt(documentationTagPlainText(tag)))}}")
+            }
+            out.append("]")
+        }
+    }
 }
 
 // Per-block prose for the blocks that render at a stable, unconditional anchor
@@ -140,7 +157,7 @@ private func addSearchSectionBlock(blocks: ArrayList<(String, String, String)>, 
     for (tag in comment.tags) {
         if (tag.name != tagName || tag.description.isEmpty()) { continue }
         if (collected.size > 0) { collected.append(" ") }
-        collected.append(tag.description)
+        collected.append(documentationTagPlainText(tag))
     }
     if (collected.size == 0) { return }
     blocks.add((kind, docBlockAnchor(symbol, kind), collected.toString()))
@@ -192,9 +209,9 @@ internal func appendSearchMetadata(out: RenderTextBuffer, documentation: Documen
 }
 
 internal func renderSearchIndex(documentation: DocumentationSet,
-    projection: RenderProjection): String {
+    projection: RenderProjection, locale!: String = "en"): String {
     let out = RenderTextBuffer()
-    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/8\",\n  \"entries\": [")
+    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/9\",\n  \"entries\": [")
     var first = true
     let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(visible, lessThan: { left, right => left.id < right.id }, stable: true)
@@ -215,6 +232,7 @@ internal func renderSearchIndex(documentation: DocumentationSet,
         }
         out.append(", \"summary\": "); appendSearchJsonString(out, summary)
         appendSearchBody(out, declaration)
+        appendSearchExternalDocumentation(out, documentation, declaration.id)
         out.append(", \"href\": ")
         appendSearchJsonString(out,
             symbolUrl(projection.visibleIndex, declaration))
@@ -253,6 +271,12 @@ internal func renderSearchIndex(documentation: DocumentationSet,
                 }
             }
         }
+    }
+    for (page in selectedDocumentationPages(documentation, locale)) {
+        if (!first) { out.append(",") }; first = false
+        out.append("\n    {\"id\":${escapeJsonString("cjdoc:concept:" + page.id)},\"canonicalId\":${escapeJsonString("cjdoc:concept:" + page.id)},\"exposure\":false,\"name\":${escapeJsonString(page.title)},\"qualifiedName\":${escapeJsonString(page.route)},\"kind\":\"concept\",\"packageName\":\"\",\"moduleId\":\"conceptual\",\"moduleName\":null,\"ownerName\":null,\"parameterTypes\":[],\"returnType\":null,\"returnCanonical\":null,\"summary\":\"\",\"body\":${escapeJsonString(searchTextExcerpt(markdownNodeText(page.markdown), maximum: SEARCH_BODY_EXCERPT_LIMIT))},\"href\":${escapeJsonString(page.route)}")
+        appendSearchPageBindings(out, page)
+        out.append("}")
     }
     if (!first) { out.append("\n  ") }
     out.append("]\n}\n")

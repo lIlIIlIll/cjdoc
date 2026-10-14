@@ -17,6 +17,7 @@ internal class GeneratedDocumentation {
 internal func generateDocumentationWithSource(request: GenerationRequest,
     semanticProvider: SemanticProvider): GeneratedDocumentation {
     let documentation = generateDocumentation(request, semanticProvider: semanticProvider)
+    prepareDocumentationLanguages(documentation, request)
     let qualityConfig = loadDocumentationQualityConfig(request.projectRoot)
     match (request.lintProfile) {
         case "off" => resolveDocumentationReferences(documentation)
@@ -26,11 +27,13 @@ internal func generateDocumentationWithSource(request: GenerationRequest,
             qualityConfig: Some(qualityConfig), audience: request.audience)
         case _ => ()
     }
+    bindLocalizedDocumentationItems(documentation)
     if (request.checkExamples) {
         compileDocumentationExamples(documentation, request.audience)
     }
     sortDocumentationDeterministically(documentation)
-    let result = publicDocumentation(documentation, request)
+    let captured = publicDocumentation(documentation, request, capturePages: true)
+    let result = boundGeneratedDocumentation(withTranslationDiagnostics(captured, request), request)
     validateGeneratedDocIr(result)
     GeneratedDocumentation(documentation, result)
 }
@@ -52,6 +55,7 @@ public class DocumentationEngine {
             }
         }
         let documentation = generateDocumentation(request, semanticProvider: semanticProvider)
+        prepareDocumentationLanguages(documentation, request)
         let qualityConfig = loadDocumentationQualityConfig(request.projectRoot)
         match (request.lintProfile) {
             case "off" => resolveDocumentationReferences(documentation)
@@ -61,11 +65,13 @@ public class DocumentationEngine {
                 qualityConfig: Some(qualityConfig), audience: request.audience)
             case _ => ()
         }
+        bindLocalizedDocumentationItems(documentation)
         if (request.checkExamples) {
             compileDocumentationExamples(documentation, request.audience)
         }
         sortDocumentationDeterministically(documentation)
-        let result = publicDocumentation(documentation, request)
+        let captured = publicDocumentation(documentation, request, capturePages: true)
+        let result = boundGeneratedDocumentation(withTranslationDiagnostics(captured, request), request)
         validateGeneratedDocIr(result)
         result
     }

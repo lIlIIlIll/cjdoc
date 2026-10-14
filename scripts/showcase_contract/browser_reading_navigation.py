@@ -40,10 +40,10 @@ def _expect_version_href(page, selector: str, expected: str):
     }""", arg=[selector, expected])
 
 
-def check_version_members(page, member_url: str, current_index: dict, old_index: dict, owner_id: str):
+def check_version_members(page, member_url: str, current_index: dict, old_index: dict, owner_id: str,
+                          old_root: str):
     from playwright.sync_api import expect
     page.goto(member_url, wait_until="load")
-    old_root = urljoin(member_url, "../../demo-v1/")
     owner = _native(old_index, owner_id)
     selector = '[data-cjdoc-version-link][data-cjdoc-version-label="demo-v1"]'
     common = [entry for entry in current_index["entries"]
@@ -52,13 +52,17 @@ def check_version_members(page, member_url: str, current_index: dict, old_index:
         raise AssertionError("controlled sample must expose both find overloads")
     for entry in common:
         _select_inline_member(page, entry["id"])
-        expected = urljoin(old_root, _native(old_index, entry["id"])["href"])
+        _native(old_index, entry["id"])
+        expected = urljoin(old_root, owner["href"] + "#" + _anchor(entry["id"]))
         _expect_version_href(page, selector, expected)
         origin = page.url
         page.locator(selector).click()
         page.wait_for_url(expected, wait_until="load")
         expect(page.locator("body")).to_have_attribute("data-cjdoc-doc-version", "demo-v1")
-        expect(page.locator(".api-title-row h1")).to_have_text("find")
+        expect(page.locator(".api-title-row h1")).to_have_text("TextCatalog")
+        selected = page.locator('[data-cjdoc-member][id="' + _anchor(entry["id"]) + '"]')
+        expect(selected).to_have_attribute("open", "")
+        expect(selected).to_be_visible()
         page.go_back(wait_until="load")
         expect(page).to_have_url(origin)
     page.evaluate("location.hash = ''")
@@ -134,8 +138,9 @@ def check_readable_links(page, member_url: str, current_index: dict, owner_id: s
 
 
 def run_navigation_regressions(page, member_url: str, current_index: dict,
-                               old_index: dict, owner_id: str, member_id: str) -> list[str]:
-    check_version_members(page, member_url, current_index, old_index, owner_id)
+                               old_index: dict, owner_id: str, member_id: str,
+                               old_root: str) -> list[str]:
+    check_version_members(page, member_url, current_index, old_index, owner_id, old_root)
     check_readable_links(page, member_url, current_index, owner_id, member_id)
     return ["both find overload hrefs preserve exact native identity across versions",
             "clearing the member hash restores the type version href",

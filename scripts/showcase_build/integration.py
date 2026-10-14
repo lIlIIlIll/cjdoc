@@ -16,6 +16,7 @@ from . import homepage, legacy, manifest, navigation, report_pages, reports
 from . import stage_timing
 from .packaging import copy_sources, source_archive, tool_version
 from .parallel import BranchRunner
+from publication_ir import project as publication_projection
 
 FORMATS = ("html", "json", "markdown", "api-surface", "coverage", "symbol-index")
 
@@ -56,9 +57,12 @@ def publish_reports(root: Path, provenance: dict, version: str, locale: str, **o
 
 
 def publish_examples(result: dict, site: Path, provenance: dict) -> None:
+    sources = {generated["composed"] for generated in result["locales"].values()}
+    if len(sources) != 1:
+        raise ContractError("showcase requires one native bilingual composition")
+    composed = site / "examples"
+    copy_composed_publication(next(iter(sources)), composed)
     for locale, generated in result["locales"].items():
-        composed = site / "examples" / locale
-        shutil.copytree(generated["composed"], composed)
         roots = {name: composed / root.relative_to(generated["composed"])
                  for name, root in generated["roots"].items()}
         for version, root in roots.items():
@@ -72,6 +76,23 @@ def publish_examples(result: dict, site: Path, provenance: dict) -> None:
         if "checks" in result:
             shutil.copytree(result["checks"], diagnostics / "check-modes")
         publish_reports(diagnostics, provenance, "diagnostics", locale)
+
+
+def copy_composed_publication(source: Path, destination: Path) -> None:
+    """Publish native pages and their public machine views, excluding author IR.
+
+    Native composition also preserves generation intermediates beside html/.
+    Those contain the complete author corpus; each reading root already carries
+    its audience-filtered machine files and selected Markdown.
+    """
+    versions = {source / name for name in ("demo-v1", "demo-v2")}
+
+    def ignore(directory: str, names: list[str]) -> list[str]:
+        if Path(directory) not in versions:
+            return []
+        return [name for name in names if name not in {"html", "index.html", "api-diff.json", "doctest"}]
+
+    shutil.copytree(source, destination, ignore=ignore)
 
 
 def publish_compatibility(repo: Path, site: Path, current: Path, result: dict) -> None:
@@ -88,12 +109,17 @@ def publish_compatibility(repo: Path, site: Path, current: Path, result: dict) -
     for name in ("navigation-index.json", "symbol-index.json", "search-index.json", "llms.txt", "llms-full.txt"):
         inputs[name] = current / "html" / name
     for name, path in inputs.items():
-        copy_file(path, site / "artifacts" / name)
+        if name in ("docs.json", "demo-docs.json"):
+            target = site / "artifacts" / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(canonical_json(publication_projection(load_json(path))))
+        else:
+            copy_file(path, site / "artifacts" / name)
     shutil.copytree(repo / "docs/schema", site / "schemas")
     links = ''.join('<li><a href="' + html.escape(path.name) + '">' + html.escape(path.name) + '</a></li>'
                     for path in sorted((site / "schemas").glob("*.json")))
     (site / "schemas/index.html").write_text('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Schema registry</title></head><body><a href="../index.html">Showcase</a><h1>Schema registry</h1><ul>' + links + '</ul></body></html>', encoding="utf-8")
-    for name in ("usage.md", "advanced-usage.md", "release-process.md", "documentation-quality.md"):
+    for name in ("usage.md", "advanced-usage.md", "release-process.md", "documentation-quality.md", "i18n.md", "issue-64-acceptance.md"):
         copy_file(repo / "docs" / name, site / "docs" / name)
 
 

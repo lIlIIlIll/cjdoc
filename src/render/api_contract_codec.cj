@@ -66,7 +66,7 @@ private func appendParameterArray(out: RenderTextBuffer,
     out.append("]")
 }
 
-private func appendApiDeclaration(out: RenderTextBuffer, declaration: ApiContractDeclaration): Unit {
+private func appendApiDeclaration(out: RenderTextBuffer, declaration: ApiContractDeclaration, languages: Bool): Unit {
     out.append("{\"id\":"); appendSearchJsonString(out, declaration.id)
     out.append(",\"moduleId\":"); appendSearchJsonString(out, declaration.moduleId)
     out.append(",\"packageName\":"); appendSearchJsonString(out, declaration.packageName)
@@ -88,6 +88,16 @@ private func appendApiDeclaration(out: RenderTextBuffer, declaration: ApiContrac
     out.append(",\"relationships\":"); appendStringArray(out, declaration.relationships)
     out.append(",\"enumNonExhaustive\":"); appendNullableBool(out, declaration.enumNonExhaustive)
     out.append(",\"documentationFingerprint\":"); appendSearchJsonString(out, declaration.documentationFingerprint)
+    if (languages) {
+    out.append(",\"documentationLanguages\":[")
+    var firstLanguage = true
+    for (item in declaration.documentationLanguages) {
+        if (!firstLanguage) { out.append(",") }; firstLanguage = false
+        out.append("{\"language\":"); appendNullableString(out, item.language)
+        out.append(",\"fingerprint\":"); appendSearchJsonString(out, item.fingerprint); out.append("}")
+    }
+    out.append("]")
+    }
     out.append(",\"sourceFingerprint\":"); appendSearchJsonString(out, declaration.sourceFingerprint)
     out.append(",\"metadataFingerprint\":"); appendSearchJsonString(out, declaration.metadataFingerprint)
     out.append(",\"collectionState\":"); appendSearchJsonString(out, declaration.collectionState)
@@ -117,7 +127,7 @@ public func encodeApiContractSnapshot(snapshot: ApiContractSnapshot): String {
     for (declaration in snapshot.declarations) {
         if (!first) { out.append(",") }
         first = false
-        appendApiDeclaration(out, declaration)
+        appendApiDeclaration(out, declaration, snapshot.schemaVersion == API_SURFACE_SCHEMA_VERSION)
     }
     out.append("],\"exposures\":[")
     first = true
@@ -226,6 +236,30 @@ private func documentationValue(symbol: SymbolDoc): String {
     contractFingerprint(out.toString())
 }
 
+private func documentationLanguageFingerprints(symbol: SymbolDoc): Array<ApiDocumentationFingerprint> {
+    let comment = match (symbol.documentation) { case Some(value) => value case None => return [] }
+    if (comment.localizedTexts.isEmpty()) { return [ApiDocumentationFingerprint(None, documentationValue(symbol))] }
+    let languages = ArrayList<String>()
+    for (text in comment.localizedTexts) {
+        let language = text.language.getOrDefault({ => "unknown" })
+        if (!languages.contains(language)) { languages.add(language) }
+    }
+    sort(languages)
+    let result = ArrayList<ApiDocumentationFingerprint>()
+    for (language in languages) {
+        let out = StringBuilder()
+        for (text in comment.localizedTexts where text.language.getOrDefault({ => "unknown" }) == language) {
+            for ((kind, value) in [("field", text.fieldId), ("kind", text.kind), ("subject", text.subject),
+                ("text", text.text), ("state", text.state), ("directives", text.directives)]) { appendFingerprintPart(out, kind, value) }
+            appendFingerprintPart(out, "reference-state", text.referenceState)
+            appendOptionalFingerprintString(out, "reference-target", text.targetSymbolId)
+        }
+        let normalized: ?String = if (language == "unknown") { None } else { Some(language) }
+        result.add(ApiDocumentationFingerprint(normalized, contractFingerprint(out.toString())))
+    }
+    result.toArray()
+}
+
 private func sourceValue(symbol: SymbolDoc): String {
     let value = if (symbol.sourceApiSignature.state == "available") {
         joinContractTokens(symbol.sourceApiSignature.tokens)
@@ -281,7 +315,8 @@ private func apiDeclarationForSymbol(symbol: SymbolDoc,
         parameters: parameters.toArray(), returnState: returnState, returnType: returnValue,
         relationships: relationships.toArray(), enumNonExhaustive: symbol.enumNonExhaustive,
         documentationFingerprint: documentationValue(symbol), sourceFingerprint: sourceValue(symbol),
-        metadataFingerprint: metadataValue(symbol), collectionState: "resolved")
+        metadataFingerprint: metadataValue(symbol), collectionState: "resolved",
+        documentationLanguages: documentationLanguageFingerprints(symbol))
 }
 
 public func apiContractSnapshotForDocumentation(documentation: DocumentationSet): ApiContractSnapshot {
@@ -408,7 +443,21 @@ private func decodeContractParameter(node: JsonNode, path: String): ApiContractP
         defaultValue: contractNullableString(defaultObject, "value", path + ".default"))
 }
 
-private func decodeContractDeclaration(node: JsonNode, path: String): ApiContractDeclaration {
+private func decodeContractDocumentationLanguages(object: JsonObject, path: String): Array<ApiDocumentationFingerprint> {
+    let node = object.get("documentationLanguages")
+    if (node.isNone()) { return [] }
+    let result = ArrayList<ApiDocumentationFingerprint>()
+    let seen = HashSet<String>()
+    for (item in jsonArrayValues(node.getOrThrow().asArray())) {
+        let language = strictObject(item, path + ".documentationLanguages", ["language", "fingerprint"])
+        let selected = optionalDocumentationLanguage(Some(required(language, "language", path)), path)
+        if (!seen.add(selected.getOrDefault({ => "unknown" }))) { fail(path, "duplicate documentation language fingerprint") }
+        result.add(ApiDocumentationFingerprint(selected, contractFingerprint(language, "fingerprint", path)))
+    }
+    result.toArray()
+}
+
+private func decodeContractDeclaration(node: JsonNode, path: String, languages: Bool): ApiContractDeclaration {
     let object = try { node.asObject() } catch (_: Exception) {
         throw IllegalArgumentException("invalid API surface at ${path}: expected declaration object")
     }
@@ -427,7 +476,9 @@ private func decodeContractDeclaration(node: JsonNode, path: String): ApiContrac
         parameters.add(decodeContractParameter(item, "${path}.parameters[${parameterIndex}]"))
         parameterIndex++
     }
-    if (object.size() != 18 || sourceObject.size() != 2 || returnObject.size() != 2) {
+    if (object.size() != (if (languages) { 19 } else { 18 }) ||
+        (languages && object.get("documentationLanguages").isNone()) ||
+        (!languages && object.get("documentationLanguages").isSome()) || sourceObject.size() != 2 || returnObject.size() != 2) {
         throw IllegalArgumentException("invalid API surface at ${path}: unknown field")
     }
     ApiContractDeclaration(contractString(object, "id", path), contractString(object, "moduleId", path),
@@ -444,7 +495,8 @@ private func decodeContractDeclaration(node: JsonNode, path: String): ApiContrac
         documentationFingerprint: contractFingerprint(object, "documentationFingerprint", path),
         sourceFingerprint: contractFingerprint(object, "sourceFingerprint", path),
         metadataFingerprint: contractFingerprint(object, "metadataFingerprint", path),
-        collectionState: contractString(object, "collectionState", path))
+        collectionState: contractString(object, "collectionState", path),
+        documentationLanguages: decodeContractDocumentationLanguages(object, path))
 }
 
 private func decodeContractExposure(node: JsonNode, path: String): ApiContractExposure {
@@ -483,7 +535,7 @@ public func decodeApiContractSnapshot(text: String): ApiContractSnapshot {
         throw IllegalArgumentException("invalid API surface: expected object")
     }
     let version = contractString(object, "schemaVersion", "$")
-    if (version != API_SURFACE_SCHEMA_VERSION && version != API_SURFACE_LEGACY_SCHEMA_VERSION) {
+    if (version != API_SURFACE_SCHEMA_VERSION && version != API_SURFACE_V2_SCHEMA_VERSION && version != API_SURFACE_LEGACY_SCHEMA_VERSION) {
         throw IllegalArgumentException("unsupported API surface schema '${version}'")
     }
     let legacy = version == API_SURFACE_LEGACY_SCHEMA_VERSION
@@ -530,7 +582,7 @@ public func decodeApiContractSnapshot(text: String): ApiContractSnapshot {
                 sourceApiSignature: tokens, ownerId: contractNullableString(item, "ownerId", "$.declarations[${index}]"),
                 collectionState: "unavailable"))
         } else {
-            declarations.add(decodeContractDeclaration(node, "$.declarations[${index}]"))
+            declarations.add(decodeContractDeclaration(node, "$.declarations[${index}]", version == API_SURFACE_SCHEMA_VERSION))
         }
         index++
     }
@@ -591,6 +643,7 @@ public func encodeApiDiffReport(report: ApiDiffReport): String {
             out.append(",\"before\":"); appendNullableString(out, evidence.before)
             out.append(",\"after\":"); appendNullableString(out, evidence.after)
             out.append(",\"state\":"); appendSearchJsonString(out, evidence.state)
+            out.append(",\"language\":"); appendNullableString(out, evidence.language)
             out.append("}")
         }
         out.append("]}")

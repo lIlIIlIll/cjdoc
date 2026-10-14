@@ -183,7 +183,7 @@ internal func aggregateProviderState(binding: SemanticBindingStats, summary: Fin
 protected func boundGeneratedDocumentation(candidate: public_model.DocumentationSet,
     request: GenerationRequest, force!: Bool = false): public_model.DocumentationSet {
     if (!force &&
-        public_render.docIrFitsEncodedBudget(candidate, public_model.DOC_IR_MAX_OUTPUT_ARTIFACT_BYTES)) {
+        public_render.docIrFitsEncodedBudget(candidate, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
         return candidate
     }
     // Generation must return a valid, renderable value even when a hostile or
@@ -199,5 +199,6 @@ protected func boundGeneratedDocumentation(candidate: public_model.Documentation
                 "custom"
             }),
         diagnostics: [public_model.Diagnostic("warning", "CJDOC3027",
-            "generated documentation exceeded codec or output resource limits and was replaced by a bounded fallback")])
+            "generated documentation exceeded codec or output resource limits and was replaced by a bounded fallback")],
+        languageOptions: candidate.languageOptions)
 }

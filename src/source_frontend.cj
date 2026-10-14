@@ -5,7 +5,7 @@ import std.collection.*
 import std.fs.*
 import std.sync.AtomicInt64
 
-internal let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v15"
+internal let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v16"
 internal let MAX_SOURCE_FILE_BYTES: Int64 = 32 * 1024 * 1024
 internal let MAX_SOURCE_CACHE_BYTES: Int64 = 64 * 1024 * 1024
 internal let MAX_SOURCE_CACHE_ITEMS: Int64 = 100000
@@ -392,6 +392,7 @@ internal func bindComments(symbols: ArrayList<SourceDeclaration>,
                 while (groupedIndex < symbols.size &&
                     sameSourceRange(symbols[groupedIndex].source, symbol.source)) {
                     symbols[groupedIndex].documentation = parseDocComment(comment.raw)
+                    symbols[groupedIndex].documentation.getOrThrow().commentSource = Some(comment.source)
                     groupedIndex++
                 }
                 comment.bound = true
@@ -410,5 +411,4 @@ internal func bindComments(symbols: ArrayList<SourceDeclaration>,
     }
     orphans
 }
-
 

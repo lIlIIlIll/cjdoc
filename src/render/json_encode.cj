@@ -39,7 +39,7 @@ public func escapeJsonString(value: String): String {
     builder.toString()
 }
 
-private func nullableString(value: ?String): String {
+internal func nullableString(value: ?String): String {
     match (value) { case Some(text) => escapeJsonString(text) case None => "null" }
 }
 
@@ -54,7 +54,7 @@ private func nullableRepository(value: ?RepositoryInfo): String {
     }
 }
 
-private func appendStrings(out: StringBuilder, values: ReadOnlyList<String>): Unit {
+internal func appendStrings(out: StringBuilder, values: ReadOnlyList<String>): Unit {
     out.append("[")
     var first = true
     for (value in values) {
@@ -69,7 +69,7 @@ private func appendPosition(out: StringBuilder, value: SourcePosition): Unit {
     out.append("{\"line\":${value.line},\"column\":${value.column},\"byteOffset\":${value.byteOffset}}")
 }
 
-private func appendRange(out: StringBuilder, value: SourceRange): Unit {
+internal func appendRange(out: StringBuilder, value: SourceRange): Unit {
     out.append("{\"path\":${escapeJsonString(value.path)},\"start\":")
     appendPosition(out, value.start)
     out.append(",\"end\":")
@@ -123,6 +123,19 @@ private func appendTag(out: StringBuilder, value: DocTag): Unit {
         out.append(",\"exampleMarkdown\":")
         appendMarkdown(out, markdown)
     }
+    if (value.contentLanguage.isSome() || !value.translationState.isEmpty()) {
+        out.append(",\"contentLanguage\":${nullableString(value.contentLanguage)}")
+    }
+    if (!value.translationState.isEmpty()) {
+        out.append(",\"translationState\":${escapeJsonString(value.translationState)}")
+    }
+    if (!value.fieldId.isEmpty() || !value.translationState.isEmpty()) {
+        out.append(",\"fieldId\":${escapeJsonString(value.fieldId)}")
+    }
+    if (let Some(markdown) <- value.descriptionMarkdown) {
+        out.append(",\"descriptionMarkdown\":"); appendMarkdown(out, markdown)
+    }
+    if (!value.evidenceKey.isEmpty()) { out.append(",\"evidenceKey\":${escapeJsonString(value.evidenceKey)}") }
     out.append("}")
 }
 
@@ -164,7 +177,7 @@ private func appendMarkdownMetadata(out: StringBuilder, value: MarkdownNodeMetad
     }
 }
 
-private func appendMarkdown(out: StringBuilder, value: MarkdownNode): Unit {
+internal func appendMarkdown(out: StringBuilder, value: MarkdownNode): Unit {
     out.append("{\"kind\":${escapeJsonString(value.kind)},\"literal\":${escapeJsonString(value.literal)},\"source\":")
     match (value.source) { case Some(range) => appendRange(out, range) case None => out.append("null") }
     out.append(",\"metadata\":")
@@ -193,7 +206,12 @@ private func appendComment(out: StringBuilder, value: DocComment): Unit {
         first = false
         appendTag(out, tag)
     }
-    out.append("]}")
+    out.append("]")
+    if (value.defaultLanguage.isSome() || !value.localizedTexts.isEmpty()) {
+        out.append(",\"defaultLanguage\":${nullableString(value.defaultLanguage)},\"localizedTexts\":")
+        appendDocumentationTexts(out, value.localizedTexts)
+    }
+    out.append("}")
 }
 
 private func appendParameter(out: StringBuilder, value: ParameterDoc): Unit {
@@ -349,6 +367,16 @@ private func compactDocIr(documentation: DocumentationSet): String {
     out.append("\"configuration\":{\"audience\":${escapeJsonString(documentation.configuration.audience)},")
     out.append("\"lintProfile\":${escapeJsonString(documentation.configuration.lintProfile)},")
     out.append("\"cfgProfile\":${escapeJsonString(documentation.configuration.cfgProfile)}},")
+    if (let Some(options) <- documentation.languageOptions) {
+        out.append("\"languageOptions\":"); appendDocumentationLanguageOptions(out, options); out.append(",")
+    }
+    if (!documentation.pages.isEmpty()) {
+        out.append("\"pages\":"); appendDocumentationPages(out, documentation.pages); out.append(",")
+    }
+    if (!documentation.externalDocumentation.isEmpty()) {
+        out.append("\"externalDocumentation\":"); appendExternalDocumentation(out, documentation.externalDocumentation); out.append(",")
+    }
+    if (let Some(language) <- documentation.readingLanguage) { out.append("\"readingLanguage\":${escapeJsonString(language)},") }
     out.append("\"providers\":[")
     var first = true
     for (provider in documentation.providers) {

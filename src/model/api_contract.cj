@@ -2,9 +2,32 @@ package cjdoc.model
 
 import std.collection.*
 
-public let API_SURFACE_SCHEMA_VERSION = "cjdoc.api-surface/2"
+public let API_SURFACE_SCHEMA_VERSION = "cjdoc.api-surface/3"
+public let API_SURFACE_V2_SCHEMA_VERSION = "cjdoc.api-surface/2"
 public let API_SURFACE_LEGACY_SCHEMA_VERSION = "cjdoc.api-surface/1"
-public let API_DIFF_SCHEMA_VERSION = "cjdoc.api-diff/1"
+public let API_DIFF_SCHEMA_VERSION = "cjdoc.api-diff/2"
+
+private func apiDocumentationLanguage(value: ?String): ?String {
+    match (value) {
+        case Some(language) => Some(documentationLanguage(language))
+        case None => None
+    }
+}
+
+/** Fingerprints describe authored language fields, including unavailable legacy provenance. */
+public class ApiDocumentationFingerprint {
+    public let language: ?String
+    public let fingerprint: String
+    public init(language: ?String, fingerprint: String) {
+        if (fingerprint.size != 64) { throw IllegalArgumentException("invalid documentation fingerprint") }
+        for (byte in fingerprint.toArray()) {
+            if (!((byte >= 0x30 && byte <= 0x39) || (byte >= 0x61 && byte <= 0x66))) {
+                throw IllegalArgumentException("documentation fingerprint must be lowercase hexadecimal")
+            }
+        }
+        this.language = apiDocumentationLanguage(language); this.fingerprint = fingerprint
+    }
+}
 
 public func isApiContractState(value: String): Bool {
     value == "resolved" || value == "partial" || value == "unavailable" || value == "ambiguous"
@@ -68,6 +91,7 @@ public class ApiContractDeclaration {
     public let sourceFingerprint: String
     public let metadataFingerprint: String
     public let collectionState: String
+    private let documentationLanguagesStorage: ArrayList<ApiDocumentationFingerprint>
 
     public init(id: String, moduleId: String, packageName: String, kind: String, name: String,
         qualifiedName: String, visibility: String, sourceApiSignatureState: String,
@@ -76,7 +100,8 @@ public class ApiContractDeclaration {
         returnState!: String = "unavailable", returnType!: ?String = None,
         relationships!: Array<String> = [], enumNonExhaustive!: ?Bool = None,
         documentationFingerprint!: String = "", sourceFingerprint!: String = "",
-        metadataFingerprint!: String = "", collectionState!: String = "resolved") {
+        metadataFingerprint!: String = "", collectionState!: String = "resolved",
+        documentationLanguages!: Array<ApiDocumentationFingerprint> = []) {
         if (id.isEmpty() || moduleId.isEmpty() || packageName.isEmpty() || kind.isEmpty() ||
             name.isEmpty() || !isApiContractState(collectionState) ||
             !isApiContractState(returnState) || !isApiContractState(sourceApiSignatureState)) {
@@ -89,6 +114,15 @@ public class ApiContractDeclaration {
         if ((returnState == "resolved" && returnType.isNone()) ||
             (returnState != "resolved" && returnType.isSome())) {
             throw IllegalArgumentException("API return state/value mismatch")
+        }
+        if (documentationLanguages.size > 3) {
+            throw IllegalArgumentException("too many documentation language fingerprints")
+        }
+        let languages = HashSet<String>()
+        for (entry in documentationLanguages) {
+            if (!languages.add(entry.language.getOrDefault({ => "unknown" }))) {
+                throw IllegalArgumentException("duplicate documentation language fingerprint")
+            }
         }
         this.id = id
         this.moduleId = moduleId
@@ -110,12 +144,14 @@ public class ApiContractDeclaration {
         this.sourceFingerprint = sourceFingerprint
         this.metadataFingerprint = metadataFingerprint
         this.collectionState = collectionState
+        this.documentationLanguagesStorage = ArrayList<ApiDocumentationFingerprint>(documentationLanguages)
     }
 
     public prop sourceApiSignature: ReadOnlyList<String> { get() { sourceApiSignatureStorage } }
     public prop genericParameters: ReadOnlyList<String> { get() { genericParametersStorage } }
     public prop parameters: ReadOnlyList<ApiContractParameter> { get() { parametersStorage } }
     public prop relationships: ReadOnlyList<String> { get() { relationshipStorage } }
+    public prop documentationLanguages: ReadOnlyList<ApiDocumentationFingerprint> { get() { documentationLanguagesStorage } }
 }
 
 public class ApiContractExposure {
@@ -157,8 +193,13 @@ public class ApiContractSnapshot {
         exposures!: Array<ApiContractExposure> = [], schemaVersion!: String = API_SURFACE_SCHEMA_VERSION) {
         if (project.isEmpty() || audience.isEmpty() || cfgProfile.isEmpty() ||
             !isApiContractState(collectionState) ||
-            (schemaVersion != API_SURFACE_SCHEMA_VERSION && schemaVersion != API_SURFACE_LEGACY_SCHEMA_VERSION)) {
+            (schemaVersion != API_SURFACE_SCHEMA_VERSION && schemaVersion != API_SURFACE_V2_SCHEMA_VERSION && schemaVersion != API_SURFACE_LEGACY_SCHEMA_VERSION)) {
             throw IllegalArgumentException("invalid API contract snapshot")
+        }
+        if (schemaVersion != API_SURFACE_SCHEMA_VERSION) {
+            for (declaration in declarations where !declaration.documentationLanguages.isEmpty()) {
+                throw IllegalArgumentException("legacy API contract snapshots cannot contain documentation languages")
+            }
         }
         this.schemaVersion = schemaVersion
         this.project = project
@@ -178,9 +219,10 @@ public class ApiDiffEvidence {
     public let before: ?String
     public let after: ?String
     public let state: String
+    public let language: ?String
 
     public init(field: String, before!: ?String = None, after!: ?String = None,
-        state!: String = "resolved") {
+        state!: String = "resolved", language!: ?String = None) {
         if (field.isEmpty() || !isApiContractState(state)) {
             throw IllegalArgumentException("invalid API diff evidence")
         }
@@ -188,6 +230,7 @@ public class ApiDiffEvidence {
         this.before = before
         this.after = after
         this.state = state
+        this.language = apiDocumentationLanguage(language)
     }
 }
 

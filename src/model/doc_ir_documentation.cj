@@ -212,17 +212,26 @@ public class DocComment {
     public let description: String
     public let markdown: MarkdownNode
     private let tagsStorage: ArrayList<DocTag>
+    public let defaultLanguage: ?String
+    private let localizedTextsStorage: ArrayList<DocumentationText>
 
     public init(rawText: String, summary: String, description: String, markdown: MarkdownNode,
-        tags!: Array<DocTag> = []) {
+        tags!: Array<DocTag> = [], defaultLanguage!: ?String = None,
+        localizedTexts!: Array<DocumentationText> = []) {
         this.rawText = rawText
         this.summary = summary
         this.description = description
         this.markdown = markdown
         this.tagsStorage = ArrayList<DocTag>(tags)
+        if (let Some(language) <- defaultLanguage) {
+            if (documentationLanguage(language) != language) { throw IllegalArgumentException("default documentation language must be normalized") }
+        }
+        this.defaultLanguage = defaultLanguage
+        this.localizedTextsStorage = ArrayList<DocumentationText>(localizedTexts)
     }
 
     public prop tags: ReadOnlyList<DocTag> { get() { tagsStorage } }
+    public prop localizedTexts: ReadOnlyList<DocumentationText> { get() { localizedTextsStorage } }
 }
 
 public class SemanticInfo {
@@ -450,6 +459,10 @@ public class DocumentationSet {
     public let status: String
     public let project: ProjectInfo
     public let configuration: ConfigurationSnapshot
+    public let languageOptions: ?DocumentationLanguageOptions
+    public let readingLanguage: ?String
+    private let pagesStorage: ArrayList<DocumentationPage>
+    private let externalDocumentationStorage: ArrayList<ExternalDocumentationReference>
     private let providersStorage: ArrayList<ProviderInfo>
     private let modulesStorage: ArrayList<ModuleDoc>
     private let packagesStorage: ArrayList<PackageDoc>
@@ -469,12 +482,21 @@ public class DocumentationSet {
         orphanDocComments!: Array<OrphanDocComment> = [], macroInvocations!: Array<MacroInvocation> = [],
         unsupportedDeclarations!: Array<UnsupportedDeclaration> = [],
         unboundSemanticDeclarations!: Array<UnboundSemanticDeclaration> = [],
-        diagnostics!: Array<Diagnostic> = []) {
+        diagnostics!: Array<Diagnostic> = [], languageOptions!: ?DocumentationLanguageOptions = None,
+        pages!: Array<DocumentationPage> = [], readingLanguage!: ?String = None,
+        externalDocumentation!: Array<ExternalDocumentationReference> = []) {
         this.schemaVersion = DOC_IR_SCHEMA_VERSION
         this.generator = generator
         this.status = status
         this.project = project
         this.configuration = configuration
+        this.languageOptions = languageOptions
+        if (let Some(language) <- readingLanguage) {
+            if (documentationLanguage(language) != language) { throw IllegalArgumentException("reading language must be normalized") }
+        }
+        this.readingLanguage = readingLanguage
+        this.pagesStorage = ArrayList<DocumentationPage>(pages)
+        this.externalDocumentationStorage = ArrayList<ExternalDocumentationReference>(externalDocumentation)
         this.providersStorage = ArrayList<ProviderInfo>(providers)
         this.modulesStorage = ArrayList<ModuleDoc>(modules)
         this.packagesStorage = ArrayList<PackageDoc>(packages)
@@ -502,4 +524,6 @@ public class DocumentationSet {
     public prop unsupportedDeclarations: ReadOnlyList<UnsupportedDeclaration> { get() { unsupportedDeclarationsStorage } }
     public prop unboundSemanticDeclarations: ReadOnlyList<UnboundSemanticDeclaration> { get() { unboundSemanticDeclarationsStorage } }
     public prop diagnostics: ReadOnlyList<Diagnostic> { get() { diagnosticsStorage } }
+    public prop pages: ReadOnlyList<DocumentationPage> { get() { pagesStorage } }
+    public prop externalDocumentation: ReadOnlyList<ExternalDocumentationReference> { get() { externalDocumentationStorage } }
 }

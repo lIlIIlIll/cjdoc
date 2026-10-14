@@ -10,6 +10,11 @@ import std.time.*
 @When[os != "Windows"]
 import std.posix.{killpg, SIGKILL}
 
+// STS 1.2 can stall concurrent redirected launch() calls before the
+// supervisor PID is read. Protect stream setup only; child execution and
+// output draining remain concurrent.
+private let BOUNDED_PROCESS_LAUNCH_MUTEX = ReentrantMutex()
+
 private let BOUNDED_PROCESS_TIMEOUT_MILLISECONDS: Int64 = 120000
 private let BOUNDED_PROCESS_OUTPUT_BYTES: Int64 = 8192
 private let BOUNDED_PROCESS_CHUNK_BYTES: Int64 = 8192
@@ -49,7 +54,8 @@ private func launchBoundedProcess(command: String, arguments: Array<String>,
     // The count is formatted only from the caller byte array's size, never request text.
     // STS pipe streams expose no public close; forwarding exactly this count supplies EOF.
     // Disable inner job control so the stdin forwarder and target remain in that group.
-    wrapperArguments.add("set -m; (set +m; IFS= read -r release; count=$1; shift; if [ \"$count\" = 0 ]; then exec \"$@\" </dev/null; else head -c \"$count\" | \"$@\"; fi) <&0 & child=$!; printf '%s\\n' \"$child\"; wait \"$child\"")
+    // Once the group exists, disable parent job notifications to keep stderr clean.
+    wrapperArguments.add("set -m; (set +m; IFS= read -r release; count=$1; shift; if [ \"$count\" = 0 ]; then exec \"$@\" </dev/null; else head -c \"$count\" | \"$@\"; fi) <&0 & child=$!; set +m; printf '%s\\n' \"$child\"; wait \"$child\"")
     wrapperArguments.add("cjdoc-process-supervisor")
     wrapperArguments.add(inputBytes.toString())
     wrapperArguments.add(command)
@@ -185,7 +191,9 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
     // the reads/status a second full budget, so a slow supervisor could stretch the
     // advertised bound to nearly twice its value.
     let started = MonoTime.now()
-    let process = launchBoundedProcess(command, arguments, workingDirectory, standardInput.size)
+    let process = synchronized(BOUNDED_PROCESS_LAUNCH_MUTEX) {
+        launchBoundedProcess(command, arguments, workingDirectory, standardInput.size)
+    }
     let job = try { createExampleProcessJob(process) } catch (error: Exception) {
         try { process.terminate(force: true) } catch (_: Exception) {}
         throw error

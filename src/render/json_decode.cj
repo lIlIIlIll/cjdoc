@@ -17,7 +17,7 @@ public func decodeDocIr(text: String): DocumentationSet {
     let root = strictObject(parsed, "$", ["schemaVersion", "generator", "status", "project",
         "configuration", "providers", "modules", "packages", "files", "declarations", "assets",
         "orphanDocComments", "macroInvocations", "unsupportedDeclarations",
-        "unboundSemanticDeclarations", "diagnostics"])
+        "unboundSemanticDeclarations", "diagnostics", "languageOptions", "pages", "readingLanguage", "externalDocumentation"])
     let version = stringAt(root, "schemaVersion", "$")
     let legacyV6 = version == DOC_IR_V6_SCHEMA_VERSION
     let legacy = legacyV6 || version == DOC_IR_V7_SCHEMA_VERSION
@@ -25,8 +25,9 @@ public func decodeDocIr(text: String): DocumentationSet {
     let legacyV9 = version == DOC_IR_V9_SCHEMA_VERSION
     let legacyV10 = version == DOC_IR_V10_SCHEMA_VERSION
     let legacyV11 = version == DOC_IR_V11_SCHEMA_VERSION
+    let legacyV12 = version == DOC_IR_V12_SCHEMA_VERSION
     let current = version == DOC_IR_SCHEMA_VERSION
-    let modern = legacyV9 || legacyV10 || legacyV11 || current
+    let modern = legacyV9 || legacyV10 || legacyV11 || legacyV12 || current
     if (!legacy && !legacyV8 && !modern) {
         fail("$.schemaVersion", "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V11_SCHEMA_VERSION}', " +
             "'${DOC_IR_V10_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
@@ -60,7 +61,11 @@ public func decodeDocIr(text: String): DocumentationSet {
         assets: decodedAssets.assets,
         orphanDocComments: decodeOrphans(root), macroInvocations: decodeMacros(root),
         unsupportedDeclarations: decodeUnsupported(root), unboundSemanticDeclarations: decodeUnbound(root),
-        diagnostics: decodeDiagnostics(root, legacyV6, legacyIds))
+        diagnostics: decodeDiagnostics(root, legacyV6, legacyIds),
+        languageOptions: decodeDocumentationLanguageOptions(root.get("languageOptions"), "$.languageOptions"),
+        pages: decodeDocumentationPages(root.get("pages"), decodedAssets.references),
+        readingLanguage: optionalDocumentationLanguage(root.get("readingLanguage"), "$.readingLanguage"),
+        externalDocumentation: decodeExternalDocumentation(root.get("externalDocumentation")))
     validateDocumentationSet(documentation)
     documentation
 }

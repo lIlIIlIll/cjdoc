@@ -23,7 +23,7 @@ def publish(binary: Path, repo: Path, site: Path, work: Path) -> None:
         page.parent.mkdir(parents=True, exist_ok=True)
         document = HtmlDocument(native.read_text(encoding="utf-8"))
         home = os.path.relpath(site / "index.html", page.parent).replace(os.sep, "/")
-        demo = os.path.relpath(site / "examples/zh-CN/index.html", page.parent).replace(os.sep, "/")
+        demo = os.path.relpath(site / "examples/index.html", page.parent).replace(os.sep, "/")
         anchors = ''.join('<span id="' + html.escape(anchor, quote=True) + '"></span>' for anchor in sorted(document.ids))
         content = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>历史演示已迁移 / Historical demo moved</title></head><body>'
         content += anchors + '<main><h1>历史演示入口已迁移 / Historical demo moved</h1><p>此地址属于旧测试夹具，已保留作为兼容入口。旧夹具不再作为公开产品样例。新示例库 PocketKit 与旧 API 并非相同语义的声明。</p><p>This historical fixture route remains available as a migration notice. PocketKit is a new example library, not a replacement declaration with the same identity.</p>'

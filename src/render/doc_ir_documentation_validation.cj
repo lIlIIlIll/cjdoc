@@ -239,12 +239,53 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
             relationshipIndex++
         }
         if (let Some(comment) <- declaration.documentation) {
+            let validFields = HashSet<String>()
+            for (text in comment.localizedTexts) {
+                let paired = ["valid", "empty", "conflict"].contains(text.state)
+                if (paired && text.fieldId.isEmpty()) {
+                    domainFail("$.documentation.localizedTexts.fieldId", "paired field identity is missing")
+                }
+                if (paired && ["summary", "description", "param", "return"].contains(text.kind)) {
+                    let subject = if (text.kind == "param") { text.subject } else { "" }
+                    if (text.fieldId != declaration.id + ":doc:" + text.kind + ":" + subject) {
+                        domainFail("$.documentation.localizedTexts.fieldId", "field identity does not match its selector")
+                    }
+                }
+                if (text.state == "valid" && text.kind == "param") {
+                    var knownParameter = false
+                    for (parameter in declaration.parameters) {
+                        if (parameter.name == text.subject) { knownParameter = true; break }
+                    }
+                    if (!knownParameter) { domainFail("$.documentation.localizedTexts.subject", "unknown parameter") }
+                }
+                if (text.state == "valid" && !text.fieldId.isEmpty() &&
+                    !validFields.add(text.fieldId + ":" + text.language.getOrDefault({ => "unknown" }))) {
+                    domainFail("$.documentation.localizedTexts", "duplicate valid language field")
+                }
+                validateMarkdown(text.markdown, "$.declarations[${index}].documentation.localizedTexts.markdown", 0)
+                if (!text.fieldId.isEmpty() && !text.fieldId.startsWith(declaration.id + ":doc:" + text.kind + ":")) {
+                    domainFail("$.documentation.localizedTexts.fieldId", "field does not belong to declaration/kind")
+                }
+                if (let Some(source) <- text.source) {
+                    validateRange(source, "$.documentation.localizedTexts.source")
+                    if (source.path != declaration.source.path) { domainFail("$.documentation.localizedTexts.source", "field source must belong to declaration file") }
+                }
+                if (let Some(targetId) <- text.targetSymbolId) {
+                    if (["see", "throws"].contains(text.kind) && text.referenceState != "resolved") {
+                        domainFail("$.documentation.localizedTexts", "unresolved reference cannot carry a target")
+                    }
+                    if (!byId.contains(targetId)) { domainFail("$.documentation.localizedTexts", "unknown target SymbolId") }
+                } else if (text.referenceState == "resolved") {
+                    domainFail("$.documentation.localizedTexts", "resolved target is missing")
+                }
+            }
             for (tag in comment.tags) {
                 let tagPath = "$.declarations[${index}].documentation.tags"
                 if (!tag.directives.isEmpty() && tag.name != "example") {
                     domainFail(tagPath, "directives are only allowed on @example tags")
                 }
                 validateExampleMarkdown(tag, "${tagPath}.exampleMarkdown")
+                if (let Some(tree) <- tag.descriptionMarkdown) { validateMarkdown(tree, tagPath + ".descriptionMarkdown", 0) }
                 match (tag.targetSymbolId) {
                     case Some(targetId) => if (!byId.contains(targetId)) {
                         domainFail(tagPath, "unknown target SymbolId")
@@ -418,9 +459,15 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
     index = 0
     for (declaration in documentation.declarations) {
         if (let Some(comment) <- declaration.documentation) {
+            for (text in comment.localizedTexts) {
+                validateMarkdownAssetReferences(text.markdown, "$.documentation.localizedTexts.markdown", assetIds)
+            }
             validateMarkdownAssetReferences(comment.markdown,
                 "$.declarations[${index}].documentation.markdown", assetIds)
             for (tag in comment.tags) {
+                if (let Some(markdown) <- tag.descriptionMarkdown) {
+                    validateMarkdownAssetReferences(markdown, "$.documentation.tags.descriptionMarkdown", assetIds)
+                }
                 if (let Some(markdown) <- tag.exampleMarkdown) {
                     validateMarkdownAssetReferences(markdown,
                         "$.declarations[${index}].documentation.tags.exampleMarkdown", assetIds)
@@ -429,6 +476,33 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         }
         index++
     }
+    let pageIds = HashSet<String>()
+    if (documentation.pages.size > 128) { domainFail("$.pages", "page limit exceeded") }
+    for (page in documentation.pages) {
+        if (!safeRelativePath(page.source) || !safeDocumentationPageRoute(page.route) || !page.route.endsWith(".html") ||
+            !pageIds.add(page.id + ":" + page.language.getOrDefault({ => "unknown" }))) {
+            domainFail("$.pages", "unsafe page path or duplicate logical language variant")
+        }
+        validateMarkdown(page.markdown, "$.pages.markdown", 0)
+        validateMarkdownAssetReferences(page.markdown, "$.pages.markdown", assetIds)
+        let sectionIds = HashSet<String>()
+        let sectionAnchors = HashSet<String>()
+        for (section in page.sections) {
+            let anchor = documentationSectionAnchor(page.markdown, section.anchor)
+            if (!sectionIds.add(section.id) || anchor.isNone() || !sectionAnchors.add(anchor.getOrThrow())) {
+                domainFail("$.pages.sections", "duplicate or nonexistent explicit section mapping")
+            }
+        }
+        for (id in page.targetSymbolIds) { if (!byId.contains(id)) { domainFail("$.pages.targetSymbolIds", "unknown SymbolId") } }
+        for (binding in page.bindings) {
+            if (let Some(id) <- binding.targetSymbolId) {
+                if (!byId.contains(id) || !page.targetSymbolIds.toArray().contains(id)) {
+                    domainFail("$.pages.bindings", "binding target must belong to the page's captured targets")
+                }
+            }
+        }
+    }
+    validateCapturedPageRoutes(documentation)
     for (orphan in documentation.orphanDocComments) { validateRange(orphan.source, "$.orphanDocComments") }
     for (invocation in documentation.macroInvocations) { validateRange(invocation.source, "$.macroInvocations") }
     for (item in documentation.unsupportedDeclarations) { validateRange(item.source, "$.unsupportedDeclarations") }
@@ -436,6 +510,14 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         match (diagnostic.source) { case Some(range) => validateRange(range, "$.diagnostics.source") case None => () }
         if (let Some(symbolId) <- diagnostic.symbolId) {
             if (!byId.contains(symbolId)) { domainFail("$.diagnostics.symbolId", "unknown SymbolId") }
+        }
+    }
+    let externalKeys = HashSet<String>()
+    for (reference in documentation.externalDocumentation) {
+        if (!byId.contains(reference.symbolId) || !externalKeys.add(reference.symbolId + ":" + reference.name) ||
+            ((reference.state == "available") == reference.url.isEmpty()) ||
+            (!reference.url.isEmpty() && markdownLinkDestination(reference.url, allowRelative: true).isNone())) {
+            domainFail("$.externalDocumentation", "unknown target, duplicate resolver, state/URL mismatch or unsafe URL")
         }
     }
     var hasError = false

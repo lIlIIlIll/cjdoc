@@ -20,10 +20,18 @@ private func safeMappedRelativeLinkDestination(value: String): Bool {
 public func renderStandaloneMarkdownHtml(node: MarkdownNode,
     sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
     pageTitle!: ?String = None): String {
+    renderStandaloneMarkdownHtmlWithAssets(node, HashMap<String, String>(), "",
+        sourceLinks: sourceLinks, pageTitle: pageTitle)
+}
+
+internal func renderStandaloneMarkdownHtmlWithAssets(node: MarkdownNode,
+    assetLookup: HashMap<String, String>, rootPrefix: String,
+    sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
+    pageTitle!: ?String = None): String {
     let context = HtmlMarkdownContext(2, sourceLinks: sourceLinks)
     collectMarkdownHeadings(node, "standalone", HashMap<String, Int64>(), context)
     let out = RenderTextBuffer()
-    appendStandaloneMarkdownHtml(out, node, context, pageTitle)
+    appendStandaloneMarkdownHtml(out, node, context, pageTitle, assetLookup, rootPrefix)
     out.toString()
 }
 
@@ -31,6 +39,8 @@ public func renderStandaloneMarkdownHtml(node: MarkdownNode,
 // shell already rendered the same title as the page <h1>. A differently titled
 // or absent leading heading is untouched, and any later heading — including one
 // repeating the same text — keeps the heading stream and its shareable anchor.
+// The suppressed title retains its fragment so source links and section mappings
+// still address the title without repeating its visible text.
 private func standaloneTitleHeadingIndex(node: MarkdownNode, pageTitle: ?String): ?Int64 {
     let title = match (pageTitle) {
         case Some(value) => value
@@ -53,15 +63,20 @@ private func standaloneTitleHeadingIndex(node: MarkdownNode, pageTitle: ?String)
 }
 
 private func appendStandaloneMarkdownHtml(out: RenderTextBuffer, node: MarkdownNode,
-    context: HtmlMarkdownContext, pageTitle: ?String): Unit {
+    context: HtmlMarkdownContext, pageTitle: ?String,
+    assetLookup: HashMap<String, String>, rootPrefix: String): Unit {
     match (standaloneTitleHeadingIndex(node, pageTitle)) {
         case Some(index) =>
             for (childIndex in 0..node.children.size) {
-                if (childIndex == index) { context.nextHeading++; continue }
-                appendMarkdownNodeHtml(out, node.children[childIndex], HashMap<String, String>(), "", context)
+                if (childIndex == index) {
+                    out.append("<span id=\"${escapeHtml(context.headingIds[context.nextHeading])}\"></span>\n")
+                    context.nextHeading++
+                    continue
+                }
+                appendMarkdownNodeHtml(out, node.children[childIndex], assetLookup, rootPrefix, context)
             }
         case None =>
-            appendMarkdownNodeHtml(out, node, HashMap<String, String>(), "", context)
+            appendMarkdownNodeHtml(out, node, assetLookup, rootPrefix, context)
     }
 }
 
@@ -313,7 +328,8 @@ private func behaviorContractHeading(name: String, locale: String): String {
 }
 
 internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: DocComment,
-    locale: String, anchor: String): Unit {
+    locale: String, anchor: String, assetLookup!: HashMap<String, String> = HashMap<String, String>(),
+    rootPrefix!: String = "", markdownContext!: HtmlMarkdownContext = HtmlMarkdownContext(2)): Unit {
     var contractCount: Int64 = 0
     var soleContract: ?DocTag = None
     for (tag in comment.tags) {
@@ -341,7 +357,7 @@ internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: D
                     out.append("<span class=\"badge\" data-state=\"incomplete\">" +
                         label(locale, "incomplete", "不完整") + "</span>")
                 } else {
-                    appendStructuredTextHtml(out, tag.description)
+                    appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
                 }
                 out.append("</div></section>\n")
             case None => ()
@@ -360,7 +376,7 @@ internal func appendDocumentationContractsHtml(out: RenderTextBuffer, comment: D
             out.append("<span class=\"badge\" data-state=\"incomplete\">" +
                 label(locale, "incomplete", "不完整") + "</span>")
         } else {
-            appendStructuredTextHtml(out, tag.description)
+            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
         }
         out.append("</dd>\n")
     }
@@ -379,7 +395,8 @@ public let EXAMPLE_EVIDENCE_RAN_MARKER = "\u{0}doctest-ran"
 internal func appendExampleEvidenceHtml(out: RenderTextBuffer, symbol: SymbolDoc, tag: DocTag,
     evidence: HashMap<String, String>, locale: String,
     evidenceRootPrefix!: String = "../../"): Unit {
-    match (evidence.get(exampleEvidenceKey(symbol.id, tag.subject))) {
+    let key = if (tag.translationState.isEmpty()) { exampleEvidenceKey(symbol.id, tag.subject) } else { tag.evidenceKey }
+    match (evidence.get(key)) {
         case None =>
             // When doctests ran, an example with no result is evidence that was
             // not recorded, which a reader must not mistake for a verified or
@@ -429,6 +446,7 @@ internal func appendDocumentationExamplesHtml(out: RenderTextBuffer, comment: Do
         if (tag.name != "example") { continue }
         exampleIndex++
         out.append("<div class=\"example-block\">")
+        appendContentLanguageHtml(out, tag, locale)
         if (!tag.subject.isEmpty()) {
             out.append("<h${min(6, headingLevel + 1)} class=\"example-title\">${escapeHtml(tag.subject)}</h${min(6, headingLevel + 1)}>")
         }

@@ -6,7 +6,7 @@ import std.fs.*
 import std.sort.*
 import yjson.*
 
-internal let VERSION_MANIFEST_SCHEMA = "cjdoc.versions/1"
+internal let VERSION_MANIFEST_SCHEMA = "cjdoc.versions/2"
 internal let VERSION_FILE_SCHEMA = "cjdoc.version/1"
 internal let VERSION_FILE_MAX_BYTES: Int64 = 32 * 1024 * 1024
 internal let VERSION_DIFF_MAX_BYTES: Int64 = 32 * 1024 * 1024
@@ -192,6 +192,11 @@ internal class VersionSite {
     let files = ArrayList<VersionSourceFile>()
     let paths = HashSet<String>()
     let symbols: VersionSymbolIndex
+    let logicalRoutes = HashMap<String, String>()
+    let logicalIdsByHref = HashMap<String, String>()
+    let sectionIdsByPage = HashMap<String, HashMap<String, String>>()
+    let parentsByIdentity = HashMap<String, String>()
+    var defaultLanguage = ""
 
     init(spec: VersionComposeSpec, symbols: VersionSymbolIndex) {
         this.spec = spec
@@ -242,7 +247,7 @@ private func versionJsonStringField(object: JsonObject, key: String): ?String {
     }
 }
 
-private func versionJsonArrayValues(value: JsonArray): Array<JsonNode> {
+internal func versionJsonArrayValues(value: JsonArray): Array<JsonNode> {
     let result = ArrayList<JsonNode>()
     for (index in 0..value.size()) { result.add(value.get(index).getOrThrow()) }
     result.toArray()
@@ -278,6 +283,11 @@ private func collectVersionFilesInDirectory(directory: Path, relative: String,
             throw IllegalArgumentException("version source contains a symbolic link '${info.path}'")
         }
         let child = if (relative.isEmpty()) { info.name } else { "${relative}/${info.name}" }
+        if (relative.isEmpty() && info.name == ".cjdoc-output.json") {
+            if (!info.isRegular()) { throw IllegalArgumentException("version ownership manifest must be a regular file") }
+            let _ = readOwnedManifest(directory)
+            continue
+        }
         if (!isSafeOutputPath(child)) {
             throw IllegalArgumentException("version source contains an unsafe path '${child}'")
         }
@@ -385,7 +395,7 @@ private func loadVersionApiDiff(spec: VersionComposeSpec, budget: VersionCompose
         throw IllegalArgumentException("version API diff must be an object '${source}'")
     }
     match (versionJsonStringField(object, "schemaVersion")) {
-        case Some(value) => if (value != "cjdoc.api-diff/1") {
+        case Some(value) => if (value != "cjdoc.api-diff/1" && value != "cjdoc.api-diff/2") {
             throw IllegalArgumentException("version API diff schema is unsupported '${source}'")
         }
         case None => throw IllegalArgumentException("version API diff has no schemaVersion '${source}'")
@@ -425,10 +435,26 @@ private func loadVersionSite(spec: VersionComposeSpec, budget: VersionComposeBud
         case None => ()
     }
     sort(files, lessThan: { left, right => left.path < right.path }, stable: true)
-    if (!seen.contains("index.html")) {
+    var multilingual = false
+    for (file in files) { if (file.path == "site-manifest.json") { multilingual = true } }
+    if (!seen.contains("index.html") && !multilingual) {
         throw IllegalArgumentException("version source has no index.html '${spec.source}'")
     }
     let site = VersionSite(spec, loadVersionSymbols(files))
+    if (multilingual) {
+        loadVersionLanguageRoutes(site, files, seen)
+        if (!seen.contains("index.html")) {
+            let home = StringBuilder()
+            home.append("<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><title>Documentation languages</title><body><h1>Documentation languages</h1><ul>")
+            for (language in ["en", "zh-CN"]) {
+                let path = "html/" + language + "/index.html"
+                if (seen.contains(path)) { home.append("<li><a href=\"" + path + "\">" + language + "</a></li>") }
+            }
+            home.append("</ul></body></html>")
+            budget.reserve("index.html", home.toString().size)
+            files.add(VersionSourceFile("index.html", "text/html; charset=utf-8", home.toString().toArray()))
+        }
+    }
     for (file in files) {
         site.files.add(file)
         site.paths.add(file.path)
@@ -564,6 +590,9 @@ internal func versionSymbolTarget(current: VersionSite, id: String, target: Vers
 }
 
 internal func versionTargetRoute(current: VersionSite, relative: String, target: VersionSite): (String, Bool) {
+    if (let Some(id) <- current.logicalIdsByHref.get(relative)) {
+        return versionLanguageTarget(current, id, target)
+    }
     match (current.symbols.idByHref.get(relative)) {
         case Some(id) => versionSymbolTarget(current, id, target)
         case None => if (target.hasPath(relative)) { (relative, false) } else { ("index.html", false) }
@@ -587,7 +616,7 @@ internal func versionSelector(current: VersionSite, currentOutputPath: String,
         } else {
             ""
         }
-        let routes = VersionTextBuffer(limit)
+        var routes = VersionTextBuffer(limit)
         routes.append("{")
         var first = true
         match (current.symbols.idByHref.get(relative)) {
@@ -603,6 +632,21 @@ internal func versionSelector(current: VersionSite, currentOutputPath: String,
             case None => ()
         }
         routes.append("}")
+        if (let Some(sections) <- current.sectionIdsByPage.get(relative)) {
+            routes = VersionTextBuffer(limit)
+            routes.append("{")
+            var firstSection = true
+            let anchors = ArrayList<String>()
+            for ((anchor, _) in sections) { anchors.add(anchor) }
+            sort(anchors, lessThan: { left, right => left < right }, stable: true)
+            for (anchor in anchors) {
+                let id = sections[anchor]
+                let (sectionRoute, missing) = versionLanguageTarget(current, id, target)
+                if (!firstSection) { routes.append(",") }; firstSection = false
+                routes.append("${versionJsonEscape(anchor)}:[${versionJsonEscape(versionRelativeHref(currentOutputPath, versionOutputPath(target, sectionRoute)))},${missing}]")
+            }
+            routes.append("}")
+        }
         out.append("<a href=\"${public_render.escapeStandaloneHtml(href)}\"${currentClass} data-cjdoc-version-link data-cjdoc-version-label=\"${public_render.escapeStandaloneHtml(target.spec.label)}\" data-cjdoc-version-missing=\"${public_render.escapeStandaloneHtml(missingLabel)}\" data-cjdoc-version-routes=\"${public_render.escapeStandaloneHtml(routes.toString())}\">${public_render.escapeStandaloneHtml(target.spec.label + suffix)}</a>")
         match (target.spec.apiDiffSource) {
             case Some(_) =>
@@ -658,6 +702,17 @@ private func versionManifest(sites: ArrayList<VersionSite>, latest: String,
             case None => "null"
         }
         out.append("\"symbolIndex\":" + symbolIndex + ",\"apiDiff\":" + apiDiff)
+        if (!site.logicalRoutes.isEmpty()) {
+            out.append(",\"languages\":[")
+            var firstLanguage = true
+            for (language in ["en", "zh-CN"]) {
+                let root = "html/" + language
+                if (!site.hasPath(root + "/index.html")) { continue }
+                if (!firstLanguage) { out.append(",") }; firstLanguage = false
+                out.append("{\"language\":${versionJsonEscape(language)},\"root\":${versionJsonEscape(versionOutputPath(site, root))},\"index\":${versionJsonEscape(versionOutputPath(site, root + "/index.html"))}}")
+            }
+            out.append("]")
+        }
         match (site.spec.release) {
             case Some(value) => out.append(",\"release\":${versionJsonEscape(value)}")
             case None => ()
@@ -755,7 +810,7 @@ private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: Stri
                     throw IllegalArgumentException("version HTML is not UTF-8 '${file.path}'")
                 }
                 let selector = versionSelector(site, outputPath, file.path, sites, limit: selectorLimit,
-                    chinese: html.contains("lang=\"zh-CN\"") || html.contains("lang=\"zh\""))
+                    chinese: html.contains("<html lang=\"zh-CN\"") || html.contains("<html lang=\"zh\""))
                 budget.reserveArtifact(outputPath, file.bytes.size + selector.size)
                 let withEvidence = rewriteComposedDoctestEvidence(html, site, outputPath, file.path)
                 let content = injectVersionSelector(attachComposedApiDiffEvidence(withEvidence, site, outputPath, file.path), selector)

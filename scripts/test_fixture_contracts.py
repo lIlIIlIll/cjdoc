@@ -18,7 +18,7 @@ CANGJIE_CONTRACT_FIXTURES = {
     "binary_punctuation", "chir_semantics", "cfg_owner", "frontend_gaps",
     "frontend_regressions", "lint", "local_assets", "manifest_headers",
     "markdown_limits", "private_file_scope", "recovery", "reexports",
-    "documentation_quality",
+    "documentation_quality", "i18n",
 }
 CLI_CONTRACT_FIXTURES = {
     "cached_dependencies", "conditional_complex", "deep_binary", "duplicate",
@@ -56,7 +56,7 @@ class FixtureContractTest(unittest.TestCase):
             document = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             self.fail(f"{fixture} did not emit one valid JSON document: {error}; stderr={result.stderr}")
-        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/12")
+        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/13")
         self.assertEqual(document.get("generator"), {
             "name": "cjdoc", "version": self.package_version,
         })

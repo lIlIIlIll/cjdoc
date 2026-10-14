@@ -104,21 +104,22 @@ private func lintQualityRules(documentation: DocumentationSet,
                 addQualityDiagnostic(documentation, symbol, config, "missing-symbol-doc", missingSymbolCode,
                     "undocumented public symbol '${symbol.qualifiedName}'")
             case Some(doc) =>
-                if (doc.summaryMarkdown.trimAscii().isEmpty()) {
+                if (doc.summaryMarkdown.trimAscii().isEmpty() && !hasLocalizedDocumentation(doc, "summary")) {
                     addQualityDiagnostic(documentation, symbol, config, "missing-summary", "CJDOC1035",
                         "documentation summary is missing")
                 }
-                if (doc.descriptionMarkdown.trimAscii().isEmpty()) {
+                if (doc.descriptionMarkdown.trimAscii().isEmpty() && !hasLocalizedDocumentation(doc, "description")) {
                     addQualityDiagnostic(documentation, symbol, config, "empty-description", "CJDOC1036",
                         "documentation description is empty")
                 }
                 if (symbol.returnType.isSome() &&
                     symbol.returnType.getOrThrow().display.trimAscii() != "Unit" &&
-                    (doc.returns.isNone() || doc.returns.getOrThrow().description.trimAscii().isEmpty())) {
+                    (doc.returns.isNone() || doc.returns.getOrThrow().description.trimAscii().isEmpty()) &&
+                    !hasLocalizedDocumentation(doc, "return")) {
                     addQualityDiagnostic(documentation, symbol, config, "missing-return", "CJDOC1037",
                         "value-returning symbol is missing @return documentation")
                 }
-                if (doc.examples.isEmpty()) {
+                if (doc.examples.isEmpty() && !hasLocalizedDocumentation(doc, "example")) {
                     addQualityDiagnostic(documentation, symbol, config, "missing-example", "CJDOC1038",
                         "public symbol is missing an @example")
                 }
@@ -132,14 +133,14 @@ private func lintQualityRules(documentation: DocumentationSet,
                 }
                 match (doc.deprecated) {
                     case Some(value) =>
-                        if (value.trimAscii().isEmpty()) {
+                        if (value.trimAscii().isEmpty() && !hasLocalizedDocumentation(doc, "deprecated")) {
                             addQualityDiagnostic(documentation, symbol, config, "deprecated-without-message", "CJDOC1040",
                                 "@deprecated is missing a message")
                         }
                     case None => ()
                 }
                 for (parameter in symbol.parameters where !parameter.name.startsWith("_")) {
-                    if (parameter.documentation.isNone()) {
+                    if (parameter.documentation.isNone() && !hasLocalizedDocumentation(doc, "param", subject: Some(parameter.name))) {
                         addQualityDiagnostic(documentation, symbol, config, "missing-param", "CJDOC1004",
                             "undocumented parameter '${parameter.name}'")
                     }
@@ -202,7 +203,7 @@ private func lintQualityRules(documentation: DocumentationSet,
                     "duplicate @return")
             }
             var throwsIndex: Int64 = 0
-            while (throwsIndex < doc.throwsTags.size) {
+            while (doc.languageItems.isEmpty() && throwsIndex < doc.throwsTags.size) {
                 var previousThrows: Int64 = 0
                 while (previousThrows < throwsIndex) {
                     if (doc.throwsTags[previousThrows].subject == doc.throwsTags[throwsIndex].subject) {

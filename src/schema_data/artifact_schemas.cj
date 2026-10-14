@@ -53,7 +53,7 @@ public let API_SURFACE_V1_SCHEMA = """
 }
 """
 
-public let API_SURFACE_SCHEMA = """
+public let API_SURFACE_V2_SCHEMA = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface-v2.schema.json",
@@ -115,7 +115,7 @@ public let API_SURFACE_SCHEMA = """
 }
 """
 
-public let API_DIFF_SCHEMA = """
+public let API_DIFF_V1_SCHEMA = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-diff.schema.json",
@@ -137,7 +137,7 @@ public let API_DIFF_SCHEMA = """
   }
 }
 """
-public let DOCTEST_RESULTS_SCHEMA = """
+public let DOCTEST_RESULTS_V1_SCHEMA = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doctest-results.schema.json",
@@ -265,7 +265,7 @@ public let DOCUMENTATION_COVERAGE_SCHEMA = """
 }
 """
 
-public let VERSIONS_SCHEMA = """
+public let VERSIONS_V1_SCHEMA = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/versions.schema.json",

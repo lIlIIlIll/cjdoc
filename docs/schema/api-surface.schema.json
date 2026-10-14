@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface-v2.schema.json",
-  "title": "cjdoc API surface v2",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/api-surface-v3.schema.json",
+  "title": "cjdoc API surface v3",
   "type": "object", "additionalProperties": false,
   "required": ["schemaVersion", "project", "audience", "cfgProfile", "collectionState", "declarations", "exposures"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.api-surface/2"},
+    "schemaVersion": {"const": "cjdoc.api-surface/3"},
     "project": {"type": "string", "minLength": 1},
     "audience": {"enum": ["external", "package", "all"]},
     "cfgProfile": {"type": "string", "minLength": 1},
@@ -36,7 +36,7 @@
     },
     "declaration": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "moduleId", "packageName", "ownerId", "kind", "name", "qualifiedName", "visibility", "sourceApiSignature", "genericParameters", "parameters", "return", "relationships", "enumNonExhaustive", "documentationFingerprint", "sourceFingerprint", "metadataFingerprint", "collectionState"],
+      "required": ["id", "moduleId", "packageName", "ownerId", "kind", "name", "qualifiedName", "visibility", "sourceApiSignature", "genericParameters", "parameters", "return", "relationships", "enumNonExhaustive", "documentationFingerprint", "documentationLanguages", "sourceFingerprint", "metadataFingerprint", "collectionState"],
       "properties": {
         "id": {"type": "string", "minLength": 1}, "moduleId": {"type": "string", "minLength": 1},
         "packageName": {"type": "string", "minLength": 1}, "ownerId": {"$ref": "#/$defs/nullableString"},
@@ -47,7 +47,8 @@
         "parameters": {"type": "array", "items": {"$ref": "#/$defs/parameter"}},
         "return": {"$ref": "#/$defs/returnEvidence"}, "relationships": {"type": "array", "items": {"type": "string"}},
         "enumNonExhaustive": {"$ref": "#/$defs/nullableBool"},
-        "documentationFingerprint": {"$ref": "#/$defs/fingerprint"}, "sourceFingerprint": {"$ref": "#/$defs/fingerprint"},
+        "documentationFingerprint": {"$ref": "#/$defs/fingerprint"},
+        "documentationLanguages": {"type": "array", "maxItems": 3, "items": {"type": "object", "additionalProperties": false, "required": ["language", "fingerprint"], "properties": {"language": {"enum": ["zh-CN", "en", null]}, "fingerprint": {"$ref": "#/$defs/fingerprint"}}}}, "sourceFingerprint": {"$ref": "#/$defs/fingerprint"},
         "metadataFingerprint": {"$ref": "#/$defs/fingerprint"}, "collectionState": {"$ref": "#/$defs/state"}
       }
     },

@@ -382,6 +382,18 @@ public func parseStandaloneMarkdown(body: String, highlightMode!: String = "auto
     publicMarkdown(body, assets, "conceptual.md", source, "cjdoc:conceptual", context)
 }
 
+internal func parseCapturedPageMarkdown(body: String, assetCollector: LocalAssetCollector,
+    sourcePath: String, request: GenerationRequest): public_model.MarkdownNode {
+    let source = public_model.SourceRange(sourcePath, public_model.SourcePosition(1, 1, 0),
+        public_model.SourcePosition(1, 1, 0))
+    let highlightConfig = loadHighlightConfig(request.projectRoot)
+    let context = MarkdownGenerationContext(
+        highlightMode: if (highlightConfig.mode == "off") { "off" } else { "auto" },
+        highlightLanguages: highlightConfig,
+        externalOptions: highlightExternalOptions(request.highlightAdapter, request.highlightNode))
+    publicMarkdown(body, assetCollector, sourcePath, source, "", context)
+}
+
 // Inspect the already parsed AST before allowing asset collection. Discarded
 // examples keep the legacy description path and must have no collector effects.
 private func exampleMarkdownCodeInspection(node: NodeRef, depth: Int64,
@@ -419,21 +431,38 @@ private func publicExampleMarkdown(body: String, assetCollector: LocalAssetColle
         declarationSource, symbolId, context, 0))
 }
 
+private func publicMarkdownContainsCode(node: public_model.MarkdownNode): Bool {
+    if (node.kind == "code_block") { return true }
+    for (child in node.children) { if (publicMarkdownContainsCode(child)) { return true } }
+    false
+}
+
 internal func publicComment(value: DocComment, assetCollector: LocalAssetCollector, sourcePath: String,
     declarationSource: public_model.SourceRange, symbolId: String, context: MarkdownGenerationContext,
-    renderableIds: HashSet<String>): public_model.DocComment {
+    renderableIds: HashSet<String>, sourceMapper: PublicSourceMapper): public_model.DocComment {
     try {
         context.consumeText(value.raw)
         context.consumeText(value.summaryMarkdown)
         context.consumeText(value.descriptionMarkdown)
         context.requireBodySize(value.summaryMarkdown, value.descriptionMarkdown)
+        let localized = publicLocalizedTexts(value, assetCollector, sourcePath, declarationSource,
+            symbolId, context, renderableIds, sourceMapper)
         let tags = ArrayList<public_model.DocTag>()
         for (tag in value.params) {
             tags.add(publicTagForAudience(tag, renderableIds))
         }
         for (tag in value.examples) {
-            let tree = publicExampleMarkdown(tag.description, assetCollector, sourcePath,
-                declarationSource, symbolId, context)
+            var tree: ?public_model.MarkdownNode = None
+            if (localized.isEmpty()) {
+                tree = publicExampleMarkdown(tag.description, assetCollector, sourcePath,
+                    declarationSource, symbolId, context)
+            } else {
+                for (text in localized where text.kind == "example" && text.language == value.defaultLanguage &&
+                    text.subject == tag.subject && text.text == tag.description) {
+                    if (publicMarkdownContainsCode(text.markdown)) { tree = Some(text.markdown) }
+                    break
+                }
+            }
             let ordinary = publicTagForAudience(tag, renderableIds)
             tags.add(public_model.DocTag(ordinary.name, ordinary.subject, ordinary.description,
                 referenceState: ordinary.referenceState, targetSymbolId: ordinary.targetSymbolId,
@@ -483,8 +512,21 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
         } else {
             "${value.summaryMarkdown}\n\n${value.descriptionMarkdown}"
         }
+        let bodyTree = if (localized.isEmpty()) {
+            publicMarkdown(body, assetCollector, sourcePath, declarationSource, symbolId, context)
+        } else {
+            let children = ArrayList<public_model.MarkdownNode>()
+            for (kind in ["summary", "description"]) {
+                for (text in localized) {
+                    if (text.kind == kind && text.language == value.defaultLanguage && text.state == "valid") {
+                        children.add(all: text.markdown.children)
+                    }
+                }
+            }
+            public_model.MarkdownNode("document", children: children.toArray())
+        }
         return public_model.DocComment(value.raw, value.summaryMarkdown, value.descriptionMarkdown,
-            publicMarkdown(body, assetCollector, sourcePath, declarationSource, symbolId, context), tags: tags.toArray())
+            bodyTree, tags: tags.toArray(), defaultLanguage: value.defaultLanguage, localizedTexts: localized)
     } catch (_: Exception) {
         context.fail(declarationSource, symbolId)
         return public_model.DocComment("", MARKDOWN_FALLBACK_TEXT, "", fallbackPublicMarkdown())

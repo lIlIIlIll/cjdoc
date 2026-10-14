@@ -20,3 +20,13 @@ title = "发布流程 / Release process"
 source = "docs/documentation-quality.md"
 route = "concepts/manual/documentation-quality"
 title = "文档质量 / Documentation quality"
+
+[[docs.pages]]
+source = "docs/i18n.md"
+route = "concepts/manual/i18n"
+title = "多语言文档 / Author translations"
+
+[[docs.pages]]
+source = "docs/issue-64-acceptance.md"
+route = "concepts/manual/i18n-acceptance"
+title = "多语言验收 / Language acceptance"

@@ -12,6 +12,7 @@ from .browser import serve
 from .browser_support import member_action
 from .browser_reading_navigation import run_navigation_regressions
 from .site import Site, load_json
+from showcase_build.manifest import roots
 
 
 def _drawer(page, open: bool):
@@ -339,8 +340,9 @@ def run(site_path: Path, evidence_path: Path, executable=None, channel=None,
         browser = playwright.chromium.launch(**options)
         try:
             for target_index, target in enumerate(feature["targets"]):
-                current_index = load_json(site.file(f"examples/{target['locale']}/{target['version']}/symbol-index.json"))
-                old_index = load_json(site.file(f"examples/{target['locale']}/demo-v1/symbol-index.json"))
+                language_roots = roots(site.root, target["locale"])
+                current_index = load_json(language_roots[target["version"]] / "symbol-index.json")
+                old_index = load_json(language_roots["demo-v1"] / "symbol-index.json")
                 for mode, base in bases.items():
                     for width, height in ((1440, 960), (390, 844)):
                         key = f"{target['locale']}-{target['version']}-{mode.strip('/') or 'root'}-{width}"
@@ -356,7 +358,8 @@ def run(site_path: Path, evidence_path: Path, executable=None, channel=None,
                             assertions += run_navigation_regressions(page, base + target["resolved"]["href"],
                                                                     current_index, old_index,
                                                                     target["resolved"]["ownerSymbolId"],
-                                                                    target["resolved"]["symbolId"])
+                                                                    target["resolved"]["symbolId"],
+                                                                    base + language_roots["demo-v1"].relative_to(site.root).as_posix() + "/")
                             if target_index == 0 and width == 390:
                                 check_no_script_member_links(browser, base + target["resolved"]["href"])
                                 assertions.append("touch member links navigate without JavaScript")

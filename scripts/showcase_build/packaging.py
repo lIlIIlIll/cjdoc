@@ -33,7 +33,8 @@ def checked_input(source: Path, name: str) -> Path:
 
 
 def maintained_examples() -> list[str]:
-    return [name for name in source_inputs() if name.startswith("examples/pocketkit/")]
+    return [name for name in source_inputs()
+            if name.startswith("examples/pocketkit/") or name == "scripts/publication_ir.py"]
 
 
 def copy_sources(repo: Path, source: Path) -> None:

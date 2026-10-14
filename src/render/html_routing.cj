@@ -656,10 +656,11 @@ internal func appendTypeRefCodeHtml(out: RenderTextBuffer, typeRef: TypeRef,
     out.append("</code>")
 }
 
-internal func buildAssetLookup(assets: ArrayList<AssetDoc>): HashMap<String, String> {
+internal func buildAssetLookup(assets: ArrayList<AssetDoc>,
+    prefix!: String = ""): HashMap<String, String> {
     let lookup = HashMap<String, String>()
     for (asset in assets) {
-        let path = assetOutputPath(asset)
+        let path = prefix + assetOutputPath(asset)
         lookup["id:${asset.id}"] = path
         lookup["path:${asset.sourcePath}"] = path
     }
@@ -686,7 +687,7 @@ internal func collectReferencedAssets(node: MarkdownNode,
 }
 
 internal func projectAssets(documentation: DocumentationSet,
-    projection: RenderProjection): ArrayList<AssetDoc> {
+    projection: RenderProjection, pages!: Array<DocumentationPage> = []): ArrayList<AssetDoc> {
     let references = HashMap<String, String>()
     for (asset in documentation.assets) {
         references[asset.id] = asset.id
@@ -698,6 +699,9 @@ internal func projectAssets(documentation: DocumentationSet,
             case Some(comment) =>
                 collectReferencedAssets(comment.markdown, references, selected)
                 for (tag in comment.tags) {
+                    if (let Some(tree) <- tag.descriptionMarkdown) {
+                        collectReferencedAssets(tree, references, selected)
+                    }
                     if (tag.name != "example") { continue }
                     if (let Some(tree) <- tag.exampleMarkdown) {
                         collectReferencedAssets(tree, references, selected)
@@ -706,6 +710,7 @@ internal func projectAssets(documentation: DocumentationSet,
             case None => ()
         }
     }
+    for (page in pages) { collectReferencedAssets(page.markdown, references, selected) }
     let assets = ArrayList<AssetDoc>()
     for (asset in documentation.assets) {
         if (selected.contains(asset.id)) { assets.add(asset) }

@@ -113,11 +113,11 @@ class ReaderUiTests(unittest.TestCase):
                 "entries": [{"id": "sym", "href": "symbols/changed.html",
                              "qualifiedName": "fixture.changed"}]}), encoding="utf-8")
             (root / "machine" / "api-surface.json").write_text(json.dumps({
-                "schemaVersion": "cjdoc.api-surface/2", "project": "fixture",
+                "schemaVersion": "cjdoc.api-surface/3", "project": "fixture",
                 "audience": "external", "cfgProfile": "default", "collectionState": "complete"}),
                 encoding="utf-8")
         identity = {"project": "fixture", "audience": "external", "cfgProfile": "default",
-                    "schemaVersion": "cjdoc.api-surface/2", "collectionState": "complete"}
+                    "schemaVersion": "cjdoc.api-surface/3", "collectionState": "complete"}
         raw = {"baseline": dict(identity), "current": dict(identity),
                "comparisonState": "complete", "summary": {},
                "entries": [{"classification": "potentially-breaking", "matchState": "fallback",

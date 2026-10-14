@@ -187,8 +187,15 @@ func resolveDocumentationReferences(documentation: DocumentationSet): Unit {
     let index = DeclarationIndex(documentation)
     for (symbol in documentation.symbols) {
         if (let Some(comment) <- symbol.documentation) {
-            resolveDocTagReferences(comment.see, index)
-            resolveDocTagReferences(comment.throwsTags, index)
+            if (comment.languageItems.isEmpty()) {
+                resolveDocTagReferences(comment.see, index)
+                resolveDocTagReferences(comment.throwsTags, index)
+            }
+            let localized = ArrayList<DocTag>()
+            for (item in comment.languageItems) {
+                if (item.tag.name == "see" || item.tag.name == "throws") { localized.add(item.tag) }
+            }
+            resolveDocTagReferences(localized, index)
         }
     }
 }

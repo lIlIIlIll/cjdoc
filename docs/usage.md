@@ -231,7 +231,7 @@ memory-mb = 2048    # Cangjie native backend requires at least 2048 MiB
 jobs = 1
 ```
 
-`warn` 会继续生成并返回 `0`，`deny` 在编译失败、运行失败或超时后返回 `1`。生成目录会增加 `doctest/results.json`，其版本为 `cjdoc.doctest/1`；`check` 会执行检查但不写 artifact。每个代码块在独立工作目录编译和运行，命令通过参数数组传递，不经过 shell。启用 doctest 时不能使用 `--stdout`，因为该选项必须保持单一 JSON 输出。
+`warn` 会继续生成并返回 `0`，`deny` 在编译失败、运行失败或超时后返回 `1`。生成目录会增加 `doctest/results.json`，其版本为 `cjdoc.doctest/2`；`check` 会执行检查但不写 artifact。每个代码块在独立工作目录编译和运行，命令通过参数数组传递，不经过 shell。启用 doctest 时不能使用 `--stdout`，因为该选项必须保持单一 JSON 输出。
 
 上述 `warn` 行为适用于已执行示例的结果；执行准备失败仍会报错。这条 legacy 管线通过 `/usr/bin/prlimit` 或 `/bin/prlimit` 实施正数地址空间上限。当前 macOS、Windows 环境没有该限制器，因此会在启动编译进程前明确拒绝，不会自动取消内存限制；这与 `check --check-examples` 的平台能力分别判断。
 
@@ -249,7 +249,7 @@ cjdoc generate --project . --format api-surface --stdout > api-surface.json
 cjdoc diff --baseline api-surface.json --current api-surface-next.json --format text --deny-breaking-api --deny-potentially-breaking-api
 ```
 
-默认只报告差异并返回 `0`。显式 deny 选项分别把 breaking 或证据不足的 potentially-breaking 变更变成失败；`--format json` 输出 `cjdoc.api-diff/1` 报告，适合 CI 采集。v1 API snapshot 仍可作为只读 baseline 输入；当前生成器只生成 v2。
+默认只报告差异并返回 `0`。显式 deny 选项分别把 breaking 或证据不足的 potentially-breaking 变更变成失败；`--format json` 输出 `cjdoc.api-diff/2` 报告，适合 CI 采集。v1/v2 API snapshot 仍可作为只读 baseline 输入；当前生成器只生成 v3。
 
 用 `coverage` 查看当前版本的文档覆盖率。输出版本为 `cjdoc.documentation-coverage/2`，包含 symbols、parameters、returns、throws、examples、deprecated、semanticLinks 七类总览，并按 package/module 给出确定性分组：
 
@@ -296,3 +296,7 @@ cjdoc generate --project . --format html --audience all
 ## 下一步
 
 需要处理 workspace、依赖、条件编译、缓存、多个输出格式或 CI 时，继续阅读 [`docs/advanced-usage.md`](advanced-usage.md)。
+
+## 生成中英文作者正文
+
+使用 `--locale en` 选择单语言读取视图，或配置 `[i18n]` 后用 `--all-languages` 分析一次并生成独立语言目录。语法、缺译策略和可运行示例见 [生成中英文文档](i18n.md)。

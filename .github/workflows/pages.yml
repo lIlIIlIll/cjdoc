@@ -149,6 +149,8 @@ jobs:
     if: ${{ needs.resolve-candidate.outputs.reuse == 'true' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
+    outputs:
+      artifact_name: cjdoc-linux-candidate-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -161,7 +163,7 @@ jobs:
           python-version: "3.12"
 
       - name: Download the named candidate artifact
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.resolve-candidate.outputs.artifact_name }}
           github-token: ${{ github.token }}
@@ -206,7 +208,7 @@ jobs:
             --main-binary target/release/bin/main --repo .
 
       - name: Upload the reused candidate as this run's candidate
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cjdoc-linux-candidate-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate/cjdoc-linux-candidate.tar
@@ -255,11 +257,11 @@ jobs:
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
       - name: Download this run's candidate
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          # Both candidate paths republish under this run's own name, so the
-          # consumer always reads one unambiguous artifact of this run.
-          name: cjdoc-linux-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          # A successful producer may belong to an earlier attempt when only
+          # failed jobs are rerun. Its output retains the actual uploaded name.
+          name: ${{ needs.local-candidate.outputs.artifact_name || needs.reuse-candidate.outputs.artifact_name }}
           path: ${{ runner.temp }}/candidate
 
       - name: Record the candidate source
@@ -321,7 +323,7 @@ jobs:
 
       - name: Upload timing evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-timing-pages-assemble-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-evidence/
@@ -329,7 +331,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload the sealed site with its generating binary
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
           # The published tree contains hidden files such as .nojekyll. Artifact
@@ -385,7 +387,7 @@ jobs:
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
       - name: Download the sealed site
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/sealed
@@ -413,7 +415,7 @@ jobs:
 
       - name: Upload source reproduction evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cjdoc-showcase-source-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -485,7 +487,7 @@ jobs:
           test -s /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
 
       - name: Download the sealed site
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/sealed
@@ -575,7 +577,7 @@ jobs:
 
       - name: Upload the shard evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cjdoc-showcase-browser-shard-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -617,7 +619,7 @@ jobs:
           python -m playwright install --with-deps chromium
 
       - name: Download the sealed site
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/sealed
@@ -639,7 +641,7 @@ jobs:
 
       - name: Upload reading evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cjdoc-showcase-reading-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/showcase-reading-evidence
@@ -671,13 +673,13 @@ jobs:
           python-version: "3.12"
 
       - name: Download the sealed site
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cjdoc-showcase-site-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/sealed
 
       - name: Download both browser shards
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           # Pinned to this run and attempt: a rerun keeps earlier attempts'
           # artifacts, whose names differ only by that suffix, and merging them
@@ -687,13 +689,13 @@ jobs:
           merge-multiple: true
 
       - name: Download source reproduction evidence
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cjdoc-showcase-source-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/branches/source
 
       - name: Download reading evidence
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: cjdoc-showcase-reading-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/branches/reading
@@ -788,7 +790,7 @@ jobs:
 
       - name: Upload validation evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cjdoc-showcase-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -810,7 +812,7 @@ jobs:
 
       - name: Upload PR preview
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cjdoc-showcase-preview-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/sealed/showcase-site
