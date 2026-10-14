@@ -183,6 +183,59 @@ class ResolveTests(unittest.TestCase):
         self.assertFalse(resolved["reuse"])
 
 
+class TransientReadTests(unittest.TestCase):
+    """`gh` exit-0-with-no-body and one-off status failures are retried, not fatal."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+
+    def test_an_empty_body_is_retried_instead_of_read_as_no_results(self):
+        calls = {"api": 0}
+
+        def fake_run(args, **kwargs):
+            argv = [str(item) for item in (args if isinstance(args, (list, tuple)) else [args])]
+            if argv[:2] == ["gh", "api"]:
+                calls["api"] += 1
+                if calls["api"] == 1:
+                    # Accepting this silently would look like "no runs at all".
+                    return __import__("subprocess").CompletedProcess(argv, 0, "", "")
+                return __import__("subprocess").CompletedProcess(
+                    argv, 0, json.dumps({"workflow_runs": [{"id": 7}]}), "")
+            return __import__("subprocess").CompletedProcess(argv, 1, "", "unsupported")
+
+        with mock.patch("subprocess.run", fake_run), \
+             mock.patch.object(source.time, "sleep", lambda _: None):
+            payload = source.gh_api("repos/o/r/actions/workflows/ci.yml/runs")
+        self.assertEqual(calls["api"], 2, "an empty body must be retried")
+        self.assertEqual(payload, {"workflow_runs": [{"id": 7}]})
+
+    def test_an_explicit_run_is_fallible_when_a_status_read_blips(self):
+        state = {"views": 0}
+
+        def fake_run(args, **kwargs):
+            import subprocess
+            argv = [str(item) for item in (args if isinstance(args, (list, tuple)) else [args])]
+            if argv[:3] == ["gh", "run", "view"]:
+                state["views"] += 1
+                if state["views"] == 1:
+                    return subprocess.CompletedProcess(argv, 1, "", "transient API failure")
+                return subprocess.CompletedProcess(argv, 0, json.dumps(
+                    {"headSha": COMMIT, "status": "completed", "conclusion": "success"}), "")
+            if argv[:2] == ["gh", "api"]:
+                return subprocess.CompletedProcess(argv, 0, json.dumps({"artifacts": [
+                    _marker(9, 1)]}), "")
+            return subprocess.CompletedProcess(argv, 1, "", "unsupported")
+
+        with mock.patch("subprocess.run", fake_run), \
+             mock.patch.object(source.time, "sleep", lambda _: None):
+            resolved = source.resolve("o/r", COMMIT, "workflow_dispatch", "9", "1", 0, 1,
+                                      log=lambda _: None)
+        self.assertEqual(state["views"], 2, "the status read must be retried")
+        self.assertTrue(resolved["reuse"], resolved)
+
+
 class MarkerBindingTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()

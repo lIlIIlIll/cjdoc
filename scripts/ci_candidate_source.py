@@ -47,6 +47,10 @@ DEFAULT_POLL_SECONDS = 30
 # The publication gate waits for the consumed attempt to become terminal; it is
 # bounded so a genuinely stuck CI run still fails the deployment.
 DEFAULT_GATE_SECONDS = 1800
+
+# A single blip in a status read must not abort discovery or make the publication
+# gate reject an otherwise valid deployment; retry briefly before giving up.
+STATUS_READ_TRIES = 3
 _SHA256 = frozenset("0123456789abcdef")
 
 
@@ -110,29 +114,36 @@ def gh_api(path: str, *, paginate: bool = True, tries: int = 5) -> object:
     for attempt in range(tries):
         completed = subprocess.run(args, capture_output=True, text=True)
         if completed.returncode == 0:
-            try:
-                values = _decode_stream(completed.stdout)
-            except ValueError as error:
-                last = f"malformed JSON response: {error}"
+            # An empty body is the most complete form of the transient EOF this loop
+            # exists for: `gh api` exits 0 with nothing, which would otherwise look
+            # like "no runs" or "no artifacts" and make discovery fall back or the
+            # publication gate reject a valid deployment.
+            if not completed.stdout.strip():
+                last = "empty response body"
             else:
-                if not paginate:
-                    return values[0] if values else {}
-                if not values:
-                    return {}
-                if len(values) == 1:
-                    return values[0]
-                merged: dict[str, object] = {}
-                for value in values:
-                    if not isinstance(value, dict):
-                        continue
-                    for key, item in value.items():
-                        if isinstance(item, list):
-                            merged.setdefault(key, [])
-                            assert isinstance(merged[key], list)
-                            merged[key].extend(item)
-                        else:
-                            merged.setdefault(key, item)
-                return merged
+                try:
+                    values = _decode_stream(completed.stdout)
+                except ValueError as error:
+                    last = f"malformed JSON response: {error}"
+                else:
+                    if not paginate:
+                        return values[0] if values else {}
+                    if not values:
+                        return {}
+                    if len(values) == 1:
+                        return values[0]
+                    merged: dict[str, object] = {}
+                    for value in values:
+                        if not isinstance(value, dict):
+                            continue
+                        for key, item in value.items():
+                            if isinstance(item, list):
+                                merged.setdefault(key, [])
+                                assert isinstance(merged[key], list)
+                                merged[key].extend(item)
+                            else:
+                                merged.setdefault(key, item)
+                    return merged
         else:
             last = completed.stderr.strip()
         if attempt + 1 < tries:
@@ -187,17 +198,27 @@ def attempt_status(repository: str, run_id: int, run_attempt: int) -> dict:
     The run-level API reports the *latest* attempt's conclusion, so a run that
     only succeeded on attempt 2 would otherwise make attempt 1 look successful.
     """
-    completed = subprocess.run(
-        ["gh", "run", "view", str(run_id), "--attempt", str(run_attempt), "--repo", repository,
-         "--json", "headSha,status,conclusion,workflowName"],
-        capture_output=True, text=True)
-    if completed.returncode != 0:
-        raise ResolutionError(f"ci_candidate_source.py: cannot read run {run_id} "
-                              f"attempt {run_attempt}: {completed.stderr.strip()[:300]}")
-    try:
-        return json.loads(completed.stdout)
-    except ValueError as error:
-        raise ResolutionError(f"ci_candidate_source.py: run {run_id} returned invalid JSON: {error}")
+    args = ["gh", "run", "view", str(run_id), "--attempt", str(run_attempt),
+            "--repo", repository,
+            "--json", "headSha,status,conclusion,workflowName"]
+    last = ""
+    for attempt in range(STATUS_READ_TRIES):
+        completed = subprocess.run(args, capture_output=True, text=True)
+        if completed.returncode == 0 and completed.stdout.strip():
+            try:
+                return json.loads(completed.stdout)
+            except ValueError as error:
+                last = f"invalid JSON: {error}"
+        elif completed.returncode == 0:
+            # Same transient EOF as `gh_api`: an empty body must not be read as a
+            # definitive "this attempt is unusable" answer.
+            last = "empty response body"
+        else:
+            last = completed.stderr.strip()[:300]
+        if attempt + 1 < STATUS_READ_TRIES:
+            time.sleep(2 * (attempt + 1))
+    raise ResolutionError(f"ci_candidate_source.py: cannot read run {run_id} "
+                          f"attempt {run_attempt}: {last}")
 
 
 # ------------------------------------------------------------------ resolve
