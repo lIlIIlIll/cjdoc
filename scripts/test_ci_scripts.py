@@ -252,6 +252,34 @@ class RunWithTimeoutTests(unittest.TestCase):
                         "the command never received SIGTERM before being killed")
 
     @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_a_worker_that_ignores_term_dies_with_its_leader(self) -> None:
+        """The leader obeying TERM must not let a stubborn worker survive."""
+        marker = f"cjdoc-timeout-stubborn-{os.getpid()}"
+        # The leader runs to the deadline and obeys TERM; the worker ignores it and
+        # would keep the shared outputs open on its own.
+        script = Path(self.temporary.name) / "leader.sh"
+        script.write_text(
+            "sh -c 'trap \"\" TERM; exec -a "
+            f"{marker} sleep 60' &\n"
+            "sleep 60\n", encoding="utf-8")
+        # Output must NOT be captured: the stubborn worker inherits the pipe, so
+        # capturing would block until the worker exits on its own and the assertion
+        # below could never see it alive.
+        done = subprocess.run(
+            [sys.executable, str(self.script), "1", "--", "/bin/bash", str(script)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.assertEqual(done.returncode, 124)
+        deadline = time.monotonic() + 5
+        survivors = "1"
+        while time.monotonic() < deadline:
+            survivors = subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                                       text=True).stdout.strip()
+            if not survivors:
+                break
+            time.sleep(0.1)
+        self.assertEqual(survivors, "", "a worker outlived the deadline and its leader")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
     def test_interrupting_the_wrapper_kills_the_child_group(self) -> None:
         """SIGTERM to the wrapper must not leave the command running."""
         marker = f"cjdoc-timeout-interrupt-{os.getpid()}"

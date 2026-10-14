@@ -88,11 +88,14 @@ def _install_signal_cleanup(process: subprocess.Popen) -> dict:
         try:
             process.wait(timeout=GRACE_SECONDS)
         except subprocess.TimeoutExpired:
-            _kill_tree(process)
-            try:
-                process.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                pass
+            pass
+        # Same rule as the expiry path: the group is killed even when the leader
+        # obeyed TERM, because a worker in its session may not have.
+        _kill_tree(process)
+        try:
+            process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            pass
         prior = previous.get(signum, signal.SIG_DFL)
         if prior == signal.SIG_IGN:
             return
@@ -129,17 +132,27 @@ def run(command: list[str], timeout_seconds: int) -> int:
         print(f"run_with_timeout.py: command exceeded {timeout_seconds}s "
               f"(elapsed {elapsed}s); terminating it", file=sys.stderr, flush=True)
         _signal_group(process, signal.SIGTERM)
+        leader_exited = True
         try:
             process.wait(timeout=GRACE_SECONDS)
         except subprocess.TimeoutExpired:
+            leader_exited = False
+        # The group is killed even when the LEADER obeyed TERM: a worker in the same
+        # session can ignore it, and the leader's exit would otherwise end this
+        # function while that worker keeps running and mutating shared outputs.
+        # Killing an already-empty group is harmless (ESRCH).
+        if not leader_exited:
             print(f"run_with_timeout.py: command ignored SIGTERM after "
                   f"{GRACE_SECONDS}s; killing the process group", file=sys.stderr,
                   flush=True)
-            _kill_tree(process)
-            try:
-                process.wait(timeout=60)
-            except subprocess.TimeoutExpired:
-                pass
+        _kill_tree(process)
+        if leader_exited:
+            print("run_with_timeout.py: terminating any remaining process group",
+                  file=sys.stderr, flush=True)
+        try:
+            process.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            pass
         return TIMEOUT_EXIT_CODE
 
 
