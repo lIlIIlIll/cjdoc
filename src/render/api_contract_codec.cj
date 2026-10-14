@@ -251,6 +251,8 @@ private func documentationLanguageFingerprints(symbol: SymbolDoc): Array<ApiDocu
         for (text in comment.localizedTexts where text.language.getOrDefault({ => "unknown" }) == language) {
             for ((kind, value) in [("field", text.fieldId), ("kind", text.kind), ("subject", text.subject),
                 ("text", text.text), ("state", text.state), ("directives", text.directives)]) { appendFingerprintPart(out, kind, value) }
+            appendFingerprintPart(out, "reference-state", text.referenceState)
+            appendOptionalFingerprintString(out, "reference-target", text.targetSymbolId)
         }
         let normalized: ?String = if (language == "unknown") { None } else { Some(language) }
         result.add(ApiDocumentationFingerprint(normalized, contractFingerprint(out.toString())))
