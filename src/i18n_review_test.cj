@@ -25,6 +25,44 @@ private func reviewMarkdownText(node: api_model.MarkdownNode): String {
 @Test
 class I18nReviewTest {
     @TestCase
+    func capturedGuideResourceFailureKeepsABoundedSourceFreePage(): Unit {
+        let project = i18nTestProject("/** API remains available. */")
+        try {
+            Directory.create(project.join("docs"))
+            File.writeTo(project.join("docs/limited.md"),
+                ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> leaf\n".toArray())
+            File.writeTo(project.join("cjdoc.toml"),
+                ("[i18n]\ndefault-language = \"zh-CN\"\nlanguages = [\"zh-CN\", \"en\"]\n" +
+                "[[docs.pages]]\nid = \"limited\"\nlanguage = \"en\"\nsource = \"docs/limited.md\"\n" +
+                "route = \"concepts/guides/limited.html\"\n").toArray())
+            let generated = i18nTestGenerate(project)
+            @Expect(generated.declarations.size, 1)
+            var failures: Int64 = 0
+            for (diagnostic in generated.diagnostics where diagnostic.code == "CJDOC3026") {
+                @Expect(diagnostic.severity, "warning")
+                @Expect(diagnostic.source.getOrThrow().path, "docs/limited.md"); failures++
+            }
+            @Expect(failures, 1)
+            let encoded = api_render.encodeDocIr(generated)
+            let imported = api_render.decodeDocIr(encoded)
+            @Expect(api_render.encodeDocIr(imported), encoded)
+            var pages: Int64 = 0
+            for (page in imported.pages where page.id == "limited") {
+                @Expect(page.text, MARKDOWN_FALLBACK_TEXT)
+                @Expect(reviewMarkdownText(page.markdown), MARKDOWN_FALLBACK_TEXT); pages++
+            }
+            @Expect(pages, 1)
+            var rendered: Int64 = 0
+            for (artifact in api_render.renderDocumentationFormatsWithOptions(imported, ["html"], locale: "en")) {
+                if (artifact.path == "html/concepts/guides/limited.html") {
+                    @Expect(artifact.content.contains(MARKDOWN_FALLBACK_TEXT)); rendered++
+                }
+            }
+            @Expect(rendered, 1)
+        } finally { let _ = removeIfExists(project, recursive: true) }
+    }
+
+    @TestCase
     func localizedPagesWithoutExplicitIdentityAreOmittedRatherThanPairedByRoute(): Unit {
         let project = i18nTestProject("/** Summary. */")
         try {

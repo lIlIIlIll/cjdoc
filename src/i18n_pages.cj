@@ -36,7 +36,7 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
                 binding.provenance, binding.version, binding.sourceLine, language: binding.language,
                 state: binding.state, targetSymbolId: binding.targetSymbolId))
         }
-        let tree = parseStandaloneMarkdown(conceptualMarkdownWithoutBindings(page.markdown, sentinels: false))
+        let (text, tree) = capturePageMarkdown(value, page)
         let sections = ArrayList<public_model.DocumentationSection>()
         let sectionIds = HashSet<String>()
         for (section in page.sections) {
@@ -45,7 +45,7 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
             } else { sections.add(section) }
         }
         pages.add(public_model.DocumentationPage(id, page.source, page.route, page.title, page.kind,
-            conceptualMarkdownWithoutBindings(page.markdown, sentinels: false), tree, language: language,
+            text, tree, language: language,
             defaultLanguage: defaultLanguage, packageName: page.packageName,
             sections: sections.toArray(), targetSymbolIds: targets.toArray(), bindings: bindings.toArray()))
     }
@@ -58,6 +58,21 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
         languageOptions: value.languageOptions, pages: pages.toArray(),
         externalDocumentation: captureExternalDocumentationReferences(value, request.projectRoot,
             value.languageOptions.isSome() || localizedPages))
+}
+
+private func capturePageMarkdown(value: public_model.DocumentationSet,
+    page: ConceptualPage): (String, public_model.MarkdownNode) {
+    try {
+        let text = conceptualMarkdownWithoutBindings(page.markdown, sentinels: false)
+        (text, parseStandaloneMarkdown(text))
+    } catch (_: Exception) {
+        let source = public_model.SourceRange(page.source, public_model.SourcePosition(1, 1, 0),
+            public_model.SourcePosition(1, 1, 0))
+        value.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC3026",
+            "conceptual Markdown was replaced by a bounded fallback after parsing or resource-limit failure",
+            source: Some(source)))
+        (MARKDOWN_FALLBACK_TEXT, fallbackPublicMarkdown())
+    }
 }
 
 private func captureExternalDocumentationReferences(value: public_model.DocumentationSet,
