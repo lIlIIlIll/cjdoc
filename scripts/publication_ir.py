@@ -2,6 +2,40 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+
+
+def _redact_reference_field_ids(declaration: dict, hidden: set[str]) -> None:
+    comment = declaration.get("documentation")
+    if not isinstance(comment, dict):
+        return
+    fields = comment.get("localizedTexts", []) + comment.get("tags", [])
+    reserved = {field.get("fieldId", "") for field in fields}
+    prefixes = {}
+    # Reference targets can already be unavailable while their keys still embed
+    # hidden SymbolIds. One mapping keeps language variants and projected tags paired.
+    for field in fields:
+        kind = field.get("kind", field.get("name"))
+        if kind not in ("see", "throws"):
+            continue
+        prefix = f"{declaration['id']}:doc:{kind}:"
+        identity = field.get("fieldId", "")
+        if identity.startswith(prefix) and identity[len(prefix):] in hidden:
+            prefixes[identity] = prefix
+    replacements = {}
+    for identity, prefix in sorted(prefixes.items()):
+        base = prefix + "opaque:" + hashlib.sha256(identity.encode("utf-8")).hexdigest()
+        candidate = base
+        suffix = 0
+        while candidate in reserved:
+            suffix += 1
+            candidate = f"{base}:{suffix}"
+        reserved.add(candidate)
+        replacements[identity] = candidate
+    for field in fields:
+        identity = field.get("fieldId", "")
+        if identity in replacements:
+            field["fieldId"] = replacements[identity]
 
 
 def project(document: dict) -> dict:
@@ -38,6 +72,10 @@ def project(document: dict) -> dict:
                           for relation in item.get("symbolRelationships", []))}
     kept = {key for key, value in declarations.items() if visible(value, extensions)}
     result["declarations"] = [value for key, value in declarations.items() if key in kept]
+    if audience != "all":
+        hidden = set(declarations) - kept
+        for declaration in result["declarations"]:
+            _redact_reference_field_ids(declaration, hidden)
     if "externalDocumentation" in result:
         result["externalDocumentation"] = [item for item in result["externalDocumentation"] if item["symbolId"] in kept]
     result["diagnostics"] = [item for item in result["diagnostics"]
@@ -72,6 +110,8 @@ def project(document: dict) -> dict:
         elif isinstance(value, dict):
             if value.get("kind") == "image":
                 assets.add(value.get("literal"))
+            if value.get("macroSymbolId") and value["macroSymbolId"] not in kept:
+                value["macroSymbolId"] = None
             for target, state in (("targetSymbolId", "referenceState"),
                                   ("semanticTargetSymbolId", "semanticState")):
                 if value.get(target) and value[target] not in kept:
