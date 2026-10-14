@@ -344,3 +344,23 @@ class OutputRecordTests(unittest.TestCase):
         reason = [line for line in lines if line.startswith("reason=")][0]
         self.assertNotIn("\n", reason.removeprefix("reason="))
         self.assertIn("second line", reason)
+
+class ExplicitFallbackTests(unittest.TestCase):
+    """A permanently unavailable explicit status read falls back, not aborts."""
+
+    def test_an_unreadable_explicit_run_falls_back_to_the_local_build(self):
+        import subprocess
+        from unittest import mock
+
+        def fake_run(args, **kwargs):
+            argv = [str(item) for item in (args if isinstance(args, (list, tuple)) else [args])]
+            if argv[:3] == ["gh", "run", "view"]:
+                return subprocess.CompletedProcess(argv, 1, "", "HTTP 503 Service Unavailable")
+            return subprocess.CompletedProcess(argv, 1, "", "unsupported")
+
+        with mock.patch("subprocess.run", fake_run), \
+             mock.patch.object(source.time, "sleep", lambda _: None):
+            resolved = source.resolve("o/r", COMMIT, "workflow_dispatch", "9", "1", 0, 1,
+                                      log=lambda _: None)
+        self.assertFalse(resolved["reuse"], resolved)
+        self.assertEqual(resolved["candidateSource"], "local-build")

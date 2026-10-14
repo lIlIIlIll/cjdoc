@@ -82,25 +82,36 @@ private func launchBoundedProcess(command: String, arguments: Array<String>,
 }
 
 @When[os != "Windows"]
-private func boundedProcessGroup(process: SubProcess, timeoutMilliseconds: Int64): Int64 {
+private func boundedProcessGroupWithReader(process: SubProcess, timeoutMilliseconds: Int64,
+    job: CPointer<Unit>): Int64 {
     // The supervisor writes one line naming the isolated group, and this read runs
     // BEFORE the watchdog is started, so it must carry its own deadline: a
     // supervisor that never prints would otherwise block here forever and the outer
     // `timeoutMilliseconds` could never fire. This is the same class of unbounded
     // read as the trailing stream reads below, and issue #116 stalled in exactly
     // the "child launches but never answers" state.
-    let pid = readProcessGroupLine(process, timeoutMilliseconds)
-    if (pid <= 0) {
-        throw IllegalStateException("process supervisor did not provide an isolated process group")
-    }
-    pid
+    let reader = startProcessGroupReader(process)
+    let pid = awaitProcessGroupLine(reader, timeoutMilliseconds)
+    if (pid > 0) { return pid }
+    // The handshake timed out, but the supervisor has already spawned its isolated
+    // group. That group is blocked reading the stdin pipe the caller never released,
+    // so killing only the outer Bash would leak it indefinitely. Await the SAME
+    // reader for a short grace -- the supervisor prints the line immediately after
+    // `child=$!` -- and kill the group it names. Starting a second reader here would
+    // race this one for the same bytes and could miss the line entirely.
+    let recovered = awaitProcessGroupLine(reader,
+        BOUNDED_PROCESS_HANDSHAKE_RECOVERY_MILLISECONDS)
+    terminateBoundedProcessTree(process, recovered, job)
+    throw IllegalStateException("process supervisor did not provide an isolated process group")
 }
 
-// Read the one numeric line naming the isolated process group, under a budget.
-// An exhausted budget must not become `Duration.Zero`, which waits forever.
-private func readProcessGroupLine(process: SubProcess, timeoutMilliseconds: Int64): Int64 {
-    if (timeoutMilliseconds <= 0) { return 0 }
-    let reader: Future<Int64> = spawn {
+// The reader for the one numeric line naming the isolated process group. It is
+// started once and awaited more than once: the handshake budget may expire while
+// the line is still in flight, and starting a SECOND reader for the recovery would
+// race the first one for the same bytes, so the recovery could miss the line and
+// report group 0 -- leaking the very group it is trying to kill.
+private func startProcessGroupReader(process: SubProcess): Future<Int64> {
+    spawn {
         let buffer = Array<Byte>(1, repeat: 0)
         var pid: Int64 = 0
         var count: Int64 = 0
@@ -112,6 +123,12 @@ private func readProcessGroupLine(process: SubProcess, timeoutMilliseconds: Int6
         }
         0
     }
+}
+
+// Await that reader under a budget. An exhausted budget must not become
+// `Duration.Zero`, which waits forever.
+private func awaitProcessGroupLine(reader: Future<Int64>, timeoutMilliseconds: Int64): Int64 {
+    if (timeoutMilliseconds <= 0) { return 0 }
     try {
         reader.get(Duration.millisecond * timeoutMilliseconds)
     } catch (_: Exception) {
@@ -120,8 +137,9 @@ private func readProcessGroupLine(process: SubProcess, timeoutMilliseconds: Int6
 }
 
 @When[os == "Windows"]
-private func boundedProcessGroup(process: SubProcess, timeoutMilliseconds: Int64): Int64 {
-    let _ = (process, timeoutMilliseconds)
+private func boundedProcessGroupWithReader(process: SubProcess, timeoutMilliseconds: Int64,
+    job: CPointer<Unit>): Int64 {
+    let _ = (process, timeoutMilliseconds, job)
     0
 }
 
@@ -169,16 +187,9 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
         try { process.terminate(force: true) } catch (_: Exception) {}
         throw error
     }
-    let group = try { boundedProcessGroup(process, remainingMilliseconds(deadline)) } catch (error: Exception) {
-        // A handshake that timed out cannot name the group, but the supervisor has
-        // already spawned it. Its background group is blocked reading the stdin pipe
-        // the caller never released, so killing only the outer Bash would leak the
-        // group indefinitely. Give the line a short grace (the supervisor prints it
-        // immediately after `child=$!`) and kill the group it names; group 0 is the
-        // last resort when even that does not arrive.
-        let recovered = readProcessGroupLine(process,
-            BOUNDED_PROCESS_HANDSHAKE_RECOVERY_MILLISECONDS)
-        terminateBoundedProcessTree(process, recovered, job)
+    let group = try { boundedProcessGroupWithReader(process, remainingMilliseconds(deadline), job) }
+        catch (error: Exception) {
+        terminateBoundedProcessTree(process, 0, job)
         throw error
     }
     let state = AtomicInt64(0)

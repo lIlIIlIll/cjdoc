@@ -404,7 +404,14 @@ def _explicit_candidate(repository: str, commit: str, run_id: str, attempt: int,
     except ValueError:
         return {"reuse": False, "candidateSource": "local-build",
                 "reason": f"candidate_run_id is not numeric: {run_id!r}"}
-    status = attempt_status(repository, numeric, attempt)
+    try:
+        status = attempt_status(repository, numeric, attempt)
+    except ResolutionError as error:
+        # Retries cover a short blip; if the endpoint stays unavailable the explicit
+        # candidate is simply unusable, and that must reach the same local-build
+        # fallback as malformed or unusable input instead of aborting the job.
+        return {"reuse": False, "candidateSource": "local-build",
+                "reason": f"run {run_id} attempt {attempt} could not be read: {error}"}
     problems = attempt_problems(status, commit, require_success=require_success)
     if problems:
         return {"reuse": False, "candidateSource": "local-build",
