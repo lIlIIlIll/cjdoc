@@ -7,6 +7,7 @@ import std.collection.*
 import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
+import yjson.*
 
 internal func i18nTestProject(comment: String, extra!: String = ""): Path {
     let directory = Directory.createTemp(getTempDirectory())
@@ -273,6 +274,7 @@ class I18nPublicApiTest {
             let imported = api_render.decodeDocIr(api_render.encodeDocIr(generated))
             var captured = false
             for (page in imported.pages where page.language == Some("en")) {
+                @Expect(page.id, "getting-started")
                 @Expect(page.bindings.size, 1)
                 @Expect(page.bindings[0].target, "language_fixture.add")
                 @Expect(page.bindings[0].provenance, "authored")
@@ -296,7 +298,24 @@ class I18nPublicApiTest {
             @Expect(chinese.contains("中文指南正文。"))
             @Expect(english.contains("../../../zh-CN/concepts/guides/cn.html"))
             @Expect(english.contains("data-semantic-section=\"usage\""))
-            @Expect(manifest.contains("getting-started"))
+            let routes = JsonNode.parse(manifest).asObject()["routes"].asArray()
+            var englishIdentity: ?String = None
+            var chineseIdentity: ?String = None
+            for (index in 0..routes.size()) {
+                let route = routes.get(index).getOrThrow().asObject()
+                if (!route["sectionId"].isNull) { continue }
+                let href = route["href"].asString()
+                if (href == "html/en/concepts/guides/en.html") {
+                    englishIdentity = Some(route["pageId"].asString())
+                }
+                if (href == "html/zh-CN/concepts/guides/cn.html") {
+                    chineseIdentity = Some(route["pageId"].asString())
+                }
+            }
+            @Assert(englishIdentity.isSome())
+            @Expect(!englishIdentity.getOrThrow().isEmpty())
+            @Expect(chineseIdentity, englishIdentity)
+            @Expect(englishIdentity != Some("api-home"))
             @Expect(manifest.contains("standalone--doc-usage"))
         } finally { let _ = removeIfExists(project, recursive: true) }
     }
