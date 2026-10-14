@@ -165,6 +165,8 @@ class I18nReviewTest {
             let legacyId = JsonNode.parse(legacy).asObject()["$id"].asString()
             @Expect(currentId != legacyId)
             @Expect(currentId.endsWith("/" + fileName))
+            @Expect(readTextBounded(Path("docs/schema").join(fileName), 1024 * 1024).trimAscii(), current.trimAscii())
+            @Expect(schemaTextForCli(fileName.removeSuffix(".schema.json")), current)
         }
     }
 

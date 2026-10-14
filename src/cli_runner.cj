@@ -224,7 +224,7 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 }
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndoc-ir-v11\ndoc-ir-v12\ndoc-ir-v13\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-surface-v2\napi-surface-v3\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndocumentation-quality\ndoctest-results\nversions\napi-diff-v1\ndoctest-results-v1\nsearch-index-v8\nversions-v1\ntranslation-coverage\nsite-manifest\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndoc-ir-v11\ndoc-ir-v12\ndoc-ir-v13\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-surface-v2\napi-surface-v3\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndocumentation-quality\ndoctest-results\nversions\napi-diff-v1\ndoctest-results-v1\nsearch-index-v8\nversions-v1\ntranslation-coverage\nsite-manifest\napi-diff-v2\ndoctest-results-v2\nsearch-index-v9\nversions-v2\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA
@@ -243,6 +243,10 @@ internal func schemaTextForCli(name: String): String {
         case "api-surface-v1" => API_SURFACE_V1_SCHEMA
         case "api-surface-v2" => API_SURFACE_V2_SCHEMA
         case "api-surface-v3" => API_SURFACE_SCHEMA
+        case "api-diff-v2" => API_DIFF_SCHEMA
+        case "doctest-results-v2" => DOCTEST_RESULTS_SCHEMA
+        case "search-index-v9" => SEARCH_INDEX_SCHEMA
+        case "versions-v2" => VERSIONS_SCHEMA
         case "api-diff-v1" => API_DIFF_V1_SCHEMA
         case "doctest-results-v1" => DOCTEST_RESULTS_V1_SCHEMA
         case "search-index-v8" => SEARCH_INDEX_V8_SCHEMA

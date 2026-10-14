@@ -31,43 +31,60 @@ private func capturedSourcePath(source: String, destination: String): String {
     out.toString()
 }
 
+private func capturedPageFragment(original: DocumentationPage, selected: DocumentationPage,
+    fragment: String): String {
+    let anchor = documentationSectionAnchor(original.markdown, fragment)
+    if (anchor.isNone()) { return "" }
+    if (original.source == selected.source) { return anchor.getOrThrow() }
+    for (section in original.sections) {
+        if (documentationSectionAnchor(original.markdown, section.anchor) != anchor) { continue }
+        for (target in selected.sections where target.id == section.id) {
+            return documentationSectionAnchor(selected.markdown, target.anchor).getOrDefault({ => "" })
+        }
+    }
+    ""
+}
+
+private class CapturedPageLinkResolver {
+    let source: String
+    let prefix: String
+    let markdown: Bool
+    let originals = HashMap<String, DocumentationPage>()
+    let selectedPages = HashMap<String, DocumentationPage>()
+
+    init(documentation: DocumentationSet, page: DocumentationPage,
+        pages: Array<DocumentationPage>, markdown: Bool) {
+        this.source = page.source; this.prefix = pageRootPrefix(page.route); this.markdown = markdown
+        for (original in documentation.pages) {
+            for (selected in pages where original.id == selected.id) {
+                originals[original.source] = original
+                selectedPages[original.source] = selected
+            }
+        }
+    }
+
+    func collect(tree: MarkdownNode, result: HashMap<String, String>): Unit {
+        if (tree.kind == "link") {
+            let parts = tree.literal.split("#", 2)
+            let path = if (parts[0].isEmpty()) { source } else { capturedSourcePath(source, parts[0]) }
+            if (let Some(original) <- originals.get(path)) {
+                let selected = selectedPages[path]
+                var fragment = if (parts.size == 2) { capturedPageFragment(original, selected, parts[1]) } else { "" }
+                if (markdown) { fragment = fragment.removePrefix("standalone--doc-") }
+                result[tree.literal] = prefix +
+                    if (markdown) { selected.route.removeSuffix(".html") + ".md" } else { selected.route }
+                if (!fragment.isEmpty()) { result[tree.literal] += "#" + fragment }
+            }
+        }
+        for (child in tree.children) { collect(child, result) }
+    }
+}
+
 internal func capturedPageSourceLinks(documentation: DocumentationSet, page: DocumentationPage,
     pages: Array<DocumentationPage>, markdown!: Bool = false): HashMap<String, String> {
-    let links = HashMap<String, String>()
-    let prefix = pageRootPrefix(page.route)
-    for (original in documentation.pages) {
-        for (selected in pages where original.id == selected.id) {
-            let destination = prefix + if (markdown) { selected.route.removeSuffix(".html") + ".md" } else { selected.route }
-            links[original.source] = destination
-        }
-    }
     let result = HashMap<String, String>()
-    capturedPageLinkNodes(page.markdown, page.source, links, result)
+    CapturedPageLinkResolver(documentation, page, pages, markdown).collect(page.markdown, result)
     result
-}
-
-private func capturedPageLinkNodes(tree: MarkdownNode, source: String, routes: HashMap<String, String>,
-    result: HashMap<String, String>): Unit {
-    if (tree.kind == "link") {
-        let parts = tree.literal.split("#", 2)
-        let path = capturedSourcePath(source, parts[0])
-        if (let Some(route) <- routes.get(path)) {
-            // A source fragment is preserved only within the same captured page.
-            // Translated headings need the explicit language-section mapping.
-            result[tree.literal] = route + if (parts.size == 2 && path == source) { "#" + parts[1] } else { "" }
-        }
-    }
-    for (child in tree.children) { capturedPageLinkNodes(child, source, routes, result) }
-}
-
-internal func capturedMarkdownLinks(tree: MarkdownNode, links: HashMap<String, String>): MarkdownNode {
-    let children = ArrayList<MarkdownNode>()
-    for (child in tree.children) { children.add(capturedMarkdownLinks(child, links)) }
-    let literal = if (tree.kind == "link") { links.get(tree.literal).getOrDefault({ => tree.literal }) } else { tree.literal }
-    match (tree.metadata) {
-        case Some(metadata) => MarkdownNode(tree.kind, metadata, literal: literal, source: tree.source, children: children.toArray())
-        case None => MarkdownNode(tree.kind, literal: literal, source: tree.source, children: children.toArray())
-    }
 }
 
 internal func capturedPageBindingsHtml(page: DocumentationPage, documentation: DocumentationSet,

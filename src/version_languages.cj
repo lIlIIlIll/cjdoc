@@ -71,7 +71,14 @@ internal func versionLanguageTarget(current: VersionSite, identity: String, targ
     }
     let section = identity.indexOf(":section:")
     if (let Some(at) <- section) {
-        if (let Some(href) <- target.logicalRoutes.get(identity[..at])) { return (href, true) }
+        let pageIdentity = identity[..at]
+        if (let Some(href) <- target.logicalRoutes.get(pageIdentity)) { return (href, true) }
+        let pageParts = pageIdentity.split(":", 2)
+        if (!target.defaultLanguage.isEmpty() && pageParts.size == 2) {
+            if (let Some(href) <- target.logicalRoutes.get(target.defaultLanguage + ":" + pageParts[1])) {
+                return (href, true)
+            }
+        }
     }
     let home = "html/" + language + "/index.html"
     if (target.hasPath(home)) { return (home, true) }

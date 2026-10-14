@@ -89,7 +89,13 @@ public func translationCoverageFor(documentation: DocumentationSet, language: St
     for (symbol in RenderProjection(documentation).visibleSymbols) {
         let prefix = symbol.id + ":doc:"
         report.add(translationFieldEntry(symbol, prefix + "summary:", "summary", "", locale))
-        for (parameter in symbol.parameters where !parameter.name.startsWith("_")) {
+        let authoredParameters = HashSet<String>()
+        if (let Some(comment) <- symbol.documentation) {
+            for (text in comment.localizedTexts where text.kind == "param") { let _ = authoredParameters.add(text.subject) }
+            for (tag in comment.tags where tag.name == "param") { let _ = authoredParameters.add(tag.subject) }
+        }
+        for (parameter in symbol.parameters where !parameter.name.startsWith("_") ||
+            parameter.documentation.isSome() || authoredParameters.contains(parameter.name)) {
             report.add(translationFieldEntry(symbol, prefix + "param:" + parameter.name, "param", parameter.name, locale))
         }
         if (symbol.returnType.isSome() && !isUnitType(symbol.returnType.getOrThrow())) {

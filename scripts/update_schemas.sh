@@ -79,7 +79,7 @@ for schema_name in doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 doc-ir-v11
         "${stage_dir}/${schema_name}.schema.json"
 done
 
-for schema_name in doc-ir doc-ir-v13 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions api-surface-v2 api-surface-v3 api-diff-v1 doctest-results-v1 search-index-v8 versions-v1 translation-coverage site-manifest; do
+for schema_name in doc-ir doc-ir-v13 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions api-surface-v2 api-surface-v3 api-diff-v1 doctest-results-v1 search-index-v8 versions-v1 translation-coverage site-manifest api-diff-v2 doctest-results-v2 search-index-v9 versions-v2; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${stage_dir}/${schema_name}.schema.json"
 done

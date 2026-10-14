@@ -11,6 +11,24 @@ def declaration(identity, visibility="public", owner=None, kind="function", **fi
 
 
 class PublicationIrTests(unittest.TestCase):
+    def test_unbound_author_text_requires_the_all_audience(self):
+        value = dict(configuration=dict(audience="external"), declarations=[declaration("visible")],
+                     packages=[], diagnostics=[dict(code="CJDOC1009", severity="warning", symbolId=None,
+                         message="PrivateMacroAuthorMarker")], assets=[], pages=[],
+                     orphanDocComments=[dict(rawText="OrphanAuthorOnlyMarker")],
+                     unsupportedDeclarations=[dict(name="PrivateConditionalMarker")],
+                     macroInvocations=[dict(name="PrivateMacroAuthorMarker")],
+                     unboundSemanticDeclarations=[dict(display="HiddenUnboundAuthorMarker")])
+        for audience in ("external", "package", "all"):
+            with self.subTest(audience=audience):
+                value["configuration"]["audience"] = audience
+                output = project(value)
+                for field in ("orphanDocComments", "unsupportedDeclarations", "macroInvocations", "unboundSemanticDeclarations"):
+                    self.assertEqual(output[field], value[field] if audience == "all" else [])
+                self.assertEqual(output["diagnostics"][0]["code"], "CJDOC1009")
+                self.assertEqual(output["diagnostics"][0]["message"] == "PrivateMacroAuthorMarker", audience == "all")
+        self.assertEqual(value["orphanDocComments"][0]["rawText"], "OrphanAuthorOnlyMarker")
+
     def test_visible_extension_members_survive_without_exposing_hidden_targets(self):
         declarations = [declaration("type", kind="class"), declaration("hidden", "private", kind="class")]
         for identity, target, state in (("extension", "type", "resolved"),

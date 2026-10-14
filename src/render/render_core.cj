@@ -301,6 +301,10 @@ internal func safeRelativeLinkDestination(value: String): Bool {
 
 internal func markdownLinkDestination(value: String, allowRelative!: Bool = false): ?String {
     if (!safeLinkDestination(value) && (!allowRelative || !safeRelativeLinkDestination(value))) { return None }
+    Some(encodeMarkdownDestination(value))
+}
+
+internal func encodeMarkdownDestination(value: String): String {
     let bytes = value.toArray()
     let out = RenderTextBuffer()
     var index: Int64 = 0
@@ -317,7 +321,7 @@ internal func markdownLinkDestination(value: String, allowRelative!: Bool = fals
             index++
         }
     }
-    Some(out.toString())
+    out.toString()
 }
 
 internal func assetReference(assetLookup: HashMap<String, String>, destination: String): ?String {

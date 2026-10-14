@@ -8,6 +8,11 @@ def project(document: dict) -> dict:
     result = copy.deepcopy(document)
     declarations = {item["id"]: item for item in result["declarations"]}
     audience = result["configuration"]["audience"]
+    if audience != "all":
+        # Unbound author text has no declaration whose audience we can prove.
+        for name in ("orphanDocComments", "unsupportedDeclarations", "macroInvocations", "unboundSemanticDeclarations"):
+            if name in result:
+                result[name] = []
 
     def directly_visible(item: dict) -> bool:
         visibility = item["visibility"]
@@ -37,6 +42,10 @@ def project(document: dict) -> dict:
         result["externalDocumentation"] = [item for item in result["externalDocumentation"] if item["symbolId"] in kept]
     result["diagnostics"] = [item for item in result["diagnostics"]
                              if item.get("symbolId") is None or item["symbolId"] in kept]
+    if audience != "all":
+        for diagnostic in result["diagnostics"]:
+            if diagnostic.get("symbolId") is None:
+                diagnostic["message"] = "Details omitted because this diagnostic has no visible declaration binding."
     for package in result["packages"]:
         package["symbolIds"] = [key for key in package["symbolIds"] if key in kept]
         for export in package.get("reExports", []):

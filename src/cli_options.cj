@@ -355,7 +355,8 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
         options.serveOpenExplicit || options.checkExamples || !options.formats.isEmpty() ||
         options.semanticExplicit || options.cjcExplicit ||
         options.chirWorkerExecutable.isSome() || !options.chirImportPaths.isEmpty() ||
-        options.localeExplicit || options.markdownLayoutExplicit ||
+        options.localeExplicit || options.allLanguages || !options.requiredLanguages.isEmpty() ||
+        options.markdownLayoutExplicit ||
         options.versionSubcommand != "" || !options.versionInputs.isEmpty() ||
         !options.versionLabels.isEmpty() || !options.versionChannels.isEmpty() ||
         !options.versionStatuses.isEmpty() || !options.versionBasePaths.isEmpty() ||

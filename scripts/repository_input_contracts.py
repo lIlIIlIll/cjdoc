@@ -79,6 +79,7 @@ SCHEMA_NAMES = (
     "versions",
     "api-surface-v2", "api-surface-v3", "api-diff-v1", "doctest-results-v1",
     "search-index-v8", "versions-v1", "translation-coverage", "site-manifest",
+    "api-diff-v2", "doctest-results-v2", "search-index-v9", "versions-v2",
 )
 SCHEMA_CONTRACTS = {
     "documentation-quality": (
@@ -224,7 +225,9 @@ for name, version in (("api-surface", 3), ("api-diff", 2), ("doctest-results", 2
     if name == "doctest-results":
         required = ("schemaVersion", "mode", "timeoutMs", "memoryMb", "jobs", "environmentFingerprint", "summary", "results")
     SCHEMA_CONTRACTS[name] = (identifier, old_version.rsplit("/", 1)[0] + f"/{version}", required)
-SCHEMA_CONTRACTS["api-surface-v3"] = SCHEMA_CONTRACTS["api-surface"]
+for name, version in (("api-surface", 3), ("api-diff", 2), ("doctest-results", 2),
+                      ("search-index", 9), ("versions", 2)):
+    SCHEMA_CONTRACTS[f"{name}-v{version}"] = SCHEMA_CONTRACTS[name]
 for name, version, required in (
     ("translation-coverage", "cjdoc.translation-coverage/1", ("schemaVersion", "languages")),
     ("site-manifest", "cjdoc.site-manifest/1", ("schemaVersion", "project", "version", "routes")),

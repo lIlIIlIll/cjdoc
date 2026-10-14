@@ -15,6 +15,30 @@ private func translationEdgeMarkdownText(node: api_model.MarkdownNode): String {
 @Test
 class I18nTranslationEdgeTest {
     @TestCase
+    func diffRejectsLanguageOptionsItCannotApply(): Unit {
+        @ExpectThrows[IllegalArgumentException](parseNewCli(["diff", "old.json", "new.json", "--all-languages"]))
+        @ExpectThrows[IllegalArgumentException](parseNewCli(["diff", "old.json", "new.json", "--require-language", "en"]))
+    }
+
+    @TestCase
+    func authoredUnderscoreParameterTextRemainsInTranslationCoverage(): Unit {
+        let project = i18nTestProject("/** Summary. */")
+        try {
+            File.writeTo(project.join("src/api.cj"), ("package language_fixture\n/** 中文摘要。\n" +
+                " * @summary[lang=en] English summary.\n * @param _value 中文参数。\n */\n" +
+                "public func api(_value: Int64): Unit {}\n").toArray())
+            let report = api_render.translationCoverageFor(i18nTestGenerate(project), "en")
+            @Expect(report.total, 2)
+            @Expect(report.translated, 1)
+            @Expect(report.fallback, 1)
+            @Expect(report.percent, 50)
+            File.writeTo(project.join("src/api.cj"), ("package language_fixture\n/** 中文摘要。\n" +
+                " * @summary[lang=en] English summary.\n */\npublic func api(_value: Int64): Unit {}\n").toArray())
+            @Expect(api_render.translationCoverageFor(i18nTestGenerate(project), "en").total, 1)
+        } finally { let _ = removeIfExists(project, recursive: true) }
+    }
+
+    @TestCase
     func independentReferencesEachRemainInTheCoverageDenominator(): Unit {
         for (kind in ["see", "throws"]) {
             let project = i18nTestProject("/** 中文摘要。\n * @param left 左值。\n * @param right 右值。\n * @return 结果。\n * @" + kind +

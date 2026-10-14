@@ -123,8 +123,14 @@ private func appendTag(out: StringBuilder, value: DocTag): Unit {
         out.append(",\"exampleMarkdown\":")
         appendMarkdown(out, markdown)
     }
+    if (value.contentLanguage.isSome() || !value.translationState.isEmpty()) {
+        out.append(",\"contentLanguage\":${nullableString(value.contentLanguage)}")
+    }
     if (!value.translationState.isEmpty()) {
-        out.append(",\"contentLanguage\":${nullableString(value.contentLanguage)},\"translationState\":${escapeJsonString(value.translationState)},\"fieldId\":${escapeJsonString(value.fieldId)}")
+        out.append(",\"translationState\":${escapeJsonString(value.translationState)}")
+    }
+    if (!value.fieldId.isEmpty() || !value.translationState.isEmpty()) {
+        out.append(",\"fieldId\":${escapeJsonString(value.fieldId)}")
     }
     if (let Some(markdown) <- value.descriptionMarkdown) {
         out.append(",\"descriptionMarkdown\":"); appendMarkdown(out, markdown)

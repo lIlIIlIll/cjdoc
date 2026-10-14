@@ -36,7 +36,7 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
                 binding.provenance, binding.version, binding.sourceLine, language: binding.language,
                 state: binding.state, targetSymbolId: binding.targetSymbolId))
         }
-        let (text, tree) = capturePageMarkdown(value, page)
+        let (text, tree) = capturePageMarkdown(value, page, request)
         let sections = ArrayList<public_model.DocumentationSection>()
         let sectionIds = HashSet<String>()
         for (section in page.sections) {
@@ -61,10 +61,10 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
 }
 
 private func capturePageMarkdown(value: public_model.DocumentationSet,
-    page: ConceptualPage): (String, public_model.MarkdownNode) {
+    page: ConceptualPage, request: GenerationRequest): (String, public_model.MarkdownNode) {
     try {
         let text = conceptualMarkdownWithoutBindings(page.markdown, sentinels: false)
-        (text, parseStandaloneMarkdown(text))
+        (text, parseStandaloneMarkdown(text, highlightAdapter: request.highlightAdapter, highlightNode: request.highlightNode))
     } catch (_: Exception) {
         let source = public_model.SourceRange(page.source, public_model.SourcePosition(1, 1, 0),
             public_model.SourcePosition(1, 1, 0))

@@ -239,7 +239,12 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
             relationshipIndex++
         }
         if (let Some(comment) <- declaration.documentation) {
+            let validFields = HashSet<String>()
             for (text in comment.localizedTexts) {
+                if (text.state == "valid" && !text.fieldId.isEmpty() &&
+                    !validFields.add(text.fieldId + ":" + text.language.getOrDefault({ => "unknown" }))) {
+                    domainFail("$.documentation.localizedTexts", "duplicate valid language field")
+                }
                 validateMarkdown(text.markdown, "$.declarations[${index}].documentation.localizedTexts.markdown", 0)
                 if (!text.fieldId.isEmpty() && !text.fieldId.startsWith(declaration.id + ":doc:" + text.kind + ":")) {
                     domainFail("$.documentation.localizedTexts.fieldId", "field does not belong to declaration/kind")
@@ -454,7 +459,7 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
     let pageIds = HashSet<String>()
     if (documentation.pages.size > 128) { domainFail("$.pages", "page limit exceeded") }
     for (page in documentation.pages) {
-        if (!safeRelativePath(page.source) || !safeRelativePath(page.route) || !page.route.endsWith(".html") ||
+        if (!safeRelativePath(page.source) || !safeDocumentationPageRoute(page.route) || !page.route.endsWith(".html") ||
             !pageIds.add(page.id + ":" + page.language.getOrDefault({ => "unknown" }))) {
             domainFail("$.pages", "unsafe page path or duplicate logical language variant")
         }
@@ -475,6 +480,7 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
             }
         }
     }
+    validateCapturedPageRoutes(documentation)
     for (orphan in documentation.orphanDocComments) { validateRange(orphan.source, "$.orphanDocComments") }
     for (invocation in documentation.macroInvocations) { validateRange(invocation.source, "$.macroInvocations") }
     for (item in documentation.unsupportedDeclarations) { validateRange(item.source, "$.unsupportedDeclarations") }

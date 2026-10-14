@@ -217,10 +217,14 @@ internal func consumeTagEncoding(value: DocTag, path: String,
     if (let Some(markdown) <- value.exampleMarkdown) {
         consumeMarkdownEncoding(markdown, "${path}.exampleMarkdown", 0, 5, budget)
     }
+    if (value.contentLanguage.isSome() || !value.translationState.isEmpty()) {
+        budget.consumeOptionalString(value.contentLanguage, path + ".contentLanguage")
+    }
     if (!value.translationState.isEmpty()) {
         budget.consumeString(value.translationState, path + ".translationState")
+    }
+    if (!value.fieldId.isEmpty() || !value.translationState.isEmpty()) {
         budget.consumeString(value.fieldId, path + ".fieldId")
-        budget.consumeOptionalString(value.contentLanguage, path + ".contentLanguage")
     }
     if (let Some(markdown) <- value.descriptionMarkdown) {
         consumeMarkdownEncoding(markdown, path + ".descriptionMarkdown", 0, 5, budget)

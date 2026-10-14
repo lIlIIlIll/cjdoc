@@ -602,7 +602,7 @@ stage_cli() {
     "${python_cmd}" -c 'import json,sys; document=json.load(open(sys.argv[1], encoding="utf-8")); assert len(document["declarations"])==25 and any(item["code"]=="CJDOC2101" and "worker executable is not configured" in item["message"] for item in document["diagnostics"])' \
         "${check_dir}/chir-unconfigured-cli.json"
 
-    for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 doc-ir-v11 doc-ir-v12 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions doc-ir-v13 api-surface-v2 api-surface-v3 api-diff-v1 doctest-results-v1 search-index-v8 versions-v1 translation-coverage site-manifest; do
+    for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 doc-ir-v11 doc-ir-v12 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions doc-ir-v13 api-surface-v2 api-surface-v3 api-diff-v1 doctest-results-v1 search-index-v8 versions-v1 translation-coverage site-manifest api-diff-v2 doctest-results-v2 search-index-v9 versions-v2; do
         "${binary}" schema "${schema_name}" | tr -d '\r' \
             >"${check_dir}/schemas/${schema_name}.schema.json"
     done
@@ -628,6 +628,9 @@ stage_cli() {
     cmp docs/schema/documentation-quality.schema.json "${check_dir}/schemas/documentation-quality.schema.json"
     cmp docs/schema/doctest-results.schema.json "${check_dir}/schemas/doctest-results.schema.json"
     cmp docs/schema/versions.schema.json "${check_dir}/schemas/versions.schema.json"
+    for schema_name in api-diff-v2 doctest-results-v2 search-index-v9 versions-v2; do
+        cmp "docs/schema/${schema_name}.schema.json" "${check_dir}/schemas/${schema_name}.schema.json"
+    done
 
     run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v13/basic.docs.json
     run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v13/functions.docs.json
