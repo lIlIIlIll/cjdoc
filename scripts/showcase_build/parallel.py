@@ -21,6 +21,30 @@ class BranchRunner:
         self._processes: set[subprocess.Popen] = set()
         self._error: BaseException | None = None
         self._traceback = None
+        # A cancelled or SIGTERMed stage runs no `finally` and no `fail()`, and each
+        # command owns its own POSIX session here, so the active cjdoc/compiler
+        # groups would outlive their coordinator and keep holding pipes and
+        # temporary outputs. Install handlers that kill every registered group
+        # before the default disposition runs.
+        self._previous_handlers: dict[int, object] = {}
+        for signum in (signal.SIGTERM, signal.SIGINT):
+            try:
+                self._previous_handlers[signum] = signal.signal(signum, self._on_signal)
+            except (ValueError, OSError):
+                # Not the main thread, or the platform refuses the handler; the
+                # explicit `pair()` cleanup still covers ordinary failures.
+                pass
+
+    def _on_signal(self, signum, frame) -> None:
+        with self._lock:
+            for process in list(self._processes):
+                self._kill(process)
+        previous = self._previous_handlers.get(signum, signal.SIG_DFL)
+        if callable(previous):
+            previous(signum, frame)
+            return
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
 
     def __getattr__(self, name):
         # reproduce.py also uses subprocess.CalledProcessError. Give its private
