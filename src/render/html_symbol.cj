@@ -165,13 +165,17 @@ internal func appendReaderRelationships(out: RenderTextBuffer,
 internal func appendSymbolMetadata(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    locale!: String = "en", includeSummary!: Bool = true): Unit {
+    locale!: String = "en", includeSummary!: Bool = true,
+    pagePresentation!: Bool = false): Unit {
     out.append("<div class=\"symbol-meta\">")
     if (includeSummary) {
         match (symbol.documentation) {
             case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, rootPrefix, locale: locale)
             case None => ()
         }
+    }
+    if (pagePresentation) {
+        out.append("<h2 id=\"declaration\" class=\"api-declaration-heading\">${label(locale, "Declaration", "声明")}</h2>")
     }
     out.append("<pre class=\"signature-block\" aria-label=\"${label(locale, "Signature", "签名")}\"><code>")
     appendLinkedSignatureHtml(out, symbol, typeLinkIndex, rootPrefix)

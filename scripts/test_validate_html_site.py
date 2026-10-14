@@ -165,7 +165,20 @@ class ValidateHtmlSiteTest(unittest.TestCase):
                 self.assertIn(f'"{theme}"', script)
         self.assertIn("const themeValues = new Set", script)
         self.assertIn("data-cjdoc-theme-popover", script)
+        self.assertIn("data-cjdoc-theme-backdrop", script)
+        self.assertIn("data-cjdoc-theme-label", script)
+        self.assertIn('closeTheme(true)', script)
         self.assertIn('localStorage.setItem("cjdoc-theme", next)', script)
+
+    def test_theme_markup_keeps_all_presets_and_non_mac_shortcut(self) -> None:
+        layout = (SCRIPT.parent.parent / "src/render/html_layout.cj").read_text(encoding="utf-8")
+        self.assertIn("<kbd>Ctrl + K</kbd>", layout)
+        self.assertIn("data-cjdoc-theme-label", layout)
+        self.assertIn("theme-palette-icon", layout)
+        self.assertNotIn('class=\\\"icon-sun\\\"', layout)
+        for theme in ("system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"):
+            with self.subTest(theme=theme):
+                self.assertIn(f'data-cjdoc-theme-value=\\\"{theme}\\\"', layout)
 
     def test_theme_bootstrap_restores_and_propagates_theme(self) -> None:
         script = canonical_theme_bootstrap_script()

@@ -396,6 +396,12 @@ class RendererSafetyTest {
         let css = rendererSafetyContent(artifacts, "html/style.css")
 
         @Expect(packageHtml.contains("<a class=\"sidebar-package is-current\""), true)
+        let symbol = documentation.declarations[0]
+        let functionPage = rendererSafetyContent(artifacts, "html/${symbolPagePath(symbol)}")
+        @Expect(functionPage.contains("class=\"sidebar-symbols\""), true)
+        @Expect(!functionPage.contains("class=\"sidebar-section sidebar-context\""), true)
+        // Package indexes already expose declarations through the context rail.
+        @Expect(!packageHtml.contains("class=\"sidebar-symbols\""), true)
         @Expect(packageHtml.contains("aria-current=\"page\""), true)
         @Expect(packageHtml.contains(
             "<aside class=\"toc-panel\" data-cjdoc-toc aria-label=\"On this page\" hidden>"), true)
@@ -428,6 +434,25 @@ class RendererSafetyTest {
             "html/${symbolPagePath(containerDocumentation.declarations[0])}")
         @Expect(symbolHtml.contains("<a class=\"sidebar-package is-current\""), true)
         @Expect(symbolHtml.contains("class=\"symbol-kind\">class"), true)
+        // The editable API reference layout must use real projected symbols,
+        // never a hardcoded PocketKit demonstration or repeated public badges.
+        @Expect(symbolHtml.contains("data-cjdoc-page=\"symbol\""), true)
+        @Expect(symbolHtml.contains("class=\"brand-logo\">cjdoc</span>"), true)
+        @Expect(symbolHtml.contains("data-cjdoc-search-trigger"), true)
+        @Expect(symbolHtml.contains("<kbd>Ctrl + K</kbd>"), true)
+        @Expect(symbolHtml.contains("class=\"sidebar-symbols\""), true)
+        @Expect(symbolHtml.contains("class=\"sidebar-symbol is-current\""), true)
+        @Expect(symbolHtml.contains("class=\"api-declaration-heading\""), true)
+        @Expect(symbolHtml.contains("class=\"member-group-heading\""), true)
+        @Expect(symbolHtml.contains("class=\"member-group-count\""), true)
+        @Expect(symbolHtml.contains("class=\"member-display-name\""), true)
+        @Expect(symbolHtml.contains("data-cjdoc-toc-role=\"member\""), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("[data-cjdoc-toc-role='member']"), true)
+        @Expect(!symbolHtml.contains("class=\"visibility-badge\">public"), true)
+        @Expect(css.contains("body[data-cjdoc-page='symbol'] .member-browser"), true)
+        @Expect(css.contains(".member-row>.member-detail{min-width:0;border:1px solid var(--line)"), true)
+        @Expect(css.contains(".mobile-search-trigger{display:inline-grid"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("openMobileSearch()"), true)
         @Expect(!symbolHtml.contains("semantic: resolved"), true)
         @Expect(!symbolHtml.contains("top-source-disabled"), true)
         @Expect(symbolHtml.contains(
@@ -454,7 +479,8 @@ class RendererSafetyTest {
         @Expect(symbolHtml.contains("data-cjdoc-member-actions-toggle aria-expanded=\"false\""), true)
         @Expect(symbolHtml.contains("aria-controls=\"symbol-"), true)
         @Expect(symbolHtml.contains("class=\"member-detail-summary\" id=\"symbol-"), true)
-        @Expect(symbolHtml.contains("-summary\"><span class=\"member-summary-main\">"), true)
+        @Expect(symbolHtml.contains("-summary\" data-cjdoc-toc-role=\"member\""), true)
+        @Expect(symbolHtml.contains("data-cjdoc-toc-label=\"func member()"), true)
         @Expect(symbolHtml.contains("aria-labelledby=\"symbol-"), true)
         @Expect(css.contains(".member-detail-actions .member-action-glyph{"), true)
         @Expect(css.contains(".member-row:hover>.member-detail-actions"), true)
@@ -661,7 +687,7 @@ class RendererSafetyTest {
             "html/${packagePagePath("cjdoc:module:v1:renderer-safety", "fixture")}")
 
         @Expect(packageHtml.contains("aria-label=\"面包屑导航\""), true)
-        @Expect(packageHtml.contains("aria-label=\"切换主题\""), true)
+        @Expect(packageHtml.contains("aria-label=\"选择主题：跟随系统\""), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("const isChinese"), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("复制代码"), true)
         @Expect(HTML_SEARCH_SCRIPT.contains("已复制"), true)

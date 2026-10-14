@@ -37,12 +37,12 @@ TEXT = {
 
 UI_TEXT = {
     "zh-CN": {"HOME": "index.html", "SKIP": "跳到正文", "TAGLINE": "实际体验 API 文档", "NAVIGATION": "展示导航",
-        "THEME": "切换明暗", "COPY": "复制", "EYEBROW": "仓颉 · 原生 API 文档", "REPRODUCE": "复现 PocketKit 示例",
+        "THEME": "主题：跟随系统", "COPY": "复制", "EYEBROW": "仓颉 · 原生 API 文档", "REPRODUCE": "复现 PocketKit 示例",
         "BUILD_LABEL": "构建来源", "PLAN_LABEL": "完整演示计划", "MANIFEST": "功能清单", "NAV_LABEL": "导航索引",
         "COVERAGE_LABEL": "覆盖率", "DIFF_LABEL": "API 变化", "DOCTEST_LABEL": "示例验证", "SCHEMAS": "数据结构定义",
         "USAGE": "使用说明", "ADVANCED": "高级用法", "RELEASE": "发布流程", "LEGACY": "旧版演示入口"},
     "en": {"HOME": "en.html", "SKIP": "Skip to content", "TAGLINE": "documentation in practice", "NAVIGATION": "Showcase navigation",
-        "THEME": "Light / Dark", "COPY": "Copy", "EYEBROW": "CANGJIE · NATIVE API DOCUMENTATION", "REPRODUCE": "Reproduce the PocketKit example",
+        "THEME": "Theme: System", "COPY": "Copy", "EYEBROW": "CANGJIE · NATIVE API DOCUMENTATION", "REPRODUCE": "Reproduce the PocketKit example",
         "BUILD_LABEL": "Build provenance", "PLAN_LABEL": "Full demonstration plan", "MANIFEST": "Feature manifest", "NAV_LABEL": "Navigation",
         "COVERAGE_LABEL": "Coverage", "DIFF_LABEL": "API diff", "DOCTEST_LABEL": "Doctest", "SCHEMAS": "Schemas",
         "USAGE": "Usage", "ADVANCED": "Advanced usage", "RELEASE": "Release process", "LEGACY": "Legacy demo entry"},
@@ -174,8 +174,8 @@ def downloads(site: Path) -> None:
     (site / "downloads").mkdir(exist_ok=True)
     for locale, raw in DOWNLOAD_TEXT.items():
         words = {key: html.escape(value) for key, value in raw.items()}
-        content = f'''<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{words["title"]} · cjdoc</title><link rel="stylesheet" href="../showcase.css"><script src="../showcase.js" defer></script></head><body data-cjdoc-doc-version="showcase"><main class="download-page"><nav aria-label="Language and showcase"><a data-showcase-home href="../{words["home"]}">← {words["back"]}</a><a href="zh-CN.html" lang="zh-CN">中文</a><a href="en.html" lang="en">English</a><button type="button" data-showcase-theme>Light / Dark</button></nav><h1>{words["title"]}</h1><article><h2>{words["source"]}</h2><p>{words["license"]}</p><p><a data-source-download href="pocketkit-source.zip" download>{words["source_zip"]}</a> · <a href="source-manifest.json">{words["manifest"]}</a></p><pre><code id="download-command">python3 examples/pocketkit/reproduce.py --cjdoc /absolute/path/to/cjdoc --output ./generated --locale both</code></pre><button data-showcase-copy="download-command">{words["copy"]}</button><p>{words["run"]}</p></article><article id="offline"><h2>{words["offline"]}</h2><p>{words["use"]}</p><p><a data-offline-download href="showcase-offline.zip" download>{words["offline_zip"]}</a></p><p>{words["recursive"]}</p></article><p aria-live="polite" data-showcase-status></p></main></body></html>'''
+        content = f'''<!doctype html><html lang="{locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{words["title"]} · cjdoc</title><link rel="stylesheet" href="../showcase.css"><script src="../showcase.js" defer></script></head><body data-cjdoc-doc-version="showcase"><main class="download-page"><nav aria-label="Language and showcase"><a data-showcase-home href="../{words["home"]}">← {words["back"]}</a><a href="zh-CN.html" lang="zh-CN">中文</a><a href="en.html" lang="en">English</a><button type="button" data-showcase-theme>Theme: System</button></nav><h1>{words["title"]}</h1><article><h2>{words["source"]}</h2><p>{words["license"]}</p><p><a data-source-download href="pocketkit-source.zip" download>{words["source_zip"]}</a> · <a href="source-manifest.json">{words["manifest"]}</a></p><pre><code id="download-command">python3 examples/pocketkit/reproduce.py --cjdoc /absolute/path/to/cjdoc --output ./generated --locale both</code></pre><button data-showcase-copy="download-command">{words["copy"]}</button><p>{words["run"]}</p></article><article id="offline"><h2>{words["offline"]}</h2><p>{words["use"]}</p><p><a data-offline-download href="showcase-offline.zip" download>{words["offline_zip"]}</a></p><p>{words["recursive"]}</p></article><p aria-live="polite" data-showcase-status></p></main></body></html>'''
         content = content.replace('<script src="../showcase.js"', '<script src="../theme-bootstrap.js"></script><script src="../showcase.js"')
         if locale == "zh-CN":
-            content = content.replace('Light / Dark', '切换明暗').replace('aria-label="Language and showcase"', 'aria-label="语言与展示导航"')
+            content = content.replace('Theme: System', '主题：跟随系统').replace('aria-label="Language and showcase"', 'aria-label="语言与展示导航"')
         (site / "downloads" / (locale + ".html")).write_text(content, encoding="utf-8")

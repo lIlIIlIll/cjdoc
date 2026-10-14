@@ -87,6 +87,88 @@ class MetricsTests(unittest.TestCase):
 
 
 class ThemeEvidenceTests(unittest.TestCase):
+    def test_showcase_screenshots_select_each_explicit_theme_option(self):
+        """The screenshot gate must not assume the picker itself toggles light/dark."""
+        import sys
+        import tempfile
+        from pathlib import Path
+        from types import ModuleType, SimpleNamespace
+        from unittest.mock import patch
+        from showcase_contract.browser_metrics import screenshots
+
+        class Locator:
+            def __init__(self, page, selector):
+                self.page = page
+                self.selector = selector
+
+            def count(self):
+                return 0 if self.selector == "[data-cjdoc-theme-toggle]" else 1
+
+            def get_attribute(self, key):
+                if self.selector == "html" and key == "data-theme":
+                    return self.page.theme
+                raise AssertionError(f"Unexpected attribute: {self.selector} {key}")
+
+        class Page:
+            def __init__(self):
+                self.theme = "paper"
+                self.activated = []
+
+            def locator(self, selector):
+                return Locator(self, selector)
+
+            def evaluate(self, code):
+                self.activated.append(("evaluate", code))
+                return False
+
+            def screenshot(self, *, path, full_page):
+                self.activated.append(("screenshot", self.theme))
+                Path(path).write_bytes(b"synthetic unit-test screenshot")
+
+        class Journey:
+            def __init__(self):
+                self.page = Page()
+                self.assertions = []
+                self.picker_open = False
+
+            def click(self, locator):
+                if locator.selector == "[data-showcase-theme]":
+                    self.picker_open = True
+                    self.page.activated.append(("open",))
+                elif locator.selector.startswith('[data-showcase-theme-value="'):
+                    if not self.picker_open:
+                        raise AssertionError("Theme option was clicked without opening the picker")
+                    self.page.theme = locator.selector.split('"')[1]
+                    self.picker_open = False
+                    self.page.activated.append(("select", self.page.theme))
+                else:
+                    raise AssertionError(f"Unexpected click: {locator.selector}")
+
+        class Expectation:
+            def __init__(self, locator):
+                self.locator = locator
+
+            def to_have_count(self, count):
+                assert self.locator.count() == count
+
+            def to_have_attribute(self, key, value):
+                assert self.locator.get_attribute(key) == value
+
+        package = ModuleType("playwright")
+        library = ModuleType("playwright.sync_api")
+        library.expect = lambda locator: Expectation(locator)
+        journey = Journey()
+        with tempfile.TemporaryDirectory() as temp, patch.dict(
+            sys.modules, {"playwright": package, "playwright.sync_api": library}
+        ):
+            images = screenshots(journey, ("showcase", "root", "desktop"), Path(temp))
+            self.assertEqual([image["theme"] for image in images], ["light", "dark"])
+            self.assertEqual([event for event in journey.page.activated
+                              if event[0] in {"open", "select", "screenshot"}], [
+                ("open",), ("select", "light"), ("screenshot", "light"),
+                ("open",), ("select", "dark"), ("screenshot", "dark"),
+            ])
+
     def test_theme_attachment_cannot_be_text_or_reused(self):
         import hashlib
         import tempfile
