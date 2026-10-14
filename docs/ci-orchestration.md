@@ -80,12 +80,20 @@ What changed:
   inside `site-assemble` (the authorized translations and the version composition
   that #64 added), not because a phase became slower.
 
-The conclusion of the original attribution is unchanged and now stronger: one phase
-(`showcase.api`, this repository documenting itself) is roughly two thirds of the
-generation cost, and every other phase except authoring is under 1.2%. That is the
-evidence behind 06.6 -- the repeated directory walks, link validation, hashing,
-copying and compression are each individually timed and each is a rounding error
-against 413 s, so optimizing them cannot move the total meaningfully.
+The conclusion of the original attribution is unchanged and now stronger. Three
+phases dominate and they are all real generation work, not duplicated overhead:
+`showcase.api` (this repository documenting itself) is roughly two thirds of the
+cost, the two `pocketkit.generate:all:*` extractions are about 10% each (they are
+one extraction per version, already reduced from four by CI-06.4), and
+`showcase.authoring` is about 7.5%.
+
+Everything else is a rounding error: no remaining phase reaches 1.3% of the total,
+and the directory walks, link validation, hashing, copying and compression that
+06.6 names are each at or below that. That is the evidence behind 06.6 -- they are
+individually timed, and none of them is large enough that optimizing it could move
+a 640 s total meaningfully. The two PocketKit generation phases are explicitly NOT
+in that group; they are the second-largest cost and were reduced by removing the
+extra extractions, not by micro-optimizing file work.
 
 ## CI-07.4: combined SDK cache shape
 
