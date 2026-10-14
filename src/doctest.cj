@@ -213,15 +213,25 @@ private func processText(bytes: Array<Byte>): String {
     try { String.fromUtf8(bytes) } catch (_: Exception) { "<non-UTF-8 output>" }
 }
 
-// A pipe Future.get deadline can expire just before the 25 ms watchdog poll.
-// Claim the process timeout immediately in that case; do not misclassify it as
-// an output-limit failure and suppress the watchdog's state transition.
+// A pipe `Future.get` deadline can expire just before the 25 ms watchdog poll.
+// Claim the timeout immediately in that case; do not misclassify it as an
+// output-limit failure and suppress the watchdog's state transition.
+//
+// The expiry is passed in, not re-derived from the child's liveness: a detached
+// descendant can keep a captured pipe open after the child itself has exited, and
+// then the deadline expires while `isAlive()` is already false. Judging by
+// liveness in that case reported `outputLimit` for a doctest that never exceeded
+// the byte cap.
+// Whether the bounded run has passed its deadline, from the monotonic clock.
+private func doctestDeadlineExpired(started: MonoTime, timeoutMs: Int64): Bool {
+    (MonoTime.now() - started).toMilliseconds() >= timeoutMs
+}
+
 private func markDoctestPipeFailure(process: SubProcess, state: AtomicInt64,
-    started: MonoTime, timeoutMs: Int64): Unit {
-    let expired = (MonoTime.now() - started).toMilliseconds() >= timeoutMs
-    // A blocked reader can wake after the deadline even when the child had
-    // already exited. Do not retroactively call a completed child a timeout.
-    let failureState: Int64 = if (expired && process.isAlive()) { 2 } else { 3 }
+    expired: Bool): Unit {
+    // A reader can also wake after the deadline when the child had already exited and
+    // the deadline was NOT the reason -- that is a real read failure, not a timeout.
+    let failureState: Int64 = if (expired) { 2 } else { 3 }
     if (state.compareAndSwap(0, failureState)) {
         try { process.terminate(force: true) } catch (_: Exception) { () }
     }
@@ -264,14 +274,16 @@ internal func runBoundedProcess(command: String, arguments: Array<String>, worki
     let stdoutFuture: Future<Array<Byte>> = spawn {
         try { readProcessPipe(process.stdOutPipe, maxOutputBytes) }
         catch (error: Exception) {
-            markDoctestPipeFailure(process, state, started, timeoutMs)
+            markDoctestPipeFailure(process, state,
+                doctestDeadlineExpired(started, timeoutMs))
             throw error
         }
     }
     let stderrFuture: Future<Array<Byte>> = spawn {
         try { readProcessPipe(process.stdErrPipe, maxOutputBytes) }
         catch (error: Exception) {
-            markDoctestPipeFailure(process, state, started, timeoutMs)
+            markDoctestPipeFailure(process, state,
+                doctestDeadlineExpired(started, timeoutMs))
             throw error
         }
     }
@@ -303,14 +315,14 @@ internal func runBoundedProcess(command: String, arguments: Array<String>, worki
         stdout = read
     } else {
         stdoutFuture.cancel()
-        markDoctestPipeFailure(process, state, started, timeoutMs)
+        markDoctestPipeFailure(process, state, expired())
         if (state.load() == 3) { outputLimit = true }
     }
     if (let Some(read) <- awaitRead(stderrFuture)) {
         stderr = read
     } else {
         stderrFuture.cancel()
-        markDoctestPipeFailure(process, state, started, timeoutMs)
+        markDoctestPipeFailure(process, state, expired())
         if (state.load() == 3) { outputLimit = true }
     }
     var exitCode: Int64 = -1

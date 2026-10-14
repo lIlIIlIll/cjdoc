@@ -46,14 +46,15 @@ private let EXAMPLE_RUN_CHUNK_BYTES: Int64 = 8192
 private let EXAMPLE_RUN_POLL_MILLISECONDS: Int64 = 50
 
 // Shared by the watchdog and every wait so there is exactly one budget for the whole
-// example run.
-private func exampleExpired(deadline: DateTime): Bool {
-    (deadline - DateTime.now()).toMilliseconds() <= 0
+// example run, taken from the MONOTONIC clock: a corrected system clock must not
+// extend the limit or kill a healthy example early.
+private func exampleRemainingMilliseconds(started: MonoTime, timeoutMilliseconds: Int64): Int64 {
+    let left = timeoutMilliseconds - (MonoTime.now() - started).toMilliseconds()
+    if (left < 0) { 0 } else { left }
 }
 
-private func exampleRemainingMilliseconds(deadline: DateTime): Int64 {
-    let left = (deadline - DateTime.now()).toMilliseconds()
-    if (left < 0) { 0 } else { left }
+private func exampleExpired(started: MonoTime, timeoutMilliseconds: Int64): Bool {
+    exampleRemainingMilliseconds(started, timeoutMilliseconds) <= 0
 }
 // Deliberately distinct from the generated source (`__cjdoc_example.cj`) and the
 // compile-only archive (`__cjdoc_example.a`) that share this temporary directory, so
@@ -311,14 +312,14 @@ private func executeExampleProgram(executable: Path): ExampleProcessResult {
         throw error
     }
     let state = AtomicInt64(0)
-    // ONE absolute deadline for the watchdog and all three waits, so the run limit
+    // ONE absolute budget for the watchdog and all three waits, so the run limit
     // is the limit for the whole call rather than per stage (separate full waits
     // would allow roughly three times it).
-    let deadline = DateTime.now() + Duration.millisecond * MAX_EXAMPLE_RUN_MILLISECONDS
+    let started = MonoTime.now()
     let expiredFlag = AtomicBool(false)
     let watchdog = spawn {
         while (state.load() == 0 && !expiredFlag.load()) {
-            if (exampleExpired(deadline)) {
+            if (exampleExpired(started, MAX_EXAMPLE_RUN_MILLISECONDS)) {
                 // Claiming the timeout state is what keeps cleanup correct: if the
                 // reads or the status wait expired first the state is still 0, and
                 // without this claim completion would be recorded as normal and the
@@ -347,7 +348,7 @@ private func executeExampleProgram(executable: Path): ExampleProcessResult {
     // no timeout, and a fresh clock read can land past the deadline even after the
     // check above, so one read of the clock decides whether there is a budget at all.
     func awaitStream(future: Future<(Array<Byte>, Int64)>): (Array<Byte>, Int64) {
-        let remainingMs = exampleRemainingMilliseconds(deadline)
+        let remainingMs = exampleRemainingMilliseconds(started, MAX_EXAMPLE_RUN_MILLISECONDS)
         if (remainingMs <= 0) { return (Array<Byte>(), -1) }
         try {
             future.get(Duration.millisecond * remainingMs)
@@ -371,7 +372,7 @@ private func executeExampleProgram(executable: Path): ExampleProcessResult {
     // rather than be relabelled as exceeding the run limit.
     var statusExpired = false
     var exitCode: Int64 = 124
-    let statusRemainingMs = exampleRemainingMilliseconds(deadline)
+    let statusRemainingMs = exampleRemainingMilliseconds(started, MAX_EXAMPLE_RUN_MILLISECONDS)
     if (statusRemainingMs <= 0) {
         statusExpired = true
     } else {

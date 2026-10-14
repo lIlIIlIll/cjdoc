@@ -160,34 +160,37 @@ private func terminateBoundedProcessTree(process: SubProcess, group: Int64,
     }
 }
 
-// The deadline helpers are shared by the handshake, the watchdog and every wait so
-// there is exactly one budget for the whole call. An exhausted budget must NEVER be
-// handed to `get`: `Future.get(Duration.Zero)` waits without any timeout, so
-// clamping to zero would turn "already expired" into "wait forever".
-private func expired(deadline: DateTime): Bool {
-    (deadline - DateTime.now()).toMilliseconds() <= 0
+// The budget helpers are shared by the handshake, the watchdog and every wait so
+// there is exactly one budget for the whole call, and it is derived from the
+// MONOTONIC clock: `DateTime.now()` can jump when the system clock is corrected,
+// which would either extend an advertised timeout or kill a healthy process early.
+// An exhausted budget must NEVER be handed to `get`: `Future.get(Duration.Zero)`
+// waits without any timeout, so clamping to zero would turn "already expired" into
+// "wait forever".
+private func remainingMilliseconds(started: MonoTime, timeoutMilliseconds: Int64): Int64 {
+    let left = timeoutMilliseconds - (MonoTime.now() - started).toMilliseconds()
+    if (left < 0) { 0 } else { left }
 }
 
-private func remainingMilliseconds(deadline: DateTime): Int64 {
-    let left = (deadline - DateTime.now()).toMilliseconds()
-    if (left < 0) { 0 } else { left }
+private func expired(started: MonoTime, timeoutMilliseconds: Int64): Bool {
+    remainingMilliseconds(started, timeoutMilliseconds) <= 0
 }
 
 internal func executeWithBoundedOutput(command: String, arguments: Array<String>,
     workingDirectory!: ?Path = None,
     timeoutMilliseconds!: Int64 = BOUNDED_PROCESS_TIMEOUT_MILLISECONDS,
     standardInput!: Array<Byte> = [], outputLimit!: Int64 = BOUNDED_PROCESS_OUTPUT_BYTES): (Int64, Array<Byte>, Array<Byte>) {
-    // ONE absolute deadline for the whole call, established before the handshake.
+    // ONE absolute budget for the whole call, established before the handshake.
     // The handshake previously received a full `timeoutMilliseconds` of its own and
     // the reads/status a second full budget, so a slow supervisor could stretch the
     // advertised bound to nearly twice its value.
-    let deadline = DateTime.now() + Duration.millisecond * timeoutMilliseconds
+    let started = MonoTime.now()
     let process = launchBoundedProcess(command, arguments, workingDirectory, standardInput.size)
     let job = try { createExampleProcessJob(process) } catch (error: Exception) {
         try { process.terminate(force: true) } catch (_: Exception) {}
         throw error
     }
-    let group = try { boundedProcessGroupWithReader(process, remainingMilliseconds(deadline), job) }
+    let group = try { boundedProcessGroupWithReader(process, remainingMilliseconds(started, timeoutMilliseconds), job) }
         catch (error: Exception) {
         terminateBoundedProcessTree(process, 0, job)
         throw error
@@ -196,7 +199,7 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
     let expiredFlag = AtomicBool(false)
     let watchdog = spawn {
         while (state.load() == 0 && !expiredFlag.load()) {
-            if (expired(deadline)) {
+            if (expired(started, timeoutMilliseconds)) {
                 // Claiming the timeout state here is what makes the tree cleanup
                 // below correct: if a bounded read expired first, the state is still
                 // 0, and without this claim completion would later be recorded as
@@ -234,7 +237,7 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
     // budget must be treated as expiration rather than passed through. One read of
     // the clock decides it.
     func awaitRead(future: Future<(Array<Byte>, Int64)>): (Array<Byte>, Int64) {
-        let remainingMs = remainingMilliseconds(deadline)
+        let remainingMs = remainingMilliseconds(started, timeoutMilliseconds)
         if (remainingMs <= 0) { return (Array<Byte>(), -1) }
         try {
             future.get(Duration.millisecond * remainingMs)
@@ -272,10 +275,10 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
     // alive at the deadline, which is the timeout condition.
     var statusExpired = false
     var exitCode: Int64 = 124
-    if (expired(deadline)) {
+    if (expired(started, timeoutMilliseconds)) {
         statusExpired = true
     } else {
-        let remainingMs = remainingMilliseconds(deadline)
+        let remainingMs = remainingMilliseconds(started, timeoutMilliseconds)
         if (remainingMs <= 0) {
             statusExpired = true
         } else {
