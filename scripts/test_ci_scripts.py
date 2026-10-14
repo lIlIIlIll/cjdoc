@@ -208,7 +208,13 @@ class RunWithTimeoutTests(unittest.TestCase):
     def run_wrapper(self, timeout: str, *command: str) -> subprocess.CompletedProcess:
         return subprocess.run(
             [sys.executable, str(self.script), timeout, "--", *command],
-            capture_output=True, text=True)
+            capture_output=True, text=True, env=self.short_grace())
+
+    def short_grace(self) -> dict:
+        """`GRACE_SECONDS` is production-scale; tests must not wait it out."""
+        environment = dict(os.environ)
+        environment["CJDOC_TIMEOUT_GRACE_SECONDS"] = "5"
+        return environment
 
     def test_a_fast_command_passes_through_with_its_own_status(self) -> None:
         done = self.run_wrapper("30", sys.executable, "-c", "import sys; sys.exit(3)")
@@ -259,7 +265,7 @@ class RunWithTimeoutTests(unittest.TestCase):
         worker = (
             "import signal, sys, time\n"
             "def handler(signum, frame):\n"
-            "    time.sleep(3)\n"
+            "    time.sleep(1)\n"
             f"    open({str(finished)!r}, 'w').write('ok')\n"
             "    sys.exit(0)\n"
             "signal.signal(signal.SIGTERM, handler)\n"
@@ -273,7 +279,7 @@ class RunWithTimeoutTests(unittest.TestCase):
         done = subprocess.run(
             [sys.executable, str(self.script), "1", "--",
              sys.executable, "-c", leader],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=self.short_grace())
         self.assertEqual(done.returncode, 124)
         self.assertTrue(finished.exists(),
                         "the worker was killed before its TERM handler completed")
@@ -294,7 +300,7 @@ class RunWithTimeoutTests(unittest.TestCase):
         # below could never see it alive.
         done = subprocess.run(
             [sys.executable, str(self.script), "1", "--", "/bin/bash", str(script)],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=self.short_grace())
         self.assertEqual(done.returncode, 124)
         deadline = time.monotonic() + 5
         survivors = "1"

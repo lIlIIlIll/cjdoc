@@ -29,8 +29,21 @@ import time
 TIMEOUT_EXIT_CODE = 124
 
 # How long a TERM'd command may take to shut down before the group is killed, the
-# same grace `timeout --kill-after=60` provided.
+# same grace `timeout --kill-after=60` provided. Overridable so tests can exercise
+# escalation without waiting a minute per case.
 GRACE_SECONDS = 60
+
+
+def _grace_seconds() -> int:
+    raw = os.environ.get("CJDOC_TIMEOUT_GRACE_SECONDS")
+    if raw is None:
+        return GRACE_SECONDS
+    try:
+        value = int(raw)
+    except ValueError:
+        print(f"run_with_timeout.py: ignoring non-numeric grace {raw!r}", file=sys.stderr)
+        return GRACE_SECONDS
+    return value if value > 0 else GRACE_SECONDS
 
 
 def _signal_group(process: subprocess.Popen, signum: int) -> None:
@@ -124,7 +137,7 @@ def _install_signal_cleanup(process: subprocess.Popen) -> dict:
 
     def handler(signum, frame) -> None:
         _signal_group(process, signal.SIGTERM)
-        _wait_for_group(process, GRACE_SECONDS)
+        _wait_for_group(process, _grace_seconds())
         # The group is killed even when the leader obeyed TERM, because a worker in
         # its session may not have, and the grace above already covered it.
         _kill_tree(process)
@@ -170,10 +183,11 @@ def run(command: list[str], timeout_seconds: int) -> int:
         _signal_group(process, signal.SIGTERM)
         # The grace belongs to the GROUP: a worker may still be flushing results or
         # running its own TERM handler after the leader has already exited.
-        _wait_for_group(process, GRACE_SECONDS)
+        _wait_for_group(process, _grace_seconds())
+        grace = _grace_seconds()
         if _group_is_alive(process):
             print(f"run_with_timeout.py: the process group was still alive after "
-                  f"{GRACE_SECONDS}s; killing it", file=sys.stderr, flush=True)
+                  f"{grace}s; killing it", file=sys.stderr, flush=True)
         _kill_tree(process)
         try:
             process.wait(timeout=60)
