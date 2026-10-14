@@ -271,6 +271,9 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
                     if (source.path != declaration.source.path) { domainFail("$.documentation.localizedTexts.source", "field source must belong to declaration file") }
                 }
                 if (let Some(targetId) <- text.targetSymbolId) {
+                    if (["see", "throws"].contains(text.kind) && text.referenceState != "resolved") {
+                        domainFail("$.documentation.localizedTexts", "unresolved reference cannot carry a target")
+                    }
                     if (!byId.contains(targetId)) { domainFail("$.documentation.localizedTexts", "unknown target SymbolId") }
                 } else if (text.referenceState == "resolved") {
                     domainFail("$.documentation.localizedTexts", "resolved target is missing")

@@ -101,19 +101,23 @@ internal func capturedPageSourceLinks(documentation: DocumentationSet, page: Doc
     result
 }
 
+private func capturedPageBindingStateLabel(state: String, locale: String): String {
+    match (state) {
+        case "resolved" => label(locale, "Linked", "已关联")
+        case "unavailable" => label(locale, "Not available in this audience", "当前受众不可见")
+        case "ambiguous" => label(locale, "Ambiguous target", "目标不明确")
+        case "conflict" => label(locale, "Conflicting markers", "标记冲突")
+        case _ => label(locale, "Target not found", "未找到目标")
+    }
+}
+
 internal func capturedPageBindingsHtml(page: DocumentationPage, documentation: DocumentationSet,
     locale: String): String {
     let out = RenderTextBuffer()
     let visible = RenderProjection(documentation).visibleIndex
     for (binding in page.bindings) {
         out.append("<div class=\"inline-binding\"><span class=\"binding-state\" data-state=\"" + binding.state + "\">")
-        let state = match (binding.state) {
-            case "resolved" => label(locale, "Linked", "已关联")
-            case "unavailable" => label(locale, "Not available in this audience", "当前受众不可见")
-            case "ambiguous" => label(locale, "Ambiguous target", "目标不明确")
-            case "conflict" => label(locale, "Conflicting markers", "标记冲突")
-            case _ => label(locale, "Target not found", "未找到目标")
-        }
+        let state = capturedPageBindingStateLabel(binding.state, locale)
         out.append(state + "</span> ")
         let target: ?SymbolDoc = match (binding.targetSymbolId) { case Some(id) => visible.get(id); case None => None }
         if (let Some(symbol) <- target) {
@@ -125,4 +129,39 @@ internal func capturedPageBindingsHtml(page: DocumentationPage, documentation: D
         out.append("<span class=\"binding-meta\">source: " + escapeHtml(binding.provenance) + "; line: " + binding.sourceLine.toString() + "</span></details></div>")
     }
     out.toString()
+}
+
+internal func appendCapturedPageBindingsMarkdown(out: RenderTextBuffer,
+    page: DocumentationPage, documentation: DocumentationSet, locale: String): Unit {
+    if (page.bindings.isEmpty()) { return }
+    out.append("\n## " + label(locale, "API associations", "API 关联") + "\n\n")
+    let visible = RenderProjection(documentation).visibleIndex
+    for (binding in page.bindings) {
+        let target: ?SymbolDoc = match (binding.targetSymbolId) {
+            case Some(id) => visible.get(id)
+            case None => None
+        }
+        let state = if (binding.targetSymbolId.isSome() && target.isNone()) {
+            "unavailable"
+        } else { binding.state }
+        out.append("- **" + capturedPageBindingStateLabel(state, locale) + "** ")
+        if (state == "resolved" && target.isSome()) {
+            let symbol = target.getOrThrow()
+            let destination = pageRootPrefix(page.route) + markdownTargetPagePath(symbol, visible) +
+                "#" + symbolAnchor(symbol)
+            out.append("["); appendMarkdownCodeSpan(out, symbol.qualifiedName)
+            out.append("](" + encodeMarkdownDestination(destination) + ")")
+        } else if (state != "unavailable") { appendMarkdownCodeSpan(out, binding.target) }
+        out.append(" — language: ")
+        appendMarkdownCodeSpan(out, if (binding.language.isEmpty()) { "unknown" } else { binding.language })
+        out.append("; line: " + binding.sourceLine.toString())
+        for ((key, text) in [("version", binding.version), ("source", binding.provenance),
+            ("selector", if (state == "unavailable") { "" } else { binding.selector })]) {
+            if (!text.isEmpty()) {
+                out.append("; " + key + ": ")
+                appendMarkdownCodeSpan(out, text.replace("\r", " ").replace("\n", " ").replace("\t", " "))
+            }
+        }
+        out.append("\n")
+    }
 }

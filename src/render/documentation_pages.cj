@@ -97,6 +97,7 @@ internal func appendCapturedPageArtifacts(artifacts: RenderArtifactCollector, do
             let markdownLinks = capturedPageSourceLinks(documentation, page, pages, markdown: true)
             appendMarkdownNodeMarkdown(markdown, page.markdown, buildAssetLookup(assets, prefix: prefix), 1,
                 capturedLinks: Some(markdownLinks))
+            appendCapturedPageBindingsMarkdown(markdown, page, documentation, locale)
             artifacts.addText("markdown/" + page.route.removeSuffix(".html") + ".md", "text/markdown; charset=utf-8",
                 markdown.toString() + "\n\n" + label(locale, "Content language: ", "内容语言：") + page.language.getOrDefault({ => "unknown" }) + "\n")
         }

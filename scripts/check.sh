@@ -794,6 +794,8 @@ stage_cli() {
     "${python_cmd}" -m unittest scripts.test_fixture_contracts
     "${python_cmd}" scripts/i18n_gate.py --binary "${binary}" --repo "${repo}" \
         --workdir "${check_dir}/i18n"
+    "${python_cmd}" scripts/external_snapshot_gate.py --binary "${binary}" \
+        --workdir "${check_dir}/external-snapshot"
     "${python_cmd}" scripts/validate_html_site.py "${check_dir}/i18n/multi/html/en" \
         --publication-root "${check_dir}/i18n/multi/html"
     "${python_cmd}" scripts/validate_html_site.py "${check_dir}/i18n/multi/html/zh-CN" \

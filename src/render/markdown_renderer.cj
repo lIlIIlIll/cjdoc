@@ -3,7 +3,7 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
-private func markdownRelativeDestination(destination: String, pagePath: String): String {
+internal func markdownRelativeDestination(destination: String, pagePath: String): String {
     if (pagePath.startsWith("symbols/") && destination.startsWith("symbols/")) {
         destination["symbols/".size..]
     } else if (pagePath.startsWith("packages/") || pagePath.startsWith("symbols/")) {
@@ -11,7 +11,7 @@ private func markdownRelativeDestination(destination: String, pagePath: String):
     } else { destination }
 }
 
-private func markdownTargetPagePath(target: SymbolDoc,
+internal func markdownTargetPagePath(target: SymbolDoc,
     symbolIndex: HashMap<String, SymbolDoc>): String {
     if (isContainerDeclaration(target)) {
         markdownSymbolPagePath(target)
@@ -525,6 +525,7 @@ internal func appendMarkdownArtifacts(artifacts: RenderArtifactCollector,
                     locale: locale, symbolIndex: Some(projection.visibleIndex))
                 case None => ()
             }
+            appendExternalDocumentationMarkdown(out, documentation, declaration, locale, "")
             out.append("- Kind: "); appendMarkdownCodeSpan(out, declaration.kind); out.append("\n")
             out.append("- Visibility: "); appendMarkdownCodeSpan(out, declaration.visibility)
             out.append("\n- Semantic state: "); appendMarkdownCodeSpan(out,

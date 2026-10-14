@@ -15,7 +15,11 @@ private let LOCALIZED_DOC_SCHEMA = """
       },
       "allOf": [
         {"if": {"properties": {"state": {"enum": ["valid", "empty", "conflict"]}}},
-          "then": {"properties": {"fieldId": {"minLength": 1}}}}
+          "then": {"properties": {"fieldId": {"minLength": 1}}}},
+        {"if": {"properties": {"referenceState": {"const": "resolved"}}},
+          "then": {"properties": {"targetSymbolId": {"$ref": "#/$defs/symbolId"}}}},
+        {"if": {"properties": {"kind": {"enum": ["see", "throws"]}, "referenceState": {"not": {"const": "resolved"}}}},
+          "then": {"properties": {"targetSymbolId": {"type": "null"}}}}
       ]
     },
     "documentationLanguageOptions": {

@@ -1724,6 +1724,11 @@ internal func appendConceptualArtifacts(projectRoot: String,
     let resolvers = if (hasHtml || hasMarkdown) {
         loadExternalDocResolvers(projectRoot)
     } else { Array<ExternalDocResolver>() }
+    // Captured resolver snapshots render natively in every documentation format.
+    // Only legacy documents without a snapshot need the source-side supplement.
+    let htmlResolvers = if (documentation.externalDocumentation.isEmpty()) {
+        resolvers
+    } else { Array<ExternalDocResolver>() }
     if (!config.enabled && pages.isEmpty() && resolvers.isEmpty()) {
         return baseArtifacts
     }
@@ -1762,7 +1767,7 @@ internal func appendConceptualArtifacts(projectRoot: String,
         conceptualSearchIndex(search, pages, documentation)
     } else { search }
     let augmentedSearch = if (hasHtml) {
-        externalSearchIndex(conceptualSearch, documentation, resolvers)
+        externalSearchIndex(conceptualSearch, documentation, htmlResolvers)
     } else { conceptualSearch }
     let result = ArrayList<public_render.RenderArtifact>()
     for (artifact in baseArtifacts) {
@@ -1783,13 +1788,13 @@ internal func appendConceptualArtifacts(projectRoot: String,
                 searchScript))
         } else if (shouldAugmentApiArtifacts && (artifact.path.startsWith("html/symbols/") || artifact.path.startsWith("html/packages/"))) {
             var content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
-                documentation, htmlSymbolIndex, pages, resolvers, locale)
+                documentation, htmlSymbolIndex, pages, htmlResolvers, locale)
             content = conceptualAugmentInlineMembers(artifact.path, content, documentation,
-                htmlInlineMemberIndex, pages, resolvers, locale)
+                htmlInlineMemberIndex, pages, htmlResolvers, locale)
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, content))
         } else if (shouldAugmentApiArtifacts && (artifact.path.startsWith("markdown/symbols/") || artifact.path.startsWith("markdown/packages/"))) {
             let content = conceptualAugmentApiArtifact(artifact.path, artifact.content,
-                documentation, markdownSymbolIndex, pages, resolvers, locale)
+                documentation, markdownSymbolIndex, pages, htmlResolvers, locale)
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType, content))
         } else {
             result.add(artifact)

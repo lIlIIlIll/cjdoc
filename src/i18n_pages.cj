@@ -13,7 +13,6 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
     let options = value.languageOptions
     let defaultLanguage: ?String = match (options) { case Some(profile) => Some(profile.defaultLanguage); case None => None }
     let identities = HashSet<String>()
-    var localizedPages = false
     for (page in captured) {
         if (page.language.isSome() && page.id.isEmpty()) {
             value.appendDiagnostic(public_model.Diagnostic("error", "CJDOC3110",
@@ -23,7 +22,6 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
         let id = if (page.id.isEmpty()) { page.route } else { page.id }
         let language: ?String = if (page.language.isSome()) { page.language }
             else if (exists(Path(request.projectRoot).join(page.source))) { defaultLanguage } else { None }
-        if (language.isSome()) { localizedPages = true }
         let identity = id + ":" + language.getOrDefault({ => "unknown" })
         if (!identities.add(identity)) {
             value.appendDiagnostic(public_model.Diagnostic("error", "CJDOC3110", "duplicate logical page '" + id + "' for language " + language.getOrDefault({ => "unknown" })))
@@ -67,8 +65,7 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
         unsupportedDeclarations: value.unsupportedDeclarations.toArray(),
         unboundSemanticDeclarations: value.unboundSemanticDeclarations.toArray(), diagnostics: value.diagnostics.toArray(),
         languageOptions: value.languageOptions, pages: pages.toArray(),
-        externalDocumentation: captureExternalDocumentationReferences(value, request.projectRoot,
-            value.languageOptions.isSome() || localizedPages))
+        externalDocumentation: captureExternalDocumentationReferences(value, request.projectRoot))
 }
 
 private func capturePageMarkdown(value: public_model.DocumentationSet,
@@ -112,8 +109,7 @@ private func capturedPageSourceOrigin(source: String, projectRoot: String): ?Sou
 }
 
 private func captureExternalDocumentationReferences(value: public_model.DocumentationSet,
-    root: String, enabled: Bool): Array<public_model.ExternalDocumentationReference> {
-    if (!enabled) { return [] }
+    root: String): Array<public_model.ExternalDocumentationReference> {
     let references = ArrayList<public_model.ExternalDocumentationReference>()
     let resolvers = loadExternalDocResolvers(root)
     for (symbol in value.declarations) {

@@ -7,10 +7,8 @@ public class HtmlDocumentationRenderer <: DocumentationRenderer {
     public prop format: String { get() { "html" } }
 
     public func render(documentation: DocumentationSet): Array<RenderArtifact> {
-        let artifacts = RenderArtifactCollector()
         let locale = documentation.readingLanguage.getOrDefault({ => "en" })
-        appendHtmlArtifacts(artifacts, projectDocumentationLanguage(documentation, locale), locale: locale)
-        artifacts.toArray()
+        renderDocumentationFormatsWithOptions(documentation, ["html"], locale: locale)
     }
 }
 
@@ -242,6 +240,8 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                     appendMarkdownSiteSymbol(out, symbol, assetLookup, "###", locale,
                         markdownPackagePagePath(pkg.source.moduleId, pkg.source.name),
                         projection.visibleIndex)
+                    appendExternalDocumentationMarkdown(out, documentation, symbol, locale,
+                        markdownPackagePagePath(pkg.source.moduleId, pkg.source.name))
                 }
             }
             case None => out.append("${label(locale, "No direct declarations.", "没有直接声明。")}\n")
@@ -263,12 +263,14 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                 symbolIndex: Some(projection.visibleIndex))
             case None => ()
         }
+        appendExternalDocumentationMarkdown(out, documentation, symbol, locale, markdownSymbolPagePath(symbol))
         match (membersByOwner.get(symbol.id)) {
             case Some(members) => if (!members.isEmpty()) {
                 out.append("## ${label(locale, "Members", "成员")}\n\n")
                 for (member in members) {
                     appendMarkdownSiteSymbol(out, member, assetLookup, "###", locale,
                         markdownSymbolPagePath(symbol), projection.visibleIndex)
+                    appendExternalDocumentationMarkdown(out, documentation, member, locale, markdownSymbolPagePath(symbol))
                 }
             }
             case None => ()
@@ -316,7 +318,15 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
                 "unsupported documentation format '${format}'")
         }
     }
-    if (markdownLayout != "single") { appendCapturedPageArtifacts(artifacts, localized, formats, locale, docVersion) }
+    let capturedFormats = ArrayList<String>()
+    for (format in formats) {
+        if (format == "html" || (format == "markdown" && markdownLayout != "single")) {
+            capturedFormats.add(format)
+        }
+    }
+    if (!capturedFormats.isEmpty()) {
+        appendCapturedPageArtifacts(artifacts, localized, capturedFormats.toArray(), locale, docVersion)
+    }
     artifacts.toArray()
 }
 

@@ -96,6 +96,9 @@ public class DocumentationText {
         if (referenceState == "resolved" && targetSymbolId.isNone()) {
             throw IllegalArgumentException("resolved localized reference requires a target")
         }
+        if (["see", "throws"].contains(kind) && referenceState != "resolved" && targetSymbolId.isSome()) {
+            throw IllegalArgumentException("unresolved localized reference cannot carry a target")
+        }
         this.fieldId = fieldId; this.kind = kind; this.subject = subject
         this.language = language; this.text = text; this.markdown = markdown
         this.source = source; this.state = state; this.referenceState = referenceState

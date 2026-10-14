@@ -66,3 +66,40 @@ internal func externalDocumentationHtml(documentation: DocumentationSet, symbol:
     if (opened) { out.append("</ul></section>") }
     out.toString()
 }
+
+internal func appendExternalDocumentationMarkdown(out: RenderTextBuffer,
+    documentation: DocumentationSet, symbol: SymbolDoc, locale: String, pagePath: String): Unit {
+    var opened = false
+    for (value in documentation.externalDocumentation where value.symbolId == symbol.id) {
+        if (!opened) {
+            out.append("#### " + label(locale, "External documentation", "外部文档") + "\n\n")
+            opened = true
+        }
+        out.append("- **")
+        appendEscapedMarkdownText(out, value.name.replace("\r", " ").replace("\n", " ").replace("\t", " "))
+        out.append("** ")
+        if (value.state == "available") {
+            if (let Some(encoded) <- markdownLinkDestination(value.url, allowRelative: true)) {
+                let destination = if (value.url.startsWith("./")) {
+                    encodeMarkdownDestination(markdownRelativeDestination(value.url.removePrefix("./"), pagePath))
+                } else { encoded }
+                out.append("[" + label(locale, "Open external reference", "打开外部参考") + "](" + destination + ")")
+            }
+        } else {
+            out.append(if (value.state == "ambiguous") {
+                label(locale, "Ambiguous reference", "引用不明确")
+            } else { label(locale, "No external reference", "无外部参考") })
+            out.append(" — ")
+            appendEscapedMarkdownText(out, value.reason.replace("\r", " ").replace("\n", " ").replace("\t", " "))
+        }
+        for ((key, text) in [("version", value.version), ("index", value.index),
+            ("format", value.format), ("fingerprint", value.fingerprint)]) {
+            if (!text.isEmpty()) {
+                out.append("; " + key + ": ")
+                appendMarkdownCodeSpan(out, text.replace("\r", " ").replace("\n", " ").replace("\t", " "))
+            }
+        }
+        out.append("\n")
+    }
+    if (opened) { out.append("\n") }
+}
