@@ -196,6 +196,11 @@ public class ApiContractSnapshot {
             (schemaVersion != API_SURFACE_SCHEMA_VERSION && schemaVersion != API_SURFACE_V2_SCHEMA_VERSION && schemaVersion != API_SURFACE_LEGACY_SCHEMA_VERSION)) {
             throw IllegalArgumentException("invalid API contract snapshot")
         }
+        if (schemaVersion != API_SURFACE_SCHEMA_VERSION) {
+            for (declaration in declarations where !declaration.documentationLanguages.isEmpty()) {
+                throw IllegalArgumentException("legacy API contract snapshots cannot contain documentation languages")
+            }
+        }
         this.schemaVersion = schemaVersion
         this.project = project
         this.audience = audience

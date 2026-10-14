@@ -71,9 +71,9 @@ cjdoc versions compose \
 
 组合器输出 `versions.json`、根选择页和 `latest/` 静态别名。版本页面的 selector 使用稳定 symbol ID 跨版本导航；目标不存在时回退到版本首页并保留 unavailable 标记。未显式指定 latest 时使用第一个命令行版本；channel/status 不做内置策略判断。
 
-已有 `cjdoc.api-diff/1` 报告时，可用 `--diff VERSION=FILE` 绑定到目标版本。报告会原样复制到该版本的 `api-diff.json`，并通过 manifest 的 `apiDiff` 字段和 selector 的 Changes 链接暴露；不会改写 Doc IR。
+已有 `cjdoc.api-diff/1` 或 `cjdoc.api-diff/2` 报告时，可用 `--diff VERSION=FILE` 绑定到目标版本。报告会原样复制到该版本的 `api-diff.json`，并通过 manifest 的 `apiDiff` 字段和 selector 的 Changes 链接暴露；不会改写 Doc IR。
 
-`versions.json` 遵循 `cjdoc.versions/1`，每个版本目录可独立通过 `file://` 打开。
+`versions.json` 遵循 `cjdoc.versions/2`，每个版本目录可独立通过 `file://` 打开。
 
 ## Agent-readable navigation and context
 
@@ -230,7 +230,7 @@ cjdoc check --project . \
 cjdoc diff --baseline api-surface.json --current api-surface-next.json --format json --deny-breaking-api
 ```
 
-`diff` 默认返回 `0` 并保留报告；`--deny-breaking-api` 或 `--deny-potentially-breaking-api` 让对应分类返回 `1`，输入错误返回 `2`。v1 API snapshot 只作为严格迁移输入，当前输出为 v2；`--format json` 输出稳定的 `cjdoc.api-diff/1` 文档。
+`diff` 默认返回 `0` 并保留报告；`--deny-breaking-api` 或 `--deny-potentially-breaking-api` 让对应分类返回 `1`，输入错误返回 `2`。v1/v2 API snapshot 只作为严格迁移输入，当前输出为 v3；`--format json` 输出稳定的 `cjdoc.api-diff/2` 文档。
 
 只想读取覆盖率 JSON 时：
 
@@ -288,7 +288,7 @@ cjdoc render \
 
 `render` 会先验证输入的 schema 和引用关系。它不读取项目源码，因此源码注释或声明有变化时，应重新运行 `generate`。
 
-v6/v7/v8/v9 只能作为严格的只读输入迁移到当前 v10 输出；cjdoc 不会重新生成旧版本格式。
+v6/v7/v8/v9/v10/v11/v12 只能作为严格的只读输入迁移到当前 v13 输出；cjdoc 不会重新生成旧版本格式。
 
 需要在 HTML 声明页显示 GitHub 源码链接时，`generate` 必须同时接收 `--repository-url` 和 `--repository-revision`，并可用 `--repository-root` 指定仓库根目录。URL 只支持 canonical GitHub HTTPS 仓库根；缺少真实 source-origin 映射、仓库外依赖或符号链接越界时，链接会被省略。`render` 只使用 JSON 中已经保存的 metadata，不接受这些生成参数。
 
@@ -364,10 +364,10 @@ cjpm -v
 | `--no-cache` | `generate`, `check` | 关闭 | 禁用 source cache |
 | `--locale <name>` | `generate`, `render` | `zh-CN` | HTML/Markdown 结构语言 |
 | `--markdown-layout <name>` | `generate`, `render` | `site` | `site` 或英文 `single` |
-| `--api-surface-baseline <file>` | `generate`, `check` | 无 | 对账 API snapshot；当前生成 v2，严格接受 v1/v2 输入 |
+| `--api-surface-baseline <file>` | `generate`, `check` | 无 | 对账 API snapshot；当前生成 v3，严格接受 v1/v2/v3 输入 |
 | `--baseline <file>` / `--current <file>` | `diff` | 无 | 指定两个 API snapshot |
 | `--deny-breaking-api` / `--deny-potentially-breaking-api` | `diff` | 关闭 | 把对应 API diff 分类变成退出码 `1` |
-| `--format text` / `--format json` | `diff` | `text` | 选择人读文本或 `cjdoc.api-diff/1` JSON |
+| `--format text` / `--format json` | `diff` | `text` | 选择人读文本或 `cjdoc.api-diff/2` JSON |
 | `--min-symbol-coverage <0..100>` | `generate`, `check` | 无 | 声明覆盖率门槛 |
 | `--min-parameter-coverage <0..100>` | `generate`, `check` | 无 | 参数覆盖率门槛 |
 | `--repository-url <url>` | `generate` | 无 | canonical GitHub HTTPS 仓库根，需与 revision 成对使用 |

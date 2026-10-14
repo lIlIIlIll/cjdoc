@@ -297,6 +297,37 @@ class I18nReviewTest {
     }
 
     @TestCase
+    func legacySnapshotsRejectDocumentationLanguages(): Unit {
+        let languages: Array<?String> = [Some("en"), None]
+        for (version in [api_model.API_SURFACE_LEGACY_SCHEMA_VERSION, api_model.API_SURFACE_V2_SCHEMA_VERSION]) {
+            for (language in languages) {
+                let declaration = reviewContractDeclaration([
+                    api_model.ApiDocumentationFingerprint(language, REVIEW_FINGERPRINT)])
+                @ExpectThrows[IllegalArgumentException](api_model.ApiContractSnapshot("project", "external", "default",
+                    declarations: [declaration], schemaVersion: version))
+            }
+        }
+    }
+
+    @TestCase
+    func legacySnapshotsWithoutDocumentationLanguagesRemainValid(): Unit {
+        let declaration = reviewContractDeclaration([])
+        for (version in [api_model.API_SURFACE_LEGACY_SCHEMA_VERSION, api_model.API_SURFACE_V2_SCHEMA_VERSION]) {
+            let snapshot = api_model.ApiContractSnapshot("project", "external", "default",
+                declarations: [declaration], schemaVersion: version)
+            @Expect(snapshot.schemaVersion, version)
+            @Expect(snapshot.declarations[0].documentationLanguages.isEmpty())
+        }
+        let snapshot = api_model.ApiContractSnapshot("project", "external", "default",
+            declarations: [declaration], schemaVersion: api_model.API_SURFACE_V2_SCHEMA_VERSION)
+        let encoded = api_render.encodeApiContractSnapshot(snapshot)
+        let decoded = api_render.decodeApiContractSnapshot(encoded)
+        @Expect(decoded.schemaVersion, api_model.API_SURFACE_V2_SCHEMA_VERSION)
+        @Expect(decoded.declarations[0].documentationLanguages.isEmpty())
+        @Expect(api_render.encodeApiContractSnapshot(decoded), encoded)
+    }
+
+    @TestCase
     func fingerprintCollectionsRequireUniqueNormalizedLanguages(): Unit {
         let english = api_model.ApiDocumentationFingerprint(Some("EN"), REVIEW_FINGERPRINT)
         let chinese = api_model.ApiDocumentationFingerprint(Some("zh-cn"), REVIEW_FINGERPRINT)
