@@ -144,6 +144,19 @@ class DiagnosticsTest(unittest.TestCase):
         self.assertTrue((out / "diagnostics.json").is_file())
         self.assertTrue(any(entry["label"].endswith("actual-first") for entry in document["files"]))
 
+    def test_a_stage_evidence_root_includes_the_process_snapshot(self) -> None:
+        """The wedge post-mortem lives in evidence, next to the stage records."""
+        evidence = self.repo / "target/ci-evidence"
+        evidence.mkdir(parents=True)
+        (evidence / "stages.json").write_text("{}\n", encoding="utf-8")
+        (evidence / "native-process-snapshot.txt").write_text(
+            "sampledAt: x\n123 futex_do_wait\n", encoding="utf-8")
+        out = self.root / "evidence-out"
+        document = ci_diagnostics.collect(self.repo, [evidence], out)
+        collected = {Path(entry["path"]).name for entry in document["files"]}
+        self.assertIn("native-process-snapshot.txt", collected)
+        self.assertIn("stages.json", collected)
+
     def test_a_missing_target_still_writes_a_bundle(self) -> None:
         out = self.root / "absent-out"
         document = ci_diagnostics.collect(self.repo, [self.root / "does-not-exist"], out)

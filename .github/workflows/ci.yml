@@ -167,9 +167,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # `target/ci-evidence` is where the stage writes its own records, including
+          # the process snapshot the native stage refreshes while it runs. A wedged
+          # suite is terminated by the stage bound, so the snapshot taken just before
+          # that is the only surviving evidence of what the whole process tree was
+          # waiting on (the runner denies ptrace).
           python scripts/ci_diagnostics.py collect \
             --repo . \
             --target target/acceptance \
+            --target target/ci-evidence \
             --target "${RUNNER_TEMP}/cjdoc-stage-cli" \
             --out "${RUNNER_TEMP}/ci-diagnostics"
 
