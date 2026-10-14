@@ -149,10 +149,6 @@ private func remainingMilliseconds(deadline: DateTime): Int64 {
     if (left < 0) { 0 } else { left }
 }
 
-private func remainingDuration(deadline: DateTime): Duration {
-    Duration.millisecond * remainingMilliseconds(deadline)
-}
-
 internal func executeWithBoundedOutput(command: String, arguments: Array<String>,
     workingDirectory!: ?Path = None,
     timeoutMilliseconds!: Int64 = BOUNDED_PROCESS_TIMEOUT_MILLISECONDS,
@@ -208,32 +204,29 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
     // descendant lives -- measured at 45 s for a 2 s timeout before this bound was
     // added. Bounding the read makes the timeout total, which is what the caller
     // was promised.
-    var readExpired = false
-    let output = if (expired(deadline)) {
-        readExpired = true
-        (Array<Byte>(), 0)
-    } else {
+    // A fresh clock read can land past the deadline even after `expired` was false,
+    // and `Future.get(Duration.Zero)` waits without a timeout, so a nonpositive
+    // budget must be treated as expiration rather than passed through. One read of
+    // the clock decides it.
+    func awaitRead(future: Future<(Array<Byte>, Int64)>): (Array<Byte>, Int64) {
+        let remainingMs = remainingMilliseconds(deadline)
+        if (remainingMs <= 0) { return (Array<Byte>(), -1) }
         try {
-            standardOutput.get(remainingDuration(deadline))
+            future.get(Duration.millisecond * remainingMs)
         } catch (_: Exception) {
-            // A read that expires means the call did NOT complete inside the timeout,
-            // so record it: otherwise a child that already exited successfully could
-            // let the status wait return 0 and the call would report success with
-            // truncated output instead of 124.
-            readExpired = true
-            (Array<Byte>(), 0)
+            (Array<Byte>(), -1)
         }
     }
-    let error = if (expired(deadline)) {
+    var readExpired = false
+    var output = awaitRead(standardOutput)
+    if (output[1] < 0) {
         readExpired = true
-        (Array<Byte>(), 0)
-    } else {
-        try {
-            standardError.get(remainingDuration(deadline))
-        } catch (_: Exception) {
-            readExpired = true
-            (Array<Byte>(), 0)
-        }
+        output = (Array<Byte>(), 0)
+    }
+    var error = awaitRead(standardError)
+    if (error[1] < 0) {
+        readExpired = true
+        error = (Array<Byte>(), 0)
     }
     // `process.wait()` is the wait on the supervisor (`bash`), whose script ends
     // with `wait "$child"`. When the group kill misses a child that escaped the
@@ -248,22 +241,35 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
             -1
         }
     }
-    let exitCode = if (expired(deadline)) {
-        124
+    // Expiry is tracked separately from the code: a program that legitimately exits
+    // 124 must stay an ordinary exit code (and be reported as such), not be turned
+    // into a timeout. A status-wait that merely *expired* means the child is still
+    // alive at the deadline, which is the timeout condition.
+    var statusExpired = false
+    var exitCode: Int64 = 124
+    if (expired(deadline)) {
+        statusExpired = true
     } else {
-        try {
-            statusReader.get(remainingDuration(deadline))
-        } catch (_: Exception) {
-            124
+        let remainingMs = remainingMilliseconds(deadline)
+        if (remainingMs <= 0) {
+            statusExpired = true
+        } else {
+            try {
+                exitCode = statusReader.get(Duration.millisecond * remainingMs)
+            } catch (_: Exception) {
+                statusExpired = true
+            }
         }
     }
     // Record completion only when nothing has already claimed the operation and no
-    // bounded wait expired. A read or status that expired means the call did NOT
-    // finish inside the timeout, so the tree is terminated first: a descendant that
-    // escaped the process group could otherwise keep running while the caller is
-    // told 124.
+    // bounded wait expired. A read or a status wait that expired means the call did
+    // NOT finish inside the timeout, so the tree is terminated first: a descendant
+    // that escaped the process group could otherwise keep running while the caller
+    // is told 124. A child that exited 124 by itself is NOT a timeout and keeps its
+    // own code.
+    let expiredOverall = readExpired || statusExpired
     var completed = false
-    if (!readExpired && exitCode != 124) {
+    if (!expiredOverall) {
         completed = state.compareAndSwap(0, 1)
     }
     if (!completed) {
@@ -273,5 +279,5 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
         let _ = closeExampleProcessJob(job)
     }
     watchdog.get()
-    (if (completed && !readExpired) { exitCode } else { 124 }, output[0], error[0])
+    (if (completed && !expiredOverall) { exitCode } else { 124 }, output[0], error[0])
 }

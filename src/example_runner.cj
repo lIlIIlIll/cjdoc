@@ -344,58 +344,57 @@ private func executeExampleProgram(executable: Path): ExampleProcessResult {
     // (and so the whole test process) blocks past the limit and the suite wedges
     // with no output -- issue #116.
     // Never pass an exhausted budget to `get`: `Future.get(Duration.Zero)` waits with
-    // no timeout at all, so "expired" must be handled explicitly.
-    func expired(): Bool {
-        exampleExpired(deadline)
-    }
-    func remaining(): Duration {
-        Duration.millisecond * exampleRemainingMilliseconds(deadline)
+    // no timeout, and a fresh clock read can land past the deadline even after the
+    // check above, so one read of the clock decides whether there is a budget at all.
+    func awaitStream(future: Future<(Array<Byte>, Int64)>): (Array<Byte>, Int64) {
+        let remainingMs = exampleRemainingMilliseconds(deadline)
+        if (remainingMs <= 0) { return (Array<Byte>(), -1) }
+        try {
+            future.get(Duration.millisecond * remainingMs)
+        } catch (_: Exception) {
+            (Array<Byte>(), -1)
+        }
     }
     var readExpired = false
-    let (outputBytes, outputTotal) = if (expired()) {
+    var (outputBytes, outputTotal) = awaitStream(standardOutput)
+    if (outputTotal < 0) {
         readExpired = true
-        (Array<Byte>(), 0)
-    } else {
-        try {
-            standardOutput.get(remaining())
-        } catch (_: Exception) {
-            readExpired = true
-            (Array<Byte>(), 0)
-        }
+        (outputBytes, outputTotal) = (Array<Byte>(), 0)
     }
-    let (errorBytes, errorTotal) = if (expired()) {
+    var (errorBytes, errorTotal) = awaitStream(standardError)
+    if (errorTotal < 0) {
         readExpired = true
-        (Array<Byte>(), 0)
-    } else {
-        try {
-            standardError.get(remaining())
-        } catch (_: Exception) {
-            readExpired = true
-            (Array<Byte>(), 0)
-        }
+        (errorBytes, errorTotal) = (Array<Byte>(), 0)
     }
-    let exitCode = if (expired()) {
-        124
+    // Expiry is tracked separately from the code: an example that exits 124 by
+    // itself is an ordinary exit code and must keep its runtime-failure diagnostic
+    // rather than be relabelled as exceeding the run limit.
+    var statusExpired = false
+    var exitCode: Int64 = 124
+    let statusRemainingMs = exampleRemainingMilliseconds(deadline)
+    if (statusRemainingMs <= 0) {
+        statusExpired = true
     } else {
-        try {
-            let statusReader: Future<Int64> = spawn {
-                try {
-                    process.wait()
-                } catch (_: Exception) {
-                    -1
-                }
+        let statusReader: Future<Int64> = spawn {
+            try {
+                process.wait()
+            } catch (_: Exception) {
+                -1
             }
-            statusReader.get(remaining())
+        }
+        try {
+            exitCode = statusReader.get(Duration.millisecond * statusRemainingMs)
         } catch (_: Exception) {
-            124
+            statusExpired = true
         }
     }
     // A read or status wait that expired means the call did NOT finish inside the
     // limit, so the tree is terminated and the result is reported as a timeout even
     // if `process.wait()` later returned a normal code. A delayed watchdog alone
     // could otherwise be the only thing that would have claimed the timeout.
+    let expiredOverall = readExpired || statusExpired
     var completed = false
-    if (!readExpired && exitCode != 124) {
+    if (!expiredOverall) {
         completed = state.compareAndSwap(0, 1)
     }
     if (!completed) {
@@ -405,8 +404,8 @@ private func executeExampleProgram(executable: Path): ExampleProcessResult {
         let _ = closeExampleProcessJob(job)
     }
     watchdog.get()
-    ExampleProcessResult(if (readExpired) { 124 } else { exitCode }, outputBytes, errorBytes,
-        outputTotal, errorTotal, readExpired || state.load() == 2)
+    ExampleProcessResult(if (expiredOverall) { 124 } else { exitCode }, outputBytes, errorBytes,
+        outputTotal, errorTotal, expiredOverall || state.load() == 2)
 }
 
 private func isRunnableExampleFile(path: Path): Bool {
