@@ -252,6 +252,33 @@ class RunWithTimeoutTests(unittest.TestCase):
                         "the command never received SIGTERM before being killed")
 
     @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_the_grace_covers_a_worker_after_its_leader_exits(self) -> None:
+        """A worker's own TERM handler must get the grace, not be killed at once."""
+        finished = Path(self.temporary.name) / "worker-finished"
+        marker = f"cjdoc-timeout-grace-{os.getpid()}"
+        worker = (
+            "import signal, sys, time\n"
+            "def handler(signum, frame):\n"
+            "    time.sleep(3)\n"
+            f"    open({str(finished)!r}, 'w').write('ok')\n"
+            "    sys.exit(0)\n"
+            "signal.signal(signal.SIGTERM, handler)\n"
+            "time.sleep(60)\n")
+        leader = (
+            "import subprocess, sys, time\n"
+            f"subprocess.Popen([sys.executable, '-c', {worker!r}])\n"
+            "time.sleep(60)\n")
+        # The leader obeys TERM and exits at once; only the grace can let the worker
+        # finish its handler.
+        done = subprocess.run(
+            [sys.executable, str(self.script), "1", "--",
+             sys.executable, "-c", leader],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.assertEqual(done.returncode, 124)
+        self.assertTrue(finished.exists(),
+                        "the worker was killed before its TERM handler completed")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
     def test_a_worker_that_ignores_term_dies_with_its_leader(self) -> None:
         """The leader obeying TERM must not let a stubborn worker survive."""
         marker = f"cjdoc-timeout-stubborn-{os.getpid()}"

@@ -46,11 +46,13 @@ def _signal_group(process: subprocess.Popen, signum: int) -> None:
             except OSError:
                 pass
         return
-    if signum == signal.SIGTERM and process.poll() is None:
-        try:
-            process.terminate()
-        except OSError:
-            pass
+    # Windows has no graceful group signal. `Popen.terminate()` would
+    # `TerminateProcess` the LEADER only, and once that PID is gone `taskkill /T`
+    # can no longer discover the descendants started by it -- a surviving
+    # `std.testrunner` would be left behind. So nothing is signalled here and the
+    # forced `taskkill /T` in `_kill_tree` runs while the leader is still alive and
+    # can still be walked.
+    return
 
 
 def _kill_tree(process: subprocess.Popen) -> None:
@@ -73,6 +75,43 @@ def _kill_tree(process: subprocess.Popen) -> None:
             pass
 
 
+def _wait_for_group(process: subprocess.Popen, seconds: int) -> None:
+    """Wait out the grace for the whole group, not just the leader.
+
+    `Popen.wait()` returns as soon as the LEADER exits, and a worker in the same
+    session can still be flushing results or running its own TERM handler. Killing
+    the group at that moment would deny it the grace the leader was given, so the
+    wait continues while any process still holds the group.
+    """
+    deadline = time.monotonic() + seconds
+    # The leader exiting is recorded so a zombie group leader cannot keep this loop
+    # busy forever, but it does not end the wait on its own.
+    while time.monotonic() < deadline:
+        process.poll()
+        if not _group_is_alive(process):
+            return
+        time.sleep(0.05)
+    process.poll()
+
+
+def _group_is_alive(process: subprocess.Popen) -> bool:
+    """Whether any process still belongs to the command's session/group."""
+    if os.name == "nt":
+        # No signal-0 equivalent for a tree; the job object is what bounds it, so
+        # fall back to the leader's state.
+        return process.poll() is None
+    try:
+        os.killpg(process.pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # The group exists but is not ours to signal; treat it as alive.
+        return True
+    except OSError:
+        return process.poll() is None
+
+
 def _install_signal_cleanup(process: subprocess.Popen) -> dict:
     """Kill the child's group if the wrapper itself is interrupted.
 
@@ -85,12 +124,9 @@ def _install_signal_cleanup(process: subprocess.Popen) -> dict:
 
     def handler(signum, frame) -> None:
         _signal_group(process, signal.SIGTERM)
-        try:
-            process.wait(timeout=GRACE_SECONDS)
-        except subprocess.TimeoutExpired:
-            pass
-        # Same rule as the expiry path: the group is killed even when the leader
-        # obeyed TERM, because a worker in its session may not have.
+        _wait_for_group(process, GRACE_SECONDS)
+        # The group is killed even when the leader obeyed TERM, because a worker in
+        # its session may not have, and the grace above already covered it.
         _kill_tree(process)
         try:
             process.wait(timeout=30)
@@ -132,23 +168,13 @@ def run(command: list[str], timeout_seconds: int) -> int:
         print(f"run_with_timeout.py: command exceeded {timeout_seconds}s "
               f"(elapsed {elapsed}s); terminating it", file=sys.stderr, flush=True)
         _signal_group(process, signal.SIGTERM)
-        leader_exited = True
-        try:
-            process.wait(timeout=GRACE_SECONDS)
-        except subprocess.TimeoutExpired:
-            leader_exited = False
-        # The group is killed even when the LEADER obeyed TERM: a worker in the same
-        # session can ignore it, and the leader's exit would otherwise end this
-        # function while that worker keeps running and mutating shared outputs.
-        # Killing an already-empty group is harmless (ESRCH).
-        if not leader_exited:
-            print(f"run_with_timeout.py: command ignored SIGTERM after "
-                  f"{GRACE_SECONDS}s; killing the process group", file=sys.stderr,
-                  flush=True)
+        # The grace belongs to the GROUP: a worker may still be flushing results or
+        # running its own TERM handler after the leader has already exited.
+        _wait_for_group(process, GRACE_SECONDS)
+        if _group_is_alive(process):
+            print(f"run_with_timeout.py: the process group was still alive after "
+                  f"{GRACE_SECONDS}s; killing it", file=sys.stderr, flush=True)
         _kill_tree(process)
-        if leader_exited:
-            print("run_with_timeout.py: terminating any remaining process group",
-                  file=sys.stderr, flush=True)
         try:
             process.wait(timeout=60)
         except subprocess.TimeoutExpired:
