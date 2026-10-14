@@ -279,26 +279,36 @@ internal func runBoundedProcess(command: String, arguments: Array<String>, worki
     var stderr = Array<Byte>()
     var outputLimit = false
     // ONE absolute deadline for both reads, not one full timeout each: two
-    // sequential full waits let a caller's limit become twice its value, and the
-    // expiry must never be handed to `get` (a zero Duration waits without limit).
+    // sequential full waits let a caller's limit become twice its value.
+    // The budget is read from the clock once and a nonpositive value is treated as
+    // expiration BEFORE `get`. Passing `Duration.Zero` would wait without any limit,
+    // so a deadline that expires between the check and the call -- with a detached
+    // descendant holding the pipe open -- could hang past the configured timeout.
+    func remainingMilliseconds(): Int64 {
+        timeoutMs - (MonoTime.now() - started).toMilliseconds()
+    }
     func expired(): Bool {
-        (MonoTime.now() - started).toMilliseconds() >= timeoutMs
+        remainingMilliseconds() <= 0
     }
-    func remaining(): Duration {
-        Duration.millisecond * (timeoutMs - (MonoTime.now() - started).toMilliseconds())
+    func awaitRead(future: Future<Array<Byte>>): ?Array<Byte> {
+        let remainingMs = remainingMilliseconds()
+        if (remainingMs <= 0) { return None }
+        try {
+            future.get(Duration.millisecond * remainingMs)
+        } catch (_: Exception) {
+            None
+        }
     }
-    try {
-        if (expired()) { throw IllegalStateException("bounded read deadline already elapsed") }
-        stdout = stdoutFuture.get(remaining())
-    } catch (_: Exception) {
+    if (let Some(read) <- awaitRead(stdoutFuture)) {
+        stdout = read
+    } else {
         stdoutFuture.cancel()
         markDoctestPipeFailure(process, state, started, timeoutMs)
         if (state.load() == 3) { outputLimit = true }
     }
-    try {
-        if (expired()) { throw IllegalStateException("bounded read deadline already elapsed") }
-        stderr = stderrFuture.get(remaining())
-    } catch (_: Exception) {
+    if (let Some(read) <- awaitRead(stderrFuture)) {
+        stderr = read
+    } else {
         stderrFuture.cancel()
         markDoctestPipeFailure(process, state, started, timeoutMs)
         if (state.load() == 3) { outputLimit = true }

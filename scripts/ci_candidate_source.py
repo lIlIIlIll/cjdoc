@@ -422,14 +422,24 @@ def _explicit_candidate(repository: str, commit: str, run_id: str, attempt: int,
             "markerName": markers[0]["name"], "runConclusion": status.get("conclusion")}
 
 
+def _output_value(value: object) -> str:
+    """One `name=value` record per field, so no value may contain a newline.
+
+    A fallback reason embeds `gh` stderr, which is routinely several lines. Written
+    raw, every line after the first would be parsed as its own malformed record and
+    the resolver step would fail instead of scheduling the local build it intended.
+    """
+    return " ".join(str(value).split())
+
+
 def write_outputs(path: Path, document: dict) -> None:
     lines = [f"reuse={'true' if document['reuse'] else 'false'}",
-             f"candidate_source={document['candidateSource']}",
-             f"artifact_name={document.get('artifactName', '')}",
-             f"marker_name={document.get('markerName', '')}",
-             f"run_id={document.get('runId', '')}",
-             f"run_attempt={document.get('runAttempt', 1)}",
-             f"reason={document.get('reason', '')}"]
+             f"candidate_source={_output_value(document['candidateSource'])}",
+             f"artifact_name={_output_value(document.get('artifactName', ''))}",
+             f"marker_name={_output_value(document.get('markerName', ''))}",
+             f"run_id={_output_value(document.get('runId', ''))}",
+             f"run_attempt={_output_value(document.get('runAttempt', 1))}",
+             f"reason={_output_value(document.get('reason', ''))}"]
     with Path(path).open("a", encoding="utf-8", newline="\n") as stream:
         stream.write("\n".join(lines) + "\n")
 

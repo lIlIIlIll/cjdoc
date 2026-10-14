@@ -203,3 +203,25 @@ class GitHubReadTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TransientReadTests(unittest.TestCase):
+    """An empty successful `gh api` body is retried, not read as "no data"."""
+
+    def test_an_empty_body_is_retried_before_giving_up(self):
+        import subprocess
+        from unittest import mock
+        calls = {"n": 0}
+
+        def fake_run(args, **kwargs):
+            argv = [str(item) for item in (args if isinstance(args, (list, tuple)) else [args])]
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            return subprocess.CompletedProcess(argv, 0, json.dumps({"total_count": 3}), "")
+
+        with mock.patch("subprocess.run", fake_run), \
+             mock.patch.object(ci_stage.time, "sleep", lambda _: None):
+            payload = ci_stage._gh_json("repos/o/r/actions/runs/1", paginate=False)
+        self.assertEqual(calls["n"], 2, "an empty body must be retried")
+        self.assertEqual(payload, {"total_count": 3})

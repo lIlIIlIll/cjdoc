@@ -354,40 +354,46 @@ def _gh_json(path: str, *, paginate: bool = True, tries: int = 5) -> object:
     for attempt in range(tries):
         completed = subprocess.run(args, capture_output=True, text=True)
         if completed.returncode == 0:
-            # A truncated body is a transient failure too: `gh api` can exit 0 with a
-            # cut-off page (the EOF this retry loop exists for), so a decode error is
-            # retried like a nonzero status instead of aborting the evidence run.
-            try:
-                decoder = json.JSONDecoder()
-                text = completed.stdout
-                values: list[object] = []
-                index = 0
-                while index < len(text):
-                    while index < len(text) and text[index] in " \t\r\n":
-                        index += 1
-                    if index >= len(text):
-                        break
-                    value, index = decoder.raw_decode(text, index)
-                    values.append(value)
-            except ValueError as error:
-                last = f"malformed JSON response: {error}"
+            # A truncated or EMPTY body is a transient failure too: `gh api` can exit
+            # 0 with a cut-off page or no body at all (the EOF this retry loop exists
+            # for). Accepting an empty body would make the run endpoint abort with an
+            # unexpected payload and the jobs endpoint silently record no timing,
+            # losing exactly the evidence this command preserves, so it is retried
+            # and only then falls back to `{}`.
+            if not completed.stdout.strip():
+                last = "empty response body"
             else:
-                if not values:
-                    return {}
-                if len(values) == 1:
-                    return values[0]
-                merged: dict[str, object] = {}
-                for value in values:
-                    if not isinstance(value, dict):
-                        continue
-                    for key, item in value.items():
-                        if isinstance(item, list):
-                            existing = merged.setdefault(key, [])
-                            if isinstance(existing, list):
-                                existing.extend(item)
-                        else:
-                            merged.setdefault(key, item)
-                return merged
+                try:
+                    decoder = json.JSONDecoder()
+                    text = completed.stdout
+                    values: list[object] = []
+                    index = 0
+                    while index < len(text):
+                        while index < len(text) and text[index] in " \t\r\n":
+                            index += 1
+                        if index >= len(text):
+                            break
+                        value, index = decoder.raw_decode(text, index)
+                        values.append(value)
+                except ValueError as error:
+                    last = f"malformed JSON response: {error}"
+                else:
+                    if not values:
+                        return {}
+                    if len(values) == 1:
+                        return values[0]
+                    merged: dict[str, object] = {}
+                    for value in values:
+                        if not isinstance(value, dict):
+                            continue
+                        for key, item in value.items():
+                            if isinstance(item, list):
+                                existing = merged.setdefault(key, [])
+                                if isinstance(existing, list):
+                                    existing.extend(item)
+                            else:
+                                merged.setdefault(key, item)
+                    return merged
         else:
             last = completed.stderr.strip()
         if attempt + 1 < tries:

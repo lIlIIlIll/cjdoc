@@ -329,3 +329,18 @@ class RequireReadyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class OutputRecordTests(unittest.TestCase):
+    """`$GITHUB_OUTPUT` needs one `name=value` record per line."""
+
+    def test_a_multiline_fallback_reason_stays_one_record(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "out"
+            source.write_outputs(path, {
+                "reuse": False, "candidateSource": "local-build",
+                "reason": "gh: HTTP 500\nsecond line\nthird line"})
+            lines = path.read_text(encoding="utf-8").splitlines()
+        self.assertEqual(len(lines), 7, lines)
+        reason = [line for line in lines if line.startswith("reason=")][0]
+        self.assertNotIn("\n", reason.removeprefix("reason="))
+        self.assertIn("second line", reason)
