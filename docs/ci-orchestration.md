@@ -76,9 +76,14 @@ What changed:
 * `pocketkit.compose:*` and `pocketkit.diagnostics:*` no longer appear as their own
   phases; version composition runs once and the per-language projections are part
   of the single generation.
-* The phase total is larger than the pre-#64 415.5 s because more work is now
-  inside `site-assemble` (the authorized translations and the version composition
-  that #64 added), not because a phase became slower.
+* The phase total is larger than the pre-#64 415.5 s (633.6-663.7 s now). #64 added
+  work inside `site-assemble` -- authorized translations and version composition --
+  and `showcase.api` and `showcase.authoring` both grew with it (253.9 -> 410-424 s
+  and 29.2 -> 47.6-49.6 s), as did aggregate PocketKit generation (60.2 -> 126-136 s).
+  **This is not an apples-to-apples comparison**: both the workload and the
+  implementation changed, so these numbers show that more work moved inside
+  `site-assemble`; they do not establish that no phase regressed, and no phase is
+  claimed to have stayed flat.
 
 The conclusion of the original attribution is unchanged and now stronger. Three
 phases dominate and they are all real generation work, not duplicated overhead:
@@ -178,10 +183,14 @@ matched before/after wall-clock pair on the same revision is tracked by #96.
 
 CI-06.2/06.4/06.6 are decided from the phase table above:
 
-* **06.6** is satisfied by the attribution itself: the repeated directory walks,
-  link validation, hashing, copying and compression are each individually timed
-  and each is ≤ 6 s, so none of them justifies a risky optimization while
-  `showcase.api` is 254 s. Optimizing them would move the total by < 2%.
+* **06.6** is satisfied by the attribution itself, re-measured on the merged
+  `main` (the section above): the repeated directory walks, link validation,
+  hashing, copying and compression are each individually timed and each is at most
+  about 1.2% of a roughly 640 s phase total, so none of them justifies a risky
+  optimization while `showcase.api` is 410-424 s. Optimizing them would move the
+  total by a couple of percent at most. (The pre-#64 figures for this bullet were
+  "≤ 6 s against a 254 s `showcase.api`"; both have since grown, and the phase
+  table above carries the current numbers.)
 * **06.2** overlaps the phases the table shows to be independent: self-API
   generation and the PocketKit dependency chain. Both are measured phases, the
   split is by real dependency, and the combined site is proved byte-identical.
