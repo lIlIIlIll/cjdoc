@@ -75,7 +75,9 @@ jobs:
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           . scripts/with_sts_o1_cjpm.sh
           bash scripts/check.sh
-          python scripts/with_stdx.py --variant static -- \
+          # The whole repository is documented here, which exceeds the default heap
+          # (same ceiling as check.sh's smoke stage).
+          cjHeapSize="${CJDOC_SMOKE_HEAP:-2GB}" python scripts/with_stdx.py --variant static -- \
             python scripts/real_repository_smoke.py --project .
 
       - name: Write the timing summary
