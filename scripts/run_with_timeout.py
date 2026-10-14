@@ -28,6 +28,30 @@ import time
 
 TIMEOUT_EXIT_CODE = 124
 
+# How long a TERM'd command may take to shut down before the group is killed, the
+# same grace `timeout --kill-after=60` provided.
+GRACE_SECONDS = 60
+
+
+def _signal_group(process: subprocess.Popen, signum: int) -> None:
+    """Signal the command's whole group, falling back to the direct child."""
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signum)
+            return
+        except OSError:
+            # The group may already be gone; fall back to the direct child.
+            try:
+                process.send_signal(signum)
+            except OSError:
+                pass
+        return
+    if signum == signal.SIGTERM and process.poll() is None:
+        try:
+            process.terminate()
+        except OSError:
+            pass
+
 
 def _kill_tree(process: subprocess.Popen) -> None:
     if os.name == "posix":
@@ -60,11 +84,15 @@ def _install_signal_cleanup(process: subprocess.Popen) -> dict:
     previous: dict = {}
 
     def handler(signum, frame) -> None:
-        _kill_tree(process)
+        _signal_group(process, signal.SIGTERM)
         try:
-            process.wait(timeout=30)
+            process.wait(timeout=GRACE_SECONDS)
         except subprocess.TimeoutExpired:
-            pass
+            _kill_tree(process)
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                pass
         prior = previous.get(signum, signal.SIG_DFL)
         if prior == signal.SIG_IGN:
             return
@@ -95,14 +123,23 @@ def run(command: list[str], timeout_seconds: int) -> int:
         return process.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
         elapsed = round(time.monotonic() - started, 1)
+        # TERM first, then escalate, exactly as `timeout --signal=TERM
+        # --kill-after` did: the runner needs the signal to report the failure and
+        # to run its own cleanup, and only a command that ignores TERM gets KILL.
         print(f"run_with_timeout.py: command exceeded {timeout_seconds}s "
-              f"(elapsed {elapsed}s); terminating the process tree", file=sys.stderr,
-              flush=True)
-        _kill_tree(process)
+              f"(elapsed {elapsed}s); terminating it", file=sys.stderr, flush=True)
+        _signal_group(process, signal.SIGTERM)
         try:
-            process.wait(timeout=60)
+            process.wait(timeout=GRACE_SECONDS)
         except subprocess.TimeoutExpired:
-            pass
+            print(f"run_with_timeout.py: command ignored SIGTERM after "
+                  f"{GRACE_SECONDS}s; killing the process group", file=sys.stderr,
+                  flush=True)
+            _kill_tree(process)
+            try:
+                process.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                pass
         return TIMEOUT_EXIT_CODE
 
 

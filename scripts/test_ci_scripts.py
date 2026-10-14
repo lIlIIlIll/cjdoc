@@ -236,6 +236,22 @@ class RunWithTimeoutTests(unittest.TestCase):
         self.assertEqual(survivors, "", "the group outlived the deadline")
 
     @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_expiry_signals_the_group_with_term_first(self) -> None:
+        """The command must get a chance to report and clean up before any KILL."""
+        marker = Path(self.temporary.name) / "trapped"
+        script = (
+            "import signal, sys, time\n"
+            "def handler(signum, frame):\n"
+            f"    open({str(marker)!r}, 'w').write('term')\n"
+            "    sys.exit(5)\n"
+            "signal.signal(signal.SIGTERM, handler)\n"
+            "time.sleep(60)\n")
+        done = self.run_wrapper("1", sys.executable, "-c", script)
+        self.assertEqual(done.returncode, 124)
+        self.assertTrue(marker.exists(),
+                        "the command never received SIGTERM before being killed")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
     def test_interrupting_the_wrapper_kills_the_child_group(self) -> None:
         """SIGTERM to the wrapper must not leave the command running."""
         marker = f"cjdoc-timeout-interrupt-{os.getpid()}"
