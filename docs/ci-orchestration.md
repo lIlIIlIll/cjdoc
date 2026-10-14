@@ -143,14 +143,18 @@ CI-06.2/06.4/06.6 are decided from the phase table above:
 * **06.2** overlaps the phases the table shows to be independent: self-API
   generation and the PocketKit dependency chain. Both are measured phases, the
   split is by real dependency, and the combined site is proved byte-identical.
-* **06.4** ("one semantic extraction, many language renders") is **not
-  implemented**, and the reason is a hard dependency rather than a preference:
-  on this revision `cjdoc generate --locale` accepts only `zh-CN|en`
-  (`src/cli_options.cj`: `--locale must be zh-CN or en`), so a multi-locale
-  single-extraction mode does not exist to call. The `locale="all"` fast path is
-  only reachable from the unmerged #64 i18n work. Until that lands there is
-  nothing to align a "one extraction" contract with, so #64 remains the
-  prerequisite and this item stays open with this evidence.
+* **06.4** ("one semantic extraction, many language renders") is **delivered by
+  #64** (`feat(i18n): publish author translations through Doc IR v13`, `30700d6`),
+  which this item waited on. `cjdoc generate --all-languages` performs one
+  extraction and projects every language from it: `src/cli_runner.cj` renders the
+  agent artifacts and `validation.html` per entry of
+  `documentation.languageOptions.languages` from the single `documentation` value,
+  and `examples/pocketkit/reproduce.py` calls `generate(..., locale="all")` once
+  per version before `assemble(generated[version], locale)` per language. Measured
+  on the merged `main`: one `generate --project examples/pocketkit/demo-v2
+  --all-languages` run completes in 37 s and writes `html/en` and `html/zh-CN`
+  (129 files each, contents differ) with a single `docs.json`
+  (`cjdoc.doc-ir/13`, `languages: ["en", "zh-CN"]`).
 
 ## Merged state and the two failure modes found while landing this
 
@@ -238,7 +242,7 @@ merged until the maintainer merges it.
 | 05.2-05.6 shared toolchain and identity | one reusable `build-linux-candidate.yml`; `ci_stage.py verify-identity` | the same workflow builds the candidate for CI and Pages; each consumer re-verifies the manifest | `verify-identity` runs in both the CI acceptance job and the Pages site job |
 | 06.1 showcase phase attribution | `showcase_build.stage_timing` phase ids | the per-phase table in this document | `showcase-stages.json` from run `38332333489` |
 | 06.2-06.3 overlap only what is independent | `scripts/showcase_build/parallel.py`, `integration.py` | real serial/overlapped A/B on one machine | 507.8 s and 476.4 s serial vs 391.4 s overlapped (1.22-1.30x), same binary and provenance |
-| 06.4 one extraction / many renders | not implemented | the capability it would call does not exist on this revision | `src/cli_options.cj`: `--locale must be zh-CN or en`; prerequisite is #64 |
+| 06.4 one extraction / many renders | `--all-languages` in `src/cli_options.cj` + `src/cli_runner.cj` (#64), used by `examples/pocketkit/reproduce.py` | one `generate` per version, then one render per language | run `38630501874` on `2d840445`; local `--all-languages` run: 37 s, `html/en` and `html/zh-CN` (129 files each, differing), one `docs.json` with `languages: ["en", "zh-CN"]` |
 | 06.5-06.6 source ZIP reproduction and profiling | `check_showcase_source.py`, the phase attribution | the archive is re-run from the ZIP with the generating binary | `Reproduce the downloaded source bundle` job, plus the ≤ 6 s phase table |
 | 07.1-07.3, 07.5-07.6 cache correctness | `install_cangjie_sdk.py` marker + verified archives, `with_stdx.py` fingerprints, cache keys carrying arch/channel/component identity | cache tests and the cold/warm equality assertion of the measurement script | `scripts/test_install_cangjie_sdk.py`, `scripts/test_with_stdx.py`; `identityEqualUnderBothVariants: true` |
 | 07.4 cache shape measurement | `scripts/measure_sdk_install.py`, `sdk-install-measure.yml` | three dispatches of 5 paired cycles | see the CI-07.4 table above |
@@ -248,11 +252,9 @@ merged until the maintainer merges it.
 
 ### Items that are not delivered
 
-Two rows above are deliberately not "delivered", and both are recorded rather
-than quietly closed:
+One row above is deliberately not "delivered", and it is recorded rather than
+quietly closed:
 
-* **06.4** cannot be implemented on this revision: the multi-locale
-  single-extraction mode it requires does not exist until #64 lands.
 * **DONE-03 / DONE-04** cannot be satisfied by the history that exists. The
   enumeration found exactly one source-matched warm Pages pair and no
   source-matched Release samples at all, so the ≥5-pairs-per-cold/warm-cell
