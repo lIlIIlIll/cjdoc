@@ -80,10 +80,17 @@ What changed:
 * The four `pocketkit.generate:*` phases (one per locale and version, 60.2 s
   combined) are now **two** `pocketkit.generate:all:*` phases. That is CI-06.4's
   one-extraction-many-renders arriving via #64, and it is why the per-locale
-  generation cost disappeared as a separate line.
-* `pocketkit.compose:*` and `pocketkit.diagnostics:*` no longer appear as their own
-  phases; version composition runs once and the per-language projections are part
-  of the single generation.
+  generation cost disappeared as a separate line. (The earlier note below explains
+  the composition and diagnostics phases that this collapse also removed until they
+  were restored.)
+* Version composition and the per-language diagnostics stopped carrying a phase when
+  the per-locale chain was collapsed, so they had silently dropped out of the phase
+  evidence this document relies on. **They are timed again** (`pocketkit.diff`,
+  `pocketkit.compose`, `pocketkit.diagnostics:<locale>` in
+  `examples/pocketkit/reproduce.py`); a local `--locale both` run now reports
+  47.3 s for compose, 3.9 s + 3.8 s for the two diagnostics passes and 0.1 s for the
+  diff, out of a 162 s PocketKit branch. The runs in the table above predate that
+  restore, so their PocketKit numbers are the generation phases only.
 * The phase total is larger than the pre-#64 415.5 s (633.6-663.7 s now). #64 added
   work inside `site-assemble` -- authorized translations and version composition --
   and `showcase.api` and `showcase.authoring` both grew with it (253.9 -> 410-424 s
