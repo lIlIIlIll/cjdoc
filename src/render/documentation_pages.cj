@@ -36,6 +36,18 @@ internal func pageRootPrefix(route: String): String {
     prefix
 }
 
+internal func appendCapturedPageMarkdownNavigation(out: RenderTextBuffer,
+    documentation: DocumentationSet, locale: String): Unit {
+    let pages = selectedDocumentationPages(documentation, locale)
+    if (pages.isEmpty()) { return }
+    out.append("\n## ${label(locale, "Conceptual documentation", "概念文档")}\n\n")
+    for (page in pages) {
+        out.append("- [")
+        appendEscapedMarkdownText(out, page.title.replace("\r", " ").replace("\n", " ").replace("\t", " "))
+        out.append("](" + encodeMarkdownDestination(page.route.removeSuffix(".html") + ".md") + ")\n")
+    }
+}
+
 internal func capturedConceptualEntryHtml(documentation: DocumentationSet, locale: String): String {
     var localized = documentation.languageOptions.isSome()
     for (page in documentation.pages) { if (page.language.isSome()) { localized = true; break } }

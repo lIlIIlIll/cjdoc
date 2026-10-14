@@ -39,6 +39,8 @@ internal func renderStandaloneMarkdownHtmlWithAssets(node: MarkdownNode,
 // shell already rendered the same title as the page <h1>. A differently titled
 // or absent leading heading is untouched, and any later heading — including one
 // repeating the same text — keeps the heading stream and its shareable anchor.
+// The suppressed title retains its fragment so source links and section mappings
+// still address the title without repeating its visible text.
 private func standaloneTitleHeadingIndex(node: MarkdownNode, pageTitle: ?String): ?Int64 {
     let title = match (pageTitle) {
         case Some(value) => value
@@ -66,7 +68,11 @@ private func appendStandaloneMarkdownHtml(out: RenderTextBuffer, node: MarkdownN
     match (standaloneTitleHeadingIndex(node, pageTitle)) {
         case Some(index) =>
             for (childIndex in 0..node.children.size) {
-                if (childIndex == index) { context.nextHeading++; continue }
+                if (childIndex == index) {
+                    out.append("<span id=\"${escapeHtml(context.headingIds[context.nextHeading])}\"></span>\n")
+                    context.nextHeading++
+                    continue
+                }
                 appendMarkdownNodeHtml(out, node.children[childIndex], assetLookup, rootPrefix, context)
             }
         case None =>

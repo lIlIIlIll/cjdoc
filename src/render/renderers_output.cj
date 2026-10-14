@@ -180,6 +180,7 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
         index.append("- ["); appendEscapedMarkdownText(index, pkg.source.name)
         index.append("](${markdownPackagePagePath(pkg.source.moduleId, pkg.source.name)})\n")
     }
+    appendCapturedPageMarkdownNavigation(index, documentation, locale)
     artifacts.addText("markdown/index.md", "text/markdown; charset=utf-8", index.toString())
     for (pkg in projection.packages) {
         let out = RenderTextBuffer()

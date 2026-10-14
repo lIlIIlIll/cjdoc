@@ -1774,7 +1774,7 @@ internal func appendConceptualArtifacts(projectRoot: String,
         if (artifact.path == "html/index.html") {
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
                 conceptualIndexNavigation(projectRoot, "html", artifact.content, locale: locale)))
-        } else if (artifact.path == "markdown/index.md") {
+        } else if (artifact.path == "markdown/index.md" && documentation.pages.isEmpty()) {
             result.add(public_render.RenderArtifact(artifact.path, artifact.mediaType,
                 conceptualIndexNavigation(projectRoot, "markdown", artifact.content, locale: locale)))
         } else if (artifact.path == "html/search-index.json") {

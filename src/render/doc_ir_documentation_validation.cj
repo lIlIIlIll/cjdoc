@@ -486,8 +486,10 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         validateMarkdown(page.markdown, "$.pages.markdown", 0)
         validateMarkdownAssetReferences(page.markdown, "$.pages.markdown", assetIds)
         let sectionIds = HashSet<String>()
+        let sectionAnchors = HashSet<String>()
         for (section in page.sections) {
-            if (!sectionIds.add(section.id) || documentationSectionAnchor(page.markdown, section.anchor).isNone()) {
+            let anchor = documentationSectionAnchor(page.markdown, section.anchor)
+            if (!sectionIds.add(section.id) || anchor.isNone() || !sectionAnchors.add(anchor.getOrThrow())) {
                 domainFail("$.pages.sections", "duplicate or nonexistent explicit section mapping")
             }
         }

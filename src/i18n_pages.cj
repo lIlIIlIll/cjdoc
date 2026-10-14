@@ -36,17 +36,11 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
                 state: binding.state, targetSymbolId: binding.targetSymbolId))
         }
         let (text, tree) = capturePageMarkdown(value, page, request, assetCollector)
-        let sections = ArrayList<public_model.DocumentationSection>()
-        let sectionIds = HashSet<String>()
-        for (section in page.sections) {
-            if (!sectionIds.add(section.id) || public_render.documentationSectionAnchor(tree, section.anchor).isNone()) {
-                value.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC3110", "page '" + id + "' section '" + section.id + "' has no unique captured heading; mapping omitted"))
-            } else { sections.add(section) }
-        }
+        let sections = capturePageSections(value, page.sections.toArray(), tree, id)
         pages.add(public_model.DocumentationPage(id, page.source, page.route, page.title, page.kind,
             text, tree, language: language,
             defaultLanguage: defaultLanguage, packageName: page.packageName,
-            sections: sections.toArray(), targetSymbolIds: targets.toArray(), bindings: bindings.toArray()))
+            sections: sections, targetSymbolIds: targets.toArray(), bindings: bindings.toArray()))
     }
     if (let Some(collector) <- assetCollector) {
         let diagnostics = collector.diagnostics()
@@ -66,6 +60,32 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
         unboundSemanticDeclarations: value.unboundSemanticDeclarations.toArray(), diagnostics: value.diagnostics.toArray(),
         languageOptions: value.languageOptions, pages: pages.toArray(),
         externalDocumentation: captureExternalDocumentationReferences(value, request.projectRoot))
+}
+
+private func capturePageSections(value: public_model.DocumentationSet,
+    sections: Array<public_model.DocumentationSection>, tree: public_model.MarkdownNode,
+    pageId: String): Array<public_model.DocumentationSection> {
+    let idCounts = HashMap<String, Int64>()
+    let anchorCounts = HashMap<String, Int64>()
+    let anchors = ArrayList<?String>()
+    for (section in sections) {
+        idCounts[section.id] = idCounts.get(section.id).getOrDefault({ => 0 }) + 1
+        let resolved = public_render.documentationSectionAnchor(tree, section.anchor)
+        anchors.add(resolved)
+        if (let Some(anchor) <- resolved) {
+            anchorCounts[anchor] = anchorCounts.get(anchor).getOrDefault({ => 0 }) + 1
+        }
+    }
+    let result = ArrayList<public_model.DocumentationSection>()
+    for (index in 0..sections.size) {
+        let section = sections[index]
+        let anchor = anchors[index]
+        if (idCounts[section.id] != 1 || anchor.isNone() || anchorCounts[anchor.getOrThrow()] != 1) {
+            value.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC3110",
+                "page '" + pageId + "' section '" + section.id + "' has no unique captured heading; mapping omitted"))
+        } else { result.add(section) }
+    }
+    result.toArray()
 }
 
 private func capturePageMarkdown(value: public_model.DocumentationSet,
