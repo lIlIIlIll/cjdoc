@@ -278,12 +278,27 @@ internal func runBoundedProcess(command: String, arguments: Array<String>, worki
     var stdout = Array<Byte>()
     var stderr = Array<Byte>()
     var outputLimit = false
-    try { stdout = stdoutFuture.get(Duration.millisecond * timeoutMs) } catch (_: Exception) {
+    // ONE absolute deadline for both reads, not one full timeout each: two
+    // sequential full waits let a caller's limit become twice its value, and the
+    // expiry must never be handed to `get` (a zero Duration waits without limit).
+    func expired(): Bool {
+        (MonoTime.now() - started).toMilliseconds() >= timeoutMs
+    }
+    func remaining(): Duration {
+        Duration.millisecond * (timeoutMs - (MonoTime.now() - started).toMilliseconds())
+    }
+    try {
+        if (expired()) { throw IllegalStateException("bounded read deadline already elapsed") }
+        stdout = stdoutFuture.get(remaining())
+    } catch (_: Exception) {
         stdoutFuture.cancel()
         markDoctestPipeFailure(process, state, started, timeoutMs)
         if (state.load() == 3) { outputLimit = true }
     }
-    try { stderr = stderrFuture.get(Duration.millisecond * timeoutMs) } catch (_: Exception) {
+    try {
+        if (expired()) { throw IllegalStateException("bounded read deadline already elapsed") }
+        stderr = stderrFuture.get(remaining())
+    } catch (_: Exception) {
         stderrFuture.cancel()
         markDoctestPipeFailure(process, state, started, timeoutMs)
         if (state.load() == 3) { outputLimit = true }
@@ -292,8 +307,13 @@ internal func runBoundedProcess(command: String, arguments: Array<String>, worki
     try { exitCode = process.wait() } catch (_: Exception) {
         let _ = state.compareAndSwap(0, 3)
     }
-    let finished = state.compareAndSwap(0, 1)
+    // Let the watchdog reach its own verdict before claiming completion: the
+    // watchdog can be descheduled past the deadline on a loaded runner, and
+    // claiming state 1 first would hide a genuine timeout behind truncated output
+    // (observed as `subprocessPipeWaitDeadlineRemainsTimeoutNotOutputLimit` failing
+    // with a 2.7 s, empty-output result).
     watchdog.get()
+    let finished = state.compareAndSwap(0, 1)
     DoctestProcessResult(exitCode, processText(stdout), processText(stderr),
         !finished && state.load() == 2, outputLimit)
 }
