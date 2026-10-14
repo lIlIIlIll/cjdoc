@@ -81,11 +81,13 @@ internal func publishedLanguageRoutes(documentation: DocumentationSet, languages
             }
         }
         for (page in selectedDocumentationPages(view, language)) {
-            addPublishedLanguageRoute(routes, files, PublishedLanguageRoute(language, page.route, pageId: Some(page.id)))
+            // Keep author ids distinct from generated pages and identity delimiters.
+            let pageId = "conceptual:" + htmlStableSlug(page.id)
+            addPublishedLanguageRoute(routes, files, PublishedLanguageRoute(language, page.route, pageId: Some(pageId)))
             for (section in page.sections) {
                 if (let Some(anchor) <- documentationSectionAnchor(page.markdown, section.anchor)) {
                     addPublishedLanguageRoute(routes, files, PublishedLanguageRoute(language, page.route + "#" + anchor,
-                        pageId: Some(page.id), sectionId: Some(section.id)))
+                        pageId: Some(pageId), sectionId: Some(section.id)))
                 }
             }
         }

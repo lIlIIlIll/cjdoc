@@ -50,6 +50,112 @@ def cost(root: Path) -> dict:
             "searchIndexBytes": sum(p.stat().st_size for p in files if p.name == "search-index.json")}
 
 
+def assert_identity_manifest(root: Path, controls: set[tuple]) -> dict:
+    manifest = json.loads((root / "site-manifest.json").read_text())
+    rows = manifest["routes"]
+    identities = [(row["language"], row["pageId"], row["symbolId"], row["sectionId"]) for row in rows]
+    assert len(identities) == len(set(identities)), "site manifest contains duplicate route identities"
+    actual = {(*identity, row["href"]) for identity, row in zip(identities, rows)}
+    assert controls <= actual, "author ids changed builtin page or symbol identities"
+    for row in rows:
+        url = urlsplit(row["href"])
+        target = root / unquote(url.path)
+        assert not url.scheme and target.resolve().is_relative_to(root.resolve())
+        assert target.is_file(), row
+        if url.fragment:
+            assert unquote(url.fragment) in HtmlIds(target.read_text()).ids, row
+    return manifest
+
+
+def check_page_route_identities(author: dict, manifest: dict, work: Path, run) -> None:
+    """Keep author ids opaque and distinct in native language/version inventories."""
+    controls = {(row["language"], row["pageId"], row["symbolId"], row["sectionId"], row["href"])
+                for row in manifest["routes"] if row["pageId"] == "api-home" or
+                (row["pageId"] or "").startswith("package:") or (row["symbolId"] and row["pageId"] is None)}
+    package_id = next(row["pageId"] for row in manifest["routes"]
+                      if (row["pageId"] or "").startswith("package:") and row["symbolId"] is None)
+    symbol_id = next(row["symbolId"] for row in manifest["routes"]
+                     if row["symbolId"] and row["pageId"] is None and row["sectionId"] is None)
+    languages = author["languageOptions"]["languages"]
+    seeds = {language: next(page for page in author["pages"]
+                           if page["language"] == language and page["sections"])
+             for language in languages}
+    specifications = [
+        ("api-home", "home", None), (package_id, "package", None),
+        ("symbol:" + symbol_id, "symbol-prefix", None),
+        ("context:" + symbol_id, "context-prefix", None),
+        ("conceptual:6170692d686f6d65", "conceptual-prefix", None),
+        ("指南:section:使用", "unicode", "内容:section:子项"),
+        ("topic", "topic", "part"),
+        ("topic:section:part", "delimiter", "details:section:inner"),
+    ]
+    outputs = []
+    for version in ("v1", "v2"):
+        document = copy.deepcopy(author)
+        document["pages"] = []
+        for identity, name, section in specifications:
+            for language in languages:
+                page = copy.deepcopy(seeds[language])
+                page.update(id=identity, route=f"concepts/guides/identity-{name}.html",
+                            source=f"docs/identity-{name}-{language}.md", targetSymbolIds=[], bindings=[])
+                page["sections"] = ([dict(id=section, anchor=seeds[language]["sections"][0]["anchor"])]
+                                    if section else [])
+                if version == "v2" and name == "delimiter":
+                    page.update(route="concepts/guides/identity-renamed.html", sections=[])
+                document["pages"].append(page)
+        source = work / f"identity-{version}.json"
+        source.write_text(json.dumps(document, ensure_ascii=False) + "\n")
+        output = work / f"identity-{version}"
+        run(f"identity-render-{version}", ["render", "--input", str(source), "--all-languages",
+            "--format", "html", "--format", "json", "--doc-version", version, "--output", str(output)])
+        rendered = json.loads((output / "docs.json").read_text())
+        assert {(page["id"], page["language"]) for page in rendered["pages"]} == {
+            (page["id"], page["language"]) for page in document["pages"]}
+        assert {item["id"] for item in rendered["declarations"]} == {item["id"] for item in author["declarations"]}
+        actual = assert_identity_manifest(output, controls)
+        for language in languages:
+            for _, name, section in specifications:
+                route = ("concepts/guides/identity-renamed.html" if version == "v2" and name == "delimiter"
+                         else f"concepts/guides/identity-{name}.html")
+                rows = [row for row in actual["routes"] if row["language"] == language and
+                        row["href"] == "html/" + language + "/" + route and row["sectionId"] is None]
+                assert len(rows) == 1 and rows[0]["pageId"] is not None and rows[0]["symbolId"] is None
+                if section and not (version == "v2" and name == "delimiter"):
+                    assert any(row["pageId"] == rows[0]["pageId"] and row["sectionId"] == section
+                               and row["language"] == language for row in actual["routes"])
+        outputs.append(output)
+    composed = work / "identity-composed"
+    run("identity-compose", ["versions", "compose", "--version", "v1=" + str(outputs[0]),
+        "--version", "v2=" + str(outputs[1]), "--latest", "v2", "--output", str(composed)])
+    for language in languages:
+        for name, target_name, missing in (("delimiter", "renamed", True), ("topic", "topic", False)):
+            page = composed / "v1/html" / language / "concepts/guides" / f"identity-{name}.html"
+            expected = composed / "v2/html" / language / "concepts/guides" / f"identity-{target_name}.html"
+            source_href = "html/" + language + f"/concepts/guides/identity-{name}.html"
+            section_id = next(section for _, label, section in specifications if label == name)
+            original = json.loads((outputs[0] / "site-manifest.json").read_text())
+            anchor = unquote(urlsplit(next(row["href"] for row in original["routes"]
+                if row["language"] == language and row["sectionId"] == section_id and
+                row["href"].split("#", 1)[0] == source_href)).fragment)
+            targets = []
+            for mapping in VersionRoutes(page.read_text()).maps:
+                if anchor not in mapping:
+                    continue
+                href, fallback = mapping[anchor]
+                url = urlsplit(href)
+                target = (page.parent / unquote(url.path)).resolve()
+                if target.is_relative_to((composed / "v2").resolve()):
+                    targets.append((target, unquote(url.fragment), fallback))
+            assert len(targets) == 1, (name, language, targets)
+            target, fragment, fallback = targets[0]
+            assert target == expected.resolve() and fallback is missing
+            assert target.is_file()
+            if missing:
+                assert not fragment
+            else:
+                assert fragment in HtmlIds(target.read_text()).ids
+
+
 def run_gate(binary: Path, repo: Path, work: Path) -> dict:
     if work.exists():
         raise ValueError("i18n gate workdir must be fresh")
@@ -247,6 +353,8 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
         assert target.is_file(), route
         if url.fragment:
             assert unquote(url.fragment) in HtmlIds(target.read_text()).ids, route
+
+    check_page_route_identities(author, manifest, work, run)
 
     second_project = work / "second-project"
     shutil.copytree(repo / "tests/fixtures/projects/i18n", second_project,
