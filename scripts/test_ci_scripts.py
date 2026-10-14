@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import signal
 import subprocess
 import os
 import sys
@@ -195,9 +196,6 @@ class DiagnosticsTest(unittest.TestCase):
         self.assertTrue(all("budget" in entry["reason"] for entry in document["omitted"]))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class RunWithTimeoutTests(unittest.TestCase):
     """The portable bound: pass through, expire at 124, and kill the group."""
@@ -236,3 +234,43 @@ class RunWithTimeoutTests(unittest.TestCase):
                 break
             time.sleep(0.1)
         self.assertEqual(survivors, "", "the group outlived the deadline")
+
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_interrupting_the_wrapper_kills_the_child_group(self) -> None:
+        """SIGTERM to the wrapper must not leave the command running."""
+        marker = f"cjdoc-timeout-interrupt-{os.getpid()}"
+        wrapper = subprocess.Popen(
+            [sys.executable, str(self.script), "60", "--",
+             "/bin/bash", "-c", f'sh -c "exec -a {marker} sleep 60" & sleep 60'],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                                  text=True).stdout.strip():
+                    break
+                time.sleep(0.05)
+            self.assertTrue(
+                subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                               text=True).stdout.strip(),
+                "the child never started")
+            wrapper.send_signal(signal.SIGTERM)
+            wrapper.wait(timeout=30)
+            deadline = time.monotonic() + 5
+            survivors = "1"
+            while time.monotonic() < deadline:
+                survivors = subprocess.run(["pgrep", "-f", marker], capture_output=True,
+                                           text=True).stdout.strip()
+                if not survivors:
+                    break
+                time.sleep(0.1)
+            self.assertEqual(survivors, "", "the child group survived the wrapper")
+        finally:
+            if wrapper.poll() is None:
+                wrapper.kill()
+                wrapper.wait(timeout=10)
+            subprocess.run(["pkill", "-f", marker], check=False)
+
+
+if __name__ == "__main__":
+    unittest.main()

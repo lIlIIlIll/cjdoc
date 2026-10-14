@@ -49,6 +49,39 @@ def _kill_tree(process: subprocess.Popen) -> None:
             pass
 
 
+def _install_signal_cleanup(process: subprocess.Popen) -> dict:
+    """Kill the child's group if the wrapper itself is interrupted.
+
+    `check.sh` and its parent jobs send SIGTERM on cancellation. Without this the
+    wrapper exits while the command keeps running in its own session, so `cjpm test`
+    survives as an orphan and continues mutating fixture and build outputs under the
+    next run.
+    """
+    previous: dict = {}
+
+    def handler(signum, frame) -> None:
+        _kill_tree(process)
+        try:
+            process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            pass
+        prior = previous.get(signum, signal.SIG_DFL)
+        if prior == signal.SIG_IGN:
+            return
+        if callable(prior):
+            prior(signum, frame)
+            return
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+    for signum in (signal.SIGTERM, signal.SIGINT):
+        try:
+            previous[signum] = signal.signal(signum, handler)
+        except (ValueError, OSError):
+            pass
+    return previous
+
+
 def run(command: list[str], timeout_seconds: int) -> int:
     started = time.monotonic()
     process = subprocess.Popen(
@@ -57,6 +90,7 @@ def run(command: list[str], timeout_seconds: int) -> int:
         creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         if os.name == "nt" else 0,
     )
+    _install_signal_cleanup(process)
     try:
         return process.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
