@@ -508,6 +508,15 @@ internal func memoryBoundedCommand(command: String, arguments: Array<String>,
         let wrapped = ArrayList<String>()
         wrapped.add("--as=" + limit.toString())
         wrapped.add("--")
+        // Pin the child's OWN heap below the address-space cap. The child otherwise
+        // inherits the ambient `cjHeapSize`, and when a caller raises that (to
+        // document a large repository) the runtime is configured for a heap it can
+        // never reserve under this `--as` cap: it fails with "allocate create page
+        // failed! Out of Memory!" at the first allocation. A quarter of the cap
+        // leaves room for the mapping overhead and equals the previous effective
+        // value (2048MB cap, 512MB heap) when nothing is overridden.
+        wrapped.add("/usr/bin/env")
+        wrapped.add("cjHeapSize=" + (memoryMb / 4).toString() + "MB")
         wrapped.add(command)
         wrapped.add(all: arguments)
         return (candidate, wrapped.toArray())
