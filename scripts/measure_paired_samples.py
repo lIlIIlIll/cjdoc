@@ -92,7 +92,12 @@ def workflow_runs(repository: str, workflow: str, limit: int, branch: str | None
         params.append(f"branch={branch}")
     query = (f"repos/{repository}/actions/workflows/{match['id']}/runs?"
              + "&".join(params))
-    payload = _decode_documents(_run_gh(["api", query]))
+    # Pagination is requested only when the caller asks for more than one page; a
+    # `--limit` above the page size would otherwise silently return at most 100 runs
+    # and miss the older samples it was asked for, while the default would fetch the
+    # whole history to look at a handful of runs.
+    args = ["api", query] + (["--paginate"] if limit > 100 else [])
+    payload = _decode_documents(_run_gh(args))
     runs = payload.get("workflow_runs", []) if isinstance(payload, dict) else []
     return [run for run in runs if run.get("status") == "completed"][:limit]
 
@@ -264,21 +269,32 @@ JOB_ARTIFACT_STEMS: tuple[tuple[str, str], ...] = (
 )
 
 
-def _job_state_for(job_name: str, states: dict[str, str]) -> str:
-    """The recorded state of the artifact directory that belongs to this job.
+def job_artifact_stem(job_name: str) -> str | None:
+    """The timing artifact stem this job's evidence lands in, if it has one.
 
-    Artifact directories are named `ci-timing-<stem>-<run>-<attempt>`. The job's own
-    name selects exactly one stem; a job with no timing artifact (the orchestration
-    gates) has no state and is reported `unknown` rather than matched by luck.
+    `None` means the job records no stage evidence (the orchestration gates), which is
+    a different thing from a cache-bearing job whose state was not recorded.
     """
     lowered = job_name.lower()
     for token, stem in JOB_ARTIFACT_STEMS:
-        if token not in lowered:
-            continue
-        for directory, state in states.items():
-            if stem in directory:
-                return state
+        if token in lowered:
+            return stem
+    return None
+
+
+def _job_state_for(job_name: str, states: dict[str, str]) -> str:
+    """The recorded state for this job: a state, or `unknown` when it has none.
+
+    `unknown` therefore covers both "the job has an artifact but it carries no state"
+    and "the artifact was not downloaded"; callers that need to tell those apart use
+    `job_artifact_stem`.
+    """
+    stem = job_artifact_stem(job_name)
+    if stem is None:
         return "unknown"
+    for directory, state in states.items():
+        if stem in directory:
+            return state
     return "unknown"
 
 
@@ -323,19 +339,36 @@ def report(samples: list[dict], workflow: str, out: Path) -> dict:
     for key in sorted(cells):
         shape, state = key
         lines.append(f"* **{shape} / {state}**: {describe(cells[key])}")
+    # Requirement shapes come from every cache-bearing job, not only from the cells: a
+    # platform whose artifacts expired or whose samples all predate the recording would
+    # otherwise vanish from the report instead of showing as an unmet cell.
+    requirement_shapes = {s["shape"] for s in successful
+                          if job_artifact_stem(s["job"]) is not None}
+    requirement_shapes |= {key[0] for key in cells}
     lines += ["", "## Requirement check", "",
               "5 successful samples per matched cell (job shape x condition), per DONE-03:", ""]
-    for shape in sorted({key[0] for key in cells}):
+    for shape in sorted(requirement_shapes):
         for state in ("miss", "hit"):
             count = len(cells.get((shape, state), []))
             verdict = "met" if count >= 5 else "NOT met"
             lines.append(f"* {shape} / **{state}**: {count} collected — {verdict}")
     unclassified = [s for s in successful if s["state"] not in CLASSIFIED_STATES]
     if unclassified:
-        shapes = sorted({s["shape"] for s in unclassified})
-        lines += ["", f"{len(unclassified)} successful job(s) carry no cache state "
-                      f"({', '.join(shapes)}) and are excluded from the cells and from the "
-                      "requirement check; they can never be either condition."]
+        never = sorted({s["shape"] for s in unclassified
+                        if job_artifact_stem(s["job"]) is None})
+        unrecorded = sorted({s["shape"] for s in unclassified
+                             if job_artifact_stem(s["job"]) is not None})
+        parts = [f"{len(unclassified)} successful job(s) carry no cache state and are "
+                 "excluded from the cells."]
+        if never:
+            parts.append(f"Of those, {', '.join(never)} record no stage evidence at all, "
+                         "so they can never be either condition and are not requirements.")
+        if unrecorded:
+            parts.append(f"The rest ({', '.join(unrecorded)}) are cache-bearing jobs whose "
+                         "state was not recorded -- from runs predating the recording, or "
+                         "from artifacts that expired -- so they remain requirements showing "
+                         "as 0 collected above rather than disappearing.")
+        lines += ["", " ".join(parts)]
     lines += ["", "## Failures, cancellations and re-runs (excluded from the cells)", ""]
     if other:
         for sample in sorted(other, key=lambda s: (s["run"], s["job"])):

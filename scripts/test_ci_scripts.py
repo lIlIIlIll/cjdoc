@@ -525,5 +525,25 @@ class PairedSampleTests(unittest.TestCase):
             paired.workflow_runs = original_runs
         self.assertEqual(calls, [1, 2, 3])
 
+    def test_a_cache_bearing_shape_stays_a_requirement_when_unknown(self) -> None:
+        """A platform whose artifacts expired must still show as an unmet cell."""
+        samples = [
+            {"run": 1, "attempt": 1, "revision": "f" * 8, "event": "push",
+             "job": "macos-arm64 / Cangjie", "shape": "macos-arm64", "conclusion": "success",
+             "state": "unknown", "jobMinutes": 17.0,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+        ]
+        out = self.root / "expired.md"
+        paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("macos-arm64 / **miss**: 0 collected — NOT met", text)
+        self.assertIn("macos-arm64 / **hit**: 0 collected — NOT met", text)
+
+    def test_an_orchestration_job_is_not_a_cache_requirement(self) -> None:
+        self.assertIsNone(paired.job_artifact_stem("CI required"))
+        self.assertIsNone(paired.job_artifact_stem("Classify changes"))
+        self.assertEqual(paired.job_artifact_stem("linux-x64 / Cangjie"), "ci-linux-x64")
+
+
 if __name__ == "__main__":
     unittest.main()
