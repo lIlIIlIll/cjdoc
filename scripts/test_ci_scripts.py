@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ci_changes
 import ci_diagnostics
+import measure_paired_samples as paired
 import ci_required
 
 
@@ -387,3 +388,60 @@ class RunWithTimeoutTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PairedSampleTests(unittest.TestCase):
+    """DONE-03's classification: never assume a condition the evidence omits."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+
+    def write_artifact(self, name: str, cache: dict | None) -> None:
+        directory = self.root / name
+        directory.mkdir(parents=True)
+        document = {"schemaVersion": "cjdoc.ci-stage/1", "stages": [
+            {"stageId": "native", "kind": "native", "wallMs": 1.0,
+             "environment": ({} if cache is None else {"cache": cache})}]}
+        (directory / "stages.json").write_text(json.dumps(document), encoding="utf-8")
+
+    def test_the_cache_state_comes_from_the_job_artifact(self) -> None:
+        self.write_artifact("ci-timing-ci-linux-x64-1-1", {"cjv": "hit"})
+        self.write_artifact("ci-timing-ci-windows-x64-1-1", {"cjv": "miss"})
+        states = paired.job_cache_states(self.root)
+        self.assertEqual(states["ci-timing-ci-linux-x64-1-1"], "hit")
+        self.assertEqual(states["ci-timing-ci-windows-x64-1-1"], "miss")
+
+    def test_a_job_name_matches_its_own_artifact_toolchain_words_included(self) -> None:
+        states = {"ci-timing-ci-linux-x64-1-1": "hit",
+                  "ci-timing-ci-windows-x64-1-1": "miss"}
+        # The job name carries `Cangjie`/`STS`/`stdx`, which the artifact name does not.
+        self.assertEqual(paired._job_state_for("linux-x64 / Cangjie 1.2.0 STS + stdx", states),
+                         "hit")
+        self.assertEqual(paired._job_state_for("windows-x64 / Cangjie 1.2.0 STS + stdx", states),
+                         "miss")
+
+    def test_an_unrecorded_state_is_unknown_not_assumed(self) -> None:
+        """The pre-existing history has no cache field; it must not become a cell."""
+        self.write_artifact("ci-timing-ci-linux-x64-1-1", None)
+        states = paired.job_cache_states(self.root)
+        self.assertEqual(states["ci-timing-ci-linux-x64-1-1"], "unknown")
+        self.assertEqual(paired._job_state_for("linux-x64 / Cangjie 1.2.0 STS + stdx", states),
+                         "unknown")
+
+    def test_a_run_mixing_states_is_recorded_per_job(self) -> None:
+        """One run legitimately has both conditions; a run-level answer would hide it."""
+        self.write_artifact("ci-timing-ci-linux-x64-1-1", {"cjv": "hit"})
+        self.write_artifact("ci-timing-ci-macos-arm64-1-1", {"cjv": "miss"})
+        states = paired.job_cache_states(self.root)
+        self.assertEqual(sorted(states.values()), ["hit", "miss"])
+
+    def test_a_stage_that_disagrees_with_itself_is_not_a_cell(self) -> None:
+        directory = self.root / "ci-timing-ci-linux-x64-1-1"
+        directory.mkdir(parents=True)
+        (directory / "stages.json").write_text(json.dumps({"stages": [
+            {"environment": {"cache": {"cjv": "hit"}}},
+            {"environment": {"cache": {"cjv": "miss"}}}]}), encoding="utf-8")
+        self.assertEqual(paired.job_cache_states(self.root)["ci-timing-ci-linux-x64-1-1"],
+                         "mixed")
