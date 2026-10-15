@@ -108,8 +108,8 @@ def main():
             (dep / 'src').mkdir(parents=True)
             (dep / 'cjpm.toml').write_text('[package]\nname="pocketkit_support"\nversion="1.0.0"\noutput-type="static"\n')
             (dep / 'src/api.cj').write_text(f'package pocketkit\n/** DEPENDENCY_API_{version} */\npublic class Entry {{}}\npublic class DepIdentity {{}}\n')
-            (dep / 'src/aux').mkdir()
-            (dep / 'src/aux/api.cj').write_text('package auxiliary\npublic class Helper {}\n')
+            (dep / 'src/auxiliary').mkdir()
+            (dep / 'src/auxiliary/api.cj').write_text('package auxiliary\npublic class Helper {}\n')
             with (project / 'cjpm.toml').open('a') as manifest:
                 manifest.write('\n[dependencies]\npocketkit_support={path="deps/two"}\n')
             dep_expect = expected(DEPENDENCY, version=version, locale=locale, id='dependency-overview',
