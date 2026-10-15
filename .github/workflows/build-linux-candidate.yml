@@ -95,6 +95,9 @@ jobs:
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
           RUNNER_TEMP: ${{ runner.temp }}
+          # The candidate job records a build stage too, so it reports its cache
+          # state like the acceptance jobs rather than leaving the field empty.
+          CJDOC_CACHE_STATE: cjv=${{ steps.cjv-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}
         run: |
           set -euo pipefail
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
