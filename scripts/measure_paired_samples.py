@@ -25,6 +25,7 @@ import json
 from pathlib import Path
 import statistics
 import subprocess
+import urllib.parse
 import sys
 
 GITHUB_TIME = "%Y-%m-%dT%H:%M:%SZ"
@@ -89,7 +90,9 @@ def workflow_runs(repository: str, workflow: str, limit: int, branch: str | None
     # `limit <= 100` and pagination would fetch the whole workflow history first.
     params = [f"per_page={min(limit, 100)}", "status=completed"]
     if branch:
-        params.append(f"branch={branch}")
+        # Percent-encoded: a valid ref may contain characters that end or alter the
+        # query (`feature/a&b`, `release#1`), which would silently select other runs.
+        params.append("branch=" + urllib.parse.quote(branch, safe=""))
     query = (f"repos/{repository}/actions/workflows/{match['id']}/runs?"
              + "&".join(params))
     # Pagination is requested only when the caller asks for more than one page; a
@@ -107,6 +110,34 @@ def jobs_of(repository: str, run_id: int, attempt: int) -> list[dict]:
         "api", f"repos/{repository}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100",
         "--paginate"]))
     return payload.get("jobs", []) if isinstance(payload, dict) else []
+
+
+def job_conditions(evidence: Path) -> dict[str, str]:
+    """Per artifact directory, the toolchain/runner identity its stages recorded.
+
+    DONE-03 requires paired samples under MATCHED conditions, so a cell must not pool a
+    hit from one toolchain pin with a miss from another. The signature is built from the
+    fields every stage records, so a cell is only comparable when the SDK/stdx identity,
+    the runner image and the compile options agree.
+    """
+    conditions: dict[str, str] = {}
+    for path in sorted(evidence.glob("*/stages.json")):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        stages = document.get("stages", [])
+        if not stages:
+            continue
+        environment = stages[0].get("environment") or {}
+        # `checkoutCommit` is part of the signature: a paired sample compares the SAME
+        # source revision under two cache conditions. Without it, five misses from an
+        # older revision plus five hits from a newer one would "satisfy" the requirement
+        # while comparing different code.
+        signature = "|".join(str(environment.get(field, "")) for field in
+                             ("checkoutCommit", "runnerImage", "sdkVersion", "stdxDigest",
+                              "toolchainTarget"))
+        compile_options = environment.get("compileOptions") or []
+        signature += "|" + ",".join(str(option) for option in compile_options)
+        conditions[path.parent.name] = signature
+    return conditions
 
 
 def job_cache_states(evidence: Path) -> dict[str, str]:
@@ -248,6 +279,7 @@ def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
     evidence = cache_root / f"{run_id}-{attempt}"
     download_evidence(repository, run_id, attempt, evidence)
     states = job_cache_states(evidence)
+    conditions = job_conditions(evidence)
     # `Re-run failed jobs` executes only the failed jobs and their dependents; the
     # attempt response still carries the successful jobs from the previous attempt,
     # reported as if they belonged to this one. Their `run_attempt` says the new attempt
@@ -273,6 +305,7 @@ def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
             # then failed still records which condition it ran under, and DONE-03 asks
             # for failures under matched conditions. Such jobs stay out of the cells.
             "state": _job_state_for(name, states),
+            "condition": _job_condition_for(name, conditions),
             "jobMinutes": job_minutes(job),
             "runWallMinutes": wall, "runRunnerMinutes": total,
         })
@@ -333,6 +366,17 @@ def describe(values: list[float]) -> str:
 CLASSIFIED_STATES = ("hit", "miss")
 
 
+def _job_condition_for(job_name: str, conditions: dict[str, str]) -> str:
+    """The matched-condition signature of the artifact belonging to this job."""
+    stem = job_artifact_stem(job_name)
+    if stem is None:
+        return ""
+    for directory, signature in conditions.items():
+        if stem in directory:
+            return signature
+    return ""
+
+
 def report(samples: list[dict], workflow: str, out: Path,
            provenance: str | None = None) -> dict:
     successful = [s for s in samples if s["conclusion"] == "success"]
@@ -341,9 +385,12 @@ def report(samples: list[dict], workflow: str, out: Path,
     # artifact (`Classify changes`, `CI required`) can never be hit or miss, and
     # demanding five of each for it would keep DONE-03 unmet forever.
     classified = [s for s in successful if s["state"] in CLASSIFIED_STATES]
-    cells: dict[tuple[str, str], list[float]] = {}
+    # Keyed by (shape, state, CONDITION): a cell is only a paired sample when the two
+    # conditions being compared ran under the same toolchain, runner image and flags.
+    cells: dict[tuple[str, str, str], list[float]] = {}
     for sample in classified:
-        cells.setdefault((sample["shape"], sample["state"]), []).append(sample["jobMinutes"])
+        cells.setdefault((sample["shape"], sample["state"], sample.get("condition", "")),
+                         []).append(sample["jobMinutes"])
     lines = [f"# Paired samples: {workflow}", ""]
     if provenance:
         # Emitted by the reporter so the checked-in file is genuinely its output and the
@@ -385,10 +432,16 @@ def report(samples: list[dict], workflow: str, out: Path,
         lines += ["", f"* wall across {len(walls)} run attempt(s): {describe(walls)}",
                   f"* runner minutes across {len(runners)} run attempt(s): "
                   f"{sum(runners):.1f}m total, max {max(runners):.1f}m"]
-    lines += ["", "## Matched cells (successful jobs only)", ""]
+    lines += ["", "## Matched cells (successful jobs only)", "",
+              "Each cell is one (job shape, cache state, matched conditions) triple. The",
+              "condition signature is the source revision, runner image, SDK version, stdx",
+              "digest, toolchain target and compile options recorded by that job's stages. A",
+              "cell therefore compares the SAME revision and toolchain under two cache",
+              "conditions; a hit and a miss from different revisions are never pooled.", ""]
     for key in sorted(cells):
-        shape, state = key
-        lines.append(f"* **{shape} / {state}**: {describe(cells[key])}")
+        shape, state, condition = key
+        detail = f" `{condition}`" if condition else " (condition not recorded)"
+        lines.append(f"* **{shape} / {state}**{detail}: {describe(cells[key])}")
     # Requirement shapes come from every cache-bearing job, not only from the cells: a
     # platform whose artifacts expired or whose samples all predate the recording would
     # otherwise vanish from the report instead of showing as an unmet cell.
@@ -401,11 +454,20 @@ def report(samples: list[dict], workflow: str, out: Path,
     requirement_shapes |= {key[0] for key in cells}
     lines += ["", "## Requirement check", "",
               "5 successful samples per matched cell (job shape x condition), per DONE-03:", ""]
-    for shape in sorted(requirement_shapes):
-        for state in ("miss", "hit"):
-            count = len(cells.get((shape, state), []))
+    requirement_keys = set(cells)
+    for shape, state in sorted({(key[0], key[1]) for key in requirement_keys} |
+                               {(shape, state) for shape in requirement_shapes
+                                for state in CLASSIFIED_STATES}):
+        counts = sorted(((key[2], len(values)) for key, values in cells.items()
+                         if key[0] == shape and key[1] == state), reverse=True)
+        if not counts:
+            lines.append(f"* {shape} / **{state}**: 0 collected — NOT met "
+                         "(no sample under any matched condition)")
+            continue
+        for condition, count in counts:
             verdict = "met" if count >= 5 else "NOT met"
-            lines.append(f"* {shape} / **{state}**: {count} collected — {verdict}")
+            lines.append(f"* {shape} / **{state}** (conditions `{condition}`): "
+                         f"{count} collected — {verdict}")
     unclassified = [s for s in successful if s["state"] not in CLASSIFIED_STATES]
     if unclassified:
         never = sorted({s["shape"] for s in unclassified
@@ -439,8 +501,8 @@ def report(samples: list[dict], workflow: str, out: Path,
     else:
         lines.append("No re-runs in this sample.")
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return {"cells": {f"{shape}/{state}": len(values)
-                      for (shape, state), values in cells.items()},
+    return {"cells": {f"{shape}/{state}|{condition}": len(values)
+                      for (shape, state, condition), values in cells.items()},
             "failures": len(other), "report": str(out), "samples": len(samples),
             "runs": {f"{run_id}/{attempt}": {"wallMinutes": value[0],
                                              "runnerMinutes": value[1]}

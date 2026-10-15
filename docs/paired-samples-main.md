@@ -174,25 +174,35 @@ are excluded from the cells, not from the record.
 
 ## Matched cells (successful jobs only)
 
-* **linux candidate / hit**: n=2 median=3.6m min=2.8m max=4.4m
-* **linux-x64 / hit**: n=2 median=27.8m min=26.3m max=29.2m
-* **macos-arm64 / hit**: n=1 value=19.6m
-* **macos-arm64 / miss**: n=1 value=17.9m
-* **windows-x64 / hit**: n=1 value=24.6m
-* **windows-x64 / miss**: n=1 value=25.6m
+Each cell is one (job shape, cache state, matched conditions) triple. The
+condition signature is the source revision, runner image, SDK version, stdx
+digest, toolchain target and compile options recorded by that job's stages. A
+cell therefore compares the SAME revision and toolchain under two cache
+conditions; a hit and a miss from different revisions are never pooled.
+
+* **linux candidate / hit** `542f5ad69907eb4c02557811c5a60039cab6b172|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: n=1 value=4.4m
+* **linux candidate / hit** `d5c459d38ccd9190b5b991b27a148deb9c8bf025|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: n=1 value=2.8m
+* **linux-x64 / hit** `542f5ad69907eb4c02557811c5a60039cab6b172|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: n=1 value=26.3m
+* **linux-x64 / hit** `d5c459d38ccd9190b5b991b27a148deb9c8bf025|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: n=1 value=29.2m
+* **macos-arm64 / hit** `542f5ad69907eb4c02557811c5a60039cab6b172|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: n=1 value=19.6m
+* **macos-arm64 / miss** `d5c459d38ccd9190b5b991b27a148deb9c8bf025|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: n=1 value=17.9m
+* **windows-x64 / hit** `542f5ad69907eb4c02557811c5a60039cab6b172|win22-20261012.333.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: n=1 value=24.6m
+* **windows-x64 / miss** `d5c459d38ccd9190b5b991b27a148deb9c8bf025|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: n=1 value=25.6m
 
 ## Requirement check
 
 5 successful samples per matched cell (job shape x condition), per DONE-03:
 
-* linux candidate / **miss**: 0 collected — NOT met
-* linux candidate / **hit**: 2 collected — NOT met
-* linux-x64 / **miss**: 0 collected — NOT met
-* linux-x64 / **hit**: 2 collected — NOT met
-* macos-arm64 / **miss**: 1 collected — NOT met
-* macos-arm64 / **hit**: 1 collected — NOT met
-* windows-x64 / **miss**: 1 collected — NOT met
-* windows-x64 / **hit**: 1 collected — NOT met
+* linux candidate / **hit** (conditions `d5c459d38ccd9190b5b991b27a148deb9c8bf025|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`): 1 collected — NOT met
+* linux candidate / **hit** (conditions `542f5ad69907eb4c02557811c5a60039cab6b172|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`): 1 collected — NOT met
+* linux candidate / **miss**: 0 collected — NOT met (no sample under any matched condition)
+* linux-x64 / **hit** (conditions `d5c459d38ccd9190b5b991b27a148deb9c8bf025|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`): 1 collected — NOT met
+* linux-x64 / **hit** (conditions `542f5ad69907eb4c02557811c5a60039cab6b172|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`): 1 collected — NOT met
+* linux-x64 / **miss**: 0 collected — NOT met (no sample under any matched condition)
+* macos-arm64 / **hit** (conditions `542f5ad69907eb4c02557811c5a60039cab6b172|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`): 1 collected — NOT met
+* macos-arm64 / **miss** (conditions `d5c459d38ccd9190b5b991b27a148deb9c8bf025|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`): 1 collected — NOT met
+* windows-x64 / **hit** (conditions `542f5ad69907eb4c02557811c5a60039cab6b172|win22-20261012.333.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`): 1 collected — NOT met
+* windows-x64 / **miss** (conditions `d5c459d38ccd9190b5b991b27a148deb9c8bf025|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`): 1 collected — NOT met
 
 82 successful job(s) carry no cache state and are excluded from the cells. Of those, ci required, classify changes record no stage evidence at all, so they can never be either condition and are not requirements. The rest (linux candidate, linux-x64, macos-arm64, windows-x64) are cache-bearing jobs whose state was not recorded -- from runs predating the recording, or from artifacts that expired -- so they remain requirements showing as 0 collected above rather than disappearing.
 
