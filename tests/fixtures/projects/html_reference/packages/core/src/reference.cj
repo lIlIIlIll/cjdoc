@@ -146,3 +146,13 @@ extend<T> ReferenceBox<T> {
     /** Member supplied by an extension. */
     public func extensionMarker(): String { "extended" }
 }
+
+/**
+ * 长摘要保留完整文本与特殊字符 <>&"'，列表只截断摘要而不丢失函数的泛型参数、参数类型、默认值或唯一重载区别。读取条目时可以在详情页继续阅读，中文断行与英文长单词都不能把包页撑出屏幕。这里继续说明源值和目标值的用途，确保窄屏上的摘要超过两行，省略提示由浏览器显示，全文仍留在文档中。
+ */
+public func packageOperation<SourceValue, DestinationValue>(source!: ReferenceBox<SourceValue>, destination!: ReferenceBox<DestinationValue>, label!: String = "<>&\"'"): Unit {}
+
+/**
+ * A long English summary retains its full documentation while the directory preview occupies at most two lines. The integer overload must remain distinguishable from the generic source and destination overload at every viewport. AnUnbrokenIdentifierThatMustWrapWithoutExpandingTheEntireDocumentBeyondTheViewport also remains safe, with the complete exact default and signature visible independently of this summary.
+ */
+public func packageOperation(value!: Int64 = 42): Unit {}

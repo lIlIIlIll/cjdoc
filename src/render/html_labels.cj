@@ -10,6 +10,26 @@ internal func readerSymbolName(symbol: SymbolDoc): String {
     symbol.name
 }
 
+// Generic parameter names are captured from the AST in Doc IR, not inferred
+// from a signature. Extensions already name their target, not a new type.
+internal func readerDeclarationName(symbol: SymbolDoc): String {
+    if (symbol.genericParameters.isEmpty()) { return readerSymbolName(symbol) }
+    match (symbol.kind) {
+        case "class" | "struct" | "interface" | "enum" | "typeAlias" | "function" => ()
+        case _ => return readerSymbolName(symbol)
+    }
+    let out = RenderTextBuffer()
+    out.append(symbol.name)
+    out.append("<")
+    var first = true
+    for (parameter in symbol.genericParameters) {
+        if (!first) { out.append(", ") }; first = false
+        out.append(parameter)
+    }
+    out.append(">")
+    out.toString()
+}
+
 internal func readerSymbolTitle(symbol: SymbolDoc, locale: String): String {
     let name = readerSymbolName(symbol)
     if (symbol.kind == "extend") { return "${label(locale, "Extension", "扩展")} ${name}" }

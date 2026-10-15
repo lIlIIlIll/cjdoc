@@ -356,7 +356,7 @@ class RunWithTimeoutTests(unittest.TestCase):
         wrapper = subprocess.Popen(
             [sys.executable, str(self.script), "60", "--",
              "/bin/bash", "-c", f'sh -c "exec -a {marker} sleep 60" & sleep 60'],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=self.short_grace())
         try:
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:

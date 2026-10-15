@@ -352,8 +352,9 @@ private func markdownBehaviorContractLabel(name: String, locale: String): String
 private func appendDocumentationTagMarkdown(out: RenderTextBuffer, tag: DocTag,
     assetLookup: HashMap<String, String>, locale: String, pagePath: String,
     symbolIndex: ?HashMap<String, SymbolDoc>): Unit {
-    if (!tag.translationState.isEmpty()) {
-        out.append("_"); appendEscapedMarkdownText(out, contentLanguageLabel(tag, locale)); out.append("_.\n\n")
+    let languageLabel = contentLanguageLabel(tag, locale)
+    if (!tag.translationState.isEmpty() && !languageLabel.isEmpty()) {
+        out.append("_"); appendEscapedMarkdownText(out, languageLabel); out.append("_.\n\n")
     }
     if (tag.name == "example") {
         appendMarkdownExampleContent(out, tag.description)
