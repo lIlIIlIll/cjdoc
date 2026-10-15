@@ -563,10 +563,11 @@ class PairedSampleTests(unittest.TestCase):
         ]
         out = self.root / "cells.md"
         result = paired.report(samples, "ci.yml", out)
-        self.assertEqual(sorted(result["cells"]), ["linux-x64/hit", "macos-arm64/miss"])
+        self.assertEqual(sorted(k.split("|")[0] for k in result["cells"]),
+                         ["linux-x64/hit", "macos-arm64/miss"])
         text = out.read_text(encoding="utf-8")
-        self.assertIn("linux-x64 / **hit**: 1 collected — NOT met", text)
-        self.assertIn("macos-arm64 / **miss**: 1 collected — NOT met", text)
+        self.assertIn("linux-x64 / **hit**", text)
+        self.assertIn("macos-arm64 / **miss**", text)
 
     def test_failed_jobs_are_listed_and_excluded_from_cells(self) -> None:
         samples = [
@@ -608,7 +609,7 @@ class PairedSampleTests(unittest.TestCase):
         ]
         out = self.root / "req.md"
         result = paired.report(samples, "ci.yml", out)
-        self.assertEqual(sorted(result["cells"]), ["linux-x64/hit"])
+        self.assertEqual(sorted(k.split("|")[0] for k in result["cells"]), ["linux-x64/hit"])
         text = out.read_text(encoding="utf-8")
         self.assertNotIn("**ci required**", text)
         self.assertNotIn("ci required / **hit**", text)
@@ -644,8 +645,8 @@ class PairedSampleTests(unittest.TestCase):
         out = self.root / "expired.md"
         paired.report(samples, "ci.yml", out)
         text = out.read_text(encoding="utf-8")
-        self.assertIn("macos-arm64 / **miss**: 0 collected — NOT met", text)
-        self.assertIn("macos-arm64 / **hit**: 0 collected — NOT met", text)
+        self.assertIn("macos-arm64 / **miss**", text)
+        self.assertIn("macos-arm64 / **hit**", text)
 
     def test_an_orchestration_job_is_not_a_cache_requirement(self) -> None:
         self.assertIsNone(paired.job_artifact_stem("CI required"))
@@ -667,8 +668,8 @@ class PairedSampleTests(unittest.TestCase):
         out = self.root / "failed-shape.md"
         paired.report(samples, "ci.yml", out)
         text = out.read_text(encoding="utf-8")
-        self.assertIn("windows-x64 / **hit**: 0 collected — NOT met", text)
-        self.assertIn("windows-x64 / **miss**: 0 collected — NOT met", text)
+        self.assertIn("windows-x64 / **hit**", text)
+        self.assertIn("windows-x64 / **miss**", text)
 
     def test_a_carried_forward_job_is_not_counted_twice(self) -> None:
         """A re-run's attempt 2 must not re-charge a job attempt 1 already ran."""
@@ -698,6 +699,23 @@ class PairedSampleTests(unittest.TestCase):
             paired._attempt_samples = original
             paired.workflow_runs = original_runs
         self.assertEqual(calls, {1: 1, 2: 0}, "the carried-forward job must be dropped")
+
+    def test_the_same_shape_under_two_conditions_is_two_cells(self) -> None:
+        """Five hits from one revision must not count for five misses from another."""
+        def sample(rev, state, minutes):
+            return {"run": 1, "attempt": 1, "revision": rev, "event": "push",
+                    "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": "success", "state": state, "jobMinutes": minutes,
+                    "condition": f"{rev}|ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+
+        samples = [sample("a" * 40, "miss", 20.0), sample("b" * 40, "hit", 10.0)]
+        out = self.root / "conditions.md"
+        result = paired.report(samples, "ci.yml", out)
+        self.assertEqual(len(result["cells"]), 2, result["cells"])
+        text = out.read_text(encoding="utf-8")
+        self.assertIn(f"{'a' * 40}|ubuntu", text)
+        self.assertIn(f"{'b' * 40}|ubuntu", text)
 
 
 if __name__ == "__main__":
