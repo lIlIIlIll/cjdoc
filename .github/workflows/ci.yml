@@ -286,6 +286,10 @@ jobs:
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
           RUNNER_TEMP: ${{ runner.temp }}
+          # Same mapping as the linux acceptance job: without it the Windows and
+          # macOS stage artifacts record an empty cache map and cannot be classified
+          # as cold or warm for DONE-03.
+          CJDOC_CACHE_STATE: cjv=${{ steps.cjv-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}
         run: |
           set -euo pipefail
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
