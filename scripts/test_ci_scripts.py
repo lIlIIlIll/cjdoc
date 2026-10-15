@@ -616,9 +616,9 @@ class PairedSampleTests(unittest.TestCase):
     def test_attempts_are_enumerated_not_resolved_to_the_latest(self) -> None:
         calls = []
 
-        def fake_samples(repository, run, run_id, attempt, cache_root):
+        def fake_samples(repository, run, run_id, attempt, cache_root, earlier):
             calls.append(attempt)
-            return []
+            return [], set()
 
         original_samples = paired._attempt_samples
         original_runs = paired.workflow_runs
@@ -669,6 +669,35 @@ class PairedSampleTests(unittest.TestCase):
         text = out.read_text(encoding="utf-8")
         self.assertIn("windows-x64 / **hit**: 0 collected — NOT met", text)
         self.assertIn("windows-x64 / **miss**: 0 collected — NOT met", text)
+
+    def test_a_carried_forward_job_is_not_counted_twice(self) -> None:
+        """A re-run's attempt 2 must not re-charge a job attempt 1 already ran."""
+        calls = {}
+
+        def fake_attempt(repository, run, run_id, attempt, cache_root, earlier):
+            # Attempt 2 returns the same job name and started_at as attempt 1.
+            job = {"name": "macos-arm64 / Cangjie", "started_at": "2026-01-01T00:00:00Z",
+                   "conclusion": "success", "id": 1}
+            kept = [(job, "e")] if (job["name"], job["started_at"]) not in earlier else []
+            calls[attempt] = len(kept)
+            return ([{"run": run_id, "attempt": attempt, "revision": "a" * 8, "event": "push",
+                       "job": job["name"][:34], "shape": "macos-arm64", "conclusion": "success",
+                       "state": "hit", "jobMinutes": 1.0,
+                       "runWallMinutes": 1.0, "runRunnerMinutes": 1.0} for _ in range(len(kept))],
+                    {(job["name"], job["started_at"])})
+
+        original = paired._attempt_samples
+        original_runs = paired.workflow_runs
+        paired._attempt_samples = fake_attempt
+        paired.workflow_runs = lambda *a, **k: [
+            {"id": 5, "run_attempt": 2, "head_sha": "b" * 40, "event": "push",
+             "status": "completed", "conclusion": "success"}]
+        try:
+            paired.collect("o/r", "CI", 1, self.root)
+        finally:
+            paired._attempt_samples = original
+            paired.workflow_runs = original_runs
+        self.assertEqual(calls, {1: 1, 2: 0}, "the carried-forward job must be dropped")
 
 
 if __name__ == "__main__":

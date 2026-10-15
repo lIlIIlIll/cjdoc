@@ -226,22 +226,41 @@ def collect(repository: str, workflow: str, limit: int, cache_root: Path,
         # Every attempt of the run is inspected, not only the latest: a failed or
         # cancelled attempt 1 is part of the experiment record DONE-03 asks for, and
         # resolving to `run_attempt` would erase it.
+        seen_job_keys: set[tuple[str | None, str | None]] = set()
         for attempt in range(1, latest + 1):
-            samples.extend(_attempt_samples(repository, run, run_id, attempt, cache_root))
+            produced, observed = _attempt_samples(repository, run, run_id, attempt,
+                                                  cache_root, seen_job_keys)
+            samples.extend(produced)
+            # Every job OBSERVED in this attempt, not only the ones kept: a job the engine
+            # genuinely re-ran under the same name has a new started_at, so it is not
+            # suppressed, while a carried-forward one has the old started_at and is.
+            seen_job_keys |= observed
     return samples
 
 
 def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
-                     cache_root: Path) -> list[dict]:
+                     cache_root: Path, earlier: set[tuple[str | None, str | None]]) -> tuple[list[dict],
+                                                                           set[tuple[str | None,
+                                                                                     str | None]]]:
     # Called unconditionally: it skips artifact directories that are already complete
     # and retries the rest, so an interrupted or partially failed download does not
     # leave those jobs `unknown` until someone deletes the cache by hand.
     evidence = cache_root / f"{run_id}-{attempt}"
     download_evidence(repository, run_id, attempt, evidence)
     states = job_cache_states(evidence)
-    wall, total = measure(jobs_of(repository, run_id, attempt))
+    # `Re-run failed jobs` executes only the failed jobs and their dependents; the
+    # attempt response still carries the successful jobs from the previous attempt,
+    # reported as if they belonged to this one. Their `run_attempt` says the new attempt
+    # and their times are the old ones, so the only usable signal is that an untouched
+    # job keeps the identical started_at it had before. Jobs whose (name, started_at)
+    # already appeared in an earlier attempt are therefore excluded here, which also
+    # keeps them out of the wall-clock and runner-minute totals.
+    jobs = [job for job in jobs_of(repository, run_id, attempt)
+            if (job.get("name"), job.get("started_at")) not in earlier]
+    wall, total = measure(jobs)
     samples: list[dict] = []
-    for job in jobs_of(repository, run_id, attempt):
+    observed: set[tuple[str | None, str | None]] = set()
+    for job in jobs:
         name = job.get("name") or "?"
         conclusion = job.get("conclusion") or "unknown"
         samples.append({
@@ -257,7 +276,8 @@ def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
             "jobMinutes": job_minutes(job),
             "runWallMinutes": wall, "runRunnerMinutes": total,
         })
-    return samples
+        observed.add((name, job.get("started_at")))
+    return samples, observed
 
 
 # Job name prefix -> the artifact stem that carries that job's stage evidence.
@@ -313,7 +333,8 @@ def describe(values: list[float]) -> str:
 CLASSIFIED_STATES = ("hit", "miss")
 
 
-def report(samples: list[dict], workflow: str, out: Path) -> dict:
+def report(samples: list[dict], workflow: str, out: Path,
+           provenance: str | None = None) -> dict:
     successful = [s for s in samples if s["conclusion"] == "success"]
     other = [s for s in samples if s["conclusion"] != "success"]
     # Only classified states form cells and requirements. A job with no timing
@@ -323,8 +344,13 @@ def report(samples: list[dict], workflow: str, out: Path) -> dict:
     cells: dict[tuple[str, str], list[float]] = {}
     for sample in classified:
         cells.setdefault((sample["shape"], sample["state"]), []).append(sample["jobMinutes"])
-    lines = [f"# Paired samples: {workflow}", "",
-             "One row per JOB. The toolchain cache key includes the platform, so a single run",
+    lines = [f"# Paired samples: {workflow}", ""]
+    if provenance:
+        # Emitted by the reporter so the checked-in file is genuinely its output and the
+        # regeneration command it shows is the one that produced it (the `--out` is
+        # included, since a command without it writes nothing).
+        lines += [provenance, ""]
+    lines += ["One row per JOB. The toolchain cache key includes the platform, so a single run",
              "legitimately records `hit` on one runner and `miss` on another. Cells are keyed",
              "by **(job shape, cache state)**: DONE-03 asks for samples under MATCHED",
              "conditions, so a Linux hit is never pooled with a macOS miss.",
@@ -431,14 +457,21 @@ def main() -> int:
                              "merged main, so this defaults to it")
     parser.add_argument("--limit", type=int, default=20, help="runs to inspect")
     parser.add_argument("--cache-root", type=Path, default=Path("target/paired-samples"),
-                        help="where downloaded stage evidence is cached")
+                        help="where downloaded stage evidence is cached (repo-relative by "
+                             "default so the emitted provenance is reproducible)")
     parser.add_argument("--out", type=Path, required=True, help="report path")
     args = parser.parse_args()
     samples = collect(args.repository, args.workflow, args.limit, args.cache_root,
                       args.branch)
     if not samples:
         raise SystemExit("measure_paired_samples.py: no completed runs found")
-    result = report(samples, args.workflow, args.out)
+    provenance = ("Generated by `python3 scripts/measure_paired_samples.py "
+                  f"--repository {args.repository} --workflow {args.workflow} "
+                  f"--branch {args.branch} --limit {args.limit} "
+                  f"--cache-root {args.cache_root} --out {args.out}`. "
+                  "Point-in-time capture: regenerate with that command rather than "
+                  "editing this file.")
+    result = report(samples, args.workflow, args.out, provenance)
     print(json.dumps(result, indent=2))
     return 0
 
