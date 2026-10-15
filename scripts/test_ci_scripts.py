@@ -805,6 +805,18 @@ class PairedSampleTests(unittest.TestCase):
             subprocess.run = original_run
         self.assertEqual(failed, ["ci-timing-b-1-1"])
 
+    def test_a_truncated_cached_stage_record_is_not_trusted(self) -> None:
+        """A half-written stages.json must be re-fetched, not parsed."""
+        directory = self.root / "cached"
+        directory.mkdir(parents=True)
+        record = directory / "stages.json"
+        record.write_text('{"stages": [{"stageId": "nat', encoding="utf-8")
+        self.assertFalse(paired._readable_stage_record(record))
+        record.write_text('{"stages": []}', encoding="utf-8")
+        self.assertTrue(paired._readable_stage_record(record))
+        record.write_text("", encoding="utf-8")
+        self.assertFalse(paired._readable_stage_record(record))
+
 
 if __name__ == "__main__":
     unittest.main()

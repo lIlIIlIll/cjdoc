@@ -24,6 +24,7 @@ import datetime as dt
 import json
 from pathlib import Path
 import shlex
+import shutil
 import statistics
 import subprocess
 import urllib.parse
@@ -192,6 +193,20 @@ def matching_artifacts(repository: str, run_id: int, attempt: int) -> list[dict]
             and str(artifact.get("name", "")).endswith(suffix)]
 
 
+def _readable_stage_record(path: Path) -> bool:
+    """Whether a cached `stages.json` is complete enough to use.
+
+    A truncated file is worse than a missing one: it is taken as cached and then breaks
+    every later report. Validating the JSON here means an interrupted download is
+    retried instead.
+    """
+    try:
+        json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def download_evidence(repository: str, run_id: int, attempt: int,
                       out: Path) -> list[str]:
     """Download this attempt's stage artifacts, each into its own directory.
@@ -213,7 +228,8 @@ def download_evidence(repository: str, run_id: int, attempt: int,
     failed: list[str] = []
     for artifact in matching_artifacts(repository, run_id, attempt):
         target = out / artifact["name"]
-        if (target / "stages.json").is_file():
+        if (target / "stages.json").is_file() and \
+                _readable_stage_record(target / "stages.json"):
             continue
         completed = subprocess.run(
             ["gh", "api", f"repos/{repository}/actions/artifacts/{artifact['id']}/zip"],
@@ -221,15 +237,27 @@ def download_evidence(repository: str, run_id: int, attempt: int,
         if completed.returncode != 0 or not completed.stdout:
             failed.append(artifact["name"])
             continue
-        target.mkdir(parents=True, exist_ok=True)
+        # Extract into a temporary directory and rename into place, so an interrupted
+        # run cannot leave a half-written `stages.json` behind.
+        staging = out / f".{artifact['name']}.partial"
+        if staging.exists():
+            shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir(parents=True, exist_ok=True)
         try:
             with zipfile.ZipFile(io.BytesIO(completed.stdout)) as archive:
-                archive.extractall(target)
+                archive.extractall(staging)
         except (zipfile.BadZipFile, OSError):
+            shutil.rmtree(staging, ignore_errors=True)
             failed.append(artifact["name"])
             continue
-        if not (target / "stages.json").is_file():
+        if not (staging / "stages.json").is_file() or \
+                not _readable_stage_record(staging / "stages.json"):
+            shutil.rmtree(staging, ignore_errors=True)
             failed.append(artifact["name"])
+            continue
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
+        staging.rename(target)
     return failed
 
 
