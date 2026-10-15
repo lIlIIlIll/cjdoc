@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ci_changes
 import ci_diagnostics
+import measure_paired_samples as paired
 import ci_required
 
 
@@ -491,6 +492,330 @@ class RunWithTimeoutTests(unittest.TestCase):
                 if not interrupted:
                     self.assertIn("OSError: launch failed", done.stderr)
 
+
+
+
+class PairedSampleTests(unittest.TestCase):
+    """DONE-03's classification: never assume a condition the evidence omits."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+
+    def write_artifact(self, name: str, cache: dict | None) -> None:
+        directory = self.root / name
+        directory.mkdir(parents=True)
+        document = {"schemaVersion": "cjdoc.ci-stage/1", "stages": [
+            {"stageId": "native", "kind": "native", "wallMs": 1.0,
+             "environment": ({} if cache is None else {"cache": cache})}]}
+        (directory / "stages.json").write_text(json.dumps(document), encoding="utf-8")
+
+    def test_the_cache_state_comes_from_the_job_artifact(self) -> None:
+        self.write_artifact("ci-timing-ci-linux-x64-1-1", {"cjv": "hit"})
+        self.write_artifact("ci-timing-ci-windows-x64-1-1", {"cjv": "miss"})
+        states = paired.job_cache_states(self.root)
+        self.assertEqual(states["ci-timing-ci-linux-x64-1-1"], "hit")
+        self.assertEqual(states["ci-timing-ci-windows-x64-1-1"], "miss")
+
+    def test_a_job_name_matches_its_own_artifact_toolchain_words_included(self) -> None:
+        states = {"ci-timing-ci-linux-x64-1-1": "hit",
+                  "ci-timing-ci-windows-x64-1-1": "miss"}
+        # The job name carries `Cangjie`/`STS`/`stdx`, which the artifact name does not.
+        self.assertEqual(paired._job_state_for("linux-x64 / Cangjie 1.2.0 STS + stdx", states),
+                         "hit")
+        self.assertEqual(paired._job_state_for("windows-x64 / Cangjie 1.2.0 STS + stdx", states),
+                         "miss")
+
+    def test_an_unrecorded_state_is_unknown_not_assumed(self) -> None:
+        """The pre-existing history has no cache field; it must not become a cell."""
+        self.write_artifact("ci-timing-ci-linux-x64-1-1", None)
+        states = paired.job_cache_states(self.root)
+        self.assertEqual(states["ci-timing-ci-linux-x64-1-1"], "unknown")
+        self.assertEqual(paired._job_state_for("linux-x64 / Cangjie 1.2.0 STS + stdx", states),
+                         "unknown")
+
+    def test_a_run_mixing_states_is_recorded_per_job(self) -> None:
+        """One run legitimately has both conditions; a run-level answer would hide it."""
+        self.write_artifact("ci-timing-ci-linux-x64-1-1", {"cjv": "hit"})
+        self.write_artifact("ci-timing-ci-macos-arm64-1-1", {"cjv": "miss"})
+        states = paired.job_cache_states(self.root)
+        self.assertEqual(sorted(states.values()), ["hit", "miss"])
+
+    def test_a_stage_that_disagrees_with_itself_is_not_a_cell(self) -> None:
+        directory = self.root / "ci-timing-ci-linux-x64-1-1"
+        directory.mkdir(parents=True)
+        (directory / "stages.json").write_text(json.dumps({"stages": [
+            {"environment": {"cache": {"cjv": "hit"}}},
+            {"environment": {"cache": {"cjv": "miss"}}}]}), encoding="utf-8")
+        self.assertEqual(paired.job_cache_states(self.root)["ci-timing-ci-linux-x64-1-1"],
+                         "mixed")
+
+    def test_cells_are_keyed_by_job_shape_not_only_cache_state(self) -> None:
+        """A Linux hit must never be pooled with a macOS miss."""
+        samples = [
+            {"run": 1, "attempt": 1, "revision": "a" * 8, "event": "push", "job": "linux-x64 / Cangjie",
+             "shape": "linux-x64", "conclusion": "success", "state": "hit", "jobMinutes": 20.0,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+            {"run": 2, "attempt": 1, "revision": "b" * 8, "event": "push", "job": "macos-arm64 / Cangjie",
+             "shape": "macos-arm64", "conclusion": "success", "state": "miss", "jobMinutes": 10.0,
+             "hasEvidence": True,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+        ]
+        out = self.root / "cells.md"
+        result = paired.report(samples, "ci.yml", out)
+        self.assertEqual(sorted(k.split("|")[0] for k in result["cells"]),
+                         ["linux-x64/hit", "macos-arm64/miss"])
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("linux-x64 / **hit**", text)
+        self.assertIn("macos-arm64 / **miss**", text)
+
+    def test_failed_jobs_are_listed_and_excluded_from_cells(self) -> None:
+        samples = [
+            {"run": 1, "attempt": 2, "revision": "c" * 8, "event": "push", "job": "linux-x64 / Cangjie",
+             "shape": "linux-x64", "conclusion": "failure", "state": "n/a", "jobMinutes": 5.0,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+        ]
+        out = self.root / "failed.md"
+        result = paired.report(samples, "ci.yml", out)
+        self.assertEqual(result["cells"], {})
+        self.assertEqual(result["failures"], 1)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("**failure**", text)
+        self.assertIn("Re-run attempts present in this sample: 2", text)
+
+    def test_a_job_shape_is_stable_across_toolchain_pins(self) -> None:
+        self.assertEqual(paired.job_shape("linux-x64 / Cangjie 1.2.0 STS + stdx"), "linux-x64")
+        self.assertEqual(paired.job_shape("linux-x64 / Cangjie 2.0.0 STS + stdx"), "linux-x64")
+
+    def test_the_two_linux_artifacts_are_never_confused(self) -> None:
+        """The candidate and the acceptance job must not share a state by tie-break."""
+        states = {"ci-timing-build-linux-candidate-1-1": "hit",
+                  "ci-timing-ci-linux-x64-1-1": "miss"}
+        self.assertEqual(paired._job_state_for(
+            "Linux candidate / Linux candidate / Cangjie 1.2.0 STS + stdx", states), "hit")
+        self.assertEqual(paired._job_state_for(
+            "linux-x64 / Cangjie 1.2.0 STS + stdx", states), "miss")
+
+    def test_a_job_without_a_timing_artifact_is_never_a_requirement(self) -> None:
+        """`CI required` can never be hit or miss, so it must not appear as a cell."""
+        samples = [
+            {"run": 1, "attempt": 1, "revision": "d" * 8, "event": "push", "job": "CI required",
+             "shape": "ci required", "conclusion": "success", "state": "unknown", "jobMinutes": 0.1,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+            {"run": 1, "attempt": 1, "revision": "d" * 8, "event": "push",
+             "job": "linux-x64 / Cangjie", "shape": "linux-x64", "conclusion": "success",
+             "state": "hit", "jobMinutes": 20.0,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+        ]
+        out = self.root / "req.md"
+        result = paired.report(samples, "ci.yml", out)
+        self.assertEqual(sorted(k.split("|")[0] for k in result["cells"]), ["linux-x64/hit"])
+        text = out.read_text(encoding="utf-8")
+        self.assertNotIn("**ci required**", text)
+        self.assertNotIn("ci required / **hit**", text)
+
+    def test_attempts_are_enumerated_not_resolved_to_the_latest(self) -> None:
+        calls = []
+
+        def fake_samples(repository, run, run_id, attempt, cache_root, earlier, failures,
+                         workflow):
+            calls.append(attempt)
+            return [], set()
+
+        original_samples = paired._attempt_samples
+        original_runs = paired.workflow_runs
+        paired._attempt_samples = fake_samples
+        paired.workflow_runs = lambda *a, **k: [
+            {"id": 7, "run_attempt": 3, "head_sha": "e" * 40, "event": "push",
+             "status": "completed", "conclusion": "success"}]
+        try:
+            paired.collect("o/r", "CI", 1, self.root)
+        finally:
+            paired._attempt_samples = original_samples
+            paired.workflow_runs = original_runs
+        self.assertEqual(calls, [1, 2, 3])
+
+    def test_a_cache_bearing_shape_stays_a_requirement_when_unknown(self) -> None:
+        """A platform whose artifacts expired must still show as an unmet cell."""
+        samples = [
+            {"run": 1, "attempt": 1, "revision": "f" * 8, "event": "push",
+             "job": "macos-arm64 / Cangjie", "shape": "macos-arm64", "conclusion": "success",
+             "state": "unknown", "jobMinutes": 17.0, "hasEvidence": True,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+        ]
+        out = self.root / "expired.md"
+        paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("macos-arm64 / **miss**", text)
+        self.assertIn("macos-arm64 / **hit**", text)
+
+    def test_an_orchestration_job_is_not_a_cache_requirement(self) -> None:
+        self.assertIsNone(paired.job_artifact_stem("CI required"))
+        self.assertIsNone(paired.job_artifact_stem("Classify changes"))
+        self.assertEqual(paired.job_artifact_stem("linux-x64 / Cangjie"), "ci-linux-x64")
+
+    def test_a_failed_only_shape_is_still_a_requirement(self) -> None:
+        """A platform that only ever failed must report zero successful samples."""
+        samples = [
+            {"run": 1, "attempt": 1, "revision": "9" * 8, "event": "push",
+             "job": "windows-x64 / Cangjie", "shape": "windows-x64", "conclusion": "failure",
+             "state": "n/a", "jobMinutes": 5.0, "hasEvidence": True,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+            {"run": 2, "attempt": 1, "revision": "8" * 8, "event": "push",
+             "job": "linux-x64 / Cangjie", "shape": "linux-x64", "conclusion": "success",
+             "state": "hit", "jobMinutes": 20.0, "hasEvidence": True,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+        ]
+        out = self.root / "failed-shape.md"
+        paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("windows-x64 / **hit**", text)
+        self.assertIn("windows-x64 / **miss**", text)
+
+    def test_a_carried_forward_job_is_not_counted_twice(self) -> None:
+        """A re-run's attempt 2 must not re-charge a job attempt 1 already ran."""
+        calls = {}
+
+        def fake_attempt(repository, run, run_id, attempt, cache_root, earlier, failures,
+                         workflow):
+            # Attempt 2 returns the same job name and started_at as attempt 1.
+            job = {"name": "macos-arm64 / Cangjie", "started_at": "2026-01-01T00:00:00Z",
+                   "conclusion": "success", "id": 1}
+            kept = [(job, "e")] if (job["name"], job["started_at"]) not in earlier else []
+            calls[attempt] = len(kept)
+            return ([{"run": run_id, "attempt": attempt, "revision": "a" * 8, "event": "push",
+                       "job": job["name"][:34], "shape": "macos-arm64", "conclusion": "success",
+                       "state": "hit", "jobMinutes": 1.0,
+                       "runWallMinutes": 1.0, "runRunnerMinutes": 1.0} for _ in range(len(kept))],
+                    {(job["name"], job["started_at"])})
+
+        original = paired._attempt_samples
+        original_runs = paired.workflow_runs
+        paired._attempt_samples = fake_attempt
+        paired.workflow_runs = lambda *a, **k: [
+            {"id": 5, "run_attempt": 2, "head_sha": "b" * 40, "event": "push",
+             "status": "completed", "conclusion": "success"}]
+        try:
+            paired.collect("o/r", "CI", 1, self.root)
+        finally:
+            paired._attempt_samples = original
+            paired.workflow_runs = original_runs
+        self.assertEqual(calls, {1: 1, 2: 0}, "the carried-forward job must be dropped")
+
+    def test_the_same_shape_under_two_conditions_is_two_cells(self) -> None:
+        """Five hits from one revision must not count for five misses from another."""
+        def sample(rev, state, minutes):
+            return {"run": 1, "attempt": 1, "revision": rev, "event": "push",
+                    "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": "success", "state": state, "jobMinutes": minutes, "hasEvidence": True,
+                    "condition": f"{rev}|ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+
+        samples = [sample("a" * 40, "miss", 20.0), sample("b" * 40, "hit", 10.0)]
+        out = self.root / "conditions.md"
+        result = paired.report(samples, "ci.yml", out)
+        self.assertEqual(len(result["cells"]), 2, result["cells"])
+        text = out.read_text(encoding="utf-8")
+        self.assertIn(f"{'a' * 40}|ubuntu", text)
+        self.assertIn(f"{'b' * 40}|ubuntu", text)
+
+    def test_five_hits_and_five_misses_under_different_conditions_is_not_met(self) -> None:
+        """The paired comparison needs BOTH conditions under the SAME condition."""
+        def sample(rev, state):
+            return {"run": 1, "attempt": 1, "revision": rev, "event": "push",
+                    "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": "success", "state": state, "jobMinutes": 10.0,
+                    "condition": f"{rev}|ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        samples = [sample("a" * 40, "hit") for _ in range(5)]
+        samples += [sample("b" * 40, "miss") for _ in range(5)]
+        out = self.root / "crossed.md"
+        result = paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        # Each state has five samples, but never under one condition, so no cell is met.
+        self.assertFalse(any(count >= 5 for count in result["pairedPerCondition"].values()),
+                         result["pairedPerCondition"])
+        self.assertIn("paired samples under this condition: 0 — NOT met", text)
+
+    def test_the_provenance_command_is_copyable(self) -> None:
+        """A workflow name with spaces must arrive as one argument."""
+        import shlex
+        text = "Build Linux candidate"
+        rendered = " ".join(shlex.quote(part) for part in
+                            ("python3", "script.py", "--workflow", text))
+        self.assertEqual(shlex.split(rendered),
+                         ["python3", "script.py", "--workflow", text])
+
+    def test_a_limit_above_one_page_is_refused(self) -> None:
+        calls = []
+        original = paired._run_gh
+        paired._run_gh = lambda args: calls.append(args) or json.dumps(
+            {"workflows": [{"id": 1, "name": "CI", "path": ".github/workflows/ci.yml"}]})
+        try:
+            with self.assertRaises(SystemExit):
+                paired.workflow_runs("o/r", "CI", 101, None)
+        finally:
+            paired._run_gh = original
+
+    def test_each_timed_workflow_maps_its_own_artifact(self) -> None:
+        """`ci.yml`, `pages.yml` and `daily.yml` name their timing artifacts differently."""
+        self.assertEqual(paired.job_artifact_stem("linux-x64 / Cangjie 1.2.0 STS + stdx", "ci.yml"),
+                         "ci-linux-x64")
+        self.assertEqual(paired.job_artifact_stem("Assemble final site", "pages.yml"),
+                         "pages-assemble")
+        self.assertEqual(paired.job_artifact_stem("linux-x64 / Cangjie 1.2.0 STS", "daily.yml"),
+                         "daily")
+        self.assertEqual(paired.job_artifact_stem("CI required", "ci.yml"), None)
+
+    def test_an_unsupported_workflow_is_refused_not_reported_as_unknown(self) -> None:
+        """A silent empty mapping would look like a legitimate "no samples" result."""
+        with self.assertRaises(SystemExit):
+            paired.stems_for("no-such-workflow.yml")
+
+    def test_stems_accept_the_forms_the_cli_hands_over(self) -> None:
+        """`stems_for` takes a resolved file name; a path or a bare name still works."""
+        self.assertEqual(paired.stems_for("ci.yml"), paired.stems_for(".github/workflows/ci.yml"))
+        self.assertIsInstance(paired.stems_for("ci.yml"), tuple)
+
+    def test_a_partial_download_is_reported_per_artifact(self) -> None:
+        """One artifact failing must be named, not hidden by the others succeeding."""
+        calls = []
+
+        def fake_run(args, **kwargs):
+            import subprocess as sp
+            if "artifacts/2/zip" in args[-1]:
+                return sp.CompletedProcess(args, 1, b"", b"500")
+            import io, zipfile
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, "w") as archive:
+                archive.writestr("stages.json", "{}")
+            return sp.CompletedProcess(args, 0, buffer.getvalue(), b"")
+
+        artifacts = [{"id": 1, "name": "ci-timing-a-1-1"}, {"id": 2, "name": "ci-timing-b-1-1"}]
+        original_gh, original_artifacts, original_run = (
+            paired._run_gh, paired.matching_artifacts, subprocess.run)
+        paired._run_gh = lambda args: json.dumps({"artifacts": artifacts})
+        paired.matching_artifacts = lambda *a, **k: artifacts
+        subprocess.run = fake_run
+        try:
+            failed = paired.download_evidence("o/r", 1, 1, self.root / "dl")
+        finally:
+            paired._run_gh, paired.matching_artifacts = original_gh, original_artifacts
+            subprocess.run = original_run
+        self.assertEqual(failed, ["ci-timing-b-1-1"])
+
+    def test_a_truncated_cached_stage_record_is_not_trusted(self) -> None:
+        """A half-written stages.json must be re-fetched, not parsed."""
+        directory = self.root / "cached"
+        directory.mkdir(parents=True)
+        record = directory / "stages.json"
+        record.write_text('{"stages": [{"stageId": "nat', encoding="utf-8")
+        self.assertFalse(paired._readable_stage_record(record))
+        record.write_text('{"stages": []}', encoding="utf-8")
+        self.assertTrue(paired._readable_stage_record(record))
+        record.write_text("", encoding="utf-8")
+        self.assertFalse(paired._readable_stage_record(record))
 
 
 if __name__ == "__main__":

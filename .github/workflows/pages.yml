@@ -237,6 +237,7 @@ jobs:
           cache-dependency-path: scripts/requirements-showcase.txt
 
       - name: Restore cjv toolchain cache
+        id: cjv-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/setup-cangjie-cjv
@@ -255,6 +256,9 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+          # DONE-03 classifies each sample as warm or cold from this value; without it
+          # every stage record of this workflow carries an empty cache map.
+          echo "CJDOC_CACHE_STATE=cjv=${{ steps.cjv-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}" >> "${GITHUB_ENV}"
 
       - name: Download this run's candidate
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -385,6 +389,9 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+          # DONE-03 classifies each sample as warm or cold from this value; without it
+          # every stage record of this workflow carries an empty cache map.
+          echo "CJDOC_CACHE_STATE=cjv=${{ steps.cjv-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}" >> "${GITHUB_ENV}"
 
       - name: Download the sealed site
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
