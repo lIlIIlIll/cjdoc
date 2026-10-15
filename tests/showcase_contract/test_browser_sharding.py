@@ -184,6 +184,16 @@ class ShardingTests(unittest.TestCase):
         self.assertEqual(receipt["schemaVersion"], browser_sharding.MERGE_SCHEMA)
         self.assertEqual(len(receipt["shards"]), 2)
 
+    def test_merge_rejects_previous_site_size_budget_snapshots(self):
+        for index in (0, 1):
+            directory = self.run_shard(index)
+            path = directory / "shard.json"
+            shard = load_json(path)
+            shard["budgets"]["siteBytes"] = 80_000_000
+            path.write_text(json.dumps(shard, ensure_ascii=False), encoding="utf-8")
+        with self.assertRaisesRegex(ContractError, "reviewed regression budgets"):
+            self.merge([0, 1])
+
     def test_run_refuses_an_existing_evidence_directory(self):
         evidence = self.root / "existing"
         evidence.mkdir()

@@ -72,6 +72,25 @@ async function openReferenceBox(page) {
   return classUrl;
 }
 
+async function expectMemberSectionCounts(page, chinese) {
+  const groups = await page.locator('[data-cjdoc-member-group]').evaluateAll(nodes => nodes.map(group => {
+    const rows = [...group.querySelectorAll('[data-cjdoc-member]')];
+    return {
+      total: rows.length,
+      matches: rows.filter(row => !row.hidden).length,
+      hidden: group.hidden,
+      text: group.querySelector('.member-group-count').textContent,
+    };
+  }));
+  expect(groups.length).toBeGreaterThan(0);
+  for (const group of groups) {
+    const count = group.matches === group.total ? String(group.total) : `${group.matches} / ${group.total}`;
+    expect(group.text).toBe(count + (chinese ? ' 个成员' : ' members'));
+    expect(group.hidden).toBe(group.matches === 0);
+  }
+  return groups;
+}
+
 let httpServer;
 let httpBaseUrl;
 
@@ -120,6 +139,63 @@ test.afterAll(async () => {
   if (httpServer) await new Promise(resolve => httpServer.close(resolve));
 });
 test.describe('generated HTML reference', () => {
+
+  for (const width of [1440, 390]) {
+    test(`eight theme choices persist and keep keyboard controls usable at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await openIndex(page);
+      const trigger = page.locator('[data-cjdoc-theme-toggle]');
+      const popover = page.locator('[data-cjdoc-theme-popover]');
+      for (const theme of ['system', 'light', 'dark', 'paper', 'ocean', 'forest', 'terminal', 'violet']) {
+        await trigger.click();
+        await expect(popover.locator('[data-cjdoc-theme-value]')).toHaveCount(8);
+        await popover.locator(`[data-cjdoc-theme-value="${theme}"]`).click();
+        await expect(popover).toBeHidden();
+        await expect(trigger).toBeFocused();
+        expect(await page.evaluate(() => localStorage.getItem('cjdoc-theme'))).toBe(theme);
+        await page.reload();
+        if (theme === 'system') await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+        else await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+        if (process.env.CJDOC_THEME_SCREENSHOTS) {
+          await page.screenshot({path: path.join(process.env.CJDOC_THEME_SCREENSHOTS, `${width}-${theme}.png`)});
+        }
+      }
+      await trigger.click();
+      await expect(popover.locator('[data-cjdoc-theme-value="violet"]')).toHaveAttribute('aria-pressed', 'true');
+      await page.keyboard.press('Escape');
+      await expect(popover).toBeHidden();
+      await expect(trigger).toBeFocused();
+      if (width === 390) {
+        await trigger.click();
+        await expect(popover).toHaveAttribute('aria-modal', 'true');
+        const buttons = popover.locator('button');
+        await buttons.last().focus();
+        await page.keyboard.press('Tab');
+        await expect(buttons.first()).toBeFocused();
+        await page.keyboard.press('Shift+Tab');
+        await expect(buttons.last()).toBeFocused();
+        await page.locator('[data-cjdoc-theme-backdrop]').click({position: {x: 5, y: 5}});
+        await expect(popover).toBeHidden();
+        await expect(trigger).toBeFocused();
+      }
+      for (const shortcut of ['Control+k', 'Meta+k']) {
+        await trigger.click();
+        await page.keyboard.press(shortcut);
+        await expect(popover).toBeHidden();
+        await expect(page.locator('[data-cjdoc-search]')).toBeFocused();
+        await expect(page.locator('.site-search')).not.toHaveAttribute('inert', '');
+        await page.keyboard.press('Escape');
+      }
+      await expectStable(page);
+    });
+  }
+
+  test.beforeEach(async ({ page }) => {
+    const errors = [];
+    pageErrors.set(page, errors);
+    page.on('pageerror', error => errors.push(String(error)));
+  });
   test('overview, search state, typography, theme, and API routes are observable', async ({ page }) => {
     await openIndex(page);
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'overview');
@@ -223,7 +299,7 @@ test.describe('generated HTML reference', () => {
     await gotoFile(page, classUrl);
     await expect(page.locator('.breadcrumbs')).toContainText('Package');
     const classUsages = page.locator('main > .api-usages');
-    const classExternalDocs = page.locator('main > .external-documentation');
+    const classExternalDocs = page.locator('.content-column > .external-documentation');
     await expect(classUsages).toContainText('Getting started');
     await expect(classExternalDocs.locator('a')).toHaveAttribute('href', 'https://docs.example.test/1.1.3/libs/std/core/reference-box.html#referencebox');
     await expect(classExternalDocs).toContainText('version: 1.1.3');
@@ -261,7 +337,8 @@ test.describe('generated HTML reference', () => {
     await page.evaluate(() => window.scrollTo(0, Math.min(520, document.documentElement.scrollHeight - innerHeight)));
     const readingY = await page.evaluate(() => window.scrollY);
     await memberActions(normalizeForRestore).locator('.member-permalink').click();
-    await expect(page.locator('.sibling-members')).toBeVisible();
+    await expect(page.locator('.sidebar-context')).toBeVisible();
+    await expect(page.locator('.sidebar-context .context-item[aria-current="page"]')).toContainText('normalize');
     await page.goBack();
     await page.waitForTimeout(50);
     await expect(page.locator('[data-cjdoc-member-filter]')).toHaveValue('normalize');
@@ -390,11 +467,15 @@ test.describe('generated HTML reference', () => {
     await longDetail.locator('.member-detail-summary').focus();
     await page.keyboard.press('Enter');
     await expect(longDetail).toHaveAttribute('open', '');
-    await expect(longDetail.locator('.signature-block')).toContainText('timeoutMs!: Int64 = 1000');
+    await expect(longDetail.locator('summary .declaration-signature')).toContainText('timeoutMs!: Int64 = 1000');
 
     const useDetail = page.locator('details[data-cjdoc-member][data-member-name="use"]');
     await useDetail.locator('.member-detail-summary').click();
-    const useSignature = useDetail.locator('.signature-block code');
+    await expect(useDetail.locator('summary .declaration-signature'))
+      .toContainText('label!: String = "Token", item!: Token');
+    const useHref = await memberActions(useDetail).locator('.member-permalink').getAttribute('href');
+    await gotoFile(page, new URL(useHref, classUrl).href);
+    const useSignature = page.locator('.signature-block code');
     const linkedSignatureHtml = await useSignature.innerHTML();
     await expect(useSignature).toContainText('label!: String = "Token", item!: Token');
     // This source-only fixture intentionally leaves Token unresolved. The renderer must
@@ -402,6 +483,8 @@ test.describe('generated HTML reference', () => {
     // covered by HtmlSignatureMappingTest.
     await expect(useSignature.locator('.signature-type-link')).toHaveCount(0);
     expect(linkedSignatureHtml).not.toMatch(/"[^"]*<a[^>]*>Token<\/a>[^"]*"/);
+    await page.goBack();
+    await expectStable(page);
 
     await expect(page.locator('.source-action')).not.toHaveCount(0);
     await expect(page.locator('.source-action a')).toHaveAttribute('href', /github.com\/example\/reference\/blob\//);
@@ -411,12 +494,13 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
     await expect(page.locator('.sidebar-context')).toContainText('ReferenceBox');
     await expect(page.locator('.sidebar-context .context-item[aria-current="page"]')).toContainText('normalize');
-    await expect(page.locator('.sibling-members')).toContainText('label');
-    await expect(page.locator('.sibling-members [aria-current="page"]')).toContainText('normalize');
+    await expect(page.locator('.sidebar-context .context-item').filter({ hasText: 'label' })).toHaveCount(1);
     await expect(page.locator('.behavior-contracts h3')).toHaveText('Behavioral constraints');
     await expect(page.locator('.behavior-contracts')).toContainText('precondition');
     await expect(page.locator('.behavior-contracts')).toContainText('performance');
-    await expect(page.locator('dt').filter({ hasText: 'HiddenGuideTarget' })).toContainText('unavailable');
+    const hiddenTarget = page.locator('dt').filter({ hasText: 'HiddenGuideTarget' });
+    await expect(hiddenTarget).toHaveText('HiddenGuideTarget');
+    await expect(hiddenTarget.locator('a')).toHaveCount(0);
     await expect(page.locator('.toc-panel')).toContainText('Parameters');
     await expect(page.locator('.toc-panel')).toContainText('Returns');
     const copyButton = page.locator('.code-copy').first();
@@ -428,7 +512,7 @@ test.describe('generated HTML reference', () => {
     const labelHref = await memberActions(page.locator('details[data-cjdoc-member][data-member-name="label"]')).locator('.member-permalink').getAttribute('href');
     expect(labelHref).toBeTruthy();
     await gotoFile(page, new URL(labelHref, classUrl).href);
-    await expect(page.locator('.api-usages')).toContainText('Getting started');
+    await expect(page.locator('.api-usages:not(.conceptual-bindings)')).toContainText('Getting started');
     await expectStable(page);
   });
 
@@ -505,7 +589,8 @@ test.describe('generated HTML reference', () => {
     expect(await boundApiLinks.nth(0).getAttribute('href')).not.toBe(
       await boundApiLinks.nth(1).getAttribute('href')
     );
-    await expect(page.locator('.conceptual-bindings')).toContainText('</span><a href=phish>click</a>');
+    // Captured binding languages are machine metadata; the reader exposes the version.
+    await expect(page.locator('.conceptual-bindings')).toContainText('fixture-v1');
     await expect(page.locator('.conceptual-bindings a[href="phish"]')).toHaveCount(0);
     await expect(page.locator('.conceptual-bindings')).toContainText('Not available in this audience');
     await expect(page.locator('pre').filter({ hasText: 'cjdoc-bind target="html_reference_extra.ExtraBox"' })).toHaveCount(1);
@@ -533,7 +618,7 @@ test.describe('generated HTML reference', () => {
   });
 
 
-  test('mobile drawer, narrow TOC, filters, and zoom remain usable', async ({ page }) => {
+  test('mobile drawer, narrow TOC, filters, and CSS zoom remain usable', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openIndex(page);
     const menu = page.locator('[data-cjdoc-menu]');
@@ -549,7 +634,8 @@ test.describe('generated HTML reference', () => {
 
     await page.setViewportSize({ width: 1180, height: 1000 });
     await openIndex(page);
-    await expect(page.locator('[data-cjdoc-mobile-toc]')).toBeHidden();
+    await expect(page.locator('.toc-panel')).toBeHidden();
+    await expect(page.locator('[data-cjdoc-mobile-toc]')).toBeVisible();
     await expect(page.locator('[data-cjdoc-filter-toggle]')).toBeVisible();
     await page.locator('[data-cjdoc-filter-toggle]').click();
     await expect(page.locator('#cjdoc-search-filters')).toBeVisible();
@@ -570,7 +656,7 @@ test.describe('generated HTML reference', () => {
     await expectStable(page);
   });
 
-  test('dense type member browser keeps collapsed API rows compact', async ({ page }) => {
+  test('dense type member cards retain complete signatures and bounded height', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openIndex(page);
     const packageHref = await page.locator('.package-index a').first().getAttribute('href');
@@ -586,8 +672,11 @@ test.describe('generated HTML reference', () => {
       return { count: heights.length, max: Math.max(...heights), average: heights.reduce((a, b) => a + b, 0) / heights.length };
     });
     expect(metrics.count).toBeGreaterThanOrEqual(20);
-    expect(metrics.max).toBeLessThan(90);
-    expect(metrics.average).toBeLessThan(72);
+    // The redesigned cards show name, complete signature and summary on separate rows.
+    expect(metrics.max).toBeLessThan(145);
+    expect(metrics.average).toBeLessThan(132);
+    await expect(page.locator('details[data-cjdoc-member] > summary .declaration-signature'))
+      .toHaveCount(metrics.count);
   });
 
   test('extension page exposes owned members and accurate navigation in file and HTTP modes', async ({ page, browser }) => {
@@ -624,6 +713,9 @@ test.describe('generated HTML reference', () => {
       if (!(await ownMember.evaluate(node => node.open))) {
         await ownMember.locator('summary').click();
       }
+      // Desktop actions become actionable when the pointer enters their member row.
+      await ownMember.hover();
+      await expect(memberActions(ownMember)).toHaveCSS('pointer-events', 'auto');
       await memberActions(ownMember).locator('.member-permalink').click();
       await expect(page.locator('.breadcrumbs a').filter({ hasText: 'Extension ReferenceBox<T>' })).toHaveCount(1);
       await page.goBack();
@@ -890,7 +982,46 @@ test.describe('generated HTML reference', () => {
     await gotoFile(page, new URL(latestHref, versionIndexUrl).href);
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'overview');
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-doc-version', '1.3.0');
-    await expect(page.locator('.brand-subtitle')).toContainText('1.3.0');
+    await expect(page.locator('.top-actions .version-label')).toContainText('1.3.0');
     await expect(page.locator('.cjdoc-version-selector [aria-current="page"]')).toContainText('1.3.0');
   });
 });
+
+for (const chinese of [false, true]) {
+  test(`member section counts follow text, origin, reset and deep links (${chinese ? 'zh' : 'en'})`, async ({ page }) => {
+    test.skip(chinese && !zhIndexUrl, 'CJDOC_HTML_FIXTURE_ZH is not configured');
+    pageErrors.set(page, []);
+    page.on('pageerror', error => pageErrors.get(page).push(String(error)));
+    const rootUrl = chinese ? zhIndexUrl : indexUrl;
+    await gotoFile(page, rootUrl);
+    const packageUrl = new URL(await page.locator('.package-index a').first().getAttribute('href'), rootUrl).href;
+    await gotoFile(page, packageUrl);
+    const classUrl = new URL(await referenceBoxClassHref(page), packageUrl).href;
+    await gotoFile(page, classUrl);
+    await expectMemberSectionCounts(page, chinese);
+    const filter = page.locator('[data-cjdoc-member-filter]');
+    const origin = page.locator('[data-cjdoc-member-origin]');
+    const ping = page.locator('[data-cjdoc-member][data-member-name="ping"]').first();
+    const anchor = await ping.getAttribute('id');
+    await filter.fill('ping(value: Int64)');
+    const partial = await expectMemberSectionCounts(page, chinese);
+    expect(partial.reduce((sum, group) => sum + group.matches, 0)).toBe(1);
+    expect(partial.some(group => group.matches > 0 && group.matches < group.total)).toBe(true);
+    await origin.selectOption('extension');
+    const combined = await expectMemberSectionCounts(page, chinese);
+    expect(combined.every(group => group.matches === 0)).toBe(true);
+    await filter.fill('');
+    const extension = await expectMemberSectionCounts(page, chinese);
+    expect(extension.reduce((sum, group) => sum + group.matches, 0)).toBeGreaterThan(0);
+    await origin.selectOption('');
+    const reset = await expectMemberSectionCounts(page, chinese);
+    expect(reset.every(group => group.matches === group.total)).toBe(true);
+    await filter.fill('doesNotExist');
+    const empty = await expectMemberSectionCounts(page, chinese);
+    expect(empty.every(group => group.hidden)).toBe(true);
+    await page.evaluate(id => { location.hash = id; }, anchor);
+    await expect(filter).toHaveValue('');
+    const cleared = await expectMemberSectionCounts(page, chinese);
+    expect(cleared.every(group => group.matches === group.total)).toBe(true);
+  });
+}

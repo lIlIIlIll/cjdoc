@@ -246,19 +246,11 @@ input.value="";filter();if(rows.some(row=>row.hidden))throw Error("reset failed"
         self.assertEqual(result.returncode, 0, result.stderr)
 
     @unittest.skipUnless(shutil.which("node"), "Node is required for publication JavaScript runtime checks")
-    def test_showcase_restores_native_theme_and_toggles_the_shared_key(self) -> None:
-        bootstrap = (ROOT / "site/theme-bootstrap.js").read_text(encoding="utf-8")
-        script = (ROOT / "site/showcase.js").read_text(encoding="utf-8")
-        harness = '''const storage={"cjdoc-theme":"terminal"};let click;
-global.localStorage={getItem:k=>storage[k]||null,setItem:(k,v)=>storage[k]=v};
-global.matchMedia=()=>({matches:false});global.location={protocol:"https:"};
-global.document={documentElement:{lang:"zh-CN",dataset:{}},querySelector:s=>s==='[data-showcase-theme]'?{addEventListener:(name,fn)=>click=fn}:null,querySelectorAll:()=>[]};
-''' + bootstrap + '\n' + script + '''
-if(document.documentElement.dataset.theme!=="terminal")throw Error("native theme lost");
-click();if(storage["cjdoc-theme"]!=="light")throw Error("theme not shared with native pages");'''
-        result = subprocess.run(["node", "-e", harness], capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-
+    def test_showcase_restores_native_theme_and_selects_the_shared_key(self) -> None:
+        # Reuse the real eight-theme picker harness instead of maintaining
+        # a separate binary-toggle browser stub that diverges from the UI.
+        from test_showcase_theme import assert_showcase_theme_picker_runtime
+        assert_showcase_theme_picker_runtime()
 
 if __name__ == "__main__":
     unittest.main()

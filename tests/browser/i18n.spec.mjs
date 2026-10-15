@@ -13,6 +13,8 @@ const member = search.entries.find(x => x.name === 'increment' && x.parameterTyp
 const context = manifest.routes.find(x => x.language === 'zh-CN' && x.symbolId === member.id && x.pageId?.startsWith('context:') && !x.sectionId);
 const parameter = manifest.routes.find(x => x.language === 'zh-CN' && x.symbolId === member.id && x.pageId === context.pageId && x.sectionId?.endsWith(':doc:param:value'));
 const translated = manifest.routes.find(x => x.language === 'en' && x.symbolId === member.id && x.pageId === context.pageId && x.sectionId === parameter.sectionId);
+const guidePageId = manifest.routes.find(route => route.language === 'zh-CN' &&
+  route.href === 'html/zh-CN/concepts/guides/start.html').pageId;
 const shots = process.env.CJDOC_I18N_SCREENSHOTS;
 if (shots) await mkdir(shots, { recursive: true });
 let server;
@@ -101,8 +103,8 @@ test('search English author text, read the fallback and follow the guide binding
 });
 
 test('guide section identity survives translated headings', async ({ page }) => {
-  const source = manifest.routes.find(x => x.language === 'zh-CN' && x.pageId === 'start' && x.sectionId === 'usage');
-  const target = manifest.routes.find(x => x.language === 'en' && x.pageId === 'start' && x.sectionId === 'usage');
+  const source = manifest.routes.find(x => x.language === 'zh-CN' && x.pageId === guidePageId && x.sectionId === 'usage');
+  const target = manifest.routes.find(x => x.language === 'en' && x.pageId === guidePageId && x.sectionId === 'usage');
   await page.goto(base + source.href);
   await page.locator('.language-switcher a[hreflang="en"]').click();
   expect(decodeURIComponent(page.url())).toContain(target.href);
@@ -110,7 +112,7 @@ test('guide section identity survives translated headings', async ({ page }) => 
 });
 
 test('a missing translated chapter falls back to the same guide with an explicit notice', async ({ page }) => {
-  const source = manifest.routes.find(x => x.language === 'zh-CN' && x.pageId === 'start' && x.sectionId === 'advanced');
+  const source = manifest.routes.find(x => x.language === 'zh-CN' && x.pageId === guidePageId && x.sectionId === 'advanced');
   await page.goto(base + source.href);
   await expect(page.getByRole('heading', { name: '高级用法', exact: true })).toBeVisible();
   const english = page.locator('.language-switcher a[hreflang="en"]');
@@ -145,3 +147,27 @@ test.describe('static offline reading', () => {
     await expect(page.getByText('This guide demonstrates the bilingual arithmetic API.')).toBeVisible();
   });
 });
+
+
+for (const mode of ['file', 'http']) {
+  for (const width of [1440, 390]) {
+    test(`member TOC preserves position through language navigation in ${mode} at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const memberId = context.href.split('#')[1];
+      const target = manifest.routes.find(route => route.language === 'en' &&
+        route.symbolId === member.id && route.pageId === context.pageId && !route.sectionId);
+      await page.goto(destination(mode, context.href.split('#')[0]));
+      const directory = width === 390 ? page.locator('[data-cjdoc-mobile-toc]') : page.locator('.toc-panel');
+      if (width === 390) await directory.locator('summary').click();
+      const link = directory.locator(`a[data-toc-target="${memberId}"]`);
+      await expect(link).toHaveAttribute('href', `#${memberId}`);
+      await link.click();
+      await expect(page.locator(`details[id="${memberId}"]`)).toHaveJSProperty('open', true);
+      const english = page.locator('.language-switcher a[hreflang="en"]');
+      await expect(english).toHaveAttribute('data-position-state', 'mapped');
+      await english.click();
+      expect(page.url()).toBe(destination(mode, target.href));
+      await expect(page.locator(`details[id="${target.href.split('#')[1]}"]`)).toHaveJSProperty('open', true);
+    });
+  }
+}

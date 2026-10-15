@@ -312,7 +312,9 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     let anchor = symbolAnchor(member)
     out.append("<div class=\"member-row\"><details class=\"declaration-summary member-detail\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\" data-member-origin=\"${escapeHtml(entry.origin)}\">")
     out.append("<summary class=\"member-detail-summary\" id=\"" + escapeHtml(anchor) +
-        "-summary\"><span class=\"member-summary-main\">")
+        "-summary\" data-cjdoc-toc-role=\"member\" data-cjdoc-toc-label=\"" +
+        escapeHtml(htmlTocLabel(member)) + "\"><span class=\"member-summary-main\">")
+    out.append("<span class=\"member-display-name\">" + escapeHtml(member.name) + "</span>")
     if (!member.headerSpelling.isEmpty()) {
         out.append("<code class=\"declaration-signature\">")
         appendSignatureTextHtml(out, member)
@@ -404,8 +406,10 @@ internal func appendMemberSection(out: RenderTextBuffer,
     }
     let overloadCountLabel = label(locale, "overloads", "个重载")
     let overloadCounts = HashMap<String, Int64>()
+    var groupCount: Int64 = 0
     for (entry in browser.entries) {
         if (memberSectionTitle(entry.symbol) != title) { continue }
+        groupCount++
         let key = "${entry.groupKey}:${entry.symbol.name}"
         overloadCounts[key] = match (overloadCounts.get(key)) {
             case Some(value) => value + 1
@@ -418,8 +422,9 @@ internal func appendMemberSection(out: RenderTextBuffer,
         let member = entry.symbol
         if (memberSectionTitle(member) != title) { continue }
         if (!opened) {
-            out.append("<section class=\"member-group\" data-cjdoc-member-group><h2>" +
-                escapeHtml(label(locale, title, sectionLabel)) + "</h2>\n")
+            out.append("<section class=\"member-group\" data-cjdoc-member-group><div class=\"member-group-heading\"><h2>" +
+                escapeHtml(label(locale, title, sectionLabel)) + "</h2><span class=\"member-group-count\">" +
+                groupCount.toString() + " " + label(locale, "members", "个成员") + "</span></div>\n")
             opened = true
         }
         let overloadKey = "${entry.groupKey}:${member.name}"
@@ -486,10 +491,10 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     out.append("<li aria-current=\"page\"><code>${escapeHtml(readerSymbolTitle(symbol, locale))}</code></li></ol></nav>\n")
     let headerClass = if (symbol.kind == "extend") { " api-extension-header" } else { "" }
     out.append("<header class=\"page-header api-page-header${headerClass}\"><div class=\"api-title-row\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(readerSymbolTitle(symbol, locale))}</code></h1>")
-    out.append("<button class=\"copy-link\" type=\"button\" data-cjdoc-copy-link=\"../${escapeHtml(symbolReadablePagePath(symbol))}\">${label(locale, "Copy link", "复制链接")}</button></div>")
     out.append("<p class=\"symbol-kind\">${escapeHtml(htmlKindLabel(symbol.kind, locale))}</p>")
+    out.append("<button class=\"copy-link\" type=\"button\" data-cjdoc-copy-link=\"../${escapeHtml(symbolReadablePagePath(symbol))}\">${label(locale, "Copy link", "复制链接")}</button></div>")
     appendSymbolMetadata(out, index, symbol, "../", assetLookup, typeLinkIndex,
-        locale: locale)
+        locale: locale, pagePresentation: true)
     match (findProjectedModule(projection, symbol.moduleId)) {
         case Some(module) => match (sourceUrl(documentation.project, module, symbol.source)) {
             case Some(url) => out.append("<p class=\"source-action\"><a href=\"${escapeHtml(url)}\" rel=\"noreferrer\">${label(locale, "View source", "查看源码")}</a></p>\n")
@@ -499,6 +504,24 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     }
     out.append("</header>\n")
     if (hasMemberPage) {
+        // Localized summaries may span paragraphs. The selected description
+        // tag determines whether an Overview is rendered for localized comments.
+        var hasIntroduction = false
+        match (symbol.documentation) {
+            case Some(comment) =>
+                if (!comment.localizedTexts.isEmpty()) {
+                    hasIntroduction = findTag(comment, "description").isSome()
+                } else {
+                    let summaryIndex = topLevelParagraphIndex(comment)
+                    hasIntroduction = comment.markdown.kind != "paragraph" &&
+                        !comment.markdown.children.isEmpty() &&
+                        !(comment.markdown.children.size == 1 && summaryIndex == 0)
+                }
+            case None => ()
+        }
+        if (hasIntroduction) {
+            out.append("<h2 id=\"overview\" class=\"api-overview-heading\">${label(locale, "Overview", "概述")}</h2>")
+        }
         appendDocumentationIntroductionHtml(out, symbol, "../", assetLookup, 4, locale)
         match (symbol.documentation) {
             case Some(comment) => appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(symbol))
