@@ -96,11 +96,12 @@ def main() -> int:
         started = time.monotonic()
         log = evidence / (name + ".json")
         raw = args.work_root / (name + ".raw.log")
+        raw_stderr = args.work_root / (name + ".stderr.log")
         step = {"name": name, "exitCode": None, "status": "running", "timeoutSeconds": timeout}
         try:
-            with raw.open("wb") as stream:
+            with raw.open("wb") as stream, raw_stderr.open("wb") as errors:
                 result = subprocess.run(command, cwd=cwd, env=env, stdout=stream,
-                                        stderr=subprocess.STDOUT, timeout=timeout, check=False)
+                                        stderr=errors, timeout=timeout, check=False)
             step["exitCode"] = result.returncode
             if result.returncode:
                 raise subprocess.CalledProcessError(result.returncode, command)

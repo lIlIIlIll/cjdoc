@@ -96,7 +96,7 @@ CI workflow 的既有 `linux-acceptance` 与 `candidate-other`（Windows x64 / m
 
 runner 首先重验当前 HEAD 的构建 manifest 与真实 main 摘要，然后只从该精确 commit 的 tracked Git archive 创建私有源码副本。公开取消宿主在副本内、独立 target-dir 下以现有 STS `-O1` wrapper 和已认证 static stdx 构建；显式 npm 安装、node_modules、构建脚本缓存及完整 harness 输出均留在磁盘上的私有 runner-temp 根，不污染原 checkout 或默认 target，也不放宽 source-input 门。
 
-公开 artifact 保存构建身份、固定版本与产物摘要，以及仅含固定步骤名、状态、reason code、退出码、超时秒数与耗时的结构化步骤记录。异常 repr、完整命令 argv 和原始 stdout/stderr 只留 runner 私有工作根，不上传或回显；不依赖跨平台路径替换来发布错误文本。
+公开 artifact 保存构建身份、固定版本与产物摘要，以及仅含固定步骤名、状态、reason code、退出码、超时秒数与耗时的结构化步骤记录。异常 repr、完整命令 argv 和原始 stdout/stderr 只留 runner 私有工作根，不上传或回显；不依赖跨平台路径替换来发布错误文本。命令 stdout 与 stderr 分别保存：HEAD、Node 版本等机器字段仅消费 stdout，SDK/动态加载器的 stderr 诊断保留但不混入身份解析，也不被过滤或丢弃。
 
 受控源码、配置、Markdown、worker 脚本和冻结 IR 输入明确以 UTF-8/LF 写入，避免 Windows 默认编码或换行改变固定 corpus；原始 corpus 和断言不变。专门的 CRLF IR/浏览器复制场景仍证明已提取显示代码的绑定原文，不声称 Markdown 解析从不归一化整个源文件换行。
 
