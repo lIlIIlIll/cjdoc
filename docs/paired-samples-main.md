@@ -13,33 +13,14 @@ A job whose artifact carries no cache state is `unknown` and is never assumed to
 be either condition. Failed and cancelled jobs are listed separately below and
 are excluded from the cells, not from the record.
 
-| run | attempt | revision | event | job | shape | conclusion | cache | job wall |
-| --- | ---: | --- | --- | --- | --- | --- | --- | ---: |
-| 38400952652 | 1 | `9a84c63c` | workflow_dispatch | CI required | ci required | failure | n/a | 0.2m |
-| 38400952652 | 1 | `9a84c63c` | workflow_dispatch | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | cancelled | n/a | 110.6m |
-| 38546106288 | 1 | `34dd0907` | push | CI required | ci required | failure | n/a | 0.2m |
-| 38546106288 | 1 | `34dd0907` | push | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | failure | n/a | 40.5m |
-| 38563479711 | 1 | `6a52c140` | push | CI required | ci required | failure | n/a | 0.1m |
-| 38563479711 | 1 | `6a52c140` | push | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | failure | n/a | 9.7m |
-| 38606017696 | 1 | `1ba5beb5` | push | CI required | ci required | failure | n/a | 0.1m |
-| 38606017696 | 1 | `1ba5beb5` | push | Linux candidate / Linux candidate  | linux candidate | cancelled | n/a | 1.6m |
-| 38606017696 | 1 | `1ba5beb5` | push | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | cancelled | n/a | 0.0m |
-| 38606017696 | 1 | `1ba5beb5` | push | macos-arm64 / Cangjie 1.2.0 STS +  | macos-arm64 | cancelled | n/a | 1.6m |
-| 38606017696 | 1 | `1ba5beb5` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | cancelled | n/a | 1.4m |
-| 38661876603 | 1 | `7dd4fbd7` | push | CI required | ci required | failure | n/a | 0.1m |
-| 38661876603 | 2 | `7dd4fbd7` | push | CI required | ci required | failure | n/a | 0.1m |
-| 38661876603 | 1 | `7dd4fbd7` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | failure | n/a | 6.9m |
-| 38661876603 | 2 | `7dd4fbd7` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | cancelled | n/a | 1.8m |
-| 38668526285 | 1 | `d5c459d3` | push | CI required | ci required | failure | n/a | 0.1m |
-| 38668526285 | 2 | `d5c459d3` | push | Linux candidate / Linux candidate  | linux candidate | success | hit | 2.8m |
-| 38668526285 | 1 | `d5c459d3` | push | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | cancelled | n/a | 2.5m |
-| 38668526285 | 2 | `d5c459d3` | push | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | success | hit | 29.2m |
-| 38668526285 | 1 | `d5c459d3` | push | macos-arm64 / Cangjie 1.2.0 STS +  | macos-arm64 | cancelled | n/a | 5.9m |
-| 38668526285 | 2 | `d5c459d3` | push | macos-arm64 / Cangjie 1.2.0 STS +  | macos-arm64 | success | miss | 17.9m |
-| 38668526285 | 1 | `d5c459d3` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | cancelled | n/a | 5.9m |
-| 38668526285 | 2 | `d5c459d3` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | success | miss | 25.6m |
+| run | attempt | revision | event | job | shape | conclusion | cache | job wall | run wall | run runner |
+| --- | ---: | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |
+| 38668526285 | 2 | `d5c459d3` | push | Linux candidate / Linux candidate  | linux candidate | success | hit | 2.8m | 32.3m | 75.6m |
+| 38668526285 | 2 | `d5c459d3` | push | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | success | hit | 29.2m | 32.3m | 75.6m |
+| 38668526285 | 2 | `d5c459d3` | push | macos-arm64 / Cangjie 1.2.0 STS +  | macos-arm64 | success | miss | 17.9m | 32.3m | 75.6m |
+| 38668526285 | 2 | `d5c459d3` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | success | miss | 25.6m | 32.3m | 75.6m |
 
-61 further rows are successful `unknown` jobs and are elided; the tool prints them.
+102 further rows are successful `unknown` jobs and are elided; the tool prints them.
 
 ## Matched cells (successful jobs only)
 
@@ -65,24 +46,24 @@ are excluded from the cells, not from the record.
 
 ## Failures, cancellations and re-runs (excluded from the cells)
 
-* run `38400952652` attempt 1 (`9a84c63c`, workflow_dispatch): CI required — **failure**
-* run `38400952652` attempt 1 (`9a84c63c`, workflow_dispatch): linux-x64 / Cangjie 1.2.0 STS + st — **cancelled**
-* run `38546106288` attempt 1 (`34dd0907`, push): CI required — **failure**
-* run `38546106288` attempt 1 (`34dd0907`, push): linux-x64 / Cangjie 1.2.0 STS + st — **failure**
-* run `38563479711` attempt 1 (`6a52c140`, push): CI required — **failure**
-* run `38563479711` attempt 1 (`6a52c140`, push): linux-x64 / Cangjie 1.2.0 STS + st — **failure**
-* run `38606017696` attempt 1 (`1ba5beb5`, push): CI required — **failure**
-* run `38606017696` attempt 1 (`1ba5beb5`, push): Linux candidate / Linux candidate  — **cancelled**
-* run `38606017696` attempt 1 (`1ba5beb5`, push): linux-x64 / Cangjie 1.2.0 STS + st — **cancelled**
-* run `38606017696` attempt 1 (`1ba5beb5`, push): macos-arm64 / Cangjie 1.2.0 STS +  — **cancelled**
-* run `38606017696` attempt 1 (`1ba5beb5`, push): windows-x64 / Cangjie 1.2.0 STS +  — **cancelled**
-* run `38661876603` attempt 1 (`7dd4fbd7`, push): CI required — **failure**
-* run `38661876603` attempt 2 (`7dd4fbd7`, push): CI required — **failure**
-* run `38661876603` attempt 1 (`7dd4fbd7`, push): windows-x64 / Cangjie 1.2.0 STS +  — **failure**
-* run `38661876603` attempt 2 (`7dd4fbd7`, push): windows-x64 / Cangjie 1.2.0 STS +  — **cancelled**
-* run `38668526285` attempt 1 (`d5c459d3`, push): CI required — **failure**
-* run `38668526285` attempt 1 (`d5c459d3`, push): linux-x64 / Cangjie 1.2.0 STS + st — **cancelled**
-* run `38668526285` attempt 1 (`d5c459d3`, push): macos-arm64 / Cangjie 1.2.0 STS +  — **cancelled**
-* run `38668526285` attempt 1 (`d5c459d3`, push): windows-x64 / Cangjie 1.2.0 STS +  — **cancelled**
+* run `38400952652` attempt 1 (`9a84c63c`, workflow_dispatch): CI required — **failure**, cache unknown
+* run `38400952652` attempt 1 (`9a84c63c`, workflow_dispatch): linux-x64 / Cangjie 1.2.0 STS + st — **cancelled**, cache unknown
+* run `38546106288` attempt 1 (`34dd0907`, push): CI required — **failure**, cache unknown
+* run `38546106288` attempt 1 (`34dd0907`, push): linux-x64 / Cangjie 1.2.0 STS + st — **failure**, cache unknown
+* run `38563479711` attempt 1 (`6a52c140`, push): CI required — **failure**, cache unknown
+* run `38563479711` attempt 1 (`6a52c140`, push): linux-x64 / Cangjie 1.2.0 STS + st — **failure**, cache unknown
+* run `38606017696` attempt 1 (`1ba5beb5`, push): CI required — **failure**, cache unknown
+* run `38606017696` attempt 1 (`1ba5beb5`, push): Linux candidate / Linux candidate  — **cancelled**, cache unknown
+* run `38606017696` attempt 1 (`1ba5beb5`, push): linux-x64 / Cangjie 1.2.0 STS + st — **cancelled**, cache unknown
+* run `38606017696` attempt 1 (`1ba5beb5`, push): macos-arm64 / Cangjie 1.2.0 STS +  — **cancelled**, cache unknown
+* run `38606017696` attempt 1 (`1ba5beb5`, push): windows-x64 / Cangjie 1.2.0 STS +  — **cancelled**, cache unknown
+* run `38661876603` attempt 1 (`7dd4fbd7`, push): CI required — **failure**, cache unknown
+* run `38661876603` attempt 2 (`7dd4fbd7`, push): CI required — **failure**, cache unknown
+* run `38661876603` attempt 1 (`7dd4fbd7`, push): windows-x64 / Cangjie 1.2.0 STS +  — **failure**, cache unknown
+* run `38661876603` attempt 2 (`7dd4fbd7`, push): windows-x64 / Cangjie 1.2.0 STS +  — **cancelled**, cache unknown
+* run `38668526285` attempt 1 (`d5c459d3`, push): CI required — **failure**, cache unknown
+* run `38668526285` attempt 1 (`d5c459d3`, push): linux-x64 / Cangjie 1.2.0 STS + st — **cancelled**, cache unknown
+* run `38668526285` attempt 1 (`d5c459d3`, push): macos-arm64 / Cangjie 1.2.0 STS +  — **cancelled**, cache unknown
+* run `38668526285` attempt 1 (`d5c459d3`, push): windows-x64 / Cangjie 1.2.0 STS +  — **cancelled**, cache unknown
 
 Re-run attempts present in this sample: 2. They are retained, not resolved to the latest attempt.

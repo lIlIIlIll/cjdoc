@@ -250,7 +250,10 @@ def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
             # Unsuccessful jobs are kept: DONE-03 wants failures, cancellations and
             # re-runs listed separately, and dropping them here would lose them.
             "conclusion": conclusion,
-            "state": _job_state_for(name, states) if conclusion == "success" else "n/a",
+            # Resolved for unsuccessful jobs too: a job that restored the cache and
+            # then failed still records which condition it ran under, and DONE-03 asks
+            # for failures under matched conditions. Such jobs stay out of the cells.
+            "state": _job_state_for(name, states),
             "jobMinutes": job_minutes(job),
             "runWallMinutes": wall, "runRunnerMinutes": total,
         })
@@ -330,11 +333,32 @@ def report(samples: list[dict], workflow: str, out: Path) -> dict:
              "be either condition. Failed and cancelled jobs are listed separately below and",
              "are excluded from the cells, not from the record.",
              "",
-             "| run | attempt | revision | event | job | shape | conclusion | cache | job wall |",
-             "| --- | ---: | --- | --- | --- | --- | --- | --- | ---: |"]
+             "| run | attempt | revision | event | job | shape | conclusion | cache | "
+             "job wall | run wall | run runner |",
+             "| --- | ---: | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |"]
     for sample in sorted(samples, key=lambda s: (s["run"], s["job"])):
         lines.append("| {run} | {attempt} | `{revision}` | {event} | {job} | {shape} | "
-                     "{conclusion} | {state} | {jobMinutes:.1f}m |".format(**sample))
+                     "{conclusion} | {state} | {jobMinutes:.1f}m | {runWallMinutes:.1f}m | "
+                     "{runRunnerMinutes:.1f}m |".format(**sample))
+    # Workflow-level totals, which the per-job column above cannot express: a run's wall
+    # time and its total runner time are what the wall-clock and cost comparisons use.
+    # Keyed by (run, ATTEMPT): keying by run alone collapses a re-run's attempts and
+    # lets a cancelled attempt 1 supply the attempt 2 timing.
+    seen: dict[tuple[int, int], tuple[float, float]] = {}
+    for sample in samples:
+        seen.setdefault((sample["run"], sample["attempt"]),
+                        (sample["runWallMinutes"], sample["runRunnerMinutes"]))
+    if seen:
+        walls = [value[0] for value in seen.values()]
+        runners = [value[1] for value in seen.values()]
+        lines += ["", "### Workflow level (one row per run attempt)", "",
+                  "| run | attempt | wall | runner |", "| --- | ---: | ---: | ---: |"]
+        for run_id, attempt in sorted(seen):
+            wall, runner = seen[(run_id, attempt)]
+            lines.append(f"| {run_id} | {attempt} | {wall:.1f}m | {runner:.1f}m |")
+        lines += ["", f"* wall across {len(walls)} run attempt(s): {describe(walls)}",
+                  f"* runner minutes across {len(runners)} run attempt(s): "
+                  f"{sum(runners):.1f}m total, max {max(runners):.1f}m"]
     lines += ["", "## Matched cells (successful jobs only)", ""]
     for key in sorted(cells):
         shape, state = key
@@ -377,8 +401,8 @@ def report(samples: list[dict], workflow: str, out: Path) -> dict:
     if other:
         for sample in sorted(other, key=lambda s: (s["run"], s["job"])):
             lines.append(f"* run `{sample['run']}` attempt {sample['attempt']} "
-                         f"(`{sample['revision']}`, {sample['event']}): "
-                         f"{sample['job']} — **{sample['conclusion']}**")
+                         f"(`{sample['revision']}`, {sample['event']}): {sample['job']} — "
+                         f"**{sample['conclusion']}**, cache {sample['state']}")
     else:
         lines.append("* none: every sampled job concluded successfully")
     reruns = sorted({s["attempt"] for s in samples if s["attempt"] > 1})
@@ -391,7 +415,10 @@ def report(samples: list[dict], workflow: str, out: Path) -> dict:
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return {"cells": {f"{shape}/{state}": len(values)
                       for (shape, state), values in cells.items()},
-            "failures": len(other), "report": str(out), "samples": len(samples)}
+            "failures": len(other), "report": str(out), "samples": len(samples),
+            "runs": {f"{run_id}/{attempt}": {"wallMinutes": value[0],
+                                             "runnerMinutes": value[1]}
+                     for (run_id, attempt), value in sorted(seen.items())}}
 
 
 def main() -> int:
