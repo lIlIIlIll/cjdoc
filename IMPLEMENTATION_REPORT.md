@@ -25,7 +25,7 @@
 | cjc | `1.1.0-alpha.20260829040003 (cjnative)` |
 | target | `x86_64-unknown-linux-gnu` |
 | cjpm | `1.1.3` |
-| SDK root | `/home/elliot/cangjie_sdk/daily/cangjie` |
+| SDK root | `$HOME/cangjie_sdk/daily/cangjie` |
 | host | `Linux-7.2.0-1-mainline-x86_64-with-glibc2.44` |
 | Python | `3.14.7` |
 | markdown | `db4f9527944b589db8436669f1d255192388cee2` |

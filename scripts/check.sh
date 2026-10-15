@@ -656,6 +656,8 @@ stage_cli() {
     cmp "${check_dir}/all/first/docs.json" "${check_dir}/roundtrip/docs.json"
     diff -qr "${check_dir}/all/first/markdown" "${check_dir}/roundtrip/markdown"
     diff -qr "${check_dir}/all/first/html" "${check_dir}/roundtrip/html"
+    "${python_cmd}" scripts/test_package_overviews.py --binary "${binary}" \
+        --output "${check_dir}/package-overviews"
     rm -rf "${check_dir}/agent" "${check_dir}/agent-second" "${check_dir}/versions" "${check_dir}/versions-second"
     "${binary}" generate --project tests/fixtures/projects/basic --format html --format api-surface --agent-full --doc-version 1.3.0 --output "${check_dir}/agent" --cache-dir "${check_dir}/cache/agent" >/dev/null
     "${binary}" generate --project tests/fixtures/projects/basic --format html --format api-surface --agent-full --doc-version 1.3.0 --output "${check_dir}/agent-second" --cache-dir "${check_dir}/cache/agent" >/dev/null

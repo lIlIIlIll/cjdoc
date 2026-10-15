@@ -102,7 +102,7 @@ internal func appendCapturedPageArtifacts(artifacts: RenderArtifactCollector, do
         if (formats.contains("html")) {
             artifacts.addText("html/" + page.route, "text/html; charset=utf-8",
                 renderConceptualHtmlPage(documentation, page.title, introduction.toString() + body, prefix,
-                    source: Some(page.source), locale: locale, docVersion: version))
+                    source: Some(page.source), locale: locale, docVersion: version, pageRoute: Some(page.route)))
         }
         if (formats.contains("markdown")) {
             let markdown = RenderTextBuffer()

@@ -35,11 +35,11 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
                 binding.provenance, binding.version, binding.sourceLine, language: binding.language,
                 state: binding.state, targetSymbolId: binding.targetSymbolId))
         }
-        let (text, tree) = capturePageMarkdown(value, page, request, assetCollector)
+        let (text, tree, capturedAuthorContent) = capturePageMarkdown(value, page, request, assetCollector)
         let sections = capturePageSections(value, page.sections.toArray(), tree, id)
         pages.add(public_model.DocumentationPage(id, page.source, page.route, page.title, page.kind,
             text, tree, language: language,
-            defaultLanguage: defaultLanguage, packageName: page.packageName,
+            defaultLanguage: defaultLanguage, packageName: if (capturedAuthorContent) { page.packageName } else { "" },
             sections: sections, targetSymbolIds: targets.toArray(), bindings: bindings.toArray()))
     }
     if (let Some(collector) <- assetCollector) {
@@ -90,7 +90,7 @@ private func capturePageSections(value: public_model.DocumentationSet,
 
 private func capturePageMarkdown(value: public_model.DocumentationSet,
     page: ConceptualPage, request: GenerationRequest,
-    assetCollector: ?LocalAssetCollector): (String, public_model.MarkdownNode) {
+    assetCollector: ?LocalAssetCollector): (String, public_model.MarkdownNode, Bool) {
     try {
         let text = conceptualMarkdownWithoutBindings(page.markdown, sentinels: false)
         if (let Some(collector) <- assetCollector) {
@@ -98,18 +98,18 @@ private func capturePageMarkdown(value: public_model.DocumentationSet,
                 if (let Some(origin) <- capturedPageSourceOrigin(page.source, request.projectRoot)) {
                     collector.registerSource(origin)
                 }
-                return (text, parseCapturedPageMarkdown(text, collector, page.source, request))
+                return (text, parseCapturedPageMarkdown(text, collector, page.source, request), true)
             }
         }
         let collector = LocalAssetCollector(ArrayList<SourceFileOrigin>())
-        (text, parseCapturedPageMarkdown(text, collector, page.source, request))
+        (text, parseCapturedPageMarkdown(text, collector, page.source, request), true)
     } catch (_: Exception) {
         let source = public_model.SourceRange(page.source, public_model.SourcePosition(1, 1, 0),
             public_model.SourcePosition(1, 1, 0))
         value.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC3026",
             "conceptual Markdown was replaced by a bounded fallback after parsing or resource-limit failure",
             source: Some(source)))
-        (MARKDOWN_FALLBACK_TEXT, fallbackPublicMarkdown())
+        (MARKDOWN_FALLBACK_TEXT, fallbackPublicMarkdown(), false)
     }
 }
 

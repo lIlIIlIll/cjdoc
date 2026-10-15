@@ -5,7 +5,7 @@
 Probe: `probes/ast_lexer/main.cj`
 
 ```bash
-source /home/elliot/cangjie_sdk/main/linux_x64/vanilla/20260829/cangjie/envsetup.sh
+source $HOME/cangjie_sdk/main/linux_x64/vanilla/20260829/cangjie/envsetup.sh
 cjc probes/ast_lexer/main.cj -o /tmp/probe_ast_lexer
 /tmp/probe_ast_lexer
 ```

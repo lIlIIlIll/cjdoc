@@ -9,9 +9,9 @@
 | latest daily compiler | `1.1.0-alpha.20260829040003 (cjnative)` |
 | target | `x86_64-unknown-linux-gnu` |
 | cjpm | `1.1.3` |
-| compiler root | `/home/elliot/cangjie_sdk/main/linux_x64/vanilla/20260829/cangjie` |
-| stdx sidecar | `/home/elliot/cangjie_sdk/main/linux_x64/vanilla/20260829/linux_x86_64_cjnative/dynamic/stdx` |
-| current `daily` compiler path | `/home/elliot/cangjie_sdk/daily/cangjie/bin/cjc`，版本指向上面的 20260829 daily |
+| compiler root | `$HOME/cangjie_sdk/main/linux_x64/vanilla/20260829/cangjie` |
+| stdx sidecar | `$HOME/cangjie_sdk/main/linux_x64/vanilla/20260829/linux_x86_64_cjnative/dynamic/stdx` |
+| current `daily` compiler path | `$HOME/cangjie_sdk/daily/cangjie/bin/cjc`，版本指向上面的 20260829 daily |
 | `std.ast` artifact | compiler SDK 的 `modules/linux_x86_64_cjnative/std/std.ast.cjo` |
 | `stdx.chir` artifact in 20260829 daily | **不存在**；dynamic/static stdx 目录和原始 stdx zip 均已检查 |
 

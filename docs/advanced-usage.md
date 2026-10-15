@@ -45,6 +45,19 @@ HTML 和 Markdown 使用同一份生成结果。HTML 是静态站点，可以直
 
 项目配置了 `[docs]` 或 `[[docs.pages]]` 后，概念页面会与 API 站点一起生成到 `html/concepts/` 和 `markdown/concepts/`。`docs/index.md`、模块/包概览以及显式配置的 guides 页面共享安全的 Markdown 投影；概念页会被加入搜索索引。
 
+HTML API 包索引会复用真实包概述的首段（最多 240 个 Unicode 字符）并链接到完整概念页；导入、示例和长篇指南仍只在概念页展示。可沿用自动路径 `docs/packages/<package-slug>.md`，或配置：
+
+```toml
+[docs.packages]
+pocketkit = "docs/pocketkit.md"
+```
+
+也可在已有 `[[docs.pages]]` 上设置 `package = "pocketkit"`（包概述可设置 `kind = "package"`），将现有指南绑定到包。多语言页面继续按同一逻辑 `id` 与 `language` 配对，沿用 [#64](https://github.com/lIlIIlIll/cjdoc/issues/64) 的语言回退，不猜正文语言。
+
+未启用概念文档、包文件不存在（既有合成回退）、空白/只有标题的作者页、当前投影不可见，以及无法唯一归属的同名跨模块包，均不创建简介容器或入口。包名在完整 Doc IR 内唯一才足以关联；同名包须由既有显式 API binding 的可见目标证明同一 moduleId + package，否则安全省略。绑定不存在/不适用于当前受众或 cfg 时也省略，不跳 latest。概念页的“包 API”返程定位当前语言、当前文档集的包页 `#declarations`。JSON 快照保留作者页，`render` 不需要重新读取项目文件。
+
+同名包的模块证据必须来自该包自己的 API binding，指向其他辅助包的链接不作为归属证据。同一作者文件同时用于自动包概述与显式指南时，包页入口按来源去重；各概念路由仍按自己的逻辑页身份返回正确包，不因同源复用而隐藏有效概述。
+
 开发时使用 loopback-only watcher：
 
 ```bash

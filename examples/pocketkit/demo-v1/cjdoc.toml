@@ -18,6 +18,7 @@ language = "zh-CN"
 source = "docs/guide.md"
 route = "concepts/guides/first-catalogue"
 title = "目录与资源入门 / Catalogue and lifetime"
+package = "pocketkit"
 
 [external-docs.pocket_support]
 index = "docs/support-symbol-index.json"
@@ -39,3 +40,4 @@ language = "en"
 source = "docs/en/guide.md"
 route = "concepts/guides/first-catalogue"
 title = "Catalogue and lifetime"
+package = "pocketkit"
