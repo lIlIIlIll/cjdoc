@@ -778,6 +778,33 @@ class PairedSampleTests(unittest.TestCase):
         self.assertEqual(paired.stems_for("ci.yml"), paired.stems_for(".github/workflows/ci.yml"))
         self.assertIsInstance(paired.stems_for("ci.yml"), tuple)
 
+    def test_a_partial_download_is_reported_per_artifact(self) -> None:
+        """One artifact failing must be named, not hidden by the others succeeding."""
+        calls = []
+
+        def fake_run(args, **kwargs):
+            import subprocess as sp
+            if "artifacts/2/zip" in args[-1]:
+                return sp.CompletedProcess(args, 1, b"", b"500")
+            import io, zipfile
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, "w") as archive:
+                archive.writestr("stages.json", "{}")
+            return sp.CompletedProcess(args, 0, buffer.getvalue(), b"")
+
+        artifacts = [{"id": 1, "name": "ci-timing-a-1-1"}, {"id": 2, "name": "ci-timing-b-1-1"}]
+        original_gh, original_artifacts, original_run = (
+            paired._run_gh, paired.matching_artifacts, subprocess.run)
+        paired._run_gh = lambda args: json.dumps({"artifacts": artifacts})
+        paired.matching_artifacts = lambda *a, **k: artifacts
+        subprocess.run = fake_run
+        try:
+            failed = paired.download_evidence("o/r", 1, 1, self.root / "dl")
+        finally:
+            paired._run_gh, paired.matching_artifacts = original_gh, original_artifacts
+            subprocess.run = original_run
+        self.assertEqual(failed, ["ci-timing-b-1-1"])
+
 
 if __name__ == "__main__":
     unittest.main()

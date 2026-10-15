@@ -42,6 +42,7 @@ jobs:
           python-version: "3.12"
 
       - name: Restore cjv toolchain cache
+        id: cjv-cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ${{ runner.temp }}/setup-cangjie-cjv
@@ -63,6 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
+          echo "CJDOC_CACHE_STATE=cjv=${{ steps.cjv-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}" >> "${GITHUB_ENV}"
           echo "resolved_cangjie_version=${CANGJIE_SDK_VERSION}"
           echo "runner_image=${ImageOS:-unknown} runner_image_version=${ImageVersion:-unknown}"
           cjc -v

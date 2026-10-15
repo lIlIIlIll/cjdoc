@@ -192,37 +192,45 @@ def matching_artifacts(repository: str, run_id: int, attempt: int) -> list[dict]
             and str(artifact.get("name", "")).endswith(suffix)]
 
 
-def download_evidence(repository: str, run_id: int, attempt: int, out: Path) -> bool:
+def download_evidence(repository: str, run_id: int, attempt: int,
+                      out: Path) -> list[str]:
     """Download this attempt's stage artifacts, each into its own directory.
 
-    The artifact is fetched by id, so a retained artifact from an earlier attempt
-    cannot be picked up, and each artifact keeps its own directory whatever the count
-    (a single-artifact download otherwise extracts into the output root, which the
-    glob below would miss).
+    The artifact is fetched by id, so a retained artifact from an earlier attempt cannot
+    be picked up, and each artifact keeps its own directory whatever the count (a
+    single-artifact download otherwise extracts into the output root, which the state
+    glob would miss).
+
+    Returns the names of artifacts that could NOT be collected. "Some artifact
+    succeeded" is not the same answer as "the evidence is complete": a job whose
+    artifact is missing becomes `unknown` and drops out of its cell, which would make a
+    failed collection look like an unmet requirement.
     """
+    import io
+    import zipfile
+
     out.mkdir(parents=True, exist_ok=True)
-    ok = False
+    failed: list[str] = []
     for artifact in matching_artifacts(repository, run_id, attempt):
         target = out / artifact["name"]
         if (target / "stages.json").is_file():
-            ok = True
             continue
         completed = subprocess.run(
-            ["gh", "api", f"repos/{repository}/actions/artifacts/{artifact['id']}/zip",
-             "-H", "Accept: application/vnd.github+json"],
+            ["gh", "api", f"repos/{repository}/actions/artifacts/{artifact['id']}/zip"],
             capture_output=True)
-        if completed.returncode != 0:
+        if completed.returncode != 0 or not completed.stdout:
+            failed.append(artifact["name"])
             continue
         target.mkdir(parents=True, exist_ok=True)
-        import io
-        import zipfile
         try:
             with zipfile.ZipFile(io.BytesIO(completed.stdout)) as archive:
                 archive.extractall(target)
-        except zipfile.BadZipFile:
+        except (zipfile.BadZipFile, OSError):
+            failed.append(artifact["name"])
             continue
-        ok = True
-    return ok
+        if not (target / "stages.json").is_file():
+            failed.append(artifact["name"])
+    return failed
 
 
 def measure(jobs: list[dict]) -> tuple[float, float]:
@@ -299,12 +307,13 @@ def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
     # and retries the rest, so an interrupted or partially failed download does not
     # leave those jobs `unknown` until someone deletes the cache by hand.
     evidence = cache_root / f"{run_id}-{attempt}"
-    acquired = download_evidence(repository, run_id, attempt, evidence)
-    if not acquired and not any(evidence.glob("*/stages.json")):
-        # Reported, not swallowed: without stages.json every job of this attempt would
-        # silently be `unknown` and drop out of its matched cell, so the report could
-        # claim a requirement unmet while collection actually failed.
-        acquisition_failures.append({"run": run_id, "attempt": attempt})
+    missing = download_evidence(repository, run_id, attempt, evidence)
+    if missing:
+        # Reported, not swallowed: a job whose artifact is missing would silently be
+        # `unknown` and drop out of its matched cell, so the report could claim a
+        # requirement unmet while collection actually failed.
+        acquisition_failures.append({"run": run_id, "attempt": attempt,
+                                     "artifacts": missing})
     states = job_cache_states(evidence)
     conditions = job_conditions(evidence)
     # `Re-run failed jobs` executes only the failed jobs and their dependents; the
@@ -579,8 +588,9 @@ def report(samples: list[dict], workflow: str, out: Path,
                   "absent from the cells above and the requirement counts are a lower bound:",
                   ""]
         for item in flat:
-            lines.append(f"* run `{item['run']}` attempt {item['attempt']}: no artifact "
-                         "downloaded")
+            names = ", ".join(f"`{name}`" for name in item["artifacts"])
+            lines.append(f"* run `{item['run']}` attempt {item['attempt']}: could not "
+                         f"collect {names}")
     lines += ["", "## Failures, cancellations and re-runs (excluded from the cells)", ""]
     if other:
         for sample in sorted(other, key=lambda s: (s["run"], s["job"])):
