@@ -87,8 +87,12 @@ def workflow_runs(repository: str, workflow: str, limit: int, branch: str | None
     if branch:
         query += f"?branch={branch}"
     separator = "&" if "?" in query else "?"
-    payload = _decode_documents(_run_gh(["api", f"{query}{separator}per_page={min(limit, 100)}",
-                                        "--paginate"]))
+    # No `--paginate` here on purpose: it fetches every page of the workflow's history
+    # before the result is sliced, which on a long-lived workflow burns API requests
+    # (and can hit the rate limit) just to look at `limit` runs. One page is requested
+    # and the completed runs in it are used.
+    payload = _decode_documents(_run_gh([
+        "api", f"{query}{separator}per_page={min(limit, 100)}"]))
     runs = payload.get("workflow_runs", []) if isinstance(payload, dict) else []
     return [run for run in runs if run.get("status") == "completed"][:limit]
 
@@ -131,21 +135,10 @@ def matching_artifacts(repository: str, run_id: int, attempt: int) -> list[dict]
     payload = _decode_documents(_run_gh([
         "api", f"repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100",
         "--paginate"]))
-    selected = []
-    for artifact in payload.get("artifacts", []):
-        if not str(artifact.get("name", "")).startswith("ci-timing-"):
-            continue
-        owner = artifact.get("workflow_run") or {}
-        if owner.get("id") != run_id:
-            continue
-        artifact_attempt = owner.get("head_sha")
-        del artifact_attempt
-        # The listing's own attempt field is what distinguishes retained artifacts.
-        if artifact.get("workflow_run", {}).get("id") == run_id and \
-                artifact.get("_attempt") not in (None, attempt):
-            continue
-        selected.append(artifact)
-    return selected
+    suffix = f"-{run_id}-{attempt}"
+    return [artifact for artifact in payload.get("artifacts", [])
+            if str(artifact.get("name", "")).startswith("ci-timing-")
+            and str(artifact.get("name", "")).endswith(suffix)]
 
 
 def download_evidence(repository: str, run_id: int, attempt: int, out: Path) -> bool:
@@ -223,48 +216,68 @@ def collect(repository: str, workflow: str, limit: int, cache_root: Path,
     """
     samples: list[dict] = []
     for run in workflow_runs(repository, workflow, limit, branch):
-        run_id, attempt = run["id"], run.get("run_attempt", 1)
-        evidence = cache_root / f"{run_id}-{attempt}"
-        if not any(evidence.glob("*/stages.json")):
-            download_evidence(repository, run_id, attempt, evidence)
-        states = job_cache_states(evidence)
-        wall, total = measure(jobs_of(repository, run_id, attempt))
-        for job in jobs_of(repository, run_id, attempt):
-            name = job.get("name") or "?"
-            conclusion = job.get("conclusion") or "unknown"
-            samples.append({
-                "run": run_id, "attempt": attempt, "revision": run["head_sha"][:8],
-                "event": run.get("event"), "job": name[:34], "shape": job_shape(name),
-                # Unsuccessful jobs are kept: DONE-03 wants failures, cancellations and
-                # re-runs listed separately, and dropping them here would lose them.
-                "conclusion": conclusion,
-                "state": _job_state_for(name, states) if conclusion == "success" else "n/a",
-                "jobMinutes": job_minutes(job),
-                "runWallMinutes": wall, "runRunnerMinutes": total,
-            })
+        run_id = run["id"]
+        latest = run.get("run_attempt", 1)
+        # Every attempt of the run is inspected, not only the latest: a failed or
+        # cancelled attempt 1 is part of the experiment record DONE-03 asks for, and
+        # resolving to `run_attempt` would erase it.
+        for attempt in range(1, latest + 1):
+            samples.extend(_attempt_samples(repository, run, run_id, attempt, cache_root))
     return samples
+
+
+def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
+                     cache_root: Path) -> list[dict]:
+    evidence = cache_root / f"{run_id}-{attempt}"
+    if not any(evidence.glob("*/stages.json")):
+        download_evidence(repository, run_id, attempt, evidence)
+    states = job_cache_states(evidence)
+    wall, total = measure(jobs_of(repository, run_id, attempt))
+    samples: list[dict] = []
+    for job in jobs_of(repository, run_id, attempt):
+        name = job.get("name") or "?"
+        conclusion = job.get("conclusion") or "unknown"
+        samples.append({
+            "run": run_id, "attempt": attempt, "revision": run["head_sha"][:8],
+            "event": run.get("event"), "job": name[:34], "shape": job_shape(name),
+            # Unsuccessful jobs are kept: DONE-03 wants failures, cancellations and
+            # re-runs listed separately, and dropping them here would lose them.
+            "conclusion": conclusion,
+            "state": _job_state_for(name, states) if conclusion == "success" else "n/a",
+            "jobMinutes": job_minutes(job),
+            "runWallMinutes": wall, "runRunnerMinutes": total,
+        })
+    return samples
+
+
+# Job name prefix -> the artifact stem that carries that job's stage evidence.
+# Explicit rather than scored: `linux-x64` and `Linux candidate` both contain "linux",
+# and `x64` is too short to discriminate, so a token score ties and then resolves by
+# directory order -- which handed the acceptance job the candidate's cache state.
+JOB_ARTIFACT_STEMS: tuple[tuple[str, str], ...] = (
+    ("candidate", "build-linux-candidate"),
+    ("windows", "ci-windows-x64"),
+    ("macos", "ci-macos-arm64"),
+    ("linux", "ci-linux-x64"),
+)
 
 
 def _job_state_for(job_name: str, states: dict[str, str]) -> str:
     """The recorded state of the artifact directory that belongs to this job.
 
-    Artifact directories are named `ci-timing-<kind>[-<platform>]-<run>-<attempt>`, so
-    the directory sharing the job's most distinctive token is the right one. The match
-    is by the longest shared token rather than by all tokens: a job name carries
-    toolchain words (`Cangjie`, `STS`, `stdx`) that the artifact name does not repeat.
-    Nothing matching leaves the sample `unknown` rather than guessed.
+    Artifact directories are named `ci-timing-<stem>-<run>-<attempt>`. The job's own
+    name selects exactly one stem; a job with no timing artifact (the orchestration
+    gates) has no state and is reported `unknown` rather than matched by luck.
     """
-    def tokens(text: str) -> set[str]:
-        return {token.lower() for token in text.replace("/", " ").replace("-", " ").split()
-                if len(token) > 3}
-
-    job_tokens = tokens(job_name)
-    best_state, best_score = "unknown", 0
-    for directory, state in states.items():
-        score = len(job_tokens & tokens(directory))
-        if score > best_score:
-            best_state, best_score = state, score
-    return best_state
+    lowered = job_name.lower()
+    for token, stem in JOB_ARTIFACT_STEMS:
+        if token not in lowered:
+            continue
+        for directory, state in states.items():
+            if stem in directory:
+                return state
+        return "unknown"
+    return "unknown"
 
 
 def describe(values: list[float]) -> str:
@@ -276,11 +289,18 @@ def describe(values: list[float]) -> str:
             f"min={min(values):.1f}m max={max(values):.1f}m")
 
 
+CLASSIFIED_STATES = ("hit", "miss")
+
+
 def report(samples: list[dict], workflow: str, out: Path) -> dict:
     successful = [s for s in samples if s["conclusion"] == "success"]
     other = [s for s in samples if s["conclusion"] != "success"]
+    # Only classified states form cells and requirements. A job with no timing
+    # artifact (`Classify changes`, `CI required`) can never be hit or miss, and
+    # demanding five of each for it would keep DONE-03 unmet forever.
+    classified = [s for s in successful if s["state"] in CLASSIFIED_STATES]
     cells: dict[tuple[str, str], list[float]] = {}
-    for sample in successful:
+    for sample in classified:
         cells.setdefault((sample["shape"], sample["state"]), []).append(sample["jobMinutes"])
     lines = [f"# Paired samples: {workflow}", "",
              "One row per JOB. The toolchain cache key includes the platform, so a single run",
@@ -308,11 +328,12 @@ def report(samples: list[dict], workflow: str, out: Path) -> dict:
             count = len(cells.get((shape, state), []))
             verdict = "met" if count >= 5 else "NOT met"
             lines.append(f"* {shape} / **{state}**: {count} collected — {verdict}")
-    unknown = [s for s in successful if s["state"] == "unknown"]
-    if unknown:
-        shapes = sorted({s["shape"] for s in unknown})
-        lines += ["", f"{len(unknown)} successful job(s) could not be classified "
-                      f"({', '.join(shapes)}) and are excluded from the cells."]
+    unclassified = [s for s in successful if s["state"] not in CLASSIFIED_STATES]
+    if unclassified:
+        shapes = sorted({s["shape"] for s in unclassified})
+        lines += ["", f"{len(unclassified)} successful job(s) carry no cache state "
+                      f"({', '.join(shapes)}) and are excluded from the cells and from the "
+                      "requirement check; they can never be either condition."]
     lines += ["", "## Failures, cancellations and re-runs (excluded from the cells)", ""]
     if other:
         for sample in sorted(other, key=lambda s: (s["run"], s["job"])):

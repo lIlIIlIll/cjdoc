@@ -27,36 +27,32 @@ are excluded from the cells, not from the record.
 | 38606017696 | 1 | `1ba5beb5` | push | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | cancelled | n/a | 0.0m |
 | 38606017696 | 1 | `1ba5beb5` | push | macos-arm64 / Cangjie 1.2.0 STS +  | macos-arm64 | cancelled | n/a | 1.6m |
 | 38606017696 | 1 | `1ba5beb5` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | cancelled | n/a | 1.4m |
+| 38661876603 | 1 | `7dd4fbd7` | push | CI required | ci required | failure | n/a | 0.1m |
 | 38661876603 | 2 | `7dd4fbd7` | push | CI required | ci required | failure | n/a | 0.1m |
+| 38661876603 | 1 | `7dd4fbd7` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | failure | n/a | 6.9m |
 | 38661876603 | 2 | `7dd4fbd7` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | cancelled | n/a | 1.8m |
+| 38668526285 | 1 | `d5c459d3` | push | CI required | ci required | failure | n/a | 0.1m |
 | 38668526285 | 2 | `d5c459d3` | push | Linux candidate / Linux candidate  | linux candidate | success | hit | 2.8m |
+| 38668526285 | 1 | `d5c459d3` | push | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | cancelled | n/a | 2.5m |
 | 38668526285 | 2 | `d5c459d3` | push | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | success | hit | 29.2m |
+| 38668526285 | 1 | `d5c459d3` | push | macos-arm64 / Cangjie 1.2.0 STS +  | macos-arm64 | cancelled | n/a | 5.9m |
 | 38668526285 | 2 | `d5c459d3` | push | macos-arm64 / Cangjie 1.2.0 STS +  | macos-arm64 | success | miss | 17.9m |
+| 38668526285 | 1 | `d5c459d3` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | cancelled | n/a | 5.9m |
 | 38668526285 | 2 | `d5c459d3` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | success | miss | 25.6m |
 
-55 further rows are successful `unknown` jobs (they predate the cache-state recording) and are elided here; the tool prints them.
+61 further rows are successful `unknown` jobs (no timing artifact, or predating the cache-state recording) and are elided; the tool prints them.
 
 ## Matched cells (successful jobs only)
 
-* **ci required / unknown**: n=7 median=0.1m min=0.1m max=0.1m
-* **classify changes / unknown**: n=12 median=0.1m min=0.1m max=0.1m
 * **linux candidate / hit**: n=1 value=2.8m
-* **linux candidate / unknown**: n=10 median=4.5m min=2.5m max=5.1m
 * **linux-x64 / hit**: n=1 value=29.2m
-* **linux-x64 / unknown**: n=7 median=22.4m min=13.2m max=50.2m
 * **macos-arm64 / miss**: n=1 value=17.9m
-* **macos-arm64 / unknown**: n=10 median=17.0m min=10.6m max=20.0m
 * **windows-x64 / miss**: n=1 value=25.6m
-* **windows-x64 / unknown**: n=9 median=22.4m min=16.3m max=27.8m
 
 ## Requirement check
 
 5 successful samples per matched cell (job shape x condition), per DONE-03:
 
-* ci required / **miss**: 0 collected — NOT met
-* ci required / **hit**: 0 collected — NOT met
-* classify changes / **miss**: 0 collected — NOT met
-* classify changes / **hit**: 0 collected — NOT met
 * linux candidate / **miss**: 0 collected — NOT met
 * linux candidate / **hit**: 1 collected — NOT met
 * linux-x64 / **miss**: 0 collected — NOT met
@@ -66,7 +62,7 @@ are excluded from the cells, not from the record.
 * windows-x64 / **miss**: 1 collected — NOT met
 * windows-x64 / **hit**: 0 collected — NOT met
 
-55 successful job(s) could not be classified (ci required, classify changes, linux candidate, linux-x64, macos-arm64, windows-x64) and are excluded from the cells.
+61 successful job(s) carry no cache state (ci required, classify changes, linux candidate, linux-x64, macos-arm64, windows-x64) and are excluded from the cells and from the requirement check; they can never be either condition.
 
 ## Failures, cancellations and re-runs (excluded from the cells)
 
@@ -81,7 +77,13 @@ are excluded from the cells, not from the record.
 * run `38606017696` attempt 1 (`1ba5beb5`, push): linux-x64 / Cangjie 1.2.0 STS + st — **cancelled**
 * run `38606017696` attempt 1 (`1ba5beb5`, push): macos-arm64 / Cangjie 1.2.0 STS +  — **cancelled**
 * run `38606017696` attempt 1 (`1ba5beb5`, push): windows-x64 / Cangjie 1.2.0 STS +  — **cancelled**
+* run `38661876603` attempt 1 (`7dd4fbd7`, push): CI required — **failure**
 * run `38661876603` attempt 2 (`7dd4fbd7`, push): CI required — **failure**
+* run `38661876603` attempt 1 (`7dd4fbd7`, push): windows-x64 / Cangjie 1.2.0 STS +  — **failure**
 * run `38661876603` attempt 2 (`7dd4fbd7`, push): windows-x64 / Cangjie 1.2.0 STS +  — **cancelled**
+* run `38668526285` attempt 1 (`d5c459d3`, push): CI required — **failure**
+* run `38668526285` attempt 1 (`d5c459d3`, push): linux-x64 / Cangjie 1.2.0 STS + st — **cancelled**
+* run `38668526285` attempt 1 (`d5c459d3`, push): macos-arm64 / Cangjie 1.2.0 STS +  — **cancelled**
+* run `38668526285` attempt 1 (`d5c459d3`, push): windows-x64 / Cangjie 1.2.0 STS +  — **cancelled**
 
 Re-run attempts present in this sample: 2. They are retained, not resolved to the latest attempt.

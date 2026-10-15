@@ -480,3 +480,50 @@ class PairedSampleTests(unittest.TestCase):
     def test_a_job_shape_is_stable_across_toolchain_pins(self) -> None:
         self.assertEqual(paired.job_shape("linux-x64 / Cangjie 1.2.0 STS + stdx"), "linux-x64")
         self.assertEqual(paired.job_shape("linux-x64 / Cangjie 2.0.0 STS + stdx"), "linux-x64")
+
+    def test_the_two_linux_artifacts_are_never_confused(self) -> None:
+        """The candidate and the acceptance job must not share a state by tie-break."""
+        states = {"ci-timing-build-linux-candidate-1-1": "hit",
+                  "ci-timing-ci-linux-x64-1-1": "miss"}
+        self.assertEqual(paired._job_state_for(
+            "Linux candidate / Linux candidate / Cangjie 1.2.0 STS + stdx", states), "hit")
+        self.assertEqual(paired._job_state_for(
+            "linux-x64 / Cangjie 1.2.0 STS + stdx", states), "miss")
+
+    def test_a_job_without_a_timing_artifact_is_never_a_requirement(self) -> None:
+        """`CI required` can never be hit or miss, so it must not appear as a cell."""
+        samples = [
+            {"run": 1, "attempt": 1, "revision": "d" * 8, "event": "push", "job": "CI required",
+             "shape": "ci required", "conclusion": "success", "state": "unknown", "jobMinutes": 0.1,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+            {"run": 1, "attempt": 1, "revision": "d" * 8, "event": "push",
+             "job": "linux-x64 / Cangjie", "shape": "linux-x64", "conclusion": "success",
+             "state": "hit", "jobMinutes": 20.0,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+        ]
+        out = self.root / "req.md"
+        result = paired.report(samples, "ci.yml", out)
+        self.assertEqual(sorted(result["cells"]), ["linux-x64/hit"])
+        text = out.read_text(encoding="utf-8")
+        self.assertNotIn("**ci required**", text)
+        self.assertNotIn("ci required / **hit**", text)
+
+    def test_attempts_are_enumerated_not_resolved_to_the_latest(self) -> None:
+        calls = []
+
+        def fake_samples(repository, run, run_id, attempt, cache_root):
+            calls.append(attempt)
+            return []
+
+        original_samples = paired._attempt_samples
+        original_runs = paired.workflow_runs
+        paired._attempt_samples = fake_samples
+        paired.workflow_runs = lambda *a, **k: [
+            {"id": 7, "run_attempt": 3, "head_sha": "e" * 40, "event": "push",
+             "status": "completed", "conclusion": "success"}]
+        try:
+            paired.collect("o/r", "CI", 1, self.root)
+        finally:
+            paired._attempt_samples = original_samples
+            paired.workflow_runs = original_runs
+        self.assertEqual(calls, [1, 2, 3])
