@@ -39,7 +39,7 @@ const member={id:'symbol-member',tagName:'DETAILS',hidden:true,open:false,
  scrollIntoView(){scrolled++}};
 const navigation=element();navigation.setAttribute('href','../zh-CN/owner.html');
 navigation.dataset.languageRoutes=JSON.stringify({'symbol-member':['../zh-CN/owner.html#symbol-member','complete']});
-const document={createElement:element,querySelectorAll:()=>[navigation],getElementById:id=>id===member.id?member:null,documentElement:{lang:'en'}};
+const document={createElement:element,querySelector:()=>null,querySelectorAll:()=>[navigation],getElementById:id=>id===member.id?member:null,documentElement:{lang:'en'}};
 const location={hash:'#symbol-member'};
 const summary={id:'symbol-member-summary',dataset:{cjdocTocRole:'member'},querySelector:()=>null,closest:()=>member};
 const sourceHeading={id:'api-heading',dataset:{},querySelector:()=>({getAttribute:()=> 'symbols/api.html'}),closest:()=>null};
