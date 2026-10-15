@@ -384,6 +384,114 @@ class RunWithTimeoutTests(unittest.TestCase):
                 wrapper.wait(timeout=10)
             subprocess.run(["pkill", "-f", marker], check=False)
 
+    @unittest.skipUnless(os.name == "posix", "POSIX process groups only")
+    def test_interrupt_during_launch_kills_the_child_group(self) -> None:
+        """Cancellation while Popen returns still cleans up the launched command."""
+        directory = Path(self.temporary.name)
+        spawned = directory / "spawned"
+        child_ready = directory / "child-ready"
+        interrupted = directory / "interrupted"
+        release = directory / "release"
+        terminated = directory / "terminated"
+        # Run the real public CLI, pausing only Popen's return. A tracked handler
+        # acknowledges signal delivery before the test lets launch finish, so this
+        # exercises the startup window without a scheduler-dependent sleep.
+        (directory / "sitecustomize.py").write_text(
+            "import os, signal, subprocess, sys, time\n"
+            "from pathlib import Path\n"
+            "if os.path.abspath(sys.argv[0]) == os.environ.get('CJDOC_TEST_WRAPPER'):\n"
+            "    directory = Path(os.environ['CJDOC_TEST_LAUNCH_DIRECTORY'])\n"
+            "    real_popen = subprocess.Popen\n"
+            "    real_signal = signal.signal\n"
+            "    def tracked_signal(number, handler):\n"
+            "        if callable(handler):\n"
+            "            def tracked(number, frame):\n"
+            "                (directory / 'interrupted').write_text(str(number))\n"
+            "                return handler(number, frame)\n"
+            "            return real_signal(number, tracked)\n"
+            "        return real_signal(number, handler)\n"
+            "    def paused_popen(*args, **kwargs):\n"
+            "        process = real_popen(*args, **kwargs)\n"
+            "        (directory / 'spawned').write_text(str(process.pid))\n"
+            "        deadline = time.monotonic() + 10\n"
+            "        while not (directory / 'release').exists():\n"
+            "            if time.monotonic() >= deadline:\n"
+            "                raise RuntimeError('launch was never released')\n"
+            "            time.sleep(0.01)\n"
+            "        return process\n"
+            "    signal.signal = tracked_signal\n"
+            "    subprocess.Popen = paused_popen\n",
+            encoding="utf-8")
+        child = (
+            "import os, signal, sys, time\n"
+            "from pathlib import Path\n"
+            "def terminate(number, frame):\n"
+            f"    Path({str(terminated)!r}).write_text('term')\n"
+            "    sys.exit(0)\n"
+            "signal.signal(signal.SIGTERM, terminate)\n"
+            f"Path({str(child_ready)!r}).write_text(str(os.getpid()))\n"
+            "time.sleep(60)\n")
+        environment = self.short_grace()
+        environment.update(PYTHONPATH=str(directory), CJDOC_TEST_WRAPPER=str(self.script),
+                           CJDOC_TEST_LAUNCH_DIRECTORY=str(directory))
+        wrapper = subprocess.Popen(
+            [sys.executable, str(self.script), "60", "--", sys.executable, "-c", child],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=environment)
+        child_pid = None
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and not (spawned.exists() and child_ready.exists()):
+                self.assertIsNone(wrapper.poll(), "wrapper exited before launching the child")
+                time.sleep(0.01)
+            if spawned.exists():
+                child_pid = int(spawned.read_text())
+            self.assertTrue(spawned.exists() and child_ready.exists(), "child never became ready")
+            wrapper.send_signal(signal.SIGTERM)
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and not interrupted.exists() and wrapper.poll() is None:
+                time.sleep(0.01)
+            # The old implementation exits here without an installed handler. The
+            # fixed one records the signal and must defer cleanup until binding.
+            self.assertTrue(interrupted.exists(), "SIGTERM escaped startup cleanup")
+            self.assertIsNone(wrapper.poll(), "startup cancellation was not deferred")
+            release.write_text("continue", encoding="utf-8")
+            wrapper.wait(timeout=30)
+            self.assertEqual(wrapper.returncode, -signal.SIGTERM)
+            self.assertTrue(terminated.exists(), "the launched child never received SIGTERM")
+            with self.assertRaises(ProcessLookupError):
+                os.kill(child_pid, 0)
+        finally:
+            release.touch()
+            if wrapper.poll() is None:
+                wrapper.kill()
+                wrapper.wait(timeout=10)
+            if child_pid is not None:
+                try:
+                    os.killpg(child_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+
+
+    @unittest.skipUnless(os.name == "posix", "POSIX signals only")
+    def test_launch_failure_preserves_errors_and_pending_cancellation(self) -> None:
+        directory = Path(self.temporary.name)
+        for interrupted in (False, True):
+            with self.subTest(interrupted=interrupted):
+                (directory / "sitecustomize.py").write_text(
+                    "import os, signal, subprocess\n"
+                    "def fail(*args, **kwargs):\n"
+                    + ("    os.kill(os.getpid(), signal.SIGTERM)\n" if interrupted else "")
+                    + "    raise OSError('launch failed')\n"
+                    "subprocess.Popen = fail\n", encoding="utf-8")
+                done = subprocess.run(
+                    [sys.executable, str(self.script), "60", "--", "unused-command"],
+                    env=dict(self.short_grace(), PYTHONPATH=str(directory)),
+                    capture_output=True, text=True, timeout=10)
+                self.assertEqual(done.returncode, -signal.SIGTERM if interrupted else 1)
+                if not interrupted:
+                    self.assertIn("OSError: launch failed", done.stderr)
+
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -135,8 +135,8 @@ def _group_is_alive(process: subprocess.Popen) -> bool:
         return process.poll() is None
 
 
-def _install_signal_cleanup(process: subprocess.Popen) -> dict:
-    """Kill the child's group if the wrapper itself is interrupted.
+def _start_with_signal_cleanup(command: list[str]) -> subprocess.Popen:
+    """Start the command with cancellation cleanup installed before spawning.
 
     `check.sh` and its parent jobs send SIGTERM on cancellation. Without this the
     wrapper exits while the command keeps running in its own session, so `cjpm test`
@@ -144,8 +144,15 @@ def _install_signal_cleanup(process: subprocess.Popen) -> dict:
     next run.
     """
     previous: dict = {}
+    process: subprocess.Popen | None = None
+    pending: list = []
 
     def handler(signum, frame) -> None:
+        if process is None:
+            # Popen may have spawned the child before returning its handle.
+            # Defer cancellation until the group can be signalled and reaped.
+            pending.append((signum, frame))
+            return
         _signal_group(process, signal.SIGTERM)
         if os.name == "nt":
             _terminate_windows_tree_now(process)
@@ -178,18 +185,28 @@ def _install_signal_cleanup(process: subprocess.Popen) -> dict:
             previous[signum] = signal.signal(signum, handler)
         except (ValueError, OSError):
             pass
-    return previous
+    try:
+        process = subprocess.Popen(
+            command,
+            start_new_session=os.name == "posix",
+            creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            if os.name == "nt" else 0,
+        )
+    except BaseException:
+        # No handle was returned. Restore signal semantics even when launch fails.
+        for signum, prior in previous.items():
+            signal.signal(signum, prior)
+        for signum, _ in pending:
+            os.kill(os.getpid(), signum)
+        raise
+    for signum, frame in pending:
+        handler(signum, frame)
+    return process
 
 
 def run(command: list[str], timeout_seconds: int) -> int:
     started = time.monotonic()
-    process = subprocess.Popen(
-        command,
-        start_new_session=os.name == "posix",
-        creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        if os.name == "nt" else 0,
-    )
-    _install_signal_cleanup(process)
+    process = _start_with_signal_cleanup(command)
     try:
         return process.wait(timeout=timeout_seconds)
     except subprocess.TimeoutExpired:
