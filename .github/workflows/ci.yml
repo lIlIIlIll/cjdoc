@@ -92,6 +92,7 @@ jobs:
           python-version: "3.12"
 
       - name: Restore cjv toolchain cache
+        id: cjv-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/setup-cangjie-cjv
@@ -122,6 +123,12 @@ jobs:
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
           RUNNER_TEMP: ${{ runner.temp }}
+          # DONE-03 needs to know whether a sample ran warm or cold, and the cache
+          # outcome was previously not recorded anywhere: the stage records showed an
+          # empty cache map for every run. `actions/cache` reports its own result.
+          # `actions/cache` sets cache-hit to 'true'/'false'; the stage validator
+          # accepts only hit/miss/unknown, so map it explicitly.
+          CJDOC_CACHE_STATE: cjv=${{ steps.cjv-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}
         run: |
           set -euo pipefail
           tar -C . -xf "${RUNNER_TEMP}/cjdoc-candidate/cjdoc-linux-candidate.tar"
@@ -246,6 +253,7 @@ jobs:
           python-version: "3.12"
 
       - name: Restore cjv toolchain cache
+        id: cjv-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/setup-cangjie-cjv
@@ -278,6 +286,10 @@ jobs:
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
           RUNNER_TEMP: ${{ runner.temp }}
+          # Same mapping as the linux acceptance job: without it the Windows and
+          # macOS stage artifacts record an empty cache map and cannot be classified
+          # as cold or warm for DONE-03.
+          CJDOC_CACHE_STATE: cjv=${{ steps.cjv-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}
         run: |
           set -euo pipefail
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
