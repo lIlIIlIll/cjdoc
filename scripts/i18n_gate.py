@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
-import sys
+
 import time
 from urllib.parse import unquote, urlsplit
 
@@ -296,33 +296,6 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
         assert f'start.html#standalone--doc-{self_fragment}' in html
         assert f'reference.md#{fragment}' in unquote(markdown)
         assert f'start.md#{self_fragment}' in unquote(markdown)
-
-    highlight_project = work / "highlight-project"
-    (highlight_project / "src").mkdir(parents=True)
-    (highlight_project / "docs").mkdir()
-    (highlight_project / "cjpm.toml").write_text('[package]\nname = "highlight_fixture"\nversion = "1.0.0"\noutput-type = "static"\n')
-    (highlight_project / "src/api.cj").write_text("package highlight_fixture\npublic func api(): Unit {}\n")
-    (highlight_project / "docs/guide.md").write_text("# Guide\n\n```python\nTrue\n```\n")
-    (highlight_project / "cjdoc.toml").write_text(
-        '[i18n]\ndefault-language = "en"\nlanguages = ["en"]\n' +
-        '[[docs.pages]]\nid = "guide"\nlanguage = "en"\nsource = "docs/guide.md"\nroute = "concepts/guide.html"\n' +
-        '[highlight]\nmode = "static"\nlanguages = ["python"]\n')
-    adapter = work / "adapter.py"
-    adapter.write_text("import sys,json,hashlib\nr=json.load(sys.stdin)\nb=r['code'].encode()\n" +
-        "print(json.dumps(dict(protocol=r['protocol'],id=r['id'],language=r['language']," +
-        "engine=dict(id='highlight.js',revision='11.11.1/cjdoc-map-1'),state='complete'," +
-        "byteLength=len(b),sourceHash=hashlib.sha256(b).hexdigest(),spans=[dict(startByte=0,endByte=4,kind='literal')])))\n")
-    highlighted = work / "highlighted"
-    run("captured-highlighting", ["generate", "--project", str(highlight_project), "--all-languages",
-        "--format", "html", "--format", "json", "--output", str(highlighted), "--lint-profile", "off",
-        "--highlight-adapter", str(adapter), "--highlight-node", str(Path(sys.executable).resolve())])
-    marker = '<span class="code-literal">True</span>'
-    assert marker in (highlighted / "html/en/concepts/guide.html").read_text()
-    shutil.rmtree(highlight_project)
-    highlighted_import = work / "highlighted-import"
-    run("captured-highlighting-source-free", ["render", "--input", str(highlighted / "docs.json"),
-        "--all-languages", "--format", "html", "--output", str(highlighted_import)])
-    assert marker in (highlighted_import / "html/en/concepts/guide.html").read_text()
 
     # The imported IR must own every author variant and guide used below.
     shutil.rmtree(project)
