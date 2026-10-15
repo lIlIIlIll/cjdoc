@@ -360,6 +360,7 @@ private func compactDocIr(documentation: DocumentationSet): String {
     out.append("\"generator\":{\"name\":${escapeJsonString(documentation.generator.name)},")
     out.append("\"version\":${escapeJsonString(documentation.generator.version)}},")
     out.append("\"status\":${escapeJsonString(documentation.status)},")
+    out.append("\"apiCollectionState\":${escapeJsonString(documentation.apiCollectionState)},")
     out.append("\"project\":{\"name\":${escapeJsonString(documentation.project.name)},")
     out.append("\"kind\":${escapeJsonString(documentation.project.kind)},\"repository\":")
     out.append(nullableRepository(documentation.project.repository))

@@ -21,6 +21,7 @@ private func externalMarkdownFixture(audience!: String = "external",
         ExternalDocumentationReference(hiddenId, "private-reference", "available", "https://docs.example.test/private.html")]
     DocumentationSet(original.generator, original.status, original.project,
         ConfigurationSnapshot(audience: audience, lintProfile: "off"),
+        apiCollectionState: Some(original.apiCollectionState),
         providers: original.providers.toArray(), modules: original.modules.toArray(),
         packages: [PackageDoc("codec", symbol.moduleId, sourceFiles: ["src/api.cj"], symbolIds: [symbol.id, hiddenId])],
         files: original.files.toArray(), declarations: [symbol, hidden], assets: original.assets.toArray(),

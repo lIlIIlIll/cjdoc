@@ -267,47 +267,13 @@ internal func linkedSignatureSpans(symbol: SymbolDoc,
     spans
 }
 
-private func signatureTokenClass(kind: String, spelling: String): String {
-    let identifierKind = codeBuiltinIdentifierKind(kind, spelling)
-    if (!identifierKind.isEmpty()) { return codeKindClass(identifierKind) }
-    if (kind != "RUNE" && (kind.contains("STRING") || kind.contains("RUNE") || kind.contains("CHAR"))) {
-        return codeKindClass("string")
-    }
-    if (kind.contains("LITERAL")) { return codeKindClass("number") }
-    match (kind) {
-        case "PUBLIC" | "PROTECTED" | "PRIVATE" | "INTERNAL" | "CLASS" | "STRUCT" |
-            "INTERFACE" | "ENUM" | "EXTEND" | "TYPE" | "FUNC" | "INIT" | "PROP" |
-            "LET" | "VAR" | "CONST" | "STATIC" | "MUT" | "OPEN" | "OVERRIDE" |
-            "ABSTRACT" | "OPERATOR" | "WHERE" | "FOREIGN" | "UNSAFE" | "MACRO" => codeKindClass("keyword")
-        case "INT8" | "INT16" | "INT32" | "INT64" | "INTNATIVE" | "UINT8" |
-            "UINT16" | "UINT32" | "UINT64" | "UINTNATIVE" | "FLOAT16" | "FLOAT32" |
-            "FLOAT64" | "BOOLEAN" | "RUNE" | "UNIT" | "NOTHING" | "VARRAY" | "THISTYPE" => codeKindClass("type")
-        case _ => ""
-    }
-}
-
+// Only validated presentation metadata supplies colours. The signature witness
+// remains an alignment/navigation fact, including for legacy and mode=off IR.
 private func appendSignatureRangeHtml(out: RenderTextBuffer, raw: String,
-    tokens: ArrayList<HtmlSignatureToken>, start: Int64, end: Int64,
-    highlight!: ?CodeHighlight = None, colour!: Bool = true): Unit {
+    start: Int64, end: Int64, highlight!: ?CodeHighlight = None): Unit {
     if (let Some(prepared) <- highlight) {
         appendCodeHighlightRangeHtml(out, raw, prepared, start, end)
-        return
-    }
-    // A stale highlight is discarded whole: its ranges cannot be trusted, and
-    // reusing the witness colours would present untrusted data as highlight
-    // output. Links stay because they come from declaration TypeRefs.
-    if (!colour) { appendHtmlEscapedValue(out, raw[start..end]); return }
-    // Without highlight data, presentation uses the persisted signature token
-    // witness, independently of the optional code-highlighting feature.
-    var position = start
-    for (token in tokens) {
-        if (token.start < start || token.end > end) { continue }
-        out.append(escapeHtml(raw[position..token.start]))
-        let className = signatureTokenClass(token.kind, token.value)
-        appendHtmlCodeToken(out, token.value, className)
-        position = token.end
-    }
-    out.append(escapeHtml(raw[position..end]))
+    } else { appendHtmlEscapedValue(out, raw[start..end]) }
 }
 
 internal func appendSignatureTextHtml(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
@@ -316,7 +282,7 @@ internal func appendSignatureTextHtml(out: RenderTextBuffer, symbol: SymbolDoc):
             appendHtmlEscapedValue(out, symbol.headerSpelling); return
         }
     }
-    appendSignatureRangeHtml(out, symbol.headerSpelling, alignedSignatureTokens(symbol),
+    appendSignatureRangeHtml(out, symbol.headerSpelling,
         0, symbol.headerSpelling.size, highlight: symbol.signatureHighlight)
 }
 
@@ -327,20 +293,18 @@ internal func appendLinkedSignatureHtml(out: RenderTextBuffer, symbol: SymbolDoc
     // declaration model and must survive: losing them would remove structure the
     // document still asserts.
     var prepared = symbol.signatureHighlight
-    var colour = true
     if (let Some(value) <- prepared) {
-        if (!value.matchesSource(raw)) { prepared = None; colour = false }
+        if (!value.matchesSource(raw)) { prepared = None }
     }
-    let tokens = alignedSignatureTokens(symbol)
     var position: Int64 = 0
     for (span in linkedSignatureSpans(symbol, links)) {
         if (span.start < position) { continue }
-        appendSignatureRangeHtml(out, raw, tokens, position, span.start, highlight: prepared, colour: colour)
+        appendSignatureRangeHtml(out, raw, position, span.start, highlight: prepared)
         out.append("<a class=\"type-link signature-type-link\" href=\"" +
             escapeHtml(rootPrefix + span.url) + "\">")
-        appendSignatureRangeHtml(out, raw, tokens, span.start, span.end, highlight: prepared, colour: colour)
+        appendSignatureRangeHtml(out, raw, span.start, span.end, highlight: prepared)
         out.append("</a>")
         position = span.end
     }
-    appendSignatureRangeHtml(out, raw, tokens, position, raw.size, highlight: prepared, colour: colour)
+    appendSignatureRangeHtml(out, raw, position, raw.size, highlight: prepared)
 }

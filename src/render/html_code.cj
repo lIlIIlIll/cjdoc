@@ -4,6 +4,14 @@ import cjdoc.model.*
 import std.collection.*
 
 
+// HTML normalizes CRLF, but the copy contract binds to the extracted original.
+// JSON string escapes also preserve NUL and tabs without relying on DOM text.
+internal func appendCodeSourceAttribute(out: RenderTextBuffer, raw: String): Unit {
+    out.append(" data-cjdoc-source=\"")
+    appendHtmlEscapedValue(out, escapeJsonString(raw))
+    out.append("\"")
+}
+
 // Validate before writing anything: malformed input never leaves half-colored HTML.
 internal func appendHighlightedSpansHtml(out: RenderTextBuffer, raw: String,
     spans: Array<(Int64, Int64, String)>): Unit {

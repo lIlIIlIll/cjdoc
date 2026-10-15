@@ -40,7 +40,7 @@ class PublicApiContractsSuite1 {
         let documentation = DocumentationEngine().generate(
             GenerationRequest(PUBLIC_FIXTURE_PROJECTS + "basic", lintProfile: "standard",
                 astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
-        @Expect(documentation.schemaVersion, "cjdoc.doc-ir/13")
+        @Expect(documentation.schemaVersion, "cjdoc.doc-ir/14")
         @Expect(documentation.declarations.size, 25)
         @Expect(documentation.files.size, 1)
         @Expect(documentation.declarations[0].source.start.byteOffset > 0)
@@ -51,8 +51,8 @@ class PublicApiContractsSuite1 {
 
         let unknown = encoded.replace("\"schemaVersion\":", "\"unknown\":true,\"schemaVersion\":")
         @ExpectThrows(api_render.decodeDocIr(unknown))
-        let duplicate = encoded.replace("\"schemaVersion\": \"cjdoc.doc-ir/13\",",
-            "\"schemaVersion\": \"cjdoc.doc-ir/13\", \"schemaVersion\": \"cjdoc.doc-ir/13\",")
+        let duplicate = encoded.replace("\"schemaVersion\": \"cjdoc.doc-ir/14\",",
+            "\"schemaVersion\": \"cjdoc.doc-ir/14\", \"schemaVersion\": \"cjdoc.doc-ir/14\",")
         @ExpectThrows(api_render.decodeDocIr(duplicate))
 
         let missingProviderModule = encoded.replace(
@@ -71,7 +71,7 @@ class PublicApiContractsSuite1 {
         let path = Path("tests/fixtures/golden-v6/basic.docs.json")
         let legacy = String.fromUtf8(File.readFrom(path))
         let migrated = api_render.decodeDocIr(legacy)
-        @Expect(migrated.schemaVersion, "cjdoc.doc-ir/13")
+        @Expect(migrated.schemaVersion, "cjdoc.doc-ir/14")
         @Expect(migrated.providers.size, 1)
         @Expect(migrated.providers[0].moduleId, "cjdoc:module:v1:root")
         @Expect(migrated.declarations[0].moduleId, "cjdoc:module:v1:root")

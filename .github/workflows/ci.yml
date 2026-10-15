@@ -113,7 +113,7 @@ jobs:
           python scripts/with_stdx.py --variant static --print-env -- | tee -a "${GITHUB_ENV}"
 
       - name: Download the Linux candidate
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.candidate-linux.outputs.artifact_name }}
           path: ${{ runner.temp }}/cjdoc-candidate
@@ -169,6 +169,35 @@ jobs:
             --binary target/release/bin/main \
             --evidence target/ci-evidence/perf-identities.json
 
+      # Optional-language execution is mandatory here, but provisioned only after
+      # the ordinary Cangjie source/identity/performance gates have completed.
+      - name: Set up the optional highlight runtime
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26.11.1'
+          package-manager-cache: false
+
+      - name: Verify the real optional highlight worker
+        id: highlight_worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
+          python scripts/with_stdx.py --variant static -- \
+            python scripts/highlight_ci.py --repo . --binary target/release/bin/main \
+              --identity target/ci-build/build-manifest.json --platform linux-x64 \
+              --work-root "${RUNNER_TEMP}/cjdoc-highlight-work" \
+              --evidence-root "${RUNNER_TEMP}/cjdoc-highlight-evidence"
+
+      - name: Upload real optional-worker evidence
+        if: always() && steps.highlight_worker.outcome != 'skipped'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: highlight-ci-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cjdoc-highlight-evidence
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Collect bounded acceptance diagnostics
         if: failure()
         shell: bash
@@ -188,7 +217,7 @@ jobs:
 
       - name: Upload acceptance diagnostics
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-diagnostics-linux-x64
           path: ${{ runner.temp }}/ci-diagnostics
@@ -208,7 +237,7 @@ jobs:
 
       - name: Upload timing evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-timing-ci-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/ci-evidence/
@@ -304,6 +333,35 @@ jobs:
           cp -p "${RUNNER_TEMP}/source-edge-fixture.cj" \
             tests/fixtures/projects/source_edges/src/fixture.cj
 
+      # Optional-language execution is mandatory here, but provisioned only after
+      # the ordinary Cangjie source/identity/performance gates have completed.
+      - name: Set up the optional highlight runtime
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26.11.1'
+          package-manager-cache: false
+
+      - name: Verify the real optional highlight worker
+        id: highlight_worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
+          python scripts/with_stdx.py --variant static -- \
+            python scripts/highlight_ci.py --repo . --binary target/release/bin/main \
+              --identity target/ci-build/build-manifest.json --platform ${{ matrix.platform }} \
+              --work-root "${RUNNER_TEMP}/cjdoc-highlight-work" \
+              --evidence-root "${RUNNER_TEMP}/cjdoc-highlight-evidence"
+
+      - name: Upload real optional-worker evidence
+        if: always() && steps.highlight_worker.outcome != 'skipped'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: highlight-ci-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cjdoc-highlight-evidence
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Write the timing summary
         if: always()
         shell: bash
@@ -314,7 +372,7 @@ jobs:
 
       - name: Upload timing evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-timing-ci-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/ci-evidence/

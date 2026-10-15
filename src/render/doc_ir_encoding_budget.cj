@@ -346,6 +346,7 @@ internal func validateDocIrEncodingBudget(documentation: DocumentationSet, limit
     budget.consumeString(documentation.generator.name, "$.generator.name")
     budget.consumeString(documentation.generator.version, "$.generator.version")
     budget.consumeString(documentation.status, "$.status")
+    budget.consumeString(documentation.apiCollectionState, "$.apiCollectionState")
     budget.consumeObject("$.project")
     budget.consumeString(documentation.project.name, "$.project.name")
     budget.consumeString(documentation.project.kind, "$.project.kind")

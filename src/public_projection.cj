@@ -204,7 +204,8 @@ internal func publicSymbol(value: SymbolDoc, sourceMapper: PublicSourceMapper,
         },
         origin: public_model.DeclarationOrigin(kind: value.origin.kind,
             macroSymbolId: value.origin.macroSymbolId),
-        signatureHighlight: markdownContext.highlight(value.sourceSignature, "cangjie"),
+        signatureHighlight: markdownContext.highlight(value.sourceSignature, "cangjie",
+            witness: value.sourceApiSignatureTokens.toArray()),
         sourceApiSignature: if (value.sourceApiSignatureTokens.isEmpty()) {
             public_model.SourceApiSignature("unavailable")
         } else {
@@ -228,9 +229,10 @@ internal class PublicDeclarationProjection {
             highlightLanguages: highlightLanguages, highlightBytes: highlightBytes,
             externalOptions: externalOptions)
         let renderableIds = renderableSymbolIds(documentation, audience)
+        let hiddenContext = MarkdownGenerationContext(highlightMode: "off")
         for (symbol in documentation.symbols) {
             declarations.add(publicSymbol(symbol, sourceMapper, providerStatesByModule,
-                assetCollector, markdownContext, renderableIds))
+                assetCollector, if (renderableIds.contains(symbol.id)) { markdownContext } else { hiddenContext }, renderableIds))
         }
         this.declarations = declarations.toArray()
         this.assetCollector = assetCollector
@@ -265,6 +267,25 @@ internal class PublicSourceProjection {
         this.orphanDocComments = orphanDocComments.toArray()
         this.macroInvocations = macroInvocations.toArray()
     }
+}
+
+// Called once after source/provider binding, before i18n, lint or display work.
+internal func capturedApiCollectionState(documentation: DocumentationSet): String {
+    if (!documentation.orphanDocComments.isEmpty() || !documentation.macroInvocations.isEmpty() ||
+        !documentation.unsupportedDeclarations.isEmpty()) { return "partial" }
+    for (diagnostic in documentation.diagnostics) {
+        if (diagnostic.severity == "error" || remapDiagnosticCode(diagnostic.code).startsWith("CJDOC1")) {
+            return "partial"
+        }
+    }
+    for (binding in documentation.semanticBindings) {
+        if (!binding.capabilities.sourceBinding || binding.missing > 0 || binding.ambiguous > 0 ||
+            binding.contractViolations > 0 || binding.extraneous > 0) { return "partial" }
+    }
+    for (symbol in documentation.symbols) {
+        if (symbol.semanticState == "unavailable" || symbol.semanticState == "ambiguous") { return "partial" }
+    }
+    "resolved"
 }
 
 internal class PublicDiagnosticProjection {
@@ -330,6 +351,17 @@ internal class PublicDiagnosticProjection {
 internal func publicDocumentation(documentation: DocumentationSet,
     request: GenerationRequest, highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES,
     capturePages!: Bool = false): public_model.DocumentationSet {
+    let externalOptions = highlightExternalOptions(request.highlightAdapter, request.highlightNode)
+    try {
+        projectPublicDocumentation(documentation, request, highlightBytes, capturePages, externalOptions)
+    } finally {
+        if (let Some(options) <- externalOptions) { options.close() }
+    }
+}
+
+private func projectPublicDocumentation(documentation: DocumentationSet, request: GenerationRequest,
+    highlightBytes: Int64, capturePages: Bool, externalOptions: ?HighlightExternalOptions,
+    retainedHighlightFailures!: Array<public_model.Diagnostic> = []): public_model.DocumentationSet {
     let sourceMapper = PublicSourceMapper(origins: documentation.sourceFileOrigins.toArray())
     let repositoryRoot = repositoryRootForRequest(request)
     let moduleProjection = PublicModuleProjection(documentation, sourceMapper,
@@ -338,12 +370,14 @@ internal func publicDocumentation(documentation: DocumentationSet,
     // The project's own `[highlight]` policy decides whether any display data is
     // produced at all, so an unavailable or invalid configuration never silently
     // degrades into "highlight everything".
-    let highlightConfig = loadHighlightConfig(request.projectRoot)
+    let highlightConfig = request.highlight.getOrDefault({ => loadHighlightConfig(request.projectRoot) })
+    let canDropHighlights = highlightBytes > 0 && highlightConfig.mode != "off"
     let declarationProjection = PublicDeclarationProjection(documentation, sourceMapper,
         providerProjection.statesByModule, request.audience, highlightBytes: highlightBytes,
         highlightMode: if (highlightConfig.mode == "off") { "off" } else { "auto" },
         highlightLanguages: highlightConfig,
-        externalOptions: highlightExternalOptions(request.highlightAdapter, request.highlightNode))
+        externalOptions: externalOptions)
+    declarationProjection.markdownContext.retainHighlightFailures(retainedHighlightFailures)
     let semanticLinkDiagnostics = resolvePublicSemanticLinks(declarationProjection.declarations, request.audience,
         request.projectRoot)
     let sourceProjection = PublicSourceProjection(documentation, sourceMapper)
@@ -366,18 +400,27 @@ internal func publicDocumentation(documentation: DocumentationSet,
         declarations: declarationProjection.declarations, assets: declarationProjection.assetCollector.assets(),
         orphanDocComments: sourceProjection.orphanDocComments,
         macroInvocations: sourceProjection.macroInvocations, unsupportedDeclarations: sourceProjection.unsupported,
-        diagnostics: diagnosticProjection.diagnostics,
+        diagnostics: diagnosticProjection.diagnostics, apiCollectionState: Some(documentation.apiCollectionState),
         languageOptions: if (request.i18n.isSome()) { request.i18n }
             else { loadDocumentationLanguages(request.projectRoot) })
     // A fixed highlight allowance cannot assume the rest of the bundle is small.
     // Preserve all declarations/text without optional highlighting before the
     // existing fallback, if the stricter whole-document codec boundary is hit.
-    if (highlightBytes > 0 &&
+    if (canDropHighlights &&
         !public_render.docIrFitsEncodedBudget(candidate, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
-        return publicDocumentation(documentation, request, highlightBytes: 0, capturePages: capturePages)
+        return projectPublicDocumentation(documentation, request, 0, capturePages, externalOptions,
+            retainedHighlightFailures: declarationProjection.markdownContext.highlightDiagnostics())
     }
     let result = if (capturePages) {
-        captureDocumentationPages(candidate, request, assetCollector: Some(declarationProjection.assetCollector))
+        captureDocumentationPages(candidate, request, assetCollector: Some(declarationProjection.assetCollector),
+            sharedContext: Some(declarationProjection.markdownContext))
     } else { candidate }
-    boundGeneratedDocumentation(result, request)
+    if (!canDropHighlights) { return boundGeneratedDocumentation(result, request) }
+    if (!capturePages ||
+        public_render.docIrFitsEncodedBudget(result, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
+        return result
+    }
+    // Captured guide metadata must also be dropped before the bounded hard fallback.
+    projectPublicDocumentation(documentation, request, 0, capturePages, externalOptions,
+        retainedHighlightFailures: declarationProjection.markdownContext.highlightDiagnostics())
 }

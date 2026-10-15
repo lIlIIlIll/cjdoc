@@ -153,8 +153,12 @@ def validate_schema_document(name: str, value: object) -> None:
                 )
         if properties["status"] != {"enum": ["complete", "partial"]}:
             raise ValueError(f"{name} schema status shape is invalid")
-        if name in ("doc-ir", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12", "doc-ir-v13"):
-            if name in ("doc-ir", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12", "doc-ir-v13") and "repository" not in definitions:
+        if name in ("doc-ir", "doc-ir-v14") and properties["apiCollectionState"] != {
+            "enum": ["resolved", "partial", "unavailable"]
+        }:
+            raise ValueError(f"{name} API collection state shape is invalid")
+        if name in ("doc-ir", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12", "doc-ir-v13", "doc-ir-v14"):
+            if name in ("doc-ir", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12", "doc-ir-v13", "doc-ir-v14") and "repository" not in definitions:
                 raise ValueError(f"{name} repository definition is missing")
             if not {
                 "codeBlockMetadata", "headingMetadata", "listMetadata",

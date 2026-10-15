@@ -145,6 +145,7 @@ public func projectDocumentationLanguage(value: DocumentationSet, locale: String
     let declarations = ArrayList<SymbolDoc>()
     for (symbol in value.declarations) { declarations.add(selectedSymbol(symbol, language)) }
     DocumentationSet(value.generator, value.status, value.project, value.configuration,
+        apiCollectionState: Some(value.apiCollectionState),
         providers: value.providers.toArray(), modules: value.modules.toArray(), packages: value.packages.toArray(),
         files: value.files.toArray(), declarations: declarations.toArray(), assets: value.assets.toArray(),
         orphanDocComments: value.orphanDocComments.toArray(), macroInvocations: value.macroInvocations.toArray(),

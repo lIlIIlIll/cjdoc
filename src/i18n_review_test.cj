@@ -243,7 +243,8 @@ class I18nReviewTest {
             // secure source-file capture has its own Linux integration case.
             let original = i18nTestGenerate(project)
             let documentation = api_model.DocumentationSet(original.generator, original.status,
-                original.project, original.configuration, files: original.files.toArray(),
+                original.project, original.configuration, apiCollectionState: Some(original.apiCollectionState),
+                files: original.files.toArray(),
                 modules: original.modules.toArray(), providers: original.providers.toArray(),
                 packages: original.packages.toArray(), declarations: original.declarations.toArray(),
                 languageOptions: original.languageOptions, assets: [
@@ -271,7 +272,8 @@ class I18nReviewTest {
         try {
             let original = i18nTestGenerate(project)
             let documentation = api_model.DocumentationSet(original.generator, original.status,
-                original.project, original.configuration, files: original.files.toArray(),
+                original.project, original.configuration, apiCollectionState: Some(original.apiCollectionState),
+                files: original.files.toArray(),
                 modules: original.modules.toArray(), providers: original.providers.toArray(),
                 packages: original.packages.toArray(), declarations: original.declarations.toArray(),
                 languageOptions: original.languageOptions, externalDocumentation: [
@@ -354,7 +356,8 @@ class I18nReviewTest {
         try {
             let original = i18nTestGenerate(project)
             let documentation = api_model.DocumentationSet(original.generator, original.status,
-                original.project, original.configuration, files: original.files.toArray(),
+                original.project, original.configuration, apiCollectionState: Some(original.apiCollectionState),
+                files: original.files.toArray(),
                 modules: original.modules.toArray(), providers: original.providers.toArray(),
                 packages: original.packages.toArray(), declarations: original.declarations.toArray(),
                 languageOptions: original.languageOptions, externalDocumentation: [

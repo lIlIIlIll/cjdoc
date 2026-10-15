@@ -179,7 +179,7 @@ class ChirPublicContracts {
                 GenerationRequest(temporary.toString(), lintProfile: "off",
                     includePathDependencies: true, chir: Some(chirTestOptions()),
                     astPreflightExecutable: Some("target/release/bin/main")))
-            @Expect(documentation.schemaVersion, "cjdoc.doc-ir/13")
+            @Expect(documentation.schemaVersion, "cjdoc.doc-ir/14")
             @Expect(documentation.providers[0].name, "chir")
             @Expect(documentation.declarations.size > 0, true)
             if (!getVariable("CJDOC_CHIR_WORKER").isSome()) {

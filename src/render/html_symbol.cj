@@ -177,7 +177,9 @@ internal func appendSymbolMetadata(out: RenderTextBuffer,
     if (pagePresentation) {
         out.append("<h2 id=\"declaration\" class=\"api-declaration-heading\">${label(locale, "Declaration", "声明")}</h2>")
     }
-    out.append("<pre class=\"signature-block\" aria-label=\"${label(locale, "Signature", "签名")}\"><code>")
+    out.append("<pre class=\"signature-block\" aria-label=\"${label(locale, "Signature", "签名")}\"><code")
+    appendCodeSourceAttribute(out, symbol.headerSpelling)
+    out.append(">")
     appendLinkedSignatureHtml(out, symbol, typeLinkIndex, rootPrefix)
     out.append("</code></pre></div>\n")
 }

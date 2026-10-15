@@ -47,7 +47,7 @@ private func readBoundedProcessStream(stream: InputStream,
 
 @When[os != "Windows"]
 private func launchBoundedProcess(command: String, arguments: Array<String>,
-    workingDirectory: ?Path, inputBytes: Int64): SubProcess {
+    workingDirectory: ?Path, inputBytes: Int64, environment!: ?Map<String, String> = None): SubProcess {
     let wrapperArguments = ArrayList<String>()
     wrapperArguments.add("-c")
     // The child blocks until its isolated group has been recorded by the parent.
@@ -55,18 +55,22 @@ private func launchBoundedProcess(command: String, arguments: Array<String>,
     // STS pipe streams expose no public close; forwarding exactly this count supplies EOF.
     // Disable inner job control so the stdin forwarder and target remain in that group.
     // Once the group exists, disable parent job notifications to keep stderr clean.
-    wrapperArguments.add("set -m; (set +m; IFS= read -r release; count=$1; shift; if [ \"$count\" = 0 ]; then exec \"$@\" </dev/null; else head -c \"$count\" | \"$@\"; fi) <&0 & child=$!; set +m; printf '%s\\n' \"$child\"; wait \"$child\"")
+    wrapperArguments.add("owner=$PPID; set -m; (set +m; IFS= read -r release; count=$1; shift; if [ \"$count\" = -1 ]; then (while kill -0 \"$owner\" 2>/dev/null; do sleep 0.1; done; kill -KILL 0) </dev/null >/dev/null 2>&1 & exec \"$@\"; elif [ \"$count\" = 0 ]; then exec \"$@\" </dev/null; else head -c \"$count\" | \"$@\"; fi) <&0 & child=$!; set +m; printf '%s\\n' \"$child\"; wait \"$child\"")
     wrapperArguments.add("cjdoc-process-supervisor")
     wrapperArguments.add(inputBytes.toString())
     wrapperArguments.add(command)
     wrapperArguments.add(all: arguments)
-    launch("/bin/bash", wrapperArguments.toArray(), workingDirectory: workingDirectory,
+    launch("/bin/bash", wrapperArguments.toArray(), workingDirectory: workingDirectory, environment: environment,
         stdIn: ProcessRedirect.Pipe, stdOut: ProcessRedirect.Pipe, stdErr: ProcessRedirect.Pipe)
 }
 
 @When[os == "Windows"]
 private func launchBoundedProcess(command: String, arguments: Array<String>,
-    workingDirectory: ?Path, inputBytes: Int64): SubProcess {
+    workingDirectory: ?Path, inputBytes: Int64, environment!: ?Map<String, String> = None): SubProcess {
+    if (inputBytes < 0) {
+        return launch(command, arguments, workingDirectory: workingDirectory, environment: environment,
+            stdIn: ProcessRedirect.Pipe, stdOut: ProcessRedirect.Pipe, stdErr: ProcessRedirect.Pipe)
+    }
     let script = StringBuilder()
     if (inputBytes > 0) {
         script.append("$OutputEncoding = New-Object System.Text.UTF8Encoding $false; [Console]::InputEncoding = $OutputEncoding; ")
@@ -317,3 +321,103 @@ internal func executeWithBoundedOutput(command: String, arguments: Array<String>
     watchdog.get()
     (if (completed && !expiredOverall) { exitCode } else { 124 }, output[0], error[0])
 }
+
+// Highlight-only JSONL transport. One caller owns it and sends one request at a time.
+// Reuses the bounded supervisor's process-group / Windows job cleanup, not a sandbox.
+internal class HighlightWorkerProcess {
+    private let process: SubProcess
+    private let group: Int64
+    private let job: CPointer<Unit>
+    private let failed: AtomicBool
+    private let closed = AtomicBool(false)
+    private let stderrReader: Future<Unit>
+
+    init(command: String, arguments: Array<String>, environment: Map<String, String>) {
+        let child = synchronized(BOUNDED_PROCESS_LAUNCH_MUTEX) {
+            launchBoundedProcess(command, arguments, None<Path>, -1, environment: environment)
+        }
+        let childJob = try { createExampleProcessJob(child) } catch (error: Exception) {
+            try { child.terminate(force: true) } catch (_: Exception) {}
+            throw error
+        }
+        let childGroup = try { boundedProcessGroupWithReader(child, 5000, childJob) }
+            catch (error: Exception) { terminateBoundedProcessTree(child, 0, childJob); throw error }
+        this.process = child; this.job = childJob; this.group = childGroup
+        let failureFlag = AtomicBool(false)
+        this.failed = failureFlag
+        this.stderrReader = spawn {
+            let buffer = Array<Byte>(8192, repeat: 0)
+            var total: Int64 = 0
+            try {
+                var count = child.stdErrPipe.read(buffer)
+                while (count > 0) {
+                    total += count
+                    if (total > 8192) {
+                        failureFlag.store(true)
+                        terminateBoundedProcessTree(child, childGroup, childJob)
+                        break
+                    }
+                    count = child.stdErrPipe.read(buffer)
+                }
+            } catch (_: Exception) { failureFlag.store(true) }
+        }
+        try { releaseHighlightWorker(child) } catch (error: Exception) { close(); throw error }
+    }
+
+    func exchange(request: String, cancelled: () -> Bool): String {
+        let started = MonoTime.now()
+        let ready = AtomicBool(false)
+        let response = spawn {
+            try {
+            process.stdInPipe.write(request.toArray())
+            process.stdInPipe.flush()
+            let bytes = ArrayList<Byte>()
+            let buffer = Array<Byte>(8192, repeat: 0)
+            var count = process.stdOutPipe.read(buffer)
+            while (count > 0) {
+                if (count > EXTERNAL_HIGHLIGHT_OUTPUT_BYTES + 1 - bytes.size) {
+                    throw IllegalArgumentException("highlight output limit")
+                }
+                var complete = false
+                for (index in 0..count) {
+                    if (buffer[index] == b'\n') {
+                        if (index != count - 1) { throw IllegalArgumentException("extra highlight response") }
+                        complete = true
+                    }
+                    bytes.add(buffer[index])
+                }
+                if (complete) { return String.fromUtf8(bytes.toArray()) }
+                count = process.stdOutPipe.read(buffer)
+            }
+            throw IllegalStateException("highlight worker EOF")
+            } finally { ready.store(true) }
+        }
+        try {
+            while (true) {
+                if (cancelled() || failed.load() || expired(started, 5000)) {
+                    throw IllegalStateException("highlight worker cancelled, failed or timed out")
+                }
+                if (ready.load()) { return response.get() }
+                sleep(Duration.millisecond * 10)
+            }
+            throw IllegalStateException("highlight worker stopped")
+        } catch (error: Exception) { close(); throw error }
+    }
+
+    func close(): Unit {
+        if (!closed.compareAndSwap(false, true)) { return }
+        terminateBoundedProcessTree(process, group, job)
+        let waiter = spawn { => process.wait() }
+        try { let _ = waiter.get(Duration.second) } catch (_: Exception) {}
+        try { stderrReader.get(Duration.second) } catch (_: Exception) {}
+    }
+}
+
+@When[os != "Windows"]
+private func releaseHighlightWorker(process: SubProcess): Unit {
+    process.stdInPipe.write("\n".toArray()); process.stdInPipe.flush()
+}
+
+@When[os == "Windows"]
+private func releaseHighlightWorker(process: SubProcess): Unit { let _ = process }
+

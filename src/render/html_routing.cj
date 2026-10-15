@@ -142,6 +142,19 @@ internal class RenderProjection {
     let topLevelByPackage = HashMap<String, ArrayList<SymbolDoc>>()
     private let memberBrowsers = HashMap<String, HtmlMemberBrowser>()
 
+    private let apiGuideIndexes = HashMap<String, CapturedApiGuideIndex>()
+
+    // Standalone and inline members share the same visible, locale-selected usages.
+    func apiGuides(documentation: DocumentationSet, locale: String): CapturedApiGuideIndex {
+        match (apiGuideIndexes.get(locale)) {
+            case Some(value) => value
+            case None =>
+                let value = CapturedApiGuideIndex(documentation, this, locale)
+                apiGuideIndexes[locale] = value
+                value
+        }
+    }
+
     func members(owner: SymbolDoc): HtmlMemberBrowser {
         match (memberBrowsers.get(owner.id)) {
             case Some(value) => value

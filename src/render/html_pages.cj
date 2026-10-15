@@ -296,7 +296,9 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
                             "成员受扩展目标与约束限制；此处不推断对具体实例的适用性。") +
                         "</p>")
                     if (!declaredBy.headerSpelling.isEmpty()) {
-                        out.append("<pre class=\"extension-signature\"><code>")
+                        out.append("<pre class=\"extension-signature\"><code")
+                        appendCodeSourceAttribute(out, declaredBy.headerSpelling)
+                        out.append(">")
                         appendSignatureTextHtml(out, declaredBy)
                         out.append("</code></pre>")
                     }
@@ -309,6 +311,8 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     appendReaderRelationships(out, index, member, rootPrefix, typeLinkIndex, locale,
         headingTag: "h3")
     appendReverseTypeUsages(out, index, typeLinkIndex, member, rootPrefix, locale)
+    projection.apiGuides(documentation, locale).append(out, member, locale,
+        headingTag: "h3", headingSuffix: "-inline-" + htmlStableSlug(member.id))
     out.append(externalDocumentationHtml(documentation, member, locale))
     out.append("</div></details>")
     appendInlineMemberActions(out, documentation, projection, member, rootPrefix, locale)
@@ -516,6 +520,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
         appendReaderRelationships(out, index, symbol, "../", typeLinkIndex, locale)
     }
     appendReverseTypeUsages(out, index, typeLinkIndex, symbol, "../", locale)
+    projection.apiGuides(documentation, locale).append(out, symbol, locale)
     appendPageEnd(out, documentation, locale: locale)
     out.toString()
 }

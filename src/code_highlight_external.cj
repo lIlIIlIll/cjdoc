@@ -1,6 +1,7 @@
 package cjdoc
 
 import std.collection.*
+import std.env.*
 import cjdoc.render.{escapeJsonString}
 import yjson.*
 
@@ -13,6 +14,45 @@ internal let EXTERNAL_HIGHLIGHT_OUTPUT_BYTES: Int64 = 3145728
 internal class HighlightExternalOptions {
     let nodeExecutable: String
     let adapterPath: String
+    private var worker: ?HighlightWorkerProcess = None
+    private var starts: Int64 = 0
+    private var requestNumber: Int64 = 0
+    private var closed: Bool = false
+
+    func close(): Unit {
+        closed = true
+        resetWorker()
+    }
+
+    private func resetWorker(): Unit {
+        if (let Some(active) <- worker) { active.close() }
+        worker = None
+    }
+
+    func exchange(request: String): String {
+        if (closed || Thread.currentThread.hasPendingCancellation) {
+            close()
+            throw IllegalStateException("highlight session closed or cancelled")
+        }
+        try {
+            if (worker.isNone()) {
+                if (starts >= 3) { throw IllegalStateException("highlight restart limit") }
+                starts++
+                // Allow only process essentials; never inherit NODE_OPTIONS, NODE_PATH,
+                // loader/preload settings, credentials or project environment hooks.
+                let environment = HashMap<String, String>()
+                for (name in ["PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "LANG"]) {
+                    if (let Some(value) <- getVariable(name)) { environment[name] = value }
+                }
+                worker = Some(HighlightWorkerProcess(nodeExecutable, [adapterPath], environment))
+            }
+            worker.getOrThrow().exchange(request, { => Thread.currentThread.hasPendingCancellation })
+        } catch (error: Exception) { resetWorker(); throw error }
+    }
+
+    func nextId(): String { requestNumber++; requestNumber.toString() }
+
+    func rejectResponse(): Unit { resetWorker() }
 
     init(nodeExecutable: String, adapterPath: String) {
         for (path in [nodeExecutable, adapterPath]) {
@@ -126,18 +166,17 @@ internal func validateExternalHighlightResponse(source: String, language: String
 
 internal func externalCodeHighlight(source: String, language: String, options: HighlightExternalOptions): CodeHighlight {
     if (source.size > MAX_HIGHLIGHT_BLOCK_BYTES) { return externalHighlightPlain(source, language, "resource-limit") }
-    // One request per isolated process: no worker state, retries or transient-result cache.
-    let id = Sha256Digest.digest(language + "\n" + source)
+    let id = options.nextId()
     let request = "{\"protocol\":\"${EXTERNAL_HIGHLIGHT_PROTOCOL}\",\"id\":${escapeJsonString(id)}," +
         "\"language\":${escapeJsonString(language)},\"code\":${escapeJsonString(source)}}\n"
     if (request.size > EXTERNAL_HIGHLIGHT_INPUT_BYTES + 1) {
         return externalHighlightPlain(source, language, "resource-limit")
     }
     try {
-        let (exitCode, output, _) = executeWithBoundedOutput(options.nodeExecutable, [options.adapterPath],
-            timeoutMilliseconds: 5000, standardInput: request.toArray(),
-            outputLimit: EXTERNAL_HIGHLIGHT_OUTPUT_BYTES + 2)
-        if (exitCode != 0) { return externalHighlightPlain(source, language, "backend-unavailable") }
-        validateExternalHighlightResponse(source, language, id, String.fromUtf8(output))
+        let result = validateExternalHighlightResponse(source, language, id, options.exchange(request))
+        if (result.reason == Some("backend-unavailable") || result.reason == Some("invalid-spans")) {
+            options.rejectResponse()
+        }
+        result
     } catch (_: Exception) { externalHighlightPlain(source, language, "backend-unavailable") }
 }

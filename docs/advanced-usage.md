@@ -303,7 +303,7 @@ cjdoc render \
 
 `render` 会先验证输入的 schema 和引用关系。它不读取项目源码，因此源码注释或声明有变化时，应重新运行 `generate`。
 
-v6/v7/v8/v9/v10/v11/v12 只能作为严格的只读输入迁移到当前 v13 输出；cjdoc 不会重新生成旧版本格式。
+v6/v7/v8/v9/v10/v11/v12/v13 只能作为严格的只读输入迁移到当前 v14 输出；cjdoc 不会重新生成旧版本格式。
 
 需要在 HTML 声明页显示 GitHub 源码链接时，`generate` 必须同时接收 `--repository-url` 和 `--repository-revision`，并可用 `--repository-root` 指定仓库根目录。URL 只支持 canonical GitHub HTTPS 仓库根；缺少真实 source-origin 映射、仓库外依赖或符号链接越界时，链接会被省略。`render` 只使用 JSON 中已经保存的 metadata，不接受这些生成参数。
 
@@ -343,7 +343,7 @@ cjpm -v
 
 ## 能力边界
 
-- 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/13`。
+- 当前生成的 Doc IR 版本是 `cjdoc.doc-ir/14`。
 - 默认 `--semantic source` 使用 `std.ast` 和源码 lexer 做结构化源码遍历；注释仍来自原始源码，Doc IR 和 renderer 不依赖 CHIR。
 - `generate`/`check` 可显式使用 `--semantic chir`，并须通过 `--chir-worker <path>` 指向独立 worker executable。只有 `tools/chir-worker` package 导入 `stdx.chir`；core 通过受限文件协议调用它。worker 未配置或 CHIR 处理失败时保留 source declarations，并产生 `CJDOC2101`–`CJDOC2106` warning。
 - CHIR 逐个检查待编译的根包、workspace member 和已捕获依赖的 manifest。不支持的构建配置或编译选项产生 `CJDOC2102`，受影响的编译不会派发给 worker，源码/AST fallback 仍保留；TOML 注释不参与这项检查。
@@ -394,4 +394,4 @@ cjpm -v
 
 ## 多语言模型、迁移和版本组合
 
-Doc IR v13 保留所有作者变体，输入默认语言与读取语言分离。`--require-language en` 和 `[coverage.translation]` 提供独立翻译门槛；版本组合读取原生 `site-manifest.json`。配置、保守条目关联和格式版本见 [多语言文档](i18n.md)。
+Doc IR v14 保留所有作者变体，输入默认语言与读取语言分离。`--require-language en` 和 `[coverage.translation]` 提供独立翻译门槛；版本组合读取原生 `site-manifest.json`。配置、保守条目关联和格式版本见 [多语言文档](i18n.md)。

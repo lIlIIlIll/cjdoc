@@ -908,8 +908,17 @@ internal let HTML_SEARCH_SCRIPT = """
     area.style.position = "fixed"; area.style.opacity = "0";
     document.body.append(area); area.select();
     let copied = false;
+    // Textarea selection normalizes CRLF. Supply the bound original to the
+    // real copy event instead of publishing that normalized selection.
+    const preserveOriginal = (event) => {
+      if (event.clipboardData) {
+        event.clipboardData.setData("text/plain", value);
+        event.preventDefault();
+      }
+    };
+    document.addEventListener("copy", preserveOriginal);
     try { copied = document.execCommand("copy"); } catch (_) { copied = false; }
-    area.remove();
+    finally { document.removeEventListener("copy", preserveOriginal); area.remove(); }
     if (previousFocus && typeof previousFocus.focus === "function") previousFocus.focus();
     return copied;
   };
@@ -973,7 +982,8 @@ internal let HTML_SEARCH_SCRIPT = """
     back.setAttribute("d", "M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2");
     svg.append(front, back); button.append(svg); pre.append(button);
     button.addEventListener("click", async () => {
-      const copied = await copyText(code.textContent || "");
+      const original = code.getAttribute("data-cjdoc-source");
+      const copied = await copyText(original === null ? (code.textContent || "") : JSON.parse(original));
       button.dataset.copied = copied ? "true" : "false";
       button.setAttribute("aria-label", copied ? copyLabels.copied : copyLabels.copy);
       button.title = copied ? copyLabels.copied : copyLabels.copy;

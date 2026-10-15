@@ -6,7 +6,25 @@ import std.collection.*
 import std.fs.*
 
 internal func captureDocumentationPages(value: public_model.DocumentationSet,
-    request: GenerationRequest, assetCollector!: ?LocalAssetCollector = None): public_model.DocumentationSet {
+    request: GenerationRequest, assetCollector!: ?LocalAssetCollector = None,
+    sharedContext!: ?MarkdownGenerationContext = None): public_model.DocumentationSet {
+    let config = request.highlight.getOrDefault({ => loadHighlightConfig(request.projectRoot) })
+    let context = sharedContext.getOrDefault({ => MarkdownGenerationContext(
+        highlightMode: if (config.mode == "off") { "off" } else { "auto" },
+        highlightLanguages: config,
+        externalOptions: highlightExternalOptions(request.highlightAdapter, request.highlightNode)) })
+    try { captureDocumentationPagesWithContext(value, request, assetCollector, context) }
+    finally { if (sharedContext.isNone()) { context.highlightBudget.close() } }
+}
+
+private func captureDocumentationPagesWithContext(value: public_model.DocumentationSet,
+    request: GenerationRequest, assetCollector: ?LocalAssetCollector,
+    context: MarkdownGenerationContext): public_model.DocumentationSet {
+    let previousDiagnostics = HashMap<String, Int64>()
+    let previousDocumentDiagnostics = value.diagnostics.size
+    for (diagnostic in context.diagnostics()) {
+        previousDiagnostics[diagnostic.code] = previousDiagnostics.get(diagnostic.code).getOrDefault({ => 0 }) + 1
+    }
     let pages = ArrayList<public_model.DocumentationPage>()
     let previousAssetDiagnostics = assetCollector.map({ collector => collector.diagnostics().size }).getOrDefault({ => 0 })
     let captured = conceptualPagesForProject(request.projectRoot, value)
@@ -27,15 +45,17 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
             value.appendDiagnostic(public_model.Diagnostic("error", "CJDOC3110", "duplicate logical page '" + id + "' for language " + language.getOrDefault({ => "unknown" })))
             continue
         }
+        let (text, tree, acceptedBindings, capturedAuthorContent) = capturePageMarkdown(
+            value, page, request, assetCollector, context)
         let targets = ArrayList<String>()
         let bindings = ArrayList<public_model.DocumentationPageBinding>()
-        for (binding in page.bindings) {
+        for (binding in page.bindings where acceptedBindings.contains(binding.sourceLine)) {
             if (let Some(target) <- binding.targetSymbolId) { if (!targets.contains(target)) { targets.add(target) } }
             bindings.add(public_model.DocumentationPageBinding(binding.target, binding.selector,
                 binding.provenance, binding.version, binding.sourceLine, language: binding.language,
                 state: binding.state, targetSymbolId: binding.targetSymbolId))
         }
-        let (text, tree, capturedAuthorContent) = capturePageMarkdown(value, page, request, assetCollector)
+
         let sections = capturePageSections(value, page.sections.toArray(), tree, id)
         pages.add(public_model.DocumentationPage(id, page.source, page.route, page.title, page.kind,
             text, tree, language: language,
@@ -46,13 +66,30 @@ internal func captureDocumentationPages(value: public_model.DocumentationSet,
         let diagnostics = collector.diagnostics()
         for (index in previousAssetDiagnostics..diagnostics.size) { value.appendDiagnostic(diagnostics[index]) }
     }
+    var collectionIncomplete = context.incomplete ||
+        (assetCollector.isSome() && assetCollector.getOrThrow().incomplete)
+    for (index in previousDocumentDiagnostics..value.diagnostics.size) {
+        if (value.diagnostics[index].severity == "error") { collectionIncomplete = true }
+    }
+    for (diagnostic in context.collectionDiagnostics()) {
+        if (diagnostic.severity == "error") { collectionIncomplete = true }
+    }
+    // Budget summaries can appear before a prior backend summary; list lengths
+    // are not append-only even though each diagnostic category is monotonic.
+    for (diagnostic in context.diagnostics()) {
+        let previous = previousDiagnostics.get(diagnostic.code).getOrDefault({ => 0 })
+        if (previous > 0) { previousDiagnostics[diagnostic.code] = previous - 1 }
+        else { value.appendDiagnostic(diagnostic) }
+    }
     let assets = match (assetCollector) {
         case Some(collector) => collector.assets()
         case None => value.assets.toArray()
     }
-    let status = if (value.status == "complete" && assetCollector.isSome() &&
-        assetCollector.getOrThrow().incomplete) { "partial" } else { value.status }
+    let status = if (value.status == "complete" &&
+        (collectionIncomplete || !context.highlightBudget.escalationDiagnostics().isEmpty())) { "partial" }
+        else { value.status }
     public_model.DocumentationSet(value.generator, status, value.project, value.configuration,
+        apiCollectionState: Some(value.apiCollectionState),
         providers: value.providers.toArray(), modules: value.modules.toArray(), packages: value.packages.toArray(),
         files: value.files.toArray(), declarations: value.declarations.toArray(), assets: assets,
         orphanDocComments: value.orphanDocComments.toArray(), macroInvocations: value.macroInvocations.toArray(),
@@ -90,26 +127,35 @@ private func capturePageSections(value: public_model.DocumentationSet,
 
 private func capturePageMarkdown(value: public_model.DocumentationSet,
     page: ConceptualPage, request: GenerationRequest,
-    assetCollector: ?LocalAssetCollector): (String, public_model.MarkdownNode, Bool) {
+    assetCollector: ?LocalAssetCollector, context: MarkdownGenerationContext
+): (String, public_model.MarkdownNode, HashSet<Int64>, Bool) {
     try {
-        let text = conceptualMarkdownWithoutBindings(page.markdown, sentinels: false)
+        let bindingLines = HashSet<Int64>()
+        for (binding in page.bindings) { let _ = bindingLines.add(binding.sourceLine) }
         if (let Some(collector) <- assetCollector) {
             if (page.source.endsWith(".md")) {
                 if (let Some(origin) <- capturedPageSourceOrigin(page.source, request.projectRoot)) {
                     collector.registerSource(origin)
                 }
-                return (text, parseCapturedPageMarkdown(text, collector, page.source, request), true)
+                let (text, tree, acceptedBindings) = parseCapturedPageMarkdown(
+                    page.markdown, collector, page.source, request,
+                    sharedContext: Some(context), bindingLines: Some(bindingLines))
+                return (text, tree, acceptedBindings, true)
             }
         }
+
         let collector = LocalAssetCollector(ArrayList<SourceFileOrigin>())
-        (text, parseCapturedPageMarkdown(text, collector, page.source, request), true)
+        let (text, tree, acceptedBindings) = parseCapturedPageMarkdown(
+            page.markdown, collector, page.source, request,
+            sharedContext: Some(context), bindingLines: Some(bindingLines))
+        (text, tree, acceptedBindings, true)
     } catch (_: Exception) {
         let source = public_model.SourceRange(page.source, public_model.SourcePosition(1, 1, 0),
             public_model.SourcePosition(1, 1, 0))
         value.appendDiagnostic(public_model.Diagnostic("warning", "CJDOC3026",
             "conceptual Markdown was replaced by a bounded fallback after parsing or resource-limit failure",
             source: Some(source)))
-        (MARKDOWN_FALLBACK_TEXT, fallbackPublicMarkdown(), false)
+        (MARKDOWN_FALLBACK_TEXT, fallbackPublicMarkdown(), HashSet<Int64>(), false)
     }
 }
 
