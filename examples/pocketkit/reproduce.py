@@ -236,14 +236,21 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
                 for locale in locales:
                     assemble(generated[version], locale, binary=binary)
         diff = output / "api-diff.json"
-        run([str(binary), "diff", "--baseline", str(generated["demo-v1"] / "api-surface/api-surface.json"),
-             "--current", str(generated["demo-v2"] / "api-surface/api-surface.json"), "--format", "json"],
-            source, output=diff)
+        with stage_timing.phase("pocketkit.diff"):
+            run([str(binary), "diff", "--baseline", str(generated["demo-v1"] / "api-surface/api-surface.json"),
+                 "--current", str(generated["demo-v2"] / "api-surface/api-surface.json"), "--format", "json"],
+                source, output=diff)
         composed = output / "composed"
-        run([str(binary), "versions", "compose", "--output", str(composed),
-             "--version", "demo-v1=" + str(generated["demo-v1"]),
-             "--version", "demo-v2=" + str(generated["demo-v2"]),
-             "--diff", "demo-v2=" + str(diff), "--latest", "demo-v2"], source)
+        # `diff`, compose and the per-language diagnostics used to be timed
+        # (`pocketkit.diff:*`, `pocketkit.compose:*`, `pocketkit.diagnostics:*`) and
+        # stopped carrying a phase when the per-locale chain was collapsed, which
+        # silently removed them from the phase evidence. They are real work, so they
+        # are timed again rather than left as an undisclosed gap.
+        with stage_timing.phase("pocketkit.compose"):
+            run([str(binary), "versions", "compose", "--output", str(composed),
+                 "--version", "demo-v1=" + str(generated["demo-v1"]),
+                 "--version", "demo-v2=" + str(generated["demo-v2"]),
+                 "--diff", "demo-v2=" + str(diff), "--latest", "demo-v2"], source)
         versions = json.loads((composed / "versions.json").read_text(encoding="utf-8"))
         if versions.get("schemaVersion") != "cjdoc.versions/2":
             raise ValueError("unsupported native versions manifest")
@@ -254,10 +261,11 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
                 root = composed / language["root"]
                 shutil.copytree(support / "html", root / "dependencies/support-v1")
                 roots[record["id"]] = root
-            diagnostics = generate(binary, source / "diagnostics", output / locale / "diagnostics",
-                                   locale=locale, version="diagnostics", **options)
-            validate_diagnostic_examples(diagnostics)
-            assemble(diagnostics, binary=binary)
+            with stage_timing.phase(f"pocketkit.diagnostics:{locale}"):
+                diagnostics = generate(binary, source / "diagnostics", output / locale / "diagnostics",
+                                       locale=locale, version="diagnostics", **options)
+                validate_diagnostic_examples(diagnostics)
+                assemble(diagnostics, binary=binary)
             result["locales"][locale] = dict(generated=generated, composed=composed,
                                               roots=roots, diff=diff, diagnostics=diagnostics)
         after = {path: hashlib.sha256(path.read_bytes()).hexdigest() for path in managed}
