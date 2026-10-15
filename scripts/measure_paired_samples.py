@@ -52,7 +52,7 @@ def _decode_documents(text: str) -> dict:
         if not isinstance(value, dict):
             continue
         for key, item in value.items():
-            if key in ("workflow_runs", "jobs", "workflows") and isinstance(item, list):
+            if key in ("workflow_runs", "jobs", "workflows", "artifacts") and isinstance(item, list):
                 merged.setdefault(key, [])
                 merged[key].extend(item)
             else:
@@ -83,16 +83,16 @@ def workflow_runs(repository: str, workflow: str, limit: int, branch: str | None
                                   (item.get("path") or "").rsplit("/", 1)[-1]}), None)
     if match is None:
         raise SystemExit(f"measure_paired_samples.py: no workflow matches {workflow!r}")
-    query = f"repos/{repository}/actions/workflows/{match['id']}/runs"
+    # `status=completed` is asked of the API: filtering locally would consume the
+    # `per_page` budget with queued and running runs, so `--limit` would return fewer
+    # samples than it promises. No `--paginate` either: one page is enough for
+    # `limit <= 100` and pagination would fetch the whole workflow history first.
+    params = [f"per_page={min(limit, 100)}", "status=completed"]
     if branch:
-        query += f"?branch={branch}"
-    separator = "&" if "?" in query else "?"
-    # No `--paginate` here on purpose: it fetches every page of the workflow's history
-    # before the result is sliced, which on a long-lived workflow burns API requests
-    # (and can hit the rate limit) just to look at `limit` runs. One page is requested
-    # and the completed runs in it are used.
-    payload = _decode_documents(_run_gh([
-        "api", f"{query}{separator}per_page={min(limit, 100)}"]))
+        params.append(f"branch={branch}")
+    query = (f"repos/{repository}/actions/workflows/{match['id']}/runs?"
+             + "&".join(params))
+    payload = _decode_documents(_run_gh(["api", query]))
     runs = payload.get("workflow_runs", []) if isinstance(payload, dict) else []
     return [run for run in runs if run.get("status") == "completed"][:limit]
 
@@ -228,9 +228,11 @@ def collect(repository: str, workflow: str, limit: int, cache_root: Path,
 
 def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
                      cache_root: Path) -> list[dict]:
+    # Called unconditionally: it skips artifact directories that are already complete
+    # and retries the rest, so an interrupted or partially failed download does not
+    # leave those jobs `unknown` until someone deletes the cache by hand.
     evidence = cache_root / f"{run_id}-{attempt}"
-    if not any(evidence.glob("*/stages.json")):
-        download_evidence(repository, run_id, attempt, evidence)
+    download_evidence(repository, run_id, attempt, evidence)
     states = job_cache_states(evidence)
     wall, total = measure(jobs_of(repository, run_id, attempt))
     samples: list[dict] = []

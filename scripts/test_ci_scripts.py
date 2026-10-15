@@ -386,9 +386,6 @@ class RunWithTimeoutTests(unittest.TestCase):
             subprocess.run(["pkill", "-f", marker], check=False)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class PairedSampleTests(unittest.TestCase):
     """DONE-03's classification: never assume a condition the evidence omits."""
@@ -527,3 +524,6 @@ class PairedSampleTests(unittest.TestCase):
             paired._attempt_samples = original_samples
             paired.workflow_runs = original_runs
         self.assertEqual(calls, [1, 2, 3])
+
+if __name__ == "__main__":
+    unittest.main()
