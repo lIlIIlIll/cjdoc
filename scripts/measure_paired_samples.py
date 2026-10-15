@@ -342,7 +342,11 @@ def report(samples: list[dict], workflow: str, out: Path) -> dict:
     # Requirement shapes come from every cache-bearing job, not only from the cells: a
     # platform whose artifacts expired or whose samples all predate the recording would
     # otherwise vanish from the report instead of showing as an unmet cell.
-    requirement_shapes = {s["shape"] for s in successful
+    # Drawn from ALL samples, not only the successful ones: a platform whose every
+    # occurrence failed or was cancelled would otherwise drop out of the requirement
+    # section, and the remaining cells could read as met while that platform has no
+    # successful sample at all. Only successful jobs enter `cells`.
+    requirement_shapes = {s["shape"] for s in samples
                           if job_artifact_stem(s["job"]) is not None}
     requirement_shapes |= {key[0] for key in cells}
     lines += ["", "## Requirement check", "",

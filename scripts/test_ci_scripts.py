@@ -544,6 +544,24 @@ class PairedSampleTests(unittest.TestCase):
         self.assertIsNone(paired.job_artifact_stem("Classify changes"))
         self.assertEqual(paired.job_artifact_stem("linux-x64 / Cangjie"), "ci-linux-x64")
 
+    def test_a_failed_only_shape_is_still_a_requirement(self) -> None:
+        """A platform that only ever failed must report zero successful samples."""
+        samples = [
+            {"run": 1, "attempt": 1, "revision": "9" * 8, "event": "push",
+             "job": "windows-x64 / Cangjie", "shape": "windows-x64", "conclusion": "failure",
+             "state": "n/a", "jobMinutes": 5.0,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+            {"run": 2, "attempt": 1, "revision": "8" * 8, "event": "push",
+             "job": "linux-x64 / Cangjie", "shape": "linux-x64", "conclusion": "success",
+             "state": "hit", "jobMinutes": 20.0,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+        ]
+        out = self.root / "failed-shape.md"
+        paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("windows-x64 / **hit**: 0 collected — NOT met", text)
+        self.assertIn("windows-x64 / **miss**: 0 collected — NOT met", text)
+
 
 if __name__ == "__main__":
     unittest.main()
