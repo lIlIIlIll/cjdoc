@@ -31,7 +31,8 @@ export CJDOC_STS_OVERRIDE_MODULE="${cjdoc_scripts_dir}"
 export CJDOC_STS_INVOCATION_LOG="${CJDOC_STS_INVOCATION_LOG:-${runner_temp:-/tmp}/cjdoc-sts-invocations.jsonl}"
 
 runner_temp="${RUNNER_TEMP}"
-real_cjpm="$(command -v cjpm)"
+# A nested private workspace must wrap the real tool, not the inherited wrapper.
+real_cjpm="${CJDOC_REAL_CJPM:-$(command -v cjpm)}"
 if command -v cygpath >/dev/null 2>&1; then
   runner_temp="$(cygpath -u "${runner_temp}")"
   real_cjpm="$(cygpath -u "${real_cjpm}")"

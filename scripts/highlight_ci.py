@@ -98,11 +98,15 @@ def main() -> int:
         raw = args.work_root / (name + ".raw.log")
         raw_stderr = args.work_root / (name + ".stderr.log")
         step = {"name": name, "exitCode": None, "status": "running", "timeoutSeconds": timeout}
+        bounded = [sys.executable, str(repo / "scripts/run_with_timeout.py"),
+                   str(timeout), "--", *command]
         try:
             with raw.open("wb") as stream, raw_stderr.open("wb") as errors:
-                result = subprocess.run(command, cwd=cwd, env=env, stdout=stream,
-                                        stderr=errors, timeout=timeout, check=False)
+                result = subprocess.run(bounded, cwd=cwd, env=env, stdout=stream,
+                                        stderr=errors, check=False)
             step["exitCode"] = result.returncode
+            if result.returncode == 124:
+                raise subprocess.TimeoutExpired(command, timeout)
             if result.returncode:
                 raise subprocess.CalledProcessError(result.returncode, command)
             step["status"] = "passed"

@@ -94,7 +94,7 @@ Source-only fixture 不会凭词法颜色产生可靠类型身份；其 `source_
 
 CI workflow 的既有 `linux-acceptance` 与 `candidate-other`（Windows x64 / macOS arm64）在普通构建、源码身份与性能门之后，固定安装 Node.js **26.11.1**，执行 `scripts/highlight_ci.py`。新步骤没有 optional/continue-on-error 分支；它们失败时，既有 `CI required` 聚合门也失败。普通仓颉产品生成与读取产物不因此获得 Node 运行依赖。
 
-runner 首先重验当前 HEAD 的构建 manifest 与真实 main 摘要，然后只从该精确 commit 的 tracked Git archive 创建私有源码副本。公开取消宿主在副本内、独立 target-dir 下以现有 STS `-O1` wrapper 和已认证 static stdx 构建；显式 npm 安装、node_modules、构建脚本缓存及完整 harness 输出均留在磁盘上的私有 runner-temp 根，不污染原 checkout 或默认 target，也不放宽 source-input 门。
+runner 首先重验当前 HEAD 的构建 manifest 与真实 main 摘要，然后只从该精确 commit 的 tracked Git archive 创建私有源码副本。公开取消宿主在副本内、独立 target-dir 下以现有 STS `-O1` wrapper 和已认证 static stdx 构建；嵌套包装复用已记录的真实 cjpm，不能把外层 wrapper 再当真实工具递归调用。显式 npm 安装、node_modules、构建脚本缓存及完整 harness 输出均留在磁盘上的私有 runner-temp 根，不污染原 checkout 或默认 target，也不放宽 source-input 门。runner 各步骤复用既有 `run_with_timeout.py` 约束进程树，不仅终止超时步骤的直接 shell。
 
 公开 artifact 保存构建身份、固定版本与产物摘要，以及仅含固定步骤名、状态、reason code、退出码、超时秒数与耗时的结构化步骤记录。异常 repr、完整命令 argv 和原始 stdout/stderr 只留 runner 私有工作根，不上传或回显；不依赖跨平台路径替换来发布错误文本。命令 stdout 与 stderr 分别保存：HEAD、Node 版本等机器字段仅消费 stdout，SDK/动态加载器的 stderr 诊断保留但不混入身份解析，也不被过滤或丢弃。
 
