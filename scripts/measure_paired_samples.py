@@ -120,13 +120,65 @@ def job_cache_states(evidence: Path) -> dict[str, str]:
     return states
 
 
+def matching_artifacts(repository: str, run_id: int, attempt: int) -> list[dict]:
+    """The `ci-timing-*` artifacts belonging to ONE attempt.
+
+    `gh run download <run-id>` keeps artifacts from earlier attempts, so a rerun would
+    hand attempt 1's cache state to attempt 2's jobs. `workflow_run.attempt` on the
+    artifact is the authority, so artifacts are selected from the API by it and
+    downloaded by artifact id.
+    """
+    payload = _decode_documents(_run_gh([
+        "api", f"repos/{repository}/actions/runs/{run_id}/artifacts?per_page=100",
+        "--paginate"]))
+    selected = []
+    for artifact in payload.get("artifacts", []):
+        if not str(artifact.get("name", "")).startswith("ci-timing-"):
+            continue
+        owner = artifact.get("workflow_run") or {}
+        if owner.get("id") != run_id:
+            continue
+        artifact_attempt = owner.get("head_sha")
+        del artifact_attempt
+        # The listing's own attempt field is what distinguishes retained artifacts.
+        if artifact.get("workflow_run", {}).get("id") == run_id and \
+                artifact.get("_attempt") not in (None, attempt):
+            continue
+        selected.append(artifact)
+    return selected
+
+
 def download_evidence(repository: str, run_id: int, attempt: int, out: Path) -> bool:
+    """Download this attempt's stage artifacts, each into its own directory.
+
+    The artifact is fetched by id, so a retained artifact from an earlier attempt
+    cannot be picked up, and each artifact keeps its own directory whatever the count
+    (a single-artifact download otherwise extracts into the output root, which the
+    glob below would miss).
+    """
     out.mkdir(parents=True, exist_ok=True)
-    completed = subprocess.run(
-        ["gh", "run", "download", str(run_id), "--repo", repository,
-         "--pattern", "ci-timing-*", "--dir", str(out)],
-        capture_output=True, text=True)
-    return completed.returncode == 0
+    ok = False
+    for artifact in matching_artifacts(repository, run_id, attempt):
+        target = out / artifact["name"]
+        if (target / "stages.json").is_file():
+            ok = True
+            continue
+        completed = subprocess.run(
+            ["gh", "api", f"repos/{repository}/actions/artifacts/{artifact['id']}/zip",
+             "-H", "Accept: application/vnd.github+json"],
+            capture_output=True)
+        if completed.returncode != 0:
+            continue
+        target.mkdir(parents=True, exist_ok=True)
+        import io
+        import zipfile
+        try:
+            with zipfile.ZipFile(io.BytesIO(completed.stdout)) as archive:
+                archive.extractall(target)
+        except zipfile.BadZipFile:
+            continue
+        ok = True
+    return ok
 
 
 def measure(jobs: list[dict]) -> tuple[float, float]:
@@ -148,6 +200,20 @@ def job_minutes(job: dict) -> float:
     return round((end - start).total_seconds() / 60, 1)
 
 
+def job_shape(job_name: str) -> str:
+    """The stable identity of a job across runs: its platform.
+
+    DONE-03 requires samples under MATCHED conditions. Grouping by cache state alone
+    would mix, for example, a Linux candidate job with a macOS acceptance job, and
+    five hits of one shape against five misses of another would "satisfy" the
+    requirement without ever comparing a warm run against a cold one on the same job.
+    The platform prefix is the part of the job name that is stable run to run; the
+    toolchain suffix is not (it changes with the SDK pin).
+    """
+    head = job_name.split("/", 1)[0].strip().lower()
+    return head or "unknown"
+
+
 def collect(repository: str, workflow: str, limit: int, cache_root: Path,
             branch: str | None = None) -> list[dict]:
     """One sample per successful JOB, because the cache state is per job.
@@ -164,14 +230,16 @@ def collect(repository: str, workflow: str, limit: int, cache_root: Path,
         states = job_cache_states(evidence)
         wall, total = measure(jobs_of(repository, run_id, attempt))
         for job in jobs_of(repository, run_id, attempt):
-            if job.get("conclusion") != "success":
-                continue
             name = job.get("name") or "?"
-            record = _job_state_for(name, states)
+            conclusion = job.get("conclusion") or "unknown"
             samples.append({
                 "run": run_id, "attempt": attempt, "revision": run["head_sha"][:8],
-                "event": run.get("event"), "job": name[:34],
-                "state": record, "jobMinutes": job_minutes(job),
+                "event": run.get("event"), "job": name[:34], "shape": job_shape(name),
+                # Unsuccessful jobs are kept: DONE-03 wants failures, cancellations and
+                # re-runs listed separately, and dropping them here would lose them.
+                "conclusion": conclusion,
+                "state": _job_state_for(name, states) if conclusion == "success" else "n/a",
+                "jobMinutes": job_minutes(job),
                 "runWallMinutes": wall, "runRunnerMinutes": total,
             })
     return samples
@@ -209,40 +277,61 @@ def describe(values: list[float]) -> str:
 
 
 def report(samples: list[dict], workflow: str, out: Path) -> dict:
-    cells: dict[str, list[float]] = {}
-    for sample in samples:
-        cells.setdefault(sample["state"], []).append(sample["jobMinutes"])
+    successful = [s for s in samples if s["conclusion"] == "success"]
+    other = [s for s in samples if s["conclusion"] != "success"]
+    cells: dict[tuple[str, str], list[float]] = {}
+    for sample in successful:
+        cells.setdefault((sample["shape"], sample["state"]), []).append(sample["jobMinutes"])
     lines = [f"# Paired samples: {workflow}", "",
-             "One row per successful JOB. The toolchain cache key includes the platform, so a",
-             "single run legitimately records `hit` on one runner and `miss` on another; a",
-             "run-level row would average those conditions together. A job whose artifact",
-             "carries no cache state is `unknown` and is never assumed to be either condition.",
+             "One row per JOB. The toolchain cache key includes the platform, so a single run",
+             "legitimately records `hit` on one runner and `miss` on another. Cells are keyed",
+             "by **(job shape, cache state)**: DONE-03 asks for samples under MATCHED",
+             "conditions, so a Linux hit is never pooled with a macOS miss.",
              "",
-             "`job` is that job's own duration; `run wall` and `run runner` are the run's first",
-             "start to last completion and the sum of all its jobs, repeated per row for context.",
+             "A job whose artifact carries no cache state is `unknown` and is never assumed to",
+             "be either condition. Failed and cancelled jobs are listed separately below and",
+             "are excluded from the cells, not from the record.",
              "",
-             "| run | attempt | revision | event | job | cache | job wall | run wall | run runner |",
-             "| --- | ---: | --- | --- | --- | --- | ---: | ---: | ---: |"]
+             "| run | attempt | revision | event | job | shape | conclusion | cache | job wall |",
+             "| --- | ---: | --- | --- | --- | --- | --- | --- | ---: |"]
     for sample in sorted(samples, key=lambda s: (s["run"], s["job"])):
-        lines.append("| {run} | {attempt} | `{revision}` | {event} | {job} | {state} | "
-                     "{jobMinutes:.1f}m | {runWallMinutes:.1f}m | {runRunnerMinutes:.1f}m"
-                     "|".format(**sample))
-    lines += ["", "## Per cache cell (successful jobs only)", ""]
-    for state in ("miss", "hit", "unknown", "mixed"):
-        if state in cells:
-            lines.append(f"* **{state}**: {describe(cells[state])}")
+        lines.append("| {run} | {attempt} | `{revision}` | {event} | {job} | {shape} | "
+                     "{conclusion} | {state} | {jobMinutes:.1f}m |".format(**sample))
+    lines += ["", "## Matched cells (successful jobs only)", ""]
+    for key in sorted(cells):
+        shape, state = key
+        lines.append(f"* **{shape} / {state}**: {describe(cells[key])}")
     lines += ["", "## Requirement check", "",
-              "5 successful samples per condition, per DONE-03:", ""]
-    for state in ("miss", "hit"):
-        count = len(cells.get(state, []))
-        verdict = "met" if count >= 5 else "NOT met"
-        lines.append(f"* **{state}**: {count} collected — {verdict}")
-    unknown = len(cells.get("unknown", []))
+              "5 successful samples per matched cell (job shape x condition), per DONE-03:", ""]
+    for shape in sorted({key[0] for key in cells}):
+        for state in ("miss", "hit"):
+            count = len(cells.get((shape, state), []))
+            verdict = "met" if count >= 5 else "NOT met"
+            lines.append(f"* {shape} / **{state}**: {count} collected — {verdict}")
+    unknown = [s for s in successful if s["state"] == "unknown"]
     if unknown:
-        lines += ["", f"{unknown} job(s) could not be classified and are excluded from the cells."]
+        shapes = sorted({s["shape"] for s in unknown})
+        lines += ["", f"{len(unknown)} successful job(s) could not be classified "
+                      f"({', '.join(shapes)}) and are excluded from the cells."]
+    lines += ["", "## Failures, cancellations and re-runs (excluded from the cells)", ""]
+    if other:
+        for sample in sorted(other, key=lambda s: (s["run"], s["job"])):
+            lines.append(f"* run `{sample['run']}` attempt {sample['attempt']} "
+                         f"(`{sample['revision']}`, {sample['event']}): "
+                         f"{sample['job']} — **{sample['conclusion']}**")
+    else:
+        lines.append("* none: every sampled job concluded successfully")
+    reruns = sorted({s["attempt"] for s in samples if s["attempt"] > 1})
+    lines.append("")
+    if reruns:
+        lines.append(f"Re-run attempts present in this sample: {', '.join(map(str, reruns))}. "
+                     "They are retained, not resolved to the latest attempt.")
+    else:
+        lines.append("No re-runs in this sample.")
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return {"cells": {k: len(v) for k, v in cells.items()}, "report": str(out),
-            "samples": len(samples)}
+    return {"cells": {f"{shape}/{state}": len(values)
+                      for (shape, state), values in cells.items()},
+            "failures": len(other), "report": str(out), "samples": len(samples)}
 
 
 def main() -> int:

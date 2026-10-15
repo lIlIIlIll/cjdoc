@@ -445,3 +445,38 @@ class PairedSampleTests(unittest.TestCase):
             {"environment": {"cache": {"cjv": "miss"}}}]}), encoding="utf-8")
         self.assertEqual(paired.job_cache_states(self.root)["ci-timing-ci-linux-x64-1-1"],
                          "mixed")
+
+    def test_cells_are_keyed_by_job_shape_not_only_cache_state(self) -> None:
+        """A Linux hit must never be pooled with a macOS miss."""
+        samples = [
+            {"run": 1, "attempt": 1, "revision": "a" * 8, "event": "push", "job": "linux-x64 / Cangjie",
+             "shape": "linux-x64", "conclusion": "success", "state": "hit", "jobMinutes": 20.0,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+            {"run": 2, "attempt": 1, "revision": "b" * 8, "event": "push", "job": "macos-arm64 / Cangjie",
+             "shape": "macos-arm64", "conclusion": "success", "state": "miss", "jobMinutes": 10.0,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+        ]
+        out = self.root / "cells.md"
+        result = paired.report(samples, "ci.yml", out)
+        self.assertEqual(sorted(result["cells"]), ["linux-x64/hit", "macos-arm64/miss"])
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("linux-x64 / **hit**: 1 collected — NOT met", text)
+        self.assertIn("macos-arm64 / **miss**: 1 collected — NOT met", text)
+
+    def test_failed_jobs_are_listed_and_excluded_from_cells(self) -> None:
+        samples = [
+            {"run": 1, "attempt": 2, "revision": "c" * 8, "event": "push", "job": "linux-x64 / Cangjie",
+             "shape": "linux-x64", "conclusion": "failure", "state": "n/a", "jobMinutes": 5.0,
+             "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
+        ]
+        out = self.root / "failed.md"
+        result = paired.report(samples, "ci.yml", out)
+        self.assertEqual(result["cells"], {})
+        self.assertEqual(result["failures"], 1)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("**failure**", text)
+        self.assertIn("Re-run attempts present in this sample: 2", text)
+
+    def test_a_job_shape_is_stable_across_toolchain_pins(self) -> None:
+        self.assertEqual(paired.job_shape("linux-x64 / Cangjie 1.2.0 STS + stdx"), "linux-x64")
+        self.assertEqual(paired.job_shape("linux-x64 / Cangjie 2.0.0 STS + stdx"), "linux-x64")
