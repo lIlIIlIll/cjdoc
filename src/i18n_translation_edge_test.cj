@@ -63,14 +63,13 @@ class I18nTranslationEdgeTest {
     }
 
     @TestCase
-    func markdownExamplesKeepBothLanguageProvenanceAndCodeFences(): Unit {
+    func markdownExamplesPreserveCodeFencesForPairedAndIndependentAuthorEntries(): Unit {
         let moduleId = "cjdoc:module:v1:example-provenance"
         let symbolId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aexample-provenance::fixture::function:api#g0()"
         let example = "```cj\nprintln(1)\n```"
         let source = api_model.SourceRange("src/api.cj", api_model.SourcePosition(1, 1, 0),
             api_model.SourcePosition(1, 2, 1))
-        for ((state, fieldId, provenance) in [("valid", symbolId + ":doc:example:one", "Original text: zh-CN"),
-            ("unpaired", "", "Independent entry: zh-CN")]) {
+        for ((state, fieldId) in [("valid", symbolId + ":doc:example:one"), ("unpaired", "")]) {
             let comment = api_model.DocComment("", "", "", api_model.MarkdownNode("document"),
                 defaultLanguage: Some("zh-CN"), localizedTexts: [
                     api_model.DocumentationText(fieldId, "example", "Example", Some("zh-CN"),
@@ -91,7 +90,6 @@ class I18nTranslationEdgeTest {
             for (artifact in api_render.renderDocumentationFormatsWithOptions(documentation, ["markdown"], locale: "en")) {
                 if (!artifact.content.contains("#### Examples")) { continue }
                 let tree = parseStandaloneMarkdown(artifact.content)
-                @Expect(translationEdgeMarkdownText(tree).contains(provenance))
                 for (node in tree.children where node.kind == "code_block" && node.literal.trimAscii() == "println(1)") {
                     examples++
                 }

@@ -78,23 +78,6 @@ internal func renderHtmlIndex(documentation: DocumentationSet, projection: Rende
     out.toString()
 }
 
-internal func appendDeclarationRow(out: RenderTextBuffer, symbol: SymbolDoc,
-    rootPrefix: String, locale!: String = "en"): Unit {
-    out.append("<article class=\"declaration-summary\" data-cjdoc-member data-member-name=\"${escapeHtml(symbol.name)}\" data-member-kind=\"${escapeHtml(symbol.kind)}\"><a class=\"declaration-row-link\" href=\"${rootPrefix}${escapeHtml(symbolPagePath(symbol))}\">")
-    out.append("<div class=\"declaration-summary-head\"><code>${escapeHtml(readerSymbolName(symbol))}</code><span class=\"declaration-kind\">${escapeHtml(htmlKindLabel(symbol.kind, locale))}</span></div>")
-    match (symbol.documentation) {
-        case Some(comment) =>
-            let summary = summaryPlainText(comment)
-            if (!summary.isEmpty()) { out.append("<p>"); out.append(escapeHtml(summary)); out.append("</p>") }
-        case None => ()
-    }
-    if (!symbol.headerSpelling.isEmpty()) {
-        out.append("<code class=\"declaration-signature\">")
-        appendSignatureTextHtml(out, symbol)
-        out.append("</code>")
-    }
-    out.append("</a></article>\n")
-}
 
 public func renderUtilityHtmlPage(documentation: DocumentationSet, title: String, body: String,
     rootPrefix: String, locale!: String = "en", docVersion!: ?String = None): String {
@@ -149,7 +132,7 @@ public func renderConceptualHtmlPage(documentation: DocumentationSet, title: Str
 }
 
 internal func renderPackagePage(documentation: DocumentationSet, projection: RenderProjection,
-    index: HashMap<String, SymbolDoc>, topLevelByPackage: HashMap<String, ArrayList<SymbolDoc>>,
+    index: HashMap<String, SymbolDoc>, typeLinkIndex: HtmlTypeLinkIndex,
     pkg: ProjectedPackage, locale!: String = "en", docVersion!: ?String = None): String {
     let packageDoc = pkg.source
     let out = RenderTextBuffer()
@@ -161,49 +144,10 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
     out.append("<header class=\"page-header\"><h1>${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></h1></header>\n")
     out.append("<h2 id=\"declarations\">${label(locale, "Declarations", "声明")}</h2>\n")
     var wroteDeclaration = false
-    match (topLevelByPackage.get(routeKey(packageDoc.moduleId, packageDoc.name))) {
-        case Some(symbols) => for (category in ["class", "struct", "interface", "enum", "typeAlias", "function", "property", "variable", "extend", "other"]) {
-            var opened = false
-            for (symbol in symbols) {
-                let symbolCategory = match (symbol.kind) {
-                    case "class" | "struct" | "interface" | "enum" | "typeAlias" |
-                        "function" | "property" | "variable" | "extend" => symbol.kind
-                    case _ => "other"
-                }
-                if (symbolCategory != category) { continue }
-                if (!opened) {
-                    let groupId = match (category) {
-                        case "class" => "classes"
-                        case "struct" => "structs"
-                        case "interface" => "interfaces"
-                        case "enum" => "enums"
-                        case "typeAlias" => "aliases"
-                        case "function" => "functions"
-                        case "property" => "properties"
-                        case "variable" => "variables"
-                        case "extend" => "extensions"
-                        case _ => "others"
-                    }
-                    let heading = match (category) {
-                        case "class" => label(locale, "Classes", "类")
-                        case "struct" => label(locale, "Structs", "结构体")
-                        case "interface" => label(locale, "Interfaces", "接口")
-                        case "enum" => label(locale, "Enums", "枚举")
-                        case "typeAlias" => label(locale, "Type aliases", "类型别名")
-                        case "function" => label(locale, "Functions", "函数")
-                        case "property" => label(locale, "Properties", "属性")
-                        case "variable" => label(locale, "Variables", "变量")
-                        case "extend" => label(locale, "Extensions", "扩展")
-                        case _ => label(locale, "Other declarations", "其他声明")
-                    }
-                    out.append("<section class=\"declaration-group\"><h2 id=\"${groupId}\" data-cjdoc-toc-role=\"group\">${heading}</h2><div class=\"declaration-list\">")
-                    opened = true
-                }
-                wroteDeclaration = true
-                appendDeclarationRow(out, symbol, "../", locale: locale)
-            }
-            if (opened) { out.append("</div></section>\n") }
-        }
+    match (projection.topLevelByPackage.get(routeKey(packageDoc.moduleId, packageDoc.name))) {
+        case Some(symbols) =>
+            appendPackageDeclarationGroups(out, symbols, typeLinkIndex, locale)
+            wroteDeclaration = !symbols.isEmpty()
         case None => ()
     }
     if (!wroteDeclaration) { out.append("<p class=\"empty-state\">${label(locale, "No declarations are visible for this audience.", "此受众范围内没有直接声明。")}</p>\n") }

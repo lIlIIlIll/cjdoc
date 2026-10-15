@@ -567,6 +567,57 @@ test.describe('generated HTML reference', () => {
     await expect(packageFilter).not.toHaveValue('');
   });
 
+  test('package rows expose generic identity and projected counts', async ({ page }) => {
+    await openIndex(page);
+    const packageHref = await page.locator('.package-index a').first().getAttribute('href');
+    const packageUrl = new URL(packageHref, indexUrl).href;
+    await gotoFile(page, packageUrl);
+    const row = page.locator('article[data-member-name="ReferenceBox"][data-member-kind="class"]');
+    await expect(row.locator('.declaration-summary-head code')).toHaveText('ReferenceBox<T>');
+    await expect(row.locator('.declaration-signature')).toHaveText('public class ReferenceBox<T>');
+    await expect(row.locator('.declaration-kind')).toHaveCount(0);
+    await expect(row.locator('p')).toHaveCount(0);
+    await expect(page.locator('#classes')).toHaveText('Classes (2)');
+    const overloads = page.locator('article[data-member-name="packageOperation"]');
+    await expect(overloads).toHaveCount(2);
+    const signatures = await overloads.locator('.declaration-signature').allTextContents();
+    expect(signatures[0]).not.toBe(signatures[1]);
+    await expect(overloads.filter({hasText: 'SourceValue'}).locator('.declaration-summary-head code')).toHaveText(
+      'packageOperation<SourceValue, DestinationValue>');
+    await expect(overloads.filter({hasText: 'value!: Int64'}).locator('.declaration-signature')).toHaveText(
+      'public func packageOperation(value!: Int64 = 42): Unit');
+    expect(await page.locator('article a a').count()).toBe(0);
+    const href = await row.locator('.declaration-row-link').getAttribute('href');
+    await row.locator('.declaration-row-link').focus();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Shift+Tab');
+    await expect(row.locator('.declaration-row-link')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(new URL(href, packageUrl).href);
+    for (const viewport of [{width: 1440, height: 900}, {width: 1024, height: 768}, {width: 390, height: 844}]) {
+      await page.setViewportSize(viewport);
+      await gotoFile(page, packageUrl);
+      const metrics = await page.evaluate(() => ({
+        width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth,
+        signatures: [...document.querySelectorAll('article .declaration-signature')].every(node => {
+          const style = getComputedStyle(node);
+          return style.overflow !== 'hidden' && node.scrollWidth <= node.clientWidth + 1;
+        }),
+      }));
+      const descriptions = await overloads.locator('p').evaluateAll(nodes => nodes.map(node => ({
+        height: node.clientHeight, line: parseFloat(getComputedStyle(node).lineHeight),
+        clipped: node.scrollHeight > node.clientHeight,
+      })));
+      for (const description of descriptions) {
+        expect(description.height).toBeLessThanOrEqual(description.line * 2 + 1);
+        expect(description.clipped).toBe(true);
+      }
+      expect(metrics.scroll).toBeLessThanOrEqual(metrics.width + 1);
+      expect(metrics.signatures).toBe(true);
+    }
+    await expectStable(page);
+  });
+
   test('conceptual pages share the shell and work without search', async ({ page }) => {
     await openIndex(page);
     const conceptUrl = new URL('concepts/index.html', indexUrl).href;

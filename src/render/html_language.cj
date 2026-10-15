@@ -12,7 +12,8 @@ internal func contentLanguageLabel(tag: DocTag, locale: String): String {
         case "empty" => label(locale, "Translation is empty", "译文为空")
         case "conflict" => label(locale, "Translation conflict", "译文冲突")
         case "missing" => label(locale, "Translation missing", "翻译缺失")
-        case "unpaired" => label(locale, "Independent entry: ", "独立条目：") + language
+        case "unpaired" => if (tag.contentLanguage == Some(locale)) { "" }
+            else { label(locale, "Original text: ", "原文：") + language }
         case "unknown" => language
         case _ => language
     }
@@ -20,9 +21,11 @@ internal func contentLanguageLabel(tag: DocTag, locale: String): String {
 
 internal func appendContentLanguageHtml(out: RenderTextBuffer, tag: DocTag, locale: String): Unit {
     if (tag.translationState.isEmpty()) { return }
+    let text = contentLanguageLabel(tag, locale)
     out.append("<span class=\"content-language\" data-translation-state=\"" + escapeHtml(tag.translationState) + "\"")
+    if (text.isEmpty()) { out.append(" hidden") }
     if (let Some(value) <- tag.contentLanguage) { out.append(" lang=\"" + value + "\"") }
-    out.append(">" + escapeHtml(contentLanguageLabel(tag, locale)) + "</span>")
+    out.append(">" + escapeHtml(text) + "</span>")
 }
 
 internal func appendDocumentationTagHtml(out: RenderTextBuffer, tag: DocTag,
@@ -48,6 +51,23 @@ internal let LANGUAGE_NAVIGATION_SCRIPT = """
 (() => {
   const links = [...document.querySelectorAll('[data-language-routes]')];
   if (!links.length) return;
+  const switcher = document.querySelector('details.language-switcher');
+  if (switcher) {
+    const toggle = switcher.querySelector('.language-label');
+    document.addEventListener('click', event => {
+      if (!switcher.contains(event.target)) switcher.open = false;
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && switcher.open) {
+        switcher.open = false;
+        toggle?.focus();
+        event.preventDefault();
+      }
+    });
+    switcher.addEventListener('click', event => {
+      if (event.target instanceof Element && event.target.closest('a')) switcher.open = false;
+    });
+  }
   const update = () => {
     let anchor = location.hash.slice(1);
     try { anchor = decodeURIComponent(anchor); } catch (_) {}
@@ -75,7 +95,18 @@ internal let LANGUAGE_NAVIGATION_SCRIPT = """
 internal let HTML_LANGUAGE_STYLE = """
 .content-language{display:inline-block;font-size:.75rem;color:var(--muted);margin:.15rem .5rem .35rem 0}
 .content-language[data-translation-state="complete"]{display:none}
+.content-language[hidden]{display:none}
 .content-language[data-translation-state="fallback"],.content-language[data-translation-state="missing"],.content-language[data-translation-state="unpaired"]{border-inline-start:2px solid currentColor;padding-inline-start:.5rem}
-.language-switcher{display:flex;gap:.6rem;flex-wrap:wrap;margin-block:.8rem}
-.language-switcher [aria-current="page"]{font-weight:700;text-decoration-thickness:2px}
+.site-nav .top-actions{position:relative}
+.language-switcher{position:static;flex:0 0 auto;margin:0}
+.language-switcher>.language-label{display:flex;align-items:center;gap:.35rem;min-height:36px;padding:0 .6rem;list-style:none;cursor:pointer;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface);color:var(--muted);font-size:.78rem;white-space:nowrap}
+.language-label::-webkit-details-marker{display:none}
+.language-switcher>.language-label:hover,.language-switcher[open]>.language-label{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.language-label:focus-visible,.language-options a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.language-label svg{flex-shrink:0}
+.language-switcher[open]>.language-label svg{transform:rotate(180deg)}
+.language-options{position:absolute;z-index:50;top:calc(100% + .45rem);right:0;display:grid;min-width:10rem;padding:.4rem;border:1px solid var(--line-strong);border-radius:7px;background:var(--surface-raised);box-shadow:var(--shadow)}
+.language-options a{display:block;padding:.4rem .6rem;border-radius:5px;color:var(--muted);font-size:.82rem;white-space:nowrap}
+.language-options a:hover{background:var(--accent-soft);color:var(--ink);text-decoration:none}
+.language-options [aria-current="page"]{background:var(--surface-subtle);color:var(--accent-strong);font-weight:700}
 """

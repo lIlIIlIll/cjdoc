@@ -23,7 +23,6 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
             pages: selectedDocumentationPages(documentation, locale))
         let assetLookup = buildAssetLookup(projectedAssets)
         validateHtmlRouting(projection, projectedAssets)
-        let topLevelByPackage = groupTopLevelByPackage(projection)
         let searchIndex = renderSearchIndex(documentation, projection, locale: locale)
         let searchSignatures = renderSearchSignatureIndex(documentation, projection)
         artifacts.addText("html/index.html", "text/html; charset=utf-8",
@@ -44,7 +43,7 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         for (pkg in projection.packages) {
             artifacts.addText("html/${packagePagePath(pkg.source.moduleId, pkg.source.name)}",
                 "text/html; charset=utf-8",
-                renderPackagePage(documentation, projection, index, topLevelByPackage, pkg, locale: locale, docVersion: docVersion))
+                renderPackagePage(documentation, projection, index, typeLinkIndex, pkg, locale: locale, docVersion: docVersion))
         }
         for (symbol in projection.visibleSymbols) {
             artifacts.addText("html/${symbolReadablePagePath(symbol)}", "text/html; charset=utf-8",

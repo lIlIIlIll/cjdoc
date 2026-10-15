@@ -22,6 +22,10 @@ target/doc/markdown/index.md
 打开 `target/doc/html/index.html` 就能查看 HTML 站点。它是静态文件，不需要启动服务器。
 代码高亮的语言、配置、离线适配器与安全边界见 [`docs/research/highlighting.md`](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/research/highlighting.md)（面向维护者）。
 
+包页按声明种类分组，标题中的数量只统计当前 audience/cfg 下可见的直接声明。列表名称使用 Doc IR 中的泛型参数显示 `Entry<T>`、`Map<K, V>` 等身份；模型未提供参数时保留名称，不从签名猜测。扩展仍显示被扩展目标，不冒充新的类型定义。
+
+短签名与名称并排，长签名自动换行；完整原始签名、默认值、高亮与已解析类型链接均保留。摘要最多显示两行，超出时显示省略提示，点击整行或通过 Tab、Enter 打开详情阅读全文。类型链接可独立点击和获得键盘焦点。同质分组不重复显示种类标签，同名跨种类声明和“其他声明”保留标签以区分身份。
+
 ## GitHub 源码链接与 HTML 站点
 
 生成源码链接需要显式提供 canonical GitHub HTTPS 仓库根、revision 和可选仓库根目录：

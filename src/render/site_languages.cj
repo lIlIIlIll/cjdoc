@@ -10,6 +10,21 @@ internal func languagePageIdentity(documentation: DocumentationSet, route: Strin
     route
 }
 
+private func appendLanguageSwitcherStart(out: RenderTextBuffer, locale: String): Unit {
+    let current = if (locale == "zh-CN") { "中文" } else { "English" }
+    let title = label(locale, "Documentation language", "文档语言")
+    out.append("<details class=\"language-switcher\"><summary class=\"language-label\" aria-label=\"" + title + ": " + current + "\">" + current)
+    out.append("<svg width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" aria-hidden=\"true\"><path d=\"m3 4.5 3 3 3-3\"/></svg></summary>")
+    out.append("<nav class=\"language-options\" aria-label=\"" + title + "\">")
+}
+
+private func replaceLanguageLabel(content: String, locale: String, switcher: String): String {
+    let placeholder = "<span class=\"language-label\" lang=\"" + escapeHtml(locale) + "\">" +
+        label(locale, "English", "中文") + "</span>"
+    content.replace(placeholder, switcher)
+}
+
+
 internal func renderAllDocumentationLanguages(documentation: DocumentationSet, formats: Array<String>,
     version: ?String, evidence: HashMap<String, String>): Array<RenderArtifact> {
     let options = match (documentation.languageOptions) {
@@ -55,7 +70,7 @@ internal func renderAllDocumentationLanguages(documentation: DocumentationSet, f
                 let route = parts[1]
                 let identity = languagePageIdentity(documentation, route, language)
                 let nav = RenderTextBuffer()
-                nav.append("<nav class=\"language-switcher\" aria-label=\"" + label(language, "Documentation language", "文档语言") + "\">")
+                appendLanguageSwitcherStart(nav, language)
                 for (target in options.languages) {
                     let same = routes.get(target + ":" + identity)
                     let destination = same.getOrDefault({ => "index.html" })
@@ -66,8 +81,8 @@ internal func renderAllDocumentationLanguages(documentation: DocumentationSet, f
                     if (same.isNone()) { nav.append(" data-switch-state=\"language-home\" title=\"" + label(language, "This page is unavailable; open the language home", "该语言无此页面，打开语言首页") + "\"") }
                     nav.append(">" + if (target == "zh-CN") { "中文" } else { "English" } + "</a>")
                 }
-                nav.append("</nav>")
-                content = content.replace("<div class=\"content-column\">", "<div class=\"content-column\">" + nav.toString())
+                nav.append("</nav></details>")
+                content = replaceLanguageLabel(content, language, nav.toString())
             }
             if (artifact.isBinary) { artifacts.addOwnedBytes(path, artifact.mediaType, artifact.bytes) }
             else { artifacts.addText(path, artifact.mediaType, content) }
@@ -118,14 +133,14 @@ public func finalizeDocumentationLanguageArtifacts(documentation: DocumentationS
         if (artifact.path == "site-manifest.json") { continue }
         var content = artifact.content
         if (artifact.path.endsWith(".html") && content.contains("id=\"cjdoc-main\"") &&
-            !content.contains("<nav class=\"language-switcher\"")) {
+            !content.contains("class=\"language-switcher\"")) {
             for (language in languages) {
                 let prefix = "html/" + language + "/"
                 if (!artifact.path.startsWith(prefix)) { continue }
                 let route = artifact.path.removePrefix(prefix)
                 let identity = languagePageIdentity(documentation, route, language)
                 let nav = RenderTextBuffer()
-                nav.append("<nav class=\"language-switcher\" aria-label=\"" + label(language, "Documentation language", "文档语言") + "\">")
+                appendLanguageSwitcherStart(nav, language)
                 for (target in languages) {
                     if (let Some(destination) <- routes.get(target + ":" + identity)) {
                         let href = pageRootPrefix(route) + "../" + target + "/" + destination
@@ -135,8 +150,8 @@ public func finalizeDocumentationLanguageArtifacts(documentation: DocumentationS
                         nav.append(">" + if (target == "zh-CN") { "中文" } else { "English" } + "</a>")
                     }
                 }
-                nav.append("</nav>")
-                content = content.replace("<div class=\"content-column\">", "<div class=\"content-column\">" + nav.toString())
+                nav.append("</nav></details>")
+                content = replaceLanguageLabel(content, language, nav.toString())
             }
         }
         if (artifact.isBinary) { artifacts.addOwnedBytes(artifact.path, artifact.mediaType, artifact.bytes) }

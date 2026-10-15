@@ -61,6 +61,7 @@ for (const scenario of [
       const detail = page.locator(`details[id="${context.href.split('#')[1]}"]`);
       await expect(detail).toHaveJSProperty('open', true);
       await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
+      await page.locator('.site-nav .language-label').press('Enter');
       const english = page.locator('.language-switcher a[hreflang="en"]');
       await expect(english).toHaveAttribute('href', new RegExp(translated.href.split('#')[1] + '$'));
       await english.focus();
@@ -82,6 +83,28 @@ for (const scenario of [
     });
   });
 }
+
+test('current language is the header toggle, with keyboard and outside dismissal', async ({ page }) => {
+  await page.goto(base + 'html/zh-CN/index.html');
+  const switcher = page.locator('.site-nav .top-actions > .language-switcher');
+  const toggle = switcher.locator('.language-label');
+  await expect(toggle).toHaveText('中文');
+  await expect(page.locator('.site-nav .language-label')).toHaveCount(1);
+  await expect(page.locator('main .language-switcher')).toHaveCount(0);
+  await expect(switcher).toHaveJSProperty('open', false);
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  await expect(switcher).toHaveJSProperty('open', true);
+  await expect(switcher.locator('a[hreflang="en"]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(switcher).toHaveJSProperty('open', false);
+  await expect(toggle).toBeFocused();
+  await toggle.click();
+  await expect(switcher.locator('a[hreflang="zh-CN"]')).toHaveAttribute('aria-current', 'page');
+  await page.locator('main h1').click();
+  await expect(switcher).toHaveJSProperty('open', false);
+});
+
 
 test('search English author text, read the fallback and follow the guide binding', async ({ page }) => {
   await page.goto(base + 'html/en/index.html');
@@ -106,6 +129,7 @@ test('guide section identity survives translated headings', async ({ page }) => 
   const source = manifest.routes.find(x => x.language === 'zh-CN' && x.pageId === guidePageId && x.sectionId === 'usage');
   const target = manifest.routes.find(x => x.language === 'en' && x.pageId === guidePageId && x.sectionId === 'usage');
   await page.goto(base + source.href);
+  await page.locator('.language-label').click();
   await page.locator('.language-switcher a[hreflang="en"]').click();
   expect(decodeURIComponent(page.url())).toContain(target.href);
   await expect(page.getByRole('heading', { name: 'Usage', exact: true })).toBeVisible();
@@ -115,6 +139,7 @@ test('a missing translated chapter falls back to the same guide with an explicit
   const source = manifest.routes.find(x => x.language === 'zh-CN' && x.pageId === guidePageId && x.sectionId === 'advanced');
   await page.goto(base + source.href);
   await expect(page.getByRole('heading', { name: '高级用法', exact: true })).toBeVisible();
+  await page.locator('.language-label').click();
   const english = page.locator('.language-switcher a[hreflang="en"]');
   await expect(english).toHaveAttribute('data-position-state', 'page-start');
   await expect(english).toHaveAttribute('title', '该语言没有对应章节，打开同一页面的开头');
@@ -125,6 +150,7 @@ test('a missing translated chapter falls back to the same guide with an explicit
 
 test('Ctrl or Command click opens the exact overload and parameter in a new tab', async ({ page, context: browserContext }) => {
   await page.goto(base + parameter.href);
+  await page.locator('.language-label').click();
   const english = page.locator('.language-switcher a[hreflang="en"]');
   await expect(english).toHaveAttribute('href', new RegExp(translated.href.split('#')[1] + '$'));
   const [opened] = await Promise.all([
@@ -143,6 +169,7 @@ test.describe('static offline reading', () => {
   test('read authored text and switch language using a real file link', async ({ page }) => {
     await page.goto(destination('file', 'html/zh-CN/concepts/guides/start.html'));
     await expect(page.getByText('这份指南演示双语算术 API。')).toBeVisible();
+    await page.locator('.language-label').click();
     await page.locator('.language-switcher a[hreflang="en"]').click();
     await expect(page.getByText('This guide demonstrates the bilingual arithmetic API.')).toBeVisible();
   });
@@ -163,6 +190,7 @@ for (const mode of ['file', 'http']) {
       await expect(link).toHaveAttribute('href', `#${memberId}`);
       await link.click();
       await expect(page.locator(`details[id="${memberId}"]`)).toHaveJSProperty('open', true);
+      await page.locator('.language-label').click();
       const english = page.locator('.language-switcher a[hreflang="en"]');
       await expect(english).toHaveAttribute('data-position-state', 'mapped');
       await english.click();
