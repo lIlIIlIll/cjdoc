@@ -23,6 +23,7 @@ import argparse
 import datetime as dt
 import json
 from pathlib import Path
+import shlex
 import statistics
 import subprocess
 import urllib.parse
@@ -88,19 +89,21 @@ def workflow_runs(repository: str, workflow: str, limit: int, branch: str | None
     # `per_page` budget with queued and running runs, so `--limit` would return fewer
     # samples than it promises. No `--paginate` either: one page is enough for
     # `limit <= 100` and pagination would fetch the whole workflow history first.
-    params = [f"per_page={min(limit, 100)}", "status=completed"]
+    # One page is the budget, and a larger `--limit` is REFUSED rather than paginated:
+    # `--paginate` fetches the workflow's whole history before the slice, which on a
+    # long-lived workflow is thousands of requests for a sample set of dozens. The
+    # caller can raise this deliberately once there is a reason to.
+    if limit > 100:
+        raise SystemExit("measure_paired_samples.py: --limit above 100 would paginate the "
+                         "workflow's entire history; request at most 100 runs")
+    params = [f"per_page={limit}", "status=completed"]
     if branch:
         # Percent-encoded: a valid ref may contain characters that end or alter the
         # query (`feature/a&b`, `release#1`), which would silently select other runs.
         params.append("branch=" + urllib.parse.quote(branch, safe=""))
     query = (f"repos/{repository}/actions/workflows/{match['id']}/runs?"
              + "&".join(params))
-    # Pagination is requested only when the caller asks for more than one page; a
-    # `--limit` above the page size would otherwise silently return at most 100 runs
-    # and miss the older samples it was asked for, while the default would fetch the
-    # whole history to look at a handful of runs.
-    args = ["api", query] + (["--paginate"] if limit > 100 else [])
-    payload = _decode_documents(_run_gh(args))
+    payload = _decode_documents(_run_gh(["api", query]))
     runs = payload.get("workflow_runs", []) if isinstance(payload, dict) else []
     return [run for run in runs if run.get("status") == "completed"][:limit]
 
@@ -251,6 +254,7 @@ def collect(repository: str, workflow: str, limit: int, cache_root: Path,
     mixes conditions across platforms, so a run-level row would average them away.
     """
     samples: list[dict] = []
+    acquisition_failures: list[dict] = []
     for run in workflow_runs(repository, workflow, limit, branch):
         run_id = run["id"]
         latest = run.get("run_attempt", 1)
@@ -260,24 +264,34 @@ def collect(repository: str, workflow: str, limit: int, cache_root: Path,
         seen_job_keys: set[tuple[str | None, str | None]] = set()
         for attempt in range(1, latest + 1):
             produced, observed = _attempt_samples(repository, run, run_id, attempt,
-                                                  cache_root, seen_job_keys)
+                                                  cache_root, seen_job_keys,
+                                                  acquisition_failures)
             samples.extend(produced)
             # Every job OBSERVED in this attempt, not only the ones kept: a job the engine
             # genuinely re-ran under the same name has a new started_at, so it is not
             # suppressed, while a carried-forward one has the old started_at and is.
             seen_job_keys |= observed
+    if acquisition_failures:
+        # Carried to `report` so a partial collection is stated rather than silently
+        # producing `unknown` jobs and an apparently unmet requirement.
+        samples.append({"_acquisitionFailures": acquisition_failures})
     return samples
 
 
 def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
-                     cache_root: Path, earlier: set[tuple[str | None, str | None]]) -> tuple[list[dict],
-                                                                           set[tuple[str | None,
-                                                                                     str | None]]]:
+                     cache_root: Path, earlier: set[tuple[str | None, str | None]],
+    acquisition_failures: list[dict]) -> tuple[list[dict],
+                                               set[tuple[str | None, str | None]]]:
     # Called unconditionally: it skips artifact directories that are already complete
     # and retries the rest, so an interrupted or partially failed download does not
     # leave those jobs `unknown` until someone deletes the cache by hand.
     evidence = cache_root / f"{run_id}-{attempt}"
-    download_evidence(repository, run_id, attempt, evidence)
+    acquired = download_evidence(repository, run_id, attempt, evidence)
+    if not acquired and not any(evidence.glob("*/stages.json")):
+        # Reported, not swallowed: without stages.json every job of this attempt would
+        # silently be `unknown` and drop out of its matched cell, so the report could
+        # claim a requirement unmet while collection actually failed.
+        acquisition_failures.append({"run": run_id, "attempt": attempt})
     states = job_cache_states(evidence)
     conditions = job_conditions(evidence)
     # `Re-run failed jobs` executes only the failed jobs and their dependents; the
@@ -379,6 +393,10 @@ def _job_condition_for(job_name: str, conditions: dict[str, str]) -> str:
 
 def report(samples: list[dict], workflow: str, out: Path,
            provenance: str | None = None) -> dict:
+    # `collect` may attach the acquisition failures; they are not samples.
+    acquisition_failures = [s["_acquisitionFailures"] for s in samples
+                            if "_acquisitionFailures" in s]
+    samples = [s for s in samples if "_acquisitionFailures" not in s]
     successful = [s for s in samples if s["conclusion"] == "success"]
     other = [s for s in samples if s["conclusion"] != "success"]
     # Only classified states form cells and requirements. A job with no timing
@@ -454,20 +472,40 @@ def report(samples: list[dict], workflow: str, out: Path,
     requirement_shapes |= {key[0] for key in cells}
     lines += ["", "## Requirement check", "",
               "5 successful samples per matched cell (job shape x condition), per DONE-03:", ""]
-    requirement_keys = set(cells)
-    for shape, state in sorted({(key[0], key[1]) for key in requirement_keys} |
-                               {(shape, state) for shape in requirement_shapes
-                                for state in CLASSIFIED_STATES}):
-        counts = sorted(((key[2], len(values)) for key, values in cells.items()
-                         if key[0] == shape and key[1] == state), reverse=True)
-        if not counts:
-            lines.append(f"* {shape} / **{state}**: 0 collected — NOT met "
-                         "(no sample under any matched condition)")
+    # A requirement is (shape, condition), and BOTH conditions must be shown for each.
+    # Iterating the observed (shape, state) pairs would print "5 hits under condition A"
+    # and "5 misses under condition B" as two met rows while no single matched condition
+    # had both -- which is exactly what DONE-03's paired comparison forbids.
+    conditions_by_shape: dict[str, set[str]] = {}
+    for (shape, _state, condition), _values in cells.items():
+        conditions_by_shape.setdefault(shape, set()).add(condition)
+    for sample in successful:
+        if job_artifact_stem(sample["job"]) is not None:
+            conditions_by_shape.setdefault(sample["shape"], set()).add(
+                sample.get("condition", ""))
+    # A cache-bearing shape with no successful sample at all still appears, so a
+    # platform that only ever failed cannot vanish from the requirement section.
+    for shape in requirement_shapes:
+        conditions_by_shape.setdefault(shape, set())
+    for shape in sorted(conditions_by_shape):
+        conditions = conditions_by_shape[shape]
+        if not conditions:
+            for state in ("miss", "hit"):
+                lines.append(f"* {shape} / **{state}**: 0 collected — NOT met "
+                             "(no successful sample under any matched condition)")
             continue
-        for condition, count in counts:
-            verdict = "met" if count >= 5 else "NOT met"
-            lines.append(f"* {shape} / **{state}** (conditions `{condition}`): "
-                         f"{count} collected — {verdict}")
+        for condition in sorted(conditions):
+            label = f"`{condition}`" if condition else "(condition not recorded)"
+            for state in ("miss", "hit"):
+                count = len(cells.get((shape, state, condition), []))
+                verdict = "met" if count >= 5 else "NOT met"
+                lines.append(f"* {shape} / **{state}** {label}: {count} collected — "
+                             f"{verdict}")
+            paired = min(len(cells.get((shape, "miss", condition), [])),
+                         len(cells.get((shape, "hit", condition), [])))
+            paired_verdict = "met" if paired >= 5 else "NOT met"
+            lines.append(f"  * paired samples under this condition: {paired} — "
+                         f"{paired_verdict}")
     unclassified = [s for s in successful if s["state"] not in CLASSIFIED_STATES]
     if unclassified:
         never = sorted({s["shape"] for s in unclassified
@@ -485,6 +523,15 @@ def report(samples: list[dict], workflow: str, out: Path,
                          "from artifacts that expired -- so they remain requirements showing "
                          "as 0 collected above rather than disappearing.")
         lines += ["", " ".join(parts)]
+    if acquisition_failures:
+        flat = [item for group in acquisition_failures for item in group]
+        lines += ["", "## Evidence that could not be collected", "",
+                  f"{len(flat)} run attempt(s) yielded no stage evidence, so their jobs are",
+                  "absent from the cells above and the requirement counts are a lower bound:",
+                  ""]
+        for item in flat:
+            lines.append(f"* run `{item['run']}` attempt {item['attempt']}: no artifact "
+                         "downloaded")
     lines += ["", "## Failures, cancellations and re-runs (excluded from the cells)", ""]
     if other:
         for sample in sorted(other, key=lambda s: (s["run"], s["job"])):
@@ -501,8 +548,14 @@ def report(samples: list[dict], workflow: str, out: Path,
     else:
         lines.append("No re-runs in this sample.")
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    paired = {}
+    for shape, _state, condition in cells:
+        key = f"{shape}|{condition}"
+        paired[key] = min(len(cells.get((shape, "miss", condition), [])),
+                          len(cells.get((shape, "hit", condition), [])))
     return {"cells": {f"{shape}/{state}|{condition}": len(values)
                       for (shape, state, condition), values in cells.items()},
+            "pairedPerCondition": paired,
             "failures": len(other), "report": str(out), "samples": len(samples),
             "runs": {f"{run_id}/{attempt}": {"wallMinutes": value[0],
                                              "runnerMinutes": value[1]}
@@ -527,12 +580,16 @@ def main() -> int:
                       args.branch)
     if not samples:
         raise SystemExit("measure_paired_samples.py: no completed runs found")
-    provenance = ("Generated by `python3 scripts/measure_paired_samples.py "
-                  f"--repository {args.repository} --workflow {args.workflow} "
-                  f"--branch {args.branch} --limit {args.limit} "
-                  f"--cache-root {args.cache_root} --out {args.out}`. "
-                  "Point-in-time capture: regenerate with that command rather than "
-                  "editing this file.")
+    # Quoted with shlex: a workflow name may contain spaces ("Build Linux candidate")
+    # and a path may too, and an unquoted rendering would split into extra arguments and
+    # fail when copied.
+    command = " ".join(shlex.quote(part) for part in (
+        "python3", "scripts/measure_paired_samples.py",
+        "--repository", args.repository, "--workflow", args.workflow,
+        "--branch", str(args.branch), "--limit", str(args.limit),
+        "--cache-root", str(args.cache_root), "--out", str(args.out)))
+    provenance = (f"Generated by `{command}`. Point-in-time capture: regenerate with that "
+                  "command rather than editing this file.")
     result = report(samples, args.workflow, args.out, provenance)
     print(json.dumps(result, indent=2))
     return 0

@@ -617,7 +617,7 @@ class PairedSampleTests(unittest.TestCase):
     def test_attempts_are_enumerated_not_resolved_to_the_latest(self) -> None:
         calls = []
 
-        def fake_samples(repository, run, run_id, attempt, cache_root, earlier):
+        def fake_samples(repository, run, run_id, attempt, cache_root, earlier, failures):
             calls.append(attempt)
             return [], set()
 
@@ -675,7 +675,7 @@ class PairedSampleTests(unittest.TestCase):
         """A re-run's attempt 2 must not re-charge a job attempt 1 already ran."""
         calls = {}
 
-        def fake_attempt(repository, run, run_id, attempt, cache_root, earlier):
+        def fake_attempt(repository, run, run_id, attempt, cache_root, earlier, failures):
             # Attempt 2 returns the same job name and started_at as attempt 1.
             job = {"name": "macos-arm64 / Cangjie", "started_at": "2026-01-01T00:00:00Z",
                    "conclusion": "success", "id": 1}
@@ -716,6 +716,44 @@ class PairedSampleTests(unittest.TestCase):
         text = out.read_text(encoding="utf-8")
         self.assertIn(f"{'a' * 40}|ubuntu", text)
         self.assertIn(f"{'b' * 40}|ubuntu", text)
+
+    def test_five_hits_and_five_misses_under_different_conditions_is_not_met(self) -> None:
+        """The paired comparison needs BOTH conditions under the SAME condition."""
+        def sample(rev, state):
+            return {"run": 1, "attempt": 1, "revision": rev, "event": "push",
+                    "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": "success", "state": state, "jobMinutes": 10.0,
+                    "condition": f"{rev}|ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        samples = [sample("a" * 40, "hit") for _ in range(5)]
+        samples += [sample("b" * 40, "miss") for _ in range(5)]
+        out = self.root / "crossed.md"
+        result = paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        # Each state has five samples, but never under one condition, so no cell is met.
+        self.assertFalse(any(count >= 5 for count in result["pairedPerCondition"].values()),
+                         result["pairedPerCondition"])
+        self.assertIn("paired samples under this condition: 0 — NOT met", text)
+
+    def test_the_provenance_command_is_copyable(self) -> None:
+        """A workflow name with spaces must arrive as one argument."""
+        import shlex
+        text = "Build Linux candidate"
+        rendered = " ".join(shlex.quote(part) for part in
+                            ("python3", "script.py", "--workflow", text))
+        self.assertEqual(shlex.split(rendered),
+                         ["python3", "script.py", "--workflow", text])
+
+    def test_a_limit_above_one_page_is_refused(self) -> None:
+        calls = []
+        original = paired._run_gh
+        paired._run_gh = lambda args: calls.append(args) or json.dumps(
+            {"workflows": [{"id": 1, "name": "CI", "path": ".github/workflows/ci.yml"}]})
+        try:
+            with self.assertRaises(SystemExit):
+                paired.workflow_runs("o/r", "CI", 101, None)
+        finally:
+            paired._run_gh = original
 
 
 if __name__ == "__main__":

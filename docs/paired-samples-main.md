@@ -193,18 +193,167 @@ conditions; a hit and a miss from different revisions are never pooled.
 
 5 successful samples per matched cell (job shape x condition), per DONE-03:
 
-* linux candidate / **hit** (conditions `d5c459d38ccd9190b5b991b27a148deb9c8bf025|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`): 1 collected — NOT met
-* linux candidate / **hit** (conditions `542f5ad69907eb4c02557811c5a60039cab6b172|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`): 1 collected — NOT met
-* linux candidate / **miss**: 0 collected — NOT met (no sample under any matched condition)
-* linux-x64 / **hit** (conditions `d5c459d38ccd9190b5b991b27a148deb9c8bf025|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`): 1 collected — NOT met
-* linux-x64 / **hit** (conditions `542f5ad69907eb4c02557811c5a60039cab6b172|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`): 1 collected — NOT met
-* linux-x64 / **miss**: 0 collected — NOT met (no sample under any matched condition)
-* macos-arm64 / **hit** (conditions `542f5ad69907eb4c02557811c5a60039cab6b172|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`): 1 collected — NOT met
-* macos-arm64 / **miss** (conditions `d5c459d38ccd9190b5b991b27a148deb9c8bf025|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`): 1 collected — NOT met
-* windows-x64 / **hit** (conditions `542f5ad69907eb4c02557811c5a60039cab6b172|win22-20261012.333.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`): 1 collected — NOT met
-* windows-x64 / **miss** (conditions `d5c459d38ccd9190b5b991b27a148deb9c8bf025|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`): 1 collected — NOT met
+* linux candidate / **miss** (condition not recorded): 0 collected — NOT met
+* linux candidate / **hit** (condition not recorded): 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux candidate / **miss** `1ba5beb575bc70050494ad7f8f2cd98731690802|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux candidate / **hit** `1ba5beb575bc70050494ad7f8f2cd98731690802|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux candidate / **miss** `2502a61c5bfe5a5a1392bafaf72d44d26b9a5d8e|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux candidate / **hit** `2502a61c5bfe5a5a1392bafaf72d44d26b9a5d8e|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux candidate / **miss** `2d8404453c4228bfa212698569e177c7433e63e7|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux candidate / **hit** `2d8404453c4228bfa212698569e177c7433e63e7|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux candidate / **miss** `30700d66856e97d57df70144c77dde4b8f3884e9|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux candidate / **hit** `30700d66856e97d57df70144c77dde4b8f3884e9|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux candidate / **miss** `34dd09072defddc99a066d71a11755cad5c84e09|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux candidate / **hit** `34dd09072defddc99a066d71a11755cad5c84e09|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux candidate / **miss** `4799f8a609c320be095dcb550a676ffff643f492|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux candidate / **hit** `4799f8a609c320be095dcb550a676ffff643f492|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux candidate / **miss** `542f5ad69907eb4c02557811c5a60039cab6b172|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux candidate / **hit** `542f5ad69907eb4c02557811c5a60039cab6b172|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 1 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux candidate / **miss** `5aab6cc5672fdf4a1a9b08f835f3420a3b4b166f|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux candidate / **hit** `5aab6cc5672fdf4a1a9b08f835f3420a3b4b166f|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux candidate / **miss** `5cc01475c920b3ef82e3fc4dc91cb95da488e67b|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux candidate / **hit** `5cc01475c920b3ef82e3fc4dc91cb95da488e67b|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux candidate / **miss** `7dd4fbd73a9f828e75320081eedc72d3b439797e|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux candidate / **hit** `7dd4fbd73a9f828e75320081eedc72d3b439797e|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux candidate / **miss** `9a84c63c3411068de75d8cf9368351019c3e4177|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux candidate / **hit** `9a84c63c3411068de75d8cf9368351019c3e4177|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux candidate / **miss** `d5c459d38ccd9190b5b991b27a148deb9c8bf025|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux candidate / **hit** `d5c459d38ccd9190b5b991b27a148deb9c8bf025|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 1 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux-x64 / **miss** (condition not recorded): 0 collected — NOT met
+* linux-x64 / **hit** (condition not recorded): 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux-x64 / **miss** `1ba5beb575bc70050494ad7f8f2cd98731690802|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux-x64 / **hit** `1ba5beb575bc70050494ad7f8f2cd98731690802|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux-x64 / **miss** `2d8404453c4228bfa212698569e177c7433e63e7|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux-x64 / **hit** `2d8404453c4228bfa212698569e177c7433e63e7|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux-x64 / **miss** `30700d66856e97d57df70144c77dde4b8f3884e9|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux-x64 / **hit** `30700d66856e97d57df70144c77dde4b8f3884e9|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux-x64 / **miss** `4799f8a609c320be095dcb550a676ffff643f492|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux-x64 / **hit** `4799f8a609c320be095dcb550a676ffff643f492|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux-x64 / **miss** `542f5ad69907eb4c02557811c5a60039cab6b172|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux-x64 / **hit** `542f5ad69907eb4c02557811c5a60039cab6b172|ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 1 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux-x64 / **miss** `5aab6cc5672fdf4a1a9b08f835f3420a3b4b166f|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux-x64 / **hit** `5aab6cc5672fdf4a1a9b08f835f3420a3b4b166f|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux-x64 / **miss** `5cc01475c920b3ef82e3fc4dc91cb95da488e67b|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux-x64 / **hit** `5cc01475c920b3ef82e3fc4dc91cb95da488e67b|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux-x64 / **miss** `7dd4fbd73a9f828e75320081eedc72d3b439797e|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux-x64 / **hit** `7dd4fbd73a9f828e75320081eedc72d3b439797e|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* linux-x64 / **miss** `d5c459d38ccd9190b5b991b27a148deb9c8bf025|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 0 collected — NOT met
+* linux-x64 / **hit** `d5c459d38ccd9190b5b991b27a148deb9c8bf025|ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|--jobs 1,-O1`: 1 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** (condition not recorded): 0 collected — NOT met
+* macos-arm64 / **hit** (condition not recorded): 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** `16d9a0f9e97ddbc3ed173b65774778d256e6fe3d|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+* macos-arm64 / **hit** `16d9a0f9e97ddbc3ed173b65774778d256e6fe3d|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** `1ba5beb575bc70050494ad7f8f2cd98731690802|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+* macos-arm64 / **hit** `1ba5beb575bc70050494ad7f8f2cd98731690802|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** `2502a61c5bfe5a5a1392bafaf72d44d26b9a5d8e|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+* macos-arm64 / **hit** `2502a61c5bfe5a5a1392bafaf72d44d26b9a5d8e|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** `2d8404453c4228bfa212698569e177c7433e63e7|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+* macos-arm64 / **hit** `2d8404453c4228bfa212698569e177c7433e63e7|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** `30700d66856e97d57df70144c77dde4b8f3884e9|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+* macos-arm64 / **hit** `30700d66856e97d57df70144c77dde4b8f3884e9|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** `34dd09072defddc99a066d71a11755cad5c84e09|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+* macos-arm64 / **hit** `34dd09072defddc99a066d71a11755cad5c84e09|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** `4799f8a609c320be095dcb550a676ffff643f492|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+* macos-arm64 / **hit** `4799f8a609c320be095dcb550a676ffff643f492|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** `542f5ad69907eb4c02557811c5a60039cab6b172|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+* macos-arm64 / **hit** `542f5ad69907eb4c02557811c5a60039cab6b172|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 1 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** `5aab6cc5672fdf4a1a9b08f835f3420a3b4b166f|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+* macos-arm64 / **hit** `5aab6cc5672fdf4a1a9b08f835f3420a3b4b166f|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** `5cc01475c920b3ef82e3fc4dc91cb95da488e67b|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+* macos-arm64 / **hit** `5cc01475c920b3ef82e3fc4dc91cb95da488e67b|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** `7dd4fbd73a9f828e75320081eedc72d3b439797e|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+* macos-arm64 / **hit** `7dd4fbd73a9f828e75320081eedc72d3b439797e|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** `9a84c63c3411068de75d8cf9368351019c3e4177|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+* macos-arm64 / **hit** `9a84c63c3411068de75d8cf9368351019c3e4177|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* macos-arm64 / **miss** `d5c459d38ccd9190b5b991b27a148deb9c8bf025|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 1 collected — NOT met
+* macos-arm64 / **hit** `d5c459d38ccd9190b5b991b27a148deb9c8bf025|macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* windows-x64 / **miss** (condition not recorded): 0 collected — NOT met
+* windows-x64 / **hit** (condition not recorded): 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* windows-x64 / **miss** `16d9a0f9e97ddbc3ed173b65774778d256e6fe3d|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+* windows-x64 / **hit** `16d9a0f9e97ddbc3ed173b65774778d256e6fe3d|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* windows-x64 / **miss** `1ba5beb575bc70050494ad7f8f2cd98731690802|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+* windows-x64 / **hit** `1ba5beb575bc70050494ad7f8f2cd98731690802|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* windows-x64 / **miss** `2502a61c5bfe5a5a1392bafaf72d44d26b9a5d8e|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+* windows-x64 / **hit** `2502a61c5bfe5a5a1392bafaf72d44d26b9a5d8e|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* windows-x64 / **miss** `2d8404453c4228bfa212698569e177c7433e63e7|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+* windows-x64 / **hit** `2d8404453c4228bfa212698569e177c7433e63e7|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* windows-x64 / **miss** `30700d66856e97d57df70144c77dde4b8f3884e9|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+* windows-x64 / **hit** `30700d66856e97d57df70144c77dde4b8f3884e9|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* windows-x64 / **miss** `4799f8a609c320be095dcb550a676ffff643f492|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+* windows-x64 / **hit** `4799f8a609c320be095dcb550a676ffff643f492|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* windows-x64 / **miss** `542f5ad69907eb4c02557811c5a60039cab6b172|win22-20261012.333.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+* windows-x64 / **hit** `542f5ad69907eb4c02557811c5a60039cab6b172|win22-20261012.333.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 1 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* windows-x64 / **miss** `5aab6cc5672fdf4a1a9b08f835f3420a3b4b166f|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+* windows-x64 / **hit** `5aab6cc5672fdf4a1a9b08f835f3420a3b4b166f|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* windows-x64 / **miss** `5cc01475c920b3ef82e3fc4dc91cb95da488e67b|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+* windows-x64 / **hit** `5cc01475c920b3ef82e3fc4dc91cb95da488e67b|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* windows-x64 / **miss** `9a84c63c3411068de75d8cf9368351019c3e4177|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+* windows-x64 / **hit** `9a84c63c3411068de75d8cf9368351019c3e4177|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
+* windows-x64 / **miss** `d5c459d38ccd9190b5b991b27a148deb9c8bf025|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 1 collected — NOT met
+* windows-x64 / **hit** `d5c459d38ccd9190b5b991b27a148deb9c8bf025|win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|--jobs 1,-O1`: 0 collected — NOT met
+  * paired samples under this condition: 0 — NOT met
 
 82 successful job(s) carry no cache state and are excluded from the cells. Of those, ci required, classify changes record no stage evidence at all, so they can never be either condition and are not requirements. The rest (linux candidate, linux-x64, macos-arm64, windows-x64) are cache-bearing jobs whose state was not recorded -- from runs predating the recording, or from artifacts that expired -- so they remain requirements showing as 0 collected above rather than disappearing.
+
+## Evidence that could not be collected
+
+6 run attempt(s) yielded no stage evidence, so their jobs are
+absent from the cells above and the requirement counts are a lower bound:
+
+* run `38668526285` attempt 1: no artifact downloaded
+* run `38606017696` attempt 1: no artifact downloaded
+* run `38563479711` attempt 1: no artifact downloaded
+* run `38559744577` attempt 1: no artifact downloaded
+* run `38370603586` attempt 1: no artifact downloaded
+* run `38369106112` attempt 1: no artifact downloaded
 
 ## Failures, cancellations and re-runs (excluded from the cells)
 
