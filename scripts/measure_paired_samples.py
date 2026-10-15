@@ -68,6 +68,18 @@ def parse_time(value: str | None) -> dt.datetime | None:
     return dt.datetime.strptime(value, GITHUB_TIME).replace(tzinfo=dt.timezone.utc)
 
 
+def resolve_workflow_file(repository: str, workflow: str) -> str:
+    """The workflow's file name for a name, path or file the user supplied."""
+    workflows = _decode_documents(_run_gh([
+        "api", f"repos/{repository}/actions/workflows?per_page=100"]))
+    entries = workflows.get("workflows", []) if isinstance(workflows, dict) else []
+    for item in entries:
+        path = item.get("path") or ""
+        if workflow in {item.get("name"), path, path.rsplit("/", 1)[-1]}:
+            return path.rsplit("/", 1)[-1]
+    raise SystemExit(f"measure_paired_samples.py: no workflow matches {workflow!r}")
+
+
 def workflow_runs(repository: str, workflow: str, limit: int, branch: str | None) -> list[dict]:
     """Completed runs of one workflow, newest first.
 
@@ -265,7 +277,7 @@ def collect(repository: str, workflow: str, limit: int, cache_root: Path,
         for attempt in range(1, latest + 1):
             produced, observed = _attempt_samples(repository, run, run_id, attempt,
                                                   cache_root, seen_job_keys,
-                                                  acquisition_failures)
+                                                  acquisition_failures, workflow)
             samples.extend(produced)
             # Every job OBSERVED in this attempt, not only the ones kept: a job the engine
             # genuinely re-ran under the same name has a new started_at, so it is not
@@ -280,8 +292,9 @@ def collect(repository: str, workflow: str, limit: int, cache_root: Path,
 
 def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
                      cache_root: Path, earlier: set[tuple[str | None, str | None]],
-    acquisition_failures: list[dict]) -> tuple[list[dict],
-                                               set[tuple[str | None, str | None]]]:
+                     acquisition_failures: list[dict],
+                     workflow: str) -> tuple[list[dict],
+                                             set[tuple[str | None, str | None]]]:
     # Called unconditionally: it skips artifact directories that are already complete
     # and retries the rest, so an interrupted or partially failed download does not
     # leave those jobs `unknown` until someone deletes the cache by hand.
@@ -318,8 +331,12 @@ def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
             # Resolved for unsuccessful jobs too: a job that restored the cache and
             # then failed still records which condition it ran under, and DONE-03 asks
             # for failures under matched conditions. Such jobs stay out of the cells.
-            "state": _job_state_for(name, states),
-            "condition": _job_condition_for(name, conditions),
+            "state": _job_state_for(name, states, workflow),
+            "condition": _job_condition_for(name, conditions, workflow),
+            # Recorded per sample so `report` never has to re-derive the mapping from a
+            # job name alone, which is workflow-specific.
+            "hasEvidence": job_artifact_stem(name, workflow) is not None,
+            "workflow": workflow,
             "jobMinutes": job_minutes(job),
             "runWallMinutes": wall, "runRunnerMinutes": total,
         })
@@ -327,39 +344,73 @@ def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
     return samples, observed
 
 
-# Job name prefix -> the artifact stem that carries that job's stage evidence.
-# Explicit rather than scored: `linux-x64` and `Linux candidate` both contain "linux",
-# and `x64` is too short to discriminate, so a token score ties and then resolves by
-# directory order -- which handed the acceptance job the candidate's cache state.
-JOB_ARTIFACT_STEMS: tuple[tuple[str, str], ...] = (
-    ("candidate", "build-linux-candidate"),
-    ("windows", "ci-windows-x64"),
-    ("macos", "ci-macos-arm64"),
-    ("linux", "ci-linux-x64"),
-)
+# Job name prefix -> the artifact stem that carries that job's stage evidence, PER
+# WORKFLOW. Explicit rather than scored: `linux-x64` and `Linux candidate` both contain
+# "linux" and `x64` is too short to discriminate, so a token score ties and then resolves
+# by directory order -- which handed the acceptance job the candidate's cache state.
+#
+# The stems are workflow-specific because each workflow names its own timing artifact
+# (`ci.yml` uses `ci-linux-x64`/`ci-<platform>`, `pages.yml` uses `pages-assemble`,
+# `daily.yml` uses `daily`), and matching one workflow's jobs against another's stems
+# reports real evidence as `unknown`.
+JOB_ARTIFACT_STEMS: dict[str, tuple[tuple[str, str], ...]] = {
+    "ci.yml": (
+        ("candidate", "build-linux-candidate"),
+        ("windows", "ci-windows-x64"),
+        ("macos", "ci-macos-arm64"),
+        ("linux", "ci-linux-x64"),
+    ),
+    "pages.yml": (
+        ("assemble", "pages-assemble"),
+    ),
+    "daily.yml": (
+        # The daily artifact is `ci-timing-daily-*` but its only job is named
+        # `linux-x64 / Cangjie <version> STS`, so the job token is the platform.
+        ("linux", "daily"),
+    ),
+    "build-linux-candidate.yml": (
+        ("candidate", "build-linux-candidate"),
+    ),
+}
 
 
-def job_artifact_stem(job_name: str) -> str | None:
+def stems_for(workflow: str) -> tuple[tuple[str, str], ...]:
+    """The job->artifact mapping for a workflow, refusing one with no mapping.
+
+    A silent empty mapping would report every job as `unknown` while looking like a
+    legitimate "no samples" result, so an unsupported workflow is an error.
+    """
+    candidates = [workflow, workflow.rsplit("/", 1)[-1], f"{workflow}.yml"]
+    for key in candidates:
+        if key in JOB_ARTIFACT_STEMS:
+            return JOB_ARTIFACT_STEMS[key]
+    raise SystemExit(f"measure_paired_samples.py: no artifact mapping for workflow "
+                     f"{workflow!r} (known: {', '.join(sorted(JOB_ARTIFACT_STEMS))}); add "
+                     "one rather than reporting its evidence as unknown")
+
+
+def job_artifact_stem(job_name: str, workflow: str = "ci.yml") -> str | None:
     """The timing artifact stem this job's evidence lands in, if it has one.
 
     `None` means the job records no stage evidence (the orchestration gates), which is
     a different thing from a cache-bearing job whose state was not recorded.
     """
     lowered = job_name.lower()
-    for token, stem in JOB_ARTIFACT_STEMS:
+    for token, stem in stems_for(workflow):
         if token in lowered:
             return stem
     return None
 
 
-def _job_state_for(job_name: str, states: dict[str, str]) -> str:
+def _job_state_for(job_name: str, states: dict[str, str],
+                   workflow: str = "ci.yml") -> str:
     """The recorded state for this job: a state, or `unknown` when it has none.
 
     `unknown` therefore covers both "the job has an artifact but it carries no state"
     and "the artifact was not downloaded"; callers that need to tell those apart use
     `job_artifact_stem`.
     """
-    stem = job_artifact_stem(job_name)
+    stem = job_artifact_stem(job_name, workflow)
     if stem is None:
         return "unknown"
     for directory, state in states.items():
@@ -380,9 +431,10 @@ def describe(values: list[float]) -> str:
 CLASSIFIED_STATES = ("hit", "miss")
 
 
-def _job_condition_for(job_name: str, conditions: dict[str, str]) -> str:
+def _job_condition_for(job_name: str, conditions: dict[str, str],
+                       workflow: str = "ci.yml") -> str:
     """The matched-condition signature of the artifact belonging to this job."""
-    stem = job_artifact_stem(job_name)
+    stem = job_artifact_stem(job_name, workflow)
     if stem is None:
         return ""
     for directory, signature in conditions.items():
@@ -467,8 +519,7 @@ def report(samples: list[dict], workflow: str, out: Path,
     # occurrence failed or was cancelled would otherwise drop out of the requirement
     # section, and the remaining cells could read as met while that platform has no
     # successful sample at all. Only successful jobs enter `cells`.
-    requirement_shapes = {s["shape"] for s in samples
-                          if job_artifact_stem(s["job"]) is not None}
+    requirement_shapes = {s["shape"] for s in samples if s.get("hasEvidence")}
     requirement_shapes |= {key[0] for key in cells}
     lines += ["", "## Requirement check", "",
               "5 successful samples per matched cell (job shape x condition), per DONE-03:", ""]
@@ -480,7 +531,7 @@ def report(samples: list[dict], workflow: str, out: Path,
     for (shape, _state, condition), _values in cells.items():
         conditions_by_shape.setdefault(shape, set()).add(condition)
     for sample in successful:
-        if job_artifact_stem(sample["job"]) is not None:
+        if sample.get("hasEvidence"):
             conditions_by_shape.setdefault(sample["shape"], set()).add(
                 sample.get("condition", ""))
     # A cache-bearing shape with no successful sample at all still appears, so a
@@ -508,10 +559,8 @@ def report(samples: list[dict], workflow: str, out: Path,
                          f"{paired_verdict}")
     unclassified = [s for s in successful if s["state"] not in CLASSIFIED_STATES]
     if unclassified:
-        never = sorted({s["shape"] for s in unclassified
-                        if job_artifact_stem(s["job"]) is None})
-        unrecorded = sorted({s["shape"] for s in unclassified
-                             if job_artifact_stem(s["job"]) is not None})
+        never = sorted({s["shape"] for s in unclassified if not s.get("hasEvidence")})
+        unrecorded = sorted({s["shape"] for s in unclassified if s.get("hasEvidence")})
         parts = [f"{len(unclassified)} successful job(s) carry no cache state and are "
                  "excluded from the cells."]
         if never:
@@ -576,7 +625,12 @@ def main() -> int:
                              "default so the emitted provenance is reproducible)")
     parser.add_argument("--out", type=Path, required=True, help="report path")
     args = parser.parse_args()
-    samples = collect(args.repository, args.workflow, args.limit, args.cache_root,
+    # Resolve the name the user gave to the workflow file, so both the run listing and
+    # the job->artifact mapping agree on which workflow this is; an unsupported workflow
+    # is refused here rather than reported as "no samples".
+    workflow_file = resolve_workflow_file(args.repository, args.workflow)
+    stems_for(workflow_file)
+    samples = collect(args.repository, workflow_file, args.limit, args.cache_root,
                       args.branch)
     if not samples:
         raise SystemExit("measure_paired_samples.py: no completed runs found")

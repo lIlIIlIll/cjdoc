@@ -559,6 +559,7 @@ class PairedSampleTests(unittest.TestCase):
              "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
             {"run": 2, "attempt": 1, "revision": "b" * 8, "event": "push", "job": "macos-arm64 / Cangjie",
              "shape": "macos-arm64", "conclusion": "success", "state": "miss", "jobMinutes": 10.0,
+             "hasEvidence": True,
              "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
         ]
         out = self.root / "cells.md"
@@ -617,7 +618,8 @@ class PairedSampleTests(unittest.TestCase):
     def test_attempts_are_enumerated_not_resolved_to_the_latest(self) -> None:
         calls = []
 
-        def fake_samples(repository, run, run_id, attempt, cache_root, earlier, failures):
+        def fake_samples(repository, run, run_id, attempt, cache_root, earlier, failures,
+                         workflow):
             calls.append(attempt)
             return [], set()
 
@@ -639,7 +641,7 @@ class PairedSampleTests(unittest.TestCase):
         samples = [
             {"run": 1, "attempt": 1, "revision": "f" * 8, "event": "push",
              "job": "macos-arm64 / Cangjie", "shape": "macos-arm64", "conclusion": "success",
-             "state": "unknown", "jobMinutes": 17.0,
+             "state": "unknown", "jobMinutes": 17.0, "hasEvidence": True,
              "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
         ]
         out = self.root / "expired.md"
@@ -658,11 +660,11 @@ class PairedSampleTests(unittest.TestCase):
         samples = [
             {"run": 1, "attempt": 1, "revision": "9" * 8, "event": "push",
              "job": "windows-x64 / Cangjie", "shape": "windows-x64", "conclusion": "failure",
-             "state": "n/a", "jobMinutes": 5.0,
+             "state": "n/a", "jobMinutes": 5.0, "hasEvidence": True,
              "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
             {"run": 2, "attempt": 1, "revision": "8" * 8, "event": "push",
              "job": "linux-x64 / Cangjie", "shape": "linux-x64", "conclusion": "success",
-             "state": "hit", "jobMinutes": 20.0,
+             "state": "hit", "jobMinutes": 20.0, "hasEvidence": True,
              "runWallMinutes": 25.0, "runRunnerMinutes": 50.0},
         ]
         out = self.root / "failed-shape.md"
@@ -675,7 +677,8 @@ class PairedSampleTests(unittest.TestCase):
         """A re-run's attempt 2 must not re-charge a job attempt 1 already ran."""
         calls = {}
 
-        def fake_attempt(repository, run, run_id, attempt, cache_root, earlier, failures):
+        def fake_attempt(repository, run, run_id, attempt, cache_root, earlier, failures,
+                         workflow):
             # Attempt 2 returns the same job name and started_at as attempt 1.
             job = {"name": "macos-arm64 / Cangjie", "started_at": "2026-01-01T00:00:00Z",
                    "conclusion": "success", "id": 1}
@@ -705,7 +708,7 @@ class PairedSampleTests(unittest.TestCase):
         def sample(rev, state, minutes):
             return {"run": 1, "attempt": 1, "revision": rev, "event": "push",
                     "job": "linux-x64 / Cangjie", "shape": "linux-x64",
-                    "conclusion": "success", "state": state, "jobMinutes": minutes,
+                    "conclusion": "success", "state": state, "jobMinutes": minutes, "hasEvidence": True,
                     "condition": f"{rev}|ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
                     "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
 
@@ -754,6 +757,26 @@ class PairedSampleTests(unittest.TestCase):
                 paired.workflow_runs("o/r", "CI", 101, None)
         finally:
             paired._run_gh = original
+
+    def test_each_timed_workflow_maps_its_own_artifact(self) -> None:
+        """`ci.yml`, `pages.yml` and `daily.yml` name their timing artifacts differently."""
+        self.assertEqual(paired.job_artifact_stem("linux-x64 / Cangjie 1.2.0 STS + stdx", "ci.yml"),
+                         "ci-linux-x64")
+        self.assertEqual(paired.job_artifact_stem("Assemble final site", "pages.yml"),
+                         "pages-assemble")
+        self.assertEqual(paired.job_artifact_stem("linux-x64 / Cangjie 1.2.0 STS", "daily.yml"),
+                         "daily")
+        self.assertEqual(paired.job_artifact_stem("CI required", "ci.yml"), None)
+
+    def test_an_unsupported_workflow_is_refused_not_reported_as_unknown(self) -> None:
+        """A silent empty mapping would look like a legitimate "no samples" result."""
+        with self.assertRaises(SystemExit):
+            paired.stems_for("no-such-workflow.yml")
+
+    def test_stems_accept_the_forms_the_cli_hands_over(self) -> None:
+        """`stems_for` takes a resolved file name; a path or a bare name still works."""
+        self.assertEqual(paired.stems_for("ci.yml"), paired.stems_for(".github/workflows/ci.yml"))
+        self.assertIsInstance(paired.stems_for("ci.yml"), tuple)
 
 
 if __name__ == "__main__":
