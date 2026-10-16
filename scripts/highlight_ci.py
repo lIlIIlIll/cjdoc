@@ -108,6 +108,23 @@ def load_traceback_locations(path: Path) -> list[dict] | None:
     return locations
 
 
+def public_cancel_host_command(bash: Path | None) -> list[str]:
+    """Use the caller's native Bash without Windows executable re-resolution."""
+    if bash is None:
+        if os.name == "nt":
+            raise ValueError("Windows host builds require the workflow's explicit --bash launcher")
+        launcher = shutil.which("bash")
+    elif not bash.is_absolute():
+        raise ValueError("an explicit Bash launcher must be an absolute executable path")
+    else:
+        launcher = shutil.which(str(bash))
+    if launcher is None:
+        raise ValueError("the host build's Bash launcher is unavailable")
+    return [launcher, "--noprofile", "--norc", "-c",
+            '. scripts/with_sts_o1_cjpm.sh; cd tests/fixtures/projects/highlight_host; '
+            'cjpm build --jobs 1 --target-dir "$CJDOC_HIGHLIGHT_BUILD"']
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1])
@@ -116,6 +133,8 @@ def main() -> int:
     parser.add_argument("--platform", choices=sorted(PLATFORMS.values()), required=True)
     parser.add_argument("--work-root", type=Path, required=True)
     parser.add_argument("--evidence-root", type=Path, required=True)
+    parser.add_argument("--bash", type=Path,
+                        help="absolute native Bash executable (required on Windows; pass the workflow shell)")
     args = parser.parse_args()
     repo, binary = args.repo.resolve(), args.binary.resolve()
     if os.name == "nt" and not binary.is_file():
@@ -203,9 +222,7 @@ def main() -> int:
                     "CANGJIE_STDX_PATH": os.environ["CJDOC_STDX_PATH"],
                     "CJDOC_HIGHLIGHT_BUILD": str(work / "host-build"),
                     "CJDOC_STS_INVOCATION_LOG": str(work / "sts-invocations.jsonl")})
-        run("public-cancel-host", ["bash", "-c",
-            '. scripts/with_sts_o1_cjpm.sh; cd tests/fixtures/projects/highlight_host; '
-            'cjpm build --jobs 1 --target-dir "$CJDOC_HIGHLIGHT_BUILD"'], cwd=source)
+        run("public-cancel-host", public_cancel_host_command(args.bash), cwd=source)
         probe = work / "host-build/release/bin" / ("main.exe" if os.name == "nt" else "main")
         if not probe.is_file():
             raise ValueError("public cancellation host was not built")

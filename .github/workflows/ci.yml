@@ -349,6 +349,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          host_bash="${BASH}"
+          if command -v cygpath >/dev/null 2>&1; then
+            host_bash="$(cygpath -w "${host_bash}")"
+          fi
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           # Keep native startup failures visible before the gate creates evidence.
           # Enable the handler in both interpreters: the stdx launcher starts the
@@ -356,6 +360,7 @@ jobs:
           python -u -X faulthandler scripts/with_stdx.py --variant static -- \
             python -u -X faulthandler scripts/highlight_ci.py --repo . --binary target/release/bin/main \
               --identity target/ci-build/build-manifest.json --platform ${{ matrix.platform }} \
+              --bash "${host_bash}" \
               --work-root "${RUNNER_TEMP}/cjdoc-highlight-work" \
               --evidence-root "${RUNNER_TEMP}/cjdoc-highlight-evidence"
 

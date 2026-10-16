@@ -40,6 +40,13 @@ started a separate process.
 This preserves the suite, deadline, serial test scheduling and committed compile
 defaults. A Linux routing/status/cleanup probe is not native Windows compile proof.
 
+The optional-worker host build receives the running workflow shell through
+`highlight_ci.py --bash`. Windows requires this explicit absolute executable;
+the workflow converts Git Bash's path with `cygpath` when available. A Python
+child resolving an unqualified `bash` can select a different launcher. The
+host build retains the existing SDK selection, temporary entry/root `-O1`
+overrides and restoration traps.
+
 ## What the site-generation time is actually spent on
 
 Real Pages run `38332333489`, attempt 1, artifact

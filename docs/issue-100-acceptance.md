@@ -98,9 +98,13 @@ runner 首先重验当前 HEAD 的构建 manifest 与真实 main 摘要，然后
 
 macOS/Windows 的完整 gate 显式请求 build manifest，并把 worker 复制到保留的 `target/release/bin/chir-worker-main`；后续阶段清理自己创建的 worker build tree 后，必需 worker gate 仍能验证原构建的身份。私有 cancellation host 与 provider fixture 一样临时改写入口 manifest 为 `-O1`，不能只改作为 path dependency 的 cjdoc manifest，让入口继承的 Markdown 构建仍落到 `-O2`；调用结束恢复原清单，不改已安装 SDK 或依赖源码。
 
+私有宿主构建显式接收当前 workflow 的 Bash 绝对路径；Windows 使用 `cygpath` 转成原生路径并传给 `highlight_ci.py --bash`，不让 Python 重新按 PATH 选择未限定的 `bash`。进程返回码、现有超时和两份 manifest 的 `-O1`/恢复合同保持不变。
+
+本地图片采集沿用仓库现有的 Linux-only 安全能力。Linux 验收冻结 GIF 的摘要、媒体类型和发布后的精确字节；macOS/Windows 验收 `partial`、空资产集与页面归属的 `CJDOC4026`，并要求原图引用、alt 和指南代码保留，HTML 显示可读 alt 而不请求或发布本地图片。`captured_guide_image` 分别记录 `embedded` 或 `unsupported`；两条路径都继续执行完整 worker、重渲染、确定性和离线包验收，不把不支持的平台写成“图片已嵌入”。已捕获资产的 Doc IR 重渲染仍可跨平台使用。
+
 公开 artifact 保存构建身份、固定版本与产物摘要，以及仅含固定步骤名、状态、reason code、退出码、超时秒数与耗时的结构化步骤记录。异常 repr、完整命令 argv 和原始 stdout/stderr 只留 runner 私有工作根，不上传或回显；不依赖跨平台路径替换来发布错误文本。命令 stdout 与 stderr 分别保存：HEAD、Node 版本等机器字段仅消费 stdout，SDK/动态加载器的 stderr 诊断保留但不混入身份解析，也不被过滤或丢弃。
 
-受控源码、配置、Markdown、worker 脚本和冻结 IR 输入明确以 UTF-8/LF 写入，避免 Windows 默认编码或换行改变固定 corpus；原始 corpus 和断言不变。专门的 CRLF IR/浏览器复制场景仍证明已提取显示代码的绑定原文，不声称 Markdown 解析从不归一化整个源文件换行。
+受控源码、配置、Markdown、worker 脚本和冻结 IR 输入明确以 UTF-8/LF 写入，避免 Windows 默认编码或换行改变固定 corpus；原始高亮 corpus 和 worker 身份/边界断言不变。专门的 CRLF IR/浏览器复制场景仍证明已提取显示代码的绑定原文，不声称 Markdown 解析从不归一化整个源文件换行。
 
 取消验收必须先等真实 worker 与后代进入就绪状态，再登记仍存活的进程身份。`Popen` 返回不能代替解释器就绪：macOS framework Python 启动器还会以相同 PID 执行实际解释器并替换 `argv[0]`，因此进程测试等待解释器内的就绪信号，不把启动中的命令变化误认成退出。macOS 仍以 birth/完整命令和 kqueue 观察取消目标，并用 `proc_pidpath` 验证实际执行映像；查询失败仍抛错，不能当作退出或放宽映像校验。
 

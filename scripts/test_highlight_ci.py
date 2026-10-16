@@ -7,6 +7,7 @@ import json
 import os
 
 from pathlib import Path, PureWindowsPath
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ci_changes
 import highlight_ci
 import highlight_process
+import test_release_transaction
 
 from highlight_process import (ObservedProcess, assert_stopped, observe_cancel_targets,
                                cleanup_observed, _darwin_executable)
@@ -162,6 +164,104 @@ class HighlightCiContractTest(unittest.TestCase):
             self.assertIsNone(highlight_ci.load_traceback_locations(path))
 
 
+
+
+class HighlightHostBuildTest(unittest.TestCase):
+    def test_explicit_launcher_does_not_search_path_for_bare_names(self):
+        for name in ("bash", "bash.exe"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                highlight_ci.public_cancel_host_command(Path(name))
+
+    def test_native_bash_build_uses_selected_sdk_and_restores_both_manifests(self):
+        bash = Path(shutil.which(test_release_transaction.ReleaseTransactionTest.bash_command("")[0])).resolve()
+        # Probe the real wrapper/child boundary, including a failed compiler and
+        # an inherited wrapper. No compiler installation is needed for this test.
+        for inherited in (False, True):
+            for status in (0, 37):
+                with self.subTest(inherited=inherited, status=status), \
+                        tempfile.TemporaryDirectory(prefix="cjdoc host launch ") as temporary:
+                    base = Path(temporary).resolve()
+                    source = base / "private source"
+                    scripts = source / "scripts"
+                    fixture = source / "tests/fixtures/projects/highlight_host"
+                    scripts.mkdir(parents=True)
+                    fixture.mkdir(parents=True)
+                    for name in ("with_sts_o1_cjpm.sh", "apply_sts_override.py",
+                                 "sts_compile_override.py", "log_invocation.py"):
+                        shutil.copyfile(REPO / "scripts" / name, scripts / name)
+                    manifests = {
+                        source / "cjpm.toml": b'[package]\nname = "cjdoc"\noverride-compile-option = ""\n',
+                        fixture / "cjpm.toml": b'[package]\nname = "highlight_host_fixture"\n',
+                    }
+                    for path, contents in manifests.items():
+                        path.write_bytes(contents)
+                    work = base / "private work"
+                    work.mkdir()
+                    selected_bin = base / "selected sdk/bin"
+                    real_bin = base / "underlying sdk/bin" if inherited else selected_bin
+                    selected_bin.mkdir(parents=True)
+                    real_bin.mkdir(parents=True, exist_ok=True)
+                    compiler = real_bin / "cjpm"
+                    compiler.write_text(
+                        '#!/usr/bin/env bash\n'
+                        'case "${1:-}" in -v|--version) exit 0 ;; esac\n'
+                        '"${CJDOC_PYTHON}" "${CJDOC_HOST_PROBE}" selected "$@"\n',
+                        encoding="utf-8", newline="\n")
+                    compiler.chmod(0o755)
+                    cjc = selected_bin / "cjc"
+                    cjc.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8", newline="\n")
+                    cjc.chmod(0o755)
+                    if inherited:
+                        wrapper = selected_bin / "cjpm"
+                        wrapper.write_text('#!/usr/bin/env bash\nexec "${CJDOC_REAL_CJPM}" "$@"\n',
+                                           encoding="utf-8", newline="\n")
+                        wrapper.chmod(0o755)
+                    probe = base / "host probe.py"
+                    probe.write_text(
+                        "import json, os, sys, tomllib\n"
+                        "from pathlib import Path\n"
+                        "root = Path(os.environ['GITHUB_WORKSPACE'])\n"
+                        "record = {'sdk': sys.argv[1], 'argv': sys.argv[2:],\n"
+                        "          'cwd': str(Path.cwd()),\n"
+                        "          'sidecar': os.environ['CANGJIE_STDX_PATH'],\n"
+                        "          'options': [tomllib.loads(path.read_text(encoding='utf-8'))"
+                        "['package']['override-compile-option']\n"
+                        "                      for path in (root / 'cjpm.toml', Path('cjpm.toml'))]}\n"
+                        "Path(os.environ['CJDOC_HOST_RECORD']).write_text(json.dumps(record), encoding='utf-8')\n"
+                        "raise SystemExit(int(os.environ['CJDOC_HOST_STATUS']))\n",
+                        encoding="utf-8", newline="\n")
+                    record_path = work / "host record.json"
+                    target = work / "host build"
+                    sidecar = str(base / "authenticated sidecar")
+                    environment = dict(os.environ,
+                        PATH=str(selected_bin) + os.pathsep + os.environ["PATH"],
+                        GITHUB_WORKSPACE=str(source), RUNNER_TEMP=str(work),
+                        TMPDIR=str(work), TMP=str(work), TEMP=str(work),
+                        CJDOC_PYTHON=Path(sys.executable).as_posix(),
+                        CJDOC_STDX_PATH=sidecar, CANGJIE_STDX_PATH="stale-sidecar",
+                        CJDOC_HIGHLIGHT_BUILD=str(target),
+                        CJDOC_STS_INVOCATION_LOG=str(work / "invocations.jsonl"),
+                        CJDOC_STS_WRAPPER_CJPM=str(selected_bin / "cjpm") if inherited else "stale-wrapper",
+                        CJDOC_REAL_CJPM=compiler.as_posix() if inherited else "stale-sdk",
+                        CJDOC_HOST_PROBE=str(probe), CJDOC_HOST_RECORD=str(record_path),
+                        CJDOC_HOST_STATUS=str(status))
+                    result = subprocess.run(
+                        [sys.executable, str(REPO / "scripts/run_with_timeout.py"), "30", "--",
+                         *highlight_ci.public_cancel_host_command(bash)],
+                        cwd=source, env=environment, capture_output=True, text=True, timeout=40)
+                    self.assertEqual(result.returncode, status, result.stderr)
+                    record = json.loads(record_path.read_text(encoding="utf-8"))
+                    self.assertEqual(record["sdk"], "selected")
+                    self.assertEqual(record["argv"][:-1], ["build", "--jobs", "1", "--target-dir"])
+                    self.assertEqual(Path(record["argv"][-1]).resolve(), target)
+                    self.assertEqual(Path(record["cwd"]), fixture)
+                    self.assertEqual(record["sidecar"], sidecar)
+                    self.assertEqual(record["options"], ["-O1", "-O1"])
+                    for path, contents in manifests.items():
+                        self.assertEqual(path.read_bytes(), contents)
+                    receipt = json.loads((work / "invocations.jsonl").read_text(encoding="utf-8"))
+                    self.assertEqual(receipt["package"], "highlight_host_fixture")
+                    self.assertEqual(receipt["option"], "-O1")
 
 
 class HighlightObservedProcessTest(unittest.TestCase):

@@ -372,6 +372,73 @@ class CodeSurface(HTMLParser):
             self.current = None
 
 
+class GuideSurface(CodeSurface):
+    def __init__(self):
+        super().__init__()
+        self.images = []
+        self.text = []
+
+    def handle_starttag(self, tag, attrs):
+        super().handle_starttag(tag, attrs)
+        if tag == 'img':
+            self.images.append(dict(attrs))
+
+    def handle_data(self, data):
+        self.text.append(data)
+        if self.current is not None:
+            self.current['rendered'] = self.current.get('rendered', '') + data
+
+
+def assert_captured_guide_image(project, output, document):
+    """Assert the existing native capture contract, not just a readable page."""
+    page, = [page for page in document['pages'] if page['source'] == 'docs/guide.md']
+    image, = [node for node in walk(page['markdown']) if node.get('kind') == 'image']
+    assert ''.join(node['literal'] for node in walk(image) if node.get('kind') == 'text') == 'pixel', \
+        'captured guide lost the image alt text'
+    assert '![pixel](images/pixel.gif)' in page['text'], 'captured guide lost the author image reference'
+    assert any(block['literal'] == LANGUAGES['python'] for block in blocks(page['markdown'])), \
+        'captured guide lost its author code'
+    guide_path = output / 'html/concepts/guides/highlight.html'
+    surface = GuideSurface()
+    surface.feed(guide_path.read_text(encoding='utf-8'))
+    assert 'Highlight guide' in surface.text, 'captured guide lost its readable heading'
+    assert any(row.get('rendered') == LANGUAGES['python'] for row in surface.rows), \
+        'captured guide lost its rendered original code'
+    expected = (project / 'docs/images/pixel.gif').read_bytes()
+    diagnostics = [item for item in document['diagnostics'] if item['code'] == 'CJDOC4026'
+                   and (item.get('source') or {}).get('path') == 'docs/guide.md']
+    if sys.platform.startswith('linux'):
+        asset, = document['assets']
+        assert asset['sourcePath'] == 'docs/images/pixel.gif' and asset['mediaType'] == 'image/gif'
+        assert base64.b64decode(asset['base64'], validate=True) == expected
+        assert image['literal'] == asset['id'] == 'sha256-' + hashlib.sha256(expected).hexdigest()
+        assert not diagnostics, 'supported local guide image was diagnosed as omitted'
+        rendered, = surface.images
+        assert rendered['alt'] == 'pixel'
+        source = rendered['src']
+        assert not source.startswith('/') and ':' not in source and '\\' not in source
+        actual = (guide_path.parent / source).resolve()
+        assert actual.is_relative_to((output / 'html/assets').resolve())
+        assert actual.read_bytes() == expected, 'captured guide lost the exact local GIF bytes'
+        result = {'state': 'embedded', 'mediaType': 'image/gif',
+                  'sha256': hashlib.sha256(expected).hexdigest(), 'bytes': len(expected)}
+    else:
+        # The repository's native generation contract is fail-closed outside
+        # Linux; rendering already captured image assets remains cross-platform.
+        assert document['status'] == 'partial' and document['assets'] == [], \
+            'unsupported native capture must not embed a local image'
+        assert image['literal'] == 'images/pixel.gif', 'rejected image lost its frozen relative reference'
+        assert diagnostics and all(item['severity'] == 'warning' and not item.get('symbolId')
+                                   for item in diagnostics), 'rejected guide image lacks CJDOC4026'
+        assert not surface.images and 'pixel' in surface.text, \
+            'rejected guide image must render safe readable alt text, not an image request'
+        assert not any(path.read_bytes() == expected for path in (output / 'html/assets').rglob('*')
+                       if path.is_file()), 'rejected guide image was still published'
+        result = {'state': 'unsupported', 'diagnostic': 'CJDOC4026',
+                  'fallback': 'frozen relative image reference and readable HTML alt text; no embedded asset'}
+    return result
+
+
 def compare_plain_source_surfaces(colored, plain):
     colors, links = 0, 0
     for path in sorted((colored / 'html').rglob('*.html')):
@@ -694,16 +761,13 @@ def main():
     report['strict_policy'] = 'ordinary check needs no Node; explicit strict exits nonzero and preserves complete diagnostic-bearing generate transaction'
     binary = args.binary.resolve()
     real = args.workdir / 'real'
-    guide = (real / 'html/concepts/guides/highlight.html').read_text(encoding='utf-8')
-    expected_image = (project / 'docs/images/pixel.gif').read_bytes()
-    assert '<img ' in guide and any(asset.name in guide and asset.read_bytes() == expected_image
-        for asset in (real / 'html/assets').rglob('*') if asset.is_file()), 'captured guide lost local image'
+    captured = json.loads((real / 'docs.json').read_text(encoding='utf-8'))
+    report['captured_guide_image'] = assert_captured_guide_image(project, real, captured)
     assert (real / 'html/concepts/guides/empty.html').is_file(), 'explicit empty page was lost'
     assert any('Frozen author overview.' in page.read_text(encoding='utf-8') for page in (real / 'html').rglob('*.html'))
-    captured = json.loads((real / 'docs.json').read_text(encoding='utf-8'))
     assert any(binding.get('state') == 'resolved' and binding.get('targetSymbolId')
         for page in captured['pages'] for binding in page.get('bindings', [])), 'guide API binding was lost'
-    report['captured_pages'] = 'author guide, exact local GIF, API binding, default overview and explicit empty page retained'
+    report['captured_pages'] = 'author guide, native image capability contract, API binding, default overview and explicit empty page retained'
     frozen = args.workdir / 'replay'
     # Replay must not accidentally read still-accessible source Markdown/assets.
     detached_project = args.workdir / "detached-project"
@@ -716,7 +780,7 @@ def main():
     repeat = args.workdir / 'repeat'
     generate(binary, project, repeat, (args.workdir / 'real.mjs').resolve(), args.node.resolve())
     compare_outputs(real, repeat)
-    report["determinism"] = "generate/repeat/replay byte-identical including captured guides; replay PATH empty and original project path absent"
+    report["determinism"] = "generate/repeat/replay byte-identical including captured guides and native image outcome; replay PATH empty and original project path absent"
     off_project = args.workdir / 'off-project'
     shutil.copytree(project, off_project)
     configuration = off_project / 'cjdoc.toml'
