@@ -10,10 +10,9 @@ these libraries. The host ELF loader, libc and other OS libraries remain needed.
 from __future__ import annotations
 
 import argparse
-import ast
 import json
-import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import posixpath
 import re
 import shutil
 import subprocess
@@ -31,13 +30,12 @@ except ImportError:
 
 
 NEEDED = re.compile(r'\(NEEDED\).*\[([^\]]+)\]')
-QUOTED = re.compile(r'"(?:[^"\\]|\\.)*"')
 CALL = re.compile(r'(\w+)\(')
 NETWORK_CALLS = {'socket', 'socketpair', 'connect', 'bind', 'listen', 'accept',
                  'accept4', 'sendto', 'recvfrom', 'sendmsg', 'recvmsg',
                  'sendmmsg', 'recvmmsg', 'getsockname', 'getpeername',
                  'setsockopt', 'getsockopt', 'shutdown'}
-OS_LIBRARY_ROOTS = tuple(Path(p) for p in ('/lib', '/lib64', '/usr/lib', '/usr/lib64'))
+OS_LIBRARY_ROOTS = tuple(PurePosixPath(p) for p in ('/lib', '/lib64', '/usr/lib', '/usr/lib64'))
 
 
 def require(condition, message):
@@ -131,17 +129,83 @@ def os_access(path):
     if any(path.is_relative_to(root) for root in OS_LIBRARY_ROOTS):
         # Only OS DSOs and loader search directories, never another SDK/index.
         return not path.name.startswith(('libcangjie', 'libstdx')) and ('.so' in path.name or not path.suffix)
-    if path in (Path('/etc/ld.so.cache'), Path('/etc/ld.so.preload'),
-                Path('/etc/localtime'), Path('/dev/null'), Path('/dev/urandom'),
-                Path('/dev/random'), Path('/proc/meminfo'), Path('/proc/cpuinfo'),
-                Path('/proc/stat'), Path('/usr/share/zoneinfo/UTC')):
+    if path in (PurePosixPath('/etc/ld.so.cache'), PurePosixPath('/etc/ld.so.preload'),
+                PurePosixPath('/etc/localtime'), PurePosixPath('/dev/null'), PurePosixPath('/dev/urandom'),
+                PurePosixPath('/dev/random'), PurePosixPath('/proc/meminfo'), PurePosixPath('/proc/cpuinfo'),
+                PurePosixPath('/proc/stat'), PurePosixPath('/usr/share/zoneinfo/UTC')):
         return True
     if path.is_relative_to('/sys/devices/system/cpu'):
         return True
     return bool(re.fullmatch(r'/proc/(?:self|\d+)/(?:maps|stat|status|cmdline|task(?:/\d+(?:/comm)?)?)', str(path)))
 
 
+def decode_trace_path(encoded):
+    # strace prints C-escaped bytes, not Python literals or Unicode escapes.
+    data = bytearray()
+    escapes = {'a': 7, 'b': 8, 't': 9, 'n': 10, 'v': 11, 'f': 12,
+               'r': 13, '\\': 92, '"': 34, "'": 39, '?': 63}
+    index = 0
+    while index < len(encoded):
+        character = encoded[index]
+        index += 1
+        if character != '\\':
+            data.extend(character.encode('utf-8', errors='surrogateescape'))
+            continue
+        require(index < len(encoded), 'incomplete strace path escape')
+        character = encoded[index]
+        index += 1
+        if character in escapes:
+            data.append(escapes[character])
+        elif character in '01234567':
+            digits = character
+            while index < len(encoded) and len(digits) < 3 and encoded[index] in '01234567':
+                digits += encoded[index]
+                index += 1
+            value = int(digits, 8)
+            require(value <= 255, 'invalid strace octal byte')
+            data.append(value)
+        elif character == 'x':
+            digits = encoded[index:index + 2]
+            require(len(digits) == 2 and all(digit in '0123456789abcdefABCDEF' for digit in digits),
+                    'invalid strace hex byte')
+            data.append(int(digits, 16))
+            index += 2
+        else:
+            raise ValueError('unknown strace path escape')
+    require(0 not in data, 'NUL in strace path')
+    return data.decode('utf-8', errors='surrogateescape')
+
+
+def trace_path_values(line):
+    quoted, descriptors = [], []
+    index = 0
+    while index < len(line):
+        descriptor = line.startswith(('</', '<\\'), index)
+        if line[index] != '"' and not descriptor:
+            index += 1
+            continue
+        closer = '>' if descriptor else '"'
+        index += 1
+        start = index
+        while index < len(line) and line[index] != closer:
+            index += 2 if line[index] == '\\' else 1
+        require(index < len(line), 'unterminated strace path')
+        encoded = line[start:index]
+        index += 1
+        require(not line.startswith('...', index) and not (descriptor and encoded.endswith('...')),
+                'truncated strace path')
+        decoded = decode_trace_path(encoded)
+        require(not descriptor or decoded.startswith('/'), 'non-absolute strace descriptor path')
+        (descriptors if descriptor else quoted).append(decoded)
+    return quoted, descriptors
+
+
 def audit_trace(text, layout, loader, installed_roots):
+    # These are Linux trace paths, even when the auditor is tested on Windows.
+    # Keep host filesystem operations in accept(), not in trace interpretation.
+    layout = PurePosixPath(layout.as_posix())
+    loader = PurePosixPath(loader.as_posix())
+    installed_roots = [PurePosixPath(root.as_posix()) for root in installed_roots]
     files = set()
     system = set()
     opened = set()
@@ -159,10 +223,10 @@ def audit_trace(text, layout, loader, installed_roots):
         require(name not in NETWORK_CALLS, 'network syscall observed: ' + name)
         require(name not in ('chdir', 'fchdir', 'chroot', 'pivot_root', 'execveat'),
                 'unexpected process/path redirection: ' + name)
-        tokens = QUOTED.findall(line)
+        tokens, descriptors = trace_path_values(line)
         if name == 'execve':
             require(tokens, 'unreadable execve trace')
-            executable = Path(ast.literal_eval(tokens[0]))
+            executable = PurePosixPath(tokens[0])
             require(executable in (loader, layout / 'bin/cjdoc'),
                     'unexpected child executable')
             executables.append(str(executable))
@@ -170,14 +234,13 @@ def audit_trace(text, layout, loader, installed_roots):
             tokens = tokens[:1]
         # -yy annotations expose actual descriptor targets, including symlinks
         # and non-AT_FDCWD directory descriptors used by relative *at calls.
-        tokens.extend(repr(value) for value in re.findall(r'<(/[^>]+)>', line))
-        for token in tokens:
-            value = ast.literal_eval(token)
-            if not value or '\x00' in value:
+        tokens.extend(descriptors)
+        for value in tokens:
+            if not value:
                 continue
             # File calls' quoted strings are path operands; status/clone strings
             # are harmless non-path flags and are not classified as files.
-            path = Path(os.path.normpath(value if value.startswith('/') else str(layout / value)))
+            path = PurePosixPath(posixpath.normpath(value if value.startswith('/') else str(layout / value)))
             require(not any(path.is_relative_to(root) for root in installed_roots),
                     'installed SDK/stdx access observed')
             if path.is_relative_to(layout):

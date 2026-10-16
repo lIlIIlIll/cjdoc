@@ -18,6 +18,11 @@ import tempfile
 import urllib.error
 import urllib.request
 
+try:
+    from scripts import safe_output_root
+except ImportError:  # Direct script execution.
+    import safe_output_root
+
 MAX_MANIFEST_BYTES = 1024 * 1024
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
 MAX_TOTAL_BYTES = 16 * 1024 * 1024
@@ -92,9 +97,16 @@ def bundle_path(root: Path, relative: object) -> Path:
     path = PurePosixPath(name)
     require(not path.is_absolute() and all(part not in ("", ".", "..") for part in name.split("/"))
             and "\\" not in name and ":" not in name, "unsafe bundle path")
-    target = root.joinpath(*path.parts)
-    require(not any(parent.is_symlink() for parent in [target, *target.parents] if parent != root.parent), "symlink bundle path")
-    require(target.resolve().is_relative_to(root.resolve()), "bundle path escapes root")
+    # The caller chooses the trusted root; aliases above it are not bundle input.
+    # Inspect each untrusted component before resolving so internal links cannot
+    # disappear into an otherwise in-bounds canonical path.
+    require(not root.is_symlink(), "symlink bundle root")
+    root = root.resolve()
+    target = root
+    for part in path.parts:
+        target = target / part
+        require(not target.is_symlink(), "symlink bundle path")
+    require(target.resolve().is_relative_to(root), "bundle path escapes root")
     return target
 
 
@@ -134,6 +146,7 @@ def fetch_source(url: str) -> bytes:
 
 
 def atomic_write(path: Path, data: bytes) -> None:
+    path = safe_output_root.lexical_absolute(path)
     require(not path.is_symlink(), "symlink output forbidden")
     require(not any(parent.is_symlink() for parent in path.parents), "symlink output parent forbidden")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -281,6 +294,7 @@ def prepare(manifest_path: Path, bundle: Path, output: Path, *, download: bool =
             html_output: Path | None = None) -> dict:
     manifest = load_manifest(manifest_path)
     if html_output is not None:
+        html_output = safe_output_root.lexical_absolute(html_output)
         require(html_output.parent.resolve() == output.parent.resolve(), "HTML output must be beside inventory")
     documents, entries, provenance, pending = [], [], [], []
     source_ids, paths, keys = set(), set(), set()

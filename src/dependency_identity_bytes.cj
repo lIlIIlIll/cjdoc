@@ -7,21 +7,27 @@ import std.fs.*
 private let DEPENDENCY_IDENTITY_BYTES: Int64 = 512 * 1024 * 1024
 private let DEPENDENCY_IDENTITY_FILE_BYTES: Int64 = 64 * 1024 * 1024
 
-private func dependencyInventoryFiles(root: String, directory: String, source: Bool,
+private func dependencyInventoryFiles(root: String, source: Bool,
     files: ArrayList<String>, budget: SourceDirectoryBudget): Unit {
-    Directory.walk(Path(directory), { entry =>
-        let relative = relativePathFromResolved(root, entry.path.toString()).getOrThrow()
-        if (!budget.consume(relative)) { throw IllegalArgumentException("dependency inventory limit exceeded") }
-        if (entry.name.startsWith(".") || (source && entry.name == "target")) { return true }
-        if (entry.isSymbolicLink()) { throw IllegalArgumentException("dependency inventory contains a symbolic link") }
-        if (entry.isDirectory()) {
-            dependencyInventoryFiles(root, entry.path.toString(), source, files, budget)
-        } else if (entry.isRegular() && (!source || entry.path.extensionName == "cj" ||
-            entry.name == "cjpm.toml" || entry.name == "cjpm.lock")) {
-            files.add(relative)
-        }
-        true
-    })
+    // Bound depth with the inventory budget instead of the VM call stack.
+    let pending = ArrayList<String>()
+    pending.add(root)
+    while (!pending.isEmpty()) {
+        let directory = pending.remove(at: pending.size - 1)
+        Directory.walk(Path(directory), { entry =>
+            let relative = relativePathFromResolved(root, entry.path.toString()).getOrThrow()
+            if (!budget.consume(relative)) { throw IllegalArgumentException("dependency inventory limit exceeded") }
+            if (entry.name.startsWith(".") || (source && entry.name == "target")) { return true }
+            if (entry.isSymbolicLink()) { throw IllegalArgumentException("dependency inventory contains a symbolic link") }
+            if (entry.isDirectory()) {
+                pending.add(entry.path.toString())
+            } else if (entry.isRegular() && (!source || entry.path.extensionName == "cj" ||
+                entry.name == "cjpm.toml" || entry.name == "cjpm.lock")) {
+                files.add(relative)
+            }
+            true
+        })
+    }
 }
 
 private func dependencyArtifactDigest(path: Path, budget: SourceAuxiliaryBudget, expectedSize!: ?Int64 = None): String {
@@ -77,7 +83,7 @@ internal func dependencyObservedIdentity(path: String, source: Bool,
     }
     if (!info.isDirectory()) { throw IllegalArgumentException("dependency input is not a file or directory") }
     let files = ArrayList<String>()
-    dependencyInventoryFiles(root, root, source, files,
+    dependencyInventoryFiles(root, source, files,
         directoryBudget.getOrDefault({ => SourceDirectoryBudget(maxEntries: 100000, maxDepth: 128) }))
     sortStrings(files)
     if (files.isEmpty()) { throw IllegalArgumentException("dependency inventory is empty") }
