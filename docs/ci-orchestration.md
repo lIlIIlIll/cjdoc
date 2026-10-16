@@ -40,6 +40,31 @@ started a separate process.
 This preserves the suite, deadline, serial test scheduling and committed compile
 defaults. A Linux routing/status/cleanup probe is not native Windows compile proof.
 
+The optional-worker host build receives the running workflow shell through
+`highlight_ci.py --bash`. Windows requires this explicit absolute executable;
+the workflow converts Git Bash's path with `cygpath` when available. A Python
+child resolving an unqualified `bash` can select a different launcher. The
+host build retains the existing SDK selection, temporary entry/root `-O1`
+overrides and restoration traps.
+
+The no-Node worker scenario removes every PATH entry that can resolve `node`,
+then asserts that Node is unavailable. It preserves the other original entries,
+including native SDK/DLL and supervisor paths. Replacing PATH with only SDK
+`bin` and system directories also removes unrelated runtime discovery on Windows
+and is not a valid isolation of the optional Node dependency.
+Each directory is checked through an absolute Node candidate, so Windows'
+implicit current-directory lookup cannot remove unrelated entries. A Node in
+the working directory is rejected explicitly: an empty PATH alone does not
+prevent native process lookup from finding it there.
+Windows `node.exe` is checked independently of PATHEXT, matching native process
+lookup even when that variable omits `.EXE`.
+
+Frozen-IR replay applies the same isolation to `node`, `cjc` and `cjpm`, clears
+SDK/stdx discovery paths and keeps native runtime/DLL search paths. Every render
+and API-surface replay uses this environment; the source project is still moved
+away and complete output bytes are compared. An empty PATH is not a portable
+substitute for unavailable generation tools.
+
 ## What the site-generation time is actually spent on
 
 Real Pages run `38332333489`, attempt 1, artifact
@@ -354,3 +379,24 @@ quietly closed:
   requirement is not met by any amount of re-reporting. The raw collection and
   its limits are attached to #96; a successful tag run would add one sample, not
   fill the cells.
+
+## Optional highlight-worker failure evidence
+
+`highlight_ci.py` keeps raw command output private. A failed `worker-acceptance`
+step may publish `tracebackLocations`: only an allowlisted repository-relative
+acceptance/observer script and its numeric source line. The child record is limited
+to 8 KiB and 16 locations and validated before publication. Exception text, local
+variables, command arguments, environment values and raw output are not copied.
+These locations diagnose a failure; they do not turn it into acceptance.
+Filesystem aliases are canonicalized before the exact allowlist comparison;
+published records still contain only fixed repository-relative names and lines.
+
+Observer cleanup retains each acquired process handle or queue after signalling.
+Its native exit wait is limited to three seconds per process before checking the
+unchanged stopped predicate; existing identity-query deadlines still apply. A live
+process or failed query remains an error, not a successful cleanup.
+An already-terminated Windows handle is accepted only when that same acquired
+handle proves exit; access-denied alone is not success. Procfs `ENOENT`/`ESRCH`
+means the process disappeared, including during a read; permission and other
+query failures still propagate.
+

@@ -51,8 +51,8 @@ GOLDEN_NAMES = (
     "path-dependencies",
 )
 
-CURRENT_GOLDEN_VERSION = 13
-LEGACY_GOLDEN_VERSIONS = (6, 7, 8, 9, 10, 11, 12)
+CURRENT_GOLDEN_VERSION = 14
+LEGACY_GOLDEN_VERSIONS = (6, 7, 8, 9, 10, 11, 12, 13)
 
 SCHEMA_NAMES = (
     "doc-ir",
@@ -64,6 +64,7 @@ SCHEMA_NAMES = (
     "doc-ir-v11",
     "doc-ir-v12",
     "doc-ir-v13",
+    "doc-ir-v14",
     "diagnostics",
     "cfg-matrix",
     "search-index",
@@ -209,7 +210,12 @@ SCHEMA_CONTRACTS["doc-ir-v13"] = (
     "cjdoc.doc-ir/13", SCHEMA_CONTRACTS["doc-ir-v12"][2],
 )
 SCHEMA_CONTRACTS["doc-ir"] = (
-    SCHEMA_CONTRACTS["doc-ir"][0], "cjdoc.doc-ir/13", SCHEMA_CONTRACTS["doc-ir"][2],
+    SCHEMA_CONTRACTS["doc-ir"][0], "cjdoc.doc-ir/14",
+    (*SCHEMA_CONTRACTS["doc-ir"][2][:3], "apiCollectionState", *SCHEMA_CONTRACTS["doc-ir"][2][3:]),
+)
+SCHEMA_CONTRACTS["doc-ir-v14"] = (
+    SCHEMA_CONTRACTS["doc-ir-v13"][0].replace("v13", "v14"),
+    "cjdoc.doc-ir/14", SCHEMA_CONTRACTS["doc-ir"][2],
 )
 for current, legacy in (("api-surface", "api-surface-v2"), ("api-diff", "api-diff-v1"),
                         ("doctest-results", "doctest-results-v1"),
@@ -237,6 +243,7 @@ SCHEMA_OPTIONAL_PROPERTIES = {
     "symbol-index": ("version",),
     "doc-ir": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
     "doc-ir-v13": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
+    "doc-ir-v14": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
     "site-manifest": ("defaultLanguage",),
 }
 DOC_IR_CORE_DEFS = {

@@ -72,6 +72,8 @@ public class GenerationRequest {
     public let cjpmCacheRoot: ?String
     public let highlightAdapter: ?String
     public let highlightNode: ?String
+    /** Optional host policy override; absent uses the project [highlight] configuration. */
+    public let highlight: ?HighlightConfig
     public let i18n: ?public_model.DocumentationLanguageOptions
     private let requiredLanguagesStorage: ArrayList<String>
     private let dependencySourcesStorage: ArrayList<DependencySourceInput>
@@ -86,7 +88,7 @@ public class GenerationRequest {
         providerFactories!: Array<public_provider.SemanticProviderFactory> = [], cacheDirectory!: ?String = None,
         cacheFingerprint!: ?String = None, astPreflightExecutable!: ?String = None,
         chir!: ?ChirOptions = None, cjpmCacheRoot!: ?String = None,
-        highlightAdapter!: ?String = None, highlightNode!: ?String = None,
+        highlightAdapter!: ?String = None, highlightNode!: ?String = None, highlight!: ?HighlightConfig = None,
         i18n!: ?public_model.DocumentationLanguageOptions = None, requiredLanguages!: Array<String> = []) {
         if (projectRoot.isEmpty()) {
             throw IllegalArgumentException("project root cannot be empty")
@@ -126,6 +128,7 @@ public class GenerationRequest {
         this.cjpmCacheRoot = cjpmCacheRoot
         this.highlightAdapter = highlightAdapter
         this.highlightNode = highlightNode
+        this.highlight = highlight
         this.i18n = i18n
         this.requiredLanguagesStorage = ArrayList<String>()
         for (language in requiredLanguages) {

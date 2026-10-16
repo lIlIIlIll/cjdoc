@@ -348,11 +348,8 @@ public func apiContractSnapshotForDocumentation(documentation: DocumentationSet)
         }
     }
     sort(exposures, lessThan: { left, right => left.id < right.id }, stable: true)
-    let collectionState = if (documentation.status == "complete") { "resolved" }
-        else if (documentation.status == "partial") { "partial" }
-        else { "unavailable" }
     ApiContractSnapshot(documentation.project.name, documentation.configuration.audience,
-        documentation.configuration.cfgProfile, collectionState: collectionState,
+        documentation.configuration.cfgProfile, collectionState: documentation.apiCollectionState,
         declarations: declarations.toArray(), exposures: exposures.toArray())
 }
 

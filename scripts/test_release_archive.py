@@ -56,7 +56,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 expected_schemas.add("docs/schema/" + schema_id.path.rsplit("/", 1)[-1])
             expected_schemas.update(f"docs/schema/{name}.schema.json" for name in (
                 "doc-ir-v6", "doc-ir-v7", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10",
-                "doc-ir-v11", "doc-ir-v12", "api-surface-v1", "api-surface-v2",
+                "doc-ir-v11", "doc-ir-v12", "doc-ir-v13", "api-surface-v1", "api-surface-v2",
                 "api-diff-v1", "doctest-results-v1", "search-index-v8", "versions-v1",
             ))
             for platform in ("linux-x64", "windows-x64"):

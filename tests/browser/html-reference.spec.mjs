@@ -298,9 +298,21 @@ test.describe('generated HTML reference', () => {
     const classUrl = new URL(classHref, packageUrl).href;
     await gotoFile(page, classUrl);
     await expect(page.locator('.breadcrumbs')).toContainText('Package');
-    const classUsages = page.locator('main > .api-usages');
+    // Select the owner-level guide section by its reader-facing heading, not a layout parent.
+    const classUsages = page.locator('main .api-usages').filter({
+      has: page.getByRole('heading', { level: 2 }),
+    });
     const classExternalDocs = page.locator('.content-column > .external-documentation');
     await expect(classUsages).toContainText('Getting started');
+    await expect(classUsages).toHaveCount(1);
+    const classGuide = classUsages.getByRole('link', { name: 'Getting started', exact: true });
+    await expect(classGuide).toHaveCount(1);
+    await expect(classGuide).toHaveAttribute('href', '../concepts/guides/getting-started.html');
+    await classGuide.click();
+    await expect(page).toHaveURL(new URL('../concepts/guides/getting-started.html', classUrl).href);
+    await expect(page.locator('.page-header h1')).toHaveText('Getting started');
+    await page.goBack();
+    await expect(page).toHaveURL(classUrl);
     await expect(classExternalDocs.locator('a')).toHaveAttribute('href', 'https://docs.example.test/1.1.3/libs/std/core/reference-box.html#referencebox');
     await expect(classExternalDocs).toContainText('version: 1.1.3');
     await expect(classExternalDocs).toContainText('format: cjdoc.symbol-index/1');
@@ -645,6 +657,17 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('.conceptual-bindings a[href="phish"]')).toHaveCount(0);
     await expect(page.locator('.conceptual-bindings')).toContainText('Not available in this audience');
     await expect(page.locator('pre').filter({ hasText: 'cjdoc-bind target="html_reference_extra.ExtraBox"' })).toHaveCount(1);
+    const placement = await page.evaluate(() => {
+      const index = document.querySelector('main .conceptual-bindings');
+      const chips = [...document.querySelectorAll('main .inline-binding')].filter(chip => !index.contains(chip));
+      const paragraph = [...document.querySelectorAll('main p')].find(node => node.textContent.includes('Choose a package from the API index'));
+      const fenced = [...document.querySelectorAll('main pre')].find(node => node.textContent.includes('cjdoc-bind target="html_reference_extra.ExtraBox"'));
+      const follows = (first, second) => !!(first && second && (first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING));
+      return { chips: chips.length, paragraphBeforeFirstChip: follows(paragraph, chips[0]),
+        chipsBeforeFencedCode: chips.every(chip => follows(chip, fenced)),
+        indexAfterBodyCode: follows(fenced, index) };
+    });
+    expect(placement).toEqual({ chips: 3, paragraphBeforeFirstChip: true, chipsBeforeFencedCode: true, indexAfterBodyCode: true });
     await expectStable(page);
   });
 

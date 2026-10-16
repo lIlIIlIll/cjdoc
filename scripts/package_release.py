@@ -44,6 +44,7 @@ SCHEMA_FILES = (
     "doc-ir-v11.schema.json",
     "doc-ir-v12.schema.json",
     "doc-ir-v13.schema.json",
+    "doc-ir-v14.schema.json",
     "api-surface-v2.schema.json",
     "api-surface-v3.schema.json",
     "api-diff-v1.schema.json",

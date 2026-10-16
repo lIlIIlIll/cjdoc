@@ -164,6 +164,7 @@ def verify_legacy_migrations(repo: Path, binary_value: Path) -> list[str]:
                     receipt = receipts[str(version)][name]
                     legacy_projection = copy.deepcopy(migrated_value)
                     legacy_projection["schemaVersion"] = "cjdoc.doc-ir/8"
+                    legacy_projection.pop("apiCollectionState", None)
                     project = legacy_projection.get("project")
                     if isinstance(project, dict):
                         project.pop("repository", None)

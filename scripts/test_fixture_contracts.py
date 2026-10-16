@@ -28,6 +28,9 @@ CLI_CONTRACT_FIXTURES = {
     "highlight",
     # Package overview generation/replay and browser identity acceptance (issue #113).
     "package-overview", "package-overview-empty",
+    # Optional real adapter/Future-cancellation host, exercised by
+    # scripts/highlight_acceptance.py --api-probe (never a default Node dependency).
+    "highlight_host",
     # Committed sources for the retained @example asset case; a temporary project
     # root resolves local images differently across platforms.
     "example_assets",
@@ -58,7 +61,7 @@ class FixtureContractTest(unittest.TestCase):
             document = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             self.fail(f"{fixture} did not emit one valid JSON document: {error}; stderr={result.stderr}")
-        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/13")
+        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/14")
         self.assertEqual(document.get("generator"), {
             "name": "cjdoc", "version": self.package_version,
         })

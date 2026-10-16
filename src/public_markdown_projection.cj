@@ -70,6 +70,7 @@ internal class MarkdownGenerationContext {
     private var nodes: Int64 = 0
     private var textBytes: Int64 = 0
     private let diagnosticsStorage = ArrayList<public_model.Diagnostic>()
+    private let retainedHighlightFailures = ArrayList<public_model.Diagnostic>()
     private let failedSymbols = HashSet<String>()
     var incomplete: Bool = false
 
@@ -112,16 +113,30 @@ internal class MarkdownGenerationContext {
                 source: Some(source), symbolId: Some(symbolId)))
     }
 
-    func diagnostics(): Array<public_model.Diagnostic> {
-        let result = ArrayList<public_model.Diagnostic>(diagnosticsStorage.toArray())
+    func retainHighlightFailures(diagnostics: Array<public_model.Diagnostic>): Unit {
+        for (diagnostic in diagnostics) {
+            if (diagnostic.isHighlightFailure) { retainedHighlightFailures.add(diagnostic) }
+        }
+    }
+
+    func highlightDiagnostics(): Array<public_model.Diagnostic> {
+        let result = ArrayList<public_model.Diagnostic>(retainedHighlightFailures.toArray())
         result.add(all: highlightBudget.diagnostics())
         result.add(all: highlightBudget.escalationDiagnostics())
         result.toArray()
     }
 
-    func highlight(source: String, language: String): ?public_model.CodeHighlight {
+    func collectionDiagnostics(): Array<public_model.Diagnostic> { diagnosticsStorage.toArray() }
+
+    func diagnostics(): Array<public_model.Diagnostic> {
+        let result = ArrayList<public_model.Diagnostic>(diagnosticsStorage.toArray())
+        result.add(all: highlightDiagnostics())
+        result.toArray()
+    }
+
+    func highlight(source: String, language: String, witness!: Array<String> = []): ?public_model.CodeHighlight {
         if (highlightMode == "off") { return None }
-        highlightBudget.prepare(source, language)
+        highlightBudget.prepare(source, language, witness: witness)
     }
 }
 
@@ -247,16 +262,28 @@ internal func publicMarkdownMetadata(node: NodeRef, context: MarkdownGenerationC
 
 internal func publicMarkdownNode(node: NodeRef, source: SourceBuffer, assetCollector: LocalAssetCollector,
     sourcePath: String, declarationSource: public_model.SourceRange, symbolId: String,
-    context: MarkdownGenerationContext, depth: Int64): public_model.MarkdownNode {
+    context: MarkdownGenerationContext, depth: Int64,
+    bindingPositions!: ?HashMap<Int64, CapturedPageBindingPosition> = None,
+    allowBindingMarkers!: Bool = true): public_model.MarkdownNode {
     context.consumeNode(depth)
+    if (let Some(marker) <- capturedBindingMarker(node, bindingPositions, allowBindingMarkers)) {
+        context.consumeText(marker.literal)
+        return marker
+    }
     let children = ArrayList<public_model.MarkdownNode>()
     let sourceChildren = node.children()
+    let childMarkersAllowed = allowBindingMarkers &&
+        match (node.kind) { case NodeKind.BlockQuote => false; case _ => true }
     var index: Int64 = 0
     while (index < sourceChildren.size) {
         children.add(
             publicMarkdownNode(sourceChildren[index], source, assetCollector, sourcePath, declarationSource, symbolId,
-                context, depth + 1))
+                context, depth + 1, bindingPositions: bindingPositions, allowBindingMarkers: childMarkersAllowed))
         index++
+    }
+    match (node.kind) {
+        case NodeKind.Paragraph => if (let Some(block) <- capturedBindingParagraph(children, context, depth)) { return block }
+        case _ => ()
     }
     let literal = match (node.kind) {
         case NodeKind.Text => node.asText().getOrThrow().value
@@ -364,13 +391,14 @@ private func explicitSemanticLinkNodes(value: String): ?Array<public_model.Markd
 }
 
 internal func publicMarkdown(body: String, assetCollector: LocalAssetCollector, sourcePath: String,
-    declarationSource: public_model.SourceRange, symbolId: String, context: MarkdownGenerationContext): public_model.MarkdownNode {
+    declarationSource: public_model.SourceRange, symbolId: String, context: MarkdownGenerationContext,
+    bindingPositions!: ?HashMap<Int64, CapturedPageBindingPosition> = None): public_model.MarkdownNode {
     if (body.isEmpty()) {
         return public_model.MarkdownNode("document")
     }
     let result = MarkdownEngine.builder().profile(MarkdownProfile.gfmModernV1()).build().parse(body)
     publicMarkdownNode(result.document.root(), result.source, assetCollector, sourcePath, declarationSource, symbolId,
-        context, 0)
+        context, 0, bindingPositions: bindingPositions)
 }
 public func parseStandaloneMarkdown(body: String, highlightMode!: String = "auto",
     highlightAdapter!: ?String = None, highlightNode!: ?String = None): public_model.MarkdownNode {
@@ -379,19 +407,29 @@ public func parseStandaloneMarkdown(body: String, highlightMode!: String = "auto
     let assets = LocalAssetCollector(ArrayList<SourceFileOrigin>())
     let context = MarkdownGenerationContext(highlightMode: highlightMode,
         externalOptions: highlightExternalOptions(highlightAdapter, highlightNode))
-    publicMarkdown(body, assets, "conceptual.md", source, "cjdoc:conceptual", context)
+    try { publicMarkdown(body, assets, "conceptual.md", source, "cjdoc:conceptual", context) }
+    finally { context.highlightBudget.close() }
 }
 
 internal func parseCapturedPageMarkdown(body: String, assetCollector: LocalAssetCollector,
-    sourcePath: String, request: GenerationRequest): public_model.MarkdownNode {
+    sourcePath: String, request: GenerationRequest,
+    sharedContext!: ?MarkdownGenerationContext = None,
+    bindingLines!: ?HashSet<Int64> = None): (String, public_model.MarkdownNode, HashSet<Int64>) {
     let source = public_model.SourceRange(sourcePath, public_model.SourcePosition(1, 1, 0),
         public_model.SourcePosition(1, 1, 0))
-    let highlightConfig = loadHighlightConfig(request.projectRoot)
-    let context = MarkdownGenerationContext(
+    let highlightConfig = request.highlight.getOrDefault({ => loadHighlightConfig(request.projectRoot) })
+    let context = sharedContext.getOrDefault({ => MarkdownGenerationContext(
         highlightMode: if (highlightConfig.mode == "off") { "off" } else { "auto" },
         highlightLanguages: highlightConfig,
-        externalOptions: highlightExternalOptions(request.highlightAdapter, request.highlightNode))
-    publicMarkdown(body, assetCollector, sourcePath, source, "", context)
+        externalOptions: highlightExternalOptions(request.highlightAdapter, request.highlightNode)) })
+    try {
+        let (prepared, text, positions) = prepareCapturedPageBindings(body, sourcePath, bindingLines)
+        let tree = publicMarkdown(prepared, assetCollector, sourcePath, source, "", context, bindingPositions: Some(positions))
+        let accepted = HashSet<Int64>()
+        for ((_, position) in positions) { let _ = accepted.add(position.source.start.line) }
+        (text, tree, accepted)
+    }
+    finally { if (sharedContext.isNone()) { context.highlightBudget.close() } }
 }
 
 // Inspect the already parsed AST before allowing asset collection. Discarded

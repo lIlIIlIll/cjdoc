@@ -83,7 +83,11 @@ class HtmlPackageDeclarationTest {
             base.packageName, base.moduleId, base.visibility, base.source, raw, base.semantic,
             parameters: [ParameterDoc("label", TypeRef("named", "String", SemanticType("unavailable"))),
                 ParameterDoc("item", typeRef)], returnType: Some(typeRef),
-            sourceApiSignature: SourceApiSignature("available", tokens: tokens))
+            sourceApiSignature: SourceApiSignature("available", tokens: tokens),
+            signatureHighlight: Some(CodeHighlight("cangjie", contractFingerprint(raw), raw.size,
+                "fixture", "1", "complete", None, [CodeSpan(0, 6, "keyword"),
+                    CodeSpan(raw.indexOf("\"Entry\"").getOrThrow(),
+                        raw.indexOf("\"Entry\"").getOrThrow() + 7, "string")])))
         let html = declarationRowsHtml(packageRowsHtml(rowDocumentation([target, function]), "en"))
         @Expect(html.split("class=\"type-link signature-type-link\"").size, 3)
         @Expect(html.contains("<span class=\"code-keyword\">public</span>"))

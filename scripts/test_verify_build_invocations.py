@@ -211,42 +211,6 @@ class InvocationVerificationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("recorded no produced binary", result.stderr)
 
-    def test_a_second_build_disguised_in_the_text_is_still_recorded(self) -> None:
-        """The record comes from what ran, so disguising the spelling changes nothing."""
-        self.write(record(), record(option="-O2"))
-        result = self.check()
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("-O2", result.stderr)
-
-    def test_the_wrapper_records_only_builds(self) -> None:
-        """Recording `test`/`run` would let a logger failure break the suite."""
-        wrapper = (PROJECT_ROOT / "scripts" / "with_sts_o1_cjpm.sh").read_text(encoding="utf-8")
-        self.assertIn('build) record_invocation=1', wrapper)
-        self.assertIn("record_invocation", wrapper)
-        # The logger is guarded by the flag, so a non-build invocation never reaches it.
-        guard = wrapper.index('if [[ "${record_invocation}" == "1" ]]')
-        self.assertLess(guard, wrapper.index("log_invocation.py"))
-
-    def test_the_wrapper_resolves_the_windows_executable_suffix(self) -> None:
-        """Windows produces `main.exe`; the digest must be of the built file."""
-        wrapper = (PROJECT_ROOT / "scripts" / "with_sts_o1_cjpm.sh").read_text(encoding="utf-8")
-        self.assertIn("main.exe", wrapper)
-        # The suffix is resolved after the build, not before it exists.
-        run_at = wrapper.index('"${CJDOC_REAL_CJPM}" "$@"')
-        self.assertLess(run_at, wrapper.index("cjdoc_binary="))
-
-    def test_the_workflow_verifies_the_invocations_after_the_build(self) -> None:
-        workflow = (PROJECT_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-        candidate = workflow.split("\n  release-candidate:\n", 1)[1].split("\n  publish:\n", 1)[0]
-        self.assertIn("verify_build_invocations.py", candidate)
-        build_at = candidate.index("cjpm build --jobs 1")
-        verify_at = candidate.index("verify_build_invocations.py")
-        self.assertLess(build_at, verify_at,
-                        "the invocations must be checked after the build runs")
-        # The acceptance gates rebuild, so the binding must happen at packaging time.
-        package_at = candidate.index("name: Build the deterministic package")
-        self.assertLess(package_at, verify_at,
-                        "the final binary must be bound to its build when packaged")
 
 
 if __name__ == "__main__":

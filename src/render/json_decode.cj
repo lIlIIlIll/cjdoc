@@ -14,7 +14,7 @@ public func decodeDocIr(text: String): DocumentationSet {
     let rawShape = validateRawSchemaShape(parsed)
     validatePortablePathFields(parsed, "$")
     validateDeclarativeSchema(parsed)
-    let root = strictObject(parsed, "$", ["schemaVersion", "generator", "status", "project",
+    let root = strictObject(parsed, "$", ["schemaVersion", "generator", "status", "apiCollectionState", "project",
         "configuration", "providers", "modules", "packages", "files", "declarations", "assets",
         "orphanDocComments", "macroInvocations", "unsupportedDeclarations",
         "unboundSemanticDeclarations", "diagnostics", "languageOptions", "pages", "readingLanguage", "externalDocumentation"])
@@ -26,10 +26,12 @@ public func decodeDocIr(text: String): DocumentationSet {
     let legacyV10 = version == DOC_IR_V10_SCHEMA_VERSION
     let legacyV11 = version == DOC_IR_V11_SCHEMA_VERSION
     let legacyV12 = version == DOC_IR_V12_SCHEMA_VERSION
+    let legacyV13 = version == DOC_IR_V13_SCHEMA_VERSION
     let current = version == DOC_IR_SCHEMA_VERSION
-    let modern = legacyV9 || legacyV10 || legacyV11 || legacyV12 || current
+    let modern = legacyV9 || legacyV10 || legacyV11 || legacyV12 || legacyV13 || current
     if (!legacy && !legacyV8 && !modern) {
-        fail("$.schemaVersion", "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V11_SCHEMA_VERSION}', " +
+        fail("$.schemaVersion", "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V13_SCHEMA_VERSION}', " +
+            "'${DOC_IR_V12_SCHEMA_VERSION}', '${DOC_IR_V11_SCHEMA_VERSION}', " +
             "'${DOC_IR_V10_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
             "'${DOC_IR_V8_SCHEMA_VERSION}', '${DOC_IR_V7_SCHEMA_VERSION}', or " +
             "'${DOC_IR_V6_SCHEMA_VERSION}'")
@@ -65,7 +67,8 @@ public func decodeDocIr(text: String): DocumentationSet {
         languageOptions: decodeDocumentationLanguageOptions(root.get("languageOptions"), "$.languageOptions"),
         pages: decodeDocumentationPages(root.get("pages"), decodedAssets.references),
         readingLanguage: optionalDocumentationLanguage(root.get("readingLanguage"), "$.readingLanguage"),
-        externalDocumentation: decodeExternalDocumentation(root.get("externalDocumentation")))
+        externalDocumentation: decodeExternalDocumentation(root.get("externalDocumentation")),
+        apiCollectionState: if (current) { Some(stringAt(root, "apiCollectionState", "$")) } else { None })
     validateDocumentationSet(documentation)
     documentation
 }

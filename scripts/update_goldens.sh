@@ -6,7 +6,7 @@ export PYTHONDONTWRITEBYTECODE=1
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 binary="${repo_root}/target/release/bin/main"
 update_dir="${repo_root}/target/golden-update"
-golden_dir="${repo_root}/tests/fixtures/golden-v13"
+golden_dir="${repo_root}/tests/fixtures/golden-v14"
 golden_parent="${repo_root}/tests/fixtures"
 python_cmd="${CJDOC_PYTHON:-python3}"
 source_edges_override="${CJDOC_SOURCE_EDGES_PROJECT:-}"
@@ -58,7 +58,7 @@ else
         --repo "${repo_root}" --directory "${update_dir}" --create >/dev/null
 fi
 mkdir -p "${golden_parent}"
-stage_dir="$(mktemp -d "${golden_parent}/.golden-v13.XXXXXX")"
+stage_dir="$(mktemp -d "${golden_parent}/.golden-v14.XXXXXX")"
 snapshot_dir="${update_dir}/fixture-snapshot"
 snapshot_receipt="${update_dir}/fixture-snapshot.json"
 
@@ -80,10 +80,10 @@ fi
 fixture_root="${snapshot_dir}/tests/fixtures/projects"
 source_edges_project="${fixture_root}/source_edges"
 
-# Legacy v6-v12 inputs are migration fixtures, not update targets.
-"${python_cmd}" -c 'from pathlib import Path; from scripts.verify_repository_inputs import verify_golden_set; [verify_golden_set(Path.cwd(), version) for version in (6, 7, 8, 9, 10, 11, 12)]'
+# Legacy v6-v13 inputs are migration fixtures, not update targets.
+"${python_cmd}" -c 'from pathlib import Path; from scripts.verify_repository_inputs import verify_golden_set; [verify_golden_set(Path.cwd(), version) for version in (6, 7, 8, 9, 10, 11, 12, 13)]'
 "${binary}" schema list | tr -d '\r' >"${update_dir}/schema-list.txt"
-"${python_cmd}" -c 'import sys; names=set(open(sys.argv[1], encoding="utf-8").read().splitlines()); assert "doc-ir-v13" in names' \
+"${python_cmd}" -c 'import sys; names=set(open(sys.argv[1], encoding="utf-8").read().splitlines()); assert "doc-ir-v14" in names' \
     "${update_dir}/schema-list.txt"
 
 update_golden() {
@@ -119,19 +119,19 @@ expected = {
 actual = {path.name for path in root.glob("*.docs.json")}
 if actual != expected:
     raise SystemExit(
-        "v13 golden set mismatch: missing=" + ",".join(sorted(expected - actual)) +
+        "v14 golden set mismatch: missing=" + ",".join(sorted(expected - actual)) +
         " unexpected=" + ",".join(sorted(actual - expected))
     )
 for path in root.glob("*.docs.json"):
-    value = strict_load(path, description=f"generated v13 golden {path.name}")
-    if value.get("schemaVersion") != "cjdoc.doc-ir/13":
-        raise SystemExit(f"non-v13 golden generated: {path.name}")
+    value = strict_load(path, description=f"generated v14 golden {path.name}")
+    if value.get("schemaVersion") != "cjdoc.doc-ir/14":
+        raise SystemExit(f"non-v14 golden generated: {path.name}")
 PY
 
 "${python_cmd}" scripts/fixture_snapshot.py verify --receipt "${snapshot_receipt}"
 
 if [[ -e "${golden_dir}" ]]; then
-    backup_dir="${golden_parent}/.golden-v13.backup.$$"
+    backup_dir="${golden_parent}/.golden-v14.backup.$$"
     test ! -e "${backup_dir}"
     mv "${golden_dir}" "${backup_dir}"
 fi
@@ -151,4 +151,4 @@ fi
 
 trap - EXIT
 
-echo "updated Doc IR v13 goldens"
+echo "updated Doc IR v14 goldens"

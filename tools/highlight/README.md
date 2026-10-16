@@ -8,8 +8,10 @@ node_modules into the generated website.
 
 ## Reproducible installation
 
-Use Node.js **26.10.0** (also recorded in .node-version). The package engine range
-is deliberately the exact version 26.10.0, not a floating major version.
+Use Node.js **26.11.1** (also recorded in .node-version and exercised by the
+worker acceptance harness). The declared engine range is **>=26.10.0 <27.0.0**;
+26.10.0 is the previous verified release. Other versions in that range are not
+claimed as individually tested.
 Highlight.js is pinned to **11.11.1** and the mapping revision is **cjdoc-map-1**.
 An update requires reviewing source preservation, scope mapping and licenses,
 then updating the lockfile and revision together. No floating latest is used:
@@ -110,8 +112,58 @@ never adapter HTML. Keep plain as whole-block fallback with an explicit reason.
 Use a bounded worker timeout, drain bounded stderr without exposing code, and
 close/wait or terminate/wait on every shutdown/failure path. Cache keys must bind
 engine revision, language and sourceHash. Do not ship worker files with site
-assets. The Cangjie integration is owned separately; this package does not
-implement or claim that integration.
+assets. The generator reuses one serial worker per generation, including captured
+guides. Each request has a five-second deadline; failures allow at most two later
+restarts (three starts total). Generation cleanup and thread cancellation kill
+the supervised process tree. Only validated non-transient lexical results are
+cached in memory; no owner or semantic links enter that cache.
+
+After building cjdoc, exercise the real integration, including reuse, alias
+cache hits, wrong-ID recovery, crash/timeout restart limits and tree cleanup:
+
+~~~sh
+python3 scripts/highlight_acceptance.py --binary target/release/bin/main --workdir "$TMPDIR/highlight-acceptance"
+~~~
+
+The work directory must not already exist. The harness keeps generated sites,
+protocol observations and timings there; it does not alter frozen baselines.
+It also checks host termination, stderr/stdout limits, an independent adapter ZIP
+installed into an isolated offline npm cache, source-ZIP reproduction, full
+offline extraction, and byte-identical `generate`/`render` replay with empty PATH.
+The five locked grammars must already be available in the host npm cache.
+
+For the public `Future.cancel()` path, build the explicit optional test host with
+the same SDK/stdx setup as cjdoc, then pass it to the harness:
+
+~~~sh
+(cd tests/fixtures/projects/highlight_host && cjpm build)
+python3 scripts/highlight_acceptance.py --binary target/release/bin/main \
+  --api-probe tests/fixtures/projects/highlight_host/target/release/bin/main \
+  --workdir "$TMPDIR/highlight-public-acceptance"
+~~~
+
+`--sdk-receipt <path>` records and verifies the pinned SDK/stdx archive receipt;
+only archive names, hashes and target/version facts enter the report, not paths.
+The built-in revision is a bounded Lexer-behavior witness plus mapping revision,
+not a claim to identify every grammar behavior or the complete SDK build.
+`--baseline-binary <path>` additionally measures the same input against a prior
+binary. `report.json` records elapsed generation time and IR/HTML/DOM/span counts
+for static, off and baseline outputs; these are observations, not speed claims.
+For real clipboard/CRLF, CSP/no-JavaScript, themes and layout checks, use the
+harness's `crlf/html` output as `CJDOC_HIGHLIGHT_FIXTURE` and run:
+
+~~~sh
+cd tests/browser
+CJDOC_HIGHLIGHT_EXPECT_TYPE_LINKS=0 \
+CJDOC_HIGHLIGHT_FIXTURE="$TMPDIR/highlight-public-acceptance/crlf/html" \
+  npx playwright test --config highlight.config.mjs
+~~~
+
+The native 200% capture uses a controlled Chromium extension's tabs.setZoom(2),
+then checks actual CSS viewport/DPR and the exact type destination. Supply the
+input identity oracle explicitly: 0 links for this source-only fixture, or 2 for
+a public-IR fixture with resolved parameter/return evidence; never derive the
+expected count from generated search metadata.
 
 Verify process lifecycle and protocol framing from the repository root:
 

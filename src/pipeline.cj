@@ -22,6 +22,7 @@ class DocumentationDriver {
         let documentation = DocumentationBinder().bind(source, semantic,
             expectedProvider: Some(semanticProvider.providerName()))
         documentation.cfgProfile = cfgProfile
+        documentation.apiCollectionState = capturedApiCollectionState(documentation)
         return documentation
     }
 }

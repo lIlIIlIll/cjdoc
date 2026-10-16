@@ -18,6 +18,13 @@ private func signatureTestTokens(): Array<String> {
     result.toArray()
 }
 
+private func signatureTestHighlight(raw: String): CodeHighlight {
+    let start = raw.indexOf("= ").getOrThrow() + 2
+    let end = raw.indexOf(", item!").getOrThrow()
+    CodeHighlight("cangjie", contractFingerprint(raw), raw.size, "fixture", "1", "complete", None,
+        [CodeSpan(0, 6, "keyword"), CodeSpan(7, 11, "keyword"), CodeSpan(start, end, "string")])
+}
+
 private func signatureTestDocument(raw: String,
     tokens!: Array<String> = signatureTestTokens(), highlight!: ?CodeHighlight = None): DocumentationSet {
     let moduleId = "cjdoc:module:v1:signature-test"
@@ -54,14 +61,16 @@ class HtmlSignatureMappingTest {
             "cjdoc-cangjie-lexer", "1", "complete", None, [CodeSpan(0, 6, "comment")])
         let stale = CodeHighlight("cangjie", contractFingerprint(raw + " "), raw.size + 1,
             "cjdoc-cangjie-lexer", "1", "complete", None, [CodeSpan(0, 6, "comment")])
-        let witnessHtml = "<span class=\"code-keyword\">public</span> " +
-            "<span class=\"code-keyword\">func</span> accept(label!: " +
-            "<span class=\"code-type\">String</span> = " +
-            "<span class=\"code-string\">&quot;Token&quot;</span>, item!: Token): Token"
+        let disabled = CodeHighlight("cangjie", contractFingerprint(raw), raw.size,
+            "fixture", "1", "plain", Some("disabled"), [])
+        let limited = CodeHighlight("cangjie", contractFingerprint(raw), raw.size,
+            "fixture", "1", "plain", Some("resource-limit"), [])
         let validHtml = "<span class=\"code-comment\">public</span>" + escapeHtml(raw[6..])
         let cases: Array<(?CodeHighlight, String)> = [
-            (None, witnessHtml), (Some(stale), escapeHtml(raw)), (Some(prepared), validHtml)
+            (None, escapeHtml(raw)), (Some(stale), escapeHtml(raw)), (Some(prepared), validHtml),
+            (Some(disabled), escapeHtml(raw)), (Some(limited), escapeHtml(raw))
         ]
+        var originalLinked = ""
         for ((highlight, expected) in cases) {
             let document = signatureTestDocument(raw, highlight: highlight)
             let subject = document.declarations[1]
@@ -71,6 +80,9 @@ class HtmlSignatureMappingTest {
             let linked = RenderTextBuffer()
             let links = HtmlTypeLinkIndex(document, RenderProjection(document))
             appendLinkedSignatureHtml(linked, subject, links, "../")
+            let uncoloured = uncoloredCode(linked.toString())
+            if (originalLinked.isEmpty()) { originalLinked = uncoloured }
+            else { @Expect(uncoloured, originalLinked) }
             if (let Some(value) <- highlight) {
                 if (!value.matchesSource(raw)) {
                     // Stale metadata loses only its own colouring; the type links come
@@ -82,10 +94,10 @@ class HtmlSignatureMappingTest {
                 }
             }
             @Expect(linked.toString().contains("class=\"type-link signature-type-link\""))
-            @Expect(linked.toString().contains("code-comment"), highlight.isSome())
-            @Expect(linked.toString().contains("code-keyword"), highlight.isNone())
-            @Expect(linked.toString().contains("code-type"), highlight.isNone())
-            @Expect(linked.toString().contains("code-string"), highlight.isNone())
+            @Expect(linked.toString().contains("code-comment"), expected.contains("code-comment"))
+            @Expect(!linked.toString().contains("code-keyword"))
+            @Expect(!linked.toString().contains("code-type"))
+            @Expect(!linked.toString().contains("code-string"))
         }
     }
 
@@ -130,7 +142,7 @@ class HtmlSignatureMappingTest {
     @TestCase
     func namedParameterAndReturnLinksNeverSelectDefaultLiteral(): Unit {
         let raw = "public func accept(label!: String = \"Token\", item!: Token): Token"
-        let documentation = signatureTestDocument(raw)
+        let documentation = signatureTestDocument(raw, highlight: Some(signatureTestHighlight(raw)))
         let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
         let spans = linkedSignatureSpans(documentation.declarations[1], links)
         @Expect(spans.size, 2)
@@ -164,7 +176,8 @@ class HtmlSignatureMappingTest {
         let raw = "public func accept(label!: String = \",\", item!: Token): Token"
         let tokens = ArrayList<String>(signatureTestTokens())
         tokens[9] = "STRING_LITERAL:3:\",\""
-        let documentation = signatureTestDocument(raw, tokens: tokens.toArray())
+        let documentation = signatureTestDocument(raw, tokens: tokens.toArray(),
+            highlight: Some(signatureTestHighlight(raw)))
         let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
         let spans = linkedSignatureSpans(documentation.declarations[1], links)
         @Expect(spans.size, 2)
@@ -184,7 +197,8 @@ class HtmlSignatureMappingTest {
         let raw = "public func accept(label!: String = " + literal + ", item!: Token): Token"
         let tokens = ArrayList<String>(signatureTestTokens())
         tokens[9] = "STRING_LITERAL:${literal.size}:${literal}"
-        let documentation = signatureTestDocument(raw, tokens: tokens.toArray())
+        let documentation = signatureTestDocument(raw, tokens: tokens.toArray(),
+            highlight: Some(signatureTestHighlight(raw)))
         let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
         let out = RenderTextBuffer()
         appendLinkedSignatureHtml(out, documentation.declarations[1], links, "../")

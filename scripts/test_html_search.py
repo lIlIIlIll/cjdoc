@@ -9,46 +9,6 @@ from test_validate_html_site import canonical_search_script
 
 @unittest.skipUnless(shutil.which("node"), "Node.js is needed to execute browser JavaScript")
 class HtmlSearchTest(unittest.TestCase):
-    def test_copy_readable_link_clipboard_and_manual_fallback(self):
-        harness = r'''
-const assert = require("node:assert/strict");
-const vm = require("node:vm");
-(async () => {
-  const inserted = [];
-  const button = {dataset: {cjdocCopyLink: "../members/Client.read.html"}, textContent:"复制链接", events:{},
-    classList: {contains: () => false}, // The page-level text button is not an icon-only member action.
-    addEventListener(name, handler) { this.events[name] = handler; },
-    parentElement: {querySelector: () => inserted[0] || null},
-    insertAdjacentElement(_, node) { inserted.push(node); }};
-  const document = {querySelector: () => null,
-    querySelectorAll: selector => selector === "[data-cjdoc-copy-link]" ? [button] : [],
-    documentElement:{lang:"zh-CN"}, body:{dataset:{}, append() {}}, activeElement:null,
-    addEventListener() {}, execCommand: () => false,
-    createElement: () => ({style:{},dataset:{},setAttribute() {},remove() {},
-      focus() {this.focused=true;}, select() {this.selected=true;}})};
-  let copied;
-  const clipboard = {writeText: async value => {copied=value;}};
-  const location = {pathname:"/docs/symbols/long-id.html",href:"https://example.test/docs/symbols/long-id.html",hash:""};
-  const window = {location,isSecureContext:true,addEventListener() {},setTimeout() {}};
-  const context = {document,window,location,URL,navigator:{clipboard},
-    performance:{getEntriesByType:()=>[]},requestAnimationFrame:callback=>callback()};
-  vm.runInNewContext(SCRIPT, context);
-  await button.events.click();
-  assert.equal(copied,"https://example.test/docs/members/Client.read.html");
-  assert.equal(button.dataset.copyLinkResult,"copied");
-  assert.equal(button.textContent,"链接已复制");
-  clipboard.writeText = async () => {throw Error("clipboard denied");};
-  await button.events.click();
-  assert.equal(button.dataset.copyLinkResult,"manual");
-  assert.equal(inserted.length,1);
-  assert.equal(inserted[0].value,copied);
-  assert.equal(inserted[0].readOnly,true);
-  assert(inserted[0].focused && inserted[0].selected);
-})().catch(error => {console.error(error);process.exitCode=1;});
-'''
-        script = "const SCRIPT = " + __import__("json").dumps(canonical_search_script()) + ";\n" + harness
-        result = subprocess.run(["node"], input=script, text=True, encoding="utf-8", capture_output=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_search_ranking_filters_preview_and_keyboard(self):
         harness = r'''

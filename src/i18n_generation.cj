@@ -81,6 +81,7 @@ internal func prepareDocumentationLanguages(documentation: DocumentationSet, req
                 for (item in localized.languageItems) {
                     if (let Some(selected) <- item.language) {
                         if (!profile.languages.toArray().contains(selected)) {
+                            item.highlightEligible = false
                             documentation.diagnostics.add(Diagnostic("warning", "CJDOC3104",
                                 "language " + selected + " is not configured for this input; author text retained",
                                 source: item.source, symbolId: Some(symbol.id)))
@@ -111,13 +112,17 @@ internal func publicLocalizedTexts(value: DocComment, assetCollector: LocalAsset
     let result = ArrayList<public_model.DocumentationText>()
     for (item in value.languageItems) {
         let tag = publicTagForAudience(item.tag, renderableIds)
-        context.consumeText(tag.description)
+        // Invalid/unconfigured/duplicate language fields are retained as author
+        // input, but never contribute backend calls, metadata or visible budgets.
+        let itemContext = if (item.highlightEligible && (item.state == "valid" || item.state == "unpaired")) { context }
+            else { MarkdownGenerationContext(highlightMode: "off") }
+        itemContext.consumeText(tag.description)
         let source: ?public_model.SourceRange = match (item.source) {
             case Some(location) => Some(sourceMapper.range(location))
             case None => None
         }
         let tree = publicMarkdown(tag.description, assetCollector, sourcePath,
-            source.getOrDefault({ => declarationSource }), symbolId, context)
+            source.getOrDefault({ => declarationSource }), symbolId, itemContext)
         result.add(public_model.DocumentationText(item.fieldId, tag.name, tag.subject, item.language,
             tag.description, tree, source: source, state: item.state,
             referenceState: tag.referenceState, targetSymbolId: tag.targetSymbolId, directives: tag.directives))

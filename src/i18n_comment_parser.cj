@@ -8,6 +8,8 @@ internal class LocalizedCommentItem {
     var source: ?SourceLocation
     var state = "valid"
     var fieldId = ""
+    // Recomputed from the owning input profile; not source/API identity or IR.
+    var highlightEligible: Bool = true
     init(tag: DocTag, language: ?String, source: ?SourceLocation) {
         this.tag = tag; this.language = language; this.source = source
     }

@@ -46,6 +46,7 @@ SCHEMA_PAYLOAD = {
     "docs/schema/doc-ir-v11.schema.json",
     "docs/schema/doc-ir-v12.schema.json",
     "docs/schema/doc-ir-v13.schema.json",
+    "docs/schema/doc-ir-v14.schema.json",
     "docs/schema/api-surface-v2.schema.json",
     "docs/schema/api-surface-v3.schema.json",
     "docs/schema/api-diff-v1.schema.json",
