@@ -486,7 +486,7 @@ def cost(output):
 
 
 def replay(binary, document, output):
-    environment = dict(os.environ, PATH='')
+    environment = render_environment()
     result = subprocess.run([str(binary), 'render', '--input', str(document), '--format', 'json',
                              '--format', 'html', '--output', str(output)],
                             capture_output=True, env=environment, timeout=30)
@@ -570,25 +570,37 @@ def runtime_provenance(binary, node, receipt_path=None):
     return result
 
 
-def node_in_directory(directory):
-    candidate = directory / "node"
+def command_in_directory(directory, command):
+    candidate = directory / command
     # CreateProcessW appends .exe independently of PATHEXT and Python's X_OK policy.
     return (shutil.which(str(candidate)) is not None
-            or (os.name == "nt" and (directory / "node.exe").is_file()))
+            or (os.name == "nt" and (directory / (command + ".exe")).is_file()))
 
 
-def without_node_environment(environment):
+def without_tools_environment(environment, commands):
     # An empty PATH still lets native process lookup search the working directory.
-    assert not node_in_directory(Path.cwd()), \
-        "no-Node acceptance requires a Node-free working directory"
+    for command in commands:
+        assert not command_in_directory(Path.cwd(), command), \
+            "tool-free acceptance requires a working directory without " + command
     directories = environment.get("PATH", "").split(os.pathsep)
     retained = [
         directory for directory in directories
-        if not node_in_directory(Path(directory or os.curdir).absolute())
+        if not any(command_in_directory(Path(directory or os.curdir).absolute(), command)
+                   for command in commands)
     ]
     result = dict(environment, PATH=os.pathsep.join(retained))
-    assert shutil.which("node", path=result["PATH"]) is None
+    for command in commands:
+        assert shutil.which(command, path=result["PATH"]) is None
     return result
+
+
+def render_environment():
+    environment = without_tools_environment(os.environ, ("node", "cjc", "cjpm"))
+    for name in ("CANGJIE_HOME", "CANGJIE_SDK_ROOT", "CANGJIE_STDX_PATH",
+                 "CANGJIE_STDX_PATH_STATIC", "CANGJIE_STDX_PATH_DYNAMIC",
+                 "CJDOC_STDX_PATH", "CJDOC_STDX_LINK_OPTIONS"):
+        environment.pop(name, None)
+    return environment
 
 
 def main():
@@ -742,7 +754,7 @@ def main():
             cleanup_observed(observed)
     # No authorization is explainable plain; ordinary check never executes Node.
     plain = args.workdir / 'unauthorized'
-    no_node = without_node_environment(os.environ)
+    no_node = without_tools_environment(os.environ, ("node",))
     generate(args.binary.resolve(), project, plain, environment=no_node)
     document = json.loads((plain / 'docs.json').read_text(encoding='utf-8'))
     assert any(n.get('reason') == 'backend-unavailable' for n in walk(document))
@@ -794,7 +806,7 @@ def main():
     repeat = args.workdir / 'repeat'
     generate(binary, project, repeat, (args.workdir / 'real.mjs').resolve(), args.node.resolve())
     compare_outputs(real, repeat)
-    report["determinism"] = "generate/repeat/replay byte-identical including captured guides and native image outcome; replay PATH empty and original project path absent"
+    report["determinism"] = "generate/repeat/replay byte-identical including captured guides and native image outcome; replay compiler/Node unavailable, SDK discovery unset, native runtime retained and original project path absent"
     off_project = args.workdir / 'off-project'
     shutil.copytree(project, off_project)
     configuration = off_project / 'cjdoc.toml'
@@ -814,7 +826,7 @@ def main():
     surfaces = []
     for document in [real / 'docs.json', off / 'docs.json', legacy_ir]:
         result = subprocess.run([str(binary), 'render', '--input', str(document), '--format',
-                                 'api-surface', '--stdout'], env=dict(os.environ, PATH=''),
+                                 'api-surface', '--stdout'], env=render_environment(),
                                 capture_output=True, timeout=30, check=True)
         surfaces.append(result.stdout)
     assert surfaces[0] == surfaces[1] == surfaces[2]

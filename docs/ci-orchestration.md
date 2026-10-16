@@ -59,6 +59,12 @@ prevent native process lookup from finding it there.
 Windows `node.exe` is checked independently of PATHEXT, matching native process
 lookup even when that variable omits `.EXE`.
 
+Frozen-IR replay applies the same isolation to `node`, `cjc` and `cjpm`, clears
+SDK/stdx discovery paths and keeps native runtime/DLL search paths. Every render
+and API-surface replay uses this environment; the source project is still moved
+away and complete output bytes are compared. An empty PATH is not a portable
+substitute for unavailable generation tools.
+
 ## What the site-generation time is actually spent on
 
 Real Pages run `38332333489`, attempt 1, artifact

@@ -35,7 +35,7 @@ python3 scripts/highlight_acceptance.py \
 | `*.jsonl` | worker 请求/启动审计；仅 fixture 内容，不作为发布站点资源 |
 | `cancelled-parent/` | 宿主终止的独立输出父目录与 fail-closed owner lock |
 | `strict-output/` | 非零退出但保留完整原文和 error 诊断的原子生成产物 |
-| `replay/` | 清空 PATH 且原项目路径移走时的冻结 IR 重放 |
+| `replay/` | 编译器/Node 不可发现、SDK 定位变量清除、保留原非工具目录（含程序运行时路径）且原项目路径移走时的冻结 IR 重放 |
 | `crlf/html/` | 保留绑定 CRLF 原文的真实浏览器 fixture |
 | `cjdoc-highlight-adapter.zip` | 独立发行适配器，含 lockfile、版本声明和许可证，不含依赖树 |
 | `adapter-package/` | 从独立 ZIP 解压并在隔离 npm 缓存离线安装的适配器 |
