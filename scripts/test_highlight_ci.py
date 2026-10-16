@@ -17,6 +17,7 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ci_changes
 import highlight_ci
+import highlight_process
 
 from highlight_process import (ObservedProcess, assert_stopped, observe_cancel_targets,
                                cleanup_observed, _darwin_executable)
@@ -107,6 +108,54 @@ class HighlightCiContractTest(unittest.TestCase):
             self.assertEqual(identity["steps"][0]["name"], "node-version")
             self.assertEqual((base / "work/node-version.raw.log").read_text(encoding="utf-8"), private)
 
+    def test_real_traceback_publishes_only_trusted_fault_location(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            source = base / "source"
+            trusted = source / "scripts/highlight_acceptance.py"
+            outside = base / "outside/scripts/highlight_acceptance.py"
+            trusted.parent.mkdir(parents=True)
+            outside.parent.mkdir(parents=True)
+            outside.write_text('raise RuntimeError("unpublished fixture prose")\n', encoding="utf-8")
+            trusted.write_text(
+                "import json, runpy, sys\n"
+                "from pathlib import Path\n"
+                "from highlight_ci import traceback_locations\n"
+                "try:\n"
+                "    runpy.run_path(sys.argv[1])\n"
+                "except Exception as error:\n"
+                "    print(json.dumps(traceback_locations(Path(__file__).resolve().parents[1], error.__traceback__)))\n",
+                encoding="utf-8")
+            environment = dict(os.environ, PYTHONPATH=str(REPO / "scripts"),
+                               PYTHONDONTWRITEBYTECODE="1", PRIVATE_FIXTURE_VALUE="unpublished environment")
+            result = subprocess.run([sys.executable, str(trusted), str(outside), "unpublished argument"],
+                                    env=environment, capture_output=True, text=True, check=True, timeout=10)
+            locations = json.loads(result.stdout)
+            self.assertEqual(locations, [{"script": "scripts/highlight_acceptance.py", "line": 5}])
+            for forbidden in [str(base), "unpublished", "RuntimeError", "PRIVATE_FIXTURE_VALUE"]:
+                self.assertNotIn(forbidden, result.stdout)
+            record = base / "locations.json"
+            record.write_text(result.stdout, encoding="utf-8")
+            self.assertEqual(highlight_ci.load_traceback_locations(record), locations)
+
+    def test_forged_or_oversized_failure_records_are_not_published(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "locations.json"
+            valid = {"script": "scripts/highlight_acceptance.py", "line": 5}
+            invalid = [
+                [{**valid, "script": ["scripts/highlight_acceptance.py"]}],
+                [{**valid, "script": "../outside.py"}],
+                [{**valid, "line": True}],
+                [{**valid, "message": "unpublished fixture prose"}],
+                [valid] * 17,
+            ]
+            for value in invalid:
+                with self.subTest(value=value):
+                    path.write_text(json.dumps(value), encoding="utf-8")
+                    self.assertIsNone(highlight_ci.load_traceback_locations(path))
+            path.write_text(json.dumps([valid]) + " " * 8193, encoding="utf-8")
+            self.assertIsNone(highlight_ci.load_traceback_locations(path))
+
 
 
 
@@ -165,6 +214,44 @@ class HighlightObservedProcessTest(unittest.TestCase):
         with patch(target, side_effect=PermissionError("query denied")):
             with self.assertRaises(PermissionError):
                 assert_stopped(os.getpid())
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux procfs read boundary")
+    def test_read_time_disappearance_is_gone_but_permission_failure_is_not(self):
+        with patch("highlight_process.Path.read_text", side_effect=ProcessLookupError("gone during read")):
+            observed = ObservedProcess(os.getpid())
+            try:
+                self.assertTrue(observed.stopped())
+                with self.assertRaises(AssertionError):
+                    ObservedProcess(os.getpid(), require_live=True)
+            finally:
+                observed.close()
+        with patch("highlight_process.Path.read_text", side_effect=PermissionError("query denied")):
+            with self.assertRaises(PermissionError):
+                ObservedProcess(os.getpid())
+
+    @unittest.skipUnless(os.name == "nt", "Native Windows retained-handle exit race")
+    def test_cleanup_accepts_exit_race_only_when_the_same_handle_is_stopped(self):
+        with self.live_python() as child:
+            observed = ObservedProcess(child.pid, require_live=True)
+            ctypes, types, kernel = highlight_process._windows_api()
+            termination = {}
+            class ExitRaceKernel:
+                def __getattr__(self, name):
+                    return getattr(kernel, name)
+                def TerminateProcess(self, handle, status):
+                    child.terminate()
+                    child.wait(timeout=5)
+                    ctypes.set_last_error(0)
+                    result = kernel.TerminateProcess(handle, status)
+                    termination["error"] = ctypes.get_last_error()
+                    return result
+            try:
+                with patch("highlight_process._windows_api", return_value=(ctypes, types, ExitRaceKernel())):
+                    observed.cleanup()
+                    self.assertTrue(observed.stopped())
+                self.assertEqual(termination["error"], 5)
+            finally:
+                observed.close()
 
     def test_worker_and_descendant_are_both_observed_before_cleanup(self):
         code = ("import json,os,subprocess,sys\n"

@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import shutil
 from highlight_process import assert_stopped, observe_cancel_targets, cleanup_observed
+from highlight_ci import traceback_locations
 import subprocess
 import time
 import statistics
@@ -512,6 +513,15 @@ def main():
     parser.add_argument('--sdk-receipt', type=Path)
     args = parser.parse_args()
     args.workdir.mkdir(parents=True, exist_ok=False, mode=0o700)
+    original_excepthook = sys.excepthook
+    def record_failure(error_type, error, traceback):
+        try:
+            (args.workdir / "failure-locations.json").write_text(
+                json.dumps(traceback_locations(ROOT, traceback)), encoding="utf-8")
+        except OSError:
+            print("acceptance failure location recording unavailable", file=sys.stderr)
+        original_excepthook(error_type, error, traceback)
+    sys.excepthook = record_failure
     project = args.workdir / 'project'
     fixture(project)
     report = {'platform': sys.platform, 'runs': {},

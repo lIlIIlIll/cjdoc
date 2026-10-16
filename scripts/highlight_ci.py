@@ -74,6 +74,40 @@ def failure_facts(error: Exception) -> dict:
     return {"reason": "validation-failed"}
 
 
+def traceback_locations(source: Path, traceback) -> list[dict]:
+    """Retain trusted script/line locations, never exception text or locals."""
+    allowed = {source.resolve() / name: name for name in (
+        "scripts/highlight_acceptance.py", "scripts/highlight_process.py")}
+    locations = []
+    while traceback is not None and len(locations) < 16:
+        script = allowed.get(Path(traceback.tb_frame.f_code.co_filename).absolute())
+        if script is not None:
+            locations.append({"script": script, "line": traceback.tb_lineno})
+        traceback = traceback.tb_next
+    return locations
+
+
+def load_traceback_locations(path: Path) -> list[dict] | None:
+    """Validate the child's diagnostic record before publishing any of it."""
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(8193)
+        if len(raw) > 8192:
+            return None
+        locations = json.loads(raw)
+    except (OSError, ValueError):
+        return None
+    allowed = {"scripts/highlight_acceptance.py", "scripts/highlight_process.py"}
+    if not isinstance(locations, list) or not 1 <= len(locations) <= 16:
+        return None
+    for location in locations:
+        if (not isinstance(location, dict) or set(location) != {"script", "line"} or
+                not isinstance(location["script"], str) or location["script"] not in allowed or
+                type(location["line"]) is not int or not 1 <= location["line"] <= 1000000):
+            return None
+    return locations
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1])
@@ -114,6 +148,10 @@ def main() -> int:
         except Exception as error:
             step.update(failure_facts(error))
             step["status"] = "failed"
+            if name == "worker-acceptance":
+                locations = load_traceback_locations(args.work_root / "acceptance/failure-locations.json")
+                if locations is not None:
+                    step["tracebackLocations"] = locations
             raise
         finally:
             # Raw stdout/stderr remains private; public artifacts contain fixed facts only.

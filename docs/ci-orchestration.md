@@ -354,3 +354,22 @@ quietly closed:
   requirement is not met by any amount of re-reporting. The raw collection and
   its limits are attached to #96; a successful tag run would add one sample, not
   fill the cells.
+
+## Optional highlight-worker failure evidence
+
+`highlight_ci.py` keeps raw command output private. A failed `worker-acceptance`
+step may publish `tracebackLocations`: only an allowlisted repository-relative
+acceptance/observer script and its numeric source line. The child record is limited
+to 8 KiB and 16 locations and validated before publication. Exception text, local
+variables, command arguments, environment values and raw output are not copied.
+These locations diagnose a failure; they do not turn it into acceptance.
+
+Observer cleanup retains each acquired process handle or queue after signalling.
+Its native exit wait is limited to three seconds per process before checking the
+unchanged stopped predicate; existing identity-query deadlines still apply. A live
+process or failed query remains an error, not a successful cleanup.
+An already-terminated Windows handle is accepted only when that same acquired
+handle proves exit; access-denied alone is not success. Procfs `ENOENT`/`ESRCH`
+means the process disappeared, including during a read; permission and other
+query failures still propagate.
+

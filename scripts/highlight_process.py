@@ -13,12 +13,15 @@ import signal
 import subprocess
 import sys
 
+_CLEANUP_TIMEOUT_SECONDS = 3
+
 
 def _posix_state(pid):
     if sys.platform.startswith("linux"):
+        # A process can disappear after open but before procfs read completes.
         try:
             fields = (Path("/proc") / str(pid) / "stat").read_text().rpartition(") ")[2].split()
-        except FileNotFoundError:
+        except (FileNotFoundError, ProcessLookupError):
             return None
         if len(fields) < 20:
             raise RuntimeError("invalid process state")
@@ -197,15 +200,18 @@ class ObservedProcess:
         elif self.handle is not None:
             self.exited = bool(select.select([self.handle], [], [], 0)[0])
         else:
-            events = self.queue.control(None, 1, 0) if self.queue is not None else []
-            for event in events:
-                if event.flags & select.KQ_EV_ERROR:
-                    raise OSError(event.data, "unable to observe process exit")
-                if not event.fflags & select.KQ_NOTE_EXIT:
-                    raise RuntimeError("unexpected process notification")
-            state = _posix_state(self.pid)
-            self.exited = bool(events) or state is None or state[1] != self.identity or "Z" in state[0]
+            self.exited = self._darwin_stopped(0)
         return self.exited
+
+    def _darwin_stopped(self, timeout):
+        events = self.queue.control(None, 1, timeout) if self.queue is not None else []
+        for event in events:
+            if event.flags & select.KQ_EV_ERROR:
+                raise OSError(event.data, "unable to observe process exit")
+            if not event.fflags & select.KQ_NOTE_EXIT:
+                raise RuntimeError("unexpected process notification")
+        state = _posix_state(self.pid)
+        return bool(events) or state is None or state[1] != self.identity or "Z" in state[0]
 
     def cleanup(self):
         if self.stopped():
@@ -213,7 +219,13 @@ class ObservedProcess:
         if os.name == "nt":
             ctypes, _, kernel = _windows_api()
             if not kernel.TerminateProcess(self.handle, 1):
-                raise ctypes.WinError(ctypes.get_last_error())
+                error = ctypes.WinError(ctypes.get_last_error())
+                try:
+                    exited = self.stopped()
+                except Exception as query_error:
+                    raise error from query_error
+                if not exited:
+                    raise error
         elif self.handle is not None:
             try:
                 signal.pidfd_send_signal(self.handle, signal.SIGKILL)
@@ -228,6 +240,21 @@ class ObservedProcess:
                     os.kill(self.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
+        # A successful signal is not an exit observation. Retain the acquired
+        # handle/queue until the process is actually stopped, or fail boundedly.
+        if self.stopped():
+            return
+        if os.name == "nt":
+            ctypes, _, kernel = _windows_api()
+            state = kernel.WaitForSingleObject(self.handle, _CLEANUP_TIMEOUT_SECONDS * 1000)
+            if state not in (0, 258):
+                raise ctypes.WinError(ctypes.get_last_error())
+        elif self.handle is not None:
+            select.select([self.handle], [], [], _CLEANUP_TIMEOUT_SECONDS)
+        else:
+            self.exited = self._darwin_stopped(_CLEANUP_TIMEOUT_SECONDS)
+        if not self.stopped():
+            raise TimeoutError("observed process did not stop after cleanup")
 
     def close(self):
         if self.handle is not None:
