@@ -206,6 +206,29 @@ class DependencyIdentityTest {
     }
 
     @TestCase
+    func inventoryDepthBoundaryDoesNotDependOnTheRuntimeCallStack(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            identityTestProject(root, "identity_app")
+            var directory = root
+            for (_ in 0..127) {
+                directory = directory.join("n")
+                Directory.create(directory)
+            }
+            File.writeTo(directory.join("leaf.cj"), "// selected source bytes\n".toArray())
+            let observed = identityTestGenerate(root)
+            @Expect(identityTestDependency(observed, "identity_app").state, "observed")
+            @Expect(publicHasDiagnostic(observed, "CJDOC2302"), false)
+            directory = directory.join("n")
+            Directory.create(directory)
+            File.writeTo(directory.join("leaf.cj"), "// exceeds the depth limit\n".toArray())
+            let rejected = identityTestGenerate(root)
+            @Expect(identityTestDependency(rejected, "identity_app").state, "unknown")
+            @Expect(publicHasDiagnostic(rejected, "CJDOC2302"), true)
+        } finally { let _ = removeIfExists(root, recursive: true) }
+    }
+
+    @TestCase
     func receiptConfigAndStaleProjectClaimsCannotUpgradeEvidence(): Unit {
         let root = Directory.createTemp(getTempDirectory())
         try {

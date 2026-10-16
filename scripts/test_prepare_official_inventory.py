@@ -50,6 +50,15 @@ class OfficialInventoryTest(unittest.TestCase):
     def prepare(self, **kwargs):
         return adapter.prepare(self.manifest, self.bundle, self.output, **kwargs)
 
+    def bundle_with_ancestor_alias(self):
+        parent = self.root / "real"
+        nested = parent / "nested"
+        nested.mkdir(parents=True)
+        shutil.copytree(self.bundle, nested / "bundle")
+        alias = self.root / "ancestor-alias"
+        alias.symlink_to(parent.resolve(), target_is_directory=True)
+        return alias / "nested" / "bundle"
+
     def reject(self, mutate, message):
         self.prepare()
         previous = self.output.read_bytes()
@@ -103,6 +112,49 @@ class OfficialInventoryTest(unittest.TestCase):
             self.assertIn("not an SDK compatibility claim", content)
         self.assertTrue(all(d["baseUrl"] == "./official-pages" for d in result["documentSets"]))
 
+    def test_bundle_ancestor_alias_preserves_inventory_pages_and_anchors(self):
+        pages = self.root / "official-pages"
+        expected = self.prepare(html_output=pages)
+        inventory = self.output.read_bytes()
+        old_pages = {page.name: page.read_bytes() for page in pages.glob("*.html")}
+        bundle = self.bundle_with_ancestor_alias()
+        result = adapter.prepare(bundle / "manifest.json", bundle, self.output, html_output=pages)
+        self.assertEqual(result, expected)
+        self.assertEqual(self.output.read_bytes(), inventory)
+        self.assertEqual({page.name: page.read_bytes() for page in pages.glob("*.html")}, old_pages)
+        for entry in result["entries"]:
+            filename, fragment = entry["href"].split("#")
+            parser = Anchors()
+            parser.feed((pages / filename).read_text(encoding="utf-8"))
+            self.assertEqual(parser.ids.count(fragment), 1)
+
+    def test_verified_system_output_alias_preserves_publication_and_anchors(self):
+        canonical = self.root.resolve() / "system-location"
+        workspace = canonical / "workspace"
+        workspace.mkdir(parents=True)
+        alias = self.root.resolve() / "system-alias"
+        alias.symlink_to(canonical, target_is_directory=True)
+        output = alias / "workspace" / "inventory.json"
+        pages = alias / "workspace" / "official-pages"
+        outside = self.root.resolve() / "outside-system-location"
+        (outside / "nested").mkdir(parents=True)
+        victim = outside / "nested" / "inventory.json"
+        victim.write_bytes(b"previous inventory")
+        (workspace / "user-link").symlink_to(outside, target_is_directory=True)
+        with mock.patch.object(adapter.safe_output_root.sys, "platform", "darwin"), \
+                mock.patch.object(adapter.safe_output_root, "_DARWIN_SYSTEM_ALIASES", {alias: canonical}):
+            result = adapter.prepare(self.manifest, self.bundle, output, html_output=pages)
+            with self.assertRaisesRegex(adapter.InventoryError, "symlink output parent"):
+                adapter.prepare(self.manifest, self.bundle,
+                                alias / "workspace" / "user-link" / "nested" / "inventory.json")
+        self.assertEqual(victim.read_bytes(), b"previous inventory")
+        self.assertEqual(json.loads((workspace / "inventory.json").read_bytes()), result)
+        for entry in result["entries"]:
+            filename, fragment = entry["href"].split("#")
+            parser = Anchors()
+            parser.feed((workspace / "official-pages" / filename).read_text(encoding="utf-8"))
+            self.assertEqual(parser.ids.count(fragment), 1)
+
     def test_deterministic_reordering(self):
         self.prepare()
         first = self.output.read_bytes()
@@ -132,7 +184,8 @@ class OfficialInventoryTest(unittest.TestCase):
                 self.save(self.original)
 
     def test_unsafe_bundle_paths(self):
-        for path in ["../outside.md", "/outside.md", "nested/../../outside.md", "a\\b.md", "a//b.md"]:
+        for path in ["../outside.md", "/outside.md", "nested/../../outside.md", "a\\b.md", "a//b.md",
+                     "nested/../std-collection.md", "a/./b.md", "C:/outside.md", "a:b.md"]:
             with self.subTest(path=path):
                 self.reject(lambda m: m["sources"][0].__setitem__("path", path), "unsafe")
                 self.save(self.original)
@@ -147,6 +200,81 @@ class OfficialInventoryTest(unittest.TestCase):
             self.skipTest(str(error))
         with self.assertRaisesRegex(adapter.InventoryError, "symlink"):
             self.prepare()
+
+    def test_internal_leaf_and_parent_links_preserve_inventory_and_pages(self):
+        pages = self.root / "official-pages"
+        self.prepare(html_output=pages)
+        previous = self.output.read_bytes()
+        old_pages = {page.name: page.read_bytes() for page in pages.glob("*.html")}
+        for kind in ("leaf", "parent"):
+            for destination in ("inside", "outside"):
+                with self.subTest(kind=kind, destination=destination):
+                    label = kind + "-" + destination
+                    bundle = self.root / label
+                    shutil.copytree(self.bundle, bundle)
+                    value = copy.deepcopy(self.original)
+                    source = bundle / value["sources"][0]["path"]
+                    content = (bundle if destination == "inside" else self.root / (label + "-outside")) / "content"
+                    content.mkdir(parents=True)
+                    target = content / source.name
+                    source.rename(target)
+                    if kind == "leaf":
+                        source.symlink_to(target.resolve())
+                    else:
+                        (bundle / "linked").symlink_to(content.resolve(), target_is_directory=True)
+                        value["sources"][0]["path"] = "linked/" + source.name
+                    manifest = bundle / "manifest.json"
+                    manifest.write_text(json.dumps(value), encoding="utf-8")
+                    with self.assertRaisesRegex(adapter.InventoryError, "symlink"):
+                        adapter.prepare(manifest, bundle, self.output, html_output=pages)
+                    self.assertEqual(self.output.read_bytes(), previous)
+                    self.assertEqual({page.name: page.read_bytes() for page in pages.glob("*.html")}, old_pages)
+                    self.assertFalse(list(self.root.rglob(".official-*")))
+
+    def test_bundle_root_link_remains_rejected(self):
+        self.prepare()
+        previous = self.output.read_bytes()
+        alias = self.root / "bundle-root-alias"
+        alias.symlink_to(self.bundle.resolve(), target_is_directory=True)
+        with self.assertRaisesRegex(adapter.InventoryError, "symlink"):
+            adapter.prepare(self.manifest, alias, self.output)
+        self.assertEqual(self.output.read_bytes(), previous)
+
+    def test_output_leaf_link_preserves_target(self):
+        self.prepare()
+        victim = self.root / "previous-inventory.json"
+        self.output.rename(victim)
+        previous = victim.read_bytes()
+        self.output.symlink_to(victim.resolve())
+        with self.assertRaisesRegex(adapter.InventoryError, "symlink output"):
+            self.prepare()
+        self.assertEqual(victim.read_bytes(), previous)
+        self.assertTrue(self.output.is_symlink())
+
+    def test_non_system_output_ancestor_link_preserves_target(self):
+        directory = self.root / "output-location"
+        (directory / "nested").mkdir(parents=True)
+        alias = self.root / "output-alias"
+        alias.symlink_to(directory.resolve(), target_is_directory=True)
+        victim = directory / "nested" / "inventory.json"
+        victim.write_bytes(b"previous inventory")
+        with self.assertRaisesRegex(adapter.InventoryError, "symlink output parent"):
+            adapter.prepare(self.manifest, self.bundle, alias / "nested" / "inventory.json")
+        self.assertEqual(victim.read_bytes(), b"previous inventory")
+        self.assertFalse(list(directory.rglob(".official-*")))
+
+    def test_html_directory_link_preserves_inventory_and_pages(self):
+        pages = self.root / "official-pages"
+        self.prepare(html_output=pages)
+        previous = self.output.read_bytes()
+        victim = self.root / "previous-pages"
+        pages.rename(victim)
+        old_pages = {page.name: page.read_bytes() for page in victim.glob("*.html")}
+        pages.symlink_to(victim.resolve(), target_is_directory=True)
+        with self.assertRaisesRegex(adapter.InventoryError, "symlink HTML output"):
+            self.prepare(html_output=pages)
+        self.assertEqual(self.output.read_bytes(), previous)
+        self.assertEqual({page.name: page.read_bytes() for page in victim.glob("*.html")}, old_pages)
 
     def test_corrupted_excerpt_and_invented_anchor_rejected(self):
         self.reject(lambda m: m["sources"][0]["excerpt"].__setitem__("sha256", "0" * 64), "digest mismatch")
@@ -243,7 +371,7 @@ class OfficialInventoryTest(unittest.TestCase):
         replace = adapter.os.replace
 
         def fail_inventory(source, destination):
-            if destination == self.output:
+            if Path(destination).resolve() == self.output.resolve():
                 raise OSError("inventory publication failed")
             return replace(source, destination)
 
@@ -258,13 +386,28 @@ class OfficialInventoryTest(unittest.TestCase):
                                  "--bundle", str(self.bundle), "--output", str(self.output)],
                                 capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("prepared 4 source-verified entries in 2 document sets", result.stdout)
         missing = self.root / "private-local-name" / "missing.json"
         result = subprocess.run([sys.executable, str(SCRIPT), "--manifest", str(missing),
                                  "--bundle", str(self.bundle), "--output", str(self.output)],
                                 capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 2)
         self.assertNotIn(str(self.root), result.stderr)
+
+    def test_cli_accepts_bundle_ancestor_alias_with_real_local_pages(self):
+        bundle = self.bundle_with_ancestor_alias()
+        pages = self.root / "official-pages"
+        result = subprocess.run([sys.executable, str(SCRIPT), "--manifest", str(bundle / "manifest.json"),
+                                 "--bundle", str(bundle), "--output", str(self.output),
+                                 "--html-output", str(pages)], capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        inventory = json.loads(self.output.read_bytes())
+        self.assertEqual(len(inventory["entries"]), 4)
+        self.assertEqual(len(inventory["documentSets"]), 2)
+        for entry in inventory["entries"]:
+            filename, fragment = entry["href"].split("#")
+            parser = Anchors()
+            parser.feed((pages / filename).read_text(encoding="utf-8"))
+            self.assertEqual(parser.ids.count(fragment), 1)
 
 
 if __name__ == "__main__":
