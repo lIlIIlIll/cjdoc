@@ -24,6 +24,22 @@ The wall-clock reader retries transient API failures and decodes `gh api
 --paginate` output as a stream, because a jobs listing is more than one page and
 a large run otherwise loses its evidence on the first EOF.
 
+## Pinned STS native-test launcher
+
+The native deadline launches `cjpm test --jobs 1 --parallel 1` through Bash,
+so Windows resolves the extensionless STS wrapper instead of bypassing it for
+`cjpm.exe`. The wrapper's temporary `-O1` manifest override and restoration trap
+therefore cover the native compilation too. The Windows native log in
+[run 38847649307](https://github.com/lIlIIlIll/cjdoc/actions/runs/38847649307)
+recorded the bundled LLVM crashing while compiling markdown at `-O2`.
+
+The Windows `with_stdx.py` launcher also waits for its child and propagates its
+exit status; it must not report a completed gate merely because CRT `exec*`
+started a separate process.
+
+This preserves the suite, deadline, serial test scheduling and committed compile
+defaults. A Linux routing/status/cleanup probe is not native Windows compile proof.
+
 ## What the site-generation time is actually spent on
 
 Real Pages run `38332333489`, attempt 1, artifact
