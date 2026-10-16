@@ -23,6 +23,9 @@ python3 examples/pocketkit/reproduce.py --cjdoc /absolute/path/to/cjdoc --output
 复现脚本实际运行 generate、API surface diff 和 versions compose；独立依赖的索引来自该脚本先生成的
 support-v1。配置受版本控制，不会被整体覆盖。输出目录必须不存在，脚本不删除已有用户目录。
 
+该依赖索引采用当前 `cjdoc.symbol-index/2`；`support-v1` 是文档展示版本，
+不替代包的 API 版本或依赖身份。复现仍验证索引 schema 和展示版本，不降级成旧索引格式。
+
 Generated core API pages use the same CLI, sources and configurations as the published showcase.
 The Pages homepage and human-readable report presentation are publication layers, not handwritten API implementations.
 

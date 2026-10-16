@@ -220,7 +220,7 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
                            version="support-v1", **options)
         index = support / "html/symbol-index.json"
         data = json.loads(index.read_text(encoding="utf-8"))
-        if data.get("schemaVersion") != "cjdoc.symbol-index/1" or data.get("version") != "support-v1":
+        if data.get("schemaVersion") != "cjdoc.symbol-index/2" or data.get("version") != "support-v1":
             raise ValueError("independent dependency index has the wrong schema/version")
         # The support index is a real generated input for both versions, so it must
         # be in place before any demo generation starts.
