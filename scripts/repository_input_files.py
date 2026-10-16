@@ -13,6 +13,8 @@ try:
         GOLDEN_NAMES,
         JSON_SCHEMA_DRAFT,
         LEGACY_GOLDEN_VERSIONS,
+        LEGACY13_GOLDEN_SHA256,
+        LEGACY14_GOLDEN_SHA256,
         LEGACY_SCHEMA_SHA256,
         SCHEMA_CONTRACTS,
         SCHEMA_OPTIONAL_PROPERTIES,
@@ -28,6 +30,8 @@ except ImportError:  # Direct module execution.
         GOLDEN_NAMES,
         JSON_SCHEMA_DRAFT,
         LEGACY_GOLDEN_VERSIONS,
+        LEGACY13_GOLDEN_SHA256,
+        LEGACY14_GOLDEN_SHA256,
         LEGACY_SCHEMA_SHA256,
         SCHEMA_CONTRACTS,
         SCHEMA_OPTIONAL_PROPERTIES,
@@ -86,6 +90,8 @@ def required_repository_paths() -> tuple[str, ...]:
     paths.extend(f"docs/schema/{name}.schema.json" for name in SCHEMA_NAMES)
     for version in (*LEGACY_GOLDEN_VERSIONS, CURRENT_GOLDEN_VERSION):
         paths.extend(f"tests/fixtures/golden-v{version}/{name}.docs.json" for name in GOLDEN_NAMES)
+    paths.extend(f"tests/fixtures/legacy13/{name}.docs.json" for name in GOLDEN_NAMES)
+    paths.extend(f"tests/fixtures/legacy14/{name}.docs.json" for name in GOLDEN_NAMES)
     return tuple(paths)
 
 
@@ -107,6 +113,16 @@ def verify_golden_set(repo: Path, version: int) -> None:
         path = directory / name
         if path.is_symlink() or not path.is_file():
             raise ValueError(f"v{version} golden must be a regular file: {name}")
+        if version == 13:
+            frozen = repo / "tests/fixtures/legacy13" / name
+            expected_hash = LEGACY13_GOLDEN_SHA256[name.removesuffix(".docs.json")]
+            if frozen.is_symlink() or not frozen.is_file() or sha256(frozen) != expected_hash or sha256(path) != expected_hash:
+                raise ValueError(f"v13 legacy input is not byte-frozen: {name}")
+        if version == 14:
+            frozen = repo / "tests/fixtures/legacy14" / name
+            expected_hash = LEGACY14_GOLDEN_SHA256[name.removesuffix(".docs.json")]
+            if frozen.is_symlink() or not frozen.is_file() or sha256(frozen) != expected_hash or sha256(path) != expected_hash:
+                raise ValueError(f"v14 legacy input is not byte-frozen: {name}")
         value = strict_load(path, description=f"v{version} golden {name}")
         if not isinstance(value, dict) or value.get("schemaVersion") != expected_version:
             raise ValueError(f"v{version} golden has the wrong schemaVersion: {name}")
@@ -131,6 +147,18 @@ def validate_schema_document(name: str, value: object) -> None:
         if isinstance(properties.get("schemaVersion"), dict) else None
     if actual_version != expected_version:
         raise ValueError(f"{name} schema does not declare {expected_version}")
+    if name in ("doc-ir", "doc-ir-v15") and properties["documentationRevision"] != {"type": "string"}:
+        raise ValueError(f"{name} schema documentation revision shape is invalid")
+    if name in ("doc-ir", "doc-ir-v15", "symbol-index"):
+        definitions = value.get("$defs")
+        for definition_name, graph_field in (
+            ("dependencyInstance", "componentModuleId"), ("documentSetIdentity", "moduleId"),
+            ("documentSetIdentity", "apiVersion"), ("documentSetIdentity", "documentationRevision"),
+        ):
+            definition = definitions.get(definition_name) if isinstance(definitions, dict) else None
+            if not isinstance(definition, dict) or graph_field not in definition.get("required", []) or \
+                    definition.get("properties", {}).get(graph_field) != {"type": "string"}:
+                raise ValueError(f"{name} schema graph binding field is missing: {definition_name}.{graph_field}")
     if name.startswith("doc-ir"):
         definitions = value.get("$defs")
         if not isinstance(definitions, dict) or not DOC_IR_CORE_DEFS.issubset(definitions):
@@ -153,12 +181,12 @@ def validate_schema_document(name: str, value: object) -> None:
                 )
         if properties["status"] != {"enum": ["complete", "partial"]}:
             raise ValueError(f"{name} schema status shape is invalid")
-        if name in ("doc-ir", "doc-ir-v14") and properties["apiCollectionState"] != {
+        if name in ("doc-ir", "doc-ir-v14", "doc-ir-v15") and properties["apiCollectionState"] != {
             "enum": ["resolved", "partial", "unavailable"]
         }:
             raise ValueError(f"{name} API collection state shape is invalid")
-        if name in ("doc-ir", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12", "doc-ir-v13", "doc-ir-v14"):
-            if name in ("doc-ir", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12", "doc-ir-v13", "doc-ir-v14") and "repository" not in definitions:
+        if name in ("doc-ir", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12", "doc-ir-v13", "doc-ir-v14", "doc-ir-v15"):
+            if name in ("doc-ir", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12", "doc-ir-v13", "doc-ir-v14", "doc-ir-v15") and "repository" not in definitions:
                 raise ValueError(f"{name} repository definition is missing")
             if not {
                 "codeBlockMetadata", "headingMetadata", "listMetadata",
@@ -219,13 +247,14 @@ def validate_schema_document(name: str, value: object) -> None:
         expected_entry_fields = {
             "id", "canonicalId", "name", "qualifiedName", "kind", "moduleId",
             "packageName", "ownerId", "visibility", "semanticState", "summary",
-            "source", "href", "relations", "references"
+            "source", "href", "relations", "references", "identity", "documentSetId", "symbolKey", "typeNavigations"
         }
         if not isinstance(entries, dict) or entries.get("type") != "array" or \
                 not isinstance(items, dict) or items.get("type") != "object" or \
                 items.get("additionalProperties") is not False or \
                 set(items.get("required", [])) != expected_entry_fields or \
-                set(items.get("properties", {})) != expected_entry_fields:
+                set(items.get("properties", {})) != expected_entry_fields | {"sourceHeader"} or \
+                items.get("properties", {}).get("sourceHeader") != {"type": "string"}:
             raise ValueError("symbol-index schema entry shape is invalid")
     elif name == "navigation-index":
         definitions = value.get("$defs")

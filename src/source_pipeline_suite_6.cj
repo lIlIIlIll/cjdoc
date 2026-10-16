@@ -11,6 +11,89 @@ import std.unittest.testmacro.*
 @Test
 class SourcePipelineSuite6 {
     @TestCase
+    func genericWhereBoundsReachPublicIrWithoutLinkingTypeParameters(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            Directory.create(temporary.join("src"))
+            File.writeTo(temporary.join("cjpm.toml"),
+                "[package]\nname = \"constraints\"\n".toArray())
+            File.writeTo(temporary.join("src/api.cj"), """
+                package constraints
+                public interface Widget {}
+                public interface Other {}
+                public interface Container<T> {}
+                public class BoundedClass<T> <: Other where T <: Widget & Other {
+                    public func nested<U>(input: U): U where U <: Container<T> { input }
+                }
+                public struct BoundedStruct<T> where T <: Widget {}
+                public interface BoundedInterface<T> where T <: Widget {}
+                public enum BoundedEnum<T> where T <: Widget { | Item(T) }
+                extend<T> BoundedStruct<T> where T <: Widget { public func extensionApi(): Unit {} }
+                public func constrained<T, U>(input: T, other: U): T
+                    where T <: Widget & Other, U <: Container<T> { input }
+                public func shadowed<Widget, T>(input: T): T where T <: Container<Widget> { input }
+                public func plain(): Unit {}
+                """.toArray())
+            let documentation = DocumentationEngine().generate(GenerationRequest(
+                temporary.toString(), lintProfile: "off", audience: "external",
+                astPreflightExecutable: TEST_AST_PREFLIGHT))
+            @Expect(documentation.status, "complete")
+            let constrained = declarationNamed(documentation, "constrained")
+            @Assert(constrained.typeRelationships.size, 3)
+            @Expect(constrained.typeRelationships[0].kind, "genericConstraint")
+            @Expect(constrained.typeRelationships[2].target.spelling, "Widget")
+            @Expect(constrained.typeRelationships[2].target.navigation.getOrThrow().state, "resolved")
+            @Expect(constrained.typeRelationships[2].target.navigation.getOrThrow().symbolKey,
+                declarationNamed(documentation, "Widget").id)
+            @Expect(constrained.typeRelationships[1].target.spelling, "Other")
+            let container = constrained.typeRelationships[0].target
+            @Expect(container.spelling.replace(" ", ""), "Container<T>")
+            @Expect(container.navigation.getOrThrow().state, "resolved")
+            @Assert(container.arguments.size, 1)
+            @Expect(container.arguments[0].spelling, "T")
+            @Expect(container.arguments[0].kind, "typeParameter")
+            @Expect(container.arguments[0].navigation.isNone(), true)
+            @Expect(constrained.parameters[0].typeRef.kind, "typeParameter")
+            @Expect(constrained.parameters[0].typeRef.navigation.isNone(), true)
+            for (name in ["BoundedStruct", "BoundedInterface", "BoundedEnum"]) {
+                let symbol = declarationNamed(documentation, name)
+                @Assert(symbol.typeRelationships.size, 1)
+                @Expect(symbol.typeRelationships[0].kind, "genericConstraint")
+                @Expect(symbol.typeRelationships[0].target.spelling, "Widget")
+            }
+            let owner = declarationNamed(documentation, "BoundedClass")
+            @Assert(owner.typeRelationships.size, 3)
+            @Expect(owner.typeRelationships[0].kind, "genericConstraint")
+            @Expect(owner.typeRelationships[1].kind, "genericConstraint")
+            @Expect(owner.typeRelationships[2].kind, "superType")
+            let nested = declarationNamed(documentation, "nested")
+            @Expect(nested.ownerId, Some(owner.id))
+            @Assert(nested.typeRelationships.size, 1)
+            @Expect(nested.typeRelationships[0].target.arguments[0].kind, "typeParameter")
+            @Expect(nested.typeRelationships[0].target.arguments[0].navigation.isNone(), true)
+            let shadowed = declarationNamed(documentation, "shadowed")
+            @Assert(shadowed.typeRelationships.size, 1)
+            @Expect(shadowed.typeRelationships[0].target.spelling.replace(" ", ""), "Container<Widget>")
+            @Expect(shadowed.typeRelationships[0].target.navigation.getOrThrow().state, "resolved")
+            @Assert(shadowed.typeRelationships[0].target.arguments.size, 1)
+            @Expect(shadowed.typeRelationships[0].target.arguments[0].kind, "typeParameter")
+            @Expect(shadowed.typeRelationships[0].target.arguments[0].navigation.isNone(), true)
+            @Expect(declarationNamed(documentation, "plain").typeRelationships.isEmpty(), true)
+            var extensionFound = false
+            for (symbol in documentation.declarations) {
+                if (symbol.kind != "extend") { continue }
+                extensionFound = true
+                @Assert(symbol.typeRelationships.size, 2)
+                @Expect(symbol.typeRelationships[0].kind, "extensionTarget")
+                @Expect(symbol.typeRelationships[1].kind, "genericConstraint")
+            }
+            @Expect(extensionFound, true)
+        } finally {
+            let _ = removeIfExists(temporary, recursive: true)
+        }
+    }
+
+    @TestCase
     func headerlessDependencyUsesItsModuleNameForSerialAndParallelJobs(): Unit {
         let temporary = Directory.createTemp(getTempDirectory())
         try {

@@ -685,28 +685,39 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
                 }
             }
         case "semantic_link" =>
+            let navigation: ?TypeNavigation = match (node.metadata) {
+                case Some(metadata) => metadata.semanticNavigation
+                case None => None
+            }
             let destination: ?String = match (node.metadata) {
-                case Some(metadata) => metadata.semanticExternalUrl
+                case Some(metadata) => match (navigation) {
+                    case Some(value) => if (value.state == "resolved") { Some(value.url) } else { None }
+                    case None => metadata.semanticExternalUrl
+                }
                 case None => None
             }
             match (destination) {
                 case Some(value) =>
-                    let href = if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("#")) {
+                    let href = if (navigation.isSome()) {
+                        navigationHref(rootPrefix, value).getOrDefault({ => "" })
+                    } else if (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("#")) {
                         value
                     } else {
                         rootPrefix + value
                     }
                     let isRemote = value.startsWith("http://") || value.startsWith("https://")
                     let isFragment = value.startsWith("#")
-                    let permitted = if (isRemote) {
+                    let permitted = if (href.isEmpty()) { false } else if (isRemote) {
                         context.allowExternalLinks && safeLinkDestination(href)
-                    } else if (isFragment) {
+                    } else if (navigation.isSome()) { true } else if (isFragment) {
                         safeLinkDestination(href)
                     } else {
                         safeRelativeLinkDestination(value)
                     }
                     if (permitted) {
-                        out.append("<a href=\"${escapeHtml(href)}\">")
+                        out.append("<a href=\"" + escapeHtml(href) + "\"")
+                        appendNavigationAttributes(out, navigation)
+                        out.append(">")
                         for (child in node.children) {
                             appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
                         }

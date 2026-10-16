@@ -172,4 +172,48 @@ class I18nReferenceStateTest {
             @Expect(references, 7)
         } finally { let _ = removeIfExists(project, recursive: true) }
     }
+
+    @TestCase
+    func genericScopePrecedesLocalIdsBeforeLocalizedReferenceAssociation(): Unit {
+        let comment = "/** Generic {@link Widget}; explicit {@link language_fixture.Widget}.\n" +
+            " * @see Widget Generic parameter.\n * @see[lang=en] Widget Generic parameter.\n" +
+            " * @see language_fixture.Widget Explicit class.\n * @see[lang=en] language_fixture.Widget Explicit class.\n" +
+            " * @throws Widget Generic subject.\n * @throws[lang=en] Widget Generic subject.\n */\n"
+        let project = i18nTestProject("", extra: "public class Widget { public init() {} }\n" +
+            comment + "public func scoped<Widget>(value: Widget): Widget { value }\n" +
+            "public class ScopeOwner<Widget> { public init() {}\n" + comment +
+            "public func fromOwner(value: Widget): Widget { value }\n}\n")
+        try {
+            let generated = i18nTestGenerate(project)
+            @Expect(generated.apiCollectionState, "resolved")
+            let imported = api_render.decodeDocIr(api_render.encodeDocIr(generated))
+            var owners: Int64 = 0
+            for (symbol in imported.declarations where ["scoped", "fromOwner"].contains(symbol.name)) {
+                owners++
+                @Expect(symbol.parameters[0].typeRef.kind, "typeParameter")
+                @Expect(symbol.parameters[0].typeRef.navigation.isNone())
+                var genericSubjects: Int64 = 0
+                var qualifiedSubjects: Int64 = 0
+                for (text in symbol.documentation.getOrThrow().localizedTexts where ["see", "throws"].contains(text.kind)) {
+                    if (text.subject == "Widget") {
+                        genericSubjects++
+                        @Expect(text.referenceState, "unavailable")
+                        @Expect(text.targetSymbolId.isNone())
+                        let navigation = text.navigation.getOrThrow()
+                        @Expect(navigation.state, "unavailable")
+                        @Expect(navigation.url, "")
+                        @Assert(!navigation.reason.isEmpty())
+                    } else if (text.subject == "language_fixture.Widget") {
+                        qualifiedSubjects++
+                        @Expect(text.referenceState, "resolved")
+                        @Expect(text.targetSymbolId.isSome())
+                        @Expect(text.navigation.getOrThrow().state, "resolved")
+                    }
+                }
+                @Expect(genericSubjects, 4)
+                @Expect(qualifiedSubjects, 2)
+            }
+            @Expect(owners, 2)
+        } finally { let _ = removeIfExists(project, recursive: true) }
+    }
 }

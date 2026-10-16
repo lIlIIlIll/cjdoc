@@ -55,6 +55,11 @@ internal func validateType(value: TypeRef, path: String, depth: Int64,
         domainFail(path, "type nesting exceeds ${DOC_IR_MAX_TYPE_DEPTH}")
     }
     if (value.kind.isEmpty()) { domainFail("${path}.kind", "must not be empty") }
+    if (let Some(navigation) <- value.navigation) {
+        if (!navigation.url.isEmpty() && navigationHref("", navigation.url).isNone()) {
+            domainFail("${path}.navigation.url", "unsafe navigation URL")
+        }
+    }
     match (value.semantic.canonical) {
         case Some(canonical) => if (canonical.trimAscii().isEmpty()) {
             domainFail("${path}.semantic.canonical", "canonical type spelling must not be empty")
@@ -211,6 +216,11 @@ internal func validateMarkdownMetadata(node: MarkdownNode, path: String): Unit {
                     domainFail("${path}.metadata.alignment", "invalid table-cell alignment")
                 }
                 case "semantic_link" =>
+                    if (let Some(navigation) <- value.semanticNavigation) {
+                        if (!navigation.url.isEmpty() && navigationHref("", navigation.url).isNone()) {
+                            domainFail(path + ".metadata.semanticNavigation.url", "unsafe navigation URL")
+                        }
+                    }
                     let target = value.semanticTarget.getOrThrow()
                     let state = value.semanticState.getOrThrow()
                     if (target.isEmpty() || (state != "resolved" && state != "unresolved" &&

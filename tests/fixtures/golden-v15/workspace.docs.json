@@ -1,0 +1,723 @@
+{
+  "schemaVersion": "cjdoc.doc-ir/15",
+  "generator": {
+    "name": "cjdoc",
+    "version": "0.7.2",
+    "toolchain": ""
+  },
+  "status": "complete",
+  "apiCollectionState": "resolved",
+  "documentationRevision": "",
+  "project": {
+    "name": "workspace",
+    "kind": "package",
+    "repository": null
+  },
+  "configuration": {
+    "audience": "external",
+    "lintProfile": "standard",
+    "cfgProfile": "default"
+  },
+  "dependencies": [
+    {
+      "moduleId": "cjdoc:module:v1:root",
+      "componentModuleId": "",
+      "name": "std",
+      "instanceId": "cjdoc:dependency:v1:7dbba229c5153cbb9b09f9e3d45ce9321e5a839a46131363603b26247d6c5b85",
+      "kind": "std",
+      "identity": "",
+      "state": "unknown",
+      "evidence": "target build input not supplied",
+      "version": "",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:root",
+      "componentModuleId": "",
+      "name": "stdx",
+      "instanceId": "cjdoc:dependency:v1:2f6b15376f3527df6744bf8efc4f3d6e7780393ce7c38735ffd624e8cc2e98cc",
+      "kind": "stdx",
+      "identity": "",
+      "state": "unknown",
+      "evidence": "target build input not supplied",
+      "version": "",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:root",
+      "componentModuleId": "",
+      "name": "toolchain",
+      "instanceId": "cjdoc:dependency:v1:5dccab6192b20cd88dac683415107964452028ea5af0230cacaaf280416fdabf",
+      "kind": "toolchain",
+      "identity": "",
+      "state": "unknown",
+      "evidence": "target build input not supplied",
+      "version": "",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:root",
+      "componentModuleId": "cjdoc:module:v1:root",
+      "name": "workspace",
+      "instanceId": "cjdoc:dependency:v1:9d3b6d916cd7c0066e37fbe928457fdfa46b25dd685e3526e106efda5c1e14a0",
+      "kind": "source",
+      "identity": "sha256:95d2f08edfaa47b2b3108c510564e6dc3956c9bb4f2d5e3f0032150b0902c3c7",
+      "state": "observed",
+      "evidence": "project source and manifest bytes",
+      "version": "",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:workspace:packages/alpha",
+      "componentModuleId": "",
+      "name": "std",
+      "instanceId": "cjdoc:dependency:v1:6633eeac402eeb8fa6ca118a2176dd15f5adf3fb0cb179b1f2a4dac71a095181",
+      "kind": "std",
+      "identity": "",
+      "state": "unknown",
+      "evidence": "target build input not supplied",
+      "version": "",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:workspace:packages/alpha",
+      "componentModuleId": "",
+      "name": "stdx",
+      "instanceId": "cjdoc:dependency:v1:3f2c0ee3efc57a8140793cb28527172863661aef7874fa66f8114f398c15c173",
+      "kind": "stdx",
+      "identity": "",
+      "state": "unknown",
+      "evidence": "target build input not supplied",
+      "version": "",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:workspace:packages/alpha",
+      "componentModuleId": "",
+      "name": "toolchain",
+      "instanceId": "cjdoc:dependency:v1:134b3e0015d40d3a3b021f23182d1c77de2f70cf554bb02d90be127f0d531031",
+      "kind": "toolchain",
+      "identity": "",
+      "state": "unknown",
+      "evidence": "target build input not supplied",
+      "version": "",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:workspace:packages/alpha",
+      "componentModuleId": "cjdoc:module:v1:workspace:packages/alpha",
+      "name": "workspace_alpha",
+      "instanceId": "cjdoc:dependency:v1:4cf776afa2d1dd7888ace12e57fccaf50403ca78036078551af7dcc4b19c608a",
+      "kind": "source",
+      "identity": "sha256:b06b03573275977f74007c7fed893a32e6888080bb9b722c9382b4e6dfcc33ee",
+      "state": "observed",
+      "evidence": "project source and manifest bytes",
+      "version": "0.0.0",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:workspace:packages/beta",
+      "componentModuleId": "",
+      "name": "std",
+      "instanceId": "cjdoc:dependency:v1:3093995e8b214b3b4ae09f300ac3855d6d09a433a7830d6ea68f24cfece4d0ea",
+      "kind": "std",
+      "identity": "",
+      "state": "unknown",
+      "evidence": "target build input not supplied",
+      "version": "",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:workspace:packages/beta",
+      "componentModuleId": "",
+      "name": "stdx",
+      "instanceId": "cjdoc:dependency:v1:1a3c7be5b1773516cba0c79284814966f4c28f234df4ea143b10872c5730f8a8",
+      "kind": "stdx",
+      "identity": "",
+      "state": "unknown",
+      "evidence": "target build input not supplied",
+      "version": "",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:workspace:packages/beta",
+      "componentModuleId": "",
+      "name": "toolchain",
+      "instanceId": "cjdoc:dependency:v1:691fa89b7649c5d6a49420f43defe7e6a0ff8276a7fe237c0acb6f5a7318f75a",
+      "kind": "toolchain",
+      "identity": "",
+      "state": "unknown",
+      "evidence": "target build input not supplied",
+      "version": "",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:workspace:packages/beta",
+      "componentModuleId": "cjdoc:module:v1:workspace:packages/beta",
+      "name": "workspace_beta",
+      "instanceId": "cjdoc:dependency:v1:c939be191cec4b1d426f5dc7420a567022588001d76ead1ac59d44bb4e4bb2cf",
+      "kind": "source",
+      "identity": "sha256:1f2e9f71f4186f3d016879af6dc9911a32e102b741f9055f1c06993bfa87e698",
+      "state": "observed",
+      "evidence": "project source and manifest bytes",
+      "version": "0.0.0",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    }
+  ],
+  "documentSets": [
+    
+  ],
+  "providers": [
+    {
+      "name": "syntax",
+      "version": "1",
+      "moduleId": "cjdoc:module:v1:workspace:packages/alpha",
+      "state": "partial",
+      "capabilities": {
+        "sourceBinding": true,
+        "ownership": true,
+        "visibility": true,
+        "canonicalTypes": false,
+        "canonicalSignatures": false,
+        "relationships": true,
+        "annotations": false
+      }
+    },
+    {
+      "name": "syntax",
+      "version": "1",
+      "moduleId": "cjdoc:module:v1:workspace:packages/beta",
+      "state": "partial",
+      "capabilities": {
+        "sourceBinding": true,
+        "ownership": true,
+        "visibility": true,
+        "canonicalTypes": false,
+        "canonicalSignatures": false,
+        "relationships": true,
+        "annotations": false
+      }
+    }
+  ],
+  "modules": [
+    {
+      "id": "cjdoc:module:v1:workspace:packages/alpha",
+      "name": "workspace_alpha",
+      "role": "workspace",
+      "sourcePrefix": "packages/alpha",
+      "organization": null,
+      "repositoryPath": null,
+      "packageNames": [
+        "workspace_alpha"
+      ],
+      "dependencyIds": [
+        
+      ]
+    },
+    {
+      "id": "cjdoc:module:v1:workspace:packages/beta",
+      "name": "workspace_beta",
+      "role": "workspace",
+      "sourcePrefix": "packages/beta",
+      "organization": null,
+      "repositoryPath": null,
+      "packageNames": [
+        "workspace_beta"
+      ],
+      "dependencyIds": [
+        
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "name": "workspace_alpha",
+      "moduleId": "cjdoc:module:v1:workspace:packages/alpha",
+      "sourceFiles": [
+        "packages/alpha/src/alpha.cj"
+      ],
+      "symbolIds": [
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aworkspace%3Apackages/alpha::workspace_alpha::function:alpha#g0()"
+      ],
+      "reExports": [
+        
+      ]
+    },
+    {
+      "name": "workspace_beta",
+      "moduleId": "cjdoc:module:v1:workspace:packages/beta",
+      "sourceFiles": [
+        "packages/beta/src/beta.cj"
+      ],
+      "symbolIds": [
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aworkspace%3Apackages/beta::workspace_beta::function:beta#g0()"
+      ],
+      "reExports": [
+        
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "packages/alpha/src/alpha.cj",
+      "moduleId": "cjdoc:module:v1:workspace:packages/alpha",
+      "packageName": "workspace_alpha"
+    },
+    {
+      "path": "packages/beta/src/beta.cj",
+      "moduleId": "cjdoc:module:v1:workspace:packages/beta",
+      "packageName": "workspace_beta"
+    }
+  ],
+  "declarations": [
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aworkspace%3Apackages/alpha::workspace_alpha::function:alpha#g0()",
+      "kind": "function",
+      "name": "alpha",
+      "qualifiedName": "workspace_alpha.alpha",
+      "packageName": "workspace_alpha",
+      "moduleId": "cjdoc:module:v1:workspace:packages/alpha",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "primitive",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semanticState": "partial",
+        "semanticCanonical": null,
+        "semanticProvider": "syntax",
+        "navigation": null
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Alpha API. */",
+        "summary": "Alpha API.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "metadata": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "metadata": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Alpha API.",
+                  "source": null,
+                  "metadata": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "packages/alpha/src/alpha.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 43
+        },
+        "end": {
+          "line": 4,
+          "column": 29,
+          "byteOffset": 71
+        }
+      },
+      "headerSpelling": "public func alpha(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:5:alpha",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
+      "semantic": {
+        "state": "partial",
+        "provider": "syntax",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null,
+      "signatureHighlight": {
+        "language": "cangjie",
+        "sourceHash": "d0f6d3f3bf85f61603c04aa33d2956b8627e15c68574496bf152523c167b4d1f",
+        "byteLength": 25,
+        "engineId": "cjdoc-cangjie-lexer",
+        "engineRevision": "2/lexer-behavior-v1/1949a49bf58e70d2090a3f23f3004d579feb0f94283f975997dd63ba3d88c08d",
+        "state": "complete",
+        "reason": null,
+        "spans": [
+          {
+            "startByte": 0,
+            "endByte": 6,
+            "kind": "keyword"
+          },
+          {
+            "startByte": 7,
+            "endByte": 11,
+            "kind": "keyword"
+          },
+          {
+            "startByte": 17,
+            "endByte": 18,
+            "kind": "punctuation"
+          },
+          {
+            "startByte": 18,
+            "endByte": 19,
+            "kind": "punctuation"
+          },
+          {
+            "startByte": 19,
+            "endByte": 20,
+            "kind": "punctuation"
+          },
+          {
+            "startByte": 21,
+            "endByte": 25,
+            "kind": "type"
+          }
+        ]
+      }
+    },
+    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aworkspace%3Apackages/beta::workspace_beta::function:beta#g0()",
+      "kind": "function",
+      "name": "beta",
+      "qualifiedName": "workspace_beta.beta",
+      "packageName": "workspace_beta",
+      "moduleId": "cjdoc:module:v1:workspace:packages/beta",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        
+      ],
+      "returnType": {
+        "kind": "primitive",
+        "spelling": "Unit",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semanticState": "partial",
+        "semanticCanonical": null,
+        "semanticProvider": "syntax",
+        "navigation": null
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Beta API. */",
+        "summary": "Beta API.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "metadata": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "metadata": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Beta API.",
+                  "source": null,
+                  "metadata": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
+      "source": {
+        "path": "packages/beta/src/beta.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 41
+        },
+        "end": {
+          "line": 4,
+          "column": 28,
+          "byteOffset": 68
+        }
+      },
+      "headerSpelling": "public func beta(): Unit",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "FUNC:4:func",
+          "IDENTIFIER:4:beta",
+          "LPAREN:1:(",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "UNIT:4:Unit"
+        ]
+      },
+      "semantic": {
+        "state": "partial",
+        "provider": "syntax",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null,
+      "signatureHighlight": {
+        "language": "cangjie",
+        "sourceHash": "b16833e6372f061d86cafb84bcbc99456d67ebd4e2b39ceadd2bc89b5ebfcf09",
+        "byteLength": 24,
+        "engineId": "cjdoc-cangjie-lexer",
+        "engineRevision": "2/lexer-behavior-v1/1949a49bf58e70d2090a3f23f3004d579feb0f94283f975997dd63ba3d88c08d",
+        "state": "complete",
+        "reason": null,
+        "spans": [
+          {
+            "startByte": 0,
+            "endByte": 6,
+            "kind": "keyword"
+          },
+          {
+            "startByte": 7,
+            "endByte": 11,
+            "kind": "keyword"
+          },
+          {
+            "startByte": 16,
+            "endByte": 17,
+            "kind": "punctuation"
+          },
+          {
+            "startByte": 17,
+            "endByte": 18,
+            "kind": "punctuation"
+          },
+          {
+            "startByte": 18,
+            "endByte": 19,
+            "kind": "punctuation"
+          },
+          {
+            "startByte": 20,
+            "endByte": 24,
+            "kind": "type"
+          }
+        ]
+      }
+    }
+  ],
+  "assets": [
+    
+  ],
+  "orphanDocComments": [
+    
+  ],
+  "macroInvocations": [
+    
+  ],
+  "unsupportedDeclarations": [
+    
+  ],
+  "unboundSemanticDeclarations": [
+    
+  ],
+  "diagnostics": [
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "packages/alpha/src/alpha.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 43
+        },
+        "end": {
+          "line": 4,
+          "column": 29,
+          "byteOffset": 71
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aworkspace%3Apackages/alpha::workspace_alpha::function:alpha#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "packages/alpha/src/alpha.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 43
+        },
+        "end": {
+          "line": 4,
+          "column": 29,
+          "byteOffset": 71
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aworkspace%3Apackages/alpha::workspace_alpha::function:alpha#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "packages/alpha/src/alpha.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 43
+        },
+        "end": {
+          "line": 4,
+          "column": 29,
+          "byteOffset": 71
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aworkspace%3Apackages/alpha::workspace_alpha::function:alpha#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "packages/beta/src/beta.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 41
+        },
+        "end": {
+          "line": 4,
+          "column": 28,
+          "byteOffset": 68
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aworkspace%3Apackages/beta::workspace_beta::function:beta#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "packages/beta/src/beta.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 41
+        },
+        "end": {
+          "line": 4,
+          "column": 28,
+          "byteOffset": 68
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aworkspace%3Apackages/beta::workspace_beta::function:beta#g0()"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "packages/beta/src/beta.cj",
+        "start": {
+          "line": 4,
+          "column": 1,
+          "byteOffset": 41
+        },
+        "end": {
+          "line": 4,
+          "column": 28,
+          "byteOffset": 68
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aworkspace%3Apackages/beta::workspace_beta::function:beta#g0()"
+    }
+  ]
+}

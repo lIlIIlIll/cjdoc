@@ -48,7 +48,8 @@ private func selectedDocumentationTag(text: DocumentationText, locale: String, s
         exampleMarkdown: if (text.kind == "example") { Some(text.markdown) } else { None },
         contentLanguage: text.language, translationState: state, fieldId: text.fieldId,
         descriptionMarkdown: if (text.kind == "example") { None } else { Some(text.markdown) },
-        evidenceKey: if (text.kind == "example") { documentationExampleKey(symbolId, text) } else { "" })
+        evidenceKey: if (text.kind == "example") { documentationExampleKey(symbolId, text) } else { "" },
+        navigation: text.navigation)
 }
 
 private func requestedDocumentationState(comment: DocComment, fieldId: String, locale: String): String {
@@ -146,11 +147,13 @@ public func projectDocumentationLanguage(value: DocumentationSet, locale: String
     for (symbol in value.declarations) { declarations.add(selectedSymbol(symbol, language)) }
     DocumentationSet(value.generator, value.status, value.project, value.configuration,
         apiCollectionState: Some(value.apiCollectionState),
+        documentationRevision: value.documentationRevision,
         providers: value.providers.toArray(), modules: value.modules.toArray(), packages: value.packages.toArray(),
         files: value.files.toArray(), declarations: declarations.toArray(), assets: value.assets.toArray(),
         orphanDocComments: value.orphanDocComments.toArray(), macroInvocations: value.macroInvocations.toArray(),
         unsupportedDeclarations: value.unsupportedDeclarations.toArray(),
         unboundSemanticDeclarations: value.unboundSemanticDeclarations.toArray(), diagnostics: value.diagnostics.toArray(),
         languageOptions: value.languageOptions, pages: value.pages.toArray(), readingLanguage: Some(language),
-        externalDocumentation: value.externalDocumentation.toArray())
+        externalDocumentation: value.externalDocumentation.toArray(),
+        dependencies: value.dependencies.toArray(), documentSets: value.documentSets.toArray())
 }

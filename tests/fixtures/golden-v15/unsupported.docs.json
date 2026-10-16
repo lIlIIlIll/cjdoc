@@ -1,0 +1,227 @@
+{
+  "schemaVersion": "cjdoc.doc-ir/15",
+  "generator": {
+    "name": "cjdoc",
+    "version": "0.7.2",
+    "toolchain": ""
+  },
+  "status": "partial",
+  "apiCollectionState": "partial",
+  "documentationRevision": "",
+  "project": {
+    "name": "unsupported_fixture",
+    "kind": "package",
+    "repository": null
+  },
+  "configuration": {
+    "audience": "external",
+    "lintProfile": "standard",
+    "cfgProfile": "default"
+  },
+  "dependencies": [
+    {
+      "moduleId": "cjdoc:module:v1:root",
+      "componentModuleId": "",
+      "name": "std",
+      "instanceId": "cjdoc:dependency:v1:7dbba229c5153cbb9b09f9e3d45ce9321e5a839a46131363603b26247d6c5b85",
+      "kind": "std",
+      "identity": "",
+      "state": "unknown",
+      "evidence": "target build input not supplied",
+      "version": "",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:root",
+      "componentModuleId": "",
+      "name": "stdx",
+      "instanceId": "cjdoc:dependency:v1:2f6b15376f3527df6744bf8efc4f3d6e7780393ce7c38735ffd624e8cc2e98cc",
+      "kind": "stdx",
+      "identity": "",
+      "state": "unknown",
+      "evidence": "target build input not supplied",
+      "version": "",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:root",
+      "componentModuleId": "",
+      "name": "toolchain",
+      "instanceId": "cjdoc:dependency:v1:5dccab6192b20cd88dac683415107964452028ea5af0230cacaaf280416fdabf",
+      "kind": "toolchain",
+      "identity": "",
+      "state": "unknown",
+      "evidence": "target build input not supplied",
+      "version": "",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    },
+    {
+      "moduleId": "cjdoc:module:v1:root",
+      "componentModuleId": "cjdoc:module:v1:root",
+      "name": "unsupported_fixture",
+      "instanceId": "cjdoc:dependency:v1:592dcf696c279b2694425b14d80a439a3e441961e8af27bba8aa351938667a0b",
+      "kind": "source",
+      "identity": "sha256:fef9c431ca39ffa1964c52de349e64d5b39c0a322cfbf2a39904be2c58515bc5",
+      "state": "observed",
+      "evidence": "project source and manifest bytes",
+      "version": "0.0.0",
+      "revision": "",
+      "target": "",
+      "cfg": ""
+    }
+  ],
+  "documentSets": [
+    
+  ],
+  "providers": [
+    {
+      "name": "syntax",
+      "version": "1",
+      "moduleId": "cjdoc:module:v1:root",
+      "state": "partial",
+      "capabilities": {
+        "sourceBinding": true,
+        "ownership": true,
+        "visibility": true,
+        "canonicalTypes": false,
+        "canonicalSignatures": false,
+        "relationships": true,
+        "annotations": false
+      }
+    }
+  ],
+  "modules": [
+    {
+      "id": "cjdoc:module:v1:root",
+      "name": "unsupported_fixture",
+      "role": "root",
+      "sourcePrefix": "",
+      "organization": null,
+      "repositoryPath": null,
+      "packageNames": [
+        "unsupported_fixture"
+      ],
+      "dependencyIds": [
+        
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "name": "unsupported_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "sourceFiles": [
+        "src/macro.cj"
+      ],
+      "symbolIds": [
+        
+      ],
+      "reExports": [
+        
+      ]
+    }
+  ],
+  "files": [
+    {
+      "path": "src/macro.cj",
+      "moduleId": "cjdoc:module:v1:root",
+      "packageName": "unsupported_fixture"
+    }
+  ],
+  "declarations": [
+    
+  ],
+  "assets": [
+    
+  ],
+  "orphanDocComments": [
+    {
+      "rawText": "/** Unsupported macro declaration. */",
+      "source": {
+        "path": "src/macro.cj",
+        "start": {
+          "line": 5,
+          "column": 1,
+          "byteOffset": 53
+        },
+        "end": {
+          "line": 5,
+          "column": 38,
+          "byteOffset": 90
+        }
+      }
+    }
+  ],
+  "macroInvocations": [
+    
+  ],
+  "unsupportedDeclarations": [
+    {
+      "kind": "macro",
+      "name": "Echo",
+      "reason": "macro expansion is not executed",
+      "source": {
+        "path": "src/macro.cj",
+        "start": {
+          "line": 6,
+          "column": 1,
+          "byteOffset": 91
+        },
+        "end": {
+          "line": 9,
+          "column": 2,
+          "byteOffset": 169
+        }
+      }
+    }
+  ],
+  "unboundSemanticDeclarations": [
+    
+  ],
+  "diagnostics": [
+    {
+      "severity": "warning",
+      "code": "CJDOC1014",
+      "message": "doc comment is not attached to a documentable declaration",
+      "source": {
+        "path": "src/macro.cj",
+        "start": {
+          "line": 5,
+          "column": 1,
+          "byteOffset": 53
+        },
+        "end": {
+          "line": 5,
+          "column": 38,
+          "byteOffset": 90
+        }
+      },
+      "symbolId": null
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC1009",
+      "message": "unsupported declaration 'macro Echo'",
+      "source": {
+        "path": "src/macro.cj",
+        "start": {
+          "line": 6,
+          "column": 1,
+          "byteOffset": 91
+        },
+        "end": {
+          "line": 9,
+          "column": 2,
+          "byteOffset": 169
+        }
+      },
+      "symbolId": null
+    }
+  ]
+}

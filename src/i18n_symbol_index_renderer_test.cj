@@ -65,7 +65,7 @@ private func expectReadingIndex(documentation: api_model.DocumentationSet,
     @Assert(artifacts.size, 1)
     @Expect(artifacts[0].path, "symbol-index/symbol-index.json")
     let index = JsonNode.parse(artifacts[0].content).asObject()
-    @Expect(index.get("schemaVersion").getOrThrow().asString(), "cjdoc.symbol-index/1")
+    @Expect(index.get("schemaVersion").getOrThrow().asString(), "cjdoc.symbol-index/2")
     let entries = index.get("entries").getOrThrow().asArray()
     @Assert(entries.size(), 1)
     let entry = entries.get(0).getOrThrow().asObject()

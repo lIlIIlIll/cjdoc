@@ -188,8 +188,8 @@ protected func boundGeneratedDocumentation(candidate: public_model.Documentation
     }
     // Generation must return a valid, renderable value even when a hostile or
     // unexpectedly large source/provider field would exceed codec or output
-    // transaction limits. Fixed strings keep this fallback independent of the
-    // oversized input that caused it.
+    // transaction limits. Fixed source fields keep this fallback independent of
+    // the oversized input that caused it.
     let fallback = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.2"), "partial",
         public_model.ProjectInfo("resource-limited"),
         public_model.ConfigurationSnapshot(audience: request.audience, lintProfile: request.lintProfile,
@@ -200,9 +200,19 @@ protected func boundGeneratedDocumentation(candidate: public_model.Documentation
             }),
         diagnostics: [public_model.Diagnostic("warning", "CJDOC3027",
             "generated documentation exceeded codec or output resource limits and was replaced by a bounded fallback")],
-        languageOptions: candidate.languageOptions, apiCollectionState: Some("unavailable"))
+        languageOptions: candidate.languageOptions, apiCollectionState: Some("unavailable"),
+        documentationRevision: candidate.documentationRevision)
     for (diagnostic in retainedHighlightBackendDiagnostics(candidate)) {
         fallback.appendDiagnostic(diagnostic)
     }
-    fallback
+    if (fallback.documentationRevision.isEmpty() ||
+        public_render.docIrFitsEncodedBudget(fallback, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
+        return fallback
+    }
+    // Optional publication provenance cannot make the resource fallback itself
+    // unencodable. Preserve valid revisions; an unrepresentable one is unknown,
+    // with the same persisted resource-limit diagnostic rather than a new cap.
+    public_model.DocumentationSet(fallback.generator, fallback.status, fallback.project, fallback.configuration,
+        diagnostics: fallback.diagnostics.toArray(), languageOptions: fallback.languageOptions,
+        apiCollectionState: Some(fallback.apiCollectionState))
 }

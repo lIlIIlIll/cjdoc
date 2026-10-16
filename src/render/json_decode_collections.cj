@@ -6,7 +6,7 @@ import yjson.*
 
 internal func decodeSymbol(node: JsonNode, path: String, legacyV6: Bool, legacy: Bool,
     modules: LegacyModuleIndex, legacyIds: HashMap<String, String>,
-    assetReferences: HashMap<String, String>): SymbolDoc {
+    assetReferences: HashMap<String, String>, flatTypeSemantics: Bool): SymbolDoc {
     let keys = if (legacyV6) { ["id", "kind", "name", "qualifiedName", "packageName",
         "ownerId", "visibility", "genericParameters", "parameters", "returnType", "annotations",
         "typeRelationships", "symbolRelationships",
@@ -25,13 +25,13 @@ internal func decodeSymbol(node: JsonNode, path: String, legacyV6: Bool, legacy:
     let parameters = ArrayList<ParameterDoc>()
     var index: Int64 = 0
     for (parameter in jsonArrayValues(arrayAt(value, "parameters", path))) {
-        parameters.add(decodeParameter(parameter, "${path}.parameters[${index}]")); index++
+        parameters.add(decodeParameter(parameter, "${path}.parameters[${index}]", flatTypeSemantics)); index++
     }
     let typeRelationships = ArrayList<TypeRelationship>()
     index = 0
     for (relationship in jsonArrayValues(arrayAt(value, "typeRelationships", path))) {
         typeRelationships.add(decodeTypeRelationship(relationship,
-            "${path}.typeRelationships[${index}]")); index++
+            "${path}.typeRelationships[${index}]", flatTypeSemantics)); index++
     }
     let symbolRelationships = ArrayList<SymbolRelationship>()
     index = 0
@@ -41,7 +41,7 @@ internal func decodeSymbol(node: JsonNode, path: String, legacyV6: Bool, legacy:
     }
     let returnNode = required(value, "returnType", path)
     let returnType: ?TypeRef = if (returnNode.isNull) { None }
-        else { Some(decodeTypeRef(returnNode, "${path}.returnType", 0)) }
+        else { Some(decodeTypeRef(returnNode, "${path}.returnType", 0, flatTypeSemantics)) }
     let documentationNode = required(value, "documentation", path)
     let documentation: ?DocComment = if (documentationNode.isNull) { None }
         else { Some(decodeComment(documentationNode, "${path}.documentation", legacyV6,
@@ -239,12 +239,12 @@ internal func decodeProviders(root: JsonObject, modules: Array<ModuleDoc>, legac
 
 internal func decodeDeclarations(root: JsonObject, legacyV6: Bool, legacy: Bool,
     modules: LegacyModuleIndex, legacyIds: HashMap<String, String>,
-    assetReferences: HashMap<String, String>): Array<SymbolDoc> {
+    assetReferences: HashMap<String, String>, flatTypeSemantics: Bool): Array<SymbolDoc> {
     let result = ArrayList<SymbolDoc>()
     var index: Int64 = 0
     for (node in jsonArrayValues(arrayAt(root, "declarations", "$" ))) {
         result.add(decodeSymbol(node, "$.declarations[${index}]", legacyV6, legacy,
-            modules, legacyIds, assetReferences)); index++
+            modules, legacyIds, assetReferences, flatTypeSemantics)); index++
     }
     result.toArray()
 }

@@ -881,13 +881,14 @@ internal func chirTypeRefFromNodes(nodes: ArrayList<ChirTypeNode>, start: Int64,
     if (rawChildren.size == 1 && nodes[rawChildren[0]].qualifiedName == head.qualifiedName) {
         children = chirDirectChildren(nodes, rawChildren[0])
     }
-    // Each argument keeps the spelling written at its own position. The source
-    // and resolved structures are trusted to agree only when their argument
-    // counts match; CHIR also reports a self-referential child for some
-    // non-generic custom types, which the source display rules out. When they
-    // disagree, no arguments are claimed, which yields no link rather than a
-    // wrong one.
-    let sourceArguments = chirSourceTypeArguments(sourceDisplay)
+    // Align semantic children with the actual AST role. In particular ?Box<T>
+    // has an optional child Box<T>, not the generic child T; functions and tuples
+    // likewise own structured children even without angle brackets.
+    let sourceShape = dependencyTypeShape(sourceDisplay)
+    let sourceArguments = ArrayList<String>()
+    if (let Some(shape) <- sourceShape) {
+        for (child in shape.children) { sourceArguments.add(child.spelling) }
+    }
     let argumentDisplays = ArrayList<String>()
     if (sourceDisplay.trimAscii().isEmpty()) {
         // No source display to compare against; keep CHIR's structure.
@@ -911,10 +912,10 @@ internal func chirTypeRefFromNodes(nodes: ArrayList<ChirTypeNode>, start: Int64,
     } else {
         chirCompactSpelling(sourceDisplay)
     }
-    return public_model.TypeRef("source", display,
+    return public_model.TypeRef(sourceShape.map({ shape => shape.kind }).getOrDefault({ => "source" }), display,
         public_model.SemanticType("resolved", canonical: Some(head.qualifiedName),
             provider: Some("chir")),
-        arguments: arguments.toArray())
+        nullable: sourceShape.map({ shape => shape.nullable }).getOrDefault({ => false }), arguments: arguments.toArray())
 }
 
 // A source type display with all whitespace removed, matching how the renderer
@@ -928,61 +929,6 @@ internal func chirCompactSpelling(display: String): String {
     String.fromUtf8(kept.toArray())
 }
 
-// The top-level argument spellings of a source type display, each verbatim. Only
-// angle brackets open a generic argument list; a comma inside a tuple, function,
-// or other bracketed group is not a separator, so every supported delimiter is
-// tracked before splitting.
-internal func chirSourceTypeArguments(display: String): Array<String> {
-    let result = ArrayList<String>()
-    let open = match (display.indexOf("<")) {
-        case Some(index) => index
-        case None => return []
-    }
-    // Only the outermost type's argument list counts. A function or tuple type
-    // such as `() -> Box<Token>` has a `<` inside its return, not as its own
-    // argument list, so a structural delimiter before the bracket rules it out.
-    var head: Int64 = 0
-    while (head < open) {
-        let byte = display[head]
-        if (byte == b'(' || byte == b'[' || byte == b'{') { return [] }
-        if (byte == b'-' && head + 1 < open && display[head + 1] == b'>') { return [] }
-        head++
-    }
-    var angle: Int64 = 0
-    var other: Int64 = 0
-    var index = open
-    var end: Int64 = -1
-    while (index < display.size) {
-        let byte = display[index]
-        if (byte == b'<') { angle++ }
-        else if (byte == b'>' && !(index > open && display[index - 1] == b'-')) {
-            if (angle == 0 && other == 0) { return [] }
-            angle--
-            if (angle == 0) { end = index; break }
-        } else if (byte == b'(' || byte == b'[' || byte == b'{') { other++ }
-        else if (byte == b')' || byte == b']' || byte == b'}') { if (other > 0) { other-- } }
-        index++
-    }
-    if (end < 0) { return [] }
-    var start = open + 1
-    angle = 0
-    other = 0
-    index = start
-    while (index < end) {
-        let byte = display[index]
-        if (byte == b'<') { angle++ }
-        else if (byte == b'>' && !(index > start && display[index - 1] == b'-')) { angle-- }
-        else if (byte == b'(' || byte == b'[' || byte == b'{') { other++ }
-        else if (byte == b')' || byte == b']' || byte == b'}') { if (other > 0) { other-- } }
-        else if (byte == b',' && angle == 0 && other == 0) {
-            result.add(display[start..index].trimAscii())
-            start = index + 1
-        }
-        index++
-    }
-    result.add(display[start..end].trimAscii())
-    result.toArray()
-}
 
 // The direct children of a node in the flattened pre-order list.
 private func chirDirectChildren(nodes: ArrayList<ChirTypeNode>, index: Int64): ArrayList<Int64> {

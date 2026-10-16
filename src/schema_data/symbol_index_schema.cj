@@ -1,0 +1,13 @@
+package cjdoc.schema_data
+
+public let SYMBOL_INDEX_SCHEMA = SYMBOL_INDEX_V1_SCHEMA
+    .replace("cjdoc symbol index v1", "cjdoc symbol index v2")
+    .replace("cjdoc.symbol-index/1", "cjdoc.symbol-index/2")
+    .replace("[\"schemaVersion\", \"project\", \"entries\"]", "[\"schemaVersion\", \"project\", \"entries\", \"dependencies\", \"documentSets\"]")
+    .replace("    \"entries\": {", "    \"dependencies\": {\"type\": \"array\", \"items\": {\"$ref\": \"#/$defs/dependencyInstance\"}},\n    \"documentSets\": {\"type\": \"array\", \"items\": {\"$ref\": \"#/$defs/documentSetIdentity\"}},\n    \"entries\": {")
+    .replace("\"href\", \"relations\", \"references\"]", "\"href\", \"relations\", \"references\", \"identity\", \"documentSetId\", \"symbolKey\", \"typeNavigations\"]")
+    .replace("          \"canonicalId\":", "          \"sourceHeader\": {\"type\": \"string\"}, \"identity\": {\"type\": \"string\"}, \"documentSetId\": {\"type\": \"string\"},\n          \"symbolKey\": {\"type\": \"string\", \"minLength\": 1},\n          \"typeNavigations\": {\"type\": \"array\", \"items\": {\"type\": \"object\", \"additionalProperties\": false, \"required\": [\"spelling\", \"navigation\"], \"properties\": {\"spelling\": {\"type\": \"string\"}, \"navigation\": {\"$ref\": \"#/$defs/typeNavigation\"}}}},\n          \"canonicalId\":")
+    .replace("[\"subject\", \"description\", \"state\", \"targetId\"]", "[\"subject\", \"description\", \"state\", \"targetId\", \"navigation\"]")
+    .replace("\"subject\": {\"type\": \"string\"}, \"description\":", "\"navigation\": {\"anyOf\": [{\"$ref\": \"#/$defs/typeNavigation\"}, {\"type\": \"null\"}]}, \"subject\": {\"type\": \"string\"}, \"description\":")
+    .replace("  \"$defs\": {", "  \"$defs\": {\n" + DEPENDENCY_IDENTITY_DEFINITIONS)
+    .replace("    \"version\":", "    \"provenance\": {\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"documentSetId\",\"sourceUri\",\"revision\",\"sha256\",\"excerpt\",\"verification\",\"sdkMapping\",\"license\"],\"properties\":{\"documentSetId\":{\"type\":\"string\",\"minLength\":1},\"sourceUri\":{\"type\":\"string\",\"minLength\":1},\"revision\":{\"type\":\"string\",\"minLength\":1},\"sha256\":{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"},\"excerpt\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"startLine\",\"endLine\",\"sha256\"],\"properties\":{\"startLine\":{\"type\":\"integer\",\"minimum\":1},\"endLine\":{\"type\":\"integer\",\"minimum\":1},\"sha256\":{\"type\":\"string\",\"pattern\":\"^[0-9a-f]{64}$\"}}},\"verification\":{\"const\":\"pinned-documentation-source-lines\"},\"sdkMapping\":{\"const\":\"none\"},\"license\":{\"type\":\"string\",\"minLength\":1}}}},\n    \"version\":")
