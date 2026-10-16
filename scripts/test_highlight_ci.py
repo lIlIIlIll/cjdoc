@@ -19,7 +19,7 @@ import ci_changes
 import highlight_ci
 
 from highlight_process import (ObservedProcess, assert_stopped, observe_cancel_targets,
-                               cleanup_observed)
+                               cleanup_observed, _darwin_executable)
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -111,36 +111,47 @@ class HighlightCiContractTest(unittest.TestCase):
 
 
 class HighlightObservedProcessTest(unittest.TestCase):
-    def test_real_live_process_is_not_stopped_and_cleanup_uses_its_observation(self):
-        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
-        observed = None
+    @contextlib.contextmanager
+    def live_python(self):
+        # Popen returning proves only the first exec completed. Framework Python
+        # on macOS subsequently execs its real interpreter and replaces argv[0].
+        child = subprocess.Popen([sys.executable, "-c",
+            "import time; print('ready', flush=True); time.sleep(60)"],
+            stdout=subprocess.PIPE, text=True)
         try:
-            observed = ObservedProcess(child.pid, require_live=True, expected_executable=Path(sys.executable),
-                                       expected_command="-c", expected_parent=os.getpid())
-            self.assertFalse(observed.stopped())
-            with self.assertRaises(AssertionError):
-                assert_stopped(child.pid, observed)
-            observed.cleanup()
-            child.wait(timeout=5)
-            assert_stopped(child.pid, observed)
+            self.assertEqual(child.stdout.readline(), "ready\n")
+            yield child
         finally:
             if child.poll() is None:
                 child.kill(); child.wait(timeout=5)
-            if observed:
-                observed.close()
+            child.stdout.close()
+
+    def test_real_live_process_is_not_stopped_and_cleanup_uses_its_observation(self):
+        observed = None
+        # sys.executable can name the framework launcher, not the running image.
+        executable = _darwin_executable(os.getpid()) if sys.platform == "darwin" else Path(sys.executable)
+        with self.live_python() as child:
+            try:
+                observed = ObservedProcess(child.pid, require_live=True, expected_executable=executable,
+                                           expected_command="-c", expected_parent=os.getpid())
+                self.assertFalse(observed.stopped())
+                with self.assertRaises(AssertionError):
+                    assert_stopped(child.pid, observed)
+                observed.cleanup()
+                child.wait(timeout=5)
+                assert_stopped(child.pid, observed)
+            finally:
+                if observed:
+                    observed.close()
 
     def test_unexpected_executable_is_not_adopted_or_signalled(self):
-        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
-        try:
+        with self.live_python() as child:
             with tempfile.TemporaryDirectory() as temporary:
                 other = Path(temporary) / "other-image"
                 other.write_bytes(b"not the child image")
                 with self.assertRaises(AssertionError):
                     ObservedProcess(child.pid, require_live=True, expected_executable=other)
                 self.assertIsNone(child.poll())
-        finally:
-            if child.poll() is None:
-                child.kill(); child.wait(timeout=5)
 
     def test_real_exited_process_cannot_be_used_as_a_live_cancel_target(self):
         child = subprocess.Popen([sys.executable, "-c", "pass"])
@@ -156,11 +167,21 @@ class HighlightObservedProcessTest(unittest.TestCase):
                 assert_stopped(os.getpid())
 
     def test_worker_and_descendant_are_both_observed_before_cleanup(self):
-        code = ("import json,os,subprocess,sys,time; "
-                "child=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
-                "print(json.dumps([{'event':'start','pid':os.getpid()},"
-                "{'event':'child','pid':child.pid}]),flush=True); time.sleep(60)")
-        parent = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+        code = ("import json,os,subprocess,sys\n"
+                "child=subprocess.Popen([sys.executable,'-c',"
+                "\"import time; print('ready',flush=True); time.sleep(60)\"],"
+                "stdout=subprocess.PIPE,text=True)\n"
+                "try:\n"
+                "    assert child.stdout.readline() == 'ready\\n'\n"
+                "    print(json.dumps([{'event':'start','pid':os.getpid()},"
+                "{'event':'child','pid':child.pid}]),flush=True)\n"
+                "    sys.stdin.read(1)\n"
+                "finally:\n"
+                "    if child.poll() is None: child.kill()\n"
+                "    child.wait(timeout=5)\n"
+                "    child.stdout.close()\n")
+        parent = subprocess.Popen([sys.executable, "-c", code], stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE, text=True)
         observed = {}
         try:
             records = json.loads(parent.stdout.readline())
@@ -173,10 +194,16 @@ class HighlightObservedProcessTest(unittest.TestCase):
             for event in records:
                 assert_stopped(event["pid"])
         finally:
-            if parent.poll() is None:
-                parent.kill(); parent.wait(timeout=5)
-            cleanup_observed(observed)
-            parent.stdout.close()
+            try:
+                if parent.poll() is None:
+                    # The real parent owns the child even if observation fails.
+                    parent.communicate(input="\n", timeout=5)
+            finally:
+                if parent.poll() is None:
+                    parent.kill(); parent.wait(timeout=5)
+                cleanup_observed(observed)
+                parent.stdin.close()
+                parent.stdout.close()
 
 
 if __name__ == "__main__":

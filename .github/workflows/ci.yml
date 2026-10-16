@@ -347,8 +347,11 @@ jobs:
         run: |
           set -euo pipefail
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          python scripts/with_stdx.py --variant static -- \
-            python scripts/highlight_ci.py --repo . --binary target/release/bin/main \
+          # Keep native startup failures visible before the gate creates evidence.
+          # Enable the handler in both interpreters: the stdx launcher starts the
+          # gate in a separate process on Windows.
+          python -u -X faulthandler scripts/with_stdx.py --variant static -- \
+            python -u -X faulthandler scripts/highlight_ci.py --repo . --binary target/release/bin/main \
               --identity target/ci-build/build-manifest.json --platform ${{ matrix.platform }} \
               --work-root "${RUNNER_TEMP}/cjdoc-highlight-work" \
               --evidence-root "${RUNNER_TEMP}/cjdoc-highlight-evidence"

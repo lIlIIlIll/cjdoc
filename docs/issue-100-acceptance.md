@@ -100,6 +100,10 @@ runner 首先重验当前 HEAD 的构建 manifest 与真实 main 摘要，然后
 
 受控源码、配置、Markdown、worker 脚本和冻结 IR 输入明确以 UTF-8/LF 写入，避免 Windows 默认编码或换行改变固定 corpus；原始 corpus 和断言不变。专门的 CRLF IR/浏览器复制场景仍证明已提取显示代码的绑定原文，不声称 Markdown 解析从不归一化整个源文件换行。
 
+取消验收必须先等真实 worker 与后代进入就绪状态，再登记仍存活的进程身份。`Popen` 返回不能代替解释器就绪：macOS framework Python 启动器还会以相同 PID 执行实际解释器并替换 `argv[0]`，因此进程测试等待解释器内的就绪信号，不把启动中的命令变化误认成退出。macOS 仍以 birth/完整命令和 kqueue 观察取消目标，并用 `proc_pidpath` 验证实际执行映像；查询失败仍抛错，不能当作退出或放宽映像校验。
+
+Windows stdx 启动器必须等待真实子进程结束并传播非零退出码，不能套用 POSIX 的原位 `exec` 退出语义。workflow 的父、子 Python 入口使用 `-u -X faulthandler`，使证据目录创建前的原生启动崩溃仍可观察，且不输出环境转储。具体平台修复是否成立仍以最新 HEAD 的实际 hosted CI 为准。
+
 这些是已接入的远端执行门，而不是三平台已通过的声明；只有最新提交的三平台实际运行全部成功后，才能报告该层级通过。
 
 ## 完整仓库与最终发行门

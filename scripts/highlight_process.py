@@ -40,6 +40,18 @@ def _posix_state(pid):
     raise RuntimeError("unsupported process-observation platform")
 
 
+def _darwin_executable(pid):
+    import ctypes
+    library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+    library.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+    library.proc_pidpath.restype = ctypes.c_int
+    buffer = ctypes.create_string_buffer(4096)  # PROC_PIDPATHINFO_MAXSIZE
+    if library.proc_pidpath(pid, buffer, len(buffer)) <= 0:
+        error = ctypes.get_errno()
+        raise OSError(error, "unable to query process executable")
+    return Path(os.fsdecode(buffer.value))
+
+
 def _windows_api():
     import ctypes
     from ctypes import wintypes
@@ -152,8 +164,8 @@ class ObservedProcess:
                 elif sys.platform.startswith("linux"):
                     image = Path("/proc") / str(pid) / "exe"
                 else:
-                    image = None
-                if image is not None and not os.path.samefile(image, expected_executable):
+                    image = _darwin_executable(pid)
+                if not os.path.samefile(image, expected_executable):
                     raise AssertionError("unexpected cancellation process executable")
                 if expected_command is not None and os.name != "nt":
                     arguments = ((Path("/proc") / str(pid) / "cmdline").read_bytes().split(b"\0")
