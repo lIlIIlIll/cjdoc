@@ -70,6 +70,16 @@ class HtmlPackageConceptsTest {
     }
 
     @TestCase
+    func fallbackExcerptKeepsAuthoredLanguageOnAnotherLanguageSite(): Unit {
+        let value = overviewFixture([overviewPage("English package purpose")])
+        let artifacts = renderDocumentationFormatsWithOptions(value, ["html"], locale: "zh-CN")
+        let pkg = overviewContent(artifacts, "html/" + packagePagePath(value.packages[0].moduleId, "fixture"))
+        @Expect(pkg.contains("<html lang=\"zh-CN\""))
+        @Expect(pkg.contains("<p lang=\"en\">English package purpose</p>"))
+        @Expect(pkg.contains("data-translation-state=\"fallback\""))
+    }
+
+    @TestCase
     func sameNamedModulesRequireVisibleExplicitBinding(): Unit {
         let ambiguous = overviewFixture([overviewPage("Ambiguous purpose")], duplicate: true)
         let values = HtmlDocumentationRenderer().render(ambiguous)

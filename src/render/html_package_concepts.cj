@@ -87,7 +87,17 @@ internal func appendPackageConceptualOverview(out: RenderTextBuffer, documentati
     if (let Some(page) <- selected) {
         out.append("<section class=\"package-overview\" aria-label=\"" + label(locale, "Package overview", "包概述") + "\">")
         let excerpt = packagePageExcerpt(page)
-        if (!excerpt.isEmpty()) { out.append("<p>" + escapeHtml(excerpt) + "</p>") }
+        if (!excerpt.isEmpty()) {
+            out.append("<p")
+            if (let Some(language) <- page.language) {
+                out.append(" lang=\"")
+                out.append(escapeHtml(language))
+                out.append("\"")
+            }
+            out.append(">")
+            out.append(escapeHtml(excerpt))
+            out.append("</p>")
+        }
         let state = if (page.language.isNone()) { "unknown" } else if (page.language == Some(locale)) { "complete" } else { "fallback" }
         appendContentLanguageHtml(out, DocTag("description", "", "", contentLanguage: page.language, translationState: state), locale)
         out.append("<p><a class=\"package-overview-link\" href=\"../" + escapeHtml(page.route) + "\">" +
