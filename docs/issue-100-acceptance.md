@@ -73,12 +73,12 @@ CJDOC_HIGHLIGHT_FIXTURE="$TMPDIR/highlight-acceptance/crlf/html" \
 |---|---|---|
 | HL-01 / H-T01 | 共享准备与代码/签名 renderer | `HighlightGenerationContractTest`、CLI plain 对照、现有浏览器成员导航套件 |
 | HL-02 / H-T02–03 | 内建 Lexer 原文字节区间 | Cangjie 高亮单测、CLI 的有效/不完整/未闭合片段及摘要/边界断言 |
-| HL-03 / H-T06 | 固定五 grammar、串行 JSONL worker | adapter Node/Python tests；CLI real/wrong-id/wrong-engine/crash/timeout/oversized-output/noisy-stderr 七模式 |
+| HL-03 / H-T06 | 固定五 grammar、串行 JSONL worker | adapter Node/Python tests；CLI real/threaded/wrong-id/wrong-engine/crash/timeout/oversized-output/noisy-stderr 八模式；threaded 用真实隔离环境 Worker 与 CommonJS fork 计算固定 corpus |
 | HL-04 / H-T04–05 | 展示与语义链接正交、绑定复制原文 | CLI on/off/missing-metadata 原文/href/API-surface 对照；真实浏览器 CRLF/Unicode/制表符/末尾换行复制 |
 | H-T07–08 | 显式语言及安全原文 renderer | adapter 恶意 HTML/实体/范围拒绝测试；CLI text/unknown/无语言；浏览器无脚本执行 |
 | HL-06 / H-T09 | 捕获指南/图片/绑定/概述/空页 | CLI source-free replay、repeat、源码 ZIP 和独立适配包输出逐字节比较 |
 | H-T10–11 | 单生成词法缓存与公开投影 | `HighlightGenerationContractTest`；CLI 同内容别名请求只发一次、故障后不缓存失败、私有内容不发给 worker |
-| H-T12 | 预算、重启上限、进程树清理 | CLI 七模式、SIGTERM、公开 `Future.cancel()`；预算/codec 单测。Linux 实测不能替代 macOS/Windows CI |
+| H-T12 | 预算、重启上限、进程树清理 | CLI 八模式、初始化后代的 Windows private Job 检查、SIGTERM、公开 `Future.cancel()`；预算/codec 单测。stderr 超限由 `close()` CAS 唯一持有者收口，不重复关闭 Job handle；Linux 实测不能替代 macOS/Windows CI |
 | HL-05 / H-T13 | 专用 token CSS、无布局裁切 | highlight 浏览器逐主题计算色值/对比度及 desktop/mobile/原生 200% tab 缩放 |
 | H-T14–15 | 静态 CSP、路由和原文复制 | highlight 浏览器 file/HTTP/JS-disabled/真实复制；现有中英/版本/多成员导航套件 |
 | HL-07 / H-T16 | 默认不依赖 Node、显式发行安装 | CLI 无 Node 的 generate/check、独立 ZIP 离线 npm 安装、fixture 源码 ZIP、完整离线清单 |
@@ -103,6 +103,10 @@ runner 首先重验当前 HEAD 的构建 manifest 与真实 main 摘要，然后
 取消验收必须先等真实 worker 与后代进入就绪状态，再登记仍存活的进程身份。`Popen` 返回不能代替解释器就绪：macOS framework Python 启动器还会以相同 PID 执行实际解释器并替换 `argv[0]`，因此进程测试等待解释器内的就绪信号，不把启动中的命令变化误认成退出。macOS 仍以 birth/完整命令和 kqueue 观察取消目标，并用 `proc_pidpath` 验证实际执行映像；查询失败仍抛错，不能当作退出或放宽映像校验。
 
 Windows stdx 启动器必须等待真实子进程结束并传播非零退出码，不能套用 POSIX 的原位 `exec` 退出语义。workflow 的父、子 Python 入口使用 `-u -X faulthandler`，使证据目录创建前的原生启动崩溃仍可观察，且不输出环境转储。具体平台修复是否成立仍以最新 HEAD 的实际 hosted CI 为准。
+
+Windows persistent worker 使用内置 Node preload 等待一个原始换行字节，父进程先将相同 PID 加入 `KILL_ON_JOB_CLOSE` Job，再释放适配器入口。因此模块初始化期间创建的后代也在 Job 内；不能等首次 JSONL 请求才开始收口。preload 只阻塞真实 owner 的直接子进程主线程，不依赖可被 `env: {}` 丢弃的环境标记，继承该 preload 的 fork/worker thread 不会重新等待。真实 ESM/CommonJS 入口与 argv 保留，只移除自身的 `--import` 参数，不缓存后续 stdin 或经文本管道重编码。
+
+Windows 原生验收在首个请求前检查 worker、初始化后代和观察进程属于同一个 immediate Job，CLI owner 不在其中，且 LimitFlags 精确为产品的 `0x2000`。初始化后代与观察进程仅在 Windows 使用 `detached` 启动：这不请求 Job breakaway，仍须继承产品 Job，但避开 libuv 给普通 spawn 自建的 Job，不能把 Node 自有清理或 runner 的外层 Job 当作产品收口证明。POSIX 后代仍留在原进程组中。
 
 这些是已接入的远端执行门，而不是三平台已通过的声明；只有最新提交的三平台实际运行全部成功后，才能报告该层级通过。
 

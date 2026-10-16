@@ -10,6 +10,9 @@ import std.time.*
 @When[os != "Windows"]
 import std.posix.{killpg, SIGKILL}
 
+@When[os == "Windows"]
+import std.env.{getProcessId}
+
 // STS 1.2 can stall concurrent redirected launch() calls before the
 // supervisor PID is read. Protect stream setup only; child execution and
 // output draining remain concurrent.
@@ -68,7 +71,19 @@ private func launchBoundedProcess(command: String, arguments: Array<String>,
 private func launchBoundedProcess(command: String, arguments: Array<String>,
     workingDirectory: ?Path, inputBytes: Int64, environment!: ?Map<String, String> = None): SubProcess {
     if (inputBytes < 0) {
-        return launch(command, arguments, workingDirectory: workingDirectory, environment: environment,
+        // Preload only this trusted gate; the adapter remains Node's real entry
+        // module (including CommonJS require.main and its original argv).
+        // Attach this same PID to the job before releasing module initialization.
+        // Inherited preloads must not re-gate descendants or worker threads,
+        // including workers that deliberately replace their environment.
+        let ownerPid = getProcessId()
+        let gatedArguments = ArrayList<String>()
+        gatedArguments.add(all: ["--import",
+            "data:text/javascript,import{readSync}from'node:fs';import{isMainThread}from'node:worker_threads';if(isMainThread&&process.ppid===${ownerPid}){const release=Buffer.alloc(1);if(readSync(0,release,0,1,null)!==1||release[0]!==10)process.exit(125);}const gate=process.execArgv.indexOf(import.meta.url);if(gate>0&&process.execArgv[gate-1]==='--import')process.execArgv.splice(gate-1,2);",
+            "--"])
+        gatedArguments.add(all: arguments)
+        return launch(command, gatedArguments.toArray(),
+            workingDirectory: workingDirectory, environment: environment,
             stdIn: ProcessRedirect.Pipe, stdOut: ProcessRedirect.Pipe, stdErr: ProcessRedirect.Pipe)
     }
     let script = StringBuilder()
@@ -354,7 +369,7 @@ internal class HighlightWorkerProcess {
                     total += count
                     if (total > 8192) {
                         failureFlag.store(true)
-                        terminateBoundedProcessTree(child, childGroup, childJob)
+                        // exchange observes failure; close's CAS alone owns the job handle.
                         break
                     }
                     count = child.stdErrPipe.read(buffer)
@@ -413,11 +428,7 @@ internal class HighlightWorkerProcess {
     }
 }
 
-@When[os != "Windows"]
 private func releaseHighlightWorker(process: SubProcess): Unit {
     process.stdInPipe.write("\n".toArray()); process.stdInPipe.flush()
 }
-
-@When[os == "Windows"]
-private func releaseHighlightWorker(process: SubProcess): Unit { let _ = process }
 
