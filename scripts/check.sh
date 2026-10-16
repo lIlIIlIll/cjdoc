@@ -433,8 +433,10 @@ stage_native() {
     # wrapper kills the whole process group and exits 124 on expiry.
     # Cases exercise source/provider worker pools internally; schedule test cases
     # with one unittest worker while retaining those concurrency checks.
+    # Native Windows Python bypasses the extensionless Bash cjpm wrapper.
+    # Resolve cjpm in Bash so the pinned STS override and restore trap apply.
     native_bound=("${python_cmd}" scripts/run_with_timeout.py "${native_timeout}" -- \
-        cjpm test --jobs 1 --parallel 1)
+        "${BASH:-bash}" -c 'exec cjpm "$@"' cjdoc-native-test test --jobs 1 --parallel 1)
     # The suite has wedged on runners more than once, always the same way: one
     # case parks on futexes with no runnable thread and the log stops mid-suite.
     # The post-mortem cannot inspect a process that the bound above has already
@@ -656,6 +658,8 @@ stage_cli() {
     cmp "${check_dir}/all/first/docs.json" "${check_dir}/roundtrip/docs.json"
     diff -qr "${check_dir}/all/first/markdown" "${check_dir}/roundtrip/markdown"
     diff -qr "${check_dir}/all/first/html" "${check_dir}/roundtrip/html"
+    "${python_cmd}" scripts/test_package_overviews.py --binary "${binary}" \
+        --output "${check_dir}/package-overviews"
     rm -rf "${check_dir}/agent" "${check_dir}/agent-second" "${check_dir}/versions" "${check_dir}/versions-second"
     "${binary}" generate --project tests/fixtures/projects/basic --format html --format api-surface --agent-full --doc-version 1.3.0 --output "${check_dir}/agent" --cache-dir "${check_dir}/cache/agent" >/dev/null
     "${binary}" generate --project tests/fixtures/projects/basic --format html --format api-surface --agent-full --doc-version 1.3.0 --output "${check_dir}/agent-second" --cache-dir "${check_dir}/cache/agent" >/dev/null

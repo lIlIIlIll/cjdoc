@@ -1,0 +1,25 @@
+[i18n]
+default-language = "en"
+languages = ["en", "zh-CN"]
+missing-translation = "warn"
+
+[docs]
+index = "docs/index.md"
+
+[[docs.pages]]
+id = "pocketkit-overview"
+source = "docs/pocketkit.md"
+route = "concepts/packages/pocketkit-guide"
+title = "PocketKit catalogue guide"
+kind = "package"
+package = "pocketkit"
+language = "en"
+
+[[docs.pages]]
+id = "pocketkit-overview"
+source = "docs/pocketkit-zh.md"
+route = "concepts/packages/pocketkit-guide"
+title = "PocketKit 目录指南"
+kind = "package"
+package = "pocketkit"
+language = "zh-CN"

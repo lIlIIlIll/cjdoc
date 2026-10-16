@@ -731,8 +731,10 @@ private func conceptualPages(root: Path, documentation: public_model.Documentati
             conceptualDefaultPackageMarkdown(pkg)
         }
         let route = conceptualRoute("concepts/packages/${conceptualSlug(pkg.name)}", "concepts/packages/package")
-        conceptualAddPage(documentation, pages, routes,
-            ConceptualPage(source, route, conceptualTitle(markdown, pkg.name), "package", markdown))
+        let page = ConceptualPage(source, route, conceptualTitle(markdown, pkg.name), "package", markdown)
+        // Synthetic fallback pages deliberately carry no author package association.
+        if (exists(configured)) { page.packageName = pkg.name }
+        conceptualAddPage(documentation, pages, routes, page)
     }
     for (spec in config.pages) {
         let route = conceptualRoute(spec.route, "concepts/guides/${conceptualSlug(spec.source.removeSuffix(".md"))}")
@@ -788,7 +790,7 @@ private func conceptualHtmlPage(documentation: public_model.DocumentationSet, pa
     body: String, locale!: String = "en", docVersion!: ?String = None): String {
     let prefix = conceptualRelativePrefix(page.route)
     public_render.renderConceptualHtmlPage(documentation, page.title, body, prefix,
-        source: Some(page.source), locale: locale, docVersion: docVersion)
+        source: Some(page.source), locale: locale, docVersion: docVersion, pageRoute: Some(page.route))
 }
 private func conceptualBindingsMarkdown(page: ConceptualPage,
     documentation: public_model.DocumentationSet, locale: String): String {

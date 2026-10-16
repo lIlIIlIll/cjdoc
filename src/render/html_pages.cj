@@ -94,7 +94,7 @@ public func renderUtilityHtmlPage(documentation: DocumentationSet, title: String
 
 public func renderConceptualHtmlPage(documentation: DocumentationSet, title: String, body: String,
     rootPrefix: String, source!: ?String = None, locale!: String = "en",
-    docVersion!: ?String = None): String {
+    docVersion!: ?String = None, pageRoute!: ?String = None): String {
     let projection = RenderProjection(documentation)
     let out = RenderTextBuffer()
     let breadcrumbLabel = label(locale, "Breadcrumb", "面包屑导航")
@@ -126,6 +126,7 @@ public func renderConceptualHtmlPage(documentation: DocumentationSet, title: Str
         case None => ()
     }
     out.append("</header>\n")
+    appendConceptualPackageReturn(out, documentation, projection, pageRoute, source, rootPrefix, locale)
     out.append(body)
     appendPageEnd(out, documentation, locale: locale)
     out.toString()
@@ -142,6 +143,7 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
         currentRoute: "api")
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li><li aria-current=\"page\">${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></li></ol></nav>\n")
     out.append("<header class=\"page-header\"><h1>${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></h1></header>\n")
+    appendPackageConceptualOverview(out, documentation, projection, packageDoc, locale)
     out.append("<h2 id=\"declarations\">${label(locale, "Declarations", "声明")}</h2>\n")
     var wroteDeclaration = false
     match (projection.topLevelByPackage.get(routeKey(packageDoc.moduleId, packageDoc.name))) {

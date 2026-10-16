@@ -254,9 +254,13 @@ def main(argv: list[str]) -> int:
         ):
             print(f"{key}={environment[key]}")
         return 0
+    # Windows CRT exec* starts a new process and exits rather than replacing
+    # this image. Wait explicitly so the mandatory gate's failure is preserved.
+    if os.name == "nt":
+        return subprocess.run(command, env=environment, check=False).returncode
     os.execvpe(command[0], command, environment)
     return 127
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    raise SystemExit(main(sys.argv[1:]))

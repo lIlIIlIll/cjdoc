@@ -18,6 +18,7 @@ language = "zh-CN"
 source = "docs/guide.md"
 route = "concepts/guides/first-catalogue"
 title = "目录与资源入门 / Catalogue and lifetime"
+package = "pocketkit"
 
 # Maintainer-facing reproduction and local authoring steps are separated from
 # the caller-facing usage guide.
@@ -46,3 +47,4 @@ language = "en"
 source = "docs/en/guide.md"
 route = "concepts/guides/first-catalogue"
 title = "Catalogue and lifetime"
+package = "pocketkit"
