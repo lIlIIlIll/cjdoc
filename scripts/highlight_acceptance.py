@@ -570,6 +570,27 @@ def runtime_provenance(binary, node, receipt_path=None):
     return result
 
 
+def node_in_directory(directory):
+    candidate = directory / "node"
+    # CreateProcessW appends .exe independently of PATHEXT and Python's X_OK policy.
+    return (shutil.which(str(candidate)) is not None
+            or (os.name == "nt" and (directory / "node.exe").is_file()))
+
+
+def without_node_environment(environment):
+    # An empty PATH still lets native process lookup search the working directory.
+    assert not node_in_directory(Path.cwd()), \
+        "no-Node acceptance requires a Node-free working directory"
+    directories = environment.get("PATH", "").split(os.pathsep)
+    retained = [
+        directory for directory in directories
+        if not node_in_directory(Path(directory or os.curdir).absolute())
+    ]
+    result = dict(environment, PATH=os.pathsep.join(retained))
+    assert shutil.which("node", path=result["PATH"]) is None
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -721,14 +742,7 @@ def main():
             cleanup_observed(observed)
     # No authorization is explainable plain; ordinary check never executes Node.
     plain = args.workdir / 'unauthorized'
-    system_paths = [str(Path(os.environ["CANGJIE_HOME"]) / "bin")]
-    if os.name == "nt":
-        # Removing Node must not also remove the existing PowerShell supervisor.
-        windows = Path(os.environ["SystemRoot"])
-        system_paths += [str(windows), str(windows / "System32"),
-                         str(windows / "System32/WindowsPowerShell/v1.0")]
-    no_node = dict(os.environ, PATH=os.pathsep.join(system_paths))
-    assert shutil.which("node", path=no_node["PATH"]) is None
+    no_node = without_node_environment(os.environ)
     generate(args.binary.resolve(), project, plain, environment=no_node)
     document = json.loads((plain / 'docs.json').read_text(encoding='utf-8'))
     assert any(n.get('reason') == 'backend-unavailable' for n in walk(document))

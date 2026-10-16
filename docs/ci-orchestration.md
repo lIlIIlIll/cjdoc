@@ -47,6 +47,18 @@ child resolving an unqualified `bash` can select a different launcher. The
 host build retains the existing SDK selection, temporary entry/root `-O1`
 overrides and restoration traps.
 
+The no-Node worker scenario removes every PATH entry that can resolve `node`,
+then asserts that Node is unavailable. It preserves the other original entries,
+including native SDK/DLL and supervisor paths. Replacing PATH with only SDK
+`bin` and system directories also removes unrelated runtime discovery on Windows
+and is not a valid isolation of the optional Node dependency.
+Each directory is checked through an absolute Node candidate, so Windows'
+implicit current-directory lookup cannot remove unrelated entries. A Node in
+the working directory is rejected explicitly: an empty PATH alone does not
+prevent native process lookup from finding it there.
+Windows `node.exe` is checked independently of PATHEXT, matching native process
+lookup even when that variable omits `.EXE`.
+
 ## What the site-generation time is actually spent on
 
 Real Pages run `38332333489`, attempt 1, artifact

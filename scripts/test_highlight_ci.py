@@ -17,6 +17,7 @@ from unittest.mock import patch
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ci_changes
+import highlight_acceptance
 import highlight_ci
 import highlight_process
 import test_release_transaction
@@ -262,6 +263,41 @@ class HighlightHostBuildTest(unittest.TestCase):
                     receipt = json.loads((work / "invocations.jsonl").read_text(encoding="utf-8"))
                     self.assertEqual(receipt["package"], "highlight_host_fixture")
                     self.assertEqual(receipt["option"], "-O1")
+
+
+class HighlightNoNodeEnvironmentTest(unittest.TestCase):
+    def test_working_directory_node_cannot_hide_behind_empty_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            current = root / "current"
+            current.mkdir()
+            node = current / ("node.exe" if os.name == "nt" else "node")
+            shutil.copyfile(sys.executable, node)
+            node.chmod(0o755)
+            with contextlib.chdir(current), patch.dict(os.environ, PATHEXT=".CMD"):
+                with self.assertRaises(AssertionError):
+                    highlight_acceptance.without_node_environment(
+                        dict(os.environ, PATH=str(current)))
+
+    def test_all_node_locations_are_removed_without_discarding_runtime_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            directories = [root / name for name in
+                           ("runtime", "node one", "supervisor", "node two")]
+            for directory in directories:
+                directory.mkdir()
+            for directory in (directories[1], directories[3]):
+                node = directory / ("node.exe" if os.name == "nt" else "node")
+                shutil.copyfile(sys.executable, node)
+                node.chmod(0o755)
+            original_path = os.pathsep.join(map(str, directories + directories[:1]))
+            environment = dict(os.environ, PATH=original_path)
+            with contextlib.chdir(root), patch.dict(os.environ, PATHEXT=".CMD"):
+                isolated = highlight_acceptance.without_node_environment(environment)
+                self.assertIsNone(shutil.which("node", path=isolated["PATH"]))
+            self.assertEqual(isolated["PATH"], os.pathsep.join(
+                map(str, (directories[0], directories[2], directories[0]))))
+            self.assertEqual(environment["PATH"], original_path)
 
 
 class HighlightObservedProcessTest(unittest.TestCase):
