@@ -140,6 +140,7 @@ internal func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
     out.append("<a id=\"${symbolAnchor(symbol)}\"></a>\n")
     out.append("${heading} "); appendMarkdownCodeSpan(out, symbol.qualifiedName); out.append("\n\n")
     appendMarkdownCodeBlock(out, symbol.headerSpelling, "cangjie", "`", 3)
+    appendMarkdownTypeDetails(out, symbol, pagePath, symbolIndex, locale)
     match (symbol.documentation) {
         case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
             locale: locale, pagePath: pagePath, symbolIndex: Some(symbolIndex))
@@ -256,6 +257,7 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
         appendMarkdownCodeSpan(out, symbol.packageName)
         out.append("](../${markdownPackagePagePath(symbol.moduleId, symbol.packageName)})\n\n")
         appendMarkdownCodeBlock(out, symbol.headerSpelling, "cangjie", "`", 3)
+        appendMarkdownTypeDetails(out, symbol, markdownSymbolPagePath(symbol), projection.visibleIndex, locale)
         match (symbol.documentation) {
             case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
                 locale: locale, pagePath: markdownSymbolPagePath(symbol),

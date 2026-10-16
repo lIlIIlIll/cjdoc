@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "cjdoc.official-source/1",
+  "sources": [
+    {
+      "id": "official83-std-collection",
+      "library": "std",
+      "revision": "c844ec7556f9ab624e6a052c550444d695c44f2e",
+      "upstreamPath": "stdlib/doc/libs/std_en/collection/collection_package_api/collection_package_class.md",
+      "sourceUri": "https://raw.githubusercontent.com/cangjielanguage/cangjie_runtime/c844ec7556f9ab624e6a052c550444d695c44f2e/stdlib/doc/libs/std_en/collection/collection_package_api/collection_package_class.md",
+      "targetUri": "https://github.com/cangjielanguage/cangjie_runtime/blob/c844ec7556f9ab624e6a052c550444d695c44f2e/stdlib/doc/libs/std_en/collection/collection_package_api/collection_package_class.md",
+      "sha256": "cdba440a9b30fb148dc2cc5307a5574baf9b5c9f26c35735556d399fdab26d45",
+      "path": "std-collection.md",
+      "excerpt": {
+        "startLine": 1,
+        "endLine": 26,
+        "sha256": "18e8cc2b793772d5d9dbf1628c4cb67681abfd20949c6a6598b0fd763e48cde0"
+      },
+      "entries": [
+        {
+          "name": "ArrayDeque",
+          "qualifiedName": "std.collection.ArrayDeque",
+          "packageName": "std.collection",
+          "kind": "class",
+          "genericArity": 1,
+          "parameterTypes": [],
+          "line": 3,
+          "heading": "## class ArrayDeque\\<T>",
+          "declarationLine": 6,
+          "declaration": "public class ArrayDeque<T> <: Deque<T> {"
+        },
+        {
+          "name": "capacity",
+          "qualifiedName": "std.collection.ArrayDeque.capacity",
+          "packageName": "std.collection",
+          "owner": "std.collection.ArrayDeque",
+          "kind": "property",
+          "genericArity": 0,
+          "parameterTypes": [],
+          "line": 18,
+          "heading": "### prop capacity",
+          "declarationLine": 21,
+          "declaration": "public prop capacity: Int64"
+        }
+      ]
+    },
+    {
+      "id": "official83-stdx-json",
+      "library": "stdx",
+      "revision": "f74bb5953547e51edff8904ae3db75ad47f17f06",
+      "upstreamPath": "doc/libs_stdx_en/encoding/json/json_package_api/encoding_json_package_classes.md",
+      "sourceUri": "https://raw.githubusercontent.com/cangjielanguage/cangjie_stdx/f74bb5953547e51edff8904ae3db75ad47f17f06/doc/libs_stdx_en/encoding/json/json_package_api/encoding_json_package_classes.md",
+      "targetUri": "https://github.com/cangjielanguage/cangjie_stdx/blob/f74bb5953547e51edff8904ae3db75ad47f17f06/doc/libs_stdx_en/encoding/json/json_package_api/encoding_json_package_classes.md",
+      "sha256": "7f9a196a8432da04125ae2599279065e95f06634389ac7a9ca5d8b79abb7362f",
+      "path": "stdx-json.md",
+      "excerpt": {
+        "startLine": 1,
+        "endLine": 59,
+        "sha256": "e5eb63e1550faf6f81e98f7867f1458c9ddf895d5f494668fe0967545d16b8cf"
+      },
+      "entries": [
+        {
+          "name": "JsonArray",
+          "qualifiedName": "stdx.encoding.json.JsonArray",
+          "packageName": "stdx.encoding.json",
+          "kind": "class",
+          "genericArity": 0,
+          "parameterTypes": [],
+          "line": 3,
+          "heading": "## class JsonArray",
+          "declarationLine": 6,
+          "declaration": "public class JsonArray <: JsonValue {"
+        },
+        {
+          "name": "add",
+          "qualifiedName": "stdx.encoding.json.JsonArray.add",
+          "packageName": "stdx.encoding.json",
+          "owner": "stdx.encoding.json.JsonArray",
+          "kind": "function",
+          "genericArity": 0,
+          "parameterTypes": ["JsonValue"],
+          "line": 55,
+          "heading": "### func add(JsonValue)",
+          "declarationLine": 58,
+          "declaration": "public func add(jv: JsonValue): JsonArray"
+        }
+      ]
+    }
+  ]
+}

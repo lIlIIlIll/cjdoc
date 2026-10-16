@@ -2,9 +2,9 @@ package cjdoc
 
 import std.env.*
 
-// Captures the authenticated compiler and stdx identity that owns generated
-// source facts. Missing wrapper metadata remains explicit so cache keys cannot
-// silently claim a verified toolchain.
+// Host/wrapper observations used only as cache hints. They do not authenticate
+// the dynamically loaded parser build or the documented target's selected
+// compiler, standard library, or independently selected stdx component.
 internal class ToolchainIdentity {
     public let compilerVersion: String
     public let compilerTarget: String

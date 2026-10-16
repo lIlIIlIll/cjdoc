@@ -96,6 +96,7 @@ public class MarkdownNodeMetadata {
     public var semanticState: ?String
     public var semanticTargetSymbolId: ?String
     public var semanticExternalUrl: ?String
+    public var semanticNavigation: ?TypeNavigation
     private let tableAlignmentsStorage: ArrayList<String>
 
     private init(kind: String, headingLevel!: ?Int64 = None, listKind!: ?String = None,
@@ -106,7 +107,8 @@ public class MarkdownNodeMetadata {
         tableAlignments!: Array<String> = [], tableHeader!: ?Bool = None,
         tableAlignment!: ?String = None, semanticTarget!: ?String = None,
         semanticState!: ?String = None, semanticTargetSymbolId!: ?String = None,
-        semanticExternalUrl!: ?String = None, codeHighlight!: ?CodeHighlight = None) {
+        semanticExternalUrl!: ?String = None, codeHighlight!: ?CodeHighlight = None,
+        semanticNavigation!: ?TypeNavigation = None) {
         this.kind = kind
         this.headingLevel = headingLevel
         this.listKind = listKind
@@ -128,6 +130,7 @@ public class MarkdownNodeMetadata {
         this.semanticState = semanticState
         this.semanticTargetSymbolId = semanticTargetSymbolId
         this.semanticExternalUrl = semanticExternalUrl
+        this.semanticNavigation = semanticNavigation
     }
 
     public static func forHeading(level: Int64): MarkdownNodeMetadata {
@@ -166,13 +169,15 @@ public class MarkdownNodeMetadata {
     }
 
     public static func forSemanticLink(target: String, state: String,
-        targetSymbolId!: ?String = None, externalUrl!: ?String = None): MarkdownNodeMetadata {
+        targetSymbolId!: ?String = None, externalUrl!: ?String = None,
+        semanticNavigation!: ?TypeNavigation = None): MarkdownNodeMetadata {
         if (target.isEmpty()) { throw IllegalArgumentException("semantic link target cannot be empty") }
         if (state != "resolved" && state != "unresolved" && state != "ambiguous" && state != "unavailable") {
             throw IllegalArgumentException("invalid semantic link state")
         }
         MarkdownNodeMetadata("semantic_link", semanticTarget: Some(target), semanticState: Some(state),
-            semanticTargetSymbolId: targetSymbolId, semanticExternalUrl: externalUrl)
+            semanticTargetSymbolId: targetSymbolId, semanticExternalUrl: externalUrl,
+            semanticNavigation: semanticNavigation)
     }
 
     public prop tableAlignments: ReadOnlyList<String> { get() { tableAlignmentsStorage } }
@@ -463,10 +468,14 @@ public class DocumentationSet {
     public let status: String
     /** Completeness of API collection, independent of presentation diagnostics. */
     public let apiCollectionState: String
+    /** Documentation publication label; independent of API package and source revisions. */
+    public let documentationRevision: String
     public let project: ProjectInfo
     public let configuration: ConfigurationSnapshot
     public let languageOptions: ?DocumentationLanguageOptions
     public let readingLanguage: ?String
+    private let dependenciesStorage: ArrayList<DependencyInstance>
+    private let documentSetsStorage: ArrayList<DocumentSetIdentity>
     private let pagesStorage: ArrayList<DocumentationPage>
     private let externalDocumentationStorage: ArrayList<ExternalDocumentationReference>
     private let providersStorage: ArrayList<ProviderInfo>
@@ -491,9 +500,11 @@ public class DocumentationSet {
         diagnostics!: Array<Diagnostic> = [], languageOptions!: ?DocumentationLanguageOptions = None,
         pages!: Array<DocumentationPage> = [], readingLanguage!: ?String = None,
         externalDocumentation!: Array<ExternalDocumentationReference> = [],
-        apiCollectionState!: ?String = None) {
+        dependencies!: Array<DependencyInstance> = [], documentSets!: Array<DocumentSetIdentity> = [],
+        apiCollectionState!: ?String = None, documentationRevision!: String = "") {
         this.schemaVersion = DOC_IR_SCHEMA_VERSION
         this.generator = generator
+        this.documentationRevision = documentationRevision
         this.status = status
         this.apiCollectionState = apiCollectionState.getOrDefault({ =>
             if (status == "complete") { "resolved" }
@@ -510,6 +521,8 @@ public class DocumentationSet {
             if (documentationLanguage(language) != language) { throw IllegalArgumentException("reading language must be normalized") }
         }
         this.readingLanguage = readingLanguage
+        this.dependenciesStorage = ArrayList<DependencyInstance>(dependencies)
+        this.documentSetsStorage = ArrayList<DocumentSetIdentity>(documentSets)
         this.pagesStorage = ArrayList<DocumentationPage>(pages)
         this.externalDocumentationStorage = ArrayList<ExternalDocumentationReference>(externalDocumentation)
         this.providersStorage = ArrayList<ProviderInfo>(providers)
@@ -528,6 +541,8 @@ public class DocumentationSet {
         diagnosticsStorage.add(diagnostic)
     }
 
+    public prop dependencies: ReadOnlyList<DependencyInstance> { get() { dependenciesStorage } }
+    public prop documentSets: ReadOnlyList<DocumentSetIdentity> { get() { documentSetsStorage } }
     public prop providers: ReadOnlyList<ProviderInfo> { get() { providersStorage } }
     public prop modules: ReadOnlyList<ModuleDoc> { get() { modulesStorage } }
     public prop packages: ReadOnlyList<PackageDoc> { get() { packagesStorage } }

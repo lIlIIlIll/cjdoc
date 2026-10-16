@@ -3,6 +3,21 @@ package cjdoc
 import cjdoc.model as public_model
 import std.collection.*
 
+internal func scopedGenericParameter(owner: public_model.SymbolDoc, name: String,
+    index: HashMap<String, public_model.SymbolDoc>): Bool {
+    var current: ?public_model.SymbolDoc = Some(owner)
+    while (let Some(value) <- current) {
+        for (parameter in value.genericParameters) { if (parameter == name) { return true } }
+        current = match (value.ownerId) { case Some(id) => index.get(id); case None => None }
+    }
+    false
+}
+
+internal func scopedGenericReference(owner: public_model.SymbolDoc, target: String,
+    index: HashMap<String, public_model.SymbolDoc>): Bool {
+    scopedGenericParameter(owner, docReferenceScopeHead(target), index)
+}
+
 private func semanticLinkVisible(symbol: public_model.SymbolDoc, audience: String,
     index: HashMap<String, public_model.SymbolDoc>): Bool {
     var current: ?public_model.SymbolDoc = Some(symbol)
@@ -133,7 +148,7 @@ private func semanticLinkStableHash(value: String): String {
     "${first}-${second}"
 }
 
-private func semanticLinkLocalUrl(symbolId: String): String {
+internal func semanticLinkLocalUrl(symbolId: String): String {
     let digits = "0123456789abcdef"
     let out = StringBuilder()
     for (byte in symbolId.toArray()) {
@@ -190,6 +205,15 @@ private func resolveSemanticLinkNode(node: public_model.MarkdownNode, owner: pub
         match (node.metadata) {
             case Some(metadata) =>
                 let target = metadata.semanticTarget.getOrThrow()
+                if (scopedGenericReference(owner, target, index)) {
+                    metadata.semanticState = "unavailable"
+                    metadata.semanticTargetSymbolId = None
+                    metadata.semanticExternalUrl = None
+                    for (child in node.children) {
+                        resolveSemanticLinkNode(child, owner, declarations, index, audience, resolvers, config, diagnostics)
+                    }
+                    return
+                }
                 var bestScore: Int64 = -1
                 let matches = ArrayList<public_model.SymbolDoc>()
                 for (candidate in declarations) {
@@ -250,10 +274,11 @@ private func resolveSemanticLinkNode(node: public_model.MarkdownNode, owner: pub
 }
 
 internal func resolvePublicSemanticLinks(declarations: Array<public_model.SymbolDoc>, audience: String,
-    projectRoot: String): Array<public_model.Diagnostic> {
+    projectRoot: String, deferExternal!: Bool = false,
+    externalResolvers!: ?Array<ExternalDocResolver> = None): Array<public_model.Diagnostic> {
     let index = HashMap<String, public_model.SymbolDoc>()
     for (symbol in declarations) { index[symbol.id] = symbol }
-    let resolvers = loadExternalDocResolvers(projectRoot)
+    let resolvers = externalResolvers.getOrDefault({ => loadExternalDocResolvers(projectRoot) })
     let config = loadDocumentationQualityConfig(projectRoot)
     let diagnostics = ArrayList<public_model.Diagnostic>()
     for (symbol in declarations) {
@@ -284,5 +309,10 @@ internal func resolvePublicSemanticLinks(declarations: Array<public_model.Symbol
             case None => ()
         }
     }
-    diagnostics.toArray()
+    if (!deferExternal) { return diagnostics.toArray() }
+    let retained = ArrayList<public_model.Diagnostic>()
+    for (diagnostic in diagnostics where diagnostic.code != "CJDOC2031" && diagnostic.code != "CJDOC2032") {
+        retained.add(diagnostic)
+    }
+    retained.toArray()
 }

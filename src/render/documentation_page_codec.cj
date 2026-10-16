@@ -25,14 +25,17 @@ internal func appendDocumentationPages(out: StringBuilder, pages: ReadOnlyList<D
         for (binding in page.bindings) {
             if (!firstBinding) { out.append(",") }; firstBinding = false
             out.append("{\"target\":${escapeJsonString(binding.target)},\"selector\":${escapeJsonString(binding.selector)},\"provenance\":${escapeJsonString(binding.provenance)},\"version\":${escapeJsonString(binding.version)},")
-            out.append("\"sourceLine\":${binding.sourceLine},\"language\":${escapeJsonString(binding.language)},\"state\":${escapeJsonString(binding.state)},\"targetSymbolId\":${nullableString(binding.targetSymbolId)}}")
+            out.append("\"sourceLine\":${binding.sourceLine},\"language\":${escapeJsonString(binding.language)},\"state\":${escapeJsonString(binding.state)},\"targetSymbolId\":${nullableString(binding.targetSymbolId)},\"navigation\":")
+            appendTypeNavigation(out, binding.navigation)
+            out.append("}")
         }
         out.append("]}")
     }
     out.append("]")
 }
 
-internal func decodeDocumentationPages(node: ?JsonNode, assets: HashMap<String, String>): Array<DocumentationPage> {
+internal func decodeDocumentationPages(node: ?JsonNode, assets: HashMap<String, String>,
+    allowLegacyNavigationMissing: Bool): Array<DocumentationPage> {
     if (node.isNone()) { return [] }
     let pages = ArrayList<DocumentationPage>()
     for (value in jsonArrayValues(node.getOrThrow().asArray())) {
@@ -46,11 +49,19 @@ internal func decodeDocumentationPages(node: ?JsonNode, assets: HashMap<String, 
         let bindings = ArrayList<DocumentationPageBinding>()
         if (let Some(items) <- object.get("bindings")) {
             for (item in jsonArrayValues(items.asArray())) {
-                let binding = strictObject(item, path + ".bindings", ["target", "selector", "provenance", "version", "sourceLine", "language", "state", "targetSymbolId"])
+                let bindingPath = path + ".bindings[" + bindings.size.toString() + "]"
+                let binding = strictObject(item, bindingPath, if (allowLegacyNavigationMissing) {
+                    ["target", "selector", "provenance", "version", "sourceLine", "language", "state", "targetSymbolId"]
+                } else {
+                    ["target", "selector", "provenance", "version", "sourceLine", "language", "state", "targetSymbolId", "navigation"]
+                })
+                let navigation: ?JsonNode = if (allowLegacyNavigationMissing) { None }
+                    else { Some(required(binding, "navigation", bindingPath)) }
                 bindings.add(DocumentationPageBinding(stringAt(binding, "target", path), stringAt(binding, "selector", path),
                     stringAt(binding, "provenance", path), stringAt(binding, "version", path), intAt(binding, "sourceLine", path),
                     language: stringAt(binding, "language", path), state: stringAt(binding, "state", path),
-                    targetSymbolId: nullableStringAt(binding, "targetSymbolId", path)))
+                    targetSymbolId: nullableStringAt(binding, "targetSymbolId", path),
+                    navigation: decodeTypeNavigation(navigation, bindingPath + ".navigation")))
             }
         }
         pages.add(DocumentationPage(stringAt(object, "id", path), stringAt(object, "source", path),
@@ -82,11 +93,12 @@ internal func consumeDocumentationPages(value: DocumentationSet, budget: DocIrEn
         for (id in page.targetSymbolIds) { budget.consumeString(id, "$.pages[].targetSymbolIds[]") }
         budget.consumeCollection(page.bindings.size, "$.pages[].bindings", depth: 3)
         for (binding in page.bindings) {
-            budget.consumeObject("$.pages[].bindings[]", depth: 4, fields: 8)
+            budget.consumeObject("$.pages[].bindings[]", depth: 4, fields: 9)
             for (text in [binding.target, binding.selector, binding.provenance, binding.version, binding.language, binding.state]) {
                 budget.consumeString(text, "$.pages[].bindings[]")
             }
             budget.consumeOptionalString(binding.targetSymbolId, "$.pages[].bindings[].targetSymbolId")
+            consumeNavigationEncoding(binding.navigation, "$.pages[].bindings[].navigation", 5, budget)
         }
     }
 }

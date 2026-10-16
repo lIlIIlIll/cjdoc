@@ -224,7 +224,13 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 }
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndoc-ir-v11\ndoc-ir-v12\ndoc-ir-v13\ndoc-ir-v14\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-surface-v2\napi-surface-v3\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndocumentation-quality\ndoctest-results\nversions\napi-diff-v1\ndoctest-results-v1\nsearch-index-v8\nversions-v1\ntranslation-coverage\nsite-manifest\napi-diff-v2\ndoctest-results-v2\nsearch-index-v9\nversions-v2\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\n" +
+            "doc-ir-v10\ndoc-ir-v11\ndoc-ir-v12\ndoc-ir-v13\ndoc-ir-v14\ndoc-ir-v15\n" +
+            "diagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\n" +
+            "api-surface\napi-surface-v1\napi-surface-v2\napi-surface-v3\napi-diff\n" +
+            "documentation-coverage-v1\ndocumentation-coverage\ndocumentation-quality\ndoctest-results\nversions\n" +
+            "api-diff-v1\ndoctest-results-v1\nsearch-index-v8\nversions-v1\ntranslation-coverage\n" +
+            "site-manifest\napi-diff-v2\ndoctest-results-v2\nsearch-index-v9\nversions-v2\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA
@@ -235,6 +241,7 @@ internal func schemaTextForCli(name: String): String {
         case "doc-ir-v12" => DOC_IR_V12_SCHEMA
         case "doc-ir-v13" => DOC_IR_V13_SCHEMA
         case "doc-ir-v14" => DOC_IR_V14_SCHEMA
+        case "doc-ir-v15" => DOC_IR_V15_SCHEMA
         case "diagnostics" => DIAGNOSTICS_SCHEMA
         case "cfg-matrix" => CFG_MATRIX_SCHEMA
         case "search-index" => SEARCH_INDEX_SCHEMA
@@ -458,7 +465,11 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
             chir: chirOptions,
             cjpmCacheRoot: options.cjpmCacheRoot,
             highlightAdapter: options.highlightAdapter, highlightNode: options.highlightNode,
-            requiredLanguages: options.requiredLanguages.toArray()))
+            requiredLanguages: options.requiredLanguages.toArray(), buildContext: options.buildContext,
+            documentSources: options.documentSources.toArray(), linkLanguage: options.linkLanguage,
+            linkLanguageFallback: options.linkLanguageFallback, linkCompatible: options.linkCompatible,
+            documentInventoryPins: options.documentInventoryPins.toArray(),
+            documentationRevision: options.docVersion.getOrDefault({ => "" })))
     }
     var sourceOrigins: Array<SourceFileOrigin> = []
     var documentation = match (generationRequest) {

@@ -204,7 +204,8 @@ internal func addPathDependencies(modules: ArrayList<SourceModuleRoot>, seen: Ha
         return
     }
     for (dependencyPath in pathDependencies.values) {
-        let candidatePath = Path(baseRoot).join(dependencyPath).toString()
+        let configured = Path(dependencyPath)
+        let candidatePath = if (configured.isAbsolute()) { configured.toString() } else { Path(baseRoot).join(dependencyPath).toString() }
         let resolved = try {
             canonicalize(candidatePath).toString()
         } catch (_: Exception) {

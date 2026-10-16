@@ -108,6 +108,9 @@ def verify_repository(repo: Path, tag: str | None,
         9: repo / "docs/schema/doc-ir-v9.schema.json",
         10: repo / "docs/schema/doc-ir-v10.schema.json",
         11: repo / "docs/schema/doc-ir-v11.schema.json",
+        12: repo / "docs/schema/doc-ir-v12.schema.json",
+        13: repo / "docs/schema/doc-ir-v13.schema.json",
+        14: repo / "docs/schema/doc-ir-v14.schema.json",
     }
     alias_schema_path = repo / "docs/schema/doc-ir.schema.json"
     baseline_path = repo / "tests/perf/baseline.json"

@@ -2,6 +2,7 @@ package cjdoc.render
 
 import cjdoc.model.*
 import std.collection.*
+import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
 import yjson.*
@@ -28,7 +29,7 @@ class ModelCodecV8Suite1 {
         @Expect(comment.markdown.children[0].metadata.isNone())
         @Expect(migrated.declarations[0].enumNonExhaustive.isNone())
         let encoded = encodeDocIr(migrated)
-@Expect(encoded.contains("\"schemaVersion\": \"cjdoc.doc-ir/14\""))
+@Expect(encoded.contains("\"schemaVersion\": \"cjdoc.doc-ir/15\""))
         @Expect(encoded.contains("\"metadata\": null"))
         @Expect(encoded.contains("\"repository\": null"))
         @Expect(encoded.contains("\"repositoryPath\": null"))
@@ -139,12 +140,12 @@ class ModelCodecV8Suite1 {
             codecTypeDocument(blankCanonical, canonicalTypes: true)))
 
         let emptyCanonicalJson = resolvedJson.replace(
-            "\"canonical\": \"fixture.Known\"", "\"canonical\": \"\"")
+            "\"semanticCanonical\": \"fixture.Known\"", "\"semanticCanonical\": \"\"")
         @Expect(emptyCanonicalJson != resolvedJson)
         let canonicalError = @AssertThrows[IllegalArgumentException](decodeDocIr(emptyCanonicalJson))
         @Expect(canonicalError.message.contains("invalid Doc IR schema"))
         let blankCanonicalJson = resolvedJson.replace(
-            "\"canonical\": \"fixture.Known\"", "\"canonical\": \"   \"")
+            "\"semanticCanonical\": \"fixture.Known\"", "\"semanticCanonical\": \"   \"")
         @Expect(blankCanonicalJson != resolvedJson)
         let blankCanonicalError = @AssertThrows[IllegalArgumentException](
             decodeDocIr(blankCanonicalJson))
@@ -153,19 +154,19 @@ class ModelCodecV8Suite1 {
         let partial = TypeRef("source", "Partial", SemanticType("partial", provider: Some("types")))
         let partialJson = encodeDocIr(codecTypeDocument(partial))
         let missingProviderJson = partialJson.replace(
-            "\"provider\": \"types\"", "\"provider\": null")
+            "\"semanticProvider\": \"types\"", "\"semanticProvider\": null")
         @Expect(missingProviderJson != partialJson)
         let providerError = @AssertThrows[IllegalArgumentException](decodeDocIr(missingProviderJson))
         @Expect(providerError.message.contains("invalid Doc IR schema"))
 
         let unavailableCanonicalJson = unavailableJson.replace(
-            "\"canonical\": null", "\"canonical\": \"fixture.Unknown\"")
+            "\"semanticCanonical\": null", "\"semanticCanonical\": \"fixture.Unknown\"")
         @Expect(unavailableCanonicalJson != unavailableJson)
         let unavailableError = @AssertThrows[IllegalArgumentException](
             decodeDocIr(unavailableCanonicalJson))
         @Expect(unavailableError.message.contains("invalid Doc IR schema"))
         let unavailableProviderJson = unavailableJson.replace(
-            "\"provider\": null", "\"provider\": \"types\"")
+            "\"semanticProvider\": null", "\"semanticProvider\": \"types\"")
         @Expect(unavailableProviderJson != unavailableJson)
         let unavailableProviderError = @AssertThrows[IllegalArgumentException](
             decodeDocIr(unavailableProviderJson))
@@ -176,20 +177,17 @@ class ModelCodecV8Suite1 {
     func v11VersionsExampleDirectivesAndKeepsV10Strict(): Unit {
         let current = encodeDocIr(codecRendererFixture(extraTag: Some(
             DocTag("example", "directive", "", directives: "{run}"))))
-        @Expect(current.contains("\"schemaVersion\": \"cjdoc.doc-ir/14\""))
+        @Expect(current.contains("\"schemaVersion\": \"cjdoc.doc-ir/15\""))
         let decoded = decodeDocIr(current)
         @Expect(decoded.declarations[0].documentation.getOrThrow().tags[1].directives, "{run}")
 
-        let v10WithDirectives = current.replace("  \"apiCollectionState\": \"resolved\",\n", "").replace(
-            "\"schemaVersion\": \"cjdoc.doc-ir/14\"",
-            "\"schemaVersion\": \"cjdoc.doc-ir/10\"")
-        @Expect(v10WithDirectives != current)
+        let v10WithoutDirectives = String.fromUtf8(File.readFrom(Path("tests/fixtures/golden-v10/basic.docs.json")))
+        let v10WithDirectives = v10WithoutDirectives.replace(
+            "\"description\": \"Box value.\",",
+            "\"description\": \"Box value.\", \"directives\": \"{run}\",")
+        @Expect(v10WithDirectives != v10WithoutDirectives)
         @ExpectThrows[IllegalArgumentException](decodeDocIr(v10WithDirectives))
 
-        let v10WithoutDirectives = encodeDocIr(codecRendererFixture()).replace(
-            "  \"apiCollectionState\": \"resolved\",\n", "").replace(
-            "\"schemaVersion\": \"cjdoc.doc-ir/14\"",
-            "\"schemaVersion\": \"cjdoc.doc-ir/10\"")
         @Expect(decodeDocIr(v10WithoutDirectives).schemaVersion, DOC_IR_SCHEMA_VERSION)
     }
 
