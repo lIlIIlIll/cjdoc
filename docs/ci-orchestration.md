@@ -363,6 +363,8 @@ acceptance/observer script and its numeric source line. The child record is limi
 to 8 KiB and 16 locations and validated before publication. Exception text, local
 variables, command arguments, environment values and raw output are not copied.
 These locations diagnose a failure; they do not turn it into acceptance.
+Filesystem aliases are canonicalized before the exact allowlist comparison;
+published records still contain only fixed repository-relative names and lines.
 
 Observer cleanup retains each acquired process handle or queue after signalling.
 Its native exit wait is limited to three seconds per process before checking the

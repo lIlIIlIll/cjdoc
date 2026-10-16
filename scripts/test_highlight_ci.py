@@ -112,7 +112,12 @@ class HighlightCiContractTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
             source = base / "source"
-            trusted = source / "scripts/highlight_acceptance.py"
+            source.mkdir()
+            invocation = source
+            if os.name != "nt":
+                invocation = base / "source-alias"
+                invocation.symlink_to(source, target_is_directory=True)
+            trusted = invocation / "scripts/highlight_acceptance.py"
             outside = base / "outside/scripts/highlight_acceptance.py"
             trusted.parent.mkdir(parents=True)
             outside.parent.mkdir(parents=True)

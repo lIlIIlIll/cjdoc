@@ -80,7 +80,7 @@ def traceback_locations(source: Path, traceback) -> list[dict]:
         "scripts/highlight_acceptance.py", "scripts/highlight_process.py")}
     locations = []
     while traceback is not None and len(locations) < 16:
-        script = allowed.get(Path(traceback.tb_frame.f_code.co_filename).absolute())
+        script = allowed.get(Path(traceback.tb_frame.f_code.co_filename).resolve())
         if script is not None:
             locations.append({"script": script, "line": traceback.tb_lineno})
         traceback = traceback.tb_next
