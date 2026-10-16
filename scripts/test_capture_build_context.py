@@ -129,6 +129,52 @@ class BuildContextManifestPathTests(unittest.TestCase):
             self.assertEqual(owner["dependencies"][0]["identity"], capture.identity(actual))
             self.assertEqual(warning, "")
 
+    def test_project_over_half_the_budget_keeps_valid_receipt_and_rejects_new_overflow(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "app"
+            self.project(root, "app")
+            observed = root / "observed"
+            observed.mkdir()
+            for index in range(5):
+                with (observed / f"input{index}.cj").open("wb") as stream:
+                    stream.truncate(54 * 1024 * 1024)
+            receipt = base / "context.json"
+            record, _ = self.record(root, receipt)
+            self.assertEqual(record["project"]["identity"], capture.identity(root))
+            retained = receipt.read_bytes()
+            artifact = base / "native.bin"
+            with artifact.open("wb") as stream:
+                stream.truncate(250 * 1024 * 1024)
+            rejected = subprocess.run([sys.executable, str(Path(capture.__file__).resolve()),
+                "--project", str(root), "--output", str(receipt), "--target", "example-target",
+                "--dependency", f"app:binary:native={artifact}"], capture_output=True, text=True, timeout=30)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("aggregate observation byte/work budget exceeded", rejected.stderr)
+            self.assertEqual(receipt.read_bytes(), retained)
+
+    def test_shared_source_dependency_over_half_the_budget_is_observed_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root, dependency = base / "app", base / "library"
+            self.project(root, "app")
+            self.project(dependency, "library")
+            observed = dependency / "observed"
+            observed.mkdir()
+            for index in range(5):
+                with (observed / f"input{index}.cj").open("wb") as stream:
+                    stream.truncate(54 * 1024 * 1024)
+            with (root / "cjpm.toml").open("a", encoding="utf-8") as manifest:
+                manifest.write('\n[dependencies]\nfirst = { path = "../library" }\n'
+                               'second = { path = "../library/." }\n')
+            record, _ = self.record(root, base / "context.json")
+            owner = next(module for module in record["modules"] if module["name"] == "app")
+            actual = {item["name"]: item["identity"] for item in owner["dependencies"]}
+            expected = capture.identity(dependency)
+            self.assertEqual(actual, {"first": expected, "second": expected})
+            library = next(module for module in record["modules"] if module["name"] == "library")
+            self.assertEqual(library["identity"], expected)
+
 
 if __name__ == "__main__":
     unittest.main()

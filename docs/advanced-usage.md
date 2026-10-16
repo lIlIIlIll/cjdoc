@@ -143,7 +143,7 @@ cjdoc generate --project <project> --cfg feature=enabled \
 - 路径只用于本地观察，可为相对记录所在目录的路径或本地绝对路径；Doc IR 不输出这些主机路径。记录可能含本地路径，不能直接提交或发布。
 - `cfg` 是请求中显式 `NAME=VALUE` 按 name/value 排序去重后以换行连接的字符串；没有显式 cfg 时为 `""`。显式 cfg 的 `target` 必须与记录 `target` 相同；未显式给 target 时使用记录选择，但不推断宿主 target。
 - 源码 identity 是排序的相对 `.cj`、`cjpm.toml`、`cjpm.lock` 库存与实际字节的 SHA-256；忽略隐藏项及 `target`。目录 artifact 观察所有非隐藏文件；单个 artifact 直接观察文件字节。时间、绝对根路径不参与 identity，std/stdx 分别观察，不臆造官方版本。
-- 库存限制为累计 100000 项、128 层；源码文件仍限 64 MiB。产物按 64 KiB 分块观察，不整文件分配；全部 source/artifact 观察及 receipt 复核共用累计 512 MiB I/O/work 预算，不逐文件或复核阶段重置。读前、打开后和读后的大小/时间及实际读取长度不一致即拒绝；库存中的符号链接拒绝。记录限 4 MiB、4096 模块、每模块最多 16384 依赖。既有 source/output 限额不变，超界不升级 evidence。
+- 库存限制为累计 100000 项、128 层；源码文件仍限 64 MiB。产物按 64 KiB 分块观察，不整文件分配；全部 source/artifact 观察及 receipt 复核共用累计 512 MiB I/O/work 预算，不逐文件或复核阶段重置。同次观察中相同 canonical 输入和 source/artifact 模式的已完成身份会复用，重复模块/别名及 receipt 暂存不重复扣除预算；不同输入或不同观察模式仍累计计费。读前、打开后和读后的大小/时间及实际读取长度不一致即拒绝；库存中的符号链接拒绝。记录限 4 MiB、4096 模块、每模块最多 16384 依赖。既有 source/output 限额不变，超界不升级 evidence。
 
 cjdoc 会重新读取 project/module/manifest/lock/source/artifact 字节，与记录逐项比较，并检查模块所属关系、target 和 cfg。`observed` 只表示观察到字节；`verified` 表示显式选择记录与这些观察及 project/configuration 绑定一致，**不表示独立证明构建执行过或成功过**。`version`/`revision` 仍是声明，不由文件名或目录猜测。
 

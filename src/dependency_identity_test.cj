@@ -174,6 +174,38 @@ class DependencyIdentityTest {
     }
 
     @TestCase
+    func validReceiptReusesObservedSourceWithinTheAggregateBudget(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            identityTestProject(root, "identity_app")
+            let inventory = root.join("observed")
+            Directory.create(inventory)
+            let bytes = Array<Byte>(54 * 1024 * 1024, repeat: b'x')
+            for (index in 0..5) {
+                File.writeTo(inventory.join("input" + index.toString() + ".cj"), bytes)
+            }
+            for (name in ["native.bin", "std.bin", "stdx.bin", "compiler.bin"]) {
+                File.writeTo(root.join(name), [1u8, 2u8, 3u8])
+            }
+            let source = identityTestDependency(identityTestGenerate(root), "identity_app").identity
+            let artifact = "sha256:" + api_model.contractFingerprintBytes([1u8, 2u8, 3u8])
+            let receipt = root.join("build-context.json")
+            File.writeTo(receipt, identityTestReceipt(source, artifact).toArray())
+            let verified = identityTestGenerate(root, receipt: Some(receipt.toString()))
+            let project = identityTestDependency(verified, "identity_app")
+            @Expect(project.state, "verified")
+            @Expect(project.identity, source)
+            @Expect(project.target, "example-target")
+            for (kind in ["binary", "std", "stdx", "toolchain"]) {
+                let name = if (kind == "binary") { "native" } else { kind }
+                @Expect(identityTestDependency(verified, name, kind: kind).state, "verified")
+            }
+            @Expect(publicHasDiagnostic(verified, "CJDOC2300"), false)
+            @Expect(publicHasDiagnostic(verified, "CJDOC2302"), false)
+        } finally { let _ = removeIfExists(root, recursive: true) }
+    }
+
+    @TestCase
     func receiptConfigAndStaleProjectClaimsCannotUpgradeEvidence(): Unit {
         let root = Directory.createTemp(getTempDirectory())
         try {

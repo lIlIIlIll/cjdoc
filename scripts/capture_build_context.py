@@ -124,13 +124,20 @@ def main():
         parser.error("cfg target must match --target")
     modules = {}
     observation = ObservationBudget()
+    identities = {}
+
+    def observed_identity(path, source=True):
+        key = (path.resolve(strict=True), source)
+        if key not in identities:
+            identities[key] = identity(key[0], source, observation)
+        return identities[key]
 
     def local(path):
         return Path(os.path.relpath(path, base)).as_posix()
 
     def dependency(name, kind, path, content):
         result = {"name": name, "kind": kind, "path": local(path),
-                  "identity": identity(path, content == "source", observation), "content": content}
+                  "identity": observed_identity(path, content == "source"), "content": content}
         if kind == "source":
             manifest = tomllib.loads((path / "cjpm.toml").read_text(encoding="utf-8"))
             version = manifest.get("package", {}).get("version", "")
@@ -146,7 +153,7 @@ def main():
             raise ValueError("module limit exceeded")
         manifest = tomllib.loads((path / "cjpm.toml").read_text(encoding="utf-8"))
         name = manifest.get("package", {}).get("name", "workspace")
-        module = {"name": name, "path": local(path), "identity": identity(path, budget=observation), "dependencies": []}
+        module = {"name": name, "path": local(path), "identity": observed_identity(path), "dependencies": []}
         modules[path] = module
         for member in manifest.get("workspace", {}).get("members", []):
             add_module(path / member)
@@ -188,7 +195,7 @@ def main():
         keys = [(item["kind"], item["name"]) for item in module["dependencies"]]
         if len(set(keys)) != len(keys):
             parser.error("duplicate dependency selection")
-    result = {"schemaVersion": "cjdoc.build-context/1", "project": {"path": local(project), "identity": identity(project, budget=observation)},
+    result = {"schemaVersion": "cjdoc.build-context/1", "project": {"path": local(project), "identity": modules[project]["identity"]},
               "target": args.target, "cfg": "\n".join(f"{name}={value}" for name, value in sorted(cfg.items())),
               "modules": sorted(modules.values(), key=lambda item: (item["name"], item["path"]))}
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

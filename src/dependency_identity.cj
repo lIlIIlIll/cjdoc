@@ -61,8 +61,11 @@ internal class DependencyIdentityCapture {
     }
 
     func receiptObservation(): DependencyIdentityCapture {
-        DependencyIdentityCapture(documentation, request, diagnostics,
+        let staged = DependencyIdentityCapture(documentation, request, diagnostics,
             observationBytes: Some(identityBytes), observationEntries: Some(identityEntries), capturedModules: Some(capturedModules))
+        // Reuse observed bytes without sharing the transaction's mutable cache.
+        for ((key, value) in identityCache) { staged.identityCache[key] = value }
+        staged
     }
 
     func inputIdentity(path: String, source: Bool): String {
