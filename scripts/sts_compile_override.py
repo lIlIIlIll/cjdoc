@@ -26,9 +26,9 @@ sys.dont_write_bytecode = True
 
 OPTION = "-O1"
 NEEDLE = 'override-compile-option = ""'
-# The only packages the release build compiles. Membership is the guard: it keeps
-# the rewrite from touching an unrelated manifest that happens to be reachable.
-KNOWN_PACKAGES = ("cjdoc", "provider_plugin_fixture")
+# Only these repository/consumer packages need the pinned STS override.
+# Membership prevents rewriting unrelated manifests reachable from the workspace.
+KNOWN_PACKAGES = ("cjdoc", "provider_plugin_fixture", "highlight_host_fixture")
 
 
 def manifest_package(contents: str) -> str:

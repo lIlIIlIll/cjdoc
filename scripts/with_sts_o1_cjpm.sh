@@ -64,7 +64,7 @@ if command -v cygpath >/dev/null 2>&1; then
   runner_temp="$(cygpath -u "${runner_temp}")"
   current_directory="$(cygpath -u "${current_directory}")"
 fi
-# The provider fixture is nested but compiles this repository as a path dependency.
+# The provider and cancellation fixtures compile this repository as a path dependency.
 case "$current_directory" in
   "${workspace}"|"${workspace}"/*) ;;
   *) exec "${CJDOC_REAL_CJPM}" "$@" ;;
@@ -84,7 +84,8 @@ restore_manifests() {
 trap restore_manifests EXIT
 patch_fixture_entry=0
 provider_fixture="${workspace}/tests/fixtures/projects/provider_plugin"
-if [[ "$current_directory" == "${provider_fixture}" ]]; then
+if [[ "$current_directory" == "${provider_fixture}" ||
+      "$current_directory" == "${workspace}/tests/fixtures/projects/highlight_host" ]]; then
   patch_fixture_entry=1
 fi
 # The rewrite lives in scripts/apply_sts_override.py so CI-08.3 can run this same

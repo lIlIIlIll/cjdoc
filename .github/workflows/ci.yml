@@ -323,7 +323,10 @@ jobs:
           set -euo pipefail
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           . scripts/with_sts_o1_cjpm.sh
-          bash scripts/check.sh
+          # The later worker gate consumes this build's manifest. Keep its worker
+          # receipt valid after the ordinary stages clean their owned build tree.
+          bash scripts/check.sh --manifest target/ci-build/build-manifest.json \
+            --worker-binary-out target/release/bin/chir-worker-main
 
       - name: Restore pristine source-edge fixture
         id: restore-source-edge
