@@ -144,6 +144,93 @@ class DependencyIdentityTest {
     }
 
     @TestCase
+    func targetManifestPathOverridesGeneralPathBeforeObservation(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = temporary.join("app")
+            let general = temporary.join("general")
+            let selected = temporary.join("selected")
+            identityTestProject(root, "identity_app")
+            identityTestProject(general, "identity_dep")
+            identityTestProject(selected, "identity_dep")
+            identityTestProject(temporary.join("general-only"), "general_only")
+            identityTestProject(temporary.join("target-only"), "target_only")
+            File.writeTo(general.join("src/api.cj"), "package identity_dep\npublic func general(): Unit {}\n".toArray())
+            let expected = identityTestDependency(identityTestGenerate(selected), "identity_dep").identity
+            let common = "[dependencies]\nidentity_dep = { path = \"../general\" }\n" +
+                "general_only = { path = \"../general-only\" }\n"
+            let target = "[target.example-target.dependencies]\nidentity_dep = { path = \"../selected\" }\n" +
+                "target_only = { path = \"../target-only\" }\n"
+            let targetTable = "[target.example-target.dependencies.identity_dep]\npath = \"../selected\"\n" +
+                "[target.example-target.dependencies.target_only]\npath = \"../target-only\"\n"
+            for (tables in [common + target, target + common, common + targetTable, targetTable + common]) {
+                File.writeTo(root.join("cjpm.toml"), ("[package]\nname = \"identity_app\"\n" + tables).toArray())
+                let documentation = identityTestGenerate(root, cfg: [CfgValue("target", "example-target")])
+                let dependency = identityTestDependency(documentation, "identity_dep")
+                @Expect(dependency.state, "observed")
+                @Expect(dependency.identity, expected)
+                @Expect(identityTestDependency(documentation, "general_only").state, "observed")
+                @Expect(identityTestDependency(documentation, "target_only").state, "observed")
+                @Expect(publicHasDiagnostic(documentation, "CJDOC2301"), false)
+                @Expect(publicHasDiagnostic(documentation, "CJDOC2302"), false)
+            }
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func targetVersionOnlyDeclarationDiscardsGeneralPathAndItsClosure(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = temporary.join("app")
+            let general = temporary.join("general")
+            identityTestProject(root, "identity_app")
+            identityTestProject(general, "identity_dep")
+            identityTestProject(temporary.join("child"), "unselected_child")
+            File.writeTo(general.join("cjpm.toml"), ("[package]\nname = \"identity_dep\"\nversion = \"1.0.0\"\n" +
+                "[dependencies]\nunselected_child = { path = \"../child\" }\n").toArray())
+            for (version in ["", ", version = \"1.0.0\""]) {
+                let common = "[dependencies]\nidentity_dep = { path = \"../general\"" + version + " }\n"
+                let target = "[target.example-target.dependencies]\nidentity_dep = { version = \"2.0\" }\n"
+                let targetTable = "[target.example-target.dependencies.identity_dep]\nversion = \"2.0\"\n"
+                for (tables in [common + target, target + common, common + targetTable, targetTable + common]) {
+                    File.writeTo(root.join("cjpm.toml"), ("[package]\nname = \"identity_app\"\n" + tables).toArray())
+                    let documentation = identityTestGenerate(root, cfg: [CfgValue("target", "example-target")])
+                    let dependency = identityTestDependency(documentation, "identity_dep")
+                    @Expect(dependency.state, "declared")
+                    @Expect(dependency.version, "2.0")
+                    @Expect(dependency.identity, "")
+                    @Expect(dependency.componentModuleId, "")
+                    for (entry in documentation.dependencies) { @Expect(entry.name != "unselected_child", true) }
+                    @Expect(publicHasDiagnostic(documentation, "CJDOC2301"), false)
+                    @Expect(publicHasDiagnostic(documentation, "CJDOC2302"), false)
+                }
+            }
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func generalVersionOnlyDeclarationCannotReplaceTargetPath(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = temporary.join("app")
+            let selected = temporary.join("selected")
+            identityTestProject(root, "identity_app")
+            identityTestProject(selected, "identity_dep")
+            let expected = identityTestDependency(identityTestGenerate(selected), "identity_dep").identity
+            let common = "[dependencies]\nidentity_dep = { version = \"2.0\" }\n"
+            let target = "[target.example-target.dependencies]\nidentity_dep = { path = \"../selected\" }\n"
+            for (tables in [common + target, target + common]) {
+                File.writeTo(root.join("cjpm.toml"), ("[package]\nname = \"identity_app\"\n" + tables).toArray())
+                let documentation = identityTestGenerate(root, cfg: [CfgValue("target", "example-target")])
+                @Expect(identityTestDependency(documentation, "identity_dep").state, "observed")
+                @Expect(identityTestDependency(documentation, "identity_dep").identity, expected)
+                @Expect(identityTestDependency(documentation, "identity_dep").version, "1.0.0")
+                @Expect(publicHasDiagnostic(documentation, "CJDOC2301"), false)
+            }
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
     func absoluteManifestSourcesAreObservedAndDiscoveredWithoutRebasing(): Unit {
         let temporary = Directory.createTemp(getTempDirectory())
         try {

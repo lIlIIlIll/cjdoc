@@ -7,6 +7,7 @@ import std.env.*
 import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
+import yjson.*
 
 private func inventoryBudgetGenerate(root: Path, sources!: Array<String> = []): api_model.DocumentationSet {
     let binary = getVariable("CJDOC_I18N_BINARY").getOrDefault({ => "target/release/bin/main" })
@@ -112,6 +113,29 @@ private func inventoryBudgetLanguageNavigation(root: Path, documents: String, pi
         linkLanguageFallback: fallback, astPreflightExecutable: Some(binary))))
 }
 
+private func inventoryBudgetSharedOverloadProject(temporary: Path): Path {
+    let root = inventoryBudgetProject(temporary)
+    let dependency = temporary.join("dep")
+    File.writeTo(dependency.join("src/api.cj"), ("package inventory_dep\n" +
+        "/** Integer overload. */\npublic func run(value: Int64): Unit {}\n" +
+        "/** String overload. */\npublic func run(value: String): Unit {}\n").toArray())
+    File.writeTo(root.join("src/api.cj"), ("package inventory_app\nimport inventory_dep\n" +
+        "/** {@link inventory_dep.run} and {@link inventory_dep.run(Int64)} and {@link inventory_dep.run(String)}. */\n" +
+        "public func use(): Unit {}\n").toArray())
+    var text = api_render.rendererFor("symbol-index").render(inventoryBudgetGenerate(dependency))[0].content
+    let entries = JsonNode.parse(text).asObject()["entries"].asArray()
+    @Assert(entries.size(), 2)
+    for (index in 0..entries.size()) {
+        let entry = entries.get(index).getOrThrow().asObject()
+        @Assert(entry["qualifiedName"].asString(), "inventory_dep.run")
+        // A publisher may put every overload on the same page and anchor.
+        text = text.replace(api_render.escapeJsonString(entry["href"].asString()),
+            api_render.escapeJsonString("html/run.html#overloads"))
+    }
+    File.writeTo(root.join("modern.json"), text.toArray())
+    root
+}
+
 private func inventoryBudgetPad(path: Path, text: String, size: Int64): Unit {
     File.writeTo(path, (text + String.fromUtf8(Array<Byte>(size - text.size, repeat: b' '))).toArray())
 }
@@ -188,6 +212,94 @@ class SharedExternalInventoryBudgetTest {
                 @Expect(navigation.state, "ambiguous")
                 @Expect(navigation.matchLevel, "none")
                 @Expect(navigation.url, "")
+            }
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func equalRankedOverloadsSharingAUrlRemainAmbiguous(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = inventoryBudgetSharedOverloadProject(temporary)
+            let result = inventoryBudgetGenerate(root, sources: ["catalog.json"])
+            let markdown = inventoryBudgetSymbol(result, "use").documentation.getOrThrow().markdown
+            let integer = inventoryBudgetLink(markdown, "inventory_dep.run(Int64)").getOrThrow()
+            let string = inventoryBudgetLink(markdown, "inventory_dep.run(String)").getOrThrow()
+            @Expect(integer.state, "resolved")
+            @Expect(string.state, "resolved")
+            @Expect(integer.matchLevel, "exact")
+            @Expect(string.matchLevel, integer.matchLevel)
+            @Expect(integer.url, "https://docs.example.test/modern/html/run.html#overloads")
+            @Expect(string.url, integer.url)
+            @Expect(integer.documentSetId.isEmpty(), false)
+            @Expect(string.documentSetId, integer.documentSetId)
+            @Expect(string.apiIdentity, integer.apiIdentity)
+            @Expect(integer.dependencyInstanceId.isEmpty(), false)
+            @Expect(string.dependencyInstanceId, integer.dependencyInstanceId)
+            @Expect(integer.symbolKey, "inventory_dep.run|function|0(Int64)")
+            @Expect(string.symbolKey, "inventory_dep.run|function|0(String)")
+            let bare = inventoryBudgetLink(markdown, "inventory_dep.run").getOrThrow()
+            @Expect(bare.state, "ambiguous")
+            @Expect(bare.matchLevel, "none")
+            @Expect(bare.url, "")
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func duplicateEqualRankedDeclarationsRemainResolved(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = inventoryBudgetProject(temporary)
+            let entry = inventoryBudgetLanguageEntry("modern.json", "shared", 0)
+            let text = readTextBounded(root.join("modern.json"), 8 * 1024 * 1024)
+            let pins = [DocumentInventoryPin(root.join("modern.json").toString(), api_model.contractFingerprint(text))]
+            let navigation = inventoryBudgetLanguageNavigation(root, entry + "," + entry, pins)
+            @Expect(navigation.state, "resolved")
+            @Expect(navigation.matchLevel, "exact")
+            @Expect(navigation.symbolKey, "inventory_dep.Token|class|0()")
+            @Expect(navigation.url.startsWith("https://docs.example.test/shared/"))
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func differentDocumentSetsSharingADeclarationAndUrlRemainAmbiguousUnlessRanked(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = inventoryBudgetProject(temporary)
+            let original = readTextBounded(root.join("modern.json"), 8 * 1024 * 1024)
+            let sets = JsonNode.parse(original).asObject()["documentSets"].asArray()
+            @Assert(sets.size(), 1)
+            let id = sets.get(0).getOrThrow().asObject()["id"].asString()
+            let other = original.replace(api_render.escapeJsonString(id), api_render.escapeJsonString(id + "-other"))
+            File.writeTo(root.join("other.json"), other.toArray())
+            let pins = [DocumentInventoryPin(root.join("modern.json").toString(), api_model.contractFingerprint(original)),
+                DocumentInventoryPin(root.join("other.json").toString(), api_model.contractFingerprint(other))]
+            let first = inventoryBudgetLanguageEntry("modern.json", "shared", 0)
+            let second = inventoryBudgetLanguageEntry("other.json", "shared", 0)
+            let higher = inventoryBudgetLanguageEntry("other.json", "shared", 1)
+            let firstOnly = inventoryBudgetLanguageNavigation(root, first, pins)
+            let secondOnly = inventoryBudgetLanguageNavigation(root, second, pins)
+            @Expect(firstOnly.state, "resolved")
+            @Expect(secondOnly.state, "resolved")
+            @Expect(firstOnly.matchLevel, "exact")
+            @Expect(secondOnly.matchLevel, firstOnly.matchLevel)
+            @Expect(secondOnly.url, firstOnly.url)
+            @Expect(secondOnly.symbolKey, firstOnly.symbolKey)
+            @Expect(secondOnly.apiIdentity, firstOnly.apiIdentity)
+            @Expect(secondOnly.dependencyInstanceId, firstOnly.dependencyInstanceId)
+            @Expect(secondOnly.documentSetId != firstOnly.documentSetId)
+            for (documents in [first + "," + second, second + "," + first]) {
+                let navigation = inventoryBudgetLanguageNavigation(root, documents, pins)
+                @Expect(navigation.state, "ambiguous")
+                @Expect(navigation.matchLevel, "none")
+                @Expect(navigation.url, "")
+            }
+            for (documents in [first + "," + second + "," + higher, higher + "," + first + "," + second]) {
+                let navigation = inventoryBudgetLanguageNavigation(root, documents, pins)
+                @Expect(navigation.state, "resolved")
+                @Expect(navigation.matchLevel, "exact")
+                @Expect(navigation.documentSetId, secondOnly.documentSetId)
+                @Expect(navigation.symbolKey, secondOnly.symbolKey)
             }
         } finally { let _ = removeIfExists(temporary, recursive: true) }
     }

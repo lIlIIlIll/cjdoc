@@ -368,7 +368,10 @@ internal class DependencyNavigationBinder {
                     if (let Some((_, previous, previousDependency)) <- selected) {
                         let previousId = if (let Some(value) <- previousDependency) { value.instanceId } else { "" }
                         let selectedId = if (let Some(value) <- dependency) { value.instanceId } else { "" }
-                        if (previous.url != entry.url || previous.documentSet.identity != set.identity || previousId != selectedId) { ambiguous = true }
+                        // Shared publication routes do not make distinct declarations or document sets the same target.
+                        if (previous.symbolKey != entry.symbolKey || previous.documentSet.id != set.id ||
+                            previous.url != entry.url || previous.documentSet.identity != set.identity ||
+                            previousId != selectedId) { ambiguous = true }
                     }
                 }
             }

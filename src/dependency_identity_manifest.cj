@@ -13,8 +13,10 @@ private class DependencyManifestSelection {
 
 private func dependencyManifestSelections(manifest: String, target: String): Array<DependencyManifestSelection> {
     let selections = ArrayList<DependencyManifestSelection>()
+    let indices = HashMap<String, Int64>()
     let scanner = TomlLineScanner()
     var mode: Int64 = 0
+    var targetSpecific = false
     var current: ?DependencyManifestSelection = None
     var depth: Int64 = 0
     var entry = StringBuilder()
@@ -25,12 +27,18 @@ private func dependencyManifestSelections(manifest: String, target: String): Arr
             let table = tomlTableName(trimmed).getOrDefault({ => "" })
             let (selectedMode, _) = dependencyTableMode(table, if (target.isEmpty()) { None<String> } else { Some(target) })
             mode = selectedMode
+            targetSpecific = table.startsWith("target.")
             current = None
             if (mode == 2) {
                 let segments = table.split(".")
                 let name = dependencyName(segments[segments.size - 1] + " = \"\"").value.getOrThrow()
                 let selection = DependencyManifestSelection(name)
-                selections.add(selection)
+                if (let Some(index) <- indices.get(name)) {
+                    if (targetSpecific) { selections[index] = selection }
+                } else {
+                    indices[name] = selections.size
+                    selections.add(selection)
+                }
                 current = Some(selection)
             }
             continue
@@ -66,7 +74,14 @@ private func dependencyManifestSelections(manifest: String, target: String): Arr
             selection.version = fields.field("version").getOrDefault({ => "" })
             selection.revision = fields.field("commitId").getOrDefault({ => "" })
         } else { selection.version = tomlAssignmentString(assignment, equals).value.getOrThrow() }
-        selections.add(selection)
+        // Match capture_build_context.py: a selected target replaces the whole
+        // declaration by name, including clearing an overridden path.
+        if (let Some(index) <- indices.get(name)) {
+            if (targetSpecific) { selections[index] = selection }
+        } else {
+            indices[name] = selections.size
+            selections.add(selection)
+        }
         if (selections.size > 16384) { throw IllegalArgumentException("dependency selection limit exceeded") }
     }
     if (depth != 0) { throw IllegalArgumentException("unfinished dependency selection") }
