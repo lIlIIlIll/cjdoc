@@ -28,3 +28,8 @@
 !/tests/fixtures/golden-v13/*.json
 !/tests/fixtures/golden-v14/*.json
 !/tests/fixtures/projects/html_reference/docs/std-symbol-index.json
+!/tests/fixtures/golden-v14/*.json
+!/tests/fixtures/golden-v15/*.json
+!/tests/fixtures/legacy14/*.json
+!/tests/fixtures/legacy13/*.json
+!/tests/fixtures/external_docs/official83/manifest.json

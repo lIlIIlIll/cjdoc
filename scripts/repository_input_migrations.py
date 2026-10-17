@@ -105,6 +105,41 @@ def verify_current_goldens(repo: Path, binary_value: Path) -> list[str]:
     return verified
 
 
+def verify_no_legacy_navigation(value: object) -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in ("navigation", "semanticNavigation") and child is not None:
+                raise ValueError("legacy migration invented navigation evidence")
+            verify_no_legacy_navigation(child)
+    elif isinstance(value, list):
+        for child in value:
+            verify_no_legacy_navigation(child)
+
+
+def project_v15_legacy_facts(value: object) -> None:
+    """Restore legacy wire layout while preserving every recorded semantic value."""
+    if isinstance(value, dict):
+        if isinstance(value.get("generator"), dict):
+            value["generator"].pop("toolchain", None)
+        value.pop("documentationRevision", None)
+        for key in ("navigation", "semanticNavigation", "dependencies", "documentSets"):
+            value.pop(key, None)
+        if {"kind", "spelling", "nullable", "arguments"}.issubset(value):
+            flat = ("semanticState", "semanticCanonical", "semanticProvider")
+            if "semantic" in value or any(key not in value for key in flat):
+                raise ValueError("current TypeRef must contain exactly the three flat semantic facts")
+            value["semantic"] = {
+                "state": value.pop("semanticState"),
+                "canonical": value.pop("semanticCanonical"),
+                "provider": value.pop("semanticProvider"),
+            }
+        for child in value.values():
+            project_v15_legacy_facts(child)
+    elif isinstance(value, list):
+        for child in value:
+            project_v15_legacy_facts(child)
+
+
 def semantic_digest(value: object) -> str:
     canonical = strict_dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -160,9 +195,32 @@ def verify_legacy_migrations(repo: Path, binary_value: Path) -> list[str]:
                 migrated_value = strict_loads(
                     output, description=f"migrated Doc IR for {relative}"
                 )
+                if migrated_value.get("generator", {}).get("toolchain") != "":
+                    raise ValueError(f"legacy migration invented generator toolchain evidence: {relative}")
+                if migrated_value.get("documentationRevision") != "":
+                    raise ValueError(f"legacy migration invented documentation revision evidence: {relative}")
+                original_value = strict_load(repo / relative, description=f"frozen v{version} input")
+                expected_collection = original_value.get("apiCollectionState") if version == 14 else {
+                    "complete": "resolved", "partial": "partial",
+                }.get(original_value.get("status"), "unavailable")
+                if migrated_value.get("apiCollectionState") != expected_collection:
+                    raise ValueError(f"legacy migration changed API collection state: {relative}")
+                verify_no_legacy_navigation(migrated_value)
+                if migrated_value.get("dependencies") != [] or migrated_value.get("documentSets") != []:
+                    raise ValueError(f"legacy migration invented identity evidence: {relative}")
+                if version in (13, 14):
+                    projection = copy.deepcopy(migrated_value)
+                    project_v15_legacy_facts(projection)
+                    projection["schemaVersion"] = f"cjdoc.doc-ir/{version}"
+                    if version == 13:
+                        projection.pop("apiCollectionState", None)
+                    original = strict_load(repo / relative, description=f"frozen v{version} input")
+                    if projection != original:
+                        raise ValueError(f"v{version} migration changed historical facts: {relative}")
                 if version in (6, 7):
                     receipt = receipts[str(version)][name]
                     legacy_projection = copy.deepcopy(migrated_value)
+                    project_v15_legacy_facts(legacy_projection)
                     legacy_projection["schemaVersion"] = "cjdoc.doc-ir/8"
                     legacy_projection.pop("apiCollectionState", None)
                     project = legacy_projection.get("project")
@@ -183,7 +241,7 @@ def verify_legacy_migrations(repo: Path, binary_value: Path) -> list[str]:
                     expected = {key: receipt[key] for key in actual}
                     if actual != expected:
                         raise ValueError(f"legacy migration semantic receipt mismatch: {relative}")
-                else:
+                elif version == 8:
                     project = migrated_value.get("project")
                     if not isinstance(project, dict) or project.get("repository") is not None:
                         raise ValueError(f"v8 migration unexpectedly gained repository metadata: {relative}")
@@ -194,7 +252,7 @@ def verify_legacy_migrations(repo: Path, binary_value: Path) -> list[str]:
                 migrated.write_bytes(output)
                 roundtrip = run_doc_ir_render(binary, migrated)
                 if roundtrip != output:
-                    raise ValueError(f"legacy migration is not a stable v9 round-trip: {relative}")
+                    raise ValueError(f"legacy migration is not a stable current round-trip: {relative}")
                 verified.append(relative)
     return verified
 

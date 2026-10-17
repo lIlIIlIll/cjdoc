@@ -136,6 +136,7 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
         fail("$.schemaVersion", "expected string")
     }
     let schemaText = if (version == DOC_IR_SCHEMA_VERSION) { DOC_IR_SCHEMA }
+        else if (version == DOC_IR_V14_SCHEMA_VERSION) { DOC_IR_V14_SCHEMA }
         else if (version == DOC_IR_V13_SCHEMA_VERSION) { DOC_IR_V13_SCHEMA }
         else if (version == DOC_IR_V12_SCHEMA_VERSION) { DOC_IR_V12_SCHEMA }
         else if (version == DOC_IR_V11_SCHEMA_VERSION) { DOC_IR_V11_SCHEMA }
@@ -146,7 +147,7 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
         else if (version == DOC_IR_V6_SCHEMA_VERSION) { DOC_IR_V6_SCHEMA }
         else {
             fail("$.schemaVersion",
-                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V13_SCHEMA_VERSION}', " +
+                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V14_SCHEMA_VERSION}', '${DOC_IR_V13_SCHEMA_VERSION}', " +
                 "'${DOC_IR_V12_SCHEMA_VERSION}', '${DOC_IR_V11_SCHEMA_VERSION}', " +
                 "'${DOC_IR_V10_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
                 "'${DOC_IR_V8_SCHEMA_VERSION}', '${DOC_IR_V7_SCHEMA_VERSION}', or " +
@@ -288,20 +289,27 @@ internal func decodeSemanticType(node: JsonNode, path: String): SemanticType {
         provider: nullableStringAt(value, "provider", path))
 }
 
-internal func decodeTypeRef(node: JsonNode, path: String, depth: Int64): TypeRef {
+internal func decodeTypeRef(node: JsonNode, path: String, depth: Int64, flatTypeSemantics: Bool): TypeRef {
     if (depth > DOC_IR_MAX_TYPE_DEPTH) {
         fail(path, "type nesting exceeds ${DOC_IR_MAX_TYPE_DEPTH}")
     }
-    let value = strictObject(node, path, ["kind", "spelling", "nullable", "arguments", "semantic"])
+    let value = strictObject(node, path, if (flatTypeSemantics) {
+        ["kind", "spelling", "nullable", "arguments", "semanticState", "semanticCanonical", "semanticProvider", "navigation"]
+    } else { ["kind", "spelling", "nullable", "arguments", "semantic"] })
     let arguments = ArrayList<TypeRef>()
     var index: Int64 = 0
     for (argument in jsonArrayValues(arrayAt(value, "arguments", path))) {
-        arguments.add(decodeTypeRef(argument, "${path}.arguments[${index}]", depth + 1))
+        arguments.add(decodeTypeRef(argument, "${path}.arguments[${index}]", depth + 1, flatTypeSemantics))
         index++
     }
     TypeRef(stringAt(value, "kind", path), stringAt(value, "spelling", path),
-        decodeSemanticType(required(value, "semantic", path), "${path}.semantic"),
-        nullable: boolAt(value, "nullable", path), arguments: arguments.toArray())
+        if (flatTypeSemantics) {
+            SemanticType(stringAt(value, "semanticState", path),
+                canonical: nullableStringAt(value, "semanticCanonical", path),
+                provider: nullableStringAt(value, "semanticProvider", path))
+        } else { decodeSemanticType(required(value, "semantic", path), "${path}.semantic") },
+        nullable: boolAt(value, "nullable", path), arguments: arguments.toArray(),
+        navigation: decodeTypeNavigation(value.get("navigation"), "${path}.navigation"))
 }
 
 internal func migratedSymbolId(value: String, legacy: Bool, legacyIds: HashMap<String, String>,
@@ -326,7 +334,7 @@ internal func decodeTag(node: JsonNode, path: String, legacy: Bool,
     assetReferences: HashMap<String, String>): DocTag {
     let value = strictObject(node, path,
         ["name", "subject", "description", "referenceState", "targetSymbolId", "directives", "exampleMarkdown",
-            "contentLanguage", "translationState", "fieldId", "descriptionMarkdown", "evidenceKey"])
+            "contentLanguage", "translationState", "fieldId", "descriptionMarkdown", "evidenceKey", "navigation"])
     DocTag(stringAt(value, "name", path), stringAt(value, "subject", path),
         stringAt(value, "description", path),
         referenceState: stringAt(value, "referenceState", path),
@@ -338,7 +346,8 @@ internal func decodeTag(node: JsonNode, path: String, legacy: Bool,
         translationState: defaultStringAt(value, "translationState", path),
         fieldId: defaultStringAt(value, "fieldId", path),
         descriptionMarkdown: decodeOptionalDocumentationMarkdown(value.get("descriptionMarkdown"), path, assetReferences),
-        evidenceKey: defaultStringAt(value, "evidenceKey", path))
+        evidenceKey: defaultStringAt(value, "evidenceKey", path),
+        navigation: decodeTypeNavigation(value.get("navigation"), "${path}.navigation"))
 }
 
 internal func decodeMarkdownMetadata(node: JsonNode, kind: String,
@@ -373,10 +382,11 @@ internal func decodeMarkdownMetadata(node: JsonNode, kind: String,
             let value = strictObject(node, path, ["alignment"])
             MarkdownNodeMetadata.forTableCell(stringAt(value, "alignment", path))
         case "semantic_link" =>
-            let value = strictObject(node, path, ["target", "state", "targetSymbolId", "externalUrl"])
+            let value = strictObject(node, path, ["target", "state", "targetSymbolId", "externalUrl", "semanticNavigation"])
             MarkdownNodeMetadata.forSemanticLink(stringAt(value, "target", path), stringAt(value, "state", path),
                 targetSymbolId: nullableStringAt(value, "targetSymbolId", path),
-                externalUrl: nullableStringAt(value, "externalUrl", path))
+                externalUrl: nullableStringAt(value, "externalUrl", path),
+                semanticNavigation: decodeTypeNavigation(value.get("semanticNavigation"), path + ".semanticNavigation"))
         case _ => fail(path, "metadata is not allowed for Markdown kind '${kind}'")
     }
 }
@@ -443,18 +453,18 @@ internal func decodeComment(node: JsonNode, path: String, legacyIdsRequired: Boo
         localizedTexts: decodeDocumentationTexts(value.get("localizedTexts"), path, assetReferences))
 }
 
-internal func decodeParameter(node: JsonNode, path: String): ParameterDoc {
+internal func decodeParameter(node: JsonNode, path: String, flatTypeSemantics: Bool): ParameterDoc {
     let value = strictObject(node, path, ["name", "type", "documentation", "defaultExpression"])
     ParameterDoc(stringAt(value, "name", path),
-        decodeTypeRef(required(value, "type", path), "${path}.type", 0),
+        decodeTypeRef(required(value, "type", path), "${path}.type", 0, flatTypeSemantics),
         documentation: nullableStringAt(value, "documentation", path),
         defaultExpression: nullableStringAt(value, "defaultExpression", path))
 }
 
-internal func decodeTypeRelationship(node: JsonNode, path: String): TypeRelationship {
+internal func decodeTypeRelationship(node: JsonNode, path: String, flatTypeSemantics: Bool): TypeRelationship {
     let value = strictObject(node, path, ["kind", "target"])
     TypeRelationship(stringAt(value, "kind", path),
-        decodeTypeRef(required(value, "target", path), "${path}.target", 0))
+        decodeTypeRef(required(value, "target", path), "${path}.target", 0, flatTypeSemantics))
 }
 
 internal func decodeSymbolRelationship(node: JsonNode, path: String, legacy: Bool,

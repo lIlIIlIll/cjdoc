@@ -204,13 +204,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                 for (tag in comment.tags) {
                     if (tag.name == "throws") {
                         out.append("<div class=\"throws-row\"><dt>")
-                        match (tag.targetSymbolId) {
-                            case Some(targetId) => match (findSymbol(index, targetId)) {
-                                case Some(target) => out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(tag.subject)}</code></a>")
-                                case None => out.append("<code>${escapeHtml(tag.subject)}</code>")
-                            }
-                            case None => out.append("<code>${escapeHtml(tag.subject)}</code>")
-                        }
+                        appendTagSubjectHtml(out, tag, index, rootPrefix)
                         // Missing documentation links are not API behavior.
                         // Preserve true ambiguity locally, but keep the reason readable.
                         if (tag.referenceState == "ambiguous") {
@@ -238,14 +232,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                 for (tag in comment.tags) {
                     if (tag.name != "see") { continue }
                     out.append("<li>")
-                    match (tag.targetSymbolId) {
-                        case Some(targetId) => match (findSymbol(index, targetId)) {
-                            case Some(target) =>
-                                out.append("<a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, target))}\"><code>${escapeHtml(tag.subject)}</code></a>")
-                            case None => out.append("<code>${escapeHtml(tag.subject)}</code>")
-                        }
-                        case None => out.append("<code>${escapeHtml(tag.subject)}</code>")
-                    }
+                    appendTagSubjectHtml(out, tag, index, rootPrefix)
                     if (!tag.description.isEmpty() || !tag.translationState.isEmpty()) {
                         out.append(" "); appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
                     }
@@ -289,6 +276,30 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             }
     }
 }
+private func appendTagSubjectHtml(out: RenderTextBuffer, tag: DocTag,
+    index: HashMap<String, SymbolDoc>, rootPrefix: String): Unit {
+    var destination: ?String = None
+    var title = ""
+    if (let Some(navigation) <- tag.navigation) {
+        if (navigation.state == "resolved" &&
+            (!navigation.symbolKey.startsWith("cjdoc:v2:") || index.contains(navigation.symbolKey))) {
+            destination = navigationHref(rootPrefix, navigation.url)
+        }
+        if (destination.isNone()) { title = navigation.reason }
+    } else if (let Some(targetId) <- tag.targetSymbolId) {
+        if (let Some(target) <- index.get(targetId)) { destination = navigationHref(rootPrefix, symbolUrl(index, target)) }
+    }
+    if (let Some(url) <- destination) {
+        out.append("<a href=\"" + escapeHtml(url) + "\"")
+        appendNavigationAttributes(out, tag.navigation)
+        out.append(">")
+    }
+    out.append("<code")
+    if (!title.isEmpty()) { out.append(" title=\"" + escapeHtml(title) + "\"") }
+    out.append(">" + escapeHtml(tag.subject) + "</code>")
+    if (destination.isSome()) { out.append("</a>") }
+}
+
 internal func appendSymbolArticle(out: RenderTextBuffer,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc, rootPrefix: String,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,

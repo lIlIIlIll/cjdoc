@@ -462,9 +462,8 @@ internal class HtmlTypeUsage {
 }
 
 internal class HtmlTypeLinkIndex {
-    // Canonical semantic names and direct SymbolIds are lookup keys. The final
-    // href is always derived from the matched SymbolId through the existing
-    // routing layer.
+    // Prebound navigation decisions take precedence; canonical semantic names
+    // remain a legacy-input fallback only when no navigation fact is present.
     private let symbolIdByCanonical = HashMap<String, String>()
     // Only for comparing identities during rendering; never used for public links.
     // Ambiguous canonical keys map to the empty sentinel, not an arbitrary target.
@@ -524,6 +523,16 @@ internal class HtmlTypeLinkIndex {
     }
 
     private func targetSymbolId(typeRef: TypeRef): ?String {
+        if (let Some(navigation) <- typeRef.navigation) {
+            if (navigation.state != "resolved" || !urlBySymbolId.contains(navigation.symbolKey)) { return None }
+            return Some(navigation.symbolKey)
+        }
+        if (typeRef.kind == "typeParameter") { return None }
+        if (typeRef.kind == "primitive" || typeRef.kind == "optional" ||
+            typeRef.kind == "tuple" || typeRef.kind == "function") {
+            let provider = typeRef.semantic.provider.getOrDefault({ => "" })
+            if (provider.isEmpty() || provider == "ast" || provider == "source") { return None }
+        }
         if (typeRef.semantic.state != "resolved") { return None }
         match (typeRef.semantic.canonical) {
             case Some(canonical) => match (symbolIdByCanonical.get(canonical)) {
@@ -558,6 +567,11 @@ internal class HtmlTypeLinkIndex {
     }
 
     func targetUrl(typeRef: TypeRef): ?String {
+        if (let Some(navigation) <- typeRef.navigation) {
+            if (navigation.state != "resolved") { return None }
+            if (navigation.symbolKey.startsWith("cjdoc:v2:") && !urlBySymbolId.contains(navigation.symbolKey)) { return None }
+            return navigationHref("", navigation.url)
+        }
         match (targetSymbolId(typeRef)) {
             case Some(symbolId) => urlBySymbolId.get(symbolId)
             case None => None
@@ -576,6 +590,7 @@ internal class HtmlTypeLinkIndex {
     }
 
     func shouldShowUnavailableTitle(typeRef: TypeRef): Bool {
+        if (typeRef.navigation.isSome()) { return targetUrl(typeRef).isNone() }
         if (typeRef.semantic.state == "unavailable") { return true }
         if (typeRef.semantic.state != "resolved") { return false }
         match (targetUrl(typeRef)) {
@@ -584,6 +599,39 @@ internal class HtmlTypeLinkIndex {
         }
     }
 }
+
+
+// Prebound document-root paths are rebased; absolute web URLs stay absolute.
+internal func navigationHref(rootPrefix: String, url: String): ?String {
+    if (url.isEmpty() || url.contains("\\")) { return None }
+    for (byte in url.toArray()) {
+        if (byte <= 0x20 || byte == 0x7F || byte == b'"' || byte == b'<' || byte == b'>') { return None }
+    }
+    if (url.startsWith("https://") || url.startsWith("http://")) {
+        return if (isSafeAbsoluteDocumentationUrl(url)) { Some(url) } else { None }
+    }
+    let relative = url.removePrefix("./")
+    let path = relative.split("#", 2)[0].split("?", 2)[0]
+    if (!safeRelativePath(path) || !isSafeDocumentationRoute(relative)) { return None }
+    Some(rootPrefix + relative)
+}
+
+internal func typeNavigationTitle(typeRef: TypeRef, locale: String): String {
+    let title = label(locale, "Documentation link unavailable", "暂无文档链接")
+    if (let Some(navigation) <- typeRef.navigation) {
+        if (!navigation.reason.isEmpty()) { return title + ": " + navigation.reason }
+    }
+    title
+}
+internal func appendNavigationAttributes(out: RenderTextBuffer, navigation: ?TypeNavigation): Unit {
+    if (let Some(value) <- navigation) {
+        if (value.state != "resolved") { return }
+        out.append(" data-doc-match=\""); out.append(escapeHtml(value.matchLevel))
+        out.append("\" title=\""); out.append(escapeHtml(value.matchLevel)); out.append(": ")
+        out.append(escapeHtml(value.reason)); out.append("\"")
+    }
+}
+
 
 internal func typeHeadSpelling(spelling: String): String {
     match (spelling.indexOf("<")) {
@@ -626,13 +674,36 @@ internal func appendTypeAtomHtml(out: RenderTextBuffer, typeRef: TypeRef,
     spelling: String, typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String): Unit {
     match (typeLinkIndex.targetUrl(typeRef)) {
         case Some(url) =>
-            out.append("<a class=\"type-link\" href=\"${escapeHtml(rootPrefix + url)}\">${escapeHtml(spelling)}</a>")
-        case None => out.append(escapeHtml(spelling))
+            if (let Some(href) <- navigationHref(rootPrefix, url)) {
+                out.append("<a class=\"type-link\" href=\"" + escapeHtml(href) + "\"")
+                appendNavigationAttributes(out, typeRef.navigation)
+                out.append(">" + escapeHtml(spelling) + "</a>")
+            } else { out.append(escapeHtml(spelling)) }
+        case None =>
+            if (typeRef.navigation.isSome()) {
+                out.append("<span title=\"" + escapeHtml(typeNavigationTitle(typeRef, "en")) + "\">" + escapeHtml(spelling) + "</span>")
+            } else { out.append(escapeHtml(spelling)) }
     }
 }
 
 internal func appendTypeRefContentHtml(out: RenderTextBuffer, typeRef: TypeRef,
     typeLinkIndex: HtmlTypeLinkIndex, rootPrefix: String): Unit {
+    if (typeRef.kind == "optional" && typeRef.arguments.size == 1) {
+        out.append("?")
+        appendTypeRefContentHtml(out, typeRef.arguments[0], typeLinkIndex, rootPrefix)
+        return
+    }
+    if ((typeRef.kind == "tuple" || typeRef.kind == "function") && !typeRef.arguments.isEmpty()) {
+        out.append("(")
+        for (index in 0..typeRef.arguments.size) {
+            if (typeRef.kind == "function" && index == typeRef.arguments.size - 1) {
+                out.append(") -&gt; ")
+            } else if (index > 0) { out.append(", ") }
+            appendTypeRefContentHtml(out, typeRef.arguments[index], typeLinkIndex, rootPrefix)
+        }
+        if (typeRef.kind == "tuple") { out.append(")") }
+        return
+    }
     match (typeRef.spelling.indexOf("<")) {
         case Some(_) =>
             if (typeRef.arguments.isEmpty()) {
@@ -662,7 +733,7 @@ internal func appendTypeRefCodeHtml(out: RenderTextBuffer, typeRef: TypeRef,
     out.append("<code")
     if (!className.isEmpty()) { out.append(" class=\"${escapeHtml(className)}\"") }
     if (typeLinkIndex.shouldShowUnavailableTitle(typeRef)) {
-        out.append(" title=\"${escapeHtml(label(locale, "Documentation link unavailable", "暂无文档链接"))}\"")
+        out.append(" title=\"${escapeHtml(typeNavigationTitle(typeRef, locale))}\"")
     }
     out.append(">")
     appendTypeRefContentHtml(out, typeRef, typeLinkIndex, rootPrefix)

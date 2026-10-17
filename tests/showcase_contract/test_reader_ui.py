@@ -107,7 +107,7 @@ class ReaderUiTests(unittest.TestCase):
             (root / "symbols").mkdir(parents=True)
             (root / "symbols" / "changed.html").write_text("page", encoding="utf-8")
             (root / "symbol-index.json").write_text(json.dumps({
-                "schemaVersion": "cjdoc.symbol-index/1",
+                "schemaVersion": "cjdoc.symbol-index/2",
                 "project": {"name": "fixture", "audience": "external"},
                 "version": version,
                 "entries": [{"id": "sym", "href": "symbols/changed.html",

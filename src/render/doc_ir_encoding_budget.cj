@@ -131,14 +131,17 @@ internal func consumeTypeEncoding(value: TypeRef, path: String, depth: Int64,
         domainFail(path, "type nesting exceeds ${DOC_IR_MAX_TYPE_DEPTH}")
     }
     budget.consumeTypeShape(value.arguments.size, path)
-    budget.consumeObject(path, depth: jsonDepth, fields: 5)
+    // Eight flat fields retain all three semantic facts without one object per
+    // TypeRef. Fixed keys/punctuation and the Boolean spelling are charged here.
+    budget.consumeObject(path, depth: jsonDepth, fields: 8,
+        compactBytes: 118 + if (value.nullable) { 4 } else { 5 })
     budget.consumeString(value.kind, "${path}.kind")
     budget.consumeString(value.spelling, "${path}.spelling")
     budget.consumeCollection(value.arguments.size, "${path}.arguments", depth: jsonDepth + 1)
-    budget.consumeObject("${path}.semantic", depth: jsonDepth + 1, fields: 3)
-    budget.consumeString(value.semantic.state, "${path}.semantic.state")
-    budget.consumeOptionalString(value.semantic.canonical, "${path}.semantic.canonical")
-    budget.consumeOptionalString(value.semantic.provider, "${path}.semantic.provider")
+    consumeNavigationEncoding(value.navigation, "${path}.navigation", jsonDepth + 1, budget)
+    budget.consumeString(value.semantic.state, "${path}.semanticState")
+    budget.consumeOptionalString(value.semantic.canonical, "${path}.semanticCanonical")
+    budget.consumeOptionalString(value.semantic.provider, "${path}.semanticProvider")
     var index: Int64 = 0
     for (argument in value.arguments) {
         consumeTypeEncoding(argument, "${path}.arguments[${index}]", depth + 1,
@@ -166,6 +169,7 @@ internal func consumeMarkdownMetadataEncoding(value: MarkdownNodeMetadata, path:
     budget.consumeOptionalString(value.semanticState, "${path}.state")
     budget.consumeOptionalString(value.semanticTargetSymbolId, "${path}.targetSymbolId")
     budget.consumeOptionalString(value.semanticExternalUrl, "${path}.externalUrl")
+    consumeNavigationEncoding(value.semanticNavigation, "${path}.semanticNavigation", jsonDepth + 1, budget)
     budget.consumeCollection(value.tableAlignments.size, "${path}.alignments",
         depth: jsonDepth + 1)
     var index: Int64 = 0
@@ -230,6 +234,7 @@ internal func consumeTagEncoding(value: DocTag, path: String,
         consumeMarkdownEncoding(markdown, path + ".descriptionMarkdown", 0, 5, budget)
     }
     if (!value.evidenceKey.isEmpty()) { budget.consumeString(value.evidenceKey, path + ".evidenceKey") }
+    consumeNavigationEncoding(value.navigation, path + ".navigation", 6, budget)
 }
 
 internal func consumeCommentEncoding(value: DocComment, path: String, jsonDepth: Int64,
@@ -345,6 +350,8 @@ internal func validateDocIrEncodingBudget(documentation: DocumentationSet, limit
     budget.consumeObject("$.generator")
     budget.consumeString(documentation.generator.name, "$.generator.name")
     budget.consumeString(documentation.generator.version, "$.generator.version")
+    budget.consumeString(documentation.generator.toolchain, "$.generator.toolchain")
+    budget.consumeString(documentation.documentationRevision, "$.documentationRevision")
     budget.consumeString(documentation.status, "$.status")
     budget.consumeString(documentation.apiCollectionState, "$.apiCollectionState")
     budget.consumeObject("$.project")
@@ -379,6 +386,7 @@ internal func validateDocIrEncodingBudget(documentation: DocumentationSet, limit
         }
     }
     if (documentation.readingLanguage.isSome()) { budget.consumeOptionalString(documentation.readingLanguage, "$.readingLanguage") }
+    consumeDependencyMetadataEncoding(documentation, budget)
     budget.consumeCollection(documentation.providers.size, "$.providers")
     var index: Int64 = 0
     for (provider in documentation.providers) {

@@ -55,6 +55,27 @@ public class ChirOptions {
     }
 }
 
+/** A caller-trusted pin for the complete bytes of one local symbol inventory. */
+public class DocumentInventoryPin {
+    public let path: String
+    public let sha256: String
+    public init(path: String, sha256: String) {
+        if (path.trimAscii().isEmpty() || path.contains("\u{0}") || sha256.size != 64) {
+            throw IllegalArgumentException("inventory pin requires a path and lowercase SHA-256")
+        }
+        var index: Int64 = 0
+        while (index < sha256.size) {
+            let byte = sha256[index]
+            if (!((byte >= b'0' && byte <= b'9') || (byte >= b'a' && byte <= b'f'))) {
+                throw IllegalArgumentException("inventory pin requires a lowercase SHA-256")
+            }
+            index++
+        }
+        this.path = path; this.sha256 = sha256
+    }
+}
+
+
 public class GenerationRequest {
     public let projectRoot: String
     public let repository: ?public_model.RepositoryInfo
@@ -75,6 +96,14 @@ public class GenerationRequest {
     /** Optional host policy override; absent uses the project [highlight] configuration. */
     public let highlight: ?HighlightConfig
     public let i18n: ?public_model.DocumentationLanguageOptions
+    public let buildContext: ?String
+    public let linkLanguage: String
+    public let linkLanguageFallback: Bool
+    public let linkCompatible: Bool
+    /** Publication revision only; never participates in dependency selection. */
+    public let documentationRevision: String
+    private let documentSourcesStorage: ArrayList<String>
+    private let documentInventoryPinsStorage: ArrayList<DocumentInventoryPin>
     private let requiredLanguagesStorage: ArrayList<String>
     private let dependencySourcesStorage: ArrayList<DependencySourceInput>
     private let cfgValuesStorage: ArrayList<CfgValue>
@@ -89,7 +118,10 @@ public class GenerationRequest {
         cacheFingerprint!: ?String = None, astPreflightExecutable!: ?String = None,
         chir!: ?ChirOptions = None, cjpmCacheRoot!: ?String = None,
         highlightAdapter!: ?String = None, highlightNode!: ?String = None, highlight!: ?HighlightConfig = None,
-        i18n!: ?public_model.DocumentationLanguageOptions = None, requiredLanguages!: Array<String> = []) {
+        i18n!: ?public_model.DocumentationLanguageOptions = None, requiredLanguages!: Array<String> = [],
+        buildContext!: ?String = None, documentSources!: Array<String> = [], linkLanguage!: String = "",
+        linkLanguageFallback!: Bool = false, linkCompatible!: Bool = false,
+        documentInventoryPins!: Array<DocumentInventoryPin> = [], documentationRevision!: String = "") {
         if (projectRoot.isEmpty()) {
             throw IllegalArgumentException("project root cannot be empty")
         }
@@ -130,6 +162,20 @@ public class GenerationRequest {
         this.highlightNode = highlightNode
         this.highlight = highlight
         this.i18n = i18n
+        if (let Some(path) <- buildContext) {
+            if (path.trimAscii().isEmpty()) { throw IllegalArgumentException("build context cannot be empty") }
+        }
+        for (path in documentSources) {
+            if (path.trimAscii().isEmpty()) { throw IllegalArgumentException("document source cannot be empty") }
+        }
+        this.buildContext = buildContext
+        this.documentSourcesStorage = ArrayList<String>(documentSources)
+        if (documentInventoryPins.size > 256) { throw IllegalArgumentException("inventory pin budget exceeded") }
+        this.documentInventoryPinsStorage = ArrayList<DocumentInventoryPin>(documentInventoryPins)
+        this.linkLanguage = if (linkLanguage.isEmpty()) { "" } else { public_model.documentationLanguage(linkLanguage) }
+        this.linkLanguageFallback = linkLanguageFallback
+        this.linkCompatible = linkCompatible
+        this.documentationRevision = documentationRevision
         this.requiredLanguagesStorage = ArrayList<String>()
         for (language in requiredLanguages) {
             let normalized = public_model.documentationLanguage(language)
@@ -147,6 +193,8 @@ public class GenerationRequest {
         }
     }
     public prop requiredLanguages: ReadOnlyList<String> { get() { requiredLanguagesStorage } }
+    public prop documentSources: ReadOnlyList<String> { get() { documentSourcesStorage } }
+    public prop documentInventoryPins: ReadOnlyList<DocumentInventoryPin> { get() { documentInventoryPinsStorage } }
     public prop cfgValues: ReadOnlyList<CfgValue> {
         get() {
             cfgValuesStorage

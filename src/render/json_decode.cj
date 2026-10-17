@@ -14,10 +14,11 @@ public func decodeDocIr(text: String): DocumentationSet {
     let rawShape = validateRawSchemaShape(parsed)
     validatePortablePathFields(parsed, "$")
     validateDeclarativeSchema(parsed)
-    let root = strictObject(parsed, "$", ["schemaVersion", "generator", "status", "apiCollectionState", "project",
+    let root = strictObject(parsed, "$", ["schemaVersion", "generator", "status", "apiCollectionState", "documentationRevision", "project",
         "configuration", "providers", "modules", "packages", "files", "declarations", "assets",
         "orphanDocComments", "macroInvocations", "unsupportedDeclarations",
-        "unboundSemanticDeclarations", "diagnostics", "languageOptions", "pages", "readingLanguage", "externalDocumentation"])
+        "unboundSemanticDeclarations", "diagnostics", "languageOptions", "pages", "readingLanguage", "externalDocumentation",
+        "dependencies", "documentSets"])
     let version = stringAt(root, "schemaVersion", "$")
     let legacyV6 = version == DOC_IR_V6_SCHEMA_VERSION
     let legacy = legacyV6 || version == DOC_IR_V7_SCHEMA_VERSION
@@ -28,15 +29,15 @@ public func decodeDocIr(text: String): DocumentationSet {
     let legacyV12 = version == DOC_IR_V12_SCHEMA_VERSION
     let legacyV13 = version == DOC_IR_V13_SCHEMA_VERSION
     let current = version == DOC_IR_SCHEMA_VERSION
-    let modern = legacyV9 || legacyV10 || legacyV11 || legacyV12 || legacyV13 || current
+    let modern = legacyV9 || legacyV10 || legacyV11 || legacyV12 || version == DOC_IR_V13_SCHEMA_VERSION || version == DOC_IR_V14_SCHEMA_VERSION || current
     if (!legacy && !legacyV8 && !modern) {
-        fail("$.schemaVersion", "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V13_SCHEMA_VERSION}', " +
+        fail("$.schemaVersion", "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V14_SCHEMA_VERSION}', '${DOC_IR_V13_SCHEMA_VERSION}', " +
             "'${DOC_IR_V12_SCHEMA_VERSION}', '${DOC_IR_V11_SCHEMA_VERSION}', " +
             "'${DOC_IR_V10_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
             "'${DOC_IR_V8_SCHEMA_VERSION}', '${DOC_IR_V7_SCHEMA_VERSION}', or " +
             "'${DOC_IR_V6_SCHEMA_VERSION}'")
     }
-    let generator = strictObject(required(root, "generator", "$") , "$.generator", ["name", "version"])
+    let generator = strictObject(required(root, "generator", "$") , "$.generator", ["name", "version", "toolchain"])
     let project = strictObject(required(root, "project", "$.project"), "$.project",
         if (modern) { ["name", "kind", "repository"] }
         else { ["name", "kind"] })
@@ -48,7 +49,8 @@ public func decodeDocIr(text: String): DocumentationSet {
         else { HashMap<String, String>() }
     let decodedAssets = decodeAssets(root, legacy)
     let documentation = DocumentationSet(GeneratorInfo(stringAt(generator, "name", "$.generator"),
-        stringAt(generator, "version", "$.generator")), stringAt(root, "status", "$"),
+        stringAt(generator, "version", "$.generator"), toolchain: defaultStringAt(generator, "toolchain", "$.generator")),
+        stringAt(root, "status", "$"),
         ProjectInfo(stringAt(project, "name", "$.project"), kind: stringAt(project, "kind", "$.project"),
             repository: if (modern) {
                 nullableRepositoryAt(project, "repository", "$.project")
@@ -59,16 +61,21 @@ public func decodeDocIr(text: String): DocumentationSet {
         providers: decodeProviders(root, modules, legacyV6, rawShape, text.size), modules: modules,
         packages: decodePackages(root, legacy, legacyV6, legacyIds),
         files: decodeFiles(root), declarations: decodeDeclarations(root, legacyV6, legacy,
-            legacyModules, legacyIds, decodedAssets.references),
+            legacyModules, legacyIds, decodedAssets.references, current),
         assets: decodedAssets.assets,
         orphanDocComments: decodeOrphans(root), macroInvocations: decodeMacros(root),
         unsupportedDeclarations: decodeUnsupported(root), unboundSemanticDeclarations: decodeUnbound(root),
         diagnostics: decodeDiagnostics(root, legacyV6, legacyIds),
+        documentationRevision: if (current) { stringAt(root, "documentationRevision", "$") } else { "" },
         languageOptions: decodeDocumentationLanguageOptions(root.get("languageOptions"), "$.languageOptions"),
-        pages: decodeDocumentationPages(root.get("pages"), decodedAssets.references),
+        pages: decodeDocumentationPages(root.get("pages"), decodedAssets.references, !current),
         readingLanguage: optionalDocumentationLanguage(root.get("readingLanguage"), "$.readingLanguage"),
         externalDocumentation: decodeExternalDocumentation(root.get("externalDocumentation")),
-        apiCollectionState: if (current) { Some(stringAt(root, "apiCollectionState", "$")) } else { None })
+        dependencies: decodeDependencyInstances(root.get("dependencies")),
+        documentSets: decodeDocumentSetIdentities(root.get("documentSets")),
+        apiCollectionState: if (current || version == DOC_IR_V14_SCHEMA_VERSION) {
+            Some(stringAt(root, "apiCollectionState", "$"))
+        } else { None })
     validateDocumentationSet(documentation)
     documentation
 }

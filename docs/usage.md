@@ -281,6 +281,39 @@ cjdoc render \
 
 `render` 读取并验证输入的 Doc IR。输出目录应使用一个尚不存在的目录，或使用之前由 cjdoc 管理的目录；不要把包含无关文件的目录直接交给 cjdoc。
 
+### Schema 与旧版迁移
+
+当前 JSON 输出版本是 `cjdoc.doc-ir/15`。`render` 严格验证 v6–v14 的原始 schema 后迁移为 v15；未知属性、重复 JSON 键和不满足原版本约束的输入会被拒绝。迁移保留已有源码与语义事实，新增 `dependencies`、`documentSets` 为空数组，类型、标签、语言正文和正文引用的导航事实为空，不从旧版的名称、版本标签或已有 URL 推造依赖身份。
+
+根字段 `apiCollectionState` 为 `resolved`、`partial` 或 `unavailable`，独立于展示用 `status`。生成时在 source/provider 绑定后、highlight/lint/i18n/导航处理前采集；呈现错误不会把已采集的 API 改为不完整。v14 输入保留已有值；v6–v13 缺少该字段时仅按历史 `status` 映射（`complete` → `resolved`，`partial` → `partial`）。公开 `DocumentationSet` 的同名字段是不可变 `String`；构造器命名参数为 `apiCollectionState!: ?String = None`，省略时使用相同历史映射，显式值必须属于上述枚举。
+
+查看当前 schema、指定版本 schema 或支持的 schema 名称：
+
+```bash
+cjdoc schema doc-ir
+cjdoc schema doc-ir-v15
+cjdoc schema doc-ir-v14
+cjdoc schema doc-ir-v13
+cjdoc schema symbol-index
+cjdoc schema list
+```
+
+`generator.toolchain` 与目标项目 compiler/std/stdx 身份分离。自动生成和旧版迁移都将它留为空字符串，因为运行时 compiler 路径或版本不能认证实际链接的 parser SDK 构建；公开 API 中调用者填写的非空值也只是声明，不会自动成为认证事实。
+
+`TypeRef.semantic` 继续描述语义证据。独立的 `navigation` 描述文档链接决策：`resolved`、`unresolved`、`ambiguous` 或 `unavailable`；`matchLevel` 为 `exact`、`compatible`、`manual` 或 `none`，`reason` 说明依据。找到文档链接不会把 unavailable/partial 语义升级为 resolved。正文显式引用保留相同事实于 `semanticNavigation`。
+
+指南的 `DocumentationPageBinding.navigation` 也使用独立、可空的 `TypeNavigation`。原有 `state` 与 `targetSymbolId` 仍只描述本地 API 关联，外部链接解析成功不会把 `unresolved` 关联冒充为本地 `resolved`。current15 的每个 binding 必须编码 `navigation`（无导航写 `null`）；严格6–14输入迁移后该字段为空。受众或条件编译隐藏的关联不得保留 resolved 外链。
+
+`symbol-index` 当前输出 `cjdoc.symbol-index/2`，HTML 内嵌索引和独立索引共用生产逻辑。顶层 `dependencies` 保存依赖实例证据，`documentSets` 保存文档集的内容身份与可移植来源；每项的 `identity` 来自对应模块的自身内容快照，`documentSetId` 指向文档集。文档版本标签只用于展示，不能代替内容身份。
+
+`DependencyInstance.moduleId` 是依赖边的 owner，`componentModuleId` 指向实际选中的 source-graph 模块；binary 或未知选择保留空字符串。`DocumentSetIdentity.moduleId` 是 producer 库存描述的模块 ID，作用域由该库存的 `indexIdentity` 限定，不能与 consumer 模块 ID 直接等同。v15 Doc IR 和当前 `/2` 库存要求编码这两个字段；缺少图绑定字段的旧 `/2` 库存只能作为 manual 参考，不能仅凭相同源码、版本或自身内容身份获得 exact 匹配。
+
+根 `DocumentationSet.documentationRevision` 是独立的文档发布标记，构造器命名参数默认 `""`，不放入 `GeneratorInfo`。`DocumentSetIdentity.apiVersion` 保存对应 API 包声明的版本，`revision` 保留 API 源码 revision，`documentationRevision` 单独保存文档发布 revision；新增命名参数 `apiVersion`、`documentationRevision` 均默认 `""`。这些版本字符串不等于官方发行认证，不能替代内容身份或库存 pin。生产库存时 API 包版本取自身依赖记录的 `version`，文档 revision 取文档根对象；未知值保持空字符串。v6–v14 迁移不补造文档发布 revision，也不会生成虚构依赖或文档集。
+
+跨根项目与依赖的精确符号键是 `完整包限定名|kind|泛型参数数目(参数类型源码拼写,...)`。已有包前缀不会重复添加；例如 `fixture.Box|class|1()` 和 `fixture.Box.add|function|0(Int64)`。它与包含模块角色的本地 `id` 分离，重载保留不同参数键。HTML 内嵌索引的 href 不带 `html/` 前缀，独立索引带该前缀。
+
+维护 schema 时修改 `src/schema_data/`，构建后运行 `bash scripts/update_schemas.sh` 同步 `docs/schema/`；运行 `bash scripts/update_goldens.sh` 生成 `tests/fixtures/golden-v15/`。已发布 v6–v14 schema/golden 为只读迁移输入，v13/v14 另有 `tests/fixtures/legacy13/`、`tests/fixtures/legacy14/` 字节冻结副本；不要手工修改 current golden。
+
 ## 常见问题
 
 ### 页面没有声明

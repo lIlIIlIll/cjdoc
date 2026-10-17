@@ -10,6 +10,64 @@ import std.unittest.testmacro.*
 @Test
 class SourcePipelineSuite3 {
     @TestCase
+    func genericConstraintCacheRoundTripsAndInvalidatesPreConstraintEntries(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let project = temporary.join("project")
+            let cache = temporary.join("cache")
+            Directory.create(project.join("src"), recursive: true)
+            Directory.create(cache)
+            File.writeTo(project.join("cjpm.toml"),
+                "[package]\nname = \"constraints\"\n".toArray())
+            let source = "package constraints\npublic interface Widget {}\npublic interface Container<T> {}\n" +
+                "public func constrained<T>(input: T): T where T <: Widget & Container<T> { input }\n"
+            File.writeTo(project.join("src/api.cj"), source.toArray())
+            let fingerprint = "source-constraint-cache-v1"
+            let provider = SyntaxSourceProvider(cacheDirectory: Some(cache.toString()),
+                cacheFingerprint: Some(fingerprint), astPreflightExecutable: TEST_AST_PREFLIGHT)
+            let cold = provider.collect(project.toString())
+            @Expect(provider.cacheStats.writes, 1)
+            let entries = Directory.readFrom(cache)
+            @Assert(entries.size, 1)
+            let cachePath = entries[0].path
+            let bytes = File.readFrom(cachePath)
+            let reader = SourceCacheReader(bytes)
+            @Expect(reader.next(), "cjdoc-source-cache-v17")
+            let key = reader.next()
+            let legacyKey = SourceCacheWriter()
+            for (value in ["cjdoc-source-cache-v16", fingerprint, "src/api.cj",
+                cold.modules[0].id, "constraints", source]) { legacyKey.add(value) }
+            @Expect(key != Sha256Digest.digestBytes(legacyKey.result().getOrThrow()), true)
+            let warm = provider.collect(project.toString())
+            @Expect(provider.cacheStats.hits, 1)
+            for (snapshot in [cold, warm]) {
+                var found = false
+                for (declaration in snapshot.declarations) {
+                    if (declaration.name != "constrained") { continue }
+                    found = true
+                    @Assert(declaration.relationships.size, 2)
+                    @Expect(declaration.relationships[0].kind, "genericConstraint")
+                    @Expect(declaration.relationships[0].targetSpelling, "Widget")
+                    @Expect(declaration.relationships[1].targetSpelling.replace(" ", ""), "Container<T>")
+                }
+                @Expect(found, true)
+            }
+            // Even a pre-constraint payload placed under the new cache filename
+            // is rejected before decoding declarations, then rebuilt from AST.
+            let legacy = String.fromUtf8(bytes).replace("cjdoc-source-cache-v17", "cjdoc-source-cache-v16")
+            File.writeTo(cachePath, legacy.toArray())
+            let reparsed = provider.collect(project.toString())
+            @Expect(provider.cacheStats.hits, 0)
+            @Expect(provider.cacheStats.corruptEntries, 1)
+            @Expect(provider.cacheStats.writes, 1)
+            @Expect(reparsed.declarations.size, cold.declarations.size)
+        } finally {
+            let _ = removeIfExists(temporary, recursive: true)
+        }
+    }
+
+
+    @TestCase
     func sharesTomlByteAndWorkLimitsAcrossAllParsedArrays(): Unit {
         let text = "[package]\nname = \"sample\"\n" +
             "[workspace]\nmembers = [\"a\", \"b\"]\n" +

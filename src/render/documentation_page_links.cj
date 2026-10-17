@@ -3,13 +3,89 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
-internal func appendSearchPageBindings(out: RenderTextBuffer, page: DocumentationPage): Unit {
+// A frozen navigation fact does not change the binding's local-resolution state.
+// All published surfaces share the same audience and ambiguity boundary.
+private class CapturedPageBindingTarget {
+    let state: String
+    let hidden: Bool
+    let symbol: ?SymbolDoc
+    let navigation: ?TypeNavigation
+    private let binding: DocumentationPageBinding
+    private let visible: HashMap<String, SymbolDoc>
+
+    init(binding: DocumentationPageBinding, visible: HashMap<String, SymbolDoc>) {
+        this.binding = binding; this.visible = visible
+        let local: ?SymbolDoc = match (binding.targetSymbolId) { case Some(id) => visible.get(id); case None => None }
+        let hiddenNavigation = match (binding.navigation) {
+            case Some(value) => value.symbolKey.startsWith("cjdoc:v2:") && !visible.contains(value.symbolKey)
+            case None => false
+        }
+        hidden = binding.state == "unavailable" || (binding.targetSymbolId.isSome() && local.isNone()) || hiddenNavigation
+        state = capturedPageBindingState(binding, hidden)
+        symbol = if (!hidden && state == "resolved") {
+            match (binding.navigation) {
+                case None => local
+                case Some(value) => if (value.state == "resolved" && binding.targetSymbolId == Some(value.symbolKey)) { local } else { None }
+            }
+        } else { None }
+        navigation = if (hidden) { None } else { binding.navigation }
+    }
+
+    func destination(rootPrefix: String, markdown: Bool): ?String {
+        if (hidden || state == "conflict" || state == "ambiguous") { return None }
+        if (let Some(target) <- symbol) {
+            if (markdown) {
+                return Some(rootPrefix + markdownTargetPagePath(target, visible) + "#" + symbolAnchor(target))
+            }
+            return navigationHref(rootPrefix, symbolUrl(visible, target))
+        }
+        // Navigation, when present, is authoritative even over an old visible local id.
+        if (let Some(value) <- navigation) {
+            if (value.state == "resolved") {
+                return navigationHref(rootPrefix + if (markdown) { "../html/" } else { "" }, value.url)
+            }
+        }
+        None
+    }
+
+    func stateLabel(locale: String): String {
+        if (hidden || state == "conflict" || state == "ambiguous") { return capturedPageBindingStateLabel(state, locale) }
+        if (let Some(value) <- navigation) {
+            if (value.state == "ambiguous") { return label(locale, "Ambiguous documentation target", "文档目标不明确") }
+            if (value.state != "resolved") { return label(locale, "Documentation link unavailable", "暂无文档链接") }
+            if (symbol.isNone() && destination("", false).isSome()) { return label(locale, "Documentation linked", "已关联文档") }
+        }
+        capturedPageBindingStateLabel(state, locale)
+    }
+
+    func title(locale: String): String {
+        if (hidden) { return capturedPageBindingStateLabel("unavailable", locale) }
+        let out = StringBuilder()
+        if (!binding.version.isEmpty()) { out.append(label(locale, "Declared API version: ", "声明 API 版本：") + binding.version) }
+        if (let Some(value) <- navigation) {
+            if (!binding.version.isEmpty()) { out.append("; ") }
+            out.append(value.matchLevel + ": " + value.reason)
+            if (!value.apiIdentity.isEmpty()) { out.append("; API identity: " + value.apiIdentity) }
+        }
+        out.toString()
+    }
+}
+
+internal func appendSearchPageBindings(out: RenderTextBuffer, page: DocumentationPage,
+    visible: HashMap<String, SymbolDoc>): Unit {
     out.append(",\"bindings\":[")
     var first = true
-    for (binding in page.bindings where binding.state != "unavailable") {
+    for (binding in page.bindings) {
+        let target = CapturedPageBindingTarget(binding, visible)
+        if (target.hidden) { continue }
         if (!first) { out.append(",") }; first = false
-        out.append("{\"target\":${escapeJsonString(binding.target)},\"selector\":${escapeJsonString(binding.selector)},\"provenance\":${escapeJsonString(binding.provenance)},\"version\":${escapeJsonString(binding.version)},")
-        out.append("\"sourceLine\":${binding.sourceLine},\"language\":${escapeJsonString(binding.language)},\"state\":${escapeJsonString(binding.state)},\"targetSymbolId\":${nullableString(binding.targetSymbolId)}}")
+        out.append("{\"target\":" + escapeJsonString(binding.target) + ",\"selector\":" + escapeJsonString(binding.selector))
+        out.append(",\"provenance\":" + escapeJsonString(binding.provenance) + ",\"version\":" + escapeJsonString(binding.version))
+        out.append(",\"sourceLine\":" + binding.sourceLine.toString() + ",\"language\":" + escapeJsonString(binding.language))
+        out.append(",\"state\":" + escapeJsonString(binding.state) + ",\"targetSymbolId\":" + nullableString(binding.targetSymbolId))
+        out.append(",\"href\":" + nullableString(target.destination("", false)) + ",\"navigationTitle\":" + escapeJsonString(target.title("en")))
+        let encoded = StringBuilder(); appendTypeNavigation(encoded, target.navigation)
+        out.append(",\"navigation\":" + encoded.toString() + "}")
     }
     out.append("]")
 }
@@ -111,23 +187,27 @@ private func capturedPageBindingStateLabel(state: String, locale: String): Strin
     }
 }
 
-private func capturedPageBindingState(binding: DocumentationPageBinding,
-    visible: HashMap<String, SymbolDoc>): String {
-    if (binding.targetSymbolId.isSome() && !visible.contains(binding.targetSymbolId.getOrThrow())) {
-        return "unavailable"
-    }
+private func capturedPageBindingState(binding: DocumentationPageBinding, hidden: Bool): String {
+    if (hidden && binding.state != "conflict" && binding.state != "ambiguous") { return "unavailable" }
     binding.state
 }
 
 private func appendCapturedPageBindingTargetHtml(out: RenderTextBuffer,
-    binding: DocumentationPageBinding, visible: HashMap<String, SymbolDoc>, prefix: String, state: String): Unit {
-    if (state == "unavailable") { return }
-    let target: ?SymbolDoc = match (binding.targetSymbolId) { case Some(id) => visible.get(id); case None => None }
-    if (state == "resolved" && target.isSome()) {
-        let symbol = target.getOrThrow()
-        out.append("<a href=\"" + prefix + escapeHtml(symbolUrl(visible, symbol)) + "\"><code>" +
-            escapeHtml(symbol.qualifiedName) + "</code></a>")
-    } else { out.append("<code>" + escapeHtml(binding.target) + "</code>") }
+    binding: DocumentationPageBinding, target: CapturedPageBindingTarget, prefix: String, locale: String): Unit {
+    if (target.hidden) { return }
+    let title = target.title(locale)
+    let destination = target.destination(prefix, false)
+    if (let Some(url) <- destination) {
+        out.append("<a href=\"" + escapeHtml(url) + "\"")
+        if (let Some(value) <- target.navigation) { out.append(" data-doc-match=\"" + escapeHtml(value.matchLevel) + "\"") }
+        if (!title.isEmpty()) { out.append(" title=\"" + escapeHtml(title) + "\"") }
+        out.append(">")
+    }
+    let spelling = match (target.symbol) { case Some(value) => value.qualifiedName; case None => binding.target }
+    out.append("<code")
+    if (destination.isNone() && !title.isEmpty()) { out.append(" title=\"" + escapeHtml(title) + "\"") }
+    out.append(">" + escapeHtml(spelling) + "</code>")
+    if (destination.isSome()) { out.append("</a>") }
     if (!binding.version.isEmpty()) {
         out.append(" <span class=\"binding-version\">" + escapeHtml(binding.version) + "</span>")
     }
@@ -136,12 +216,12 @@ private func appendCapturedPageBindingTargetHtml(out: RenderTextBuffer,
 internal func capturedPageBindingChipHtml(page: DocumentationPage, binding: DocumentationPageBinding,
     visible: HashMap<String, SymbolDoc>, locale: String): String {
     let out = RenderTextBuffer()
-    let state = capturedPageBindingState(binding, visible)
-    out.append("<div class=\"inline-binding\"><span class=\"binding-state\" data-state=\"" + state + "\">")
-    out.append(capturedPageBindingStateLabel(state, locale) + "</span> ")
-    appendCapturedPageBindingTargetHtml(out, binding, visible, pageRootPrefix(page.route), state)
+    let target = CapturedPageBindingTarget(binding, visible)
+    out.append("<div class=\"inline-binding\"><span class=\"binding-state\" data-state=\"" + target.state + "\">")
+    out.append(target.stateLabel(locale) + "</span> ")
+    appendCapturedPageBindingTargetHtml(out, binding, target, pageRootPrefix(page.route), locale)
     out.append("<details class=\"binding-details\"><summary>" + label(locale, "Technical details", "技术详情") + "</summary>")
-    if (state != "unavailable") {
+    if (!target.hidden) {
         if (!binding.selector.isEmpty()) {
             out.append("<span class=\"binding-meta\">selector: " + escapeHtml(binding.selector) + "</span>")
         }
@@ -149,7 +229,7 @@ internal func capturedPageBindingChipHtml(page: DocumentationPage, binding: Docu
             out.append("<span class=\"binding-meta\">source: " + escapeHtml(binding.provenance) + "</span>")
         }
     }
-    out.append("<span class=\"binding-meta\">state: " + state + "; language: " + escapeHtml(binding.language) +
+    out.append("<span class=\"binding-meta\">state: " + target.state + "; language: " + escapeHtml(binding.language) +
         "; line: " + binding.sourceLine.toString() + "</span></details></div>")
     out.toString()
 }
@@ -164,10 +244,10 @@ internal func capturedPageBindingsHtml(page: DocumentationPage, documentation: D
     out.append(label(locale, "Explicit bindings from this page. Reader details stay in Technical details.",
         "本页的显式关联。技术信息见「技术详情」。") + "</p><ul>")
     for (binding in page.bindings) {
-        let state = capturedPageBindingState(binding, visible)
-        out.append("<li><span class=\"binding-state\" data-state=\"" + state + "\">")
-        out.append(capturedPageBindingStateLabel(state, locale) + "</span> ")
-        appendCapturedPageBindingTargetHtml(out, binding, visible, pageRootPrefix(page.route), state)
+        let target = CapturedPageBindingTarget(binding, visible)
+        out.append("<li><span class=\"binding-state\" data-state=\"" + target.state + "\">")
+        out.append(target.stateLabel(locale) + "</span> ")
+        appendCapturedPageBindingTargetHtml(out, binding, target, pageRootPrefix(page.route), locale)
         out.append("</li>")
     }
     out.append("</ul></section>\n")
@@ -180,26 +260,28 @@ internal func appendCapturedPageBindingsMarkdown(out: RenderTextBuffer,
     out.append("\n## " + label(locale, "API associations", "API 关联") + "\n\n")
     let visible = RenderProjection(documentation).visibleIndex
     for (binding in page.bindings) {
-        let target: ?SymbolDoc = match (binding.targetSymbolId) {
-            case Some(id) => visible.get(id)
-            case None => None
+        let target = CapturedPageBindingTarget(binding, visible)
+        let destination = target.destination(pageRootPrefix(page.route), true)
+        out.append("- **" + target.stateLabel(locale) + "** ")
+        if (!target.hidden) {
+            let spelling = match (target.symbol) { case Some(value) => value.qualifiedName; case None => binding.target }
+            if (destination.isSome()) { out.append("[") }
+            appendMarkdownCodeSpan(out, spelling)
+            if (let Some(url) <- destination) {
+                out.append("](" + encodeMarkdownDestination(url))
+                // Keep legacy local-link spelling stable; frozen decisions carry their own title.
+                if (target.navigation.isSome()) { out.append(" " + escapeJsonString(target.title(locale))) }
+                out.append(")")
+            } else if (target.navigation.isSome()) {
+                out.append(" — "); appendEscapedMarkdownText(out, target.title(locale))
+            }
         }
-        let state = if (binding.targetSymbolId.isSome() && target.isNone()) {
-            "unavailable"
-        } else { binding.state }
-        out.append("- **" + capturedPageBindingStateLabel(state, locale) + "** ")
-        if (state == "resolved" && target.isSome()) {
-            let symbol = target.getOrThrow()
-            let destination = pageRootPrefix(page.route) + markdownTargetPagePath(symbol, visible) +
-                "#" + symbolAnchor(symbol)
-            out.append("["); appendMarkdownCodeSpan(out, symbol.qualifiedName)
-            out.append("](" + encodeMarkdownDestination(destination) + ")")
-        } else if (state != "unavailable") { appendMarkdownCodeSpan(out, binding.target) }
         out.append(" — language: ")
         appendMarkdownCodeSpan(out, if (binding.language.isEmpty()) { "unknown" } else { binding.language })
         out.append("; line: " + binding.sourceLine.toString())
-        for ((key, text) in [("version", binding.version), ("source", binding.provenance),
-            ("selector", if (state == "unavailable") { "" } else { binding.selector })]) {
+        for ((key, text) in [("version", if (target.hidden) { "" } else { binding.version }),
+            ("source", if (target.hidden) { "" } else { binding.provenance }),
+            ("selector", if (target.hidden) { "" } else { binding.selector })]) {
             if (!text.isEmpty()) {
                 out.append("; " + key + ": ")
                 appendMarkdownCodeSpan(out, text.replace("\r", " ").replace("\n", " ").replace("\t", " "))

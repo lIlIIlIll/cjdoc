@@ -107,6 +107,8 @@ class ReleaseToolsTestSupport:
                     PROJECT_ROOT / f"tests/fixtures/golden-v{version}/{name}.docs.json",
                     directory / f"{name}.docs.json",
                 )
+        shutil.copytree(PROJECT_ROOT / "tests/fixtures/legacy13", root / "tests/fixtures/legacy13")
+        shutil.copytree(PROJECT_ROOT / "tests/fixtures/legacy14", root / "tests/fixtures/legacy14")
         (root / "tests/perf/baseline.json").write_text(json.dumps({
             "schemaVersion": "cjdoc.perf-baseline/1",
             "state": "frozen",

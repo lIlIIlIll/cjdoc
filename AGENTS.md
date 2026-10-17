@@ -2,7 +2,7 @@
 
 ## 项目目标
 
-`cjdoc` 是纯仓颉实现的仓颉 API 文档生成器。源码声明、注释和位置以 `std.ast` 与 lexer 为真值，输出 schema-versioned、确定性的 Doc IR v14，并严格迁移受支持的 v6/v7/v8/v9/v10/v11/v12/v13 输入。
+`cjdoc` 是纯仓颉实现的仓颉 API 文档生成器。源码声明、注释和位置以 `std.ast` 与 lexer 为真值，输出 schema-versioned、确定性的 Doc IR v15，并严格迁移受支持的 v6/v7/v8/v9/v10/v11/v12/v13/v14 输入。
 `--semantic chir` 可选择内置 `stdx.chir` provider 做结构化语义补充；CHIR 不覆盖源码/注释真值，也不替代 source/AST fallback。
 
 ## 开始工作前
@@ -39,13 +39,14 @@ target/release/bin/main generate --project tests/fixtures/projects/basic --forma
 
 安装 `just` 后也可运行 `just doctor`、`just test`、`just check`、`just smoke`。
 
-`scripts/check.sh` 假设 SDK 环境已经准备好，并要求 Bash 和 Python 标准库。它覆盖 build、unit、v14 goldens、v6–v13 严格迁移、schema 同步、两次生成确定性、strict codec round-trip、多页 HTML 全站校验、资源限制、安全和外部 provider fixture。
+`scripts/check.sh` 假设 SDK 环境已经准备好，并要求 Bash 和 Python 标准库。它覆盖 build、unit、v15 goldens、v6–v14 严格迁移、schema 同步、两次生成确定性、strict codec round-trip、多页 HTML 全站校验、资源限制、安全和外部 provider fixture。
 
 ## 修改规则
 
 - 不用正则解析仓颉声明，不实现 type checker，不解析 CHIR dump 文本。
 - 新增不确定仓颉 API 时，先增加最小 probe，记录真实编译/运行结果。
 - 改 Doc IR 时同时修改：`src/model/doc_ir.cj`、JSON encoder/decoder、`src/schema_data/` 中的 schema source、生成的 `docs/schema/`、public-contract tests 和 current-version golden。已发布的 legacy schema/golden 只读冻结；破坏性 schema 变更必须提升 schema version。
+- v15 TypeRef 的 `semanticState` / `semanticCanonical` / `semanticProvider` 是旧 `semantic` 三值的命名平铺。比较冻结迁移 receipt 或旧对象时，维护脚本须严格逆映射到旧布局，保留全部值（包括 null），拒绝缺失/混合布局；不能丢掉语义字段或刷新历史 receipt 哈希来消除布局差异。
 - 改 provider SPI 时保持 provider session 的 `open → analyze → close` 生命周期；失败必须保留 AST fallback 并产生 `CJDOC2xxx`。
 - 改 renderer 时增加安全测试；用户注释不得未经清理进入 HTML。
 - 不手改 golden 来迎合实现。运行 `bash scripts/update_goldens.sh`，再检查 diff。

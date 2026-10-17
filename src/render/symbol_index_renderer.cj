@@ -43,7 +43,7 @@ private func appendSymbolIndexRelations(out: RenderTextBuffer, symbol: SymbolDoc
 }
 
 private func appendSymbolIndexReferences(out: RenderTextBuffer, symbol: SymbolDoc,
-    visibleIndex: HashMap<String, SymbolDoc>): Unit {
+    visibleIndex: HashMap<String, SymbolDoc>, hrefPrefix: String): Unit {
     out.append(",\"references\":[")
     var first = true
     match (symbol.documentation) {
@@ -64,6 +64,7 @@ private func appendSymbolIndexReferences(out: RenderTextBuffer, symbol: SymbolDo
                 appendSearchJsonString(out, tag.referenceState)
                 out.append(",\"targetId\":")
                 appendSymbolIndexNullableId(out, tag.targetSymbolId)
+                out.append(",\"navigation\":"); appendInventoryNavigation(out, tag.navigation, hrefPrefix)
                 out.append("}")
             }
         case None => ()
@@ -74,10 +75,11 @@ private func appendSymbolIndexReferences(out: RenderTextBuffer, symbol: SymbolDo
 internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: String = "html/", version!: ?String = None): String {
     validateTypedDocumentationSet(documentation)
     let projection = RenderProjection(documentation)
+    let identities = SymbolInventoryIdentity(documentation, publicationRevision: version)
     let symbols = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(symbols, lessThan: { left, right => left.id < right.id }, stable: true)
     let out = RenderTextBuffer()
-    out.append("{\n  \"schemaVersion\": \"cjdoc.symbol-index/1\",\n  \"project\": {\"name\": ")
+    out.append("{\n  \"schemaVersion\": \"cjdoc.symbol-index/2\",\n  \"project\": {\"name\": ")
     appendSearchJsonString(out, documentation.project.name)
     out.append(", \"audience\": ")
     appendSearchJsonString(out, documentation.configuration.audience)
@@ -88,6 +90,7 @@ internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: St
             appendSearchJsonString(out, value)
         case None => ()
     }
+    appendInventoryMetadata(out, documentation, identities)
     out.append(",\n  \"entries\": [")
     var first = true
     for (symbol in symbols) {
@@ -97,6 +100,13 @@ internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: St
         appendSearchJsonString(out, symbol.id)
         out.append(",\"canonicalId\":")
         appendSearchJsonString(out, symbol.id)
+        out.append(",\"identity\":")
+        let documentSet = identities.byModule.get(symbol.moduleId)
+        appendSearchJsonString(out, documentSet.map({ value => value.identity }).getOrDefault({ => "" }))
+        out.append(",\"documentSetId\":")
+        appendSearchJsonString(out, documentSet.map({ value => value.id }).getOrDefault({ => "" }))
+        out.append(",\"symbolKey\":")
+        appendSearchJsonString(out, symbolInventoryKey(symbol))
         out.append(",\"name\":")
         appendSearchJsonString(out, symbol.name)
         out.append(",\"qualifiedName\":")
@@ -113,6 +123,8 @@ internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: St
         appendSearchJsonString(out, symbol.visibility)
         out.append(",\"semanticState\":")
         appendSearchJsonString(out, symbol.semantic.state)
+        out.append(",\"sourceHeader\":")
+        appendSearchJsonString(out, symbol.headerSpelling)
         out.append(",\"summary\":")
         match (symbol.documentation) {
             case Some(comment) => appendSearchJsonString(out, summaryPlainText(comment))
@@ -123,7 +135,8 @@ internal func renderSymbolIndex(documentation: DocumentationSet, hrefPrefix!: St
         out.append(",\"href\":")
         appendSearchJsonString(out, hrefPrefix + symbolUrl(projection.visibleIndex, symbol))
         appendSymbolIndexRelations(out, symbol, projection.visibleIndex)
-        appendSymbolIndexReferences(out, symbol, projection.visibleIndex)
+        appendSymbolIndexReferences(out, symbol, projection.visibleIndex, hrefPrefix)
+        appendInventoryTypeNavigations(out, symbol, hrefPrefix)
         out.append("}")
     }
     if (!first) { out.append("\n  ") }

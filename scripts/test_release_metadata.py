@@ -15,6 +15,7 @@ import zipfile
 
 from scripts import package_release
 from scripts import perf_gate
+from scripts import repository_input_migrations
 from scripts import real_repository_smoke
 from scripts import safe_output_root
 from scripts import source_identity
@@ -199,6 +200,70 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "receipt manifest is not byte-frozen"):
                 verify_repository_inputs.verify_repository_inputs(repo)
 
+    def test_v14_matching_corruption_in_both_copies_is_rejected_by_fixed_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo, _ = self.make_release_repo(Path(temporary))
+            for directory in ("golden-v14", "legacy14"):
+                source = repo / "tests/fixtures" / directory / "basic.docs.json"
+                source.write_bytes(source.read_bytes() + b"\n")
+            with self.assertRaisesRegex(ValueError, "v14 legacy input is not byte-frozen"):
+                verify_repository_inputs.verify_repository_inputs(repo)
+
+    def test_v13_and_v14_goldens_and_freeze_copies_are_immutable(self) -> None:
+        for directory in ("golden-v13", "legacy13", "golden-v14", "legacy14"):
+            with self.subTest(directory=directory), tempfile.TemporaryDirectory() as temporary:
+                repo, _ = self.make_release_repo(Path(temporary))
+                source = repo / "tests/fixtures" / directory / "basic.docs.json"
+                source.write_bytes(source.read_bytes() + b"\n")
+                with self.assertRaisesRegex(ValueError, "v1[34] legacy input"):
+                    verify_repository_inputs.verify_repository_inputs(repo)
+
+    def test_legacy_fact_projection_preserves_all_three_nested_semantic_values(self) -> None:
+        value = {
+            "kind": "generic", "spelling": "Box<Widget>", "nullable": False,
+            "semanticState": "partial", "semanticCanonical": None, "semanticProvider": "source",
+            "navigation": None,
+            "arguments": [{
+                "kind": "named", "spelling": "Widget", "nullable": False, "arguments": [],
+                "semanticState": "resolved", "semanticCanonical": "library.Widget",
+                "semanticProvider": "chir", "navigation": None,
+            }, {
+                "kind": "typeParameter", "spelling": "T", "nullable": False, "arguments": [],
+                "semanticState": "unavailable", "semanticCanonical": None,
+                "semanticProvider": None, "navigation": None,
+            }],
+        }
+        expected = {
+            "kind": "generic", "spelling": "Box<Widget>", "nullable": False,
+            "semantic": {"state": "partial", "canonical": None, "provider": "source"},
+            "arguments": [{
+                "kind": "named", "spelling": "Widget", "nullable": False, "arguments": [],
+                "semantic": {"state": "resolved", "canonical": "library.Widget", "provider": "chir"},
+            }, {
+                "kind": "typeParameter", "spelling": "T", "nullable": False, "arguments": [],
+                "semantic": {"state": "unavailable", "canonical": None, "provider": None},
+            }],
+        }
+        repository_input_migrations.project_v15_legacy_facts(value)
+        self.assertEqual(value, expected)
+
+    def test_legacy_fact_projection_rejects_missing_or_mixed_semantic_wire(self) -> None:
+        for missing in ("semanticState", "semanticCanonical", "semanticProvider", None):
+            with self.subTest(missing=missing):
+                value = {
+                    "kind": "named", "spelling": "Widget", "nullable": False, "arguments": [],
+                    "semanticState": "resolved", "semanticCanonical": "library.Widget",
+                    "semanticProvider": "chir", "navigation": None,
+                }
+                if missing is None:
+                    value["semantic"] = {
+                        "state": "resolved", "canonical": "library.Widget", "provider": "chir",
+                    }
+                else:
+                    del value[missing]
+                with self.assertRaises(ValueError):
+                    repository_input_migrations.project_v15_legacy_facts(value)
+
     @unittest.skipIf(os.name == "nt", "fixture executable uses a POSIX shebang")
     def test_same_output_for_every_legacy_golden_does_not_satisfy_receipts(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -211,7 +276,7 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
                 "p=sys.argv[sys.argv.index('--input')+1]\n"
                 "v=json.load(open(p,encoding='utf-8'))\n"
                 "if v.get('corrupt'): raise SystemExit(2)\n"
-                "print(json.dumps({'schemaVersion':'cjdoc.doc-ir/" + str(CURRENT_GOLDEN_VERSION) + "'}))\n",
+                "print(json.dumps({'schemaVersion':'cjdoc.doc-ir/" + str(CURRENT_GOLDEN_VERSION) + "','generator':{'toolchain':''},'documentationRevision':'','apiCollectionState':{'complete':'resolved','partial':'partial'}.get(v.get('status'),'unavailable'),'dependencies':[],'documentSets':[]}))\n",
                 encoding="utf-8",
             )
             binary.chmod(0o755)

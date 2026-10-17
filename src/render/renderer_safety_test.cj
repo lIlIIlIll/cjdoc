@@ -138,7 +138,7 @@ class RendererSafetyTest {
         let documentation = rendererSafetyDocumentation(MarkdownNode("document"), tags: tags)
         let artifact = SymbolIndexDocumentationRenderer().render(documentation)[0]
         @Expect(artifact.path, "symbol-index/symbol-index.json")
-        @Expect(artifact.content.contains("cjdoc.symbol-index/1"), true)
+        @Expect(artifact.content.contains("cjdoc.symbol-index/2"), true)
         @Expect(artifact.content.contains("\"targetId\":\"${targetId}\""), true)
     }
 

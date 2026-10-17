@@ -600,7 +600,7 @@ stage_cli() {
     "${python_cmd}" -c 'import json,sys; document=json.load(open(sys.argv[1], encoding="utf-8")); assert len(document["declarations"])==25 and any(item["code"]=="CJDOC2101" and "worker executable is not configured" in item["message"] for item in document["diagnostics"])' \
         "${check_dir}/chir-unconfigured-cli.json"
 
-    for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 doc-ir-v11 doc-ir-v12 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions doc-ir-v13 doc-ir-v14 api-surface-v2 api-surface-v3 api-diff-v1 doctest-results-v1 search-index-v8 versions-v1 translation-coverage site-manifest api-diff-v2 doctest-results-v2 search-index-v9 versions-v2; do
+    for schema_name in doc-ir doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 doc-ir-v11 doc-ir-v12 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions doc-ir-v13 api-surface-v2 api-surface-v3 api-diff-v1 doctest-results-v1 search-index-v8 versions-v1 translation-coverage site-manifest api-diff-v2 doctest-results-v2 search-index-v9 versions-v2 doc-ir-v14 doc-ir-v15; do
         "${binary}" schema "${schema_name}" | tr -d '\r' \
             >"${check_dir}/schemas/${schema_name}.schema.json"
     done
@@ -613,6 +613,7 @@ stage_cli() {
     cmp docs/schema/doc-ir-v11.schema.json "${check_dir}/schemas/doc-ir-v11.schema.json"
     cmp docs/schema/doc-ir-v13.schema.json "${check_dir}/schemas/doc-ir-v13.schema.json"
     cmp docs/schema/doc-ir-v14.schema.json "${check_dir}/schemas/doc-ir-v14.schema.json"
+    cmp docs/schema/doc-ir-v15.schema.json "${check_dir}/schemas/doc-ir-v15.schema.json"
     cmp docs/schema/doc-ir-v12.schema.json "${check_dir}/schemas/doc-ir-v12.schema.json"
     cmp docs/schema/diagnostics.schema.json "${check_dir}/schemas/diagnostics.schema.json"
     cmp docs/schema/cfg-matrix.schema.json "${check_dir}/schemas/cfg-matrix.schema.json"
@@ -631,17 +632,17 @@ stage_cli() {
         cmp "docs/schema/${schema_name}.schema.json" "${check_dir}/schemas/${schema_name}.schema.json"
     done
 
-    run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v14/basic.docs.json
-    run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v14/functions.docs.json
-    run_golden types tests/fixtures/projects/types tests/fixtures/golden-v14/types.docs.json
-    run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v14/extend.docs.json
-    run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v14/source-edges.docs.json
-    run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v14/unsupported.docs.json
-    run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v14/workspace.docs.json
+    run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v15/basic.docs.json
+    run_golden functions tests/fixtures/projects/functions tests/fixtures/golden-v15/functions.docs.json
+    run_golden types tests/fixtures/projects/types tests/fixtures/golden-v15/types.docs.json
+    run_golden extend tests/fixtures/projects/extend_visibility tests/fixtures/golden-v15/extend.docs.json
+    run_golden source-edges "${source_edges_project}" tests/fixtures/golden-v15/source-edges.docs.json
+    run_golden unsupported tests/fixtures/projects/unsupported tests/fixtures/golden-v15/unsupported.docs.json
+    run_golden workspace tests/fixtures/projects/workspace tests/fixtures/golden-v15/workspace.docs.json
     run_golden conditional-linux tests/fixtures/projects/conditional \
-        tests/fixtures/golden-v14/conditional-linux.docs.json --cfg os=Linux
+        tests/fixtures/golden-v15/conditional-linux.docs.json --cfg os=Linux
     run_golden path-dependencies tests/fixtures/projects/path_dependencies \
-        tests/fixtures/golden-v14/path-dependencies.docs.json --include-path-dependencies
+        tests/fixtures/golden-v15/path-dependencies.docs.json --include-path-dependencies
 
     "${binary}" generate --project tests/fixtures/projects/basic \
         --format json --format markdown --format html --output "${check_dir}/all/first" \
@@ -683,7 +684,7 @@ stage_cli() {
     test -s "${check_dir}/versions-bad.stderr"
     "${binary}" generate --project tests/fixtures/projects/basic --format json --stdout \
         --cache-dir "${check_dir}/cache/stdout" >"${check_dir}/stdout.json"
-    "${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/14" and len(value["declarations"]) == 25' \
+    "${python_cmd}" -c 'import json,sys; value=json.load(open(sys.argv[1], encoding="utf-8")); assert value["schemaVersion"] == "cjdoc.doc-ir/15" and len(value["declarations"]) == 25' \
         "${check_dir}/stdout.json"
 
     set +e

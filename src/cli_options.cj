@@ -13,6 +13,12 @@ internal class NewCliOptions {
     var chirWorkerExecutable: ?String = None
     var highlightAdapter: ?String = None
     var highlightNode: ?String = None
+    var buildContext: ?String = None
+    let documentSources = ArrayList<String>()
+    let documentInventoryPins = ArrayList<DocumentInventoryPin>()
+    var linkLanguage = ""
+    var linkLanguageFallback = false
+    var linkCompatible = false
     let chirImportPaths = ArrayList<String>()
     var project = "."
     var projectExplicit = false
@@ -82,6 +88,9 @@ internal func newUsage(): String {
     "                 [--check-examples]\n" +
     "                 [--cfg NAME=VALUE] [--include-path-dependencies] [--include-cached-dependencies]\n" +
     "                 [--dependency-source NAME=PATH] [--cjpm-cache <dir>]\n" +
+    "                 [--build-context <record.json>] [--doc-source <catalog-or-dir>]...\n" +
+    "                 [--doc-inventory-pin PATH=SHA256]...\n" +
+    "                 [--link-language <lang>] [--link-language-fallback] [--link-compatible]\n" +
     "                 [--cache-dir <dir>|--no-cache] [--force-owned]\n" +
     "                 [--locale zh-CN|en|--all-languages] [--require-language zh-CN|en]... [--markdown-layout site|single]\n" +
     "  cjdoc check [--project <dir>] [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
@@ -89,6 +98,9 @@ internal func newUsage(): String {
     "              [--highlight-adapter <absolute path> --highlight-node <absolute path>]\n" +
     "              [--deny-warnings] [--lint-profile off|standard|strict] [--check-examples]\n" +
     "              [--api-surface-baseline <file>] [--min-symbol-coverage 0..100] [--min-parameter-coverage 0..100]\n" +
+    "              [--build-context <record.json>] [--doc-source <catalog-or-dir>]...\n" +
+    "              [--doc-inventory-pin PATH=SHA256]...\n" +
+    "              [--link-language <lang>] [--link-language-fallback] [--link-compatible]\n" +
     "  cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout] [--force-owned] [--doc-version <version>]\n" +
@@ -167,6 +179,20 @@ internal func highlightHostPathIsAbsolute(value: String): Bool {
 
 private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>, index: Int64): ?Int64 {
     match (args[index]) {
+        case "--build-context" =>
+            options.buildContext = Some(requireNonEmptyCliValue(args, index, "--build-context"))
+            Some(index + 2)
+        case "--doc-source" =>
+            options.documentSources.add(requireNonEmptyCliValue(args, index, "--doc-source"))
+            Some(index + 2)
+        case "--doc-inventory-pin" =>
+            let value = requireNonEmptyCliValue(args, index, "--doc-inventory-pin")
+            let separator = value.lastIndexOf("=").getOrThrow({ => IllegalArgumentException("inventory pin requires PATH=SHA256") })
+            options.documentInventoryPins.add(DocumentInventoryPin(value[..separator], value[separator + 1..]))
+            Some(index + 2)
+        case "--link-language" =>
+            options.linkLanguage = public_model.documentationLanguage(requireNonEmptyCliValue(args, index, "--link-language"))
+            Some(index + 2)
         case "--highlight-adapter" =>
             options.highlightAdapter = Some(requireHighlightHostPath(args, index, "--highlight-adapter"))
             Some(index + 2)
@@ -309,6 +335,8 @@ private func parseEnumOption(options: NewCliOptions, args: Array<String>, index:
 
 private func parseFlagOption(options: NewCliOptions, args: Array<String>, index: Int64): ?Int64 {
     match (args[index]) {
+        case "--link-language-fallback" => options.linkLanguageFallback = true; Some(index + 1)
+        case "--link-compatible" => options.linkCompatible = true; Some(index + 1)
         case "--stdout" => options.stdout = true; Some(index + 1)
         case "--deny-warnings" => options.denyWarnings = true; Some(index + 1)
         case "--deny-breaking-api" => options.denyBreakingApi = true; Some(index + 1)
@@ -366,6 +394,10 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
     }
 }
 private func validateCliOptions(options: NewCliOptions): Unit {
+    if ((options.buildContext.isSome() || !options.documentSources.isEmpty() || !options.documentInventoryPins.isEmpty() || !options.linkLanguage.isEmpty() ||
+        options.linkLanguageFallback || options.linkCompatible) && options.command != "generate" && options.command != "check") {
+        throw IllegalArgumentException("dependency documentation options are only valid for generate and check")
+    }
     if (options.highlightAdapter.isSome() || options.highlightNode.isSome()) {
         if (options.command != "generate" && options.command != "check") {
             throw IllegalArgumentException("highlight host options are only valid for generate and check")

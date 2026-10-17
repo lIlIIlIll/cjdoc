@@ -9,6 +9,3 @@ public let DOC_IR_V14_SCHEMA = DOC_IR_V13_SCHEMA
     .replace("    \"status\": {\"enum\": [\"complete\", \"partial\"]},",
         "    \"status\": {\"enum\": [\"complete\", \"partial\"]},\n" +
         "    \"apiCollectionState\": {\"enum\": [\"resolved\", \"partial\", \"unavailable\"]},")
-
-public let DOC_IR_SCHEMA = DOC_IR_V14_SCHEMA
-    .replace("doc-ir-v14.schema.json", "doc-ir.schema.json")

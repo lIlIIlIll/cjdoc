@@ -12,16 +12,24 @@ public class DocumentationPageBinding {
     public let language: String
     public let state: String
     public let targetSymbolId: ?String
+    /** External navigation is independent of the captured local association state. */
+    public let navigation: ?TypeNavigation
     public init(target: String, selector: String, provenance: String, version: String,
         sourceLine: Int64, language!: String = "markdown", state!: String = "unresolved",
-        targetSymbolId!: ?String = None) {
+        targetSymbolId!: ?String = None, navigation!: ?TypeNavigation = None) {
         if (sourceLine < 1 || !["resolved", "unresolved", "ambiguous", "unavailable", "conflict"].contains(state) ||
             (state == "resolved") != targetSymbolId.isSome()) {
             throw IllegalArgumentException("invalid captured page binding")
         }
+        if (let Some(value) <- navigation) {
+            if (state == "unavailable" && value.state == "resolved") {
+                throw IllegalArgumentException("unavailable page binding cannot retain resolved navigation")
+            }
+        }
         this.target = target; this.selector = selector; this.provenance = provenance
         this.version = version; this.sourceLine = sourceLine; this.language = language
         this.state = state; this.targetSymbolId = targetSymbolId
+        this.navigation = navigation
     }
 }
 

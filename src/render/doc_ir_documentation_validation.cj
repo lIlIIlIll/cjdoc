@@ -58,6 +58,7 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         index++
     }
     validateModuleDependencyDag(documentation.modules, modulesById)
+    validateDependencyMetadata(documentation, moduleIds)
 
     let providerKeys = HashSet<String>()
     let providersByKey = HashMap<String, ProviderInfo>()
@@ -245,6 +246,11 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         if (let Some(comment) <- declaration.documentation) {
             let validFields = HashSet<String>()
             for (text in comment.localizedTexts) {
+                if (let Some(navigation) <- text.navigation) {
+                    if (!navigation.url.isEmpty() && navigationHref("", navigation.url).isNone()) {
+                        domainFail("$.documentation.localizedTexts.navigation.url", "unsafe navigation URL")
+                    }
+                }
                 let paired = ["valid", "empty", "conflict"].contains(text.state)
                 if (paired && text.fieldId.isEmpty()) {
                     domainFail("$.documentation.localizedTexts.fieldId", "paired field identity is missing")
@@ -285,6 +291,11 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
             }
             for (tag in comment.tags) {
                 let tagPath = "$.declarations[${index}].documentation.tags"
+                if (let Some(navigation) <- tag.navigation) {
+                    if (!navigation.url.isEmpty() && navigationHref("", navigation.url).isNone()) {
+                        domainFail(tagPath + ".navigation.url", "unsafe navigation URL")
+                    }
+                }
                 if (!tag.directives.isEmpty() && tag.name != "example") {
                     domainFail(tagPath, "directives are only allowed on @example tags")
                 }
@@ -499,6 +510,11 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         }
         for (id in page.targetSymbolIds) { if (!byId.contains(id)) { domainFail("$.pages.targetSymbolIds", "unknown SymbolId") } }
         for (binding in page.bindings) {
+            if (let Some(navigation) <- binding.navigation) {
+                if (!navigation.url.isEmpty() && navigationHref("", navigation.url).isNone()) {
+                    domainFail("$.pages.bindings.navigation.url", "unsafe navigation URL")
+                }
+            }
             if (let Some(id) <- binding.targetSymbolId) {
                 if (!byId.contains(id) || !page.targetSymbolIds.toArray().contains(id)) {
                     domainFail("$.pages.bindings", "binding target must belong to the page's captured targets")

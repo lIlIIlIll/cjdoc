@@ -7,6 +7,58 @@ import cjdoc.model.*
 
 internal let EXTERNAL_DOC_INDEX_MAX_BYTES: Int64 = 8 * 1024 * 1024
 internal let EXTERNAL_DOC_CONFIG_MAX_BYTES: Int64 = 64 * 1024
+internal let EXTERNAL_DOC_TOTAL_MAX_BYTES: Int64 = 32 * 1024 * 1024
+
+// One generation owns this budget, including catalogs and legacy inventories.
+// Reservations survive failed reads/parses: malformed inputs cannot reset it.
+internal class ExternalDocInventoryBudget {
+    private var bytes: Int64 = 0
+    private var inventories: Int64 = 0
+    private var documentSets: Int64 = 0
+    private var dependencyEdges: Int64 = 0
+
+    func reserveInventories(count: Int64): Unit {
+        if (count < 0 || count > 256 - inventories || count > 256 - documentSets) {
+            throw IllegalArgumentException("documentation set budget exceeded")
+        }
+        inventories += count
+        documentSets += count
+    }
+
+    func reserveAdditionalDocumentSets(count: Int64): Unit {
+        if (count < 0 || count > 256 - documentSets) {
+            throw IllegalArgumentException("documentation set budget exceeded")
+        }
+        documentSets += count
+    }
+
+    func reserveDependencyEdges(count: Int64): Unit {
+        if (count < 0 || count > 100000 - dependencyEdges) {
+            throw IllegalArgumentException("external dependency graph edge budget exceeded")
+        }
+        dependencyEdges += count
+    }
+
+    func reserveFileBytes(path: Path): Int64 {
+        let info = FileInfo(path)
+        let size = info.size
+        if (!info.isRegular() || info.isSymbolicLink() || size < 0 ||
+            size > EXTERNAL_DOC_INDEX_MAX_BYTES || size > EXTERNAL_DOC_TOTAL_MAX_BYTES - bytes) {
+            throw IllegalArgumentException("external inventory byte budget exceeded")
+        }
+        bytes += size
+        size
+    }
+}
+
+internal class ExternalDocInventory {
+    let resolver: ExternalDocResolver
+    let path: Path
+    var readLimit: Int64 = -1
+    init(resolver: ExternalDocResolver, path: Path) {
+        this.resolver = resolver; this.path = path
+    }
+}
 
 internal class ExternalDocResolver {
     public let name: String
@@ -17,7 +69,17 @@ internal class ExternalDocResolver {
     public var format: String
     public var state: String
     public var reason: String
+    public var legacyReference: Bool = false
+    public var expectedFingerprint: String = ""
+    public var inventoryPinned: Bool = false
+    public var sourceGraph: ?DependencyGraphIndex = None
     private let targets = HashMap<String, String>()
+    public let documentSets = ArrayList<DocumentSetIdentity>()
+    public let entries = HashMap<String, ArrayList<ExternalDocEntry>>()
+    public let documentSetIds = HashMap<String, String>()
+    public let entryKeys = HashSet<String>()
+    public var priority: Int64 = 0
+    public let compatibilityMappings = HashMap<String, String>()
 
     init(name: String, baseUrl: String, state!: String = "available", reason!: String = "",
         version!: ?String = None, indexPath!: String = "", fingerprint!: String = "", format!: String = "") {
@@ -59,42 +121,13 @@ private func externalTomlValue(value: String): String {
     cleaned
 }
 
-private func externalHrefHasAsciiControlOrWhitespace(value: String): Bool {
-    for (byte in value.toArray()) {
-        if (byte <= 0x20 || byte == 0x7F) { return true }
-    }
-    false
-}
 
 private func safeExternalBaseUrl(value: String): Bool {
-    safeLocalExternalBaseUrl(value) ||
-        ((value.startsWith("https://") || value.startsWith("http://")) &&
-        !externalHrefHasAsciiControlOrWhitespace(value) &&
-        !value.contains("#") && !value.contains("?"))
+    safeDependencyExternalBase(value)
 }
 
-private func safeExternalHref(baseUrl: String, href: String): ?String {
-    if (safeLocalExternalBaseUrl(baseUrl)) { return safeLocalExternalHref(baseUrl, href) }
-    if (externalHrefHasAsciiControlOrWhitespace(href)) { return None }
-    if (href.startsWith("http://") || href.startsWith("https://")) {
-        if (!safeExternalBaseUrl(href)) { return None }
-        return Some(href)
-    }
-    var relative = href.trimAscii()
-    while (relative.startsWith("/")) { relative = relative.removePrefix("/") }
-    var anchor = ""
-    match (relative.indexOf("#")) {
-        case Some(index) =>
-            anchor = relative[index + 1..]
-            relative = relative[..index]
-        case None => ()
-    }
-    if (relative.isEmpty() || relative.contains("..") || relative.contains("\\") ||
-        relative.contains("%") || relative.contains("?") ||
-        anchor.contains("#") || anchor.contains("%") ||
-        anchor.contains("\\") || anchor.contains("?")) { return None }
-    let suffix = if (anchor.isEmpty()) { "" } else { "#" + anchor }
-    Some(baseUrl + "/" + relative + suffix)
+internal func safeExternalHref(baseUrl: String, href: String): ?String {
+    safeDependencyExternalHref(baseUrl, href)
 }
 
 private func externalIndexLabel(value: String): String {
@@ -117,11 +150,6 @@ private func jsonStringField(object: JsonObject, key: String): ?String {
     }
 }
 
-private func jsonArrayValues(value: JsonArray): Array<JsonNode> {
-    let result = ArrayList<JsonNode>()
-    for (index in 0..value.size()) { result.add(value.get(index).getOrThrow()) }
-    result.toArray()
-}
 
 private func addExternalEntry(resolver: ExternalDocResolver, object: JsonObject): Unit {
     let href = match (jsonStringField(object, "href")) {
@@ -140,105 +168,121 @@ private func addExternalEntry(resolver: ExternalDocResolver, object: JsonObject)
     }
 }
 
-private func loadExternalIndex(projectRoot: String, name: String, indexPath: String,
-    baseUrl: String, expectedVersion: ?String): ExternalDocResolver {
-    let indexLabel = externalIndexLabel(indexPath)
-    let resolver = ExternalDocResolver(name, baseUrl, version: expectedVersion, indexPath: indexLabel)
-    if (!safeExternalBaseUrl(baseUrl)) {
-        return ExternalDocResolver(name, baseUrl, version: expectedVersion, indexPath: indexLabel,
-            state: "unavailable", reason: "external documentation base URL is unsafe")
-    }
-    let path = if (indexPath.startsWith("/") || indexPath.contains(":")) {
-        Path(indexPath)
-    } else {
-        Path(projectRoot).join(indexPath)
-    }
-    if (!exists(path)) {
-        return ExternalDocResolver(name, baseUrl, version: expectedVersion, indexPath: indexLabel,
-            state: "unavailable", reason: "external documentation index is missing")
-    }
-    try {
-        let indexText = readTextBounded(path, EXTERNAL_DOC_INDEX_MAX_BYTES)
-        resolver.fingerprint = externalDocFingerprint(indexText)
-        let parsed = JsonNode.parse(indexText,
-            config: JsonReadOptions(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject,
-                maxDepth: 32, maxStringBytes: EXTERNAL_DOC_INDEX_MAX_BYTES,
-                maxBufferedValueBytes: EXTERNAL_DOC_INDEX_MAX_BYTES,
-                maxInputBytes: EXTERNAL_DOC_INDEX_MAX_BYTES))
-        let object = parsed.asObject()
-        let schemaVersion = match (jsonStringField(object, "schemaVersion")) {
-            case Some(value) => value
-            case None => ""
-        }
-        resolver.format = schemaVersion
-        if (schemaVersion != "cjdoc.symbol-index/1") {
-            resolver.state = "unavailable"
-            resolver.reason = "external documentation index schema is stale"
-            return resolver
-        }
-        match (expectedVersion) {
-            case Some(version) =>
-                if (jsonStringField(object, "version") != Some(version)) {
-                    resolver.state = "unavailable"
-                    resolver.reason = "external documentation index version is stale"
-                    return resolver
-                }
-            case None => ()
-        }
-        let entries = match (jsonObjectField(object, "symbols")) {
-            case Some(value) => value.asArray()
-            case None => match (jsonObjectField(object, "entries")) {
-                case Some(value) => value.asArray()
-                case None => throw IllegalArgumentException("external documentation index has no symbols or entries")
-            }
-        }
-        for (entry in jsonArrayValues(entries)) {
-            addExternalEntry(resolver, entry.asObject())
-        }
-        resolver
-    } catch (_: Exception) {
+private func parseExternalIndex(resolver: ExternalDocResolver, indexText: String,
+    budget: ExternalDocInventoryBudget): Unit {
+    resolver.fingerprint = externalDocFingerprint(indexText)
+    if (!resolver.expectedFingerprint.isEmpty() && resolver.fingerprint != resolver.expectedFingerprint) {
         resolver.state = "unavailable"
-        resolver.reason = "external documentation index is invalid"
-        resolver
+        resolver.reason = "inventory SHA-256 does not match the independently supplied host pin"
+        return
+    }
+    resolver.inventoryPinned = !resolver.expectedFingerprint.isEmpty()
+    let parsed = JsonNode.parse(indexText,
+        config: JsonReadOptions(duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject,
+            maxDepth: 32, maxStringBytes: EXTERNAL_DOC_INDEX_MAX_BYTES,
+            maxBufferedValueBytes: EXTERNAL_DOC_INDEX_MAX_BYTES,
+            maxInputBytes: EXTERNAL_DOC_INDEX_MAX_BYTES))
+    let object = parsed.asObject()
+    let schemaVersion = jsonStringField(object, "schemaVersion").getOrDefault({ => "" })
+    resolver.format = schemaVersion
+    if (schemaVersion != "cjdoc.symbol-index/1" && schemaVersion != "cjdoc.symbol-index/2") {
+        resolver.state = "unavailable"
+        resolver.reason = "external documentation index schema is stale"
+        return
+    }
+    if (schemaVersion == "cjdoc.symbol-index/2") { readExternalDocumentSets(resolver, object, budget) }
+    if (schemaVersion == "cjdoc.symbol-index/2") { readExternalDependencyGraph(resolver, object, budget) }
+    if (let Some(version) <- resolver.version) {
+        if (jsonStringField(object, "version") != Some(version)) {
+            resolver.state = "unavailable"
+            resolver.reason = "external documentation index version is stale"
+            return
+        }
+    }
+    let entries = match (jsonObjectField(object, "symbols")) {
+        case Some(value) => value.asArray()
+        case None => object.get("entries").getOrThrow().asArray()
+    }
+    if (entries.size() > 32768) { throw IllegalArgumentException("external index entry budget exceeded") }
+    for (index in 0..entries.size()) {
+        let entry = entries.get(index).getOrThrow().asObject()
+        if (schemaVersion == "cjdoc.symbol-index/2") { addDependencyExternalEntry(resolver, entry) }
+        else { addExternalEntry(resolver, entry) }
     }
 }
 
-private func appendExternalResolver(result: ArrayList<ExternalDocResolver>, projectRoot: String,
-    name: String, indexPath: String, baseUrl: String, version: ?String): Unit {
-    if (name.isEmpty()) { return }
-    if (indexPath.isEmpty() || baseUrl.isEmpty()) {
-        result.add(ExternalDocResolver(name, baseUrl, version: version,
-            indexPath: externalIndexLabel(indexPath), state: "unavailable",
-            reason: "external documentation configuration is incomplete"))
-    } else {
-        result.add(loadExternalIndex(projectRoot, name, indexPath, baseUrl, version))
+internal func loadExternalInventories(inventories: ArrayList<ExternalDocInventory>,
+    budget: ExternalDocInventoryBudget): Array<ExternalDocResolver> {
+    // Preflight every admitted inventory before opening any of them. A missing
+    // or oversized index leaves later, independent inventories eligible.
+    for (inventory in inventories where inventory.resolver.state == "available") {
+        try {
+            inventory.readLimit = budget.reserveFileBytes(inventory.path)
+        } catch (_: Exception) {
+            inventory.resolver.state = "unavailable"
+            inventory.resolver.reason = "external documentation index is missing, unsafe or over budget"
+        }
     }
+    let result = ArrayList<ExternalDocResolver>()
+    for (inventory in inventories) {
+        let resolver = inventory.resolver
+        if (resolver.state == "available") {
+            try {
+                parseExternalIndex(resolver, readTextBounded(inventory.path, inventory.readLimit), budget)
+            } catch (_: Exception) {
+                resolver.state = "unavailable"
+                resolver.reason = "external documentation index is invalid or over budget"
+            }
+        }
+        result.add(resolver)
+    }
+    result.toArray()
 }
-internal func loadExternalDocResolvers(projectRoot: String): Array<ExternalDocResolver> {
+
+private func appendExternalInventory(result: ArrayList<ExternalDocInventory>, projectRoot: String,
+    name: String, indexPath: String, baseUrl: String, version: ?String): Unit {
+    if (name.isEmpty() || result.size > 256) { return }
+    let resolver = ExternalDocResolver(name, baseUrl, version: version, indexPath: externalIndexLabel(indexPath))
+    resolver.legacyReference = true
+    if (result.size == 256) {
+        resolver.state = "unavailable"
+        resolver.reason = "documentation set budget exceeded"
+    } else if (indexPath.isEmpty() || baseUrl.isEmpty()) {
+        resolver.state = "unavailable"
+        resolver.reason = "external documentation configuration is incomplete"
+    } else if (!safeExternalBaseUrl(baseUrl)) {
+        resolver.state = "unavailable"
+        resolver.reason = "external documentation base URL is unsafe"
+    }
+    let path = if (indexPath.startsWith("/") || indexPath.contains(":")) { Path(indexPath) }
+        else { Path(projectRoot).join(indexPath) }
+    result.add(ExternalDocInventory(resolver, path))
+}
+
+internal func configuredExternalInventories(projectRoot: String,
+    budget: ExternalDocInventoryBudget): ArrayList<ExternalDocInventory> {
+    let result = ArrayList<ExternalDocInventory>()
     let path = Path(projectRoot).join("cjdoc.toml")
-    if (!exists(path)) { return [] }
+    if (!exists(path)) { return result }
     let text = readTextBounded(path, EXTERNAL_DOC_CONFIG_MAX_BYTES)
     var section = ""
     var name = ""
     var indexPath = ""
     var baseUrl = ""
     var version: ?String = None
-    let result = ArrayList<ExternalDocResolver>()
     for (rawLine in text.split("\n")) {
         let line = rawLine.trimAscii()
         if (line.isEmpty() || line.startsWith("#")) { continue }
         if (line.startsWith("[") && line.endsWith("]")) {
             if (section.startsWith("external-docs.")) {
-                appendExternalResolver(result, projectRoot, name, indexPath, baseUrl, version)
+                appendExternalInventory(result, projectRoot, name, indexPath, baseUrl, version)
                 name = ""
                 indexPath = ""
                 baseUrl = ""
                 version = None
             }
             section = line.removePrefix("[").removeSuffix("]").trimAscii()
-            if (section.startsWith("external-docs.")) {
-                name = section.removePrefix("external-docs.")
-            }
+            if (section.startsWith("external-docs.")) { name = section.removePrefix("external-docs.") }
             continue
         }
         if (!section.startsWith("external-docs.")) { continue }
@@ -254,7 +298,13 @@ internal func loadExternalDocResolvers(projectRoot: String): Array<ExternalDocRe
         }
     }
     if (section.startsWith("external-docs.")) {
-        appendExternalResolver(result, projectRoot, name, indexPath, baseUrl, version)
+        appendExternalInventory(result, projectRoot, name, indexPath, baseUrl, version)
     }
-    result.toArray()
+    budget.reserveInventories(if (result.size > 256) { 256 } else { result.size })
+    result
+}
+
+internal func loadExternalDocResolvers(projectRoot: String): Array<ExternalDocResolver> {
+    let budget = ExternalDocInventoryBudget()
+    loadExternalInventories(configuredExternalInventories(projectRoot, budget), budget)
 }
