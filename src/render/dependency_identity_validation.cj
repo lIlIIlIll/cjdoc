@@ -40,8 +40,7 @@ internal func consumeDependencyMetadataEncoding(documentation: DocumentationSet,
 
 /** Lookups shared by all navigation occurrences in one validation pass. */
 internal class NavigationEvidence {
-    let dependencies = HashSet<String>()
-    let dependencyIdentities = HashSet<String>()
+    let dependencies = HashMap<String, DependencyInstance>()
     let documentSets = HashMap<String, DocumentSetIdentity>()
 
     func validate(value: TypeNavigation, path: String): Unit {
@@ -52,6 +51,10 @@ internal class NavigationEvidence {
         if (value.state != "resolved") { return }
         if (!value.documentSetId.isEmpty()) {
             if (let Some(documentSet) <- documentSets.get(value.documentSetId)) {
+                if (value.matchLevel == "exact" && documentSet.state != "declared") {
+                    domainFail(path + ".documentSetId",
+                        "exact navigation requires a declared documentation.documentSets record")
+                }
                 if (!value.apiIdentity.isEmpty() && value.apiIdentity != documentSet.identity) {
                     domainFail(path + ".apiIdentity", "must match the referenced documentation.documentSets identity")
                 }
@@ -69,14 +72,19 @@ internal class NavigationEvidence {
             }
         }
         if (!value.dependencyInstanceId.isEmpty()) {
-            if (!dependencies.contains(value.dependencyInstanceId)) {
-                domainFail(path + ".dependencyInstanceId",
+            let dependency = match (dependencies.get(value.dependencyInstanceId)) {
+                case Some(record) => record
+                case None => domainFail(path + ".dependencyInstanceId",
                     "must reference an existing documentation.dependencies instanceId")
+            }
+            if (value.matchLevel == "exact" && dependency.state != "observed" && dependency.state != "verified") {
+                domainFail(path + ".dependencyInstanceId",
+                    "exact navigation requires observed or verified documentation.dependencies evidence")
             }
             // Compatible mappings and unverified manual references may select a
             // document API identity different from the actual dependency bytes.
             if (value.matchLevel == "exact" && !value.apiIdentity.isEmpty() &&
-                !dependencyIdentities.contains(compositeKey(value.dependencyInstanceId, value.apiIdentity))) {
+                value.apiIdentity != dependency.identity) {
                 domainFail(path + ".apiIdentity",
                     "exact navigation must match the referenced documentation.dependencies identity")
             }
@@ -87,7 +95,6 @@ internal class NavigationEvidence {
 internal func validateDependencyMetadata(documentation: DocumentationSet,
     modules: HashSet<String>): NavigationEvidence {
     let evidence = NavigationEvidence()
-    let instances = HashSet<String>()
     for (value in documentation.dependencies) {
         // Dependency graph owners need not be rendered modules. Their stable
         // built-in module IDs remain valid offline even when dependency source
@@ -99,11 +106,10 @@ internal func validateDependencyMetadata(documentation: DocumentationSet,
         }
         let graphOwner = value.moduleId.startsWith("cjdoc:module:v1:")
         if ((!modules.contains(value.moduleId) && !graphOwner) ||
-            !instances.add(compositeKey(value.moduleId, value.instanceId))) {
+            evidence.dependencies.contains(value.instanceId)) {
             domainFail("$.dependencies", "invalid graph owner or duplicate dependency instance")
         }
-        let _ = evidence.dependencies.add(value.instanceId)
-        let _ = evidence.dependencyIdentities.add(compositeKey(value.instanceId, value.identity))
+        evidence.dependencies[value.instanceId] = value
     }
     for (value in documentation.documentSets) {
         if (!value.moduleId.isEmpty() && !value.moduleId.startsWith("cjdoc:module:v1:")) {

@@ -73,7 +73,7 @@ private func navigationEvidenceCodecFixture(): DocumentationSet {
         dependencies: [DependencyInstance("cjdoc:module:v1:evidence", "support",
             "dependency-evidence", "source", "api-evidence", "observed", "selected source")],
         documentSets: [DocumentSetIdentity("docs-evidence", "support", "api-evidence",
-            "observed", "portable-index", language: "en", indexIdentity: "index-evidence")])
+            "declared", "portable-index", language: "en", indexIdentity: "index-evidence")])
 }
 
 private func replaceFirstNavigationEvidenceField(encoded: String, field: String, original: String): String {
@@ -89,6 +89,62 @@ private let LEGACY14_PAGE_BINDING_CONTRACT = """
 
 @Test
 class ModelCodecV15Contracts {
+    @TestCase
+    func exactNavigationRejectsInadmissibleDependencyStates(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        for (state in ["conflict", "unknown", "declared"]) {
+            let corrupted = encoded.replace("\"state\": \"observed\"", "\"state\": \"${state}\"")
+            @Expect(corrupted != encoded)
+            @ExpectThrows[IllegalArgumentException](decodeDocIr(corrupted))
+            for (level in ["compatible", "manual"]) {
+                let allowed = corrupted.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"${level}\"")
+                @Expect(encodeDocIr(decodeDocIr(allowed)), allowed)
+            }
+        }
+    }
+
+    @TestCase
+    func exactNavigationRejectsUndeclaredDocumentSetStates(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        for (state in ["observed", "verified", "unknown"]) {
+            let corrupted = encoded.replace("\"state\": \"declared\"", "\"state\": \"${state}\"")
+            @Expect(corrupted != encoded)
+            @ExpectThrows[IllegalArgumentException](decodeDocIr(corrupted))
+            for (level in ["compatible", "manual"]) {
+                let allowed = corrupted.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"${level}\"")
+                @Expect(encodeDocIr(decodeDocIr(allowed)), allowed)
+            }
+        }
+    }
+
+    @TestCase
+    func dependencyInstanceIdsMustBeUniqueAcrossModules(): Unit {
+        let document = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("duplicate-instance"),
+            ConfigurationSnapshot(lintProfile: "off"),
+            dependencies: [
+                DependencyInstance("cjdoc:module:v1:first", "support", "first-instance",
+                    "source", "first-api", "observed", "selected source"),
+                DependencyInstance("cjdoc:module:v1:second", "support", "second-instance",
+                    "source", "second-api", "verified", "selected source")])
+        let encoded = encodeDocIr(document)
+        let corrupted = encoded.replace("\"instanceId\": \"second-instance\"", "\"instanceId\": \"first-instance\"")
+        @Expect(corrupted != encoded)
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(corrupted))
+    }
+
+    @TestCase
+    func exactNavigationAcceptsObservedAndVerifiedDependenciesWithDeclaredDocumentSet(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        for (state in ["observed", "verified"]) {
+            let admissible = encoded.replace("\"state\": \"observed\"", "\"state\": \"${state}\"")
+            let restored = decodeDocIr(admissible)
+            @Expect(restored.dependencies[0].state, state)
+            @Expect(restored.documentSets[0].state, "declared")
+            @Expect(restored.pages[0].bindings[0].navigation.getOrThrow().matchLevel, "exact")
+            @Expect(encodeDocIr(restored), admissible)
+        }
+    }
+
     @TestCase
     func navigationRejectsDanglingDocumentSetEvidence(): Unit {
         let encoded = encodeDocIr(navigationEvidenceCodecFixture())
