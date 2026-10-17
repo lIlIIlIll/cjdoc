@@ -50,15 +50,13 @@ internal func validateRange(value: SourceRange, path: String): Unit {
 }
 
 internal func validateType(value: TypeRef, path: String, depth: Int64,
-    providers: HashMap<String, ProviderInfo>, moduleId: String): Unit {
+    providers: HashMap<String, ProviderInfo>, moduleId: String, evidence: NavigationEvidence): Unit {
     if (depth > DOC_IR_MAX_TYPE_DEPTH) {
         domainFail(path, "type nesting exceeds ${DOC_IR_MAX_TYPE_DEPTH}")
     }
     if (value.kind.isEmpty()) { domainFail("${path}.kind", "must not be empty") }
     if (let Some(navigation) <- value.navigation) {
-        if (!navigation.url.isEmpty() && navigationHref("", navigation.url).isNone()) {
-            domainFail("${path}.navigation.url", "unsafe navigation URL")
-        }
+        evidence.validate(navigation, "${path}.navigation")
     }
     match (value.semantic.canonical) {
         case Some(canonical) => if (canonical.trimAscii().isEmpty()) {
@@ -99,7 +97,7 @@ internal func validateType(value: TypeRef, path: String, depth: Int64,
     }
     var index: Int64 = 0
     for (argument in value.arguments) {
-        validateType(argument, "${path}.arguments[${index}]", depth + 1, providers, moduleId)
+        validateType(argument, "${path}.arguments[${index}]", depth + 1, providers, moduleId, evidence)
         index++
     }
 }
@@ -138,7 +136,7 @@ internal func validMarkdownChild(parent: String, child: String): Bool {
     }
 }
 
-internal func validateMarkdownMetadata(node: MarkdownNode, path: String): Unit {
+internal func validateMarkdownMetadata(node: MarkdownNode, path: String, evidence: NavigationEvidence): Unit {
     match (node.metadata) {
         case None => ()
         case Some(value) =>
@@ -217,9 +215,7 @@ internal func validateMarkdownMetadata(node: MarkdownNode, path: String): Unit {
                 }
                 case "semantic_link" =>
                     if (let Some(navigation) <- value.semanticNavigation) {
-                        if (!navigation.url.isEmpty() && navigationHref("", navigation.url).isNone()) {
-                            domainFail(path + ".metadata.semanticNavigation.url", "unsafe navigation URL")
-                        }
+                        evidence.validate(navigation, path + ".metadata.semanticNavigation")
                     }
                     let target = value.semanticTarget.getOrThrow()
                     let state = value.semanticState.getOrThrow()
@@ -281,7 +277,8 @@ internal func validateMarkdownTable(value: MarkdownNode, path: String): Unit {
     }
 }
 
-internal func validateMarkdown(value: MarkdownNode, path: String, depth: Int64): Unit {
+internal func validateMarkdown(value: MarkdownNode, path: String, depth: Int64,
+    evidence: NavigationEvidence): Unit {
     if (depth > DOC_IR_MAX_MARKDOWN_DEPTH) {
         domainFail(path, "Markdown nesting exceeds ${DOC_IR_MAX_MARKDOWN_DEPTH}")
     }
@@ -293,7 +290,7 @@ internal func validateMarkdown(value: MarkdownNode, path: String, depth: Int64):
             "html_inline" | "custom_inline" | "semantic_link" => ()
         case _ => domainFail("${path}.kind", "unknown Markdown node kind")
     }
-    validateMarkdownMetadata(value, path)
+    validateMarkdownMetadata(value, path, evidence)
     if ((value.kind == "document" || value.kind == "block_quote" || value.kind == "list" ||
         value.kind == "list_item" || value.kind == "paragraph" || value.kind == "heading" ||
         value.kind == "thematic_break" || value.kind == "table" || value.kind == "table_row" ||
@@ -313,7 +310,7 @@ internal func validateMarkdown(value: MarkdownNode, path: String, depth: Int64):
             domainFail("${path}.children[${index}]",
                 "Markdown kind '${child.kind}' is not allowed under '${value.kind}'")
         }
-        validateMarkdown(child, "${path}.children[${index}]", depth + 1)
+        validateMarkdown(child, "${path}.children[${index}]", depth + 1, evidence)
         index++
     }
     validateMarkdownTable(value, path)

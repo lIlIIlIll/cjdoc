@@ -38,7 +38,55 @@ internal func consumeDependencyMetadataEncoding(documentation: DocumentationSet,
     }
 }
 
-internal func validateDependencyMetadata(documentation: DocumentationSet, modules: HashSet<String>): Unit {
+/** Lookups shared by all navigation occurrences in one validation pass. */
+internal class NavigationEvidence {
+    let dependencies = HashSet<String>()
+    let dependencyIdentities = HashSet<String>()
+    let documentSets = HashMap<String, DocumentSetIdentity>()
+
+    func validate(value: TypeNavigation, path: String): Unit {
+        if (!value.url.isEmpty() && navigationHref("", value.url).isNone()) {
+            domainFail(path + ".url", "unsafe navigation URL")
+        }
+        // Contextual failures retain evidence, but do not claim a selected target.
+        if (value.state != "resolved") { return }
+        if (!value.documentSetId.isEmpty()) {
+            if (let Some(documentSet) <- documentSets.get(value.documentSetId)) {
+                if (!value.apiIdentity.isEmpty() && value.apiIdentity != documentSet.identity) {
+                    domainFail(path + ".apiIdentity", "must match the referenced documentation.documentSets identity")
+                }
+                if (!value.language.isEmpty() && value.language != documentSet.language) {
+                    domainFail(path + ".language", "must match the referenced documentation.documentSets language")
+                }
+                if (!value.indexIdentity.isEmpty() && value.indexIdentity != documentSet.indexIdentity) {
+                    domainFail(path + ".indexIdentity", "must match the referenced documentation.documentSets indexIdentity")
+                }
+            } else if (value.matchLevel != "manual") {
+                // Manual references are unverified and may retain a publisher
+                // label without a captured document-set record.
+                domainFail(path + ".documentSetId",
+                    "must reference an existing documentation.documentSets record")
+            }
+        }
+        if (!value.dependencyInstanceId.isEmpty()) {
+            if (!dependencies.contains(value.dependencyInstanceId)) {
+                domainFail(path + ".dependencyInstanceId",
+                    "must reference an existing documentation.dependencies instanceId")
+            }
+            // Compatible mappings and unverified manual references may select a
+            // document API identity different from the actual dependency bytes.
+            if (value.matchLevel == "exact" && !value.apiIdentity.isEmpty() &&
+                !dependencyIdentities.contains(compositeKey(value.dependencyInstanceId, value.apiIdentity))) {
+                domainFail(path + ".apiIdentity",
+                    "exact navigation must match the referenced documentation.dependencies identity")
+            }
+        }
+    }
+}
+
+internal func validateDependencyMetadata(documentation: DocumentationSet,
+    modules: HashSet<String>): NavigationEvidence {
+    let evidence = NavigationEvidence()
     let instances = HashSet<String>()
     for (value in documentation.dependencies) {
         // Dependency graph owners need not be rendered modules. Their stable
@@ -54,15 +102,18 @@ internal func validateDependencyMetadata(documentation: DocumentationSet, module
             !instances.add(compositeKey(value.moduleId, value.instanceId))) {
             domainFail("$.dependencies", "invalid graph owner or duplicate dependency instance")
         }
+        let _ = evidence.dependencies.add(value.instanceId)
+        let _ = evidence.dependencyIdentities.add(compositeKey(value.instanceId, value.identity))
     }
-    let sets = HashSet<String>()
     for (value in documentation.documentSets) {
         if (!value.moduleId.isEmpty() && !value.moduleId.startsWith("cjdoc:module:v1:")) {
             domainFail("$.documentSets", "invalid producer-scoped module identifier")
         }
-        if (!sets.add(value.id)) { domainFail("$.documentSets", "duplicate document set identity") }
+        if (evidence.documentSets.contains(value.id)) { domainFail("$.documentSets", "duplicate document set identity") }
+        evidence.documentSets[value.id] = value
         if (!value.baseUrl.isEmpty() && markdownLinkDestination(value.baseUrl, allowRelative: true).isNone()) {
             domainFail("$.documentSets", "unsafe document set base URL")
         }
     }
+    evidence
 }

@@ -84,12 +84,114 @@ private func inventoryBudgetManual(value: api_model.DocumentationSet): api_model
     inventoryBudgetLink(inventoryBudgetSymbol(value, "use").documentation.getOrThrow().markdown, "legacy.Token").getOrThrow()
 }
 
+private func inventoryBudgetLanguageInventories(root: Path): Array<DocumentInventoryPin> {
+    let original = readTextBounded(root.join("modern.json"), 8 * 1024 * 1024)
+    @Assert(original.contains("\"language\":\"en\""))
+    let pins = ArrayList<DocumentInventoryPin>()
+    for ((name, language) in [("modern.json", "zh-CN"), ("fallback.json", "en")]) {
+        let text = original.replace("\"language\":\"en\"", "\"language\":\"" + language + "\"")
+        let path = root.join(name)
+        File.writeTo(path, text.toArray())
+        pins.add(DocumentInventoryPin(path.toString(), api_model.contractFingerprint(text)))
+    }
+    pins.toArray()
+}
+
+private func inventoryBudgetLanguageEntry(index: String, base: String, priority: Int64): String {
+    "{\"index\":\"" + index + "\",\"baseUrl\":\"https://docs.example.test/" + base +
+        "\",\"priority\":" + priority.toString() + "}"
+}
+
+private func inventoryBudgetLanguageNavigation(root: Path, documents: String, pins: Array<DocumentInventoryPin>,
+    fallback!: Bool = true): api_model.TypeNavigation {
+    File.writeTo(root.join("catalog.json"),
+        ("{\"schemaVersion\":\"cjdoc.doc-sources/1\",\"documents\":[" + documents + "]}").toArray())
+    let binary = getVariable("CJDOC_I18N_BINARY").getOrDefault({ => "target/release/bin/main" })
+    inventoryBudgetNavigation(DocumentationEngine().generate(GenerationRequest(root.toString(), lintProfile: "off",
+        documentSources: ["catalog.json"], documentInventoryPins: pins, linkLanguage: "zh-CN",
+        linkLanguageFallback: fallback, astPreflightExecutable: Some(binary))))
+}
+
 private func inventoryBudgetPad(path: Path, text: String, size: Int64): Unit {
     File.writeTo(path, (text + String.fromUtf8(Array<Byte>(size - text.size, repeat: b' '))).toArray())
 }
 
 @Test
 class SharedExternalInventoryBudgetTest {
+    @TestCase
+    func requestedLanguageOutranksSourcePriorityAtTheSameMatchLevel(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = inventoryBudgetProject(temporary)
+            let pins = inventoryBudgetLanguageInventories(root)
+            for ((requestedPriority, fallbackPriority) in [(0, 1), (-1000, 1000)]) {
+                let requested = inventoryBudgetLanguageEntry("modern.json", "requested", requestedPriority)
+                let fallback = inventoryBudgetLanguageEntry("fallback.json", "fallback", fallbackPriority)
+                for (documents in [requested + "," + fallback, fallback + "," + requested]) {
+                    let navigation = inventoryBudgetLanguageNavigation(root, documents, pins)
+                    @Expect(navigation.state, "resolved")
+                    @Expect(navigation.matchLevel, "exact")
+                    @Expect(navigation.language, "zh-CN")
+                    @Expect(navigation.url.startsWith("https://docs.example.test/requested/"))
+                }
+            }
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func betterMatchLevelOutranksRequestedLanguageAndSourcePriority(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = inventoryBudgetProject(temporary)
+            let pins = inventoryBudgetLanguageInventories(root)
+            let requested = inventoryBudgetLanguageEntry("modern.json", "requested", 1000)
+            let fallback = inventoryBudgetLanguageEntry("fallback.json", "fallback", -1000)
+            for (documents in [requested + "," + fallback, fallback + "," + requested]) {
+                // Only the other-language inventory is pinned: exact must beat manual.
+                let navigation = inventoryBudgetLanguageNavigation(root, documents, [pins[1]])
+                @Expect(navigation.state, "resolved")
+                @Expect(navigation.matchLevel, "exact")
+                @Expect(navigation.language, "en")
+                @Expect(navigation.url.startsWith("https://docs.example.test/fallback/"))
+            }
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func missingRequestedLanguageRequiresExplicitFallback(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = inventoryBudgetProject(temporary)
+            let pins = inventoryBudgetLanguageInventories(root)
+            let fallback = inventoryBudgetLanguageEntry("fallback.json", "fallback", 1)
+            let blocked = inventoryBudgetLanguageNavigation(root, fallback, pins, fallback: false)
+            @Expect(blocked.state != "resolved")
+            @Expect(blocked.reason, "selected API identity has no requested language")
+            let allowed = inventoryBudgetLanguageNavigation(root, fallback, pins)
+            @Expect(allowed.state, "resolved")
+            @Expect(allowed.matchLevel, "exact")
+            @Expect(allowed.language, "en")
+            @Expect(allowed.url.startsWith("https://docs.example.test/fallback/"))
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func equalLanguageAndPriorityTargetsRemainAmbiguous(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = inventoryBudgetProject(temporary)
+            let pins = inventoryBudgetLanguageInventories(root)
+            let first = inventoryBudgetLanguageEntry("modern.json", "first", 0)
+            let second = inventoryBudgetLanguageEntry("modern.json", "second", 0)
+            for (documents in [first + "," + second, second + "," + first]) {
+                let navigation = inventoryBudgetLanguageNavigation(root, documents, pins)
+                @Expect(navigation.state, "ambiguous")
+                @Expect(navigation.matchLevel, "none")
+                @Expect(navigation.url, "")
+            }
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
     @TestCase
     func brokenUnreferencedSourcesDoNotPoisonExactOrManualReferences(): Unit {
         let temporary = Directory.createTemp(getTempDirectory())

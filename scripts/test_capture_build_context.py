@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 try:
     from . import capture_build_context as capture
@@ -59,6 +60,23 @@ class BuildContextObservationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'changed before hashing'):
                 capture.artifact_digest(artifact, expected_size)
 
+    def test_same_length_source_rewrite_while_reading_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'api.cj'
+            source.write_bytes(b'old')
+            read_bytes = Path.read_bytes
+
+            def read_then_rewrite(path):
+                content = read_bytes(path)
+                before = path.stat()
+                path.write_bytes(b'new')
+                os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
+                return content
+
+            with patch.object(Path, 'read_bytes', read_then_rewrite):
+                with self.assertRaisesRegex(ValueError, 'input changed while observing'):
+                    capture.identity(Path(directory))
+
 
 class BuildContextManifestPathTests(unittest.TestCase):
     @staticmethod
@@ -77,6 +95,38 @@ class BuildContextManifestPathTests(unittest.TestCase):
             env=environment, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(destination.read_text(encoding="utf-8")), result.stderr
+
+    def test_receipt_paths_bind_from_canonical_output_directory(self):
+        for link_kind in ("ancestor", "file"):
+            with self.subTest(link_kind=link_kind), tempfile.TemporaryDirectory() as directory:
+                base = Path(directory)
+                root, library = base / "app", base / "library"
+                self.project(root, "app")
+                self.project(library, "library")
+                artifact = base / "native.a"
+                artifact.write_bytes(b"actual-artifact-input")
+                output_directory = base / "real" / "nested"
+                output_directory.mkdir(parents=True)
+                if link_kind == "ancestor":
+                    alias = base / "alias"
+                    alias.symlink_to(output_directory, target_is_directory=True)
+                    destination = alias / "context.json"
+                else:
+                    target = output_directory / "context.json"
+                    target.touch()
+                    destination = base / "linked.json"
+                    destination.symlink_to(target)
+                record, _ = self.record(root, destination,
+                    "--source-dependency", f"app:source:library={library}",
+                    "--dependency", f"app:binary:native={artifact}")
+                receipt_base = destination.resolve(strict=True).parent
+                self.assertEqual((receipt_base / record["project"]["path"]).resolve(), root.resolve())
+                for module in record["modules"]:
+                    expected = root if module["name"] == "app" else library
+                    self.assertEqual((receipt_base / module["path"]).resolve(), expected.resolve())
+                    for dependency in module["dependencies"]:
+                        expected = library if dependency["name"] == "library" else artifact
+                        self.assertEqual((receipt_base / dependency["path"]).resolve(), expected.resolve())
 
     def test_environment_tokens_do_not_select_literal_or_ambient_source_directories(self):
         for token in ("$SELECTED_LIBRARY", "${SELECTED_LIBRARY}"):

@@ -59,6 +59,29 @@ private func pageNavigationCodecFixture(navigation!: ?TypeNavigation = None): Do
         ConfigurationSnapshot(lintProfile: "off"), pages: [page])
 }
 
+private func navigationEvidenceCodecFixture(): DocumentationSet {
+    let navigation = TypeNavigation("resolved", "exact", "selected dependency documentation",
+        dependencyInstanceId: "dependency-evidence", documentSetId: "docs-evidence",
+        apiIdentity: "api-evidence", language: "en", indexIdentity: "index-evidence",
+        url: "https://docs.example.test/evidence.html")
+    let page = DocumentationPage("evidence", "docs/evidence.md", "concepts/evidence.html",
+        "Evidence", "guide", "", MarkdownNode("document"),
+        bindings: [DocumentationPageBinding("support.Box", "example", "authored", "", 1,
+            navigation: Some(navigation))])
+    DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("navigation-evidence"),
+        ConfigurationSnapshot(lintProfile: "off"), pages: [page],
+        dependencies: [DependencyInstance("cjdoc:module:v1:evidence", "support",
+            "dependency-evidence", "source", "api-evidence", "observed", "selected source")],
+        documentSets: [DocumentSetIdentity("docs-evidence", "support", "api-evidence",
+            "observed", "portable-index", language: "en", indexIdentity: "index-evidence")])
+}
+
+private func replaceFirstNavigationEvidenceField(encoded: String, field: String, original: String): String {
+    let marker = "\"${field}\": \"${original}\""
+    let position = encoded.indexOf(marker).getOrThrow()
+    encoded[..position] + "\"${field}\": \"different-value\"" + encoded[position + marker.size..]
+}
+
 // Contract-unit input uses the actual v14 eight-field binding shape, not a v15 downgrade.
 private let LEGACY14_PAGE_BINDING_CONTRACT = """
 {"id":"legacy14-binding-contract","source":"docs/binding.md","route":"concepts/legacy14-binding.html","title":"Legacy binding contract","kind":"guide","packageName":"","language":null,"defaultLanguage":null,"text":"Guide","markdown":{"kind":"document","literal":"","source":null,"metadata":null,"children":[]},"sections":[],"targetSymbolIds":[],"bindings":[{"target":"support.Box","selector":"example","provenance":"authored","version":"docs-label","sourceLine":7,"language":"markdown","state":"unresolved","targetSymbolId":null}]}
@@ -66,6 +89,123 @@ private let LEGACY14_PAGE_BINDING_CONTRACT = """
 
 @Test
 class ModelCodecV15Contracts {
+    @TestCase
+    func navigationRejectsDanglingDocumentSetEvidence(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        let corrupted = encoded.replace("\"documentSetId\": \"docs-evidence\"",
+            "\"documentSetId\": \"missing-documents\"")
+        @Expect(corrupted != encoded)
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(corrupted))
+        @Expect(error.message.contains(".navigation.documentSetId"))
+        @Expect(error.message.contains("documentSets"))
+    }
+
+    @TestCase
+    func navigationRejectsDanglingDependencyInstanceEvidence(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        let corrupted = encoded.replace("\"dependencyInstanceId\": \"dependency-evidence\"",
+            "\"dependencyInstanceId\": \"missing-dependency\"")
+        @Expect(corrupted != encoded)
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(corrupted))
+        @Expect(error.message.contains(".navigation.dependencyInstanceId"))
+        @Expect(error.message.contains("dependencies"))
+    }
+
+    @TestCase
+    func navigationRejectsMismatchedDocumentSetApiEvidence(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        let corrupted = encoded.replace("\"apiIdentity\": \"api-evidence\"",
+            "\"apiIdentity\": \"different-api\"")
+        @Expect(corrupted != encoded)
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(corrupted))
+        @Expect(error.message.contains(".navigation.apiIdentity"))
+        @Expect(error.message.contains("documentSets"))
+    }
+
+    @TestCase
+    func navigationEvidenceIsCheckedAtEveryEncodedOccurrence(): Unit {
+        let encoded = encodeDocIr(navigationCodecFixture())
+        let marker = "\"apiIdentity\": \"source-content\""
+        let parts = encoded.split(marker)
+        @Expect(parts.size, 6)
+        let paths = HashSet<String>()
+        for (occurrence in 1..parts.size) {
+            let corrupted = StringBuilder()
+            corrupted.append(parts[0])
+            for (position in 1..parts.size) {
+                corrupted.append(if (position == occurrence) {
+                    "\"apiIdentity\": \"different-api\""
+                } else { marker })
+                corrupted.append(parts[position])
+            }
+            let error = @AssertThrows[IllegalArgumentException](decodeDocIr(corrupted.toString()))
+            @Expect(error.message.contains("documentSets"))
+            for (path in [".returnType.navigation.apiIdentity",
+                ".metadata.semanticNavigation.apiIdentity",
+                ".localizedTexts.navigation.apiIdentity", ".tags.navigation.apiIdentity"]) {
+                if (error.message.contains(path)) { let _ = paths.add(path) }
+            }
+        }
+        @Expect(paths.size, 4)
+    }
+
+    @TestCase
+    func navigationEvidenceRejectsMismatchedLanguageIndexAndExactDependency(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        for ((field, original) in [("language", "en"), ("indexIdentity", "index-evidence")]) {
+            let corrupted = replaceFirstNavigationEvidenceField(encoded, field, original)
+            let error = @AssertThrows[IllegalArgumentException](decodeDocIr(corrupted))
+            @Expect(error.message.contains(".navigation." + field))
+        }
+        let wrongDependency = replaceFirstNavigationEvidenceField(encoded, "identity", "api-evidence")
+        @Expect(wrongDependency != encoded)
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(wrongDependency))
+        @Expect(error.message.contains(".navigation.apiIdentity"))
+        @Expect(error.message.contains("dependencies"))
+        for (level in ["compatible", "manual"]) {
+            let allowed = wrongDependency.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"${level}\"")
+            @Expect(encodeDocIr(decodeDocIr(allowed)), allowed)
+        }
+    }
+
+    @TestCase
+    func manualNavigationMayKeepUnverifiedDocumentSetWithoutARecord(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        let manual = encoded.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"manual\"")
+        let missingDocuments = manual.replace("\"documentSetId\": \"docs-evidence\"",
+            "\"documentSetId\": \"uncaptured-documents\"")
+        let restored = decodeDocIr(missingDocuments)
+        @Expect(restored.pages[0].bindings[0].navigation.getOrThrow().documentSetId, "uncaptured-documents")
+        @Expect(encodeDocIr(restored), missingDocuments)
+        let missingDependency = missingDocuments.replace("\"dependencyInstanceId\": \"dependency-evidence\"",
+            "\"dependencyInstanceId\": \"missing-dependency\"")
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(missingDependency))
+        @Expect(error.message.contains(".navigation.dependencyInstanceId"))
+    }
+
+    @TestCase
+    func manualNavigationStillMustAgreeWithACapturedDocumentSet(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        let manual = encoded.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"manual\"")
+        let mismatched = manual.replace("\"apiIdentity\": \"api-evidence\"", "\"apiIdentity\": \"different-api\"")
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(mismatched))
+        @Expect(error.message.contains(".navigation.apiIdentity"))
+        @Expect(error.message.contains("documentSets"))
+    }
+
+    @TestCase
+    func existingGoldenDocumentsAndFrozenMigrationsKeepRoundTripping(): Unit {
+        for (directory in ["golden-v6", "golden-v7", "golden-v8", "golden-v9", "golden-v10",
+            "golden-v11", "golden-v12", "golden-v13", "golden-v14", "golden-v15", "legacy13", "legacy14"]) {
+            for (fixture in ["basic", "conditional-linux", "extend", "functions", "path-dependencies",
+                "source-edges", "types", "unsupported", "workspace"]) {
+                let frozen = String.fromUtf8(File.readFrom(Path("tests/fixtures/${directory}/${fixture}.docs.json")))
+                let encoded = encodeDocIr(decodeDocIr(frozen))
+                @Expect(encodeDocIr(decodeDocIr(encoded)), encoded)
+            }
+        }
+    }
+
     @TestCase
     func flatTypeSemanticFactsRemainCompleteAndIndependentOfNavigation(): Unit {
         for (semantic in [SemanticType("resolved", canonical: Some("fixture.类型"), provider: Some("types")),

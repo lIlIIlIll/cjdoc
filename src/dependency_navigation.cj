@@ -358,7 +358,8 @@ internal class DependencyNavigationBinder {
                     case _ => 100000
                 }
                 if (!request.linkLanguage.isEmpty()) {
-                    if (set.language == request.linkLanguage) { score += 2 }
+                    // 10000 exceeds the full priority span (8000); together they stay below the smallest level gap (100000).
+                    if (set.language == request.linkLanguage) { score += 10000 }
                     else if (!request.linkLanguageFallback) { reason = "selected API identity has no requested language"; continue }
                 }
                 if (score > best) {

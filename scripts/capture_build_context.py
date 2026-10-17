@@ -84,13 +84,15 @@ def identity(path: Path, source: bool = True, budget: ObservationBudget | None =
         raise ValueError("inventory is empty")
     digest = hashlib.sha256(b"cjdoc.dependency-inventory/1\n")
     for relative, entry in sorted(files, key=lambda pair: pair[0].encode("utf-8")):
-        size = entry.stat().st_size
+        before = entry.stat()
+        size = before.st_size
         if source and size > MAX_FILE:
             raise ValueError("source inventory per-file byte limit exceeded")
         budget.reserve(size)
         if source:
             content = entry.read_bytes()
-            if len(content) != size:
+            after = entry.stat()
+            if len(content) != size or (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
                 raise ValueError("input changed while observing")
             content_digest = hashlib.sha256(content).hexdigest()
         else:
@@ -112,7 +114,7 @@ def main():
                         help="actual selected source input; kind source/std/stdx")
     args = parser.parse_args()
     project = args.project.resolve(strict=True)
-    output = args.output.absolute()
+    output = args.output.resolve()
     base = output.parent
     cfg = {}
     for item in args.cfg:
