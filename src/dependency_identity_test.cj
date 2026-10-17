@@ -2,10 +2,52 @@ package cjdoc
 
 import cjdoc.model as api_model
 import cjdoc.render as api_render
+import std.collection.*
 import std.fs.*
 import std.env.*
 import std.unittest.*
 import std.unittest.testmacro.*
+
+// The observed Windows host (STS 1.2 runner with ordinary, non-extended paths)
+// refused creation and could not represent the 129-segment fixture path, so only
+// platforms that can represent it report the physical boundary; the numeric rule
+// is asserted separately with explicit budgets on every platform.
+@When[os == "Windows"]
+private let identityTestDepthIsRepresentable: Bool = false
+
+@When[os != "Windows"]
+private let identityTestDepthIsRepresentable: Bool = true
+
+private let identityTestChainDepth: Int64 = if (identityTestDepthIsRepresentable) { 127 } else { 40 }
+
+// A relative inventory path of exactly `count` segments, used to assert the
+// numeric depth rule against the same accounting the inventory applies.
+private func identityTestDepthBoundarySample(count: Int64): String {
+    let builder = StringBuilder()
+    for (index in 0..count) {
+        if (index > 0) { builder.append("/") }
+        builder.append("n")
+    }
+    builder.toString()
+}
+
+// An observed access violation reproduced when std.fs removed a deep tree
+// recursively, while removing each level's leaf and then the directories
+// deepest-first completed normally; the deepest-first form is used here so the
+// fixture never depends on that recursive call.
+private func identityTestRemoveChain(chain: ArrayList<Path>, root: Path): Unit {
+    var index = chain.size
+    while (index > 0) {
+        index--
+        let _ = removeIfExists(chain[index].join("leaf.cj"))
+    }
+    index = chain.size
+    while (index > 0) {
+        index--
+        let _ = removeIfExists(chain[index])
+    }
+    let _ = removeIfExists(root, recursive: true)
+}
 
 private func identityTestProject(root: Path, name: String): Unit {
     Directory.create(root.join("src"), recursive: true)
@@ -205,27 +247,62 @@ class DependencyIdentityTest {
         } finally { let _ = removeIfExists(root, recursive: true) }
     }
 
+    // The product caps inventory depth at MAX_SOURCE_DIRECTORY_DEPTH and must
+    // report a deeper input as unknown instead of overflowing the stack.
+    //
+    // Evidence is layered by what the host can represent: every platform builds a
+    // real chain and runs the public engine over it, and asserts the numeric
+    // 128/129 rule against the same depth accounting the inventory uses. Only the
+    // platforms whose path limit admits the full 129-segment fixture additionally
+    // report the end-to-end physical boundary. This is numeric-plus-integration
+    // evidence on the constrained platform, not a physical 129-segment run.
     @TestCase
     func inventoryDepthBoundaryDoesNotDependOnTheRuntimeCallStack(): Unit {
         let root = Directory.createTemp(getTempDirectory())
+        let chain = ArrayList<Path>()
         try {
             identityTestProject(root, "identity_app")
             var directory = root
-            for (_ in 0..127) {
+            for (_ in 0..identityTestChainDepth) {
                 directory = directory.join("n")
                 Directory.create(directory)
+                chain.add(directory)
             }
             File.writeTo(directory.join("leaf.cj"), "// selected source bytes\n".toArray())
             let observed = identityTestGenerate(root)
             @Expect(identityTestDependency(observed, "identity_app").state, "observed")
             @Expect(publicHasDiagnostic(observed, "CJDOC2302"), false)
+
+            let atBoundary = SourceDirectoryBudget(maxEntries: 100000,
+                maxDepth: MAX_SOURCE_DIRECTORY_DEPTH)
+            @Expect(atBoundary.consume(identityTestDepthBoundarySample(MAX_SOURCE_DIRECTORY_DEPTH)), true)
+            @Expect(atBoundary.limitReached, false)
+            let pastBoundary = SourceDirectoryBudget(maxEntries: 100000,
+                maxDepth: MAX_SOURCE_DIRECTORY_DEPTH)
+            @Expect(pastBoundary.consume(identityTestDepthBoundarySample(MAX_SOURCE_DIRECTORY_DEPTH + 1)), false)
+            @Expect(pastBoundary.limitReached, true)
+
+            let fileDepth = identityTestChainDepth + 1
+            let shallowAccepted = dependencyObservedIdentity(root.toString(), true,
+                directoryBudget: Some(SourceDirectoryBudget(maxEntries: 100000, maxDepth: fileDepth)))
+            @Expect(shallowAccepted.startsWith("sha256:"), true)
+            var shallowRefused = false
+            try {
+                let _ = dependencyObservedIdentity(root.toString(), true,
+                    directoryBudget: Some(SourceDirectoryBudget(maxEntries: 100000,
+                        maxDepth: fileDepth - 1)))
+            } catch (_: Exception) { shallowRefused = true }
+            @Expect(shallowRefused, true)
+
+            if (!identityTestDepthIsRepresentable) { return }
             directory = directory.join("n")
             Directory.create(directory)
+            chain.add(directory)
             File.writeTo(directory.join("leaf.cj"), "// exceeds the depth limit\n".toArray())
             let rejected = identityTestGenerate(root)
             @Expect(identityTestDependency(rejected, "identity_app").state, "unknown")
             @Expect(publicHasDiagnostic(rejected, "CJDOC2302"), true)
-        } finally { let _ = removeIfExists(root, recursive: true) }
+        } finally { identityTestRemoveChain(chain, root) }
     }
 
     @TestCase
