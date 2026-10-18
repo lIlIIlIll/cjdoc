@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 import tempfile
 import unittest
+import tomllib
 
 from unittest.mock import patch
 
@@ -173,14 +174,18 @@ class BuildContextManifestPathTests(unittest.TestCase):
             destination = base / "context.json"
             argv = ["capture_build_context.py", "--project", str(root),
                     "--output", str(destination), "--target", "example-target"]
+            old_manifest = tomllib.loads(old)
+            new_manifest = tomllib.loads(new)
             loads = capture.tomllib.loads
             parsed = []
 
             def parse_then_rewrite(text):
                 manifest = loads(text)
-                # Normalize line endings: on Windows the decoded bytes carry
-                # CRLF, so a raw text comparison would never fire there.
-                if text.replace("\r\n", "\n").replace("\r", "\n") == old:
+                # Compare PARSED content, never the decoded text: the producer
+                # reads raw bytes, so on Windows the text carries CRLF while a
+                # literal would not, and a text comparison would silently stop
+                # firing. Structure comparison is representation-independent.
+                if manifest == old_manifest:
                     parsed.append(manifest)
                     # The parse returns old selections, but the first stable
                     # tree observation will see only the rewritten manifest.
@@ -210,14 +215,18 @@ class BuildContextManifestPathTests(unittest.TestCase):
             destination = base / "context.json"
             argv = ["capture_build_context.py", "--project", str(root),
                     "--output", str(destination), "--target", "example-target"]
+            old_manifest = tomllib.loads(old)
             loads = capture.tomllib.loads
             parsed = []
 
             def parse_then_rewrite(text):
                 manifest = loads(text)
-                # Normalize line endings: on Windows the decoded bytes carry
-                # CRLF, so a raw text comparison would never fire there.
-                if text.replace("\r\n", "\n").replace("\r", "\n") == old.replace("\r\n", "\n").replace("\r", "\n"):
+                # Compare PARSED content, never the decoded text: the producer
+                # reads raw bytes, so on Windows the text carries CRLF while a
+                # literal would not, and a text comparison would silently stop
+                # firing. Structure comparison is representation-independent.
+                if manifest["package"]["version"] == old_manifest["package"]["version"] and \
+                        manifest.get("dependencies") == old_manifest.get("dependencies"):
                     parsed.append(manifest)
                     # dependency() and add_module() share the source identity;
                     # a later parse must still match its cached manifest digest.
