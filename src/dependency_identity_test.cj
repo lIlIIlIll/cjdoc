@@ -245,12 +245,14 @@ class DependencyIdentityTest {
             let diagnostics = ArrayList<api_model.Diagnostic>()
             let capture = DependencyIdentityCapture(documentation, GenerationRequest(root.toString()), Some(diagnostics))
             // Return the first stable text, then replace it before the source
-            // tree is observed. Old sourceGraph hashed NEW but parsed OLD.
+            // tree is observed. The version now comes from the same observation
+            // as the identity, so the digest comparison rejects the divergence
+            // instead of pairing an old parse with a new tree hash.
             @On(readTextBounded(manifest, MAX_MANIFEST_ADAPTER_BYTES)).returns({ =>
                 let text = String.fromUtf8(readFileBounded(manifest, MAX_MANIFEST_ADAPTER_BYTES))
                 File.writeTo(manifest, replacement.toArray())
                 text
-            }).once().then().callsOriginal()
+            }).once()
             capture.sourceGraph()
             @Expect(capture.modules.size, 0)
             @Expect(capture.entries.size, 0)

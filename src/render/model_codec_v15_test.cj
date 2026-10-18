@@ -114,7 +114,8 @@ private func ownedExactNavigationCodecDocument(): String {
 }
 
 private func crossModuleLocalNavigationCodecDocument(selected: Bool, identity!: String = "source-content",
-    name!: String = "navigation-codec", state!: String = "observed"): String {
+    name!: String = "navigation-codec", state!: String = "observed",
+    componentModuleId!: String = ""): String {
     let fixture = navigationCodecFixture()
     let target = fixture.declarations[0]
     let declaration = SymbolDoc(target.id, target.kind, target.name, target.qualifiedName,
@@ -123,7 +124,8 @@ private func crossModuleLocalNavigationCodecDocument(selected: Bool, identity!: 
     let dependencies = ArrayList<DependencyInstance>(fixture.dependencies)
     if (selected) {
         dependencies.add(DependencyInstance(owner, name, "selected-local",
-            "source", identity, state, "selected source", componentModuleId: target.moduleId))
+            "source", identity, state, "selected source",
+            componentModuleId: if (componentModuleId.isEmpty()) { target.moduleId } else { componentModuleId }))
     }
     let navigation = TypeNavigation("resolved", "manual", "authoritative local source target",
         symbolKey: target.id, url: symbolPagePath(target))
@@ -385,6 +387,18 @@ class ModelCodecV15Contracts {
     @TestCase
     func localExactNavigationRejectsAnUnselectedOccurrenceModule(): Unit {
         let encoded = crossModuleLocalNavigationCodecDocument(false)
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(encoded))
+        @Expect(error.message.contains(".navigation.symbolKey"))
+    }
+
+    @TestCase
+    func localExactNavigationRejectsUnrelatedSelectedComponent(): Unit {
+        // The producer accepts a cross-module local target only when the
+        // selected component IS the target module or the published graph binds
+        // them. A selected component that is neither, with an otherwise equal
+        // identity and admissible state, must not be accepted as exact.
+        let encoded = crossModuleLocalNavigationCodecDocument(true,
+            componentModuleId: "cjdoc:module:v1:unrelated-component")
         let error = @AssertThrows[IllegalArgumentException](decodeDocIr(encoded))
         @Expect(error.message.contains(".navigation.symbolKey"))
     }

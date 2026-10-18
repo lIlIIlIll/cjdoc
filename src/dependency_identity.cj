@@ -113,7 +113,22 @@ internal class DependencyIdentityCapture {
         try {
             sourceRoots[owner + "\nsource\n" + name] = canonicalize(path).toString()
             let identity = inputIdentity(path, true)
-            let version = dependencyManifestVersion(readTextBounded(Path(path).join("cjpm.toml"), MAX_MANIFEST_ADAPTER_BYTES))
+            // Read the version from the manifest bytes that belong to the same
+            // observation as the identity. A second independent read could see a
+            // rewritten manifest whose digest the end-of-graph check cannot
+            // attribute to this call, pairing an old tree identity with a new
+            // version.
+            let manifestPath = Path(path).join("cjpm.toml")
+            let manifestBytes = readAuxiliaryFileBounded(manifestPath, MAX_MANIFEST_ADAPTER_BYTES,
+                SourceAuxiliaryBudget(MAX_MANIFEST_ADAPTER_BYTES, MAX_MANIFEST_ADAPTER_BYTES))
+            if (let Some(observed) <- manifestDigests.get(canonicalize(path).toString() + "|source")) {
+                if (observed != Sha256Digest.digestBytes(manifestBytes)) {
+                    throw IllegalArgumentException("dependency manifest changed while observing")
+                }
+            }
+            let version = dependencyManifestVersion(try { String.fromUtf8(manifestBytes) } catch (_: Exception) {
+                throw IllegalArgumentException("dependency manifest is not valid UTF-8")
+            })
             var conflict = false
             for (entry in entries) {
                 if (entry.moduleId == owner && entry.name == name && entry.kind == "source" &&

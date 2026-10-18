@@ -45,6 +45,7 @@ internal class NavigationEvidence {
     let localSymbols = HashMap<String, SymbolDoc>()
     let moduleNames = HashMap<String, String>()
     let dependenciesByName = HashMap<String, ArrayList<DependencyInstance>>()
+    let moduleDependencies = HashMap<String, HashSet<String>>()
     let audience: String
 
     init(audience: String) { this.audience = audience }
@@ -80,14 +81,22 @@ internal class NavigationEvidence {
             case None => return false
         }
         // Replay enforces the captured subset of DependencyNavigationBinder.localAllowed:
-        // unique selected edges, equal nonempty identities and observed/verified states.
-        // Source-package aliases, transitive component conflicts and cross-component
-        // graph.binding proofs belong to the producer's private source-graph index,
-        // which is not available here. Component IDs alone are not identity proofs.
-        !selected.componentModuleId.isEmpty() && !selected.identity.isEmpty() &&
-            selected.identity == actual.identity &&
-            (selected.state == "observed" || selected.state == "verified") &&
-            (actual.state == "observed" || actual.state == "verified")
+        // unique selected edges, equal nonempty identities and observed/verified states,
+        // plus the component binding the producer proves with either
+        // `left.componentModuleId == candidate.moduleId` or a matched published
+        // graph. Replay can verify the first condition and the documented
+        // dependency relationship; the full `DependencyGraphIndex.binding(...)
+        // == "matched"` proof needs the producer's private source-package
+        // aliases and transitive graph, which are not carried in Doc IR.
+        if (selected.componentModuleId.isEmpty() || selected.identity.isEmpty() ||
+            selected.identity != actual.identity ||
+            (selected.state != "observed" && selected.state != "verified") ||
+            (actual.state != "observed" && actual.state != "verified")) { return false }
+        if (selected.componentModuleId == target.moduleId) { return true }
+        match (moduleDependencies.get(selected.componentModuleId)) {
+            case Some(declared) => declared.contains(target.moduleId)
+            case None => false
+        }
     }
 
     func validate(value: TypeNavigation, path: String, moduleId: String): Unit {
@@ -216,7 +225,13 @@ internal class NavigationEvidence {
 internal func validateDependencyMetadata(documentation: DocumentationSet,
     modules: HashSet<String>): NavigationEvidence {
     let evidence = NavigationEvidence(documentation.configuration.audience)
-    for (module in documentation.modules) { evidence.moduleNames[module.id] = module.name }
+    for (module in documentation.modules) {
+        evidence.moduleNames[module.id] = module.name
+        // The producer proves a cross-module local target through the selected
+        // component or a matched published graph; the documented module edges
+        // are the replay-visible part of that relationship.
+        evidence.moduleDependencies[module.id] = HashSet<String>(module.dependencyIds)
+    }
     for (declaration in documentation.declarations) {
         evidence.localSymbols[declaration.id] = declaration
     }
