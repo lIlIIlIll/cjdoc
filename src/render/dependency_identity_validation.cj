@@ -183,23 +183,25 @@ internal class NavigationEvidence {
                 domainFail(path + ".apiIdentity",
                     "exact navigation must match the referenced documentation.dependencies identity")
             }
-            // Mirror DependencyNavigationBinder.scopeMatches for selected replay
-            // evidence: the referenced document set must cover the captured
-            // audience, and its target/cfg must agree with the selected
-            // dependency unless the record is scope-wildcarded.
+            // Mirror DependencyNavigationBinder.scopeMatches: the audience is
+            // always required (`set.audience != request.audience` rejects), but
+            // the producer bypasses the target/cfg clauses for compatible links
+            // because an explicit compatibility mapping already binds them.
             if (selectedEvidence && value.documentSetId != "") {
                 if (let Some(documentSet) <- documentSets.get(value.documentSetId)) {
                     if (documentSet.audience != audience) {
                         domainFail(path + ".documentSetId",
                             "selected navigation document set must match the documented audience")
                     }
-                    if (documentSet.target != dependency.target && documentSet.target != "*") {
+                    if (value.matchLevel == "exact" &&
+                        documentSet.target != dependency.target && documentSet.target != "*") {
                         domainFail(path + ".documentSetId",
-                            "selected navigation document set target must match the selected dependency")
+                            "exact navigation document set target must match the selected dependency")
                     }
-                    if (documentSet.cfg != dependency.cfg && documentSet.cfg != "*") {
+                    if (value.matchLevel == "exact" &&
+                        documentSet.cfg != dependency.cfg && documentSet.cfg != "*") {
                         domainFail(path + ".documentSetId",
-                            "selected navigation document set cfg must match the selected dependency")
+                            "exact navigation document set cfg must match the selected dependency")
                     }
                 }
             }

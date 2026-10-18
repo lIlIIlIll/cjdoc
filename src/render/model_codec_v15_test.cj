@@ -306,6 +306,38 @@ class ModelCodecV15Contracts {
     }
 
     @TestCase
+    func compatibleNavigationKeepsMappedDifferentDocumentSetScope(): Unit {
+        // The producer bypasses the target/cfg clauses of scopeMatches once an
+        // explicit compatibility mapping establishes "compatible", so a mapped
+        // link may reference a scope-neutral document set while the selected
+        // dependency carries a target. Exact still enforces equality, and both
+        // levels still require the captured audience.
+        let fixture = navigationCodecFixture()
+        let moduleId = fixture.modules[0].id
+        let navigation = TypeNavigation("resolved", "compatible", "mapped compatibility selection",
+            dependencyInstanceId: "dependency-one", documentSetId: "docs-one",
+            apiIdentity: "source-content", language: "en", indexIdentity: "index-content",
+            symbolKey: "support.Box|class|1()",
+            url: "https://docs.example.test/evidence.html")
+        let document = DocumentationSet(fixture.generator, "complete", fixture.project, fixture.configuration,
+            providers: fixture.providers.toArray(), modules: fixture.modules.toArray(), packages: fixture.packages.toArray(),
+            files: fixture.files.toArray(), declarations: fixture.declarations.toArray(),
+            dependencies: [DependencyInstance(moduleId, "support", "dependency-one", "binary",
+                "source-content", "observed", "selected dependency bytes",
+                target: "example-target", cfg: "default")],
+            documentSets: [DocumentSetIdentity("docs-one", "support", "source-content", "declared", "portable-index",
+                target: "", cfg: "", language: "en", indexIdentity: "index-content",
+                baseUrl: "https://docs.example.test/", moduleId: "cjdoc:module:v1:producer-support")],
+            pages: pageNavigationCodecFixture(navigation: Some(navigation)).pages.toArray())
+        let encoded = encodeDocIr(document)
+        @Expect(encodeDocIr(decodeDocIr(encoded)), encoded)
+        // Exact keeps requiring target/cfg equality with the selected dependency.
+        let asExact = encoded.replace("\"matchLevel\": \"compatible\"", "\"matchLevel\": \"exact\"")
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(asExact))
+        @Expect(error.message.contains(".navigation.documentSetId"))
+    }
+
+    @TestCase
     func compatibleNavigationRequiresMatchingCapturedDocumentFields(): Unit {
         let encoded = encodeDocIr(navigationEvidenceCodecFixture()).replace(
             "\"matchLevel\": \"exact\"", "\"matchLevel\": \"compatible\"")
