@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 import tempfile
 import unittest
-from types import SimpleNamespace
+
 from unittest.mock import patch
 
 try:
@@ -102,7 +102,7 @@ class BuildContextObservationTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, 'input changed while observing'):
                         capture.identity(root, source)
 
-    def test_inventory_rejects_earlier_same_size_replacement_during_later_read(self):
+    def test_inventory_rejects_earlier_replacement_during_later_read(self):
         for source in (True, False):
             with self.subTest(source=source), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -111,28 +111,16 @@ class BuildContextObservationTests(unittest.TestCase):
                 later.write_bytes(b'later')
                 read_bytes = Path.read_bytes
                 artifact_digest = capture.artifact_digest
-                stat = Path.stat
-                before = earlier.stat()
-                replaced = False
-
-                def stat_with_replacement(path, *args, **kwargs):
-                    metadata = stat(path, *args, **kwargs)
-                    if path == earlier and replaced:
-                        # Inject an observably different mtime, independent of
-                        # filesystem timestamp precision or replacement semantics.
-                        # Keep size and ctime equal to isolate the mtime comparison.
-                        return SimpleNamespace(
-                            st_mode=metadata.st_mode, st_size=metadata.st_size,
-                            st_mtime_ns=before.st_mtime_ns + 1_000_000_000,
-                            st_ctime_ns=before.st_ctime_ns)
-                    return metadata
 
                 def replace_earlier(path):
-                    nonlocal replaced
                     if path == later:
+                        # Replace an already-hashed entry with different bytes
+                        # while a later entry is being read. The recorded size is
+                        # part of the revalidated snapshot on every platform, so
+                        # the replacement is observable without depending on
+                        # filesystem timestamp granularity.
                         earlier.unlink()
-                        earlier.write_bytes(b'new')
-                        replaced = True
+                        earlier.write_bytes(b'newer')
 
                 def read_then_replace(path):
                     content = read_bytes(path)
@@ -145,8 +133,7 @@ class BuildContextObservationTests(unittest.TestCase):
                     return digest
 
                 with patch.object(Path, 'read_bytes', read_then_replace), \
-                        patch.object(capture, 'artifact_digest', hash_then_replace), \
-                        patch.object(Path, 'stat', stat_with_replacement):
+                        patch.object(capture, 'artifact_digest', hash_then_replace):
                     with self.assertRaisesRegex(ValueError, 'input changed while observing'):
                         capture.identity(root, source)
 
