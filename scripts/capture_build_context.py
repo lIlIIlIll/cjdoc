@@ -66,23 +66,24 @@ def identity(path: Path, source: bool = True, budget: ObservationBudget | None =
         return "sha256:" + artifact_digest(path, size)
     files = []
 
-    def walk(directory: Path):
+    def walk(directory: Path, inventory, entries_budget):
         for entry in directory.iterdir():
-            budget.visit(len(entry.relative_to(path).parts))
+            entries_budget.visit(len(entry.relative_to(path).parts))
             relative = entry.relative_to(path).as_posix()
             if entry.name.startswith(".") or (source and entry.name == "target"):
                 continue
             if entry.is_symlink():
                 raise ValueError("symbolic links are not supported in an inventory")
             if entry.is_dir():
-                walk(entry)
+                walk(entry, inventory, entries_budget)
             elif entry.is_file() and (not source or entry.suffix == ".cj" or entry.name in ("cjpm.toml", "cjpm.lock")):
-                files.append((relative, entry))
+                inventory.append((relative, entry))
 
-    walk(path)
+    walk(path, files, budget)
     if not files:
         raise ValueError("inventory is empty")
     digest = hashlib.sha256(b"cjdoc.dependency-inventory/1\n")
+    observed = []
     for relative, entry in sorted(files, key=lambda pair: pair[0].encode("utf-8")):
         before = entry.stat()
         size = before.st_size
@@ -99,6 +100,17 @@ def identity(path: Path, source: bool = True, budget: ObservationBudget | None =
             content_digest = artifact_digest(entry, size)
         encoded = relative.encode("utf-8")
         digest.update(str(len(encoded)).encode() + b":" + encoded + b":" + str(size).encode() + b":" + content_digest.encode() + b"\n")
+        observed.append((relative, size, before.st_mtime_ns, before.st_ctime_ns))
+    # Revisit the same selection scope, without reserving content bytes or
+    # counting the same entries twice against the shared observation budget.
+    final_files = []
+    walk(path, final_files, ObservationBudget())
+    final = []
+    for relative, entry in sorted(final_files, key=lambda pair: pair[0].encode("utf-8")):
+        metadata = entry.stat()
+        final.append((relative, metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns))
+    if final != observed:
+        raise ValueError("input changed while observing")
     return "sha256:" + digest.hexdigest()
 
 

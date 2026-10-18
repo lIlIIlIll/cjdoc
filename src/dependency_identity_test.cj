@@ -170,6 +170,41 @@ class DependencyIdentityTest {
     }
 
     @TestCase
+    func sourceInventoryRejectsFileAddedAfterEnumeration(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            let source = root.join("input.cj")
+            File.writeTo(source, [b'x'])
+            @On(readAuxiliaryFileBounded(source, _, _)).returns({ =>
+                let bytes = readFileBounded(source, 64 * 1024 * 1024)
+                File.writeTo(root.join("added.cj"), [b'y'])
+                bytes
+            }).once()
+            @ExpectThrows[IllegalArgumentException](dependencyObservedIdentity(root.toString(), true))
+            @Expect(FileInfo(root.join("added.cj")).isRegular(), true)
+        } finally { let _ = removeIfExists(root, recursive: true) }
+    }
+
+    @TestCase
+    func sourceInventoryRejectsEarlierFileReplacedDuringLaterRead(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            let earlier = root.join("a.cj")
+            let later = root.join("z.cj")
+            File.writeTo(earlier, [b'x'])
+            File.writeTo(later, [b'y'])
+            @On(readAuxiliaryFileBounded(later, _, _)).returns({ =>
+                let bytes = readFileBounded(later, 64 * 1024 * 1024)
+                let _ = removeIfExists(earlier)
+                File.writeTo(earlier, "replacement".toArray())
+                bytes
+            }).once()
+            @ExpectThrows[IllegalArgumentException](dependencyObservedIdentity(root.toString(), true))
+            @Expect(File.readFrom(earlier), "replacement".toArray())
+        } finally { let _ = removeIfExists(root, recursive: true) }
+    }
+
+    @TestCase
     func pathAndExplicitInputsAreObservedWithoutRenderingDependencySources(): Unit {
         let temporary = Directory.createTemp(getTempDirectory())
         try {

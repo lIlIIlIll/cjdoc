@@ -70,6 +70,11 @@ private func navigationEvidenceCodecFixture(): DocumentationSet {
             navigation: Some(navigation))])
     DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("navigation-evidence"),
         ConfigurationSnapshot(lintProfile: "off"), pages: [page],
+        // resolvePageReference requires a unique captured module context even
+        // when the dependency's graph owner is otherwise a valid built-in ID.
+        modules: [ModuleDoc("cjdoc:module:v1:evidence", "evidence", "root", "")],
+        providers: [ProviderInfo("ast", "builtin", "cjdoc:module:v1:evidence", "partial",
+            SemanticCapabilities(false, false, false, false, false))],
         dependencies: [DependencyInstance("cjdoc:module:v1:evidence", "support",
             "dependency-evidence", "source", "api-evidence", "observed", "selected source")],
         documentSets: [DocumentSetIdentity("docs-evidence", "support", "api-evidence",
@@ -109,6 +114,26 @@ private let LEGACY14_PAGE_BINDING_CONTRACT = """
 
 @Test
 class ModelCodecV15Contracts {
+    @TestCase
+    func externalExactNavigationRejectsMissingPageModuleContext(): Unit {
+        let navigation = TypeNavigation("resolved", "manual", "selected dependency documentation",
+            dependencyInstanceId: "dependency-evidence", documentSetId: "docs-evidence",
+            apiIdentity: "api-evidence", language: "en", indexIdentity: "index-evidence",
+            url: "https://docs.example.test/evidence.html")
+        let fixture = navigationEvidenceCodecFixture()
+        let document = DocumentationSet(fixture.generator, "complete", fixture.project, fixture.configuration,
+            pages: pageNavigationCodecFixture(navigation: Some(navigation)).pages.toArray(),
+            dependencies: fixture.dependencies.toArray(), documentSets: fixture.documentSets.toArray())
+        let manual = encodeDocIr(document)
+        let exact = manual.replace("\"matchLevel\": \"manual\"", "\"matchLevel\": \"exact\"")
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(exact))
+        @Expect(error.message.contains("owning module"))
+        for (level in ["compatible", "manual"]) {
+            let allowed = exact.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"${level}\"")
+            @Expect(encodeDocIr(decodeDocIr(allowed)), allowed)
+        }
+    }
+
     @TestCase
     func externalExactNavigationRejectsEmptyApiIdentity(): Unit {
         let encoded = ownedExactNavigationCodecDocument()

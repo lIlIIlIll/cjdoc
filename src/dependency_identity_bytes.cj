@@ -2,6 +2,7 @@ package cjdoc
 
 import std.collection.*
 import std.fs.*
+import std.time.*
 
 // These limits apply to observation, not to assertions in a build record.
 private let DEPENDENCY_IDENTITY_BYTES: Int64 = 512 * 1024 * 1024
@@ -82,13 +83,14 @@ internal func dependencyObservedIdentity(path: String, source: Bool,
         return "sha256:" + dependencyArtifactDigest(Path(root), budget)
     }
     if (!info.isDirectory()) { throw IllegalArgumentException("dependency input is not a file or directory") }
+    let entries = directoryBudget.getOrDefault({ => SourceDirectoryBudget(maxEntries: 100000, maxDepth: 128) })
     let files = ArrayList<String>()
-    dependencyInventoryFiles(root, source, files,
-        directoryBudget.getOrDefault({ => SourceDirectoryBudget(maxEntries: 100000, maxDepth: 128) }))
+    dependencyInventoryFiles(root, source, files, entries)
     sortStrings(files)
     if (files.isEmpty()) { throw IllegalArgumentException("dependency inventory is empty") }
     let inventory = StringBuilder()
     inventory.append("cjdoc.dependency-inventory/1\n")
+    let observed = ArrayList<(Int64, DateTime, DateTime)>()
     for (relative in files) {
         let current = Path(root).join(relative)
         let (size, digest) = if (source) {
@@ -99,6 +101,11 @@ internal func dependencyObservedIdentity(path: String, source: Bool,
             let size = FileInfo(current).size
             (size, dependencyArtifactDigest(current, budget, expectedSize: Some(size)))
         }
+        let metadata = FileInfo(current)
+        if (!metadata.isRegular() || metadata.isSymbolicLink() || metadata.size != size) {
+            throw IllegalArgumentException("dependency artifact changed while hashing")
+        }
+        observed.add((size, metadata.creationTime, metadata.lastModificationTime))
         inventory.append(relative.size.toString())
         inventory.append(":")
         inventory.append(relative)
@@ -107,6 +114,27 @@ internal func dependencyObservedIdentity(path: String, source: Bool,
         inventory.append(":")
         inventory.append(digest)
         inventory.append("\n")
+    }
+    // A stable individual read does not prove the earlier files or tree
+    // membership survived while later files were hashed. Revisit the same scope
+    // without charging its entries or content bytes twice to the shared budgets.
+    let finalFiles = ArrayList<String>()
+    dependencyInventoryFiles(root, source, finalFiles,
+        SourceDirectoryBudget(maxEntries: entries.maxEntries, maxDepth: entries.maxDepth))
+    sortStrings(finalFiles)
+    if (finalFiles.size != files.size) {
+        throw IllegalArgumentException("dependency artifact changed while hashing")
+    }
+    for (index in 0..files.size) {
+        if (finalFiles[index] != files[index]) {
+            throw IllegalArgumentException("dependency artifact changed while hashing")
+        }
+        let metadata = FileInfo(Path(root).join(finalFiles[index]))
+        let (size, creation, modified) = observed[index]
+        if (!metadata.isRegular() || metadata.isSymbolicLink() || metadata.size != size ||
+            metadata.creationTime != creation || metadata.lastModificationTime != modified) {
+            throw IllegalArgumentException("dependency artifact changed while hashing")
+        }
     }
     "sha256:" + Sha256Digest.digest(inventory.toString())
 }

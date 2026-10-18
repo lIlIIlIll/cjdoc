@@ -77,6 +77,62 @@ class BuildContextObservationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'input changed while observing'):
                     capture.identity(Path(directory))
 
+    def test_inventory_rejects_file_added_after_enumeration(self):
+        for source in (True, False):
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                selected = root / 'input.cj'
+                selected.write_bytes(b'old')
+                read_bytes = Path.read_bytes
+                artifact_digest = capture.artifact_digest
+
+                def read_then_add(path):
+                    content = read_bytes(path)
+                    (root / 'added.cj').write_bytes(b'added')
+                    return content
+
+                def hash_then_add(path, size=None):
+                    digest = artifact_digest(path, size)
+                    (root / 'added.cj').write_bytes(b'added')
+                    return digest
+
+                with patch.object(Path, 'read_bytes', read_then_add), \
+                        patch.object(capture, 'artifact_digest', hash_then_add):
+                    with self.assertRaisesRegex(ValueError, 'input changed while observing'):
+                        capture.identity(root, source)
+
+    def test_inventory_rejects_earlier_same_size_replacement_during_later_read(self):
+        for source in (True, False):
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                earlier, later = root / 'a.cj', root / 'z.cj'
+                earlier.write_bytes(b'old')
+                later.write_bytes(b'later')
+                read_bytes = Path.read_bytes
+                artifact_digest = capture.artifact_digest
+
+                def replace_earlier(path):
+                    if path == later:
+                        before = earlier.stat()
+                        earlier.unlink()
+                        earlier.write_bytes(b'new')
+                        os.utime(earlier, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
+
+                def read_then_replace(path):
+                    content = read_bytes(path)
+                    replace_earlier(path)
+                    return content
+
+                def hash_then_replace(path, size=None):
+                    digest = artifact_digest(path, size)
+                    replace_earlier(path)
+                    return digest
+
+                with patch.object(Path, 'read_bytes', read_then_replace), \
+                        patch.object(capture, 'artifact_digest', hash_then_replace):
+                    with self.assertRaisesRegex(ValueError, 'input changed while observing'):
+                        capture.identity(root, source)
+
 
 class BuildContextManifestPathTests(unittest.TestCase):
     @staticmethod

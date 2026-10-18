@@ -105,9 +105,9 @@ internal class NavigationEvidence {
                 domainFail(path + ".dependencyInstanceId",
                     "exact navigation requires observed or verified documentation.dependencies evidence")
             }
-            // Pages without a unique captured module context have no owner to
-            // compare. The producer emits unavailable navigation in that case.
-            if (value.matchLevel == "exact" && !moduleId.isEmpty() && dependency.moduleId != moduleId) {
+            // No unique page module means the producer can only emit unavailable
+            // navigation, not an exact claim borrowing another module's evidence.
+            if (value.matchLevel == "exact" && (moduleId.isEmpty() || dependency.moduleId != moduleId)) {
                 domainFail(path + ".dependencyInstanceId",
                     "exact navigation dependency must belong to the occurrence's owning module")
             }
