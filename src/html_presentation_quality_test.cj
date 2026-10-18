@@ -14,7 +14,7 @@ class HtmlPresentationQualityTest {
         @Expect(publicHasDiagnostic(documentation, "CJDOC3047"))
         @Expect(publicHasDiagnostic(documentation, "CJDOC3048"))
         @Expect(publicHasDiagnostic(documentation, "CJDOC3049"))
-@Expect(documentation.schemaVersion, "cjdoc.doc-ir/13")
+@Expect(documentation.schemaVersion, "cjdoc.doc-ir/14")
         let artifacts = api_render.DocumentationCoverageRenderer().render(documentation)
         let presence = artifactContent(artifacts, "coverage/coverage.json")
         let quality = artifactContent(artifacts, "coverage/quality.json")

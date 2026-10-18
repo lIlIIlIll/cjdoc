@@ -90,5 +90,3 @@ public let DOC_IR_V13_SCHEMA = DOC_IR_V12_SCHEMA
         "        \"descriptionMarkdown\": {\"$ref\": \"#/$defs/markdownNode\"},\n" +
         "        \"evidenceKey\": {\"type\": \"string\"}")
 
-public let DOC_IR_SCHEMA = DOC_IR_V13_SCHEMA
-    .replace("doc-ir-v13.schema.json", "doc-ir.schema.json")

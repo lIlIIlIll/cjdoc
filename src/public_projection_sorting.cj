@@ -190,7 +190,7 @@ protected func boundGeneratedDocumentation(candidate: public_model.Documentation
     // unexpectedly large source/provider field would exceed codec or output
     // transaction limits. Fixed strings keep this fallback independent of the
     // oversized input that caused it.
-    public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.2"), "partial",
+    let fallback = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.2"), "partial",
         public_model.ProjectInfo("resource-limited"),
         public_model.ConfigurationSnapshot(audience: request.audience, lintProfile: request.lintProfile,
             cfgProfile: if (request.cfgValues.isEmpty()) {
@@ -200,5 +200,9 @@ protected func boundGeneratedDocumentation(candidate: public_model.Documentation
             }),
         diagnostics: [public_model.Diagnostic("warning", "CJDOC3027",
             "generated documentation exceeded codec or output resource limits and was replaced by a bounded fallback")],
-        languageOptions: candidate.languageOptions)
+        languageOptions: candidate.languageOptions, apiCollectionState: Some("unavailable"))
+    for (diagnostic in retainedHighlightBackendDiagnostics(candidate)) {
+        fallback.appendDiagnostic(diagnostic)
+    }
+    fallback
 }

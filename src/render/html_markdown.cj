@@ -27,8 +27,10 @@ public func renderStandaloneMarkdownHtml(node: MarkdownNode,
 internal func renderStandaloneMarkdownHtmlWithAssets(node: MarkdownNode,
     assetLookup: HashMap<String, String>, rootPrefix: String,
     sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
-    pageTitle!: ?String = None): String {
-    let context = HtmlMarkdownContext(2, sourceLinks: sourceLinks)
+    pageTitle!: ?String = None, bindingSource!: String = "",
+    bindingChips!: ?HashMap<Int64, String> = None): String {
+    let context = HtmlMarkdownContext(2, sourceLinks: sourceLinks,
+        bindingSource: bindingSource, bindingChips: bindingChips)
     collectMarkdownHeadings(node, "standalone", HashMap<String, Int64>(), context)
     let out = RenderTextBuffer()
     appendStandaloneMarkdownHtml(out, node, context, pageTitle, assetLookup, rootPrefix)
@@ -237,6 +239,7 @@ internal func isExampleFenceClosing(line: String, fence: ExampleFenceOpening): B
 internal func appendExampleCodeHtml(out: RenderTextBuffer, code: String, language: String): Unit {
     let normalizedLanguage = normalizeCodeLanguage(language)
     out.append("<pre><code")
+    appendCodeSourceAttribute(out, code)
     if (!normalizedLanguage.isEmpty()) {
         out.append(" class=\"language-${htmlStableSlug(normalizedLanguage)}\"")
         out.append(" data-language=\"${escapeHtml(normalizedLanguage)}\"")
@@ -512,13 +515,18 @@ internal class HtmlMarkdownContext {
     var fragmentTargets = HashMap<String, String>()
     let usedHeadingSlugs = HashSet<String>()
     let sourceLinks: HashMap<String, String>
+    let bindingSource: String
+    let bindingChips: ?HashMap<Int64, String>
     var nextHeading: Int64 = 0
 
     init(headingBase: Int64, allowExternalLinks!: Bool = true,
-        sourceLinks!: HashMap<String, String> = HashMap<String, String>()) {
+        sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
+        bindingSource!: String = "", bindingChips!: ?HashMap<Int64, String> = None) {
         this.headingBase = headingBase
         this.allowExternalLinks = allowExternalLinks
         this.sourceLinks = sourceLinks
+        this.bindingSource = bindingSource
+        this.bindingChips = bindingChips
     }
 }
 
@@ -586,6 +594,7 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
         case "code_span" => out.append("<code>${escapeHtml(node.literal)}</code>")
         case "code_block" =>
             out.append("<pre><code")
+            appendCodeSourceAttribute(out, node.literal)
             var displayLanguage = ""
             var preparedHighlight: ?CodeHighlight = None
             if (let Some(metadata) <- node.metadata) {
@@ -741,8 +750,22 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
             out.append(">"); for (child in node.children) {
                 appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
             }; out.append("</${tag}>")
-        case "html_block" => out.append("<pre>${escapeHtml(node.literal)}</pre>\n")
-        case "html_inline" => out.append(escapeHtml(node.literal))
+        case "html_block" =>
+            if (node.literal == "<!-- cjdoc-bind -->" && node.source.isSome() && context.bindingChips.isSome() &&
+                node.source.getOrThrow().path == context.bindingSource) {
+                match (context.bindingChips.getOrThrow().get(node.source.getOrThrow().start.line)) {
+                    case Some(chip) => out.append(chip)
+                    case None => out.append("<pre>${escapeHtml(node.literal)}</pre>\n")
+                }
+            } else { out.append("<pre>${escapeHtml(node.literal)}</pre>\n") }
+        case "html_inline" =>
+            if (node.literal == "<!-- cjdoc-bind -->" && node.source.isSome() && context.bindingChips.isSome() &&
+                node.source.getOrThrow().path == context.bindingSource) {
+                match (context.bindingChips.getOrThrow().get(node.source.getOrThrow().start.line)) {
+                    case Some(chip) => out.append(chip)
+                    case None => out.append(escapeHtml(node.literal))
+                }
+            } else { out.append(escapeHtml(node.literal)) }
         case "custom_block" | "custom_inline" => for (child in node.children) {
             appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
         }

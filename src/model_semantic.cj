@@ -348,6 +348,8 @@ class ModuleDoc {
 
 class DocumentationSet {
     public let projectName: String
+    // Captured at the source/provider boundary, before documentation preparation.
+    public var apiCollectionState: String = "unavailable"
     public let modules = ArrayList<ModuleDoc>()
     public let packages = ArrayList<PackageDoc>()
     public let symbols = ArrayList<SymbolDoc>()

@@ -32,9 +32,20 @@ export CJDOC_STS_INVOCATION_LOG="${CJDOC_STS_INVOCATION_LOG:-${runner_temp:-/tmp
 
 runner_temp="${RUNNER_TEMP}"
 real_cjpm="$(command -v cjpm)"
+inherited_wrapper="${CJDOC_STS_WRAPPER_CJPM:-}"
 if command -v cygpath >/dev/null 2>&1; then
   runner_temp="$(cygpath -u "${runner_temp}")"
   real_cjpm="$(cygpath -u "${real_cjpm}")"
+  if [[ -n "${inherited_wrapper}" ]]; then
+    inherited_wrapper="$(cygpath -u "${inherited_wrapper}")"
+  fi
+fi
+# Unwrap only our inherited launcher; a newly selected SDK on PATH must win.
+if [[ -n "${inherited_wrapper}" && "${real_cjpm}" == "${inherited_wrapper}" ]]; then
+  real_cjpm="${CJDOC_REAL_CJPM:?STS wrapper has no underlying cjpm}"
+  if command -v cygpath >/dev/null 2>&1; then
+    real_cjpm="$(cygpath -u "${real_cjpm}")"
+  fi
 fi
 wrapper_dir="${runner_temp}/cjpm-sts-optimization"
 mkdir -p "${wrapper_dir}"
@@ -53,7 +64,7 @@ if command -v cygpath >/dev/null 2>&1; then
   runner_temp="$(cygpath -u "${runner_temp}")"
   current_directory="$(cygpath -u "${current_directory}")"
 fi
-# The provider fixture is nested but compiles this repository as a path dependency.
+# The provider and cancellation fixtures compile this repository as a path dependency.
 case "$current_directory" in
   "${workspace}"|"${workspace}"/*) ;;
   *) exec "${CJDOC_REAL_CJPM}" "$@" ;;
@@ -73,7 +84,8 @@ restore_manifests() {
 trap restore_manifests EXIT
 patch_fixture_entry=0
 provider_fixture="${workspace}/tests/fixtures/projects/provider_plugin"
-if [[ "$current_directory" == "${provider_fixture}" ]]; then
+if [[ "$current_directory" == "${provider_fixture}" ||
+      "$current_directory" == "${workspace}/tests/fixtures/projects/highlight_host" ]]; then
   patch_fixture_entry=1
 fi
 # The rewrite lives in scripts/apply_sts_override.py so CI-08.3 can run this same
@@ -126,4 +138,5 @@ exit "${status}"
 SH
 chmod +x "${wrapper_dir}/cjpm"
 export CJDOC_REAL_CJPM="${real_cjpm}"
+export CJDOC_STS_WRAPPER_CJPM="${wrapper_dir}/cjpm"
 export PATH="${wrapper_dir}:${PATH}"

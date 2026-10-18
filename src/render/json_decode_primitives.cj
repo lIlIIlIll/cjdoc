@@ -136,6 +136,7 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
         fail("$.schemaVersion", "expected string")
     }
     let schemaText = if (version == DOC_IR_SCHEMA_VERSION) { DOC_IR_SCHEMA }
+        else if (version == DOC_IR_V13_SCHEMA_VERSION) { DOC_IR_V13_SCHEMA }
         else if (version == DOC_IR_V12_SCHEMA_VERSION) { DOC_IR_V12_SCHEMA }
         else if (version == DOC_IR_V11_SCHEMA_VERSION) { DOC_IR_V11_SCHEMA }
         else if (version == DOC_IR_V10_SCHEMA_VERSION) { DOC_IR_V10_SCHEMA }
@@ -145,7 +146,8 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
         else if (version == DOC_IR_V6_SCHEMA_VERSION) { DOC_IR_V6_SCHEMA }
         else {
             fail("$.schemaVersion",
-                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V11_SCHEMA_VERSION}', " +
+                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V13_SCHEMA_VERSION}', " +
+                "'${DOC_IR_V12_SCHEMA_VERSION}', '${DOC_IR_V11_SCHEMA_VERSION}', " +
                 "'${DOC_IR_V10_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
                 "'${DOC_IR_V8_SCHEMA_VERSION}', '${DOC_IR_V7_SCHEMA_VERSION}', or " +
                 "'${DOC_IR_V6_SCHEMA_VERSION}'")

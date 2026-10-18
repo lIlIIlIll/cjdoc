@@ -28,7 +28,7 @@ class ModelCodecV8Suite1 {
         @Expect(comment.markdown.children[0].metadata.isNone())
         @Expect(migrated.declarations[0].enumNonExhaustive.isNone())
         let encoded = encodeDocIr(migrated)
-@Expect(encoded.contains("\"schemaVersion\": \"cjdoc.doc-ir/13\""))
+@Expect(encoded.contains("\"schemaVersion\": \"cjdoc.doc-ir/14\""))
         @Expect(encoded.contains("\"metadata\": null"))
         @Expect(encoded.contains("\"repository\": null"))
         @Expect(encoded.contains("\"repositoryPath\": null"))
@@ -176,18 +176,19 @@ class ModelCodecV8Suite1 {
     func v11VersionsExampleDirectivesAndKeepsV10Strict(): Unit {
         let current = encodeDocIr(codecRendererFixture(extraTag: Some(
             DocTag("example", "directive", "", directives: "{run}"))))
-        @Expect(current.contains("\"schemaVersion\": \"cjdoc.doc-ir/13\""))
+        @Expect(current.contains("\"schemaVersion\": \"cjdoc.doc-ir/14\""))
         let decoded = decodeDocIr(current)
         @Expect(decoded.declarations[0].documentation.getOrThrow().tags[1].directives, "{run}")
 
-        let v10WithDirectives = current.replace(
-            "\"schemaVersion\": \"cjdoc.doc-ir/13\"",
+        let v10WithDirectives = current.replace("  \"apiCollectionState\": \"resolved\",\n", "").replace(
+            "\"schemaVersion\": \"cjdoc.doc-ir/14\"",
             "\"schemaVersion\": \"cjdoc.doc-ir/10\"")
         @Expect(v10WithDirectives != current)
         @ExpectThrows[IllegalArgumentException](decodeDocIr(v10WithDirectives))
 
         let v10WithoutDirectives = encodeDocIr(codecRendererFixture()).replace(
-            "\"schemaVersion\": \"cjdoc.doc-ir/13\"",
+            "  \"apiCollectionState\": \"resolved\",\n", "").replace(
+            "\"schemaVersion\": \"cjdoc.doc-ir/14\"",
             "\"schemaVersion\": \"cjdoc.doc-ir/10\"")
         @Expect(decodeDocIr(v10WithoutDirectives).schemaVersion, DOC_IR_SCHEMA_VERSION)
     }

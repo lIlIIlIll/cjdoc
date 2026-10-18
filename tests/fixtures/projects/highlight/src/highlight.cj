@@ -11,6 +11,29 @@ package highlight
  * let unfinished = "never closed
  * ```
  *
+ * ```json
+ * {"enabled": true, "name": "中😀"}
+ * ```
+ *
+ * ```bash
+ * printf "%s\n" "hello"
+ * ```
+ *
+ * ```python
+ * def greet(name):
+ *     return "hello " + name
+ * ```
+ *
+ * ```toml
+ * [app]
+ * enabled = true
+ * ```
+ *
+ * ```yaml
+ * app:
+ *   enabled: true
+ * ```
+ *
  * @example
  * ```cangjie
  * let raw = #"raw \n text"#

@@ -441,6 +441,10 @@ public class Diagnostic {
     public let code: String
     public let message: String
     public let source: ?SourceRange
+    // Generation-only provenance; not reconstructed from diagnostic codes or JSON.
+    private var highlightFailure = false
+    protected prop isHighlightFailure: Bool { get() { highlightFailure } }
+    protected func markHighlightFailure(): Unit { highlightFailure = true }
     public let symbolId: ?String
 
     public init(severity: String, code: String, message: String,
@@ -457,6 +461,8 @@ public class DocumentationSet {
     public let schemaVersion: String
     public let generator: GeneratorInfo
     public let status: String
+    /** Completeness of API collection, independent of presentation diagnostics. */
+    public let apiCollectionState: String
     public let project: ProjectInfo
     public let configuration: ConfigurationSnapshot
     public let languageOptions: ?DocumentationLanguageOptions
@@ -484,10 +490,19 @@ public class DocumentationSet {
         unboundSemanticDeclarations!: Array<UnboundSemanticDeclaration> = [],
         diagnostics!: Array<Diagnostic> = [], languageOptions!: ?DocumentationLanguageOptions = None,
         pages!: Array<DocumentationPage> = [], readingLanguage!: ?String = None,
-        externalDocumentation!: Array<ExternalDocumentationReference> = []) {
+        externalDocumentation!: Array<ExternalDocumentationReference> = [],
+        apiCollectionState!: ?String = None) {
         this.schemaVersion = DOC_IR_SCHEMA_VERSION
         this.generator = generator
         this.status = status
+        this.apiCollectionState = apiCollectionState.getOrDefault({ =>
+            if (status == "complete") { "resolved" }
+            else if (status == "partial") { "partial" } else { "unavailable" }
+        })
+        if (this.apiCollectionState != "resolved" && this.apiCollectionState != "partial" &&
+            this.apiCollectionState != "unavailable") {
+            throw IllegalArgumentException("API collection state must be resolved, partial, or unavailable")
+        }
         this.project = project
         this.configuration = configuration
         this.languageOptions = languageOptions

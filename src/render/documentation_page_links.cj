@@ -111,23 +111,66 @@ private func capturedPageBindingStateLabel(state: String, locale: String): Strin
     }
 }
 
+private func capturedPageBindingState(binding: DocumentationPageBinding,
+    visible: HashMap<String, SymbolDoc>): String {
+    if (binding.targetSymbolId.isSome() && !visible.contains(binding.targetSymbolId.getOrThrow())) {
+        return "unavailable"
+    }
+    binding.state
+}
+
+private func appendCapturedPageBindingTargetHtml(out: RenderTextBuffer,
+    binding: DocumentationPageBinding, visible: HashMap<String, SymbolDoc>, prefix: String, state: String): Unit {
+    if (state == "unavailable") { return }
+    let target: ?SymbolDoc = match (binding.targetSymbolId) { case Some(id) => visible.get(id); case None => None }
+    if (state == "resolved" && target.isSome()) {
+        let symbol = target.getOrThrow()
+        out.append("<a href=\"" + prefix + escapeHtml(symbolUrl(visible, symbol)) + "\"><code>" +
+            escapeHtml(symbol.qualifiedName) + "</code></a>")
+    } else { out.append("<code>" + escapeHtml(binding.target) + "</code>") }
+    if (!binding.version.isEmpty()) {
+        out.append(" <span class=\"binding-version\">" + escapeHtml(binding.version) + "</span>")
+    }
+}
+
+internal func capturedPageBindingChipHtml(page: DocumentationPage, binding: DocumentationPageBinding,
+    visible: HashMap<String, SymbolDoc>, locale: String): String {
+    let out = RenderTextBuffer()
+    let state = capturedPageBindingState(binding, visible)
+    out.append("<div class=\"inline-binding\"><span class=\"binding-state\" data-state=\"" + state + "\">")
+    out.append(capturedPageBindingStateLabel(state, locale) + "</span> ")
+    appendCapturedPageBindingTargetHtml(out, binding, visible, pageRootPrefix(page.route), state)
+    out.append("<details class=\"binding-details\"><summary>" + label(locale, "Technical details", "技术详情") + "</summary>")
+    if (state != "unavailable") {
+        if (!binding.selector.isEmpty()) {
+            out.append("<span class=\"binding-meta\">selector: " + escapeHtml(binding.selector) + "</span>")
+        }
+        if (!binding.provenance.isEmpty()) {
+            out.append("<span class=\"binding-meta\">source: " + escapeHtml(binding.provenance) + "</span>")
+        }
+    }
+    out.append("<span class=\"binding-meta\">state: " + state + "; language: " + escapeHtml(binding.language) +
+        "; line: " + binding.sourceLine.toString() + "</span></details></div>")
+    out.toString()
+}
+
 internal func capturedPageBindingsHtml(page: DocumentationPage, documentation: DocumentationSet,
     locale: String): String {
+    if (page.bindings.isEmpty()) { return "" }
     let out = RenderTextBuffer()
     let visible = RenderProjection(documentation).visibleIndex
+    out.append("<section class=\"conceptual-bindings\" aria-labelledby=\"conceptual-bindings-heading\"><h2 id=\"conceptual-bindings-heading\">")
+    out.append(label(locale, "API associations", "API 关联") + "</h2><p class=\"binding-scope\">")
+    out.append(label(locale, "Explicit bindings from this page. Reader details stay in Technical details.",
+        "本页的显式关联。技术信息见「技术详情」。") + "</p><ul>")
     for (binding in page.bindings) {
-        out.append("<div class=\"inline-binding\"><span class=\"binding-state\" data-state=\"" + binding.state + "\">")
-        let state = capturedPageBindingStateLabel(binding.state, locale)
-        out.append(state + "</span> ")
-        let target: ?SymbolDoc = match (binding.targetSymbolId) { case Some(id) => visible.get(id); case None => None }
-        if (let Some(symbol) <- target) {
-            out.append("<a href=\"" + pageRootPrefix(page.route) + escapeHtml(symbolUrl(visible, symbol)) + "\"><code>" + escapeHtml(symbol.qualifiedName) + "</code></a>")
-        } else if (binding.state != "unavailable") { out.append("<code>" + escapeHtml(binding.target) + "</code>") }
-        if (!binding.version.isEmpty()) { out.append(" <span class=\"binding-version\">" + escapeHtml(binding.version) + "</span>") }
-        out.append("<details class=\"binding-details\"><summary>" + label(locale, "Technical details", "技术详情") + "</summary>")
-        if (binding.state != "unavailable") { out.append("<span class=\"binding-meta\">selector: " + escapeHtml(binding.selector) + "</span>") }
-        out.append("<span class=\"binding-meta\">source: " + escapeHtml(binding.provenance) + "; line: " + binding.sourceLine.toString() + "</span></details></div>")
+        let state = capturedPageBindingState(binding, visible)
+        out.append("<li><span class=\"binding-state\" data-state=\"" + state + "\">")
+        out.append(capturedPageBindingStateLabel(state, locale) + "</span> ")
+        appendCapturedPageBindingTargetHtml(out, binding, visible, pageRootPrefix(page.route), state)
+        out.append("</li>")
     }
+    out.append("</ul></section>\n")
     out.toString()
 }
 

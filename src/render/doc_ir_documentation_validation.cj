@@ -14,6 +14,10 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
     if (documentation.status != "complete" && documentation.status != "partial") {
         domainFail("$.status", "invalid structural status")
     }
+    if (documentation.apiCollectionState != "resolved" && documentation.apiCollectionState != "partial" &&
+        documentation.apiCollectionState != "unavailable") {
+        domainFail("$.apiCollectionState", "invalid API collection state")
+    }
     let moduleIds = HashSet<String>()
     let modulesById = HashMap<String, ModuleDoc>()
     let modulePackageKeys = HashSet<String>()

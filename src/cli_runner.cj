@@ -224,7 +224,7 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 }
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndoc-ir-v11\ndoc-ir-v12\ndoc-ir-v13\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-surface-v2\napi-surface-v3\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndocumentation-quality\ndoctest-results\nversions\napi-diff-v1\ndoctest-results-v1\nsearch-index-v8\nversions-v1\ntranslation-coverage\nsite-manifest\napi-diff-v2\ndoctest-results-v2\nsearch-index-v9\nversions-v2\n"
+        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\ndoc-ir-v10\ndoc-ir-v11\ndoc-ir-v12\ndoc-ir-v13\ndoc-ir-v14\ndiagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v1\napi-surface-v2\napi-surface-v3\napi-diff\ndocumentation-coverage-v1\ndocumentation-coverage\ndocumentation-quality\ndoctest-results\nversions\napi-diff-v1\ndoctest-results-v1\nsearch-index-v8\nversions-v1\ntranslation-coverage\nsite-manifest\napi-diff-v2\ndoctest-results-v2\nsearch-index-v9\nversions-v2\n"
         case "doc-ir" => DOC_IR_SCHEMA
         case "doc-ir-v6" => DOC_IR_V6_SCHEMA
         case "doc-ir-v7" => DOC_IR_V7_SCHEMA
@@ -234,6 +234,7 @@ internal func schemaTextForCli(name: String): String {
         case "doc-ir-v11" => DOC_IR_V11_SCHEMA
         case "doc-ir-v12" => DOC_IR_V12_SCHEMA
         case "doc-ir-v13" => DOC_IR_V13_SCHEMA
+        case "doc-ir-v14" => DOC_IR_V14_SCHEMA
         case "diagnostics" => DIAGNOSTICS_SCHEMA
         case "cfg-matrix" => CFG_MATRIX_SCHEMA
         case "search-index" => SEARCH_INDEX_SCHEMA
@@ -303,8 +304,9 @@ private func validationLabel(locale: String, english: String, chinese: String): 
 }
 
 private func usesLegacyConceptualPages(documentation: public_model.DocumentationSet): Bool {
-    if (documentation.languageOptions.isSome()) { return false }
-    for (page in documentation.pages) { if (page.language.isSome()) { return false } }
+    // Captured v13 pages are authoritative even for an unlocalized project.
+    // Re-reading them here would lose snapshots and launch another highlighter.
+    if (!documentation.pages.isEmpty() || documentation.languageOptions.isSome()) { return false }
     true
 }
 

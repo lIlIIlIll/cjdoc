@@ -11,6 +11,35 @@ internal let MAX_HIGHLIGHT_TOTAL_PREPARED_BYTES: Int64 = 4 * 1024 * 1024
 internal let CANGJIE_HIGHLIGHT_ENGINE = "cjdoc-cangjie-lexer"
 internal let CANGJIE_HIGHLIGHT_REVISION = "2"
 
+internal func highlightCacheKey(source: String, language: String, disabled: Bool,
+    builtinRevision!: String = CANGJIE_HIGHLIGHT_REVISION): String {
+    Sha256Digest.digest(source) + ":" + language + ":" + CANGJIE_HIGHLIGHT_ENGINE + ":" +
+        builtinRevision + ":" + EXTERNAL_HIGHLIGHT_PROTOCOL + ":" +
+        EXTERNAL_HIGHLIGHT_REVISION + ":ignoreIllegals=true:" + disabled.toString()
+}
+
+private func highlightBackendFailureDiagnostic(strict: Bool): public_model.Diagnostic {
+    let diagnostic = if (strict) {
+        public_model.Diagnostic("error", "CJDOC4027",
+            "highlighting backend failed and [highlight].on-error is \"error\"; code text was preserved")
+    } else {
+        public_model.Diagnostic("warning", "CJDOC3120",
+            "highlighting backend unavailable or invalid; code text was preserved")
+    }
+    diagnostic.markHighlightFailure()
+    diagnostic
+}
+
+// Retain only diagnostics produced by the highlighter, never code/message guesses.
+internal func retainedHighlightBackendDiagnostics(source: public_model.DocumentationSet):
+    Array<public_model.Diagnostic> {
+    let result = ArrayList<public_model.Diagnostic>()
+    for (diagnostic in source.diagnostics) {
+        if (diagnostic.isHighlightFailure) { result.add(diagnostic) }
+    }
+    result.toArray()
+}
+
 // Shared by signatures, comment fences and @example trees in projection order.
 // Charge conservative codec/pretty-JSON overhead, not just source or compact JSON.
 internal class HighlightGenerationBudget {
@@ -20,6 +49,8 @@ internal class HighlightGenerationBudget {
     private var spans: Int64 = 0
     private var exhausted: Bool = false
     private var backendFailed: Bool = false
+    private var builtinRevision: String = ""
+    private let cache = HashMap<String, public_model.CodeHighlight>()
     private let externalOptions: ?HighlightExternalOptions
     private let highlightLanguages: ?HighlightConfig
     private let onError: String
@@ -39,25 +70,42 @@ internal class HighlightGenerationBudget {
         } else { capped }
     }
 
-    func prepare(source: String, language: String): ?public_model.CodeHighlight {
+    func prepare(source: String, language: String, witness!: Array<String> = []): ?public_model.CodeHighlight {
         if (exhausted) { return None }
-        // A language the project did not opt into still produces a record, marked
-        // `disabled` rather than `unsupported`: the issue requires the plain state
-        // to distinguish "turned off here" from "no backend for this language",
-        // and an absent record would erase that difference.
-        if (let Some(configured) <- highlightLanguages) {
-            if (!configured.allowsLanguage(language)) {
-                let disabled = publicCodeHighlight(source, language, disabledReason: Some("disabled"))
-                metadataBytes += 4096 + 6 * disabled.language.size
-                return Some(disabled)
-            }
+        let normalized = public_model.normalizeCodeLanguage(language)
+        let disabled = match (highlightLanguages) {
+            case Some(config) => !config.allowsLanguage(normalized)
+            case None => false
         }
         if (byteLimit == 0 || source.size > MAX_HIGHLIGHT_TOTAL_PREPARED_BYTES - preparedBytes) {
             exhausted = true
             return None
         }
         preparedBytes += source.size
-        let value = publicCodeHighlight(source, language, externalOptions: externalOptions)
+        // Lexical data only: no owner, routes, audience identifiers or semantic links.
+        // This cache lives only for this projected generation and is never exported.
+        let needsLexer = !disabled && public_model.codeLanguageBackend(normalized) == "builtin" &&
+            source.size <= MAX_HIGHLIGHT_BLOCK_BYTES
+        if (needsLexer && builtinRevision.isEmpty()) {
+            builtinRevision = try { cangjieLexerBehaviorRevision() }
+                catch (_: Exception) { CANGJIE_HIGHLIGHT_REVISION + "/lexer-witness-unavailable" }
+        }
+        let revision = if (needsLexer) { builtinRevision } else { CANGJIE_HIGHLIGHT_REVISION }
+        let key = highlightCacheKey(source, normalized, disabled, builtinRevision: revision)
+        let value = match (cache.get(key)) {
+            case Some(found) => found
+            case None =>
+                let prepared = publicCodeHighlight(source, normalized, externalOptions: externalOptions,
+                    disabledReason: if (disabled) { Some("disabled") }
+                        else if (revision.endsWith("/lexer-witness-unavailable")) { Some("lexer-failed") }
+                        else { None }, witness: witness, builtinRevision: Some(revision))
+                if (prepared.state == "complete" || prepared.state == "partial" ||
+                    ["disabled", "no-language", "unsupported"].contains(
+                        prepared.reason.getOrDefault({ => "" }))) { cache[key] = prepared }
+                prepared
+        }
+        // A completed backend attempt remains observable even when its optional colors do not fit.
+        recordBackendFailure(value)
         // Bound object/key/number and pretty-indent costs even at the maximum
         // generated Markdown depth; language includes worst-case JSON escaping.
         let bytes = 4096 + 6 * value.language.size + 2048 * value.spans.size
@@ -68,7 +116,6 @@ internal class HighlightGenerationBudget {
         }
         spans += value.spans.size
         metadataBytes += bytes
-        recordBackendFailure(value)
         Some(value)
     }
 
@@ -85,20 +132,26 @@ internal class HighlightGenerationBudget {
         }
     }
 
+    func close(): Unit {
+        if (let Some(options) <- externalOptions) { options.close() }
+        cache.clear()
+    }
+
     func onErrorName(): String { onError }
 
     // Escalation for `[highlight].on-error = "error"`: the same failure that is a
     // warning by default must be able to fail the run explicitly.
     func escalationDiagnostics(): Array<public_model.Diagnostic> {
         if (onError != "error" || !backendFailed) { return [] }
-        [public_model.Diagnostic("error", "CJDOC4027",
-            "highlighting backend failed and [highlight].on-error is \"error\"; code text was preserved")]
+        [highlightBackendFailureDiagnostic(true)]
     }
 
     func diagnostics(): Array<public_model.Diagnostic> {
-        if (!exhausted) { return [] }
-        [public_model.Diagnostic("warning", "CJDOC3028",
-            "highlight metadata was omitted after the total resource budget was exhausted; code text was preserved")]
+        let result = ArrayList<public_model.Diagnostic>()
+        if (exhausted) { result.add(public_model.Diagnostic("warning", "CJDOC3028",
+            "highlight metadata was omitted after the total resource budget was exhausted; code text was preserved")) }
+        if (backendFailed && onError == "warn") { result.add(highlightBackendFailureDiagnostic(false)) }
+        result.toArray()
     }
 }
 
@@ -174,10 +227,11 @@ internal class CodeHighlight {
 
 internal func publicCodeHighlight(source: String, language: String,
     externalOptions!: ?HighlightExternalOptions = None,
-    disabledReason!: ?String = None): public_model.CodeHighlight {
+    disabledReason!: ?String = None, witness!: Array<String> = [],
+    builtinRevision!: ?String = None): public_model.CodeHighlight {
     let normalized = public_model.normalizeCodeLanguage(language)
     let value = highlightCode(source, normalized, public_model.codeLanguageBackend(normalized),
-        externalOptions: externalOptions, disabledReason: disabledReason)
+        externalOptions: externalOptions, disabledReason: disabledReason, witness: witness)
     let spans = ArrayList<public_model.CodeSpan>()
     for (span in value.spans()) {
         spans.add(public_model.CodeSpan(span.startByte, span.endByte, codeKindName(span.kind)))
@@ -187,13 +241,16 @@ internal func publicCodeHighlight(source: String, language: String,
         case CodeHighlightState.Partial => "partial"
         case CodeHighlightState.Plain => "plain"
     }
+    let revision = if (value.engineId == CANGJIE_HIGHLIGHT_ENGINE) {
+        builtinRevision.getOrDefault({ => value.engineRevision })
+    } else { value.engineRevision }
     public_model.CodeHighlight(normalized, public_model.contractFingerprint(source), source.size,
-        value.engineId, value.engineRevision, state, value.reason, spans.toArray())
+        value.engineId, revision, state, value.reason, spans.toArray())
 }
 
 internal func highlightCode(source: String, language: String, backend: String,
     externalOptions!: ?HighlightExternalOptions = None,
-    disabledReason!: ?String = None): CodeHighlight {
+    disabledReason!: ?String = None, witness!: Array<String> = []): CodeHighlight {
     if (source.size > MAX_HIGHLIGHT_BLOCK_BYTES) {
         return CodeHighlight(source, language, [], CodeHighlightState.Plain, Some("resource-limit"))
     }
@@ -206,7 +263,8 @@ internal func highlightCode(source: String, language: String, backend: String,
     }
     try {
         if (backend == "builtin") {
-            let (spans, state, reason) = cangjieHighlightSpans(source)
+            let (spans, state, reason) = if (witness.isEmpty()) { cangjieHighlightSpans(source) }
+                else { cangjieSignatureHighlightSpans(source, witness) }
             return CodeHighlight(source, language, spans, state, reason)
         }
         if (backend == "external") {

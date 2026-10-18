@@ -1,14 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-  "title": "cjdoc Doc IR v13",
+  "title": "cjdoc Doc IR v14",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "generator", "status", "project", "configuration", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics"],
+  "required": ["schemaVersion", "generator", "status", "apiCollectionState", "project", "configuration", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/13"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/14"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
+    "apiCollectionState": {"enum": ["resolved", "partial", "unavailable"]},
     "project": {"$ref": "#/$defs/project"},
     "configuration": {"$ref": "#/$defs/configuration"},
     "providers": {"type": "array", "items": {"$ref": "#/$defs/provider"}},

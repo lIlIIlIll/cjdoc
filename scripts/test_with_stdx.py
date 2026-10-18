@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
+import os
+import sys
+import time
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from scripts import with_stdx
 
@@ -132,5 +137,51 @@ class WithStdxTest(unittest.TestCase):
             self.assertEqual(candidates, [sidecar.resolve()])
             with self.assertRaises(SystemExit):
                 with_stdx.authenticate_stdx(sidecar.resolve(), with_stdx.REQUIRED_STATIC_ARTIFACTS)
+
+    def test_windows_launcher_waits_and_preserves_real_child_status_and_arguments(self) -> None:
+        """Only SDK discovery/OS selection is modeled; the child really runs."""
+        with tempfile.TemporaryDirectory(prefix="stdx launch with spaces ") as temporary:
+            root = Path(temporary)
+            sidecar = self.make_sidecar(root, with_stdx.REQUIRED_STATIC_ARTIFACTS)
+            digest, _ = with_stdx.authenticate_stdx(sidecar, with_stdx.REQUIRED_STATIC_ARTIFACTS)
+            child = root / "delayed child.py"
+            child.write_text(
+                "import json, os, sys, time\n"
+                "from pathlib import Path\n"
+                "time.sleep(0.2)\n"
+                "Path(sys.argv[1]).write_text(json.dumps({\n"
+                "    'args': sys.argv[3:], 'pid': os.getpid(), 'parent': os.getppid(),\n"
+                "    'digest': os.environ['CJDOC_STDX_DIGEST'],\n"
+                "    'wrapped': os.environ['CJDOC_STDX_WRAPPED'],\n"
+                "}), encoding='utf-8')\n"
+                "raise SystemExit(int(sys.argv[2]))\n",
+                encoding="utf-8",
+            )
+            arguments = ["argument with spaces", 'literal "quotes"', ""]
+            # Do not patch the global os.name: pathlib/subprocess must continue
+            # using the actual host OS while POSIX runs model this branch.
+            windows = SimpleNamespace(name="nt", environ=os.environ)
+            with patch.dict(os.environ, {"CANGJIE_STDX_PATH": str(sidecar)}), \
+                    patch.object(with_stdx, "os", windows), \
+                    patch.object(with_stdx, "compiler_candidates", return_value=[root / "cjc"]), \
+                    patch.object(with_stdx, "compiler_info",
+                                 return_value=("1.2.0", "x86_64-w64-mingw32")):
+                for status in (0, 23):
+                    with self.subTest(status=status):
+                        record = root / f"child result {status}.json"
+                        started = time.monotonic()
+                        result = with_stdx.main([
+                            "--variant", "static", "--", sys.executable, str(child),
+                            str(record), str(status), *arguments,
+                        ])
+                        self.assertEqual(result, status)
+                        self.assertGreaterEqual(time.monotonic() - started, 0.15)
+                        actual = json.loads(record.read_text(encoding="utf-8"))
+                        self.assertEqual(actual["args"], arguments)
+                        self.assertNotEqual(actual["pid"], os.getpid())
+                        self.assertEqual(actual["parent"], os.getpid())
+                        self.assertEqual(actual["digest"], digest)
+                        self.assertEqual(actual["wrapped"], "1")
+
 if __name__ == "__main__":
     unittest.main()

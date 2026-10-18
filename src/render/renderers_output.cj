@@ -51,8 +51,7 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
             let rendered = renderSymbolPage(documentation, projection, index, symbol, assetLookup,
                     typeLinkIndex, locale: locale, docVersion: docVersion,
                     exampleEvidence: exampleEvidence)
-            let links = capturedApiGuideLinks(documentation, symbol, locale) +
-                externalDocumentationHtml(documentation, symbol, locale)
+            let links = externalDocumentationHtml(documentation, symbol, locale)
             artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
                 rendered.replace("</div></main>", links + "</div></main>"))
         }

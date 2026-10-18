@@ -23,7 +23,7 @@ class HighlightConfigTest {
         try {
             let config = loadHighlightConfig(root.toString())
             @Expect(config.mode, "static")
-            @Expect(config.languages, ["cangjie"])
+            @Expect(config.languages.toArray(), ["cangjie"])
             @Expect(config.onError, "warn")
         } finally {
             let _ = removeIfExists(root, recursive: true)
@@ -38,7 +38,7 @@ class HighlightConfigTest {
             "on-error = \"error\"\n[doctest]\nmode = \"off\"\n")
         @Expect(config.mode, "off")
         @Expect(config.onError, "error")
-        @Expect(config.languages, ["cangjie", "python", "yaml", "custom#grammar"])
+        @Expect(config.languages.toArray(), ["cangjie", "python", "yaml", "custom#grammar"])
     }
 
     @TestCase
@@ -87,7 +87,7 @@ class HighlightConfigTest {
     @TestCase
     func unknownLanguagesAreDataAndShellFamiliesStayDistinct(): Unit {
         let config = highlightConfigFromText("[highlight]\nlanguages = [\"future-language\", \"sh\", \"bash\", \"zsh\", \"fish\", \"powershell\"]")
-        @Expect(config.languages, ["future-language", "sh", "bash", "zsh", "fish", "powershell"])
+        @Expect(config.languages.toArray(), ["future-language", "sh", "bash", "zsh", "fish", "powershell"])
         @Expect(config.mode, "static")
     }
 

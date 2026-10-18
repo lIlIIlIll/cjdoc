@@ -1,0 +1,4 @@
+[highlight]
+mode = "static"
+languages = ["cangjie", "json", "bash", "python", "toml", "yaml"]
+on-error = "warn"

@@ -8,9 +8,11 @@ internal let HIGHLIGHT_CONFIG_MAX_BYTES: Int64 = 64 * 1024
 
 // A language list selects presentation, never permission to execute a program.
 // Without explicit host authorization non-Cangjie languages stay explainably plain.
-internal class HighlightConfig {
+/** Static highlight policy; selecting languages never authorizes external execution. */
+public class HighlightConfig {
     public let mode: String
-    public let languages: Array<String>
+    private let languagesStorage: ArrayList<String>
+    public prop languages: ReadOnlyList<String> { get() { languagesStorage } }
     public let onError: String
 
     public init(mode!: String = "static", languages!: Array<String> = ["cangjie"],
@@ -37,12 +39,12 @@ internal class HighlightConfig {
             normalized.add(value)
         }
         this.mode = mode
-        this.languages = normalized.toArray()
+        this.languagesStorage = normalized
         this.onError = onError
     }
 
     public func allowsLanguage(language: String): Bool {
-        languages.contains(normalizeCodeLanguage(language))
+        languagesStorage.contains(normalizeCodeLanguage(language))
     }
 }
 
