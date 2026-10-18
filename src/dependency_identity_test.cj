@@ -309,9 +309,18 @@ class DependencyIdentityTest {
             identityTestProject(root, "identity_app")
             let inventory = root.join("observed")
             Directory.create(inventory)
-            let bytes = Array<Byte>(54 * 1024 * 1024, repeat: b'x')
-            for (index in 0..5) {
-                File.writeTo(inventory.join("input" + index.toString() + ".cj"), bytes)
+            // The aggregate must exceed half of MAX_BYTES so a non-caching
+            // implementation would re-charge the same bytes and fail, while each
+            // file stays small enough that reading one cannot approach the test
+            // heap: many bounded files instead of a few near-limit ones.
+            let chunk = Array<Byte>(1024 * 1024, repeat: b'x')
+            for (index in 0..48) {
+                let target = inventory.join("input" + index.toString() + ".cj")
+                File.writeTo(target, [])
+                let file = File(target, OpenMode.Write)
+                try {
+                    for (_ in 0..6) { file.write(chunk) }
+                } finally { file.close() }
             }
             for (name in ["native.bin", "std.bin", "stdx.bin", "compiler.bin"]) {
                 File.writeTo(root.join(name), [1u8, 2u8, 3u8])
