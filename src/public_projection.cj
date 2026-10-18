@@ -217,6 +217,7 @@ internal class PublicDeclarationProjection {
     let declarations: Array<public_model.SymbolDoc>
     let assetCollector: LocalAssetCollector
     let markdownContext: MarkdownGenerationContext
+    let hiddenContext: MarkdownGenerationContext
     let renderableIds: HashSet<String>
 
     init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
@@ -237,6 +238,7 @@ internal class PublicDeclarationProjection {
         this.declarations = declarations.toArray()
         this.assetCollector = assetCollector
         this.markdownContext = markdownContext
+        this.hiddenContext = hiddenContext
         this.renderableIds = renderableIds
     }
 }
@@ -295,6 +297,7 @@ internal class PublicDiagnosticProjection {
 
     init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
         assetCollector: LocalAssetCollector, markdownContext: MarkdownGenerationContext,
+        hiddenContext: MarkdownGenerationContext,
         declarations: Array<public_model.SymbolDoc>, renderableIds: HashSet<String>,
         semanticLinkDiagnostics: Array<public_model.Diagnostic>, lintProfile: String) {
         let diagnostics = ArrayList<public_model.Diagnostic>()
@@ -320,12 +323,16 @@ internal class PublicDiagnosticProjection {
             incompleteSource = true
         }
         diagnostics.add(all: assetCollector.diagnostics())
-        if (markdownContext.incomplete) {
+        if (markdownContext.incomplete || hiddenContext.incomplete) {
             incompleteSource = true
         }
         for (diagnostic in markdownContext.diagnostics()) {
             // Any error diagnostic here must make the document partial; a complete
             // status with an error-bearing diagnostic is an invalid domain state.
+            if (diagnostic.severity == "error") { hasError = true }
+            diagnostics.add(diagnostic)
+        }
+        for (diagnostic in hiddenContext.diagnostics()) {
             if (diagnostic.severity == "error") { hasError = true }
             diagnostics.add(diagnostic)
         }
@@ -382,7 +389,7 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
         request.projectRoot)
     let sourceProjection = PublicSourceProjection(documentation, sourceMapper)
     let diagnosticProjection = PublicDiagnosticProjection(documentation, sourceMapper,
-        declarationProjection.assetCollector, declarationProjection.markdownContext,
+        declarationProjection.assetCollector, declarationProjection.markdownContext, declarationProjection.hiddenContext,
         declarationProjection.declarations, declarationProjection.renderableIds,
         semanticLinkDiagnostics, request.lintProfile)
     let status = if (diagnosticProjection.hasError || diagnosticProjection.incompleteSource ||

@@ -63,6 +63,69 @@ class HighlightGenerationContractTest {
     }
 
     @TestCase
+    func hiddenMarkdownFailuresRemainObservableWithoutHighlighting(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            Directory.create(root.join("src"))
+            File.writeTo(root.join("cjpm.toml"), ("[package]\nname = \"hidden_markdown\"\n" +
+                "version = \"1.0.0\"\noutput-type = \"static\"\n").toArray())
+            for (exceedsLimit in [false, true]) {
+                let body = if (exceedsLimit) {
+                    ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> leaf"
+                } else {
+                    "```python\n * secret = True\n * ```"
+                }
+                File.writeTo(root.join("src/api.cj"), ("package hidden_markdown\n" +
+                    "/** Visible. */\npublic func visible(): Unit {}\n" +
+                    "/** Hidden.\n *\n * ${body}\n */\nprivate func hidden(): Unit {}\n").toArray())
+                let documentation = DocumentationEngine().generate(GenerationRequest(root.toString(),
+                    audience: "external", lintProfile: "off", astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT,
+                    highlight: Some(HighlightConfig(languages: ["cangjie", "python"], onError: "error"))))
+                @Expect(documentation.status, if (exceedsLimit) { "partial" } else { "complete" })
+                @Expect(documentation.declarations.size, 2)
+                var hiddenCount: Int64 = 0
+                var markdownFailures: Int64 = 0
+                for (symbol in documentation.declarations where symbol.name == "hidden") {
+                    hiddenCount++
+                    @Expect(symbol.signatureHighlight.isNone())
+                    let comment = symbol.documentation.getOrThrow()
+                    if (exceedsLimit) {
+                        @Expect(comment.summary,
+                            "Documentation omitted because Markdown resource limits were exceeded.")
+                        @Expect(comment.markdown.children.size, 1)
+                    } else {
+                        @Expect(comment.summary, "Hidden.")
+                        var codeBlocks: Int64 = 0
+                        for (node in comment.markdown.children where node.kind == "code_block") {
+                            codeBlocks++
+                            @Expect(node.literal, "secret = True\n")
+                            @Expect(node.metadata.getOrThrow().codeHighlight.isNone())
+                        }
+                        @Expect(codeBlocks, 1)
+                    }
+                    for (diagnostic in documentation.diagnostics where diagnostic.code == "CJDOC3026") {
+                        markdownFailures++
+                        @Expect(diagnostic.severity, "warning")
+                        @Expect(diagnostic.symbolId, Some(symbol.id))
+                        @Expect(diagnostic.source.getOrThrow().path, symbol.source.path)
+                        @Expect(diagnostic.source.getOrThrow().start.line, symbol.source.start.line)
+                    }
+                }
+                @Expect(hiddenCount, 1)
+                @Expect(markdownFailures, if (exceedsLimit) { 1 } else { 0 })
+                for (diagnostic in documentation.diagnostics) {
+                    @Expect(diagnostic.code != "CJDOC3120" && diagnostic.code != "CJDOC4027")
+                }
+                let encoded = api_render.encodeDocIr(documentation)
+                @Expect(api_render.encodeDocIr(api_render.decodeDocIr(encoded)), encoded)
+                let html = renderedContent(api_render.HtmlDocumentationRenderer().render(documentation))
+                @Expect(!html.contains("hidden_markdown.hidden"))
+                @Expect(!html.contains("secret = True"))
+            }
+        } finally { let _ = removeIfExists(root, recursive: true) }
+    }
+
+    @TestCase
     func filteredLanguageDoesNotPrepareOrReportBackendFailure(): Unit {
         let root = Directory.createTemp(getTempDirectory())
         try {
