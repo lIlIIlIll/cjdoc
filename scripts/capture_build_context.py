@@ -3,6 +3,7 @@
 
 This is an input observation receipt, not an attestation that a build succeeded.
 No compiler, SDK environment variable, cache search, Git command or network is used.
+Parsed manifests must match the bytes hashed in their source inventory.
 Targets contain only ASCII letters, digits, '_' and '-'; paths are relative
 when possible and absolute when the host cannot relativize them.
 """
@@ -58,7 +59,8 @@ def artifact_digest(path: Path, expected_size: int | None = None) -> str:
 
 
 
-def identity(path: Path, source: bool = True, budget: ObservationBudget | None = None) -> str:
+def identity(path: Path, source: bool = True, budget: ObservationBudget | None = None,
+             *, file_digests: dict[str, str] | None = None) -> str:
     budget = budget or ObservationBudget()
     path = path.resolve(strict=True)
     if path.is_file():
@@ -101,6 +103,8 @@ def identity(path: Path, source: bool = True, budget: ObservationBudget | None =
             content_digest = hashlib.sha256(content).hexdigest()
         else:
             content_digest = artifact_digest(entry, size)
+        if file_digests is not None:
+            file_digests[relative] = content_digest
         encoded = relative.encode("utf-8")
         digest.update(str(len(encoded)).encode() + b":" + encoded + b":" + str(size).encode() + b":" + content_digest.encode() + b"\n")
         observed.append((relative, size, before.st_mtime_ns, before.st_ctime_ns))
@@ -145,11 +149,23 @@ def main():
     observation = ObservationBudget()
     identities = {}
 
-    def observed_identity(path, source=True):
+    def observed_identity(path, source=True, manifest_content=None):
         key = (path.resolve(strict=True), source)
         if key not in identities:
-            identities[key] = identity(key[0], source, observation)
-        return identities[key]
+            file_digests = {}
+            identities[key] = (identity(key[0], source, observation, file_digests=file_digests), file_digests)
+        result, file_digests = identities[key]
+        if manifest_content is not None and file_digests.get("cjpm.toml") != hashlib.sha256(manifest_content).hexdigest():
+            raise ValueError("input changed while observing")
+        return result
+
+    def observed_manifest(path):
+        content = (path / "cjpm.toml").read_bytes()
+        manifest = tomllib.loads(content.decode("utf-8"))
+        # Check cached observations too: dependency() and add_module() may parse
+        # the same manifest on opposite sides of a filesystem change.
+        observed_identity(path, manifest_content=content)
+        return manifest
 
     def local(path):
         try:
@@ -161,7 +177,7 @@ def main():
         result = {"name": name, "kind": kind, "path": local(path),
                   "identity": observed_identity(path, content == "source"), "content": content}
         if kind == "source":
-            manifest = tomllib.loads((path / "cjpm.toml").read_text(encoding="utf-8"))
+            manifest = observed_manifest(path)
             version = manifest.get("package", {}).get("version", "")
             if version:
                 result["version"] = version
@@ -173,7 +189,7 @@ def main():
             return
         if len(modules) >= 4096:
             raise ValueError("module limit exceeded")
-        manifest = tomllib.loads((path / "cjpm.toml").read_text(encoding="utf-8"))
+        manifest = observed_manifest(path)
         name = manifest.get("package", {}).get("name", "workspace")
         module = {"name": name, "path": local(path), "identity": observed_identity(path), "dependencies": []}
         modules[path] = module

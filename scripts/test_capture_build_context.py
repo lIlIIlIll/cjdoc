@@ -159,6 +159,76 @@ class BuildContextManifestPathTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(destination.read_text(encoding="utf-8")), result.stderr
 
+    def test_manifest_selection_rewrite_between_parse_and_observation_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve(strict=True)
+            root = base / "app"
+            self.project(root, "app")
+            self.project(base / "first", "first")
+            self.project(base / "second", "second")
+            manifest_path = root / "cjpm.toml"
+            old = '[package]\nname = "app"\n[dependencies]\nfirst = { path = "../first" }\n'
+            new = '[package]\nname = "changed"\n[dependencies]\nsecond = { path = "../second" }\n'
+            manifest_path.write_text(old, encoding="utf-8")
+            destination = base / "context.json"
+            argv = ["capture_build_context.py", "--project", str(root),
+                    "--output", str(destination), "--target", "example-target"]
+            loads = capture.tomllib.loads
+            parsed = []
+
+            def parse_then_rewrite(text):
+                manifest = loads(text)
+                if text == old:
+                    parsed.append(manifest)
+                    # The parse returns old selections, but the first stable
+                    # tree observation will see only the rewritten manifest.
+                    manifest_path.write_text(new, encoding="utf-8")
+                return manifest
+
+            with patch.object(sys, "argv", argv), \
+                    patch.object(capture.tomllib, "loads", side_effect=parse_then_rewrite):
+                with self.assertRaisesRegex(ValueError, "input changed while observing"):
+                    capture.main()
+            self.assertEqual(len(parsed), 1)
+            self.assertEqual(parsed[0]["dependencies"], {"first": {"path": "../first"}})
+            self.assertEqual(manifest_path.read_text(encoding="utf-8"), new)
+            self.assertFalse(destination.exists())
+
+    def test_dependency_manifest_rewrite_cannot_reuse_cached_source_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve(strict=True)
+            root, library = base / "app", base / "library"
+            self.project(root, "app")
+            self.project(library, "library")
+            with (root / "cjpm.toml").open("a", encoding="utf-8") as manifest:
+                manifest.write('\n[dependencies]\nlibrary = { path = "../library" }\n')
+            manifest_path = library / "cjpm.toml"
+            old = manifest_path.read_text(encoding="utf-8")
+            new = old.replace('version = "1.0.0"', 'version = "2.0.0"')
+            destination = base / "context.json"
+            argv = ["capture_build_context.py", "--project", str(root),
+                    "--output", str(destination), "--target", "example-target"]
+            loads = capture.tomllib.loads
+            parsed = []
+
+            def parse_then_rewrite(text):
+                manifest = loads(text)
+                if text == old:
+                    parsed.append(manifest)
+                    # dependency() and add_module() share the source identity;
+                    # a later parse must still match its cached manifest digest.
+                    manifest_path.write_text(new, encoding="utf-8")
+                return manifest
+
+            with patch.object(sys, "argv", argv), \
+                    patch.object(capture.tomllib, "loads", side_effect=parse_then_rewrite):
+                with self.assertRaisesRegex(ValueError, "input changed while observing"):
+                    capture.main()
+            self.assertEqual(len(parsed), 1)
+            self.assertEqual(parsed[0]["package"]["version"], "1.0.0")
+            self.assertEqual(manifest_path.read_text(encoding="utf-8"), new)
+            self.assertFalse(destination.exists())
+
     def test_unrelativizable_paths_fall_back_to_absolute_without_changing_receipt(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory).resolve(strict=True)

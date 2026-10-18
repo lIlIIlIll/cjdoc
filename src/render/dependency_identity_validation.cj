@@ -180,6 +180,10 @@ internal class NavigationEvidence {
                     "exact navigation must match the referenced documentation.dependencies identity")
             }
         }
+        // Like exact targets, compatible targets come from keyed inventory entries.
+        if (value.matchLevel == "compatible" && value.symbolKey.isEmpty()) {
+            domainFail(path + ".symbolKey", "external compatible navigation requires a symbol key")
+        }
     }
 }
 

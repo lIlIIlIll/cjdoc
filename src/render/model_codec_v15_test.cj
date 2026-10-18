@@ -327,6 +327,26 @@ class ModelCodecV15Contracts {
     }
 
     @TestCase
+    func externalCompatibleNavigationWithSymbolKeyStillRoundTrips(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture()).replace(
+            "\"matchLevel\": \"exact\"", "\"matchLevel\": \"compatible\"")
+        let restored = decodeDocIr(encoded)
+        let navigation = restored.pages[0].bindings[0].navigation.getOrThrow()
+        @Expect(navigation.matchLevel, "compatible")
+        @Expect(navigation.symbolKey, "support.Box|class|1()")
+        @Expect(encodeDocIr(restored), encoded)
+    }
+
+    @TestCase
+    func externalCompatibleNavigationRejectsEmptySymbolKey(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture()).replace(
+            "\"matchLevel\": \"exact\"", "\"matchLevel\": \"compatible\"")
+        let corrupted = encoded.replace("\"symbolKey\": \"support.Box|class|1()\"", "\"symbolKey\": \"\"")
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(corrupted))
+        @Expect(error.message.contains(".navigation.symbolKey"))
+    }
+
+    @TestCase
     func localExactNavigationRejectsAnUnselectedOccurrenceModule(): Unit {
         let encoded = crossModuleLocalNavigationCodecDocument(false)
         let error = @AssertThrows[IllegalArgumentException](decodeDocIr(encoded))
