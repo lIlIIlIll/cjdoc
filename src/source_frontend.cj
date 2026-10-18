@@ -70,6 +70,11 @@ internal func readAuxiliaryTextBounded(path: Path, perFileLimit: Int64,
 
 internal func readAuxiliaryFileBounded(path: Path, perFileLimit: Int64,
     budget: SourceAuxiliaryBudget): Array<Byte> {
+    readAuxiliaryFileBoundedSnapshot(path, perFileLimit, budget).bytes
+}
+
+internal func readAuxiliaryFileBoundedSnapshot(path: Path, perFileLimit: Int64,
+    budget: SourceAuxiliaryBudget): BoundedFileRead {
     let info = FileInfo(path)
     if (!info.isRegular() || info.isSymbolicLink() || info.size < 0 ||
         info.size > perFileLimit) {
@@ -78,7 +83,7 @@ internal func readAuxiliaryFileBounded(path: Path, perFileLimit: Int64,
     if (!budget.consumeBytes(info.size) || !budget.consumeWork(info.size)) {
         throw IllegalArgumentException("source auxiliary cache budget exceeded")
     }
-    readFileBounded(path, perFileLimit)
+    readFileBoundedSnapshot(path, perFileLimit)
 }
 
 class SourceCacheStats {

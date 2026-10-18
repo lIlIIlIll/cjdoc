@@ -31,7 +31,8 @@ private func dependencyInventoryFiles(root: String, source: Bool,
     }
 }
 
-private func dependencyArtifactDigest(path: Path, budget: SourceAuxiliaryBudget, expectedSize!: ?Int64 = None): String {
+private func dependencyArtifactDigest(path: Path, budget: SourceAuxiliaryBudget,
+    expectedSize!: ?Int64 = None): (String, Int64, DateTime, DateTime) {
     let before = FileInfo(path)
     let size = before.size
     if (let Some(expected) <- expectedSize) {
@@ -68,19 +69,27 @@ private func dependencyArtifactDigest(path: Path, budget: SourceAuxiliaryBudget,
         after.creationTime != creation || after.lastModificationTime != modified) {
         throw IllegalArgumentException("dependency artifact changed while hashing")
     }
-    digest.finish()
+    (digest.finish(), size, creation, modified)
+}
+
+private func dependencySourceDigest(path: Path, budget: SourceAuxiliaryBudget): (String, Int64, DateTime, DateTime) {
+    // Keep the byte-bearing snapshot in this frame, not the multi-file loop.
+    let snapshot = readAuxiliaryFileBoundedSnapshot(path, DEPENDENCY_IDENTITY_FILE_BYTES, budget)
+    (Sha256Digest.digestBytes(snapshot.bytes), snapshot.size, snapshot.creationTime, snapshot.lastModificationTime)
 }
 
 
 internal func dependencyObservedIdentity(path: String, source: Bool,
-    byteBudget!: ?SourceAuxiliaryBudget = None, directoryBudget!: ?SourceDirectoryBudget = None): String {
+    byteBudget!: ?SourceAuxiliaryBudget = None, directoryBudget!: ?SourceDirectoryBudget = None,
+    manifestDigest!: Option<(String) -> Unit> = None): String {
     let root = canonicalize(path).toString()
     let info = FileInfo(root)
     if (info.isSymbolicLink()) { throw IllegalArgumentException("dependency input is a symbolic link") }
     let budget = byteBudget.getOrDefault({ => SourceAuxiliaryBudget(DEPENDENCY_IDENTITY_BYTES, DEPENDENCY_IDENTITY_BYTES) })
     if (info.isRegular()) {
         if (source) { throw IllegalArgumentException("source dependency must be a directory") }
-        return "sha256:" + dependencyArtifactDigest(Path(root), budget)
+        let (digest, _, _, _) = dependencyArtifactDigest(Path(root), budget)
+        return "sha256:" + digest
     }
     if (!info.isDirectory()) { throw IllegalArgumentException("dependency input is not a file or directory") }
     let entries = directoryBudget.getOrDefault({ => SourceDirectoryBudget(maxEntries: 100000, maxDepth: 128) })
@@ -93,19 +102,16 @@ internal func dependencyObservedIdentity(path: String, source: Bool,
     let observed = ArrayList<(Int64, DateTime, DateTime)>()
     for (relative in files) {
         let current = Path(root).join(relative)
-        let (size, digest) = if (source) {
-            let bytes = readAuxiliaryFileBounded(current, DEPENDENCY_IDENTITY_FILE_BYTES, budget)
-            // The length and digest must describe the same stable read.
-            (bytes.size, Sha256Digest.digestBytes(bytes))
+        let (digest, size, creation, modified) = if (source) {
+            dependencySourceDigest(current, budget)
         } else {
-            let size = FileInfo(current).size
-            (size, dependencyArtifactDigest(current, budget, expectedSize: Some(size)))
+            let expectedSize = FileInfo(current).size
+            dependencyArtifactDigest(current, budget, expectedSize: Some(expectedSize))
         }
-        let metadata = FileInfo(current)
-        if (!metadata.isRegular() || metadata.isSymbolicLink() || metadata.size != size) {
-            throw IllegalArgumentException("dependency artifact changed while hashing")
+        observed.add((size, creation, modified))
+        if (source && relative == "cjpm.toml") {
+            if (let Some(capture) <- manifestDigest) { capture(digest) }
         }
-        observed.add((size, metadata.creationTime, metadata.lastModificationTime))
         inventory.append(relative.size.toString())
         inventory.append(":")
         inventory.append(relative)

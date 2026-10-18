@@ -3,11 +3,14 @@
 
 This is an input observation receipt, not an attestation that a build succeeded.
 No compiler, SDK environment variable, cache search, Git command or network is used.
+Targets contain only ASCII letters, digits, '_' and '-'; paths are relative
+when possible and absolute when the host cannot relativize them.
 """
 import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 import tomllib
@@ -125,6 +128,8 @@ def main():
     parser.add_argument("--source-dependency", action="append", default=[], metavar="OWNER:KIND:NAME=PATH",
                         help="actual selected source input; kind source/std/stdx")
     args = parser.parse_args()
+    if re.fullmatch(r"[A-Za-z0-9_-]+", args.target) is None:
+        parser.error("--target must be nonempty and contain only [A-Za-z0-9_-]")
     project = args.project.resolve(strict=True)
     output = args.output.resolve()
     base = output.parent
@@ -147,7 +152,10 @@ def main():
         return identities[key]
 
     def local(path):
-        return Path(os.path.relpath(path, base)).as_posix()
+        try:
+            return Path(os.path.relpath(path, base)).as_posix()
+        except ValueError:
+            return path.absolute().as_posix()
 
     def dependency(name, kind, path, content):
         result = {"name": name, "kind": kind, "path": local(path),

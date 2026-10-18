@@ -20,12 +20,14 @@ private func inventoryBudgetGenerate(root: Path, sources!: Array<String> = []): 
         astPreflightExecutable: Some(binary), documentInventoryPins: pins.toArray()))
 }
 
-private func inventoryBudgetProject(temporary: Path): Path {
+private func inventoryBudgetProject(temporary: Path, organization!: String = ""): Path {
     let root = temporary.join("app")
     let dependency = temporary.join("dep")
     Directory.create(root.join("src"), recursive: true)
     Directory.create(dependency.join("src"), recursive: true)
-    File.writeTo(dependency.join("cjpm.toml"), "[package]\nname = \"inventory_dep\"\nversion = \"1.0.0\"\n".toArray())
+    let organizationEntry = if (organization.isEmpty()) { "" } else { "organization = \"" + organization + "\"\n" }
+    File.writeTo(dependency.join("cjpm.toml"), ("[package]\nname = \"inventory_dep\"\nversion = \"1.0.0\"\n" +
+        organizationEntry).toArray())
     File.writeTo(dependency.join("src/api.cj"), "package inventory_dep\n/** Token. */\npublic class Token {}\n".toArray())
     File.writeTo(root.join("cjpm.toml"), ("[package]\nname = \"inventory_app\"\nversion = \"1.0.0\"\n" +
         "[dependencies]\ninventory_dep = { path = \"../dep\" }\n").toArray())
@@ -142,6 +144,68 @@ private func inventoryBudgetPad(path: Path, text: String, size: Int64): Unit {
 
 @Test
 class SharedExternalInventoryBudgetTest {
+    @TestCase
+    func generatedOrganizedInventoryRetainsExactNavigation(): Unit {
+        expectGeneratedInventoryNavigation("acme")
+    }
+
+    @TestCase
+    func generatedUnorganizedInventoryRetainsExactNavigation(): Unit {
+        expectGeneratedInventoryNavigation("")
+    }
+
+    private func expectGeneratedInventoryNavigation(organization: String): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = inventoryBudgetProject(temporary, organization: organization)
+            let inventory = JsonNode.parse(readTextBounded(root.join("modern.json"), 8 * 1024 * 1024)).asObject()
+            @Expect(inventory["schemaVersion"].asString(), "cjdoc.symbol-index/2")
+            let library = if (organization.isEmpty()) { "inventory_dep" } else { organization + "::inventory_dep" }
+            @Expect(inventory["documentSets"].asArray().get(0).getOrThrow().asObject()["library"].asString(), library)
+            let entry = inventory["entries"].asArray().get(0).getOrThrow().asObject()
+            @Expect(entry["packageName"].asString(), "inventory_dep")
+            @Expect(entry["symbolKey"].asString(), "inventory_dep.Token|class|0()")
+            let generated = inventoryBudgetGenerate(root, sources: ["catalog.json"])
+            let navigation = inventoryBudgetNavigation(generated)
+            @Expect(navigation.state, "resolved")
+            @Expect(navigation.matchLevel, "exact")
+            @Expect(navigation.symbolKey, entry["symbolKey"].asString())
+            @Expect(navigation.url, "https://docs.example.test/modern/" + entry["href"].asString())
+            @Assert(generated.documentSets.size, 1)
+            @Expect(generated.documentSets[0].library, library)
+            let explicit = inventoryBudgetLink(inventoryBudgetSymbol(generated, "use").documentation.getOrThrow().markdown,
+                "inventory_dep.Token").getOrThrow()
+            @Expect(explicit.state, "resolved")
+            @Expect(explicit.matchLevel, "exact")
+            @Expect(explicit.url, navigation.url)
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func organizedInventoryStillRejectsForeignNamespacesAndUnsafeRoutes(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = inventoryBudgetProject(temporary, organization: "acme")
+            let path = root.join("modern.json")
+            let original = readTextBounded(path, 8 * 1024 * 1024)
+            let entry = JsonNode.parse(original).asObject()["entries"].asArray().get(0).getOrThrow().asObject()
+            let href = api_render.escapeJsonString(entry["href"].asString())
+            for (invalid in [
+                original.replace("\"packageName\":\"inventory_dep\"", "\"packageName\":\"other_dep\""),
+                original.replace("\"packageName\":\"inventory_dep\"", "\"packageName\":\"inventory_dependency\""),
+                original.replace("\"packageName\":\"inventory_dep\"", "\"packageName\":\"other::inventory_dep\""),
+                original.replace(href, "\"../escape.html\""),
+                original.replace(href, "\"https://docs.example.test/%2e%2e/escape.html\"")]) {
+                @Assert(invalid != original)
+                File.writeTo(path, invalid.toArray())
+                let generated = inventoryBudgetGenerate(root, sources: ["catalog.json"])
+                @Expect(inventoryBudgetNavigation(generated).state != "resolved")
+                @Expect(generated.documentSets.isEmpty())
+                @Expect(publicHasDiagnostic(generated, "CJDOC2312"))
+            }
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
     @TestCase
     func requestedLanguageOutranksSourcePriorityAtTheSameMatchLevel(): Unit {
         let temporary = Directory.createTemp(getTempDirectory())

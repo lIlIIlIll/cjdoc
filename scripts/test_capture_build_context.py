@@ -1,5 +1,6 @@
 """Behavioral boundaries for the explicit build-input receipt observer."""
 import hashlib
+import io
 import json
 import os
 import subprocess
@@ -149,14 +150,91 @@ class BuildContextManifestPathTests(unittest.TestCase):
             f'[package]\nname = "{name}"\nversion = "1.0.0"\n', encoding="utf-8")
         (root / "src/api.cj").write_text(f"package {name}\npublic class Widget {{}}\n", encoding="utf-8")
 
-    def record(self, root, destination, *extra, selection="ignored-environment-value"):
+    def record(self, root, destination, *extra, selection="ignored-environment-value", target="example-target"):
         environment = os.environ.copy()
         environment["SELECTED_LIBRARY"] = selection
         result = subprocess.run([sys.executable, str(Path(capture.__file__).resolve()),
-            "--project", str(root), "--output", str(destination), "--target", "example-target", *extra],
+            "--project", str(root), "--output", str(destination), "--target", target, *extra],
             env=environment, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(destination.read_text(encoding="utf-8")), result.stderr
+
+    def test_unrelativizable_paths_fall_back_to_absolute_without_changing_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve(strict=True)
+            root, library = base / "app", base / "library"
+            self.project(root, "app")
+            self.project(library, "library")
+            artifact = base / "native.a"
+            artifact.write_bytes(b"actual-artifact-input")
+            destination = base / "context.json"
+            extra = ("--source-dependency", f"app:source:library={library}",
+                     "--dependency", f"app:binary:native={artifact}")
+            expected, _ = self.record(root, destination, *extra)
+            self.assertEqual(expected["project"]["path"], "app")
+            owner = next(module for module in expected["modules"] if module["name"] == "app")
+            self.assertEqual([item["path"] for item in owner["dependencies"]], ["native.a", "library"])
+            relative = os.path.relpath
+            unrelativizable = {root, artifact}
+
+            def cross_drive(path, start):
+                if Path(path) in unrelativizable and Path(start) == base:
+                    raise ValueError("path is on a different drive")
+                return relative(path, start)
+
+            argv = ["capture_build_context.py", "--project", str(root),
+                    "--output", str(destination), "--target", "example-target", *extra]
+            with patch.object(sys, "argv", argv), \
+                    patch.object(capture.os.path, "relpath", side_effect=cross_drive):
+                capture.main()
+            actual = json.loads(destination.read_text(encoding="utf-8"))
+            expected["project"]["path"] = root.as_posix()
+            for module in expected["modules"]:
+                if module["name"] == "app":
+                    module["path"] = root.as_posix()
+                    for dependency in module["dependencies"]:
+                        if dependency["name"] == "native":
+                            dependency["path"] = artifact.as_posix()
+            self.assertTrue(Path(actual["project"]["path"]).is_absolute())
+            actual_owner = next(module for module in actual["modules"] if module["name"] == "app")
+            self.assertTrue(Path(actual_owner["dependencies"][0]["path"]).is_absolute())
+            self.assertEqual(actual, expected)
+
+    def test_invalid_target_is_rejected_before_observation_or_output(self):
+        for target in ("bad target", "bad.target", "", "tärgét", "bad/target"):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
+                base = Path(directory)
+                root = base / "app"
+                self.project(root, "app")
+                destination = base / "context.json"
+                argv = ["capture_build_context.py", "--project", str(root),
+                        "--output", str(destination), "--target", target]
+                stderr = io.StringIO()
+                with patch.object(sys, "argv", argv), patch.object(sys, "stderr", stderr), \
+                        patch.object(capture, "identity", wraps=capture.identity) as observed:
+                    with self.assertRaises(SystemExit) as rejected:
+                        capture.main()
+                self.assertEqual(rejected.exception.code, 2)
+                self.assertIn("--target must be nonempty and contain only [A-Za-z0-9_-]", stderr.getvalue())
+                observed.assert_not_called()
+                self.assertFalse(destination.exists())
+
+    def test_valid_target_preserves_receipt_fields_and_relative_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "app"
+            self.project(root, "app")
+            record, warning = self.record(root, base / "context.json",
+                "--cfg", "target=Az09_-", "--cfg", "mode=release", target="Az09_-")
+            identity = capture.identity(root)
+            self.assertEqual(record, {
+                "schemaVersion": "cjdoc.build-context/1",
+                "project": {"path": "app", "identity": identity},
+                "target": "Az09_-",
+                "cfg": "mode=release\ntarget=Az09_-",
+                "modules": [{"name": "app", "path": "app", "identity": identity, "dependencies": []}],
+            })
+            self.assertEqual(warning, "")
 
     def test_receipt_paths_bind_from_canonical_output_directory(self):
         for link_kind in ("ancestor", "file"):

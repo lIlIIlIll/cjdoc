@@ -154,10 +154,10 @@ class DependencyIdentityTest {
             // Replace at the bounded-reader boundary: the old inventory has
             // already captured its outer FileInfo size, but the stable read
             // legitimately observes only the replacement.
-            @On(readAuxiliaryFileBounded(source, _, _)).returns({ =>
+            @On(readAuxiliaryFileBoundedSnapshot(source, _, _)).returns({ =>
                 @Expect(FileInfo(source).size, beforeSize)
                 File.writeTo(source, replacement)
-                readFileBounded(source, 64 * 1024 * 1024)
+                readFileBoundedSnapshot(source, 64 * 1024 * 1024)
             }).once().then().callsOriginal()
             let expectedInventory = "cjdoc.dependency-inventory/1\n8:input.cj:" +
                 replacement.size.toString() + ":" + api_model.contractFingerprintBytes(replacement) + "\n"
@@ -175,10 +175,10 @@ class DependencyIdentityTest {
         try {
             let source = root.join("input.cj")
             File.writeTo(source, [b'x'])
-            @On(readAuxiliaryFileBounded(source, _, _)).returns({ =>
-                let bytes = readFileBounded(source, 64 * 1024 * 1024)
+            @On(readAuxiliaryFileBoundedSnapshot(source, _, _)).returns({ =>
+                let snapshot = readFileBoundedSnapshot(source, 64 * 1024 * 1024)
                 File.writeTo(root.join("added.cj"), [b'y'])
-                bytes
+                snapshot
             }).once()
             @ExpectThrows[IllegalArgumentException](dependencyObservedIdentity(root.toString(), true))
             @Expect(FileInfo(root.join("added.cj")).isRegular(), true)
@@ -193,15 +193,72 @@ class DependencyIdentityTest {
             let later = root.join("z.cj")
             File.writeTo(earlier, [b'x'])
             File.writeTo(later, [b'y'])
-            @On(readAuxiliaryFileBounded(later, _, _)).returns({ =>
-                let bytes = readFileBounded(later, 64 * 1024 * 1024)
+            @On(readAuxiliaryFileBoundedSnapshot(later, _, _)).returns({ =>
+                let snapshot = readFileBoundedSnapshot(later, 64 * 1024 * 1024)
                 let _ = removeIfExists(earlier)
                 File.writeTo(earlier, "replacement".toArray())
-                bytes
+                snapshot
             }).once()
             @ExpectThrows[IllegalArgumentException](dependencyObservedIdentity(root.toString(), true))
             @Expect(File.readFrom(earlier), "replacement".toArray())
         } finally { let _ = removeIfExists(root, recursive: true) }
+    }
+
+    @TestCase
+    func sourceInventoryRejectsSameSizeRewriteAfterStableRead(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            let source = root.join("input.cj")
+            let original = [b'x']
+            let replacement = [b'y']
+            File.writeTo(source, original)
+            let snapshot = readFileBoundedSnapshot(source, 64 * 1024 * 1024)
+            // Inject the stable-read result at its return boundary. Model the
+            // hashed snapshot's older timestamp explicitly, so this pairing
+            // check does not depend on filesystem timestamp granularity.
+            @On(readAuxiliaryFileBoundedSnapshot(source, _, _)).returns({ =>
+                File.writeTo(source, replacement)
+                let current = FileInfo(source)
+                @Assert(current.size, snapshot.size)
+                BoundedFileRead(snapshot.bytes, snapshot.size, current.creationTime,
+                    current.lastModificationTime - Duration.second)
+            }).once()
+            @ExpectThrows[IllegalArgumentException](dependencyObservedIdentity(root.toString(), true))
+            @Expect(File.readFrom(source), replacement)
+        } finally { let _ = removeIfExists(root, recursive: true) }
+    }
+
+    @TestCase
+    func sourceGraphRejectsManifestReadBeforeIdentifiedSnapshot(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let root = temporary.join("app")
+            identityTestProject(root, "identity_app")
+            identityTestProject(temporary.join("old"), "identity_dep")
+            identityTestProject(temporary.join("new"), "identity_dep")
+            let manifest = root.join("cjpm.toml")
+            let original = "[package]\nname = \"identity_app\"\n[dependencies]\nidentity_dep = { path = \"../old\" }\n"
+            let replacement = original.replace("../old", "../new")
+            @Expect(original.size, replacement.size)
+            File.writeTo(manifest, original.toArray())
+            let documentation = identityTestGenerate(root)
+            let diagnostics = ArrayList<api_model.Diagnostic>()
+            let capture = DependencyIdentityCapture(documentation, GenerationRequest(root.toString()), Some(diagnostics))
+            // Return the first stable text, then replace it before the source
+            // tree is observed. Old sourceGraph hashed NEW but parsed OLD.
+            @On(readTextBounded(manifest, MAX_MANIFEST_ADAPTER_BYTES)).returns({ =>
+                let text = String.fromUtf8(readFileBounded(manifest, MAX_MANIFEST_ADAPTER_BYTES))
+                File.writeTo(manifest, replacement.toArray())
+                text
+            }).once().then().callsOriginal()
+            capture.sourceGraph()
+            @Expect(capture.modules.size, 0)
+            @Expect(capture.entries.size, 0)
+            @Assert(diagnostics.size, 1)
+            @Expect(diagnostics[0].code, "CJDOC2302")
+            @Expect(diagnostics[0].message, "dependency manifest could not be observed within inventory limits")
+            @Expect(File.readFrom(manifest), replacement.toArray())
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
     }
 
     @TestCase

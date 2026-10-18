@@ -40,6 +40,7 @@ internal class DependencyIdentityCapture {
     let modules = ArrayList<DependencyIdentityModule>()
     let sourceRoots = HashMap<String, String>()
     private let identityCache = HashMap<String, String>()
+    private let manifestDigests = HashMap<String, String>()
     private let identityBytes: SourceAuxiliaryBudget
     private let identityEntries: SourceDirectoryBudget
     private let capturedModules: HashMap<String, String>
@@ -69,15 +70,19 @@ internal class DependencyIdentityCapture {
             observationBytes: Some(identityBytes), observationEntries: Some(identityEntries), capturedModules: Some(capturedModules))
         // Reuse observed bytes without sharing the transaction's mutable cache.
         for ((key, value) in identityCache) { staged.identityCache[key] = value }
+        for ((key, value) in manifestDigests) { staged.manifestDigests[key] = value }
         staged
     }
 
     func inputIdentity(path: String, source: Bool): String {
         let key = canonicalize(path).toString() + if (source) { "|source" } else { "|artifact" }
         if (let Some(value) <- identityCache.get(key)) { return value }
+        let manifestDigest = [""]
         let value = dependencyObservedIdentity(path, source,
-            byteBudget: Some(identityBytes), directoryBudget: Some(identityEntries))
+            byteBudget: Some(identityBytes), directoryBudget: Some(identityEntries),
+            manifestDigest: Some({ digest => manifestDigest[0] = digest }))
         identityCache[key] = value
+        if (source) { manifestDigests[key] = manifestDigest[0] }
         value
     }
 
@@ -199,6 +204,18 @@ internal class DependencyIdentityCapture {
             locked(owner)
             for (kind in ["std", "stdx", "toolchain"]) {
                 put(owner.id, kind, kind, "", "unknown", "target build input not supplied")
+            }
+        }
+        // Root and captured-ID modules are observed only after addModule has
+        // read their manifests. Before publishing any graph, pair every parsed
+        // manifest with the digest captured by that same source observation.
+        for (module in modules) {
+            if (let Some(digest) <- manifestDigests.get(module.root + "|source")) {
+                if (digest != Sha256Digest.digest(module.manifest)) {
+                    entries.clear(); modules.clear(); sourceRoots.clear()
+                    diagnostic("CJDOC2302", "dependency manifest could not be observed within inventory limits")
+                    return
+                }
             }
         }
     }

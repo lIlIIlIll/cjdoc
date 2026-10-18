@@ -129,7 +129,16 @@ internal func addDependencyExternalEntry(resolver: ExternalDocResolver, object: 
         (documentSet.audience == "package" && visibility == "private")) { return }
     validateInventoryNavigations(object)
     let packageName = externalString(object, "packageName")
-    if (packageName != documentSet.library && !packageName.startsWith(documentSet.library + ".")) {
+    // Library includes the manifest organization; package names and portable
+    // keys preserve source spelling. Only unqualified source packages may omit
+    // that organization; qualified packages must still match it.
+    var libraryNamespace = documentSet.library
+    if (!packageName.contains("::")) {
+        if (let Some(separator) <- libraryNamespace.indexOf("::")) {
+            libraryNamespace = libraryNamespace[separator + 2..]
+        }
+    }
+    if (packageName != libraryNamespace && !packageName.startsWith(libraryNamespace + ".")) {
         throw IllegalArgumentException("inventory symbol package is outside its library namespace")
     }
     let moduleId = externalString(object, "moduleId")

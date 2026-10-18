@@ -63,6 +63,7 @@ private func navigationEvidenceCodecFixture(): DocumentationSet {
     let navigation = TypeNavigation("resolved", "exact", "selected dependency documentation",
         dependencyInstanceId: "dependency-evidence", documentSetId: "docs-evidence",
         apiIdentity: "api-evidence", language: "en", indexIdentity: "index-evidence",
+        symbolKey: "support.Box|class|1()",
         url: "https://docs.example.test/evidence.html")
     let page = DocumentationPage("evidence", "docs/evidence.md", "concepts/evidence.html",
         "Evidence", "guide", "", MarkdownNode("document"),
@@ -93,6 +94,7 @@ private func ownedExactNavigationCodecDocument(): String {
     let navigation = TypeNavigation("resolved", "manual", "selected dependency documentation",
         dependencyInstanceId: "dependency-one", documentSetId: "docs-one",
         apiIdentity: "source-content", language: "en", indexIdentity: "index-content",
+        symbolKey: "support.Box|class|1()",
         url: "https://docs.example.test/evidence.html")
     let document = DocumentationSet(fixture.generator, "complete", fixture.project, fixture.configuration,
         providers: fixture.providers.toArray(), modules: fixture.modules.toArray(), packages: fixture.packages.toArray(),
@@ -102,6 +104,33 @@ private func ownedExactNavigationCodecDocument(): String {
                 "source-content", "observed", "selected dependency bytes"),
             DependencyInstance("cjdoc:module:v1:unrelated", "support", "dependency-other", "binary",
                 "source-content", "observed", "unrelated module dependency bytes")],
+        documentSets: fixture.documentSets.toArray(),
+        pages: pageNavigationCodecFixture(navigation: Some(navigation)).pages.toArray())
+    encodeDocIr(document).replace("\"matchLevel\": \"manual\"", "\"matchLevel\": \"exact\"")
+}
+
+private func crossModuleLocalNavigationCodecDocument(selected: Bool, identity!: String = "source-content",
+    name!: String = "navigation-codec", state!: String = "observed"): String {
+    let fixture = navigationCodecFixture()
+    let target = fixture.declarations[0]
+    let declaration = SymbolDoc(target.id, target.kind, target.name, target.qualifiedName,
+        target.packageName, target.moduleId, target.visibility, target.source, target.headerSpelling, target.semantic)
+    let owner = "cjdoc:module:v1:local-owner"
+    let dependencies = ArrayList<DependencyInstance>(fixture.dependencies)
+    if (selected) {
+        dependencies.add(DependencyInstance(owner, name, "selected-local",
+            "source", identity, state, "selected source", componentModuleId: target.moduleId))
+    }
+    let navigation = TypeNavigation("resolved", "manual", "authoritative local source target",
+        symbolKey: target.id, url: symbolPagePath(target))
+    let document = DocumentationSet(fixture.generator, "complete", fixture.project, fixture.configuration,
+        providers: [fixture.providers[0], ProviderInfo("ast", "builtin", owner, "partial",
+            SemanticCapabilities(false, false, false, false, false))],
+        modules: [ModuleDoc(owner, "local-owner", "root", "", dependencyIds: [target.moduleId]),
+            ModuleDoc(target.moduleId, fixture.modules[0].name, "pathDependency", "",
+                packageNames: ["fixture"])],
+        packages: fixture.packages.toArray(), files: fixture.files.toArray(),
+        declarations: [declaration], dependencies: dependencies.toArray(),
         documentSets: fixture.documentSets.toArray(),
         pages: pageNavigationCodecFixture(navigation: Some(navigation)).pages.toArray())
     encodeDocIr(document).replace("\"matchLevel\": \"manual\"", "\"matchLevel\": \"exact\"")
@@ -119,6 +148,7 @@ class ModelCodecV15Contracts {
         let navigation = TypeNavigation("resolved", "manual", "selected dependency documentation",
             dependencyInstanceId: "dependency-evidence", documentSetId: "docs-evidence",
             apiIdentity: "api-evidence", language: "en", indexIdentity: "index-evidence",
+            symbolKey: "support.Box|class|1()",
             url: "https://docs.example.test/evidence.html")
         let fixture = navigationEvidenceCodecFixture()
         let document = DocumentationSet(fixture.generator, "complete", fixture.project, fixture.configuration,
@@ -128,10 +158,10 @@ class ModelCodecV15Contracts {
         let exact = manual.replace("\"matchLevel\": \"manual\"", "\"matchLevel\": \"exact\"")
         let error = @AssertThrows[IllegalArgumentException](decodeDocIr(exact))
         @Expect(error.message.contains("owning module"))
-        for (level in ["compatible", "manual"]) {
-            let allowed = exact.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"${level}\"")
-            @Expect(encodeDocIr(decodeDocIr(allowed)), allowed)
-        }
+        let manualOnly = exact.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"manual\"")
+        @Expect(encodeDocIr(decodeDocIr(manualOnly)), manualOnly)
+        let compatible = exact.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"compatible\"")
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(compatible))
     }
 
     @TestCase
@@ -140,10 +170,10 @@ class ModelCodecV15Contracts {
         let corrupted = encoded.replace("\"apiIdentity\": \"source-content\"", "\"apiIdentity\": \"\"")
         let error = @AssertThrows[IllegalArgumentException](decodeDocIr(corrupted))
         @Expect(error.message.contains(".navigation.apiIdentity"))
-        for (level in ["compatible", "manual"]) {
-            let allowed = corrupted.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"${level}\"")
-            @Expect(encodeDocIr(decodeDocIr(allowed)), allowed)
-        }
+        let manualOnly = corrupted.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"manual\"")
+        @Expect(encodeDocIr(decodeDocIr(manualOnly)), manualOnly)
+        let compatible = corrupted.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"compatible\"")
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(compatible))
     }
 
     @TestCase
@@ -154,10 +184,10 @@ class ModelCodecV15Contracts {
         let corrupted = encoded[..position] + "\"indexIdentity\": \"\"" + encoded[position + marker.size..]
         let error = @AssertThrows[IllegalArgumentException](decodeDocIr(corrupted))
         @Expect(error.message.contains(".navigation.indexIdentity"))
-        for (level in ["compatible", "manual"]) {
-            let allowed = corrupted.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"${level}\"")
-            @Expect(encodeDocIr(decodeDocIr(allowed)), allowed)
-        }
+        let manualOnly = corrupted.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"manual\"")
+        @Expect(encodeDocIr(decodeDocIr(manualOnly)), manualOnly)
+        let compatible = corrupted.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"compatible\"")
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(compatible))
     }
 
     @TestCase
@@ -192,10 +222,10 @@ class ModelCodecV15Contracts {
                 ".pages.bindings.navigation.dependencyInstanceId"]) {
                 if (error.message.contains(path)) { let _ = paths.add(path) }
             }
-            for (level in ["compatible", "manual"]) {
-                let allowed = corrupted.toString().replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"${level}\"")
-                @Expect(encodeDocIr(decodeDocIr(allowed)), allowed)
-            }
+            let manualOnly = corrupted.toString().replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"manual\"")
+            @Expect(encodeDocIr(decodeDocIr(manualOnly)), manualOnly)
+            let compatible = corrupted.toString().replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"compatible\"")
+            @ExpectThrows[IllegalArgumentException](decodeDocIr(compatible))
         }
         @Expect(paths.size, 5)
     }
@@ -236,18 +266,86 @@ class ModelCodecV15Contracts {
     }
 
     @TestCase
-    func compatibleAndManualNavigationKeepOptionalEvidenceReferences(): Unit {
+    func manualNavigationKeepsOptionalEvidenceReferences(): Unit {
         let encoded = encodeDocIr(navigationEvidenceCodecFixture())
-        for (level in ["compatible", "manual"]) {
-            let allowed = encoded.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"${level}\"")
-            let noDependency = allowed.replace("\"dependencyInstanceId\": \"dependency-evidence\"",
-                "\"dependencyInstanceId\": \"\"")
-            let noDocuments = allowed.replace("\"documentSetId\": \"docs-evidence\"", "\"documentSetId\": \"\"")
-            let neither = noDependency.replace("\"documentSetId\": \"docs-evidence\"", "\"documentSetId\": \"\"")
-            for (document in [noDependency, noDocuments, neither]) {
-                @Expect(encodeDocIr(decodeDocIr(document)), document)
-            }
+        let manualOnly = encoded.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"manual\"")
+        let noDependency = manualOnly.replace("\"dependencyInstanceId\": \"dependency-evidence\"",
+            "\"dependencyInstanceId\": \"\"")
+        let noDocuments = manualOnly.replace("\"documentSetId\": \"docs-evidence\"", "\"documentSetId\": \"\"")
+        let neither = noDependency.replace("\"documentSetId\": \"docs-evidence\"", "\"documentSetId\": \"\"")
+        for (document in [noDependency, noDocuments, neither]) {
+            @Expect(encodeDocIr(decodeDocIr(document)), document)
+            let compatible = document.replace("\"matchLevel\": \"manual\"", "\"matchLevel\": \"compatible\"")
+            @ExpectThrows[IllegalArgumentException](decodeDocIr(compatible))
         }
+    }
+
+    @TestCase
+    func compatibleNavigationRejectsEvidenceFreeResolvedClaims(): Unit {
+        let encoded = encodeDocIr(pageNavigationCodecFixture(navigation: Some(TypeNavigation(
+            "resolved", "manual", "explicit reference", url: "https://docs.example.test/Box.html"))))
+        let corrupted = encoded.replace("\"matchLevel\": \"manual\"", "\"matchLevel\": \"compatible\"")
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(corrupted))
+        @Expect(error.message.contains(".navigation.documentSetId"))
+    }
+
+    @TestCase
+    func compatibleNavigationKeepsMappedDifferentApiIdentity(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        let compatible = encoded.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"compatible\"")
+        let mapped = replaceFirstNavigationEvidenceField(compatible, "identity", "api-evidence")
+        let restored = decodeDocIr(mapped)
+        @Expect(restored.dependencies[0].identity != restored.documentSets[0].identity)
+        @Expect(restored.pages[0].bindings[0].navigation.getOrThrow().apiIdentity,
+            restored.documentSets[0].identity)
+        @Expect(encodeDocIr(restored), mapped)
+    }
+
+    @TestCase
+    func compatibleNavigationRequiresMatchingCapturedDocumentFields(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture()).replace(
+            "\"matchLevel\": \"exact\"", "\"matchLevel\": \"compatible\"")
+        for ((field, original) in [("apiIdentity", "api-evidence"),
+            ("indexIdentity", "index-evidence"), ("language", "en")]) {
+            let mismatched = replaceFirstNavigationEvidenceField(encoded, field, original)
+            let error = @AssertThrows[IllegalArgumentException](decodeDocIr(mismatched))
+            @Expect(error.message.contains(".navigation." + field))
+        }
+        let marker = "\"identity\": \"api-evidence\""
+        let position = encoded.indexOf(marker).getOrThrow()
+        let emptyDependency = encoded[..position] + "\"identity\": \"\"" + encoded[position + marker.size..]
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(emptyDependency))
+        @Expect(error.message.contains(".navigation.dependencyInstanceId"))
+    }
+
+    @TestCase
+    func externalExactNavigationRejectsEmptySymbolKey(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        let corrupted = encoded.replace("\"symbolKey\": \"support.Box|class|1()\"", "\"symbolKey\": \"\"")
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(corrupted))
+        @Expect(error.message.contains(".navigation.symbolKey"))
+    }
+
+    @TestCase
+    func localExactNavigationRejectsAnUnselectedOccurrenceModule(): Unit {
+        let encoded = crossModuleLocalNavigationCodecDocument(false)
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(encoded))
+        @Expect(error.message.contains(".navigation.symbolKey"))
+    }
+
+    @TestCase
+    func localExactNavigationAcceptsSelectedSourceComponent(): Unit {
+        let encoded = crossModuleLocalNavigationCodecDocument(true)
+        @Expect(encodeDocIr(decodeDocIr(encoded)), encoded)
+        let renamed = crossModuleLocalNavigationCodecDocument(true, name: "renamed-source")
+        @Expect(encodeDocIr(decodeDocIr(renamed)), renamed)
+        for (state in ["declared", "unknown", "conflict"]) {
+            let inadmissible = crossModuleLocalNavigationCodecDocument(true, state: state)
+            @ExpectThrows[IllegalArgumentException](decodeDocIr(inadmissible))
+        }
+        let mismatched = crossModuleLocalNavigationCodecDocument(true, identity: "different-source")
+        @Expect(mismatched != encoded)
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(mismatched))
     }
 
     @TestCase
@@ -284,7 +382,11 @@ class ModelCodecV15Contracts {
             @ExpectThrows[IllegalArgumentException](decodeDocIr(corrupted))
             for (level in ["compatible", "manual"]) {
                 let allowed = corrupted.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"${level}\"")
-                @Expect(encodeDocIr(decodeDocIr(allowed)), allowed)
+                if (level == "compatible" && state != "declared") {
+                    @ExpectThrows[IllegalArgumentException](decodeDocIr(allowed))
+                } else {
+                    @Expect(encodeDocIr(decodeDocIr(allowed)), allowed)
+                }
             }
         }
     }
