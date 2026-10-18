@@ -178,7 +178,9 @@ class BuildContextManifestPathTests(unittest.TestCase):
 
             def parse_then_rewrite(text):
                 manifest = loads(text)
-                if text == old:
+                # Normalize line endings: on Windows the decoded bytes carry
+                # CRLF, so a raw text comparison would never fire there.
+                if text.replace("\r\n", "\n").replace("\r", "\n") == old:
                     parsed.append(manifest)
                     # The parse returns old selections, but the first stable
                     # tree observation will see only the rewritten manifest.
@@ -213,7 +215,9 @@ class BuildContextManifestPathTests(unittest.TestCase):
 
             def parse_then_rewrite(text):
                 manifest = loads(text)
-                if text == old:
+                # Normalize line endings: on Windows the decoded bytes carry
+                # CRLF, so a raw text comparison would never fire there.
+                if text.replace("\r\n", "\n").replace("\r", "\n") == old.replace("\r\n", "\n").replace("\r", "\n"):
                     parsed.append(manifest)
                     # dependency() and add_module() share the source identity;
                     # a later parse must still match its cached manifest digest.
