@@ -6,6 +6,8 @@ import std.collection.*
 import std.fs.*
 import std.env.*
 import std.unittest.*
+import std.unittest.mock.*
+import std.unittest.mock.mockmacro.*
 import std.unittest.testmacro.*
 
 // The observed Windows host (STS 1.2 runner with ordinary, non-extended paths)
@@ -79,6 +81,24 @@ private func identityTestReceipt(sourceIdentity: String, artifactIdentity: Strin
     "},{\"name\":\"toolchain\",\"kind\":\"toolchain\",\"path\":\"compiler.bin\",\"identity\":" + jsonString(artifactIdentity) + "}]}]}"
 }
 
+private func identityTestDiagnosticCount(documentation: api_model.DocumentationSet,
+    code: String, message: String): Int64 {
+    var count: Int64 = 0
+    for (diagnostic in documentation.diagnostics) {
+        if (diagnostic.code == code && diagnostic.message == message) { count++ }
+    }
+    count
+}
+
+private func identityTestDuplicateDiagnostics(documentation: api_model.DocumentationSet): Int64 {
+    let seen = HashSet<String>()
+    var duplicates: Int64 = 0
+    for (diagnostic in documentation.diagnostics) {
+        if (!seen.add(diagnostic.code + "\n" + diagnostic.message)) { duplicates++ }
+    }
+    duplicates
+}
+
 private func identityTestUnchangedGraph(actual: api_model.DocumentationSet, expected: api_model.DocumentationSet): Unit {
     @Expect(actual.dependencies.size, expected.dependencies.size)
     for (index in 0..expected.dependencies.size) {
@@ -120,6 +140,33 @@ class DependencyIdentityTest {
             @Expect(changed.instanceId != a.instanceId, true)
             @Expect(identityTestDependency(identityTestGenerate(first), "std", kind: "std").state, "unknown")
         } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func sourceInventoryPairsLengthWithBytesReadAfterReplacement(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            let source = root.join("input.cj")
+            File.writeTo(source, [b'x'])
+            let beforeSize = FileInfo(source).size
+            let replacement = "// replacement source has a different length\n".toArray()
+            @Expect(beforeSize != replacement.size, true)
+            // Replace at the bounded-reader boundary: the old inventory has
+            // already captured its outer FileInfo size, but the stable read
+            // legitimately observes only the replacement.
+            @On(readAuxiliaryFileBounded(source, _, _)).returns({ =>
+                @Expect(FileInfo(source).size, beforeSize)
+                File.writeTo(source, replacement)
+                readFileBounded(source, 64 * 1024 * 1024)
+            }).once().then().callsOriginal()
+            let expectedInventory = "cjdoc.dependency-inventory/1\n8:input.cj:" +
+                replacement.size.toString() + ":" + api_model.contractFingerprintBytes(replacement) + "\n"
+            let expected = "sha256:" + api_model.contractFingerprint(expectedInventory)
+            let observed = dependencyObservedIdentity(root.toString(), true)
+            @Expect(observed, expected)
+            @Expect(dependencyObservedIdentity(root.toString(), true), expected)
+            @Expect(File.readFrom(source), replacement)
+        } finally { let _ = removeIfExists(root, recursive: true) }
     }
 
     @TestCase
@@ -300,6 +347,119 @@ class DependencyIdentityTest {
             @Expect(identityTestDependency(changed, "stdx", kind: "stdx").state, "conflict")
             @Expect(identityTestDependency(changed, "stdx", kind: "stdx").identity != artifact, true)
         } finally { let _ = removeIfExists(root, recursive: true) }
+    }
+
+    @TestCase
+    func successfulReceiptDoesNotDuplicateObservedGraphWarnings(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            identityTestProject(root, "identity_app")
+            File.writeTo(root.join("cjpm.lock"), "[requires]\nbroken = {".toArray())
+            for (name in ["native.bin", "std.bin", "stdx.bin", "compiler.bin"]) {
+                File.writeTo(root.join(name), [1u8, 2u8, 3u8])
+            }
+            let baseline = identityTestGenerate(root)
+            let source = identityTestDependency(baseline, "identity_app").identity
+            let artifact = "sha256:" + api_model.contractFingerprintBytes([1u8, 2u8, 3u8])
+            let receipt = root.join("build-context.json")
+            File.writeTo(receipt, identityTestReceipt(source, artifact).toArray())
+            let documentation = identityTestGenerate(root, receipt: Some(receipt.toString()))
+            @Expect(identityTestDiagnosticCount(baseline, "CJDOC2302", "dependency lock inventory could not be observed"), 1)
+            @Expect(identityTestDiagnosticCount(documentation, "CJDOC2302", "dependency lock inventory could not be observed"), 1)
+            @Expect(identityTestDuplicateDiagnostics(documentation), 0)
+            @Expect(identityTestDependency(documentation, "identity_app").state, "verified")
+            @Expect(identityTestDependency(documentation, "native", kind: "binary").state, "verified")
+            @Expect(publicHasDiagnostic(documentation, "CJDOC2300"), false)
+        } finally { let _ = removeIfExists(root, recursive: true) }
+    }
+
+    @TestCase
+    func ignoredReceiptDiscardsWarningsProducedBeforeALaterInvalidModule(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            identityTestProject(root, "identity_app")
+            for (name in ["native.bin", "std.bin", "stdx.bin", "compiler.bin"]) {
+                File.writeTo(root.join(name), [1u8, 2u8, 3u8])
+            }
+            let baseline = identityTestGenerate(root)
+            let source = identityTestDependency(baseline, "identity_app").identity
+            let artifact = "sha256:" + api_model.contractFingerprintBytes([1u8, 2u8, 3u8])
+            let receipt = root.join("build-context.json")
+            for (warning in ["conflict", "unavailable"]) {
+                let valid = identityTestReceipt(source, artifact)
+                let warned = if (warning == "conflict") {
+                    valid.replace("\"path\":\".\",\"identity\":" + api_render.escapeJsonString(source) + ",\"dependencies\"",
+                        "\"path\":\".\",\"identity\":\"sha256:stale\",\"dependencies\"")
+                } else { valid.replace("\"path\":\"native.bin\"", "\"path\":\"missing.bin\"") }
+                // Shape validation succeeds. The first module emits a real warning;
+                // only the subsequent, unobserved module makes application fail.
+                let invalid = warned[..warned.size - 2] +
+                    ",{\"name\":\"unobserved\",\"path\":\".\",\"identity\":\"sha256:invalid\",\"dependencies\":[]}]}"
+                File.writeTo(receipt, invalid.toArray())
+                let documentation = identityTestGenerate(root, receipt: Some(receipt.toString()))
+                identityTestUnchangedGraph(documentation, baseline)
+                @Expect(publicDiagnosticCount(documentation, "CJDOC2300"), 1)
+                @Expect(publicDiagnosticCount(documentation, "CJDOC2301"), 0)
+                @Expect(publicDiagnosticCount(documentation, "CJDOC2302"), 0)
+                @Expect(identityTestDiagnosticCount(documentation, "CJDOC2300",
+                    "build context is invalid or cannot be bound to the observed project graph; record ignored"), 1)
+            }
+        } finally { let _ = removeIfExists(root, recursive: true) }
+    }
+
+    @TestCase
+    func committedReceiptKeepsNewGraphAndSelectionWarnings(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        let root = temporary.join("app")
+        let dependency = temporary.join("selected")
+        try {
+            identityTestProject(root, "identity_app")
+            identityTestProject(dependency, "selected")
+            File.writeTo(root.join("cjpm.toml"), ("[package]\nname = \"identity_app\"\nversion = \"1.0.0\"\n" +
+                "[target.example-target.dependencies]\nselected = { path = \"../selected\" }\n" +
+                "unavailable = { path = \"../missing-dependency\" }\n").toArray())
+            File.writeTo(root.join("cjpm.lock"), "[requires]\nbroken = {".toArray())
+            for (name in ["native.bin", "std.bin", "stdx.bin", "compiler.bin"]) {
+                File.writeTo(root.join(name), [1u8, 2u8, 3u8])
+            }
+            let baseline = identityTestGenerate(root)
+            let source = identityTestDependency(baseline, "identity_app").identity
+            let artifact = "sha256:" + api_model.contractFingerprintBytes([1u8, 2u8, 3u8])
+            let dependencyIdentity = identityTestDependency(identityTestGenerate(dependency), "selected").identity
+            let receipt = root.join("build-context.json")
+            let selected = identityTestReceipt(source, artifact).replace(
+                "\"path\":\"native.bin\",\"identity\":" + api_render.escapeJsonString(artifact),
+                "\"path\":\"native.bin\",\"identity\":\"sha256:stale\"").replace(
+                "\"path\":\"std.bin\"", "\"path\":\"missing.bin\"")
+            let complete = selected[..selected.size - 2] + ",{\"name\":\"selected\",\"path\":\"../selected\",\"identity\":" +
+                api_render.escapeJsonString(dependencyIdentity) + ",\"dependencies\":[]}]}"
+            File.writeTo(receipt, complete.toArray())
+            let documentation = identityTestGenerate(root, receipt: Some(receipt.toString()))
+            let project = identityTestDependency(documentation, "identity_app")
+            @Expect(project.state, "verified")
+            @Expect(project.identity, source)
+            @Expect(project.target, "example-target")
+            @Expect(identityTestDependency(documentation, "native", kind: "binary").state, "conflict")
+            @Expect(identityTestDependency(documentation, "std", kind: "std").state, "unknown")
+            @Expect(identityTestDependency(documentation, "stdx", kind: "stdx").state, "verified")
+            @Expect(identityTestDependency(documentation, "toolchain", kind: "toolchain").state, "verified")
+            let committed = identityTestDependency(documentation, "selected")
+            @Expect(committed.componentModuleId.isEmpty(), false)
+            @Expect(identityTestDependency(documentation, "selected", owner: committed.componentModuleId).state, "verified")
+            @Expect(identityTestDependency(documentation, "selected", owner: committed.componentModuleId).identity, dependencyIdentity)
+            @Expect(identityTestDiagnosticCount(baseline, "CJDOC2302",
+                "dependency manifest could not be observed within inventory limits"), 0)
+            @Expect(identityTestDiagnosticCount(documentation, "CJDOC2302",
+                "dependency manifest could not be observed within inventory limits"), 1)
+            @Expect(identityTestDiagnosticCount(documentation, "CJDOC2301",
+                "build record dependency conflicts with observed target inputs"), 1)
+            @Expect(identityTestDiagnosticCount(documentation, "CJDOC2302",
+                "build record dependency input is inaccessible or exceeds observation limits"), 1)
+            @Expect(identityTestDiagnosticCount(documentation, "CJDOC2302",
+                "dependency lock inventory could not be observed"), 1)
+            @Expect(identityTestDuplicateDiagnostics(documentation), 0)
+            @Expect(publicHasDiagnostic(documentation, "CJDOC2300"), false)
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
     }
 
     @TestCase

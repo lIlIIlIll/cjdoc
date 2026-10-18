@@ -189,6 +189,7 @@ internal func captureDependencyBuildContext(capture: DependencyIdentityCapture, 
             throw IllegalArgumentException("unbound build record")
         }
         staged.sourceGraph()
+        let graphDiagnosticCount = match (staged.diagnostics) { case Some(output) => output.size; case None => 0 }
         dependencyReceiptApply(staged, record, base)
         capture.target = staged.target
         capture.modules.clear()
@@ -197,6 +198,30 @@ internal func captureDependencyBuildContext(capture: DependencyIdentityCapture, 
         for ((key, value) in staged.sourceRoots) { capture.sourceRoots[key] = value }
         capture.entries.clear()
         capture.entries.add(all: staged.entries)
+        if (let Some(output) <- capture.diagnostics) {
+            if (let Some(pending) <- staged.diagnostics) {
+                // The live graph was already observed, but a receipt can select a
+                // different target. Keep new graph warnings and receipt warnings;
+                // consume only the repeated occurrences from the graph rebuild.
+                let previous = HashMap<String, Int64>()
+                if (graphDiagnosticCount > 0) {
+                    for (diagnostic in output) {
+                        let key = diagnostic.code + "\n" + diagnostic.message
+                        previous[key] = previous.get(key).getOrDefault({ => 0 }) + 1
+                    }
+                }
+                for (index in 0..pending.size) {
+                    if (output.size >= 4096) { break }
+                    let diagnostic = pending[index]
+                    if (index < graphDiagnosticCount) {
+                        let key = diagnostic.code + "\n" + diagnostic.message
+                        let remaining = previous.get(key).getOrDefault({ => 0 })
+                        if (remaining > 0) { previous[key] = remaining - 1; continue }
+                    }
+                    output.add(diagnostic)
+                }
+            }
+        }
     } catch (_: Exception) {
         capture.diagnostic("CJDOC2300", "build context is invalid or cannot be bound to the observed project graph; record ignored")
     }

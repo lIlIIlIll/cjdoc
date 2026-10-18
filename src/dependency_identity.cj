@@ -61,7 +61,11 @@ internal class DependencyIdentityCapture {
     }
 
     func receiptObservation(): DependencyIdentityCapture {
-        let staged = DependencyIdentityCapture(documentation, request, diagnostics,
+        let stagedDiagnostics = match (diagnostics) {
+            case Some(_) => Some(ArrayList<public_model.Diagnostic>())
+            case None => None<ArrayList<public_model.Diagnostic>>
+        }
+        let staged = DependencyIdentityCapture(documentation, request, stagedDiagnostics,
             observationBytes: Some(identityBytes), observationEntries: Some(identityEntries), capturedModules: Some(capturedModules))
         // Reuse observed bytes without sharing the transaction's mutable cache.
         for ((key, value) in identityCache) { staged.identityCache[key] = value }

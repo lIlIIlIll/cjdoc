@@ -91,10 +91,14 @@ internal func dependencyObservedIdentity(path: String, source: Bool,
     inventory.append("cjdoc.dependency-inventory/1\n")
     for (relative in files) {
         let current = Path(root).join(relative)
-        let size = FileInfo(current).size
-        let digest = if (source) {
-            Sha256Digest.digestBytes(readAuxiliaryFileBounded(current, DEPENDENCY_IDENTITY_FILE_BYTES, budget))
-        } else { dependencyArtifactDigest(current, budget, expectedSize: Some(size)) }
+        let (size, digest) = if (source) {
+            let bytes = readAuxiliaryFileBounded(current, DEPENDENCY_IDENTITY_FILE_BYTES, budget)
+            // The length and digest must describe the same stable read.
+            (bytes.size, Sha256Digest.digestBytes(bytes))
+        } else {
+            let size = FileInfo(current).size
+            (size, dependencyArtifactDigest(current, budget, expectedSize: Some(size)))
+        }
         inventory.append(relative.size.toString())
         inventory.append(":")
         inventory.append(relative)
