@@ -45,6 +45,9 @@ internal class NavigationEvidence {
     let localSymbols = HashMap<String, SymbolDoc>()
     let moduleNames = HashMap<String, String>()
     let dependenciesByName = HashMap<String, ArrayList<DependencyInstance>>()
+    let audience: String
+
+    init(audience: String) { this.audience = audience }
 
     private func dependencyFor(moduleId: String, name: String): ?DependencyInstance {
         let values = match (dependenciesByName.get(moduleId + "|" + name)) {
@@ -137,7 +140,8 @@ internal class NavigationEvidence {
                 if (!value.apiIdentity.isEmpty() && value.apiIdentity != documentSet.identity) {
                     domainFail(path + ".apiIdentity", "must match the referenced documentation.documentSets identity")
                 }
-                if ((value.matchLevel == "compatible" || !value.language.isEmpty()) && value.language != documentSet.language) {
+                if ((value.matchLevel == "compatible" || value.matchLevel == "exact" || !value.language.isEmpty()) &&
+                    !documentSet.language.isEmpty() && value.language != documentSet.language) {
                     domainFail(path + ".language", "must match the referenced documentation.documentSets language")
                 }
                 if (!value.indexIdentity.isEmpty() && value.indexIdentity != documentSet.indexIdentity) {
@@ -179,6 +183,26 @@ internal class NavigationEvidence {
                 domainFail(path + ".apiIdentity",
                     "exact navigation must match the referenced documentation.dependencies identity")
             }
+            // Mirror DependencyNavigationBinder.scopeMatches for selected replay
+            // evidence: the referenced document set must cover the captured
+            // audience, and its target/cfg must agree with the selected
+            // dependency unless the record is scope-wildcarded.
+            if (selectedEvidence && value.documentSetId != "") {
+                if (let Some(documentSet) <- documentSets.get(value.documentSetId)) {
+                    if (documentSet.audience != audience) {
+                        domainFail(path + ".documentSetId",
+                            "selected navigation document set must match the documented audience")
+                    }
+                    if (documentSet.target != dependency.target && documentSet.target != "*") {
+                        domainFail(path + ".documentSetId",
+                            "selected navigation document set target must match the selected dependency")
+                    }
+                    if (documentSet.cfg != dependency.cfg && documentSet.cfg != "*") {
+                        domainFail(path + ".documentSetId",
+                            "selected navigation document set cfg must match the selected dependency")
+                    }
+                }
+            }
         }
         // Like exact targets, compatible targets come from keyed inventory entries.
         if (value.matchLevel == "compatible" && value.symbolKey.isEmpty()) {
@@ -189,7 +213,7 @@ internal class NavigationEvidence {
 
 internal func validateDependencyMetadata(documentation: DocumentationSet,
     modules: HashSet<String>): NavigationEvidence {
-    let evidence = NavigationEvidence()
+    let evidence = NavigationEvidence(documentation.configuration.audience)
     for (module in documentation.modules) { evidence.moduleNames[module.id] = module.name }
     for (declaration in documentation.declarations) {
         evidence.localSymbols[declaration.id] = declaration

@@ -100,8 +100,12 @@ private func ownedExactNavigationCodecDocument(): String {
         providers: fixture.providers.toArray(), modules: fixture.modules.toArray(), packages: fixture.packages.toArray(),
         files: fixture.files.toArray(), declarations: fixture.declarations.toArray(),
         dependencies: [
+            // Scope must agree with the referenced document set: the producer's
+            // scopeMatches reaches exact only when set.target/cfg match the
+            // selected dependency (or the set is wildcarded).
             DependencyInstance(moduleId, "support", "dependency-one", "binary",
-                "source-content", "observed", "selected dependency bytes"),
+                "source-content", "observed", "selected dependency bytes",
+                target: "example-target", cfg: "default"),
             DependencyInstance("cjdoc:module:v1:unrelated", "support", "dependency-other", "binary",
                 "source-content", "observed", "unrelated module dependency bytes")],
         documentSets: fixture.documentSets.toArray(),
