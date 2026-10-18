@@ -94,13 +94,14 @@ private func markdownContainsCode(value: MarkdownNode): Bool {
     false
 }
 
-internal func validateExampleMarkdown(value: DocTag, path: String, evidence: NavigationEvidence): Unit {
+internal func validateExampleMarkdown(value: DocTag, path: String,
+    moduleId: String, evidence: NavigationEvidence): Unit {
     match (value.exampleMarkdown) {
         case Some(markdown) =>
             if (value.name != "example" || markdown.kind != "document") {
                 domainFail(path, "example Markdown requires an @example tag and a document root")
             }
-            validateMarkdown(markdown, path, 0, evidence)
+            validateMarkdown(markdown, path, 0, moduleId, evidence)
             if (!markdownContainsCode(markdown) && value.translationState.isEmpty()) {
                 domainFail(path, "example Markdown must contain code")
             }

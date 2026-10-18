@@ -44,7 +44,7 @@ internal class NavigationEvidence {
     let documentSets = HashMap<String, DocumentSetIdentity>()
     let localSymbols = HashMap<String, SymbolDoc>()
 
-    func validate(value: TypeNavigation, path: String): Unit {
+    func validate(value: TypeNavigation, path: String, moduleId: String): Unit {
         if (!value.url.isEmpty() && navigationHref("", value.url).isNone()) {
             domainFail(path + ".url", "unsafe navigation URL")
         }
@@ -65,6 +65,12 @@ internal class NavigationEvidence {
             if (value.dependencyInstanceId.isEmpty()) {
                 domainFail(path + ".dependencyInstanceId",
                     "exact navigation requires a documentation.dependencies reference")
+            }
+            if (value.apiIdentity.isEmpty()) {
+                domainFail(path + ".apiIdentity", "external exact navigation requires an API identity")
+            }
+            if (value.indexIdentity.isEmpty()) {
+                domainFail(path + ".indexIdentity", "external exact navigation requires an index identity")
             }
         }
         if (!value.documentSetId.isEmpty()) {
@@ -99,10 +105,15 @@ internal class NavigationEvidence {
                 domainFail(path + ".dependencyInstanceId",
                     "exact navigation requires observed or verified documentation.dependencies evidence")
             }
+            // Pages without a unique captured module context have no owner to
+            // compare. The producer emits unavailable navigation in that case.
+            if (value.matchLevel == "exact" && !moduleId.isEmpty() && dependency.moduleId != moduleId) {
+                domainFail(path + ".dependencyInstanceId",
+                    "exact navigation dependency must belong to the occurrence's owning module")
+            }
             // Compatible mappings and unverified manual references may select a
             // document API identity different from the actual dependency bytes.
-            if (value.matchLevel == "exact" && !value.apiIdentity.isEmpty() &&
-                value.apiIdentity != dependency.identity) {
+            if (value.matchLevel == "exact" && value.apiIdentity != dependency.identity) {
                 domainFail(path + ".apiIdentity",
                     "exact navigation must match the referenced documentation.dependencies identity")
             }
