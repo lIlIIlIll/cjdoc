@@ -105,20 +105,21 @@ class BuildContextObservationTests(unittest.TestCase):
     def test_inventory_rejects_earlier_replacement_during_later_read(self):
         for source in (True, False):
             with self.subTest(source=source), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory)
+                # identity() canonicalizes its root before invoking the hooks.
+                # Match that spelling even for aliased temporary directories.
+                root = Path(directory).resolve(strict=True)
                 earlier, later = root / 'a.cj', root / 'z.cj'
                 earlier.write_bytes(b'old')
                 later.write_bytes(b'later')
                 read_bytes = Path.read_bytes
                 artifact_digest = capture.artifact_digest
+                hashed = []
 
                 def replace_earlier(path):
+                    hashed.append(path)
                     if path == later:
-                        # Replace an already-hashed entry with different bytes
-                        # while a later entry is being read. The recorded size is
-                        # part of the revalidated snapshot on every platform, so
-                        # the replacement is observable without depending on
-                        # filesystem timestamp granularity.
+                        # Change an already-hashed entry's size without changing
+                        # membership or depending on timestamp granularity.
                         earlier.unlink()
                         earlier.write_bytes(b'newer')
 
@@ -136,6 +137,7 @@ class BuildContextObservationTests(unittest.TestCase):
                         patch.object(capture, 'artifact_digest', hash_then_replace):
                     with self.assertRaisesRegex(ValueError, 'input changed while observing'):
                         capture.identity(root, source)
+                self.assertEqual(hashed, [earlier, later])
 
 
 class BuildContextManifestPathTests(unittest.TestCase):
