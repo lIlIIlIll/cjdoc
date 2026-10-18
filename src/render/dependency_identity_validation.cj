@@ -42,6 +42,7 @@ internal func consumeDependencyMetadataEncoding(documentation: DocumentationSet,
 internal class NavigationEvidence {
     let dependencies = HashMap<String, DependencyInstance>()
     let documentSets = HashMap<String, DocumentSetIdentity>()
+    let localSymbols = HashMap<String, SymbolDoc>()
 
     func validate(value: TypeNavigation, path: String): Unit {
         if (!value.url.isEmpty() && navigationHref("", value.url).isNone()) {
@@ -49,6 +50,23 @@ internal class NavigationEvidence {
         }
         // Contextual failures retain evidence, but do not claim a selected target.
         if (value.state != "resolved") { return }
+        if (value.matchLevel == "exact") {
+            // The producer also emits evidence-free exact links to captured
+            // declarations. Only their actual local route has that meaning.
+            if (value.documentSetId.isEmpty() && value.dependencyInstanceId.isEmpty()) {
+                if (let Some(target) <- localSymbols.get(value.symbolKey)) {
+                    if (value.url == symbolPagePath(target)) { return }
+                }
+            }
+            if (value.documentSetId.isEmpty()) {
+                domainFail(path + ".documentSetId",
+                    "exact navigation requires a documentation.documentSets reference or a captured local target")
+            }
+            if (value.dependencyInstanceId.isEmpty()) {
+                domainFail(path + ".dependencyInstanceId",
+                    "exact navigation requires a documentation.dependencies reference")
+            }
+        }
         if (!value.documentSetId.isEmpty()) {
             if (let Some(documentSet) <- documentSets.get(value.documentSetId)) {
                 if (value.matchLevel == "exact" && documentSet.state != "declared") {
@@ -95,6 +113,9 @@ internal class NavigationEvidence {
 internal func validateDependencyMetadata(documentation: DocumentationSet,
     modules: HashSet<String>): NavigationEvidence {
     let evidence = NavigationEvidence()
+    for (declaration in documentation.declarations) {
+        evidence.localSymbols[declaration.id] = declaration
+    }
     for (value in documentation.dependencies) {
         // Dependency graph owners need not be rendered modules. Their stable
         // built-in module IDs remain valid offline even when dependency source

@@ -90,6 +90,74 @@ private let LEGACY14_PAGE_BINDING_CONTRACT = """
 @Test
 class ModelCodecV15Contracts {
     @TestCase
+    func exactNavigationRejectsBothMissingEvidenceReferences(): Unit {
+        let encoded = encodeDocIr(pageNavigationCodecFixture(navigation: Some(TypeNavigation(
+            "resolved", "manual", "explicit reference", symbolKey: "support.Box|class|1()",
+            url: "https://docs.example.test/Box.html"))))
+        let corrupted = encoded.replace("\"matchLevel\": \"manual\"", "\"matchLevel\": \"exact\"")
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(corrupted))
+        @Expect(error.message.contains(".navigation.documentSetId"))
+    }
+
+    @TestCase
+    func exactNavigationRejectsMissingDependencyReference(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        let corrupted = encoded.replace("\"dependencyInstanceId\": \"dependency-evidence\"",
+            "\"dependencyInstanceId\": \"\"")
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(corrupted))
+        @Expect(error.message.contains(".navigation.dependencyInstanceId"))
+    }
+
+    @TestCase
+    func exactNavigationRejectsMissingDocumentSetReference(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        let corrupted = encoded.replace("\"documentSetId\": \"docs-evidence\"",
+            "\"documentSetId\": \"\"")
+        let error = @AssertThrows[IllegalArgumentException](decodeDocIr(corrupted))
+        @Expect(error.message.contains(".navigation.documentSetId"))
+    }
+
+    @TestCase
+    func compatibleAndManualNavigationKeepOptionalEvidenceReferences(): Unit {
+        let encoded = encodeDocIr(navigationEvidenceCodecFixture())
+        for (level in ["compatible", "manual"]) {
+            let allowed = encoded.replace("\"matchLevel\": \"exact\"", "\"matchLevel\": \"${level}\"")
+            let noDependency = allowed.replace("\"dependencyInstanceId\": \"dependency-evidence\"",
+                "\"dependencyInstanceId\": \"\"")
+            let noDocuments = allowed.replace("\"documentSetId\": \"docs-evidence\"", "\"documentSetId\": \"\"")
+            let neither = noDependency.replace("\"documentSetId\": \"docs-evidence\"", "\"documentSetId\": \"\"")
+            for (document in [noDependency, noDocuments, neither]) {
+                @Expect(encodeDocIr(decodeDocIr(document)), document)
+            }
+        }
+    }
+
+    @TestCase
+    func localExactNavigationRequiresAnExistingSymbolAndItsLocalRoute(): Unit {
+        let fixture = navigationCodecFixture()
+        let target = fixture.declarations[0]
+        let navigation = TypeNavigation("resolved", "exact", "authoritative local source target",
+            symbolKey: target.id, url: symbolPagePath(target))
+        let document = DocumentationSet(fixture.generator, "complete", fixture.project, fixture.configuration,
+            providers: fixture.providers.toArray(), modules: fixture.modules.toArray(), packages: fixture.packages.toArray(),
+            files: fixture.files.toArray(), declarations: fixture.declarations.toArray(),
+            dependencies: fixture.dependencies.toArray(), documentSets: fixture.documentSets.toArray(),
+            pages: pageNavigationCodecFixture(navigation: Some(navigation)).pages.toArray())
+        let encoded = encodeDocIr(document)
+        let restored = decodeDocIr(encoded).pages[0].bindings[0].navigation.getOrThrow()
+        @Expect(restored.matchLevel, "exact")
+        @Expect(restored.dependencyInstanceId, "")
+        @Expect(restored.documentSetId, "")
+        @Expect(encodeDocIr(decodeDocIr(encoded)), encoded)
+        let external = encoded.replace("\"url\": \"${navigation.url}\"",
+            "\"url\": \"https://docs.example.test/pretend-local.html\"")
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(external))
+        let absent = encoded.replace("\"symbolKey\": \"${target.id}\"",
+            "\"symbolKey\": \"cjdoc:v2:absent\"")
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(absent))
+    }
+
+    @TestCase
     func exactNavigationRejectsInadmissibleDependencyStates(): Unit {
         let encoded = encodeDocIr(navigationEvidenceCodecFixture())
         for (state in ["conflict", "unknown", "declared"]) {
