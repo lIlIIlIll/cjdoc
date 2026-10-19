@@ -143,6 +143,17 @@ def page_url(entry: dict, fragment: str = "") -> str:
 
 
 def generate_site(binary: Path, repo: Path, fixture: str, work: Path) -> list[dict]:
+    # Copy the fixture out of the checkout FIRST. Generating a project writes a
+    # `target/` build tree beside its sources, and leaving that inside the
+    # repository breaks the stages that run after this one: the real-repository
+    # smoke refuses any untracked fixture `target/`. The copy also keeps the
+    # matrix from mutating tracked fixture sources.
+    project = work / "projects" / fixture
+    if project.exists():
+        shutil.rmtree(project)
+    project.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(repo / "tests/fixtures/projects" / fixture, project,
+                    ignore=shutil.ignore_patterns("target"))
     site = work / fixture
     # The CLI creates the output root and writes its ownership marker into it; a
     # pre-created directory is refused as pre-existing user output, so the path
@@ -151,7 +162,7 @@ def generate_site(binary: Path, repo: Path, fixture: str, work: Path) -> list[di
         shutil.rmtree(site)
     environment = {**os.environ, "TMPDIR": str(work), "TMP": str(work), "TEMP": str(work)}
     result = subprocess.run(
-        [str(binary), "generate", "--project", str(repo / "tests/fixtures/projects" / fixture),
+        [str(binary), "generate", "--project", str(project),
          "--format", "html", "--output", str(site)],
         text=True, capture_output=True, cwd=str(repo), env=environment,
     )
