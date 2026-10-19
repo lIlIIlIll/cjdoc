@@ -314,7 +314,29 @@ def _head_scope_is_unique(number: int, head_sha: str, open_prs: list[dict]) -> b
     return True
 
 
-def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -> GateDecision | None:
+def deletion_is_stale(deleted_comment: dict | None, comments: list[dict]) -> bool:
+    """Is a newer canonical summary present than the one that was deleted?
+
+    A delayed `issue_comment.deleted` delivery can arrive after a replacement
+    summary has already been reviewed and published as `success`. Forcing every
+    deletion to `pending` would then overwrite a newer valid result and leave the
+    current HEAD stuck, because no later event is guaranteed. GitHub orders
+    comments, so if the newest canonical summary is strictly newer than the
+    deleted one the deletion is stale and the normal classification applies.
+    """
+    if not isinstance(deleted_comment, dict):
+        return False
+    deleted_key = (deleted_comment.get("updated_at") or "", deleted_comment.get("id") or 0)
+    for comment in comments:
+        if not isinstance(comment, dict) or not _is_official_summary(comment):
+            continue
+        if (comment.get("updated_at") or "", comment.get("id") or 0) > deleted_key:
+            return True
+    return False
+
+
+def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
+                deleted_comment: dict | None = None) -> GateDecision | None:
     pr = api.get_pull_request(number)
     if pr.get("state") != "open":
         print(f"PR #{number} is not open; no commit status to publish")
@@ -394,7 +416,14 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
         decision = GateDecision("pending", "Codex review summary deleted; re-review required", pr_url)
     else:
         comments = api.list_issue_comments(number)
-        decision = classify_codex_review(head_sha, comments, pr_url)
+        if deleted_summary and deletion_is_stale(deleted_comment, comments):
+            # A newer canonical summary exists; this deletion is a stale delivery.
+            decision = classify_codex_review(head_sha, comments, pr_url)
+            print(f"PR #{number}: the deletion event is stale; a newer summary governs")
+        elif deleted_summary:
+            decision = GateDecision("pending", "Codex review summary deleted; re-review required", pr_url)
+        else:
+            decision = classify_codex_review(head_sha, comments, pr_url)
 
     api.create_commit_status(merge_sha, decision)
     # The ruleset's required check is evaluated against the PR HEAD, so the
@@ -409,12 +438,16 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
     # holding, is the strongest guarantee this API allows. The residual case is
     # two open PRs on the same commit with different bases, which the issue
     # already requires a maintainer to resolve.
+    # The test-merge commit received `decision` immediately above. Everything
+    # that follows can still fail, and the HEAD is the commit the ruleset reads,
+    # so any failure past this point must withdraw BOTH targets and propagate:
+    # reporting success while the HEAD sits at `pending` (or worse, at a stale
+    # success) would leave the PR unmergeable or wrongly authorized with no
+    # guaranteed event to repair it.
     head_status = "not published"
-    attempted_publish = False
     try:
         scope_now = api.list_open_pull_requests()
         if _head_scope_is_unique(number, head_sha, scope_now):
-            attempted_publish = True
             api.create_commit_status(head_sha, decision)
             # Revalidate BOTH conditions that justified this success, after the
             # write. A concurrent run can change either one while we publish:
@@ -429,40 +462,28 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
                           if fresh_decision != decision else "the HEAD became shared")
                 withdrawn = GateDecision("pending", f"Conclusion withdrawn: {reason}", pr_url)
                 revoke_head_status(api, head_sha, withdrawn)
-                # The test-merge commit carries the same conclusion and is also
-                # read by tooling, so it must be withdrawn with the HEAD: leaving
-                # it successful would keep authorizing deleted evidence.
                 api.create_commit_status(merge_sha, withdrawn)
                 head_status = f"revoked ({reason})"
-                # Withdraw only. This revalidation exists to stop an stale write
+                # Withdraw only. This revalidation exists to stop a stale write
                 # from standing; it must never upgrade the decision, so the
                 # caller keeps the decision this run actually computed.
             else:
                 head_status = "published"
         else:
+            # The HEAD is shared with another open PR, so no HEAD conclusion can
+            # distinguish them. The test-merge result stands; the HEAD keeps only
+            # the revocation written earlier.
             head_status = "withheld (HEAD is shared with another open PR)"
     except (ValueError, RuntimeError) as error:
-        if not attempted_publish:
-            # The ownership scope could not even be read, so this run cannot
-            # decide whether the HEAD is authorized. Reporting success would
-            # leave a completed review pending with no guaranteed retry.
-            raise
-        if attempted_publish:
-            # The write itself failed, so this run cannot say whether the HEAD
-            # carries its conclusion. Withdraw it, and if even that fails, fail
-            # the run: a swallowed error would leave a completed review pending
-            # (or worse, stale evidence standing) with no event to retry it.
-            try:
-                revoke_head_status(
-                    api, head_sha,
-                    GateDecision("pending", "HEAD publication failed; not authorized", pr_url),
-                )
-            except (ValueError, RuntimeError) as revoke_error:
-                raise RuntimeError(
-                    f"HEAD {head_sha} publication failed and its revocation failed: {revoke_error}"
-                ) from error
-            raise
-        head_status = f"withheld ({error})"
+        withdrawn = GateDecision("pending", "Publication could not be confirmed", pr_url)
+        try:
+            revoke_head_status(api, head_sha, withdrawn)
+            api.create_commit_status(merge_sha, withdrawn)
+        except (ValueError, RuntimeError) as revoke_error:
+            raise RuntimeError(
+                f"PR #{number} publication failed and its withdrawal failed: {revoke_error}"
+            ) from error
+        raise
     print(f"PR #{number} HEAD {head_sha} test merge {merge_sha}: {STATUS_CONTEXT} = {decision.state}")
     print(f"PR #{number} HEAD {head_sha}: {STATUS_CONTEXT} {head_status}")
     print(decision.description)
@@ -544,6 +565,16 @@ def open_prs_targeting_branch(api: GitHubAPI, branch: str) -> list[int]:
     return numbers
 
 
+def reopened_head_owner(api: GitHubAPI, number: int) -> bool:
+    """Is the PR of a `closed` event actually open again?
+
+    A delayed `closed` delivery can arrive after the PR was reopened. Skipping
+    that PR in the owner re-evaluation would leave its HEAD revoked forever, with
+    no later event guaranteed, so the skip set must follow the current state.
+    """
+    return api.get_pull_request(number).get("state") == "open"
+
+
 def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
     """Evaluate the event's PR, then anyone else affected by the same HEAD.
 
@@ -601,8 +632,12 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
     # API or status-publication error there must not strand the surviving owner
     # with a `pending` check that no later event is guaranteed to clear. The
     # original error is re-raised after the survivors have had their chance.
+    # The deleted comment is needed to decide whether a deletion delivery is
+    # stale (a replacement summary may already have been reviewed).
+    deleted_comment = (event.get("comment") or {}) if event_name == "issue_comment" else None
     try:
-        evaluate_pr(api, number, deleted_summary=deleted_codex_summary(event_name, event))
+        evaluate_pr(api, number, deleted_summary=deleted_codex_summary(event_name, event),
+                    deleted_comment=deleted_comment)
     except BaseException:
         # The triggering PR failed; re-evaluate the survivors best effort so this
         # error does not also strand them, then propagate the original failure.
@@ -616,8 +651,15 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
     # Nothing else failed, so a survivor that cannot be re-evaluated is this
     # run's only problem: report it instead of exiting 0, because no later event
     # is guaranteed to retry it and its required check would stay pending.
+    # A `closed` event that arrives after a reopen must not skip that PR, or its
+    # HEAD would stay revoked with nothing left to restore it.
+    skip = {number}
+    if event_name == "pull_request_target" and event.get("action") == "closed":
+        if reopened_head_owner(api, number):
+            skip = set()
+            print(f"PR #{number} is open again; it is re-evaluated as a HEAD owner")
     for head_sha in affected_shared_heads(event_name, event):
-        reevaluate_head_owners(api, head_sha, {number})
+        reevaluate_head_owners(api, head_sha, skip)
         print(f"re-evaluated the remaining owners of {head_sha}")
     return 0
 

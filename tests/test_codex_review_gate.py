@@ -570,6 +570,10 @@ class IntegrationTests(unittest.TestCase):
             "merge_commit_sha": None,
         }
         api.list_open_pull_requests = lambda: [api.get_pull_request(133), other]
+        # The trigger is a `closed` event and the PR really is closed, so the
+        # reopen check must not add it back as an owner.
+        base_request = api.get_pull_request
+        api.get_pull_request = lambda n: {**base_request(n), "state": "closed"} if n == 133 else base_request(n)
         evaluated = []
         original = gate.evaluate_pr
         gate.evaluate_pr = lambda a, n, **kw: evaluated.append(n)
@@ -644,7 +648,7 @@ class IntegrationTests(unittest.TestCase):
 
         api.create_commit_status = failing_status
         api.list_open_pull_requests = failing_scan
-        with self.assertRaisesRegex(RuntimeError, "revocation failed"):
+        with self.assertRaisesRegex(RuntimeError, "withdrawal failed"):
             gate.evaluate_pr(api, 133)
 
     def test_summary_deleted_during_publication_is_withdrawn(self):
@@ -701,6 +705,74 @@ class IntegrationTests(unittest.TestCase):
         api.list_open_pull_requests = flaky
         with self.assertRaises(RuntimeError):
             gate.evaluate_pr(api, 133)
+
+
+    def test_stale_deletion_does_not_overwrite_a_newer_summary(self):
+        # A delayed deletion arrival must not force pending when a replacement
+        # summary, newer than the deleted comment, has already been reviewed.
+        newer = summary(updated="2026-10-19T03:00:00Z")
+        newer_id = newer.setdefault("id", 900)
+        deleted = {"id": 100, "updated_at": "2026-10-19T02:00:00Z",
+                   "body": summary()["body"]}
+        self.assertTrue(gate.deletion_is_stale(deleted, [newer]))
+        old_deleted = {"id": 9999, "updated_at": "2026-10-19T04:00:00Z",
+                       "body": summary()["body"]}
+        self.assertFalse(gate.deletion_is_stale(old_deleted, [newer]))
+        self.assertFalse(gate.deletion_is_stale(None, [newer]))
+
+    def test_run_gate_ignores_a_stale_deletion_and_reports_success(self):
+        newer = summary(updated="2026-10-19T03:00:00Z")
+        newer["id"] = 900
+        api = FakeAPI(comments=[newer])
+        event = {"action": "deleted", "issue": {"number": 133,
+                 "pull_request": {"url": URL}},
+                 "comment": {"id": 100, "updated_at": "2026-10-19T02:00:00Z",
+                             "user": {"login": gate.CODEX_BOT_LOGIN, "id": gate.CODEX_BOT_ID},
+                             "body": newer["body"]}}
+        result = gate.run_gate("issue_comment", event, api)
+        self.assertEqual(result, 0)
+
+    def test_delayed_closed_event_does_not_strand_a_reopened_pr(self):
+        # The `closed` delivery arrived after the PR was reopened; the skip set
+        # must not exclude it, or its HEAD would stay revoked with no retry.
+        api = FakeAPI()  # state "open"
+        other = {"number": 200, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+                 "merge_commit_sha": None}
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133), other]
+        evaluated = []
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: evaluated.append(n)
+        try:
+            event = {"action": "closed",
+                     "pull_request": {"number": 133, "head": {"sha": HEAD}}}
+            gate.run_gate("pull_request_target", event, api)
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(evaluated, [133, 133, 200])
+
+    def test_post_write_scan_failure_withdraws_the_test_merge_too(self):
+        api = FakeAPI()
+        published = {"yet": False}
+        base_status = api.create_commit_status
+
+        def tracking(sha, decision):
+            base_status(sha, decision)
+            if decision.state == "success":
+                published["yet"] = True
+
+        api.create_commit_status = tracking
+        original = api.list_open_pull_requests
+
+        def failing():
+            if published["yet"]:
+                raise RuntimeError("transient API error")
+            return original()
+
+        api.list_open_pull_requests = failing
+        with self.assertRaises(RuntimeError):
+            gate.evaluate_pr(api, 133)
+        for target in (HEAD, "b" * 40):
+            self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
 
 
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
@@ -912,7 +984,7 @@ class IntegrationTests(unittest.TestCase):
 
         api.list_open_pull_requests = failing_scan
         api.create_commit_status = failing_status
-        with self.assertRaisesRegex(RuntimeError, "revocation failed"):
+        with self.assertRaisesRegex(RuntimeError, "withdrawal failed"):
             gate.evaluate_pr(api, 133)
 
 
