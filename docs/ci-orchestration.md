@@ -16,7 +16,7 @@ stated instead of a conclusion.
 | --- | --- |
 | `scripts/ci_stage.py run` (used by `check.sh` and the workflows) | per-stage `wallMs`, exit status, identity, cache state; written to `$CJDOC_CI_EVIDENCE/stages.json` and uploaded as `ci-timing-*` |
 | `showcase_build.stage_timing` | per-phase site-generation timings in `showcase-stages.json` (same artifact) |
-| `scripts/ci_stage.py wallclock --run ID --attempt N` | job and step level wall clock read from the Actions API, including queueing and re-run gaps |
+| `scripts/ci_stage.py wallclock --run ID --attempt N` | job and step level wall clock read from the Actions API, including queueing and re-run gaps; the collected tables are in [`ci-wallclock.md`](ci-wallclock.md) |
 | `scripts/measure_sdk_install.py` | paired cold/warm samples of the two combined-SDK cache shapes |
 | workflow Job Summary | the human-readable roll-up of the above |
 
