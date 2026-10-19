@@ -155,3 +155,31 @@ if valid {
 在报告或 PR 中分别说明 build、unit、golden/integration、real-repository 与远端 CI 是否实际运行。不要用较低层级的通过替代更高层级证据，也不要把本机通过描述成 GitHub runner 已通过。
 
 CHIR capability Gate 只有 G1–G7 全部实测 PASS 才能升级为 authoritative provider；当前内置 provider 只提供保守的结构化语义补充，不替代源码/AST fallback。结论和证据位于 `docs/research/`。
+
+## Code Review Rules
+
+仅在变更触及相应契约时应用以下检查，不要为了套用规则扩展无关 PR 的审查范围；仍需正常报告真实的安全、正确性与回归问题。
+
+### Doc IR 与跨文档导航
+
+- 变更涉及 Doc IR、跨文档链接或冻结文档重放（replay）时，对照实际 producer 的创建、选择与绑定路径，核对 decoder、validator、renderer 接受的状态是否可由 producer 生成，同时不得拒绝合法产物。区分 `exact`、`compatible`、`unavailable`、`partial`、`ambiguous` 的语义。
+- 发现契约不一致时，一次性检查同一不变量的正反、对称及相关边界情形：空值与缺失字段、document set 的 language/library、owner/module、dependency instance、component、symbol key、组织限定名与别名、重复或歧义选取。无需穷举无关组合。
+- 外部 `exact` / `compatible` 证据必须关联到 producer 实际选中的目标。若 Doc IR 未保留消费端证明关系所需的信息，应指出契约缺口并建议补充证据或安全降级；不得臆造映射，也不得将无法验证的链接标为确定匹配。
+
+### 身份与观测快照
+
+- 修改 source identity、manifest、build context 或 receipt 时，检查 identity、version、digest、size 等数据是否绑定到同一稳定观测快照，避免散落的二次读取造成时间竞态。不得通过重复计入预算、放宽资源限制、破坏事务隔离或把未验证状态标为 `verified` 来修复问题。
+
+### 审查意见质量
+
+- 缺陷意见应明确触发条件、违反的契约、实际影响和关键代码路径；区分可从代码证明的错误与未经验证的推测，不把纯风格建议当作正确性缺陷。
+- 同根因的边界或对称反例尽可能合并到同一条意见；可访问历史 Review Thread 时，先检查是否已报告或已修复。新发现的真实缺陷仍必须指出，不能为了减少线程数而隐瞒问题。
+- 区分本 PR 引入或加重的问题与独立的范围外改进；后者可建议单独建 Issue，不能将当前 PR 的真实阻塞缺陷仅因发现较晚就降级。
+
+## Review 反馈处理与收敛
+
+- 处理 Review Thread 前先核实实际 producer/consumer 代码及其契约，按不变量和共同根因归类，不机械地将每条评论视为独立的修复任务。
+- 同根因问题集中修复，补充覆盖合法/非法、正反与相关边界情形的回归或参数化测试，避免只修一个反例而遗漏对称情形。
+- 优先完成一组相关修复与受影响的测试后再推送；复审重点检查本轮修复及受影响的调用链，而不是主动对每次小提交重新启动无界的全量审计。
+- 记录各组意见的处理状态及证据：已修复、附反证不采纳、仍阻塞、范围外跟进。不得因 Review 轮次较多而忽略可证实的阻塞缺陷。
+- PR 的技术合并条件是原 Issue/PR 验收标准、真实阻塞问题和必要测试/CI 均满足；不要把 Review Thread 全部清零或固定审查轮数作为唯一条件。
