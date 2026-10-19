@@ -90,6 +90,29 @@ a regression: both runs' paired CI runs were cancelled by the next push, so no
 CI candidate artifact existed to reuse. The behaviour is therefore conditional
 on the upstream run finishing, not unconditional.
 
+## The release loop on the merged `main` (DONE-04 item 3)
+
+Run `39217926544` is the first release loop observed on `main` rather than on a
+feature branch. Tag `v0.7.2-rc2` was pushed at `b0c3e5fb27ae`:
+
+| job | result | wall |
+| --- | --- | ---: |
+| Release candidate / linux-x64 | success | 70.7 m |
+| Release candidate / windows-x64 | success | 42.5 m |
+| Release candidate / macos-arm64 | success | 32.1 m |
+| Publish verified release | success | 0.5 m |
+| **run** | **success** | **71.2 m** (145.7 job-minutes) |
+
+`Publish verified release` logged `release_flags=--prerelease`, uploaded the
+per-platform binaries, archives and `.sha256` files, and published the release;
+all three platform candidate receipts were accepted by the packaging gate.
+
+The throwaway tag and release were then removed as the issue requires, and the
+removal was recorded: the release and the `v0.7.2-rc2` tag no longer exist
+(`releases` are `v0.7.0`, `v0.7.1`, `v0.7.2-rc1`; the same three tags are the only
+remote tags), while the run `39217926544` and its logs remain retrievable and
+`main` is still `b0c3e5fb27ae`.
+
 ## What this does not establish
 
 `docs/paired-samples-main.md` (issue #96) remains the authority for the
