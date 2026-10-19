@@ -880,8 +880,10 @@ PY
 # binary. It is a required stage: a missing browser is a failure, not a skip.
 stage_html_a11y() {
     cd "${repo}"
-    # No require_identity: this stage consumes only the built binary and the
-    # fixture projects, and the release job never runs it.
+    # Every other binary-consuming stage verifies the supplied manifest and
+    # binary before it records evidence; a browser pass for a stale or different
+    # artifact is worse than no evidence, so this stage does the same.
+    require_identity
     local matrix_root="${output_root:-${repo}/target/ci-evidence}/package-index-matrix"
     "${python_cmd}" scripts/accept_package_index_matrix.py \
         --binary "${main_binary:-${repo}/target/release/bin/main}" \

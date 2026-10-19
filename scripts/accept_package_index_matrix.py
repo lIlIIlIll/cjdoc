@@ -31,13 +31,21 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
-HISTORICAL_ANCHORS = (
-    "declarations", "classes", "structs", "interfaces", "enums", "aliases",
-    "functions", "properties", "variables", "extensions", "others",
-)
+# Every fixture is paired with the anchors its own declarations must publish.
+# These are expectations, not discoveries: they were read from each project's
+# sources (and its Doc IR), so a renderer that drops a category alias fails here
+# instead of quietly shrinking the assertion set.
+#   package_index: one public class -> Classes (the single-category merge keeps
+#   the category alias alongside #declarations)
+#   basic: class, struct, interface, enum, typeAlias, function, extend
+FIXTURE_ANCHORS = {
+    "package_index": ("declarations", "classes"),
+    "basic": ("declarations", "classes", "structs", "interfaces", "enums",
+              "aliases", "functions", "extensions"),
+}
 VIEWPORTS = (("desktop", 1440, 900), ("tablet", 1024, 768), ("mobile", 390, 844))
 THEMES = ("light", "dark")
-FIXTURES = (("package_index", "single-category"), ("package-overview", "multi-category"))
+FIXTURES = (("package_index", "single-category"), ("basic", "multi-category"))
 
 CONTRAST_PROBE = r"""() => {
   const parse = value => {
@@ -113,11 +121,9 @@ STRUCTURE_PROBE = r"""() => {
 }"""
 
 
-def page_anchors(text: str) -> list[str]:
+def missing_anchors(text: str, expected) -> list[str]:  # noqa: ANN001 - sequence of str
     present = set(re.findall(r'id="([^"]+)"', text))
-    if "declarations" not in present:
-        raise ValueError("generated package page has no #declarations anchor")
-    return [anchor for anchor in HISTORICAL_ANCHORS if anchor in present]
+    return [anchor for anchor in expected if anchor not in present]
 
 
 def page_url(entry: dict, fragment: str = "") -> str:
@@ -144,11 +150,17 @@ def generate_site(binary: Path, repo: Path, fixture: str, work: Path) -> list[di
         raise ValueError(f"generating {fixture} failed: {result.stderr[-600:]}")
     pages = []
     for page in sorted((site / "html/packages").glob("*.html")):
+        text = page.read_text(encoding="utf-8")
+        absent = missing_anchors(text, FIXTURE_ANCHORS[fixture])
+        if absent:
+            raise ValueError(
+                f"{fixture}/{page.name}: required anchors are missing: {absent}"
+            )
         pages.append({
             "fixture": fixture,
             "root": str(site / "html"),
             "route": f"packages/{page.name}",
-            "historicalAnchors": page_anchors(page.read_text(encoding="utf-8")),
+            "historicalAnchors": list(FIXTURE_ANCHORS[fixture]),
         })
     if not pages:
         raise ValueError(f"{fixture} generated no package pages")
@@ -318,6 +330,16 @@ def main() -> int:
     for fixture, shape in FIXTURES:
         shapes[fixture] = shape
         pages.extend(generate_site(binary, repo, fixture, work))
+    # Each labelled shape must really be that shape, otherwise the matrix would
+    # claim browser coverage of a layout it never rendered.
+    for entry in pages:
+        text = (Path(entry["root"]) / entry["route"]).read_text(encoding="utf-8")
+        groups = re.findall(r'<(h2|h3) id="[^"]*" data-cjdoc-toc-role="group">', text)
+        level = groups[0] if groups else ""
+        if shapes[entry["fixture"]] == "single-category" and level != "h2":
+            raise ValueError(f"{entry['fixture']} is labelled single-category but renders {level!r}")
+        if shapes[entry["fixture"]] == "multi-category" and level != "h3":
+            raise ValueError(f"{entry['fixture']} is labelled multi-category but renders {level!r}")
     (output / "package-index-pages.json").write_text(
         json.dumps([{k: v for k, v in entry.items() if k != "root"} for entry in pages],
                    ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
