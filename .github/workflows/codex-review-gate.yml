@@ -9,6 +9,11 @@ on:
   # The managed Codex app creates/edits its canonical summary issue comment.
   issue_comment:
     types: [created, edited, deleted]
+  # A rewritten base branch changes no PR's HEAD, so no per-PR event fires; the
+  # push itself must re-evaluate every open PR that targets the branch, or a
+  # HEAD success validated against an earlier base would keep authorizing.
+  push:
+    branches: [main]
   # Restore the status if a webhook was missed or a format changed.
   workflow_dispatch:
     inputs:

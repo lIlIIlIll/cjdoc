@@ -243,7 +243,7 @@ class FakeAPI:
             "state": self.state,
             "number": self.number,
             "head": {"sha": self.sha},
-            "base": {"sha": self.base_sha},
+            "base": {"sha": self.base_sha, "ref": getattr(self, "base_ref", "main")},
             "merge_commit_sha": self.merge_sha,
             "html_url": URL,
         }
@@ -669,6 +669,71 @@ class IntegrationTests(unittest.TestCase):
         gate.evaluate_pr = lambda a, n, **kw: (_ for _ in ()).throw(RuntimeError(f"boom {n}"))
         try:
             with self.assertRaisesRegex(RuntimeError, "boom 133"):
+                gate.run_gate("pull_request_target", event, api)
+        finally:
+            gate.evaluate_pr = original
+
+
+    def test_push_to_base_reevaluates_every_open_pr_targeting_it(self):
+        # A rewritten base changes no HEAD, so no per-PR event fires; the push
+        # must re-evaluate every PR targeting that branch or a stale success on
+        # the HEAD would keep authorizing.
+        api = FakeAPI()
+        other = {
+            "number": 200, "head": {"sha": "9" * 40}, "base": {"sha": OLD_HEAD, "ref": "main"},
+            "merge_commit_sha": None,
+        }
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133), other]
+        evaluated = []
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: evaluated.append(n)
+        try:
+            self.assertEqual(gate.run_gate("push", {"ref": "refs/heads/main"}, api), 0)
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(evaluated, [133, 200])
+
+    def test_push_to_another_branch_ignores_unrelated_prs(self):
+        api = FakeAPI()
+        other = {
+            "number": 200, "head": {"sha": "9" * 40}, "base": {"sha": OLD_HEAD, "ref": "dev"},
+            "merge_commit_sha": None,
+        }
+        api.base_ref = "dev"
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133), other]
+        evaluated = []
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: evaluated.append(n)
+        try:
+            gate.run_gate("push", {"ref": "refs/heads/main"}, api)
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(evaluated, [])
+
+    def test_push_without_a_branch_is_skipped(self):
+        api = FakeAPI()
+        self.assertEqual(gate.run_gate("push", {}, api), 0)
+
+    def test_failed_survivor_reevaluation_is_not_silently_successful(self):
+        # The triggering PR is fine but the surviving owner cannot be
+        # re-evaluated: the run must fail, because nothing else will retry it.
+        api = FakeAPI()
+        other = {
+            "number": 200, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+            "merge_commit_sha": None,
+        }
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133), other]
+        original = gate.evaluate_pr
+
+        def selective(a, n, **kw):
+            if n == 200:
+                raise RuntimeError("survivor publication failed")
+
+        gate.evaluate_pr = selective
+        try:
+            event = {"action": "closed",
+                     "pull_request": {"number": 133, "head": {"sha": HEAD}}}
+            with self.assertRaisesRegex(RuntimeError, "survivor publication failed"):
                 gate.run_gate("pull_request_target", event, api)
         finally:
             gate.evaluate_pr = original

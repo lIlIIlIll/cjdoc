@@ -469,6 +469,23 @@ def reevaluate_head_owners(api: GitHubAPI, head_sha: str, skip: set[int]) -> Non
         evaluate_pr(api, pull_request["number"])
 
 
+def open_prs_targeting_branch(api: GitHubAPI, branch: str) -> list[int]:
+    """Open PR numbers whose base is `branch`.
+
+    A rewritten base branch does not change a PR's HEAD, so a `success` left on
+    that immutable SHA would keep authorizing a review validated against an
+    earlier base. GitHub sends no per-PR event for that, so the base push itself
+    must re-evaluate every PR that targets it.
+    """
+    numbers: list[int] = []
+    for pull_request in api.list_open_pull_requests():
+        if not isinstance(pull_request, dict) or not isinstance(pull_request.get("number"), int):
+            raise ValueError("invalid entry in open-PR response")
+        if (pull_request.get("base") or {}).get("ref") == branch:
+            numbers.append(pull_request["number"])
+    return numbers
+
+
 def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
     """Evaluate the event's PR, then anyone else affected by the same HEAD.
 
@@ -476,6 +493,17 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
     the re-evaluation, or re-evaluating the triggering PR twice, must fail a test
     rather than pass unnoticed.
     """
+    if event_name == "push":
+        # A base branch advanced; every open PR targeting it must be re-evaluated
+        # so its HEAD status cannot keep authorizing a stale validation.
+        branch = (event.get("ref") or "").removeprefix("refs/heads/")
+        if not branch:
+            print("push event without a branch; skip")
+            return 0
+        for candidate in open_prs_targeting_branch(api, branch):
+            evaluate_pr(api, candidate)
+            print(f"re-evaluated PR #{candidate} after a push to {branch}")
+        return 0
     number = pr_number_from_event(event_name, event)
     if number is None:
         print("Issue comment does not belong to a PR; skip")
@@ -490,14 +518,22 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
     # original error is re-raised after the survivors have had their chance.
     try:
         evaluate_pr(api, number, deleted_summary=deleted_codex_summary(event_name, event))
-    finally:
+    except BaseException:
+        # The triggering PR failed; re-evaluate the survivors best effort so this
+        # error does not also strand them, then propagate the original failure.
         for head_sha in affected_shared_heads(event_name, event):
             try:
                 reevaluate_head_owners(api, head_sha, {number})
-                print(f"re-evaluated the remaining owners of {head_sha}")
             except (ValueError, RuntimeError) as error:
                 print(f"could not re-evaluate the remaining owners of {head_sha}: {error}",
                       file=sys.stderr)
+        raise
+    # Nothing else failed, so a survivor that cannot be re-evaluated is this
+    # run's only problem: report it instead of exiting 0, because no later event
+    # is guaranteed to retry it and its required check would stay pending.
+    for head_sha in affected_shared_heads(event_name, event):
+        reevaluate_head_owners(api, head_sha, {number})
+        print(f"re-evaluated the remaining owners of {head_sha}")
     return 0
 
 
