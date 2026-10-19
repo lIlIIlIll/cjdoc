@@ -149,8 +149,11 @@ internal class NavigationEvidence {
                 if (!value.apiIdentity.isEmpty() && value.apiIdentity != documentSet.identity) {
                     domainFail(path + ".apiIdentity", "must match the referenced documentation.documentSets identity")
                 }
+                // The producer always copies the selected document set's language
+                // into the navigation, so selected links must match exactly,
+                // including the both-empty case.
                 if ((value.matchLevel == "compatible" || value.matchLevel == "exact" || !value.language.isEmpty()) &&
-                    !documentSet.language.isEmpty() && value.language != documentSet.language) {
+                    value.language != documentSet.language) {
                     domainFail(path + ".language", "must match the referenced documentation.documentSets language")
                 }
                 if (!value.indexIdentity.isEmpty() && value.indexIdentity != documentSet.indexIdentity) {
@@ -172,6 +175,16 @@ internal class NavigationEvidence {
             if (value.matchLevel == "exact" && dependency.state != "observed" && dependency.state != "verified") {
                 domainFail(path + ".dependencyInstanceId",
                     "exact navigation requires observed or verified documentation.dependencies evidence")
+            }
+            // The producer reaches exact only through a matched published graph,
+            // which an empty actual module can never produce.
+            // The producer reaches exact only through a matched published graph.
+            // Binary/std/stdx/toolchain inputs carry no source component, so the
+            // requirement applies to selected source dependencies.
+            if (value.matchLevel == "exact" && dependency.kind == "source" &&
+                dependency.componentModuleId.isEmpty()) {
+                domainFail(path + ".dependencyInstanceId",
+                    "exact navigation requires a captured source component")
             }
             // Compatible is selected only inside the producer's dependency branch,
             // but unlike exact it permits declared evidence and differing API bytes.
@@ -200,6 +213,13 @@ internal class NavigationEvidence {
                                 "selected navigation must reference the dependency selected for the document set library")
                         }
                     }
+                    // An organization-qualified library that does not resolve here
+                    // is NOT rejected: replay indexes module names only, while the
+                    // producer also indexes the source package alias
+                    // (`organization::name`) from its private source graph, so an
+                    // unresolvable alias is indistinguishable from a legitimate
+                    // generated inventory. The resolvable case above is enforced;
+                    // this remainder is a documented replay limitation.
                 }
             }
             // Compatible mappings and unverified manual references may select a

@@ -77,7 +77,8 @@ private func navigationEvidenceCodecFixture(): DocumentationSet {
         providers: [ProviderInfo("ast", "builtin", "cjdoc:module:v1:evidence", "partial",
             SemanticCapabilities(false, false, false, false, false))],
         dependencies: [DependencyInstance("cjdoc:module:v1:evidence", "support",
-            "dependency-evidence", "source", "api-evidence", "observed", "selected source")],
+            "dependency-evidence", "source", "api-evidence", "observed", "selected source",
+            componentModuleId: "cjdoc:module:v1:evidence")],
         documentSets: [DocumentSetIdentity("docs-evidence", "support", "api-evidence",
             "declared", "portable-index", language: "en", indexIdentity: "index-evidence")])
 }
