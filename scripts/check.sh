@@ -2,7 +2,7 @@
 # Staged acceptance gate for cjdoc.
 #
 # With no arguments this runs the complete local gate:
-#   preflight -> build -> native -> python-tools -> cli -> provider -> html-a11y
+#   preflight -> build -> native -> python-tools -> cli -> provider
 #
 # CI and Pages call only the stages they need, so no orchestration repeats the
 # whole gate. Every stage records machine-readable timing, identity and cache
@@ -880,13 +880,19 @@ PY
 # binary. It is a required stage: a missing browser is a failure, not a skip.
 stage_html_a11y() {
     cd "${repo}"
-    # Every other binary-consuming stage verifies the supplied manifest and
-    # binary before it records evidence; a browser pass for a stale or different
-    # artifact is worse than no evidence, so this stage does the same.
+    # Bind the default binary BEFORE verifying: `require_identity` only passes
+    # `--main-binary` when the option was given, so leaving it empty would verify
+    # the checkout alone while the matrix later ran the default path, and a stale
+    # or replaced binary would still produce passing evidence.
+    if [[ -z "${main_binary}" ]]; then
+        main_binary="${repo}/target/release/bin/main"
+    fi
+    # A browser pass for a stale or different artifact is worse than no evidence,
+    # so this stage verifies exactly what every other binary stage verifies.
     require_identity
     local matrix_root="${output_root:-${repo}/target/ci-evidence}/package-index-matrix"
     "${python_cmd}" scripts/accept_package_index_matrix.py \
-        --binary "${main_binary:-${repo}/target/release/bin/main}" \
+        --binary "${main_binary}" \
         --output "${matrix_root}"
 }
 

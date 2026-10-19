@@ -29,7 +29,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import quote
 
 # Every fixture is paired with the anchors its own declarations must publish.
 # These are expectations, not discoveries: they were read from each project's
@@ -77,12 +76,21 @@ CONTRAST_PROBE = r"""() => {
     const dark = Math.min(lum(foreground), lum(behind));
     return { ratio: (light + 0.05) / (dark + 0.05), size: parseFloat(style.fontSize) };
   };
-  const nodes = [
+  // Audit the elements that actually paint glyphs. A signature container holds
+  // `.code-*` syntax spans and `.type-link` anchors whose colours differ from the
+  // container's own `--muted`, so measuring only the container would miss a
+  // low-contrast keyword or link colour.
+  const candidates = [
     ...document.querySelectorAll('.declaration-group h2, .declaration-group h3'),
-    ...document.querySelectorAll('.declaration-row-link code, .declaration-signature'),
+    ...document.querySelectorAll('.declaration-row-link code'),
+    ...document.querySelectorAll('.declaration-signature, .declaration-signature .code-keyword,' +
+      ' .declaration-signature .code-type, .declaration-signature .code-string,' +
+      ' .declaration-signature .code-number, .declaration-signature .code-comment,' +
+      ' .declaration-signature .type-link, .declaration-row-link .type-link'),
     ...document.querySelectorAll('.declaration-description'),
     ...document.querySelectorAll('.page-header h1 code, .badge'),
   ];
+  const nodes = candidates.filter(node => (node.textContent || '').trim().length > 0);
   return nodes.map(node => {
     const value = ratio(node);
     return value === null ? null : {
@@ -127,10 +135,11 @@ def missing_anchors(text: str, expected) -> list[str]:  # noqa: ANN001 - sequenc
 
 
 def page_url(entry: dict, fragment: str = "") -> str:
-    # A local page must be opened as a file URL; percent-encoding keeps paths with
-    # spaces or non-ASCII names intact, and the fragment goes after the path.
-    path = quote(f"{entry['root']}/{entry['route']}", safe="/")
-    return f"file://{path}" + (f"#{fragment}" if fragment else "")
+    # `Path.as_uri()` is the only portable way to build a file URL: on Windows it
+    # yields `file:///C:/...`, whereas quoting a path string would encode the
+    # drive as `file://C%3A%5C...` and Playwright would treat it as a host.
+    url = (Path(entry["root"]) / entry["route"]).resolve().as_uri()
+    return url + (f"#{fragment}" if fragment else "")
 
 
 def generate_site(binary: Path, repo: Path, fixture: str, work: Path) -> list[dict]:
@@ -209,10 +218,7 @@ def check_anchors(page, pages) -> list[str]:  # noqa: ANN001 - Playwright Page
 
 
 def check_viewport(page, pages, name: str, width: int, height: int,
-                   emulated: str | None, zoom: str | None) -> list[str]:
-    # At 200% zoom the first declaration legitimately moves below the fold; the
-    # requirement there is reflow (no overflow, no hidden or overlapping text),
-    # not first-screen density, so the density assertion is skipped for zoom.
+                   emulated: str | None) -> list[str]:
     failures = []
     page.set_viewport_size({"width": width, "height": height})
     for entry in pages:
@@ -223,8 +229,6 @@ def check_viewport(page, pages, name: str, width: int, height: int,
         else:
             page.emulate_media(color_scheme="light")
             page.evaluate("() => { delete document.documentElement.dataset.theme; }")
-        if zoom:
-            page.evaluate("zoom => { document.documentElement.style.zoom = zoom; }", zoom)
         where = f"{entry['fixture']} {name}"
         layout = page.evaluate(LAYOUT_PROBE)
         if layout["overflow"]:
@@ -233,7 +237,7 @@ def check_viewport(page, pages, name: str, width: int, height: int,
             )
         if layout["rows"] < 1:
             failures.append(f"{where}: no declaration rows rendered")
-        if layout["firstScreen"] < 1 and not zoom:
+        if layout["firstScreen"] < 1:
             failures.append(f"{where}: no declaration row in the first screen")
         for sample in page.evaluate(CONTRAST_PROBE):
             floor = 3.0 if sample["size"] >= 24 else 4.5
@@ -242,6 +246,62 @@ def check_viewport(page, pages, name: str, width: int, height: int,
                     f"{where}: contrast {sample['ratio']} < {floor} for "
                     f"{sample['cls']} {sample['text']!r} ({sample['size']}px)"
                 )
+    return failures
+
+
+def check_native_zoom(browser, pages) -> list[str]:  # noqa: ANN001 - Playwright Browser
+    """Real 200% browser zoom: half the CSS viewport at 2x device pixel ratio.
+
+    Page zoom is not a CSS transform. At 200% a 1024x768 window reports ~512 CSS
+    pixels of width with `devicePixelRatio` 2, which is what makes
+    `@media(max-width:760px)` and DPR-dependent rules apply -- neither happens
+    with `documentElement.style.zoom`. Playwright's Python API has no zoom
+    command, so the same state is created directly: a 512x384 viewport with
+    `device_scale_factor=2`.
+    """
+    failures = []
+    context = browser.new_context(viewport={"width": 512, "height": 384}, device_scale_factor=2)
+    page = context.new_page()
+    try:
+        for entry in pages:
+            page.goto(page_url(entry))
+            page.emulate_media(color_scheme="light")
+            state = page.evaluate(
+                """() => ({
+                  innerWidth, dpr: devicePixelRatio,
+                  overflow: document.documentElement.scrollWidth > innerWidth + 1,
+                  rows: document.querySelectorAll('.declaration-row').length,
+                  visibleRows: [...document.querySelectorAll('.declaration-row')]
+                    .filter(row => { const r = row.getBoundingClientRect();
+                                     return r.width > 0 && r.height > 0; }).length,
+                  anchor: !!document.getElementById('declarations'),
+                  narrowRuleApplied: matchMedia('(max-width: 760px)').matches,
+                })"""
+            )
+            where = f"{entry['fixture']} zoom200"
+            if state["dpr"] != 2:
+                failures.append(f"{where}: expected devicePixelRatio 2, saw {state['dpr']}")
+            if round(state["innerWidth"]) > 520:
+                failures.append(
+                    f"{where}: zoom did not halve the CSS viewport (innerWidth {state['innerWidth']})"
+                )
+            if not state["narrowRuleApplied"]:
+                failures.append(f"{where}: the narrow-viewport media query did not apply under zoom")
+            if state["overflow"]:
+                failures.append(f"{where}: page-level horizontal overflow under zoom")
+            if state["rows"] < 1 or state["visibleRows"] < 1:
+                failures.append(f"{where}: declaration rows are not rendered under zoom")
+            if not state["anchor"]:
+                failures.append(f"{where}: #declarations anchor missing under zoom")
+            for sample in page.evaluate(CONTRAST_PROBE):
+                floor = 3.0 if sample["size"] >= 24 else 4.5
+                if sample["ratio"] < floor:
+                    failures.append(
+                        f"{where}: contrast {sample['ratio']} < {floor} for "
+                        f"{sample['cls']} {sample['text']!r}"
+                    )
+    finally:
+        context.close()
     return failures
 
 
@@ -311,11 +371,27 @@ def main() -> int:
     binary = args.binary.resolve()
     output = args.output.resolve()
     repo = Path(__file__).resolve().parents[1]
+    # The stage deletes its own scratch tree, so it must never be pointed at a
+    # directory it does not own. Mirrors the other acceptance stages: a
+    # non-empty root without this stage's marker is refused, and a symlinked root
+    # is refused outright rather than followed.
+    if output.is_symlink():
+        raise ValueError(f"output root must not be a symlink: {output}")
+    marker = output / "package-index-matrix.owner"
+    if output.exists():
+        if not output.is_dir():
+            raise ValueError(f"output root must be a directory: {output}")
+        entries = [child for child in output.iterdir() if child.name != marker.name]
+        if entries and not marker.is_file():
+            raise ValueError(
+                f"output root is not owned by this stage (refusing to delete): {output}"
+            )
     work = output / "work"
     if work.exists():
         shutil.rmtree(work)
     work.mkdir(parents=True, exist_ok=True)
     output.mkdir(parents=True, exist_ok=True)
+    marker.write_text("cjdoc package index matrix\n", encoding="utf-8")
 
     try:
         from playwright.sync_api import sync_playwright
@@ -356,9 +432,8 @@ def main() -> int:
             failures += check_anchors(page, pages)
             for name, width, height in VIEWPORTS:
                 for theme in THEMES:
-                    failures += check_viewport(page, pages, name, width, height, theme, None)
-            for name, width, height in (("desktop-zoom200", 1024, 768),):
-                failures += check_viewport(page, pages, name, width, height, "light", "2")
+                    failures += check_viewport(page, pages, name, width, height, theme)
+            failures += check_native_zoom(browser, pages)
             failures += check_keyboard(page, pages[0])
             failures += check_accessible_names(page, pages)
         finally:
