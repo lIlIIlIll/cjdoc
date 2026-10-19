@@ -416,19 +416,74 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
     return decision
 
 
-def main() -> int:
-    event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
-    number = pr_number_from_event(os.environ["GITHUB_EVENT_NAME"], event)
+def affected_shared_heads(event_name: str, event: dict) -> list[str]:
+    """HEAD SHAs whose set of owning open PRs changed in this event.
+
+    A HEAD shared by two open PRs is left pending for both. When one of them
+    closes or pushes elsewhere, the remaining PR now owns the old HEAD alone and
+    must be re-evaluated, but the triggering event only concerns the PR that
+    changed. These are the SHAs whose remaining owners must be revisited.
+    """
+    if event_name != "pull_request_target":
+        return []
+    action = event.get("action")
+    pull_request = event.get("pull_request") or {}
+    if action == "closed":
+        head = (pull_request.get("head") or {}).get("sha")
+        if isinstance(head, str) and SHA_PATTERN.fullmatch(head):
+            return [head]
+        return []
+    if action == "synchronize":
+        # The previous HEAD may still be owned by another open PR.
+        before = event.get("before")
+        if isinstance(before, str) and SHA_PATTERN.fullmatch(before):
+            return [before]
+        return []
+    return []
+
+
+def reevaluate_head_owners(api: GitHubAPI, head_sha: str, skip: set[int]) -> None:
+    """Re-evaluate every open PR that owns `head_sha`, except `skip`."""
+    for pull_request in api.list_open_pull_requests():
+        if not isinstance(pull_request, dict) or not isinstance(pull_request.get("number"), int):
+            raise ValueError("invalid entry in open-PR response")
+        if pull_request["number"] in skip:
+            continue
+        if (pull_request.get("head") or {}).get("sha") != head_sha:
+            continue
+        evaluate_pr(api, pull_request["number"])
+
+
+def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
+    """Evaluate the event's PR, then anyone else affected by the same HEAD.
+
+    Kept separate from `main` so the orchestration itself is testable: dropping
+    the re-evaluation, or re-evaluating the triggering PR twice, must fail a test
+    rather than pass unnoticed.
+    """
+    number = pr_number_from_event(event_name, event)
     if number is None:
         print("Issue comment does not belong to a PR; skip")
         return 0
+    evaluate_pr(api, number, deleted_summary=deleted_codex_summary(event_name, event))
+    # A HEAD shared by several PRs stays pending for all of them, so a PR that
+    # closes or moves away must not leave the remaining owner stuck: re-evaluate
+    # whoever still owns the HEAD this event changed, never the triggering PR.
+    for head_sha in affected_shared_heads(event_name, event):
+        reevaluate_head_owners(api, head_sha, {number})
+        print(f"re-evaluated the remaining owners of {head_sha}")
+    return 0
+
+
+def main() -> int:
+    environment_name = os.environ["GITHUB_EVENT_NAME"]
+    event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
     api = GitHubAPI(
         os.environ["GITHUB_REPOSITORY"],
         os.environ["GITHUB_TOKEN"],
         os.environ.get("GITHUB_API_URL", "https://api.github.com"),
     )
-    evaluate_pr(api, number, deleted_summary=deleted_codex_summary(os.environ["GITHUB_EVENT_NAME"], event))
-    return 0
+    return run_gate(environment_name, event, api)
 
 
 if __name__ == "__main__":

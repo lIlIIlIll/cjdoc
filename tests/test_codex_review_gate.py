@@ -512,6 +512,94 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(api.statuses, [])
 
 
+    def test_head_freed_by_a_closed_pr_reevaluates_the_remaining_owner(self):
+        # Two PRs shared a HEAD, so both were pending. The other one closes; the
+        # survivor now owns the HEAD alone and must be re-evaluated, otherwise its
+        # completed review stays pending forever.
+        event = {"action": "closed",
+                 "pull_request": {"number": 200, "head": {"sha": HEAD}}}
+        self.assertEqual(gate.affected_shared_heads("pull_request_target", event), [HEAD])
+        api = FakeAPI()
+        calls = []
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133)]
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: calls.append(n)
+        try:
+            gate.reevaluate_head_owners(api, HEAD, {200})
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(calls, [133])
+
+    def test_synchronize_reevaluates_the_previous_head_owners(self):
+        event = {"action": "synchronize", "before": HEAD,
+                 "pull_request": {"head": {"sha": "9" * 40}}}
+        self.assertEqual(gate.affected_shared_heads("pull_request_target", event), [HEAD])
+
+    def test_unrelated_events_do_not_trigger_reevaluation(self):
+        self.assertEqual(gate.affected_shared_heads("issue_comment", {"action": "created"}), [])
+        self.assertEqual(gate.affected_shared_heads("workflow_dispatch", {}), [])
+        self.assertEqual(
+            gate.affected_shared_heads("pull_request_target", {"action": "opened",
+                "pull_request": {"head": {"sha": HEAD}}}), [])
+
+    def test_reevaluation_skips_the_pr_that_triggered_the_event(self):
+        api = FakeAPI()
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133)]
+        calls = []
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: calls.append(n)
+        try:
+            gate.reevaluate_head_owners(api, HEAD, {133})
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(calls, [])
+
+    def test_reevaluation_ignores_prs_with_a_different_head(self):
+        api = FakeAPI()
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133)]
+        calls = []
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: calls.append(n)
+        try:
+            gate.reevaluate_head_owners(api, "9" * 40, set())
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(calls, [])
+
+
+    def test_run_gate_reevaluates_other_owners_and_not_the_triggering_pr(self):
+        # End-to-end orchestration: the event's PR is evaluated once, and the
+        # other owner of the HEAD is evaluated once -- the triggering PR is NOT
+        # evaluated a second time through the re-evaluation path.
+        api = FakeAPI()
+        other = {
+            "number": 200, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+            "merge_commit_sha": None,
+        }
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133), other]
+        evaluated = []
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: evaluated.append(n)
+        try:
+            event = {"action": "closed",
+                     "pull_request": {"number": 133, "head": {"sha": HEAD}}}
+            gate.run_gate("pull_request_target", event, api)
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(evaluated, [133, 200])
+
+    def test_run_gate_skips_issue_comments_without_a_pr(self):
+        api = FakeAPI()
+        evaluated = []
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: evaluated.append(n)
+        try:
+            self.assertEqual(gate.run_gate("issue_comment", {"action": "created"}, api), 0)
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(evaluated, [])
+
+
     def test_closed_pull_request_does_not_post_status(self):
         api = FakeAPI(state="closed")
         self.assertIsNone(gate.evaluate_pr(api, 133))

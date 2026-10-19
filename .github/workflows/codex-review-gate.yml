@@ -3,7 +3,9 @@ name: Codex review gate
 on:
   # Gate logic always executes trusted default-branch code (no PR checkout).
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    # `closed` matters even though a closed PR needs no status: it can free a
+    # HEAD that another open PR then owns alone and needs re-evaluated.
+    types: [opened, synchronize, reopened, ready_for_review, edited, closed]
   # The managed Codex app creates/edits its canonical summary issue comment.
   issue_comment:
     types: [created, edited, deleted]
