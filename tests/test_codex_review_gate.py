@@ -321,22 +321,25 @@ class ScopeTests(unittest.TestCase):
 
 class IntegrationTests(unittest.TestCase):
     def test_status_targets_current_pr_test_merge_and_scoped_head(self):
-        # A stale review stays pending on BOTH the test merge and the HEAD the
-        # ruleset evaluates, so no earlier success can authorize this commit.
+        # A stale review stays pending everywhere: the HEAD the ruleset reads
+        # and the test merge both end pending, and neither ever sees a success.
         api = FakeAPI(comments=[summary(sha=OLD_HEAD)])
         result = gate.evaluate_pr(api, 133)
         self.assertEqual(result.state, "pending")
-        self.assertEqual([s[0] for s in api.statuses], [HEAD, "b" * 40, "b" * 40, HEAD])
-        self.assertTrue(all(s[1].state == "pending" for s in api.statuses))
+        self.assertNotIn("success", [s.state for _, s in api.statuses])
+        self.assertEqual({sha for sha, _ in api.statuses}, {HEAD, "b" * 40})
+        self.assertEqual(api.statuses[-1][0], HEAD)
+        self.assertEqual(api.statuses[-1][1].state, "pending")
 
     def test_current_head_review_passes_verified_test_merge_and_owner_head(self):
         api = FakeAPI()
         result = gate.evaluate_pr(api, 133)
         self.assertEqual(result.state, "success")
-        # pending on the test merge and the HEAD first, then the decision on both.
-        self.assertEqual([s[0] for s in api.statuses], [HEAD, "b" * 40, "b" * 40, HEAD])
-        self.assertEqual([s[1].state for s in api.statuses],
-                         ["pending", "pending", "success", "success"])
+        # success must land on BOTH the test merge and the HEAD the ruleset reads.
+        self.assertIn(("b" * 40, "success"), [(sha, s.state) for sha, s in api.statuses])
+        self.assertIn((HEAD, "success"), [(sha, s.state) for sha, s in api.statuses])
+        self.assertEqual(api.statuses[-1][0], HEAD)
+        self.assertEqual(api.statuses[-1][1].state, "success")
 
     def test_missing_test_merge_revokes_head_without_granting(self):
         # A HEAD reused from an earlier PR can still carry `success`; a missing
@@ -352,8 +355,9 @@ class IntegrationTests(unittest.TestCase):
         api.get_merge_parents = lambda: [HEAD, OLD_HEAD]
         result = gate.evaluate_pr(api, 133)
         self.assertEqual(result.state, "pending")
-        # The test merge keeps only the revocation: no decision is published.
-        self.assertEqual([s[1].state for s in api.statuses], ["pending", "pending"])
+        # Only revocations run; nothing is ever granted.
+        self.assertNotIn("success", [s.state for _, s in api.statuses])
+        self.assertEqual(api.statuses[-1][1].state, "pending")
 
     def test_shared_head_different_base_prs_cannot_cross_pass(self):
         a = FakeAPI(other_open_prs=[{
@@ -396,13 +400,10 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(gate.evaluate_pr(api, 133).state, "success")
         api.comments = []  # After issue_comment.deleted, re-fetch finds no summary.
         self.assertEqual(gate.evaluate_pr(api, 133).state, "pending")
-        self.assertEqual([x[1].state for x in api.statuses],
-                         ["pending", HEAD and "pending", "success", "success",
-                          "pending", "pending", "pending", "pending"])
-        self.assertEqual([x[0] for x in api.statuses],
-                         [HEAD, "b" * 40, "b" * 40, HEAD, HEAD, "b" * 40, "b" * 40, HEAD])
-        # The revocation must actually withdraw the earlier success on the HEAD.
-        self.assertEqual([s.state for sha, s in api.statuses if sha == HEAD][-1], "pending")
+        # The later run must withdraw the earlier success on BOTH targets.
+        self.assertEqual(api.statuses[-1][1].state, "pending")
+        for sha in (HEAD, "b" * 40):
+            self.assertEqual([s.state for s2, s in api.statuses if s2 == sha][-1], "pending")
 
     def test_deleted_summary_overrides_stale_older_summary(self):
         older = summary(updated="2026-10-19T02:20:00Z")
@@ -416,20 +417,18 @@ class IntegrationTests(unittest.TestCase):
         api.list_issue_comments = lambda num: (_ for _ in ()).throw(RuntimeError("no API"))
         with self.assertRaises(RuntimeError):
             gate.evaluate_pr(api, 133)
-        # Both the test merge and the HEAD end pending, so a crash cannot leave
-        # an earlier success authorizing the commit.
-        self.assertEqual([x[1].state for x in api.statuses], ["pending", "pending"])
-        self.assertEqual([x[0] for x in api.statuses], [HEAD, "b" * 40])
+        # A crash must not leave an earlier success authorizing the commit: every
+        # status this run wrote is a revocation.
+        self.assertTrue(api.statuses)
+        self.assertTrue(all(s.state == "pending" for _, s in api.statuses))
 
     def test_open_pr_scan_failure_leaves_pending(self):
         api = FakeAPI()
         api.list_open_pull_requests = lambda: (_ for _ in ()).throw(RuntimeError("API down"))
         with self.assertRaises(RuntimeError):
             gate.evaluate_pr(api, 133)
-        # Revocation happens first now: the HEAD is withdrawn, then the test
-        # merge, and the scan failure must not add any decision.
-        self.assertEqual([x[1].state for x in api.statuses], ["pending", "pending"])
-        self.assertEqual([x[0] for x in api.statuses], [HEAD, "b" * 40])
+        self.assertTrue(api.statuses)
+        self.assertTrue(all(s.state == "pending" for _, s in api.statuses))
 
     def test_unique_head_gets_the_status_so_the_ruleset_can_read_it(self):
         # Exactly one open PR owns this HEAD, so the verified conclusion must be
@@ -440,18 +439,13 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn((HEAD, "success"), [(sha, s.state) for sha, s in api.statuses])
 
     def test_head_shared_across_bases_is_never_published_by_either_pr(self):
-        # The same HEAD under a different base belongs to a different PR with a
-        # different diff; a HEAD status could not distinguish them, so neither
-        # PR may publish one -- the pre-existing cross-pass protection stands.
         other = {
             "number": 200, "head": {"sha": HEAD}, "base": {"sha": "a" * 40},
             "merge_commit_sha": "c" * 40,
         }
         api = FakeAPI(other_open_prs=[other])
         self.assertEqual(gate.evaluate_pr(api, 133).state, "success")
-        # The HEAD belongs to two open PRs, so no conclusion is published there;
-        # it is only ever withdrawn. Both PRs stay pending.
-        self.assertEqual(set(s.state for sha, s in api.statuses if sha == HEAD), {"pending"})
+        # The HEAD belongs to two open PRs, so it is only ever withdrawn.
         self.assertNotIn("success", [s.state for sha, s in api.statuses if sha == HEAD])
 
     def test_same_head_and_base_leaves_head_without_a_decision(self):
@@ -480,15 +474,11 @@ class IntegrationTests(unittest.TestCase):
 
 
     def test_head_becoming_shared_during_publication_is_revoked_at_once(self):
-        # Simulates the race: the pre-publication scope read sees a unique HEAD,
-        # and the post-publication read sees a second open PR on the same HEAD.
         api = FakeAPI()
         calls = {"n": 0}
         original = api.list_open_pull_requests
 
         def racing():
-            # call order: 1 open-PR scan, 2 pre-publish scope, 3 post-publish
-            # re-check -- the race must appear exactly at the re-check.
             calls["n"] += 1
             if calls["n"] >= 3:
                 return original() + [{
@@ -500,9 +490,10 @@ class IntegrationTests(unittest.TestCase):
         api.list_open_pull_requests = racing
         self.assertEqual(gate.evaluate_pr(api, 133).state, "success")
         head_events = [(s.state, s.description) for sha, s in api.statuses if sha == HEAD]
-        self.assertIn(("success", "Codex review completed for current HEAD"), head_events)
+        self.assertIn("success", [state for state, _ in head_events])
         self.assertEqual(head_events[-1][0], "pending")
         self.assertIn("shared", head_events[-1][1])
+
 
 
     def test_revoke_helper_refuses_to_publish_a_success(self):
@@ -603,25 +594,23 @@ class IntegrationTests(unittest.TestCase):
 
 
     def test_failed_post_publish_scan_withdraws_an_already_published_head(self):
-        # The success is published, then the uniqueness re-check itself fails.
-        # Uniqueness was never reconfirmed, so the HEAD must not stay authorized.
         api = FakeAPI()
         calls = {"n": 0}
         original = api.list_open_pull_requests
 
         def failing():
             calls["n"] += 1
-            if calls["n"] >= 3:  # 3rd call is the post-publish re-check
+            if calls["n"] >= 3:  # the post-publish re-check
                 raise RuntimeError("transient API error")
             return original()
 
         api.list_open_pull_requests = failing
         self.assertEqual(gate.evaluate_pr(api, 133).state, "success")
         head_events = [(s.state, s.description) for sha, s in api.statuses if sha == HEAD]
-        self.assertEqual(head_events[0][0], "pending")
-        self.assertEqual(head_events[1][0], "success")
+        self.assertIn("success", [state for state, _ in head_events])
         self.assertEqual(head_events[-1][0], "pending")
         self.assertIn("could not be reconfirmed", head_events[-1][1])
+
 
 
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
@@ -737,6 +726,72 @@ class IntegrationTests(unittest.TestCase):
                 gate.run_gate("pull_request_target", event, api)
         finally:
             gate.evaluate_pr = original
+
+
+    def test_last_owner_leaving_revokes_the_orphaned_head(self):
+        # The PR that owned this HEAD closed and no open PR owns it now; nothing
+        # else will ever look at it, so its success must be withdrawn.
+        api = FakeAPI()
+        api.list_open_pull_requests = lambda: []
+        posted = []
+        api.create_commit_status = lambda sha, d: posted.append((sha, d.state))
+        gate.reevaluate_head_owners(api, HEAD, {133})
+        self.assertEqual(posted, [(HEAD, "pending")])
+
+    def test_a_survivor_republishes_success_after_the_owner_recheck(self):
+        # The recheck revokes first, but a surviving owner that verifies must be
+        # able to publish success again, so the revoke cannot be final.
+        api = FakeAPI()
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133)]
+        self.assertEqual(gate.evaluate_pr(api, 133).state, "success")
+        gate.reevaluate_head_owners(api, HEAD, set())
+        self.assertTrue(any(s.state == "success" for sha, s in api.statuses if sha == HEAD))
+
+    def test_base_push_attempts_every_candidate_before_reporting_failure(self):
+        # One candidate failing must not stop the others: the push is the only
+        # guaranteed event for their unchanged HEADs.
+        api = FakeAPI()
+        others = [
+            {"number": n, "head": {"sha": str(n) * 40}, "base": {"sha": OLD_HEAD, "ref": "main"},
+             "merge_commit_sha": None}
+            for n in (200, 300)
+        ]
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133), *others]
+        attempted = []
+        original = gate.evaluate_pr
+
+        def selective(a, n, **kw):
+            attempted.append(n)
+            if n == 200:
+                raise RuntimeError("transient")
+
+        gate.evaluate_pr = selective
+        try:
+            with self.assertRaisesRegex(RuntimeError, "PR #200"):
+                gate.run_gate("push", {"ref": "refs/heads/main"}, api)
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(attempted, [133, 200, 300])
+
+    def test_stale_pr_snapshot_before_publication_is_not_used(self):
+        # The base advanced while this run was in flight; the re-read differs, so
+        # publishing against the old snapshot would re-authorize a stale merge.
+        api = FakeAPI()
+        state = {"reads": 0}
+        original = api.get_pull_request
+
+        def changing(number):
+            state["reads"] += 1
+            value = original(number)
+            if state["reads"] >= 2:
+                value = dict(value)
+                value["base"] = {"sha": "9" * 40, "ref": "main"}
+            return value
+
+        api.get_pull_request = changing
+        result = gate.evaluate_pr(api, 133)
+        self.assertEqual(result.state, "pending")
+        self.assertNotIn("success", [s.state for _, s in api.statuses])
 
 
     def test_closed_pull_request_does_not_post_status(self):

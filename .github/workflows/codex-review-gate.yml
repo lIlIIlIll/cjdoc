@@ -32,7 +32,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: codex-review-gate-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || github.run_id }}
+  # Base pushes re-evaluate many PRs, so they must not race the per-PR runs that
+  # publish on the same HEADs: all of them share one gate-wide key.
+  group: codex-review-gate
   cancel-in-progress: false
 
 jobs:
@@ -40,6 +42,7 @@ jobs:
     name: Publish Codex review completion status
     if: >-
       github.event_name == 'pull_request_target' ||
+      github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request != null &&

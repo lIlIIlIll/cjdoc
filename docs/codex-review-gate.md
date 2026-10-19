@@ -6,8 +6,9 @@
 
 - PR 打开、更新、重新打开、变为可审查状态**或关闭**时，`pull_request_target` 触发 `.github/workflows/codex-review-gate.yml`，读取服务端**当前** PR HEAD。
 - Codex 新建、编辑或删除 Review Summary 评论时，`issue_comment` 触发同一判断；删除 canonical summary 时直接将原有成功状态撤回为 `pending`，即便 API 暂时仍返回旧摘要或留有更早版本也不放行。脚本只接受指定 Codex GitHub App Bot 的评论，解析 `<!-- codex-review-state:v1 ... -->` 中 `code_review.commit_sha`（**完整 40 位 SHA**）和 `code_review.status`；**不**信任评论时间、缩写 SHA、PR reaction、旧 review 或 security review 状态。
+- **base 分支被推送（重写 main）时**，`publish` job 的 `if` 也必须包含 `push`，否则触发器只会拉起一个被跳过的 job；工作流并发使用统一的 gate-wide key，避免 base push 的多 PR 重评与 per-PR 运行在同一 HEAD 上竞争。
 - **base 分支被推送（重写 main）时**，各 PR 的 HEAD 不变，因此没有任何 per-PR 事件；若 HEAD 上留有 `success`，它会继续授权一次基于旧 base 的验证。故 `push` 到 `main` 会重新评估**所有以该分支为 base 的开放 PR**。
-- 当一个 HEAD 被多个开放 PR 共享时，该 SHA 对它们都保持 `pending`。若其中一个 PR 关闭或推送到新提交，剩下唯一持有者需要被重新评估，否则其已完成的审查会永久停在 `pending`。因此 `closed` 与 `synchronize` 事件会额外对**受影响的旧 HEAD** 的其余持有者各评估一次（不重复评估触发事件的那条 PR）。若触发 PR 的评估抛错，其余持有者的重评仍会执行（best effort）后再抛出原错误；若触发 PR 正常而某个幸存者重评失败，则**不吞掉错误**、令本次运行失败，因为此后没有事件保证会重试它。
+- 当一个 HEAD 被多个开放 PR 共享时，该 SHA 对它们都保持 `pending`。若其中一个 PR 关闭或推送到新提交，剩下唯一持有者需要被重新评估，否则其已完成的审查会永久停在 `pending`。因此 `closed` 与 `synchronize` 事件会额外对**受影响的旧 HEAD** 的其余持有者各评估一次（不重复评估触发事件的那条 PR）。若触发 PR 的评估抛错，其余持有者的重评仍会执行（best effort）后再抛出原错误；若触发 PR 正常而某个幸存者重评失败，则**不吞掉错误**、令本次运行失败，因为此后没有事件保证会重试它。重评前会先无条件撤销该 HEAD（撤销只能拒绝），因此即使**已无任何开放 PR 持有它**、没有任何 re-evaluation 可写，旧 `success` 也不会留给之后复用该提交的 PR。base push 会对所有候选逐个尽力重评，最后聚合错误——一次瞬时失败不得让其余仍带着旧 base 的授权。发布前会**重新读取 PR 快照**：若 base/head/test-merge 在评估期间已变化，则本次不发布结论。
 - 门禁对经验证的 **当前 PR 测试合并提交** 写入 `codex-review-current-head` Commit Status；同时，**仅当该 HEAD 恰好只被当前这一个开放 PR 拥有时**，把同一结论也写到 PR **HEAD**（`main` ruleset 的必需检查按 HEAD 评估，只写测试合并提交会导致任何 PR 都无法满足必需检查，见 #138）。HEAD 被多个开放 PR 共用（哪怕 base 不同）时，两侧都只保持 `pending`，不发布任何结论。确认测试合并提交具有当前 `base`、`head` 两个父提交，并检查仓库所有开放 PR，遇到共享测试合并 SHA 或同一 head+base 的模糊情况则保持 `pending`。测试合并提交缺失、不可验证或数据不完整时也不放行。
 - 仅在 `code_review.status == completed` 且完整 SHA 等于当前 HEAD 时才标为 `success`；旧提交、未收到结论、正在审查标为 `pending`；失败/无法识别的结构标为 `failure`/`error`。不因找不到新 Thread 就推断审查完成。
 - 如果该次审查含未解决意见，完成门禁仍为 `success`，但会在描述中提醒需要分类处理。**“审查完成”不等于“无阻塞缺陷/可合并”**，另由 Agent/维护者按 `AGENTS.md` 处理。

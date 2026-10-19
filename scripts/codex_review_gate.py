@@ -264,6 +264,14 @@ def _merge_scope_is_unique(
     return True
 
 
+def revoke_head_decision(api: GitHubAPI, number: int, head_sha: str,
+                         pr_url: str) -> GateDecision:
+    """Revoke the HEAD and return the "awaiting test merge" decision."""
+    decision = GateDecision("pending", "Awaiting current PR test merge", pr_url)
+    revoke_head_status(api, head_sha, decision)
+    return decision
+
+
 def revoke_head_status(api: GitHubAPI, head_sha: str, decision: GateDecision) -> None:
     """Withdraw a possible earlier `success` from the HEAD.
 
@@ -347,6 +355,24 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
         merge_sha,
         GateDecision("pending", "Verifying PR-specific Codex review evidence", pr_url),
     )
+    revoke_head_status(
+        api, head_sha,
+        GateDecision("pending", "Verifying PR-specific Codex review evidence", pr_url),
+    )
+
+    # Re-read the PR immediately before deciding. Another run (a base push, or
+    # the base advancing while this run was in flight) may have changed the base
+    # or HEAD since the first read, and publishing against the stale snapshot
+    # would re-authorize a test merge that no longer describes this PR.
+    fresh = api.get_pull_request(number)
+    if (
+        (fresh.get("head") or {}).get("sha") != head_sha
+        or (fresh.get("base") or {}).get("sha") != base_sha
+        or fresh.get("merge_commit_sha") != merge_sha
+    ):
+        print(f"PR #{number}: the PR changed during evaluation; keep gate unreported")
+        return revoke_head_decision(api, number, head_sha, pr_url)
+
     merge = api.get_commit(merge_sha)
     parents = merge.get("parents") or []
     if not (
@@ -458,7 +484,18 @@ def affected_shared_heads(event_name: str, event: dict) -> list[str]:
 
 
 def reevaluate_head_owners(api: GitHubAPI, head_sha: str, skip: set[int]) -> None:
-    """Re-evaluate every open PR that owns `head_sha`, except `skip`."""
+    """Re-evaluate every open PR that owns `head_sha`, except `skip`.
+
+    When no open PR owns the HEAD any more, no re-evaluation can withdraw the
+    status it still carries, and a later PR reusing that commit would inherit
+    valid-looking review evidence. So the HEAD is revoked first and
+    unconditionally: denial is always safe, and this is the last moment any
+    event is guaranteed to look at it.
+    """
+    revoke_head_status(
+        api, head_sha,
+        GateDecision("pending", "Rechecking HEAD ownership after a PR left", ""),
+    )
     for pull_request in api.list_open_pull_requests():
         if not isinstance(pull_request, dict) or not isinstance(pull_request.get("number"), int):
             raise ValueError("invalid entry in open-PR response")
@@ -500,9 +537,18 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
         if not branch:
             print("push event without a branch; skip")
             return 0
+        failures: list[str] = []
         for candidate in open_prs_targeting_branch(api, branch):
-            evaluate_pr(api, candidate)
-            print(f"re-evaluated PR #{candidate} after a push to {branch}")
+            # Every candidate must be attempted: the push is the only guaranteed
+            # event for these unchanged HEADs, so one transient failure must not
+            # leave the rest still authorized against the previous base.
+            try:
+                evaluate_pr(api, candidate)
+                print(f"re-evaluated PR #{candidate} after a push to {branch}")
+            except (ValueError, RuntimeError) as error:
+                failures.append(f"PR #{candidate}: {error}")
+        if failures:
+            raise RuntimeError("base push re-evaluation failed: " + "; ".join(failures))
         return 0
     number = pr_number_from_event(event_name, event)
     if number is None:
