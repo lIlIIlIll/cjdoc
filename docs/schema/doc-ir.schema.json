@@ -1,17 +1,20 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-  "title": "cjdoc Doc IR v14",
+  "title": "cjdoc Doc IR v15",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "generator", "status", "apiCollectionState", "project", "configuration", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics"],
+  "required": ["schemaVersion", "generator", "status", "apiCollectionState", "documentationRevision", "project", "configuration", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics", "dependencies", "documentSets"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/14"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/15"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "apiCollectionState": {"enum": ["resolved", "partial", "unavailable"]},
+    "documentationRevision": {"type": "string"},
     "project": {"$ref": "#/$defs/project"},
     "configuration": {"$ref": "#/$defs/configuration"},
+    "dependencies": {"type": "array", "items": {"$ref": "#/$defs/dependencyInstance"}},
+    "documentSets": {"type": "array", "items": {"$ref": "#/$defs/documentSetIdentity"}},
     "providers": {"type": "array", "items": {"$ref": "#/$defs/provider"}},
     "modules": {"type": "array", "items": {"$ref": "#/$defs/module"}},
     "packages": {"type": "array", "items": {"$ref": "#/$defs/package"}},
@@ -31,12 +34,13 @@
   "$defs": {
     "semanticLinkMetadata": {
       "type": "object", "additionalProperties": false,
-      "required": ["target", "state", "targetSymbolId", "externalUrl"],
+      "required": ["target", "state", "targetSymbolId", "externalUrl", "semanticNavigation"],
       "properties": {
         "target": {"type": "string", "minLength": 1},
         "state": {"enum": ["resolved", "unresolved", "ambiguous", "unavailable"]},
         "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"},
-        "externalUrl": {"$ref": "#/$defs/nullableString"}
+        "externalUrl": {"$ref": "#/$defs/nullableString"},
+        "semanticNavigation": {"anyOf": [{"$ref": "#/$defs/typeNavigation"}, {"type": "null"}]}
       }
     },
     "repository": {
@@ -50,7 +54,7 @@
     },
     "documentationText": {
       "type": "object", "additionalProperties": false,
-      "required": ["fieldId", "kind", "subject", "language", "text", "markdown", "source", "state", "referenceState", "targetSymbolId", "directives"],
+      "required": ["fieldId", "kind", "subject", "language", "text", "markdown", "source", "state", "referenceState", "targetSymbolId", "directives", "navigation"],
       "properties": {
         "fieldId": {"type": "string"}, "kind": {"type": "string"}, "subject": {"type": "string"},
         "language": {"enum": ["zh-CN", "en", null]}, "text": {"type": "string"},
@@ -58,7 +62,8 @@
         "source": {"anyOf": [{"$ref": "#/$defs/sourceRange"}, {"type": "null"}]},
         "state": {"enum": ["valid", "empty", "conflict", "unpaired", "invalid"]},
         "referenceState": {"$ref": "#/$defs/semanticState"},
-        "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"}, "directives": {"type": "string"}
+        "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"}, "directives": {"type": "string"},
+        "navigation": {"anyOf": [{"$ref": "#/$defs/typeNavigation"}, {"type": "null"}]}
       },
       "allOf": [
         {"if": {"properties": {"state": {"enum": ["valid", "empty", "conflict"]}}},
@@ -89,11 +94,12 @@
         "markdown": {"$ref": "#/$defs/markdownNode"},
         "targetSymbolIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/symbolId"}},
         "bindings": {"type": "array", "items": {"type": "object", "additionalProperties": false,
-          "required": ["target", "selector", "provenance", "version", "sourceLine", "language", "state", "targetSymbolId"],
+          "required": ["target", "selector", "provenance", "version", "sourceLine", "language", "state", "targetSymbolId", "navigation"],
           "properties": {"target": {"type": "string"}, "selector": {"type": "string"}, "provenance": {"type": "string"},
             "version": {"type": "string"}, "sourceLine": {"type": "integer", "minimum": 1}, "language": {"type": "string"},
             "state": {"enum": ["resolved", "unresolved", "ambiguous", "unavailable", "conflict"]},
-            "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"}}}},
+            "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"},
+            "navigation": {"anyOf": [{"$ref": "#/$defs/typeNavigation"}, {"type": "null"}]}}}},
         "sections": {"type": "array", "items": {"type": "object", "additionalProperties": false,
           "required": ["id", "anchor"], "properties": {"id": {"type": "string"}, "anchor": {"type": "string"}}}}
       }
@@ -112,6 +118,277 @@
           "then": {"properties": {"url": {"const": ""}}}}
       ]
     },
+    "dependencyInstance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "moduleId",
+        "componentModuleId",
+        "name",
+        "instanceId",
+        "kind",
+        "identity",
+        "state",
+        "evidence",
+        "version",
+        "revision",
+        "target",
+        "cfg"
+      ],
+      "properties": {
+        "moduleId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "componentModuleId": {"type": "string"},
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instanceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "source",
+            "binary",
+            "std",
+            "stdx",
+            "toolchain"
+          ]
+        },
+        "identity": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "unknown",
+            "declared",
+            "observed",
+            "verified",
+            "conflict"
+          ]
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "cfg": {
+          "type": "string"
+        }
+      }
+    },
+    "documentSetIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "moduleId",
+        "library",
+        "identity",
+        "state",
+        "source",
+        "target",
+        "cfg",
+        "audience",
+        "language",
+        "revision",
+        "apiVersion",
+        "documentationRevision",
+        "indexIdentity",
+        "baseUrl"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "moduleId": {"type": "string"},
+        "library": {
+          "type": "string",
+          "minLength": 1
+        },
+        "identity": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "observed",
+            "verified",
+            "declared",
+            "unknown"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "cfg": {
+          "type": "string"
+        },
+        "audience": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "apiVersion": {"type": "string"},
+        "documentationRevision": {"type": "string"},
+        "indexIdentity": {
+          "type": "string"
+        },
+        "baseUrl": {
+          "type": "string"
+        }
+      }
+    },
+    "typeNavigation": {
+      "oneOf": [
+        {"$ref": "#/$defs/contextFreeNavigationFailure"},
+        {"$ref": "#/$defs/contextualTypeNavigation"}
+      ]
+    },
+    "contextFreeNavigationFailure": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        {"enum": ["unresolved", "ambiguous", "unavailable"]},
+        {"type": "string", "minLength": 1}
+      ],
+      "items": false
+    },
+    "contextualTypeNavigation": {
+      "type": "object",
+      "additionalProperties": false,
+      "not": {
+        "properties": {
+          "state": {"enum": ["unresolved", "ambiguous", "unavailable"]},
+          "matchLevel": {"const": "none"},
+          "dependencyInstanceId": {"const": ""},
+          "documentSetId": {"const": ""},
+          "indexIdentity": {"const": ""},
+          "symbolKey": {"const": ""},
+          "url": {"const": ""},
+          "apiIdentity": {"const": ""},
+          "language": {"const": ""}
+        }
+      },
+      "required": [
+        "state",
+        "matchLevel",
+        "reason",
+        "dependencyInstanceId",
+        "documentSetId",
+        "indexIdentity",
+        "symbolKey",
+        "url",
+        "apiIdentity",
+        "language"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "resolved",
+            "unresolved",
+            "ambiguous",
+            "unavailable"
+          ]
+        },
+        "matchLevel": {
+          "enum": [
+            "exact",
+            "compatible",
+            "manual",
+            "none"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dependencyInstanceId": {
+          "type": "string"
+        },
+        "documentSetId": {
+          "type": "string"
+        },
+        "indexIdentity": {
+          "type": "string"
+        },
+        "symbolKey": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "apiIdentity": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "resolved"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "url": {
+                "minLength": 1
+              },
+              "matchLevel": {
+                "enum": [
+                  "exact",
+                  "compatible",
+                  "manual"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "unresolved",
+                  "ambiguous",
+                  "unavailable"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "url": {
+                "const": ""
+              }
+            }
+          }
+        }
+      ]
+    },
     "semanticState": {"enum": ["resolved", "partial", "unavailable", "ambiguous"]},
     "nullableString": {"type": ["string", "null"]},
     "moduleId": {"type": "string", "pattern": "^cjdoc:module:v1:.+$"},
@@ -121,8 +398,8 @@
     "portablePath": {"type": "string", "minLength": 1, "pattern": "^[^/]+(?:/[^/]+)*$"},
     "generator": {
       "type": "object", "additionalProperties": false,
-      "required": ["name", "version"],
-      "properties": {"name": {"const": "cjdoc"}, "version": {"type": "string", "minLength": 1}}
+      "required": ["name", "version", "toolchain"],
+      "properties": {"name": {"const": "cjdoc"}, "version": {"type": "string", "minLength": 1}, "toolchain": {"type": "string"}}
     },
     "project": {
       "type": "object", "additionalProperties": false,
@@ -241,12 +518,23 @@
     },
     "typeRef": {
       "type": "object", "additionalProperties": false,
-      "required": ["kind", "spelling", "nullable", "arguments", "semantic"],
+      "required": ["kind", "spelling", "nullable", "arguments", "semanticState", "semanticCanonical", "semanticProvider", "navigation"],
       "properties": {
         "kind": {"type": "string", "minLength": 1}, "spelling": {"type": "string"},
         "nullable": {"type": "boolean"}, "arguments": {"type": "array", "items": {"$ref": "#/$defs/typeRef"}},
-        "semantic": {"$ref": "#/$defs/semanticType"}
-      }
+        "semanticState": {"$ref": "#/$defs/semanticState"},
+        "semanticCanonical": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1, "pattern": "\\S"}]},
+        "semanticProvider": {"anyOf": [{"type": "null"}, {"type": "string", "minLength": 1}]},
+        "navigation": {"anyOf": [{"$ref": "#/$defs/typeNavigation"}, {"type": "null"}]}
+      },
+      "allOf": [
+        {"if": {"properties": {"semanticState": {"const": "unavailable"}}},
+          "then": {"properties": {"semanticCanonical": {"type": "null"}, "semanticProvider": {"type": "null"}}},
+          "else": {"properties": {"semanticProvider": {"type": "string", "minLength": 1}}}},
+        {"if": {"properties": {"semanticState": {"const": "resolved"}}},
+          "then": {"properties": {"semanticCanonical": {"type": "string", "minLength": 1}}}}
+      ]
+
     },
     "parameter": {
       "type": "object", "additionalProperties": false,
@@ -258,7 +546,7 @@
     },
     "tag": {
       "type": "object", "additionalProperties": false,
-      "required": ["name", "subject", "description", "referenceState", "targetSymbolId"],
+      "required": ["name", "subject", "description", "referenceState", "targetSymbolId", "navigation"],
       "properties": {
         "name": {"type": "string", "minLength": 1}, "subject": {"type": "string"},
         "description": {"type": "string"}, "referenceState": {"$ref": "#/$defs/semanticState"},
@@ -269,7 +557,8 @@
         "translationState": {"enum": ["complete", "fallback", "empty-fallback", "conflict-fallback", "empty", "conflict", "missing", "unknown", "unpaired"]},
         "fieldId": {"type": "string"},
         "descriptionMarkdown": {"$ref": "#/$defs/markdownNode"},
-        "evidenceKey": {"type": "string"}
+        "evidenceKey": {"type": "string"},
+        "navigation": {"anyOf": [{"$ref": "#/$defs/typeNavigation"}, {"type": "null"}]}
       }
     },
     "headingMetadata": {

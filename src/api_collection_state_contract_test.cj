@@ -68,16 +68,21 @@ class ApiCollectionStateContractTest {
             @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(current.replace(field, "")))
             @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(current.replace(field,
                 "  \"apiCollectionState\": \"complete\",\n")))
-            for (version in 6..14) {
-                let legacy = current.replace("cjdoc.doc-ir/14", "cjdoc.doc-ir/" + version.toString())
-                    .replace(field, "")
-                let compatible = if (version < 9) { legacy.replace(",\n    \"repository\": null", "") } else { legacy }
-                let migrated = api_render.decodeDocIr(compatible)
-                @Expect(migrated.schemaVersion, "cjdoc.doc-ir/14")
+            for (version in 6..15) {
+                let fixture = if (status == "complete") { "basic" } else { "unsupported" }
+                let legacy = String.fromUtf8(File.readFrom(
+                    Path("tests/fixtures/golden-v${version}/${fixture}.docs.json")))
+                let migrated = api_render.decodeDocIr(legacy)
+                @Expect(migrated.schemaVersion, "cjdoc.doc-ir/15")
+                @Expect(migrated.status, status)
                 @Expect(migrated.apiCollectionState, state)
                 @Expect(api_render.decodeDocIr(api_render.encodeDocIr(migrated)).apiCollectionState, state)
-                @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(legacy.replace(
-                    "\"status\":", "\"apiCollectionState\": \"resolved\", \"status\":")))
+                if (version < 14) {
+                    @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(legacy.replace(
+                        "\"status\":", "\"apiCollectionState\": \"resolved\", \"status\":")))
+                } else {
+                    @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(legacy.replace(field, "")))
+                }
             }
         }
         let strict = api_model.DocumentationSet(api_model.GeneratorInfo("cjdoc", "test"), "partial",

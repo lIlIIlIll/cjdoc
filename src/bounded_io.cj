@@ -21,6 +21,19 @@ private class BoundedFileSnapshot {
     }
 }
 
+// Preserve the scalar metadata checked by the read alongside its bytes.
+internal struct BoundedFileRead {
+    let bytes: Array<Byte>
+    let size: Int64
+    let creationTime: DateTime
+    let lastModificationTime: DateTime
+
+    init(bytes: Array<Byte>, size: Int64, creationTime: DateTime, lastModificationTime: DateTime) {
+        this.bytes = bytes; this.size = size
+        this.creationTime = creationTime; this.lastModificationTime = lastModificationTime
+    }
+}
+
 // The current std.fs API exposes no stable file identity, so capture scalar metadata immediately.
 // Re-reading FileInfo fields later would observe the current path rather than preserve this snapshot.
 
@@ -80,6 +93,10 @@ private func boundedClose(file: File, path: Path): Unit {
 }
 
 internal func readFileBounded(path: Path, maxBytes: Int64): Array<Byte> {
+    readFileBoundedSnapshot(path, maxBytes).bytes
+}
+
+internal func readFileBoundedSnapshot(path: Path, maxBytes: Int64): BoundedFileRead {
     if (maxBytes < 0) {
         throw IllegalArgumentException("bounded read maxBytes must be non-negative")
     }
@@ -89,8 +106,10 @@ internal func readFileBounded(path: Path, maxBytes: Int64): Array<Byte> {
         throw IllegalArgumentException("bounded read exceeds ${maxBytes} bytes: '${path}'")
     }
 
+    // Allocate the final byte array once; do not retain a growing ArrayList
+    // plus a second full-sized toArray copy for each observed source file.
+    let output = Array<Byte>(before.size, repeat: 0)
     let file = try { File(path, OpenMode.Read) } catch (_: Exception) { throw boundedAccessError(path) }
-    let output = ArrayList<Byte>()
     var total: Int64 = 0
     try {
         let opened = boundedOpenSnapshot(file, path)
@@ -98,6 +117,8 @@ internal func readFileBounded(path: Path, maxBytes: Int64): Array<Byte> {
             throw IllegalArgumentException("bounded read observed a file change: '${path}'")
         }
 
+        let bufferSize = if (maxBytes >= BOUNDED_READ_CHUNK_BYTES) { BOUNDED_READ_CHUNK_BYTES } else { maxBytes + 1 }
+        let buffer = Array<Byte>(bufferSize, repeat: 0)
         while (true) {
             let remaining = maxBytes - total
             let request = if (remaining >= BOUNDED_READ_CHUNK_BYTES) {
@@ -105,14 +126,17 @@ internal func readFileBounded(path: Path, maxBytes: Int64): Array<Byte> {
             } else {
                 remaining + 1
             }
-            let buffer = Array<Byte>(request, repeat: 0)
-            let count = boundedReadChunk(file, path, buffer)
+            let count = boundedReadChunk(file, path, buffer[..request])
             if (count < 0 || count > request) { throw boundedAccessError(path) }
             if (count == 0) { break }
             if (count > remaining) {
                 throw IllegalArgumentException("bounded read exceeds ${maxBytes} bytes: '${path}'")
             }
-            for (index in 0..count) { output.add(buffer[index]) }
+            for (index in 0..count) {
+                // Continue counting any growth to preserve the original
+                // exceeds-limit versus changed-file diagnostic.
+                if (total + index < before.size) { output[total + index] = buffer[index] }
+            }
             total += count
         }
 
@@ -127,7 +151,7 @@ internal func readFileBounded(path: Path, maxBytes: Int64): Array<Byte> {
     if (!boundedSnapshotsMatch(before, after)) {
         throw IllegalArgumentException("bounded read observed a file change: '${path}'")
     }
-    return output.toArray()
+    return BoundedFileRead(output, before.size, before.creationTime, before.lastModificationTime)
 }
 
 internal func readTextBounded(path: Path, maxBytes: Int64): String {

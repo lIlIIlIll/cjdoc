@@ -357,10 +357,11 @@ internal class PublicDiagnosticProjection {
 
 internal func publicDocumentation(documentation: DocumentationSet,
     request: GenerationRequest, highlightBytes!: Int64 = MAX_HIGHLIGHT_TOTAL_BYTES,
-    capturePages!: Bool = false): public_model.DocumentationSet {
+    capturePages!: Bool = false, externalResolvers!: ?Array<ExternalDocResolver> = None): public_model.DocumentationSet {
+    let inventorySnapshot = externalResolvers.getOrDefault({ => loadDependencyDocSources(request) })
     let externalOptions = highlightExternalOptions(request.highlightAdapter, request.highlightNode)
     try {
-        projectPublicDocumentation(documentation, request, highlightBytes, capturePages, externalOptions)
+        projectPublicDocumentation(documentation, request, highlightBytes, capturePages, externalOptions, inventorySnapshot)
     } finally {
         if (let Some(options) <- externalOptions) { options.close() }
     }
@@ -368,6 +369,7 @@ internal func publicDocumentation(documentation: DocumentationSet,
 
 private func projectPublicDocumentation(documentation: DocumentationSet, request: GenerationRequest,
     highlightBytes: Int64, capturePages: Bool, externalOptions: ?HighlightExternalOptions,
+    inventorySnapshot: Array<ExternalDocResolver>,
     retainedHighlightFailures!: Array<public_model.Diagnostic> = []): public_model.DocumentationSet {
     let sourceMapper = PublicSourceMapper(origins: documentation.sourceFileOrigins.toArray())
     let repositoryRoot = repositoryRootForRequest(request)
@@ -386,7 +388,8 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
         externalOptions: externalOptions)
     declarationProjection.markdownContext.retainHighlightFailures(retainedHighlightFailures)
     let semanticLinkDiagnostics = resolvePublicSemanticLinks(declarationProjection.declarations, request.audience,
-        request.projectRoot)
+        request.projectRoot, deferExternal: !request.documentSources.isEmpty() || request.buildContext.isSome(),
+        externalResolvers: Some(inventorySnapshot))
     let sourceProjection = PublicSourceProjection(documentation, sourceMapper)
     let diagnosticProjection = PublicDiagnosticProjection(documentation, sourceMapper,
         declarationProjection.assetCollector, declarationProjection.markdownContext, declarationProjection.hiddenContext,
@@ -408,6 +411,7 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
         orphanDocComments: sourceProjection.orphanDocComments,
         macroInvocations: sourceProjection.macroInvocations, unsupportedDeclarations: sourceProjection.unsupported,
         diagnostics: diagnosticProjection.diagnostics, apiCollectionState: Some(documentation.apiCollectionState),
+        documentationRevision: request.documentationRevision,
         languageOptions: if (request.i18n.isSome()) { request.i18n }
             else { loadDocumentationLanguages(request.projectRoot) })
     // A fixed highlight allowance cannot assume the rest of the bundle is small.
@@ -415,19 +419,23 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
     // existing fallback, if the stricter whole-document codec boundary is hit.
     if (canDropHighlights &&
         !public_render.docIrFitsEncodedBudget(candidate, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
-        return projectPublicDocumentation(documentation, request, 0, capturePages, externalOptions,
+        return projectPublicDocumentation(documentation, request, 0, capturePages, externalOptions, inventorySnapshot,
             retainedHighlightFailures: declarationProjection.markdownContext.highlightDiagnostics())
     }
     let result = if (capturePages) {
         captureDocumentationPages(candidate, request, assetCollector: Some(declarationProjection.assetCollector),
-            sharedContext: Some(declarationProjection.markdownContext))
+            sharedContext: Some(declarationProjection.markdownContext), externalResolvers: Some(inventorySnapshot))
     } else { candidate }
-    if (!canDropHighlights) { return boundGeneratedDocumentation(result, request) }
-    if (!capturePages ||
-        public_render.docIrFitsEncodedBudget(result, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
-        return result
+    // Only AST-admitted captured markers can establish a guide's dependency
+    // context. Include navigation decisions in the final whole-document budget.
+    let bound = bindDependencyNavigation(result, request, documentation.sourceFileOrigins.toArray(),
+        externalResolvers: Some(inventorySnapshot))
+    if (!canDropHighlights) { return boundGeneratedDocumentation(bound, request) }
+    if (public_render.docIrFitsEncodedBudget(bound, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
+        return bound
     }
-    // Captured guide metadata must also be dropped before the bounded hard fallback.
-    projectPublicDocumentation(documentation, request, 0, capturePages, externalOptions,
+    // Drop optional display metadata once before the bounded hard fallback;
+    // retry with the same inventory snapshot and external highlighting lease.
+    projectPublicDocumentation(documentation, request, 0, capturePages, externalOptions, inventorySnapshot,
         retainedHighlightFailures: declarationProjection.markdownContext.highlightDiagnostics())
 }

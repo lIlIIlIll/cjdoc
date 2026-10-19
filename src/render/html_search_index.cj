@@ -275,7 +275,7 @@ internal func renderSearchIndex(documentation: DocumentationSet,
     for (page in selectedDocumentationPages(documentation, locale)) {
         if (!first) { out.append(",") }; first = false
         out.append("\n    {\"id\":${escapeJsonString("cjdoc:concept:" + page.id)},\"canonicalId\":${escapeJsonString("cjdoc:concept:" + page.id)},\"exposure\":false,\"name\":${escapeJsonString(page.title)},\"qualifiedName\":${escapeJsonString(page.route)},\"kind\":\"concept\",\"packageName\":\"\",\"moduleId\":\"conceptual\",\"moduleName\":null,\"ownerName\":null,\"parameterTypes\":[],\"returnType\":null,\"returnCanonical\":null,\"summary\":\"\",\"body\":${escapeJsonString(searchTextExcerpt(markdownNodeText(page.markdown), maximum: SEARCH_BODY_EXCERPT_LIMIT))},\"href\":${escapeJsonString(page.route)}")
-        appendSearchPageBindings(out, page)
+        appendSearchPageBindings(out, page, projection.visibleIndex)
         out.append("}")
     }
     if (!first) { out.append("\n  ") }

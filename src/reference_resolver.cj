@@ -18,6 +18,18 @@ func normalizeTypeSpelling(value: String): String {
     value.replace(" ", "").replace("\n", "").replace("\r", "").replace("\t", "")
 }
 
+// A reference's leading lexical name is shared by local and dependency binding.
+// Dotted references retain their own leading component; an import alias must
+// not be expanded through a name occupied by a declaration's generic parameter.
+internal func docReferenceScopeHead(reference: String): String {
+    let value = reference.trimAscii()
+    var end = value.size
+    if (let Some(position) <- value.indexOf(".")) { if (position < end) { end = position } }
+    if (let Some(position) <- value.indexOf("(")) { if (position < end) { end = position } }
+    if (let Some(position) <- value.indexOf("<")) { if (position < end) { end = position } }
+    value[..end]
+}
+
 private func splitReferenceParameters(value: String): ?ArrayList<String> {
     let parameters = ArrayList<String>()
     if (value.trimAscii().isEmpty()) { return Some(parameters) }
@@ -130,6 +142,21 @@ class DeclarationIndex {
         }
     }
 
+    public func genericReference(owner: SymbolDoc, reference: String): Bool {
+        let name = docReferenceScopeHead(reference)
+        var current: ?SymbolDoc = Some(owner)
+        while (let Some(value) <- current) {
+            for (parameter in value.genericParameters) { if (parameter == name) { return true } }
+            current = None
+            if (let Some(id) <- value.ownerId) {
+                if (let Some(parents) <- byId.get(id)) {
+                    if (parents.size == 1) { current = Some(parents[0]) }
+                }
+            }
+        }
+        false
+    }
+
     public func matches(reference: String): ArrayList<SymbolDoc> {
         if (let Some(exact) <- byId.get(reference)) {
             let result = ArrayList<SymbolDoc>()
@@ -164,11 +191,15 @@ func resolveDocReference(documentation: DocumentationSet, reference: String): ?S
     if (matches.size == 1) { Some(matches[0]) } else { None }
 }
 
-private func resolveDocTagReferences(tags: ArrayList<DocTag>, index: DeclarationIndex): Unit {
+private func resolveDocTagReferences(tags: ArrayList<DocTag>, owner: SymbolDoc, index: DeclarationIndex): Unit {
     for (reference in tags) {
         reference.targetSymbolId = None
         if (reference.subject.isEmpty()) {
             reference.referenceState = "broken"
+            continue
+        }
+        if (index.genericReference(owner, reference.subject)) {
+            reference.referenceState = "unresolved"
             continue
         }
         let matches = index.matches(reference.subject)
@@ -188,14 +219,14 @@ func resolveDocumentationReferences(documentation: DocumentationSet): Unit {
     for (symbol in documentation.symbols) {
         if (let Some(comment) <- symbol.documentation) {
             if (comment.languageItems.isEmpty()) {
-                resolveDocTagReferences(comment.see, index)
-                resolveDocTagReferences(comment.throwsTags, index)
+                resolveDocTagReferences(comment.see, symbol, index)
+                resolveDocTagReferences(comment.throwsTags, symbol, index)
             }
             let localized = ArrayList<DocTag>()
             for (item in comment.languageItems) {
                 if (item.tag.name == "see" || item.tag.name == "throws") { localized.add(item.tag) }
             }
-            resolveDocTagReferences(localized, index)
+            resolveDocTagReferences(localized, symbol, index)
         }
     }
 }

@@ -2,7 +2,8 @@ package cjdoc.model
 
 import std.collection.*
 
-public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/14"
+public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/15"
+public let DOC_IR_V15_SCHEMA_VERSION = "cjdoc.doc-ir/15"
 public let DOC_IR_V14_SCHEMA_VERSION = "cjdoc.doc-ir/14"
 public let DOC_IR_V13_SCHEMA_VERSION = "cjdoc.doc-ir/13"
 public let DOC_IR_V12_SCHEMA_VERSION = "cjdoc.doc-ir/12"
@@ -91,10 +92,14 @@ public class SourceApiSignature {
 public class GeneratorInfo {
     public let name: String
     public let version: String
+    // Empty means unknown linked-parser build. A supplied value is caller
+    // provenance, not automatic verification of a runtime SDK/parser build.
+    public let toolchain: String
 
-    public init(name: String, version: String) {
+    public init(name: String, version: String, toolchain!: String = "") {
         this.name = name
         this.version = version
+        this.toolchain = toolchain
     }
 }
 

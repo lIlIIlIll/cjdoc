@@ -21,7 +21,8 @@ internal func appendDocumentationTexts(out: StringBuilder, values: ReadOnlyList<
         out.append(",\"source\":")
         match (value.source) { case Some(source) => appendRange(out, source); case None => out.append("null") }
         out.append(",\"state\":${escapeJsonString(value.state)},\"referenceState\":${escapeJsonString(value.referenceState)},")
-        out.append("\"targetSymbolId\":${nullableString(value.targetSymbolId)},\"directives\":${escapeJsonString(value.directives)}}")
+        out.append("\"targetSymbolId\":${nullableString(value.targetSymbolId)},\"directives\":${escapeJsonString(value.directives)},\"navigation\":")
+        appendTypeNavigation(out, value.navigation); out.append("}")
     }
     out.append("]")
 }
@@ -64,14 +65,15 @@ internal func decodeDocumentationTexts(node: ?JsonNode, path: String,
     for (value in jsonArrayValues(node.getOrThrow().asArray())) {
         let field = path + ".localizedTexts[" + index.toString() + "]"
         let object = strictObject(value, field, ["fieldId", "kind", "subject", "language", "text",
-            "markdown", "source", "state", "referenceState", "targetSymbolId", "directives"])
+            "markdown", "source", "state", "referenceState", "targetSymbolId", "directives", "navigation"])
         let sourceNode = required(object, "source", field)
         result.add(DocumentationText(stringAt(object, "fieldId", field), stringAt(object, "kind", field),
             stringAt(object, "subject", field), optionalDocumentationLanguage(Some(required(object, "language", field)), field),
             stringAt(object, "text", field), decodeMarkdown(required(object, "markdown", field), field + ".markdown", 0, false, assets),
             source: if (sourceNode.isNull) { None } else { Some(decodeRange(sourceNode, field + ".source")) },
             state: stringAt(object, "state", field), referenceState: stringAt(object, "referenceState", field),
-            targetSymbolId: nullableStringAt(object, "targetSymbolId", field), directives: stringAt(object, "directives", field)))
+            targetSymbolId: nullableStringAt(object, "targetSymbolId", field), directives: stringAt(object, "directives", field),
+            navigation: decodeTypeNavigation(object.get("navigation"), field + ".navigation")))
         index++
     }
     result.toArray()
@@ -83,7 +85,8 @@ internal func consumeDocumentationTexts(value: DocComment, path: String, depth: 
     budget.consumeCollection(value.localizedTexts.size, path + ".localizedTexts", depth: depth + 1)
     for (field in value.localizedTexts) {
         let prefix = path + ".localizedTexts"
-        budget.consumeObject(prefix, depth: depth + 2, fields: 12)
+        budget.consumeObject(prefix, depth: depth + 2, fields: 13)
+        consumeNavigationEncoding(field.navigation, prefix + ".navigation", depth + 3, budget)
         for ((key, text) in [("fieldId", field.fieldId), ("kind", field.kind), ("subject", field.subject),
             ("text", field.text), ("state", field.state), ("referenceState", field.referenceState), ("directives", field.directives)]) {
             budget.consumeString(text, prefix + "." + key)

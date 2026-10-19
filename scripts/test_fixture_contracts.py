@@ -34,6 +34,9 @@ CLI_CONTRACT_FIXTURES = {
     # Committed sources for the retained @example asset case; a temporary project
     # root resolves local images differently across platforms.
     "example_assets",
+    # Independently compiled public GenerationRequest caller and complete CLI/IR
+    # parity are owned by scripts/accept_dependency_public_api.py.
+    "dependency_public_api",
 }
 
 
@@ -61,9 +64,9 @@ class FixtureContractTest(unittest.TestCase):
             document = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             self.fail(f"{fixture} did not emit one valid JSON document: {error}; stderr={result.stderr}")
-        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/14")
+        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/15")
         self.assertEqual(document.get("generator"), {
-            "name": "cjdoc", "version": self.package_version,
+            "name": "cjdoc", "version": self.package_version, "toolchain": "",
         })
         declarations = document.get("declarations")
         diagnostics = document.get("diagnostics")

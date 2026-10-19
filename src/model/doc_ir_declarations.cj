@@ -113,14 +113,16 @@ public class TypeRef {
     public let spelling: String
     public let nullable: Bool
     public let semantic: SemanticType
+    public let navigation: ?TypeNavigation
     private let argumentsStorage: ArrayList<TypeRef>
 
     public init(kind: String, spelling: String, semantic: SemanticType,
-        nullable!: Bool = false, arguments!: Array<TypeRef> = []) {
+        nullable!: Bool = false, arguments!: Array<TypeRef> = [], navigation!: ?TypeNavigation = None) {
         this.kind = kind
         this.spelling = spelling
         this.nullable = nullable
         this.semantic = semantic
+        this.navigation = navigation
         this.argumentsStorage = ArrayList<TypeRef>(arguments)
     }
 
@@ -187,12 +189,14 @@ public class DocTag {
     public let fieldId: String
     public let descriptionMarkdown: ?MarkdownNode
     public let evidenceKey: String
+    public let navigation: ?TypeNavigation
 
     public init(name: String, subject: String, description: String,
         referenceState!: String = "unavailable", targetSymbolId!: ?String = None,
         directives!: String = "", exampleMarkdown!: ?MarkdownNode = None,
         contentLanguage!: ?String = None, translationState!: String = "", fieldId!: String = "",
-        descriptionMarkdown!: ?MarkdownNode = None, evidenceKey!: String = "") {
+        descriptionMarkdown!: ?MarkdownNode = None, evidenceKey!: String = "",
+        navigation!: ?TypeNavigation = None) {
         if (!isSemanticState(referenceState)) { throw IllegalArgumentException("invalid reference state") }
         if (let Some(language) <- contentLanguage) {
             if (documentationLanguage(language) != language) { throw IllegalArgumentException("content language must be normalized") }
@@ -217,5 +221,6 @@ public class DocTag {
         this.fieldId = fieldId
         this.descriptionMarkdown = descriptionMarkdown
         this.evidenceKey = evidenceKey
+        this.navigation = navigation
     }
 }

@@ -51,8 +51,91 @@ private func signatureTestDocument(raw: String,
         declarations: [token, subject])
 }
 
+private func constraintSignatureDocument(raw: String, values: Array<String>,
+    relationships: Array<TypeRelationship>, kind!: String = "function"): DocumentationSet {
+    let base = signatureTestDocument(raw)
+    let token = base.declarations[0]
+    let encoded = ArrayList<String>()
+    for (value in values) {
+        let tokenKind = match (value) {
+            case "public" => "PUBLIC"
+            case "func" => "FUNC"
+            case "class" => "CLASS"
+            case "where" => "WHERE"
+            case "(" => "LPAREN"
+            case ")" => "RPAREN"
+            case "{" => "LBRACE"
+            case "}" => "RBRACE"
+            case ":" => "COLON"
+            case "," => "COMMA"
+            case "<" => "LT"
+            case ">" => "GT"
+            case "<:" => "UPPERBOUND"
+            case "&" => "BITAND"
+            case "=" => "ASSIGN"
+            case _ => if (value.startsWith("\"")) { "STRING_LITERAL" } else { "IDENTIFIER" }
+        }
+        encoded.add("${tokenKind}:${value.size}:${value}")
+    }
+    let subject = SymbolDoc("cjdoc:v2:cjdoc%3Amodule%3Av1%3Asignature-test::fixture::" +
+        kind + ":accept#g2()", kind, "accept", "fixture.accept", "fixture", token.moduleId,
+        "public", token.source, raw, SemanticInfo("partial", "ast"),
+        genericParameters: ["T", "U"], typeRelationships: relationships,
+        sourceApiSignature: SourceApiSignature("available", tokens: encoded.toArray()))
+    DocumentationSet(base.generator, "complete", base.project, base.configuration,
+        modules: base.modules.toArray(), packages: [PackageDoc("fixture", token.moduleId,
+            symbolIds: [token.id, subject.id])], declarations: [token, subject])
+}
+
 @Test
 class HtmlSignatureMappingTest {
+    @TestCase
+    func genericBoundsDoNotStealSupertypeOrConstraintSubjectSpans(): Unit {
+        let raw = "public class accept<T,U> <: Token where T <: Token & Token, U <: Token"
+        let token = TypeRef("named", "Token", SemanticType("resolved", canonical: Some("fixture.Token")))
+        let documentation = constraintSignatureDocument(raw,
+            ["public", "class", "accept", "<", "T", ",", "U", ">", "<:", "Token",
+                "where", "T", "<:", "Token", "&", "Token", ",", "U", "<:", "Token"],
+            [TypeRelationship("genericConstraint", token), TypeRelationship("genericConstraint", token),
+                TypeRelationship("genericConstraint", token), TypeRelationship("superType", token)], kind: "class")
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
+        let spans = linkedSignatureSpans(documentation.declarations[1], links)
+        @Assert(spans.size, 4)
+        @Expect(spans[0].start, raw.indexOf("<: Token").getOrThrow() + "<: ".size)
+        @Expect(spans[1].start, raw.indexOf("where T <: Token").getOrThrow() + "where T <: ".size)
+        @Expect(spans[2].start, raw.indexOf("& Token").getOrThrow() + "& ".size)
+        @Expect(spans[3].end, raw.size)
+        for (span in spans) { @Expect(raw[span.start..span.end], "Token") }
+    }
+
+    @TestCase
+    func nestedGenericConstraintLinksSkipDefaultsAndBody(): Unit {
+        let raw = "public func accept<T,U>(label: String = \"Token\"): T where T <: Token<Token>, U <: Token"
+        let token = TypeRef("named", "Token", SemanticType("resolved", canonical: Some("fixture.Token")))
+        let nested = TypeRef("generic", "Token<Token>", token.semantic, arguments: [token])
+        let documentation = constraintSignatureDocument(raw,
+            ["public", "func", "accept", "<", "T", ",", "U", ">", "(", "label", ":", "String", "=",
+                "\"Token\"", ")", ":", "T", "where", "T", "<:", "Token", "<", "Token", ">", ",", "U", "<:", "Token"],
+            [TypeRelationship("genericConstraint", nested), TypeRelationship("genericConstraint", token)])
+        let links = HtmlTypeLinkIndex(documentation, RenderProjection(documentation))
+        let spans = linkedSignatureSpans(documentation.declarations[1], links)
+        @Assert(spans.size, 3)
+        let boundsStart = raw.indexOf("where").getOrThrow()
+        for (span in spans) {
+            @Expect(span.start > boundsStart, true)
+            @Expect(raw[span.start..span.end], "Token")
+        }
+        let out = RenderTextBuffer()
+        appendLinkedSignatureHtml(out, documentation.declarations[1], links, "../")
+        @Expect(out.toString().contains("&quot;<a"), false)
+        @Expect(out.toString().contains("class=\"type-link signature-type-link\""), true)
+
+        let body = constraintSignatureDocument("public func accept<T>() { where T <: Token }",
+            ["public", "func", "accept", "<", "T", ">", "(", ")", "{", "where", "T", "<:", "Token", "}"],
+            [TypeRelationship("genericConstraint", token)])
+        @Expect(linkedSignatureSpans(body.declarations[1], HtmlTypeLinkIndex(body, RenderProjection(body))).isEmpty(), true)
+    }
+
 
     @TestCase
     func signatureColourDistinguishesAbsentStaleAndValidHighlight(): Unit {

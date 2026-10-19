@@ -58,6 +58,7 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         index++
     }
     validateModuleDependencyDag(documentation.modules, modulesById)
+    let navigationEvidence = validateDependencyMetadata(documentation, moduleIds)
 
     let providerKeys = HashSet<String>()
     let providersByKey = HashMap<String, ProviderInfo>()
@@ -139,16 +140,16 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         validateRange(declaration.source, "$.declarations[${index}].source")
         for (parameter in declaration.parameters) {
             validateType(parameter.typeRef, "$.declarations[${index}].parameters", 0,
-                providersByKey, declaration.moduleId)
+                providersByKey, declaration.moduleId, navigationEvidence)
         }
         match (declaration.returnType) {
             case Some(typeRef) => validateType(typeRef, "$.declarations[${index}].returnType", 0,
-                providersByKey, declaration.moduleId)
+                providersByKey, declaration.moduleId, navigationEvidence)
             case None => ()
         }
         for (relationship in declaration.typeRelationships) {
             validateType(relationship.target, "$.declarations[${index}].typeRelationships", 0,
-                providersByKey, declaration.moduleId)
+                providersByKey, declaration.moduleId, navigationEvidence)
         }
         var annotationIndex: Int64 = 0
         for (annotation in declaration.annotations) {
@@ -192,7 +193,8 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
                     domainFail("$.declarations[${index}].documentation.markdown",
                         "documentation Markdown root must be a document")
                 }
-                validateMarkdown(comment.markdown, "$.declarations[${index}].documentation.markdown", 0)
+                validateMarkdown(comment.markdown, "$.declarations[${index}].documentation.markdown", 0,
+                    declaration.moduleId, navigationEvidence)
             case None => ()
         }
         index++
@@ -245,6 +247,9 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         if (let Some(comment) <- declaration.documentation) {
             let validFields = HashSet<String>()
             for (text in comment.localizedTexts) {
+                if (let Some(navigation) <- text.navigation) {
+                    navigationEvidence.validate(navigation, "$.documentation.localizedTexts.navigation", declaration.moduleId)
+                }
                 let paired = ["valid", "empty", "conflict"].contains(text.state)
                 if (paired && text.fieldId.isEmpty()) {
                     domainFail("$.documentation.localizedTexts.fieldId", "paired field identity is missing")
@@ -266,7 +271,8 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
                     !validFields.add(text.fieldId + ":" + text.language.getOrDefault({ => "unknown" }))) {
                     domainFail("$.documentation.localizedTexts", "duplicate valid language field")
                 }
-                validateMarkdown(text.markdown, "$.declarations[${index}].documentation.localizedTexts.markdown", 0)
+                validateMarkdown(text.markdown, "$.declarations[${index}].documentation.localizedTexts.markdown", 0,
+                    declaration.moduleId, navigationEvidence)
                 if (!text.fieldId.isEmpty() && !text.fieldId.startsWith(declaration.id + ":doc:" + text.kind + ":")) {
                     domainFail("$.documentation.localizedTexts.fieldId", "field does not belong to declaration/kind")
                 }
@@ -285,11 +291,16 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
             }
             for (tag in comment.tags) {
                 let tagPath = "$.declarations[${index}].documentation.tags"
+                if (let Some(navigation) <- tag.navigation) {
+                    navigationEvidence.validate(navigation, tagPath + ".navigation", declaration.moduleId)
+                }
                 if (!tag.directives.isEmpty() && tag.name != "example") {
                     domainFail(tagPath, "directives are only allowed on @example tags")
                 }
-                validateExampleMarkdown(tag, "${tagPath}.exampleMarkdown")
-                if (let Some(tree) <- tag.descriptionMarkdown) { validateMarkdown(tree, tagPath + ".descriptionMarkdown", 0) }
+                validateExampleMarkdown(tag, "${tagPath}.exampleMarkdown", declaration.moduleId, navigationEvidence)
+                if (let Some(tree) <- tag.descriptionMarkdown) {
+                    validateMarkdown(tree, tagPath + ".descriptionMarkdown", 0, declaration.moduleId, navigationEvidence)
+                }
                 match (tag.targetSymbolId) {
                     case Some(targetId) => if (!byId.contains(targetId)) {
                         domainFail(tagPath, "unknown target SymbolId")
@@ -482,12 +493,39 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
     }
     let pageIds = HashSet<String>()
     if (documentation.pages.size > 128) { domainFail("$.pages", "page limit exceeded") }
+    // Match the producer's page context: captured target modules first, then
+    // root modules (or the sole module). Multiple contexts leave no known owner.
+    var pageRootModule = ""
+    var pageRootCount: Int64 = 0
+    for (module in documentation.modules where module.role == "root") {
+        pageRootModule = module.id
+        pageRootCount++
+    }
+    if (pageRootCount == 0 && documentation.modules.size == 1) {
+        pageRootModule = documentation.modules[0].id
+    } else if (pageRootCount != 1) {
+        pageRootModule = ""
+    }
     for (page in documentation.pages) {
         if (!safeRelativePath(page.source) || !safeDocumentationPageRoute(page.route) || !page.route.endsWith(".html") ||
             !pageIds.add(page.id + ":" + page.language.getOrDefault({ => "unknown" }))) {
             domainFail("$.pages", "unsafe page path or duplicate logical language variant")
         }
-        validateMarkdown(page.markdown, "$.pages.markdown", 0)
+        var pageModuleId = ""
+        var hasTargetContext = false
+        for (id in page.targetSymbolIds) {
+            if (let Some(target) <- byId.get(id)) {
+                hasTargetContext = true
+                if (pageModuleId.isEmpty()) {
+                    pageModuleId = target.moduleId
+                } else if (pageModuleId != target.moduleId) {
+                    pageModuleId = ""
+                    break
+                }
+            }
+        }
+        if (!hasTargetContext) { pageModuleId = pageRootModule }
+        validateMarkdown(page.markdown, "$.pages.markdown", 0, pageModuleId, navigationEvidence)
         validateMarkdownAssetReferences(page.markdown, "$.pages.markdown", assetIds)
         let sectionIds = HashSet<String>()
         let sectionAnchors = HashSet<String>()
@@ -499,6 +537,9 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
         }
         for (id in page.targetSymbolIds) { if (!byId.contains(id)) { domainFail("$.pages.targetSymbolIds", "unknown SymbolId") } }
         for (binding in page.bindings) {
+            if (let Some(navigation) <- binding.navigation) {
+                navigationEvidence.validate(navigation, "$.pages.bindings.navigation", pageModuleId)
+            }
             if (let Some(id) <- binding.targetSymbolId) {
                 if (!byId.contains(id) || !page.targetSymbolIds.toArray().contains(id)) {
                     domainFail("$.pages.bindings", "binding target must belong to the page's captured targets")

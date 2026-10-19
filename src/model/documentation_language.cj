@@ -70,11 +70,12 @@ public class DocumentationText {
     public let referenceState: String
     public let targetSymbolId: ?String
     public let directives: String
+    public let navigation: ?TypeNavigation
 
     public init(fieldId: String, kind: String, subject: String, language: ?String,
         text: String, markdown: MarkdownNode, source!: ?SourceRange = None,
         state!: String = "valid", referenceState!: String = "unavailable",
-        targetSymbolId!: ?String = None, directives!: String = "") {
+        targetSymbolId!: ?String = None, directives!: String = "", navigation!: ?TypeNavigation = None) {
         if (let Some(value) <- language) {
             if (documentationLanguage(value) != value) {
                 throw IllegalArgumentException("documentation language must be normalized")
@@ -103,6 +104,7 @@ public class DocumentationText {
         this.language = language; this.text = text; this.markdown = markdown
         this.source = source; this.state = state; this.referenceState = referenceState
         this.targetSymbolId = targetSymbolId; this.directives = directives
+        this.navigation = navigation
     }
 }
 

@@ -18,7 +18,7 @@ from .localization import (DIFF_CLASSIFICATIONS, DIFF_MATCH_STATES, DIFF_RAW_LAB
 
 from showcase_contract.site import ContractError, canonical_json, load_json, relative_path
 
-IR = "cjdoc.doc-ir/14"
+IR = "cjdoc.doc-ir/15"
 COVERAGE = "cjdoc.documentation-coverage/2"
 DOCTEST = "cjdoc.doctest/2"
 DIFF = "cjdoc.api-diff/2"
@@ -98,7 +98,7 @@ class UtilityRegion(HTMLParser):
 
 
 def index(root: Path, version: str | None = None) -> tuple[dict, dict]:
-    raw = checked(root / "symbol-index.json", "cjdoc.symbol-index/1")
+    raw = checked(root / "symbol-index.json", "cjdoc.symbol-index/2")
     if version is not None and raw.get("version") != version:
         raise ContractError("report/index documentation version mismatch")
     entries = raw["entries"]
@@ -493,7 +493,7 @@ def publish(root: Path, revision: str, version: str, locale: str, *, baseline: P
     root = root.resolve()
     inputs = {"machine/docs.json": IR, "machine/coverage.json": COVERAGE,
               "machine/quality.json": QUALITY,
-              "symbol-index.json": "cjdoc.symbol-index/1"}
+              "symbol-index.json": "cjdoc.symbol-index/2"}
     if (root / "doctest/results.json").is_file():
         inputs["doctest/results.json"] = DOCTEST
     if (root / "check-modes/native-check.json").is_file():

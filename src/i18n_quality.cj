@@ -40,11 +40,13 @@ internal func withTranslationDiagnostics(value: public_model.DocumentationSet,
     for (diagnostic in diagnostics) { if (diagnostic.severity == "error") { status = "partial" } }
     public_model.DocumentationSet(value.generator, status, value.project, value.configuration,
         apiCollectionState: Some(value.apiCollectionState),
+        documentationRevision: value.documentationRevision,
         providers: value.providers.toArray(), modules: value.modules.toArray(), packages: value.packages.toArray(),
         files: value.files.toArray(), declarations: value.declarations.toArray(), assets: value.assets.toArray(),
         orphanDocComments: value.orphanDocComments.toArray(), macroInvocations: value.macroInvocations.toArray(),
         unsupportedDeclarations: value.unsupportedDeclarations.toArray(),
         unboundSemanticDeclarations: value.unboundSemanticDeclarations.toArray(), diagnostics: diagnostics.toArray(),
         languageOptions: value.languageOptions, pages: value.pages.toArray(),
-        externalDocumentation: value.externalDocumentation.toArray())
+        externalDocumentation: value.externalDocumentation.toArray(),
+        dependencies: value.dependencies.toArray(), documentSets: value.documentSets.toArray())
 }

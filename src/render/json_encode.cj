@@ -90,10 +90,6 @@ private func appendCapabilities(out: StringBuilder, value: SemanticCapabilities)
     out.append("\"annotations\":${value.annotations}}")
 }
 
-private func appendSemanticType(out: StringBuilder, value: SemanticType): Unit {
-    out.append("{\"state\":${escapeJsonString(value.state)},\"canonical\":${nullableString(value.canonical)},")
-    out.append("\"provider\":${nullableString(value.provider)}}")
-}
 
 private func appendTypeRef(out: StringBuilder, value: TypeRef): Unit {
     out.append("{\"kind\":${escapeJsonString(value.kind)},\"spelling\":${escapeJsonString(value.spelling)},")
@@ -104,8 +100,11 @@ private func appendTypeRef(out: StringBuilder, value: TypeRef): Unit {
         first = false
         appendTypeRef(out, argument)
     }
-    out.append("],\"semantic\":")
-    appendSemanticType(out, value.semantic)
+    out.append("],\"semanticState\":${escapeJsonString(value.semantic.state)},")
+    out.append("\"semanticCanonical\":${nullableString(value.semantic.canonical)},")
+    out.append("\"semanticProvider\":${nullableString(value.semantic.provider)}")
+    out.append(",\"navigation\":")
+    appendTypeNavigation(out, value.navigation)
     out.append("}")
 }
 
@@ -136,6 +135,7 @@ private func appendTag(out: StringBuilder, value: DocTag): Unit {
         out.append(",\"descriptionMarkdown\":"); appendMarkdown(out, markdown)
     }
     if (!value.evidenceKey.isEmpty()) { out.append(",\"evidenceKey\":${escapeJsonString(value.evidenceKey)}") }
+    out.append(",\"navigation\":"); appendTypeNavigation(out, value.navigation)
     out.append("}")
 }
 
@@ -172,7 +172,8 @@ private func appendMarkdownMetadata(out: StringBuilder, value: MarkdownNodeMetad
             out.append("{\"target\":${escapeJsonString(value.semanticTarget.getOrThrow())},")
             out.append("\"state\":${escapeJsonString(value.semanticState.getOrThrow())},")
             out.append("\"targetSymbolId\":${nullableString(value.semanticTargetSymbolId)},")
-            out.append("\"externalUrl\":${nullableString(value.semanticExternalUrl)}}")
+            out.append("\"externalUrl\":${nullableString(value.semanticExternalUrl)},\"semanticNavigation\":")
+            appendTypeNavigation(out, value.semanticNavigation); out.append("}")
         case _ => throw IllegalArgumentException("invalid Markdown metadata kind '${value.kind}'")
     }
 }
@@ -358,9 +359,11 @@ private func compactDocIr(documentation: DocumentationSet): String {
     let out = StringBuilder()
     out.append("{\"schemaVersion\":${escapeJsonString(documentation.schemaVersion)},")
     out.append("\"generator\":{\"name\":${escapeJsonString(documentation.generator.name)},")
-    out.append("\"version\":${escapeJsonString(documentation.generator.version)}},")
+    out.append("\"version\":${escapeJsonString(documentation.generator.version)},")
+    out.append("\"toolchain\":${escapeJsonString(documentation.generator.toolchain)}},")
     out.append("\"status\":${escapeJsonString(documentation.status)},")
     out.append("\"apiCollectionState\":${escapeJsonString(documentation.apiCollectionState)},")
+    out.append("\"documentationRevision\":${escapeJsonString(documentation.documentationRevision)},")
     out.append("\"project\":{\"name\":${escapeJsonString(documentation.project.name)},")
     out.append("\"kind\":${escapeJsonString(documentation.project.kind)},\"repository\":")
     out.append(nullableRepository(documentation.project.repository))
@@ -378,6 +381,7 @@ private func compactDocIr(documentation: DocumentationSet): String {
         out.append("\"externalDocumentation\":"); appendExternalDocumentation(out, documentation.externalDocumentation); out.append(",")
     }
     if (let Some(language) <- documentation.readingLanguage) { out.append("\"readingLanguage\":${escapeJsonString(language)},") }
+    appendDependencyMetadata(out, documentation)
     out.append("\"providers\":[")
     var first = true
     for (provider in documentation.providers) {

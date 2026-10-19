@@ -179,7 +179,7 @@ class ChirPublicContracts {
                 GenerationRequest(temporary.toString(), lintProfile: "off",
                     includePathDependencies: true, chir: Some(chirTestOptions()),
                     astPreflightExecutable: Some("target/release/bin/main")))
-            @Expect(documentation.schemaVersion, "cjdoc.doc-ir/14")
+            @Expect(documentation.schemaVersion, "cjdoc.doc-ir/15")
             @Expect(documentation.providers[0].name, "chir")
             @Expect(documentation.declarations.size > 0, true)
             if (!getVariable("CJDOC_CHIR_WORKER").isSome()) {
@@ -443,20 +443,21 @@ class ChirPublicContracts {
 
     @TestCase
     func sourceTypeArgumentsAreReadAtTheirOwnPositions(): Unit {
-        // Each argument keeps the exact spelling written at its own position, so
-        // two arguments resolving to the same type still match their own source
-        // tokens and both receive links.
-        let pair = chirSourceTypeArguments("Pair < dep.Token , Token >")
-        @Expect(pair.size, 2)
-        @Expect(pair[0], "dep.Token")
-        @Expect(pair[1], "Token")
-        // Nested lists stay intact and are not split at their inner comma.
-        let nested = chirSourceTypeArguments("Map < String , List < Int64 , dep.Token > >")
-        @Expect(nested.size, 2)
-        @Expect(nested[0], "String")
-        @Expect(nested[1], "List < Int64 , dep.Token >")
-        // A display with no argument list has no arguments.
-        @Expect(chirSourceTypeArguments("Token").size, 0)
+        let nodes = ArrayList<ChirTypeNode>([ChirTypeNode(0, "pkg.Pair"), ChirTypeNode(1, "pkg.Pair"),
+            ChirTypeNode(2, "pkg.Token"), ChirTypeNode(2, "pkg.Token")])
+        let pair = chirTypeRefFromNodes(nodes, 0, "Pair < dep.Token , Token >")
+        @Expect(pair.arguments.size, 2)
+        @Expect(pair.arguments[0].spelling, "dep.Token")
+        @Expect(pair.arguments[1].spelling, "Token")
+        @Expect(pair.arguments[0].semantic.canonical, pair.arguments[1].semantic.canonical)
+        let nestedNodes = ArrayList<ChirTypeNode>([ChirTypeNode(0, "pkg.Map"), ChirTypeNode(1, "pkg.Map"),
+            ChirTypeNode(2, "std.core.String"), ChirTypeNode(2, "pkg.List"), ChirTypeNode(3, "pkg.List"),
+            ChirTypeNode(4, "std.core.Int64"), ChirTypeNode(4, "pkg.Token")])
+        let nested = chirTypeRefFromNodes(nestedNodes, 0, "Map < String , List < Int64 , dep.Token > >")
+        @Expect(nested.arguments.size, 2)
+        @Expect(nested.arguments[1].arguments.size, 2)
+        @Expect(nested.arguments[1].arguments[1].spelling, "dep.Token")
+        @Expect(chirTypeRefFromNodes(ArrayList<ChirTypeNode>([ChirTypeNode(0, "pkg.Token")]), 0, "Token").arguments.size, 0)
     }
 
     @TestCase
@@ -542,13 +543,18 @@ class ChirPublicContracts {
     }
 
     @TestCase
-    func functionTypeReturnIsNotAnOuterArgumentList(): Unit {
-        // The `<` belongs to the function type's return, not to the outer type,
-        // so there is no outer argument to pair and no wrong link is produced.
-        @Expect(chirSourceTypeArguments("() -> Box < Token >").size, 0)
-        @Expect(chirSourceTypeArguments("(Int64) -> Array < Token >").size, 0)
-        // A real outer generic still yields its arguments.
-        @Expect(chirSourceTypeArguments("Box < Token >").size, 1)
+    func functionTypeReturnUsesItsOwnStructuredRole(): Unit {
+        let nodes = ArrayList<ChirTypeNode>([ChirTypeNode(0, "function"), ChirTypeNode(1, "std.core.Int64"),
+            ChirTypeNode(1, "std.core.Array"), ChirTypeNode(2, "pkg.Token")])
+        let value = chirTypeRefFromNodes(nodes, 0, "(Int64) -> Array < Token >")
+        @Expect(value.kind, "function")
+        @Expect(value.arguments.size, 2)
+        @Expect(value.arguments[0].semantic.canonical, Some("std.core.Int64"))
+        @Expect(value.arguments[1].semantic.canonical, Some("std.core.Array"))
+        @Expect(value.arguments[1].arguments[0].semantic.canonical, Some("pkg.Token"))
+        let noParameters = ArrayList<ChirTypeNode>([ChirTypeNode(0, "function"), ChirTypeNode(1, "pkg.Box"),
+            ChirTypeNode(2, "pkg.Box"), ChirTypeNode(3, "pkg.Token")])
+        @Expect(chirTypeRefFromNodes(noParameters, 0, "() -> Box<Token>").arguments[0].arguments[0].spelling, "Token")
     }
 
     @TestCase
@@ -560,15 +566,35 @@ class ChirPublicContracts {
     }
 
     @TestCase
-    func tupleArgumentIsNotSplitOnItsInnerComma(): Unit {
-        // A comma inside a tuple argument is not a generic separator, so the
-        // argument count still agrees with CHIR.
-        let tuple = chirSourceTypeArguments("Array < (Int64, String) >")
-        @Expect(tuple.size, 1)
-        @Expect(tuple[0], "(Int64, String)")
-        // A function type argument is also kept whole.
-        let fn = chirSourceTypeArguments("Box < (Int64, String) -> Bool >")
-        @Expect(fn.size, 1)
-        @Expect(fn[0], "(Int64, String) -> Bool")
+    func tupleAndFunctionArgumentsKeepTheirOwnStructuredChildren(): Unit {
+        let tupleNodes = ArrayList<ChirTypeNode>([ChirTypeNode(0, "std.core.Array"), ChirTypeNode(1, "tuple"),
+            ChirTypeNode(2, "std.core.Int64"), ChirTypeNode(2, "std.core.String")])
+        let tuple = chirTypeRefFromNodes(tupleNodes, 0, "Array < (Int64, String) >")
+        @Expect(tuple.arguments.size, 1)
+        @Expect(tuple.arguments[0].kind, "tuple")
+        @Expect(tuple.arguments[0].arguments.size, 2)
+        let functionNodes = ArrayList<ChirTypeNode>([ChirTypeNode(0, "pkg.Box"), ChirTypeNode(1, "pkg.Box"),
+            ChirTypeNode(2, "function"), ChirTypeNode(3, "std.core.Int64"), ChirTypeNode(3, "std.core.String"),
+            ChirTypeNode(3, "std.core.Bool")])
+        let function = chirTypeRefFromNodes(functionNodes, 0, "Box < (Int64, String) -> Bool >")
+        @Expect(function.arguments.size, 1)
+        @Expect(function.arguments[0].kind, "function")
+        @Expect(function.arguments[0].arguments.size, 3)
+        @Expect(function.arguments[0].arguments[2].semantic.canonical, Some("std.core.Bool"))
+    }
+
+    @TestCase
+    func optionalNestedSameNamedTypesDoNotShiftCanonicalChildren(): Unit {
+        let nodes = ArrayList<ChirTypeNode>([ChirTypeNode(0, "std.core.Option"), ChirTypeNode(1, "std.core.Option"),
+            ChirTypeNode(2, "library.Box"), ChirTypeNode(3, "library.Box"), ChirTypeNode(4, "library.Box"),
+            ChirTypeNode(5, "library.Box"), ChirTypeNode(6, "library.Widget")])
+        let value = chirTypeRefFromNodes(nodes, 0, "?RemoteBox<RemoteBox<library.Widget>>")
+        @Expect(value.kind, "optional")
+        @Expect(value.arguments[0].spelling, "RemoteBox<RemoteBox<library.Widget>>")
+        @Expect(value.arguments[0].semantic.canonical, Some("library.Box"))
+        @Expect(value.arguments[0].arguments[0].spelling, "RemoteBox<library.Widget>")
+        let widget = value.arguments[0].arguments[0].arguments[0]
+        @Expect(widget.spelling, "library.Widget")
+        @Expect(widget.semantic.canonical, Some("library.Widget"))
     }
 }

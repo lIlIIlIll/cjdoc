@@ -123,7 +123,13 @@ def committed_inventory_digest(
     excluded_prefix = f"{excluded}/" if excluded is not None else None
     digest = hashlib.sha256()
     found_root = relative == Path(".")
-    for record in (item for item in raw.split(b"\0") if item):
+    # Git's directory traversal compares tree names with an implicit slash;
+    # match the working inventory's canonical relative-filename ordering.
+    records = sorted(
+        (item for item in raw.split(b"\0") if item),
+        key=lambda item: item.partition(b"\t")[2],
+    )
+    for record in records:
         metadata, separator, raw_name = record.partition(b"\t")
         fields = metadata.split()
         if separator != b"\t" or len(fields) != 3:

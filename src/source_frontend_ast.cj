@@ -353,6 +353,17 @@ internal func addCommonAstData(symbol: SourceDeclaration, decl: Decl): Unit {
             if (token.kind == IDENTIFIER) { symbol.genericParameters.add(token.value) }
         }
     }
+    // Constraint subjects are generic parameters, not navigation targets. The
+    // AST already splits intersections and comma-separated constraints into
+    // upper-bound TypeNodes, preserving their declaration scope and spelling.
+    for (constraint in decl.genericConstraint) {
+        for (bound in constraint.upperBounds) {
+            let display = normalizedTokens(bound)
+            if (!display.isEmpty()) {
+                symbol.relationships.add(SourceTypeRelationship("genericConstraint", display))
+            }
+        }
+    }
 }
 
 internal func tokenEndPosition(token: Token): (Int64, Int64) {

@@ -331,7 +331,7 @@ internal func loadVersionSymbols(files: ArrayList<VersionSourceFile>): VersionSy
             throw IllegalArgumentException("version symbol index must be an object")
         }
         match (versionJsonStringField(object, "schemaVersion")) {
-            case Some(value) => if (value != "cjdoc.symbol-index/1") {
+            case Some(value) => if (value != "cjdoc.symbol-index/1" && value != "cjdoc.symbol-index/2") {
                 throw IllegalArgumentException("version symbol index schema is unsupported")
             }
             case None => throw IllegalArgumentException("version symbol index has no schemaVersion")

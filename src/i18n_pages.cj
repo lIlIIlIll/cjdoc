@@ -7,19 +7,20 @@ import std.fs.*
 
 internal func captureDocumentationPages(value: public_model.DocumentationSet,
     request: GenerationRequest, assetCollector!: ?LocalAssetCollector = None,
-    sharedContext!: ?MarkdownGenerationContext = None): public_model.DocumentationSet {
+    sharedContext!: ?MarkdownGenerationContext = None,
+    externalResolvers!: ?Array<ExternalDocResolver> = None): public_model.DocumentationSet {
     let config = request.highlight.getOrDefault({ => loadHighlightConfig(request.projectRoot) })
     let context = sharedContext.getOrDefault({ => MarkdownGenerationContext(
         highlightMode: if (config.mode == "off") { "off" } else { "auto" },
         highlightLanguages: config,
         externalOptions: highlightExternalOptions(request.highlightAdapter, request.highlightNode)) })
-    try { captureDocumentationPagesWithContext(value, request, assetCollector, context) }
+    try { captureDocumentationPagesWithContext(value, request, assetCollector, context, externalResolvers) }
     finally { if (sharedContext.isNone()) { context.highlightBudget.close() } }
 }
 
 private func captureDocumentationPagesWithContext(value: public_model.DocumentationSet,
     request: GenerationRequest, assetCollector: ?LocalAssetCollector,
-    context: MarkdownGenerationContext): public_model.DocumentationSet {
+    context: MarkdownGenerationContext, externalResolvers: ?Array<ExternalDocResolver>): public_model.DocumentationSet {
     let previousDiagnostics = HashMap<String, Int64>()
     let previousDocumentDiagnostics = value.diagnostics.size
     for (diagnostic in context.diagnostics()) {
@@ -90,13 +91,15 @@ private func captureDocumentationPagesWithContext(value: public_model.Documentat
         else { value.status }
     public_model.DocumentationSet(value.generator, status, value.project, value.configuration,
         apiCollectionState: Some(value.apiCollectionState),
+        documentationRevision: value.documentationRevision,
         providers: value.providers.toArray(), modules: value.modules.toArray(), packages: value.packages.toArray(),
         files: value.files.toArray(), declarations: value.declarations.toArray(), assets: assets,
         orphanDocComments: value.orphanDocComments.toArray(), macroInvocations: value.macroInvocations.toArray(),
         unsupportedDeclarations: value.unsupportedDeclarations.toArray(),
         unboundSemanticDeclarations: value.unboundSemanticDeclarations.toArray(), diagnostics: value.diagnostics.toArray(),
-        languageOptions: value.languageOptions, pages: pages.toArray(),
-        externalDocumentation: captureExternalDocumentationReferences(value, request.projectRoot))
+        languageOptions: value.languageOptions, pages: pages.toArray(), readingLanguage: value.readingLanguage,
+        externalDocumentation: captureExternalDocumentationReferences(value, request.projectRoot, externalResolvers: externalResolvers),
+        dependencies: value.dependencies.toArray(), documentSets: value.documentSets.toArray())
 }
 
 private func capturePageSections(value: public_model.DocumentationSet,
@@ -175,12 +178,15 @@ private func capturedPageSourceOrigin(source: String, projectRoot: String): ?Sou
 }
 
 private func captureExternalDocumentationReferences(value: public_model.DocumentationSet,
-    root: String): Array<public_model.ExternalDocumentationReference> {
+    root: String, externalResolvers!: ?Array<ExternalDocResolver> = None): Array<public_model.ExternalDocumentationReference> {
     let references = ArrayList<public_model.ExternalDocumentationReference>()
-    let resolvers = loadExternalDocResolvers(root)
+    let resolvers = externalResolvers.getOrDefault({ => loadExternalDocResolvers(root) })
     for (symbol in value.declarations) {
         if (!conceptualVisibleForAudience(symbol, value)) { continue }
         for (resolver in resolvers) {
+            // Catalog inventories are dependency-scoped navigation inputs, not
+            // unqualified per-symbol language-reference fallbacks.
+            if (!resolver.legacyReference) { continue }
             let (idUrl, idAmbiguous) = resolver.matchTarget(symbol.id)
             let (url, ambiguous) = if (idUrl.isEmpty() && !idAmbiguous) {
                 resolver.matchTarget(symbol.qualifiedName)

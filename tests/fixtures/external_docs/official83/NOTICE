@@ -1,0 +1,24 @@
+Official Cangjie documentation excerpts
+
+Attribution: Cangjie project and the cangjie_runtime / cangjie_stdx documentation contributors.
+License: Creative Commons Attribution 4.0 International (CC-BY-4.0)
+License terms: https://creativecommons.org/licenses/by/4.0/
+
+stdlib documentation license at the pinned revision:
+https://github.com/cangjielanguage/cangjie_runtime/blob/c844ec7556f9ab624e6a052c550444d695c44f2e/stdlib/doc/LICENSE
+stdx documentation license at the pinned revision:
+https://github.com/cangjielanguage/cangjie_stdx/blob/f74bb5953547e51edff8904ae3db75ad47f17f06/doc/LICENSE
+Both retrieved license files have SHA-256:
+7e7170e3cebf88a9f60c7b8421418323c09304da1af4d5e90f4da1dc1c8a2661
+
+Sources, immutable revisions, full-source SHA-256, original line ranges and
+excerpt SHA-256 are recorded in manifest.json. std-collection.md reproduces
+lines 1-26 and stdx-json.md reproduces lines 1-59 without textual modifications.
+Only extraction/truncation is applied. The adapter's optional HTML pages are
+escaped, line-anchored projections, not the upstream published documentation
+site. They retain source provenance and do not imply SDK version compatibility.
+
+Official repository provenance: the Cangjie developer documentation README
+at https://github.com/cangjielanguage/cangjie_docs/blob/fc561c3ff9127a92c53e120426bdc914317cea6e/README.md
+identifies cangjie_runtime and cangjie_stdx as the standard-library and extension-
+library API documentation sources. No inferred SDK-release mapping is supplied.

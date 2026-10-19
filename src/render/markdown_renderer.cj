@@ -4,6 +4,7 @@ import cjdoc.model.*
 import std.collection.*
 
 internal func markdownRelativeDestination(destination: String, pagePath: String): String {
+    if (destination.startsWith("https://") || destination.startsWith("http://")) { return destination }
     if (pagePath.startsWith("symbols/") && destination.startsWith("symbols/")) {
         destination["symbols/".size..]
     } else if (pagePath.startsWith("packages/") || pagePath.startsWith("symbols/")) {
@@ -100,14 +101,20 @@ internal func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode
                     tableCell: tableCell)
             }; out.append("]")
             match (node.metadata) {
-                case Some(metadata) => match (metadata.semanticExternalUrl) {
-                    case Some(destination) => match (markdownSemanticLinkDestination(destination, pagePath,
-                        targetSymbolId: metadata.semanticTargetSymbolId, symbolIndex: symbolIndex)) {
-                        case Some(encoded) => out.append("(${encoded})")
-                        case None => ()
+                case Some(metadata) =>
+                    if (let Some(navigation) <- metadata.semanticNavigation) {
+                        let index = symbolIndex.getOrDefault({ => HashMap<String, SymbolDoc>() })
+                        if (let Some(encoded) <- markdownNavigationDestination(navigation, pagePath, index)) {
+                            out.append("(" + encoded)
+                            appendMarkdownNavigationTitle(out, Some(navigation))
+                            out.append(")")
+                        }
+                    } else if (let Some(destination) <- metadata.semanticExternalUrl) {
+                        if (let Some(encoded) <- markdownSemanticLinkDestination(destination, pagePath,
+                            targetSymbolId: metadata.semanticTargetSymbolId, symbolIndex: symbolIndex)) {
+                            out.append("(" + encoded + ")")
+                        }
                     }
-                    case None => ()
-                }
                 case None => ()
             }
         case "image" =>
@@ -436,7 +443,7 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
         out.append("#### ${label(locale, "Throws", "异常")}\n\n")
         for (tag in comment.tags) {
             if (tag.name == "throws") {
-                out.append("- "); appendMarkdownCodeSpan(out, tag.subject); out.append(" — ")
+                out.append("- "); appendTagSubjectMarkdown(out, tag, pagePath, symbolIndex); out.append(" — ")
                 appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
             }
         }
@@ -473,7 +480,7 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
     if (hasSee) {
         out.append("#### ${label(locale, "See also", "另请参阅")}\n\n")
         for (tag in comment.tags) {
-            if (tag.name == "see") { out.append("- "); appendMarkdownCodeSpan(out, tag.subject)
+            if (tag.name == "see") { out.append("- "); appendTagSubjectMarkdown(out, tag, pagePath, symbolIndex)
                 if (!tag.description.isEmpty() || !tag.translationState.isEmpty()) {
                     out.append(" — "); appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
                 }; out.append("\n") }
@@ -490,6 +497,130 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
         }
         if (opened) { out.append("\n") }
     }
+}
+
+internal func markdownNavigationDestination(navigation: TypeNavigation, pagePath: String,
+    symbolIndex: HashMap<String, SymbolDoc>): ?String {
+    if (navigation.state != "resolved" || navigationHref("", navigation.url).isNone()) { return None }
+    if (navigation.symbolKey.startsWith("cjdoc:v2:") && !symbolIndex.contains(navigation.symbolKey)) { return None }
+    if (let Some(target) <- symbolIndex.get(navigation.symbolKey)) {
+        if (navigation.url == symbolPagePath(target)) {
+            let destination = if (pagePath.isEmpty()) { "#" + symbolAnchor(target) } else {
+                let targetPage = markdownTargetPagePath(target, symbolIndex)
+                if (targetPage == pagePath) { "#" + symbolAnchor(target) } else {
+                    markdownRelativeDestination(targetPage, pagePath) + "#" + symbolAnchor(target)
+                }
+            }
+            return Some(encodeMarkdownDestination(destination))
+        }
+    }
+    let prefix = if (pagePath.startsWith("packages/") || pagePath.startsWith("symbols/")) { "../../html/" } else { "../html/" }
+    let destination = if (navigation.url.startsWith("https://") || navigation.url.startsWith("http://")) {
+        navigation.url
+    } else { prefix + navigation.url.removePrefix("./") }
+    // The document-root route was validated above. Only this renderer adds
+    // the fixed parent prefix needed to reach html/; untrusted parent paths
+    // never pass navigationHref. Do not reclassify that layout prefix as input.
+    Some(encodeMarkdownDestination(destination))
+}
+private func appendMarkdownNavigationTitle(out: RenderTextBuffer, navigation: ?TypeNavigation): Unit {
+    if (let Some(value) <- navigation) {
+        if (value.state == "resolved") {
+            // JSON's quoted-string escaping also protects Markdown's double-quoted
+            // title delimiters, without altering the link label or destination.
+            out.append(" "); out.append(escapeJsonString(value.matchLevel + ": " + value.reason))
+        }
+    }
+}
+
+
+private func appendTagSubjectMarkdown(out: RenderTextBuffer, tag: DocTag,
+    pagePath: String, symbolIndex: ?HashMap<String, SymbolDoc>): Unit {
+    let index = symbolIndex.getOrDefault({ => HashMap<String, SymbolDoc>() })
+    let destination: ?String = match (tag.navigation) {
+        case Some(navigation) => markdownNavigationDestination(navigation, pagePath, index)
+        case None => None
+    }
+    if (destination.isSome()) { out.append("[") }
+    appendMarkdownCodeSpan(out, tag.subject)
+    if (let Some(url) <- destination) {
+        out.append("](" + url); appendMarkdownNavigationTitle(out, tag.navigation); out.append(")")
+    }
+}
+
+private func appendMarkdownTypeAtom(out: RenderTextBuffer, typeRef: TypeRef,
+    spelling: String, pagePath: String, symbolIndex: HashMap<String, SymbolDoc>): Unit {
+    if (typeRef.navigation.isNone()) {
+        appendMarkdownCodeSpan(out, spelling); return
+    }
+    let destination: ?String = match (typeRef.navigation) {
+        case Some(navigation) => markdownNavigationDestination(navigation, pagePath, symbolIndex)
+        case None => None
+    }
+    if (destination.isSome()) { out.append("[") }
+    appendMarkdownCodeSpan(out, spelling)
+    if (let Some(url) <- destination) {
+        out.append("](" + url); appendMarkdownNavigationTitle(out, typeRef.navigation); out.append(")")
+    }
+}
+
+internal func appendTypeRefMarkdown(out: RenderTextBuffer, typeRef: TypeRef,
+    pagePath: String, symbolIndex: HashMap<String, SymbolDoc>): Unit {
+    if (typeRef.kind == "optional" && typeRef.arguments.size == 1) {
+        out.append("?")
+        appendTypeRefMarkdown(out, typeRef.arguments[0], pagePath, symbolIndex)
+    } else if ((typeRef.kind == "tuple" || typeRef.kind == "function") && !typeRef.arguments.isEmpty()) {
+        appendEscapedMarkdownText(out, "(")
+        for (index in 0..typeRef.arguments.size) {
+            if (typeRef.kind == "function" && index == typeRef.arguments.size - 1) {
+                appendEscapedMarkdownText(out, ") -> ")
+            } else if (index > 0) { out.append(", ") }
+            appendTypeRefMarkdown(out, typeRef.arguments[index], pagePath, symbolIndex)
+        }
+        if (typeRef.kind == "tuple") { appendEscapedMarkdownText(out, ")") }
+    } else if (!typeRef.arguments.isEmpty() && typeRef.spelling.contains("<")) {
+        appendMarkdownTypeAtom(out, typeRef, typeHeadSpelling(typeRef.spelling), pagePath, symbolIndex)
+        appendEscapedMarkdownText(out, "<")
+        var first = true
+        for (child in typeRef.arguments) {
+            if (!first) { out.append(", ") }; first = false
+            appendTypeRefMarkdown(out, child, pagePath, symbolIndex)
+        }
+        appendEscapedMarkdownText(out, ">" + typeGenericSuffix(typeRef.spelling))
+    } else { appendMarkdownTypeAtom(out, typeRef, typeRef.spelling, pagePath, symbolIndex) }
+}
+
+private func hasResolvedTypeNavigation(value: TypeRef): Bool {
+    if (let Some(navigation) <- value.navigation) { if (navigation.state == "resolved") { return true } }
+    for (child in value.arguments) { if (hasResolvedTypeNavigation(child)) { return true } }
+    false
+}
+
+// Keep the source signature in a copyable fence; expose links where readers
+// inspect parameter, return and relationship types rather than rewriting code.
+internal func appendMarkdownTypeDetails(out: RenderTextBuffer, symbol: SymbolDoc,
+    pagePath: String, symbolIndex: HashMap<String, SymbolDoc>, locale: String): Unit {
+    var linked = false
+    for (parameter in symbol.parameters) { linked = linked || hasResolvedTypeNavigation(parameter.typeRef) }
+    if (let Some(value) <- symbol.returnType) { linked = linked || hasResolvedTypeNavigation(value) }
+    for (relationship in symbol.typeRelationships) { linked = linked || hasResolvedTypeNavigation(relationship.target) }
+    if (!linked) { return }
+    for (parameter in symbol.parameters) {
+        out.append("- " + label(locale, "Parameter", "参数") + " ")
+        appendMarkdownCodeSpan(out, parameter.name); out.append(": ")
+        appendTypeRefMarkdown(out, parameter.typeRef, pagePath, symbolIndex); out.append("\n")
+    }
+    if (let Some(value) <- symbol.returnType) {
+        out.append("- " + label(locale, "Returns", "返回值") + ": ")
+        appendTypeRefMarkdown(out, value, pagePath, symbolIndex); out.append("\n")
+    }
+    // Single-page Markdown keeps its existing relationship/state section below.
+    for (relationship in symbol.typeRelationships where !pagePath.isEmpty()) {
+        out.append("- "); appendEscapedMarkdownText(out, readerRelationshipLabel(relationship.kind, locale))
+        out.append(": "); appendTypeRefMarkdown(out, relationship.target, pagePath, symbolIndex); out.append("\n")
+    }
+    if (!symbol.parameters.isEmpty() || symbol.returnType.isSome() ||
+        (!pagePath.isEmpty() && !symbol.typeRelationships.isEmpty())) { out.append("\n") }
 }
 
 public class MarkdownDocumentationRenderer <: DocumentationRenderer {
@@ -521,6 +652,7 @@ internal func appendMarkdownArtifacts(artifacts: RenderArtifactCollector,
             out.append("### "); appendMarkdownCodeSpan(out, declaration.qualifiedName)
             out.append("\n\n")
             appendMarkdownCodeBlock(out, declaration.headerSpelling, "cangjie", "`", 3)
+            appendMarkdownTypeDetails(out, declaration, "", projection.visibleIndex, locale)
             match (declaration.documentation) {
                 case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
                     locale: locale, symbolIndex: Some(projection.visibleIndex))
@@ -538,7 +670,7 @@ internal func appendMarkdownArtifacts(artifacts: RenderArtifactCollector,
                 out.append("#### Type relationships\n\n")
                 for (relationship in declaration.typeRelationships) {
                     out.append("- "); appendMarkdownCodeSpan(out, relationship.kind)
-                    out.append(" → "); appendMarkdownCodeSpan(out, relationship.target.spelling)
+                    out.append(" → "); appendTypeRefMarkdown(out, relationship.target, "", projection.visibleIndex)
                     out.append(" ("); appendMarkdownCodeSpan(out, relationship.target.semantic.state)
                     out.append(")\n")
                 }

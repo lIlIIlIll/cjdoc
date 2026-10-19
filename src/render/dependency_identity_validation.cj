@@ -1,0 +1,316 @@
+package cjdoc.render
+
+import cjdoc.model.*
+import std.collection.*
+
+internal func consumeNavigationEncoding(value: ?TypeNavigation, path: String,
+    depth: Int64, budget: DocIrEncodingBudget): Unit {
+    if (let Some(navigation) <- value) {
+        if (contextFreeNavigationFailure(navigation)) {
+            budget.consumeCollection(2, path, depth: depth)
+            budget.consumeString(navigation.state, path)
+            budget.consumeString(navigation.reason, path)
+            return
+        }
+        // Fixed keys/punctuation only; escaped strings and pretty spacing are charged separately.
+        budget.consumeObject(path, depth: depth, fields: 10, compactBytes: 139)
+        for (text in [navigation.state, navigation.matchLevel, navigation.reason, navigation.dependencyInstanceId, navigation.documentSetId, navigation.indexIdentity, navigation.symbolKey, navigation.url, navigation.apiIdentity, navigation.language]) {
+            budget.consumeString(text, path)
+        }
+    } else { budget.consumeBytes(4, path) }
+}
+
+internal func consumeDependencyMetadataEncoding(documentation: DocumentationSet,
+    budget: DocIrEncodingBudget): Unit {
+    budget.consumeCollection(documentation.dependencies.size, "$.dependencies", depth: 1)
+    for (value in documentation.dependencies) {
+        budget.consumeObject("$.dependencies[]", depth: 2, fields: 12, compactBytes: 137)
+        for (text in [value.moduleId, value.componentModuleId, value.name, value.instanceId, value.kind, value.identity, value.state, value.evidence, value.version, value.revision, value.target, value.cfg]) {
+            budget.consumeString(text, "$.dependencies[]")
+        }
+    }
+    budget.consumeCollection(documentation.documentSets.size, "$.documentSets", depth: 1)
+    for (value in documentation.documentSets) {
+        budget.consumeObject("$.documentSets[]", depth: 2, fields: 15, compactBytes: 181)
+        for (text in [value.id, value.moduleId, value.library, value.identity, value.state, value.source, value.target, value.cfg, value.audience, value.language, value.revision, value.apiVersion, value.documentationRevision, value.indexIdentity, value.baseUrl]) {
+            budget.consumeString(text, "$.documentSets[]")
+        }
+    }
+}
+
+/** Lookups shared by all navigation occurrences in one validation pass. */
+internal class NavigationEvidence {
+    let dependencies = HashMap<String, DependencyInstance>()
+    let documentSets = HashMap<String, DocumentSetIdentity>()
+    let localSymbols = HashMap<String, SymbolDoc>()
+    let moduleNames = HashMap<String, String>()
+    let dependenciesByName = HashMap<String, ArrayList<DependencyInstance>>()
+    let moduleDependencies = HashMap<String, HashSet<String>>()
+    let audience: String
+
+    init(audience: String) { this.audience = audience }
+
+    private func dependencyFor(moduleId: String, name: String): ?DependencyInstance {
+        let values = match (dependenciesByName.get(moduleId + "|" + name)) {
+            case Some(records) => records
+            case None => return None
+        }
+        var selected: ?DependencyInstance = None
+        for (record in values) {
+            if (let Some(previous) <- selected) {
+                if (previous.instanceId != record.instanceId || previous.state != record.state) { return None }
+            }
+            selected = Some(record)
+        }
+        selected
+    }
+
+    private func localAllowed(moduleId: String, target: SymbolDoc): Bool {
+        if (moduleId.isEmpty()) { return false }
+        if (target.moduleId == moduleId) { return true }
+        let name = match (moduleNames.get(target.moduleId)) {
+            case Some(value) => value
+            case None => return false
+        }
+        let actual = match (dependencyFor(target.moduleId, name)) {
+            case Some(value) => value
+            case None => return false
+        }
+        let selected = match (dependencyFor(moduleId, name)) {
+            case Some(value) => value
+            case None => return false
+        }
+        // Replay enforces the captured subset of DependencyNavigationBinder.localAllowed:
+        // unique selected edges, equal nonempty identities and observed/verified states,
+        // plus the component binding the producer proves with either
+        // `left.componentModuleId == candidate.moduleId` or a matched published
+        // graph. Replay can verify the first condition and the documented
+        // dependency relationship; the full `DependencyGraphIndex.binding(...)
+        // == "matched"` proof needs the producer's private source-package
+        // aliases and transitive graph, which are not carried in Doc IR.
+        if (selected.componentModuleId.isEmpty() || selected.identity.isEmpty() ||
+            selected.identity != actual.identity ||
+            (selected.state != "observed" && selected.state != "verified") ||
+            (actual.state != "observed" && actual.state != "verified")) { return false }
+        if (selected.componentModuleId == target.moduleId) { return true }
+        match (moduleDependencies.get(selected.componentModuleId)) {
+            case Some(declared) => declared.contains(target.moduleId)
+            case None => false
+        }
+    }
+
+    func validate(value: TypeNavigation, path: String, moduleId: String): Unit {
+        if (!value.url.isEmpty() && navigationHref("", value.url).isNone()) {
+            domainFail(path + ".url", "unsafe navigation URL")
+        }
+        // Contextual failures retain evidence, but do not claim a selected target.
+        if (value.state != "resolved") { return }
+        if (value.matchLevel == "exact") {
+            // The producer also emits evidence-free exact links to captured
+            // declarations. Only their actual local route has that meaning.
+            if (value.documentSetId.isEmpty() && value.dependencyInstanceId.isEmpty()) {
+                if (let Some(target) <- localSymbols.get(value.symbolKey)) {
+                    if (value.url == symbolPagePath(target)) {
+                        if (!localAllowed(moduleId, target)) {
+                            domainFail(path + ".symbolKey",
+                                "local exact navigation must belong to the occurrence's selected module dependency identity")
+                        }
+                        return
+                    }
+                }
+            }
+            if (value.symbolKey.isEmpty()) {
+                domainFail(path + ".symbolKey", "external exact navigation requires a symbol key")
+            }
+        }
+        let selectedEvidence = value.matchLevel == "exact" || value.matchLevel == "compatible"
+        if (selectedEvidence) {
+            if (value.documentSetId.isEmpty()) {
+                domainFail(path + ".documentSetId",
+                    "selected navigation requires a documentation.documentSets reference or an exact captured local target")
+            }
+            if (value.dependencyInstanceId.isEmpty()) {
+                domainFail(path + ".dependencyInstanceId",
+                    "selected navigation requires a documentation.dependencies reference")
+            }
+            if (value.apiIdentity.isEmpty()) {
+                domainFail(path + ".apiIdentity", "selected external navigation requires an API identity")
+            }
+            if (value.indexIdentity.isEmpty()) {
+                domainFail(path + ".indexIdentity", "selected external navigation requires an index identity")
+            }
+        }
+        if (!value.documentSetId.isEmpty()) {
+            if (let Some(documentSet) <- documentSets.get(value.documentSetId)) {
+                if (value.matchLevel == "exact" && documentSet.state != "declared") {
+                    domainFail(path + ".documentSetId",
+                        "exact navigation requires a declared documentation.documentSets record")
+                }
+                if (!value.apiIdentity.isEmpty() && value.apiIdentity != documentSet.identity) {
+                    domainFail(path + ".apiIdentity", "must match the referenced documentation.documentSets identity")
+                }
+                // The producer always copies the selected document set's language
+                // into the navigation, so selected links must match exactly,
+                // including the both-empty case.
+                if ((value.matchLevel == "compatible" || value.matchLevel == "exact" || !value.language.isEmpty()) &&
+                    value.language != documentSet.language) {
+                    domainFail(path + ".language", "must match the referenced documentation.documentSets language")
+                }
+                if (!value.indexIdentity.isEmpty() && value.indexIdentity != documentSet.indexIdentity) {
+                    domainFail(path + ".indexIdentity", "must match the referenced documentation.documentSets indexIdentity")
+                }
+            } else if (value.matchLevel != "manual") {
+                // Manual references are unverified and may retain a publisher
+                // label without a captured document-set record.
+                domainFail(path + ".documentSetId",
+                    "must reference an existing documentation.documentSets record")
+            }
+        }
+        if (!value.dependencyInstanceId.isEmpty()) {
+            let dependency = match (dependencies.get(value.dependencyInstanceId)) {
+                case Some(record) => record
+                case None => domainFail(path + ".dependencyInstanceId",
+                    "must reference an existing documentation.dependencies instanceId")
+            }
+            if (value.matchLevel == "exact" && dependency.state != "observed" && dependency.state != "verified") {
+                domainFail(path + ".dependencyInstanceId",
+                    "exact navigation requires observed or verified documentation.dependencies evidence")
+            }
+            // The producer reaches exact only through a matched published graph,
+            // which an empty actual module can never produce.
+            // The producer reaches exact only through a matched published graph.
+            // Binary/std/stdx/toolchain inputs carry no source component, so the
+            // requirement applies to selected source dependencies.
+            if (value.matchLevel == "exact" && dependency.kind == "source" &&
+                dependency.componentModuleId.isEmpty()) {
+                domainFail(path + ".dependencyInstanceId",
+                    "exact navigation requires a captured source component")
+            }
+            // Compatible is selected only inside the producer's dependency branch,
+            // but unlike exact it permits declared evidence and differing API bytes.
+            if (value.matchLevel == "compatible" && (dependency.state == "unknown" ||
+                dependency.state == "conflict" || dependency.identity.isEmpty())) {
+                domainFail(path + ".dependencyInstanceId",
+                    "compatible navigation requires a known nonconflicting documentation.dependencies identity")
+            }
+            // No unique page module means the producer can only emit unavailable
+            // navigation, not a selected claim borrowing another module's evidence.
+            if (selectedEvidence && (moduleId.isEmpty() || dependency.moduleId != moduleId)) {
+                domainFail(path + ".dependencyInstanceId",
+                    "selected navigation dependency must belong to the occurrence's owning module")
+            }
+            // The producer selects the instance through dependencyFor(moduleId,
+            // set.library), so a module owning several dependencies cannot lend
+            // an unrelated same-identity instance to a selected badge. When the
+            // library alias cannot be resolved from Doc IR alone (organization-
+            // qualified names), the relationship is unprovable here and is left
+            // to the identity/owner checks above rather than guessed.
+            if (selectedEvidence && value.documentSetId != "" && moduleId != "") {
+                if (let Some(documentSet) <- documentSets.get(value.documentSetId)) {
+                    if (let Some(selected) <- dependencyFor(moduleId, documentSet.library)) {
+                        if (selected.instanceId != dependency.instanceId) {
+                            domainFail(path + ".dependencyInstanceId",
+                                "selected navigation must reference the dependency selected for the document set library")
+                        }
+                    }
+                    // An organization-qualified library that does not resolve here
+                    // is NOT rejected: replay indexes module names only, while the
+                    // producer also indexes the source package alias
+                    // (`organization::name`) from its private source graph, so an
+                    // unresolvable alias is indistinguishable from a legitimate
+                    // generated inventory. The resolvable case above is enforced;
+                    // this remainder is a documented replay limitation.
+                }
+            }
+            // Compatible mappings and unverified manual references may select a
+            // document API identity different from the actual dependency bytes.
+            if (value.matchLevel == "exact" && value.apiIdentity != dependency.identity) {
+                domainFail(path + ".apiIdentity",
+                    "exact navigation must match the referenced documentation.dependencies identity")
+            }
+            // Mirror DependencyNavigationBinder.scopeMatches: the audience is
+            // always required (`set.audience != request.audience` rejects), but
+            // the producer bypasses the target/cfg clauses for compatible links
+            // because an explicit compatibility mapping already binds them.
+            if (selectedEvidence && value.documentSetId != "") {
+                if (let Some(documentSet) <- documentSets.get(value.documentSetId)) {
+                    if (documentSet.audience != audience) {
+                        domainFail(path + ".documentSetId",
+                            "selected navigation document set must match the documented audience")
+                    }
+                    if (value.matchLevel == "exact" &&
+                        documentSet.target != dependency.target && documentSet.target != "*") {
+                        domainFail(path + ".documentSetId",
+                            "exact navigation document set target must match the selected dependency")
+                    }
+                    if (value.matchLevel == "exact" &&
+                        documentSet.cfg != dependency.cfg && documentSet.cfg != "*") {
+                        domainFail(path + ".documentSetId",
+                            "exact navigation document set cfg must match the selected dependency")
+                    }
+                }
+            }
+        }
+        // Like exact targets, compatible targets come from keyed inventory entries.
+        if (value.matchLevel == "compatible" && value.symbolKey.isEmpty()) {
+            domainFail(path + ".symbolKey", "external compatible navigation requires a symbol key")
+        }
+    }
+}
+
+internal func validateDependencyMetadata(documentation: DocumentationSet,
+    modules: HashSet<String>): NavigationEvidence {
+    let evidence = NavigationEvidence(documentation.configuration.audience)
+    for (module in documentation.modules) {
+        evidence.moduleNames[module.id] = module.name
+        // The producer proves a cross-module local target through the selected
+        // component or a matched published graph; the documented module edges
+        // are the replay-visible part of that relationship.
+        evidence.moduleDependencies[module.id] = HashSet<String>(module.dependencyIds)
+    }
+    for (declaration in documentation.declarations) {
+        evidence.localSymbols[declaration.id] = declaration
+    }
+    for (value in documentation.dependencies) {
+        // Dependency graph owners need not be rendered modules. Their stable
+        // built-in module IDs remain valid offline even when dependency source
+        // inclusion was not requested.
+        if (!value.componentModuleId.isEmpty() &&
+            (!value.componentModuleId.startsWith("cjdoc:module:v1:") ||
+            value.kind == "binary" || value.kind == "toolchain")) {
+            domainFail("$.dependencies", "invalid selected source component identifier")
+        }
+        let graphOwner = value.moduleId.startsWith("cjdoc:module:v1:")
+        if ((!modules.contains(value.moduleId) && !graphOwner) ||
+            evidence.dependencies.contains(value.instanceId)) {
+            domainFail("$.dependencies", "invalid graph owner or duplicate dependency instance")
+        }
+        evidence.dependencies[value.instanceId] = value
+        let nameKey = value.moduleId + "|" + value.name
+        match (evidence.dependenciesByName.get(nameKey)) {
+            case Some(records) => records.add(value)
+            case None => evidence.dependenciesByName[nameKey] = ArrayList<DependencyInstance>([value])
+        }
+        // A captured component pointer also identifies renamed dependency edges.
+        if (let Some(name) <- evidence.moduleNames.get(value.componentModuleId)) {
+            if (name != value.name) {
+                let aliasKey = value.moduleId + "|" + name
+                match (evidence.dependenciesByName.get(aliasKey)) {
+                    case Some(records) => records.add(value)
+                    case None => evidence.dependenciesByName[aliasKey] = ArrayList<DependencyInstance>([value])
+                }
+            }
+        }
+    }
+    for (value in documentation.documentSets) {
+        if (!value.moduleId.isEmpty() && !value.moduleId.startsWith("cjdoc:module:v1:")) {
+            domainFail("$.documentSets", "invalid producer-scoped module identifier")
+        }
+        if (evidence.documentSets.contains(value.id)) { domainFail("$.documentSets", "duplicate document set identity") }
+        evidence.documentSets[value.id] = value
+        if (!value.baseUrl.isEmpty() && markdownLinkDestination(value.baseUrl, allowRelative: true).isNone()) {
+            domainFail("$.documentSets", "unsafe document set base URL")
+        }
+    }
+    evidence
+}
