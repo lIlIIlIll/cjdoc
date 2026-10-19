@@ -6,7 +6,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, edited]
   # The managed Codex app creates/edits its canonical summary issue comment.
   issue_comment:
-    types: [created, edited]
+    types: [created, edited, deleted]
   # Restore the status if a webhook was missed or a format changed.
   workflow_dispatch:
     inputs:

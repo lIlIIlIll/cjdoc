@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish a head-SHA-bound completion status for managed Codex PR reviews.
+"""Publish a PR-scoped, head-bound completion status for managed Codex reviews.
 
 The workflow executing this file MUST use trusted default-branch code, never
 checkout the untrusted PR head with a write-capable GITHUB_TOKEN.
@@ -123,6 +123,23 @@ def classify_codex_review(head_sha: str, comments: list[dict], pr_url: str) -> G
     return GateDecision("pending", f"Waiting for Codex code review ({state})"[:140], target)
 
 
+def deleted_codex_summary(event_name: str, event: dict) -> bool:
+    """Revoke a deleted bot summary, even if GitHub still returns stale data.
+
+    The deleted webhook may omit the old body. We conservatively treat such a
+    bot deletion as a potential canonical summary deletion, but avoid revoking
+    a known non-summary bot comment.
+    """
+    if event_name != "issue_comment" or event.get("action") != "deleted":
+        return False
+    comment = event.get("comment") or {}
+    user = comment.get("user") or {}
+    if user.get("login") != CODEX_BOT_LOGIN or user.get("id") != CODEX_BOT_ID:
+        return False
+    body = comment.get("body")
+    return body is None or (isinstance(body, str) and body.startswith(SUMMARY_PREFIX))
+
+
 def pr_number_from_event(event_name: str, event: dict) -> int | None:
     """Return None only for issue comments that do not concern a PR."""
     if event_name == "workflow_dispatch":
@@ -178,6 +195,23 @@ class GitHubAPI:
     def get_commit(self, sha: str) -> dict:
         return self._request(f"commits/{sha}")
 
+    def list_open_pull_requests(self) -> list[dict]:
+        """Exhaustively check concurrent PRs before publishing scoped success.
+
+        GitHub commit statuses belong to a SHA+context, not to a PR. A shared
+        test-merge SHA cannot safely carry different PR review conclusions.
+        """
+        result: list[dict] = []
+        for page in range(1, 102):
+            query = urlencode({"state": "open", "per_page": 100, "page": page})
+            batch = self._request(f"pulls?{query}")
+            if not isinstance(batch, list):
+                raise ValueError("unexpected GitHub open-PR response")
+            result.extend(batch)
+            if len(batch) < 100:
+                return result
+        raise RuntimeError("too many open PRs to check merge identity safely")
+
     def list_issue_comments(self, number: int) -> list[dict]:
         result: list[dict] = []
         for page in range(1, 102):
@@ -202,49 +236,98 @@ class GitHubAPI:
         )
 
 
-def evaluate_pr(api: GitHubAPI, number: int) -> GateDecision | None:
+def _merge_scope_is_unique(
+    number: int, head_sha: str, base_sha: str, merge_sha: str, open_prs: list[dict]
+) -> bool:
+    """A PR-independent status is safe only on a PR-distinguishing merge SHA.
+
+    Conservatively refuse when another open PR has the same head+base, even
+    if GitHub temporarily reports a different or absent merge SHA for it.
+    If the repository's open-PR listing is incomplete, do not grant success.
+    """
+    found_current = False
+    for other in open_prs:
+        if not isinstance(other, dict) or not isinstance(other.get("number"), int):
+            raise ValueError("invalid entry in open-PR response")
+        if other["number"] == number:
+            found_current = True
+            continue
+        other_head = (other.get("head") or {}).get("sha")
+        other_base = (other.get("base") or {}).get("sha")
+        if (
+            other.get("merge_commit_sha") == merge_sha
+            or (other_head == head_sha and other_base == base_sha)
+        ):
+            return False
+    if not found_current:
+        raise RuntimeError("current PR is missing from open-PR response")
+    return True
+
+
+def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -> GateDecision | None:
     pr = api.get_pull_request(number)
     if pr.get("state") != "open":
         print(f"PR #{number} is not open; no commit status to publish")
         return None
     head_sha = (pr.get("head") or {}).get("sha")
+    base_sha = (pr.get("base") or {}).get("sha")
+    merge_sha = pr.get("merge_commit_sha")
+    pr_url = pr["html_url"]
     if not isinstance(head_sha, str) or not SHA_PATTERN.fullmatch(head_sha):
         raise ValueError("GitHub PR response lacks a full HEAD SHA")
-    comments = api.list_issue_comments(number)
-    decision = classify_codex_review(head_sha, comments, pr["html_url"])
-    api.create_commit_status(head_sha, decision)
 
-    # GitHub may evaluate required checks against its synthetic test-merge
-    # commit instead of the PR head. Only mirror the head-bound decision after
-    # verifying this merge has the *current* base and head as parents.
-    merge_sha = pr.get("merge_commit_sha")
-    base_sha = (pr.get("base") or {}).get("sha")
+    # NEVER publish a passing status on the raw head: two distinct PRs may
+    # share that SHA while having different base-dependent diffs and reviews.
+    # The unique test-merge SHA becomes available after GitHub computes mergeability.
     if (
-        isinstance(merge_sha, str)
-        and SHA_PATTERN.fullmatch(merge_sha)
-        and merge_sha != head_sha
-        and isinstance(base_sha, str)
-        and SHA_PATTERN.fullmatch(base_sha)
+        not isinstance(base_sha, str)
+        or not SHA_PATTERN.fullmatch(base_sha)
+        or not isinstance(merge_sha, str)
+        or not SHA_PATTERN.fullmatch(merge_sha)
+        or merge_sha == head_sha
     ):
-        merge = api.get_commit(merge_sha)
-        parents = merge.get("parents") or []
-        if (
-            len(parents) == 2
-            and parents[0].get("sha") == base_sha
-            and parents[1].get("sha") == head_sha
-        ):
-            api.create_commit_status(merge_sha, decision)
-            print(f"Also published on verified test merge {merge_sha}")
-        else:
-            print("Ignoring merge SHA: its parents do not match current base/head")
-    print(f"PR #{number} HEAD {head_sha}: {STATUS_CONTEXT} = {decision.state}")
+        print(f"PR #{number}: no candidate test-merge SHA; keep gate unreported")
+        return GateDecision("pending", "Awaiting current PR test merge", pr_url)
+
+    # Revoke any previous success BEFORE further network calls. If the API
+    # fails while we revalidate summary/merge, the gate stays pending.
+    api.create_commit_status(
+        merge_sha,
+        GateDecision("pending", "Verifying PR-specific Codex review evidence", pr_url),
+    )
+    merge = api.get_commit(merge_sha)
+    parents = merge.get("parents") or []
+    if not (
+        len(parents) == 2
+        and parents[0].get("sha") == base_sha
+        and parents[1].get("sha") == head_sha
+    ):
+        print(f"PR #{number}: candidate test merge does not match current base/head")
+        return GateDecision("pending", "Unverified test merge for current PR", pr_url)
+
+    open_prs = api.list_open_pull_requests()
+    if not _merge_scope_is_unique(number, head_sha, base_sha, merge_sha, open_prs):
+        decision = GateDecision(
+            "pending", "Shared merge/head+base across PRs; review scope ambiguous", pr_url
+        )
+    elif deleted_summary:
+        # Do not trust an older duplicate canonical summary or a temporarily
+        # stale comment-list response after issue_comment.deleted.
+        decision = GateDecision("pending", "Codex review summary deleted; re-review required", pr_url)
+    else:
+        comments = api.list_issue_comments(number)
+        decision = classify_codex_review(head_sha, comments, pr_url)
+
+    api.create_commit_status(merge_sha, decision)
+    print(f"PR #{number} HEAD {head_sha} test merge {merge_sha}: {STATUS_CONTEXT} = {decision.state}")
     print(decision.description)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as file:
             file.write(
                 f"### Codex review gate\n\n- PR: #{number}\n- HEAD: `{head_sha}`"
-                f"\n- Status: **{decision.state}**\n- Result: {decision.description}"
+                f"\n- Test merge: `{merge_sha}`\n- Status: **{decision.state}**"
+                f"\n- Result: {decision.description}"
                 "\n\nThis check verifies review completion, not that findings are resolved.\n"
             )
     return decision
@@ -261,7 +344,7 @@ def main() -> int:
         os.environ["GITHUB_TOKEN"],
         os.environ.get("GITHUB_API_URL", "https://api.github.com"),
     )
-    evaluate_pr(api, number)
+    evaluate_pr(api, number, deleted_summary=deleted_codex_summary(os.environ["GITHUB_EVENT_NAME"], event))
     return 0
 
 

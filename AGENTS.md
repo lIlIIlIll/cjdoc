@@ -187,5 +187,6 @@ CHIR capability Gate 只有 G1–G7 全部实测 PASS 才能升级为 authoritat
 ## Codex 复审完成门禁
 
 - 每次向 PR 推送批量修复后，核对最新 HEAD 对应的 `codex-review-current-head` 状态：只有官方 Codex 的 `code_review` 明确在该完整 SHA 上 `completed` 才算本轮复审完成。旧 SHA、仅有 Review Thread/表情、等待中或未收到审查结果，均不能代替完成证据。
+- `codex-review-current-head` 应发布到校验过当前 base/head 的 PR 测试合并提交，而非可能被多个 PR 共用的原始 HEAD；官方摘要删除或证据失效时不得保留成功状态。
 - 复审完成状态不等于“无缺陷”或自动批准；对未解决的真实阻塞缺陷继续按根因处理，并独立核对 Issue 验收标准和 CI。
 - 门禁脚本及事件触发逻辑见 `docs/codex-review-gate.md`；Github Required Check 需在门禁工作流合并并完成验证后由仓库 Ruleset / Branch Protection 启用。不得绕过缺失或 Pending 的门禁直接宣称验收通过。
