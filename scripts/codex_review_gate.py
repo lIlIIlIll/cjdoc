@@ -545,8 +545,20 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
         if not branch:
             print("push event without a branch; skip")
             return 0
+        candidates = open_prs_targeting_branch(api, branch)
+        # Withdraw every candidate's HEAD FIRST. A hard job timeout would
+        # otherwise terminate this fanout mid-way and leave the later HEADs
+        # still authorized against the previous base, with no chance to run the
+        # error handling. Revocation is cheap and can only deny.
+        for candidate in candidates:
+            head = (api.get_pull_request(candidate).get("head") or {}).get("sha")
+            if isinstance(head, str) and SHA_PATTERN.fullmatch(head):
+                revoke_head_status(
+                    api, head,
+                    GateDecision("pending", "Base branch advanced; revalidating", ""),
+                )
         failures: list[str] = []
-        for candidate in open_prs_targeting_branch(api, branch):
+        for candidate in candidates:
             # Every candidate must be attempted: the push is the only guaranteed
             # event for these unchanged HEADs, so one transient failure must not
             # leave the rest still authorized against the previous base.

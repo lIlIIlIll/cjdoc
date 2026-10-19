@@ -826,6 +826,48 @@ class IntegrationTests(unittest.TestCase):
             gate.evaluate_pr(api, 133)
 
 
+    def test_base_push_withdraws_every_candidate_head_before_evaluating(self):
+        # A hard timeout mid-fanout must not leave later HEADs authorized, so all
+        # candidate revocations happen before the expensive evaluations.
+        api = FakeAPI()
+        others = [
+            {"number": n, "head": {"sha": str(n) * 40}, "base": {"sha": OLD_HEAD, "ref": "main"},
+             "merge_commit_sha": None}
+            for n in (200, 300)
+        ]
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133), *others]
+        by_number = {133: HEAD, 200: "2" * 40, 300: "3" * 40}
+        base_request = api.get_pull_request
+
+        def per_number(number):
+            value = base_request(number)
+            value["head"] = {"sha": by_number[number]}
+            return value
+
+        api.get_pull_request = per_number
+        events = []
+
+        def recording(sha, decision):
+            events.append(("status", sha, decision.state))
+
+        api.create_commit_status = recording
+        original = gate.evaluate_pr
+
+        def recording_eval(a, n, **kw):
+            events.append(("eval", n))
+
+        gate.evaluate_pr = recording_eval
+        try:
+            gate.run_gate("push", {"ref": "refs/heads/main"}, api)
+        finally:
+            gate.evaluate_pr = original
+        # Every candidate HEAD is withdrawn before the first evaluation runs.
+        first_eval = next(i for i, e in enumerate(events) if e[0] == "eval")
+        withdrawn = {sha for kind, sha, __ in events[:first_eval] if kind == "status"}
+        self.assertEqual(withdrawn, {HEAD, "2" * 40, "3" * 40})
+        self.assertTrue(all(state == "pending" for kind, _, state in events[:first_eval]))
+
+
     def test_closed_pull_request_does_not_post_status(self):
         api = FakeAPI(state="closed")
         self.assertIsNone(gate.evaluate_pr(api, 133))
