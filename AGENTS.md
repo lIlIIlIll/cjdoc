@@ -183,3 +183,9 @@ CHIR capability Gate 只有 G1–G7 全部实测 PASS 才能升级为 authoritat
 - 优先完成一组相关修复与受影响的测试后再推送；复审重点检查本轮修复及受影响的调用链，而不是主动对每次小提交重新启动无界的全量审计。
 - 记录各组意见的处理状态及证据：已修复、附反证不采纳、仍阻塞、范围外跟进。不得因 Review 轮次较多而忽略可证实的阻塞缺陷。
 - PR 的技术合并条件是原 Issue/PR 验收标准、真实阻塞问题和必要测试/CI 均满足；不要把 Review Thread 全部清零或固定审查轮数作为唯一条件。
+
+## Codex 复审完成门禁
+
+- 每次向 PR 推送批量修复后，核对最新 HEAD 对应的 `codex-review-current-head` 状态：只有官方 Codex 的 `code_review` 明确在该完整 SHA 上 `completed` 才算本轮复审完成。旧 SHA、仅有 Review Thread/表情、等待中或未收到审查结果，均不能代替完成证据。
+- 复审完成状态不等于“无缺陷”或自动批准；对未解决的真实阻塞缺陷继续按根因处理，并独立核对 Issue 验收标准和 CI。
+- 门禁脚本及事件触发逻辑见 `docs/codex-review-gate.md`；Github Required Check 需在门禁工作流合并并完成验证后由仓库 Ruleset / Branch Protection 启用。不得绕过缺失或 Pending 的门禁直接宣称验收通过。
