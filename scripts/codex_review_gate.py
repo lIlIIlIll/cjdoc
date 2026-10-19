@@ -67,14 +67,21 @@ def _read_review_state(comment: dict) -> dict:
     if not isinstance(state, dict) or not isinstance(state.get("code_review"), dict):
         raise ValueError("Codex summary is missing code_review state")
     review = state["code_review"]
-    if not isinstance(review.get("commit_sha"), str) or not SHA_PATTERN.fullmatch(
-        review["commit_sha"]
-    ):
-        raise ValueError("Codex summary has no full reviewed commit SHA")
-    if not isinstance(review.get("status"), str):
+    status = review.get("status")
+    if not isinstance(status, str):
         raise ValueError("Codex summary has no code_review status")
-    if not isinstance(review.get("has_unresolved_findings"), bool):
-        raise ValueError("Codex summary has no unresolved-findings flag")
+    reviewed_sha = review.get("commit_sha")
+    if reviewed_sha is not None and (
+        not isinstance(reviewed_sha, str) or not SHA_PATTERN.fullmatch(reviewed_sha)
+    ):
+        raise ValueError("Codex summary has an invalid reviewed commit SHA")
+    # In the real managed Codex summary, queued/running reviews carry null
+    # finding flags (and may not have selected a commit yet).
+    if status == "completed" and (
+        reviewed_sha is None
+        or not isinstance(review.get("has_unresolved_findings"), bool)
+    ):
+        raise ValueError("Completed Codex review lacks full SHA or finding flags")
     return review
 
 
@@ -99,6 +106,8 @@ def classify_codex_review(head_sha: str, comments: list[dict], pr_url: str) -> G
     except (ValueError, json.JSONDecodeError) as exc:
         return GateDecision("error", f"Unrecognized Codex summary: {exc}"[:140], target)
 
+    if code_review.get("commit_sha") is None:
+        return GateDecision("pending", "Awaiting Codex reviewed commit SHA", target)
     if code_review["commit_sha"] != head_sha:
         return GateDecision("pending", "Codex review covers an older HEAD", target)
 

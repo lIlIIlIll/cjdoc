@@ -78,6 +78,19 @@ class DecisionTests(unittest.TestCase):
             with self.subTest(status=status):
                 self.assertEqual(self.decide(summary(status=status)).state, "pending")
 
+    def test_running_review_has_null_finding_flags(self):
+        # Observed on live PR #134 while the Codex review was still running.
+        result = self.decide(summary(status="running", unresolved=None))
+        self.assertEqual(result.state, "pending")
+
+    def test_queued_review_without_commit_or_findings_is_pending(self):
+        result = self.decide(summary(sha=None, status="queued", unresolved=None))
+        self.assertEqual(result.state, "pending")
+
+    def test_completed_review_with_null_finding_flag_fails_closed(self):
+        result = self.decide(summary(status="completed", unresolved=None))
+        self.assertEqual(result.state, "error")
+
     def test_failed_and_cancelled_review_fail_closed(self):
         for status in ("failed", "error", "cancelled", "timed_out"):
             with self.subTest(status=status):
