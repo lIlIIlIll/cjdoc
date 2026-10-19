@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import sys
+import pathlib
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -598,6 +600,37 @@ class IntegrationTests(unittest.TestCase):
         finally:
             gate.evaluate_pr = original
         self.assertEqual(evaluated, [])
+
+
+    def test_failed_post_publish_scan_withdraws_an_already_published_head(self):
+        # The success is published, then the uniqueness re-check itself fails.
+        # Uniqueness was never reconfirmed, so the HEAD must not stay authorized.
+        api = FakeAPI()
+        calls = {"n": 0}
+        original = api.list_open_pull_requests
+
+        def failing():
+            calls["n"] += 1
+            if calls["n"] >= 3:  # 3rd call is the post-publish re-check
+                raise RuntimeError("transient API error")
+            return original()
+
+        api.list_open_pull_requests = failing
+        self.assertEqual(gate.evaluate_pr(api, 133).state, "success")
+        head_events = [(s.state, s.description) for sha, s in api.statuses if sha == HEAD]
+        self.assertEqual(head_events[0][0], "pending")
+        self.assertEqual(head_events[1][0], "success")
+        self.assertEqual(head_events[-1][0], "pending")
+        self.assertIn("could not be reconfirmed", head_events[-1][1])
+
+
+    def test_no_debug_probe_is_tracked_at_the_repository_root(self):
+        # A one-off live-API harness was committed by accident once; the
+        # repository forbids shipping debug code, so pin its absence.
+        root = pathlib.Path(__file__).resolve().parents[1]
+        tracked = subprocess.run(["git", "ls-files", "probe*.py", "gate_probe.py"],
+                                 cwd=root, capture_output=True, text=True).stdout.split()
+        self.assertEqual(tracked, [])
 
 
     def test_closed_pull_request_does_not_post_status(self):

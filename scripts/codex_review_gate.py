@@ -384,10 +384,12 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
     # two open PRs on the same commit with different bases, which the issue
     # already requires a maintainer to resolve.
     head_status = "not published"
+    published_on_head = False
     try:
         scope_now = api.list_open_pull_requests()
         if _head_scope_is_unique(number, head_sha, scope_now):
             api.create_commit_status(head_sha, decision)
+            published_on_head = True
             if _head_scope_is_unique(number, head_sha, api.list_open_pull_requests()):
                 head_status = "published"
             else:
@@ -400,7 +402,20 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
         else:
             head_status = "withheld (HEAD is shared with another open PR)"
     except (ValueError, RuntimeError) as error:
-        head_status = f"withheld ({error})"
+        # The re-check itself can fail (transient API error, malformed response).
+        # If the success was already published, uniqueness was never reconfirmed,
+        # so the HEAD must not be left authorized; withdraw it before reporting.
+        if published_on_head:
+            try:
+                revoke_head_status(
+                    api, head_sha,
+                    GateDecision("pending", "HEAD scope could not be reconfirmed", pr_url),
+                )
+                head_status = f"revoked after a failed re-check ({error})"
+            except (ValueError, RuntimeError) as revoke_error:
+                head_status = f"published, revoke failed ({revoke_error})"
+        else:
+            head_status = f"withheld ({error})"
     print(f"PR #{number} HEAD {head_sha} test merge {merge_sha}: {STATUS_CONTEXT} = {decision.state}")
     print(f"PR #{number} HEAD {head_sha}: {STATUS_CONTEXT} {head_status}")
     print(decision.description)
