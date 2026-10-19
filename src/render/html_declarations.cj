@@ -71,15 +71,39 @@ internal func appendPackageDeclarationGroups(out: RenderTextBuffer,
             case None => kindByName[symbol.name] = symbol.kind
         }
     }
+    let ordered = ArrayList<(String, ArrayList<SymbolDoc>)>()
     for (category in ["class", "struct", "interface", "enum", "typeAlias", "function",
         "property", "variable", "extend", "other"]) {
-        let group = match (groups.get(category)) {
-            case Some(value) => value
+        match (groups.get(category)) {
+            case Some(group) => ordered.add((category, group))
             case None => continue
         }
+    }
+    // A single visible category needs no redundant umbrella heading above a
+    // second heading for the same content; the category heading becomes the
+    // section and keeps the audience-visible count.
+    let singleCategory = ordered.size == 1
+    if (!singleCategory) {
+        out.append("<h2 id=\"declarations\">${label(locale, "Declarations", "声明")}</h2>\n")
+    }
+    let headingLevel = if (singleCategory) { "h2" } else { "h3" }
+    for (entry in ordered) {
+        let category = entry[0]
+        let group = entry[1]
         let (groupId, heading) = packageDeclarationHeading(category, locale)
+        // The sole group keeps the historical anchor so old deep links resolve.
+        // The id lives on the heading, never on the wrapping section, so the
+        // historical anchor has exactly one owner and one scroll target.
+        let anchorId = if (singleCategory) { "declarations" } else { groupId }
         let count = label(locale, " (${group.size})", "（${group.size}）")
-        out.append("<section class=\"declaration-group\"><h2 id=\"${groupId}\" data-cjdoc-toc-role=\"group\">${heading}${count}</h2><div class=\"declaration-list\">")
+        out.append("<section class=\"declaration-group\">")
+        // Merging the umbrella and category headings must not break either deep
+        // link. The category anchor survives as a non-heading alias, so the TOC
+        // (which only walks headings and roles) still sees one node.
+        if (singleCategory) {
+            out.append("<span class=\"section-anchor-alias\" id=\"${groupId}\" aria-hidden=\"true\"></span>")
+        }
+        out.append("<${headingLevel} id=\"${anchorId}\" data-cjdoc-toc-role=\"group\">${heading}${count}</${headingLevel}><div class=\"declaration-list\">")
         for (symbol in group) {
             appendDeclarationRow(out, symbol, links, locale,
                 category == "other" || kindByName[symbol.name].isEmpty())
