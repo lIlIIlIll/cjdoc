@@ -439,7 +439,15 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
                 )
                 head_status = f"revoked after a failed re-check ({error})"
             except (ValueError, RuntimeError) as revoke_error:
-                head_status = f"published, revoke failed ({revoke_error})"
+                # The compensating revocation failed too, so the HEAD still
+                # carries a success whose uniqueness was never reconfirmed.
+                # Continuing would leave invalid evidence authorizing a merge,
+                # which is worse than a failed run: raise so it is visible and
+                # a later event retries, and keep the original error in the chain.
+                raise RuntimeError(
+                    f"HEAD {head_sha} still authorized after a failed re-check and a "
+                    f"failed revocation: {revoke_error}"
+                ) from error
         else:
             head_status = f"withheld ({error})"
     print(f"PR #{number} HEAD {head_sha} test merge {merge_sha}: {STATUS_CONTEXT} = {decision.state}")

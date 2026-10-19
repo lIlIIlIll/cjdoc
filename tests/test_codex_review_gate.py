@@ -794,6 +794,38 @@ class IntegrationTests(unittest.TestCase):
         self.assertNotIn("success", [s.state for _, s in api.statuses])
 
 
+    def test_failed_compensating_revocation_fails_the_run(self):
+        # The success is published, the ownership re-check fails, and so does the
+        # compensating revocation. The HEAD still carries invalid evidence, so the
+        # run must fail loudly instead of reporting success.
+        api = FakeAPI()
+        calls = {"n": 0}
+        original_scan = api.list_open_pull_requests
+        original_status = api.create_commit_status
+
+        def failing_scan():
+            calls["n"] += 1
+            if calls["n"] >= 3:  # the post-publish re-check
+                raise RuntimeError("transient API error")
+            return original_scan()
+
+        published = {"success": False}
+
+        def failing_status(sha, decision):
+            # Only the COMPENSATING revocation fails: the success has already
+            # been published, so withdrawing it must be what breaks.
+            if decision.state == "success":
+                published["success"] = True
+            elif sha == HEAD and published["success"]:
+                raise RuntimeError("status API down")
+            return original_status(sha, decision)
+
+        api.list_open_pull_requests = failing_scan
+        api.create_commit_status = failing_status
+        with self.assertRaisesRegex(RuntimeError, "still authorized"):
+            gate.evaluate_pr(api, 133)
+
+
     def test_closed_pull_request_does_not_post_status(self):
         api = FakeAPI(state="closed")
         self.assertIsNone(gate.evaluate_pr(api, 133))
