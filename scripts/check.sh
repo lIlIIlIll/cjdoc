@@ -2,7 +2,7 @@
 # Staged acceptance gate for cjdoc.
 #
 # With no arguments this runs the complete local gate:
-#   preflight -> build -> native -> python-tools -> cli -> provider
+#   preflight -> build -> native -> python-tools -> cli -> provider -> html-a11y
 #
 # CI and Pages call only the stages they need, so no orchestration repeats the
 # whole gate. Every stage records machine-readable timing, identity and cache
@@ -34,6 +34,9 @@ Stages:
   cli           CLI, schema, golden, HTML, output-safety and fixture contracts
   provider      provider-plugin fixture run
   smoke         real-repository smoke against a fresh two-run output tree
+  html-a11y     real-browser package index responsive/semantic/accessibility matrix (issue #115);
+                requires Playwright + Chromium and a built binary, so it is not part
+                of the default chain: bash scripts/check.sh html-a11y --identity <manifest>
 
 Common options:
   --repo DIR           repository root (default: this script's parent)
@@ -93,7 +96,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "${stage_id}" in
-    ""|preflight|build|native|python-tools|cli|provider|smoke) ;;
+    ""|preflight|build|native|python-tools|cli|provider|smoke|html-a11y) ;;
     *) echo "check.sh: unknown stage: ${stage_id}" >&2; usage >&2; exit 2 ;;
 esac
 
@@ -122,6 +125,7 @@ stage_kind() {
         cli) echo cli ;;
         provider) echo provider ;;
         smoke) echo smoke ;;
+        html-a11y) echo browser ;;
         *) echo "check.sh: unknown stage: $1" >&2; exit 2 ;;
     esac
 }
@@ -135,6 +139,7 @@ dispatch_stage() {
         cli) stage_cli ;;
         provider) stage_provider ;;
         smoke) stage_smoke ;;
+        html-a11y) stage_html_a11y ;;
         *) echo "check.sh: unknown stage: $1" >&2; exit 2 ;;
     esac
 }
@@ -869,6 +874,20 @@ PY
     fi
 }
 
+
+# Issue #115: the package index responsive/semantic/accessibility matrix runs a
+# real Chromium over generated pages, so it needs Playwright and the built
+# binary. It is a required stage: a missing browser is a failure, not a skip.
+stage_html_a11y() {
+    cd "${repo}"
+    # No require_identity: this stage consumes only the built binary and the
+    # fixture projects, and the release job never runs it.
+    local matrix_root="${output_root:-${repo}/target/ci-evidence}/package-index-matrix"
+    "${python_cmd}" scripts/accept_package_index_matrix.py \
+        --binary "${main_binary:-${repo}/target/release/bin/main}" \
+        --output "${matrix_root}"
+}
+
 cd "${repo}"
 
 # Inner invocation: this process is the timed child of ci_stage.py, so it runs
@@ -905,6 +924,10 @@ if [[ -z "${stage}" ]]; then
         done < <(existing_build_outputs all)
     }
     trap 'status=$?; cleanup_full_gate; exit "${status}"' EXIT
+    # `html-a11y` is deliberately NOT part of the default chain: it needs a real
+    # Chromium, which the cross-platform gate and a bare developer machine do not
+    # have. CI runs it as its own required stage on Linux (see ci.yml), and the
+    # command below reproduces it locally.
     for stage in preflight build native python-tools cli provider; do
         run_stage "${stage}" "$(stage_kind "${stage}")"
     done

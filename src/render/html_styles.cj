@@ -14,7 +14,7 @@ internal let HTML_STYLE = """
   --faint: #536071;
   --line: #e3e7ee;
   --line-strong: #d1d8e3;
-  --accent: #2f6feb;
+  --accent: #2b64d4;
   --accent-strong: #2459bc;
   --accent-soft: #eaf1ff;
   --success: #21865b;

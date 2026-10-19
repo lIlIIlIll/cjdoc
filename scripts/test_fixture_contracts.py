@@ -28,6 +28,9 @@ CLI_CONTRACT_FIXTURES = {
     "highlight",
     # Package overview generation/replay and browser identity acceptance (issue #113).
     "package-overview", "package-overview-empty",
+    # Single-category, single-declaration package index used by the real-browser
+    # responsive/semantic/accessibility matrix (issue #115).
+    "package_index",
     # Optional real adapter/Future-cancellation host, exercised by
     # scripts/highlight_acceptance.py --api-probe (never a default Node dependency).
     "highlight_host",

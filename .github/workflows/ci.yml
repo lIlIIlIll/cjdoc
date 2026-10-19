@@ -118,6 +118,17 @@ jobs:
           name: ${{ needs.candidate-linux.outputs.artifact_name }}
           path: ${{ runner.temp }}/cjdoc-candidate
 
+      # Issue #115: the package index responsive/semantic/accessibility matrix
+      # drives a real Chromium, so the browser is provisioned here and the stage
+      # is mandatory once installed. It is a separate step from the ordinary
+      # stages because only this Linux job has a browser.
+      - name: Install browser acceptance dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check -r scripts/requirements-showcase.txt
+          python -m playwright install --with-deps chromium
+
       - name: Run the remaining acceptance stages
         shell: bash
         env:
@@ -147,6 +158,9 @@ jobs:
             --worker-binary target/release/bin/chir-worker-main \
             --output-root "${RUNNER_TEMP}/cjdoc-stage-cli"
           bash scripts/check.sh provider --repo . --identity "${identity}"
+          bash scripts/check.sh html-a11y --repo . --identity "${identity}" \
+            --main-binary target/release/bin/main \
+            --output-root "${RUNNER_TEMP}/cjdoc-stage-html-a11y"
           bash scripts/check.sh smoke --repo . --identity "${identity}" \
             --main-binary target/release/bin/main \
             --output-root "${RUNNER_TEMP}/cjdoc-stage-smoke"

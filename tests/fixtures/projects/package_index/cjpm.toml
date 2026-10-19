@@ -1,0 +1,8 @@
+[package]
+name = "package_index"
+version = "1.0.0"
+cjc-version = "1.2.0"
+output-type = "static"
+description = "Single-category package index fixture"
+
+[dependencies]

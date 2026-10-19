@@ -7,7 +7,7 @@ colors:
   bg-light: "#fbfcfe"
   surface-light: "#ffffff"
   line-light: "#e3e7ee"
-  accent-light: "#2f6feb"
+  accent-light: "#2b64d4"
   ink-dark: "#f1f5fb"
   muted-dark: "#9aa5b5"
   bg-dark: "#0b0e13"
@@ -64,7 +64,7 @@ The layout has three persistent jobs on desktop: navigation on the left, the Doc
 
 ## Colors
 
-Light mode uses `#fbfcfe` as the page background and `#ffffff` for structural surfaces. `#171b24` is primary ink, `#626b7b` supports secondary copy, and `#e3e7ee` establishes quiet boundaries. `#2f6feb` is reserved for links, active navigation, focus, and explicit actions.
+Light mode uses `#fbfcfe` as the page background and `#ffffff` for structural surfaces. `#171b24` is primary ink, `#626b7b` supports secondary copy, and `#e3e7ee` establishes quiet boundaries. `#2b64d4` is reserved for links, active navigation, focus, and explicit actions.
 
 Dark mode swaps to `#0b0e13`, `#10141b`, and `#151b24` while keeping the same hierarchy. The accent becomes `#80a8ff` for contrast. State colors are semantic: green for resolved, amber for partial, and red for unavailable or ambiguous.
 
