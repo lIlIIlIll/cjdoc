@@ -593,24 +593,78 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(evaluated, [])
 
 
-    def test_failed_post_publish_scan_withdraws_an_already_published_head(self):
+    def test_failed_post_publish_scan_withdraws_and_fails_the_run(self):
+        # The success is published, then the post-publish re-check fails. Nothing
+        # reconfirmed uniqueness, so the HEAD is withdrawn AND the run fails: the
+        # caller must not report success for a conclusion it could not verify.
         api = FakeAPI()
-        calls = {"n": 0}
+        published = {"yet": False}
+        base_status = api.create_commit_status
+
+        def tracking_status(sha, decision):
+            base_status(sha, decision)
+            if sha == HEAD and decision.state == "success":
+                published["yet"] = True
+
+        api.create_commit_status = tracking_status
         original = api.list_open_pull_requests
 
         def failing():
-            calls["n"] += 1
-            if calls["n"] >= 3:  # the post-publish re-check
+            if published["yet"]:
                 raise RuntimeError("transient API error")
             return original()
 
         api.list_open_pull_requests = failing
-        self.assertEqual(gate.evaluate_pr(api, 133).state, "success")
+        with self.assertRaises(RuntimeError):
+            gate.evaluate_pr(api, 133)
         head_events = [(s.state, s.description) for sha, s in api.statuses if sha == HEAD]
         self.assertIn("success", [state for state, _ in head_events])
         self.assertEqual(head_events[-1][0], "pending")
-        self.assertIn("could not be reconfirmed", head_events[-1][1])
 
+    def test_failed_compensating_revocation_fails_the_run(self):
+        # The success is published, the ownership re-check fails, and so does the
+        # compensating revocation. The HEAD still carries invalid evidence, so the
+        # run must fail loudly instead of reporting success.
+        api = FakeAPI()
+        published = {"success": False}
+        original_status = api.create_commit_status
+        original_scan = api.list_open_pull_requests
+
+        def failing_status(sha, decision):
+            if decision.state == "success":
+                published["success"] = True
+            elif published["success"] and sha == HEAD:
+                raise RuntimeError("status API down")
+            return original_status(sha, decision)
+
+        def failing_scan():
+            if published["success"]:
+                raise RuntimeError("transient API error")
+            return original_scan()
+
+        api.create_commit_status = failing_status
+        api.list_open_pull_requests = failing_scan
+        with self.assertRaisesRegex(RuntimeError, "revocation failed"):
+            gate.evaluate_pr(api, 133)
+
+    def test_summary_deleted_during_publication_is_withdrawn(self):
+        # A concurrent summary-deletion run publishes `pending` while this one is
+        # publishing `success`. The post-publication revalidation must notice the
+        # evidence is gone and withdraw, or deleted evidence would authorize.
+        api = FakeAPI()
+        base_status = api.create_commit_status
+
+        def deleting_status(sha, decision):
+            base_status(sha, decision)
+            if sha == HEAD and decision.state == "success":
+                api.comments = []  # the summary is deleted right after the write
+
+        api.create_commit_status = deleting_status
+        gate.evaluate_pr(api, 133)
+        head_events = [(s.state, s.description) for sha, s in api.statuses if sha == HEAD]
+        self.assertIn("success", [state for state, _ in head_events])
+        self.assertEqual(head_events[-1][0], "pending")
+        self.assertIn("evidence changed", head_events[-1][1])
 
 
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
@@ -822,7 +876,7 @@ class IntegrationTests(unittest.TestCase):
 
         api.list_open_pull_requests = failing_scan
         api.create_commit_status = failing_status
-        with self.assertRaisesRegex(RuntimeError, "still authorized"):
+        with self.assertRaisesRegex(RuntimeError, "revocation failed"):
             gate.evaluate_pr(api, 133)
 
 

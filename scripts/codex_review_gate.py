@@ -410,46 +410,52 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
     # two open PRs on the same commit with different bases, which the issue
     # already requires a maintainer to resolve.
     head_status = "not published"
-    published_on_head = False
+    attempted_publish = False
     try:
         scope_now = api.list_open_pull_requests()
         if _head_scope_is_unique(number, head_sha, scope_now):
+            attempted_publish = True
             api.create_commit_status(head_sha, decision)
-            published_on_head = True
-            if _head_scope_is_unique(number, head_sha, api.list_open_pull_requests()):
-                head_status = "published"
-            else:
-                # A second PR began sharing this HEAD while we published.
+            # Revalidate BOTH conditions that justified this success, after the
+            # write. A concurrent run can change either one while we publish:
+            # HEAD ownership (another PR starts sharing it) or the review
+            # evidence itself (the Codex summary was edited or deleted, and the
+            # summary-deletion run already published `pending`). Checking only
+            # ownership would let this older run re-authorize deleted evidence.
+            fresh_decision = classify_codex_review(head_sha, api.list_issue_comments(number), pr_url)
+            still_owned = _head_scope_is_unique(number, head_sha, api.list_open_pull_requests())
+            if fresh_decision != decision or not still_owned:
+                reason = ("the Codex review evidence changed"
+                          if fresh_decision != decision else "the HEAD became shared")
                 revoke_head_status(
                     api, head_sha,
-                    GateDecision("pending", "HEAD shared with another open PR; withheld", pr_url),
+                    GateDecision("pending", f"HEAD conclusion withdrawn: {reason}", pr_url),
                 )
-                head_status = "revoked (HEAD became shared)"
+                head_status = f"revoked ({reason})"
+                # Withdraw only. This revalidation exists to stop an stale write
+                # from standing; it must never upgrade the decision, so the
+                # caller keeps the decision this run actually computed.
+            else:
+                head_status = "published"
         else:
             head_status = "withheld (HEAD is shared with another open PR)"
     except (ValueError, RuntimeError) as error:
-        # The re-check itself can fail (transient API error, malformed response).
-        # If the success was already published, uniqueness was never reconfirmed,
-        # so the HEAD must not be left authorized; withdraw it before reporting.
-        if published_on_head:
+        if attempted_publish:
+            # The write itself failed, so this run cannot say whether the HEAD
+            # carries its conclusion. Withdraw it, and if even that fails, fail
+            # the run: a swallowed error would leave a completed review pending
+            # (or worse, stale evidence standing) with no event to retry it.
             try:
                 revoke_head_status(
                     api, head_sha,
-                    GateDecision("pending", "HEAD scope could not be reconfirmed", pr_url),
+                    GateDecision("pending", "HEAD publication failed; not authorized", pr_url),
                 )
-                head_status = f"revoked after a failed re-check ({error})"
             except (ValueError, RuntimeError) as revoke_error:
-                # The compensating revocation failed too, so the HEAD still
-                # carries a success whose uniqueness was never reconfirmed.
-                # Continuing would leave invalid evidence authorizing a merge,
-                # which is worse than a failed run: raise so it is visible and
-                # a later event retries, and keep the original error in the chain.
                 raise RuntimeError(
-                    f"HEAD {head_sha} still authorized after a failed re-check and a "
-                    f"failed revocation: {revoke_error}"
+                    f"HEAD {head_sha} publication failed and its revocation failed: {revoke_error}"
                 ) from error
-        else:
-            head_status = f"withheld ({error})"
+            raise
+        head_status = f"withheld ({error})"
     print(f"PR #{number} HEAD {head_sha} test merge {merge_sha}: {STATUS_CONTEXT} = {decision.state}")
     print(f"PR #{number} HEAD {head_sha}: {STATUS_CONTEXT} {head_status}")
     print(decision.description)
