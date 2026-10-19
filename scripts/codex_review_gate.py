@@ -550,14 +550,20 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
         # otherwise terminate this fanout mid-way and leave the later HEADs
         # still authorized against the previous base, with no chance to run the
         # error handling. Revocation is cheap and can only deny.
-        for candidate in candidates:
-            head = (api.get_pull_request(candidate).get("head") or {}).get("sha")
-            if isinstance(head, str) and SHA_PATTERN.fullmatch(head):
-                revoke_head_status(
-                    api, head,
-                    GateDecision("pending", "Base branch advanced; revalidating", ""),
-                )
         failures: list[str] = []
+        for candidate in candidates:
+            # Best effort per candidate: a transient failure here must not abort
+            # the loop, or the later HEADs would keep their previous-base success
+            # while this run reports the first error.
+            try:
+                head = (api.get_pull_request(candidate).get("head") or {}).get("sha")
+                if isinstance(head, str) and SHA_PATTERN.fullmatch(head):
+                    revoke_head_status(
+                        api, head,
+                        GateDecision("pending", "Base branch advanced; revalidating", ""),
+                    )
+            except (ValueError, RuntimeError) as error:
+                failures.append(f"PR #{candidate} revocation: {error}")
         for candidate in candidates:
             # Every candidate must be attempted: the push is the only guaranteed
             # event for these unchanged HEADs, so one transient failure must not

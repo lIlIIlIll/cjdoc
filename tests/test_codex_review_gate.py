@@ -868,6 +868,41 @@ class IntegrationTests(unittest.TestCase):
         self.assertTrue(all(state == "pending" for kind, _, state in events[:first_eval]))
 
 
+    def test_pre_revocation_continues_after_one_candidate_fails(self):
+        # A transient failure while withdrawing one candidate must not abort the
+        # revocation fanout: the later HEADs would otherwise stay authorized
+        # against the previous base.
+        api = FakeAPI()
+        others = [
+            {"number": n, "head": {"sha": str(n) * 40}, "base": {"sha": OLD_HEAD, "ref": "main"},
+             "merge_commit_sha": None}
+            for n in (200, 300)
+        ]
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133), *others]
+        by_number = {133: HEAD, 200: "2" * 40, 300: "3" * 40}
+        base_request = api.get_pull_request
+
+        def per_number(number):
+            if number == 200:
+                raise RuntimeError("transient lookup failure")
+            value = base_request(number)
+            value["head"] = {"sha": by_number[number]}
+            return value
+
+        api.get_pull_request = per_number
+        revoked = []
+        api.create_commit_status = lambda sha, d: revoked.append((sha, d.state))
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: None
+        try:
+            with self.assertRaisesRegex(RuntimeError, "PR #200 revocation"):
+                gate.run_gate("push", {"ref": "refs/heads/main"}, api)
+        finally:
+            gate.evaluate_pr = original
+        # The candidates after the failing one were still withdrawn.
+        self.assertIn(("3" * 40, "pending"), revoked)
+
+
     def test_closed_pull_request_does_not_post_status(self):
         api = FakeAPI(state="closed")
         self.assertIsNone(gate.evaluate_pr(api, 133))
