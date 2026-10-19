@@ -110,7 +110,9 @@ private func dependencyReceiptEntry(capture: DependencyIdentityCapture, owner: D
         }
         valid = valid && claimed == observed
         let actualVersion = if (kind == "source") {
-            dependencyManifestVersion(readTextBounded(Path(path).join("cjpm.toml"), MAX_MANIFEST_ADAPTER_BYTES))
+            // Use the version paired with the identity above; an independent read
+            // could publish an identity/version pair that never existed together.
+            try { capture.manifestVersion(path) } catch (_: Exception) { "" }
         } else { "" }
         for (existing in capture.entries) {
             if (existing.moduleId != owner.id || existing.name != name || existing.kind != kind) { continue }

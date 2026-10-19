@@ -186,6 +186,22 @@ internal class NavigationEvidence {
                 domainFail(path + ".dependencyInstanceId",
                     "selected navigation dependency must belong to the occurrence's owning module")
             }
+            // The producer selects the instance through dependencyFor(moduleId,
+            // set.library), so a module owning several dependencies cannot lend
+            // an unrelated same-identity instance to a selected badge. When the
+            // library alias cannot be resolved from Doc IR alone (organization-
+            // qualified names), the relationship is unprovable here and is left
+            // to the identity/owner checks above rather than guessed.
+            if (selectedEvidence && value.documentSetId != "" && moduleId != "") {
+                if (let Some(documentSet) <- documentSets.get(value.documentSetId)) {
+                    if (let Some(selected) <- dependencyFor(moduleId, documentSet.library)) {
+                        if (selected.instanceId != dependency.instanceId) {
+                            domainFail(path + ".dependencyInstanceId",
+                                "selected navigation must reference the dependency selected for the document set library")
+                        }
+                    }
+                }
+            }
             // Compatible mappings and unverified manual references may select a
             // document API identity different from the actual dependency bytes.
             if (value.matchLevel == "exact" && value.apiIdentity != dependency.identity) {

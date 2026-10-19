@@ -109,6 +109,22 @@ internal class DependencyIdentityCapture {
         entries.add(value)
     }
 
+    // The manifest text that supplies a version must belong to the same source
+    // observation as the identity; a separate read could see a rewritten file
+    // whose digest this call cannot attribute to the identity it was paired with.
+    func manifestVersion(path: String): String {
+        let manifestBytes = readAuxiliaryFileBounded(Path(path).join("cjpm.toml"), MAX_MANIFEST_ADAPTER_BYTES,
+            SourceAuxiliaryBudget(MAX_MANIFEST_ADAPTER_BYTES, MAX_MANIFEST_ADAPTER_BYTES))
+        if (let Some(observed) <- manifestDigests.get(canonicalize(path).toString() + "|source")) {
+            if (observed != Sha256Digest.digestBytes(manifestBytes)) {
+                throw IllegalArgumentException("dependency manifest changed while observing")
+            }
+        }
+        dependencyManifestVersion(try { String.fromUtf8(manifestBytes) } catch (_: Exception) {
+            throw IllegalArgumentException("dependency manifest is not valid UTF-8")
+        })
+    }
+
     func observe(owner: String, name: String, path: String, evidence: String): Unit {
         try {
             sourceRoots[owner + "\nsource\n" + name] = canonicalize(path).toString()
@@ -118,17 +134,7 @@ internal class DependencyIdentityCapture {
             // rewritten manifest whose digest the end-of-graph check cannot
             // attribute to this call, pairing an old tree identity with a new
             // version.
-            let manifestPath = Path(path).join("cjpm.toml")
-            let manifestBytes = readAuxiliaryFileBounded(manifestPath, MAX_MANIFEST_ADAPTER_BYTES,
-                SourceAuxiliaryBudget(MAX_MANIFEST_ADAPTER_BYTES, MAX_MANIFEST_ADAPTER_BYTES))
-            if (let Some(observed) <- manifestDigests.get(canonicalize(path).toString() + "|source")) {
-                if (observed != Sha256Digest.digestBytes(manifestBytes)) {
-                    throw IllegalArgumentException("dependency manifest changed while observing")
-                }
-            }
-            let version = dependencyManifestVersion(try { String.fromUtf8(manifestBytes) } catch (_: Exception) {
-                throw IllegalArgumentException("dependency manifest is not valid UTF-8")
-            })
+            let version = manifestVersion(path)
             var conflict = false
             for (entry in entries) {
                 if (entry.moduleId == owner && entry.name == name && entry.kind == "source" &&
