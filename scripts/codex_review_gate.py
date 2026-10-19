@@ -264,6 +264,24 @@ def _merge_scope_is_unique(
     return True
 
 
+def revoke_head_status(api: GitHubAPI, head_sha: str, decision: GateDecision) -> None:
+    """Withdraw a possible earlier `success` from the HEAD.
+
+    A previous run -- possibly for a different PR that reused this commit -- may
+    have left `success` here, and the ruleset reads the HEAD, so a stale success
+    would authorize a merge this run has not verified.
+
+    Only a non-success decision may be published by this function, and it is
+    published unconditionally: denial is always safe. Even if another open PR
+    currently shares this HEAD, no legitimate `success` can exist there (that PR
+    would have had to refuse one too), so withdrawing it cannot destroy a valid
+    conclusion. Leaving a stale `success` would be the dangerous outcome.
+    """
+    if decision.state == "success":
+        raise ValueError("revoke_head_status must not publish a success")
+    api.create_commit_status(head_sha, decision)
+
+
 def _head_scope_is_unique(number: int, head_sha: str, open_prs: list[dict]) -> bool:
     """A status on the raw HEAD is safe only when one open PR owns that HEAD.
 
@@ -300,9 +318,18 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
     if not isinstance(head_sha, str) or not SHA_PATTERN.fullmatch(head_sha):
         raise ValueError("GitHub PR response lacks a full HEAD SHA")
 
-    # NEVER publish a passing status on the raw head: two distinct PRs may
-    # share that SHA while having different base-dependent diffs and reviews.
-    # The unique test-merge SHA becomes available after GitHub computes mergeability.
+    # A HEAD can retain `success` from an earlier run, and this PR may be a new
+    # one reusing the same commit. Revoke the HEAD FIRST, before any branch that
+    # returns early, so a missing/invalid test merge cannot leave an old success
+    # standing as an authorization for the check the ruleset reads.
+    revoke_head_status(
+        api, head_sha,
+        GateDecision("pending", "Verifying PR-specific Codex review evidence", pr_url),
+    )
+
+    # A passing status is published on the test-merge SHA, never blindly on the
+    # raw head: two distinct PRs may share that SHA with different base-dependent
+    # diffs and reviews. The HEAD is written only under `_head_scope_is_unique`.
     if (
         not isinstance(base_sha, str)
         or not SHA_PATTERN.fullmatch(base_sha)
@@ -311,6 +338,7 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
         or merge_sha == head_sha
     ):
         print(f"PR #{number}: no candidate test-merge SHA; keep gate unreported")
+        # The HEAD was already revoked above, so no second status is needed.
         return GateDecision("pending", "Awaiting current PR test merge", pr_url)
 
     # Revoke any previous success BEFORE further network calls. If the API
@@ -319,17 +347,6 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
         merge_sha,
         GateDecision("pending", "Verifying PR-specific Codex review evidence", pr_url),
     )
-    # Withhold the HEAD status while revalidating. A previous run may have left a
-    # success there, and the ruleset reads the HEAD: if this run fails midway the
-    # stale success must not survive as an authorization.
-    try:
-        api.create_commit_status(
-            head_sha,
-            GateDecision("pending", "Verifying PR-specific Codex review evidence", pr_url),
-        )
-    except (ValueError, RuntimeError):
-        # Revocation is best effort; the merge_sha revocation above still ran.
-        pass
     merge = api.get_commit(merge_sha)
     parents = merge.get("parents") or []
     if not (
@@ -358,11 +375,30 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
     # verified result must also land there or no merge can ever satisfy it.
     # This is guarded: only a HEAD that exactly one open PR owns gets a status,
     # so a shared HEAD can never carry another PR's conclusion.
+    #
+    # The scope is re-read immediately before publishing and re-verified after,
+    # because another PR can start sharing this HEAD in between. A status belongs
+    # to a SHA, not a PR, so the window cannot be closed completely; publishing
+    # success only when the scope still holds, and revoking at once if it stops
+    # holding, is the strongest guarantee this API allows. The residual case is
+    # two open PRs on the same commit with different bases, which the issue
+    # already requires a maintainer to resolve.
     head_status = "not published"
     try:
-        if _head_scope_is_unique(number, head_sha, open_prs):
+        scope_now = api.list_open_pull_requests()
+        if _head_scope_is_unique(number, head_sha, scope_now):
             api.create_commit_status(head_sha, decision)
-            head_status = "published"
+            if _head_scope_is_unique(number, head_sha, api.list_open_pull_requests()):
+                head_status = "published"
+            else:
+                # A second PR began sharing this HEAD while we published.
+                revoke_head_status(
+                    api, head_sha,
+                    GateDecision("pending", "HEAD shared with another open PR; withheld", pr_url),
+                )
+                head_status = "revoked (HEAD became shared)"
+        else:
+            head_status = "withheld (HEAD is shared with another open PR)"
     except (ValueError, RuntimeError) as error:
         head_status = f"withheld ({error})"
     print(f"PR #{number} HEAD {head_sha} test merge {merge_sha}: {STATUS_CONTEXT} = {decision.state}")

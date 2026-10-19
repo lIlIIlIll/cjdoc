@@ -20,7 +20,7 @@ Gate 只读取 **默认分支上的可信脚本**，不执行 PR 代码；其 `G
 4. 在 GitHub 仓库 **Settings → Rules → Rulesets**（或 Settings → Branches → Branch protection rules）找到适用于 `main` 的规则，启用 **Require status checks to pass**，将 `codex-review-current-head` 设为 Required；如可指定状态来源，选择产生该状态的 GitHub Actions App。保留已有 CI Required Checks。
 5. 对更新后的 PR 再次 Push，核对旧 HEAD 和旧测试合并提交的成功不能满足新提交。再测试删除 Codex Summary 时原有 Success 能恢复为 Pending。通过前不得合并；Review 中的真实阻塞缺陷仍需单独处理。
 
-门禁始终仅在证明 test merge commit 属于当前 PR 后才发布状态；HEAD 上的结论还要额外满足“该 HEAD 在本列出仅被本 PR 拥有”。若当前 PR 无测试合并提交或它缺失本门禁状态，则不得把另一个 PR 在相同原始 HEAD 上的结果当作替代。HEAD 状态与测试合并提交状态同时发布、同时撤回：重新验证开始时两者先置 `pending`，中途失败不会留下旧的 `success`。对直接推送受保护分支、绕过保护和合并队列的行为，本门禁并不单独提供防护，应由 GitHub Ruleset 另行限制；使用 merge queue 前还需专门集成 `merge_group`。
+门禁始终仅在证明 test merge commit 属于当前 PR 后才发布状态；HEAD 上的结论还要额外满足“该 HEAD 在本列出仅被本 PR 拥有”。若当前 PR 无测试合并提交或它缺失本门禁状态，则不得把另一个 PR 在相同原始 HEAD 上的结果当作替代。HEAD 状态与测试合并提交状态同时撤回：重新验证开始时两者先置 `pending`，且**在任何提前返回分支之前**完成，因此即使本次没有可验证的测试合并提交、或中途 API 失败，也不会留下旧的 `success` 作为授权。发布 `success` 前会紧邻重读开放 PR 作用域、发布后再复核一次；若复核发现该 HEAD 已被第二个开放 PR 共享，立即撤回为 `pending`（status 属于 SHA 而非 PR，这个窗口无法彻底关闭，因此取"能在窗口内撤销"的最强保证）。撤销路径只允许发布非 `success` 状态（断言强制），因为它只能拒绝、不能授权。对直接推送受保护分支、绕过保护和合并队列的行为，本门禁并不单独提供防护，应由 GitHub Ruleset 另行限制；使用 merge queue 前还需专门集成 `merge_group`。
 
 ## 排查与人工同步
 
