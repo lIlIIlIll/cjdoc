@@ -264,6 +264,30 @@ def _merge_scope_is_unique(
     return True
 
 
+def _head_scope_is_unique(number: int, head_sha: str, open_prs: list[dict]) -> bool:
+    """A status on the raw HEAD is safe only when one open PR owns that HEAD.
+
+    The ruleset's required check is evaluated against the PR HEAD, but a status
+    belongs to a SHA+context and not to a PR. Publishing on the HEAD is therefore
+    allowed only when every open PR carrying that same HEAD is the current one --
+    otherwise two PRs with different bases would share one review conclusion,
+    which is exactly what the test-merge-only design was protecting against.
+    """
+    found_current = False
+    for other in open_prs:
+        if not isinstance(other, dict) or not isinstance(other.get("number"), int):
+            raise ValueError("invalid entry in open-PR response")
+        if (other.get("head") or {}).get("sha") != head_sha:
+            continue
+        if other["number"] == number:
+            found_current = True
+        else:
+            return False
+    if not found_current:
+        raise RuntimeError("current PR is missing from open-PR response")
+    return True
+
+
 def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -> GateDecision | None:
     pr = api.get_pull_request(number)
     if pr.get("state") != "open":
@@ -295,6 +319,17 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
         merge_sha,
         GateDecision("pending", "Verifying PR-specific Codex review evidence", pr_url),
     )
+    # Withhold the HEAD status while revalidating. A previous run may have left a
+    # success there, and the ruleset reads the HEAD: if this run fails midway the
+    # stale success must not survive as an authorization.
+    try:
+        api.create_commit_status(
+            head_sha,
+            GateDecision("pending", "Verifying PR-specific Codex review evidence", pr_url),
+        )
+    except (ValueError, RuntimeError):
+        # Revocation is best effort; the merge_sha revocation above still ran.
+        pass
     merge = api.get_commit(merge_sha)
     parents = merge.get("parents") or []
     if not (
@@ -319,7 +354,19 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
         decision = classify_codex_review(head_sha, comments, pr_url)
 
     api.create_commit_status(merge_sha, decision)
+    # The ruleset's required check is evaluated against the PR HEAD, so the
+    # verified result must also land there or no merge can ever satisfy it.
+    # This is guarded: only a HEAD that exactly one open PR owns gets a status,
+    # so a shared HEAD can never carry another PR's conclusion.
+    head_status = "not published"
+    try:
+        if _head_scope_is_unique(number, head_sha, open_prs):
+            api.create_commit_status(head_sha, decision)
+            head_status = "published"
+    except (ValueError, RuntimeError) as error:
+        head_status = f"withheld ({error})"
     print(f"PR #{number} HEAD {head_sha} test merge {merge_sha}: {STATUS_CONTEXT} = {decision.state}")
+    print(f"PR #{number} HEAD {head_sha}: {STATUS_CONTEXT} {head_status}")
     print(decision.description)
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
