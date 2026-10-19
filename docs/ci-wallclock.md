@@ -77,11 +77,18 @@ and is not on the critical path.
 
 ## Build reuse is real, not nominal
 
-On every Pages run sampled, `Build Linux candidate locally` is recorded at
-**0 ms** while `Reuse the CI Linux candidate` succeeds (~17 s). Pages therefore
-consumes the CI-built Linux candidate instead of building a second copy
-(CI-05.1). The duplicate work removed is the producer's own build, measured at
-4.4–4.7 m on the candidate job.
+On five of the six Pages runs sampled (`39198382577`, `38640674884`,
+`38630501893`, `38606162319`, `38600196225`), `Reuse the CI Linux candidate`
+succeeds while `Build Linux candidate locally` is reported at **0 ms**. Pages
+therefore consumes the CI-built Linux candidate instead of building a second
+copy (CI-05.1), and the duplicate work removed is the producer's own build,
+measured at 4.4–5.2 m on the candidate job.
+
+The exception is `39213457031` (and `39208991635`), where `Build Linux candidate
+locally` ran for 5.2 m and reuse was skipped. That is the designed fallback, not
+a regression: both runs' paired CI runs were cancelled by the next push, so no
+CI candidate artifact existed to reuse. The behaviour is therefore conditional
+on the upstream run finishing, not unconditional.
 
 ## What this does not establish
 
