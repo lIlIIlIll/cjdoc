@@ -38,7 +38,7 @@ WALLCLOCK_SCHEMA = "cjdoc.ci-wallclock/1"
 BUILD_MANIFEST_SCHEMA = "cjdoc.ci-build-manifest/1"
 STAGE_KINDS = frozenset({
     "build", "native", "python", "cli", "provider", "smoke", "site-assemble",
-    "browser-shard", "reading", "source-reproduction", "merge", "package",
+    "browser-shard", "browser", "reading", "source-reproduction", "merge", "package",
     "publish", "sdk",
 })
 STAGES_FILE = "stages.json"

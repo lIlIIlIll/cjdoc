@@ -34,9 +34,13 @@ private func packageRowsHtml(documentation: DocumentationSet, locale: String): S
     throw IllegalArgumentException("missing package page")
 }
 
+// Both the multi-category (umbrella H2) and single-category (the group heading
+// itself) shapes expose the same #declarations anchor, so the historical deep
+// link keeps resolving whichever shape a package projects.
 private func declarationRowsHtml(html: String): String {
-    let start = html.indexOf("<h2 id=\"declarations\"").getOrThrow()
-    html[start..html.indexOf("</main>").getOrThrow()]
+    let marker = html.indexOf("id=\"declarations\"").getOrThrow()
+    let sectionStart = html[0..marker].lastIndexOf("<section").getOrThrow()
+    html[sectionStart..html.indexOf("</main>").getOrThrow()]
 }
 
 @Test
@@ -142,5 +146,77 @@ class HtmlPackageDeclarationTest {
         @Expect(html.contains("public func read(value: String = &quot;&lt;&gt;&amp;&quot;): Unit"))
         @Expect(!html.contains("<p class=\"declaration-description\"></p>"))
         @Expect(!html.contains("<code class=\"declaration-signature\"></code>"))
+    }
+
+    // Issue #112: the anchor must resolve for the far more common single-category
+    // package too, without a heading that duplicates the section it introduces.
+    @TestCase
+    func singleCategoryPackageKeepsTheDeclarationsAnchorWithoutDuplicateHeading(): Unit {
+        let onlyFunctions = rowDocumentation([
+            rowSymbol("function:alpha#g0()", "alpha", "function", "public func alpha(): Unit"),
+            rowSymbol("function:beta#g0()", "beta", "function", "public func beta(): Unit")
+        ])
+        let cases = [("en", "Functions", " (2)"), ("zh-CN", "函数", "（2）")]
+        for (index in 0..cases.size) {
+            let locale = cases[index][0]
+            let heading = cases[index][1]
+            let count = cases[index][2]
+            let html = packageRowsHtml(onlyFunctions, locale)
+            @Expect(html.split("id=\"declarations\"").size, 2)
+            @Expect(html.contains("<h2 id=\"declarations\" data-cjdoc-toc-role=\"group\">" + heading + count + "</h2>"))
+            @Expect(!html.contains("<h2 id=\"functions\""))
+            @Expect(!html.contains("<h2 id=\"declarations\">" + if (locale == "en") { "Declarations" } else { "声明" }))
+        }
+    }
+
+    // A single category is the section: no umbrella heading, no second heading
+    // for the same content, and no empty pseudo-section in the TOC.
+    @TestCase
+    func multipleCategoriesNestUnderOneUmbrellaHeadingAndPruneEmptyGroups(): Unit {
+        let documentation = rowDocumentation([
+            rowSymbol("class:Entry#g0()", "Entry", "class", "public class Entry"),
+            rowSymbol("function:run#g0()", "run", "function", "public func run(): Unit")
+        ])
+        let html = packageRowsHtml(documentation, "en")
+        @Expect(html.split("<h2 id=\"declarations\"").size, 2)
+        @Expect(html.contains("<h3 id=\"classes\" data-cjdoc-toc-role=\"group\">Classes (1)</h3>"))
+        @Expect(html.contains("<h3 id=\"functions\" data-cjdoc-toc-role=\"group\">Functions (1)</h3>"))
+        // No heading is emitted for a category the projection did not produce.
+        @Expect(!html.contains("id=\"structs\""))
+        @Expect(!html.contains("id=\"enums\""))
+        @Expect(!html.contains("(0)"))
+        @Expect(!html.contains("（0）"))
+    }
+
+    // An audience that sees no declarations still gets a labelled, TOC-visible
+    // section instead of a bare paragraph with no anchor. The page exists because
+    // the package has re-exports, which is what makes an empty projection
+    // renderable at all (html_routing.cj keeps exactly those packages).
+    @TestCase
+    func emptyProjectionKeepsALabelledDeclarationsSection(): Unit {
+        let reExport = ReExportDoc(
+            "cjdoc:reexport:v1:1111111111111111111111111111111111111111111111111111111111111111",
+            "single", "fixture", "unavailable", SourceRange("src/api.cj",
+                SourcePosition(1, 1, 0), SourcePosition(1, 2, 1)))
+        let documentation = rowDocumentation([])
+        let packages = ArrayList<PackageDoc>()
+        for (pkg in documentation.packages) {
+            packages.add(PackageDoc(pkg.name, pkg.moduleId,
+                sourceFiles: pkg.sourceFiles.toArray(), symbolIds: pkg.symbolIds.toArray(),
+                reExports: [reExport]))
+        }
+        let document = DocumentationSet(documentation.generator, documentation.status,
+            documentation.project, documentation.configuration,
+            providers: documentation.providers.toArray(), modules: documentation.modules.toArray(),
+            packages: packages.toArray(), files: documentation.files.toArray(),
+            declarations: documentation.declarations.toArray())
+        let cases = [("en", "Declarations"), ("zh-CN", "声明")]
+        for (index in 0..cases.size) {
+            let locale = cases[index][0]
+            let heading = cases[index][1]
+            let html = packageRowsHtml(document, locale)
+            @Expect(html.contains("<h2 id=\"declarations\" data-cjdoc-toc-role=\"group\">" + heading + "</h2>"))
+            @Expect(html.contains("class=\"empty-state\""))
+        }
     }
 }

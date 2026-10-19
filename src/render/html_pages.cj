@@ -144,15 +144,20 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li><li aria-current=\"page\">${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></li></ol></nav>\n")
     out.append("<header class=\"page-header\"><h1>${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></h1></header>\n")
     appendPackageConceptualOverview(out, documentation, projection, packageDoc, locale)
-    out.append("<h2 id=\"declarations\">${label(locale, "Declarations", "声明")}</h2>\n")
+    // The declaration groups own the "Declarations" heading: one visible category
+    // becomes the section itself, several keep an umbrella H2 above category H3s.
     var wroteDeclaration = false
     match (projection.topLevelByPackage.get(routeKey(packageDoc.moduleId, packageDoc.name))) {
         case Some(symbols) =>
-            appendPackageDeclarationGroups(out, symbols, typeLinkIndex, locale)
-            wroteDeclaration = !symbols.isEmpty()
+            if (!symbols.isEmpty()) {
+                appendPackageDeclarationGroups(out, symbols, typeLinkIndex, locale)
+                wroteDeclaration = true
+            }
         case None => ()
     }
-    if (!wroteDeclaration) { out.append("<p class=\"empty-state\">${label(locale, "No declarations are visible for this audience.", "此受众范围内没有直接声明。")}</p>\n") }
+    if (!wroteDeclaration) {
+        out.append("<section class=\"declaration-group\"><h2 id=\"declarations\" data-cjdoc-toc-role=\"group\">${label(locale, "Declarations", "声明")}</h2><p class=\"empty-state\">${label(locale, "No declarations are visible for this audience.", "此受众范围内没有直接声明。")}</p></section>\n")
+    }
     appendPackageMetadata(out, pkg, index, locale)
     appendPageEnd(out, documentation, locale: locale)
     out.toString()

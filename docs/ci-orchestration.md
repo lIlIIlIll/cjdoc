@@ -16,7 +16,7 @@ stated instead of a conclusion.
 | --- | --- |
 | `scripts/ci_stage.py run` (used by `check.sh` and the workflows) | per-stage `wallMs`, exit status, identity, cache state; written to `$CJDOC_CI_EVIDENCE/stages.json` and uploaded as `ci-timing-*` |
 | `showcase_build.stage_timing` | per-phase site-generation timings in `showcase-stages.json` (same artifact) |
-| `scripts/ci_stage.py wallclock --run ID --attempt N` | job and step level wall clock read from the Actions API, including queueing and re-run gaps |
+| `scripts/ci_stage.py wallclock --run ID --attempt N` | job and step level wall clock read from the Actions API, including queueing and re-run gaps; the collected tables are in [`ci-wallclock.md`](ci-wallclock.md) |
 | `scripts/measure_sdk_install.py` | paired cold/warm samples of the two combined-SDK cache shapes |
 | workflow Job Summary | the human-readable roll-up of the above |
 
@@ -379,6 +379,29 @@ quietly closed:
   requirement is not met by any amount of re-reporting. The raw collection and
   its limits are attached to #96; a successful tag run would add one sample, not
   fill the cells.
+
+### Acceptance matrix items (OPT-T01–T14)
+
+The scenarios in the issue's acceptance matrix map onto these checks. Each row
+names the scenario, the check that represents it, and its observable outcome.
+
+| scenario | represented by | observable outcome |
+| --- | --- | --- |
+| OPT-T01 single vs two shards on one frozen site | `tests/showcase_contract/test_browser_sharding.py` | identical case set and assertions; homepage evidence attributed once |
+| OPT-T02 missing/duplicate/unknown case, wrong plan, empty set | `tests/showcase_contract/test_browser_sharding.py` (negative cases), `browser_jobs` merge | merge exits non-zero; the aggregate gate fails |
+| OPT-T03 site/binary/manifest/ZIP/screenshot digest mismatch | `scripts/test_ci_candidate_source.py`, `scripts/test_release_evidence.py` | explicit refusal; never substitutes a latest-success artifact |
+| OPT-T04 any branch failure or cancellation | `scripts/test_ci_scripts.py`, `scripts/test_ci_stage.py` | required aggregate and publish do not succeed; original logs retained |
+| OPT-T05 first run, re-run of a failed job, full re-run | `scripts/ci_stage.py wallclock` classification, `tests/showcase_contract/test_browser_contract.py` | chosen attempt is explicit; first-failure history preserved |
+| OPT-T06 cold/warm/damaged/missing SDK and build caches | `scripts/test_install_cangjie_sdk.py`, `scripts/measure_sdk_install.py` dispatch 38216746376 | authentication and invalidation correct; no cross-test state |
+| OPT-T07 pre-existing output, symlinks, concurrent build/cancel | `scripts/test_ci_scripts.py`, `src/output_transaction*` tests | user data not overwritten; manifest not raced |
+| OPT-T08 native CLI / test build / provider static deps | `check.sh` stages `cli` and `provider`, `scripts/test_accept_dependency_public_api.py` | each consumes its real artifact; three-platform coverage kept |
+| OPT-T09 golden double generation, round-trip, real-repo no-cache twice | `check.sh` `cli` stage, `scripts/real_repository_smoke.py` | determinism/contract unchanged; no copy substitutes execution |
+| OPT-T10 support index, zh/en and two versions, diagnostics | `examples/pocketkit/reproduce.py` phases, `tests/showcase_contract/test_reproduce.py` | dependency order and doctest provenance preserved |
+| OPT-T11 code/schema/fixture/site/doc/unknown/delete/rename routing | `scripts/test_ci_scripts.py` (change classification) | planned task set complete; unknown paths fall back to the full run |
+| OPT-T12 consecutive pushes, consecutive main releases, manual dispatch, late old candidate | `concurrency` groups in `ci.yml`/`pages.yml`, `scripts/test_ci_candidate_source.py` | stale validation cancelled; deployment not killed; newer site not overwritten |
+| OPT-T13 platform packaging failure, tag/source/flags/receipt change | `scripts/test_release_candidate.py`, `scripts/test_release_build_parameters.py`, `scripts/test_release_metadata.py` | release blocked; published package is the accepted candidate |
+| OPT-T14 CSP, HTTP sub-path, real file://, source/offline download reproduction | `scripts/test_validate_html_site.py`, `scripts/test_accept_dependency_offline_runtime.py`, Pages `source-reproduction` job | reading and release contracts unchanged, not merely 200/exists |
+
 
 ## Optional highlight-worker failure evidence
 
