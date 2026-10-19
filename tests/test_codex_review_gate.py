@@ -667,6 +667,42 @@ class IntegrationTests(unittest.TestCase):
         self.assertIn("evidence changed", head_events[-1][1])
 
 
+    def test_evidence_change_withdraws_the_test_merge_too(self):
+        # Both targets carry the same conclusion, so both must be withdrawn when
+        # the evidence changes; a successful test-merge status would keep
+        # authorizing deleted evidence.
+        api = FakeAPI()
+        base_status = api.create_commit_status
+
+        def deleting_status(sha, decision):
+            base_status(sha, decision)
+            if sha == HEAD and decision.state == "success":
+                api.comments = []
+
+        api.create_commit_status = deleting_status
+        gate.evaluate_pr(api, 133)
+        for target in (HEAD, "b" * 40):
+            self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
+
+    def test_pre_publication_scan_failure_is_not_reported_as_success(self):
+        # The scope read inside the HEAD block fails (the earlier open-PR scan
+        # succeeded), so this run cannot decide whether the HEAD is authorized:
+        # reporting success would leave a completed review pending forever.
+        api = FakeAPI()
+        original = api.list_open_pull_requests
+        calls = {"n": 0}
+
+        def flaky():
+            calls["n"] += 1
+            if calls["n"] >= 2:
+                raise RuntimeError("scope down")
+            return original()
+
+        api.list_open_pull_requests = flaky
+        with self.assertRaises(RuntimeError):
+            gate.evaluate_pr(api, 133)
+
+
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
         # repository forbids shipping debug code, so pin its absence.

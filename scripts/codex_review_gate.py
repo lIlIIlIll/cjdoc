@@ -427,10 +427,12 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
             if fresh_decision != decision or not still_owned:
                 reason = ("the Codex review evidence changed"
                           if fresh_decision != decision else "the HEAD became shared")
-                revoke_head_status(
-                    api, head_sha,
-                    GateDecision("pending", f"HEAD conclusion withdrawn: {reason}", pr_url),
-                )
+                withdrawn = GateDecision("pending", f"Conclusion withdrawn: {reason}", pr_url)
+                revoke_head_status(api, head_sha, withdrawn)
+                # The test-merge commit carries the same conclusion and is also
+                # read by tooling, so it must be withdrawn with the HEAD: leaving
+                # it successful would keep authorizing deleted evidence.
+                api.create_commit_status(merge_sha, withdrawn)
                 head_status = f"revoked ({reason})"
                 # Withdraw only. This revalidation exists to stop an stale write
                 # from standing; it must never upgrade the decision, so the
@@ -440,6 +442,11 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False) -
         else:
             head_status = "withheld (HEAD is shared with another open PR)"
     except (ValueError, RuntimeError) as error:
+        if not attempted_publish:
+            # The ownership scope could not even be read, so this run cannot
+            # decide whether the HEAD is authorized. Reporting success would
+            # leave a completed review pending with no guaranteed retry.
+            raise
         if attempted_publish:
             # The write itself failed, so this run cannot say whether the HEAD
             # carries its conclusion. Withdraw it, and if even that fails, fail
