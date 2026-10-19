@@ -480,13 +480,24 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
     if number is None:
         print("Issue comment does not belong to a PR; skip")
         return 0
-    evaluate_pr(api, number, deleted_summary=deleted_codex_summary(event_name, event))
     # A HEAD shared by several PRs stays pending for all of them, so a PR that
     # closes or moves away must not leave the remaining owner stuck: re-evaluate
     # whoever still owns the HEAD this event changed, never the triggering PR.
-    for head_sha in affected_shared_heads(event_name, event):
-        reevaluate_head_owners(api, head_sha, {number})
-        print(f"re-evaluated the remaining owners of {head_sha}")
+    #
+    # This runs even when the triggering PR's own evaluation raises: a transient
+    # API or status-publication error there must not strand the surviving owner
+    # with a `pending` check that no later event is guaranteed to clear. The
+    # original error is re-raised after the survivors have had their chance.
+    try:
+        evaluate_pr(api, number, deleted_summary=deleted_codex_summary(event_name, event))
+    finally:
+        for head_sha in affected_shared_heads(event_name, event):
+            try:
+                reevaluate_head_owners(api, head_sha, {number})
+                print(f"re-evaluated the remaining owners of {head_sha}")
+            except (ValueError, RuntimeError) as error:
+                print(f"could not re-evaluate the remaining owners of {head_sha}: {error}",
+                      file=sys.stderr)
     return 0
 
 

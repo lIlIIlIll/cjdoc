@@ -633,6 +633,47 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(tracked, [])
 
 
+    def test_freed_head_owners_are_reevaluated_even_if_the_triggering_call_fails(self):
+        # The triggering PR's evaluation raises (transient API/status error); the
+        # surviving owner of the freed HEAD must still be re-evaluated, otherwise
+        # its required check stays pending with no later event to clear it.
+        api = FakeAPI()
+        other = {
+            "number": 200, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+            "merge_commit_sha": None,
+        }
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133), other]
+        evaluated = []
+        original = gate.evaluate_pr
+
+        def exploding(a, n, **kw):
+            evaluated.append(n)
+            if n == 133:
+                raise RuntimeError("status publication failed")
+
+        gate.evaluate_pr = exploding
+        try:
+            event = {"action": "closed",
+                     "pull_request": {"number": 133, "head": {"sha": HEAD}}}
+            with self.assertRaises(RuntimeError):
+                gate.run_gate("pull_request_target", event, api)
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(evaluated, [133, 200])
+
+    def test_a_failing_reevaluation_does_not_mask_the_original_error(self):
+        api = FakeAPI()
+        event = {"action": "closed",
+                 "pull_request": {"number": 133, "head": {"sha": HEAD}}}
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: (_ for _ in ()).throw(RuntimeError(f"boom {n}"))
+        try:
+            with self.assertRaisesRegex(RuntimeError, "boom 133"):
+                gate.run_gate("pull_request_target", event, api)
+        finally:
+            gate.evaluate_pr = original
+
+
     def test_closed_pull_request_does_not_post_status(self):
         api = FakeAPI(state="closed")
         self.assertIsNone(gate.evaluate_pr(api, 133))
