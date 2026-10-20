@@ -362,24 +362,33 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
         except PrChangedDuringEvaluation as changed:
             print(f"PR #{number}: {changed}; re-evaluating the current snapshot")
     # The bound was reached with the snapshot still moving, so this run holds no
-    # confirmed conclusion. Withdraw whatever the current PR points at before
-    # giving up: returning `pending` while a success stands is exactly the stale
-    # authorization the contract forbids.
+    # confirmed conclusion. Withdraw every target it can still find before giving
+    # up: returning `pending` while a success stands is exactly the stale
+    # authorization the contract forbids, and a convergence pass may have written
+    # one on a commit the PR has since left.
     withdrawn = GateDecision("pending", "The PR changed repeatedly during evaluation", "")
+    targets: dict[str, None] = {}
+    attempts: list[str] = []
     try:
         current = api.get_pull_request(number)
-        for target in ((current.get("head") or {}).get("sha"),
-                       current.get("merge_commit_sha")):
-            if isinstance(target, str) and SHA_PATTERN.fullmatch(target):
-                try:
-                    api.create_commit_status(target, withdrawn)
-                except Exception as error:  # noqa: BLE001 - any transport failure
-                    print(f"PR #{number}: could not withdraw {target[:10]} ({error})",
-                          file=sys.stderr)
+        for value in ((current.get("head") or {}).get("sha"),
+                      current.get("merge_commit_sha")):
+            if isinstance(value, str) and SHA_PATTERN.fullmatch(value):
+                targets[value] = None
     except Exception as error:  # noqa: BLE001 - any transport failure
-        print(f"PR #{number}: could not withdraw after repeated changes ({error})",
-              file=sys.stderr)
+        attempts.append(f"current snapshot: {error}")
+    for target in targets:
+        try:
+            api.create_commit_status(target, withdrawn)
+        except Exception as error:  # noqa: BLE001 - any transport failure
+            attempts.append(f"{target[:10]}: {error}")
     print(f"PR #{number}: the PR kept changing; leaving the decision to a later event")
+    if attempts:
+        # Fail closed: a target this run could not withdraw may still authorize a
+        # merge, and a later event is not guaranteed.
+        raise RuntimeError(
+            "the PR kept changing and not every status could be withdrawn: "
+            + "; ".join(attempts))
     return withdrawn
 
 

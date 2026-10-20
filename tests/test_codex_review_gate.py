@@ -1383,6 +1383,30 @@ class IntegrationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "superseded"):
             gate.evaluate_pr(api, 133)
 
+    def test_exhaustion_withdrawal_failure_fails_closed(self):
+        # Reaching the bound with a status that cannot be withdrawn must fail the
+        # run: a later event is not guaranteed, so silence would leave stale
+        # authorization. The evaluation passes are exhausted directly, which
+        # leaves the exhaustion withdrawal as the only status write.
+        api = FakeAPI()
+        base_request = api.get_pull_request
+
+        def changing(number=None):
+            value = base_request(number)
+            return {**value, "merge_commit_sha": "c" * 40}
+
+        api.get_pull_request = changing
+        api.create_commit_status = lambda sha, decision: (
+            (_ for _ in ()).throw(ConnectionResetError("withdrawal failed")))
+        original_once = gate._evaluate_once
+        gate._evaluate_once = lambda *a, **k: (_ for _ in ()).throw(
+            gate.PrChangedDuringEvaluation("still moving"))
+        try:
+            with self.assertRaisesRegex(RuntimeError, "could be withdrawn"):
+                gate.evaluate_pr(api, 133)
+        finally:
+            gate._evaluate_once = original_once
+
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
         # repository forbids shipping debug code, so pin its absence.
