@@ -414,8 +414,10 @@ class IntegrationTests(unittest.TestCase):
             "merge_commit_sha": "c" * 40,
         }])
         result = gate.evaluate_pr(api, 133)
+        # Ambiguity is now revalidated rather than treated as final (a twin can close),
+        # so a twin that persists exhausts the bounded retries. Either way the run must
+        # not authorize: pending, and no success left on any target.
         self.assertEqual(result.state, "pending")
-        self.assertIn("ambiguous", result.description)
         self.assertNotIn("success", [status.state for _, status in api.statuses])
 
     def test_same_test_merge_shared_by_other_pr_is_pending(self):
@@ -1948,6 +1950,89 @@ class IntegrationTests(unittest.TestCase):
         # revalidation (which reruns the merge-scope predicate), not from a second
         # check in the final scan -- the final scan only rechecks HEAD ownership.
         # This test therefore protects the revalidation path.
+
+    def test_final_scan_withdraws_the_merge_when_a_twin_appears(self):
+        # A twin (same head+base) appears only AFTER the post-publication
+        # revalidation, so only the final scan can see it. The merge status must be
+        # withdrawn there, or the twin inherits a conclusion never scoped to it.
+        api = FakeAPI()
+        base_status = api.create_commit_status
+        writes = []
+        twin = {"number": 200, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+                "merge_commit_sha": "c" * 40}
+        base_listing = api.list_open_pull_requests
+        calls = {"n": 0}
+        # The revalidation listing is the 3rd call; the final scan is the 4th.
+        twin_from = 4
+        state = {"twin": False}
+
+        def listing():
+            calls["n"] += 1
+            if calls["n"] >= twin_from:
+                state["twin"] = True
+            return base_listing() + ([twin] if state["twin"] else [])
+
+        api.list_open_pull_requests = listing
+        api.create_commit_status = lambda sha, decision: (
+            writes.append((sha, decision.state)) or base_status(sha, decision))
+        result = gate.evaluate_pr(api, 133)
+        self.assertTrue(state["twin"], "the twin must appear at the final scan")
+        self.assertEqual(result.state, "pending")
+        self.assertEqual([s for sha, s in writes if sha == "b" * 40][-1], "pending")
+
+    def test_merge_ambiguity_is_withdrawn_even_when_the_head_was_shared(self):
+        # A different-base PR already shares the HEAD, so publish_head is false and no
+        # HEAD status is written. A same-head+base twin then appears: the merge status
+        # must still be withdrawn, or it keeps authorizing the twin.
+        api = FakeAPI()
+        shared = {"number": 300, "head": {"sha": HEAD}, "base": {"sha": "a" * 40},
+                  "merge_commit_sha": "c" * 40}
+        twin = {"number": 200, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+                "merge_commit_sha": "d" * 40}
+        state = {"twin": False}
+        base_listing = api.list_open_pull_requests
+        calls = {"n": 0}
+
+        def listing():
+            calls["n"] += 1
+            if calls["n"] >= 4:
+                state["twin"] = True
+            extra = [shared] + ([twin] if state["twin"] else [])
+            return base_listing() + extra
+
+        api.list_open_pull_requests = listing
+        base_status = api.create_commit_status
+        writes = []
+        api.create_commit_status = lambda sha, decision: (
+            writes.append((sha, decision.state)) or base_status(sha, decision))
+        result = gate.evaluate_pr(api, 133)
+        self.assertEqual(result.state, "pending")
+        self.assertEqual([s for sha, s in writes if sha == "b" * 40][-1], "pending")
+
+    def test_a_transient_ambiguity_is_revalidated_not_left_pending(self):
+        # The twin is visible only at the final scan, then gone. The run must
+        # re-evaluate the CURRENT scope (and publish the now-unambiguous success)
+        # instead of overwriting with a stale `pending` and returning.
+        api = FakeAPI()
+        twin = {"number": 200, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+                "merge_commit_sha": "c" * 40}
+        base_listing = api.list_open_pull_requests
+        seen = {"twins": 0}
+
+        def listing():
+            seen["twins"] += 1
+            # Visible at the final scan (call 4), gone afterwards.
+            return base_listing() + ([twin] if seen["twins"] == 4 else [])
+
+        api.list_open_pull_requests = listing
+        base_status = api.create_commit_status
+        writes = []
+        api.create_commit_status = lambda sha, decision: (
+            writes.append((sha, decision.state)) or base_status(sha, decision))
+        result = gate.evaluate_pr(api, 133)
+        # The later re-evaluation found no twin, so the conclusion is published.
+        self.assertEqual(result.state, "success")
+        self.assertIn(("b" * 40, "success"), writes)
 
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the

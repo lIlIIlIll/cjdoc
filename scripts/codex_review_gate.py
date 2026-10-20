@@ -676,14 +676,36 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
             or final.get("merge_commit_sha") != merge_sha
         ):
             raise PrChangedDuringEvaluation("the PR changed before the conclusion was returned")
-        # Only HEAD ownership is rechecked here. Merge-scope ambiguity (a PR with
-        # the same head+base appearing) is already covered by the post-publication
-        # `decide` revalidation above, which reruns `_merge_scope_is_unique` and
-        # withdraws through the ledger when the conclusion no longer holds -- one
-        # mechanism, not two. This scan closes the remaining window: a second PR
-        # may start sharing the HEAD after that revalidation.
-        if publish_head and not _head_scope_is_unique(number, head_sha,
-                                                      api.list_open_pull_requests()):
+        # The post-publication `decide` revalidation reruns `_merge_scope_is_unique`,
+        # but a twin PR (same head+base) can still appear between that call and this
+        # scan. Recheck BOTH scopes here: the merge status must be withdrawn too, or a
+        # twin would inherit a conclusion that was never scoped against it.
+        final_open_prs = api.list_open_pull_requests()
+        head_ok = _head_scope_is_unique(number, head_sha, final_open_prs)
+        merge_ok = _merge_scope_is_unique(number, head_sha, base_sha, merge_sha, final_open_prs)
+        # Merge-scope ambiguity is handled INDEPENDENTLY of `publish_head`: the
+        # test-merge status may have been published even when the HEAD was withheld
+        # (a different-base PR already shared the HEAD), and a distinct-HEAD PR can
+        # still begin sharing the merge SHA. Either way the merge status no longer
+        # describes one PR and must be withdrawn, along with the HEAD if this run
+        # published one.
+        if not merge_ok:
+            reason = "the merge scope became ambiguous"
+            _publish(api, merge_sha,
+                     GateDecision("pending", f"Withheld: {reason}", pr_url), published)
+            if publish_head:
+                revoke_head_status(
+                    api, head_sha,
+                    GateDecision("pending", f"Withheld: {reason}", pr_url),
+                )
+            # The ambiguity may itself be transient: the twin could close while these
+            # withdrawals run, in which case its own `closed` handler re-evaluates the
+            # survivor and this stale `pending` would overwrite that valid success with
+            # no later event to repair it. Hand the decision back to the retry loop so
+            # the CURRENT scope is re-evaluated instead of treating this snapshot as
+            # final.
+            raise PrChangedDuringEvaluation("the merge scope became ambiguous")
+        if publish_head and not head_ok:
             revoke_head_status(
                 api, head_sha,
                 GateDecision("pending", "HEAD shared with another open PR; withheld", pr_url),
