@@ -903,6 +903,32 @@ class PairedSampleTests(unittest.TestCase):
         self.assertEqual(len(unescaped.split(row)) - 2, expected, row)
         self.assertIn("\\|", row)
 
+    def test_stage_boundaries_are_preserved_in_the_signature(self) -> None:
+        """Two artifacts differing in the same fields in a different ORDER must differ.
+
+        A per-field suffix collides here; encoding each stage's full identity tuple
+        does not.
+        """
+        root = self.root / "stage-order"
+        base_env = {"runnerImage": "ubuntu22", "sdkVersion": "1.2.0", "stdxDigest": "d",
+                    "toolchainTarget": "x86_64", "compileOptions": ["--jobs 1", "-O1"]}
+        first = {"environment": dict(base_env)}
+        profiles = {
+            # one stage changes BOTH fields...
+            "a": [first, {"environment": {**base_env, "runnerImage": "ubuntu23",
+                                          "sdkVersion": "1.3.0"}}],
+            # ...two stages change them separately
+            "b": [first, {"environment": {**base_env, "runnerImage": "ubuntu23"}},
+                  {"environment": {**base_env, "sdkVersion": "1.3.0"}}],
+        }
+        for name, stages in profiles.items():
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(
+                json.dumps({"stages": stages}), encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(set(conditions.values())), 2, conditions)
+
     def test_the_provenance_command_is_copyable(self) -> None:
         """A workflow name with spaces must arrive as one argument."""
         import shlex

@@ -168,11 +168,12 @@ def job_conditions(evidence: Path) -> dict[str, str]:
         # `toolchainFingerprint` distinguishes SDK installations whose reported
         # version is identical but whose contents differ, so two runs must not share
         # a cell merely because `sdkVersion` matches.
-        signature = "|".join(str(environment.get(field, "")) for field in
-                             ("runnerImage", "sdkVersion", "stdxDigest",
-                              "toolchainTarget", "toolchainFingerprint"))
+        identity_fields = ("runnerImage", "sdkVersion", "stdxDigest",
+                           "toolchainTarget", "toolchainFingerprint")
+        signature = "|".join(str(environment.get(field, "")) for field in identity_fields)
         compile_options = environment.get("compileOptions") or []
         signature += "|" + ",".join(str(option) for option in compile_options)
+        first_identity = signature
         # The issue's matched conditions also include the browser/font set. It is not
         # recorded by `ci_stage` today, so this only adds it when a producer supplies
         # it; until then the report states that the browser/font axis is unmeasured
@@ -182,19 +183,24 @@ def job_conditions(evidence: Path) -> dict[str, str]:
             if value:
                 signature += f"|{field}={value}"
         conditions[path.parent.name] = signature
-        # A stage-specific divergence makes the artifact incomparable with any other:
-        # give it a signature of its own rather than silently pooling it.
+        # A stage-specific divergence makes the artifact incomparable with any other,
+        # so every stage's identity is encoded as its own tuple. Encoding each stage
+        # separately (rather than appending per-field markers) keeps the stage
+        # boundaries: two artifacts that differ in the same fields but in a different
+        # ORDER of stages must not collide on an identical suffix.
+        stages_seen = 1
         for stage in stages[1:]:
             other = stage.get("environment") or {}
-            for field in ("runnerImage", "sdkVersion", "stdxDigest", "toolchainTarget",
-                          "toolchainFingerprint", "browserVersion", "browserIdentity",
-                          "fontSetDigest"):
-                if str(other.get(field, "")) != str(environment.get(field, "")):
-                    conditions[path.parent.name] += f"|{field}!={other.get(field, '')}"
-            stage_options = ",".join(str(option) for option in
-                                     (other.get("compileOptions") or []))
-            if stage_options != ",".join(str(option) for option in compile_options):
-                conditions[path.parent.name] += f"|compileOptions!={stage_options}"
+            stages_seen += 1
+            stage_identity = "|".join(str(other.get(field, "")) for field in
+                                      ("runnerImage", "sdkVersion", "stdxDigest",
+                                       "toolchainTarget", "toolchainFingerprint",
+                                       "browserVersion", "browserIdentity",
+                                       "fontSetDigest"))
+            stage_identity += "|" + ",".join(
+                str(option) for option in (other.get("compileOptions") or []))
+            if stage_identity != first_identity:
+                conditions[path.parent.name] += f"|stage{stages_seen}={stage_identity}"
     return conditions
 
 
