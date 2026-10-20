@@ -683,11 +683,17 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
         final_open_prs = api.list_open_pull_requests()
         head_ok = _head_scope_is_unique(number, head_sha, final_open_prs)
         merge_ok = _merge_scope_is_unique(number, head_sha, base_sha, merge_sha, final_open_prs)
-        if publish_head and not merge_ok:
+        # Merge-scope ambiguity is handled INDEPENDENTLY of `publish_head`: the
+        # test-merge status may have been published even when the HEAD was withheld
+        # (a different-base PR already shared the HEAD), and a distinct-HEAD PR can
+        # still begin sharing the merge SHA. Either way the merge status no longer
+        # describes one PR and must be withdrawn, along with the HEAD if this run
+        # published one.
+        if not merge_ok:
             reason = "the merge scope became ambiguous"
             _publish(api, merge_sha,
                      GateDecision("pending", f"Withheld: {reason}", pr_url), published)
-            if not head_ok:
+            if publish_head:
                 revoke_head_status(
                     api, head_sha,
                     GateDecision("pending", f"Withheld: {reason}", pr_url),

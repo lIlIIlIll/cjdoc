@@ -1978,6 +1978,35 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(result.state, "pending")
         self.assertEqual([s for sha, s in writes if sha == "b" * 40][-1], "pending")
 
+    def test_merge_ambiguity_is_withdrawn_even_when_the_head_was_shared(self):
+        # A different-base PR already shares the HEAD, so publish_head is false and no
+        # HEAD status is written. A same-head+base twin then appears: the merge status
+        # must still be withdrawn, or it keeps authorizing the twin.
+        api = FakeAPI()
+        shared = {"number": 300, "head": {"sha": HEAD}, "base": {"sha": "a" * 40},
+                  "merge_commit_sha": "c" * 40}
+        twin = {"number": 200, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+                "merge_commit_sha": "d" * 40}
+        state = {"twin": False}
+        base_listing = api.list_open_pull_requests
+        calls = {"n": 0}
+
+        def listing():
+            calls["n"] += 1
+            if calls["n"] >= 4:
+                state["twin"] = True
+            extra = [shared] + ([twin] if state["twin"] else [])
+            return base_listing() + extra
+
+        api.list_open_pull_requests = listing
+        base_status = api.create_commit_status
+        writes = []
+        api.create_commit_status = lambda sha, decision: (
+            writes.append((sha, decision.state)) or base_status(sha, decision))
+        result = gate.evaluate_pr(api, 133)
+        self.assertEqual(result.state, "pending")
+        self.assertEqual([s for sha, s in writes if sha == "b" * 40][-1], "pending")
+
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
         # repository forbids shipping debug code, so pin its absence.
