@@ -492,11 +492,26 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
             api.create_commit_status(head_sha, decision)
 
         after = api.get_pull_request(number)
-        if (
-            (after.get("head") or {}).get("sha") != head_sha
-            or (after.get("base") or {}).get("sha") != base_sha
-            or after.get("merge_commit_sha") != merge_sha
-        ):
+        after_head = (after.get("head") or {}).get("sha")
+        after_base = (after.get("base") or {}).get("sha")
+        after_merge = after.get("merge_commit_sha")
+        if after_head != head_sha or after_base != base_sha or after_merge != merge_sha:
+            if after_head != head_sha:
+                # The HEAD moved, so the SHAs just published belong to a commit
+                # this PR no longer points at. Nothing later will clean them up
+                # (the synchronize run that freed the old HEAD may already have
+                # finished), and a future PR reusing that commit would inherit
+                # valid-looking evidence, so withdraw the superseded targets
+                # before retrying. A base-only move is different: the HEAD is
+                # still current and a newer run may have published a legitimate
+                # success there, which must not be revoked.
+                withdrawn = GateDecision("pending", "Superseded by a newer HEAD", pr_url)
+                for target in (head_sha, merge_sha):
+                    try:
+                        api.create_commit_status(target, withdrawn)
+                    except Exception as error:  # noqa: BLE001 - any transport failure
+                        print(f"PR #{number}: could not withdraw {target[:10]} ({error})",
+                              file=sys.stderr)
             raise PrChangedDuringEvaluation("the PR changed while publishing")
         fresh_decision = decide(api.list_open_pull_requests(), api.list_issue_comments(number))
         if fresh_decision != decision:

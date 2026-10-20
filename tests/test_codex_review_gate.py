@@ -1243,6 +1243,51 @@ class IntegrationTests(unittest.TestCase):
         for target in (HEAD, "b" * 40):
             self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
 
+    def test_superseded_head_targets_are_withdrawn_before_retrying(self):
+        # The HEAD moves after this run published. Those statuses belong to a
+        # commit the PR no longer points at; nothing later cleans them up, and a
+        # future PR reusing that commit would inherit the evidence.
+        api = FakeAPI()
+        moved = {"yet": False}
+        base_request = api.get_pull_request
+        base_status = api.create_commit_status
+        writes = []
+        new_head = "9" * 40
+
+        def recording(sha, decision):
+            writes.append((sha, decision.state))
+            return base_status(sha, decision)
+
+        api.create_commit_status = recording
+
+        def changing(number=None):
+            value = base_request(number)
+            if moved["yet"]:
+                return {**value, "head": {"sha": new_head}, "merge_commit_sha": None}
+            return value
+
+        def listing():
+            # The listing follows the move, so the retry sees a consistent PR.
+            mine = changing(133)
+            return [{"number": 133, "head": mine["head"], "base": mine["base"],
+                     "merge_commit_sha": mine["merge_commit_sha"]}]
+
+        api.get_pull_request = changing
+        api.list_open_pull_requests = listing
+        # The move happens once the old HEAD has been written.
+        def moved_status(sha, decision):
+            recording(sha, decision)
+            if sha == HEAD and decision.state == "success":
+                moved["yet"] = True
+
+        api.create_commit_status = moved_status
+        result = gate.evaluate_pr(api, 133)
+        self.assertEqual(result.state, "pending")
+        for target in (HEAD, "b" * 40):
+            states = [s for sha, s in writes if sha == target]
+            self.assertIn("success", states)
+            self.assertEqual(states[-1], "pending")
+
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
         # repository forbids shipping debug code, so pin its absence.
