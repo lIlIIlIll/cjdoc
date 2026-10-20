@@ -1918,6 +1918,37 @@ class IntegrationTests(unittest.TestCase):
         # The EVALUATION phase itself must be concurrent.
         self.assertGreater(active["peak"], 1)
 
+    def test_final_scan_withdraws_the_merge_on_ambiguous_scope(self):
+        # A PR with the same head+base appears after the decision is computed, so
+        # the merge scope is now ambiguous; the test-merge success must be
+        # withdrawn or that PR could inherit it.
+        api = FakeAPI()
+        state = {"ambiguous": False}
+        base_request = api.get_pull_request
+        base_status = api.create_commit_status
+        writes = []
+
+        def recording(sha, decision):
+            writes.append((sha, decision.state))
+            out = base_status(sha, decision)
+            if sha == "b" * 40 and decision.state == "success":
+                state["ambiguous"] = True
+            return out
+
+        twin = {"number": 200, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+                "merge_commit_sha": "c" * 40}
+        base_listing = api.list_open_pull_requests
+        api.list_open_pull_requests = lambda: (
+            base_listing() + [twin] if state["ambiguous"] else base_listing())
+        api.create_commit_status = recording
+        result = gate.evaluate_pr(api, 133)
+        self.assertEqual(result.state, "pending")
+        self.assertEqual([s for sha, s in writes if sha == "b" * 40][-1], "pending")
+        # NOTE: the withdrawal here comes from the post-publication `decide`
+        # revalidation (which reruns the merge-scope predicate), not from a second
+        # check in the final scan -- the final scan only rechecks HEAD ownership.
+        # This test therefore protects the revalidation path.
+
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
         # repository forbids shipping debug code, so pin its absence.

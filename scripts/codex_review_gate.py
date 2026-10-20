@@ -676,6 +676,12 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
             or final.get("merge_commit_sha") != merge_sha
         ):
             raise PrChangedDuringEvaluation("the PR changed before the conclusion was returned")
+        # Only HEAD ownership is rechecked here. Merge-scope ambiguity (a PR with
+        # the same head+base appearing) is already covered by the post-publication
+        # `decide` revalidation above, which reruns `_merge_scope_is_unique` and
+        # withdraws through the ledger when the conclusion no longer holds -- one
+        # mechanism, not two. This scan closes the remaining window: a second PR
+        # may start sharing the HEAD after that revalidation.
         if publish_head and not _head_scope_is_unique(number, head_sha,
                                                       api.list_open_pull_requests()):
             revoke_head_status(
