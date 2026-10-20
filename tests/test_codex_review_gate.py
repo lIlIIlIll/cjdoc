@@ -664,11 +664,13 @@ class IntegrationTests(unittest.TestCase):
                 api.comments = []  # the summary is deleted right after the write
 
         api.create_commit_status = deleting_status
-        gate.evaluate_pr(api, 133)
-        head_events = [(s.state, s.description) for sha, s in api.statuses if sha == HEAD]
-        self.assertIn("success", [state for state, _ in head_events])
-        self.assertEqual(head_events[-1][0], "pending")
-        self.assertIn("withdrawn", head_events[-1][1].lower())
+        result = gate.evaluate_pr(api, 133)
+        # The world moved while this run published, so it converges on the
+        # decision the CURRENT data supports (the summary is gone => pending),
+        # rather than leaving a stale success standing.
+        self.assertEqual(result.state, "pending")
+        for target in (HEAD, "b" * 40):
+            self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
 
 
     def test_evidence_change_withdraws_the_test_merge_too(self):
@@ -849,7 +851,8 @@ class IntegrationTests(unittest.TestCase):
         api.create_commit_status = deleting_status
         result = gate.evaluate_pr(api, 133)
         self.assertEqual(result.state, "pending")
-        self.assertEqual([s.state for sha, s in api.statuses if sha == "b" * 40][-1], "pending")
+        for target in (HEAD, "b" * 40):
+            self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
 
     def test_transport_timeout_after_publication_withdraws_both_targets(self):
         # A read that times out is not a ValueError/RuntimeError; it must still be
@@ -1131,6 +1134,55 @@ class IntegrationTests(unittest.TestCase):
         moved = {"action": "synchronize", "before": "9" * 40,
                  "pull_request": {"number": 133, "head": {"sha": HEAD}}}
         self.assertEqual(gate.affected_shared_heads("pull_request_target", moved), ["9" * 40])
+
+    def test_superseded_pending_run_converges_on_the_newer_success(self):
+        # An older run computed `pending` (a stale review) before a newer run
+        # published `success`. Withdrawing would let the older run -- its own
+        # concurrency group, so it can finish last -- overwrite the valid success
+        # permanently. It must publish the decision the CURRENT data supports.
+        api = FakeAPI()
+        api.comments = [summary(sha=OLD_HEAD)]  # first classification: pending
+        original_comments = api.list_issue_comments
+        calls = {"n": 0}
+
+        def comments(_number):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return [summary(sha=OLD_HEAD)]
+            return [summary(sha=HEAD)]  # the newer review lands meanwhile
+
+        api.list_issue_comments = comments
+        result = gate.evaluate_pr(api, 133)
+        self.assertEqual(result.state, "success")
+        for target in (HEAD, "b" * 40):
+            self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "success")
+
+    def test_base_push_uses_the_listed_head_without_a_second_lookup(self):
+        # The pre-revocation fanout must not need one GET per candidate: it uses
+        # the HEADs already listed, keeping the timeout window small.
+        api = FakeAPI()
+        others = [{"number": n, "head": {"sha": str(n) * 40},
+                   "base": {"sha": OLD_HEAD, "ref": "main"}, "merge_commit_sha": None}
+                  for n in (200, 300)]
+        listed = [api.get_pull_request(133), *others]
+        for entry in listed:
+            entry["head"] = {"sha": {133: HEAD, 200: "2" * 40, 300: "3" * 40}[entry["number"]]}
+        api.list_open_pull_requests = lambda: listed
+        lookups = []
+        base_request = api.get_pull_request
+
+        def counting(number):
+            lookups.append(number)
+            return base_request(number)
+
+        api.get_pull_request = counting
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: None
+        try:
+            gate.run_gate("push", {"ref": "refs/heads/main"}, api)
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(lookups, [])
 
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the

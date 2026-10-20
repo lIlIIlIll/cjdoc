@@ -477,9 +477,24 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
             return GateDecision("pending", "Awaiting current PR test merge", pr_url)
         fresh_decision = decide(api.list_open_pull_requests(), api.list_issue_comments(number))
         if fresh_decision != decision:
-            withdraw_all(f"Conclusion withdrawn: {fresh_decision.description}")
-            return GateDecision("pending", f"Conclusion withdrawn: {fresh_decision.description}",
-                                pr_url)
+            # The world moved while this run was publishing, so this run's
+            # decision is superseded. Publishing `pending` here would be a
+            # regression that can outlive the newer run (each run has its own
+            # concurrency group, so an older one can finish last) and would
+            # strand a valid result with no guaranteed repair. Instead converge
+            # on the decision the CURRENT data supports -- computed by the same
+            # `decide`, so this is not an upgrade from stale reasoning.
+            api.create_commit_status(merge_sha, fresh_decision)
+            if _head_scope_is_unique(number, head_sha, api.list_open_pull_requests()):
+                api.create_commit_status(head_sha, fresh_decision)
+                head_status = f"converged ({fresh_decision.state})"
+            else:
+                revoke_head_status(
+                    api, head_sha,
+                    GateDecision("pending", "HEAD shared with another open PR; withheld", pr_url),
+                )
+                head_status = "withheld (HEAD is shared with another open PR)"
+            return fresh_decision
         if publish_head and not _head_scope_is_unique(number, head_sha,
                                                       api.list_open_pull_requests()):
             revoke_head_status(
@@ -659,12 +674,26 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
         # still authorized against the previous base, with no chance to run the
         # error handling. Revocation is cheap and can only deny.
         failures: list[str] = []
+        # Revoke from the HEADs already listed above rather than re-fetching each
+        # PR: this fanout runs before the (also bounded) evaluation phase, and a
+        # hard job timeout mid-way would leave every later HEAD still carrying a
+        # success validated against the previous base. One request per candidate
+        # instead of two keeps the window as small as this API allows.
+        listed: dict[int, str] = {}
+        for pull_request in api.list_open_pull_requests():
+            if not isinstance(pull_request, dict) or not isinstance(pull_request.get("number"), int):
+                raise ValueError("invalid entry in open-PR response")
+            sha = (pull_request.get("head") or {}).get("sha")
+            if isinstance(sha, str) and SHA_PATTERN.fullmatch(sha):
+                listed[pull_request["number"]] = sha
         for candidate in candidates:
             # Best effort per candidate: a transient failure here must not abort
             # the loop, or the later HEADs would keep their previous-base success
             # while this run reports the first error.
             try:
-                head = (api.get_pull_request(candidate).get("head") or {}).get("sha")
+                head = listed.get(candidate)
+                if head is None:
+                    head = (api.get_pull_request(candidate).get("head") or {}).get("sha")
                 if isinstance(head, str) and SHA_PATTERN.fullmatch(head):
                     revoke_head_status(
                         api, head,
