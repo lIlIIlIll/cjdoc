@@ -880,6 +880,29 @@ class PairedSampleTests(unittest.TestCase):
         conditions = paired.job_conditions(root)
         self.assertEqual(len(set(conditions.values())), 2, conditions)
 
+    def test_every_run_row_keeps_the_table_column_count(self) -> None:
+        """A pipe-delimited environment must not break the Markdown row."""
+        def sample(env):
+            return {"run": 1, "attempt": 1, "revision": "a" * 40, "event": "push",
+                    "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": "success", "state": "hit", "jobMinutes": 10.0,
+                    "hasEvidence": True, "condition": env,
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        samples = [sample("ubuntu|1.2.0|d|x86_64|--jobs 1,-O1")]
+        out = self.root / "escaping.md"
+        paired.report(samples, "ci.yml", out)
+        import re
+        lines = out.read_text(encoding="utf-8").splitlines()
+        # GFM treats `\|` inside a cell as a literal pipe, so count only unescaped
+        # separators -- which is exactly the property that keeps the columns aligned.
+        unescaped = re.compile(r"(?<!\\)\|")
+        header = next(line for line in lines if line.startswith("| run | attempt"))
+        expected = len(unescaped.split(header)) - 2
+        row = next(line for line in lines
+                   if line.startswith("| 1 |") and "linux-x64" in line)
+        self.assertEqual(len(unescaped.split(row)) - 2, expected, row)
+        self.assertIn("\\|", row)
+
     def test_the_provenance_command_is_copyable(self) -> None:
         """A workflow name with spaces must arrive as one argument."""
         import shlex

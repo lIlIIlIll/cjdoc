@@ -562,12 +562,20 @@ def report(samples: list[dict], workflow: str, out: Path,
         # A sample dict assembled by an older caller may predate the condition field;
         # the run table shows the environment, so default it rather than crash.
         sample.setdefault("condition", "")
+        # The condition is itself a pipe-delimited signature, so it must not be
+        # inserted raw into a Markdown row: every `|` would start a new cell and
+        # shift the conclusion and timings into the wrong columns. Escape the pipes
+        # (and backslashes) so the row keeps its column count.
+        display_condition = (sample["condition"]
+                             .replace("\\", "\\\\")
+                             .replace("|", "\\|"))
+        sample.setdefault("displayCondition", display_condition)
     for sample in sorted(samples, key=lambda s: (s["run"], s["job"])):
         # The environment is a column, not only a cell key: a cell may pool several
         # revisions, so without it the report cannot say which commit ran under which
         # environment and the revision-keyed view could not be reconstructed.
         lines.append("| {run} | {attempt} | `{revision}` | {event} | {job} | {shape} | "
-                     "{condition} | {conclusion} | {state} | {jobMinutes:.1f}m | "
+                     "{displayCondition} | {conclusion} | {state} | {jobMinutes:.1f}m | "
                      "{runWallMinutes:.1f}m | {runRunnerMinutes:.1f}m |".format(**sample))
     # Workflow-level totals, which the per-job column above cannot express: a run's wall
     # time and its total runner time are what the wall-clock and cost comparisons use.
@@ -604,7 +612,10 @@ def report(samples: list[dict], workflow: str, out: Path,
               "automatically and cells split accordingly.", ""]
     for key in sorted(cells):
         shape, state, condition = key
-        detail = f" `{condition}`" if condition else " (condition not recorded)"
+        # Inline code cannot contain a raw pipe in a table, and these bullets may be
+        # rendered inside one; escape it for the same reason as the run table.
+        safe_condition = condition.replace("|", "\\|") if condition else ""
+        detail = f" `{safe_condition}`" if condition else " (condition not recorded)"
         # Revision is not part of the key, so name the commits a cell covers; without
         # this the cell could silently pool measurements from unrelated code.
         cell_revisions = sorted({s["revision"] for s in classified
