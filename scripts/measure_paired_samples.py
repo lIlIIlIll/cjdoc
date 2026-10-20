@@ -187,7 +187,8 @@ def job_conditions(evidence: Path) -> dict[str, str]:
         for stage in stages[1:]:
             other = stage.get("environment") or {}
             for field in ("runnerImage", "sdkVersion", "stdxDigest", "toolchainTarget",
-                          "toolchainFingerprint"):
+                          "toolchainFingerprint", "browserVersion", "browserIdentity",
+                          "fontSetDigest"):
                 if str(other.get(field, "")) != str(environment.get(field, "")):
                     conditions[path.parent.name] += f"|{field}!={other.get(field, '')}"
             stage_options = ",".join(str(option) for option in

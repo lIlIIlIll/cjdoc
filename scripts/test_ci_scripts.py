@@ -864,6 +864,22 @@ class PairedSampleTests(unittest.TestCase):
         conditions = paired.job_conditions(root)
         self.assertEqual(len(set(conditions.values())), 2, conditions)
 
+    def test_a_later_stage_with_a_different_browser_is_not_pooled(self) -> None:
+        """A browser identity recorded only on a later stage must still split."""
+        root = self.root / "stage-browser"
+        for name, browser in (("a", "chromium-1"), ("b", "chromium-2")):
+            directory = root / name
+            directory.mkdir(parents=True)
+            common = {"runnerImage": "ubuntu22", "sdkVersion": "1.2.0",
+                      "stdxDigest": "d", "toolchainTarget": "x86_64",
+                      "compileOptions": ["--jobs 1", "-O1"]}
+            (directory / "stages.json").write_text(json.dumps({"stages": [
+                {"environment": {**common, "browserIdentity": "chromium-1"}},
+                {"environment": {**common, "browserIdentity": browser}},
+            ]}), encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(set(conditions.values())), 2, conditions)
+
     def test_the_provenance_command_is_copyable(self) -> None:
         """A workflow name with spaces must arrive as one argument."""
         import shlex
