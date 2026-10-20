@@ -150,7 +150,6 @@ def job_conditions(evidence: Path) -> dict[str, str]:
         stages = document.get("stages", [])
         if not stages:
             continue
-        environment = stages[0].get("environment") or {}
         # The pairing unit is the ENVIRONMENT, not the revision: DONE-03 asks for
         # samples "before (main) vs after (branch)", i.e. explicitly across two
         # different revisions, under the same workflow, runner type, SDK/stdx and
@@ -159,12 +158,38 @@ def job_conditions(evidence: Path) -> dict[str, str]:
         # construction. The revision is still recorded per sample (and shown in the
         # tables), so a reader can always see which commits a cell's samples came from;
         # it just does not split comparable measurements apart.
+        #
+        # EVERY stage is read, not only the first: a job that compiles with different
+        # effective flags in a later stage would otherwise be pooled with one that did
+        # not. Identity fields that may legitimately differ between stages (the cache
+        # state, and the per-stage run/job identifiers) are excluded, everything else
+        # must agree.
+        environment = stages[0].get("environment") or {}
         signature = "|".join(str(environment.get(field, "")) for field in
                              ("runnerImage", "sdkVersion", "stdxDigest",
                               "toolchainTarget"))
         compile_options = environment.get("compileOptions") or []
         signature += "|" + ",".join(str(option) for option in compile_options)
+        # The issue's matched conditions also include the browser/font set. It is not
+        # recorded by `ci_stage` today, so this only adds it when a producer supplies
+        # it; until then the report states that the browser/font axis is unmeasured
+        # rather than pretending it was matched.
+        for field in ("browserVersion", "browserIdentity", "fontSetDigest"):
+            value = environment.get(field)
+            if value:
+                signature += f"|{field}={value}"
         conditions[path.parent.name] = signature
+        # A stage-specific divergence makes the artifact incomparable with any other:
+        # give it a signature of its own rather than silently pooling it.
+        for stage in stages[1:]:
+            other = stage.get("environment") or {}
+            for field in ("runnerImage", "sdkVersion", "stdxDigest", "toolchainTarget"):
+                if str(other.get(field, "")) != str(environment.get(field, "")):
+                    conditions[path.parent.name] += f"|{field}!={other.get(field, '')}"
+            stage_options = ",".join(str(option) for option in
+                                     (other.get("compileOptions") or []))
+            if stage_options != ",".join(str(option) for option in compile_options):
+                conditions[path.parent.name] += f"|compileOptions!={stage_options}"
     return conditions
 
 
@@ -525,13 +550,20 @@ def report(samples: list[dict], workflow: str, out: Path,
              "be either condition. Failed and cancelled jobs are listed separately below and",
              "are excluded from the cells, not from the record.",
              "",
-             "| run | attempt | revision | event | job | shape | conclusion | cache | "
-             "job wall | run wall | run runner |",
-             "| --- | ---: | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |"]
+             "| run | attempt | revision | event | job | shape | environment | conclusion "
+             "| cache | job wall | run wall | run runner |",
+             "| --- | ---: | --- | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: |"]
+    for sample in samples:
+        # A sample dict assembled by an older caller may predate the condition field;
+        # the run table shows the environment, so default it rather than crash.
+        sample.setdefault("condition", "")
     for sample in sorted(samples, key=lambda s: (s["run"], s["job"])):
+        # The environment is a column, not only a cell key: a cell may pool several
+        # revisions, so without it the report cannot say which commit ran under which
+        # environment and the revision-keyed view could not be reconstructed.
         lines.append("| {run} | {attempt} | `{revision}` | {event} | {job} | {shape} | "
-                     "{conclusion} | {state} | {jobMinutes:.1f}m | {runWallMinutes:.1f}m | "
-                     "{runRunnerMinutes:.1f}m |".format(**sample))
+                     "{condition} | {conclusion} | {state} | {jobMinutes:.1f}m | "
+                     "{runWallMinutes:.1f}m | {runRunnerMinutes:.1f}m |".format(**sample))
     # Workflow-level totals, which the per-job column above cannot express: a run's wall
     # time and its total runner time are what the wall-clock and cost comparisons use.
     # Keyed by (run, ATTEMPT): keying by run alone collapses a re-run's attempts and
@@ -554,10 +586,16 @@ def report(samples: list[dict], workflow: str, out: Path,
     lines += ["", "## Matched cells (successful jobs only)", "",
               "Each cell is one (job shape, cache state, matched environment) triple. The",
               "condition signature is the runner image, SDK version, stdx digest, toolchain",
-              "target and compile options recorded by that job's stages. The source revision",
-              "is NOT part of the key: DONE-03's before/after samples are different commits",
-              "by definition. Every sample keeps its own revision, shown in the run table.",
-              ""]
+              "target and compile options recorded by EVERY stage of that job (a divergent",
+              "later stage gives the artifact a signature of its own). The source revision is",
+              "NOT part of the key: DONE-03's before/after samples are different commits by",
+              "definition. Every sample keeps its own revision AND its environment, both",
+              "shown in the run table, so the revision-keyed view stays reconstructible.",
+              "",
+              "**Unmeasured axis:** DONE-03 also names the browser/font set. `ci_stage` does",
+              "not record it, so no signature can attest it and these cells do not claim it",
+              "was matched. If a producer starts recording it, the signature picks it up",
+              "automatically and cells split accordingly.", ""]
     for key in sorted(cells):
         shape, state, condition = key
         detail = f" `{condition}`" if condition else " (condition not recorded)"
@@ -587,7 +625,11 @@ def report(samples: list[dict], workflow: str, out: Path,
     conditions_by_shape: dict[str, set[str]] = {}
     for (shape, _state, condition), _values in cells.items():
         conditions_by_shape.setdefault(shape, set()).add(condition)
-    for sample in successful:
+    # EVERY cache-bearing sample contributes its environment, including failed and
+    # cancelled ones: an environment that only ever failed must still appear as an
+    # unmet requirement (with zero counts) instead of vanishing, or a platform whose
+    # samples all failed would look requirement-free.
+    for sample in samples:
         if sample.get("hasEvidence"):
             conditions_by_shape.setdefault(sample["shape"], set()).add(
                 sample.get("condition", ""))

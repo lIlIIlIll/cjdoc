@@ -783,6 +783,72 @@ class PairedSampleTests(unittest.TestCase):
         self.assertEqual(len(signatures), 1, signatures)
         self.assertNotIn("a" * 40, signatures.pop())
 
+    def test_a_later_stage_with_different_flags_is_not_pooled(self) -> None:
+        """The signature must cover EVERY stage, not only the first."""
+        root = self.root / "stage-flags"
+        for name, flags in (("a", ["--jobs 1", "-O1"]), ("b", ["--jobs 1", "-O2"])):
+            directory = root / name
+            directory.mkdir(parents=True)
+            common = {"runnerImage": "ubuntu22", "sdkVersion": "1.2.0",
+                      "stdxDigest": "d", "toolchainTarget": "x86_64"}
+            (directory / "stages.json").write_text(json.dumps({"stages": [
+                {"environment": {**common, "compileOptions": ["--jobs 1", "-O1"]}},
+                {"environment": {**common, "compileOptions": flags}},
+            ]}), encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(set(conditions.values())), 2, conditions)
+
+    def test_failed_only_environments_stay_requirements(self) -> None:
+        """An environment seen only in failed samples must still be listed."""
+        def sample(env, state, conclusion):
+            return {"run": 1, "attempt": 1, "revision": "a" * 40, "event": "push",
+                    "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": conclusion, "state": state, "jobMinutes": 10.0,
+                    "hasEvidence": True, "condition": env,
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        samples = [sample("env-A", "hit", "success"),
+                   sample("env-B", "miss", "failure")]
+        out = self.root / "failed-env.md"
+        paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("env-B", text)
+        self.assertIn("env-B`: 0 collected", text)
+
+    def test_the_run_table_carries_the_environment_and_revision(self) -> None:
+        """Attribution must be auditable from the report itself."""
+        def sample(env, revision):
+            return {"run": 1, "attempt": 1, "revision": revision, "event": "push",
+                    "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": "success", "state": "hit", "jobMinutes": 10.0,
+                    "hasEvidence": True, "condition": env,
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        samples = [sample("env-X", "a" * 8), sample("env-Y", "b" * 8)]
+        out = self.root / "attribution.md"
+        paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("| environment |", text)
+        # The environment must appear on the ROW, next to its revision, so a cell that
+        # pools several revisions can still be attributed.
+        rows = [line for line in text.splitlines()
+                if line.startswith("| 1 |") and "linux-x64" in line]
+        self.assertEqual(len(rows), 2, rows)
+        self.assertTrue(any("env-X" in row and "a" * 8 in row for row in rows), rows)
+        self.assertTrue(any("env-Y" in row and "b" * 8 in row for row in rows), rows)
+
+    def test_a_browser_identity_difference_splits_cells(self) -> None:
+        """If a producer records browser/font identity, it must split cells."""
+        root = self.root / "browser"
+        for name, version in (("a", "chromium-1"), ("b", "chromium-2")):
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(json.dumps({"stages": [{
+                "environment": {"runnerImage": "ubuntu22", "sdkVersion": "1.2.0",
+                                "stdxDigest": "d", "toolchainTarget": "x86_64",
+                                "compileOptions": ["--jobs 1", "-O1"],
+                                "browserIdentity": version}}]}), encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(set(conditions.values())), 2, conditions)
+
     def test_the_provenance_command_is_copyable(self) -> None:
         """A workflow name with spaces must arrive as one argument."""
         import shlex
