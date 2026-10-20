@@ -704,12 +704,12 @@ class PairedSampleTests(unittest.TestCase):
         self.assertEqual(calls, {1: 1, 2: 0}, "the carried-forward job must be dropped")
 
     def test_the_same_shape_under_two_conditions_is_two_cells(self) -> None:
-        """Five hits from one revision must not count for five misses from another."""
+        """A hit and a miss are distinct cells; the revision is not part of the key."""
         def sample(rev, state, minutes):
             return {"run": 1, "attempt": 1, "revision": rev, "event": "push",
                     "job": "linux-x64 / Cangjie", "shape": "linux-x64",
                     "conclusion": "success", "state": state, "jobMinutes": minutes, "hasEvidence": True,
-                    "condition": f"{rev}|ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
+                    "condition": "ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
                     "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
 
         samples = [sample("a" * 40, "miss", 20.0), sample("b" * 40, "hit", 10.0)]
@@ -717,26 +717,253 @@ class PairedSampleTests(unittest.TestCase):
         result = paired.report(samples, "ci.yml", out)
         self.assertEqual(len(result["cells"]), 2, result["cells"])
         text = out.read_text(encoding="utf-8")
-        self.assertIn(f"{'a' * 40}|ubuntu", text)
-        self.assertIn(f"{'b' * 40}|ubuntu", text)
+        # The environment is the pairing unit, and revisions are still visible.
+        self.assertIn("ubuntu|1.2.0|d|x86_64", text)
+
+    def test_two_revisions_under_one_environment_share_a_cell(self) -> None:
+        """DONE-03's before/after samples are different commits by definition.
+
+        Keying on the revision made every push its own cell with a single sample, so
+        five per cell was unreachable. Samples of the same shape, state and
+        environment must pool across revisions, and the cell must name those
+        revisions so the pooling is not silent.
+        """
+        def sample(rev, state, minutes):
+            return {"run": 1, "attempt": 1, "revision": rev, "event": "push",
+                    "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": "success", "state": state, "jobMinutes": minutes,
+                    "hasEvidence": True,
+                    "condition": "ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+
+        samples = [sample(f"{n:040x}", "hit", 10.0) for n in range(1, 6)]
+        out = self.root / "pooled.md"
+        result = paired.report(samples, "ci.yml", out)
+        key = "linux-x64/hit|ubuntu|1.2.0|d|x86_64|--jobs 1,-O1"
+        self.assertEqual(result["cells"].get(key), 5, result["cells"])
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("revisions=", text)
 
     def test_five_hits_and_five_misses_under_different_conditions_is_not_met(self) -> None:
         """The paired comparison needs BOTH conditions under the SAME condition."""
-        def sample(rev, state):
-            return {"run": 1, "attempt": 1, "revision": rev, "event": "push",
+        def sample(env, state):
+            return {"run": 1, "attempt": 1, "revision": "a" * 40, "event": "push",
                     "job": "linux-x64 / Cangjie", "shape": "linux-x64",
                     "conclusion": "success", "state": state, "jobMinutes": 10.0,
-                    "condition": f"{rev}|ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
-                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
-        samples = [sample("a" * 40, "hit") for _ in range(5)]
-        samples += [sample("b" * 40, "miss") for _ in range(5)]
+                    "condition": env, "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        # Five hits and five misses, but under DIFFERENT environments: each state is
+        # satisfied alone while no single matched environment has both.
+        samples = [sample("ubuntu|1.2.0|d|x86_64|--jobs 1,-O1", "hit") for _ in range(5)]
+        samples += [sample("macos|1.2.0|e|aarch64|--jobs 1,-O1", "miss") for _ in range(5)]
         out = self.root / "crossed.md"
         result = paired.report(samples, "ci.yml", out)
         text = out.read_text(encoding="utf-8")
-        # Each state has five samples, but never under one condition, so no cell is met.
         self.assertFalse(any(count >= 5 for count in result["pairedPerCondition"].values()),
                          result["pairedPerCondition"])
         self.assertIn("paired samples under this condition: 0 — NOT met", text)
+
+    def test_the_pairing_signature_excludes_the_revision(self) -> None:
+        """`job_conditions` must key on the environment only.
+
+        Two artifacts recorded from the SAME environment but DIFFERENT commits have to
+        produce the same signature, or DONE-03's before/after pairing is impossible.
+        """
+        root = self.root / "conditions-evidence"
+        for name, commit in (("a", "a" * 40), ("b", "b" * 40)):
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(json.dumps({"stages": [{
+                "environment": {"checkoutCommit": commit, "runnerImage": "ubuntu22",
+                                "sdkVersion": "1.2.0", "stdxDigest": "d",
+                                "toolchainTarget": "x86_64", "compileOptions": ["--jobs 1", "-O1"]}
+            }]}), encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(conditions), 2)
+        signatures = set(conditions.values())
+        self.assertEqual(len(signatures), 1, signatures)
+        self.assertNotIn("a" * 40, signatures.pop())
+
+    def test_a_later_stage_with_different_flags_is_not_pooled(self) -> None:
+        """The signature must cover EVERY stage, not only the first."""
+        root = self.root / "stage-flags"
+        for name, flags in (("a", ["--jobs 1", "-O1"]), ("b", ["--jobs 1", "-O2"])):
+            directory = root / name
+            directory.mkdir(parents=True)
+            common = {"runnerImage": "ubuntu22", "sdkVersion": "1.2.0",
+                      "stdxDigest": "d", "toolchainTarget": "x86_64"}
+            (directory / "stages.json").write_text(json.dumps({"stages": [
+                {"environment": {**common, "compileOptions": ["--jobs 1", "-O1"]}},
+                {"environment": {**common, "compileOptions": flags}},
+            ]}), encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(set(conditions.values())), 2, conditions)
+
+    def test_failed_only_environments_stay_requirements(self) -> None:
+        """An environment seen only in failed samples must still be listed."""
+        def sample(env, state, conclusion):
+            return {"run": 1, "attempt": 1, "revision": "a" * 40, "event": "push",
+                    "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": conclusion, "state": state, "jobMinutes": 10.0,
+                    "hasEvidence": True, "condition": env,
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        samples = [sample("env-A", "hit", "success"),
+                   sample("env-B", "miss", "failure")]
+        out = self.root / "failed-env.md"
+        paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("env-B", text)
+        self.assertIn("env-B`: 0 collected", text)
+
+    def test_the_run_table_carries_the_environment_and_revision(self) -> None:
+        """Attribution must be auditable from the report itself."""
+        def sample(env, revision):
+            return {"run": 1, "attempt": 1, "revision": revision, "event": "push",
+                    "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": "success", "state": "hit", "jobMinutes": 10.0,
+                    "hasEvidence": True, "condition": env,
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        samples = [sample("env-X", "a" * 8), sample("env-Y", "b" * 8)]
+        out = self.root / "attribution.md"
+        paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("| environment |", text)
+        # The environment must appear on the ROW, next to its revision, so a cell that
+        # pools several revisions can still be attributed.
+        rows = [line for line in text.splitlines()
+                if line.startswith("| 1 |") and "linux-x64" in line]
+        self.assertEqual(len(rows), 2, rows)
+        self.assertTrue(any("env-X" in row and "a" * 8 in row for row in rows), rows)
+        self.assertTrue(any("env-Y" in row and "b" * 8 in row for row in rows), rows)
+
+    def test_a_browser_identity_difference_splits_cells(self) -> None:
+        """If a producer records browser/font identity, it must split cells."""
+        root = self.root / "browser"
+        for name, version in (("a", "chromium-1"), ("b", "chromium-2")):
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(json.dumps({"stages": [{
+                "environment": {"runnerImage": "ubuntu22", "sdkVersion": "1.2.0",
+                                "stdxDigest": "d", "toolchainTarget": "x86_64",
+                                "compileOptions": ["--jobs 1", "-O1"],
+                                "browserIdentity": version}}]}), encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(set(conditions.values())), 2, conditions)
+
+    def test_the_toolchain_fingerprint_splits_cells(self) -> None:
+        """Same sdkVersion but a different installation must not share a cell."""
+        root = self.root / "fingerprint"
+        for name, fingerprint in (("a", "fp-1"), ("b", "fp-2")):
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(json.dumps({"stages": [{
+                "environment": {"runnerImage": "ubuntu22", "sdkVersion": "1.2.0",
+                                "stdxDigest": "d", "toolchainTarget": "x86_64",
+                                "toolchainFingerprint": fingerprint,
+                                "compileOptions": ["--jobs 1", "-O1"]}}]}),
+                encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(set(conditions.values())), 2, conditions)
+
+    def test_a_later_stage_with_a_different_browser_is_not_pooled(self) -> None:
+        """A browser identity recorded only on a later stage must still split."""
+        root = self.root / "stage-browser"
+        for name, browser in (("a", "chromium-1"), ("b", "chromium-2")):
+            directory = root / name
+            directory.mkdir(parents=True)
+            common = {"runnerImage": "ubuntu22", "sdkVersion": "1.2.0",
+                      "stdxDigest": "d", "toolchainTarget": "x86_64",
+                      "compileOptions": ["--jobs 1", "-O1"]}
+            (directory / "stages.json").write_text(json.dumps({"stages": [
+                {"environment": {**common, "browserIdentity": "chromium-1"}},
+                {"environment": {**common, "browserIdentity": browser}},
+            ]}), encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(set(conditions.values())), 2, conditions)
+
+    def test_every_run_row_keeps_the_table_column_count(self) -> None:
+        """A pipe-delimited environment must not break the Markdown row."""
+        def sample(env):
+            return {"run": 1, "attempt": 1, "revision": "a" * 40, "event": "push",
+                    "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": "success", "state": "hit", "jobMinutes": 10.0,
+                    "hasEvidence": True, "condition": env,
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        samples = [sample("ubuntu|1.2.0|d|x86_64|--jobs 1,-O1")]
+        out = self.root / "escaping.md"
+        paired.report(samples, "ci.yml", out)
+        import re
+        lines = out.read_text(encoding="utf-8").splitlines()
+        # GFM treats `\|` inside a cell as a literal pipe, so count only unescaped
+        # separators -- which is exactly the property that keeps the columns aligned.
+        unescaped = re.compile(r"(?<!\\)\|")
+        header = next(line for line in lines if line.startswith("| run | attempt"))
+        expected = len(unescaped.split(header)) - 2
+        row = next(line for line in lines
+                   if line.startswith("| 1 |") and "linux-x64" in line)
+        self.assertEqual(len(unescaped.split(row)) - 2, expected, row)
+        self.assertIn("\\|", row)
+
+    def test_stage_boundaries_are_preserved_in_the_signature(self) -> None:
+        """Two artifacts differing in the same fields in a different ORDER must differ.
+
+        A per-field suffix collides here; encoding each stage's full identity tuple
+        does not.
+        """
+        root = self.root / "stage-order"
+        base_env = {"runnerImage": "ubuntu22", "sdkVersion": "1.2.0", "stdxDigest": "d",
+                    "toolchainTarget": "x86_64", "compileOptions": ["--jobs 1", "-O1"]}
+        first = {"environment": dict(base_env)}
+        profiles = {
+            # one stage changes BOTH fields...
+            "a": [first, {"environment": {**base_env, "runnerImage": "ubuntu23",
+                                          "sdkVersion": "1.3.0"}}],
+            # ...two stages change them separately
+            "b": [first, {"environment": {**base_env, "runnerImage": "ubuntu23"}},
+                  {"environment": {**base_env, "sdkVersion": "1.3.0"}}],
+        }
+        for name, stages in profiles.items():
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(
+                json.dumps({"stages": stages}), encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(set(conditions.values())), 2, conditions)
+
+    def test_colliding_short_prefixes_stay_distinguishable(self) -> None:
+        """Two commits sharing an 8-hex prefix must not collapse in the provenance."""
+        prefix = "a" * 8
+        def sample(suffix):
+            return {"run": 1, "attempt": 1, "revision": prefix, "revisionFull": prefix + suffix,
+                    "event": "push", "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": "success", "state": "hit", "jobMinutes": 10.0,
+                    "hasEvidence": True, "condition": "ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        samples = [sample("1" * 32), sample("2" * 32)]
+        out = self.root / "collide.md"
+        paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("revisions=", text)
+        self.assertIn(prefix + "1" * 32, text.replace("\\", ""))
+        self.assertIn(prefix + "2" * 32, text.replace("\\", ""))
+
+    def test_identical_later_stages_do_not_split_a_cell(self) -> None:
+        """A multi-stage artifact with an IDENTICAL later stage must keep the plain key.
+
+        The first stage and later stages must serialize through the same code path; if
+        they do not, every later stage looks divergent and two runs under the same
+        environment (one with more recorded stages) land in different cells.
+        """
+        root = self.root / "same-stages"
+        common = {"runnerImage": "ubuntu22", "sdkVersion": "1.2.0", "stdxDigest": "d",
+                  "toolchainTarget": "x86_64", "compileOptions": ["--jobs 1", "-O1"]}
+        for name, count in (("one", 1), ("two", 2)):
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(json.dumps(
+                {"stages": [{"environment": dict(common)} for _ in range(count)]}),
+                encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(set(conditions.values())), 1, conditions)
 
     def test_the_provenance_command_is_copyable(self) -> None:
         """A workflow name with spaces must arrive as one argument."""
