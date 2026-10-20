@@ -676,14 +676,24 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
             or final.get("merge_commit_sha") != merge_sha
         ):
             raise PrChangedDuringEvaluation("the PR changed before the conclusion was returned")
-        # Only HEAD ownership is rechecked here. Merge-scope ambiguity (a PR with
-        # the same head+base appearing) is already covered by the post-publication
-        # `decide` revalidation above, which reruns `_merge_scope_is_unique` and
-        # withdraws through the ledger when the conclusion no longer holds -- one
-        # mechanism, not two. This scan closes the remaining window: a second PR
-        # may start sharing the HEAD after that revalidation.
-        if publish_head and not _head_scope_is_unique(number, head_sha,
-                                                      api.list_open_pull_requests()):
+        # The post-publication `decide` revalidation reruns `_merge_scope_is_unique`,
+        # but a twin PR (same head+base) can still appear between that call and this
+        # scan. Recheck BOTH scopes here: the merge status must be withdrawn too, or a
+        # twin would inherit a conclusion that was never scoped against it.
+        final_open_prs = api.list_open_pull_requests()
+        head_ok = _head_scope_is_unique(number, head_sha, final_open_prs)
+        merge_ok = _merge_scope_is_unique(number, head_sha, base_sha, merge_sha, final_open_prs)
+        if publish_head and not merge_ok:
+            reason = "the merge scope became ambiguous"
+            _publish(api, merge_sha,
+                     GateDecision("pending", f"Withheld: {reason}", pr_url), published)
+            if not head_ok:
+                revoke_head_status(
+                    api, head_sha,
+                    GateDecision("pending", f"Withheld: {reason}", pr_url),
+                )
+            return GateDecision("pending", f"Conclusion withdrawn: {reason}", pr_url)
+        if publish_head and not head_ok:
             revoke_head_status(
                 api, head_sha,
                 GateDecision("pending", "HEAD shared with another open PR; withheld", pr_url),

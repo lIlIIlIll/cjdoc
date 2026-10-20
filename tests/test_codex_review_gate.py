@@ -1949,6 +1949,35 @@ class IntegrationTests(unittest.TestCase):
         # check in the final scan -- the final scan only rechecks HEAD ownership.
         # This test therefore protects the revalidation path.
 
+    def test_final_scan_withdraws_the_merge_when_a_twin_appears(self):
+        # A twin (same head+base) appears only AFTER the post-publication
+        # revalidation, so only the final scan can see it. The merge status must be
+        # withdrawn there, or the twin inherits a conclusion never scoped to it.
+        api = FakeAPI()
+        base_status = api.create_commit_status
+        writes = []
+        twin = {"number": 200, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+                "merge_commit_sha": "c" * 40}
+        base_listing = api.list_open_pull_requests
+        calls = {"n": 0}
+        # The revalidation listing is the 3rd call; the final scan is the 4th.
+        twin_from = 4
+        state = {"twin": False}
+
+        def listing():
+            calls["n"] += 1
+            if calls["n"] >= twin_from:
+                state["twin"] = True
+            return base_listing() + ([twin] if state["twin"] else [])
+
+        api.list_open_pull_requests = listing
+        api.create_commit_status = lambda sha, decision: (
+            writes.append((sha, decision.state)) or base_status(sha, decision))
+        result = gate.evaluate_pr(api, 133)
+        self.assertTrue(state["twin"], "the twin must appear at the final scan")
+        self.assertEqual(result.state, "pending")
+        self.assertEqual([s for sha, s in writes if sha == "b" * 40][-1], "pending")
+
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
         # repository forbids shipping debug code, so pin its absence.
