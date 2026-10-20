@@ -648,7 +648,7 @@ class IntegrationTests(unittest.TestCase):
 
         api.create_commit_status = failing_status
         api.list_open_pull_requests = failing_scan
-        with self.assertRaisesRegex(RuntimeError, "withdrawal failed"):
+        with self.assertRaisesRegex(RuntimeError, "withdraw every published status"):
             gate.evaluate_pr(api, 133)
 
     def test_summary_deleted_during_publication_is_withdrawn(self):
@@ -668,7 +668,7 @@ class IntegrationTests(unittest.TestCase):
         head_events = [(s.state, s.description) for sha, s in api.statuses if sha == HEAD]
         self.assertIn("success", [state for state, _ in head_events])
         self.assertEqual(head_events[-1][0], "pending")
-        self.assertIn("evidence changed", head_events[-1][1])
+        self.assertIn("withdrawn", head_events[-1][1].lower())
 
 
     def test_evidence_change_withdraws_the_test_merge_too(self):
@@ -731,6 +731,9 @@ class IntegrationTests(unittest.TestCase):
                              "body": newer["body"]}}
         result = gate.run_gate("issue_comment", event, api)
         self.assertEqual(result, 0)
+        # A stale deletion must leave the newer success standing, not strand it.
+        self.assertEqual([s.state for sha, s in api.statuses if sha == HEAD][-1], "success")
+        self.assertEqual([s.state for sha, s in api.statuses if sha == "b" * 40][-1], "success")
 
     def test_delayed_closed_event_does_not_strand_a_reopened_pr(self):
         # The `closed` delivery arrived after the PR was reopened; the skip set
@@ -775,6 +778,360 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
 
 
+    def test_old_head_cleanup_runs_even_if_the_reopen_lookup_fails(self):
+        # The reopen lookup fails, but the old HEAD must still be cleaned up:
+        # otherwise a sole owner's success stays reusable by a later PR.
+        api = FakeAPI(state="closed")
+        other = {"number": 200, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+                 "merge_commit_sha": None}
+        base_request = api.get_pull_request
+        state = {"n": 0}
+
+        def flaky(number):
+            if number == 133:
+                state["n"] += 1
+                if state["n"] >= 1:  # evaluate_pr is stubbed, so this IS the reopen lookup
+                    raise RuntimeError("state lookup failed")
+                return {**base_request(number), "state": "closed"}
+            return base_request(number)
+
+        api.get_pull_request = flaky
+        api.list_open_pull_requests = lambda: [api.get_pull_request(200), other]
+        revoked = []
+        api.create_commit_status = lambda sha, d: revoked.append((sha, d.state))
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: None
+        try:
+            gate.run_gate("pull_request_target",
+                          {"action": "closed", "pull_request": {"number": 133,
+                                                                 "head": {"sha": HEAD}}}, api)
+        finally:
+            gate.evaluate_pr = original
+        self.assertIn((HEAD, "pending"), revoked)
+
+
+    def test_base_advanced_during_evaluation_is_not_published(self):
+        # The re-read before publication sees a different base/merge, so nothing
+        # may be published for the obsolete test merge.
+        api = FakeAPI()
+        reads = {"n": 0}
+        base_request = api.get_pull_request
+
+        def changing(number):
+            reads["n"] += 1
+            value = base_request(number)
+            if reads["n"] >= 2:
+                return {**value, "merge_commit_sha": None}
+            return value
+
+        api.get_pull_request = changing
+        result = gate.evaluate_pr(api, 133)
+        self.assertEqual(result.state, "pending")
+        self.assertNotIn("success", [s.state for _, s in api.statuses])
+        # Neither target may end up carrying the obsolete conclusion.
+        for target in (HEAD, "b" * 40):
+            self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
+
+    def test_shared_head_still_revalidates_the_merge_evidence(self):
+        # Two PRs share the HEAD; the deletion run removes the summary while this
+        # older run publishes. The test-merge status must be withdrawn even though
+        # no HEAD conclusion was ever published.
+        other = {"number": 200, "head": {"sha": HEAD}, "base": {"sha": "a" * 40},
+                 "merge_commit_sha": "c" * 40}
+        api = FakeAPI(other_open_prs=[other])
+        base_status = api.create_commit_status
+
+        def deleting_status(sha, decision):
+            base_status(sha, decision)
+            if sha == "b" * 40 and decision.state == "success":
+                api.comments = []
+
+        api.create_commit_status = deleting_status
+        result = gate.evaluate_pr(api, 133)
+        self.assertEqual(result.state, "pending")
+        self.assertEqual([s.state for sha, s in api.statuses if sha == "b" * 40][-1], "pending")
+
+    def test_transport_timeout_after_publication_withdraws_both_targets(self):
+        # A read that times out is not a ValueError/RuntimeError; it must still be
+        # caught so the published statuses are withdrawn.
+        api = FakeAPI()
+        published = {"yet": False}
+        base_status = api.create_commit_status
+
+        def tracking(sha, decision):
+            base_status(sha, decision)
+            if decision.state == "success":
+                published["yet"] = True
+
+        api.create_commit_status = tracking
+        original = api.list_open_pull_requests
+
+        def timing_out():
+            if published["yet"]:
+                raise TimeoutError("read timed out")
+            return original()
+
+        api.list_open_pull_requests = timing_out
+        with self.assertRaises(RuntimeError):
+            gate.evaluate_pr(api, 133)
+        for target in (HEAD, "b" * 40):
+            self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
+
+    def test_one_failing_withdrawal_does_not_skip_the_other_target(self):
+        # The HEAD withdrawal fails; the test-merge withdrawal must still be
+        # attempted, and the run must fail because a success remains standing.
+        api = FakeAPI()
+        published = {"success": False}
+        base_status = api.create_commit_status
+        original = api.list_open_pull_requests
+
+        def failing_status(sha, decision):
+            if decision.state == "success":
+                published["success"] = True
+            elif published["success"] and sha == "b" * 40:
+                # The FIRST withdrawal target fails; the other must still run.
+                raise RuntimeError("test-merge status endpoint down")
+            return base_status(sha, decision)
+
+        def failing_scan():
+            if published["success"]:
+                raise RuntimeError("transient API error")
+            return original()
+
+        api.create_commit_status = failing_status
+        api.list_open_pull_requests = failing_scan
+        with self.assertRaisesRegex(RuntimeError, "withdraw every published status"):
+            gate.evaluate_pr(api, 133)
+        # The HEAD (second target) was still withdrawn despite the first failing.
+        self.assertEqual([s.state for sha, s in api.statuses if sha == HEAD][-1], "pending")
+
+    def test_remaining_owner_fanout_attempts_every_candidate(self):
+        api = FakeAPI()
+        others = [
+            {"number": n, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+             "merge_commit_sha": None}
+            for n in (200, 300)
+        ]
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133), *others]
+        attempted = []
+        original = gate.evaluate_pr
+
+        def selective(a, n, **kw):
+            attempted.append(n)
+            if n == 200:
+                raise RuntimeError("boom")
+
+        gate.evaluate_pr = selective
+        try:
+            with self.assertRaisesRegex(RuntimeError, "owner re-evaluation failed"):
+                gate.reevaluate_head_owners(api, HEAD, {133})
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(attempted, [200, 300])
+
+
+    def test_accepted_first_write_with_failed_response_withdraws_both(self):
+        # GitHub accepts the FIRST merge-success POST and reading its response
+        # fails; both targets must end pending and the run must fail.
+        api = FakeAPI()
+        base_status = api.create_commit_status
+        hit = {"first": False}
+
+        def failing_response(sha, decision):
+            if decision.state == "success":
+                if not hit["first"]:
+                    hit["first"] = True
+                    base_status(sha, decision)  # the write was accepted
+                    raise TimeoutError("response read failed")
+            return base_status(sha, decision)
+
+        api.create_commit_status = failing_response
+        with self.assertRaises(RuntimeError):
+            gate.evaluate_pr(api, 133)
+        for target in (HEAD, "b" * 40):
+            self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
+
+    def test_owner_fanout_survives_a_transport_timeout(self):
+        api = FakeAPI()
+        others = [{"number": n, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+                   "merge_commit_sha": None} for n in (200, 300)]
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133), *others]
+        attempted = []
+        original = gate.evaluate_pr
+
+        def selective(a, n, **kw):
+            attempted.append(n)
+            if n == 200:
+                raise TimeoutError("owner read timed out")
+
+        gate.evaluate_pr = selective
+        try:
+            with self.assertRaisesRegex(RuntimeError, "owner re-evaluation failed"):
+                gate.reevaluate_head_owners(api, HEAD, {133})
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(attempted, [200, 300])
+
+    def test_failed_reopen_lookup_reevaluates_rather_than_skipping(self):
+        # The state is unknown, so the PR must be re-evaluated rather than
+        # skipped: skipping could strand a reopened sole owner.
+        api = FakeAPI()
+        calls = {"n": 0}
+
+        def failing_state(number):
+            if number == 133:
+                calls["n"] += 1
+                raise TimeoutError("state lookup timed out")
+            return {"state": "open", "number": number, "head": {"sha": HEAD},
+                    "base": {"sha": OLD_HEAD, "ref": "main"}, "merge_commit_sha": None,
+                    "html_url": URL}
+
+        api.get_pull_request = failing_state
+        api.list_open_pull_requests = lambda: [
+            {"number": 133, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD, "ref": "main"},
+             "merge_commit_sha": "b" * 40},
+        ]
+        evaluated = []
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: evaluated.append(n)
+        try:
+            gate.run_gate("pull_request_target",
+                          {"action": "closed",
+                           "pull_request": {"number": 133, "head": {"sha": HEAD}}}, api)
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(calls["n"], 1)
+        self.assertEqual(evaluated, [133, 133])
+
+
+    def test_reporting_failure_is_surfaced_without_withdrawing_statuses(self):
+        # A Job Summary failure happens after both targets were confirmed, so the
+        # statuses must stand (withdrawing them would strand a valid review) while
+        # the run still fails loudly instead of staying silent.
+        import os
+        import tempfile
+        api = FakeAPI()
+        target = tempfile.mkdtemp()
+        blocked = os.path.join(target, "not-a-dir")
+        open(blocked, "w").close()
+        previous = os.environ.get("GITHUB_STEP_SUMMARY")
+        os.environ["GITHUB_STEP_SUMMARY"] = os.path.join(blocked, "summary.md")
+        try:
+            with self.assertRaises(RuntimeError):
+                gate.evaluate_pr(api, 133)
+        finally:
+            if previous is None:
+                os.environ.pop("GITHUB_STEP_SUMMARY", None)
+            else:
+                os.environ["GITHUB_STEP_SUMMARY"] = previous
+        for target_sha in (HEAD, "b" * 40):
+            self.assertEqual(
+                [s.state for sha, s in api.statuses if sha == target_sha][-1], "success"
+            )
+
+    def test_change_during_the_publication_scope_read_is_caught(self):
+        # The PR changes while the open-PR request inside the publication block is
+        # in flight; the saved base/test merge no longer describe it, so nothing
+        # may stand as authorized.
+        api = FakeAPI()
+        reads = {"n": 0}
+        base_request = api.get_pull_request
+        # A base move in the initial-read window: the public re-read at the top of
+        # the publication block is what must catch it, because the merge-scope and
+        # evidence checks both still pass.
+        changing_after = 2
+        scope = api.list_open_pull_requests
+
+        def changing(number):
+            reads["n"] += 1
+            value = base_request(number)
+            if reads["n"] >= changing_after:
+                return {**value, "base": {"sha": "9" * 40, "ref": "main"}}
+            return value
+
+        api.get_pull_request = changing
+        api.list_open_pull_requests = scope
+        result = gate.evaluate_pr(api, 133)
+        self.assertEqual(result.state, "pending")
+        for target in (HEAD, "b" * 40):
+            self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
+
+    def test_base_push_survives_transport_timeouts_in_both_loops(self):
+        # A raw TimeoutError (not ValueError/RuntimeError) must not abort either
+        # base-push loop, or later candidates keep their previous-base success.
+        api = FakeAPI()
+        others = [{"number": n, "head": {"sha": str(n) * 40},
+                   "base": {"sha": OLD_HEAD, "ref": "main"}, "merge_commit_sha": None}
+                  for n in (200, 300)]
+        api.list_open_pull_requests = lambda: [api.get_pull_request(133), *others]
+        by_number = {133: HEAD, 200: "2" * 40, 300: "3" * 40}
+        base_request = api.get_pull_request
+        revoked = []
+
+        def timing_out_lookup(number):
+            if number == 200:
+                raise TimeoutError("lookup timed out")
+            value = base_request(number)
+            value["head"] = {"sha": by_number[number]}
+            return value
+
+        api.get_pull_request = timing_out_lookup
+        api.create_commit_status = lambda sha, d: revoked.append((sha, d.state))
+        evaluated = []
+        original = gate.evaluate_pr
+
+        def timing_out_eval(a, n, **kw):
+            evaluated.append(n)
+            if n == 133:
+                raise TimeoutError("evaluation timed out")
+
+        gate.evaluate_pr = timing_out_eval
+        try:
+            with self.assertRaisesRegex(RuntimeError, "base push re-evaluation failed"):
+                gate.run_gate("push", {"ref": "refs/heads/main"}, api)
+        finally:
+            gate.evaluate_pr = original
+        # The candidate after the failing lookup was still revoked...
+        self.assertIn(("3" * 40, "pending"), revoked)
+        # ...and every candidate was still evaluated despite the first timeout.
+        self.assertEqual(evaluated, [133, 200, 300])
+
+    def test_cleanup_revocation_failure_does_not_abort_the_fanout(self):
+        # The first cleanup status write fails; surviving owners must still be
+        # evaluated, or their HEADs stay in whatever state this left.
+        api = FakeAPI()
+        survivor = {"number": 133, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD,
+                    "ref": "main"}, "merge_commit_sha": "b" * 40}
+        api.list_open_pull_requests = lambda: [survivor]
+        base_status = api.create_commit_status
+
+        def failing_revocation(sha, decision):
+            if decision.state != "success":
+                raise TimeoutError("revocation timed out")
+            return base_status(sha, decision)
+
+        api.create_commit_status = failing_revocation
+        evaluated = []
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: evaluated.append(n)
+        try:
+            with self.assertRaisesRegex(RuntimeError, "HEAD owner re-evaluation failed"):
+                gate.reevaluate_head_owners(api, HEAD, set())
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(evaluated, [133])
+
+    def test_delayed_synchronize_to_the_current_head_is_not_stranded(self):
+        # A -> B -> A: the delivery for A -> B arrives last, and its `before` is
+        # the CURRENT head, so this PR must still be re-evaluated as an owner.
+        event = {"action": "synchronize", "before": HEAD,
+                 "pull_request": {"number": 133, "head": {"sha": HEAD}}}
+        self.assertEqual(gate.affected_shared_heads("pull_request_target", event), [])
+        # A genuine move away still reports the previous head.
+        moved = {"action": "synchronize", "before": "9" * 40,
+                 "pull_request": {"number": 133, "head": {"sha": HEAD}}}
+        self.assertEqual(gate.affected_shared_heads("pull_request_target", moved), ["9" * 40])
+
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
         # repository forbids shipping debug code, so pin its absence.
@@ -810,7 +1167,9 @@ class IntegrationTests(unittest.TestCase):
                 gate.run_gate("pull_request_target", event, api)
         finally:
             gate.evaluate_pr = original
-        self.assertEqual(evaluated, [133, 200])
+        # The event is `closed` but the stub reports the PR open, so the reopen
+        # handling deliberately re-evaluates it as a HEAD owner as well.
+        self.assertEqual(evaluated, [133, 133, 200])
 
     def test_a_failing_reevaluation_does_not_mask_the_original_error(self):
         api = FakeAPI()
@@ -954,6 +1313,9 @@ class IntegrationTests(unittest.TestCase):
         result = gate.evaluate_pr(api, 133)
         self.assertEqual(result.state, "pending")
         self.assertNotIn("success", [s.state for _, s in api.statuses])
+        # Neither target may end up carrying the obsolete conclusion.
+        for target in (HEAD, "b" * 40):
+            self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
 
 
     def test_failed_compensating_revocation_fails_the_run(self):
@@ -984,7 +1346,7 @@ class IntegrationTests(unittest.TestCase):
 
         api.list_open_pull_requests = failing_scan
         api.create_commit_status = failing_status
-        with self.assertRaisesRegex(RuntimeError, "withdrawal failed"):
+        with self.assertRaisesRegex(RuntimeError, "withdraw every published status"):
             gate.evaluate_pr(api, 133)
 
 
