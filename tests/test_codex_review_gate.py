@@ -1726,6 +1726,96 @@ class IntegrationTests(unittest.TestCase):
             if states and states[-1] == "success":
                 self.fail(f"a success remained on {target[:10]} after the PR closed")
 
+    def test_closed_between_passes_cleans_the_ledger(self):
+        # Pass 1 publishes success via convergence; the PR closes before pass 2's
+        # read, so pass 2 returns None. Nothing may remain authorized.
+        api = FakeAPI()
+        state = {"published": False, "closed": False}
+        base_request = api.get_pull_request
+        base_status = api.create_commit_status
+        writes = []
+
+        def changing(number=None):
+            value = base_request(number)
+            if state["closed"]:
+                return {**value, "state": "closed"}
+            return value
+
+        def recording(sha, decision):
+            writes.append((sha, decision.state))
+            out = base_status(sha, decision)
+            if decision.state == "success":
+                # The PR closes as soon as this run publishes; the run's own final
+                # openness check (and the retry) must then clean up.
+                state["published"] = True
+                state["closed"] = True
+            return out
+
+        api.get_pull_request = changing
+        api.create_commit_status = recording
+        api.list_open_pull_requests = lambda: [
+            {"number": 133, "head": changing(133)["head"], "base": changing(133)["base"],
+             "merge_commit_sha": changing(133)["merge_commit_sha"]}]
+        gate.evaluate_pr(api, 133)
+        self.assertTrue(state["closed"])
+        # Every target this run published a success to must end pending.
+        for target in {sha for sha, _ in writes}:
+            states = [s for sha, s in writes if sha == target]
+            self.assertNotEqual(states[-1], "success",
+                                f"{target[:10]} kept a success after the PR closed")
+        # NOTE: the final openness check and the None-return reconciliation are
+        # deliberately redundant here -- in this harness the scope check fires
+        # first and reconciles, so neither can be isolated by removal. The
+        # outcome above is what the contract requires.
+
+    def test_unconfirmed_exit_withdraws_current_target_successes(self):
+        # Convergence publishes success on the CURRENT head/merge, then the
+        # evidence changes again and the next pass fails. An unconfirmed write is
+        # precisely the case where "still on the current SHA" proves nothing.
+        api = FakeAPI()
+        state = {"published": False}
+        base_status = api.create_commit_status
+        writes = []
+
+        def recording(sha, decision):
+            writes.append((sha, decision.state))
+            out = base_status(sha, decision)
+            if decision.state == "success":
+                state["published"] = True
+            return out
+
+        api.create_commit_status = recording
+        calls = {"n": 0}
+        original_comments = api.list_issue_comments
+
+        def comments(_number):
+            calls["n"] += 1
+            if calls["n"] > 1:
+                return []  # evidence gone => convergence, then a differing decision
+            return original_comments(_number)
+
+        api.list_issue_comments = comments
+        original_once = gate._evaluate_once
+        passes = {"n": 0}
+
+        def first_ok_then_boom(*args, **kwargs):
+            passes["n"] += 1
+            if passes["n"] == 1:
+                return original_once(*args, **kwargs)
+            raise ConnectionResetError("pass failed")
+
+        gate._evaluate_once = first_ok_then_boom
+        try:
+            with self.assertRaises(Exception):
+                gate.evaluate_pr(api, 133)
+        finally:
+            gate._evaluate_once = original_once
+        self.assertTrue(state["published"], "the scenario must publish a success")
+        for target in (HEAD, "b" * 40):
+            states = [s for sha, s in writes if sha == target]
+            if states and states[-1] == "success":
+                self.fail(f"unconfirmed success remained on {target[:10]}")
+
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
         # repository forbids shipping debug code, so pin its absence.

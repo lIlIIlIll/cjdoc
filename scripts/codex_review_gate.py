@@ -371,6 +371,15 @@ class PrChangedDuringEvaluation(Exception):
     """The PR's head/base/test-merge moved while this run was working."""
 
 
+class ReportingFailed(RuntimeError):
+    """The pass confirmed its statuses but could not write its report.
+
+    Distinct from an unconfirmed exit: the publication was already revalidated,
+    so the retry loop must NOT withdraw it -- only fail the run so the problem is
+    visible.
+    """
+
+
 class SupersededStatusNotWithdrawn(RuntimeError):
     """A status written for a superseded commit could not be withdrawn.
 
@@ -386,42 +395,28 @@ def _publish(api: GitHubAPI, target: str, decision: GateDecision,
         published.record(target, decision)
 
 
-def _reconcile(api: GitHubAPI, number: int, published: "PublishedStatuses") -> None:
-    """Withdraw every success this run published that no longer authorizes this PR.
+def _reconcile(api: GitHubAPI, published: "PublishedStatuses") -> None:
+    """Withdraw every success this run published but did not confirm.
 
-    One rule, used on every non-success exit path (retry, any exception, and
-    exhaustion), because a status belongs to a SHA and a pass that ended without
-    confirming its writes cannot be trusted to have cleaned them up:
+    Called on every exit that is NOT a confirmed success (snapshot change,
+    exception, retry exhaustion, or the PR closing mid-flight). A status belongs
+    to a SHA and this run cannot confirm what it wrote, so it withdraws all of
+    its own writes rather than leaving any of them as apparent authorization.
 
-      * A success is still valid only if its target is one of the PR's CURRENT
-        authorization targets -- the HEAD or the test-merge commit -- and the PR
-        is still open. The BASE is deliberately excluded: it is never an
-        authorization target, and a superseded HEAD can become the base of a
-        later snapshot, which is exactly how a stale success used to survive.
-      * A closed PR has no authorization targets at all (the gate publishes
-        nothing for it), so everything this run wrote is withdrawn.
+    Keeping the ones that happen to sit on the current HEAD/test-merge is wrong:
+    an unconfirmed write is exactly the case where the evidence has changed, so
+    "still on the current SHA" is not evidence that the conclusion still holds.
+    The next pass republishes whatever the CURRENT data supports, so a temporary
+    `pending` here is bounded by that pass.
 
-    Failures propagate: a target that cannot be withdrawn may still authorize a
-    merge, and no later event is guaranteed.
+    Only this run's own targets are affected (the ledger is per-run), and denial
+    is always safe. Two PRs sharing a commit can still not distinguish their
+    conclusions on it, which the module documentation records as a limit of
+    SHA-scoped statuses.
     """
     pending = GateDecision("pending", "Superseded by a newer snapshot", "")
-    try:
-        current = api.get_pull_request(number)
-        if current.get("state") == "open":
-            live = {(current.get("head") or {}).get("sha"),
-                    current.get("merge_commit_sha")}
-        else:
-            live = set()
-    except Exception as error:  # noqa: BLE001 - any transport failure
-        # The snapshot cannot be read, so no recorded success can be shown to be
-        # valid; withdraw them all rather than assume any is still authorized.
-        print(f"PR #{number}: could not read the snapshot before cleanup ({error}); "
-              f"withdrawing every recorded status", file=sys.stderr)
-        live = set()
     errors: list[str] = []
     for target in published.successes():
-        if target in live:
-            continue
         try:
             _publish(api, target, pending, published)
         except Exception as error:  # noqa: BLE001 - any transport failure
@@ -447,26 +442,35 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
     published = PublishedStatuses()
     for _ in range(3):
         try:
-            return _evaluate_once(api, number, deleted_summary=deleted_summary,
-                                  deleted_comment=deleted_comment, published=published)
+            result = _evaluate_once(api, number, deleted_summary=deleted_summary,
+                                    deleted_comment=deleted_comment, published=published)
         except PrChangedDuringEvaluation as changed:
             print(f"PR #{number}: {changed}; re-evaluating the current snapshot")
-            _reconcile(api, number, published)
-        except SupersededStatusNotWithdrawn:
+            _reconcile(api, published)
+            continue
+        except (SupersededStatusNotWithdrawn, ReportingFailed):
+            # The publication is either already withdrawn or confirmed; neither
+            # case should be reconciled again.
             raise
         except Exception as error:  # noqa: BLE001 - any failure mid-pass
             # A pass that ends in an error may have published without confirming
             # it. Reconcile first, then report the original failure.
             try:
-                _reconcile(api, number, published)
+                _reconcile(api, published)
             except SupersededStatusNotWithdrawn:
                 pass  # the unwithdrawn target is the more serious fact
             raise error
+        if result is None:
+            # The PR is not open (e.g. it closed between passes). Nothing this run
+            # published can authorize a closed PR, so clean up before returning.
+            _reconcile(api, published)
+            return None
+        return result
     # The bound was reached with the snapshot still moving, so this run holds no
     # confirmed conclusion. Reconcile through the same rule used everywhere else:
     # nothing this run published may remain unless it still authorizes a live PR.
     print(f"PR #{number}: the PR kept changing; leaving the decision to a later event")
-    _reconcile(api, number, published)
+    _reconcile(api, published)
     return GateDecision("pending", "The PR changed repeatedly during evaluation", "")
 
 
@@ -647,6 +651,11 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
             # trusting this run's own last write.
             raise PrChangedDuringEvaluation(
                 f"converged on {fresh_decision.state}; revalidating that decision")
+        # Final openness check: the PR can close between the revalidation above
+        # and this return, and a closed PR must not carry a success (nothing can
+        # merge it). Raising hands the cleanup to the retry loop.
+        if api.get_pull_request(number).get("state") != "open":
+            raise PrChangedDuringEvaluation("the PR closed during publication")
         if publish_head and not _head_scope_is_unique(number, head_sha,
                                                       api.list_open_pull_requests()):
             revoke_head_status(
@@ -691,7 +700,7 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
                     "\n\nThis check verifies review completion, not that findings are resolved.\n"
                 )
     except OSError as error:
-        raise RuntimeError(
+        raise ReportingFailed(
             f"PR #{number}: reporting failed after the gate confirmed its statuses: {error}"
         ) from error
     return decision

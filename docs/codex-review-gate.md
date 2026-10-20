@@ -54,7 +54,8 @@ GitHub Status 本身不能确保外部 Codex 服务一定运行或按时返回�
 | `success` 仅当 PR **独占** HEAD 时才写到 HEAD | `_head_scope_is_unique` |
 | 非 `success` 可无条件发布（只能拒绝，不能授权） | `revoke_head_status` 拒绝发布 `success` |
 | 结论与**当前**快照一致 | 发布前后各一次身份复核 + 有界重评估循环 |
-| 本次运行写过的所有 `success`，在快照被取代时**全部**撤销 | `PublishedStatuses` 台账跨重试传递 |
+| 本次运行写过的所有 `success`，在**任何未确认的退出**（快照变化、异常、重试用尽、PR 在发布期间关闭）时**全部**撤销 | `PublishedStatuses` 台账 + 单一 `_reconcile` |
+| 只有**已确认**的发布才保留：发布后再校验一次 PR 仍为 open | `ReportingFailed` 与未确认退出区分 |
 | 重新校验只可能撤销或收敛到**当前数据**的结论，绝不凭旧推理升级 | `decide()` 复用 + `fresh_decision` |
 | 发布后的任何失败：撤销两个目标并传播 | `withdraw_all` / `SupersededStatusNotWithdrawn` |
 | 重试上限用尽：撤销并**失败关闭** | `evaluate_pr` 末端 |
