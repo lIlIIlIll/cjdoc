@@ -662,11 +662,20 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
             # trusting this run's own last write.
             raise PrChangedDuringEvaluation(
                 f"converged on {fresh_decision.state}; revalidating that decision")
-        # Final openness check: the PR can close between the revalidation above
-        # and this return, and a closed PR must not carry a success (nothing can
-        # merge it). Raising hands the cleanup to the retry loop.
-        if api.get_pull_request(number).get("state") != "open":
-            raise PrChangedDuringEvaluation("the PR closed during publication")
+        # Final snapshot check: between the revalidation above and this return the
+        # PR can close, or its base/test-merge can move. Returning `success` then
+        # would leave the OLD test-merge commit authorized, and the run that
+        # changed it only knows the NEW one, so nothing would revoke the old.
+        # Compare every field, not just openness; raising hands cleanup to the
+        # retry loop.
+        final = api.get_pull_request(number)
+        if (
+            final.get("state") != "open"
+            or (final.get("head") or {}).get("sha") != head_sha
+            or (final.get("base") or {}).get("sha") != base_sha
+            or final.get("merge_commit_sha") != merge_sha
+        ):
+            raise PrChangedDuringEvaluation("the PR changed before the conclusion was returned")
         if publish_head and not _head_scope_is_unique(number, head_sha,
                                                       api.list_open_pull_requests()):
             revoke_head_status(
@@ -901,15 +910,23 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
             for outcome in pool.map(revoke_candidate, candidates):
                 if outcome is not None:
                     failures.append(outcome)
-        for candidate in candidates:
-            # Every candidate must be attempted: the push is the only guaranteed
-            # event for these unchanged HEADs, so one transient failure must not
-            # leave the rest still authorized against the previous base.
+        # The evaluation phase runs with the same bounded pool: each call makes
+        # several requests, so a serial sweep over a large base push can exceed
+        # the job timeout, and the preceding phase already set every candidate to
+        # `pending`. A hard kill would leave the later PRs blocked with no event
+        # to re-evaluate them.
+        def evaluate_candidate(candidate: int) -> str | None:
             try:
                 evaluate_pr(api, candidate)
                 print(f"re-evaluated PR #{candidate} after a push to {branch}")
+                return None
             except Exception as error:  # noqa: BLE001 - any transport failure
-                failures.append(f"PR #{candidate}: {error}")
+                return f"PR #{candidate}: {error}"
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for outcome in pool.map(evaluate_candidate, candidates):
+                if outcome is not None:
+                    failures.append(outcome)
         if failures:
             raise RuntimeError("base push re-evaluation failed: " + "; ".join(failures))
         return 0

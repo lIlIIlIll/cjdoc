@@ -60,7 +60,8 @@ GitHub Status 本身不能确保外部 Codex 服务一定运行或按时返回�
 | 重新校验只可能撤销或收敛到**当前数据**的结论，绝不凭旧推理升级 | `decide()` 复用 + `fresh_decision` |
 | 发布后的任何失败：撤销两个目标并传播 | `withdraw_all` / `SupersededStatusNotWithdrawn` |
 | 重试上限用尽：撤销并**失败关闭** | `evaluate_pr` 末端 |
-| fanout（base push / 持有者清理）尽力而为、逐候选隔离、聚合失败、有限并发 | `ThreadPoolExecutor(max_workers=4)` |
+| fanout（base push 的撤销与评估、持有者清理）尽力而为、逐候选隔离、聚合失败、**两个阶段均为有限并发** | `ThreadPoolExecutor(max_workers=4)` |
+| 结论返回前再比对**完整快照**（open/head/base/merge），任一变化都不返回 `success` | 发布后最终复核 |
 | 延迟事件（`closed` 后重开、`synchronize` 的 A→B→A、过期删除投递）不误撤销或搁置有效结论 | `reopen_aware_skip_set` + `deletion_is_stale` |
 
 ### 门禁**不**保证的（记录为已知边界，不再继续打补丁）

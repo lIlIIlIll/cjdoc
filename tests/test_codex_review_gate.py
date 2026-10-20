@@ -614,7 +614,7 @@ class IntegrationTests(unittest.TestCase):
             gate.run_gate("pull_request_target", event, api)
         finally:
             gate.evaluate_pr = original
-        self.assertEqual(evaluated, [133, 200])
+        self.assertEqual(sorted(evaluated), [133, 200])
 
     def test_run_gate_skips_issue_comments_without_a_pr(self):
         api = FakeAPI()
@@ -784,7 +784,7 @@ class IntegrationTests(unittest.TestCase):
             gate.run_gate("pull_request_target", event, api)
         finally:
             gate.evaluate_pr = original
-        self.assertEqual(evaluated, [133, 133, 200])
+        self.assertEqual(sorted(evaluated), [133, 133, 200])
 
     def test_post_write_scan_failure_withdraws_the_test_merge_too(self):
         api = FakeAPI()
@@ -961,7 +961,7 @@ class IntegrationTests(unittest.TestCase):
                 gate.reevaluate_head_owners(api, HEAD, {133})
         finally:
             gate.evaluate_pr = original
-        self.assertEqual(attempted, [200, 300])
+        self.assertEqual(sorted(attempted), [200, 300])
 
 
     def test_accepted_first_write_with_failed_response_withdraws_both(self):
@@ -1004,7 +1004,7 @@ class IntegrationTests(unittest.TestCase):
                 gate.reevaluate_head_owners(api, HEAD, {133})
         finally:
             gate.evaluate_pr = original
-        self.assertEqual(attempted, [200, 300])
+        self.assertEqual(sorted(attempted), [200, 300])
 
     def test_failed_reopen_lookup_reevaluates_rather_than_skipping(self):
         # The state is unknown, so the PR must be re-evaluated rather than
@@ -1035,7 +1035,7 @@ class IntegrationTests(unittest.TestCase):
         finally:
             gate.evaluate_pr = original
         self.assertEqual(calls["n"], 1)
-        self.assertEqual(evaluated, [133, 133])
+        self.assertEqual(sorted(evaluated), [133, 133])
 
 
     def test_reporting_failure_is_surfaced_without_withdrawing_statuses(self):
@@ -1128,7 +1128,7 @@ class IntegrationTests(unittest.TestCase):
         # The candidate after the failing lookup was still revoked...
         self.assertIn(("3" * 40, "pending"), revoked)
         # ...and every candidate was still evaluated despite the first timeout.
-        self.assertEqual(evaluated, [133, 200, 300])
+        self.assertEqual(sorted(evaluated), [133, 200, 300])
 
     def test_cleanup_revocation_failure_does_not_abort_the_fanout(self):
         # The first cleanup status write fails; surviving owners must still be
@@ -1153,7 +1153,7 @@ class IntegrationTests(unittest.TestCase):
                 gate.reevaluate_head_owners(api, HEAD, set())
         finally:
             gate.evaluate_pr = original
-        self.assertEqual(evaluated, [133])
+        self.assertEqual(sorted(evaluated), [133])
 
     def test_delayed_synchronize_to_the_current_head_is_not_stranded(self):
         # A -> B -> A: the delivery for A -> B arrives last, and its `before` is
@@ -1847,6 +1847,77 @@ class IntegrationTests(unittest.TestCase):
             if states and states[-1] == "success":
                 self.fail(f"unconfirmed success remained on {target[:10]}")
 
+    def test_base_moving_before_the_final_return_is_not_published(self):
+        # The final check must compare the WHOLE snapshot: if the base/test-merge
+        # moved after the revalidation, returning success would leave the OLD
+        # merge commit authorized and nothing else knows about it.
+        api = FakeAPI()
+        state = {"reads": 0, "moved": False}
+        base_request = api.get_pull_request
+        base_status = api.create_commit_status
+        writes = []
+
+        def changing(number=None):
+            state["reads"] += 1
+            value = base_request(number)
+            if state["moved"]:
+                return {**value, "merge_commit_sha": "c" * 40}
+            return value
+
+        def recording(sha, decision):
+            writes.append((sha, decision.state))
+            out = base_status(sha, decision)
+            if sha == "b" * 40 and decision.state == "success":
+                state["moved"] = True
+            return out
+
+        api.get_pull_request = changing
+        api.create_commit_status = recording
+        api.list_open_pull_requests = lambda: [
+            {"number": 133, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD, "ref": "main"},
+             "merge_commit_sha": changing(133)["merge_commit_sha"]}]
+        gate.evaluate_pr(api, 133)
+        # The run may legitimately publish for the NEW snapshot; the invariant is
+        # that the SUPERSEDED merge commit never keeps a success.
+        self.assertEqual([s for sha, s in writes if sha == "b" * 40][-1], "pending")
+        self.assertIn(("c" * 40, "success"), writes)
+        # NOTE: this final full-snapshot check is deliberately redundant with the
+        # post-publication revalidation, which observes the same change first in
+        # this harness; removing only the final check is therefore not
+        # mutation-detected. It closes the narrower window between that
+        # revalidation and the return.
+
+    def test_base_push_evaluation_uses_a_bounded_pool(self):
+        import threading
+        import time as _t
+        api = FakeAPI()
+        many = [{"number": n, "head": {"sha": format(n, "040x")},
+                 "base": {"sha": OLD_HEAD, "ref": "main"}, "merge_commit_sha": None}
+                for n in range(200, 240)]
+        api.list_open_pull_requests = lambda: [
+            {"number": 133, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD, "ref": "main"},
+             "merge_commit_sha": "b" * 40}, *many]
+        api.create_commit_status = lambda sha, decision: None
+        active = {"now": 0, "peak": 0}
+        lock = threading.Lock()
+        original = gate.evaluate_pr
+
+        def slow_eval(*args, **kwargs):
+            with lock:
+                active["now"] += 1
+                active["peak"] = max(active["peak"], active["now"])
+            _t.sleep(0.01)
+            with lock:
+                active["now"] -= 1
+
+        gate.evaluate_pr = slow_eval
+        try:
+            gate.run_gate("push", {"ref": "refs/heads/main"}, api)
+        finally:
+            gate.evaluate_pr = original
+        # The EVALUATION phase itself must be concurrent.
+        self.assertGreater(active["peak"], 1)
+
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
         # repository forbids shipping debug code, so pin its absence.
@@ -1884,7 +1955,7 @@ class IntegrationTests(unittest.TestCase):
             gate.evaluate_pr = original
         # The event is `closed` but the stub reports the PR open, so the reopen
         # handling deliberately re-evaluates it as a HEAD owner as well.
-        self.assertEqual(evaluated, [133, 133, 200])
+        self.assertEqual(sorted(evaluated), [133, 133, 200])
 
     def test_a_failing_reevaluation_does_not_mask_the_original_error(self):
         api = FakeAPI()
@@ -1916,7 +1987,7 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(gate.run_gate("push", {"ref": "refs/heads/main"}, api), 0)
         finally:
             gate.evaluate_pr = original
-        self.assertEqual(evaluated, [133, 200])
+        self.assertEqual(sorted(evaluated), [133, 200])
 
     def test_push_to_another_branch_ignores_unrelated_prs(self):
         api = FakeAPI()
@@ -2007,7 +2078,7 @@ class IntegrationTests(unittest.TestCase):
                 gate.run_gate("push", {"ref": "refs/heads/main"}, api)
         finally:
             gate.evaluate_pr = original
-        self.assertEqual(attempted, [133, 200, 300])
+        self.assertEqual(sorted(attempted), [133, 200, 300])
 
     def test_stale_pr_snapshot_before_publication_is_not_used(self):
         # The base advanced while this run was in flight; the re-read differs, so
