@@ -44,6 +44,40 @@ signature consumes it automatically.
 What remains a real requirement: five successful samples per cell **per cache state**,
 so both the hit and the miss side must reach five under one environment.
 
+### Why the cold side has a structural ceiling
+
+The cache key is `cjv-<os>-<arch>-<sdk>-sts-stdx-cjv0.3.2-<hashFiles(...)>`, and the
+hash is taken over **the workflow files themselves**
+(`build-linux-candidate.yml`, `ci.yml`, `pages.yml`, `daily.yml`). A `miss` is therefore
+not produced by running more pushes: it is produced by *changing one of those four
+files*, which is exactly what a normal merge to `main` does not do. Every cold sample
+in the collected history confirms this — each one is a commit that touched a hashed
+workflow file (`d5c459d3`, `5f32b1dc`, `56208661`, `748892bf`; verified with
+`git diff-tree` against those four paths).
+
+**The four observed misses establish a correlation, not an exclusive mechanism.** A
+miss also occurs when the existing cache entry is evicted (idle expiry or storage
+pressure), deleted, or otherwise unavailable, on an ordinary push that changed none of
+the four files. The ceiling below therefore assumes the entry stays available; if one
+is evicted, a push-with-no-workflow-edit does advance the cold count.
+
+Consequences for DONE-03's "at least five cold and five warm under matched
+conditions":
+
+* the warm side accumulates with pushes and is already met on linux-x64;
+* pending no eviction, the cold side advances only on the commits that edit those
+  workflow files, so "wait for more pushes" cannot be relied on to close the remaining
+  shortfall — the count is bounded by how often the workflow files legitimately change
+  (plus whatever evictions happen);
+* cold samples are also spread across runner images (the runner image rotates
+  independently), and environment is part of the cell key, so two cold samples taken
+  across a rotation land in different cells.
+
+This is a property of the measurement target, not a defect in the collector: the
+collector reports the shortfall per cell rather than merging cells to reach five, and it
+cannot distinguish an eviction-induced miss from a workflow-edit miss — both are simply
+`miss`.
+
 ## Where the timing evidence comes from
 
 | Source | What it carries |
