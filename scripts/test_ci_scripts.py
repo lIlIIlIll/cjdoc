@@ -929,6 +929,23 @@ class PairedSampleTests(unittest.TestCase):
         conditions = paired.job_conditions(root)
         self.assertEqual(len(set(conditions.values())), 2, conditions)
 
+    def test_colliding_short_prefixes_stay_distinguishable(self) -> None:
+        """Two commits sharing an 8-hex prefix must not collapse in the provenance."""
+        prefix = "a" * 8
+        def sample(suffix):
+            return {"run": 1, "attempt": 1, "revision": prefix, "revisionFull": prefix + suffix,
+                    "event": "push", "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": "success", "state": "hit", "jobMinutes": 10.0,
+                    "hasEvidence": True, "condition": "ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        samples = [sample("1" * 32), sample("2" * 32)]
+        out = self.root / "collide.md"
+        paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("revisions=", text)
+        self.assertIn(prefix + "1" * 32, text.replace("\\", ""))
+        self.assertIn(prefix + "2" * 32, text.replace("\\", ""))
+
     def test_the_provenance_command_is_copyable(self) -> None:
         """A workflow name with spaces must arrive as one argument."""
         import shlex

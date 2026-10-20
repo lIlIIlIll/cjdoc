@@ -409,6 +409,10 @@ def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
         conclusion = job.get("conclusion") or "unknown"
         samples.append({
             "run": run_id, "attempt": attempt, "revision": run["head_sha"][:8],
+            # The full SHA is kept as non-key metadata: the revision must not split a
+            # cell (that is the environment's job), but an 8-hex prefix can collide
+            # and would then silently merge two commits in the displayed provenance.
+            "revisionFull": run["head_sha"],
             "event": run.get("event"), "job": name[:34], "shape": job_shape(name),
             # Unsuccessful jobs are kept: DONE-03 wants failures, cancellations and
             # re-runs listed separately, and dropping them here would lose them.
@@ -624,7 +628,11 @@ def report(samples: list[dict], workflow: str, out: Path,
         detail = f" `{safe_condition}`" if condition else " (condition not recorded)"
         # Revision is not part of the key, so name the commits a cell covers; without
         # this the cell could silently pool measurements from unrelated code.
-        cell_revisions = sorted({s["revision"] for s in classified
+        # The FULL SHA, never a prefix: an 8-hex prefix can collide, and truncating
+        # here would silently merge two commits in the provenance this annotation
+        # exists to make auditable.
+        cell_revisions = sorted({s.get("revisionFull") or s["revision"]
+                                 for s in classified
                                  if s["shape"] == shape and s["state"] == state
                                  and s.get("condition", "") == condition})
         if len(cell_revisions) > 1:
