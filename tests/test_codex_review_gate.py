@@ -89,9 +89,17 @@ class DecisionTests(unittest.TestCase):
         result = self.decide(summary(sha=None, status="queued", unresolved=None))
         self.assertEqual(result.state, "pending")
 
-    def test_completed_review_with_null_finding_flag_fails_closed(self):
+    def test_completed_review_with_null_finding_flag_is_accepted(self):
+        # Superseded contract (decided 2026-10-20): the managed reviewer reports
+        # `has_unresolved_findings: null` on some completions (observed on PR
+        # #139). The required check verifies that a review ran for this HEAD, not
+        # that it was clean, so a missing flag means "no unresolved finding
+        # claimed" rather than a schema error. A non-boolean, non-null value is
+        # still rejected.
         result = self.decide(summary(status="completed", unresolved=None))
-        self.assertEqual(result.state, "error")
+        self.assertEqual(result.state, "success")
+        # A null flag must not be reported as if unresolved findings were claimed.
+        self.assertEqual(result.description, "Codex review completed for current HEAD")
 
     def test_failed_and_cancelled_review_fail_closed(self):
         for status in ("failed", "error", "cancelled", "timed_out"):
@@ -143,13 +151,36 @@ class DecisionTests(unittest.TestCase):
         }
         self.assertEqual(self.decide(fake_review).state, "pending")
 
-    def test_missing_boolean_flag_fails_closed(self):
+    def test_absent_finding_flag_with_full_sha_is_accepted(self):
+        # Same superseded contract as above: a completed review that omits the
+        # flags entirely but names the full HEAD is accepted.
         body = gate.SUMMARY_PREFIX + (
             '<!-- codex-review-state:v1 {"code_review":{"commit_sha":"'
             + HEAD
             + '","status":"completed"}} -->\n'
         )
+        self.assertEqual(self.decide(summary(body=body)).state, "success")
+
+    def test_completed_review_without_a_sha_is_still_rejected(self):
+        # The reviewed SHA is the one fact that cannot be defaulted: without it
+        # the gate cannot know which HEAD the review covered.
+        body = gate.SUMMARY_PREFIX + (
+            '<!-- codex-review-state:v1 {"code_review":{"commit_sha":null,'
+            '"status":"completed","has_unresolved_findings":false}} -->\n'
+        )
         self.assertEqual(self.decide(summary(body=body)).state, "error")
+
+    def test_malformed_finding_flag_is_still_rejected(self):
+        for value in ('"true"', '1', '[]'):
+            with self.subTest(value=value):
+                body = gate.SUMMARY_PREFIX + (
+                    '<!-- codex-review-state:v1 {"code_review":{"commit_sha":"'
+                    + HEAD
+                    + '","status":"completed","has_unresolved_findings":'
+                    + value
+                    + '}} -->\n'
+                )
+                self.assertEqual(self.decide(summary(body=body)).state, "error")
 
     def test_description_stays_under_github_limit(self):
         self.assertLessEqual(len(self.decide(summary()).description), 140)

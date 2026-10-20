@@ -30,6 +30,7 @@ Gate 只读取 **默认分支上的可信脚本**，不执行 PR 代码；其 `G
 - 未审查/未自动触发：先查看 Codex Review 设置及最新 PR Summary；必要时评论 `@codex review`。
 - Review Summary 已完成，但状态仍 Pending：打开 Actions → **Codex review gate**，检查 Bot 的 summary edit/deleted 事件是否触发、GitHub Actions 权限、完整 HEAD 与测试合并 SHA、是否存在共享 SHA 或 head+base 的其他开放 PR；必要时从该工作流 **Run workflow** 输入 PR 编号执行一次手动同步。
 - Summary 结构变化导致 Error：修复 `scripts/codex_review_gate.py` 的解析器并补测试，**不要**临时接受仅基于时间或缩写 SHA 的结论。
+- **2026-10-20 语义变更（经维护者裁定）**：托管的 Codex 审查在部分 `completed` 摘要中把 `has_unresolved_findings` / `has_any_findings` 报告为 `null`（在 PR #139 实测）。必需检查验证的是"该 HEAD 已完成审查"，而不是"审查无缺陷"，因此**缺失标志视为"未声明未决发现"并接受为 `success`**；显式的非布尔值（如 `"true"`、`1`、`[]`）仍是 schema 错误并判为 `error`。**`commit_sha` 仍不可缺省**：没有完整 HEAD SHA 就无法确定审查覆盖了哪个提交，照旧 `error`。
 - 本地快速测试：`python3 -m unittest discover -s tests -p 'test_codex_review_gate.py' -v`（不需要仓颉 SDK）。
 
 ## 局限

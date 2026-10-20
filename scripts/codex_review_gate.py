@@ -76,13 +76,22 @@ def _read_review_state(comment: dict) -> dict:
         not isinstance(reviewed_sha, str) or not SHA_PATTERN.fullmatch(reviewed_sha)
     ):
         raise ValueError("Codex summary has an invalid reviewed commit SHA")
-    # In the real managed Codex summary, queued/running reviews carry null
-    # finding flags (and may not have selected a commit yet).
-    if status == "completed" and (
-        reviewed_sha is None
-        or not isinstance(review.get("has_unresolved_findings"), bool)
-    ):
-        raise ValueError("Completed Codex review lacks full SHA or finding flags")
+    # Queued/running reviews carry null finding flags and may not have selected a
+    # commit yet; that is normal and stays `pending` in the classifier.
+    if status == "completed" and reviewed_sha is None:
+        raise ValueError("Completed Codex review lacks a full reviewed SHA")
+    # The managed reviewer reports its finding flags as `null` on some completions
+    # (observed on PR #139, 2026-10-20). A completed review with no reported
+    # findings is treated as completed: the required check verifies that a review
+    # ran for this HEAD, not that it was clean. Losing a flag must therefore not
+    # fail the gate closed. An explicitly non-boolean, non-null value is still a
+    # malformed schema and is rejected.
+    unresolved = review.get("has_unresolved_findings")
+    if unresolved is not None and not isinstance(unresolved, bool):
+        raise ValueError("Codex summary has a malformed has_unresolved_findings flag")
+    any_findings = review.get("has_any_findings")
+    if any_findings is not None and not isinstance(any_findings, bool):
+        raise ValueError("Codex summary has a malformed has_any_findings flag")
     return review
 
 
@@ -114,9 +123,11 @@ def classify_codex_review(head_sha: str, comments: list[dict], pr_url: str) -> G
 
     state = code_review["status"]
     if state == "completed":
-        if code_review["has_unresolved_findings"]:
+        if code_review.get("has_unresolved_findings") is True:
             message = "Codex reviewed HEAD; unresolved findings need triage"
         else:
+            # False, or null when the reviewer reported no flag: in both cases no
+            # unresolved finding is being claimed for this HEAD.
             message = "Codex review completed for current HEAD"
         return GateDecision("success", message, target)
     if state in {"failed", "error", "cancelled", "timed_out"}:
