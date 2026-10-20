@@ -946,6 +946,25 @@ class PairedSampleTests(unittest.TestCase):
         self.assertIn(prefix + "1" * 32, text.replace("\\", ""))
         self.assertIn(prefix + "2" * 32, text.replace("\\", ""))
 
+    def test_identical_later_stages_do_not_split_a_cell(self) -> None:
+        """A multi-stage artifact with an IDENTICAL later stage must keep the plain key.
+
+        The first stage and later stages must serialize through the same code path; if
+        they do not, every later stage looks divergent and two runs under the same
+        environment (one with more recorded stages) land in different cells.
+        """
+        root = self.root / "same-stages"
+        common = {"runnerImage": "ubuntu22", "sdkVersion": "1.2.0", "stdxDigest": "d",
+                  "toolchainTarget": "x86_64", "compileOptions": ["--jobs 1", "-O1"]}
+        for name, count in (("one", 1), ("two", 2)):
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(json.dumps(
+                {"stages": [{"environment": dict(common)} for _ in range(count)]}),
+                encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(set(conditions.values())), 1, conditions)
+
     def test_the_provenance_command_is_copyable(self) -> None:
         """A workflow name with spaces must arrive as one argument."""
         import shlex

@@ -139,68 +139,46 @@ def jobs_of(repository: str, run_id: int, attempt: int) -> list[dict]:
 def job_conditions(evidence: Path) -> dict[str, str]:
     """Per artifact directory, the toolchain/runner identity its stages recorded.
 
-    DONE-03 requires paired samples under MATCHED conditions, so a cell must not pool a
-    hit from one toolchain pin with a miss from another. The signature is built from the
-    fields every stage records, so a cell is only comparable when the SDK/stdx identity,
-    the runner image and the compile options agree.
+    DONE-03 requires paired samples under MATCHED conditions, so a cell must not pool
+    a hit from one toolchain pin with a miss from another. The signature covers the
+    runner image, SDK/stdx identity, toolchain fingerprint, toolchain target and
+    effective compile options. The source revision is NOT part of it: DONE-03's
+    before/after samples are different commits by definition (see the docstring header).
     """
     conditions: dict[str, str] = {}
+    identity_fields = ("runnerImage", "sdkVersion", "stdxDigest", "toolchainTarget",
+                       "toolchainFingerprint", "browserVersion", "browserIdentity",
+                       "fontSetDigest")
+
+    def stage_identity(source: dict) -> str:
+        """One canonical serialization of a stage's comparable identity.
+
+        The first stage and every later stage go through THIS function, so identical
+        environments always serialize identically. Building the first stage one way and
+        later stages another made every later stage look divergent, which split
+        artifacts that share an environment into different cells.
+        """
+        value = "|".join(str(source.get(field, "")) for field in identity_fields)
+        return value + "|" + ",".join(
+            str(option) for option in (source.get("compileOptions") or []))
+
     for path in sorted(evidence.glob("*/stages.json")):
         document = json.loads(path.read_text(encoding="utf-8"))
         stages = document.get("stages", [])
         if not stages:
             continue
-        # The pairing unit is the ENVIRONMENT, not the revision: DONE-03 asks for
-        # samples "before (main) vs after (branch)", i.e. explicitly across two
-        # different revisions, under the same workflow, runner type, SDK/stdx and
-        # effective flags. Including `checkoutCommit` made every push its own cell, so
-        # no cell could ever reach five samples and the requirement was unreachable by
-        # construction. The revision is still recorded per sample (and shown in the
-        # tables), so a reader can always see which commits a cell's samples came from;
-        # it just does not split comparable measurements apart.
-        #
-        # EVERY stage is read, not only the first: a job that compiles with different
-        # effective flags in a later stage would otherwise be pooled with one that did
-        # not. Identity fields that may legitimately differ between stages (the cache
-        # state, and the per-stage run/job identifiers) are excluded, everything else
-        # must agree.
         environment = stages[0].get("environment") or {}
-        # `toolchainFingerprint` distinguishes SDK installations whose reported
-        # version is identical but whose contents differ, so two runs must not share
-        # a cell merely because `sdkVersion` matches.
-        identity_fields = ("runnerImage", "sdkVersion", "stdxDigest",
-                           "toolchainTarget", "toolchainFingerprint")
-        signature = "|".join(str(environment.get(field, "")) for field in identity_fields)
-        compile_options = environment.get("compileOptions") or []
-        signature += "|" + ",".join(str(option) for option in compile_options)
-        first_identity = signature
-        # The issue's matched conditions also include the browser/font set. It is not
-        # recorded by `ci_stage` today, so this only adds it when a producer supplies
-        # it; until then the report states that the browser/font axis is unmeasured
-        # rather than pretending it was matched.
-        for field in ("browserVersion", "browserIdentity", "fontSetDigest"):
-            value = environment.get(field)
-            if value:
-                signature += f"|{field}={value}"
+        signature = stage_identity(environment)
+        # EVERY stage is read, not only the first: a job whose later stage compiled with
+        # different flags or a different toolchain must not be pooled with one that did
+        # not. Each diverging stage contributes its complete identity tuple, so the
+        # stage boundaries are preserved -- two artifacts differing in the same fields
+        # but in a different order of stages cannot collide.
+        for index, stage in enumerate(stages[1:], start=2):
+            later = stage_identity(stage.get("environment") or {})
+            if later != signature.split("|stage", 1)[0]:
+                signature += f"|stage{index}={later}"
         conditions[path.parent.name] = signature
-        # A stage-specific divergence makes the artifact incomparable with any other,
-        # so every stage's identity is encoded as its own tuple. Encoding each stage
-        # separately (rather than appending per-field markers) keeps the stage
-        # boundaries: two artifacts that differ in the same fields but in a different
-        # ORDER of stages must not collide on an identical suffix.
-        stages_seen = 1
-        for stage in stages[1:]:
-            other = stage.get("environment") or {}
-            stages_seen += 1
-            stage_identity = "|".join(str(other.get(field, "")) for field in
-                                      ("runnerImage", "sdkVersion", "stdxDigest",
-                                       "toolchainTarget", "toolchainFingerprint",
-                                       "browserVersion", "browserIdentity",
-                                       "fontSetDigest"))
-            stage_identity += "|" + ",".join(
-                str(option) for option in (other.get("compileOptions") or []))
-            if stage_identity != first_identity:
-                conditions[path.parent.name] += f"|stage{stages_seen}={stage_identity}"
     return conditions
 
 
