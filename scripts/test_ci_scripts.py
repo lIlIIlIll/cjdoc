@@ -849,6 +849,21 @@ class PairedSampleTests(unittest.TestCase):
         conditions = paired.job_conditions(root)
         self.assertEqual(len(set(conditions.values())), 2, conditions)
 
+    def test_the_toolchain_fingerprint_splits_cells(self) -> None:
+        """Same sdkVersion but a different installation must not share a cell."""
+        root = self.root / "fingerprint"
+        for name, fingerprint in (("a", "fp-1"), ("b", "fp-2")):
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(json.dumps({"stages": [{
+                "environment": {"runnerImage": "ubuntu22", "sdkVersion": "1.2.0",
+                                "stdxDigest": "d", "toolchainTarget": "x86_64",
+                                "toolchainFingerprint": fingerprint,
+                                "compileOptions": ["--jobs 1", "-O1"]}}]}),
+                encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(set(conditions.values())), 2, conditions)
+
     def test_the_provenance_command_is_copyable(self) -> None:
         """A workflow name with spaces must arrive as one argument."""
         import shlex

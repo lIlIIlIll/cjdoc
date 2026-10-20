@@ -165,9 +165,12 @@ def job_conditions(evidence: Path) -> dict[str, str]:
         # state, and the per-stage run/job identifiers) are excluded, everything else
         # must agree.
         environment = stages[0].get("environment") or {}
+        # `toolchainFingerprint` distinguishes SDK installations whose reported
+        # version is identical but whose contents differ, so two runs must not share
+        # a cell merely because `sdkVersion` matches.
         signature = "|".join(str(environment.get(field, "")) for field in
                              ("runnerImage", "sdkVersion", "stdxDigest",
-                              "toolchainTarget"))
+                              "toolchainTarget", "toolchainFingerprint"))
         compile_options = environment.get("compileOptions") or []
         signature += "|" + ",".join(str(option) for option in compile_options)
         # The issue's matched conditions also include the browser/font set. It is not
@@ -183,7 +186,8 @@ def job_conditions(evidence: Path) -> dict[str, str]:
         # give it a signature of its own rather than silently pooling it.
         for stage in stages[1:]:
             other = stage.get("environment") or {}
-            for field in ("runnerImage", "sdkVersion", "stdxDigest", "toolchainTarget"):
+            for field in ("runnerImage", "sdkVersion", "stdxDigest", "toolchainTarget",
+                          "toolchainFingerprint"):
                 if str(other.get(field, "")) != str(environment.get(field, "")):
                     conditions[path.parent.name] += f"|{field}!={other.get(field, '')}"
             stage_options = ",".join(str(option) for option in
@@ -586,7 +590,8 @@ def report(samples: list[dict], workflow: str, out: Path,
     lines += ["", "## Matched cells (successful jobs only)", "",
               "Each cell is one (job shape, cache state, matched environment) triple. The",
               "condition signature is the runner image, SDK version, stdx digest, toolchain",
-              "target and compile options recorded by EVERY stage of that job (a divergent",
+              "fingerprint, toolchain target and compile options recorded by EVERY stage of",
+              "that job (a divergent",
               "later stage gives the artifact a signature of its own). The source revision is",
               "NOT part of the key: DONE-03's before/after samples are different commits by",
               "definition. Every sample keeps its own revision AND its environment, both",

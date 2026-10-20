@@ -13,8 +13,10 @@ stated instead of a conclusion.
 ## Paired-sample cell semantics (DONE-03)
 
 A matched cell is keyed by **(job shape, cache state, environment)**. The environment
-is the runner image, SDK/stdx identity, toolchain target and effective compile options
-recorded by the job's own stages.
+is the runner image, SDK/stdx identity, toolchain fingerprint, toolchain target and
+effective compile options recorded by the job's own stages. The fingerprint matters
+because two SDK installations can report the same `sdkVersion` while differing in
+content, and `stage_environment` records it precisely to tell those apart.
 
 **The source revision is deliberately NOT part of the key** (ruled 2026-10-20). The
 issue's condition list is "same workflow, runner type, SDK/stdx, effective flags,
