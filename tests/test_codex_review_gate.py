@@ -414,8 +414,10 @@ class IntegrationTests(unittest.TestCase):
             "merge_commit_sha": "c" * 40,
         }])
         result = gate.evaluate_pr(api, 133)
+        # Ambiguity is now revalidated rather than treated as final (a twin can close),
+        # so a twin that persists exhausts the bounded retries. Either way the run must
+        # not authorize: pending, and no success left on any target.
         self.assertEqual(result.state, "pending")
-        self.assertIn("ambiguous", result.description)
         self.assertNotIn("success", [status.state for _, status in api.statuses])
 
     def test_same_test_merge_shared_by_other_pr_is_pending(self):
@@ -2006,6 +2008,31 @@ class IntegrationTests(unittest.TestCase):
         result = gate.evaluate_pr(api, 133)
         self.assertEqual(result.state, "pending")
         self.assertEqual([s for sha, s in writes if sha == "b" * 40][-1], "pending")
+
+    def test_a_transient_ambiguity_is_revalidated_not_left_pending(self):
+        # The twin is visible only at the final scan, then gone. The run must
+        # re-evaluate the CURRENT scope (and publish the now-unambiguous success)
+        # instead of overwriting with a stale `pending` and returning.
+        api = FakeAPI()
+        twin = {"number": 200, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD},
+                "merge_commit_sha": "c" * 40}
+        base_listing = api.list_open_pull_requests
+        seen = {"twins": 0}
+
+        def listing():
+            seen["twins"] += 1
+            # Visible at the final scan (call 4), gone afterwards.
+            return base_listing() + ([twin] if seen["twins"] == 4 else [])
+
+        api.list_open_pull_requests = listing
+        base_status = api.create_commit_status
+        writes = []
+        api.create_commit_status = lambda sha, decision: (
+            writes.append((sha, decision.state)) or base_status(sha, decision))
+        result = gate.evaluate_pr(api, 133)
+        # The later re-evaluation found no twin, so the conclusion is published.
+        self.assertEqual(result.state, "success")
+        self.assertIn(("b" * 40, "success"), writes)
 
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the

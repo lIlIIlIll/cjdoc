@@ -698,7 +698,13 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
                     api, head_sha,
                     GateDecision("pending", f"Withheld: {reason}", pr_url),
                 )
-            return GateDecision("pending", f"Conclusion withdrawn: {reason}", pr_url)
+            # The ambiguity may itself be transient: the twin could close while these
+            # withdrawals run, in which case its own `closed` handler re-evaluates the
+            # survivor and this stale `pending` would overwrite that valid success with
+            # no later event to repair it. Hand the decision back to the retry loop so
+            # the CURRENT scope is re-evaluated instead of treating this snapshot as
+            # final.
+            raise PrChangedDuringEvaluation("the merge scope became ambiguous")
         if publish_head and not head_ok:
             revoke_head_status(
                 api, head_sha,
