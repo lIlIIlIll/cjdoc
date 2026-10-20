@@ -1467,7 +1467,24 @@ class IntegrationTests(unittest.TestCase):
             return [] if calls["n"] > 1 else original_comments(_number)
 
         api.list_issue_comments = comments
-        gate.evaluate_pr(api, 133)
+        # The retry pass fails before it can revoke anything, which is exactly
+        # when the immediate withdrawal inside convergence is load-bearing.
+        original_once = gate._evaluate_once
+        seen = {"n": 0}
+
+        def failing_second_pass(*args, **kwargs):
+            seen["n"] += 1
+            if seen["n"] >= 2:
+                raise ConnectionResetError("retry failed before any revocation")
+            return original_once(*args, **kwargs)
+
+        gate._evaluate_once = failing_second_pass
+        try:
+            with self.assertRaises(Exception):
+                gate.evaluate_pr(api, 133)
+        finally:
+            gate._evaluate_once = original_once
+        # No success may remain on the now-shared HEAD.
         self.assertNotIn("success",
                          [s.state for sha, s in api.statuses if sha == HEAD][-1:])
 
