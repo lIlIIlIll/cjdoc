@@ -44,6 +44,31 @@ signature consumes it automatically.
 What remains a real requirement: five successful samples per cell **per cache state**,
 so both the hit and the miss side must reach five under one environment.
 
+### Why the cold side has a structural ceiling
+
+The cache key is `cjv-<os>-<arch>-<sdk>-sts-stdx-cjv0.3.2-<hashFiles(...)>`, and the
+hash is taken over **the workflow files themselves**
+(`build-linux-candidate.yml`, `ci.yml`, `pages.yml`, `daily.yml`). A `miss` is therefore
+not produced by running more pushes: it is produced by *changing one of those four
+files*, which is exactly what a normal merge to `main` does not do. Every cold sample
+in the collected history confirms this — each one is a commit that touched a hashed
+workflow file (`d5c459d3`, `5f32b1dc`, `56208661`, `748892bf`; verified with
+`git diff-tree` against those four paths).
+
+Consequences for DONE-03's "at least five cold and five warm under matched
+conditions":
+
+* the warm side accumulates with pushes and is already met on linux-x64;
+* the cold side advances only on the commits that edit those workflow files, so
+  "wait for more pushes" cannot close the remaining shortfall — the reachable count is
+  bounded by how often the workflow files legitimately change;
+* cold samples are also spread across runner images (the runner image rotates
+  independently), and environment is part of the cell key, so two cold samples taken
+  across a rotation land in different cells.
+
+This is a property of the measurement target, not a defect in the collector: the
+collector reports the shortfall per cell rather than merging cells to reach five.
+
 ## Where the timing evidence comes from
 
 | Source | What it carries |
