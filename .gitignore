@@ -33,3 +33,7 @@
 !/tests/fixtures/legacy14/*.json
 !/tests/fixtures/legacy13/*.json
 !/tests/fixtures/external_docs/official83/manifest.json
+
+# Local debugging harnesses must never be committed (AGENTS.md: no debug code).
+/probe*.py
+/gate_probe.py

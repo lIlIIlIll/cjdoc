@@ -3,10 +3,17 @@ name: Codex review gate
 on:
   # Gate logic always executes trusted default-branch code (no PR checkout).
   pull_request_target:
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    # `closed` matters even though a closed PR needs no status: it can free a
+    # HEAD that another open PR then owns alone and needs re-evaluated.
+    types: [opened, synchronize, reopened, ready_for_review, edited, closed]
   # The managed Codex app creates/edits its canonical summary issue comment.
   issue_comment:
     types: [created, edited, deleted]
+  # A rewritten base branch changes no PR's HEAD, so no per-PR event fires; the
+  # push itself must re-evaluate every open PR that targets the branch, or a
+  # HEAD success validated against an earlier base would keep authorizing.
+  push:
+    branches: [main]
   # Restore the status if a webhook was missed or a format changed.
   workflow_dispatch:
     inputs:
@@ -25,7 +32,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: codex-review-gate-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number || github.run_id }}
+  # A single shared key would NOT serialize safely: GitHub keeps only one run
+  # pending per group, so a third event can silently discard a queued one (for
+  # example a summary-deletion revocation). Distinct events therefore get their
+  # own group and are never dropped or cancelled; races between them are
+  # prevented where they actually matter -- `evaluate_pr` re-reads the PR and
+  # revokes before publishing, so a stale run cannot leave an authorization.
+  group: codex-review-gate-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -33,12 +46,14 @@ jobs:
     name: Publish Codex review completion status
     if: >-
       github.event_name == 'pull_request_target' ||
+      github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request != null &&
        github.event.comment.user.login == 'chatgpt-codex-connector[bot]')
     runs-on: ubuntu-22.04
-    timeout-minutes: 5
+    # The base-push fanout re-evaluates every PR targeting the branch.
+    timeout-minutes: 15
     permissions:
       contents: read
       issues: read
@@ -60,7 +75,8 @@ jobs:
     name: Offline Codex gate tests
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
-    timeout-minutes: 5
+    # The base-push fanout re-evaluates every PR targeting the branch.
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
