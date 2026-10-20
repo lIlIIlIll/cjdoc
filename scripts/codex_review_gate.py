@@ -335,8 +335,31 @@ def deletion_is_stale(deleted_comment: dict | None, comments: list[dict]) -> boo
     return False
 
 
+class PrChangedDuringEvaluation(Exception):
+    """The PR's head/base/test-merge moved while this run was working."""
+
+
 def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
                 deleted_comment: dict | None = None) -> GateDecision | None:
+    """Evaluate a PR, retrying when another run changes it underneath us.
+
+    Every gate run has its own concurrency group, so a newer run can complete
+    while an older one is mid-flight. Re-evaluating the CURRENT snapshot (bounded)
+    is what keeps a stale run from either revoking a newer valid status or
+    publishing one that no longer describes the PR.
+    """
+    for _ in range(3):
+        try:
+            return _evaluate_once(api, number, deleted_summary=deleted_summary,
+                                  deleted_comment=deleted_comment)
+        except PrChangedDuringEvaluation as changed:
+            print(f"PR #{number}: {changed}; re-evaluating the current snapshot")
+    print(f"PR #{number}: the PR kept changing; leaving the decision to a later event")
+    return GateDecision("pending", "The PR changed repeatedly during evaluation", "")
+
+
+def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
+                   deleted_comment: dict | None = None) -> GateDecision | None:
     pr = api.get_pull_request(number)
     if pr.get("state") != "open":
         print(f"PR #{number} is not open; no commit status to publish")
@@ -392,8 +415,10 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
         or (fresh.get("base") or {}).get("sha") != base_sha
         or fresh.get("merge_commit_sha") != merge_sha
     ):
-        print(f"PR #{number}: the PR changed during evaluation; keep gate unreported")
-        return revoke_head_decision(api, number, head_sha, pr_url)
+        # Re-evaluate rather than revoke: a newer base-push run may already have
+        # published a valid success for this very HEAD, and this stale run would
+        # otherwise overwrite it with `pending`, with no later event guaranteed.
+        raise PrChangedDuringEvaluation("the PR changed during evaluation")
 
     merge = api.get_commit(merge_sha)
     parents = merge.get("parents") or []
@@ -457,9 +482,8 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
             or (current.get("base") or {}).get("sha") != base_sha
             or current.get("merge_commit_sha") != merge_sha
         ):
-            print(f"PR #{number}: the PR changed during evaluation; nothing is published")
-            withdraw_all("PR changed during evaluation")
-            return GateDecision("pending", "Awaiting current PR test merge", pr_url)
+            # Nothing was published, so simply re-evaluate the current snapshot.
+            raise PrChangedDuringEvaluation("the PR changed before anything was published")
 
         scope_now = api.list_open_pull_requests()
         publish_head = _head_scope_is_unique(number, head_sha, scope_now)
@@ -473,8 +497,7 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
             or (after.get("base") or {}).get("sha") != base_sha
             or after.get("merge_commit_sha") != merge_sha
         ):
-            withdraw_all("The PR changed while publishing; conclusion withdrawn")
-            return GateDecision("pending", "Awaiting current PR test merge", pr_url)
+            raise PrChangedDuringEvaluation("the PR changed while publishing")
         fresh_decision = decide(api.list_open_pull_requests(), api.list_issue_comments(number))
         if fresh_decision != decision:
             # The world moved while this run was publishing, so this run's
@@ -487,14 +510,12 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
             api.create_commit_status(merge_sha, fresh_decision)
             if _head_scope_is_unique(number, head_sha, api.list_open_pull_requests()):
                 api.create_commit_status(head_sha, fresh_decision)
-                head_status = f"converged ({fresh_decision.state})"
-            else:
-                revoke_head_status(
-                    api, head_sha,
-                    GateDecision("pending", "HEAD shared with another open PR; withheld", pr_url),
-                )
-                head_status = "withheld (HEAD is shared with another open PR)"
-            return fresh_decision
+            # Re-enter the evaluation loop: the convergence writes above were not
+            # themselves revalidated, and a concurrent deletion run could have
+            # revoked between them. Looping checks the evidence again instead of
+            # trusting this run's own last write.
+            raise PrChangedDuringEvaluation(
+                f"converged on {fresh_decision.state}; revalidating that decision")
         if publish_head and not _head_scope_is_unique(number, head_sha,
                                                       api.list_open_pull_requests()):
             revoke_head_status(
@@ -505,6 +526,12 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
         else:
             head_status = ("published" if publish_head
                            else "withheld (HEAD is shared with another open PR)")
+    except PrChangedDuringEvaluation:
+        # Control flow, not a transport failure: propagate so the caller can
+        # re-evaluate the current snapshot. Nothing needs withdrawing here --
+        # either nothing was published, or the caller's next pass recomputes and
+        # republishes under its own guard.
+        raise
     except Exception as error:  # noqa: BLE001 - any transport or protocol failure
         withdraw_all("Publication could not be confirmed")
         if isinstance(error, (ValueError, RuntimeError)):

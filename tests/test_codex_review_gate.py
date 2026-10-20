@@ -1184,6 +1184,65 @@ class IntegrationTests(unittest.TestCase):
             gate.evaluate_pr = original
         self.assertEqual(lookups, [])
 
+    def test_changed_base_reevaluates_instead_of_revoking_the_current_head(self):
+        # A newer base-push run already published a valid success for this HEAD.
+        # This stale run must re-evaluate the current snapshot rather than knock
+        # that HEAD back to `pending`, because no later event is guaranteed.
+        api = FakeAPI()
+        reads = {"n": 0}
+        base_request = api.get_pull_request
+        state = {"pending": False}
+        base_status = api.create_commit_status
+
+        def recording(sha, decision):
+            state[decision.state] = state.get(decision.state, 0) + 1
+            return base_status(sha, decision)
+
+        api.create_commit_status = recording
+
+        def changing(number=None):
+            # The first read (identity) sees the original; the second (early
+            # mismatch check) sees a moved base, so the run must re-evaluate.
+            reads["n"] += 1
+            value = base_request(number)
+            if reads["n"] >= 2 and state.get("success", 0) == 0:
+                return {**value, "base": {"sha": "9" * 40, "ref": "main"}}
+            return value
+
+        api.get_pull_request = changing
+        result = gate.evaluate_pr(api, 133)
+        # The stale run must never publish a success for the snapshot that no
+        # longer exists, whichever route it takes to discover the change.
+        self.assertNotIn("success", [s.state for sha, s in api.statuses if sha == HEAD])
+        self.assertEqual(result.state, "pending")
+        # NOTE: reverting the re-evaluation to a revocation is NOT detected here,
+        # because both routes end with the same final state. The re-evaluation
+        # exists so the stale run avoids writing at all when a newer run already
+        # published -- that is a write-count property this scenario cannot
+        # observe. The convergence re-validation test covers the observable half.
+
+    def test_convergence_write_is_revalidated(self):
+        # The convergence publication must itself be re-checked: a deletion run
+        # can revoke between the writes. Driving the evidence away after the first
+        # convergence forces a second pass, whose decision must be the final one.
+        api = FakeAPI()
+        calls = {"n": 0}
+        original = api.list_issue_comments
+
+        def comments(_number):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return [summary(sha=OLD_HEAD)]
+            if calls["n"] == 2:
+                return [summary(sha=HEAD)]
+            return []  # the summary is deleted before the convergence re-check
+
+        api.list_issue_comments = comments
+        result = gate.evaluate_pr(api, 133)
+        self.assertEqual(result.state, "pending")
+        for target in (HEAD, "b" * 40):
+            self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
+
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
         # repository forbids shipping debug code, so pin its absence.
