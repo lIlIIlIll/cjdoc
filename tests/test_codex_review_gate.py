@@ -1407,6 +1407,70 @@ class IntegrationTests(unittest.TestCase):
         finally:
             gate._evaluate_once = original_once
 
+    def test_base_push_lists_open_prs_only_once(self):
+        # A second listing before the revocation phase could fail transiently and
+        # abort before anything was revoked, leaving every affected HEAD
+        # authorized. The HEADs must come from the first listing.
+        api = FakeAPI()
+        others = [{"number": n, "head": {"sha": str(n) * 40},
+                   "base": {"sha": OLD_HEAD, "ref": "main"}, "merge_commit_sha": None}
+                  for n in (200, 300)]
+        listed = [{"number": 133, "head": {"sha": HEAD},
+                   "base": {"sha": OLD_HEAD, "ref": "main"}, "merge_commit_sha": "b" * 40},
+                  *others]
+        listings = {"n": 0}
+
+        def listing():
+            listings["n"] += 1
+            if listings["n"] > 1:
+                raise ConnectionResetError("redundant listing failed")
+            return listed
+
+        api.list_open_pull_requests = listing
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: None
+        try:
+            self.assertEqual(gate.run_gate("push", {"ref": "refs/heads/main"}, api), 0)
+        finally:
+            gate.evaluate_pr = original
+        self.assertEqual(listings["n"], 1)
+
+    def test_convergence_with_shared_head_withdraws_the_head_at_once(self):
+        # Evidence changes while the HEAD becomes shared: the HEAD must be
+        # withdrawn immediately, not left successful for the other PR to inherit.
+        other = {"number": 200, "head": {"sha": HEAD}, "base": {"sha": "a" * 40},
+                 "merge_commit_sha": "c" * 40}
+        api = FakeAPI()
+        base_status = api.create_commit_status
+        state = {"shared": False, "calls": 0}
+        original_listing = api.list_open_pull_requests
+
+        def listing():
+            state["calls"] += 1
+            if state["shared"]:
+                return original_listing() + [other]
+            return original_listing()
+
+        def changing(sha, decision):
+            if decision.state == "success" and sha == HEAD:
+                state["shared"] = True
+            return base_status(sha, decision)
+
+        api.list_open_pull_requests = listing
+        api.create_commit_status = changing
+        # Make the post-publication decision differ so convergence runs.
+        calls = {"n": 0}
+        original_comments = api.list_issue_comments
+
+        def comments(_number):
+            calls["n"] += 1
+            return [] if calls["n"] > 1 else original_comments(_number)
+
+        api.list_issue_comments = comments
+        gate.evaluate_pr(api, 133)
+        self.assertNotIn("success",
+                         [s.state for sha, s in api.statuses if sha == HEAD][-1:])
+
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
         # repository forbids shipping debug code, so pin its absence.

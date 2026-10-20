@@ -563,8 +563,19 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
             # on the decision the CURRENT data supports -- computed by the same
             # `decide`, so this is not an upgrade from stale reasoning.
             api.create_commit_status(merge_sha, fresh_decision)
-            if _head_scope_is_unique(number, head_sha, api.list_open_pull_requests()):
+            head_still_unique = _head_scope_is_unique(
+                number, head_sha, api.list_open_pull_requests())
+            if head_still_unique:
                 api.create_commit_status(head_sha, fresh_decision)
+            else:
+                # The HEAD is now shared, so a conclusion there cannot describe a
+                # single PR. Withdraw the success just written rather than leaving
+                # it for the other PR to inherit; a transient failure before the
+                # next pass would otherwise leave exactly that.
+                revoke_head_status(
+                    api, head_sha,
+                    GateDecision("pending", "HEAD shared with another open PR; withheld", pr_url),
+                )
             # Re-enter the evaluation loop: the convergence writes above were not
             # themselves revalidated, and a concurrent deletion run could have
             # revoked between them. Looping checks the evidence again instead of
@@ -689,21 +700,30 @@ def reevaluate_head_owners(api: GitHubAPI, head_sha: str, skip: set[int]) -> Non
         raise RuntimeError("HEAD owner re-evaluation failed: " + "; ".join(failures))
 
 
-def open_prs_targeting_branch(api: GitHubAPI, branch: str) -> list[int]:
-    """Open PR numbers whose base is `branch`.
+def open_prs_targeting_branch(api: GitHubAPI, branch: str) -> tuple[list[int], dict[int, str]]:
+    """Open PR numbers whose base is `branch`, plus each one's HEAD.
 
     A rewritten base branch does not change a PR's HEAD, so a `success` left on
     that immutable SHA would keep authorizing a review validated against an
     earlier base. GitHub sends no per-PR event for that, so the base push itself
     must re-evaluate every PR that targets it.
+
+    The HEADs are returned with the numbers so the revocation phase does not need
+    a second listing: a redundant scan could fail transiently before anything is
+    revoked, leaving every affected HEAD authorized with no event to repair it.
     """
     numbers: list[int] = []
+    heads: dict[int, str] = {}
     for pull_request in api.list_open_pull_requests():
         if not isinstance(pull_request, dict) or not isinstance(pull_request.get("number"), int):
             raise ValueError("invalid entry in open-PR response")
-        if (pull_request.get("base") or {}).get("ref") == branch:
-            numbers.append(pull_request["number"])
-    return numbers
+        if (pull_request.get("base") or {}).get("ref") != branch:
+            continue
+        numbers.append(pull_request["number"])
+        sha = (pull_request.get("head") or {}).get("sha")
+        if isinstance(sha, str) and SHA_PATTERN.fullmatch(sha):
+            heads[pull_request["number"]] = sha
+    return numbers, heads
 
 
 def reopened_head_owner(api: GitHubAPI, number: int) -> bool:
@@ -762,24 +782,17 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
         if not branch:
             print("push event without a branch; skip")
             return 0
-        candidates = open_prs_targeting_branch(api, branch)
+        candidates, listed = open_prs_targeting_branch(api, branch)
         # Withdraw every candidate's HEAD FIRST. A hard job timeout would
         # otherwise terminate this fanout mid-way and leave the later HEADs
         # still authorized against the previous base, with no chance to run the
         # error handling. Revocation is cheap and can only deny.
         failures: list[str] = []
-        # Revoke from the HEADs already listed above rather than re-fetching each
-        # PR: this fanout runs before the (also bounded) evaluation phase, and a
-        # hard job timeout mid-way would leave every later HEAD still carrying a
-        # success validated against the previous base. One request per candidate
-        # instead of two keeps the window as small as this API allows.
-        listed: dict[int, str] = {}
-        for pull_request in api.list_open_pull_requests():
-            if not isinstance(pull_request, dict) or not isinstance(pull_request.get("number"), int):
-                raise ValueError("invalid entry in open-PR response")
-            sha = (pull_request.get("head") or {}).get("sha")
-            if isinstance(sha, str) and SHA_PATTERN.fullmatch(sha):
-                listed[pull_request["number"]] = sha
+        # Revoke from the HEADs captured by the listing above: this fanout runs
+        # before the (also bounded) evaluation phase, and a hard job timeout
+        # mid-way would leave every later HEAD still carrying a success validated
+        # against the previous base. No second listing is issued, because a
+        # transient failure there would abort before anything was revoked.
         for candidate in candidates:
             # Best effort per candidate: a transient failure here must not abort
             # the loop, or the later HEADs would keep their previous-base success
