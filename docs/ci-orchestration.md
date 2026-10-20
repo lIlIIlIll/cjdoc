@@ -10,6 +10,29 @@ Only actually executed results are recorded. Every number names the run or
 command it came from. Where a claim needs more samples than exist, the limit is
 stated instead of a conclusion.
 
+## Paired-sample cell semantics (DONE-03)
+
+A matched cell is keyed by **(job shape, cache state, environment)**. The environment
+is the runner image, SDK/stdx identity, toolchain target and effective compile options
+recorded by the job's own stages.
+
+**The source revision is deliberately NOT part of the key** (ruled 2026-10-20). The
+issue's condition list is "same workflow, runner type, SDK/stdx, effective flags,
+browser/fonts" — the revision is absent, and DONE-03's requirement is *before (main)
+vs after (branch)*, which are different commits by construction. Including
+`checkoutCommit` made every push its own cell, so no cell could ever accumulate five
+samples and the requirement was unreachable rather than merely pending: the measured
+history showed 27 cells with `n=1` each.
+
+The revision is still recorded per sample and printed in the run table, and a cell that
+pools more than one revision names them (`revisions=...`) in the Matched cells section,
+so pooling across commits can never happen silently.
+
+What remains a real requirement: five successful samples per cell **per cache state**,
+so both the hit and the miss side must reach five under one environment. The old
+revision-keyed view is available from the same data by reading the `revision` column,
+which the tool still emits for every sample.
+
 ## Where the timing evidence comes from
 
 | Source | What it carries |

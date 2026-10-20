@@ -13,6 +13,14 @@ classification: a run whose records carry no cache state is reported as `unknown
 rather than being assumed cold or warm, and a run is only admitted to a cell when
 every stage of that run agrees on the state.
 
+A matched cell is keyed by (job shape, cache state, environment), where the
+environment is the runner image, SDK/stdx identity, toolchain target and effective
+compile options. The source revision is NOT part of the key: DONE-03 asks for
+"before (main) vs after (branch)" samples, which by definition come from different
+revisions, so keying on the commit made the requirement unreachable -- each push
+became its own cell with one sample. The revision is retained per sample and shown
+in every table, so a cell's samples can always be traced back to their commits.
+
 Wall time comes from the jobs API (first start to last completion), and total runner
 time is the sum of every job's own duration, so parallel work is not hidden.
 """
@@ -143,12 +151,16 @@ def job_conditions(evidence: Path) -> dict[str, str]:
         if not stages:
             continue
         environment = stages[0].get("environment") or {}
-        # `checkoutCommit` is part of the signature: a paired sample compares the SAME
-        # source revision under two cache conditions. Without it, five misses from an
-        # older revision plus five hits from a newer one would "satisfy" the requirement
-        # while comparing different code.
+        # The pairing unit is the ENVIRONMENT, not the revision: DONE-03 asks for
+        # samples "before (main) vs after (branch)", i.e. explicitly across two
+        # different revisions, under the same workflow, runner type, SDK/stdx and
+        # effective flags. Including `checkoutCommit` made every push its own cell, so
+        # no cell could ever reach five samples and the requirement was unreachable by
+        # construction. The revision is still recorded per sample (and shown in the
+        # tables), so a reader can always see which commits a cell's samples came from;
+        # it just does not split comparable measurements apart.
         signature = "|".join(str(environment.get(field, "")) for field in
-                             ("checkoutCommit", "runnerImage", "sdkVersion", "stdxDigest",
+                             ("runnerImage", "sdkVersion", "stdxDigest",
                               "toolchainTarget"))
         compile_options = environment.get("compileOptions") or []
         signature += "|" + ",".join(str(option) for option in compile_options)
@@ -540,14 +552,22 @@ def report(samples: list[dict], workflow: str, out: Path,
                   f"* runner minutes across {len(runners)} run attempt(s): "
                   f"{sum(runners):.1f}m total, max {max(runners):.1f}m"]
     lines += ["", "## Matched cells (successful jobs only)", "",
-              "Each cell is one (job shape, cache state, matched conditions) triple. The",
-              "condition signature is the source revision, runner image, SDK version, stdx",
-              "digest, toolchain target and compile options recorded by that job's stages. A",
-              "cell therefore compares the SAME revision and toolchain under two cache",
-              "conditions; a hit and a miss from different revisions are never pooled.", ""]
+              "Each cell is one (job shape, cache state, matched environment) triple. The",
+              "condition signature is the runner image, SDK version, stdx digest, toolchain",
+              "target and compile options recorded by that job's stages. The source revision",
+              "is NOT part of the key: DONE-03's before/after samples are different commits",
+              "by definition. Every sample keeps its own revision, shown in the run table.",
+              ""]
     for key in sorted(cells):
         shape, state, condition = key
         detail = f" `{condition}`" if condition else " (condition not recorded)"
+        # Revision is not part of the key, so name the commits a cell covers; without
+        # this the cell could silently pool measurements from unrelated code.
+        cell_revisions = sorted({s["revision"] for s in classified
+                                 if s["shape"] == shape and s["state"] == state
+                                 and s.get("condition", "") == condition})
+        if len(cell_revisions) > 1:
+            detail += " revisions=" + ",".join(cell_revisions)
         lines.append(f"* **{shape} / {state}**{detail}: {describe(cells[key])}")
     # Requirement shapes come from every cache-bearing job, not only from the cells: a
     # platform whose artifacts expired or whose samples all predate the recording would

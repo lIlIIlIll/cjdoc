@@ -704,12 +704,12 @@ class PairedSampleTests(unittest.TestCase):
         self.assertEqual(calls, {1: 1, 2: 0}, "the carried-forward job must be dropped")
 
     def test_the_same_shape_under_two_conditions_is_two_cells(self) -> None:
-        """Five hits from one revision must not count for five misses from another."""
+        """A hit and a miss are distinct cells; the revision is not part of the key."""
         def sample(rev, state, minutes):
             return {"run": 1, "attempt": 1, "revision": rev, "event": "push",
                     "job": "linux-x64 / Cangjie", "shape": "linux-x64",
                     "conclusion": "success", "state": state, "jobMinutes": minutes, "hasEvidence": True,
-                    "condition": f"{rev}|ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
+                    "condition": "ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
                     "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
 
         samples = [sample("a" * 40, "miss", 20.0), sample("b" * 40, "hit", 10.0)]
@@ -717,26 +717,71 @@ class PairedSampleTests(unittest.TestCase):
         result = paired.report(samples, "ci.yml", out)
         self.assertEqual(len(result["cells"]), 2, result["cells"])
         text = out.read_text(encoding="utf-8")
-        self.assertIn(f"{'a' * 40}|ubuntu", text)
-        self.assertIn(f"{'b' * 40}|ubuntu", text)
+        # The environment is the pairing unit, and revisions are still visible.
+        self.assertIn("ubuntu|1.2.0|d|x86_64", text)
+
+    def test_two_revisions_under_one_environment_share_a_cell(self) -> None:
+        """DONE-03's before/after samples are different commits by definition.
+
+        Keying on the revision made every push its own cell with a single sample, so
+        five per cell was unreachable. Samples of the same shape, state and
+        environment must pool across revisions, and the cell must name those
+        revisions so the pooling is not silent.
+        """
+        def sample(rev, state, minutes):
+            return {"run": 1, "attempt": 1, "revision": rev, "event": "push",
+                    "job": "linux-x64 / Cangjie", "shape": "linux-x64",
+                    "conclusion": "success", "state": state, "jobMinutes": minutes,
+                    "hasEvidence": True,
+                    "condition": "ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+
+        samples = [sample(f"{n:040x}", "hit", 10.0) for n in range(1, 6)]
+        out = self.root / "pooled.md"
+        result = paired.report(samples, "ci.yml", out)
+        key = "linux-x64/hit|ubuntu|1.2.0|d|x86_64|--jobs 1,-O1"
+        self.assertEqual(result["cells"].get(key), 5, result["cells"])
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("revisions=", text)
 
     def test_five_hits_and_five_misses_under_different_conditions_is_not_met(self) -> None:
         """The paired comparison needs BOTH conditions under the SAME condition."""
-        def sample(rev, state):
-            return {"run": 1, "attempt": 1, "revision": rev, "event": "push",
+        def sample(env, state):
+            return {"run": 1, "attempt": 1, "revision": "a" * 40, "event": "push",
                     "job": "linux-x64 / Cangjie", "shape": "linux-x64",
                     "conclusion": "success", "state": state, "jobMinutes": 10.0,
-                    "condition": f"{rev}|ubuntu|1.2.0|d|x86_64|--jobs 1,-O1",
-                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
-        samples = [sample("a" * 40, "hit") for _ in range(5)]
-        samples += [sample("b" * 40, "miss") for _ in range(5)]
+                    "condition": env, "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        # Five hits and five misses, but under DIFFERENT environments: each state is
+        # satisfied alone while no single matched environment has both.
+        samples = [sample("ubuntu|1.2.0|d|x86_64|--jobs 1,-O1", "hit") for _ in range(5)]
+        samples += [sample("macos|1.2.0|e|aarch64|--jobs 1,-O1", "miss") for _ in range(5)]
         out = self.root / "crossed.md"
         result = paired.report(samples, "ci.yml", out)
         text = out.read_text(encoding="utf-8")
-        # Each state has five samples, but never under one condition, so no cell is met.
         self.assertFalse(any(count >= 5 for count in result["pairedPerCondition"].values()),
                          result["pairedPerCondition"])
         self.assertIn("paired samples under this condition: 0 — NOT met", text)
+
+    def test_the_pairing_signature_excludes_the_revision(self) -> None:
+        """`job_conditions` must key on the environment only.
+
+        Two artifacts recorded from the SAME environment but DIFFERENT commits have to
+        produce the same signature, or DONE-03's before/after pairing is impossible.
+        """
+        root = self.root / "conditions-evidence"
+        for name, commit in (("a", "a" * 40), ("b", "b" * 40)):
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(json.dumps({"stages": [{
+                "environment": {"checkoutCommit": commit, "runnerImage": "ubuntu22",
+                                "sdkVersion": "1.2.0", "stdxDigest": "d",
+                                "toolchainTarget": "x86_64", "compileOptions": ["--jobs 1", "-O1"]}
+            }]}), encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertEqual(len(conditions), 2)
+        signatures = set(conditions.values())
+        self.assertEqual(len(signatures), 1, signatures)
+        self.assertNotIn("a" * 40, signatures.pop())
 
     def test_the_provenance_command_is_copyable(self) -> None:
         """A workflow name with spaces must arrive as one argument."""
