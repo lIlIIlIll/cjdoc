@@ -339,6 +339,13 @@ class PrChangedDuringEvaluation(Exception):
     """The PR's head/base/test-merge moved while this run was working."""
 
 
+class SupersededStatusNotWithdrawn(RuntimeError):
+    """A status written for a superseded commit could not be withdrawn.
+
+    A RuntimeError so the entry point reports it as a failure.
+    """
+
+
 def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
                 deleted_comment: dict | None = None) -> GateDecision | None:
     """Evaluate a PR, retrying when another run changes it underneath us.
@@ -354,8 +361,26 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
                                   deleted_comment=deleted_comment)
         except PrChangedDuringEvaluation as changed:
             print(f"PR #{number}: {changed}; re-evaluating the current snapshot")
+    # The bound was reached with the snapshot still moving, so this run holds no
+    # confirmed conclusion. Withdraw whatever the current PR points at before
+    # giving up: returning `pending` while a success stands is exactly the stale
+    # authorization the contract forbids.
+    withdrawn = GateDecision("pending", "The PR changed repeatedly during evaluation", "")
+    try:
+        current = api.get_pull_request(number)
+        for target in ((current.get("head") or {}).get("sha"),
+                       current.get("merge_commit_sha")):
+            if isinstance(target, str) and SHA_PATTERN.fullmatch(target):
+                try:
+                    api.create_commit_status(target, withdrawn)
+                except Exception as error:  # noqa: BLE001 - any transport failure
+                    print(f"PR #{number}: could not withdraw {target[:10]} ({error})",
+                          file=sys.stderr)
+    except Exception as error:  # noqa: BLE001 - any transport failure
+        print(f"PR #{number}: could not withdraw after repeated changes ({error})",
+              file=sys.stderr)
     print(f"PR #{number}: the PR kept changing; leaving the decision to a later event")
-    return GateDecision("pending", "The PR changed repeatedly during evaluation", "")
+    return withdrawn
 
 
 def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
@@ -506,12 +531,18 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
                 # still current and a newer run may have published a legitimate
                 # success there, which must not be revoked.
                 withdrawn = GateDecision("pending", "Superseded by a newer HEAD", pr_url)
+                errors: list[str] = []
                 for target in (head_sha, merge_sha):
                     try:
                         api.create_commit_status(target, withdrawn)
                     except Exception as error:  # noqa: BLE001 - any transport failure
-                        print(f"PR #{number}: could not withdraw {target[:10]} ({error})",
-                              file=sys.stderr)
+                        errors.append(f"{target[:10]}: {error}")
+                if errors:
+                    # A superseded target that could not be withdrawn still carries
+                    # evidence a later PR could inherit; failing the run is the only
+                    # way to make that visible.
+                    raise SupersededStatusNotWithdrawn(
+                        "could not withdraw every superseded status: " + "; ".join(errors))
             raise PrChangedDuringEvaluation("the PR changed while publishing")
         fresh_decision = decide(api.list_open_pull_requests(), api.list_issue_comments(number))
         if fresh_decision != decision:
@@ -546,6 +577,10 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
         # re-evaluate the current snapshot. Nothing needs withdrawing here --
         # either nothing was published, or the caller's next pass recomputes and
         # republishes under its own guard.
+        raise
+    except SupersededStatusNotWithdrawn:
+        # Already reported with precise targets; re-wrapping would hide them and a
+        # second withdrawal attempt here would just duplicate the failure.
         raise
     except Exception as error:  # noqa: BLE001 - any transport or protocol failure
         withdraw_all("Publication could not be confirmed")
@@ -683,16 +718,24 @@ def reopen_aware_skip_set(api: GitHubAPI, event_name: str, event: dict,
     safe, while skipping may strand a live owner.
     """
     skip = {number}
-    if event_name != "pull_request_target" or event.get("action") != "closed":
+    if event_name != "pull_request_target" or event.get("action") not in ("closed", "synchronize"):
         return skip
     try:
-        if reopened_head_owner(api, number):
-            print(f"PR #{number} is open again; it is re-evaluated as a HEAD owner")
-            return set()
+        current = api.get_pull_request(number)
     except Exception as error:  # noqa: BLE001 - any transport failure
         print(f"PR #{number}: could not re-read its state ({error}); "
               f"re-evaluating it anyway", file=sys.stderr)
         return set()
+    # The triggering PR is excluded only while it does NOT own an affected HEAD.
+    # A delayed delivery can arrive after the PR moved back onto that commit
+    # (A -> B -> A reported as A -> B), and skipping it then would revoke the
+    # CURRENT head and never restore it. Re-evaluating it is always safe: a
+    # closed PR publishes nothing.
+    if current.get("state") == "open":
+        affected = set(affected_shared_heads(event_name, event))
+        if (current.get("head") or {}).get("sha") in affected:
+            print(f"PR #{number} owns the affected HEAD; it is re-evaluated as an owner")
+            return set()
     return skip
 
 

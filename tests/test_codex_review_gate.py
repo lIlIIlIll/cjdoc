@@ -1288,6 +1288,101 @@ class IntegrationTests(unittest.TestCase):
             self.assertIn("success", states)
             self.assertEqual(states[-1], "pending")
 
+    def test_delayed_synchronize_keeps_a_valid_current_head(self):
+        # A -> B -> A, with the A -> B delivery arriving last and carrying its real
+        # payload (before=A, head=B). The PR now owns A again, so cleanup must
+        # re-evaluate it rather than revoke its current HEAD and strand it.
+        api = FakeAPI()
+        base_request = api.get_pull_request
+        api.get_pull_request = lambda n: {**base_request(n), "state": "open",
+                                          "head": {"sha": HEAD}}
+        event = {"action": "synchronize", "before": HEAD,
+                 "pull_request": {"number": 133, "head": {"sha": "9" * 40}}}
+        skip = gate.reopen_aware_skip_set(api, "pull_request_target", event, 133)
+        self.assertEqual(skip, set())
+
+    def test_reopen_skip_applies_only_when_the_pr_lacks_the_head(self):
+        api = FakeAPI()
+        base_request = api.get_pull_request
+        api.get_pull_request = lambda n: {**base_request(n), "state": "open",
+                                          "head": {"sha": "9" * 40}}
+        event = {"action": "synchronize", "before": HEAD,
+                 "pull_request": {"number": 133, "head": {"sha": "9" * 40}}}
+        skip = gate.reopen_aware_skip_set(api, "pull_request_target", event, 133)
+        self.assertEqual(skip, {133})
+
+    def test_retry_exhaustion_withdraws_unconfirmed_successes(self):
+        # The PR changes on every pass, so the bound is reached with no confirmed
+        # conclusion. Any success left standing must be withdrawn: returning
+        # `pending` while a success remains is the stale authorization the
+        # contract forbids.
+        api = FakeAPI()
+        calls = {"n": 0}
+        base_request = api.get_pull_request
+        base_status = api.create_commit_status
+        written_success = []
+
+        def tracking(sha, decision):
+            if decision.state == "success":
+                written_success.append(sha)
+            return base_status(sha, decision)
+
+        def changing(number=None):
+            calls["n"] += 1
+            value = base_request(number)
+            # A fresh, always-different test merge on every read: the snapshot can
+            # never be confirmed, so the loop is exhausted.
+            return {**value, "merge_commit_sha": format(calls["n"], "040x")}
+
+        api.create_commit_status = tracking
+        api.get_pull_request = changing
+        api.list_open_pull_requests = lambda: [
+            {"number": 133, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD, "ref": "main"},
+             "merge_commit_sha": changing(133)["merge_commit_sha"]}]
+        result = gate.evaluate_pr(api, 133)
+        self.assertEqual(result.state, "pending")
+        # No success may be left standing on any target this run touched: the run
+        # could not confirm its own conclusion, so nothing may authorize a merge.
+        for target in {sha for sha, _ in api.statuses}:
+            states = [s.state for sha, s in api.statuses if sha == target]
+            self.assertNotIn("success", states[-1:])
+        # Targets this run wrote a success to must have been withdrawn afterwards.
+        for target in set(written_success):
+            self.assertEqual([s.state for sha, s in api.statuses if sha == target][-1], "pending")
+        # NOTE: in this deterministic scenario the pre-publication identity check
+        # already prevents a success from being written, so removing the
+        # exhaustion withdrawal is not mutation-detected here. That withdrawal is
+        # defence for the interleavings an independent reviewer reproduced
+        # (repeated synchronous deletions), which need a nested run to build.
+
+    def test_failed_superseded_withdrawal_fails_the_run(self):
+        api = FakeAPI()
+        moved = {"yet": False}
+        base_request = api.get_pull_request
+        base_status = api.create_commit_status
+        new_head = "9" * 40
+
+        def failing(sha, decision):
+            if moved["yet"] and sha == HEAD and decision.state != "success":
+                raise ConnectionResetError("withdrawal failed")
+            base_status(sha, decision)
+            if sha == HEAD and decision.state == "success":
+                moved["yet"] = True
+
+        def changing(number=None):
+            value = base_request(number)
+            if moved["yet"]:
+                return {**value, "head": {"sha": new_head}, "merge_commit_sha": None}
+            return value
+
+        api.create_commit_status = failing
+        api.get_pull_request = changing
+        api.list_open_pull_requests = lambda: [
+            {"number": 133, "head": changing(133)["head"], "base": changing(133)["base"],
+             "merge_commit_sha": changing(133)["merge_commit_sha"]}]
+        with self.assertRaisesRegex(RuntimeError, "superseded"):
+            gate.evaluate_pr(api, 133)
+
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
         # repository forbids shipping debug code, so pin its absence.
