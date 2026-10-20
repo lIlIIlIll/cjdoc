@@ -336,6 +336,37 @@ def deletion_is_stale(deleted_comment: dict | None, comments: list[dict]) -> boo
     return False
 
 
+class PublishedStatuses:
+    """Every status this run has written, so a retry can withdraw all of them.
+
+    A status belongs to a SHA, not to a PR. This run may publish on a HEAD, on a
+    test-merge commit, and -- when the snapshot moves underneath it -- on several
+    successive pairs. A later pass reads only the CURRENT snapshot and would
+    therefore forget the earlier writes, leaving `success` behind on commits the
+    PR has left; a later PR reusing such a commit would inherit that evidence.
+    Carrying one ledger across the retries makes cleanup total instead of
+    per-pass.
+
+    Only `success` entries matter for authorization, but every written target is
+    recorded so a withdrawal can also confirm that a prior success is gone.
+    """
+
+    def __init__(self) -> None:
+        self._targets: dict[str, str] = {}
+
+    def record(self, sha: str, decision: "GateDecision") -> None:
+        self._targets[sha] = decision.state
+
+    def successes(self) -> list[str]:
+        return [sha for sha, state in self._targets.items() if state == "success"]
+
+    def targets(self) -> list[str]:
+        return list(self._targets)
+
+    def __bool__(self) -> bool:
+        return bool(self._targets)
+
+
 class PrChangedDuringEvaluation(Exception):
     """The PR's head/base/test-merge moved while this run was working."""
 
@@ -347,6 +378,59 @@ class SupersededStatusNotWithdrawn(RuntimeError):
     """
 
 
+def _publish(api: GitHubAPI, target: str, decision: GateDecision,
+             published: "PublishedStatuses | None") -> None:
+    """Write a status and remember it, so a later retry can withdraw it."""
+    api.create_commit_status(target, decision)
+    if published is not None:
+        published.record(target, decision)
+
+
+def _reconcile(api: GitHubAPI, number: int, published: "PublishedStatuses") -> None:
+    """Withdraw every success this run published that no longer authorizes this PR.
+
+    One rule, used on every non-success exit path (retry, any exception, and
+    exhaustion), because a status belongs to a SHA and a pass that ended without
+    confirming its writes cannot be trusted to have cleaned them up:
+
+      * A success is still valid only if its target is one of the PR's CURRENT
+        authorization targets -- the HEAD or the test-merge commit -- and the PR
+        is still open. The BASE is deliberately excluded: it is never an
+        authorization target, and a superseded HEAD can become the base of a
+        later snapshot, which is exactly how a stale success used to survive.
+      * A closed PR has no authorization targets at all (the gate publishes
+        nothing for it), so everything this run wrote is withdrawn.
+
+    Failures propagate: a target that cannot be withdrawn may still authorize a
+    merge, and no later event is guaranteed.
+    """
+    pending = GateDecision("pending", "Superseded by a newer snapshot", "")
+    try:
+        current = api.get_pull_request(number)
+        if current.get("state") == "open":
+            live = {(current.get("head") or {}).get("sha"),
+                    current.get("merge_commit_sha")}
+        else:
+            live = set()
+    except Exception as error:  # noqa: BLE001 - any transport failure
+        # The snapshot cannot be read, so no recorded success can be shown to be
+        # valid; withdraw them all rather than assume any is still authorized.
+        print(f"PR #{number}: could not read the snapshot before cleanup ({error}); "
+              f"withdrawing every recorded status", file=sys.stderr)
+        live = set()
+    errors: list[str] = []
+    for target in published.successes():
+        if target in live:
+            continue
+        try:
+            _publish(api, target, pending, published)
+        except Exception as error:  # noqa: BLE001 - any transport failure
+            errors.append(f"{target[:10]}: {error}")
+    if errors:
+        raise SupersededStatusNotWithdrawn(
+            "could not withdraw every superseded status: " + "; ".join(errors))
+
+
 def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
                 deleted_comment: dict | None = None) -> GateDecision | None:
     """Evaluate a PR, retrying when another run changes it underneath us.
@@ -355,46 +439,40 @@ def evaluate_pr(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
     while an older one is mid-flight. Re-evaluating the CURRENT snapshot (bounded)
     is what keeps a stale run from either revoking a newer valid status or
     publishing one that no longer describes the PR.
+
+    One ledger spans the whole attempt: when a retry supersedes earlier writes,
+    the earlier targets are withdrawn, otherwise a later pass could return early
+    and leave their `success` behind for another PR to inherit.
     """
+    published = PublishedStatuses()
     for _ in range(3):
         try:
             return _evaluate_once(api, number, deleted_summary=deleted_summary,
-                                  deleted_comment=deleted_comment)
+                                  deleted_comment=deleted_comment, published=published)
         except PrChangedDuringEvaluation as changed:
             print(f"PR #{number}: {changed}; re-evaluating the current snapshot")
+            _reconcile(api, number, published)
+        except SupersededStatusNotWithdrawn:
+            raise
+        except Exception as error:  # noqa: BLE001 - any failure mid-pass
+            # A pass that ends in an error may have published without confirming
+            # it. Reconcile first, then report the original failure.
+            try:
+                _reconcile(api, number, published)
+            except SupersededStatusNotWithdrawn:
+                pass  # the unwithdrawn target is the more serious fact
+            raise error
     # The bound was reached with the snapshot still moving, so this run holds no
-    # confirmed conclusion. Withdraw every target it can still find before giving
-    # up: returning `pending` while a success stands is exactly the stale
-    # authorization the contract forbids, and a convergence pass may have written
-    # one on a commit the PR has since left.
-    withdrawn = GateDecision("pending", "The PR changed repeatedly during evaluation", "")
-    targets: dict[str, None] = {}
-    attempts: list[str] = []
-    try:
-        current = api.get_pull_request(number)
-        for value in ((current.get("head") or {}).get("sha"),
-                      current.get("merge_commit_sha")):
-            if isinstance(value, str) and SHA_PATTERN.fullmatch(value):
-                targets[value] = None
-    except Exception as error:  # noqa: BLE001 - any transport failure
-        attempts.append(f"current snapshot: {error}")
-    for target in targets:
-        try:
-            api.create_commit_status(target, withdrawn)
-        except Exception as error:  # noqa: BLE001 - any transport failure
-            attempts.append(f"{target[:10]}: {error}")
+    # confirmed conclusion. Reconcile through the same rule used everywhere else:
+    # nothing this run published may remain unless it still authorizes a live PR.
     print(f"PR #{number}: the PR kept changing; leaving the decision to a later event")
-    if attempts:
-        # Fail closed: a target this run could not withdraw may still authorize a
-        # merge, and a later event is not guaranteed.
-        raise RuntimeError(
-            "the PR kept changing and not every status could be withdrawn: "
-            + "; ".join(attempts))
-    return withdrawn
+    _reconcile(api, number, published)
+    return GateDecision("pending", "The PR changed repeatedly during evaluation", "")
 
 
 def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False,
-                   deleted_comment: dict | None = None) -> GateDecision | None:
+                   deleted_comment: dict | None = None,
+                   published: "PublishedStatuses | None" = None) -> GateDecision | None:
     pr = api.get_pull_request(number)
     if pr.get("state") != "open":
         print(f"PR #{number} is not open; no commit status to publish")
@@ -431,10 +509,9 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
 
     # Revoke any previous success BEFORE further network calls. If the API
     # fails while we revalidate summary/merge, the gate stays pending.
-    api.create_commit_status(
-        merge_sha,
-        GateDecision("pending", "Verifying PR-specific Codex review evidence", pr_url),
-    )
+    _publish(api, merge_sha,
+             GateDecision("pending", "Verifying PR-specific Codex review evidence", pr_url),
+             published)
     revoke_head_status(
         api, head_sha,
         GateDecision("pending", "Verifying PR-specific Codex review evidence", pr_url),
@@ -498,7 +575,7 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
         errors: list[str] = []
         for target in (merge_sha, head_sha):
             try:
-                api.create_commit_status(target, withdrawn)
+                _publish(api, target, withdrawn, published)
             except Exception as error:  # noqa: BLE001 - any transport failure
                 errors.append(f"{target[:10]}: {error}")
         if errors:
@@ -522,40 +599,24 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
 
         scope_now = api.list_open_pull_requests()
         publish_head = _head_scope_is_unique(number, head_sha, scope_now)
-        api.create_commit_status(merge_sha, decision)
+        _publish(api, merge_sha, decision, published)
         if publish_head:
-            api.create_commit_status(head_sha, decision)
+            _publish(api, head_sha, decision, published)
 
         after = api.get_pull_request(number)
         after_head = (after.get("head") or {}).get("sha")
         after_base = (after.get("base") or {}).get("sha")
         after_merge = after.get("merge_commit_sha")
+        if after.get("state") != "open":
+            # The PR closed while this pass was publishing. A closed PR has no
+            # authorization targets, so this pass must not return a success: the
+            # retry loop reconciles through the ledger.
+            raise PrChangedDuringEvaluation("the PR closed while publishing")
         if after_head != head_sha or after_base != base_sha or after_merge != merge_sha:
-            # The published test-merge status describes a base/head pair the PR
-            # has left, so it must always be withdrawn: a later PR reusing that
-            # merge commit, or any tooling reading it, would otherwise see stale
-            # evidence.
-            superseded = GateDecision("pending", "Superseded by a newer snapshot", pr_url)
-            superseded_targets = [merge_sha]
-            if after_head != head_sha:
-                # The HEAD moved too, so the HEAD status is superseded as well.
-                # Nothing later cleans it up (the synchronize run that freed the
-                # old HEAD may already have finished). A base-only move is
-                # different: the HEAD is still current and a newer run may have
-                # published a legitimate success there, which must not be revoked.
-                superseded_targets.append(head_sha)
-            errors: list[str] = []
-            for target in superseded_targets:
-                try:
-                    api.create_commit_status(target, superseded)
-                except Exception as error:  # noqa: BLE001 - any transport failure
-                    errors.append(f"{target[:10]}: {error}")
-            if errors:
-                # A superseded target that could not be withdrawn still carries
-                # evidence a later PR could inherit; failing the run is the only
-                # way to make that visible.
-                raise SupersededStatusNotWithdrawn(
-                    "could not withdraw every superseded status: " + "; ".join(errors))
+            # The snapshot moved past what this pass published. Raising hands the
+            # cleanup to the retry loop, which withdraws every success recorded in
+            # the ledger -- including targets written by earlier passes, which a
+            # fresh pass could not otherwise know about. One mechanism, one place.
             raise PrChangedDuringEvaluation("the PR changed while publishing")
         fresh_decision = decide(api.list_open_pull_requests(), api.list_issue_comments(number))
         if fresh_decision != decision:
@@ -566,11 +627,11 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
             # strand a valid result with no guaranteed repair. Instead converge
             # on the decision the CURRENT data supports -- computed by the same
             # `decide`, so this is not an upgrade from stale reasoning.
-            api.create_commit_status(merge_sha, fresh_decision)
+            _publish(api, merge_sha, fresh_decision, published)
             head_still_unique = _head_scope_is_unique(
                 number, head_sha, api.list_open_pull_requests())
             if head_still_unique:
-                api.create_commit_status(head_sha, fresh_decision)
+                _publish(api, head_sha, fresh_decision, published)
             else:
                 # The HEAD is now shared, so a conclusion there cannot describe a
                 # single PR. Withdraw the success just written rather than leaving

@@ -1384,28 +1384,51 @@ class IntegrationTests(unittest.TestCase):
             gate.evaluate_pr(api, 133)
 
     def test_exhaustion_withdrawal_failure_fails_closed(self):
-        # Reaching the bound with a status that cannot be withdrawn must fail the
-        # run: a later event is not guaranteed, so silence would leave stale
-        # authorization. The evaluation passes are exhausted directly, which
-        # leaves the exhaustion withdrawal as the only status write.
+        # Reaching the bound with a recorded success that is no longer live must
+        # fail the run when it cannot be withdrawn: no later event is guaranteed.
         api = FakeAPI()
         base_request = api.get_pull_request
+        state = {"published": False, "moved": False}
 
         def changing(number=None):
             value = base_request(number)
-            return {**value, "merge_commit_sha": "c" * 40}
+            if state["moved"]:
+                # A new HEAD, so the recorded successes are no longer live.
+                return {**value, "head": {"sha": "9" * 40}}
+            return value
 
+        base_status = api.create_commit_status
+
+        def recording(sha, decision):
+            if state["moved"] and decision.state != "success":
+                raise ConnectionResetError("withdrawal failed")
+            out = base_status(sha, decision)
+            if decision.state == "success":
+                state["published"] = True
+                state["moved"] = True
+            return out
+
+        api.create_commit_status = recording
         api.get_pull_request = changing
-        api.create_commit_status = lambda sha, decision: (
-            (_ for _ in ()).throw(ConnectionResetError("withdrawal failed")))
+        api.list_open_pull_requests = lambda: [
+            {"number": 133, "head": changing(133)["head"], "base": changing(133)["base"],
+             "merge_commit_sha": changing(133)["merge_commit_sha"]}]
         original_once = gate._evaluate_once
-        gate._evaluate_once = lambda *a, **k: (_ for _ in ()).throw(
-            gate.PrChangedDuringEvaluation("still moving"))
+        passes = {"n": 0}
+
+        def first_publishes_then_changes(*args, **kwargs):
+            passes["n"] += 1
+            if passes["n"] == 1:
+                return original_once(*args, **kwargs)
+            raise gate.PrChangedDuringEvaluation("still moving")
+
+        gate._evaluate_once = first_publishes_then_changes
         try:
-            with self.assertRaisesRegex(RuntimeError, "could be withdrawn"):
+            with self.assertRaisesRegex(RuntimeError, "withdraw"):
                 gate.evaluate_pr(api, 133)
         finally:
             gate._evaluate_once = original_once
+        self.assertTrue(state["published"], "the scenario must publish a success first")
 
     def test_base_push_lists_open_prs_only_once(self):
         # A second listing before the revocation phase could fail transiently and
@@ -1558,6 +1581,150 @@ class IntegrationTests(unittest.TestCase):
         finally:
             gate.evaluate_pr = original
         self.assertGreater(active["peak"], 1)
+
+    def test_superseded_success_now_serving_as_base_is_still_withdrawn(self):
+        # The old HEAD can become the new BASE. A base is never an authorization
+        # target, so exempting it would leave a stale success forever.
+        api = FakeAPI()
+        state = {"moved": False}
+        base_request = api.get_pull_request
+        base_status = api.create_commit_status
+        writes = []
+
+        def changing(number=None):
+            value = base_request(number)
+            if state["moved"]:
+                return {**value, "head": {"sha": "9" * 40}, "base": {"sha": HEAD},
+                        "merge_commit_sha": None}
+            return value
+
+        def recording(sha, decision):
+            writes.append((sha, decision.state))
+            if decision.state == "success":
+                state["moved"] = True
+            return base_status(sha, decision)
+
+        api.get_pull_request = changing
+        api.create_commit_status = recording
+        api.list_open_pull_requests = lambda: [
+            {"number": 133, "head": changing(133)["head"], "base": changing(133)["base"],
+             "merge_commit_sha": changing(133)["merge_commit_sha"]}]
+        result = gate.evaluate_pr(api, 133)
+        self.assertEqual(result.state, "pending")
+        # The former HEAD (now the base) must not retain its success.
+        self.assertEqual([s for sha, s in writes if sha == HEAD][-1], "pending")
+
+    def test_exception_between_passes_reconciles_earlier_successes(self):
+        # A pass raises after an earlier pass published success; the ledger must
+        # be reconciled before the error propagates.
+        api = FakeAPI()
+        state = {"published": False, "moved": False}
+        base_request = api.get_pull_request
+        base_status = api.create_commit_status
+        writes = []
+
+        def changing(number=None):
+            value = base_request(number)
+            if state["moved"]:
+                return {**value, "merge_commit_sha": None}
+            return value
+
+        def recording(sha, decision):
+            writes.append((sha, decision.state))
+            out = base_status(sha, decision)
+            if decision.state == "success":
+                state["published"] = True
+            return out
+
+        api.get_pull_request = changing
+        api.create_commit_status = recording
+        api.list_open_pull_requests = lambda: [
+            {"number": 133, "head": changing(133)["head"], "base": changing(133)["base"],
+             "merge_commit_sha": changing(133)["merge_commit_sha"]}]
+        # Pass 1 publishes success via convergence (evidence changes) and then
+        # asks for revalidation; pass 2 raises before it can revoke anything.
+        calls = {"n": 0}
+        original_comments = api.list_issue_comments
+
+        def comments(_number):
+            calls["n"] += 1
+            if calls["n"] > 1:
+                return []  # the evidence changed => fresh decision differs
+            return original_comments(_number)
+
+        api.list_issue_comments = comments
+        original_once = gate._evaluate_once
+        passes = {"n": 0}
+
+        def first_ok_then_boom(*args, **kwargs):
+            passes["n"] += 1
+            if passes["n"] == 1:
+                return original_once(*args, **kwargs)
+            raise ConnectionResetError("pass failed")
+
+        gate._evaluate_once = first_ok_then_boom
+        try:
+            with self.assertRaises(Exception):
+                gate.evaluate_pr(api, 133)
+        finally:
+            gate._evaluate_once = original_once
+        self.assertTrue(state["published"])
+        self.assertGreaterEqual(passes["n"], 2)
+        # The success published before the failure was withdrawn.
+        self.assertEqual([s for sha, s in writes if sha == "b" * 40][-1], "pending")
+
+    def test_closed_pr_withdraws_every_recorded_success(self):
+        # A closed PR has no authorization targets (the gate publishes nothing for
+        # it), so a success this run wrote must be withdrawn even though the SHAs
+        # are unchanged.
+        api = FakeAPI()
+        state = {"closed": False}
+        base_request = api.get_pull_request
+        base_status = api.create_commit_status
+        writes = []
+
+        def changing(number=None):
+            value = base_request(number)
+            if state["closed"]:
+                return {**value, "state": "closed"}
+            return value
+
+        def recording(sha, decision):
+            writes.append((sha, decision.state))
+            out = base_status(sha, decision)
+            if decision.state == "success":
+                # Close the PR right after the FIRST success is written; the
+                # second target's write then belongs to an already-closed PR.
+                state["closed"] = True
+            return out
+
+        api.get_pull_request = changing
+        api.create_commit_status = recording
+        api.list_open_pull_requests = lambda: [
+            {"number": 133, "head": changing(133)["head"], "base": changing(133)["base"],
+             "merge_commit_sha": changing(133)["merge_commit_sha"]}]
+        # Evidence disappears between classification and revalidation, so the pass
+        # raises and the retry loop reconciles; the PR is closed by then.
+        original_once = gate._evaluate_once
+        passes = {"n": 0}
+
+        def first_then_change(*args, **kwargs):
+            passes["n"] += 1
+            if passes["n"] == 1:
+                return original_once(*args, **kwargs)
+            raise gate.PrChangedDuringEvaluation("still moving")
+
+        gate._evaluate_once = first_then_change
+        try:
+            gate.evaluate_pr(api, 133)
+        finally:
+            gate._evaluate_once = original_once
+        self.assertTrue(state["closed"], "the scenario must close the PR")
+        # Whichever success survives the close must have been withdrawn.
+        for target in (HEAD, "b" * 40):
+            states = [s for sha, s in writes if sha == target]
+            if states and states[-1] == "success":
+                self.fail(f"a success remained on {target[:10]} after the PR closed")
 
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
