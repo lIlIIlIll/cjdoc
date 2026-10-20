@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -530,28 +531,31 @@ def _evaluate_once(api: GitHubAPI, number: int, *, deleted_summary: bool = False
         after_base = (after.get("base") or {}).get("sha")
         after_merge = after.get("merge_commit_sha")
         if after_head != head_sha or after_base != base_sha or after_merge != merge_sha:
+            # The published test-merge status describes a base/head pair the PR
+            # has left, so it must always be withdrawn: a later PR reusing that
+            # merge commit, or any tooling reading it, would otherwise see stale
+            # evidence.
+            superseded = GateDecision("pending", "Superseded by a newer snapshot", pr_url)
+            superseded_targets = [merge_sha]
             if after_head != head_sha:
-                # The HEAD moved, so the SHAs just published belong to a commit
-                # this PR no longer points at. Nothing later will clean them up
-                # (the synchronize run that freed the old HEAD may already have
-                # finished), and a future PR reusing that commit would inherit
-                # valid-looking evidence, so withdraw the superseded targets
-                # before retrying. A base-only move is different: the HEAD is
-                # still current and a newer run may have published a legitimate
-                # success there, which must not be revoked.
-                withdrawn = GateDecision("pending", "Superseded by a newer HEAD", pr_url)
-                errors: list[str] = []
-                for target in (head_sha, merge_sha):
-                    try:
-                        api.create_commit_status(target, withdrawn)
-                    except Exception as error:  # noqa: BLE001 - any transport failure
-                        errors.append(f"{target[:10]}: {error}")
-                if errors:
-                    # A superseded target that could not be withdrawn still carries
-                    # evidence a later PR could inherit; failing the run is the only
-                    # way to make that visible.
-                    raise SupersededStatusNotWithdrawn(
-                        "could not withdraw every superseded status: " + "; ".join(errors))
+                # The HEAD moved too, so the HEAD status is superseded as well.
+                # Nothing later cleans it up (the synchronize run that freed the
+                # old HEAD may already have finished). A base-only move is
+                # different: the HEAD is still current and a newer run may have
+                # published a legitimate success there, which must not be revoked.
+                superseded_targets.append(head_sha)
+            errors: list[str] = []
+            for target in superseded_targets:
+                try:
+                    api.create_commit_status(target, superseded)
+                except Exception as error:  # noqa: BLE001 - any transport failure
+                    errors.append(f"{target[:10]}: {error}")
+            if errors:
+                # A superseded target that could not be withdrawn still carries
+                # evidence a later PR could inherit; failing the run is the only
+                # way to make that visible.
+                raise SupersededStatusNotWithdrawn(
+                    "could not withdraw every superseded status: " + "; ".join(errors))
             raise PrChangedDuringEvaluation("the PR changed while publishing")
         fresh_decision = decide(api.list_open_pull_requests(), api.list_issue_comments(number))
         if fresh_decision != decision:
@@ -793,10 +797,12 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
         # mid-way would leave every later HEAD still carrying a success validated
         # against the previous base. No second listing is issued, because a
         # transient failure there would abort before anything was revoked.
-        for candidate in candidates:
-            # Best effort per candidate: a transient failure here must not abort
-            # the loop, or the later HEADs would keep their previous-base success
-            # while this run reports the first error.
+        # Revoke with a small worker pool. One status POST per candidate in
+        # series can exceed the job timeout on a large base push (each request may
+        # stall for the HTTP timeout), and a kill mid-way leaves every later HEAD
+        # still authorized. Four workers keep the wall clock bounded while staying
+        # gentle on the API.
+        def revoke_candidate(candidate: int) -> str | None:
             try:
                 head = listed.get(candidate)
                 if head is None:
@@ -806,8 +812,14 @@ def run_gate(event_name: str, event: dict, api: GitHubAPI) -> int:
                         api, head,
                         GateDecision("pending", "Base branch advanced; revalidating", ""),
                     )
+                return None
             except Exception as error:  # noqa: BLE001 - any transport failure
-                failures.append(f"PR #{candidate} revocation: {error}")
+                return f"PR #{candidate} revocation: {error}"
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for outcome in pool.map(revoke_candidate, candidates):
+                if outcome is not None:
+                    failures.append(outcome)
         for candidate in candidates:
             # Every candidate must be attempted: the push is the only guaranteed
             # event for these unchanged HEADs, so one transient failure must not

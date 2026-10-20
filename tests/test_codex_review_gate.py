@@ -1488,6 +1488,77 @@ class IntegrationTests(unittest.TestCase):
         self.assertNotIn("success",
                          [s.state for sha, s in api.statuses if sha == HEAD][-1:])
 
+    def test_base_only_change_withdraws_the_superseded_merge_status(self):
+        # The base moved (HEAD unchanged): the published test-merge status no
+        # longer describes this PR and must be withdrawn, while the current HEAD
+        # (which a newer run may legitimately own) is left alone.
+        api = FakeAPI()
+        moved = {"yet": False}
+        base_request = api.get_pull_request
+        base_status = api.create_commit_status
+        writes = []
+
+        def recording(sha, decision):
+            writes.append((sha, decision.state))
+            return base_status(sha, decision)
+
+        api.create_commit_status = recording
+
+        def changing(number=None):
+            value = base_request(number)
+            if moved["yet"]:
+                return {**value, "base": {"sha": "9" * 40, "ref": "main"}}
+            return value
+
+        def marking(sha, decision):
+            recording(sha, decision)
+            if sha == "b" * 40 and decision.state == "success":
+                moved["yet"] = True
+
+        api.create_commit_status = marking
+        api.get_pull_request = changing
+        api.list_open_pull_requests = lambda: [
+            {"number": 133, "head": {"sha": HEAD}, "base": changing(133)["base"],
+             "merge_commit_sha": changing(133)["merge_commit_sha"]}]
+        gate.evaluate_pr(api, 133)
+        # The old merge status was withdrawn; the HEAD kept whatever it had.
+        merge_states = [s for sha, s in writes if sha == "b" * 40]
+        self.assertIn("success", merge_states)
+        self.assertEqual(merge_states[-1], "pending")
+
+    def test_base_push_revocation_uses_a_bounded_pool(self):
+        # The revocation fanout must not be one serial POST per candidate: a
+        # large base push would exceed the job timeout before later HEADs are
+        # withdrawn.
+        import threading
+        api = FakeAPI()
+        many = [{"number": n, "head": {"sha": format(n, "040x")},
+                 "base": {"sha": OLD_HEAD, "ref": "main"}, "merge_commit_sha": None}
+                for n in range(200, 240)]
+        api.list_open_pull_requests = lambda: [
+            {"number": 133, "head": {"sha": HEAD}, "base": {"sha": OLD_HEAD, "ref": "main"},
+             "merge_commit_sha": "b" * 40}, *many]
+        active = {"now": 0, "peak": 0}
+        lock = threading.Lock()
+
+        def slow(sha, decision):
+            with lock:
+                active["now"] += 1
+                active["peak"] = max(active["peak"], active["now"])
+            import time as _t
+            _t.sleep(0.01)
+            with lock:
+                active["now"] -= 1
+
+        api.create_commit_status = slow
+        original = gate.evaluate_pr
+        gate.evaluate_pr = lambda a, n, **kw: None
+        try:
+            gate.run_gate("push", {"ref": "refs/heads/main"}, api)
+        finally:
+            gate.evaluate_pr = original
+        self.assertGreater(active["peak"], 1)
+
     def test_no_debug_probe_is_tracked_at_the_repository_root(self):
         # A one-off live-API harness was committed by accident once; the
         # repository forbids shipping debug code, so pin its absence.
