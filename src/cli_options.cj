@@ -56,8 +56,6 @@ internal class NewCliOptions {
     var localeExplicit = false
     var allLanguages = false
     let requiredLanguages = ArrayList<String>()
-    var markdownLayout = "site"
-    var markdownLayoutExplicit = false
     var docVersion: ?String = None
     var agentFull = false
     var versionSubcommand = ""
@@ -92,7 +90,7 @@ internal func newUsage(): String {
     "                 [--doc-inventory-pin PATH=SHA256]...\n" +
     "                 [--link-language <lang>] [--link-language-fallback] [--link-compatible]\n" +
     "                 [--cache-dir <dir>|--no-cache] [--force-owned]\n" +
-    "                 [--locale zh-CN|en|--all-languages] [--require-language zh-CN|en]... [--markdown-layout site|single]\n" +
+    "                 [--locale zh-CN|en|--all-languages] [--require-language zh-CN|en]...\n" +
     "  cjdoc check [--project <dir>] [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
     "              [--chir-worker <executable>]\n" +
     "              [--highlight-adapter <absolute path> --highlight-node <absolute path>]\n" +
@@ -104,7 +102,7 @@ internal func newUsage(): String {
     "  cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout] [--force-owned] [--doc-version <version>]\n" +
-    "               [--locale zh-CN|en] [--markdown-layout site|single]\n" +
+    "               [--locale zh-CN|en]\n" +
     "  cjdoc serve [--project <dir>] [--port <port>] [--open] [--agent-full]\n" +
     "  cjdoc versions compose --version ID=PATH... [--label ID=TEXT] [--channel ID=TEXT] [--status ID=TEXT]\n" +
     "                        [--base-path ID=PATH] [--release ID=URL] [--diff ID=PATH] [--latest ID] --output <dir> [--force-owned]\n" +
@@ -259,10 +257,6 @@ private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>,
         case "--require-language" =>
             options.requiredLanguages.add(public_model.documentationLanguage(requireCliValue(args, index, "--require-language")))
             Some(index + 2)
-        case "--markdown-layout" =>
-            options.markdownLayout = requireCliValue(args, index, "--markdown-layout")
-            options.markdownLayoutExplicit = true
-            Some(index + 2)
         case _ => None<Int64>
     }
 }
@@ -384,7 +378,6 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
         options.semanticExplicit || options.cjcExplicit ||
         options.chirWorkerExecutable.isSome() || !options.chirImportPaths.isEmpty() ||
         options.localeExplicit || options.allLanguages || !options.requiredLanguages.isEmpty() ||
-        options.markdownLayoutExplicit ||
         options.versionSubcommand != "" || !options.versionInputs.isEmpty() ||
         !options.versionLabels.isEmpty() || !options.versionChannels.isEmpty() ||
         !options.versionStatuses.isEmpty() || !options.versionBasePaths.isEmpty() ||
@@ -439,15 +432,9 @@ private func validateCliOptions(options: NewCliOptions): Unit {
     if (options.locale != "zh-CN" && options.locale != "en") {
         throw IllegalArgumentException("--locale must be zh-CN or en")
     }
-    if (options.allLanguages && (options.localeExplicit || options.stdout || options.markdownLayout == "single" ||
+    if (options.allLanguages && (options.localeExplicit || options.stdout ||
         (options.command != "generate" && options.command != "render"))) {
         throw IllegalArgumentException("--all-languages supports generate/render directory output with site Markdown and conflicts with --locale")
-    }
-    if (options.markdownLayout != "site" && options.markdownLayout != "single") {
-        throw IllegalArgumentException("--markdown-layout must be site or single")
-    }
-    if (options.markdownLayout == "single" && options.locale != "en") {
-        throw IllegalArgumentException("legacy single-page Markdown requires --locale en")
     }
     if (options.command == "render" && options.input.isNone()) {
         throw IllegalArgumentException("render requires --input")
@@ -468,7 +455,7 @@ private func validateCliOptions(options: NewCliOptions): Unit {
     if (options.command == "check" && (!options.formats.isEmpty() || options.output.isSome() || options.stdout)) {
         throw IllegalArgumentException("check does not accept render output options")
     }
-    if (options.command == "check" && (options.localeExplicit || options.markdownLayoutExplicit)) {
+    if (options.command == "check" && options.localeExplicit) {
         throw IllegalArgumentException("check does not accept renderer localization options")
     }
     if (options.command == "check" && options.forceOwned) {

@@ -55,8 +55,8 @@ internal func appendHtmlCodeToken(out: RenderTextBuffer, value: String, classNam
     if (!className.isEmpty()) { out.append("</span>") }
 }
 
-// Missing display metadata (legacy IR or highlighting disabled) degrades to
-// escaped plain text. The renderer never supplies a second Cangjie scanner.
+// Missing highlight metadata or disabled highlighting degrades to escaped
+// plain text. The renderer never supplies a second Cangjie scanner.
 internal func appendHighlightedCodeHtml(out: RenderTextBuffer, raw: String,
     language: String, highlight!: ?CodeHighlight = None): Unit {
     if (let Some(prepared) <- highlight) {

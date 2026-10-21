@@ -1,6 +1,6 @@
-"""Normalize Doc IR 15 / inventory 2 wire into public model-shaped tooling data.
+"""Normalize Doc IR 16 / inventory 2 wire into public model-shaped tooling data.
 
-Only Doc IR 15 TypeRef wire flattens the three named semantic facts. Navigation
+Only Doc IR 16 TypeRef wire flattens the three named semantic facts. Navigation
 normalization does not resolve or authenticate links, and published legacy
 Doc IR/provider/index/API-surface formats are not rewritten.
 """
@@ -58,7 +58,7 @@ def _transform(value, decode, flat_type_semantics):
         if flat_type_semantics and TYPE_KEYS.issubset(value):
             if decode:
                 if 'semantic' in value or not set(SEMANTIC_WIRE_KEYS).issubset(value):
-                    raise ValueError('Doc IR 15 requires exactly its three flat semantic facts')
+                    raise ValueError('Doc IR 16 requires exactly its three flat semantic facts')
                 result['semantic'] = {key: result.pop(wire)
                                       for key, wire in zip(SEMANTIC_KEYS, SEMANTIC_WIRE_KEYS)}
             else:
@@ -76,10 +76,10 @@ def _transform(value, decode, flat_type_semantics):
 
 
 def decode_document_navigation(value):
-    current = isinstance(value, dict) and value.get('schemaVersion') == 'cjdoc.doc-ir/15'
+    current = isinstance(value, dict) and value.get('schemaVersion') == 'cjdoc.doc-ir/16'
     return _transform(value, True, current)
 
 
 def encode_document_navigation(value):
-    current = isinstance(value, dict) and value.get('schemaVersion') == 'cjdoc.doc-ir/15'
+    current = isinstance(value, dict) and value.get('schemaVersion') == 'cjdoc.doc-ir/16'
     return _transform(value, False, current)

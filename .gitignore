@@ -16,22 +16,9 @@
 # The user's global Git ignore excludes JSON; these are project sources.
 !/AGENTS.md
 !/docs/schema/*.json
-!/tests/fixtures/golden-v6/*.json
-!/tests/fixtures/golden-v7/*.json
-!/tests/fixtures/golden-v8/*.json
-!/tests/fixtures/legacy-migration-v8.json
+!/tests/fixtures/golden-v16/*.json
 !/tests/perf/*.json
-!/tests/fixtures/golden-v9/*.json
-!/tests/fixtures/golden-v10/*.json
-!/tests/fixtures/golden-v11/*.json
-!/tests/fixtures/golden-v12/*.json
-!/tests/fixtures/golden-v13/*.json
-!/tests/fixtures/golden-v14/*.json
 !/tests/fixtures/projects/html_reference/docs/std-symbol-index.json
-!/tests/fixtures/golden-v14/*.json
-!/tests/fixtures/golden-v15/*.json
-!/tests/fixtures/legacy14/*.json
-!/tests/fixtures/legacy13/*.json
 !/tests/fixtures/external_docs/official83/manifest.json
 
 # Local debugging harnesses must never be committed (AGENTS.md: no debug code).

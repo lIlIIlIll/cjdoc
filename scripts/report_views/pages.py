@@ -72,14 +72,13 @@ def publish(root: Path) -> None:
     start, end = UtilityRegion(text).regions[0]
     component = text[start:end]
     sections = Sections(component).regions
-    check = ("native-check",) if "native-check" in sections else ()
     locale = load_json(root / "report-provenance.json")["locale"]
-    titles = {"doctest": ("示例验证", "Doctest results"), "diff": ("API 变化", "API changes"),
+    titles = {"native-check": ("原生示例检查", "Native example checks"), "diff": ("API 变化", "API changes"),
               "coverage": ("文档覆盖与缺项", "Coverage and documentation gaps"),
               "diagnostics": ("诊断与边界示例", "Diagnostics and boundary examples")}
-    for name, selected in {"doctest": ("doctest", *check), "diff": ("api-diff",),
+    for name, selected in {"native-check": ("native-check",), "diff": ("api-diff",),
                            "coverage": ("coverage", "quality", "diagnostics"),
-                           "diagnostics": ("diagnostics", "doctest", *check)}.items():
+                           "diagnostics": ("diagnostics",)}.items():
         body = '<p><a href="validation.html">全部验证结果 / All validation results</a></p>'
         for key in (*selected, "provenance"):
             if key not in sections:

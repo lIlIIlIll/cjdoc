@@ -2,17 +2,7 @@ package cjdoc.model
 
 import std.collection.*
 
-public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/15"
-public let DOC_IR_V15_SCHEMA_VERSION = "cjdoc.doc-ir/15"
-public let DOC_IR_V14_SCHEMA_VERSION = "cjdoc.doc-ir/14"
-public let DOC_IR_V13_SCHEMA_VERSION = "cjdoc.doc-ir/13"
-public let DOC_IR_V12_SCHEMA_VERSION = "cjdoc.doc-ir/12"
-public let DOC_IR_V11_SCHEMA_VERSION = "cjdoc.doc-ir/11"
-public let DOC_IR_V10_SCHEMA_VERSION = "cjdoc.doc-ir/10"
-public let DOC_IR_V9_SCHEMA_VERSION = "cjdoc.doc-ir/9"
-public let DOC_IR_V8_SCHEMA_VERSION = "cjdoc.doc-ir/8"
-public let DOC_IR_V7_SCHEMA_VERSION = "cjdoc.doc-ir/7"
-public let DOC_IR_V6_SCHEMA_VERSION = "cjdoc.doc-ir/6"
+public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/16"
 public let DOC_IR_MAX_TYPE_DEPTH: Int64 = 64
 public let DOC_IR_MAX_MARKDOWN_DEPTH: Int64 = 64
 public let DOC_IR_MAX_FENCE_LENGTH: Int64 = 1024

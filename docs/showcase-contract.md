@@ -49,7 +49,7 @@ python scripts/build_showcase.py \
 ```
 
 构建生成中英文各两份原生文档，显式执行 `versions compose` 和 `diff`，再生成可读报告、
-源代码下载和完整离线 ZIP。专用 `cjdoc.toml` 纳入版本管理，不用重写整份配置来叠加 doctest。
+源代码下载和完整离线 ZIP。专用 `cjdoc.toml` 纳入版本管理，展示构建直接使用该配置与原生 CLI。
 固定依赖索引来自同次构建的 `support-v1`，不隐式访问外部服务。
 
 只复现教学库核心页面时，可以下载源代码 ZIP，在解压根目录执行：
@@ -74,28 +74,22 @@ SDK 和 cjdoc 可执行文件不包含在下载中。源代码按钮指向固定
 
 | 产物 | 可读视图必须保留的含义 |
 | --- | --- |
-| Doc IR v11 | 源码声明、注释、来源位置、显式 partial 与诊断 |
+| Doc IR v16 | 源码声明、注释、来源位置、显式 partial 与诊断 |
 | coverage / quality | 指标分母、audience、规则和具体缺失位置；比例不代表契约正确 |
-| doctest/results.json | 每项原始状态、源 `@example`、退出码与限制；失败不可转成通过 |
-| 原生示例 checker 证据 | `must-pass`、`must-fail`、`run` 等作者指令的真实 CLI 验证；整体命令证据不冒充逐项机器结果 |
+| `--check-examples` | `must-pass`、`must-fail`、`run` 等作者指令的真实 CLI 验证；结果由诊断和退出码表达 |
 | API diff | 同库两个版本、原生分类、匹配状态、不确定性及前后声明链接 |
 | versions.json | 原生身份映射；删除的成员必须显示缺失，不猜测 latest 目标 |
 
-示例执行的限制按两条原生管线分别记录，不能把诊断文本截断当成执行成功：
+示例检查的编译诊断与运行资源上限分别记录，不能把诊断文本截断当成执行成功：
 
 | 管线 | 本次示例配置与该 revision 的原生限制 |
 | --- | --- |
-| legacy doctest | 配置为每个编译/运行阶段 30,000 ms、4,096 MiB；普通快照并发 2，诊断项目并发 1。`src/doctest.cj` 对 stdout、stderr 分别设置 8 MiB 读取上限。超限不计为通过；停止读取后仍未退出的进程可触发超时，原始报告保留实际 `failed`/`timeout`，不承诺超限输出完整保留或一越界即终止。 |
 | 原生 `{run}` | `src/example_runner.cj` 限时 10,000 ms、内存 2,048 MiB；stdout、stderr 各保留前 65,536 bytes，并继续排空、统计真实总量。任一流超过上限产生 `CJDOC3075`；时间上限会终止进程树并产生 `CJDOC3073`，不是仅截断后算通过。 |
 | 原生指令示例的编译诊断 | `src/bounded_process.cj` 的编译子进程默认限时 120,000 ms，stdout、stderr 各仅保留前 8,192 bytes，同时排空其余输出；正常退出保留实际退出码，超时终止并返回 124。`src/example_compiler.cj` 还将展示的诊断正文按 8,192-byte 预算截断并追加说明。此处是诊断保留/显示预算，不是 `{run}` 的 64 KiB 结果上限。 |
 
-以上常量来自本次仓库 revision 的原生实现，未伪装成 `doctest/results.json` 的字段或
-可由展示 TOML 调整的选项。SDK 版本、生成器哈希及实际命令另见 `build.json`、
-下载清单和 `check-modes/native-check.json`。
+以上限制来自本次仓库 revision 的原生实现，不能通过展示 TOML 调整。普通 `generate`/`check` 不会隐式执行示例；`--check-examples` 的诊断和退出码才是检查结果，不生成逐例执行报告。SDK 版本、生成器哈希及实际命令另见 `build.json`、下载清单和 `check-modes/native-check.json`。
 
-完整展示复现流程以 Linux SDK 1.2.0 与 `prlimit` 验证。legacy doctest 的正数地址空间
-上限依赖 `/usr/bin/prlimit` 或 `/bin/prlimit`；不可用时（如当前 macOS、Windows 环境）
-会在编译前明确拒绝，`warn` 不会取消限制。这不等同于原生指令检查器的平台能力。
+完整展示复现流程以 Linux SDK 1.2.0 与 `prlimit` 验证。`{run}` 需要操作系统可实施的正数地址空间限制；无法提供该限制的平台会在启动用户代码前明确拒绝，不会降级为无界运行。这不等同于 compile-only 示例检查的平台能力。
 
 源码作者的资源责任、同步要求、复杂度和边界说明保持作者来源。展示构建不推断这些
 契约。指南与精确重载的双向页面关联不代表完整外置契约合并；扩展显式约束也不代表
@@ -181,7 +175,7 @@ PYTHONPATH=scripts python -m showcase_contract verify \
 | --- | --- |
 | S-01 首页与直达 | `site/index.html`、`showcase_build/homepage.py`、原生目标解析 |
 | S-02 专用可复现示例 | `examples/pocketkit/`、许可证、source ZIP、原生 CLI |
-| S-03 实际功能与报告 | 功能 catalog、通用报告视图、原生 compose/diff/check/doctest/serve |
+| S-03 实际功能与报告 | 功能 catalog、通用报告视图、原生 compose/diff/check/serve |
 | S-04 机器清单和回归 | manifest、固定 scope baseline、严格浏览器 evidence |
 | S-05 构建和发布链路 | `build_showcase.py`、输入追踪、Pages workflow、离线包 |
 | S-06 最终 Pages 测试 | `showcase_contract.browser`、最终目录 verify、截图和 metrics |
@@ -230,7 +224,7 @@ Pages 的 `verify-site` 将完整历史放入 validation evidence，并单独上
 
 ## 证据分层
 
-Python 单元测试使用合成导航和报告，不能证明仓颉编译、doctest、真实生成页面或浏览器
+Python 单元测试使用合成导航和报告，不能证明仓颉编译、原生示例检查、真实生成页面或浏览器
 交互通过。报告实际结果时分别列出 build、native unit、golden/integration、真实仓库、
 最终 Pages 浏览器和远端 CI。远端结果以对应 commit 的 Actions 为准；工作流绿色也不能
 代替检查功能清单与最终证据的一致性。Issue 关闭和合并由维护者验收决定。

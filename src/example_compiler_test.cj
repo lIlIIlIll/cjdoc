@@ -679,74 +679,23 @@ class ExampleCompilerTest {
     }
 
     @TestCase
-    func directiveManagedExamplesDoNotEnterLegacyDoctest(): Unit {
-        let root = createExampleProject(sourceWith(
-            """
-             * @example Expected failure {must-fail}
-             * ```cangjie
-             * let invalid: Int64 = "wrong"
-             * ```
-            """))
-        try {
-            let generated = generateDocumentationWithSource(
-                exampleRequest(root, false), defaultSemanticProvider())
-            let report = runDoctests(generated.publicDocumentation,
-                DoctestConfig(mode: "warn"), root.join("legacy-doctest"),
-                projectRoot: root,
-                sourceOrigins: generated.internalDocumentation.sourceFileOrigins.toArray())
-            @Expect(report.results.size, 0)
-        } finally {
-            let _ = removeIfExists(root, recursive: true)
-        }
-    }
-
-    @TestCase
-    func legacyDoctestKeepsDiagnosticsPortableOrRefusesUnboundedCompilation(): Unit {
-        let root = createExampleProject(sourceWith(
-            """
-             * @example Ordinary failure
-             * ```cangjie
-             * let invalid: Int64 = "wrong"
-             * ```
-            """))
-        try {
-            let generated = generateDocumentationWithSource(
-                exampleRequest(root, false), defaultSemanticProvider())
-            let config = DoctestConfig(mode: "warn")
-            let unavailable = "address-space memory limit is unavailable on this platform"
-            // Probe the existing command wrapper without launching a process.
-            // Platforms without prlimit must reject the request, not run this
-            // regression with the memory limit disabled or silently skip it.
-            let canBoundMemory = try {
-                let _ = memoryBoundedCommand("cjc", [], config.memoryMb)
-                true
+    func memoryWrapperPreservesBoundsOrRefusesUnavailableLimiter(): Unit {
+        @ExpectThrows[IllegalArgumentException](memoryBoundedCommand("cjc", [], -1))
+        let (unboundedCommand, unboundedArguments) = memoryBoundedCommand("cjc", ["--version"], 0)
+        @Expect(unboundedCommand, "cjc")
+        @Expect(unboundedArguments, ["--version"])
+        if (!exists(Path("/usr/bin/prlimit")) && !exists(Path("/bin/prlimit"))) {
+            var refusal = ""
+            try {
+                let _ = memoryBoundedCommand("cjc", [], 2048)
             } catch (error: IllegalStateException) {
-                @Expect(error.message, unavailable)
-                false
+                refusal = error.message
             }
-            if (!canBoundMemory) {
-                var refusal = ""
-                try {
-                    let _ = runDoctests(generated.publicDocumentation, config,
-                        root.join("legacy-doctest"), projectRoot: root,
-                        sourceOrigins: generated.internalDocumentation.sourceFileOrigins.toArray())
-                } catch (error: IllegalStateException) {
-                    refusal = error.message
-                }
-                @Expect(refusal, unavailable)
-                return
-            }
-            let report = runDoctests(generated.publicDocumentation,
-                config, root.join("legacy-doctest"),
-                projectRoot: root,
-                sourceOrigins: generated.internalDocumentation.sourceFileOrigins.toArray())
-            @Expect(report.results.size, 1)
-            @Expect(report.results[0].status, "failed")
-            @Expect(report.results[0].stderr.contains("example.cj:"))
-            @Expect(!report.results[0].stderr.contains(root.toString()))
-            @Expect(!report.results[0].stderr.contains("tmpDir"))
-        } finally {
-            let _ = removeIfExists(root, recursive: true)
+            @Expect(refusal, "address-space memory limit is unavailable on this platform")
+        } else {
+            let (command, arguments) = memoryBoundedCommand("cjc", ["--version"], 2048)
+            @Expect(command == "/usr/bin/prlimit" || command == "/bin/prlimit")
+            @Expect(arguments, ["--as=2147483648", "--", "/usr/bin/env", "cjHeapSize=512MB", "cjc", "--version"])
         }
     }
 

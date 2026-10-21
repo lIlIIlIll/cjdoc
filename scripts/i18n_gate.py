@@ -221,24 +221,20 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
     (validation_project / "src/api.cj").write_text(
         "package language_fixture\n/** Validation fixture.\n * @example Explanation without executable code.\n */\n"
         "public func add(left: Int64, right: Int64): Int64 { left + right }\n")
-    with (validation_project / "cjdoc.toml").open("a") as configuration:
-        configuration.write('\n[doctest]\nmode = "warn"\n')
     validation = work / "validation"
     run("multi-validation", ["generate", "--project", str(validation_project), "--all-languages",
-                             "--format", "html", "--lint-profile", "off", "--output", str(validation)])
-    evidence = validation / "doctest/results.json"
-    assert evidence.is_file()
+                             "--format", "html", "--format", "json", "--check-examples",
+                             "--lint-profile", "off", "--output", str(validation)])
+    assert b"CJDOC3032" in (work / "multi-validation.stderr").read_bytes()
+    validation_ir = json.loads((validation / "docs.json").read_text())
+    assert any(item["code"] == "CJDOC3032" for item in validation_ir["diagnostics"])
+    assert not (validation / "doctest").exists()
     for language in ("en", "zh-CN"):
-        page = validation / "html" / language / "validation.html"
-        assert 'href="../../doctest/results.json"' in page.read_text()
-        assert (page.parent / "../../doctest/results.json").resolve() == evidence.resolve()
-
+        page = validation / "html" / language / "index.html"
+        assert "CJDOC3032" in page.read_text()
         members = list((page.parent / "symbols").glob("*.html"))
-        evidence_pages = [member for member in members if 'class="example-evidence"' in member.read_text()]
-        assert evidence_pages, "native example evidence was not rendered"
-        for member in evidence_pages:
-            assert 'href="../../../doctest/results.json"' in member.read_text()
-            assert (member.parent / "../../../doctest/results.json").resolve() == evidence.resolve()
+        assert any("Explanation without executable code." in member.read_text() for member in members)
+        assert all('class="example-evidence"' not in member.read_text() for member in members)
 
     author = json.loads((multi / "docs.json").read_text())
     routes = json.loads((multi / "site-manifest.json").read_text())["routes"]

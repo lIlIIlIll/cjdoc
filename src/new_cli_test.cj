@@ -14,13 +14,21 @@ private func createNewCliTestTempDirectory(): Path {
 @Test
 class NewCliRegressionTest {
     @TestCase
-    func versionedSchemaNamesRouteToTheirExactVersions(): Unit {
-        @Expect(schemaTextForCli("doc-ir-v7"), DOC_IR_V7_SCHEMA)
-        @Expect(schemaTextForCli("doc-ir-v8"), DOC_IR_V8_SCHEMA)
-        @Expect(schemaTextForCli("doctest-results"), DOCTEST_RESULTS_SCHEMA)
-        @Expect(schemaTextForCli("versions"), VERSIONS_SCHEMA)
-        @Expect(schemaTextForCli("list").contains("doc-ir-v8\n"), true)
-        @Expect(schemaTextForCli("list").contains("versions\n"), true)
+    func currentSchemaInventoryRejectsRemovedNames(): Unit {
+        @Expect(schemaTextForCli("doc-ir"), DOC_IR_SCHEMA)
+        @Expect(schemaTextForCli("doc-ir-v16"), DOC_IR_V16_SCHEMA)
+        @Expect(schemaTextForCli("api-surface-v3"), API_SURFACE_SCHEMA)
+        @Expect(schemaTextForCli("api-diff-v2"), API_DIFF_SCHEMA)
+        @Expect(schemaTextForCli("search-index-v9"), SEARCH_INDEX_SCHEMA)
+        @Expect(schemaTextForCli("versions-v2"), VERSIONS_SCHEMA)
+        @Expect(schemaTextForCli("list"),
+            "doc-ir\ndoc-ir-v16\ndiagnostics\ncfg-matrix\nsearch-index\n" +
+                "search-index-v9\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v3\n" +
+                "api-diff\napi-diff-v2\ndocumentation-coverage\ndocumentation-quality\n" +
+                "versions\nversions-v2\ntranslation-coverage\nsite-manifest\n")
+        @ExpectThrows[IllegalArgumentException](schemaTextForCli("doc-ir-v15"))
+        @ExpectThrows[IllegalArgumentException](schemaTextForCli("api-surface-v2"))
+        @ExpectThrows[IllegalArgumentException](schemaTextForCli("doctest-results"))
     }
 
     @TestCase
@@ -46,7 +54,25 @@ class NewCliRegressionTest {
     @TestCase
     func checkRejectsRendererOnlyLocalizationOptions(): Unit {
         @Expect(runCli(["check", "--locale", "en"]), 2)
-        @Expect(runCli(["check", "--markdown-layout", "single", "--locale", "en"]), 2)
+    }
+
+    @TestCase
+    func removedMarkdownLayoutOptionIsUnknownForEveryValue(): Unit {
+        for (layout in ["site", "single"]) {
+            for (args in [
+                ["generate", "--markdown-layout", layout],
+                ["render", "--input", "missing.json", "--markdown-layout", layout],
+                ["check", "--markdown-layout", layout]
+            ]) {
+                try {
+                    let _ = parseNewCli(args)
+                    @Expect(false)
+                } catch (error: IllegalArgumentException) {
+                    @Expect(error.message, "unknown option '--markdown-layout'")
+                }
+                @Expect(runCli(args), 2)
+            }
+        }
     }
     @TestCase
     func nonDiffCommandsRejectApiDenyFlags(): Unit {

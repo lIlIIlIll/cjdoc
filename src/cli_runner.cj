@@ -28,66 +28,32 @@ internal func orderedFormats(options: NewCliOptions): Array<String> {
 }
 
 private func renderArtifacts(documentation: public_model.DocumentationSet,
-    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site", docVersion!: ?String = None,
-    exampleEvidence!: HashMap<String, String> = HashMap<String, String>(), allLanguages!: Bool = false):
+    formats: Array<String>, locale!: String = "zh-CN", docVersion!: ?String = None,
+    allLanguages!: Bool = false):
     Array<public_render.RenderArtifact> {
     public_render.renderDocumentationFormatsWithOptions(documentation, formats,
-        locale: locale, markdownLayout: markdownLayout, docVersion: docVersion,
-        exampleEvidence: exampleEvidence, allLanguages: allLanguages)
+        locale: locale, docVersion: docVersion, allLanguages: allLanguages)
 }
 
-// Per-example execution status keyed by "symbolId\u{0}title", taken from the
-// native doctest report. Empty when doctests are disabled, so member pages show
-// no execution claim at all rather than an inferred one.
-internal func exampleEvidenceMap(report: ?DoctestReport): HashMap<String, String> {
-    let evidence = HashMap<String, String>()
-    // Keys whose results disagree. A conflicting key must stay without a claim
-    // even if a later result would otherwise match, so a pass can never mask an
-    // earlier failure.
-    let conflicting = HashSet<String>()
-    match (report) {
-        case Some(value) =>
-            // Mark that a run happened, so an example without a result renders as
-            // unverified rather than being indistinguishable from disabled
-            // doctests.
-            evidence[public_render.EXAMPLE_EVIDENCE_RAN_MARKER] = "ran"
-            for (result in value.results) {
-                let key = if (result.evidenceKey.isEmpty()) { public_render.exampleEvidenceKey(result.symbolId, result.title) } else { result.evidenceKey }
-                if (conflicting.contains(key)) { continue }
-                match (evidence.get(key)) {
-                    case Some(existing) =>
-                        if (existing != result.status) {
-                            evidence.remove(key)
-                            conflicting.add(key)
-                        }
-                    case None => evidence[key] = result.status
-                }
-            }
-        case None => ()
-    }
-    evidence
-}
 
 internal func renderArtifactsWithCommandFallback(documentation: public_model.DocumentationSet,
     formats: Array<String>, generationRequest: ?GenerationRequest,
-    locale!: String = "zh-CN", markdownLayout!: String = "site",
+    locale!: String = "zh-CN",
     docVersion!: ?String = None, injectResourceLimitForTest!: Bool = false,
-    exampleEvidence!: HashMap<String, String> = HashMap<String, String>(), allLanguages!: Bool = false):
+    allLanguages!: Bool = false):
         (public_model.DocumentationSet, Array<public_render.RenderArtifact>) {
     try {
         if (injectResourceLimitForTest) {
             throw public_render.RenderResourceLimitException("injected renderer resource limit")
         }
         (documentation, renderArtifacts(documentation, formats, locale: locale,
-            markdownLayout: markdownLayout, docVersion: docVersion,
-            exampleEvidence: exampleEvidence, allLanguages: allLanguages))
+            docVersion: docVersion, allLanguages: allLanguages))
     } catch (error: public_render.RenderResourceLimitException) {
         match (generationRequest) {
             case Some(request) =>
                 let fallback = boundGeneratedDocumentation(documentation, request, force: true)
                 (fallback, renderArtifacts(fallback, formats, locale: locale,
-                    markdownLayout: markdownLayout, docVersion: docVersion,
-                    exampleEvidence: exampleEvidence, allLanguages: allLanguages))
+                    docVersion: docVersion, allLanguages: allLanguages))
             case None => throw error
         }
     }
@@ -224,49 +190,28 @@ private func contractGateExitCode(documentation: public_model.DocumentationSet,
 }
 internal func schemaTextForCli(name: String): String {
     match (name) {
-        case "list" => "doc-ir\ndoc-ir-v6\ndoc-ir-v7\ndoc-ir-v8\ndoc-ir-v9\n" +
-            "doc-ir-v10\ndoc-ir-v11\ndoc-ir-v12\ndoc-ir-v13\ndoc-ir-v14\ndoc-ir-v15\n" +
-            "diagnostics\ncfg-matrix\nsearch-index\nsymbol-index\nnavigation-index\n" +
-            "api-surface\napi-surface-v1\napi-surface-v2\napi-surface-v3\napi-diff\n" +
-            "documentation-coverage-v1\ndocumentation-coverage\ndocumentation-quality\ndoctest-results\nversions\n" +
-            "api-diff-v1\ndoctest-results-v1\nsearch-index-v8\nversions-v1\ntranslation-coverage\n" +
-            "site-manifest\napi-diff-v2\ndoctest-results-v2\nsearch-index-v9\nversions-v2\n"
+        case "list" => "doc-ir\ndoc-ir-v16\ndiagnostics\ncfg-matrix\nsearch-index\n" +
+            "search-index-v9\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v3\n" +
+            "api-diff\napi-diff-v2\ndocumentation-coverage\ndocumentation-quality\n" +
+            "versions\nversions-v2\ntranslation-coverage\nsite-manifest\n"
         case "doc-ir" => DOC_IR_SCHEMA
-        case "doc-ir-v6" => DOC_IR_V6_SCHEMA
-        case "doc-ir-v7" => DOC_IR_V7_SCHEMA
-        case "doc-ir-v8" => DOC_IR_V8_SCHEMA
-        case "doc-ir-v9" => DOC_IR_V9_SCHEMA
-        case "doc-ir-v10" => DOC_IR_V10_SCHEMA
-        case "doc-ir-v11" => DOC_IR_V11_SCHEMA
-        case "doc-ir-v12" => DOC_IR_V12_SCHEMA
-        case "doc-ir-v13" => DOC_IR_V13_SCHEMA
-        case "doc-ir-v14" => DOC_IR_V14_SCHEMA
-        case "doc-ir-v15" => DOC_IR_V15_SCHEMA
+        case "doc-ir-v16" => DOC_IR_V16_SCHEMA
         case "diagnostics" => DIAGNOSTICS_SCHEMA
         case "cfg-matrix" => CFG_MATRIX_SCHEMA
         case "search-index" => SEARCH_INDEX_SCHEMA
+        case "search-index-v9" => SEARCH_INDEX_SCHEMA
         case "symbol-index" => SYMBOL_INDEX_SCHEMA
         case "navigation-index" => NAVIGATION_INDEX_SCHEMA
         case "api-surface" => API_SURFACE_SCHEMA
-        case "api-surface-v1" => API_SURFACE_V1_SCHEMA
-        case "api-surface-v2" => API_SURFACE_V2_SCHEMA
         case "api-surface-v3" => API_SURFACE_SCHEMA
-        case "api-diff-v2" => API_DIFF_SCHEMA
-        case "doctest-results-v2" => DOCTEST_RESULTS_SCHEMA
-        case "search-index-v9" => SEARCH_INDEX_SCHEMA
-        case "versions-v2" => VERSIONS_SCHEMA
-        case "api-diff-v1" => API_DIFF_V1_SCHEMA
-        case "doctest-results-v1" => DOCTEST_RESULTS_V1_SCHEMA
-        case "search-index-v8" => SEARCH_INDEX_V8_SCHEMA
-        case "translation-coverage" => TRANSLATION_COVERAGE_SCHEMA
-        case "site-manifest" => SITE_MANIFEST_SCHEMA
-        case "versions-v1" => VERSIONS_V1_SCHEMA
         case "api-diff" => API_DIFF_SCHEMA
-        case "documentation-coverage-v1" => DOCUMENTATION_COVERAGE_V1_SCHEMA
+        case "api-diff-v2" => API_DIFF_SCHEMA
         case "documentation-coverage" => DOCUMENTATION_COVERAGE_SCHEMA
         case "documentation-quality" => DOCUMENTATION_QUALITY_SCHEMA
-        case "doctest-results" => DOCTEST_RESULTS_SCHEMA
         case "versions" => VERSIONS_SCHEMA
+        case "versions-v2" => VERSIONS_SCHEMA
+        case "translation-coverage" => TRANSLATION_COVERAGE_SCHEMA
+        case "site-manifest" => SITE_MANIFEST_SCHEMA
         case _ => throw IllegalArgumentException("unknown schema '${name}'")
     }
 }
@@ -297,25 +242,11 @@ private func repositoryRootForOptions(options: NewCliOptions, repository: ?publi
     }
 }
 
-private func doctestFailureSeverity(doctestConfig: DoctestConfig,
-    qualityConfig: DocumentationQualityConfig): String {
-    match (qualityConfig.ruleSeverity("example-not-compiling")) {
-        case Some(value) => value
-        case None => if (doctestConfig.mode == "deny") { "error" }
-            else { qualityConfig.severity("example-not-compiling") }
-    }
-}
 
 private func validationLabel(locale: String, english: String, chinese: String): String {
     if (locale == "zh-CN") { chinese } else { english }
 }
 
-private func usesLegacyConceptualPages(documentation: public_model.DocumentationSet): Bool {
-    // Captured v13 pages are authoritative even for an unlocalized project.
-    // Re-reading them here would lose snapshots and launch another highlighter.
-    if (!documentation.pages.isEmpty() || documentation.languageOptions.isSome()) { return false }
-    true
-}
 
 private func validationDocVersion(docVersion: ?String, locale: String): String {
     match (docVersion) {
@@ -324,48 +255,14 @@ private func validationDocVersion(docVersion: ?String, locale: String): String {
     }
 }
 
-private func appendValidationResultRow(out: StringBuilder, result: DoctestCaseResult): Unit {
-    out.append("<tr><td><span class=\"badge\" data-state=\"")
-    out.append(public_render.escapeStandaloneHtml(result.status))
-    out.append("\">")
-    out.append(public_render.escapeStandaloneHtml(result.status))
-    out.append("</span></td><td><code>")
-    out.append(public_render.escapeStandaloneHtml(result.qualifiedName))
-    out.append("</code></td><td>")
-    out.append(public_render.escapeStandaloneHtml(result.title))
-    out.append("</td><td>")
-    out.append(result.durationMs.toString())
-    out.append(" ms")
-    if (!result.message.isEmpty()) {
-        out.append("<br><span class=\"validation-message\">")
-        out.append(public_render.escapeStandaloneHtml(result.message))
-        out.append("</span>")
-    }
-    out.append("</td></tr>")
-}
 
 private func renderValidationHtml(documentation: public_model.DocumentationSet,
-    report: ?DoctestReport, docVersion: ?String, locale: String,
-    doctestHref!: String = "../doctest/results.json"): String {
+    docVersion: ?String, locale: String): String {
     let validationTitle = validationLabel(locale, "Validation results", "验证结果")
     let documentationVersion = validationLabel(locale, "Documentation version", "文档版本")
     let diagnostics = validationLabel(locale, "Diagnostics", "诊断")
     let apiDiffUnavailable = validationLabel(locale,
         "API diff: not attached to this generation", "API diff：本次生成未附带")
-    let doctestEvidence = validationLabel(locale, "Doctest evidence", "Doctest 证据")
-    let mode = validationLabel(locale, "Mode", "模式")
-    let timeout = validationLabel(locale, "timeout", "超时")
-    let memory = validationLabel(locale, "memory", "内存")
-    let jobs = validationLabel(locale, "jobs", "作业")
-    let rawEvidence = validationLabel(locale, "Raw evidence", "原始证据")
-    let status = validationLabel(locale, "Status", "状态")
-    let api = validationLabel(locale, "API", "API")
-    let example = validationLabel(locale, "Example", "示例")
-    let duration = validationLabel(locale, "Duration", "耗时")
-    let notRun = validationLabel(locale, "not run", "未运行")
-    let doctestNotRun = validationLabel(locale,
-        "Doctest execution was not enabled for this generation. This page does not infer verification from documentation presence.",
-        "本次生成未启用 Doctest 执行。本页面不会根据文档是否存在推断验证成功。")
     let apiDiffEvidence = validationLabel(locale, "API diff evidence", "API diff 证据")
     let apiDiffNotAttached = validationLabel(locale,
         "No comparison report was attached to this generation. Run the explicit cjdoc diff command to inspect version-to-version changes; this page does not infer compatibility.",
@@ -382,49 +279,6 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
     out.append(" · ")
     out.append(apiDiffUnavailable)
     out.append("</p><section><h2>")
-    out.append(doctestEvidence)
-    out.append("</h2>")
-    match (report) {
-        case Some(value) =>
-            out.append("<p>")
-            out.append(mode)
-            out.append(": <code>")
-            out.append(public_render.escapeStandaloneHtml(value.mode))
-            out.append("</code>; ")
-            out.append(timeout)
-            out.append(": ")
-            out.append(value.timeoutMs.toString())
-            out.append(" ms; ")
-            out.append(memory)
-            out.append(": ")
-            out.append(value.memoryMb.toString())
-            out.append(" MiB; ")
-            out.append(jobs)
-            out.append(": ")
-            out.append(value.jobs.toString())
-            out.append(". ")
-            out.append(rawEvidence)
-            out.append(": <a href=\"")
-            out.append(public_render.escapeStandaloneHtml(doctestHref))
-            out.append("\">doctest/results.json</a></p><table><thead><tr><th>")
-            out.append(status)
-            out.append("</th><th>")
-            out.append(api)
-            out.append("</th><th>")
-            out.append(example)
-            out.append("</th><th>")
-            out.append(duration)
-            out.append("</th></tr></thead><tbody>")
-            for (result in value.results) { appendValidationResultRow(out, result) }
-            out.append("</tbody></table>")
-        case None =>
-            out.append("<p><span class=\"badge\" data-state=\"unavailable\">")
-            out.append(notRun)
-            out.append("</span> ")
-            out.append(doctestNotRun)
-            out.append("</p>")
-    }
-    out.append("</section><section><h2>")
     out.append(apiDiffEvidence)
     out.append("</h2><p>")
     out.append(apiDiffNotAttached)
@@ -471,79 +325,24 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
             documentInventoryPins: options.documentInventoryPins.toArray(),
             documentationRevision: options.docVersion.getOrDefault({ => "" })))
     }
-    var sourceOrigins: Array<SourceFileOrigin> = []
     var documentation = match (generationRequest) {
         case Some(request) =>
             let semanticProvider: SemanticProvider = match (request.chir) {
                 case Some(chir) => AutoChirSemanticProvider(chir)
                 case None => defaultSemanticProvider()
             }
-            let (generatedDocumentation, generatedOrigins) = generatePublicDocumentationWithSource(request,
-                semanticProvider)
-            sourceOrigins = generatedOrigins
-            generatedDocumentation
+            generateDocumentationWithSource(request, semanticProvider).publicDocumentation
         case None => decodeValidatedDocIr(readDocIrInput(Path(options.input.getOrThrow())))
-    }
-    let qualityConfig = if (generationRequest.isSome()) {
-        loadDocumentationQualityConfig(options.project)
-    } else {
-        DocumentationQualityConfig()
-    }
-    let doctestConfig = if (generationRequest.isSome()) {
-        loadDoctestConfig(options.project)
-    } else {
-        DoctestConfig()
-    }
-    let conceptualPages = if (generationRequest.isSome() && usesLegacyConceptualPages(documentation)) {
-        conceptualPagesForProject(options.project, documentation)
-    } else {
-        ArrayList<ConceptualPage>()
-    }
-    var doctestReport: ?DoctestReport = None
-    if (generationRequest.isSome() && doctestConfig.mode != "off") {
-        if (options.stdout) {
-            throw IllegalArgumentException("--stdout cannot be combined with enabled doctests")
-        }
-        let report = runDoctests(documentation, doctestConfig,
-            Path(options.project).join("target").join("cjdoc"),
-            projectRoot: Path(options.project), sourceOrigins: sourceOrigins,
-            cfgValues: options.cfgValues.toArray())
-        doctestReport = Some(report)
-        eprintln(doctestReportSummary(report))
-        if (doctestReportHasFailure(report)) {
-            let severity = doctestFailureSeverity(doctestConfig, qualityConfig)
-            if (severity != "off") {
-                eprintln(severity + "[CJDOC3010]: doctest execution reported failures")
-            }
-        }
     }
     var artifacts: Array<public_render.RenderArtifact> = []
     if (options.command != "check") {
         let (renderedDocumentation, renderedArtifacts) = renderArtifactsWithCommandFallback(documentation,
             orderedFormats(options), generationRequest, locale: options.locale,
-            markdownLayout: options.markdownLayout, docVersion: options.docVersion,
-            exampleEvidence: exampleEvidenceMap(doctestReport), allLanguages: options.allLanguages)
+            docVersion: options.docVersion, allLanguages: options.allLanguages)
         documentation = renderedDocumentation
         let artifactList = ArrayList<public_render.RenderArtifact>()
-        if (generationRequest.isSome() && usesLegacyConceptualPages(documentation)) {
-            let base = ArrayList<public_render.RenderArtifact>()
-            for (artifact in renderedArtifacts) {
-                if (!artifact.path.startsWith("html/concepts/") && !artifact.path.startsWith("markdown/concepts/")) { base.add(artifact) }
-            }
-            artifactList.add(all: appendConceptualArtifacts(options.project, documentation,
-                orderedFormats(options), base.toArray(), conceptualPages,
-                locale: options.locale, docVersion: options.docVersion,
-                markdownLayout: options.markdownLayout,
-                externalOptions: highlightExternalOptions(options.highlightAdapter, options.highlightNode)))
-        } else {
-            artifactList.add(all: renderedArtifacts)
-        }
+        artifactList.add(all: renderedArtifacts)
         if (options.formats.contains("html")) {
-            let agentConceptualPages: Array<public_render.AgentConceptualPage> = if (generationRequest.isSome()) {
-                conceptualAgentPages(conceptualPages)
-            } else {
-                []
-            }
             if (options.allLanguages) {
                 for (language in documentation.languageOptions.getOrThrow().languages) {
                     let selected = public_render.projectDocumentationLanguage(documentation, language)
@@ -554,19 +353,13 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
                     }
                 }
             } else {
-                artifactList.add(all: public_render.renderAgentReadableArtifacts(public_render.projectDocumentationLanguage(documentation, options.locale),
-                    conceptualPages: agentConceptualPages, includeFull: options.agentFull,
-                    version: options.docVersion, includeValidation: true))
+                artifactList.add(all: public_render.renderAgentReadableArtifacts(
+                    public_render.projectDocumentationLanguage(documentation, options.locale),
+                    includeFull: options.agentFull, version: options.docVersion, includeValidation: true))
             }
         }
         match (options.docVersion) {
             case Some(version) => appendDocumentVersionArtifact(artifactList, version, documentation.project.name)
-            case None => ()
-        }
-        match (doctestReport) {
-            case Some(report) =>
-                artifactList.add(public_render.RenderArtifact(
-                    "doctest/results.json", "application/json", encodeDoctestReport(report)))
             case None => ()
         }
         var wantsHtml = false
@@ -575,12 +368,11 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
             if (options.allLanguages) {
                 for (language in documentation.languageOptions.getOrThrow().languages) {
                     artifactList.add(public_render.RenderArtifact("html/" + language + "/validation.html", "text/html; charset=utf-8",
-                        renderValidationHtml(public_render.projectDocumentationLanguage(documentation, language), doctestReport, options.docVersion, language,
-                            doctestHref: "../../doctest/results.json")))
+                        renderValidationHtml(public_render.projectDocumentationLanguage(documentation, language), options.docVersion, language)))
                 }
             } else {
                 artifactList.add(public_render.RenderArtifact("html/validation.html", "text/html; charset=utf-8",
-                    renderValidationHtml(public_render.projectDocumentationLanguage(documentation, options.locale), doctestReport, options.docVersion, options.locale)))
+                    renderValidationHtml(public_render.projectDocumentationLanguage(documentation, options.locale), options.docVersion, options.locale)))
             }
         }
         artifacts = if (options.allLanguages && wantsHtml) {
@@ -591,14 +383,8 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
     printPublicDiagnostics(documentation)
     let diagnosticsExit = publicExitCode(documentation, options.denyWarnings)
     let contractExit = contractGateExitCode(documentation, options)
-    let doctestExit = match (doctestReport) {
-        case Some(report) =>
-            if (doctestFailureSeverity(doctestConfig, qualityConfig) == "error" &&
-                doctestReportHasFailure(report)) { 1 } else { 0 }
-        case None => 0
-    }
     if (options.command != "check" &&
-        (writeOnFailure || (diagnosticsExit == 0 && contractExit == 0 && doctestExit == 0))) {
+        (writeOnFailure || (diagnosticsExit == 0 && contractExit == 0))) {
         if (options.stdout) {
             getStdOut().write(artifacts[0].content.toArray())
         } else {
@@ -607,7 +393,7 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
                 forceOwned: options.forceOwned)
         }
     }
-    if (diagnosticsExit != 0 || contractExit != 0 || doctestExit != 0) { 1 } else { 0 }
+    if (diagnosticsExit != 0 || contractExit != 0) { 1 } else { 0 }
 }
 
 private func runApiDiff(options: NewCliOptions): Int64 {
@@ -639,7 +425,7 @@ internal func completeLockedOutputCommand(output: String,
 
 func runCli(args: Array<String>): Int64 {
     if (args.size == 1 && (args[0] == "--help" || args[0] == "-h")) { print(newUsage()); return 0 }
-    if (args.size == 1 && args[0] == "--version") { println("cjdoc 0.7.2"); return 0 }
+    if (args.size == 1 && args[0] == "--version") { println("cjdoc 0.7.3"); return 0 }
     let options = try {
         parseNewCli(args)
     } catch (error: Exception) {

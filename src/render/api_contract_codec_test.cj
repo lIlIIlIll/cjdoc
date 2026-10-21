@@ -50,39 +50,28 @@ class ApiContractCodecTest {
         @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(nonHex))
     }
     @TestCase
-    func legacyExposureNamesMigrateToV2Fields(): Unit {
-        let legacy = """
-{"schemaVersion":"cjdoc.api-surface/1","project":"codec-test","audience":"external","declarations":[{"id":"decl","moduleId":"cjdoc:module:v1:codec-test","packageName":"fixture","ownerId":null,"kind":"function","name":"api","visibility":"public","sourceApiSignature":{"state":"available","tokens":["public","func"]}}],"exposures":[{"reExportId":"exp","moduleId":"cjdoc:module:v1:codec-test","packageName":"fixture","exposedName":"api","targetSymbolIds":["decl"]}]}
-"""
-        let decoded = decodeApiContractSnapshot(legacy)
-        @Expect(decoded.exposures.size, 1)
-        @Expect(decoded.exposures[0].id, "exp")
-        @Expect(decoded.exposures[0].targetIds[0], "decl")
-        @Expect(decoded.exposures[0].state, "unavailable")
-        let invalidSignature = legacy.replace("\"available\"", "\"partial\"")
-        @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(invalidSignature))
-        let invalidDeclaration = legacy.replace("\"kind\":\"function\"", "\"kind\":\"function\",\"extra\":true")
-        @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(invalidDeclaration))
-        let invalidSignatureFields = legacy.replace("\"tokens\":[\"public\",\"func\"]}",
-            "\"tokens\":[\"public\",\"func\"],\"extra\":true}")
-        @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(invalidSignatureFields))
+    func rejectsLegacyApiSurfaceVersions(): Unit {
+        let v1 = "{\"schemaVersion\":\"cjdoc.api-surface/1\"}"
+        let v2 = "{\"schemaVersion\":\"cjdoc.api-surface/2\"}"
+        @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(v1))
+        @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(v2))
     }
 
     @TestCase
     func strictCodecRejectsUnknownDuplicateAndDeepInputs(): Unit {
         let unknown = """
-{"schemaVersion":"cjdoc.api-surface/2","project":"codec-test","audience":"external","cfgProfile":"default","collectionState":"resolved","declarations":[],"exposures":[],"extra":true}
+{"schemaVersion":"cjdoc.api-surface/3","project":"codec-test","audience":"external","cfgProfile":"default","collectionState":"resolved","declarations":[],"exposures":[],"extra":true}
 """
         @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(unknown))
         let duplicate = """
-{"schemaVersion":"cjdoc.api-surface/2","schemaVersion":"cjdoc.api-surface/2","project":"codec-test","audience":"external","cfgProfile":"default","collectionState":"resolved","declarations":[],"exposures":[]}
+{"schemaVersion":"cjdoc.api-surface/3","schemaVersion":"cjdoc.api-surface/3","project":"codec-test","audience":"external","cfgProfile":"default","collectionState":"resolved","declarations":[],"exposures":[]}
 """
         @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(duplicate))
         let invalidAudience = unknown.replace("external", "team").replace(",\"extra\":true", "")
         @ExpectThrows[IllegalArgumentException](decodeApiContractSnapshot(invalidAudience))
 
         let deep = StringBuilder()
-        deep.append("{\"schemaVersion\":\"cjdoc.api-surface/2\",\"project\":\"codec-test\",\"audience\":\"external\",\"cfgProfile\":\"default\",\"collectionState\":\"resolved\",\"declarations\":")
+        deep.append("{\"schemaVersion\":\"cjdoc.api-surface/3\",\"project\":\"codec-test\",\"audience\":\"external\",\"cfgProfile\":\"default\",\"collectionState\":\"resolved\",\"declarations\":")
         var depth: Int64 = 0
         while (depth < 40) { deep.append("["); depth++ }
         deep.append("null")

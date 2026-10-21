@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 JOURNEYS = frozenset({"members", "types", "contracts", "resources", "guides", "search",
-                     "doctest", "diff", "versions", "quality", "external", "downloads",
+                     "native-check", "diff", "versions", "quality", "external", "downloads",
                      "machine", "diagnostics", "authoring", "extension"})
 VIEWPORTS = {"desktop": (1440, 1000), "narrow": (960, 900), "mobile": (390, 844)}
 TRANSPORTS = {"root": ("http", "/"), "subpath": ("http", "/cjdoc-preview/"),

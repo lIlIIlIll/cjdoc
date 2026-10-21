@@ -30,31 +30,12 @@ def expected_coverage_rows(raw: dict, chinese: bool) -> list[list[str]]:
     return expected
 
 
-def doctest(journey: Journey):
-    page = journey.page
-    chinese = journey.target["locale"] == "zh-CN"
-    raw = journey.raw('#doctest a[href$="results.json"]', "cjdoc.doctest/2")
-    if not raw["results"]:
-        raise AssertionError("doctest demonstration contains no real execution results")
-    summary = json.loads(page.locator('[data-report-summary="doctest"]').inner_text())
-    if summary != raw["summary"]:
-        raise AssertionError("doctest displayed summary differs from raw results")
-    cases = page.locator("[data-doctest-status]")
-    if cases.count() != len(raw["results"]):
-        raise AssertionError("doctest view drops a native result")
-    for index, result in enumerate(raw["results"]):
-        case = cases.nth(index)
-        if case.get_attribute("data-doctest-status") != result["status"]:
-            raise AssertionError("doctest presentation changed the native status")
-        require_text(case, result["id"], ("退出码：" if chinese else "exitCode: ") + str(result["exitCode"]),
-                     "源码 @example" if chinese else "Source @example")
-        if not case.locator("pre code").inner_text().strip():
-            raise AssertionError("doctest result is missing its exact source example")
-    source = cases.first.locator("[data-report-symbol]")
-    click_and_return(journey, source, raw["results"][0]["qualifiedName"].split(".")[-1], journey.target["version"])
+def native_check(journey: Journey):
     check = journey.raw('#native-check a[href$="native-check.json"]', "cjdoc.showcase-native-check/1")
     if check.get("exitCode") != 0 or check.get("scope") != "aggregate command evidence; no per-example result claim":
         raise AssertionError("native check does not provide successful aggregate command evidence")
+    if not isinstance(check.get("command"), list) or "--check-examples" not in check["command"]:
+        raise AssertionError("native check evidence does not use --check-examples")
     selector = '#native-check a[href$="src/api.cj"]'
     # Chromium displays local text files even when the link has `download`.
     # Exercise that real offline navigation and compare its exact source bytes.
@@ -64,7 +45,6 @@ def doctest(journey: Journey):
     if len(records) != 1 or hashlib.sha256(source).hexdigest() != records[0]["sha256"]:
         raise AssertionError("native check source does not match its execution input digest")
     journey.assertions.append("native compile/run/expected-failure checks retain aggregate exit status and exact source inputs opened offline or downloaded over HTTP")
-    journey.assertions.append("every displayed doctest status/id/exit code matches raw execution, with a source example and native API backlink")
 
 
 def diff(journey: Journey):
@@ -109,7 +89,7 @@ def quality(journey: Journey):
     for row, value in zip(rows.all(), originals):
         if value["total"] == 0 and row.locator("[data-reported-percent]").get_attribute("data-reported-percent") != str(value["percent"]):
             raise AssertionError("zero-denominator presentation lost the native reported percentage")
-    ir = journey.raw('#diagnostics a[href$="docs.json"]', "cjdoc.doc-ir/15")
+    ir = journey.raw('#diagnostics a[href$="docs.json"]', "cjdoc.doc-ir/16")
     if page.locator("#diagnostics .report-diagnostic").count() != len(ir["diagnostics"]):
         raise AssertionError("quality page dropped native diagnostics")
     lint = journey.raw('#quality a[href$="quality.json"]', "cjdoc.documentation-quality/1")
@@ -129,7 +109,7 @@ def quality(journey: Journey):
 
 def diagnostics(journey: Journey):
     page = journey.page
-    ir = journey.raw('#diagnostics a[href$="docs.json"]', "cjdoc.doc-ir/15")
+    ir = journey.raw('#diagnostics a[href$="docs.json"]', "cjdoc.doc-ir/16")
     native = ir["diagnostics"]
     if not native or page.locator("#diagnostics .report-diagnostic").count() != len(native):
         raise AssertionError("boundary demonstration has no complete native diagnostics")
@@ -142,15 +122,7 @@ def diagnostics(journey: Journey):
     if not first.locator("pre").is_visible():
         raise AssertionError("raw diagnostic evidence cannot be expanded")
     journey.click(first.locator("details summary"))
-    raw = journey.raw('#doctest a[href$="results.json"]', "cjdoc.doctest/2")
-    states = {result["status"] for result in raw["results"]}
-    if not {"failed", "skipped"}.issubset(states):
-        raise AssertionError("boundary demonstration needs actual failed and skipped examples")
-    for result in raw["results"]:
-        article = page.locator("[data-doctest-status]").filter(has_text=result["id"])
-        if article.count() != 1 or article.get_attribute("data-doctest-status") != result["status"]:
-            raise AssertionError("boundary presentation disguised a failed/skipped result")
-    journey.assertions.append("isolated negative samples keep native diagnostic ranges and actual failed/skipped doctest statuses")
+    journey.assertions.append("isolated negative samples retain every native diagnostic and source range, with expandable raw evidence")
 
 
-JOURNEYS = {"doctest": doctest, "diff": diff, "quality": quality, "diagnostics": diagnostics}
+JOURNEYS = {"native-check": native_check, "diff": diff, "quality": quality, "diagnostics": diagnostics}

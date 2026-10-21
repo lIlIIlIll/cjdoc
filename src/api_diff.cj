@@ -143,7 +143,7 @@ private func appendedParametersAreDefaulted(old: ApiContractDeclaration,
 }
 
 private func compareDeclaration(old: ApiContractDeclaration, current: ApiContractDeclaration,
-    matchState: String, compareLanguageEvidence: Bool): ApiDiffEntry {
+    matchState: String): ApiDiffEntry {
     let reasons = ArrayList<String>()
     let evidence = ArrayList<ApiDiffEvidence>()
     var classification = "unchanged"
@@ -252,27 +252,25 @@ private func compareDeclaration(old: ApiContractDeclaration, current: ApiContrac
         addReason(reasons, evidence, "documentationFingerprint", "documentation changed",
             before: Some(old.documentationFingerprint), after: Some(current.documentationFingerprint))
     }
-    if (compareLanguageEvidence) {
-        let languages = ArrayList<String>()
-        for (item in old.documentationLanguages) {
-            let language = item.language.getOrDefault({ => "unknown" })
-            if (!languages.contains(language)) { languages.add(language) }
-        }
-        for (item in current.documentationLanguages) {
-            let language = item.language.getOrDefault({ => "unknown" })
-            if (!languages.contains(language)) { languages.add(language) }
-        }
-        for (language in languages) {
-            var before: ?String = None
-            var after: ?String = None
-            for (item in old.documentationLanguages where item.language.getOrDefault({ => "unknown" }) == language) { before = Some(item.fingerprint) }
-            for (item in current.documentationLanguages where item.language.getOrDefault({ => "unknown" }) == language) { after = Some(item.fingerprint) }
-            if (before == after) { continue }
-            if (classification == "unchanged") { classification = "documentation-only" }
-            evidence.add(ApiDiffEvidence("documentationLanguages", before: before, after: after,
-                state: if (language == "unknown") { "unavailable" } else { "resolved" },
-                language: if (language == "unknown") { None } else { Some(language) }))
-        }
+    let languages = ArrayList<String>()
+    for (item in old.documentationLanguages) {
+        let language = item.language.getOrDefault({ => "unknown" })
+        if (!languages.contains(language)) { languages.add(language) }
+    }
+    for (item in current.documentationLanguages) {
+        let language = item.language.getOrDefault({ => "unknown" })
+        if (!languages.contains(language)) { languages.add(language) }
+    }
+    for (language in languages) {
+        var before: ?String = None
+        var after: ?String = None
+        for (item in old.documentationLanguages where item.language.getOrDefault({ => "unknown" }) == language) { before = Some(item.fingerprint) }
+        for (item in current.documentationLanguages where item.language.getOrDefault({ => "unknown" }) == language) { after = Some(item.fingerprint) }
+        if (before == after) { continue }
+        if (classification == "unchanged") { classification = "documentation-only" }
+        evidence.add(ApiDiffEvidence("documentationLanguages", before: before, after: after,
+            state: if (language == "unknown") { "unavailable" } else { "resolved" },
+            language: if (language == "unknown") { None } else { Some(language) }))
     }
     if (fingerprintChanged(old.metadataFingerprint, current.metadataFingerprint) &&
         classification != "breaking" && classification != "potentially-breaking") {
@@ -504,16 +502,13 @@ private func declarationSignatureBuckets(snapshot: ApiContractSnapshot):
 }
 private func validateIdentity(baseline: ApiContractSnapshot, current: ApiContractSnapshot): Unit {
     if (baseline.project != current.project || baseline.audience != current.audience ||
-        (baseline.cfgProfile != "unknown" && current.cfgProfile != "unknown" &&
-            baseline.cfgProfile != current.cfgProfile)) {
+        baseline.cfgProfile != current.cfgProfile) {
         throw IllegalArgumentException("API diff inputs must match project, audience, and cfgProfile")
     }
 }
 
 public func compareApiContracts(baseline: ApiContractSnapshot, current: ApiContractSnapshot): ApiDiffReport {
     validateIdentity(baseline, current)
-    let compareLanguageEvidence = baseline.schemaVersion == API_SURFACE_SCHEMA_VERSION &&
-        current.schemaVersion == API_SURFACE_SCHEMA_VERSION
     let entries = ArrayList<ApiDiffEntry>()
     let matchedOld = HashSet<String>()
     let matchedCurrent = HashSet<String>()
@@ -522,7 +517,7 @@ public func compareApiContracts(baseline: ApiContractSnapshot, current: ApiContr
     for (old in baseline.declarations) {
         match (currentById.get(old.id)) {
             case Some(value) =>
-                entries.add(compareDeclaration(old, value, "exact", compareLanguageEvidence))
+                entries.add(compareDeclaration(old, value, "exact"))
                 let _ = matchedOld.add(old.id)
                 let _ = matchedCurrent.add(value.id)
             case None => ()
@@ -539,7 +534,7 @@ public func compareApiContracts(baseline: ApiContractSnapshot, current: ApiContr
                 for (value in values where !matchedCurrent.contains(value.id)) { candidates.add(value) }
                 if (candidates.size == 1) {
                     let value = candidates[0]
-                    entries.add(compareDeclaration(old, value, "fallback", compareLanguageEvidence))
+                    entries.add(compareDeclaration(old, value, "fallback"))
                     let _ = matchedOld.add(old.id)
                     let _ = matchedCurrent.add(value.id)
                 }
@@ -556,7 +551,7 @@ public func compareApiContracts(baseline: ApiContractSnapshot, current: ApiContr
                 }
                 if (candidates.size == 1) {
                     let value = candidates[0]
-                    entries.add(compareDeclaration(old, value, "fallback", compareLanguageEvidence))
+                    entries.add(compareDeclaration(old, value, "fallback"))
                     let _ = matchedOld.add(old.id)
                     let _ = matchedCurrent.add(value.id)
                 } else if (candidates.size > 1) {

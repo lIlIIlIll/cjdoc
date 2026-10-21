@@ -97,7 +97,17 @@ internal func appendSearchBody(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
             var first = true
             for (tag in comment.tags where !tag.translationState.isEmpty()) {
                 if (!first) { out.append(",") }; first = false
-                out.append("{\"kind\":${escapeJsonString(tag.name)},\"subject\":${escapeJsonString(tag.subject)},\"actualLanguage\":${nullableString(tag.contentLanguage)},\"state\":${escapeJsonString(tag.translationState)},\"text\":${escapeJsonString(searchTextExcerpt(documentationTagPlainText(tag)))}}")
+                out.append("{\"kind\":")
+                appendSearchJsonString(out, tag.name)
+                out.append(",\"subject\":")
+                appendSearchJsonString(out, tag.subject)
+                out.append(",\"actualLanguage\":")
+                appendOptionalSearchString(out, tag.contentLanguage)
+                out.append(",\"state\":")
+                appendSearchJsonString(out, tag.translationState)
+                out.append(",\"text\":")
+                appendSearchJsonString(out, searchTextExcerpt(documentationTagPlainText(tag)))
+                out.append("}")
             }
             out.append("]")
         }
@@ -274,7 +284,19 @@ internal func renderSearchIndex(documentation: DocumentationSet,
     }
     for (page in selectedDocumentationPages(documentation, locale)) {
         if (!first) { out.append(",") }; first = false
-        out.append("\n    {\"id\":${escapeJsonString("cjdoc:concept:" + page.id)},\"canonicalId\":${escapeJsonString("cjdoc:concept:" + page.id)},\"exposure\":false,\"name\":${escapeJsonString(page.title)},\"qualifiedName\":${escapeJsonString(page.route)},\"kind\":\"concept\",\"packageName\":\"\",\"moduleId\":\"conceptual\",\"moduleName\":null,\"ownerName\":null,\"parameterTypes\":[],\"returnType\":null,\"returnCanonical\":null,\"summary\":\"\",\"body\":${escapeJsonString(searchTextExcerpt(markdownNodeText(page.markdown), maximum: SEARCH_BODY_EXCERPT_LIMIT))},\"href\":${escapeJsonString(page.route)}")
+        out.append("\n    {\"id\":")
+        appendSearchJsonString(out, "cjdoc:concept:" + page.id)
+        out.append(",\"canonicalId\":")
+        appendSearchJsonString(out, "cjdoc:concept:" + page.id)
+        out.append(",\"exposure\":false,\"name\":")
+        appendSearchJsonString(out, page.title)
+        out.append(",\"qualifiedName\":")
+        appendSearchJsonString(out, page.route)
+        out.append(",\"kind\":\"concept\",\"packageName\":\"\",\"moduleId\":\"conceptual\",\"moduleName\":null,\"ownerName\":null,\"parameterTypes\":[],\"returnType\":null,\"returnCanonical\":null,\"summary\":\"\",\"body\":")
+        appendSearchJsonString(out,
+            searchTextExcerpt(markdownNodeText(page.markdown), maximum: SEARCH_BODY_EXCERPT_LIMIT))
+        out.append(",\"href\":")
+        appendSearchJsonString(out, page.route)
         appendSearchPageBindings(out, page, projection.visibleIndex)
         out.append("}")
     }

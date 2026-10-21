@@ -11,6 +11,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import struct
+import zlib
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -19,6 +21,8 @@ from showcase_contract import ContractError, Site, resolve_plan, validate_eviden
 from showcase_contract.contract import check_regressions, json_pointer, validate_plan
 from showcase_contract.render import render_cards, render_home
 from showcase_contract.site import canonical_json, load_json, relative_path
+from showcase_contract.offline import ARCHIVE
+from showcase_contract.scenarios import BUDGETS, SCENARIOS
 
 REVISION = "a" * 40
 PROJECT = {"name": "synthetic_showcase", "audience": "external", "version": "demo-v2"}
@@ -54,6 +58,9 @@ class ContractTests(unittest.TestCase):
         self.evidence_root.mkdir()
         write(self.repo, "examples/synthetic.cj", "// synthetic contract-test input, not a demo library\n")
         write(self.site, "index.html", '<html lang="en"><body id="home">Home</body></html>')
+        archive = self.site / ARCHIVE
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        archive.write_bytes(b"synthetic archive for contract tests, not a download")
         self.page_name = "demo/types/generated-route.html"
         write(self.site, self.page_name,
               '<html lang="en"><body><a href="../../index.html">Home</a>'
@@ -70,8 +77,8 @@ class ContractTests(unittest.TestCase):
                        "version": "demo-v2", "instructions": "Open the synthetic member",
                        "index": self.index_name, "project": copy.deepcopy(PROJECT),
                        "match": {"kind": "symbol", "title": "Bag.add", "packageName": "demo.collections"},
-                       "scenarios": [{"id": "homepage-member", "mode": "http"},
-                                     {"id": "homepage-member", "mode": "file"}]}
+                       "scenarios": [{"id": "members-root-desktop", "mode": "http"},
+                                     {"id": "members-offline-desktop", "mode": "file"}]}
         self.feature = {"id": "member", "title": "Synthetic member navigation",
                         "implementation": "partial", "demonstration": "available",
                         "reason": "Synthetic data tests the gate; it proves no cjdoc behavior.",
@@ -86,19 +93,60 @@ class ContractTests(unittest.TestCase):
         return resolve_plan(self.plan, Site(self.site), self.repo, REVISION)
 
     def evidence(self, manifest: dict) -> dict:
-        image = self.evidence_root / "synthetic-screenshot.txt"
-        image.write_text("unit-test attachment, deliberately not a browser screenshot", encoding="utf-8")
-        result = {"featureId": "member", "targetId": "member-en-v2", "scenarioId": "homepage-member",
-                  "locale": "en", "version": "demo-v2", "status": "passed", "entry": "index.html",
-                  "href": self.page_name + "#add", "activations": 1, "documentNavigations": 1,
-                  "assertions": ["Synthetic result used only to test evidence identity validation"],
-                  "screenshot": {"path": image.name, "sha256": hashlib.sha256(image.read_bytes()).hexdigest()}}
-        return {"schemaVersion": "cjdoc.showcase-evidence/1", "revision": REVISION,
+        def screenshots(name: str, width: int) -> list[dict]:
+            def chunk(kind: bytes, data: bytes) -> bytes:
+                return struct.pack(">I", len(data)) + kind + data + \
+                    struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+
+            pictures = []
+            for theme, pixel in (("light", b"\xff\xff\xff"), ("dark", b"\x00\x00\x00")):
+                content = b"\x89PNG\r\n\x1a\n" + chunk(
+                    b"IHDR", struct.pack(">IIBBBBB", width, 1, 8, 2, 0, 0, 0))
+                content += chunk(b"IDAT", zlib.compress(b"\x00" + pixel * width)) + chunk(b"IEND", b"")
+                image = self.evidence_root / f"{name}-{theme}.png"
+                image.write_bytes(content)
+                pictures.append({"theme": theme, "path": image.name,
+                                 "sha256": hashlib.sha256(content).hexdigest()})
+            return pictures
+
+        results, homes = [], {}
+        for feature in manifest["features"]:
+            for target in feature["targets"]:
+                for scenario in target["scenarios"]:
+                    registered = SCENARIOS[scenario["id"]]
+                    width, height, prefix = registered[2], registered[3], registered[-1]
+                    pictures = screenshots(scenario["id"], width)
+                    results.append({
+                        "featureId": feature["id"], "targetId": target["id"],
+                        "scenarioId": scenario["id"], "mode": scenario["mode"],
+                        "locale": target["locale"], "version": target["version"], "status": "passed",
+                        "entry": "index.html", "href": target["resolved"]["href"],
+                        "activations": 1, "documentNavigations": 1,
+                        "assertions": ["Synthetic result tests validation only; no browser was run"],
+                        "screenshot": {key: pictures[0][key] for key in ("path", "sha256")},
+                        "screenshots": pictures,
+                        "metrics": {"viewport": {"width": width, "height": height},
+                                    "landing": {"memberCount": 20, "firstScreenMembers": 1,
+                                                "listHeight": 500, "compactRowHeight": 20,
+                                                "contentTop": 100, "horizontalOverflow": False, "scrollY": 0},
+                                    "scrollEvents": 0, "scrollDistance": 0,
+                                    "queryMs": [1], "expandMs": [1],
+                                    "homepageActivations": 1, "homepageDocumentNavigations": 1},
+                    })
+                    identity = (target["locale"], width, height, scenario["mode"], prefix)
+                    homes[identity] = {"locale": target["locale"], "mode": scenario["mode"], "prefix": prefix,
+                                       "viewport": {"width": width, "height": height},
+                                       "screenshots": pictures}
+        return {"schemaVersion": "cjdoc.showcase-evidence/2", "revision": REVISION,
                 "manifestSha256": hashlib.sha256(canonical_json(manifest)).hexdigest(),
-                "siteSha256": Site(self.site).digest(),
+                "siteSha256": Site(self.site).digest(), "budgets": copy.deepcopy(BUDGETS),
+                "siteMetrics": {"siteBytes": sum(path.stat().st_size for path in self.site.rglob("*")
+                                               if path.is_file()),
+                                "offlineBytes": (self.site / ARCHIVE).stat().st_size},
+                "homepages": list(homes.values()),
                 "runner": {"name": "synthetic-unit-test", "version": "1", "browser": "none",
                            "browserVersion": "not-run"},
-                "results": [{**result, "mode": "http"}, {**result, "mode": "file"}]}
+                "results": results}
 
     def test_deterministic_resolution_preserves_semantic_uncertainty(self) -> None:
         before = copy.deepcopy(self.plan)
@@ -237,6 +285,13 @@ class ContractTests(unittest.TestCase):
         self.index["pages"].append({**self.page, "packageName": "another.collections"})
         self.save_index()
         self.assertEqual(self.resolve()["features"][0]["targets"][0]["resolved"]["pageId"], "page:synthetic")
+
+    def test_guide_navigation_kind_is_resolvable(self) -> None:
+        self.page.update(kind="guide", title="Catalogue guide")
+        self.target["match"] = {"kind": "guide", "title": "Catalogue guide"}
+        self.save_index()
+        resolved = self.resolve()["features"][0]["targets"][0]["resolved"]
+        self.assertEqual(resolved["href"], "demo/types/generated-route.html#add")
 
     def test_route_changes_follow_authoritative_index(self) -> None:
         self.page["href"] = "types/new-generated-route.html#add"
@@ -387,7 +442,7 @@ class ContractTests(unittest.TestCase):
         manifest = self.resolve()
         evidence = self.evidence(manifest)
         write(self.site, "new-file.txt", "a file added after browser tests")
-        with self.assertRaisesRegex(ContractError, "stale"):
+        with self.assertRaisesRegex(ContractError, "site sizes|stale"):
             validate_evidence(manifest, evidence, Site(self.site), self.evidence_root)
 
     def test_tree_fingerprint_includes_paths_and_bytes(self) -> None:
@@ -444,8 +499,32 @@ class ContractTests(unittest.TestCase):
     def test_screenshot_hash_change_rejected(self) -> None:
         manifest = self.resolve()
         evidence = self.evidence(manifest)
-        (self.evidence_root / "synthetic-screenshot.txt").write_text("changed", encoding="utf-8")
+        (self.evidence_root / evidence["results"][0]["screenshot"]["path"]).write_bytes(b"changed")
         with self.assertRaisesRegex(ContractError, "screenshot"):
+            validate_evidence(manifest, evidence, Site(self.site), self.evidence_root)
+
+    def test_current_evidence_requires_measurements_and_theme_attachments(self) -> None:
+        manifest = self.resolve()
+        for field in ("budgets", "siteMetrics", "homepages"):
+            evidence = self.evidence(manifest)
+            del evidence[field]
+            with self.subTest(field=field), self.assertRaisesRegex(ContractError, "missing fields"):
+                validate_evidence(manifest, evidence, Site(self.site), self.evidence_root)
+        for field in ("metrics", "screenshots"):
+            evidence = self.evidence(manifest)
+            del evidence["results"][0][field]
+            with self.subTest(field=field), self.assertRaisesRegex(ContractError, "missing fields"):
+                validate_evidence(manifest, evidence, Site(self.site), self.evidence_root)
+
+    def test_evidence_homepage_and_theme_matrices_cannot_be_reduced(self) -> None:
+        manifest = self.resolve()
+        evidence = self.evidence(manifest)
+        evidence["homepages"].pop()
+        with self.assertRaisesRegex(ContractError, "matrix is incomplete"):
+            validate_evidence(manifest, evidence, Site(self.site), self.evidence_root)
+        evidence = self.evidence(manifest)
+        evidence["results"][0]["screenshots"].pop()
+        with self.assertRaisesRegex(ContractError, "Light and Dark"):
             validate_evidence(manifest, evidence, Site(self.site), self.evidence_root)
 
     def test_evidence_inside_site_rejected(self) -> None:
@@ -501,9 +580,31 @@ class ContractTests(unittest.TestCase):
             render_cards(manifest)
 
     def test_cli_resolve_fingerprint_and_verify(self) -> None:
+        self.target["scenarios"] = [
+            {"id": f"members-{transport}-{viewport}", "mode": mode}
+            for transport, mode in (("root", "http"), ("subpath", "http"), ("offline", "file"))
+            for viewport in ("desktop", "narrow", "mobile")
+        ]
+        self.target["id"] = "member-en"
         plan = write(self.root, "plan.json", self.plan)
         template = write(self.root, "home.html", '<html lang="en"><body>'
                          '<!-- CJDOC_SHOWCASE_FEATURES --></body></html>')
+        baseline_path = write(self.root, "baseline.json", {
+            "schemaVersion": "cjdoc.showcase-baseline/1",
+            "basis": "issue-50-promised-scope",
+            "issue": 50,
+            "executionEvidence": "none; browser evidence is required separately",
+            "locales": ["en"],
+            "transports": ["root", "subpath", "offline"],
+            "viewports": ["desktop", "narrow", "mobile"],
+            "features": [{
+                "id": "member",
+                "implementation": "partial",
+                "demonstration": "available",
+                "journey": "members",
+                "targets": [{"id": "member", "version": "demo-v2"}],
+            }],
+        })
         command = [sys.executable, "-m", "showcase_contract"]
         environment = {**os.environ, "PYTHONPATH": str(ROOT / "scripts"), "PYTHONDONTWRITEBYTECODE": "1"}
         resolved = subprocess.run(command + ["resolve", "--plan", str(plan), "--site", str(self.site),
@@ -513,14 +614,22 @@ class ContractTests(unittest.TestCase):
         manifest = load_json(self.site / "showcase-features.json")
         evidence = self.evidence(manifest)
         evidence_path = write(self.evidence_root, "results.json", evidence)
-        checked = subprocess.run(command + ["verify", "--site", str(self.site), "--evidence", str(evidence_path)],
+        verify_args = ["verify", "--site", str(self.site), "--evidence", str(evidence_path)]
+        missing_baseline = subprocess.run(command + verify_args, capture_output=True, text=True, env=environment)
+        self.assertEqual(missing_baseline.returncode, 1)
+        self.assertIn("requires --baseline", missing_baseline.stderr)
+        checked = subprocess.run(command + verify_args + ["--baseline", str(baseline_path)],
                                  capture_output=True, text=True, env=environment)
         self.assertEqual(checked.returncode, 0, checked.stderr)
         fingerprint = subprocess.run(command + ["fingerprint", "--site", str(self.site)],
                                      capture_output=True, text=True, env=environment)
         self.assertEqual(fingerprint.stdout.strip(), Site(self.site).digest())
-        write(self.site, "unvalidated.txt", "after evidence")
-        stale = subprocess.run(command + ["verify", "--site", str(self.site), "--evidence", str(evidence_path)],
+        homepage = self.site / "index.html"
+        original_homepage = homepage.read_bytes()
+        mutated_homepage = original_homepage.replace(b'lang="en"', b'lang="fr"', 1)
+        self.assertNotEqual(mutated_homepage, original_homepage)
+        homepage.write_bytes(mutated_homepage)
+        stale = subprocess.run(command + verify_args + ["--baseline", str(baseline_path)],
                                capture_output=True, text=True, env=environment)
         self.assertEqual(stale.returncode, 1)
         self.assertIn("stale", stale.stderr)

@@ -8,6 +8,25 @@ import std.unittest.testmacro.*
 @Test
 class QualityConfigTest {
     @TestCase
+    func removedExecutionTableIsRejectedEvenWhenOffOrCommented(): Unit {
+        let root = Directory.createTemp(getTempDirectory())
+        try {
+            for (header in ["[doctest]", "[doctest] # old execution settings"]) {
+                File.writeTo(root.join("cjdoc.toml"), (header + "\nmode = \"off\"\n").toArray())
+                var message = ""
+                try {
+                    let _ = loadDocumentationQualityConfig(root.toString())
+                } catch (error: IllegalArgumentException) {
+                    message = error.message
+                }
+                @Expect(message, "[doctest] is no longer supported; use --check-examples and @example {run}")
+            }
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
     func repeatedDocumentationPagesDoNotBecomeQualitySettings(): Unit {
         let root = Directory.createTemp(getTempDirectory())
         try {

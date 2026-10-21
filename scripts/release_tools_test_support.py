@@ -28,7 +28,6 @@ from scripts.showcase_inputs import source_inputs
 from scripts.verify_repository_inputs import (
     CURRENT_GOLDEN_VERSION,
     GOLDEN_NAMES,
-    LEGACY_GOLDEN_VERSIONS,
     SCHEMA_NAMES,
 )
 
@@ -73,10 +72,6 @@ class ReleaseToolsTestSupport:
             shutil.copyfile(PROJECT_ROOT / relative, destination)
         for source in (PROJECT_ROOT / "vendor/yjson_algorithms/src").glob("*.cj"):
             shutil.copyfile(source, root / "vendor/yjson_algorithms/src" / source.name)
-        shutil.copyfile(
-            PROJECT_ROOT / "tests/fixtures/legacy-migration-v8.json",
-            root / "tests/fixtures/legacy-migration-v8.json",
-        )
 
         (root / "cjpm.toml").write_text(
             "[package]\nname=\"cjdoc\"\nversion=\"0.7.0\"\n"
@@ -99,16 +94,13 @@ class ReleaseToolsTestSupport:
                 PROJECT_ROOT / "docs/schema" / f"{name}.schema.json",
                 root / "docs/schema" / f"{name}.schema.json",
             )
-        for version in (*LEGACY_GOLDEN_VERSIONS, CURRENT_GOLDEN_VERSION):
-            directory = root / f"tests/fixtures/golden-v{version}"
-            directory.mkdir(parents=True)
-            for name in GOLDEN_NAMES:
-                shutil.copyfile(
-                    PROJECT_ROOT / f"tests/fixtures/golden-v{version}/{name}.docs.json",
-                    directory / f"{name}.docs.json",
-                )
-        shutil.copytree(PROJECT_ROOT / "tests/fixtures/legacy13", root / "tests/fixtures/legacy13")
-        shutil.copytree(PROJECT_ROOT / "tests/fixtures/legacy14", root / "tests/fixtures/legacy14")
+        directory = root / f"tests/fixtures/golden-v{CURRENT_GOLDEN_VERSION}"
+        directory.mkdir(parents=True)
+        for name in GOLDEN_NAMES:
+            shutil.copyfile(
+                PROJECT_ROOT / f"tests/fixtures/golden-v{CURRENT_GOLDEN_VERSION}/{name}.docs.json",
+                directory / f"{name}.docs.json",
+            )
         (root / "tests/perf/baseline.json").write_text(json.dumps({
             "schemaVersion": "cjdoc.perf-baseline/1",
             "state": "frozen",
@@ -126,6 +118,36 @@ class ReleaseToolsTestSupport:
         self.git(root, "commit", "-q", "-m", "fixture")
         self.git(root, "tag", "v0.7.0")
         return root, self.git(root, "rev-parse", "HEAD")
+
+    def make_candidate_receipt(self, repo: Path, binary: Path, commit: str,
+                               platform_name: str = "linux-x64", *,
+                               sdk_version: str = "1.1.3", stdx_version: str = "1.2.0",
+                               stdx_sha256: str = "2" * 64) -> dict:
+        """Synthetic current-format receipt for package contract tests only."""
+        return {
+            "schemaVersion": "cjdoc.release-candidate/1",
+            "source": {"tag": "v0.7.0", "releaseVersion": "0.7.0", "commit": commit,
+                       "tree": self.git(repo, "rev-parse", "HEAD^{tree}"),
+                       "dirty": False, "worktreeSha256": "a" * 64},
+            "platform": {"id": platform_name,
+                         "os": "Windows" if platform_name.startswith("windows-") else "Linux",
+                         "architecture": "x86_64",
+                         "compilerTarget": "x86_64-pc-windows" if platform_name.startswith("windows-")
+                         else "x86_64-unknown-linux-gnu"},
+            "toolchain": {"sdkVersion": sdk_version, "sdkArchiveSha256": SDK_SHA256,
+                          "stdxVersion": stdx_version, "stdxArchiveSha256": stdx_sha256,
+                          "compilerVersion": f"Cangjie Compiler: {sdk_version}", "cjpmVersion": sdk_version,
+                          "stdxDigest": "b" * 64, "toolchainFingerprint": "c" * 64},
+            "build": {"command": ["cjpm", "build", "--jobs", "1"],
+                      "effectiveCompileOptions": ["-O1"],
+                      "buildConfigurationSha256": "d" * 64},
+            "binary": {"path": "target/release/bin/main",
+                       "sha256": verify_release_package.sha256_file(binary),
+                       "size": binary.stat().st_size, "versionOutput": "cjdoc 0.7.0"},
+            "execution": {"runId": "1", "runAttempt": 1,
+                          "job": f"release-candidate ({platform_name})"},
+            "gates": {"release-gate": "e" * 64},
+        }
 
     @staticmethod
     def make_fake_sdk(root: Path) -> Path:

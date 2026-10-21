@@ -13,8 +13,7 @@ public class HtmlDocumentationRenderer <: DocumentationRenderer {
 }
 
 internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
-    documentation: DocumentationSet, locale!: String = "en", docVersion!: ?String = None,
-    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): Unit {
+    documentation: DocumentationSet, locale!: String = "en", docVersion!: ?String = None): Unit {
         validateTypedDocumentationSet(documentation)
         let projection = RenderProjection(documentation)
         let index = projection.visibleIndex
@@ -49,8 +48,7 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
             artifacts.addText("html/${symbolReadablePagePath(symbol)}", "text/html; charset=utf-8",
                 renderSymbolAlias(symbol, locale))
             let rendered = renderSymbolPage(documentation, projection, index, symbol, assetLookup,
-                    typeLinkIndex, locale: locale, docVersion: docVersion,
-                    exampleEvidence: exampleEvidence)
+                    typeLinkIndex, locale: locale, docVersion: docVersion)
             let links = externalDocumentationHtml(documentation, symbol, locale)
             artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
                 rendered.replace("</div></main>", links + "</div></main>"))
@@ -283,18 +281,14 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
 }
 
 public func renderDocumentationFormatsWithOptions(documentation: DocumentationSet,
-    formats: Array<String>, locale!: String = "zh-CN", markdownLayout!: String = "site", docVersion!: ?String = None,
-    exampleEvidence!: HashMap<String, String> = HashMap<String, String>(), allLanguages!: Bool = false):
+    formats: Array<String>, locale!: String = "zh-CN", docVersion!: ?String = None,
+    allLanguages!: Bool = false):
     Array<RenderArtifact> {
     if (allLanguages) {
-        if (markdownLayout == "single") { throw IllegalArgumentException("all languages requires site Markdown") }
-        return renderAllDocumentationLanguages(documentation, formats, docVersion, exampleEvidence)
+        return renderAllDocumentationLanguages(documentation, formats, docVersion)
     }
     if (locale != "zh-CN" && locale != "en") {
         throw IllegalArgumentException("locale must be zh-CN or en")
-    }
-    if (markdownLayout != "site" && markdownLayout != "single") {
-        throw IllegalArgumentException("Markdown layout must be site or single")
     }
     let artifacts = RenderArtifactCollector()
     let localized = projectDocumentationLanguage(documentation, locale)
@@ -304,13 +298,9 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
     for (format in formats) {
         match (format) {
             case "json" => appendJsonArtifacts(artifacts, documentation)
-            case "markdown" => if (markdownLayout == "single") {
-                appendMarkdownArtifacts(artifacts, localized)
-            } else {
-                appendMarkdownSiteArtifacts(artifacts, localized, locale)
-            }
+            case "markdown" => appendMarkdownSiteArtifacts(artifacts, localized, locale)
             case "html" => appendHtmlArtifacts(artifacts, localized, locale: locale,
-                docVersion: docVersion, exampleEvidence: exampleEvidence)
+                docVersion: docVersion)
             case "api-surface" => appendApiSurfaceArtifacts(artifacts, documentation)
             case "coverage" =>
                 appendCoverageArtifacts(artifacts, documentation)
@@ -321,7 +311,7 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
     }
     let capturedFormats = ArrayList<String>()
     for (format in formats) {
-        if (format == "html" || (format == "markdown" && markdownLayout != "single")) {
+        if (format == "html" || format == "markdown") {
             capturedFormats.add(format)
         }
     }
@@ -331,10 +321,6 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
     artifacts.toArray()
 }
 
-public func renderDocumentationFormats(documentation: DocumentationSet,
-    formats: Array<String>): Array<RenderArtifact> {
-    renderDocumentationFormatsWithOptions(documentation, formats, locale: "en", markdownLayout: "single")
-}
 
 /** Render all author variants through the same selection used by the CLI. */
 public func renderDocumentationWithLanguageOptions(documentation: DocumentationSet,

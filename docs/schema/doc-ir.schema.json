@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json",
-  "title": "cjdoc Doc IR v15",
+  "title": "cjdoc Doc IR v16",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "generator", "status", "apiCollectionState", "documentationRevision", "project", "configuration", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics", "dependencies", "documentSets"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/15"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/16"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "apiCollectionState": {"enum": ["resolved", "partial", "unavailable"]},
@@ -557,7 +557,6 @@
         "translationState": {"enum": ["complete", "fallback", "empty-fallback", "conflict-fallback", "empty", "conflict", "missing", "unknown", "unpaired"]},
         "fieldId": {"type": "string"},
         "descriptionMarkdown": {"$ref": "#/$defs/markdownNode"},
-        "evidenceKey": {"type": "string"},
         "navigation": {"anyOf": [{"$ref": "#/$defs/typeNavigation"}, {"type": "null"}]}
       }
     },

@@ -331,7 +331,7 @@ internal func loadVersionSymbols(files: ArrayList<VersionSourceFile>): VersionSy
             throw IllegalArgumentException("version symbol index must be an object")
         }
         match (versionJsonStringField(object, "schemaVersion")) {
-            case Some(value) => if (value != "cjdoc.symbol-index/1" && value != "cjdoc.symbol-index/2") {
+            case Some(value) => if (value != "cjdoc.symbol-index/2") {
                 throw IllegalArgumentException("version symbol index schema is unsupported")
             }
             case None => throw IllegalArgumentException("version symbol index has no schemaVersion")
@@ -395,7 +395,7 @@ private func loadVersionApiDiff(spec: VersionComposeSpec, budget: VersionCompose
         throw IllegalArgumentException("version API diff must be an object '${source}'")
     }
     match (versionJsonStringField(object, "schemaVersion")) {
-        case Some(value) => if (value != "cjdoc.api-diff/1" && value != "cjdoc.api-diff/2") {
+        case Some(value) => if (value != "cjdoc.api-diff/2") {
             throw IllegalArgumentException("version API diff schema is unsupported '${source}'")
         }
         case None => throw IllegalArgumentException("version API diff has no schemaVersion '${source}'")
@@ -403,21 +403,6 @@ private func loadVersionApiDiff(spec: VersionComposeSpec, budget: VersionCompose
     VersionSourceFile("api-diff.json", "application/json", bytes)
 }
 
-private func loadVersionDoctestEvidence(root: Path, budget: VersionComposeBudget): ?VersionSourceFile {
-    let path = root.parent.join("doctest/results.json")
-    if (!exists(path)) { return None }
-    let info = FileInfo(path)
-    if (info.isSymbolicLink() || !info.isRegular()) {
-        throw IllegalArgumentException("version doctest evidence is not a regular file '" + path.toString() + "'")
-    }
-    let expectedSize = info.size
-    budget.reserve("doctest/results.json", expectedSize)
-    let bytes = readFileBounded(path, VERSION_FILE_MAX_BYTES)
-    if (bytes.size != expectedSize) {
-        throw IllegalArgumentException("version doctest evidence changed while reading '" + path.toString() + "'")
-    }
-    Some(VersionSourceFile("doctest/results.json", "application/json", bytes))
-}
 
 private func loadVersionSite(spec: VersionComposeSpec, budget: VersionComposeBudget): VersionSite {
     let root = Path(spec.source)
@@ -429,11 +414,6 @@ private func loadVersionSite(spec: VersionComposeSpec, budget: VersionComposeBud
     let files = ArrayList<VersionSourceFile>()
     let seen = HashSet<String>()
     collectVersionFilesInDirectory(root, "", files, seen, budget)
-    match (loadVersionDoctestEvidence(root, budget)) {
-        case Some(evidence) =>
-            if (seen.add(evidence.path)) { files.add(evidence) }
-        case None => ()
-    }
     sort(files, lessThan: { left, right => left.path < right.path }, stable: true)
     var multilingual = false
     for (file in files) { if (file.path == "site-manifest.json") { multilingual = true } }
@@ -763,17 +743,6 @@ private func versionLatestIndex(sites: ArrayList<VersionSite>, latest: String): 
     throw IllegalArgumentException("latest version disappeared during composition")
 }
 
-private func rewriteComposedDoctestEvidence(html: String, site: VersionSite,
-    outputPath: String, filePath: String): String {
-    if (!site.hasPath("doctest/results.json")) { return html }
-    // Member pages carry the link too, one level below the version root, so both
-    // depths are rewritten to the composed location.
-    if (!html.contains("doctest/results.json")) { return html }
-    let evidencePath = versionOutputPath(site, "doctest/results.json")
-    let href = public_render.escapeStandaloneHtml(versionRelativeHref(outputPath, evidencePath))
-    html.replace("href=\"../../doctest/results.json\"", "href=\"" + href + "\"")
-        .replace("href=\"../doctest/results.json\"", "href=\"" + href + "\"")
-}
 
 private func attachComposedApiDiffEvidence(html: String, site: VersionSite,
     outputPath: String, filePath: String): String {
@@ -812,8 +781,7 @@ private func composeVersionArtifacts(sites: ArrayList<VersionSite>, latest: Stri
                 let selector = versionSelector(site, outputPath, file.path, sites, limit: selectorLimit,
                     chinese: html.contains("<html lang=\"zh-CN\"") || html.contains("<html lang=\"zh\""))
                 budget.reserveArtifact(outputPath, file.bytes.size + selector.size)
-                let withEvidence = rewriteComposedDoctestEvidence(html, site, outputPath, file.path)
-                let content = injectVersionSelector(attachComposedApiDiffEvidence(withEvidence, site, outputPath, file.path), selector)
+                let content = injectVersionSelector(attachComposedApiDiffEvidence(html, site, outputPath, file.path), selector)
                 artifacts.add(public_render.RenderArtifact(outputPath, file.mediaType, content))
             } else {
                 budget.reserveArtifact(outputPath, file.bytes.size)

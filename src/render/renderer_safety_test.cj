@@ -5,6 +5,9 @@ import markdown.{MarkdownEngine, MarkdownProfile}
 import std.unittest.*
 import std.unittest.testmacro.*
 
+private let RENDERER_SAFETY_MARKDOWN_PAGE = "markdown/" +
+    markdownPackagePagePath("cjdoc:module:v1:renderer-safety", "fixture")
+
 private func rendererSafetyDocumentation(markdown: MarkdownNode,
     tags!: Array<DocTag> = []): DocumentationSet {
     let moduleId = "cjdoc:module:v1:renderer-safety"
@@ -117,7 +120,7 @@ class RendererSafetyTest {
         let documentation = rendererSafetyDocumentation(MarkdownNode("document"))
         let expectations = [
             ("json", "docs.json"),
-            ("markdown", "markdown/docs.md"),
+            ("markdown", "markdown/index.md"),
             ("html", "html/index.html"),
             ("api-surface", "api-surface/api-surface.json"),
             ("coverage", "coverage/coverage.json"),
@@ -152,7 +155,7 @@ class RendererSafetyTest {
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
             rendererSafetyDocumentation(MarkdownNode("document", children: [
                 MarkdownNode("paragraph", children: [target])
-            ]))), "markdown/docs.md")
+            ]))), RENDERER_SAFETY_MARKDOWN_PAGE)
         let htmlPages = rendererSafetyText(HtmlDocumentationRenderer().render(
             rendererSafetyDocumentation(MarkdownNode("document", children: [
                 MarkdownNode("paragraph", children: [target])
@@ -262,7 +265,7 @@ class RendererSafetyTest {
             MarkdownNodeMetadata.forCodeBlock("fenced", Some("~"), DOC_IR_MAX_FENCE_LENGTH,
                 "cangjie", "cangjie", ""), literal: "body")])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
-            rendererSafetyDocumentation(code)), "markdown/docs.md")
+            rendererSafetyDocumentation(code)), RENDERER_SAFETY_MARKDOWN_PAGE)
         let marks = rendererSafetyFenceMarks()
 
         @Expect(markdown.contains("${marks}cangjie\nbody\n${marks}"))
@@ -274,7 +277,7 @@ class RendererSafetyTest {
             MarkdownNodeMetadata.forCodeBlock("fenced", Some("`"), 3,
                 "cangjie", "cangjie", ""), literal: "before ```` after")])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
-            rendererSafetyDocumentation(code)), "markdown/docs.md")
+            rendererSafetyDocumentation(code)), RENDERER_SAFETY_MARKDOWN_PAGE)
 
         @Expect(markdown.contains("`````cangjie\nbefore ```` after\n`````"))
     }
@@ -302,7 +305,7 @@ class RendererSafetyTest {
         let plain = DocTag("example", "Plain text", "<img src=x>")
         let documentation = rendererSafetyDocumentation(MarkdownNode("document"), tags: [example, plain])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(documentation),
-            "markdown/docs.md")
+            RENDERER_SAFETY_MARKDOWN_PAGE)
         let artifacts = HtmlDocumentationRenderer().render(documentation)
         let html = rendererSafetyText(artifacts)
         let css = rendererSafetyContent(artifacts, "html/style.css")
@@ -348,7 +351,7 @@ class RendererSafetyTest {
                 carriageReturnBoundary,
                 DocTag("param", "value", "parameter")])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(documentation),
-            "markdown/docs.md")
+            RENDERER_SAFETY_MARKDOWN_PAGE)
         let html = rendererSafetyText(HtmlDocumentationRenderer().render(documentation))
 
         @Expect(markdown.contains("   ```cj"), true)
@@ -707,7 +710,7 @@ class RendererSafetyTest {
         ])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
             rendererSafetyDocumentation(MarkdownNode("document", children: [paragraph]))),
-            "markdown/docs.md")
+            RENDERER_SAFETY_MARKDOWN_PAGE)
 
         @Expect(markdown.contains("left**mid**right 1\\. item ```a``b```"))
         @Expect(markdown.contains("[jump](https://example.test/a%20b%29c?q=x%20y#z)"))
@@ -731,7 +734,7 @@ class RendererSafetyTest {
             children: [row])
         let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
             rendererSafetyDocumentation(MarkdownNode("document", children: [blockQuote, table]))),
-            "markdown/docs.md")
+            RENDERER_SAFETY_MARKDOWN_PAGE)
 
         @Expect(markdown.contains("> - alpha"))
         @Expect(markdown.contains("| A**B**<br>C |\n| :---: |"))
@@ -751,7 +754,7 @@ class RendererSafetyTest {
                 children: [row])
             let markdown = rendererSafetyContent(MarkdownDocumentationRenderer().render(
                 rendererSafetyDocumentation(MarkdownNode("document", children: [table]))),
-                "markdown/docs.md")
+                RENDERER_SAFETY_MARKDOWN_PAGE)
             var tableLine = ""
             for (line in markdown.split("\n")) {
                 if (line.contains("<code>")) { tableLine = line; break }
@@ -806,7 +809,7 @@ class RendererSafetyTest {
                 DocTag("since", "", "1.0"),
                 DocTag("author", "", "Ada"),
                 DocTag("version", "", "2.0")
-            ])), "markdown/docs.md")
+            ])), RENDERER_SAFETY_MARKDOWN_PAGE)
 
         @Expect(markdown.contains("> **Deprecated.** use replacement"))
         @Expect(markdown.contains("#### Since\n\n- 1\\.0"))

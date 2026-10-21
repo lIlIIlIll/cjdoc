@@ -29,7 +29,7 @@
       "required": ["id", "kind", "title", "href", "summary", "symbolId", "moduleId", "packageName", "semanticState"],
       "properties": {
         "id": {"type": "string", "minLength": 1},
-        "kind": {"enum": ["project", "machine", "concept", "package", "symbol"]},
+        "kind": {"enum": ["project", "machine", "concept", "package", "symbol", "module", "guide", "validation"]},
         "title": {"type": "string", "minLength": 1},
         "href": {"$ref": "#/$defs/safePath"},
         "summary": {"anyOf": [{"type": "string"}, {"type": "null"}]},

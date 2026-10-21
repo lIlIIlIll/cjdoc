@@ -421,9 +421,8 @@ they were previously reported with the wrong cause:
   stream and status waits). The executed evidence is per path, not one test for all
   five: `BoundedProcessTimeoutTest.escapingDescendantCannotOutliveTheTimeout` covers
   the trailing-read path (45 s on the old code, 2.01 s after), and
-  `DoctestConfigSuite` covers the doctest path
-  (`subprocessPipeWaitDeadlineRemainsTimeoutNotOutputLimit`,
-  `subprocessPipesDrainBeforeReapingShortLivedChildren`); the handshake bound is
+  the then-current doctest suite covered its separate pipe-wait and drain paths
+  (that runner and suite have since been removed). The handshake bound is
   enforced by construction and was checked with a 1 ms budget during review.
   The residual stall survived all five.
 
@@ -524,7 +523,7 @@ names the scenario, the check that represents it, and its observable outcome.
 | OPT-T07 pre-existing output, symlinks, concurrent build/cancel | `scripts/test_ci_scripts.py`, `src/output_transaction*` tests | user data not overwritten; manifest not raced |
 | OPT-T08 native CLI / test build / provider static deps | `check.sh` stages `cli` and `provider`, `scripts/test_accept_dependency_public_api.py` | each consumes its real artifact; three-platform coverage kept |
 | OPT-T09 golden double generation, round-trip, real-repo no-cache twice | `check.sh` `cli` stage, `scripts/real_repository_smoke.py` | determinism/contract unchanged; no copy substitutes execution |
-| OPT-T10 support index, zh/en and two versions, diagnostics | `examples/pocketkit/reproduce.py` phases, `tests/showcase_contract/test_reproduce.py` | dependency order and doctest provenance preserved |
+| OPT-T10 support index, zh/en and two versions, diagnostics | `examples/pocketkit/reproduce.py` phases, `tests/showcase_contract/test_reproduce.py` | dependency order and native example-check provenance preserved |
 | OPT-T11 code/schema/fixture/site/doc/unknown/delete/rename routing | `scripts/test_ci_scripts.py` (change classification) | planned task set complete; unknown paths fall back to the full run |
 | OPT-T12 consecutive pushes, consecutive main releases, manual dispatch, late old candidate | `concurrency` groups in `ci.yml`/`pages.yml`, `scripts/test_ci_candidate_source.py` | stale validation cancelled; deployment not killed; newer site not overwritten |
 | OPT-T13 platform packaging failure, tag/source/flags/receipt change | `scripts/test_release_candidate.py`, `scripts/test_release_build_parameters.py`, `scripts/test_release_metadata.py` | release blocked; published package is the accepted candidate |

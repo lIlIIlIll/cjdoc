@@ -174,10 +174,13 @@ internal func loadDocumentationQualityConfig(projectRoot: String): Documentation
     var packageOverride: ?DocumentationCoveragePackageOverride = None
     let seen = HashSet<String>()
     for (rawLine in text.split("\n")) {
-        let line = rawLine.trimAscii()
+        let line = qualityTomlLine(rawLine)
         if (line.isEmpty() || line.startsWith("#")) { continue }
         if (line.startsWith("[") && line.endsWith("]")) {
             section = qualitySectionName(line)
+            if (section == "doctest") {
+                throw IllegalArgumentException("[doctest] is no longer supported; use --check-examples and @example {run}")
+            }
             packageOverride = if (section.startsWith("coverage.package.")) {
                 let normalized = section.removePrefix("coverage.package.")
                 var found: ?DocumentationCoveragePackageOverride = None
@@ -194,9 +197,8 @@ internal func loadDocumentationQualityConfig(projectRoot: String): Documentation
             } else { None }
             continue
         }
-        // Other consumers own [docs], [[docs.pages]], [external-docs.*],
-        // and [doctest]. In particular, repeated array-table keys are valid
-        // there and must never enter this parser's duplicate-key scope.
+        // Other consumers own [docs], [[docs.pages]], and [external-docs.*].
+        // Repeated array-table keys there must not enter this parser's duplicate-key scope.
         if (section != "lint" && section != "coverage" && section != "coverage.translation" && packageOverride.isNone()) {
             continue
         }

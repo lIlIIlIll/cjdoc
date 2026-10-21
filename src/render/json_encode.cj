@@ -134,7 +134,6 @@ private func appendTag(out: StringBuilder, value: DocTag): Unit {
     if (let Some(markdown) <- value.descriptionMarkdown) {
         out.append(",\"descriptionMarkdown\":"); appendMarkdown(out, markdown)
     }
-    if (!value.evidenceKey.isEmpty()) { out.append(",\"evidenceKey\":${escapeJsonString(value.evidenceKey)}") }
     out.append(",\"navigation\":"); appendTypeNavigation(out, value.navigation)
     out.append("}")
 }

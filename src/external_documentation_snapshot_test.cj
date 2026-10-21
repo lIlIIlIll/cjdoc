@@ -137,10 +137,9 @@ class ExternalDocumentationSnapshotTest {
             let markdown = externalSnapshotArtifact(after, markdownPath)
             expectExternalSnapshotMarkdown(markdown, reference)
             @Expect(markdown, externalSnapshotArtifact(before, markdownPath))
-            for (single in [api_render.MarkdownDocumentationRenderer().render(imported),
-                api_render.renderDocumentationFormatsWithOptions(imported, ["markdown"], locale: "en", markdownLayout: "single")]) {
-                expectExternalSnapshotMarkdown(externalSnapshotArtifact(single, "markdown/docs.md"), reference)
-            }
+            let direct = api_render.MarkdownDocumentationRenderer().render(imported)
+            expectExternalSnapshotMarkdown(externalSnapshotArtifact(direct, markdownPath), reference)
+            @Expect(externalSnapshotArtifact(direct, markdownPath), markdown)
         } finally { let _ = removeIfExists(root, recursive: true) }
     }
 

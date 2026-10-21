@@ -11,19 +11,6 @@ internal let AGENT_FIELD_LIMIT: Int64 = 16 * 1024
 internal let AGENT_CONCEPT_LIMIT: Int64 = 64 * 1024
 internal let AGENT_LLMS_LIST_LIMIT: Int64 = 512
 
-public class AgentConceptualPage {
-    public let route: String
-    public let title: String
-    public let kind: String
-    public let markdown: String
-
-    public init(route: String, title: String, kind: String, markdown!: String = "") {
-        this.route = route
-        this.title = title
-        this.kind = kind
-        this.markdown = markdown
-    }
-}
 
 internal class AgentNavigationPage {
     let id: String
@@ -113,7 +100,7 @@ private func agentSymbolSummary(symbol: SymbolDoc): ?String {
 }
 
 private func agentNavigationPages(documentation: DocumentationSet,
-    conceptualPages: Array<AgentConceptualPage>, includeValidation: Bool): ArrayList<AgentNavigationPage> {
+    conceptualPages: Array<DocumentationPage>, includeValidation: Bool): ArrayList<AgentNavigationPage> {
     validateTypedDocumentationSet(documentation)
     let projection = RenderProjection(documentation)
     let pages = ArrayList<AgentNavigationPage>()
@@ -130,7 +117,7 @@ private func agentNavigationPages(documentation: DocumentationSet,
             "Validation results", "validation.html"))
     }
     for (page in conceptualPages) {
-        pages.add(AgentNavigationPage("cjdoc:concept:${page.route}", "concept", page.title,
+        pages.add(AgentNavigationPage("cjdoc:concept:${page.route}", page.kind, page.title,
             page.route))
     }
     for (pkg in projection.packages) {
@@ -318,7 +305,7 @@ private func agentAppendDocumentation(out: RenderTextBuffer, symbol: SymbolDoc):
 }
 
 private func renderAgentFull(documentation: DocumentationSet,
-    conceptualPages: Array<AgentConceptualPage>, version: ?String): String {
+    conceptualPages: Array<DocumentationPage>, version: ?String): String {
     let out = RenderTextBuffer(limit: AGENT_FULL_LIMIT)
     if (!agentAppendFixed(out, "# ", AGENT_FULL_LIMIT)) { return out.toString() }
     agentAppendLimited(out, agentOneLine(documentation.project.name), AGENT_FULL_LIMIT, reserve: 2)
@@ -342,9 +329,9 @@ private func renderAgentFull(documentation: DocumentationSet,
                 return out.toString()
             }
             agentAppendLimited(out, page.route, AGENT_FULL_LIMIT, reserve: 2)
-            if (!page.markdown.trimAscii().isEmpty()) {
+            if (!page.text.trimAscii().isEmpty()) {
                 if (!agentAppendFixed(out, "\n\n", AGENT_FULL_LIMIT)) { return out.toString() }
-                agentAppendLimited(out, agentTruncate(page.markdown, AGENT_CONCEPT_LIMIT),
+                agentAppendLimited(out, agentTruncate(page.text, AGENT_CONCEPT_LIMIT),
                     AGENT_FULL_LIMIT, reserve: 2)
             }
             if (!agentAppendFixed(out, "\n\n", AGENT_FULL_LIMIT)) { return out.toString() }
@@ -421,16 +408,11 @@ private func renderAgentFull(documentation: DocumentationSet,
     out.toString()
 }
 public func renderAgentReadableArtifacts(documentation: DocumentationSet,
-    conceptualPages!: Array<AgentConceptualPage> = [], includeFull!: Bool = false,
-    version!: ?String = None, includeValidation!: Bool = false): Array<RenderArtifact> {
-    let concepts = ArrayList<AgentConceptualPage>(conceptualPages)
-    if (concepts.isEmpty()) {
-        let locale = documentation.readingLanguage.getOrDefault({ => "en" })
-        for (page in selectedDocumentationPages(documentation, locale)) {
-            concepts.add(AgentConceptualPage(page.route, page.title, page.kind, markdown: page.text))
-        }
-    }
-    let pages = agentNavigationPages(documentation, concepts.toArray(), includeValidation)
+    includeFull!: Bool = false, version!: ?String = None,
+    includeValidation!: Bool = false): Array<RenderArtifact> {
+    let locale = documentation.readingLanguage.getOrDefault({ => "en" })
+    let concepts = selectedDocumentationPages(documentation, locale)
+    let pages = agentNavigationPages(documentation, concepts, includeValidation)
     let artifacts = ArrayList<RenderArtifact>()
     artifacts.add(RenderArtifact("html/navigation-index.json", "application/json",
         renderAgentNavigationIndex(documentation, pages, version)))

@@ -91,20 +91,17 @@ def verify_repository_payload(members: dict[str, ArchiveMember], repo: Path,
 def inspect_archive(path: Path, platform_name: str, version: str,
                     sdk_version: str, sdk_sha256: str,
                     source_commit: str,
-                    stdx_version: str | None = None,
-                    stdx_sha256: str | None = None) -> tuple[dict[str, object], dict[str, ArchiveMember], str]:
+                    stdx_version: str,
+                    stdx_sha256: str) -> tuple[dict[str, object], dict[str, ArchiveMember], str]:
     path = lexical_absolute(path)
     if not RELEASE_SEMVER.fullmatch(version):
         raise ValueError("release package version must be a SemVer release version")
     if not SHA256.fullmatch(sdk_sha256):
         raise ValueError("SDK archive SHA-256 must be lowercase 64-hex")
-    if (stdx_version is None) != (stdx_sha256 is None):
-        raise ValueError("stdx version and checksum must be supplied together")
-    if stdx_version is not None:
-        if not SEMVER.fullmatch(stdx_version):
-            raise ValueError("stdx version must be a stable three-part SemVer")
-        if not SHA256.fullmatch(stdx_sha256 or ""):
-            raise ValueError("stdx archive SHA-256 must be lowercase 64-hex")
+    if not isinstance(stdx_version, str) or not SEMVER.fullmatch(stdx_version):
+        raise ValueError("stdx version must be a stable three-part SemVer")
+    if not isinstance(stdx_sha256, str) or not SHA256.fullmatch(stdx_sha256):
+        raise ValueError("stdx archive SHA-256 must be lowercase 64-hex")
     if not COMMIT.fullmatch(source_commit):
         raise ValueError("source commit must be lowercase 40-hex")
     extension = ".zip" if platform_name.startswith("windows-") else ".tar.gz"
@@ -135,42 +132,30 @@ def inspect_archive(path: Path, platform_name: str, version: str,
     except ValueError as error:
         raise ValueError(f"release manifest is invalid: {error}") from error
     schema_version = manifest.get("schemaVersion") if isinstance(manifest, dict) else None
-    v4 = schema_version == "cjdoc.release-package/4"
-    base_keys = {"schemaVersion", "version", "platform", "sourceCommit", "runtime", "files"}
-    required_keys = base_keys | ({"releaseTag", "sourceTree", "candidateReceiptSha256"} if v4 else set())
-    if not isinstance(manifest, dict) or set(manifest) != required_keys or schema_version not in {
-        "cjdoc.release-package/2", "cjdoc.release-package/3", "cjdoc.release-package/4"
-    }:
+    required_keys = {"schemaVersion", "version", "platform", "sourceCommit", "runtime", "files",
+                     "releaseTag", "sourceTree", "candidateReceiptSha256"}
+    if not isinstance(manifest, dict) or set(manifest) != required_keys or \
+            schema_version != "cjdoc.release-package/4":
         raise ValueError("unknown release package manifest schema")
     if manifest.get("version") != version or manifest.get("platform") != platform_name:
         raise ValueError("release package identity does not match its declared target")
     if manifest.get("sourceCommit") != source_commit:
         raise ValueError("release package source commit does not match")
-    if v4:
-        if not isinstance(manifest.get("releaseTag"), str) or not manifest["releaseTag"]:
-            raise ValueError("release package v4 requires its release tag")
-        if not COMMIT.fullmatch(manifest.get("sourceTree") or ""):
-            raise ValueError("release package v4 requires its source tree")
-        if not SHA256.fullmatch(manifest.get("candidateReceiptSha256") or ""):
-            raise ValueError("release package v4 requires its candidate receipt digest")
+    if not isinstance(manifest.get("releaseTag"), str) or not manifest["releaseTag"]:
+        raise ValueError("release package v4 requires its release tag")
+    if not COMMIT.fullmatch(manifest.get("sourceTree") or ""):
+        raise ValueError("release package v4 requires its source tree")
+    if not SHA256.fullmatch(manifest.get("candidateReceiptSha256") or ""):
+        raise ValueError("release package v4 requires its candidate receipt digest")
     runtime = manifest.get("runtime")
-    if schema_version == "cjdoc.release-package/2":
-        if stdx_version is not None:
-            raise ValueError("release package omits required stdx provenance")
-        if not isinstance(runtime, dict) or set(runtime) != {
-            "requiresCangjieSdk", "sdkVersion", "sdkArchiveSha256"
-        } or runtime.get("requiresCangjieSdk") is not True or \
-                runtime.get("sdkVersion") != sdk_version or runtime.get("sdkArchiveSha256") != sdk_sha256:
-            raise ValueError("release package SDK requirement does not match")
-    else:
-        if stdx_version is None or not isinstance(runtime, dict) or set(runtime) != {
-            "requiresCangjieSdk", "sdkVersion", "sdkArchiveSha256",
-            "requiresStdx", "stdxVersion", "stdxArchiveSha256"
-        } or runtime.get("requiresCangjieSdk") is not True or \
-                runtime.get("sdkVersion") != sdk_version or runtime.get("sdkArchiveSha256") != sdk_sha256 or \
-                runtime.get("requiresStdx") is not True or runtime.get("stdxVersion") != stdx_version or \
-                runtime.get("stdxArchiveSha256") != stdx_sha256:
-            raise ValueError("release package SDK and stdx requirements do not match")
+    if not isinstance(runtime, dict) or set(runtime) != {
+        "requiresCangjieSdk", "sdkVersion", "sdkArchiveSha256",
+        "requiresStdx", "stdxVersion", "stdxArchiveSha256"
+    } or runtime.get("requiresCangjieSdk") is not True or \
+            runtime.get("sdkVersion") != sdk_version or runtime.get("sdkArchiveSha256") != sdk_sha256 or \
+            runtime.get("requiresStdx") is not True or runtime.get("stdxVersion") != stdx_version or \
+            runtime.get("stdxArchiveSha256") != stdx_sha256:
+        raise ValueError("release package SDK and stdx requirements do not match")
     files = manifest.get("files")
     if not isinstance(files, dict):
         raise ValueError("release package manifest files must be an object")
@@ -199,9 +184,8 @@ def inspect_archive(path: Path, platform_name: str, version: str,
         "THIRD_PARTY_NOTICES.md",
         "licenses/markdown-MIT.txt",
         "licenses/yjson-Apache-2.0.txt",
+        "release-candidate.json",
     } | SCHEMA_PAYLOAD
-    if v4:
-        expected_payload = expected_payload | {"release-candidate.json"}
     if actual_payload != expected_payload:
         raise ValueError(
             "release package payload set mismatch: missing=" +
@@ -219,8 +203,7 @@ def inspect_archive(path: Path, platform_name: str, version: str,
                 f"release package member mode mismatch: {name} "
                 f"must be {expected_mode:04o}, got {member.mode:04o}"
             )
-    if v4:
-        _verify_candidate_receipt(manifest, relative_members, executable_name)
+    _verify_candidate_receipt(manifest, relative_members, executable_name)
     return manifest, relative_members, executable_name
 
 

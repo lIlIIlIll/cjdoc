@@ -28,7 +28,7 @@ class VersionContextMemberTest {
     @TestCase
     func versionSelectorsMapDeclaredExtendedAndInheritedInlineMembers(): Unit {
         let source = """
-{"schemaVersion":"cjdoc.symbol-index/1","entries":[
+{"schemaVersion":"cjdoc.symbol-index/2","entries":[
  {"id":"box","href":"symbols/box.html","kind":"class","relations":[
   {"kind":"extendedBy","state":"resolved","targetId":"extension"},
   {"kind":"inheritedMember","state":"resolved","targetId":"inherited"},

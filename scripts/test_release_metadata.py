@@ -15,7 +15,7 @@ import zipfile
 
 from scripts import package_release
 from scripts import perf_gate
-from scripts import repository_input_migrations
+from scripts import repository_input_codec
 from scripts import real_repository_smoke
 from scripts import safe_output_root
 from scripts import source_identity
@@ -35,7 +35,6 @@ from scripts.release_tools_test_support import (
 from scripts.verify_repository_inputs import (
     CURRENT_GOLDEN_VERSION,
     GOLDEN_NAMES,
-    LEGACY_GOLDEN_VERSIONS,
     SCHEMA_NAMES,
 )
 
@@ -72,26 +71,26 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
                 verify_release.verify_repository(gitless, "v0.7.0")
 
     def test_repository_inputs_require_every_generated_file_to_be_tracked(self) -> None:
-        for version in (*LEGACY_GOLDEN_VERSIONS, CURRENT_GOLDEN_VERSION):
-            with self.subTest(version=version), tempfile.TemporaryDirectory() as temporary:
-                repo, _ = self.make_release_repo(Path(temporary))
-                missing = f"tests/fixtures/golden-v{version}/basic.docs.json"
-                self.git(repo, "rm", "-q", "--cached", "--", missing)
-                with self.assertRaisesRegex(ValueError, "not tracked"):
-                    verify_repository_inputs.verify_repository_inputs(
-                        repo, require_tracked=True
-                    )
+        with tempfile.TemporaryDirectory() as temporary:
+            repo, _ = self.make_release_repo(Path(temporary))
+            missing = f"tests/fixtures/golden-v{CURRENT_GOLDEN_VERSION}/basic.docs.json"
+            self.git(repo, "rm", "-q", "--cached", "--", missing)
+            with self.assertRaisesRegex(ValueError, "not tracked"):
+                verify_repository_inputs.verify_repository_inputs(
+                    repo, require_tracked=True
+                )
 
     def test_repository_inputs_reject_missing_extra_and_modified_vendor_files(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo, _ = self.make_release_repo(Path(temporary))
-            missing = repo / "tests/fixtures/golden-v8/basic.docs.json"
+            missing = repo / f"tests/fixtures/golden-v{CURRENT_GOLDEN_VERSION}/basic.docs.json"
+            original = missing.read_bytes()
             missing.unlink()
             with self.assertRaisesRegex(ValueError, "missing"):
                 verify_repository_inputs.verify_repository_inputs(repo)
-            missing.write_text('{"schemaVersion":"cjdoc.doc-ir/8"}\n', encoding="utf-8")
+            missing.write_bytes(original)
 
-            extra = repo / "tests/fixtures/golden-v7/not-a-fixture.docs.json"
+            extra = repo / f"tests/fixtures/golden-v{CURRENT_GOLDEN_VERSION}/not-a-fixture.docs.json"
             extra.write_text("{}\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "unexpected"):
                 verify_repository_inputs.verify_repository_inputs(repo)
@@ -112,12 +111,12 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "not tracked"):
                     verify_repository_inputs.verify_repository_inputs(repo, require_tracked=True)
 
-    def test_repository_inputs_reject_legacy_schema_drift_and_vendor_extras(self) -> None:
+    def test_repository_inputs_reject_historical_schema_outputs_and_vendor_extras(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo, _ = self.make_release_repo(Path(temporary))
-            schema = repo / "docs/schema/doc-ir-v7.schema.json"
-            schema.write_bytes(schema.read_bytes() + b"\n")
-            with self.assertRaisesRegex(ValueError, "byte-frozen"):
+            schema = repo / "docs/schema/doc-ir-v15.schema.json"
+            schema.write_text("{}\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "unexpected=doc-ir-v15"):
                 verify_repository_inputs.verify_repository_inputs(repo)
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -157,11 +156,11 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary:
             repo, _ = self.make_release_repo(Path(temporary))
-            schema_path = repo / "docs/schema/doc-ir-v8.schema.json"
+            schema_path = repo / f"docs/schema/doc-ir-v{CURRENT_GOLDEN_VERSION}.schema.json"
             schema = json.loads(schema_path.read_text(encoding="utf-8"))
             schema["$defs"] = {}
             schema_path.write_text(json.dumps(schema), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "critical definitions"):
+            with self.assertRaisesRegex(ValueError, "graph binding field|critical definitions"):
                 verify_repository_inputs.verify_repository_inputs(repo)
 
     def test_repository_schema_gate_rejects_duplicate_and_non_finite_json(self) -> None:
@@ -185,101 +184,39 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "non-finite JSON number"):
                 verify_repository_inputs.verify_repository_inputs(repo)
 
-    def test_repository_inputs_freeze_legacy_sources_and_receipt_manifest(self) -> None:
+    def test_repository_schema_inventory_has_only_current_contracts(self) -> None:
+        self.assertEqual(len(SCHEMA_NAMES), 18)
+        self.assertEqual(
+            {name for name in SCHEMA_NAMES if name.startswith("doc-ir")},
+            {"doc-ir", "doc-ir-v16"},
+        )
+        self.assertFalse(any("doctest" in name for name in SCHEMA_NAMES))
+        for name in ("doc-ir", "doc-ir-v16"):
+            value = json.loads((PROJECT_ROOT / f"docs/schema/{name}.schema.json").read_text())
+            self.assertNotIn("evidenceKey", value["$defs"]["tag"]["properties"])
+            self.assertIn("navigation", value["$defs"]["tag"]["properties"])
+
+    def test_current_golden_validation_rejects_changed_roundtrip_bytes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo, _ = self.make_release_repo(Path(temporary))
-            legacy = repo / "tests/fixtures/golden-v6/basic.docs.json"
-            legacy.write_bytes(legacy.read_bytes() + b"\n")
-            with self.assertRaisesRegex(ValueError, "legacy input is not byte-frozen"):
-                verify_repository_inputs.verify_repository_inputs(repo)
+            binary = repo / "fake-cjdoc"
+            binary.write_bytes(b"binary")
+            with mock.patch.object(repository_input_codec, "run_doc_ir_render", return_value=b"{}"):
+                with self.assertRaisesRegex(ValueError, "exact strict round-trip"):
+                    repository_input_codec.verify_current_goldens(repo, binary)
 
+    def test_current_golden_validation_requires_corrupt_input_rejection(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo, _ = self.make_release_repo(Path(temporary))
-            receipt = repo / "tests/fixtures/legacy-migration-v8.json"
-            receipt.write_bytes(receipt.read_bytes() + b"\n")
-            with self.assertRaisesRegex(ValueError, "receipt manifest is not byte-frozen"):
-                verify_repository_inputs.verify_repository_inputs(repo)
-
-    def test_v14_matching_corruption_in_both_copies_is_rejected_by_fixed_hash(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            repo, _ = self.make_release_repo(Path(temporary))
-            for directory in ("golden-v14", "legacy14"):
-                source = repo / "tests/fixtures" / directory / "basic.docs.json"
-                source.write_bytes(source.read_bytes() + b"\n")
-            with self.assertRaisesRegex(ValueError, "v14 legacy input is not byte-frozen"):
-                verify_repository_inputs.verify_repository_inputs(repo)
-
-    def test_v13_and_v14_goldens_and_freeze_copies_are_immutable(self) -> None:
-        for directory in ("golden-v13", "legacy13", "golden-v14", "legacy14"):
-            with self.subTest(directory=directory), tempfile.TemporaryDirectory() as temporary:
-                repo, _ = self.make_release_repo(Path(temporary))
-                source = repo / "tests/fixtures" / directory / "basic.docs.json"
-                source.write_bytes(source.read_bytes() + b"\n")
-                with self.assertRaisesRegex(ValueError, "v1[34] legacy input"):
-                    verify_repository_inputs.verify_repository_inputs(repo)
-
-    def test_legacy_fact_projection_preserves_all_three_nested_semantic_values(self) -> None:
-        value = {
-            "kind": "generic", "spelling": "Box<Widget>", "nullable": False,
-            "semanticState": "partial", "semanticCanonical": None, "semanticProvider": "source",
-            "navigation": None,
-            "arguments": [{
-                "kind": "named", "spelling": "Widget", "nullable": False, "arguments": [],
-                "semanticState": "resolved", "semanticCanonical": "library.Widget",
-                "semanticProvider": "chir", "navigation": None,
-            }, {
-                "kind": "typeParameter", "spelling": "T", "nullable": False, "arguments": [],
-                "semanticState": "unavailable", "semanticCanonical": None,
-                "semanticProvider": None, "navigation": None,
-            }],
-        }
-        expected = {
-            "kind": "generic", "spelling": "Box<Widget>", "nullable": False,
-            "semantic": {"state": "partial", "canonical": None, "provider": "source"},
-            "arguments": [{
-                "kind": "named", "spelling": "Widget", "nullable": False, "arguments": [],
-                "semantic": {"state": "resolved", "canonical": "library.Widget", "provider": "chir"},
-            }, {
-                "kind": "typeParameter", "spelling": "T", "nullable": False, "arguments": [],
-                "semantic": {"state": "unavailable", "canonical": None, "provider": None},
-            }],
-        }
-        repository_input_migrations.project_v15_legacy_facts(value)
-        self.assertEqual(value, expected)
-
-    def test_legacy_fact_projection_rejects_missing_or_mixed_semantic_wire(self) -> None:
-        for missing in ("semanticState", "semanticCanonical", "semanticProvider", None):
-            with self.subTest(missing=missing):
-                value = {
-                    "kind": "named", "spelling": "Widget", "nullable": False, "arguments": [],
-                    "semanticState": "resolved", "semanticCanonical": "library.Widget",
-                    "semanticProvider": "chir", "navigation": None,
-                }
-                if missing is None:
-                    value["semantic"] = {
-                        "state": "resolved", "canonical": "library.Widget", "provider": "chir",
-                    }
-                else:
-                    del value[missing]
-                with self.assertRaises(ValueError):
-                    repository_input_migrations.project_v15_legacy_facts(value)
-
-    @unittest.skipIf(os.name == "nt", "fixture executable uses a POSIX shebang")
-    def test_same_output_for_every_legacy_golden_does_not_satisfy_receipts(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            repo, _ = self.make_release_repo(root / "repo")
-            binary = root / "fake-cjdoc"
-            binary.write_text(
-                "#!/usr/bin/env python3\n"
-                "import json,sys\n"
-                "p=sys.argv[sys.argv.index('--input')+1]\n"
-                "v=json.load(open(p,encoding='utf-8'))\n"
-                "if v.get('corrupt'): raise SystemExit(2)\n"
-                "print(json.dumps({'schemaVersion':'cjdoc.doc-ir/" + str(CURRENT_GOLDEN_VERSION) + "','generator':{'toolchain':''},'documentationRevision':'','apiCollectionState':{'complete':'resolved','partial':'partial'}.get(v.get('status'),'unavailable'),'dependencies':[],'documentSets':[]}))\n",
-                encoding="utf-8",
-            )
-            binary.chmod(0o755)
-            with self.assertRaisesRegex(ValueError, "semantic receipt"):
-                verify_repository_inputs.verify_legacy_migrations(repo, binary)
+            binary = repo / "fake-cjdoc"
+            binary.write_bytes(b"binary")
+            with mock.patch.object(
+                repository_input_codec, "run_doc_ir_render",
+                side_effect=lambda _binary, source: source.read_bytes(),
+            ), mock.patch.object(
+                repository_input_codec.subprocess, "run",
+                return_value=subprocess.CompletedProcess([], 0),
+            ):
+                with self.assertRaisesRegex(ValueError, "accepted a missing required field"):
+                    repository_input_codec.verify_current_goldens(repo, binary)
 

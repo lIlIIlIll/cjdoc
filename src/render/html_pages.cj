@@ -257,8 +257,7 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, entry: HtmlMemberEntry,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    rootPrefix: String, locale: String,
-    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): Unit {
+    rootPrefix: String, locale: String): Unit {
     let member = entry.symbol
     let anchor = symbolAnchor(member)
     out.append("<div class=\"member-row\"><details class=\"declaration-summary member-detail\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\" data-member-origin=\"${escapeHtml(entry.origin)}\">")
@@ -312,7 +311,7 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
         }
     }
     appendDocumentationHtml(out, index, member, rootPrefix, assetLookup, typeLinkIndex,
-        headingBase: 3, locale: locale, exampleEvidence: exampleEvidence)
+        headingBase: 3, locale: locale)
     appendReaderRelationships(out, index, member, rootPrefix, typeLinkIndex, locale,
         headingTag: "h3")
     appendReverseTypeUsages(out, index, typeLinkIndex, member, rootPrefix, locale)
@@ -344,8 +343,7 @@ internal func appendMemberSection(out: RenderTextBuffer,
     documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, browser: HtmlMemberBrowser,
     title: String, assetLookup: HashMap<String, String>,
-    typeLinkIndex: HtmlTypeLinkIndex, locale: String,
-    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): Unit {
+    typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
     let sectionLabel = match (title) {
         case "Constructors" => "构造器"
         case "Properties" => "属性"
@@ -403,7 +401,7 @@ internal func appendMemberSection(out: RenderTextBuffer,
             activeOverloadKey = overloadKey
         }
         appendInlineMemberDetail(out, documentation, projection, index, entry,
-            assetLookup, typeLinkIndex, "../", locale, exampleEvidence: exampleEvidence)
+            assetLookup, typeLinkIndex, "../", locale)
     }
     if (!activeOverloadKey.isEmpty()) { out.append("</div>\n") }
     if (opened) { out.append("</section>\n") }
@@ -430,8 +428,7 @@ internal func appendOwnerBreadcrumbs(out: RenderTextBuffer, index: HashMap<Strin
 internal func renderSymbolPage(documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, symbol: SymbolDoc,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    locale!: String = "en", docVersion!: ?String = None,
-    exampleEvidence!: HashMap<String, String> = HashMap<String, String>()): String {
+    locale!: String = "en", docVersion!: ?String = None): String {
     let out = RenderTextBuffer()
     let pageTitle = if (symbol.kind == "extend") {
         "${label(locale, "Extension", "扩展")} ${readerQualifiedName(symbol)}"
@@ -509,7 +506,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
                 "Nested classes", "Nested structs", "Nested interfaces", "Nested enums",
                 "Nested extensions", "Other members"]) {
                 appendMemberSection(out, documentation, projection, index, browser,
-                    title, assetLookup, typeLinkIndex, locale, exampleEvidence: exampleEvidence)
+                    title, assetLookup, typeLinkIndex, locale)
             }
             out.append("</section>\n")
         } else if (symbol.kind == "extend") {
@@ -520,7 +517,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     }
     appendDocumentationHtml(out, index, symbol, "../", assetLookup,
         typeLinkIndex, headingBase: 4, locale: locale, includeContracts: !hasMemberPage,
-        includeIntroduction: !hasMemberPage, exampleEvidence: exampleEvidence)
+        includeIntroduction: !hasMemberPage)
     if (!hasMemberPage) {
         appendReaderRelationships(out, index, symbol, "../", typeLinkIndex, locale)
     }

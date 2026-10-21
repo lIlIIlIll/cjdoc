@@ -147,7 +147,7 @@ def mount(root: Path, site: Path, locale: str, alternate: Path | None = None) ->
     identities = {path: key for key, path in pages.items()}
     counterparts = {path: alternate / other[key] for key, path in pages.items() if key in other}
     # These are explicit report-view identities produced by report_views, not API routes.
-    for name in ("report-doctest.html", "report-diff.html", "report-coverage.html", "report-diagnostics.html"):
+    for name in ("report-native-check.html", "report-diff.html", "report-coverage.html", "report-diagnostics.html"):
         if alternate is not None and (alternate / name).is_file():
             counterparts[name] = alternate / name
     for page in sorted(root.rglob("*.html")):

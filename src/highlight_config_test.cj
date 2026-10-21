@@ -35,7 +35,7 @@ class HighlightConfigTest {
         let config = highlightConfigFromText("[other]\nmode = invalid\n" +
             "[highlight] # presentation only\nmode = \"off\" # disabled\n" +
             "languages = [\" CJ \", \"py\", \"yml\", \"custom#grammar\",]\n" +
-            "on-error = \"error\"\n[doctest]\nmode = \"off\"\n")
+            "on-error = \"error\"\n[docs]\nindex = \"docs/index.md\"\n")
         @Expect(config.mode, "off")
         @Expect(config.onError, "error")
         @Expect(config.languages.toArray(), ["cangjie", "python", "yaml", "custom#grammar"])

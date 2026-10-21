@@ -188,14 +188,13 @@ public class DocTag {
     public let translationState: String
     public let fieldId: String
     public let descriptionMarkdown: ?MarkdownNode
-    public let evidenceKey: String
     public let navigation: ?TypeNavigation
 
     public init(name: String, subject: String, description: String,
         referenceState!: String = "unavailable", targetSymbolId!: ?String = None,
         directives!: String = "", exampleMarkdown!: ?MarkdownNode = None,
         contentLanguage!: ?String = None, translationState!: String = "", fieldId!: String = "",
-        descriptionMarkdown!: ?MarkdownNode = None, evidenceKey!: String = "",
+        descriptionMarkdown!: ?MarkdownNode = None,
         navigation!: ?TypeNavigation = None) {
         if (!isSemanticState(referenceState)) { throw IllegalArgumentException("invalid reference state") }
         if (let Some(language) <- contentLanguage) {
@@ -220,7 +219,6 @@ public class DocTag {
         this.translationState = translationState
         this.fieldId = fieldId
         this.descriptionMarkdown = descriptionMarkdown
-        this.evidenceKey = evidenceKey
         this.navigation = navigation
     }
 }

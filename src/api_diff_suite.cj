@@ -100,6 +100,19 @@ class ApiDiffSuite {
         @Expect(report.summary.breaking, 0)
         @Expect(apiDiffExitCode(report, true, true), 0)
     }
+    @TestCase
+    func apiDiffRequiresExactSnapshotIdentity(): Unit {
+        let declaration = apiTestDeclaration("cjdoc:test:one", "one")
+        let baseline = ApiContractSnapshot("api-diff-test", "external", "default",
+            declarations: [declaration])
+        @ExpectThrows[IllegalArgumentException](compareApiContracts(baseline,
+            ApiContractSnapshot("api-diff-test", "external", "unknown", declarations: [declaration])))
+        @ExpectThrows[IllegalArgumentException](compareApiContracts(baseline,
+            ApiContractSnapshot("other-project", "external", "default", declarations: [declaration])))
+        @ExpectThrows[IllegalArgumentException](compareApiContracts(baseline,
+            ApiContractSnapshot("api-diff-test", "team", "default", declarations: [declaration])))
+    }
+
 
     @TestCase
     func visibilityNarrowingIsBreakingAndDenied(): Unit {

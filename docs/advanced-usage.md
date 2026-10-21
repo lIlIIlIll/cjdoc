@@ -35,7 +35,6 @@ target/doc/
 ├── html/search.js
 ├── html/style.css
 ├── api-surface/api-surface.json
-├── doctest/results.json
 └── coverage/coverage.json
 ```
 
@@ -225,13 +224,12 @@ HTML 和 Markdown 默认使用中文结构标题。生成英文站点：
 cjdoc generate --project . --format html --locale en
 ```
 
-如果需要兼容旧式单页 Markdown，必须同时使用英文 locale：
+Markdown 输出使用与 HTML 相同的站点结构。生成英文 Markdown 站点：
 
 ```bash
 cjdoc generate --project . \
   --format markdown \
-  --locale en \
-  --markdown-layout single
+  --locale en
 ```
 
 条件编译不会自动读取 compiler target profile。把需要的条件显式传给 cjdoc，并可重复指定：
@@ -294,7 +292,7 @@ cjdoc check --project . \
 cjdoc diff --baseline api-surface.json --current api-surface-next.json --format json --deny-breaking-api
 ```
 
-`diff` 默认返回 `0` 并保留报告；`--deny-breaking-api` 或 `--deny-potentially-breaking-api` 让对应分类返回 `1`，输入错误返回 `2`。v1/v2 API snapshot 只作为严格迁移输入，当前输出为 v3；`--format json` 输出稳定的 `cjdoc.api-diff/2` 文档。
+`diff` 默认返回 `0` 并保留报告；`--deny-breaking-api` 或 `--deny-potentially-breaking-api` 让对应分类返回 `1`，输入错误返回 `2`。baseline 和 current 都必须是 v3 API snapshot；v1/v2 已停止接受。`--format json` 输出稳定的 `cjdoc.api-diff/2` 文档。
 
 只想读取覆盖率 JSON 时：
 
@@ -321,9 +319,9 @@ symbols = 100
 CLI 的 `--min-symbol-coverage` 和 `--min-parameter-coverage` 仍可作为一次性更高门槛；配置中的 returns、throws、examples、deprecated、semantic-links 以及 package 覆盖率会由 `check` 一并执行。
 
 
-## 在 CI 中执行 doctest
+## 在 CI 中检查示例
 
-需要把文档示例作为门禁时，在项目根 `cjdoc.toml` 启用 `mode = "deny"`，并保留 `timeout-ms`、`memory-mb` 和 `jobs` 的明确值。当前 native 后端要求 `memory-mb` 在 `2048..16384` MiB；低于该范围的配置会被拒绝，因为 `cjc` 与生成程序需要更大的虚拟地址空间才能启动。生成或 `check` 会为每个 fenced Cangjie block 创建独立工作目录，直接启动 `cjc` 和生成程序，禁止 shell 拼接；超时、非零退出码和编译失败都会产生 `CJDOC3010` 结果。生成模式把机器可读结果保存为 `doctest/results.json`，而 `check` 只使用退出码。
+显式添加 `--check-examples`，把示例编译诊断纳入当前文档门禁。默认只编译；只有作者标记 `{run}` 的示例才会执行，`{must-fail}` 表示预期编译失败。超时、输出和内存限制继续生效，无法实施所需限制时明确拒绝。结果由诊断和退出码表达，不生成逐例执行报告。旧 `[doctest]` 配置必须删除。
 
 在 GitHub Actions 或其他 CI 中，直接运行同一条命令即可。CI runner 需要先安装 cjdoc，并把它加入 `PATH`；不需要把仓库验收脚本当成工具用户的前置步骤。
 
@@ -333,6 +331,7 @@ GitHub Actions 的最小检查步骤：
 - name: Check Cangjie documentation
   run: |
     cjdoc check --project . \
+      --check-examples \
       --api-surface-baseline api-surface.json \
       --min-symbol-coverage 80 \
       --min-parameter-coverage 90
@@ -352,7 +351,7 @@ cjdoc render \
 
 `render` 会先验证输入的 schema 和引用关系。它不读取项目源码，因此源码注释或声明有变化时，应重新运行 `generate`。
 
-v6–v14 只能作为严格的只读输入迁移到当前 v15 输出；cjdoc 不会重新生成旧版本格式，也不为旧输入补造依赖或导航证据。
+`render` 只接受当前 Doc IR v16；旧版本输入会被拒绝，不会被迁移或补造依赖、导航证据。
 
 需要在 HTML 声明页显示 GitHub 源码链接时，`generate` 必须同时接收 `--repository-url` 和 `--repository-revision`，并可用 `--repository-root` 指定仓库根目录。URL 只支持 canonical GitHub HTTPS 仓库根；缺少真实 source-origin 映射、仓库外依赖或符号链接越界时，链接会被省略。`render` 只使用 JSON 中已经保存的 metadata，不接受这些生成参数。
 
@@ -427,8 +426,7 @@ cjpm -v
 | `--cache-dir <dir>` | `generate`, `check` | `target/cjdoc/cache/source-v11` | 指定 source cache |
 | `--no-cache` | `generate`, `check` | 关闭 | 禁用 source cache |
 | `--locale <name>` | `generate`, `render` | `zh-CN` | HTML/Markdown 结构语言 |
-| `--markdown-layout <name>` | `generate`, `render` | `site` | `site` 或英文 `single` |
-| `--api-surface-baseline <file>` | `generate`, `check` | 无 | 对账 API snapshot；当前生成 v3，严格接受 v1/v2/v3 输入 |
+| `--api-surface-baseline <file>` | `generate`, `check` | 无 | 对账 API snapshot；只接受当前 v3 格式 |
 | `--baseline <file>` / `--current <file>` | `diff` | 无 | 指定两个 API snapshot |
 | `--deny-breaking-api` / `--deny-potentially-breaking-api` | `diff` | 关闭 | 把对应 API diff 分类变成退出码 `1` |
 | `--format text` / `--format json` | `diff` | `text` | 选择人读文本或 `cjdoc.api-diff/2` JSON |
@@ -441,9 +439,9 @@ cjpm -v
 | `--doc-version <id>` | `generate`, `render` | 无 | 把版本上下文写入 HTML agent 产物和 `html/version.json` |
 | `--force-owned` | `generate`, `render` | 关闭 | 显式采用已有输出目录内容 |
 
-## 多语言模型、迁移和版本组合
+## 多语言模型与版本组合
 
-Doc IR v15 保留作者变体与独立依赖导航事实，严格迁移 v6–v14 不补造依赖或工具链证据。`--require-language en` 和 `[coverage.translation]` 提供翻译门槛；版本组合读取原生 `site-manifest.json`。配置与格式版本见 [多语言文档](i18n.md)。
+Doc IR v16 保留作者变体与独立依赖导航事实，不会从旧格式推造依赖或工具链证据。`--require-language en` 和 `[coverage.translation]` 提供翻译门槛；版本组合读取原生 `site-manifest.json`。配置与格式版本见 [多语言文档](i18n.md)。
 
 ## 准备固定官方文档快照索引（DL05）
 
@@ -591,11 +589,10 @@ func consumerRequest(pinV1: String, pinV2: String): GenerationRequest {
 
 声明及祖先类型的泛型形参也约束正文和 `@see/@throws`：在本地 ID 短路、导入别名展开及多语言条目关联前检查词法遮蔽。被遮蔽的引用保留作者文字和拒绝原因，不能留下假的本地 `resolved` 或目标 ID；明确、可证明的限定目标仍可达。指南只具有捕获的模块上下文，关联某个泛型 API 不会在整页虚构该函数的词法泛型作用域。
 
-Doc IR `/15` 的 TypeRef wire 将三项类型语义事实命名平铺为必需的 `semanticState`、`semanticCanonical`、`semanticProvider`，后两项仍明确允许 null；公开 `TypeRef.semantic: SemanticType` 模型完整保留，不将语义合并进导航。这样每个 TypeRef 少一个真实 JSON 对象，不增加数组条目，也不丢 canonical/provider 的值。历史 `/6`–`/14` 的 schema 与 golden 仍使用原 `semantic: {state, canonical, provider}`，严格解码后按三值一一映射到新 wire；既有 provider SPI、旧 `symbol-index/1` 和 `api-surface` 自身的版本化格式不随此改变。导航的 exact/manual 不会将 `semanticState` 提升为 resolved。
+Doc IR `/16` 的 TypeRef wire 将三项类型语义事实命名平铺为必需的 `semanticState`、`semanticCanonical`、`semanticProvider`，后两项仍明确允许 null；公开 `TypeRef.semantic: SemanticType` 模型完整保留，不将语义合并进导航。这样每个 TypeRef 少一个真实 JSON 对象，不增加数组条目，也不丢 canonical/provider 的值。当前 decoder 只接受此 wire；既有 provider SPI、`symbol-index/2` 与 `api-surface/3` 使用各自的版本化格式。导航的 exact/manual 不会将 `semanticState` 提升为 resolved。
 
-为控制实际 Doc IR 大小，新生成的结构 wrapper、AST 确认的 intrinsic primitive 和作用域确认的泛型形参，在没有独立可解析目标时使用 `navigation: null`，不为它们重复发布十字段的失败对象。所有类型节点、原始拼写、语义状态和递归子节点仍保留；具备可信 provider canonical 身份的节点仍尝试独立目标并保存完整选择或拒绝原因。`String`、`Array`、`Option` 不按显示名称当作无目标 primitive。已确认的泛型形参标为 `kind: "typeParameter"`，渲染器不把其 canonical 拼写再当成同名声明。缺版本、歧义、未知依赖、隐藏目标等实际 named/generic 引用的失败决策保持非空。`null` 本身只表示没有记录独立导航决策；旧 v6–v14 迁移补出的 null 不包含新生成阶段的 AST/scope 证明，不能追认其为 not-applicable。质量报告继续列出全部结构节点、原子和非目标位置。
-
-Doc IR `/15` 与 inventory `/2` 共用唯一导航 wire：非 resolved、`matchLevel=none` 且 dependency/document-set/index/symbol/URL/API/language 七项上下文全空的失败，以恰好两项的 `[state, reason]` 保存。state 仅为 `unresolved`、`ambiguous`、`unavailable`，reason 保留完整原文和原有字符串预算；它不是成功链接、依赖版本或兼容性证据。任何有上下文的失败和全部 resolved 记录仍保存完整十字段对象，公开 `TypeNavigation` 模型始终保留这十个字段。解码器拒绝 resolved tuple、多项、错误类型和本应使用 tuple 的无上下文对象；不兼容未发布的早期 `/15` 预览形状。维护脚本使用 `scripts/document_navigation.py` 在 wire 与完整模型之间转换，不扫描类型名或改变任何决定。该表示减少真实 JSON 对象和空 key，65,536 个对象、32 MiB Doc IR 及数组/字符串预算保持不变；所有失败引用及质量分母仍保留。
+为控制实际 Doc IR 大小，新生成的结构 wrapper、AST 确认的 intrinsic primitive 和作用域确认的泛型形参，在没有独立可解析目标时使用 `navigation: null`，不为它们重复发布十字段的失败对象。所有类型节点、原始拼写、语义状态和递归子节点仍保留；具备可信 provider canonical 身份的节点仍尝试独立目标并保存完整选择或拒绝原因。`String`、`Array`、`Option` 不按显示名称当成无目标 primitive。已确认的泛型形参标为 `kind: "typeParameter"`，渲染器不把其 canonical 拼写再当成同名声明。缺版本、歧义、未知依赖、隐藏目标等实际 named/generic 引用的失败决策保持非空。`null` 本身只表示没有记录独立导航决策，不是目标不存在或不适用的证明。质量报告继续列出全部结构节点、原子和非目标位置。
+Doc IR `/16` 与 inventory `/2` 共用唯一导航 wire：非 resolved、`matchLevel=none` 且 dependency/document-set/index/symbol/URL/API/language 七项上下文全空的失败，以恰好两项的 `[state, reason]` 保存。state 仅为 `unresolved`、`ambiguous`、`unavailable`，reason 保留完整原文和原有字符串预算；它不是成功链接、依赖版本或兼容性证据。任何有上下文的失败和全部 resolved 记录仍保存完整十字段对象，公开 `TypeNavigation` 模型始终保留这十个字段。解码器拒绝 resolved tuple、多项、错误类型和本应使用 tuple 的无上下文对象。维护脚本使用 `scripts/document_navigation.py` 在 wire 与完整模型之间转换，不扫描类型名或改变任何决定。该表示减少真实 JSON 对象和空 key，65,536 个对象、32 MiB Doc IR 及数组/字符串预算保持不变；所有失败引用及质量分母仍保留。
 
 指南的 `cjdoc-bind` 也冻结到同一导航服务；不以正文链接替代关联芯片。例如页面可先绑定本模块 API，再精确指向该模块选中的外部重载：
 
@@ -604,7 +601,7 @@ Doc IR `/15` 与 inventory `/2` 共用唯一导航 wire：非 resolved、`matchL
 <!-- cjdoc-bind target="library.Widget.lookup" selector="signature:public func lookup(value: Int64): Int64" -->
 ```
 
-`DocumentationPageBinding.state/targetSymbolId` 仍只表达本地关联事实；外部已选目标放在独立 `navigation` 中，不把外链伪装成本地 semantic resolved。页面上下文来自唯一关联模块或唯一文档根模块，workspace 不按遍历顺序借最后一个模块。signature selector 保留已有的完整源码 header 拼写相等语义；新 /2 producer 自动发布 pin 覆盖的可选 `sourceHeader`，先按其准确筛选，再做依赖身份/范围/版本选择。不带该证据的库存不能凭类型名或参数个数凑一个 header，歧义不选第一个。普通 render 只消费冻结记录；source-hidden/locale-filtered 目标不经 chips、搜索或外链 fallback 重现。v6–v14 迁移给关联导航补 null，不能追认历史外部身份。
+`DocumentationPageBinding.state/targetSymbolId` 仍只表达本地关联事实；外部已选目标放在独立 `navigation` 中，不把外链伪装成本地 semantic resolved。页面上下文来自唯一关联模块或唯一文档根模块，workspace 不按遍历顺序借最后一个模块。signature selector 保留已有的完整源码 header 拼写相等语义；新 /2 producer 自动发布 pin 覆盖的可选 `sourceHeader`，先按其准确筛选，再做依赖身份/范围/版本选择。不带该证据的库存不能凭类型名或参数个数凑一个 header，歧义不选第一个。普通 `render` 只消费冻结记录；source-hidden/locale-filtered 目标不经 chips、搜索或外链 fallback 重现。Doc IR decoder 只接受 v16，不会为旧输入合成外部身份或导航事实。
 
 离线打包时把 catalog 的 baseUrl 改成 `./deps/v1` / `./deps/v2`，并把相应 HTML 站点显式复制到消费者的 `html/deps/v1` / `html/deps/v2`。路径以最终 HTML 文档根为基准，渲染器不读取或复制外部站点。HTTP(S) URL 不追加 `../`；片段接受规范 UTF-8 路由，拒绝危险协议、控制字符、编码分隔符和路径穿越。
 

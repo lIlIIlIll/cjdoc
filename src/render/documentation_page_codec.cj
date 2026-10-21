@@ -34,39 +34,40 @@ internal func appendDocumentationPages(out: StringBuilder, pages: ReadOnlyList<D
     out.append("]")
 }
 
-internal func decodeDocumentationPages(node: ?JsonNode, assets: HashMap<String, String>,
-    allowLegacyNavigationMissing: Bool): Array<DocumentationPage> {
+internal func decodeDocumentationPages(node: ?JsonNode): Array<DocumentationPage> {
     if (node.isNone()) { return [] }
     let pages = ArrayList<DocumentationPage>()
     for (value in jsonArrayValues(node.getOrThrow().asArray())) {
         let path = "$.pages[" + pages.size.toString() + "]"
-        let object = strictObject(value, path, ["id", "source", "route", "title", "kind", "packageName", "language", "defaultLanguage", "text", "markdown", "sections", "targetSymbolIds", "bindings"])
+        let object = strictObject(value, path, ["id", "source", "route", "title", "kind", "packageName",
+            "language", "defaultLanguage", "text", "markdown", "sections", "targetSymbolIds", "bindings"])
         let sections = ArrayList<DocumentationSection>()
         for (item in jsonArrayValues(arrayAt(object, "sections", path))) {
             let section = strictObject(item, path + ".sections", ["id", "anchor"])
-            sections.add(DocumentationSection(stringAt(section, "id", path), stringAt(section, "anchor", path)))
+            sections.add(DocumentationSection(stringAt(section, "id", path),
+                stringAt(section, "anchor", path)))
         }
         let bindings = ArrayList<DocumentationPageBinding>()
         if (let Some(items) <- object.get("bindings")) {
             for (item in jsonArrayValues(items.asArray())) {
                 let bindingPath = path + ".bindings[" + bindings.size.toString() + "]"
-                let binding = strictObject(item, bindingPath, if (allowLegacyNavigationMissing) {
-                    ["target", "selector", "provenance", "version", "sourceLine", "language", "state", "targetSymbolId"]
-                } else {
-                    ["target", "selector", "provenance", "version", "sourceLine", "language", "state", "targetSymbolId", "navigation"]
-                })
-                let navigation: ?JsonNode = if (allowLegacyNavigationMissing) { None }
-                    else { Some(required(binding, "navigation", bindingPath)) }
-                bindings.add(DocumentationPageBinding(stringAt(binding, "target", path), stringAt(binding, "selector", path),
-                    stringAt(binding, "provenance", path), stringAt(binding, "version", path), intAt(binding, "sourceLine", path),
-                    language: stringAt(binding, "language", path), state: stringAt(binding, "state", path),
-                    targetSymbolId: nullableStringAt(binding, "targetSymbolId", path),
-                    navigation: decodeTypeNavigation(navigation, bindingPath + ".navigation")))
+                let binding = strictObject(item, bindingPath,
+                    ["target", "selector", "provenance", "version", "sourceLine", "language",
+                        "state", "targetSymbolId", "navigation"])
+                bindings.add(DocumentationPageBinding(stringAt(binding, "target", bindingPath),
+                    stringAt(binding, "selector", bindingPath), stringAt(binding, "provenance", bindingPath),
+                    stringAt(binding, "version", bindingPath), intAt(binding, "sourceLine", bindingPath),
+                    language: stringAt(binding, "language", bindingPath),
+                    state: stringAt(binding, "state", bindingPath),
+                    targetSymbolId: nullableStringAt(binding, "targetSymbolId", bindingPath),
+                    navigation: decodeTypeNavigation(Some(required(binding, "navigation", bindingPath)),
+                        bindingPath + ".navigation")))
             }
         }
         pages.add(DocumentationPage(stringAt(object, "id", path), stringAt(object, "source", path),
             stringAt(object, "route", path), stringAt(object, "title", path), stringAt(object, "kind", path),
-            stringAt(object, "text", path), decodeMarkdown(required(object, "markdown", path), path + ".markdown", 0, false, assets),
+            stringAt(object, "text", path), decodeMarkdown(required(object, "markdown", path),
+                path + ".markdown", 0),
             language: optionalDocumentationLanguage(Some(required(object, "language", path)), path),
             defaultLanguage: optionalDocumentationLanguage(Some(required(object, "defaultLanguage", path)), path),
             packageName: stringAt(object, "packageName", path), sections: sections.toArray(),

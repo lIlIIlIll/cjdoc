@@ -18,9 +18,8 @@ from .localization import (DIFF_CLASSIFICATIONS, DIFF_MATCH_STATES, DIFF_RAW_LAB
 
 from showcase_contract.site import ContractError, canonical_json, load_json, relative_path
 
-IR = "cjdoc.doc-ir/15"
+IR = "cjdoc.doc-ir/16"
 COVERAGE = "cjdoc.documentation-coverage/2"
-DOCTEST = "cjdoc.doctest/2"
 DIFF = "cjdoc.api-diff/2"
 QUALITY = "cjdoc.documentation-quality/1"
 
@@ -316,10 +315,12 @@ def quality_view(raw: dict, root: Path, mapping: dict) -> str:
 def native_check_view(root: Path) -> str:
     path = root / "check-modes/native-check.json"
     if not path.is_file():
-        return ''
+        raise ContractError("native check evidence is required for the showcase report")
     raw = checked(path, "cjdoc.showcase-native-check/1")
     if raw.get("exitCode") != 0 or not raw.get("sources"):
         raise ContractError("native check evidence must retain a successful command and exact inputs")
+    if not isinstance(raw.get("command"), list) or "--check-examples" not in raw["command"]:
+        raise ContractError("native check evidence must use --check-examples")
     if raw.get("scope") != "aggregate command evidence; no per-example result claim":
         raise ContractError("unsupported native check evidence scope")
     for item in raw["sources"]:
@@ -333,43 +334,6 @@ def native_check_view(root: Path) -> str:
     output += '<p>Exit code: <code>' + escaped(raw["exitCode"]) + '</code></p>'
     output += '<pre>' + escaped(json.dumps(raw, ensure_ascii=False, indent=2)) + '</pre></section>'
     return output
-
-
-def doctest_view(raw: dict | None, ir: dict, root: Path, mapping: dict) -> str:
-    output = '<section id="doctest"><h2>示例验证 / Doctest</h2>'
-    if raw is None:
-        return output + '<p>Not attached. No execution claim is made.</p></section>'
-    output += '<p>Mode: <code>' + escaped(raw["mode"]) + '</code>; timeout-ms: ' + escaped(raw["timeoutMs"])
-    output += '; memory-mb: ' + escaped(raw["memoryMb"]) + '; jobs: ' + escaped(raw["jobs"]) + '</p>'
-    output += '<p>Summary: <code data-report-summary="doctest">' + escaped(json.dumps(raw["summary"], sort_keys=True)) + '</code></p>'
-    output += ('<p>此 legacy doctest/results.json 执行器记录编译后运行与跳过；不提供 compile-only 或 expected-failure 成功转换。 '
-               'New native directive checks are shown separately as aggregate command evidence. '
-               'Failed remains failed, including deliberately invalid diagnostic examples.</p>'
-               '<p><a href="doctest/results.json">Raw doctest JSON</a></p>')
-    symbols = {decl["id"]: decl for decl in ir["declarations"]}
-    seen = set()
-    for number, result in enumerate(raw["results"]):
-        if result["id"] in seen or result["symbolId"] not in symbols:
-            raise ContractError("duplicate or orphaned doctest result")
-        seen.add(result["id"])
-        if result["status"] not in {"passed", "failed", "timeout", "skipped"}:
-            raise ContractError("unknown native doctest status")
-        declaration = symbols[result["symbolId"]]
-        tags = [tag for tag in (declaration.get("documentation") or {}).get("tags", [])
-                if tag["name"] == "example" and tag["subject"] == result["title"]]
-        if len(tags) != 1:
-            raise ContractError("doctest result cannot be traced to one source example")
-        output += f'<article class="report-case" id="doctest-case-{number}" data-doctest-status="{escaped(result["status"])}">'
-        output += '<h3>' + source_text(result["qualifiedName"]) + ': ' + escaped(result["status"]) + '</h3>'
-        output += '<p>' + declaration_link(root, root, mapping, result["symbolId"], "Source API") + '</p>'
-        output += '<p>id: <code>' + escaped(result["id"]) + '</code></p>'
-        output += '<p>exitCode: ' + escaped(result["exitCode"]) + '; durationMs: ' + escaped(result["durationMs"]) + '</p>'
-        output += '<h4>Source @example</h4><pre><code>' + escaped(tags[0]["description"]) + '</code></pre>'
-        for key in ("message", "stdout", "stderr"):
-            if result[key]:
-                output += '<details><summary>' + escaped(key) + '</summary><pre>' + escaped(result[key]) + '</pre></details>'
-        output += '</article>'
-    return output + '</section>'
 
 
 class SourceAction(HTMLParser):
@@ -494,8 +458,6 @@ def publish(root: Path, revision: str, version: str, locale: str, *, baseline: P
     inputs = {"machine/docs.json": IR, "machine/coverage.json": COVERAGE,
               "machine/quality.json": QUALITY,
               "symbol-index.json": "cjdoc.symbol-index/2"}
-    if (root / "doctest/results.json").is_file():
-        inputs["doctest/results.json"] = DOCTEST
     if (root / "check-modes/native-check.json").is_file():
         inputs["check-modes/native-check.json"] = "cjdoc.showcase-native-check/1"
     if diff_path is not None:
@@ -523,8 +485,7 @@ def publish(root: Path, revision: str, version: str, locale: str, *, baseline: P
                       name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in inputs}}
     (root / "report-provenance.json").write_bytes(canonical_json(provenance))
     body = '<h1>验证与变化 / Validation and changes</h1><nav aria-label="Report sections">'
-    body += ' · '.join(f'<a href="#{part}">{part}</a>' for part in ("doctest", "api-diff", "coverage", "diagnostics", "provenance")) + '</nav>'
-    body += doctest_view(data.get("doctest/results.json"), ir, root, mapping)
+    body += ' · '.join(f'<a href="#{part}">{part}</a>' for part in ("native-check", "api-diff", "coverage", "diagnostics", "provenance")) + '</nav>'
     body += native_check_view(root)
     body += diff_view(data.get("machine/api-diff.json"), root, baseline, current, locale)
     body += coverage_view(data["machine/coverage.json"]) + quality_view(data["machine/quality.json"], root, mapping)

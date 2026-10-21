@@ -132,8 +132,8 @@ class DiagnosticsTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.repo = self.root / "repo"
-        (self.repo / "tests/fixtures/golden-v15").mkdir(parents=True)
-        (self.repo / "tests/fixtures/golden-v15/basic.docs.json").write_text("{}\n", encoding="utf-8")
+        (self.repo / "tests/fixtures/golden-v16").mkdir(parents=True)
+        (self.repo / "tests/fixtures/golden-v16/basic.docs.json").write_text("{}\n", encoding="utf-8")
         subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
 
     def test_a_bundle_is_never_marked_as_an_accepted_baseline(self) -> None:

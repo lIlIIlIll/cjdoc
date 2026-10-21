@@ -1,9 +1,9 @@
 # 边界与诊断 / Boundaries and diagnostics
 
-此项目与入门库分离，故意展示缺失引用、同名歧义、编译失败和无代码示例的跳过结果。
-它不是正常入门操作，也没有把失败转换成通过的模式。
+此项目与入门库分离，故意展示缺失引用、同名歧义、错误代码和无代码说明。
+生成文档不会执行这些示例；独立 check-modes 项目才显式使用 `--check-examples`。
 
-This isolated project demonstrates missing and ambiguous references, a real compilation failure,
-and a skipped non-executable example. A failed result remains **failed**; it is not counted as passed.
+This isolated project demonstrates missing and ambiguous references alongside documented
+invalid code and non-executable explanations. Documentation generation makes no execution claim.
 
-查看原始 Doc IR 与 doctest results，可追溯每一个状态、诊断码和源码范围。
+查看原始 Doc IR，可追溯每一条原生诊断及其源码范围。

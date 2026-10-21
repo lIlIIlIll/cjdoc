@@ -11,7 +11,6 @@ from contextlib import contextmanager
 import hashlib
 import importlib.util
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -117,50 +116,7 @@ def assemble(output: Path, locale: str | None = None, *, binary: Path | None = N
                          (output / "coverage/quality.json", "quality.json")):
         shutil.copyfile(source, machine / name)
     shutil.copytree(output / "markdown" if locale is None else output / "markdown" / locale, machine / "markdown")
-    relocate_doctest_evidence(output, root)
     return root
-
-
-def relocate_doctest_evidence(output: Path, root: Path) -> None:
-    """Keep native evidence links valid when publishing one reading subtree."""
-    results = output / "doctest/results.json"
-    if not results.is_file():
-        return
-    published = root / "doctest/results.json"
-    published.parent.mkdir()
-    shutil.copyfile(results, published)
-    pages = [root / "validation.html", *sorted((root / "symbols").glob("*.html"))]
-    for page in pages:
-        old = f'href="{Path(os.path.relpath(results, page.parent)).as_posix()}"'
-        new = f'href="{Path(os.path.relpath(published, page.parent)).as_posix()}"'
-        content = page.read_text(encoding="utf-8")
-        if page.name == "validation.html" and old not in content:
-            raise ValueError("native validation page has no expected doctest evidence link")
-        if old in content:
-            page.write_text(content.replace(old, new), encoding="utf-8")
-
-
-def validate_diagnostic_examples(output: Path) -> None:
-    """Accept only the two maintained negative outcomes from the native runner."""
-    report = json.loads((output / "doctest/results.json").read_text(encoding="utf-8"))
-    if report.get("schemaVersion") != "cjdoc.doctest/2" or report.get("mode") != "warn":
-        raise ValueError("diagnostic examples require the native warning-mode report")
-    expected = {"pocket_diagnostics.deliberateFailure": "failed",
-                "pocket_diagnostics.explanatoryExample": "skipped"}
-    results = report.get("results", [])
-    if len(results) != len(expected) or {
-            item.get("qualifiedName"): item.get("status") for item in results} != expected:
-        raise ValueError("diagnostic examples differ from the explicit expected result set")
-    if report.get("summary") != {"passed": 0, "failed": 1, "timedOut": 0, "skipped": 1}:
-        raise ValueError("diagnostic examples have an unexpected native summary")
-    for item in results:
-        if item["status"] == "failed":
-            if (type(item.get("exitCode")) is not int or item["exitCode"] != 1
-                    or item.get("message") != "compile failed"
-                    or "mismatched types" not in item.get("stderr", "")):
-                raise ValueError("deliberate failure must be the expected compiler type error")
-        elif item.get("exitCode") is not None or item.get("message") != "no executable Cangjie fence":
-            raise ValueError("explanatory example must retain its native no-code skip")
 
 
 @contextmanager
@@ -264,7 +220,6 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
             with stage_timing.phase(f"pocketkit.diagnostics:{locale}"):
                 diagnostics = generate(binary, source / "diagnostics", output / locale / "diagnostics",
                                        locale=locale, version="diagnostics", **options)
-                validate_diagnostic_examples(diagnostics)
                 assemble(diagnostics, binary=binary)
             result["locales"][locale] = dict(generated=generated, composed=composed,
                                               roots=roots, diff=diff, diagnostics=diagnostics)
@@ -312,7 +267,6 @@ def build(binary: Path, source: Path, output: Path, *, locales: tuple[str, ...] 
         with stage_timing.phase(f"pocketkit.diagnostics:{locale}"):
             diagnostics = generate(binary, source / "diagnostics", directory / "diagnostics",
                                    locale=locale, version="diagnostics", **options)
-            validate_diagnostic_examples(diagnostics)
             assemble(diagnostics, binary=binary)
         result["locales"][locale] = dict(generated=generated, composed=composed,
                                          roots=roots, diff=diff, diagnostics=diagnostics)

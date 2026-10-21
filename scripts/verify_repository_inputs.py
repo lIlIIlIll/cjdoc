@@ -16,7 +16,6 @@ try:
     from .repository_input_contracts import (
         CURRENT_GOLDEN_VERSION,
         GOLDEN_NAMES,
-        LEGACY_GOLDEN_VERSIONS,
         SCHEMA_NAMES,
     )
     from .repository_input_files import (
@@ -28,11 +27,7 @@ try:
         verify_golden_set,
         verify_schema_set,
     )
-    from .repository_input_migrations import (
-        verify_current_goldens,
-        verify_legacy_migrations,
-        verify_legacy_receipts,
-    )
+    from .repository_input_codec import verify_current_goldens
     from .repository_input_vendor import verify_third_party, verify_vendor
     from .safe_output_root import lexical_absolute, verify_directory_chain
     from .strict_json import strict_load, strict_loads
@@ -41,7 +36,6 @@ except ImportError:  # Direct script execution.
     from repository_input_contracts import (
         CURRENT_GOLDEN_VERSION,
         GOLDEN_NAMES,
-        LEGACY_GOLDEN_VERSIONS,
         SCHEMA_NAMES,
     )
     from repository_input_files import (
@@ -53,11 +47,7 @@ except ImportError:  # Direct script execution.
         verify_golden_set,
         verify_schema_set,
     )
-    from repository_input_migrations import (
-        verify_current_goldens,
-        verify_legacy_migrations,
-        verify_legacy_receipts,
-    )
+    from repository_input_codec import verify_current_goldens
     from repository_input_vendor import verify_third_party, verify_vendor
     from safe_output_root import lexical_absolute, verify_directory_chain
     from strict_json import strict_load, strict_loads
@@ -97,10 +87,7 @@ def verify_repository_inputs(repo: Path, require_tracked: bool = False) -> dict[
         if not path.is_file():
             raise ValueError(f"required repository input is missing: {relative}")
     verify_schema_set(repo)
-    for version in LEGACY_GOLDEN_VERSIONS:
-        verify_golden_set(repo, version)
     verify_golden_set(repo, CURRENT_GOLDEN_VERSION)
-    verify_legacy_receipts(repo)
     licenses = verify_third_party(repo)
     vendor = verify_vendor(repo)
     repository_identity: dict[str, object] | None = None
@@ -117,10 +104,6 @@ def verify_repository_inputs(repo: Path, require_tracked: bool = False) -> dict[
             f"tests/fixtures/golden-v{CURRENT_GOLDEN_VERSION}/{name}.docs.json"
             for name in GOLDEN_NAMES
         ],
-        "legacyGoldens": [
-            f"tests/fixtures/golden-v{version}/{name}.docs.json"
-            for version in LEGACY_GOLDEN_VERSIONS for name in GOLDEN_NAMES
-        ],
         "licenses": licenses,
         "vendor": vendor,
         "repositoryIdentity": repository_identity,
@@ -131,22 +114,18 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument("--require-tracked", action="store_true")
-    parser.add_argument("--legacy-binary", type=Path)
+    parser.add_argument("--binary", type=Path)
     args = parser.parse_args()
     try:
         evidence = verify_repository_inputs(args.repo, require_tracked=args.require_tracked)
-        if args.legacy_binary is not None:
+        if args.binary is not None:
             evidence["currentGoldenValidation"] = verify_current_goldens(
-                args.repo.resolve(), args.legacy_binary
-            )
-            evidence["legacyMigrations"] = verify_legacy_migrations(
-                args.repo.resolve(), args.legacy_binary
+                args.repo.resolve(), args.binary
             )
     except (OSError, ValueError, tomllib.TOMLDecodeError, json.JSONDecodeError) as error:
         parser.error(str(error))
     print(
         f"repository inputs verified: {len(evidence['goldens'])} v{CURRENT_GOLDEN_VERSION} goldens, "
-        f"{len(evidence['legacyGoldens'])} frozen legacy inputs, "
         f"{len(evidence['vendor']['sourceSha256'])} vendored sources"
     )
     return 0

@@ -163,7 +163,7 @@ jobs:
             binary="${binary}.exe"
           fi
           python scripts/verify_repository_inputs.py --require-tracked \
-            --legacy-binary "${binary}" >/dev/null
+            --binary "${binary}" >/dev/null
           python scripts/verify_release.py >/dev/null
           if [[ "${{ matrix.platform }}" == "linux-x64" ]]; then
             # The Linux candidate adds the real-repository smoke and the frozen

@@ -9,10 +9,10 @@ from showcase_contract.site import ContractError, load_json, relative_path
 from showcase_inputs import source_inputs
 
 LOCALES = ("zh-CN", "en")
-JOURNEYS = {"members", "types", "contracts", "resources", "guides", "search", "doctest",
+JOURNEYS = {"members", "types", "contracts", "resources", "guides", "search", "native-check",
             "diff", "versions", "quality", "external", "downloads", "machine", "diagnostics",
             "authoring", "extension"}
-REPORTS = {"doctest", "diff", "coverage", "diagnostics"}
+REPORTS = {"native-check", "diff", "coverage", "diagnostics"}
 
 
 def roots(site: Path, locale: str) -> dict[str, Path]:
@@ -88,9 +88,9 @@ def compile_plan(repo: Path, site: Path) -> dict:
                                           if page["id"] == specification["pageId"] and page["language"] == locale]
                             if len(candidates) != 1:
                                 raise ContractError("catalog logical guide needs exactly one authored language variant")
-                            target["match"] = {"kind": "concept", "title": candidates[0]["title"]}
+                            target["match"] = {"kind": candidates[0]["kind"], "title": candidates[0]["title"]}
                         elif "concept" in specification:
-                            target["match"] = {"kind": "concept", "title": specification["concept"]}
+                            target["match"] = {"kind": "guide", "title": specification["concept"]}
                         else:
                             ir = load_json(root / "machine/docs.json")
                             declaration = select(ir, specification)

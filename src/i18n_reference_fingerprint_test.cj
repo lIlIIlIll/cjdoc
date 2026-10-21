@@ -18,10 +18,10 @@ private func referenceFingerprintMarkdown(text: String): api_model.MarkdownNode 
 }
 
 private func referenceFingerprintDocumentation(kind: String, changedLanguage: ?String,
-    referenceState: String, target: ?String, legacy!: Bool = false): api_model.DocumentationSet {
+    referenceState: String, target: ?String, withLanguageFields!: Bool = true): api_model.DocumentationSet {
     let defaultLanguage = if (changedLanguage == Some("en")) { "zh-CN" } else { "en" }
     let fields = ArrayList<api_model.DocumentationText>()
-    if (!legacy) {
+    if (withLanguageFields) {
         for (language in [Some("en"), Some("zh-CN"), None<String>]) {
             fields.add(api_model.DocumentationText(REFERENCE_FINGERPRINT_API + ":doc:summary:",
                 "summary", "", language, "Summary.", referenceFingerprintMarkdown("Summary.")))
@@ -33,9 +33,10 @@ private func referenceFingerprintDocumentation(kind: String, changedLanguage: ?S
     }
     let comment = api_model.DocComment("Captured author comment.", "Summary.", "", referenceFingerprintMarkdown("Summary."),
         tags: [api_model.DocTag(kind, "Reference", "Reference description.",
-            referenceState: if (legacy) { referenceState } else { "resolved" },
-            targetSymbolId: if (legacy) { target } else { Some(REFERENCE_FINGERPRINT_A) })],
-        defaultLanguage: if (legacy) { None } else { Some(defaultLanguage) }, localizedTexts: fields.toArray())
+            referenceState: if (!withLanguageFields) { referenceState } else { "resolved" },
+            targetSymbolId: if (!withLanguageFields) { target } else { Some(REFERENCE_FINGERPRINT_A) })],
+        defaultLanguage: if (withLanguageFields) { Some(defaultLanguage) } else { None },
+        localizedTexts: fields.toArray())
     let source = api_model.SourceRange("src/api.cj", api_model.SourcePosition(1, 1, 0),
         api_model.SourcePosition(1, 2, 1))
     let symbols = ArrayList<api_model.SymbolDoc>()
@@ -141,8 +142,9 @@ class I18nReferenceFingerprintTest {
         for (kind in ["see", "throws"]) {
             for (state in ["ambiguous", "unavailable"]) {
                 let before = referenceFingerprintSnapshot(referenceFingerprintDocumentation(kind, None,
-                    "resolved", Some(REFERENCE_FINGERPRINT_A), legacy: true))
-                let after = referenceFingerprintSnapshot(referenceFingerprintDocumentation(kind, None, state, None, legacy: true))
+                    "resolved", Some(REFERENCE_FINGERPRINT_A), withLanguageFields: false))
+                let after = referenceFingerprintSnapshot(referenceFingerprintDocumentation(kind, None, state, None,
+                    withLanguageFields: false))
                 @Expect(referenceFingerprintDeclaration(before).documentationFingerprint !=
                     referenceFingerprintDeclaration(after).documentationFingerprint)
                 @Expect(referenceLanguageFingerprint(before, None) != referenceLanguageFingerprint(after, None))
