@@ -693,9 +693,20 @@ def report(samples: list[dict], workflow: str, out: Path,
         conditions_by_shape.setdefault(shape, set())
     # DONE-03 names the browser/font set, but no producer records it yet. Counts are
     # reached on the toolchain axes alone, so a bare "met" would overstate them.
-    every_condition = {condition for values in conditions_by_shape.values()
-                       for condition in values}
-    unrecorded = unrecorded_axes(every_condition)
+    #
+    # Computed PER CONDITION, not from the union of every condition: once a producer
+    # starts recording these slots, old artifacts without them keep appearing in the
+    # report, and a union would mark the axis recorded because the NEW conditions
+    # supply it -- handing an old cell a bare "met" it never earned.
+    #
+    # The returned list is the conservative one: an axis appears if ANY condition fails
+    # to record it, so an empty `unrecordedAxes` means every cell in the report was
+    # compared on every axis DONE-03 names. Order follows the declaration above so the
+    # value reads the same way every run.
+    seen_unrecorded: set[str] = set()
+    for values in conditions_by_shape.values():
+        for condition in values:
+            seen_unrecorded.update(unrecorded_axes({condition}))
     for shape in sorted(conditions_by_shape):
         conditions = conditions_by_shape[shape]
         if not conditions:
@@ -705,30 +716,36 @@ def report(samples: list[dict], workflow: str, out: Path,
             continue
         for condition in sorted(conditions):
             label = f"`{condition}`" if condition else "(condition not recorded)"
+            condition_unrecorded = unrecorded_axes({condition})
             for state in ("miss", "hit"):
                 count = len(cells.get((shape, state, condition), []))
-                verdict = requirement_verdict(count >= 5, unrecorded)
+                verdict = requirement_verdict(count >= 5, condition_unrecorded)
                 lines.append(f"* {shape} / **{state}** {label}: {count} collected — "
                              f"{verdict}")
             paired = min(len(cells.get((shape, "miss", condition), [])),
                          len(cells.get((shape, "hit", condition), [])))
-            paired_verdict = requirement_verdict(paired >= 5, unrecorded)
+            paired_verdict = requirement_verdict(paired >= 5, condition_unrecorded)
             lines.append(f"  * paired samples under this condition: {paired} — "
                          f"{paired_verdict}")
     unclassified = [s for s in successful if s["state"] not in CLASSIFIED_STATES]
     if unclassified:
         never = sorted({s["shape"] for s in unclassified if not s.get("hasEvidence")})
-        unrecorded = sorted({s["shape"] for s in unclassified if s.get("hasEvidence")})
+        # NOT `unrecorded`: that name holds the missing DONE-03 axes above and is
+        # returned to the caller, so reusing it here silently replaced the axis list
+        # with a list of job shapes whenever a job had no cache state.
+        unrecorded_state = sorted({s["shape"] for s in unclassified
+                                   if s.get("hasEvidence")})
         parts = [f"{len(unclassified)} successful job(s) carry no cache state and are "
                  "excluded from the cells."]
         if never:
             parts.append(f"Of those, {', '.join(never)} record no stage evidence at all, "
                          "so they can never be either condition and are not requirements.")
-        if unrecorded:
-            parts.append(f"The rest ({', '.join(unrecorded)}) are cache-bearing jobs whose "
-                         "state was not recorded -- from runs predating the recording, or "
-                         "from artifacts that expired -- so they remain requirements showing "
-                         "as 0 collected above rather than disappearing.")
+        if unrecorded_state:
+            parts.append(f"The rest ({', '.join(unrecorded_state)}) are cache-bearing jobs "
+                         "whose state was not recorded -- from runs predating the "
+                         "recording, or from artifacts that expired -- so they remain "
+                         "requirements showing as 0 collected above rather than "
+                         "disappearing.")
         lines += ["", " ".join(parts)]
     if acquisition_failures:
         flat = [item for group in acquisition_failures for item in group]
@@ -764,7 +781,8 @@ def report(samples: list[dict], workflow: str, out: Path,
     return {"cells": {f"{shape}/{state}|{condition}": len(values)
                       for (shape, state, condition), values in cells.items()},
             "pairedPerCondition": paired,
-            "unrecordedAxes": unrecorded,
+            "unrecordedAxes": [name for _field, name in BROWSER_FONT_AXES
+                               if name in seen_unrecorded],
             "failures": len(other), "report": str(out), "samples": len(samples),
             "runs": {f"{run_id}/{attempt}": {"wallMinutes": value[0],
                                              "runnerMinutes": value[1]}

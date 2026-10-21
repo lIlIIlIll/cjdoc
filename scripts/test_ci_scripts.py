@@ -811,6 +811,74 @@ class PairedSampleTests(unittest.TestCase):
         self.assertEqual(result["unrecordedAxes"], [])
         self.assertIn("paired samples under this condition: 5 — met", text)
 
+    def test_a_recorded_axis_does_not_excuse_an_older_condition(self) -> None:
+        """A newer condition recording the axis must not clear an older cell's verdict.
+
+        The axis list is per condition. If it were the union over the whole report,
+        one modern condition would mark browser/font as recorded and an old cell with
+        five pairs would print a bare `met` even though nothing compared that axis for
+        it -- exactly the overstatement the qualified verdict exists to prevent.
+        """
+        def sample(state, condition, revision):
+            return {"run": 1, "attempt": 1, "revision": revision, "event": "push",
+                    "job": "macos-arm64 / Cangjie", "shape": "macos-arm64",
+                    "conclusion": "success", "state": state, "jobMinutes": 10.0,
+                    "condition": condition, "runWallMinutes": 25.0,
+                    "runRunnerMinutes": 50.0}
+        old = "macos15|1.2.0|d|aarch64|f||||--jobs 1,-O1"
+        new = "macos15|1.2.0|d|aarch64|f|152.0|chromium-123|fonts-sha|--jobs 1,-O1"
+        samples = ([sample("hit", old, f"{n:040x}") for n in range(1, 6)]
+                   + [sample("miss", old, f"{n:040x}") for n in range(6, 11)]
+                   + [sample("hit", new, f"{n:040x}") for n in range(11, 16)])
+        out = self.root / "mixed-axes.md"
+        result = paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        # Read only the requirement section: the condition strings also appear in the
+        # matched-cells table above, so splitting on the whole document would slice
+        # between two rows instead of between verdicts.
+        section = text.split("## Requirement check")[1]
+        lines = [line for line in section.splitlines() if line.startswith("* ")]
+        old_lines = [line for line in lines if f"`{old}`" in line]
+        new_lines = [line for line in lines if f"`{new}`" in line]
+        # The old cell must still be qualified under both states...
+        self.assertEqual(len(old_lines), 2, old_lines)
+        for line in old_lines:
+            self.assertIn("met on the recorded axes only", line)
+        # ...while the new cell, which did record them, gets the plain verdict.
+        self.assertEqual(len(new_lines), 2, new_lines)
+        self.assertEqual(new_lines[1], f"* macos-arm64 / **hit** `{new}`: 5 collected — met",
+                         new_lines[1])
+        self.assertNotIn("recorded axes only", "\n".join(new_lines))
+        # The report-wide list stays conservative: an axis still unrecorded somewhere.
+        self.assertEqual(result["unrecordedAxes"],
+                         ["browser version", "browser identity", "font set"])
+
+    def test_the_axis_list_survives_a_job_with_no_cache_state(self) -> None:
+        """`unrecordedAxes` must not be clobbered by the unclassified-job block.
+
+        That block computes which shapes lack a cache state. Reusing the name
+        `unrecorded` for it silently replaced the axis list with a list of job shapes,
+        so the value returned to the caller -- and any gate reading it -- depended on
+        whether some unrelated job happened to record no state.
+        """
+        def sample(conclusion, state):
+            return {"run": 1, "attempt": 1, "revision": "a" * 40, "event": "push",
+                    "job": "macos-arm64 / Cangjie", "shape": "macos-arm64",
+                    "conclusion": conclusion, "state": state, "jobMinutes": 10.0,
+                    "condition": "macos15|1.2.0|d|aarch64|f||||--jobs 1,-O1",
+                    "hasEvidence": True, "runWallMinutes": 25.0,
+                    "runRunnerMinutes": 50.0}
+        samples = [sample("success", "hit") for _ in range(5)]
+        # A successful cache-bearing job with no cache state and no evidence: this is
+        # the case that used to overwrite the axis list.
+        samples.append(sample("success", "unknown"))
+        out = self.root / "unknown-state.md"
+        result = paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("carry no cache state", text)
+        self.assertEqual(result["unrecordedAxes"],
+                         ["browser version", "browser identity", "font set"])
+
     def test_the_pairing_signature_excludes_the_revision(self) -> None:
         """`job_conditions` must key on the environment only.
 
