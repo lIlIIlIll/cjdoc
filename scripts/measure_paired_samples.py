@@ -136,6 +136,50 @@ def jobs_of(repository: str, run_id: int, attempt: int) -> list[dict]:
     return payload.get("jobs", []) if isinstance(payload, dict) else []
 
 
+# The fields that make up a matched condition. DONE-03 names the browser and font set
+# as part of it, so the last three slots exist to keep those axes in the signature.
+IDENTITY_FIELDS = ("runnerImage", "sdkVersion", "stdxDigest", "toolchainTarget",
+                   "toolchainFingerprint", "browserVersion", "browserIdentity",
+                   "fontSetDigest")
+# Named for a reader: the signature slot and the axis DONE-03 actually asks about.
+BROWSER_FONT_AXES = (("browserVersion", "browser version"),
+                     ("browserIdentity", "browser identity"),
+                     ("fontSetDigest", "font set"))
+
+
+def unrecorded_axes(conditions: set[str]) -> list[str]:
+    """Axes DONE-03 names that NO condition in the report recorded a value for.
+
+    Every sample page records these slots, but no producer fills them yet. A count of
+    five can therefore be reached on the toolchain axes alone, and reporting that as a
+    plain "met" would read as closing DONE-03 when the browser/font axis was never
+    compared. The caller qualifies the verdict with the names returned here.
+    """
+    positions = [IDENTITY_FIELDS.index(field) for field, _name in BROWSER_FONT_AXES]
+    recorded = [False] * len(BROWSER_FONT_AXES)
+    for condition in conditions:
+        if not condition:
+            continue
+        # The signature is the identity tuple, then `|` and the compile options; a
+        # later divergent stage appends `|stageN=...`. Only the leading tuple is read,
+        # and the fields cannot contain the separator.
+        fields = condition.split("|")[:len(IDENTITY_FIELDS)]
+        for index, position in enumerate(positions):
+            if position < len(fields) and fields[position].strip():
+                recorded[index] = True
+    return [name for (_field, name), seen in zip(BROWSER_FONT_AXES, recorded) if not seen]
+
+
+def requirement_verdict(met: bool, unrecorded: list[str]) -> str:
+    """The verdict text, never claiming more than the recorded axes support."""
+    if not met:
+        return "NOT met"
+    if not unrecorded:
+        return "met"
+    return ("met on the recorded axes only -- " + ", ".join(unrecorded)
+            + " not recorded, so this is not yet a full DONE-03 match")
+
+
 def job_conditions(evidence: Path) -> dict[str, str]:
     """Per artifact directory, the toolchain/runner identity its stages recorded.
 
@@ -146,9 +190,7 @@ def job_conditions(evidence: Path) -> dict[str, str]:
     before/after samples are different commits by definition (see the docstring header).
     """
     conditions: dict[str, str] = {}
-    identity_fields = ("runnerImage", "sdkVersion", "stdxDigest", "toolchainTarget",
-                       "toolchainFingerprint", "browserVersion", "browserIdentity",
-                       "fontSetDigest")
+    identity_fields = IDENTITY_FIELDS
 
     def stage_identity(source: dict) -> str:
         """One canonical serialization of a stage's comparable identity.
@@ -596,8 +638,11 @@ def report(samples: list[dict], workflow: str, out: Path,
               "",
               "**Unmeasured axis:** DONE-03 also names the browser/font set. `ci_stage` does",
               "not record it, so no signature can attest it and these cells do not claim it",
-              "was matched. If a producer starts recording it, the signature picks it up",
-              "automatically and cells split accordingly.", ""]
+              "was matched. While it stays unrecorded, a count that reaches five is printed",
+              "as `met on the recorded axes only` and names the axis it could not compare,",
+              "so it is never read as closing the requirement. If a producer starts",
+              "recording it, the signature picks it up automatically, cells split",
+              "accordingly, and the qualification disappears with the gap.", ""]
     for key in sorted(cells):
         shape, state, condition = key
         # Inline code cannot contain a raw pipe in a table, and these bullets may be
@@ -646,6 +691,11 @@ def report(samples: list[dict], workflow: str, out: Path,
     # platform that only ever failed cannot vanish from the requirement section.
     for shape in requirement_shapes:
         conditions_by_shape.setdefault(shape, set())
+    # DONE-03 names the browser/font set, but no producer records it yet. Counts are
+    # reached on the toolchain axes alone, so a bare "met" would overstate them.
+    every_condition = {condition for values in conditions_by_shape.values()
+                       for condition in values}
+    unrecorded = unrecorded_axes(every_condition)
     for shape in sorted(conditions_by_shape):
         conditions = conditions_by_shape[shape]
         if not conditions:
@@ -657,12 +707,12 @@ def report(samples: list[dict], workflow: str, out: Path,
             label = f"`{condition}`" if condition else "(condition not recorded)"
             for state in ("miss", "hit"):
                 count = len(cells.get((shape, state, condition), []))
-                verdict = "met" if count >= 5 else "NOT met"
+                verdict = requirement_verdict(count >= 5, unrecorded)
                 lines.append(f"* {shape} / **{state}** {label}: {count} collected — "
                              f"{verdict}")
             paired = min(len(cells.get((shape, "miss", condition), [])),
                          len(cells.get((shape, "hit", condition), [])))
-            paired_verdict = "met" if paired >= 5 else "NOT met"
+            paired_verdict = requirement_verdict(paired >= 5, unrecorded)
             lines.append(f"  * paired samples under this condition: {paired} — "
                          f"{paired_verdict}")
     unclassified = [s for s in successful if s["state"] not in CLASSIFIED_STATES]
@@ -714,6 +764,7 @@ def report(samples: list[dict], workflow: str, out: Path,
     return {"cells": {f"{shape}/{state}|{condition}": len(values)
                       for (shape, state, condition), values in cells.items()},
             "pairedPerCondition": paired,
+            "unrecordedAxes": unrecorded,
             "failures": len(other), "report": str(out), "samples": len(samples),
             "runs": {f"{run_id}/{attempt}": {"wallMinutes": value[0],
                                              "runnerMinutes": value[1]}

@@ -52,10 +52,12 @@ hash is taken over **the workflow files themselves**
 not produced by running more pushes: it is produced by *changing one of those four
 files*, which is exactly what a normal merge to `main` does not do. Every cold sample
 in the collected history confirms this — each one is a commit that touched a hashed
-workflow file (`d5c459d3`, `5f32b1dc`, `56208661`, `748892bf`; verified with
-`git diff-tree` against those four paths).
+workflow file (`d5c459d3`, `5f32b1dc`, `56208661`, `748892bf`, `df4bdc26`; verified with
+`git diff-tree` against those four paths). The newest of them, `df4bdc26`, changed only
+`pages.yml`, and it produced a `miss` on macOS, Windows and the Linux candidate in the
+same run.
 
-**The four observed misses establish a correlation, not an exclusive mechanism.** A
+**The five observed miss commits establish a correlation, not an exclusive mechanism.** A
 miss also occurs when the existing cache entry is evicted (idle expiry or storage
 pressure), deleted, or otherwise unavailable, on an ordinary push that changed none of
 the four files. The ceiling below therefore assumes the entry stays available; if one
@@ -64,7 +66,14 @@ is evicted, a push-with-no-workflow-edit does advance the cold count.
 Consequences for DONE-03's "at least five cold and five warm under matched
 conditions":
 
-* the warm side accumulates with pushes and is already met on linux-x64;
+* the macOS cell reaches the recorded-axes threshold and nothing more: on the current
+  macOS runner image that one matched condition has 9 warm and 5 cold samples
+  (paired = 5), which the report prints as `met on the recorded axes only -- browser
+  version, browser identity, font set not recorded`. The fifth cold sample arrived with
+  `df4bdc26`. DONE-03 names the browser/font set, no producer records it, so this is
+  **not** a full match and the requirement stays open;
+* the warm side accumulates with pushes and is also met on linux-x64, which has no
+  cold sample on any single condition yet;
 * pending no eviction, the cold side advances only on the commits that edit those
   workflow files, so "wait for more pushes" cannot be relied on to close the remaining
   shortfall — the count is bounded by how often the workflow files legitimately change

@@ -372,6 +372,26 @@ are excluded from the cells, not from the record.
 | 39437539673 | 1 | `8c7dec5d` | push | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | ubuntu22-20261018.327.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1 | success | hit | 52.2m | 56.6m | 131.9m |
 | 39437539673 | 1 | `8c7dec5d` | push | macos-arm64 / Cangjie 1.2.0 STS +  | macos-arm64 | macos15-20260907.0337.1\|1.2.0 (cjnative)\|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb\|aarch64-apple-darwin\|fac66aa4b4d3092c3579e7e281377707e9effc0bf803c89319c8f5c55d41ecf1\|\|\|\|--jobs 1,-O1 | success | hit | 29.6m | 56.6m | 131.9m |
 | 39437539673 | 1 | `8c7dec5d` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | win22-20261012.333.1\|1.2.0 (cjnative)\|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6\|x86_64-w64-mingw32\|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0\|\|\|\|--jobs 1,-O1 | success | hit | 45.9m | 56.6m | 131.9m |
+| 39482901494 | 1 | `c2b3f46c` | push | CI required | ci required |  | success | unknown | 0.1m | 46.0m | 120.0m |
+| 39482901494 | 1 | `c2b3f46c` | push | Classify changes | classify changes |  | success | unknown | 0.1m | 46.0m | 120.0m |
+| 39482901494 | 1 | `c2b3f46c` | push | Linux candidate / Linux candidate  | linux candidate | ubuntu22-20261012.322.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1 | success | hit | 5.0m | 46.0m | 120.0m |
+| 39482901494 | 1 | `c2b3f46c` | push | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | ubuntu22-20261012.322.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1 | success | hit | 39.5m | 46.0m | 120.0m |
+| 39482901494 | 1 | `c2b3f46c` | push | macos-arm64 / Cangjie 1.2.0 STS +  | macos-arm64 | macos15-20260907.0337.1\|1.2.0 (cjnative)\|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb\|aarch64-apple-darwin\|fac66aa4b4d3092c3579e7e281377707e9effc0bf803c89319c8f5c55d41ecf1\|\|\|\|--jobs 1,-O1 | success | hit | 29.5m | 46.0m | 120.0m |
+| 39482901494 | 1 | `c2b3f46c` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | win22-20261012.333.1\|1.2.0 (cjnative)\|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6\|x86_64-w64-mingw32\|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0\|\|\|\|--jobs 1,-O1 | success | hit | 45.7m | 46.0m | 120.0m |
+| 39491843827 | 1 | `92054bc9` | push | CI required | ci required |  | success | unknown | 0.1m | 41.4m | 110.1m |
+| 39491843827 | 1 | `92054bc9` | push | Classify changes | classify changes |  | success | unknown | 0.1m | 41.4m | 110.1m |
+| 39491843827 | 1 | `92054bc9` | push | Linux candidate / Linux candidate  | linux candidate | ubuntu22-20261012.322.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1 | success | hit | 4.8m | 41.4m | 110.1m |
+| 39491843827 | 1 | `92054bc9` | push | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | ubuntu22-20261018.327.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1 | success | hit | 31.4m | 41.4m | 110.1m |
+| 39491843827 | 1 | `92054bc9` | push | macos-arm64 / Cangjie 1.2.0 STS +  | macos-arm64 | macos15-20260907.0337.1\|1.2.0 (cjnative)\|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb\|aarch64-apple-darwin\|fac66aa4b4d3092c3579e7e281377707e9effc0bf803c89319c8f5c55d41ecf1\|\|\|\|--jobs 1,-O1 | success | hit | 32.6m | 41.4m | 110.1m |
+| 39491843827 | 1 | `92054bc9` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | win22-20261012.333.1\|1.2.0 (cjnative)\|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6\|x86_64-w64-mingw32\|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0\|\|\|\|--jobs 1,-O1 | success | hit | 41.0m | 41.4m | 110.1m |
+| 39529172314 | 1 | `df4bdc26` | push | CI required | ci required |  | failure | unknown | 0.1m | 45.3m | 92.2m |
+| 39529172314 | 2 | `df4bdc26` | push | CI required | ci required |  | success | unknown | 0.1m | 27.4m | 27.3m |
+| 39529172314 | 1 | `df4bdc26` | push | Classify changes | classify changes |  | success | unknown | 0.1m | 45.3m | 92.2m |
+| 39529172314 | 1 | `df4bdc26` | push | Linux candidate / Linux candidate  | linux candidate | ubuntu22-20261018.327.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1 | success | miss | 5.3m | 45.3m | 92.2m |
+| 39529172314 | 1 | `df4bdc26` | push | linux-x64 / Cangjie 1.2.0 STS + st | linux-x64 | ubuntu22-20261012.322.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1 | success | hit | 39.6m | 45.3m | 92.2m |
+| 39529172314 | 1 | `df4bdc26` | push | macos-arm64 / Cangjie 1.2.0 STS +  | macos-arm64 | macos15-20260907.0337.1\|1.2.0 (cjnative)\|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb\|aarch64-apple-darwin\|fac66aa4b4d3092c3579e7e281377707e9effc0bf803c89319c8f5c55d41ecf1\|\|\|\|--jobs 1,-O1 | failure | miss | 18.1m | 45.3m | 92.2m |
+| 39529172314 | 2 | `df4bdc26` | push | macos-arm64 / Cangjie 1.2.0 STS +  | macos-arm64 | macos15-20260907.0337.1\|1.2.0 (cjnative)\|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb\|aarch64-apple-darwin\|fac66aa4b4d3092c3579e7e281377707e9effc0bf803c89319c8f5c55d41ecf1\|\|\|\|--jobs 1,-O1 | success | miss | 27.2m | 27.4m | 27.3m |
+| 39529172314 | 1 | `df4bdc26` | push | windows-x64 / Cangjie 1.2.0 STS +  | windows-x64 | win22-20261012.333.1\|1.2.0 (cjnative)\|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6\|x86_64-w64-mingw32\|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0\|\|\|\|--jobs 1,-O1 | success | miss | 29.0m | 45.3m | 92.2m |
 
 ### Workflow level (one row per run attempt)
 
@@ -462,9 +482,13 @@ are excluded from the cells, not from the record.
 | 39245411094 | 1 | 46.6m | 111.7m |
 | 39398534378 | 1 | 55.3m | 128.7m |
 | 39437539673 | 1 | 56.6m | 131.9m |
+| 39482901494 | 1 | 46.0m | 120.0m |
+| 39491843827 | 1 | 41.4m | 110.1m |
+| 39529172314 | 1 | 45.3m | 92.2m |
+| 39529172314 | 2 | 27.4m | 27.3m |
 
-* wall across 85 run attempt(s): n=85 median=19.1m min=0.1m max=114.8m
-* runner minutes across 85 run attempt(s): 4589.4m total, max 148.4m
+* wall across 89 run attempt(s): n=89 median=21.2m min=0.1m max=114.8m
+* runner minutes across 89 run attempt(s): 4939.0m total, max 148.4m
 
 ## Matched cells (successful jobs only)
 
@@ -479,22 +503,26 @@ shown in the run table, so the revision-keyed view stays reconstructible.
 
 **Unmeasured axis:** DONE-03 also names the browser/font set. `ci_stage` does
 not record it, so no signature can attest it and these cells do not claim it
-was matched. If a producer starts recording it, the signature picks it up
-automatically and cells split accordingly.
+was matched. While it stays unrecorded, a count that reaches five is printed
+as `met on the recorded axes only` and names the axis it could not compare,
+so it is never read as closing the requirement. If a producer starts
+recording it, the signature picks it up automatically, cells split
+accordingly, and the qualification disappears with the gap.
 
 * **linux candidate / hit** `ubuntu22-20261004.315.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1`: n=1 value=4.1m
-* **linux candidate / hit** `ubuntu22-20261012.322.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1` revisions=0de9388dbd3529d1e93c4f61798b0e7c4c06a9ed,542f5ad69907eb4c02557811c5a60039cab6b172,804b49604e6d796d0e6d3b5aa45839da39666a72,8c7dec5d2e137dbc8a43be85709a43ff14b8f7dd,b0c3e5fb27ae4ef6e738f027b18edde3541e7714,d5c459d38ccd9190b5b991b27a148deb9c8bf025: n=6 median=4.5m min=2.8m max=4.7m
+* **linux candidate / hit** `ubuntu22-20261012.322.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1` revisions=0de9388dbd3529d1e93c4f61798b0e7c4c06a9ed,542f5ad69907eb4c02557811c5a60039cab6b172,804b49604e6d796d0e6d3b5aa45839da39666a72,8c7dec5d2e137dbc8a43be85709a43ff14b8f7dd,92054bc983a8b44e73adf59dbc9a87312a8ecdb9,b0c3e5fb27ae4ef6e738f027b18edde3541e7714,c2b3f46ca56ef7f072ca20e525b4db8026388c46,d5c459d38ccd9190b5b991b27a148deb9c8bf025: n=8 median=4.6m min=2.8m max=5.0m
 * **linux candidate / hit** `ubuntu22-20261018.327.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1`: n=1 value=4.6m
 * **linux candidate / miss** `ubuntu22-20261012.322.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1` revisions=5620866187e9684b65815480bbffa4747acfd284,5f32b1dcc24a7e8b83c382e70934e37b6cc2f752,748892bf2b43e5c0e8a49d6963befe0a12237476: n=3 median=5.1m min=5.0m max=5.5m
+* **linux candidate / miss** `ubuntu22-20261018.327.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1`: n=1 value=5.3m
 * **linux-x64 / hit** `ubuntu22-20261004.315.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1`: n=1 value=26.3m
-* **linux-x64 / hit** `ubuntu22-20261012.322.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1` revisions=0de9388dbd3529d1e93c4f61798b0e7c4c06a9ed,5620866187e9684b65815480bbffa4747acfd284,5f32b1dcc24a7e8b83c382e70934e37b6cc2f752,748892bf2b43e5c0e8a49d6963befe0a12237476,804b49604e6d796d0e6d3b5aa45839da39666a72,b0c3e5fb27ae4ef6e738f027b18edde3541e7714,cfa07d13c885189a994695e51f1acc28d6a8665f,d5c459d38ccd9190b5b991b27a148deb9c8bf025,e646c61e5be8e7feb75d42c2b78582d6f495371f: n=9 median=32.1m min=24.3m max=50.3m
-* **linux-x64 / hit** `ubuntu22-20261018.327.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1`: n=1 value=52.2m
-* **macos-arm64 / hit** `macos15-20260907.0337.1\|1.2.0 (cjnative)\|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb\|aarch64-apple-darwin\|fac66aa4b4d3092c3579e7e281377707e9effc0bf803c89319c8f5c55d41ecf1\|\|\|\|--jobs 1,-O1` revisions=0de9388dbd3529d1e93c4f61798b0e7c4c06a9ed,542f5ad69907eb4c02557811c5a60039cab6b172,804b49604e6d796d0e6d3b5aa45839da39666a72,8c7dec5d2e137dbc8a43be85709a43ff14b8f7dd,b0c3e5fb27ae4ef6e738f027b18edde3541e7714,cfa07d13c885189a994695e51f1acc28d6a8665f,e646c61e5be8e7feb75d42c2b78582d6f495371f: n=7 median=19.6m min=17.3m max=32.4m
-* **macos-arm64 / miss** `macos15-20260907.0337.1\|1.2.0 (cjnative)\|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb\|aarch64-apple-darwin\|fac66aa4b4d3092c3579e7e281377707e9effc0bf803c89319c8f5c55d41ecf1\|\|\|\|--jobs 1,-O1` revisions=5620866187e9684b65815480bbffa4747acfd284,5f32b1dcc24a7e8b83c382e70934e37b6cc2f752,748892bf2b43e5c0e8a49d6963befe0a12237476,d5c459d38ccd9190b5b991b27a148deb9c8bf025: n=4 median=21.5m min=17.9m max=30.5m
+* **linux-x64 / hit** `ubuntu22-20261012.322.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1` revisions=0de9388dbd3529d1e93c4f61798b0e7c4c06a9ed,5620866187e9684b65815480bbffa4747acfd284,5f32b1dcc24a7e8b83c382e70934e37b6cc2f752,748892bf2b43e5c0e8a49d6963befe0a12237476,804b49604e6d796d0e6d3b5aa45839da39666a72,b0c3e5fb27ae4ef6e738f027b18edde3541e7714,c2b3f46ca56ef7f072ca20e525b4db8026388c46,cfa07d13c885189a994695e51f1acc28d6a8665f,d5c459d38ccd9190b5b991b27a148deb9c8bf025,df4bdc2677e9c9d5df8ad4874ecd5aa1e82405bf,e646c61e5be8e7feb75d42c2b78582d6f495371f: n=11 median=37.6m min=24.3m max=50.3m
+* **linux-x64 / hit** `ubuntu22-20261018.327.1\|1.2.0 (cjnative)\|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2\|x86_64-unknown-linux-gnu\|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a\|\|\|\|--jobs 1,-O1` revisions=8c7dec5d2e137dbc8a43be85709a43ff14b8f7dd,92054bc983a8b44e73adf59dbc9a87312a8ecdb9: n=2 median=41.8m min=31.4m max=52.2m
+* **macos-arm64 / hit** `macos15-20260907.0337.1\|1.2.0 (cjnative)\|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb\|aarch64-apple-darwin\|fac66aa4b4d3092c3579e7e281377707e9effc0bf803c89319c8f5c55d41ecf1\|\|\|\|--jobs 1,-O1` revisions=0de9388dbd3529d1e93c4f61798b0e7c4c06a9ed,542f5ad69907eb4c02557811c5a60039cab6b172,804b49604e6d796d0e6d3b5aa45839da39666a72,8c7dec5d2e137dbc8a43be85709a43ff14b8f7dd,92054bc983a8b44e73adf59dbc9a87312a8ecdb9,b0c3e5fb27ae4ef6e738f027b18edde3541e7714,c2b3f46ca56ef7f072ca20e525b4db8026388c46,cfa07d13c885189a994695e51f1acc28d6a8665f,e646c61e5be8e7feb75d42c2b78582d6f495371f: n=9 median=27.9m min=17.3m max=32.6m
+* **macos-arm64 / miss** `macos15-20260907.0337.1\|1.2.0 (cjnative)\|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb\|aarch64-apple-darwin\|fac66aa4b4d3092c3579e7e281377707e9effc0bf803c89319c8f5c55d41ecf1\|\|\|\|--jobs 1,-O1` revisions=5620866187e9684b65815480bbffa4747acfd284,5f32b1dcc24a7e8b83c382e70934e37b6cc2f752,748892bf2b43e5c0e8a49d6963befe0a12237476,d5c459d38ccd9190b5b991b27a148deb9c8bf025,df4bdc2677e9c9d5df8ad4874ecd5aa1e82405bf: n=5 median=24.6m min=17.9m max=30.5m
 * **windows-x64 / hit** `win22-20261004.326.1\|1.2.0 (cjnative)\|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6\|x86_64-w64-mingw32\|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0\|\|\|\|--jobs 1,-O1`: n=1 value=25.8m
-* **windows-x64 / hit** `win22-20261012.333.1\|1.2.0 (cjnative)\|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6\|x86_64-w64-mingw32\|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0\|\|\|\|--jobs 1,-O1` revisions=542f5ad69907eb4c02557811c5a60039cab6b172,804b49604e6d796d0e6d3b5aa45839da39666a72,8c7dec5d2e137dbc8a43be85709a43ff14b8f7dd,b0c3e5fb27ae4ef6e738f027b18edde3541e7714,cfa07d13c885189a994695e51f1acc28d6a8665f,e646c61e5be8e7feb75d42c2b78582d6f495371f: n=6 median=39.1m min=24.6m max=45.9m
+* **windows-x64 / hit** `win22-20261012.333.1\|1.2.0 (cjnative)\|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6\|x86_64-w64-mingw32\|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0\|\|\|\|--jobs 1,-O1` revisions=542f5ad69907eb4c02557811c5a60039cab6b172,804b49604e6d796d0e6d3b5aa45839da39666a72,8c7dec5d2e137dbc8a43be85709a43ff14b8f7dd,92054bc983a8b44e73adf59dbc9a87312a8ecdb9,b0c3e5fb27ae4ef6e738f027b18edde3541e7714,c2b3f46ca56ef7f072ca20e525b4db8026388c46,cfa07d13c885189a994695e51f1acc28d6a8665f,e646c61e5be8e7feb75d42c2b78582d6f495371f: n=8 median=42.7m min=24.6m max=45.9m
 * **windows-x64 / miss** `win22-20261004.326.1\|1.2.0 (cjnative)\|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6\|x86_64-w64-mingw32\|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0\|\|\|\|--jobs 1,-O1` revisions=5f32b1dcc24a7e8b83c382e70934e37b6cc2f752,d5c459d38ccd9190b5b991b27a148deb9c8bf025: n=2 median=24.9m min=24.2m max=25.6m
-* **windows-x64 / miss** `win22-20261012.333.1\|1.2.0 (cjnative)\|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6\|x86_64-w64-mingw32\|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0\|\|\|\|--jobs 1,-O1` revisions=5620866187e9684b65815480bbffa4747acfd284,748892bf2b43e5c0e8a49d6963befe0a12237476: n=2 median=41.0m min=35.6m max=46.3m
+* **windows-x64 / miss** `win22-20261012.333.1\|1.2.0 (cjnative)\|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6\|x86_64-w64-mingw32\|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0\|\|\|\|--jobs 1,-O1` revisions=5620866187e9684b65815480bbffa4747acfd284,748892bf2b43e5c0e8a49d6963befe0a12237476,df4bdc2677e9c9d5df8ad4874ecd5aa1e82405bf: n=3 median=35.6m min=29.0m max=46.3m
 
 ## Requirement check
 
@@ -507,11 +535,11 @@ automatically and cells split accordingly.
 * linux candidate / **hit** `ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 1 collected — NOT met
   * paired samples under this condition: 0 — NOT met
 * linux candidate / **miss** `ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 3 collected — NOT met
-* linux candidate / **hit** `ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 6 collected — met
+* linux candidate / **hit** `ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 8 collected — met on the recorded axes only -- browser version, browser identity, font set not recorded, so this is not yet a full DONE-03 match
   * paired samples under this condition: 3 — NOT met
-* linux candidate / **miss** `ubuntu22-20261018.327.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 0 collected — NOT met
+* linux candidate / **miss** `ubuntu22-20261018.327.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 1 collected — NOT met
 * linux candidate / **hit** `ubuntu22-20261018.327.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 1 collected — NOT met
-  * paired samples under this condition: 0 — NOT met
+  * paired samples under this condition: 1 — NOT met
 * linux-x64 / **miss** (condition not recorded): 0 collected — NOT met
 * linux-x64 / **hit** (condition not recorded): 0 collected — NOT met
   * paired samples under this condition: 0 — NOT met
@@ -519,28 +547,28 @@ automatically and cells split accordingly.
 * linux-x64 / **hit** `ubuntu22-20261004.315.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 1 collected — NOT met
   * paired samples under this condition: 0 — NOT met
 * linux-x64 / **miss** `ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 0 collected — NOT met
-* linux-x64 / **hit** `ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 9 collected — met
+* linux-x64 / **hit** `ubuntu22-20261012.322.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 11 collected — met on the recorded axes only -- browser version, browser identity, font set not recorded, so this is not yet a full DONE-03 match
   * paired samples under this condition: 0 — NOT met
 * linux-x64 / **miss** `ubuntu22-20261018.327.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 0 collected — NOT met
-* linux-x64 / **hit** `ubuntu22-20261018.327.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 1 collected — NOT met
+* linux-x64 / **hit** `ubuntu22-20261018.327.1|1.2.0 (cjnative)|e62289d5b88af440de04a26a30c79403d024f6accfacfd96607ae409ad9c1df2|x86_64-unknown-linux-gnu|282c2bc7d0ba20d500d6930649c5a672c173c0b0ce1f76c8f4d8d0a7866aec0a||||--jobs 1,-O1`: 2 collected — NOT met
   * paired samples under this condition: 0 — NOT met
 * macos-arm64 / **miss** (condition not recorded): 0 collected — NOT met
 * macos-arm64 / **hit** (condition not recorded): 0 collected — NOT met
   * paired samples under this condition: 0 — NOT met
-* macos-arm64 / **miss** `macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|fac66aa4b4d3092c3579e7e281377707e9effc0bf803c89319c8f5c55d41ecf1||||--jobs 1,-O1`: 4 collected — NOT met
-* macos-arm64 / **hit** `macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|fac66aa4b4d3092c3579e7e281377707e9effc0bf803c89319c8f5c55d41ecf1||||--jobs 1,-O1`: 7 collected — met
-  * paired samples under this condition: 4 — NOT met
+* macos-arm64 / **miss** `macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|fac66aa4b4d3092c3579e7e281377707e9effc0bf803c89319c8f5c55d41ecf1||||--jobs 1,-O1`: 5 collected — met on the recorded axes only -- browser version, browser identity, font set not recorded, so this is not yet a full DONE-03 match
+* macos-arm64 / **hit** `macos15-20260907.0337.1|1.2.0 (cjnative)|d94d51eec0f20cce7f9bdbcebf3dabe808107141843072ce3ba3cd5b32471bcb|aarch64-apple-darwin|fac66aa4b4d3092c3579e7e281377707e9effc0bf803c89319c8f5c55d41ecf1||||--jobs 1,-O1`: 9 collected — met on the recorded axes only -- browser version, browser identity, font set not recorded, so this is not yet a full DONE-03 match
+  * paired samples under this condition: 5 — met on the recorded axes only -- browser version, browser identity, font set not recorded, so this is not yet a full DONE-03 match
 * windows-x64 / **miss** (condition not recorded): 0 collected — NOT met
 * windows-x64 / **hit** (condition not recorded): 0 collected — NOT met
   * paired samples under this condition: 0 — NOT met
 * windows-x64 / **miss** `win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0||||--jobs 1,-O1`: 2 collected — NOT met
 * windows-x64 / **hit** `win22-20261004.326.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0||||--jobs 1,-O1`: 1 collected — NOT met
   * paired samples under this condition: 1 — NOT met
-* windows-x64 / **miss** `win22-20261012.333.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0||||--jobs 1,-O1`: 2 collected — NOT met
-* windows-x64 / **hit** `win22-20261012.333.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0||||--jobs 1,-O1`: 6 collected — met
-  * paired samples under this condition: 2 — NOT met
+* windows-x64 / **miss** `win22-20261012.333.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0||||--jobs 1,-O1`: 3 collected — NOT met
+* windows-x64 / **hit** `win22-20261012.333.1|1.2.0 (cjnative)|24630a9317c38facebcdcd0772dde08d5cdb7e4eefdf95aee0fa30944b0c87f6|x86_64-w64-mingw32|5bbad497b41afb1dfd793023609c2ae71b883bca81f30f1bb0d83719d47245d0||||--jobs 1,-O1`: 8 collected — met on the recorded axes only -- browser version, browser identity, font set not recorded, so this is not yet a full DONE-03 match
+  * paired samples under this condition: 3 — NOT met
 
-240 successful job(s) carry no cache state and are excluded from the cells. Of those, ci required, classify changes record no stage evidence at all, so they can never be either condition and are not requirements. The rest (linux candidate, linux-x64, macos-arm64, windows-x64) are cache-bearing jobs whose state was not recorded -- from runs predating the recording, or from artifacts that expired -- so they remain requirements showing as 0 collected above rather than disappearing.
+246 successful job(s) carry no cache state and are excluded from the cells. Of those, ci required, classify changes record no stage evidence at all, so they can never be either condition and are not requirements. The rest (linux candidate, linux-x64, macos-arm64, windows-x64) are cache-bearing jobs whose state was not recorded -- from runs predating the recording, or from artifacts that expired -- so they remain requirements showing as 0 collected above rather than disappearing.
 
 ## Evidence that could not be collected
 
@@ -626,5 +654,7 @@ absent from the cells above and the requirement counts are a lower bound:
 * run `39198344467` attempt 1 (`acbc88b7`, push): linux-x64 / Cangjie 1.2.0 STS + st — **cancelled**, cache unknown
 * run `39198344467` attempt 1 (`acbc88b7`, push): macos-arm64 / Cangjie 1.2.0 STS +  — **cancelled**, cache unknown
 * run `39198344467` attempt 1 (`acbc88b7`, push): windows-x64 / Cangjie 1.2.0 STS +  — **cancelled**, cache unknown
+* run `39529172314` attempt 1 (`df4bdc26`, push): CI required — **failure**, cache unknown
+* run `39529172314` attempt 1 (`df4bdc26`, push): macos-arm64 / Cangjie 1.2.0 STS +  — **failure**, cache miss
 
 Re-run attempts present in this sample: 2. They are retained, not resolved to the latest attempt.
