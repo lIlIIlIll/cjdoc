@@ -117,6 +117,29 @@ private func hasExampleDiagnosticAbout(documentation: public_model.Documentation
     false
 }
 
+private func hasExampleDiagnosticSeverity(documentation: public_model.DocumentationSet,
+    code: String, severity: String): Bool {
+    for (diagnostic in documentation.diagnostics) {
+        if (diagnostic.code == code && diagnostic.severity == severity) { return true }
+    }
+    false
+}
+
+private func invalidCangjieExampleSource(): String {
+    """
+    package example_compile
+
+    /**
+     * Adds two values.
+     * @example Invalid call
+     * ```cangjie
+     * let result = missingApi(1, 2)
+     * ```
+     */
+    public func add(left: Int64, right: Int64): Int64 { left + right }
+    """
+}
+
 private func exampleDiagnosticSummary(documentation: public_model.DocumentationSet): Array<String> {
     let summary = ArrayList<String>()
     for (diagnostic in documentation.diagnostics) {
@@ -187,22 +210,29 @@ class ExampleCompilerTest {
 
     @TestCase
     func invalidCangjieExampleReportsCompilerDiagnostic(): Unit {
-        let root = createExampleProject(
-            """
-            package example_compile
-
-            /**
-             * Adds two values.
-             * @example Invalid call
-             * ```cangjie
-             * let result = missingApi(1, 2)
-             * ```
-             */
-            public func add(left: Int64, right: Int64): Int64 { left + right }
-            """)
+        let root = createExampleProject(invalidCangjieExampleSource())
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
             @Expect(hasExampleDiagnostic(documentation, "CJDOC3030"))
+            @Expect(hasExampleDiagnosticSeverity(documentation, "CJDOC3030", "error"))
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
+    func exampleNotCompilingRuleControlsNativeFailureSeverity(): Unit {
+        let root = createExampleProject(invalidCangjieExampleSource())
+        try {
+            File.writeTo(root.join("cjdoc.toml"),
+                "[lint]\nexample-not-compiling = \"warning\"\n".toArray())
+            let warning = DocumentationEngine().generate(exampleRequest(root, true))
+            @Expect(hasExampleDiagnosticSeverity(warning, "CJDOC3030", "warning"))
+
+            File.writeTo(root.join("cjdoc.toml"),
+                "[lint]\nexample-not-compiling = \"off\"\n".toArray())
+            let disabled = DocumentationEngine().generate(exampleRequest(root, true))
+            @Expect(!hasExampleDiagnostic(disabled, "CJDOC3030"))
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
@@ -306,10 +336,13 @@ class ExampleCompilerTest {
             public func add(left: Int64, right: Int64): Int64 { "not a number" }
             """)
         try {
+            File.writeTo(root.join("cjdoc.toml"),
+                "[lint]\nexample-not-compiling = \"off\"\n".toArray())
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
-            @Expect(hasExampleDiagnostic(documentation, "CJDOC3031"))
+            @Expect(hasExampleDiagnosticSeverity(documentation, "CJDOC3031", "error"))
             @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3070",
                 "did not fail inside the example"))
+            @Expect(hasExampleDiagnosticSeverity(documentation, "CJDOC3070", "error"))
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }

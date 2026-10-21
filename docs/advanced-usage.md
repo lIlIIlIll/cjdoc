@@ -323,6 +323,8 @@ CLI 的 `--min-symbol-coverage` 和 `--min-parameter-coverage` 仍可作为一�
 
 显式添加 `--check-examples`，把示例编译诊断纳入当前文档门禁。默认只编译；只有作者标记 `{run}` 的示例才会执行，`{must-fail}` 表示预期编译失败。超时、输出和内存限制继续生效，无法实施所需限制时明确拒绝。结果由诊断和退出码表达，不生成逐例执行报告。旧 `[doctest]` 配置必须删除。
 
+`[lint].example-not-compiling` 只控制示例自身编译失败（`CJDOC3030`）：默认级别为 `error`，可设为 `off`、`warning` 或 `error`。上下文编译失败（`CJDOC3031`）、无效指令和 pin 校验失败仍报告为 error。
+
 在 GitHub Actions 或其他 CI 中，直接运行同一条命令即可。CI runner 需要先安装 cjdoc，并把它加入 `PATH`；不需要把仓库验收脚本当成工具用户的前置步骤。
 
 GitHub Actions 的最小检查步骤：

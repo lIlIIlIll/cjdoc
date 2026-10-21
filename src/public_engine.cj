@@ -29,7 +29,7 @@ internal func generateDocumentationWithSource(request: GenerationRequest,
     }
     bindLocalizedDocumentationItems(documentation)
     if (request.checkExamples) {
-        compileDocumentationExamples(documentation, request.audience)
+        compileDocumentationExamples(documentation, request.audience, qualityConfig)
     }
     sortDocumentationDeterministically(documentation)
     let captured = publicDocumentation(documentation, request, capturePages: true)
@@ -61,7 +61,7 @@ public class DocumentationEngine {
         }
         bindLocalizedDocumentationItems(documentation)
         if (request.checkExamples) {
-            compileDocumentationExamples(documentation, request.audience)
+            compileDocumentationExamples(documentation, request.audience, qualityConfig)
         }
         sortDocumentationDeterministically(documentation)
         let captured = publicDocumentation(documentation, request, capturePages: true)
