@@ -136,6 +136,7 @@ class PublicResourceBudgetTest {
         @Expect(singleFallback.documentationRevision, "docs-limit")
         @Expect(singleFallback.status, "partial")
         @Expect(singleFallback.project.name, "resource-limited")
+        @Expect(singleFallback.generator.version, "0.7.3")
         @Expect(singleFallback.diagnostics.size, 1)
         @Expect(singleFallback.diagnostics[0].code, "CJDOC3027")
 
