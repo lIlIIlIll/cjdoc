@@ -46,7 +46,22 @@ DEFAULT_DEADLINE_SECONDS = 900
 DEFAULT_POLL_SECONDS = 30
 # The publication gate waits for the consumed attempt to become terminal; it is
 # bounded so a genuinely stuck CI run still fails the deployment.
-DEFAULT_GATE_SECONDS = 1800
+#
+# This bound must fit inside the job timeout of the step that runs it
+# (`verify-site`) with room for the step's own setup, otherwise the runner kills
+# the job at the timeout and the gate never gets to fail closed. That is not
+# hypothetical: with a 20 minute job timeout the job was cancelled mid-wait on six
+# consecutive `main` pushes (`56208661`, `748892bf`, `cfa07d13`, `8c7dec5d`,
+# `c2b3f46c`, `92054bc9`); the consumed CI run finished 17-981 seconds AFTER the
+# window closed in every one of them, so raising the job timeout alone would not
+# have been enough and the site silently stopped publishing. The bound is sized from the
+# observed wait (up to ~37 minutes under a loaded runner queue) plus headroom, and
+# `test_the_publication_gate_fits_inside_its_job_timeout` pins the relation against
+# the workflow so the two cannot drift apart again.
+DEFAULT_GATE_SECONDS = 3600
+# A job timeout must exceed the gate by at least this much, to cover the step's
+# checkout/setup/downloads and the final status write before a kill can land.
+GATE_SETUP_ALLOWANCE_SECONDS = 300
 
 # A single blip in a status read must not abort discovery or make the publication
 # gate reject an otherwise valid deployment; retry briefly before giving up.

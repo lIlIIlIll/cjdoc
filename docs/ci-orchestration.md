@@ -312,6 +312,57 @@ still running, and `scripts/ci_candidate_source.py resolve` adopted it
 removed wait is bounded by the historical numbers above (~15 minutes); a
 matched before/after wall-clock pair on the same revision is tracked by #96.
 
+### The publication gate's bound must fit inside its job timeout
+
+`verify-site` is the one job between a verified site and a deploy, and it waits
+(bounded) for the consumed CI run to become terminal before it may publish. Its
+job timeout therefore has to **exceed** the gate's own bound plus the step's
+setup, or the runner kills the job mid-wait and the gate never reaches its
+fail-closed path.
+
+That is not a theoretical relation. With `timeout-minutes: 20` on `verify-site`
+and `DEFAULT_GATE_SECONDS = 1800`, every `main` push was cancelled at the gate:
+
+| head | gate window (start → job killed) | consumed CI run finished | late by |
+| --- | --- | --- | ---: |
+| `56208661` | 08:53:15 → 09:13:17 | 09:13:34 | 17 s |
+| `748892bf` | 11:56:43 → 12:16:39 | 12:19:32 | 173 s |
+| `cfa07d13` | 09:33:25 → 09:53:42 | 10:04:06 | 624 s |
+| `8c7dec5d` | 14:35:27 → 14:55:38 | 15:11:59 | 981 s |
+| `c2b3f46c` | 19:47:06 → 20:07:02 | 20:08:35 | 93 s |
+| `92054bc9` | 20:46:01 → 21:06:04 | 21:06:56 | 52 s |
+
+Consequences of the kill, all of which were observed: the job still burned its
+20-minute budget, the failure was reported as `cancelled` rather than a gate
+refusal, and every step after the gate — the branch receipt, the browser-history
+upload, the validation-evidence upload, `Configure GitHub Pages`,
+`Upload Pages artifact` and the whole `deploy` job — was skipped. `main` has
+therefore published no site since 2026-10-18 (`acbc88b7` and `b0c3e5fb` both
+published; the six pushes from `56208661` on did not), while the same job
+succeeded on `pull_request`, where the candidate source is built locally and the
+gate has nothing to wait for (that is why every PR run passed: measured
+`jobspan` 1.4-1.7 minutes, with the gate step taking ~13-25 s).
+
+The consumed run finished after the window in all six cases, so raising the job
+timeout alone is not enough: the gate bound is now 3600 s with an explicit 300 s
+setup allowance, and `verify-site` is 70 minutes (4200 s), leaving ~5 minutes of
+slack over the relation. Both numbers are pinned by
+`test_the_publication_gate_fits_inside_its_job_timeout`, which fails if the job
+timeout stops exceeding the gate bound plus its allowance — the same invariant
+the repo already enforced for `resolve-candidate`'s 900 s wait, which is how the
+asymmetry went unnoticed.
+
+Two limits of this fix, stated rather than papered over. First, the 300 s setup
+allowance is deliberate slack, not a measured bound: the job's checkout, Python
+setup and four artifact downloads all run before the gate step, and they are
+observed to take seconds to a couple of minutes, but nothing enforces 300 s. If
+setup ever grew past the slack, the job timeout would again be the shorter bound.
+Second, `attempt_status` and the other API reads run `gh` **without** a
+`timeout=`, so a blocked call cannot reach the gate's own deadline check — that
+predates this change and is not addressed here. The guard itself now reads only an
+**uncommented, job-level** `timeout-minutes`, because a naive first-occurrence
+match would accept a commented `70` sitting above an active `20`.
+
 ## CI-06: parallelisation and the multi-locale extraction
 
 CI-06.2/06.4/06.6 are decided from the phase table above:
