@@ -136,6 +136,68 @@ def jobs_of(repository: str, run_id: int, attempt: int) -> list[dict]:
     return payload.get("jobs", []) if isinstance(payload, dict) else []
 
 
+# The fields that make up a matched condition. DONE-03 names the browser and font set
+# as part of it, so the last three slots exist to keep those axes in the signature.
+IDENTITY_FIELDS = ("runnerImage", "sdkVersion", "stdxDigest", "toolchainTarget",
+                   "toolchainFingerprint", "browserVersion", "browserIdentity",
+                   "fontSetDigest")
+# Named for a reader: the signature slot and the axis DONE-03 actually asks about.
+BROWSER_FONT_AXES = (("browserVersion", "browser version"),
+                     ("browserIdentity", "browser identity"),
+                     ("fontSetDigest", "font set"))
+
+
+def condition_stage_tuples(condition: str) -> list[list[str]]:
+    """Every serialized identity tuple inside one condition signature.
+
+    `job_conditions` writes the first stage's tuple, then `|stageN=<tuple>` for each
+    later stage whose identity diverged. A stage whose identity agreed with the first
+    is not repeated, and it agreed on EVERY field, so the leading tuple stands for it.
+    """
+    parts = condition.split("|stage")
+    tuples = [parts[0].split("|")]
+    for segment in parts[1:]:
+        _label, _, identity = segment.partition("=")
+        tuples.append(identity.split("|"))
+    return tuples
+
+
+def unrecorded_axes(conditions: set[str]) -> list[str]:
+    """Axes DONE-03 names that NO condition in the report recorded a value for.
+
+    Every sample page records these slots, but no producer fills them yet. A count of
+    five can therefore be reached on the toolchain axes alone, and reporting that as a
+    plain "met" would read as closing DONE-03 when the browser/font axis was never
+    compared. The caller qualifies the verdict with the names returned here.
+
+    EVERY stage tuple is inspected, not just the first: a later stage that diverged
+    gets its own tuple, and an axis it failed to record is not attested by the job even
+    when the first stage recorded it. Only a stage that agreed with the first is absent
+    from the signature, and agreement covers all of these fields.
+    """
+    positions = [IDENTITY_FIELDS.index(field) for field, _name in BROWSER_FONT_AXES]
+    recorded = [False] * len(BROWSER_FONT_AXES)
+    for condition in conditions:
+        if not condition:
+            continue
+        tuples = condition_stage_tuples(condition)
+        for index, position in enumerate(positions):
+            if all(position < len(values) and values[position].strip()
+                   for values in tuples):
+                recorded[index] = True
+    return [name for (_field, name), seen in zip(BROWSER_FONT_AXES, recorded) if not seen]
+
+
+def requirement_verdict(met: bool, unrecorded: list[str]) -> str:
+    """The verdict text, never claiming more than the recorded axes support."""
+    if not met:
+        return "NOT met"
+    if not unrecorded:
+        return "met"
+    return ("met on the recorded axes only -- " + ", ".join(unrecorded)
+            + " not recorded, so this is not yet a full DONE-03 match")
+
+
 def job_conditions(evidence: Path) -> dict[str, str]:
     """Per artifact directory, the toolchain/runner identity its stages recorded.
 
@@ -146,9 +208,7 @@ def job_conditions(evidence: Path) -> dict[str, str]:
     before/after samples are different commits by definition (see the docstring header).
     """
     conditions: dict[str, str] = {}
-    identity_fields = ("runnerImage", "sdkVersion", "stdxDigest", "toolchainTarget",
-                       "toolchainFingerprint", "browserVersion", "browserIdentity",
-                       "fontSetDigest")
+    identity_fields = IDENTITY_FIELDS
 
     def stage_identity(source: dict) -> str:
         """One canonical serialization of a stage's comparable identity.
@@ -596,8 +656,11 @@ def report(samples: list[dict], workflow: str, out: Path,
               "",
               "**Unmeasured axis:** DONE-03 also names the browser/font set. `ci_stage` does",
               "not record it, so no signature can attest it and these cells do not claim it",
-              "was matched. If a producer starts recording it, the signature picks it up",
-              "automatically and cells split accordingly.", ""]
+              "was matched. While it stays unrecorded, a count that reaches five is printed",
+              "as `met on the recorded axes only` and names the axis it could not compare,",
+              "so it is never read as closing the requirement. If a producer starts",
+              "recording it, the signature picks it up automatically, cells split",
+              "accordingly, and the qualification disappears with the gap.", ""]
     for key in sorted(cells):
         shape, state, condition = key
         # Inline code cannot contain a raw pipe in a table, and these bullets may be
@@ -646,6 +709,22 @@ def report(samples: list[dict], workflow: str, out: Path,
     # platform that only ever failed cannot vanish from the requirement section.
     for shape in requirement_shapes:
         conditions_by_shape.setdefault(shape, set())
+    # DONE-03 names the browser/font set, but no producer records it yet. Counts are
+    # reached on the toolchain axes alone, so a bare "met" would overstate them.
+    #
+    # Computed PER CONDITION, not from the union of every condition: once a producer
+    # starts recording these slots, old artifacts without them keep appearing in the
+    # report, and a union would mark the axis recorded because the NEW conditions
+    # supply it -- handing an old cell a bare "met" it never earned.
+    #
+    # The returned list is the conservative one: an axis appears if ANY condition fails
+    # to record it, so an empty `unrecordedAxes` means every cell in the report was
+    # compared on every axis DONE-03 names. Order follows the declaration above so the
+    # value reads the same way every run.
+    seen_unrecorded: set[str] = set()
+    for values in conditions_by_shape.values():
+        for condition in values:
+            seen_unrecorded.update(unrecorded_axes({condition}))
     for shape in sorted(conditions_by_shape):
         conditions = conditions_by_shape[shape]
         if not conditions:
@@ -655,30 +734,36 @@ def report(samples: list[dict], workflow: str, out: Path,
             continue
         for condition in sorted(conditions):
             label = f"`{condition}`" if condition else "(condition not recorded)"
+            condition_unrecorded = unrecorded_axes({condition})
             for state in ("miss", "hit"):
                 count = len(cells.get((shape, state, condition), []))
-                verdict = "met" if count >= 5 else "NOT met"
+                verdict = requirement_verdict(count >= 5, condition_unrecorded)
                 lines.append(f"* {shape} / **{state}** {label}: {count} collected — "
                              f"{verdict}")
             paired = min(len(cells.get((shape, "miss", condition), [])),
                          len(cells.get((shape, "hit", condition), [])))
-            paired_verdict = "met" if paired >= 5 else "NOT met"
+            paired_verdict = requirement_verdict(paired >= 5, condition_unrecorded)
             lines.append(f"  * paired samples under this condition: {paired} — "
                          f"{paired_verdict}")
     unclassified = [s for s in successful if s["state"] not in CLASSIFIED_STATES]
     if unclassified:
         never = sorted({s["shape"] for s in unclassified if not s.get("hasEvidence")})
-        unrecorded = sorted({s["shape"] for s in unclassified if s.get("hasEvidence")})
+        # NOT `unrecorded`: that name holds the missing DONE-03 axes above and is
+        # returned to the caller, so reusing it here silently replaced the axis list
+        # with a list of job shapes whenever a job had no cache state.
+        unrecorded_state = sorted({s["shape"] for s in unclassified
+                                   if s.get("hasEvidence")})
         parts = [f"{len(unclassified)} successful job(s) carry no cache state and are "
                  "excluded from the cells."]
         if never:
             parts.append(f"Of those, {', '.join(never)} record no stage evidence at all, "
                          "so they can never be either condition and are not requirements.")
-        if unrecorded:
-            parts.append(f"The rest ({', '.join(unrecorded)}) are cache-bearing jobs whose "
-                         "state was not recorded -- from runs predating the recording, or "
-                         "from artifacts that expired -- so they remain requirements showing "
-                         "as 0 collected above rather than disappearing.")
+        if unrecorded_state:
+            parts.append(f"The rest ({', '.join(unrecorded_state)}) are cache-bearing jobs "
+                         "whose state was not recorded -- from runs predating the "
+                         "recording, or from artifacts that expired -- so they remain "
+                         "requirements showing as 0 collected above rather than "
+                         "disappearing.")
         lines += ["", " ".join(parts)]
     if acquisition_failures:
         flat = [item for group in acquisition_failures for item in group]
@@ -714,6 +799,8 @@ def report(samples: list[dict], workflow: str, out: Path,
     return {"cells": {f"{shape}/{state}|{condition}": len(values)
                       for (shape, state, condition), values in cells.items()},
             "pairedPerCondition": paired,
+            "unrecordedAxes": [name for _field, name in BROWSER_FONT_AXES
+                               if name in seen_unrecorded],
             "failures": len(other), "report": str(out), "samples": len(samples),
             "runs": {f"{run_id}/{attempt}": {"wallMinutes": value[0],
                                              "runnerMinutes": value[1]}

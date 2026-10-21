@@ -116,6 +116,13 @@ remote tags), while the run `39217926544` and its logs remain retrievable and
 ## What this does not establish
 
 `docs/paired-samples-main.md` (issue #96) remains the authority for the
-cold/warm paired-sample requirement. Five successful samples **per matched
-condition** are still not collected; that report prints its own counts as
-`NOT met` rather than pooling samples across revisions or cache states.
+cold/warm paired-sample requirement, and it prints its own counts rather than
+pooling samples across revisions or cache states. One cell now reaches the
+recorded-axes threshold: on `macos15-20260907.0337.1` with the pinned SDK and
+stdx, macOS has 9 warm and 5 cold samples under one matched condition
+(paired = min(9, 5) = 5). That verdict is qualified, not a full match: DONE-03
+also names the browser/font set, no producer records it, so the report prints
+`met on the recorded axes only` and the requirement remains open. No other cell
+is close — `windows-x64` splits its cold samples across two runner images (2 and
+3, neither side reaching five), and `linux-x64` has warm samples but no cold
+sample on any single condition.

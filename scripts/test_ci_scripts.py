@@ -762,6 +762,157 @@ class PairedSampleTests(unittest.TestCase):
                          result["pairedPerCondition"])
         self.assertIn("paired samples under this condition: 0 — NOT met", text)
 
+    def test_a_met_cell_names_the_axes_it_could_not_compare(self) -> None:
+        """A count reached only on the recorded axes must not read as a full match.
+
+        DONE-03 names the browser and font set as part of the matched condition. No
+        producer records those slots, so five hits and five misses under one toolchain
+        signature say nothing about them. Reporting a bare "met" closes an experiment
+        that was never run, so the verdict has to name what it could not compare.
+        """
+        def sample(state):
+            return {"run": 1, "attempt": 1, "revision": "a" * 40, "event": "push",
+                    "job": "macos-arm64 / Cangjie", "shape": "macos-arm64",
+                    "conclusion": "success", "state": state, "jobMinutes": 10.0,
+                    "condition": "macos15|1.2.0|d|aarch64|f||||--jobs 1,-O1",
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        samples = [sample("hit") for _ in range(5)] + [sample("miss") for _ in range(5)]
+        out = self.root / "axes.md"
+        result = paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertEqual(result["unrecordedAxes"],
+                         ["browser version", "browser identity", "font set"])
+        self.assertIn("paired samples under this condition: 5 — met on the recorded axes "
+                      "only -- browser version, browser identity, font set not recorded, "
+                      "so this is not yet a full DONE-03 match", text)
+        # The unqualified verdict must not appear anywhere: a reader skimming the
+        # requirement section must not see "5 — met" and stop there.
+        self.assertNotIn(": 5 — met\n", text)
+
+    def test_a_recorded_axis_is_not_reported_as_unrecorded(self) -> None:
+        """The qualification must follow the data, not be hard-coded.
+
+        If a producer starts recording the browser and font set, the signature carries
+        it and the verdict stops disclaiming it -- otherwise the report would keep
+        hedging forever after the gap was closed.
+        """
+        def sample(state, revision):
+            return {"run": 1, "attempt": 1, "revision": revision, "event": "push",
+                    "job": "macos-arm64 / Cangjie", "shape": "macos-arm64",
+                    "conclusion": "success", "state": state, "jobMinutes": 10.0,
+                    "condition": "macos15|1.2.0|d|aarch64|f|152.0|chromium-123|"
+                                 "fonts-sha|--jobs 1,-O1",
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        samples = ([sample("hit", f"{n:040x}") for n in range(1, 6)]
+                   + [sample("miss", f"{n:040x}") for n in range(6, 11)])
+        out = self.root / "recorded-axes.md"
+        result = paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertEqual(result["unrecordedAxes"], [])
+        self.assertIn("paired samples under this condition: 5 — met", text)
+
+    def test_a_recorded_axis_does_not_excuse_an_older_condition(self) -> None:
+        """A newer condition recording the axis must not clear an older cell's verdict.
+
+        The axis list is per condition. If it were the union over the whole report,
+        one modern condition would mark browser/font as recorded and an old cell with
+        five pairs would print a bare `met` even though nothing compared that axis for
+        it -- exactly the overstatement the qualified verdict exists to prevent.
+        """
+        def sample(state, condition, revision):
+            return {"run": 1, "attempt": 1, "revision": revision, "event": "push",
+                    "job": "macos-arm64 / Cangjie", "shape": "macos-arm64",
+                    "conclusion": "success", "state": state, "jobMinutes": 10.0,
+                    "condition": condition, "runWallMinutes": 25.0,
+                    "runRunnerMinutes": 50.0}
+        old = "macos15|1.2.0|d|aarch64|f||||--jobs 1,-O1"
+        new = "macos15|1.2.0|d|aarch64|f|152.0|chromium-123|fonts-sha|--jobs 1,-O1"
+        samples = ([sample("hit", old, f"{n:040x}") for n in range(1, 6)]
+                   + [sample("miss", old, f"{n:040x}") for n in range(6, 11)]
+                   + [sample("hit", new, f"{n:040x}") for n in range(11, 16)])
+        out = self.root / "mixed-axes.md"
+        result = paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        # Read only the requirement section: the condition strings also appear in the
+        # matched-cells table above, so splitting on the whole document would slice
+        # between two rows instead of between verdicts.
+        section = text.split("## Requirement check")[1]
+        lines = [line for line in section.splitlines() if line.startswith("* ")]
+        old_lines = [line for line in lines if f"`{old}`" in line]
+        new_lines = [line for line in lines if f"`{new}`" in line]
+        # The old cell must still be qualified under both states...
+        self.assertEqual(len(old_lines), 2, old_lines)
+        for line in old_lines:
+            self.assertIn("met on the recorded axes only", line)
+        # ...while the new cell, which did record them, gets the plain verdict.
+        self.assertEqual(len(new_lines), 2, new_lines)
+        self.assertEqual(new_lines[1], f"* macos-arm64 / **hit** `{new}`: 5 collected — met",
+                         new_lines[1])
+        self.assertNotIn("recorded axes only", "\n".join(new_lines))
+        # The report-wide list stays conservative: an axis still unrecorded somewhere.
+        self.assertEqual(result["unrecordedAxes"],
+                         ["browser version", "browser identity", "font set"])
+
+    def test_the_axis_list_survives_a_job_with_no_cache_state(self) -> None:
+        """`unrecordedAxes` must not be clobbered by the unclassified-job block.
+
+        That block computes which shapes lack a cache state. Reusing the name
+        `unrecorded` for it silently replaced the axis list with a list of job shapes,
+        so the value returned to the caller -- and any gate reading it -- depended on
+        whether some unrelated job happened to record no state.
+        """
+        def sample(conclusion, state):
+            return {"run": 1, "attempt": 1, "revision": "a" * 40, "event": "push",
+                    "job": "macos-arm64 / Cangjie", "shape": "macos-arm64",
+                    "conclusion": conclusion, "state": state, "jobMinutes": 10.0,
+                    "condition": "macos15|1.2.0|d|aarch64|f||||--jobs 1,-O1",
+                    "hasEvidence": True, "runWallMinutes": 25.0,
+                    "runRunnerMinutes": 50.0}
+        samples = [sample("success", "hit") for _ in range(5)]
+        # A successful cache-bearing job with no cache state and no evidence: this is
+        # the case that used to overwrite the axis list.
+        samples.append(sample("success", "unknown"))
+        out = self.root / "unknown-state.md"
+        result = paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("carry no cache state", text)
+        self.assertEqual(result["unrecordedAxes"],
+                         ["browser version", "browser identity", "font set"])
+
+    def test_a_later_stage_that_omits_an_axis_keeps_it_unrecorded(self) -> None:
+        """An axis recorded by stage 1 but not by a diverged stage is not attested.
+
+        `job_conditions` appends `|stageN=<tuple>` only for a stage that diverged, and
+        that tuple is the whole point: the leading tuple alone would let a job whose
+        second stage recorded no browser/font identity claim it compared that axis.
+        Built through `job_conditions` so the real serialization is under test.
+        """
+        root = self.root / "later-stage-axes"
+        full = {"runnerImage": "macos15", "sdkVersion": "1.2.0", "stdxDigest": "d",
+                "toolchainTarget": "aarch64", "toolchainFingerprint": "f",
+                "browserVersion": "152.0", "browserIdentity": "chromium-123",
+                "fontSetDigest": "fonts-sha", "compileOptions": ["--jobs 1", "-O1"]}
+        # Stage 2 differs in compileOptions, so it gets its own tuple -- and that tuple
+        # records none of the browser/font fields.
+        later = dict(full, compileOptions=["--jobs 1", "-O1", "--LTO"])
+        later.update({key: "" for key in ("browserVersion", "browserIdentity",
+                                          "fontSetDigest")})
+        for name, stages in (("full", [{"environment": full}]),
+                             ("gap", [{"environment": full},
+                                      {"environment": later}])):
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(
+                json.dumps({"stages": stages}), encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertTrue(any("|stage2=" in value for value in conditions.values()),
+                        conditions)
+        # The first-stage-only artifact attests every axis...
+        self.assertEqual(paired.unrecorded_axes({conditions["full"]}), [])
+        # ...the two-stage one does not, because its stage-2 tuple omits them.
+        self.assertEqual(paired.unrecorded_axes({conditions["gap"]}),
+                         ["browser version", "browser identity", "font set"])
+
     def test_the_pairing_signature_excludes_the_revision(self) -> None:
         """`job_conditions` must key on the environment only.
 
