@@ -300,7 +300,7 @@ cjdoc diff --baseline api-surface.json --current api-surface-next.json --format 
 cjdoc generate --project . --format coverage --stdout > coverage.json
 ```
 
-coverage artifact 当前为 `cjdoc.documentation-coverage/2`，包含七类 metric 和按 package/module 的分组；旧的 `documentation-coverage-v1` schema 以独立只读文件保留。门禁可以在同一个项目配置中声明：
+coverage artifact 当前为 `cjdoc.documentation-coverage/2`，包含七类 metric 和按 package/module 的分组；仓库只保留当前的 `documentation-coverage.schema.json`，旧版 `documentation-coverage-v1` schema 已移除。门禁可以在同一个项目配置中声明：
 
 ```toml
 [lint]
@@ -672,4 +672,4 @@ python3 scripts/accept_dependency_public_api.py \
 
 上述两个临时目录必须是本次任务的新目录。脚本只读取并逐字节固定完整 `.cjo/.a/.so` 导出，然后独立编译公开调用者与真实 producer/consumer；逐项比较 CLI/API 的完整 Doc IR，覆盖绝对 manifest path、receipt、独立 pin、语言/兼容策略、文档发布修订和宿主工具链伪声明隔离。未 pin 的显式参考只允许明确 `manual`，不能因为能点击就声称 `exact`。
 
-重新生成当前 schema 和 golden 时，先运行 `scripts/update_schemas.sh`，再运行 `scripts/update_goldens.sh`。后者要求项目夹具与已提交的 Git 树逐项一致，再从该提交创建生成快照；历史 `/6`–`/14` 仍只读。比较按规范相对文件名排序，因此 `package-overview` 与 `package-overview-empty` 这样的前缀目录可正常共存。文件内容、可执行位、缺失或额外输入仍参与检查；失败时先处理真实输入差异，不删除夹具或关闭完整性门。
+重新生成当前 schema 和 golden 时，先运行 `scripts/update_schemas.sh`，再运行 `scripts/update_goldens.sh`。后者要求项目夹具与已提交的 Git 树逐项一致，再从该提交创建生成快照；历史 `/6`–`/15` schema 与 golden 已移除，不再保留只读副本。比较按规范相对文件名排序，因此 `package-overview` 与 `package-overview-empty` 这样的前缀目录可正常共存。文件内容、可执行位、缺失或额外输入仍参与检查；失败时先处理真实输入差异，不删除夹具或关闭完整性门。
