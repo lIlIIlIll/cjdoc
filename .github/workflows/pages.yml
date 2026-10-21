@@ -667,7 +667,14 @@ jobs:
            && needs.browser-shard.result == 'success'
            && needs.reading-regressions.result == 'success' }}
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
+    # This job waits for the consumed CI run to finish before it may publish, so its
+    # timeout must EXCEED the gate's own bound (`DEFAULT_GATE_SECONDS`) plus setup;
+    # otherwise the runner kills the job mid-wait and the gate never fails closed.
+    # At 20 minutes every `main` push was cancelled here and the site stopped
+    # publishing. The relation is pinned by
+    # `test_the_publication_gate_fits_inside_its_job_timeout` asserts the relation,
+    # so the two numbers cannot drift apart silently.
+    timeout-minutes: 70
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
