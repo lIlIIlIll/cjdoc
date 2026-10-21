@@ -879,6 +879,40 @@ class PairedSampleTests(unittest.TestCase):
         self.assertEqual(result["unrecordedAxes"],
                          ["browser version", "browser identity", "font set"])
 
+    def test_a_later_stage_that_omits_an_axis_keeps_it_unrecorded(self) -> None:
+        """An axis recorded by stage 1 but not by a diverged stage is not attested.
+
+        `job_conditions` appends `|stageN=<tuple>` only for a stage that diverged, and
+        that tuple is the whole point: the leading tuple alone would let a job whose
+        second stage recorded no browser/font identity claim it compared that axis.
+        Built through `job_conditions` so the real serialization is under test.
+        """
+        root = self.root / "later-stage-axes"
+        full = {"runnerImage": "macos15", "sdkVersion": "1.2.0", "stdxDigest": "d",
+                "toolchainTarget": "aarch64", "toolchainFingerprint": "f",
+                "browserVersion": "152.0", "browserIdentity": "chromium-123",
+                "fontSetDigest": "fonts-sha", "compileOptions": ["--jobs 1", "-O1"]}
+        # Stage 2 differs in compileOptions, so it gets its own tuple -- and that tuple
+        # records none of the browser/font fields.
+        later = dict(full, compileOptions=["--jobs 1", "-O1", "--LTO"])
+        later.update({key: "" for key in ("browserVersion", "browserIdentity",
+                                          "fontSetDigest")})
+        for name, stages in (("full", [{"environment": full}]),
+                             ("gap", [{"environment": full},
+                                      {"environment": later}])):
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(
+                json.dumps({"stages": stages}), encoding="utf-8")
+        conditions = paired.job_conditions(root)
+        self.assertTrue(any("|stage2=" in value for value in conditions.values()),
+                        conditions)
+        # The first-stage-only artifact attests every axis...
+        self.assertEqual(paired.unrecorded_axes({conditions["full"]}), [])
+        # ...the two-stage one does not, because its stage-2 tuple omits them.
+        self.assertEqual(paired.unrecorded_axes({conditions["gap"]}),
+                         ["browser version", "browser identity", "font set"])
+
     def test_the_pairing_signature_excludes_the_revision(self) -> None:
         """`job_conditions` must key on the environment only.
 

@@ -147,6 +147,21 @@ BROWSER_FONT_AXES = (("browserVersion", "browser version"),
                      ("fontSetDigest", "font set"))
 
 
+def condition_stage_tuples(condition: str) -> list[list[str]]:
+    """Every serialized identity tuple inside one condition signature.
+
+    `job_conditions` writes the first stage's tuple, then `|stageN=<tuple>` for each
+    later stage whose identity diverged. A stage whose identity agreed with the first
+    is not repeated, and it agreed on EVERY field, so the leading tuple stands for it.
+    """
+    parts = condition.split("|stage")
+    tuples = [parts[0].split("|")]
+    for segment in parts[1:]:
+        _label, _, identity = segment.partition("=")
+        tuples.append(identity.split("|"))
+    return tuples
+
+
 def unrecorded_axes(conditions: set[str]) -> list[str]:
     """Axes DONE-03 names that NO condition in the report recorded a value for.
 
@@ -154,18 +169,21 @@ def unrecorded_axes(conditions: set[str]) -> list[str]:
     five can therefore be reached on the toolchain axes alone, and reporting that as a
     plain "met" would read as closing DONE-03 when the browser/font axis was never
     compared. The caller qualifies the verdict with the names returned here.
+
+    EVERY stage tuple is inspected, not just the first: a later stage that diverged
+    gets its own tuple, and an axis it failed to record is not attested by the job even
+    when the first stage recorded it. Only a stage that agreed with the first is absent
+    from the signature, and agreement covers all of these fields.
     """
     positions = [IDENTITY_FIELDS.index(field) for field, _name in BROWSER_FONT_AXES]
     recorded = [False] * len(BROWSER_FONT_AXES)
     for condition in conditions:
         if not condition:
             continue
-        # The signature is the identity tuple, then `|` and the compile options; a
-        # later divergent stage appends `|stageN=...`. Only the leading tuple is read,
-        # and the fields cannot contain the separator.
-        fields = condition.split("|")[:len(IDENTITY_FIELDS)]
+        tuples = condition_stage_tuples(condition)
         for index, position in enumerate(positions):
-            if position < len(fields) and fields[position].strip():
+            if all(position < len(values) and values[position].strip()
+                   for values in tuples):
                 recorded[index] = True
     return [name for (_field, name), seen in zip(BROWSER_FONT_AXES, recorded) if not seen]
 
