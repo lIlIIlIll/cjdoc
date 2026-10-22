@@ -271,7 +271,7 @@ public func own(value: String): String { value }
             costs.append(run(command, output, version + '-' + mode + '-hot', evidence))
             assert digest(destination / 'docs.json') == cold, 'hot/cold Doc IR differ'
             document = decode_document_navigation(json.loads((destination / 'docs.json').read_text()))
-            assert document['schemaVersion'] == 'cjdoc.doc-ir/15'
+            assert document['schemaVersion'] == 'cjdoc.doc-ir/16'
             selected = [dep for dep in document['dependencies'] if dep['name'] == 'library']
             assert selected and all(dep['state'] in ['observed', 'verified'] for dep in selected)
             target_identity = selected[0]['identity']

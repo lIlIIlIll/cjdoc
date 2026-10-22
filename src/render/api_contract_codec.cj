@@ -66,7 +66,7 @@ private func appendParameterArray(out: RenderTextBuffer,
     out.append("]")
 }
 
-private func appendApiDeclaration(out: RenderTextBuffer, declaration: ApiContractDeclaration, languages: Bool): Unit {
+private func appendApiDeclaration(out: RenderTextBuffer, declaration: ApiContractDeclaration): Unit {
     out.append("{\"id\":"); appendSearchJsonString(out, declaration.id)
     out.append(",\"moduleId\":"); appendSearchJsonString(out, declaration.moduleId)
     out.append(",\"packageName\":"); appendSearchJsonString(out, declaration.packageName)
@@ -88,7 +88,6 @@ private func appendApiDeclaration(out: RenderTextBuffer, declaration: ApiContrac
     out.append(",\"relationships\":"); appendStringArray(out, declaration.relationships)
     out.append(",\"enumNonExhaustive\":"); appendNullableBool(out, declaration.enumNonExhaustive)
     out.append(",\"documentationFingerprint\":"); appendSearchJsonString(out, declaration.documentationFingerprint)
-    if (languages) {
     out.append(",\"documentationLanguages\":[")
     var firstLanguage = true
     for (item in declaration.documentationLanguages) {
@@ -97,7 +96,6 @@ private func appendApiDeclaration(out: RenderTextBuffer, declaration: ApiContrac
         out.append(",\"fingerprint\":"); appendSearchJsonString(out, item.fingerprint); out.append("}")
     }
     out.append("]")
-    }
     out.append(",\"sourceFingerprint\":"); appendSearchJsonString(out, declaration.sourceFingerprint)
     out.append(",\"metadataFingerprint\":"); appendSearchJsonString(out, declaration.metadataFingerprint)
     out.append(",\"collectionState\":"); appendSearchJsonString(out, declaration.collectionState)
@@ -127,7 +125,7 @@ public func encodeApiContractSnapshot(snapshot: ApiContractSnapshot): String {
     for (declaration in snapshot.declarations) {
         if (!first) { out.append(",") }
         first = false
-        appendApiDeclaration(out, declaration, snapshot.schemaVersion == API_SURFACE_SCHEMA_VERSION)
+        appendApiDeclaration(out, declaration)
     }
     out.append("],\"exposures\":[")
     first = true
@@ -454,7 +452,7 @@ private func decodeContractDocumentationLanguages(object: JsonObject, path: Stri
     result.toArray()
 }
 
-private func decodeContractDeclaration(node: JsonNode, path: String, languages: Bool): ApiContractDeclaration {
+private func decodeContractDeclaration(node: JsonNode, path: String): ApiContractDeclaration {
     let object = try { node.asObject() } catch (_: Exception) {
         throw IllegalArgumentException("invalid API surface at ${path}: expected declaration object")
     }
@@ -473,9 +471,8 @@ private func decodeContractDeclaration(node: JsonNode, path: String, languages: 
         parameters.add(decodeContractParameter(item, "${path}.parameters[${parameterIndex}]"))
         parameterIndex++
     }
-    if (object.size() != (if (languages) { 19 } else { 18 }) ||
-        (languages && object.get("documentationLanguages").isNone()) ||
-        (!languages && object.get("documentationLanguages").isSome()) || sourceObject.size() != 2 || returnObject.size() != 2) {
+    if (object.size() != 19 || object.get("documentationLanguages").isNone() ||
+        sourceObject.size() != 2 || returnObject.size() != 2) {
         throw IllegalArgumentException("invalid API surface at ${path}: unknown field")
     }
     ApiContractDeclaration(contractString(object, "id", path), contractString(object, "moduleId", path),
@@ -506,16 +503,6 @@ private func decodeContractExposure(node: JsonNode, path: String): ApiContractEx
         contractStringArray(object, "targetIds", path), state: contractString(object, "state", path))
 }
 
-private func decodeLegacyContractExposure(node: JsonNode, path: String): ApiContractExposure {
-    let object = try { node.asObject() } catch (_: Exception) {
-        throw IllegalArgumentException("invalid legacy API surface at " + path + ": expected exposure object")
-    }
-    if (object.size() != 5) { throw IllegalArgumentException("invalid legacy API surface at " + path + ": unknown field") }
-    ApiContractExposure(contractString(object, "reExportId", path),
-        contractString(object, "moduleId", path), contractString(object, "packageName", path),
-        contractString(object, "exposedName", path),
-        contractStringArray(object, "targetSymbolIds", path), state: "unavailable")
-}
 
 public func decodeApiContractSnapshot(text: String): ApiContractSnapshot {
     if (text.toArray().size > API_CONTRACT_MAX_INPUT) {
@@ -532,12 +519,10 @@ public func decodeApiContractSnapshot(text: String): ApiContractSnapshot {
         throw IllegalArgumentException("invalid API surface: expected object")
     }
     let version = contractString(object, "schemaVersion", "$")
-    if (version != API_SURFACE_SCHEMA_VERSION && version != API_SURFACE_V2_SCHEMA_VERSION && version != API_SURFACE_LEGACY_SCHEMA_VERSION) {
+    if (version != API_SURFACE_SCHEMA_VERSION) {
         throw IllegalArgumentException("unsupported API surface schema '${version}'")
     }
-    let legacy = version == API_SURFACE_LEGACY_SCHEMA_VERSION
-    let expectedFields = if (legacy) { 5 } else { 7 }
-    if (object.size() != expectedFields) {
+    if (object.size() != 7) {
         throw IllegalArgumentException("invalid API surface: unknown or missing top-level field")
     }
     let declarationsNode = try { requiredNode(object, "declarations", "$").asArray() } catch (_: Exception) {
@@ -549,38 +534,7 @@ public func decodeApiContractSnapshot(text: String): ApiContractSnapshot {
         if (declarations.size >= API_CONTRACT_MAX_ENTRIES) {
             throw IllegalArgumentException("API surface exceeds ${API_CONTRACT_MAX_ENTRIES} declarations")
         }
-        let item = try { node.asObject() } catch (_: Exception) {
-            throw IllegalArgumentException("invalid API surface declaration")
-        }
-        if (legacy) {
-            if (item.size() != 8) {
-                throw IllegalArgumentException("invalid legacy API surface declaration at $.declarations[${index}]: unknown field")
-            }
-            let source = try { requiredNode(item, "sourceApiSignature", "$.declarations[${index}]").asObject() }
-                catch (_: Exception) { throw IllegalArgumentException("invalid legacy API surface signature") }
-            if (source.size() != 2) {
-                throw IllegalArgumentException(
-                    "invalid legacy API surface signature at $.declarations[${index}].sourceApiSignature: unknown field")
-            }
-            let state = contractString(source, "state", "$.declarations[${index}].sourceApiSignature")
-            if (state != "available" && state != "unavailable") {
-                throw IllegalArgumentException(
-                    "invalid legacy API surface signature state at $.declarations[${index}].sourceApiSignature.state")
-            }
-            let tokens = contractStringArray(source, "tokens", "$.declarations[${index}].sourceApiSignature")
-            declarations.add(ApiContractDeclaration(contractString(item, "id", "$.declarations[${index}]"),
-                contractString(item, "moduleId", "$.declarations[${index}]"),
-                contractString(item, "packageName", "$.declarations[${index}]"),
-                contractString(item, "kind", "$.declarations[${index}]"),
-                contractString(item, "name", "$.declarations[${index}]"),
-                contractString(item, "name", "$.declarations[${index}]"),
-                contractString(item, "visibility", "$.declarations[${index}]"),
-                if (state == "available") { "resolved" } else { "unavailable" },
-                sourceApiSignature: tokens, ownerId: contractNullableString(item, "ownerId", "$.declarations[${index}]"),
-                collectionState: "unavailable"))
-        } else {
-            declarations.add(decodeContractDeclaration(node, "$.declarations[${index}]", version == API_SURFACE_SCHEMA_VERSION))
-        }
+        declarations.add(decodeContractDeclaration(node, "$.declarations[${index}]"))
         index++
     }
     let exposuresNode = try { requiredNode(object, "exposures", "$").asArray() } catch (_: Exception) {
@@ -592,18 +546,13 @@ public func decodeApiContractSnapshot(text: String): ApiContractSnapshot {
         if (exposures.size >= API_CONTRACT_MAX_ENTRIES) {
             throw IllegalArgumentException("API surface exceeds ${API_CONTRACT_MAX_ENTRIES} exposures")
         }
-        if (legacy) {
-            exposures.add(decodeLegacyContractExposure(node, "$.exposures[" + index.toString() + "]"))
-        } else {
-            exposures.add(decodeContractExposure(node, "$.exposures[" + index.toString() + "]"))
-        }
+        exposures.add(decodeContractExposure(node, "$.exposures[${index}]"))
         index++
     }
-    ApiContractSnapshot(contractString(object, "project", "$") , contractAudience(object, "$") ,
-        if (legacy) { "unknown" } else { contractString(object, "cfgProfile", "$") },
-        collectionState: if (legacy) { "unavailable" } else { contractString(object, "collectionState", "$") },
-        declarations: declarations.toArray(), exposures: exposures.toArray(), schemaVersion: version)
-
+    ApiContractSnapshot(contractString(object, "project", "$"), contractAudience(object, "$"),
+        contractString(object, "cfgProfile", "$"),
+        collectionState: contractString(object, "collectionState", "$"),
+        declarations: declarations.toArray(), exposures: exposures.toArray())
 }
 public func encodeApiDiffReport(report: ApiDiffReport): String {
     let out = RenderTextBuffer()

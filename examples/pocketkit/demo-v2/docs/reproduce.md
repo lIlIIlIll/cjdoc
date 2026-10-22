@@ -36,7 +36,7 @@ python3 examples/pocketkit/reproduce.py \
 ```
 
 `generated` 必须尚不存在。脚本先生成固定 `support-v1` 索引，再生成同库两个版本的
-中英文 HTML、JSON、Markdown、coverage、doctest、API diff，并调用原生版本组合。
+中英文 HTML、JSON、Markdown、coverage、API diff，并调用原生版本组合。
 入口为 `generated/composed/index.html`；在版本页选择 English 或中文。
 该目录包含核心 API 页面与原始报告；展示首页和可读报告包装层由仓库的 Pages 构建生成。
 
@@ -46,11 +46,11 @@ are added by the repository's Pages build.
 
 `generated/check-modes/native-check.json` 保存独立的 `check --check-examples` 命令证据，
 包括只编译、运行并比对输出、预期编译失败和无代码跳过的输入。它是整体检查结果，
-不冒充原生逐例状态。各版本 `doctest/results.json` 单独记录旧 doctest 管线的运行和跳过；
-诊断项目故意错误的示例仍是 failed。
+不冒充原生逐例状态。诊断项目保留缺失与歧义引用的原生诊断和源码范围；
+其中的故意错误代码仅作为文档内容展示，不宣称已经执行。
 
-Directive checks provide aggregate command evidence, while the legacy doctest report retains
-its actual per-example run/skip/failure results. A guide code fence is not execution evidence.
+Directive checks provide aggregate command evidence, not per-example results.
+A guide code fence or a documented invalid example is not execution evidence.
 
 ## 本地启动 / Local authoring
 

@@ -76,7 +76,7 @@ def validate_target(target: object) -> dict:
         match = fields(target["match"], {"kind", "title"}, {"packageName", "moduleId"}, "match")
         for key, value in match.items():
             text(value, f"match.{key}")
-        if match["kind"] not in ("project", "machine", "concept", "package", "symbol"):
+        if match["kind"] not in ("project", "machine", "concept", "package", "symbol", "module", "guide", "validation"):
             raise ContractError("match.kind is not in navigation-index/1")
         if match["kind"] == "symbol" and not (match.get("packageName") or match.get("moduleId")):
             raise ContractError("symbol selectors need packageName or moduleId scope")

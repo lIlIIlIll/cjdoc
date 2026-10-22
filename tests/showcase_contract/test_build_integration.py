@@ -23,7 +23,7 @@ from showcase_build.navigation import mount, markdown_declarations
 from showcase_build.packaging import copy_sources, source_archive
 from showcase_contract.site import ContractError
 from report_views.reports import UtilityRegion, native_check_view, quality_view
-from report_views.pages import Sections
+from report_views.pages import Sections, publish as publish_report_pages
 
 
 class BuildIntegrationTests(unittest.TestCase):
@@ -46,7 +46,7 @@ class BuildIntegrationTests(unittest.TestCase):
         self.addCleanup(patch.stopall)
         patch("showcase_build.packaging.source_inputs", return_value=inventory).start()
         self.write("source/examples/pocketkit/LICENSE", "MIT license")
-        configuration = '[external-docs.dep]\nversion="fixed-v1"\n[doctest]\nmode="deny"\n'
+        configuration = '[external-docs.dep]\nversion="fixed-v1"\n[i18n]\ndefault-language="en"\n'
         self.write("source/examples/pocketkit/demo-v1/cjdoc.toml", configuration)
         self.write("source/examples/pocketkit/demo-v1/target/stale.json", "stale")
         self.write("source/examples/pocketkit/.env", "secret must never be published")
@@ -88,7 +88,7 @@ class BuildIntegrationTests(unittest.TestCase):
         copy_composed_publication(self.root / "composed", self.root / "published")
         self.assertTrue((self.root / "published/demo-v1/index.html").is_file())
         self.assertTrue((self.root / "published/demo-v2/api-diff.json").is_file())
-        self.assertTrue((self.root / "published/demo-v1/doctest/results.json").is_file())
+        self.assertFalse((self.root / "published/demo-v1/doctest").exists())
         self.assertEqual(json.loads((self.root / "published/demo-v1/html/en/machine/docs.json").read_text()),
                          {"public": True})
         self.assertFalse((self.root / "published/demo-v1/docs.json").exists())
@@ -148,6 +148,18 @@ class BuildIntegrationTests(unittest.TestCase):
                 install_output(self.root / "work/site", self.root / "output")
         self.assertEqual((self.root / "output/index.html").read_text(), "old")
 
+    def test_legacy_output_marker_is_rejected_without_changing_either_tree(self) -> None:
+        marker = self.write("output/build.json", {"schemaVersion": "cjdoc.showcase/1"})
+        original = marker.read_bytes()
+        self.write("output/index.html", "old")
+        self.write("work/site/index.html", "new")
+        with self.assertRaisesRegex(ContractError, "unowned output directory"):
+            install_output(self.root / "work/site", self.root / "output")
+        self.assertEqual(marker.read_bytes(), original)
+        self.assertEqual((self.root / "output/index.html").read_text(), "old")
+        self.assertEqual((self.root / "work/site/index.html").read_text(), "new")
+        self.assertFalse((self.root / "work/previous-output").exists())
+
     def test_language_switch_uses_native_identity_when_paths_differ(self) -> None:
         for locale, path in (("zh-CN", "symbols/chinese.html"), ("en", "symbols/different-english.html")):
             self.write(f"site/{locale}/navigation-index.json", {"schemaVersion": "cjdoc.navigation-index/1", "pages": [
@@ -169,10 +181,44 @@ class BuildIntegrationTests(unittest.TestCase):
     def test_native_check_evidence_rejects_modified_source(self) -> None:
         self.write("view/check-modes/src/api.cj", "modified")
         self.write("view/check-modes/native-check.json", {"schemaVersion": "cjdoc.showcase-native-check/1", "exitCode": 0,
+            "command": ["cjdoc", "check", "--check-examples"],
             "scope": "aggregate command evidence; no per-example result claim", "sources": [
             {"path": "src/api.cj", "sha256": hashlib.sha256(b"original").hexdigest()}]})
         with self.assertRaisesRegex(ContractError, "source hash mismatch"):
             native_check_view(self.root / "view")
+
+    def test_native_check_report_requires_successful_explicit_command_evidence(self) -> None:
+        with self.assertRaisesRegex(ContractError, "evidence is required"):
+            native_check_view(self.root / "view")
+        source = self.write("view/check-modes/src/api.cj", "package checks\n")
+        evidence = {"schemaVersion": "cjdoc.showcase-native-check/1", "exitCode": 0,
+                    "command": ["cjdoc", "check", "--check-examples"],
+                    "scope": "aggregate command evidence; no per-example result claim",
+                    "sources": [{"path": "src/api.cj", "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}]}
+        for key, value in (("schemaVersion", "unsupported"), ("scope", "per-example results"),
+                           ("exitCode", 1), ("command", ["cjdoc", "check"])):
+            with self.subTest(key=key):
+                self.write("view/check-modes/native-check.json", {**evidence, key: value})
+                with self.assertRaises(ContractError):
+                    native_check_view(self.root / "view")
+        self.write("view/check-modes/native-check.json", evidence)
+        rendered = native_check_view(self.root / "view")
+        self.assertIn('id="native-check"', rendered)
+        self.assertIn("no per-example result claim", rendered)
+        self.assertNotIn("data-doctest-status", rendered)
+
+    def test_focused_reports_use_native_check_route_and_keep_diagnostic_evidence_separate(self) -> None:
+        sections = "".join(f'<section id="{name}"><p>{name}</p></section>'
+                           for name in ("native-check", "api-diff", "coverage", "quality", "diagnostics", "provenance"))
+        self.write("view/validation.html", '<html><head><title>Validation</title></head><body>'
+                   '<div class="validation-page"><h1>Validation</h1>' + sections + '</div></body></html>')
+        self.write("view/report-provenance.json", {"locale": "en"})
+        publish_report_pages(self.root / "view")
+        self.assertIn('<section id="native-check">', (self.root / "view/report-native-check.html").read_text())
+        self.assertFalse((self.root / "view/report-doctest.html").exists())
+        diagnostics = (self.root / "view/report-diagnostics.html").read_text()
+        self.assertIn('<section id="diagnostics">', diagnostics)
+        self.assertNotIn('<section id="native-check">', diagnostics)
 
     def test_quality_values_are_copied_and_heuristic_boundary_remains_visible(self) -> None:
         value = {"audience": "external", "assessment": "conservative-placeholder-heuristic",

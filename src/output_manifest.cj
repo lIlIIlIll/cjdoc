@@ -163,12 +163,10 @@ internal func parseOwnedManifest(text: String): OwnedOutputManifest {
     let schema = try { object["schemaVersion"].asString() } catch (_: Exception) {
         throw IllegalArgumentException("invalid cjdoc output manifest schemaVersion")
     }
-    if (schema != OUTPUT_MANIFEST_SCHEMA && schema != OUTPUT_LEGACY_MANIFEST_SCHEMA) {
+    if (schema != OUTPUT_MANIFEST_SCHEMA) {
         throw IllegalArgumentException("unsupported cjdoc output manifest '${schema}'")
     }
-    if ((schema == OUTPUT_MANIFEST_SCHEMA &&
-            (object.size() != 4 || object.get("directories").isNone())) ||
-        (schema == OUTPUT_LEGACY_MANIFEST_SCHEMA && object.size() != 3)) {
+    if (object.size() != 4 || object.get("directories").isNone()) {
         throw IllegalArgumentException("invalid cjdoc output manifest fields")
     }
     let algorithm = try { object["digestAlgorithm"].asString() } catch (_: Exception) {
@@ -182,10 +180,6 @@ internal func parseOwnedManifest(text: String): OwnedOutputManifest {
     }
     let files = parseOwnedFileEntries(entries, "output manifest")
     let expectedDirectories = ownedDirectoriesForFiles(files)
-    if (schema == OUTPUT_LEGACY_MANIFEST_SCHEMA) {
-        return OwnedOutputManifest(files, directories: expectedDirectories,
-            hasDirectoryProvenance: false)
-    }
     let directoryEntries = try { object["directories"].asArray() } catch (_: Exception) {
         throw IllegalArgumentException("invalid cjdoc output manifest directories")
     }

@@ -130,26 +130,6 @@ class I18nReferenceStateTest {
     }
 
     @TestCase
-    func frozenLegacyInputsKeepUnknownProvenanceAndNoLocalizedReferences(): Unit {
-        for (version in [6, 12]) {
-            let json = String.fromUtf8(File.readFrom(Path("tests/fixtures/golden-v" + version.toString() + "/basic.docs.json")))
-            let imported = api_render.decodeDocIr(json)
-            @Expect(imported.schemaVersion, api_model.DOC_IR_SCHEMA_VERSION)
-            var comments: Int64 = 0
-            for (symbol in imported.declarations) {
-                if (let Some(comment) <- symbol.documentation) {
-                    @Expect(comment.localizedTexts.isEmpty())
-                    @Expect(comment.defaultLanguage.isNone())
-                    comments++
-                }
-            }
-            @Expect(comments > 0)
-            let encoded = api_render.encodeDocIr(imported)
-            @Expect(api_render.encodeDocIr(api_render.decodeDocIr(encoded)), encoded)
-        }
-    }
-
-    @TestCase
     func sourceResolutionKeepsMissingAmbiguousAndHiddenTargetsConservative(): Unit {
         let project = i18nTestProject("/** Summary.\n * @see add Resolved see.\n * @see Missing Missing see.\n" +
             " * @see overload Ambiguous see.\n * @see hidden Hidden see.\n * @throws Failure Resolved throws.\n" +

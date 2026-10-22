@@ -3,12 +3,6 @@ default-language = "zh-CN"
 languages = ["zh-CN", "en"]
 missing-translation = "warn"
 
-[doctest]
-mode = "deny"
-timeout-ms = 30000
-memory-mb = 4096
-jobs = 2
-
 [docs]
 index = "docs/index.md"
 

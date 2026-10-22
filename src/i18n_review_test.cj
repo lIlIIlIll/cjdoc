@@ -25,21 +25,6 @@ private func reviewMarkdownText(node: api_model.MarkdownNode): String {
 @Test
 class I18nReviewTest {
     @TestCase
-    func explanationOnlyExamplesDoNotPrepareACompilerContext(): Unit {
-        let project = i18nTestProject("/** Summary.\n * @example Explanation without executable code.\n */")
-        try {
-            let documentation = i18nTestGenerate(project)
-            // An absent project cannot be compiled; prose-only examples need no compiler context.
-            let report = runDoctests(documentation, DoctestConfig(mode: "warn"), project.join("evidence"),
-                projectRoot: project.join("absent-project"))
-            @Expect(report.results.size, 1)
-            @Expect(report.results[0].status, "skipped")
-            @Expect(report.results[0].message, "no executable Cangjie fence")
-            @Expect(report.results[0].exitCode.isNone())
-        } finally { let _ = removeIfExists(project, recursive: true) }
-    }
-
-    @TestCase
     func capturedGuideResourceFailureKeepsABoundedSourceFreePage(): Unit {
         let project = i18nTestProject("/** API remains available. */")
         try {
@@ -155,15 +140,12 @@ class I18nReviewTest {
     }
 
     @TestCase
-    func currentArtifactSchemasHaveSeparateResourceIdentifiers(): Unit {
-        for ((current, legacy, fileName) in [
-            (schemas.API_DIFF_SCHEMA, schemas.API_DIFF_V1_SCHEMA, "api-diff-v2.schema.json"),
-            (schemas.VERSIONS_SCHEMA, schemas.VERSIONS_V1_SCHEMA, "versions-v2.schema.json"),
-            (schemas.DOCTEST_RESULTS_SCHEMA, schemas.DOCTEST_RESULTS_V1_SCHEMA, "doctest-results-v2.schema.json"),
-            (schemas.SEARCH_INDEX_SCHEMA, schemas.SEARCH_INDEX_V8_SCHEMA, "search-index-v9.schema.json")]) {
+    func currentArtifactSchemasHaveCurrentResourceIdentifiers(): Unit {
+        for ((current, fileName) in [
+            (schemas.API_DIFF_SCHEMA, "api-diff-v2.schema.json"),
+            (schemas.VERSIONS_SCHEMA, "versions-v2.schema.json"),
+            (schemas.SEARCH_INDEX_SCHEMA, "search-index-v9.schema.json")]) {
             let currentId = JsonNode.parse(current).asObject()["$id"].asString()
-            let legacyId = JsonNode.parse(legacy).asObject()["$id"].asString()
-            @Expect(currentId != legacyId)
             @Expect(currentId.endsWith("/" + fileName))
             @Expect(readTextBounded(Path("docs/schema").join(fileName), 1024 * 1024).trimAscii(), current.trimAscii())
             @Expect(schemaTextForCli(fileName.removeSuffix(".schema.json")), current)
@@ -301,32 +283,14 @@ class I18nReviewTest {
     }
 
     @TestCase
-    func legacySnapshotsRejectDocumentationLanguages(): Unit {
-        let languages: Array<?String> = [Some("en"), None]
-        for (version in [api_model.API_SURFACE_LEGACY_SCHEMA_VERSION, api_model.API_SURFACE_V2_SCHEMA_VERSION]) {
-            for (language in languages) {
-                let declaration = reviewContractDeclaration([
-                    api_model.ApiDocumentationFingerprint(language, REVIEW_FINGERPRINT)])
-                @ExpectThrows[IllegalArgumentException](api_model.ApiContractSnapshot("project", "external", "default",
-                    declarations: [declaration], schemaVersion: version))
-            }
-        }
-    }
-
-    @TestCase
-    func legacySnapshotsWithoutDocumentationLanguagesRemainValid(): Unit {
+    func currentSnapshotWithoutDocumentationLanguagesRoundTrips(): Unit {
         let declaration = reviewContractDeclaration([])
-        for (version in [api_model.API_SURFACE_LEGACY_SCHEMA_VERSION, api_model.API_SURFACE_V2_SCHEMA_VERSION]) {
-            let snapshot = api_model.ApiContractSnapshot("project", "external", "default",
-                declarations: [declaration], schemaVersion: version)
-            @Expect(snapshot.schemaVersion, version)
-            @Expect(snapshot.declarations[0].documentationLanguages.isEmpty())
-        }
         let snapshot = api_model.ApiContractSnapshot("project", "external", "default",
-            declarations: [declaration], schemaVersion: api_model.API_SURFACE_V2_SCHEMA_VERSION)
+            declarations: [declaration])
+        @Expect(snapshot.schemaVersion, api_model.API_SURFACE_SCHEMA_VERSION)
         let encoded = api_render.encodeApiContractSnapshot(snapshot)
         let decoded = api_render.decodeApiContractSnapshot(encoded)
-        @Expect(decoded.schemaVersion, api_model.API_SURFACE_V2_SCHEMA_VERSION)
+        @Expect(decoded.schemaVersion, api_model.API_SURFACE_SCHEMA_VERSION)
         @Expect(decoded.declarations[0].documentationLanguages.isEmpty())
         @Expect(api_render.encodeApiContractSnapshot(decoded), encoded)
     }

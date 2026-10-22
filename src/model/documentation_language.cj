@@ -107,15 +107,3 @@ public class DocumentationText {
         this.navigation = navigation
     }
 }
-
-/** Proof belongs to an authored origin and exact example, never its title. */
-public func documentationExampleKey(symbolId: String, text: DocumentationText): String {
-    let out = StringBuilder()
-    for (value in [symbolId, text.language.getOrDefault({ => "unknown" }), text.text, text.directives]) {
-        out.append(value.size.toString() + ":" + value)
-    }
-    if (let Some(source) <- text.source) {
-        out.append(source.path + ":" + source.start.byteOffset.toString() + ":" + source.end.byteOffset.toString())
-    }
-    "example:" + contractFingerprint(out.toString())
-}

@@ -26,15 +26,9 @@ internal func preflightOutput(root: Path, previous: OwnedOutputManifest,
         throw IllegalArgumentException("invalid cjdoc output manifest path topology")
     }
 
-    if (!previous.hasDirectoryProvenance && !previous.directories.isEmpty() && !forceOwned) {
-        throw IllegalStateException(
-            "legacy cjdoc output manifest lacks directory provenance; use --force-owned to adopt its directories")
-    }
     let previouslyOwnedDirectories = HashSet<String>()
-    if (previous.hasDirectoryProvenance || forceOwned) {
-        for (directory in previous.directories) {
-            let _ = previouslyOwnedDirectories.add(directory)
-        }
+    for (directory in previous.directories) {
+        let _ = previouslyOwnedDirectories.add(directory)
     }
     for (directory in ownedDirectoriesForFiles(nextFiles)) {
         let target = root.join(directory)

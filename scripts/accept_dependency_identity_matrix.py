@@ -172,7 +172,7 @@ class Matrix:
                 command += ['--doc-inventory-pin', str(path.resolve()) + '=' + sha(path)]
         self.run(name + '-generate', self.wrapped('a', [*command, *extra]))
         document = load(destination / 'docs.json')
-        assert document['schemaVersion'] == 'cjdoc.doc-ir/15'
+        assert document['schemaVersion'] == 'cjdoc.doc-ir/16'
         encoded = json.dumps(document)
         for local in [str(self.root), str(self.repo), *(str(item['root']) for item in self.sdk.values())]:
             assert local not in encoded, 'published Doc IR leaked a local root'

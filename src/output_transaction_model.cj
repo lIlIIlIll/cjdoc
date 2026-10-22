@@ -13,7 +13,6 @@ internal let OUTPUT_PREPARING_NAME = ".cjdoc-output-transaction.preparing"
 internal let OUTPUT_TRANSACTION_NAME = ".cjdoc-output-transaction.txn"
 internal let OUTPUT_RETIRED_NAME = ".cjdoc-output-transaction.retired"
 internal let OUTPUT_MANIFEST_SCHEMA = "cjdoc.output/3"
-internal let OUTPUT_LEGACY_MANIFEST_SCHEMA = "cjdoc.output/2"
 internal let OUTPUT_DIGEST_ALGORITHM = "sha256"
 internal let OUTPUT_MANIFEST_LIMIT: Int64 = 8 * 1024 * 1024
 internal let OUTPUT_ARTIFACT_LIMIT: Int64 = 64 * 1024 * 1024
@@ -44,13 +43,10 @@ internal class OwnedOutputFile {
 internal class OwnedOutputManifest {
     let files: Array<OwnedOutputFile>
     let directories: Array<String>
-    let hasDirectoryProvenance: Bool
 
-    init(files: Array<OwnedOutputFile>, directories!: Array<String> = [],
-        hasDirectoryProvenance!: Bool = true) {
+    init(files: Array<OwnedOutputFile>, directories!: Array<String> = []) {
         this.files = files
         this.directories = directories
-        this.hasDirectoryProvenance = hasDirectoryProvenance
     }
 }
 

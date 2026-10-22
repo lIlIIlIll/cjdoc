@@ -44,6 +44,34 @@ private let MAX_EXAMPLE_RUN_MEMORY_MB: Int64 = 2048
 private let MAX_EXAMPLE_RUN_MEMORY_BYTES: Int64 = MAX_EXAMPLE_RUN_MEMORY_MB * 1024 * 1024
 private let EXAMPLE_RUN_CHUNK_BYTES: Int64 = 8192
 private let EXAMPLE_RUN_POLL_MILLISECONDS: Int64 = 50
+internal func memoryBoundedCommand(command: String, arguments: Array<String>,
+    memoryMb: Int64): (String, Array<String>) {
+    if (memoryMb < 0) {
+        throw IllegalArgumentException("memory limit must not be negative")
+    }
+    if (memoryMb == 0) { return (command, arguments) }
+    let limit = memoryMb * 1024 * 1024
+    for (candidate in ["/usr/bin/prlimit", "/bin/prlimit"]) {
+        if (!exists(Path(candidate))) { continue }
+        let wrapped = ArrayList<String>()
+        wrapped.add("--as=" + limit.toString())
+        wrapped.add("--")
+        // Pin the child's OWN heap below the address-space cap. The child otherwise
+        // inherits the ambient `cjHeapSize`, and when a caller raises that (to
+        // document a large repository) the runtime is configured for a heap it can
+        // never reserve under this `--as` cap: it fails with "allocate create page
+        // failed! Out of Memory!" at the first allocation. A quarter of the cap
+        // leaves room for the mapping overhead and equals the previous effective
+        // value (2048MB cap, 512MB heap) when nothing is overridden.
+        wrapped.add("/usr/bin/env")
+        wrapped.add("cjHeapSize=" + (memoryMb / 4).toString() + "MB")
+        wrapped.add(command)
+        wrapped.add(all: arguments)
+        return (candidate, wrapped.toArray())
+    }
+    // Running without an enforceable bound is not a safe fallback.
+    throw IllegalStateException("address-space memory limit is unavailable on this platform")
+}
 
 // Shared by the watchdog and every wait so there is exactly one budget for the whole
 // example run, taken from the MONOTONIC clock: a corrected system clock must not

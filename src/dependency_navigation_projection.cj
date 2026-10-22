@@ -41,7 +41,7 @@ private func bindDependencyComment(comment: nav_model.DocComment, owner: nav_mod
             directives: tag.directives, exampleMarkdown: tag.exampleMarkdown,
             contentLanguage: tag.contentLanguage, translationState: tag.translationState,
             fieldId: tag.fieldId, descriptionMarkdown: tag.descriptionMarkdown,
-            evidenceKey: tag.evidenceKey, navigation: navigation))
+            navigation: navigation))
     }
     let localized = ArrayList<nav_model.DocumentationText>()
     for (text in comment.localizedTexts) {

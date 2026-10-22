@@ -57,7 +57,7 @@ class ApiCollectionStateContractTest {
     }
 
     @TestCase
-    func currentFieldIsStrictAndLegacyStatusMigrationIsConservative(): Unit {
+    func currentFieldIsStrictAndPreviousVersionsAreRejected(): Unit {
         for ((status, state) in [("complete", "resolved"), ("partial", "partial")]) {
             let original = api_model.DocumentationSet(api_model.GeneratorInfo("cjdoc", "test"), status,
                 api_model.ProjectInfo("collection-codec"), api_model.ConfigurationSnapshot(lintProfile: "off"))
@@ -68,21 +68,10 @@ class ApiCollectionStateContractTest {
             @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(current.replace(field, "")))
             @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(current.replace(field,
                 "  \"apiCollectionState\": \"complete\",\n")))
-            for (version in 6..15) {
-                let fixture = if (status == "complete") { "basic" } else { "unsupported" }
-                let legacy = String.fromUtf8(File.readFrom(
-                    Path("tests/fixtures/golden-v${version}/${fixture}.docs.json")))
-                let migrated = api_render.decodeDocIr(legacy)
-                @Expect(migrated.schemaVersion, "cjdoc.doc-ir/15")
-                @Expect(migrated.status, status)
-                @Expect(migrated.apiCollectionState, state)
-                @Expect(api_render.decodeDocIr(api_render.encodeDocIr(migrated)).apiCollectionState, state)
-                if (version < 14) {
-                    @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(legacy.replace(
-                        "\"status\":", "\"apiCollectionState\": \"resolved\", \"status\":")))
-                } else {
-                    @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(legacy.replace(field, "")))
-                }
+            for (version in 6..16) {
+                let unsupported = current.replace("cjdoc.doc-ir/16", "cjdoc.doc-ir/${version}")
+                @Expect(unsupported != current)
+                @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(unsupported))
             }
         }
         let strict = api_model.DocumentationSet(api_model.GeneratorInfo("cjdoc", "test"), "partial",

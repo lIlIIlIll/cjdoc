@@ -90,7 +90,7 @@ def copy_composed_publication(source: Path, destination: Path) -> None:
     def ignore(directory: str, names: list[str]) -> list[str]:
         if Path(directory) not in versions:
             return []
-        return [name for name in names if name not in {"html", "index.html", "api-diff.json", "doctest"}]
+        return [name for name in names if name not in {"html", "index.html", "api-diff.json"}]
 
     shutil.copytree(source, destination, ignore=ignore)
 
@@ -105,7 +105,7 @@ def publish_compatibility(repo: Path, site: Path, current: Path, result: dict) -
               "quality.json": current / "coverage/quality.json",
               "api-diff.json": result["locales"]["en"]["diff"],
               "demo-docs.json": demo / "docs.json",
-              "doctest-results.json": demo / "doctest/results.json"}
+              "native-check.json": result["checks"] / "native-check.json"}
     for name in ("navigation-index.json", "symbol-index.json", "search-index.json", "llms.txt", "llms-full.txt"):
         inputs[name] = current / "html" / name
     for name, path in inputs.items():
@@ -206,7 +206,7 @@ def install_output(staged: Path, output: Path) -> None:
         if output.is_symlink() or not output.is_dir():
             raise ContractError("existing showcase output must be a regular directory")
         metadata = load_json(output / "build.json")
-        if metadata.get("schemaVersion") not in {"cjdoc.showcase/1", "cjdoc.showcase/2"}:
+        if metadata.get("schemaVersion") != "cjdoc.showcase/2":
             raise ContractError("refusing to replace an unowned output directory")
         os.replace(output, backup)
     try:

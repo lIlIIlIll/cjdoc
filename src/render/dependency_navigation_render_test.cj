@@ -108,7 +108,7 @@ class DependencyNavigationRenderTest {
                     let signature = navigationRenderSignature(html)
                     @Expect(!signature.contains("class=\"type-link\""))
                     let markdown = navigationRenderMarkdown(renderDocumentationFormatsWithOptions(
-                        document, ["markdown"], locale: "en", markdownLayout: "site"))
+                        document, ["markdown"], locale: "en"))
                     @Expect(!markdown.contains("[`Token`]("))
                 }
             }
@@ -124,7 +124,7 @@ class DependencyNavigationRenderTest {
             @Expect(navigationRenderPage(HtmlDocumentationRenderer().render(explicitDocument), "html/symbols/")
                 .content.contains("href=\"" + explicitUrl + "\""))
             let markdown = navigationRenderMarkdown(renderDocumentationFormatsWithOptions(
-                explicitDocument, ["markdown"], locale: "en", markdownLayout: "site"))
+                explicitDocument, ["markdown"], locale: "en"))
             let tokenDestinations = markdown.split("[`Token`](")
             @Assert(tokenDestinations.size > 1)
             for (index in 1..tokenDestinations.size) {
@@ -137,7 +137,7 @@ class DependencyNavigationRenderTest {
     }
 
     @TestCase
-    func preboundWebAndPortableUrlsWorkInHtmlAndBothMarkdownLayouts(): Unit {
+    func preboundWebAndPortableUrlsWorkInHtmlAndMarkdown(): Unit {
         for (url in ["https://docs.example.test/api/Token.html#type", "http://docs.example.test/Token.html",
             "dependencies/library/Token.html#type", "./dependencies/library/Token.html#type",
             "dependencies/library/Token.html#%E7%B1%BB"]) {
@@ -150,15 +150,13 @@ class DependencyNavigationRenderTest {
             let signature = navigationRenderSignature(html)
             @Expect(navigationRenderText(signature), NAV_RENDER_RAW)
             @Expect(!signature.contains("&quot;<a"))
-            for (layout in ["single", "site"]) {
-                let markdown = navigationRenderMarkdown(renderDocumentationFormatsWithOptions(document, ["markdown"], locale: "en", markdownLayout: layout))
-                let destination = if (url.startsWith("http")) { url } else {
-                    (if (layout == "single") { "../html/" } else { "../../html/" }) + url.removePrefix("./")
-                }
-                @Expect(markdown.contains("[`Token`](" + destination + " \"manual: Explicit documentation reference\")"))
-                @Expect(markdown.contains("```cangjie\n" + NAV_RENDER_RAW + "\n```"))
-                @Expect(!markdown.contains("(../https://"))
+            let markdown = navigationRenderMarkdown(renderDocumentationFormatsWithOptions(document, ["markdown"], locale: "en"))
+            let destination = if (url.startsWith("http")) { url } else {
+                "../../html/" + url.removePrefix("./")
             }
+            @Expect(markdown.contains("[`Token`](" + destination + " \"manual: Explicit documentation reference\")"))
+            @Expect(markdown.contains("```cangjie\n" + NAV_RENDER_RAW + "\n```"))
+            @Expect(!markdown.contains("(../https://"))
             @Expect(encodeDocIr(document), before)
             @Expect(document.declarations[1].parameters[1].typeRef.semantic.state, "unavailable")
         }
@@ -175,8 +173,8 @@ class DependencyNavigationRenderTest {
                 markdown: Some(MarkdownNode("document", children: [MarkdownNode("paragraph", children: [node])])))
             let html = navigationRenderPage(HtmlDocumentationRenderer().render(document), "html/symbols/").content
             @Expect(html.contains("href=\"../dependencies/category.html#" + fragment + "\" data-doc-match=\"manual\" title=\"manual: explicit documentation\">member</a>"))
-            let markdown = navigationRenderMarkdown(renderDocumentationFormatsWithOptions(document, ["markdown"], locale: "en", markdownLayout: "single"))
-            @Expect(markdown.contains("[member](../html/dependencies/category.html#" + fragment + " \"manual: explicit documentation\")"))
+            let markdown = navigationRenderMarkdown(renderDocumentationFormatsWithOptions(document, ["markdown"], locale: "en"))
+            @Expect(markdown.contains("[member](../../html/dependencies/category.html#" + fragment + " \"manual: explicit documentation\")"))
             @Expect(node.metadata.getOrThrow().semanticState, Some("unresolved"))
             @Expect(node.metadata.getOrThrow().semanticExternalUrl.isNone())
         }
@@ -218,7 +216,7 @@ class DependencyNavigationRenderTest {
         @Expect(!signature.contains("<a class=\"type-link signature-type-link\" href=\"https://docs.example.test/Token.html\">T</a>"))
         let markdown = navigationRenderMarkdown(MarkdownDocumentationRenderer().render(document))
         @Expect(markdown.contains("?[`Token`](https://docs.example.test/Token.html \"manual: Explicit documentation reference\")"))
-        @Expect(markdown.contains("[`Box`](../html/dependencies/Box.html \"manual: Explicit box documentation\")"))
+        @Expect(markdown.contains("[`Box`](../../html/dependencies/Box.html \"manual: Explicit box documentation\")"))
     }
 
     @TestCase
@@ -273,10 +271,10 @@ class DependencyNavigationRenderTest {
         let document = navigationRenderDocument(typeRef)
         let html = navigationRenderPage(HtmlDocumentationRenderer().render(document), "html/symbols/").content
         @Expect(html.contains("href=\"../" + route + "\""))
-        let single = navigationRenderMarkdown(MarkdownDocumentationRenderer().render(document))
-        @Expect(single.contains("[`Token`](#symbol-"))
+        let direct = navigationRenderMarkdown(MarkdownDocumentationRenderer().render(document))
         let site = navigationRenderMarkdown(renderDocumentationFormatsWithOptions(document, ["markdown"], locale: "en"))
         let markdownRoute = route[..route.size - 5] + ".md"
+        @Expect(direct.contains("](../" + markdownRoute + "#symbol-"))
         @Expect(site.contains("](../" + markdownRoute + "#symbol-"))
         @Expect(typeRef.semantic.state, "unavailable")
         let filtered = navigationRenderDocument(typeRef, tokenVisibility: "private")

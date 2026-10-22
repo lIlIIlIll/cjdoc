@@ -22,7 +22,7 @@ target/doc/markdown/index.md
 打开 `target/doc/html/index.html` 就能查看 HTML 站点。它是静态文件，不需要启动服务器。
 代码高亮的语言、配置、离线适配器与安全边界见 [`docs/research/highlighting.md`](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/research/highlighting.md)（面向维护者）。
 
-Doc IR v14 使用独立的 `apiCollectionState` 表示 API 是否完整收集。严格高亮失败仍产生 `CJDOC4027` error、文档 `partial` 和非零生成退出码，但不会改变确定的 API 删除及 `--deny-breaking-api` 门禁结果。旧 v6–v13 输入按原 `status` 保守迁移。`render`、语言切换和版本组合沿用已保存的 API 状态。
+Doc IR v16 用独立的 `apiCollectionState` 表示 API 是否完整收集。严格高亮失败仍产生 `CJDOC4027` error、文档 `partial` 和非零生成退出码，但不会改变确定的 API 删除及 `--deny-breaking-api` 门禁结果。`render`、语言切换和版本组合沿用已保存的 API 状态；decoder 只接受当前 v16 schema。
 
 包页按声明种类分组，标题中的数量只统计当前 audience/cfg 下可见的直接声明。列表名称使用 Doc IR 中的泛型参数显示 `Entry<T>`、`Map<K, V>` 等身份；模型未提供参数时保留名称，不从签名猜测。扩展仍显示被扩展目标，不冒充新的类型定义。
 
@@ -225,21 +225,23 @@ cjdoc generate --project . --format json --stdout > docs.json
 
 `--stdout` 只能与一个 JSON 格式一起使用。诊断写入 stderr，所以重定向后的 `docs.json` 仍是单个 JSON 文档。
 
-## 运行 doctest
+## 运行示例
 
-`@example` 标签中的 ` ```cj ` 或 ` ```cangjie ` fenced code 可以选择性执行。项目根的 `cjdoc.toml` 使用独立的 `[doctest]` 表：
+在需要执行的示例标题后添加 `{run}`，再显式运行 `cjdoc check --project . --check-examples`：
 
-```toml
-[doctest]
-mode = "warn"       # off（默认）、warn 或 deny
-timeout-ms = 2000
-memory-mb = 2048    # Cangjie native backend requires at least 2048 MiB
-jobs = 1
-```
+````cangjie
+/**
+ * @example Greeting {run}
+ * ```cangjie
+ * println("Hello")
+ * ```
+ */
+public func greet(): Unit {}
+````
 
-`warn` 会继续生成并返回 `0`，`deny` 在编译失败、运行失败或超时后返回 `1`。生成目录会增加 `doctest/results.json`，其版本为 `cjdoc.doctest/2`；`check` 会执行检查但不写 artifact。每个代码块在独立工作目录编译和运行，命令通过参数数组传递，不经过 shell。启用 doctest 时不能使用 `--stdout`，因为该选项必须保持单一 JSON 输出。
+没有 `{run}` 的示例只做编译检查；`{must-fail}` 可声明预期编译失败。结果通过当前诊断和退出码呈现，不提供逐例结果 JSON 或 HTML 执行状态徽标。运行示例受 10 秒、2048 MiB 内存及 stdout/stderr 各 65536 bytes 的上限约束；无法建立平台所需限制时会明确拒绝执行。
 
-上述 `warn` 行为适用于已执行示例的结果；执行准备失败仍会报错。这条 legacy 管线通过 `/usr/bin/prlimit` 或 `/bin/prlimit` 实施正数地址空间上限。当前 macOS、Windows 环境没有该限制器，因此会在启动编译进程前明确拒绝，不会自动取消内存限制；这与 `check --check-examples` 的平台能力分别判断。
+`[doctest]` 配置已不受支持，即使 `mode = "off"` 也会报错。删除该表，使用 `--check-examples` 和 `@example {run}`；普通 `generate` 或 `check` 不会隐式启动示例检查。
 
 ## 生成 API surface 和 coverage
 
@@ -255,7 +257,7 @@ cjdoc generate --project . --format api-surface --stdout > api-surface.json
 cjdoc diff --baseline api-surface.json --current api-surface-next.json --format text --deny-breaking-api --deny-potentially-breaking-api
 ```
 
-默认只报告差异并返回 `0`。显式 deny 选项分别把 breaking 或证据不足的 potentially-breaking 变更变成失败；`--format json` 输出 `cjdoc.api-diff/2` 报告，适合 CI 采集。v1/v2 API snapshot 仍可作为只读 baseline 输入；当前生成器只生成 v3。
+默认只报告差异并返回 `0`。显式 deny 选项分别把 breaking 或证据不足的 potentially-breaking 变更变成失败；`--format json` 输出 `cjdoc.api-diff/2` 报告，适合 CI 采集。baseline 和 current 都必须是 v3 API snapshot；v1/v2 已停止接受。
 
 用 `coverage` 查看当前版本的文档覆盖率。输出版本为 `cjdoc.documentation-coverage/2`，包含 symbols、parameters、returns、throws、examples、deprecated、semanticLinks 七类总览，并按 package/module 给出确定性分组：
 
@@ -281,38 +283,35 @@ cjdoc render \
 
 `render` 读取并验证输入的 Doc IR。输出目录应使用一个尚不存在的目录，或使用之前由 cjdoc 管理的目录；不要把包含无关文件的目录直接交给 cjdoc。
 
-### Schema 与旧版迁移
+### Doc IR schema
 
-当前 JSON 输出版本是 `cjdoc.doc-ir/15`。`render` 严格验证 v6–v14 的原始 schema 后迁移为 v15；未知属性、重复 JSON 键和不满足原版本约束的输入会被拒绝。迁移保留已有源码与语义事实，新增 `dependencies`、`documentSets` 为空数组，类型、标签、语言正文和正文引用的导航事实为空，不从旧版的名称、版本标签或已有 URL 推造依赖身份。
+当前 JSON 输出版本是 `cjdoc.doc-ir/16`。`render` 只接受 Doc IR v16，并严格验证当前 schema 和引用关系；未知属性、重复 JSON 键及不满足当前约束的输入都会被拒绝。旧版 Doc IR 不会被迁移。
 
-根字段 `apiCollectionState` 为 `resolved`、`partial` 或 `unavailable`，独立于展示用 `status`。生成时在 source/provider 绑定后、highlight/lint/i18n/导航处理前采集；呈现错误不会把已采集的 API 改为不完整。v14 输入保留已有值；v6–v13 缺少该字段时仅按历史 `status` 映射（`complete` → `resolved`，`partial` → `partial`）。公开 `DocumentationSet` 的同名字段是不可变 `String`；构造器命名参数为 `apiCollectionState!: ?String = None`，省略时使用相同历史映射，显式值必须属于上述枚举。
+根字段 `apiCollectionState` 为 `resolved`、`partial` 或 `unavailable`，独立于展示用 `status`。生成时在 source/provider 绑定后、highlight/lint/i18n/导航处理前采集；呈现错误不会把已采集的 API 改为不完整。公开 `DocumentationSet` 的同名字段是不可变 `String`；构造器命名参数为 `apiCollectionState!: ?String = None`，省略时按 `status` 推导（`complete` → `resolved`，`partial` → `partial`，其他值 → `unavailable`），显式值必须属于上述枚举。
 
-查看当前 schema、指定版本 schema 或支持的 schema 名称：
+查看当前 schema、Doc IR v16 schema 或全部受支持的 schema 名称：
 
 ```bash
 cjdoc schema doc-ir
-cjdoc schema doc-ir-v15
-cjdoc schema doc-ir-v14
-cjdoc schema doc-ir-v13
-cjdoc schema symbol-index
+cjdoc schema doc-ir-v16
 cjdoc schema list
 ```
 
-`generator.toolchain` 与目标项目 compiler/std/stdx 身份分离。自动生成和旧版迁移都将它留为空字符串，因为运行时 compiler 路径或版本不能认证实际链接的 parser SDK 构建；公开 API 中调用者填写的非空值也只是声明，不会自动成为认证事实。
+`generator.toolchain` 与目标项目 compiler/std/stdx 身份分离。自动生成时将其留为空字符串，因为运行时 compiler 路径或版本不能认证实际链接的 parser SDK 构建；公开 API 中调用者填写的非空值也只是声明，不会自动成为认证事实。
 
 `TypeRef.semantic` 继续描述语义证据。独立的 `navigation` 描述文档链接决策：`resolved`、`unresolved`、`ambiguous` 或 `unavailable`；`matchLevel` 为 `exact`、`compatible`、`manual` 或 `none`，`reason` 说明依据。找到文档链接不会把 unavailable/partial 语义升级为 resolved。正文显式引用保留相同事实于 `semanticNavigation`。
 
-指南的 `DocumentationPageBinding.navigation` 也使用独立、可空的 `TypeNavigation`。原有 `state` 与 `targetSymbolId` 仍只描述本地 API 关联，外部链接解析成功不会把 `unresolved` 关联冒充为本地 `resolved`。current15 的每个 binding 必须编码 `navigation`（无导航写 `null`）；严格6–14输入迁移后该字段为空。受众或条件编译隐藏的关联不得保留 resolved 外链。
+指南的 `DocumentationPageBinding.navigation` 也使用独立、可空的 `TypeNavigation`。原有 `state` 与 `targetSymbolId` 仍只描述本地 API 关联，外部链接解析成功不会把 `unresolved` 关联冒充为本地 `resolved`。Doc IR v16 的每个 binding 都编码 `navigation`（无导航写 `null`）；受众或条件编译隐藏的关联不得保留 resolved 外链。
 
 `symbol-index` 当前输出 `cjdoc.symbol-index/2`，HTML 内嵌索引和独立索引共用生产逻辑。顶层 `dependencies` 保存依赖实例证据，`documentSets` 保存文档集的内容身份与可移植来源；每项的 `identity` 来自对应模块的自身内容快照，`documentSetId` 指向文档集。文档版本标签只用于展示，不能代替内容身份。
 
-`DependencyInstance.moduleId` 是依赖边的 owner，`componentModuleId` 指向实际选中的 source-graph 模块；binary 或未知选择保留空字符串。`DocumentSetIdentity.moduleId` 是 producer 库存描述的模块 ID，作用域由该库存的 `indexIdentity` 限定，不能与 consumer 模块 ID 直接等同。v15 Doc IR 和当前 `/2` 库存要求编码这两个字段；缺少图绑定字段的旧 `/2` 库存只能作为 manual 参考，不能仅凭相同源码、版本或自身内容身份获得 exact 匹配。
+`DependencyInstance.moduleId` 是依赖边的 owner，`componentModuleId` 指向实际选中的 source-graph 模块；binary 或未知选择保留空字符串。`DocumentSetIdentity.moduleId` 是 producer 库存描述的模块 ID，作用域由该库存的 `indexIdentity` 限定，不能与 consumer 模块 ID 直接等同。v16 Doc IR 和当前 `/2` 库存要求编码这两个字段；缺少图绑定字段的旧 `/2` 库存只能作为 manual 参考，不能仅凭相同源码、版本或自身内容身份获得 exact 匹配。
 
-根 `DocumentationSet.documentationRevision` 是独立的文档发布标记，构造器命名参数默认 `""`，不放入 `GeneratorInfo`。`DocumentSetIdentity.apiVersion` 保存对应 API 包声明的版本，`revision` 保留 API 源码 revision，`documentationRevision` 单独保存文档发布 revision；新增命名参数 `apiVersion`、`documentationRevision` 均默认 `""`。这些版本字符串不等于官方发行认证，不能替代内容身份或库存 pin。生产库存时 API 包版本取自身依赖记录的 `version`，文档 revision 取文档根对象；未知值保持空字符串。v6–v14 迁移不补造文档发布 revision，也不会生成虚构依赖或文档集。
+根 `DocumentationSet.documentationRevision` 是独立的文档发布标记，构造器命名参数默认 `""`，不放入 `GeneratorInfo`。`DocumentSetIdentity.apiVersion` 保存对应 API 包声明的版本，`revision` 保留 API 源码 revision，`documentationRevision` 单独保存文档发布 revision；新增命名参数 `apiVersion`、`documentationRevision` 均默认 `""`。这些版本字符串不等于官方发行认证，不能替代内容身份或库存 pin。生产库存时 API 包版本取自身依赖记录的 `version`，文档 revision 取文档根对象；未知值保持空字符串，不会凭缺失身份补造依赖或文档集。
 
 跨根项目与依赖的精确符号键是 `完整包限定名|kind|泛型参数数目(参数类型源码拼写,...)`。已有包前缀不会重复添加；例如 `fixture.Box|class|1()` 和 `fixture.Box.add|function|0(Int64)`。它与包含模块角色的本地 `id` 分离，重载保留不同参数键。HTML 内嵌索引的 href 不带 `html/` 前缀，独立索引带该前缀。
 
-维护 schema 时修改 `src/schema_data/`，构建后运行 `bash scripts/update_schemas.sh` 同步 `docs/schema/`；运行 `bash scripts/update_goldens.sh` 生成 `tests/fixtures/golden-v15/`。已发布 v6–v14 schema/golden 为只读迁移输入，v13/v14 另有 `tests/fixtures/legacy13/`、`tests/fixtures/legacy14/` 字节冻结副本；不要手工修改 current golden。
+维护 schema 时修改 `src/schema_data/`，构建后运行 `bash scripts/update_schemas.sh` 同步 `docs/schema/`；运行 `bash scripts/update_goldens.sh` 生成 `tests/fixtures/golden-v16/`。发布集合仅包含当前 schema 与 golden；旧 Doc IR 输入不再作为迁移数据保留。不要手工修改 current golden。
 
 ## 常见问题
 

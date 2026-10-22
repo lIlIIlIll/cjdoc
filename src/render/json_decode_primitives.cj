@@ -25,15 +25,6 @@ internal func fail(path: String, message: String): Nothing {
     throw IllegalArgumentException("invalid Doc IR at ${path}: ${message}")
 }
 
-internal class RawSchemaShape {
-    let objects: Int64
-    let arrayItems: Int64
-
-    init(objects: Int64, arrayItems: Int64) {
-        this.objects = objects
-        this.arrayItems = arrayItems
-    }
-}
 
 internal func jsonArrayValues(value: JsonArray): ArrayList<JsonNode> {
     let result = ArrayList<JsonNode>()
@@ -43,9 +34,8 @@ internal func jsonArrayValues(value: JsonArray): ArrayList<JsonNode> {
 
 internal func compatibleSchemaText(schemaText: String): String {
     let portablePathPattern = "\"pattern\": \"^.+$\""
-    let legacyPattern = "\"pattern\": \"^(?!/)(?![A-Za-z]:)(?!.*\\\\\\\\).+$\""
     let currentPattern = "\"pattern\": \"^(?![A-Za-z]:)(?!.*\\\\\\\\)(?!\\\\.{1,2}(?:/|$))(?!.*/\\\\.{1,2}(?:/|$))[^/]+(?:/[^/]+)*$\""
-    schemaText.replace(legacyPattern, portablePathPattern).replace(currentPattern, portablePathPattern)
+    schemaText.replace(currentPattern, portablePathPattern)
 }
 
 internal func validatePortablePathValue(value: String, path: String): Unit {
@@ -101,7 +91,7 @@ internal func validatePortablePathFields(node: JsonNode, path: String): Unit {
     }
 }
 
-internal func validateRawSchemaShape(root: JsonNode): RawSchemaShape {
+internal func validateRawSchemaShape(root: JsonNode): Unit {
     let pending = ArrayList<JsonNode>()
     pending.add(root)
     var objects: Int64 = 0
@@ -126,7 +116,6 @@ internal func validateRawSchemaShape(root: JsonNode): RawSchemaShape {
             case _ => ()
         }
     }
-    RawSchemaShape(objects, arrayItems)
 }
 
 internal func validateDeclarativeSchema(root: JsonNode): Unit {
@@ -135,25 +124,10 @@ internal func validateDeclarativeSchema(root: JsonNode): Unit {
     } catch (_: Exception) {
         fail("$.schemaVersion", "expected string")
     }
-    let schemaText = if (version == DOC_IR_SCHEMA_VERSION) { DOC_IR_SCHEMA }
-        else if (version == DOC_IR_V14_SCHEMA_VERSION) { DOC_IR_V14_SCHEMA }
-        else if (version == DOC_IR_V13_SCHEMA_VERSION) { DOC_IR_V13_SCHEMA }
-        else if (version == DOC_IR_V12_SCHEMA_VERSION) { DOC_IR_V12_SCHEMA }
-        else if (version == DOC_IR_V11_SCHEMA_VERSION) { DOC_IR_V11_SCHEMA }
-        else if (version == DOC_IR_V10_SCHEMA_VERSION) { DOC_IR_V10_SCHEMA }
-        else if (version == DOC_IR_V9_SCHEMA_VERSION) { DOC_IR_V9_SCHEMA }
-        else if (version == DOC_IR_V8_SCHEMA_VERSION) { DOC_IR_V8_SCHEMA }
-        else if (version == DOC_IR_V7_SCHEMA_VERSION) { DOC_IR_V7_SCHEMA }
-        else if (version == DOC_IR_V6_SCHEMA_VERSION) { DOC_IR_V6_SCHEMA }
-        else {
-            fail("$.schemaVersion",
-                "expected '${DOC_IR_SCHEMA_VERSION}', '${DOC_IR_V14_SCHEMA_VERSION}', '${DOC_IR_V13_SCHEMA_VERSION}', " +
-                "'${DOC_IR_V12_SCHEMA_VERSION}', '${DOC_IR_V11_SCHEMA_VERSION}', " +
-                "'${DOC_IR_V10_SCHEMA_VERSION}', '${DOC_IR_V9_SCHEMA_VERSION}', " +
-                "'${DOC_IR_V8_SCHEMA_VERSION}', '${DOC_IR_V7_SCHEMA_VERSION}', or " +
-                "'${DOC_IR_V6_SCHEMA_VERSION}'")
-        }
-    let schema = JsonSchema.parse(compatibleSchemaText(schemaText), config: JsonSchemaConfig(
+    if (version != DOC_IR_SCHEMA_VERSION) {
+        fail("$.schemaVersion", "expected '${DOC_IR_SCHEMA_VERSION}'")
+    }
+    let schema = JsonSchema.parse(compatibleSchemaText(DOC_IR_SCHEMA), config: JsonSchemaConfig(
         limits: JsonSchemaLimits(maxEvaluations: DOC_IR_SCHEMA_MAX_WORK,
             maxRefResolutions: DOC_IR_SCHEMA_MAX_WORK, maxRegexSteps: DOC_IR_SCHEMA_MAX_REGEX_STEPS,
             maxErrors: 20, maxDepth: DOC_IR_CODEC_MAX_NESTING_DEPTH)))
@@ -270,85 +244,54 @@ internal func decodeSourceApiSignature(node: JsonNode, path: String): SourceApiS
     SourceApiSignature(stringAt(value, "state", path), tokens: stringsAt(value, "tokens", path))
 }
 
-internal func decodeCapabilities(node: JsonNode, path: String, legacy: Bool): SemanticCapabilities {
-    let keys = if (legacy) { ["sourceBinding", "ownership", "visibility",
-        "canonicalTypes", "canonicalSignatures", "relationships"] } else {
-        ["sourceBinding", "ownership", "visibility", "canonicalTypes", "canonicalSignatures",
-            "relationships", "annotations"]
-    }
-    let value = strictObject(node, path, keys)
+internal func decodeCapabilities(node: JsonNode, path: String): SemanticCapabilities {
+    let value = strictObject(node, path, ["sourceBinding", "ownership", "visibility",
+        "canonicalTypes", "canonicalSignatures", "relationships", "annotations"])
     SemanticCapabilities(boolAt(value, "sourceBinding", path), boolAt(value, "ownership", path),
         boolAt(value, "visibility", path), boolAt(value, "canonicalTypes", path),
         boolAt(value, "canonicalSignatures", path), relationships: boolAt(value, "relationships", path),
-        annotations: if (legacy) { false } else { boolAt(value, "annotations", path) })
+        annotations: boolAt(value, "annotations", path))
 }
-
-internal func decodeSemanticType(node: JsonNode, path: String): SemanticType {
-    let value = strictObject(node, path, ["state", "canonical", "provider"])
-    SemanticType(stringAt(value, "state", path), canonical: nullableStringAt(value, "canonical", path),
-        provider: nullableStringAt(value, "provider", path))
-}
-
-internal func decodeTypeRef(node: JsonNode, path: String, depth: Int64, flatTypeSemantics: Bool): TypeRef {
+internal func decodeTypeRef(node: JsonNode, path: String, depth: Int64): TypeRef {
     if (depth > DOC_IR_MAX_TYPE_DEPTH) {
         fail(path, "type nesting exceeds ${DOC_IR_MAX_TYPE_DEPTH}")
     }
-    let value = strictObject(node, path, if (flatTypeSemantics) {
-        ["kind", "spelling", "nullable", "arguments", "semanticState", "semanticCanonical", "semanticProvider", "navigation"]
-    } else { ["kind", "spelling", "nullable", "arguments", "semantic"] })
+    let value = strictObject(node, path,
+        ["kind", "spelling", "nullable", "arguments", "semanticState", "semanticCanonical",
+            "semanticProvider", "navigation"])
     let arguments = ArrayList<TypeRef>()
     var index: Int64 = 0
     for (argument in jsonArrayValues(arrayAt(value, "arguments", path))) {
-        arguments.add(decodeTypeRef(argument, "${path}.arguments[${index}]", depth + 1, flatTypeSemantics))
+        arguments.add(decodeTypeRef(argument, "${path}.arguments[${index}]", depth + 1))
         index++
     }
     TypeRef(stringAt(value, "kind", path), stringAt(value, "spelling", path),
-        if (flatTypeSemantics) {
-            SemanticType(stringAt(value, "semanticState", path),
-                canonical: nullableStringAt(value, "semanticCanonical", path),
-                provider: nullableStringAt(value, "semanticProvider", path))
-        } else { decodeSemanticType(required(value, "semantic", path), "${path}.semantic") },
+        SemanticType(stringAt(value, "semanticState", path),
+            canonical: nullableStringAt(value, "semanticCanonical", path),
+            provider: nullableStringAt(value, "semanticProvider", path)),
         nullable: boolAt(value, "nullable", path), arguments: arguments.toArray(),
         navigation: decodeTypeNavigation(value.get("navigation"), "${path}.navigation"))
 }
-
-internal func migratedSymbolId(value: String, legacy: Bool, legacyIds: HashMap<String, String>,
-    path: String): String {
-    if (!legacy) { return value }
-    match (legacyIds.get(value)) {
-        case Some(migrated) => migrated
-        case None => fail(path, "v6 SymbolId does not identify a declaration")
-    }
-}
-
-internal func migratedOptionalSymbolId(value: ?String, legacy: Bool,
-    legacyIds: HashMap<String, String>, path: String): ?String {
-    match (value) {
-        case Some(id) => Some(migratedSymbolId(id, legacy, legacyIds, path))
-        case None => None
-    }
-}
-
-internal func decodeTag(node: JsonNode, path: String, legacy: Bool,
-    legacyIds: HashMap<String, String>, legacyMarkdown: Bool,
-    assetReferences: HashMap<String, String>): DocTag {
+internal func decodeTag(node: JsonNode, path: String): DocTag {
     let value = strictObject(node, path,
-        ["name", "subject", "description", "referenceState", "targetSymbolId", "directives", "exampleMarkdown",
-            "contentLanguage", "translationState", "fieldId", "descriptionMarkdown", "evidenceKey", "navigation"])
+        ["name", "subject", "description", "referenceState", "targetSymbolId", "directives",
+            "exampleMarkdown", "contentLanguage", "translationState", "fieldId",
+            "descriptionMarkdown", "navigation"])
     DocTag(stringAt(value, "name", path), stringAt(value, "subject", path),
         stringAt(value, "description", path),
         referenceState: stringAt(value, "referenceState", path),
-        targetSymbolId: migratedOptionalSymbolId(nullableStringAt(value, "targetSymbolId", path),
-            legacy, legacyIds, "${path}.targetSymbolId"),
+        targetSymbolId: nullableStringAt(value, "targetSymbolId", path),
         directives: defaultStringAt(value, "directives", path),
-        exampleMarkdown: optionalExampleMarkdownAt(value, path, legacyMarkdown, assetReferences),
+        exampleMarkdown: decodeOptionalDocumentationMarkdown(value.get("exampleMarkdown"),
+            "${path}.exampleMarkdown"),
         contentLanguage: optionalDocumentationLanguage(value.get("contentLanguage"), path),
         translationState: defaultStringAt(value, "translationState", path),
         fieldId: defaultStringAt(value, "fieldId", path),
-        descriptionMarkdown: decodeOptionalDocumentationMarkdown(value.get("descriptionMarkdown"), path, assetReferences),
-        evidenceKey: defaultStringAt(value, "evidenceKey", path),
+        descriptionMarkdown: decodeOptionalDocumentationMarkdown(value.get("descriptionMarkdown"),
+            "${path}.descriptionMarkdown"),
         navigation: decodeTypeNavigation(value.get("navigation"), "${path}.navigation"))
 }
+
 
 internal func decodeMarkdownMetadata(node: JsonNode, kind: String,
     path: String): MarkdownNodeMetadata {
@@ -391,23 +334,11 @@ internal func decodeMarkdownMetadata(node: JsonNode, kind: String,
     }
 }
 
-internal func migratedAssetReference(value: String, legacy: Bool,
-    assetReferences: HashMap<String, String>): String {
-    if (!legacy) { return value }
-    match (assetReferences.get(value)) {
-        case Some(id) => id
-        case None => value
-    }
-}
-
-internal func decodeMarkdown(node: JsonNode, path: String, depth: Int64, legacy: Bool,
-    assetReferences: HashMap<String, String>): MarkdownNode {
+internal func decodeMarkdown(node: JsonNode, path: String, depth: Int64): MarkdownNode {
     if (depth > DOC_IR_MAX_MARKDOWN_DEPTH) {
         fail(path, "Markdown nesting exceeds ${DOC_IR_MAX_MARKDOWN_DEPTH}")
     }
-    let keys = if (legacy) { ["kind", "literal", "source", "children"] }
-        else { ["kind", "literal", "source", "metadata", "children"] }
-    let value = strictObject(node, path, keys)
+    let value = strictObject(node, path, ["kind", "literal", "source", "metadata", "children"])
     let kind = stringAt(value, "kind", path)
     let sourceNode = required(value, "source", path)
     let source: ?SourceRange = if (sourceNode.isNull) { None }
@@ -415,15 +346,10 @@ internal func decodeMarkdown(node: JsonNode, path: String, depth: Int64, legacy:
     let children = ArrayList<MarkdownNode>()
     var index: Int64 = 0
     for (child in jsonArrayValues(arrayAt(value, "children", path))) {
-        children.add(decodeMarkdown(child, "${path}.children[${index}]", depth + 1,
-            legacy, assetReferences))
+        children.add(decodeMarkdown(child, "${path}.children[${index}]", depth + 1))
         index++
     }
-    let literal = migratedAssetReference(stringAt(value, "literal", path),
-        legacy && kind == "image", assetReferences)
-    if (legacy) {
-        return MarkdownNode(kind, literal: literal, source: source, children: children.toArray())
-    }
+    let literal = stringAt(value, "literal", path)
     let metadataNode = required(value, "metadata", path)
     if (metadataNode.isNull) {
         MarkdownNode(kind, literal: literal, source: source, children: children.toArray())
@@ -432,122 +358,50 @@ internal func decodeMarkdown(node: JsonNode, path: String, depth: Int64, legacy:
             literal: literal, source: source, children: children.toArray())
     }
 }
-
-internal func decodeComment(node: JsonNode, path: String, legacyIdsRequired: Bool,
-    legacyMarkdown: Bool, legacyIds: HashMap<String, String>,
-    assetReferences: HashMap<String, String>): DocComment {
+internal func decodeComment(node: JsonNode, path: String): DocComment {
     let value = strictObject(node, path, ["rawText", "summary", "description", "markdown", "tags",
         "defaultLanguage", "localizedTexts"])
     let tags = ArrayList<DocTag>()
     var index: Int64 = 0
     for (tag in jsonArrayValues(arrayAt(value, "tags", path))) {
-        tags.add(decodeTag(tag, "${path}.tags[${index}]", legacyIdsRequired, legacyIds,
-            legacyMarkdown, assetReferences)); index++
+        tags.add(decodeTag(tag, "${path}.tags[${index}]"))
+        index++
     }
     DocComment(stringAt(value, "rawText", path), stringAt(value, "summary", path),
         stringAt(value, "description", path),
-        decodeMarkdown(required(value, "markdown", path), "${path}.markdown", 0,
-            legacyMarkdown, assetReferences),
+        decodeMarkdown(required(value, "markdown", path), "${path}.markdown", 0),
         tags: tags.toArray(),
         defaultLanguage: optionalDocumentationLanguage(value.get("defaultLanguage"), path),
-        localizedTexts: decodeDocumentationTexts(value.get("localizedTexts"), path, assetReferences))
+        localizedTexts: decodeDocumentationTexts(value.get("localizedTexts"), path))
 }
-
-internal func decodeParameter(node: JsonNode, path: String, flatTypeSemantics: Bool): ParameterDoc {
+internal func decodeParameter(node: JsonNode, path: String): ParameterDoc {
     let value = strictObject(node, path, ["name", "type", "documentation", "defaultExpression"])
     ParameterDoc(stringAt(value, "name", path),
-        decodeTypeRef(required(value, "type", path), "${path}.type", 0, flatTypeSemantics),
+        decodeTypeRef(required(value, "type", path), "${path}.type", 0),
         documentation: nullableStringAt(value, "documentation", path),
         defaultExpression: nullableStringAt(value, "defaultExpression", path))
 }
 
-internal func decodeTypeRelationship(node: JsonNode, path: String, flatTypeSemantics: Bool): TypeRelationship {
+internal func decodeTypeRelationship(node: JsonNode, path: String): TypeRelationship {
     let value = strictObject(node, path, ["kind", "target"])
     TypeRelationship(stringAt(value, "kind", path),
-        decodeTypeRef(required(value, "target", path), "${path}.target", 0, flatTypeSemantics))
+        decodeTypeRef(required(value, "target", path), "${path}.target", 0))
 }
-
-internal func decodeSymbolRelationship(node: JsonNode, path: String, legacy: Bool,
-    legacyIds: HashMap<String, String>): SymbolRelationship {
+internal func decodeSymbolRelationship(node: JsonNode, path: String): SymbolRelationship {
     let value = strictObject(node, path, ["kind", "targetDisplay", "state", "targetSymbolId"])
     SymbolRelationship(stringAt(value, "kind", path), stringAt(value, "targetDisplay", path),
         stringAt(value, "state", path),
-        targetSymbolId: migratedOptionalSymbolId(nullableStringAt(value, "targetSymbolId", path),
-            legacy, legacyIds, "${path}.targetSymbolId"))
+        targetSymbolId: nullableStringAt(value, "targetSymbolId", path))
 }
-
-internal class LegacyModuleIndex {
-    let byPackage: HashMap<String, String>
-    let ambiguousPackages: HashSet<String>
-
-    init(byPackage: HashMap<String, String>, ambiguousPackages: HashSet<String>) {
-        this.byPackage = byPackage
-        this.ambiguousPackages = ambiguousPackages
-    }
-}
-
-internal func buildLegacyModuleIndex(modules: Array<ModuleDoc>): LegacyModuleIndex {
-    let byPackage = HashMap<String, String>()
-    let ambiguousPackages = HashSet<String>()
-    for (module in modules) {
-        for (packageName in module.packageNames) {
-            match (byPackage.get(packageName)) {
-                case Some(existing) => if (existing != module.id) {
-                    let _ = ambiguousPackages.add(packageName)
-                }
-                case None => byPackage[packageName] = module.id
-            }
-        }
-    }
-    LegacyModuleIndex(byPackage, ambiguousPackages)
-}
-
-internal func legacyModuleId(index: LegacyModuleIndex, packageName: String, path: String): String {
-    if (index.ambiguousPackages.contains(packageName)) {
-        fail(path, "v6 package '${packageName}' maps to more than one module")
-    }
-    match (index.byPackage.get(packageName)) {
-        case Some(moduleId) => moduleId
-        case None => fail(path, "v6 package '${packageName}' has no module mapping")
-    }
-}
-
-internal func buildLegacySymbolIds(root: JsonObject,
-    modules: LegacyModuleIndex): HashMap<String, String> {
-    let result = HashMap<String, String>()
-    let migrated = HashSet<String>()
-    var index: Int64 = 0
-    for (node in jsonArrayValues(arrayAt(root, "declarations", "$" ))) {
-        let path = "$.declarations[${index}]"
-        let value = try { node.asObject() } catch (_: Exception) { fail(path, "expected object") }
-        let oldId = stringAt(value, "id", path)
-        if (!oldId.startsWith("cjdoc:v1:")) {
-            fail("${path}.id", "v6 SymbolId must start with 'cjdoc:v1:'")
-        }
-        if (result.contains(oldId)) { fail("${path}.id", "duplicate v6 SymbolId") }
-        let moduleId = legacyModuleId(modules, stringAt(value, "packageName", path), path)
-        let newId = symbolIdModulePrefix(moduleId) + oldId.removePrefix("cjdoc:v1:")
-        if (!migrated.add(newId)) { fail("${path}.id", "v6 SymbolIds collide after module migration") }
-        result[oldId] = newId
-        index++
-    }
-    result
-}
-
-internal func decodeAnnotations(value: JsonObject, path: String, legacy: Bool): Array<AnnotationDoc> {
+internal func decodeAnnotations(value: JsonObject, path: String): Array<AnnotationDoc> {
     let result = ArrayList<AnnotationDoc>()
     var index: Int64 = 0
     for (node in jsonArrayValues(arrayAt(value, "annotations", path))) {
-        if (legacy) {
-            try { result.add(AnnotationDoc(node.asString())) }
-            catch (_: Exception) { fail("${path}.annotations[${index}]", "expected string") }
-        } else {
-            let annotationPath = "${path}.annotations[${index}]"
-            let annotation = strictObject(node, annotationPath, ["spelling", "provenance", "provider"])
-            result.add(AnnotationDoc(stringAt(annotation, "spelling", annotationPath),
-                provenance: stringAt(annotation, "provenance", annotationPath),
-                provider: nullableStringAt(annotation, "provider", annotationPath)))
-        }
+        let annotationPath = "${path}.annotations[${index}]"
+        let annotation = strictObject(node, annotationPath, ["spelling", "provenance", "provider"])
+        result.add(AnnotationDoc(stringAt(annotation, "spelling", annotationPath),
+            provenance: stringAt(annotation, "provenance", annotationPath),
+            provider: nullableStringAt(annotation, "provider", annotationPath)))
         index++
     }
     result.toArray()

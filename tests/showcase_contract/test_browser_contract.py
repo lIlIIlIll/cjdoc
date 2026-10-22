@@ -16,6 +16,7 @@ class BrowserContractTests(unittest.TestCase):
         self.addCleanup(f.doCleanups)
 
     def test_unknown_scenario_fails_not_skips(self):
+        self.fixture.target["scenarios"] = [{"id": "unknown-root-desktop", "mode": "http"}]
         with self.assertRaisesRegex(ContractError, "unimplemented"):
             registered_cases(self.fixture.resolve())
 
@@ -70,6 +71,7 @@ class BrowserContractTests(unittest.TestCase):
 
     def test_unknown_scenario_writes_failure_not_success(self):
         f = self.fixture
+        f.target["scenarios"] = [{"id": "unknown-root-desktop", "mode": "http"}]
         test_contract.write(f.site, 'showcase-features.json', f.resolve())
         evidence = f.root / "fresh-evidence"
         with self.assertRaisesRegex(ContractError, "unimplemented"):

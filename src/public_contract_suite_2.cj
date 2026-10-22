@@ -104,7 +104,7 @@ class PublicApiContractsSuite2 {
         let markdownArtifacts = api_render.MarkdownDocumentationRenderer().render(documentation)
         let assetPath = "assets/asset-7368613235362d34333163656436393136613261323161313536653338373031--1132038679-5410122.png"
         @Expect(renderedContent(htmlArtifacts).contains("../${assetPath}"))
-        @Expect(artifactContent(markdownArtifacts, "markdown/docs.md").contains(assetPath))
+        @Expect(renderedContent(markdownArtifacts).contains("../${assetPath}"))
         var htmlBinary = false
         var markdownBinary = false
         for (artifact in htmlArtifacts) {

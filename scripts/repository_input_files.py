@@ -12,10 +12,6 @@ try:
         DOC_IR_CORE_DEFS,
         GOLDEN_NAMES,
         JSON_SCHEMA_DRAFT,
-        LEGACY_GOLDEN_VERSIONS,
-        LEGACY13_GOLDEN_SHA256,
-        LEGACY14_GOLDEN_SHA256,
-        LEGACY_SCHEMA_SHA256,
         SCHEMA_CONTRACTS,
         SCHEMA_OPTIONAL_PROPERTIES,
         SCHEMA_NAMES,
@@ -29,10 +25,6 @@ except ImportError:  # Direct module execution.
         DOC_IR_CORE_DEFS,
         GOLDEN_NAMES,
         JSON_SCHEMA_DRAFT,
-        LEGACY_GOLDEN_VERSIONS,
-        LEGACY13_GOLDEN_SHA256,
-        LEGACY14_GOLDEN_SHA256,
-        LEGACY_SCHEMA_SHA256,
         SCHEMA_CONTRACTS,
         SCHEMA_OPTIONAL_PROPERTIES,
         SCHEMA_NAMES,
@@ -81,17 +73,16 @@ def required_repository_paths() -> tuple[str, ...]:
         "vendor/yjson_algorithms/UPSTREAM.md",
         "vendor/yjson_algorithms/cjpm.toml",
         "vendor/yjson_algorithms/vendor-manifest.toml",
-        "tests/fixtures/legacy-migration-v8.json",
         "cjdoc.toml",
         "site/showcase-baseline.json",
         "scripts/requirements-showcase.txt",
     ]
     paths.extend(source_inputs())
     paths.extend(f"docs/schema/{name}.schema.json" for name in SCHEMA_NAMES)
-    for version in (*LEGACY_GOLDEN_VERSIONS, CURRENT_GOLDEN_VERSION):
-        paths.extend(f"tests/fixtures/golden-v{version}/{name}.docs.json" for name in GOLDEN_NAMES)
-    paths.extend(f"tests/fixtures/legacy13/{name}.docs.json" for name in GOLDEN_NAMES)
-    paths.extend(f"tests/fixtures/legacy14/{name}.docs.json" for name in GOLDEN_NAMES)
+    paths.extend(
+        f"tests/fixtures/golden-v{CURRENT_GOLDEN_VERSION}/{name}.docs.json"
+        for name in GOLDEN_NAMES
+    )
     return tuple(paths)
 
 
@@ -113,16 +104,6 @@ def verify_golden_set(repo: Path, version: int) -> None:
         path = directory / name
         if path.is_symlink() or not path.is_file():
             raise ValueError(f"v{version} golden must be a regular file: {name}")
-        if version == 13:
-            frozen = repo / "tests/fixtures/legacy13" / name
-            expected_hash = LEGACY13_GOLDEN_SHA256[name.removesuffix(".docs.json")]
-            if frozen.is_symlink() or not frozen.is_file() or sha256(frozen) != expected_hash or sha256(path) != expected_hash:
-                raise ValueError(f"v13 legacy input is not byte-frozen: {name}")
-        if version == 14:
-            frozen = repo / "tests/fixtures/legacy14" / name
-            expected_hash = LEGACY14_GOLDEN_SHA256[name.removesuffix(".docs.json")]
-            if frozen.is_symlink() or not frozen.is_file() or sha256(frozen) != expected_hash or sha256(path) != expected_hash:
-                raise ValueError(f"v14 legacy input is not byte-frozen: {name}")
         value = strict_load(path, description=f"v{version} golden {name}")
         if not isinstance(value, dict) or value.get("schemaVersion") != expected_version:
             raise ValueError(f"v{version} golden has the wrong schemaVersion: {name}")
@@ -147,9 +128,9 @@ def validate_schema_document(name: str, value: object) -> None:
         if isinstance(properties.get("schemaVersion"), dict) else None
     if actual_version != expected_version:
         raise ValueError(f"{name} schema does not declare {expected_version}")
-    if name in ("doc-ir", "doc-ir-v15") and properties["documentationRevision"] != {"type": "string"}:
+    if name in ("doc-ir", "doc-ir-v16") and properties["documentationRevision"] != {"type": "string"}:
         raise ValueError(f"{name} schema documentation revision shape is invalid")
-    if name in ("doc-ir", "doc-ir-v15", "symbol-index"):
+    if name in ("doc-ir", "doc-ir-v16", "symbol-index"):
         definitions = value.get("$defs")
         for definition_name, graph_field in (
             ("dependencyInstance", "componentModuleId"), ("documentSetIdentity", "moduleId"),
@@ -181,19 +162,21 @@ def validate_schema_document(name: str, value: object) -> None:
                 )
         if properties["status"] != {"enum": ["complete", "partial"]}:
             raise ValueError(f"{name} schema status shape is invalid")
-        if name in ("doc-ir", "doc-ir-v14", "doc-ir-v15") and properties["apiCollectionState"] != {
+        if properties["apiCollectionState"] != {
             "enum": ["resolved", "partial", "unavailable"]
         }:
             raise ValueError(f"{name} API collection state shape is invalid")
-        if name in ("doc-ir", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12", "doc-ir-v13", "doc-ir-v14", "doc-ir-v15"):
-            if name in ("doc-ir", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12", "doc-ir-v13", "doc-ir-v14", "doc-ir-v15") and "repository" not in definitions:
-                raise ValueError(f"{name} repository definition is missing")
+        if "repository" not in definitions:
+            raise ValueError(f"{name} repository definition is missing")
+        if "evidenceKey" in definitions.get("tag", {}).get("properties", {}):
+            raise ValueError(f"{name} schema contains removed tag evidence")
+        if name in ("doc-ir", "doc-ir-v16"):
             if not {
                 "codeBlockMetadata", "headingMetadata", "listMetadata",
                 "listItemMetadata", "tableMetadata", "tableRowMetadata",
                 "tableCellMetadata",
             }.issubset(definitions):
-                raise ValueError(f"{name} schema v8 Markdown definitions are missing")
+                raise ValueError(f"{name} schema Markdown definitions are missing")
             markdown_node = definitions["markdownNode"]
             if not isinstance(markdown_node, dict) or \
                     markdown_node.get("type") != "object" or \
@@ -203,7 +186,7 @@ def validate_schema_document(name: str, value: object) -> None:
                     ] or set(markdown_node.get("properties", {})) != {
                         "kind", "literal", "source", "metadata", "children"
                     }:
-                raise ValueError(f"{name} schema v8 Markdown node shape is invalid")
+                raise ValueError(f"{name} schema Markdown node shape is invalid")
     elif name == "diagnostics":
         if properties["diagnostics"] != {
             "type": "array", "items": {"$ref": "doc-ir.schema.json#/$defs/diagnostic"}
@@ -221,7 +204,7 @@ def validate_schema_document(name: str, value: object) -> None:
                     "$ref": "doc-ir.schema.json"
                 }:
             raise ValueError("cfg-matrix schema profile shape is invalid")
-    elif name == "search-index":
+    elif name in ("search-index", "search-index-v9"):
         entries = properties["entries"]
         items = entries.get("items") if isinstance(entries, dict) else None
         expected_required_fields = {
@@ -274,25 +257,17 @@ def validate_schema_document(name: str, value: object) -> None:
                 set(page.get("required", [])) != expected_page_fields or
                 set(page.get("properties", {})) != expected_page_fields):
             raise ValueError("navigation-index schema page shape is invalid")
-    elif name in ("api-surface", "api-surface-v1", "api-diff"):
+    elif name in ("api-surface", "api-surface-v3", "api-diff", "api-diff-v2"):
         definitions = value.get("$defs")
         if not isinstance(definitions, dict):
             raise ValueError(f"{name} schema definitions are missing")
         required = {
             "declaration", "exposure", "sourceApiSignature", "fingerprint"
-        } if name == "api-surface" else {
-            "declaration", "exposure", "sourceApiSignature"
-        } if name == "api-surface-v1" else {
+        } if name in ("api-surface", "api-surface-v3") else {
             "identity", "summary", "evidence", "entry", "nullableString"
         }
         if not required.issubset(definitions):
             raise ValueError(f"{name} schema definitions are incomplete")
-    elif name == "documentation-coverage-v1":
-        definitions = value.get("$defs")
-        if not isinstance(definitions, dict) or "counts" not in definitions or \
-                properties.get("symbols") != {"$ref": "#/$defs/counts"} or \
-                properties.get("parameters") != {"$ref": "#/$defs/counts"}:
-            raise ValueError("documentation-coverage-v1 schema counts shape is invalid")
     elif name == "documentation-coverage":
         definitions = value.get("$defs")
         if not isinstance(definitions, dict) or not {"metric", "metrics", "group"}.issubset(definitions) or \
@@ -300,13 +275,7 @@ def validate_schema_document(name: str, value: object) -> None:
                 properties.get("packages", {}).get("items") != {"$ref": "#/$defs/group"} or \
                 properties.get("modules", {}).get("items") != {"$ref": "#/$defs/group"}:
             raise ValueError("documentation-coverage schema metrics shape is invalid")
-    elif name == "doctest-results":
-        definitions = value.get("$defs")
-        if not isinstance(definitions, dict) or not {"nullableInteger", "summary", "result"}.issubset(definitions) or \
-                properties.get("summary") != {"$ref": "#/$defs/summary"} or \
-                properties.get("results", {}).get("items") != {"$ref": "#/$defs/result"}:
-            raise ValueError("doctest-results schema shape is invalid")
-    elif name == "versions":
+    elif name in ("versions", "versions-v2"):
         definitions = value.get("$defs")
         versions = properties["versions"]
         if (not isinstance(definitions, dict) or
@@ -334,7 +303,3 @@ def verify_schema_set(repo: Path) -> None:
         path = directory / f"{name}.schema.json"
         value = strict_load(path, description=f"{name} schema")
         validate_schema_document(name, value)
-    for version, expected_hash in LEGACY_SCHEMA_SHA256.items():
-        path = directory / f"doc-ir-v{version}.schema.json"
-        if sha256(path) != expected_hash:
-            raise ValueError(f"published doc-ir-v{version} schema is not byte-frozen")

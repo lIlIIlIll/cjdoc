@@ -29,19 +29,13 @@ internal func generateDocumentationWithSource(request: GenerationRequest,
     }
     bindLocalizedDocumentationItems(documentation)
     if (request.checkExamples) {
-        compileDocumentationExamples(documentation, request.audience)
+        compileDocumentationExamples(documentation, request.audience, qualityConfig)
     }
     sortDocumentationDeterministically(documentation)
     let captured = publicDocumentation(documentation, request, capturePages: true)
     let result = boundGeneratedDocumentation(withTranslationDiagnostics(captured, request), request)
     validateGeneratedDocIr(result)
     GeneratedDocumentation(documentation, result)
-}
-internal func generatePublicDocumentationWithSource(request: GenerationRequest,
-    semanticProvider: SemanticProvider): (public_model.DocumentationSet, Array<SourceFileOrigin>) {
-    let generated = generateDocumentationWithSource(request, semanticProvider)
-    let origins = generated.internalDocumentation.sourceFileOrigins.toArray()
-    (generated.publicDocumentation, origins)
 }
 
 public class DocumentationEngine {
@@ -67,7 +61,7 @@ public class DocumentationEngine {
         }
         bindLocalizedDocumentationItems(documentation)
         if (request.checkExamples) {
-            compileDocumentationExamples(documentation, request.audience)
+            compileDocumentationExamples(documentation, request.audience, qualityConfig)
         }
         sortDocumentationDeterministically(documentation)
         let captured = publicDocumentation(documentation, request, capturePages: true)

@@ -106,7 +106,7 @@ class DocumentationPageBindingsTest {
     }
 
     @TestCase
-    func invisibleImportedTargetAndSingleMarkdownKeepTheirOwnBoundaries(): Unit {
+    func invisibleImportedTargetsStayHiddenThroughEveryMarkdownEntrypoint(): Unit {
         let documentation = pageBindingDocumentation(hiddenOnly: true)
         let encoded = encodeDocIr(documentation)
         let values = renderDocumentationFormatsWithOptions(documentation, ["markdown"], locale: "en")
@@ -115,12 +115,12 @@ class DocumentationPageBindingsTest {
         @Expect(!guide.contains("HiddenBindingSecret"))
         @Expect(!guide.contains("HiddenSelectorSecret"))
         @Expect(!guide.contains("fixture.hidden"))
-        for (single in [MarkdownDocumentationRenderer().render(documentation),
-            renderDocumentationFormatsWithOptions(documentation, ["markdown"], locale: "en", markdownLayout: "single")]) {
-            @Expect(single.size, 1)
-            @Expect(single[0].path, "markdown/docs.md")
-            @Expect(!single[0].content.contains("API associations"))
-        }
+        let direct = MarkdownDocumentationRenderer().render(documentation)
+        let directGuide = pageBindingContent(direct, "markdown/concepts/guides/deep/start.md")
+        @Expect(directGuide.contains("Not available in this audience"))
+        @Expect(!directGuide.contains("HiddenBindingSecret"))
+        @Expect(!directGuide.contains("HiddenSelectorSecret"))
+        @Expect(!directGuide.contains("fixture.hidden"))
         @Expect(encodeDocIr(documentation), encoded)
     }
 }

@@ -1,10 +1,10 @@
 package pocket_diagnostics
 
 /**
- * 故意触发编译失败的隔离示例，不属于默认入门结果。
+ * 含有故意错误代码的隔离文档示例，不属于默认入门结果。
  *
- * 本项目检验 legacy doctest 如实记录失败；这里没有写 must-fail 指令，raw status 必须保持 failed，
- * 不能把它计入通过样本。{@link MissingDocumentationTarget} 应保持 unresolved。
+ * 本项目展示原生文档诊断，不宣称这些代码已执行。
+ * {@link MissingDocumentationTarget} 应保持 unresolved。
  *
  * @example 故意错误的赋值
  * ```cj

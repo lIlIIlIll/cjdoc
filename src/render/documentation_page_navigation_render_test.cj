@@ -109,13 +109,9 @@ class DocumentationPageNavigationRenderTest {
             @Expect(document.pages[0].bindings[0].state, "unresolved")
             @Expect(document.generator.toolchain.isEmpty())
             @Expect(encodeDocIr(document), encoded)
-            for (single in [MarkdownDocumentationRenderer().render(document),
-                renderDocumentationFormatsWithOptions(document, ["markdown"], locale: "en", markdownLayout: "single")]) {
-                @Expect(single.size, 1)
-                @Expect(single[0].path, "markdown/docs.md")
-                @Expect(!single[0].content.contains("API associations"))
-                @Expect(!single[0].content.contains("external.run"))
-            }
+            let direct = MarkdownDocumentationRenderer().render(document)
+            let directGuide = frozenPageContent(direct, "markdown/" + FROZEN_PAGE_ROUTE.removeSuffix(".html") + ".md")
+            @Expect(directGuide, markdown)
         }
     }
 

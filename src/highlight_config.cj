@@ -48,7 +48,7 @@ public class HighlightConfig {
     }
 }
 
-// Kept identical to doctest's file-private comment scanner: quoted # is data.
+// A quoted # remains data rather than starting a TOML comment.
 private func stripTomlComment(value: String): String {
     var quoted = false
     var escaped = false
@@ -89,7 +89,7 @@ private func highlightTomlLanguages(value: String): Array<String> {
     let body = cleaned.removePrefix("[").removeSuffix("]").trimAscii()
     if (body.isEmpty()) { return [] }
     let languages = ArrayList<String>()
-    // Language identifiers use the same simple single-line TOML style as doctest.
+    // Language identifiers use simple single-line TOML strings.
     // Do not accept unquoted items or silently split a quoted identifier at a comma.
     var index: Int64 = 0
     while (index < body.size) {

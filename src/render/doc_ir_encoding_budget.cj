@@ -233,7 +233,6 @@ internal func consumeTagEncoding(value: DocTag, path: String,
     if (let Some(markdown) <- value.descriptionMarkdown) {
         consumeMarkdownEncoding(markdown, path + ".descriptionMarkdown", 0, 5, budget)
     }
-    if (!value.evidenceKey.isEmpty()) { budget.consumeString(value.evidenceKey, path + ".evidenceKey") }
     consumeNavigationEncoding(value.navigation, path + ".navigation", 6, budget)
 }
 

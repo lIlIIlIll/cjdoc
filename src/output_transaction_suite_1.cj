@@ -90,7 +90,7 @@ class OutputTransactionSuite1 {
     }
 
     @TestCase
-    func legacyV2NestedDirectoriesRequireForceForExplicitMigration(): Unit {
+    func legacyV2ManifestIsRejectedWithoutMutationEvenWithForce(): Unit {
         let parent = createOutputTestTempDirectory()
         let output = parent.join("site")
         try {
@@ -104,16 +104,23 @@ class OutputTransactionSuite1 {
                 "    {\"path\": \"docs.json\", \"sha256\": \"${docsDigest}\"},\n" +
                 "    {\"path\": \"html/index.html\", \"sha256\": \"${htmlDigest}\"}\n  ]\n}\n"
             File.writeTo(output.join(".cjdoc-output.json"), legacy.toArray())
+            File.writeTo(output.join("html/user.txt"), "preserve me".toArray())
+            @ExpectThrows(validatePreviousManifest([
+                PreviousOutputFile("docs.json", docsDigest, docsDigest),
+                PreviousOutputFile("html/index.html", htmlDigest, htmlDigest)], legacy, true))
 
-            @ExpectThrows(writeOwnedArtifacts(output.toString(), [outputArtifact("docs.json", "second")]))
-            @Expect(exists(output.join("html/index.html")))
-
-            writeOwnedArtifacts(output.toString(), [outputArtifact("docs.json", "second")],
-                forceOwned: true)
-            @Expect(!exists(output.join("html")))
-            let migrated = String.fromUtf8(File.readFrom(output.join(".cjdoc-output.json")))
-            @Expect(migrated.contains("cjdoc.output/3"))
-            @Expect(migrated.contains("\"directories\""))
+            for (forceOwned in [false, true]) {
+                @ExpectThrows(writeOwnedArtifacts(output.toString(), [outputArtifact("docs.json", "second")],
+                    forceOwned: forceOwned))
+                @Expect(String.fromUtf8(File.readFrom(output.join(".cjdoc-output.json"))), legacy)
+                @Expect(String.fromUtf8(File.readFrom(output.join("docs.json"))), "first")
+                @Expect(String.fromUtf8(File.readFrom(output.join("html/index.html"))), "index")
+                @Expect(String.fromUtf8(File.readFrom(output.join("html/user.txt"))), "preserve me")
+                @Expect(!exists(parent.join(OUTPUT_BOOTSTRAP_NAME)))
+                @Expect(!exists(parent.join(OUTPUT_PREPARING_NAME)))
+                @Expect(!exists(parent.join(OUTPUT_TRANSACTION_NAME)))
+                @Expect(!exists(parent.join(OUTPUT_RETIRED_NAME)))
+            }
         } finally { let _ = removeIfExists(parent, recursive: true) }
     }
 

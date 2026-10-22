@@ -3,8 +3,6 @@ package cjdoc.model
 import std.collection.*
 
 public let API_SURFACE_SCHEMA_VERSION = "cjdoc.api-surface/3"
-public let API_SURFACE_V2_SCHEMA_VERSION = "cjdoc.api-surface/2"
-public let API_SURFACE_LEGACY_SCHEMA_VERSION = "cjdoc.api-surface/1"
 public let API_DIFF_SCHEMA_VERSION = "cjdoc.api-diff/2"
 
 private func apiDocumentationLanguage(value: ?String): ?String {
@@ -190,18 +188,12 @@ public class ApiContractSnapshot {
 
     public init(project: String, audience: String, cfgProfile: String,
         collectionState!: String = "resolved", declarations!: Array<ApiContractDeclaration> = [],
-        exposures!: Array<ApiContractExposure> = [], schemaVersion!: String = API_SURFACE_SCHEMA_VERSION) {
+        exposures!: Array<ApiContractExposure> = []) {
         if (project.isEmpty() || audience.isEmpty() || cfgProfile.isEmpty() ||
-            !isApiContractState(collectionState) ||
-            (schemaVersion != API_SURFACE_SCHEMA_VERSION && schemaVersion != API_SURFACE_V2_SCHEMA_VERSION && schemaVersion != API_SURFACE_LEGACY_SCHEMA_VERSION)) {
+            !isApiContractState(collectionState)) {
             throw IllegalArgumentException("invalid API contract snapshot")
         }
-        if (schemaVersion != API_SURFACE_SCHEMA_VERSION) {
-            for (declaration in declarations where !declaration.documentationLanguages.isEmpty()) {
-                throw IllegalArgumentException("legacy API contract snapshots cannot contain documentation languages")
-            }
-        }
-        this.schemaVersion = schemaVersion
+        this.schemaVersion = API_SURFACE_SCHEMA_VERSION
         this.project = project
         this.audience = audience
         this.cfgProfile = cfgProfile

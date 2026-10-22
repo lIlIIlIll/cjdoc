@@ -153,7 +153,7 @@ class I18nPublicApiTest {
     }
 
     @TestCase
-    func addedAndRemovedDocumentationRetainLanguageEvidenceOnlyForV3(): Unit {
+    func addedAndRemovedDocumentationRetainLanguageEvidence(): Unit {
         let project = i18nTestProject("")
         try {
             let empty = api_render.apiContractSnapshotForDocumentation(i18nTestGenerate(project))
@@ -175,11 +175,6 @@ class I18nPublicApiTest {
                     }
                 }
                 @Expect(found)
-            }
-            let legacy = api_model.ApiContractSnapshot(empty.project, empty.audience, empty.cfgProfile,
-                declarations: empty.declarations.toArray(), schemaVersion: api_model.API_SURFACE_V2_SCHEMA_VERSION)
-            for (entry in compareApiContracts(legacy, documented).entries) {
-                for (evidence in entry.evidence) { @Expect(evidence.field != "documentationLanguages") }
             }
         } finally { let _ = removeIfExists(project, recursive: true) }
     }
@@ -240,25 +235,6 @@ class I18nPublicApiTest {
         } finally { let _ = removeIfExists(project, recursive: true) }
     }
 
-    @TestCase
-    func doctestCollectionIncludesEveryLanguageAndNeverBorrowsTitleProof(): Unit {
-        let project = i18nTestProject("/**\n * 中文。\n * @example 相同标题\n * ```cj\n * println(1)\n * ```\n * @example[lang=en] 相同标题\n * ```cj\n * println(2)\n * ```\n */")
-        try {
-            let documentation = i18nTestGenerate(project)
-            let snippets = collectSnippets(documentation)
-            @Expect(snippets.size, 2)
-            @Expect(snippets[0].evidenceKey != snippets[1].evidenceKey)
-            let evidence = HashMap<String, String>()
-            evidence[api_render.EXAMPLE_EVIDENCE_RAN_MARKER] = "ran"
-            evidence[api_render.exampleEvidenceKey(documentation.declarations[0].id, "相同标题")] = "passed"
-            var html = ""
-            for (artifact in api_render.renderDocumentationFormatsWithOptions(documentation, ["html"], locale: "en", exampleEvidence: evidence)) {
-                if (artifact.path.endsWith(".html")) { html += artifact.content }
-            }
-            @Expect(!html.contains("Verified by execution"))
-            @Expect(html.contains("Not verified by execution"))
-        } finally { let _ = removeIfExists(project, recursive: true) }
-    }
     @TestCase
     func capturedGuidesRenderBothLanguagesWithoutSource(): Unit {
         let project = i18nTestProject("/** 中文摘要。 */")

@@ -37,13 +37,6 @@ else
     echo "cjdoc binary is missing or not executable: ${binary}" >&2
     exit 1
 fi
-"${python_cmd}" - <<'PY'
-from pathlib import Path
-from scripts.verify_repository_inputs import validate_schema_document
-from scripts.strict_json import strict_load
-for name in ("doc-ir-v6", "doc-ir-v7", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10", "doc-ir-v11", "doc-ir-v12", "doc-ir-v13", "doc-ir-v14"):
-    validate_schema_document(name, strict_load(Path("docs/schema") / f"{name}.schema.json", description=name))
-PY
 if [[ -n "${CJDOC_UPDATE_WORKDIR:-}" ]]; then
     update_dir="${CJDOC_UPDATE_WORKDIR}"
     "${python_cmd}" - "${update_dir}" <<'PYWORK'
@@ -70,16 +63,7 @@ fi
 test -d "${schema_dir}"
 stage_dir="$(mktemp -d "${schema_parent}/.schema.XXXXXX")"
 
-for schema_name in doc-ir-v6 doc-ir-v7 doc-ir-v8 doc-ir-v9 doc-ir-v10 doc-ir-v11 doc-ir-v12 doc-ir-v13 doc-ir-v14; do
-    "${binary}" schema "${schema_name}" | tr -d '\r' \
-        >"${update_dir}/${schema_name}.schema.json"
-    cmp "${schema_dir}/${schema_name}.schema.json" \
-        "${update_dir}/${schema_name}.schema.json"
-    cp -f "${schema_dir}/${schema_name}.schema.json" \
-        "${stage_dir}/${schema_name}.schema.json"
-done
-
-for schema_name in doc-ir doc-ir-v15 diagnostics cfg-matrix search-index symbol-index navigation-index api-surface api-surface-v1 api-diff documentation-coverage-v1 documentation-coverage documentation-quality doctest-results versions api-surface-v2 api-surface-v3 api-diff-v1 doctest-results-v1 search-index-v8 versions-v1 translation-coverage site-manifest api-diff-v2 doctest-results-v2 search-index-v9 versions-v2; do
+for schema_name in doc-ir doc-ir-v16 diagnostics cfg-matrix search-index search-index-v9 symbol-index navigation-index api-surface api-surface-v3 api-diff api-diff-v2 documentation-coverage documentation-quality versions versions-v2 translation-coverage site-manifest; do
     "${binary}" schema "${schema_name}" | tr -d '\r' \
         >"${stage_dir}/${schema_name}.schema.json"
 done

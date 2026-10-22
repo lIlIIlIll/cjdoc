@@ -75,14 +75,15 @@ class MetricsTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ContractError):
                 validate_metrics(broken, self.scenario)
 
-    def test_modern_scenarios_reject_legacy_unmeasured_evidence(self):
+    def test_legacy_browser_evidence_schema_is_rejected(self):
         fixture = test_contract.ContractTests()
         fixture.setUp()
         self.addCleanup(fixture.doCleanups)
         fixture.target["scenarios"] = [{"id": "search-root-desktop", "mode": "http"}]
         manifest = fixture.resolve()
         evidence = fixture.evidence(manifest)
-        with self.assertRaisesRegex(ContractError, "measured.*v2"):
+        evidence["schemaVersion"] = "cjdoc.showcase-evidence/1"
+        with self.assertRaisesRegex(ContractError, "unsupported browser evidence schema"):
             validate_evidence(manifest, evidence, Site(fixture.site), fixture.evidence_root)
 
 

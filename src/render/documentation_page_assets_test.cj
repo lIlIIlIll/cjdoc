@@ -113,10 +113,9 @@ class DocumentationPageAssetsTest {
     }
 
     @TestCase
-    func singleMarkdownDoesNotPublishAssetsFromPagesItDoesNotRender(): Unit {
+    func directMarkdownRendererPublishesOnlySelectedPageAssets(): Unit {
         let imported = decodeDocIr(encodeDocIr(capturedPageAssetDocumentation()))
-        let artifacts = renderDocumentationFormatsWithOptions(imported, ["markdown"],
-            locale: "en", markdownLayout: "single")
-        for (artifact in artifacts) { @Expect(!artifact.isBinary) }
+        let artifacts = MarkdownDocumentationRenderer().render(imported)
+        verifyCapturedPageImage(artifacts, "markdown", "concepts/guides/deep/start.md", "English diagram", 0xf8)
     }
 }

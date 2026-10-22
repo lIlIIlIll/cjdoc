@@ -298,6 +298,13 @@ internal func addExampleDiagnostic(documentation: DocumentationSet, symbol: Symb
         source: symbol.source, symbolId: symbol.id))
 }
 
+private func exampleFailureSeverity(config: DocumentationQualityConfig): ?String {
+    match (config.ruleSeverity("example-not-compiling")) {
+        case Some(value) => if (value == "off") { None } else { Some(value) }
+        case None => Some("error")
+    }
+}
+
 private func reportPinnedExampleSkipped(documentation: DocumentationSet, symbol: SymbolDoc,
     label: String, reason: String): Unit {
     addExampleDiagnostic(documentation, symbol, "error", "CJDOC3070",
@@ -667,7 +674,9 @@ internal func compilerOutput(stdout: Array<Byte>, stderr: Array<Byte>, generated
 // generated example file. A rejected compiler option or an uncompilable package also
 // exits non-zero, but names no source file, so it must not be credited to the pin.
 private func judgeFailedCompile(documentation: DocumentationSet,
-    target: ExampleCompilationTarget, label: String, outputText: String, exitCode: Int64): Unit {
+    target: ExampleCompilationTarget, outputText: String, exitCode: Int64,
+    failureSeverity: ?String): Unit {
+    let label = exampleLabel(target.symbol, target.title)
     let detail = exampleFailureDetail(outputText, exitCode)
     if (target.expectsFailure) {
         if (!outputText.contains("<generated-example>")) {
@@ -695,13 +704,20 @@ private func judgeFailedCompile(documentation: DocumentationSet,
     } else {
         "declaring package could not be compiled for @example '${label}'"
     }
-    addExampleDiagnostic(documentation, target.symbol, "error", code, "${prefix}: ${detail}")
+    let severity = if (attributed) { failureSeverity } else { Some("error") }
+    match (severity) {
+        case Some(value) => addExampleDiagnostic(documentation, target.symbol, value, code,
+            "${prefix}: ${detail}")
+        case None => ()
+    }
 }
 
 private func compileExampleTarget(documentation: DocumentationSet,
     unit: ExampleCompilationUnit, target: ExampleCompilationTarget,
-    packageArtifacts: Array<ExamplePackageArtifact>, dependencyFailure: String): Unit {
+    preparation: ExampleDependencyPreparation,
+    failureSeverity: ?String): Unit {
     let label = exampleLabel(target.symbol, target.title)
+    let packageArtifacts = preparation.artifacts
     if (unit.sourceLimitExceeded || unit.sourceOrigins.isEmpty()) {
         addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3031",
             "cannot prepare the source context for @example '${label}'")
@@ -711,8 +727,9 @@ private func compileExampleTarget(documentation: DocumentationSet,
         }
         return
     }
-    if (!dependencyFailure.isEmpty()) {
-        judgeFailedCompile(documentation, target, label, dependencyFailure, 1)
+    if (!preparation.failure.isEmpty()) {
+        judgeFailedCompile(documentation, target, preparation.failure, 1,
+            failureSeverity)
         return
     }
     let temporary = try {
@@ -745,8 +762,9 @@ private func compileExampleTarget(documentation: DocumentationSet,
                     packageArtifacts: packageArtifacts),
                 workingDirectory: Some(temporary))
             if (exitCode != 0) {
-                judgeFailedCompile(documentation, target, label,
-                    compilerOutput(stdout, stderr, generated, temporary), exitCode)
+                judgeFailedCompile(documentation, target,
+                    compilerOutput(stdout, stderr, generated, temporary), exitCode,
+                    failureSeverity)
             } else if (target.expectsFailure) {
                 addExampleDiagnostic(documentation, target.symbol, "error", "CJDOC3070",
                     "@example '${label}' is pinned to fail but compiled successfully")
@@ -774,7 +792,7 @@ private func exampleCompilerOptionsKey(options: Array<String>): String {
 }
 
 private func compileExampleUnit(documentation: DocumentationSet,
-    unit: ExampleCompilationUnit): Unit {
+    unit: ExampleCompilationUnit, failureSeverity: ?String): Unit {
     let (required, requirementFailure) = requiredExamplePackages(documentation, unit)
     let preparations = HashMap<String, ExampleDependencyPreparation>()
     try {
@@ -788,16 +806,18 @@ private func compileExampleUnit(documentation: DocumentationSet,
                     preparations[key] = value
                     value
             }
-            compileExampleTarget(documentation, unit, target, preparation.artifacts,
-                preparation.failure)
+            compileExampleTarget(documentation, unit, target, preparation,
+                failureSeverity)
         }
     } finally {
         for ((_, preparation) in preparations) { releaseExampleDependencies(preparation) }
     }
 }
 
-internal func compileDocumentationExamples(documentation: DocumentationSet, audience: String): Unit {
+internal func compileDocumentationExamples(documentation: DocumentationSet,
+    audience: String, qualityConfig: DocumentationQualityConfig): Unit {
+    let failureSeverity = exampleFailureSeverity(qualityConfig)
     let state = ExampleCollectionState(collectExampleSourceContexts(documentation))
     collectExampleTargets(documentation, state, audience)
-    for (unit in state.units) { compileExampleUnit(documentation, unit) }
+    for (unit in state.units) { compileExampleUnit(documentation, unit, failureSeverity) }
 }

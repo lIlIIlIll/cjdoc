@@ -58,15 +58,6 @@ internal func optionalCodeHighlightAt(value: JsonObject, key: String,
     }
 }
 
-internal func optionalExampleMarkdownAt(value: JsonObject, path: String, legacy: Bool,
-    assetReferences: HashMap<String, String>): ?MarkdownNode {
-    match (value.get("exampleMarkdown")) {
-        case Some(node) => Some(decodeMarkdown(node, "${path}.exampleMarkdown", 0,
-            legacy, assetReferences))
-        case None => None
-    }
-}
-
 internal func consumeCodeHighlightEncoding(value: CodeHighlight, path: String,
     jsonDepth: Int64, budget: DocIrEncodingBudget): Unit {
     budget.consumeObject(path, depth: jsonDepth, fields: 8)

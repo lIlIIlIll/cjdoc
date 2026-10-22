@@ -101,21 +101,9 @@ def verify_repository(repo: Path, tag: str | None,
     manifest_path = repo / "cjpm.toml"
     lock_path = repo / "cjpm.lock"
     schema_path = repo / f"docs/schema/doc-ir-v{CURRENT_GOLDEN_VERSION}.schema.json"
-    legacy_schema_paths = {
-        6: repo / "docs/schema/doc-ir-v6.schema.json",
-        7: repo / "docs/schema/doc-ir-v7.schema.json",
-        8: repo / "docs/schema/doc-ir-v8.schema.json",
-        9: repo / "docs/schema/doc-ir-v9.schema.json",
-        10: repo / "docs/schema/doc-ir-v10.schema.json",
-        11: repo / "docs/schema/doc-ir-v11.schema.json",
-        12: repo / "docs/schema/doc-ir-v12.schema.json",
-        13: repo / "docs/schema/doc-ir-v13.schema.json",
-        14: repo / "docs/schema/doc-ir-v14.schema.json",
-    }
     alias_schema_path = repo / "docs/schema/doc-ir.schema.json"
     baseline_path = repo / "tests/perf/baseline.json"
-    for path in (manifest_path, lock_path, schema_path, *legacy_schema_paths.values(),
-                 alias_schema_path, baseline_path):
+    for path in (manifest_path, lock_path, schema_path, alias_schema_path, baseline_path):
         if not path.is_file():
             raise ValueError(f"required release input is missing: {path.relative_to(repo)}")
 
@@ -163,23 +151,12 @@ def verify_repository(repo: Path, tag: str | None,
             raise ValueError(f"cjpm.lock dependency {name!r} contains a floating branch/tag")
 
     current_schema = strict_load(schema_path)
-    legacy_schemas = {
-        legacy_version: strict_load(path)
-        for legacy_version, path in legacy_schema_paths.items()
-    }
     alias_schema = strict_load(alias_schema_path)
     expected = f"cjdoc.doc-ir/{CURRENT_GOLDEN_VERSION}"
     for name, schema in ((f"doc-ir-v{CURRENT_GOLDEN_VERSION}", current_schema), ("doc-ir", alias_schema)):
         actual = schema.get("properties", {}).get("schemaVersion", {}).get("const")
         if actual != expected:
             raise ValueError(f"{name} schema does not declare {expected}")
-    for legacy_version, legacy_schema in legacy_schemas.items():
-        legacy = legacy_schema.get("properties", {}).get("schemaVersion", {}).get("const")
-        if legacy != f"cjdoc.doc-ir/{legacy_version}":
-            raise ValueError(
-                f"doc-ir-v{legacy_version} schema is not frozen at "
-                f"cjdoc.doc-ir/{legacy_version}"
-            )
 
     baseline = strict_load(baseline_path)
     if baseline.get("schemaVersion") != "cjdoc.perf-baseline/1":
@@ -189,8 +166,7 @@ def verify_repository(repo: Path, tag: str | None,
     if baseline.get("purpose") != "hard-ceiling":
         raise ValueError("performance baseline must declare purpose hard-ceiling")
 
-    inputs = [manifest_path, lock_path, schema_path, *legacy_schema_paths.values(),
-              alias_schema_path, baseline_path,
+    inputs = [manifest_path, lock_path, schema_path, alias_schema_path, baseline_path,
               repo / "README.md", repo / "LICENSE"]
     inputs.extend(repo / relative for relative in required_repository_paths())
     inputs.extend(

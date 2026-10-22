@@ -112,16 +112,11 @@ class DocumentationPageMarkdownNavigationTest {
     }
 
     @TestCase
-    func unlocalizedCapturedPagesStayReachableWhileSingleMarkdownStaysUnchanged(): Unit {
+    func unlocalizedCapturedPagesStayReachableThroughEveryMarkdownEntrypoint(): Unit {
         let documentation = markdownNavigationDocumentation(localized: false)
         let values = renderDocumentationFormatsWithOptions(documentation, ["markdown"], locale: "en")
         expectMarkdownNavigationTarget(values, "markdown/", "concepts/standalone.md", "concepts/standalone.md")
-        for (single in [MarkdownDocumentationRenderer().render(documentation),
-            renderDocumentationFormatsWithOptions(documentation, ["markdown"], locale: "en", markdownLayout: "single")]) {
-            @Expect(single.size, 1)
-            @Expect(single[0].path, "markdown/docs.md")
-            @Expect(!single[0].content.contains("Conceptual documentation"))
-            @Expect(!single[0].content.contains("concepts/standalone.md"))
-        }
+        let direct = MarkdownDocumentationRenderer().render(documentation)
+        expectMarkdownNavigationTarget(direct, "markdown/", "concepts/standalone.md", "concepts/standalone.md")
     }
 }

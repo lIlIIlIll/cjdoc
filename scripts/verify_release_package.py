@@ -15,7 +15,7 @@ import zipfile
 
 try:
     from . import release_archive_reader as _archive_reader
-    from .install_cangjie_sdk import validate_cached_sdk_root, validate_combined_sdk_root
+    from .install_cangjie_sdk import validate_combined_sdk_root
     from .release_archive_reader import (
         ArchiveMember,
         checked_size,
@@ -48,7 +48,7 @@ try:
     from .strict_json import strict_loads
 except ImportError:  # Direct script execution.
     import release_archive_reader as _archive_reader
-    from install_cangjie_sdk import validate_cached_sdk_root, validate_combined_sdk_root
+    from install_cangjie_sdk import validate_combined_sdk_root
     from release_archive_reader import (
         ArchiveMember,
         checked_size,
@@ -95,8 +95,8 @@ def read_archive(path: Path, *, expected_format: str | None = None) -> dict[str,
 def inspect_archive(path: Path, platform_name: str, version: str,
                     sdk_version: str, sdk_sha256: str,
                     source_commit: str,
-                    stdx_version: str | None = None,
-                    stdx_sha256: str | None = None) -> tuple[dict[str, object], dict[str, ArchiveMember], str]:
+                    stdx_version: str,
+                    stdx_sha256: str) -> tuple[dict[str, object], dict[str, ArchiveMember], str]:
     _sync_archive_limits()
     return _inspect_archive(
         path, platform_name, version, sdk_version, sdk_sha256, source_commit,
@@ -228,19 +228,18 @@ def run_smoke(binary: Path, version: str,
         output = result.stdout.strip()
         if name == "version" and output != f"cjdoc {release_core(version)}":
             raise ValueError("extracted binary --version does not match the package")
-        if name == "schema" and "doc-ir-v8" not in output.splitlines():
-            raise ValueError("extracted binary schema list omits doc-ir-v8")
+        if name == "schema" and "doc-ir-v16" not in output.splitlines():
+            raise ValueError("extracted binary schema list omits doc-ir-v16")
         evidence[name] = output
     return evidence
 
 
 def verify_archive(path: Path, platform_name: str, version: str,
                    sdk_version: str, sdk_sha256: str, source_commit: str,
-                   smoke: bool, repository: Path | None = None,
+                   smoke: bool, stdx_version: str, stdx_sha256: str,
+                   repository: Path | None = None,
                    sdk_root: Path | None = None,
-                   sdk_marker_verified: bool = False,
-                   stdx_version: str | None = None,
-                   stdx_sha256: str | None = None) -> dict[str, object]:
+                   sdk_marker_verified: bool = False) -> dict[str, object]:
     path = lexical_absolute(path)
     archive_sha256 = sha256_file(path)
     manifest, members, executable_name = inspect_archive(
@@ -256,8 +255,6 @@ def verify_archive(path: Path, platform_name: str, version: str,
             raise ValueError("release package smoke requires --sdk-root")
         if sdk_marker_verified:
             validated_root = sdk_root.resolve()
-        elif stdx_sha256 is None:
-            validated_root = validate_cached_sdk_root(sdk_root, sdk_sha256)
         else:
             validated_root, _ = validate_combined_sdk_root(
                 sdk_root, sdk_sha256, stdx_sha256)
@@ -288,8 +285,8 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--sdk-version", required=True)
     parser.add_argument("--sdk-sha256", required=True)
-    parser.add_argument("--stdx-version")
-    parser.add_argument("--stdx-sha256")
+    parser.add_argument("--stdx-version", required=True)
+    parser.add_argument("--stdx-sha256", required=True)
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--repository", type=Path)
     parser.add_argument("--sdk-root", type=Path)

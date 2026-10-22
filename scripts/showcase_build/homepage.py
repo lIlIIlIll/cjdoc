@@ -39,12 +39,12 @@ UI_TEXT = {
     "zh-CN": {"HOME": "index.html", "SKIP": "跳到正文", "TAGLINE": "实际体验 API 文档", "NAVIGATION": "展示导航",
         "THEME": "主题：跟随系统", "COPY": "复制", "EYEBROW": "仓颉 · 原生 API 文档", "REPRODUCE": "复现 PocketKit 示例",
         "BUILD_LABEL": "构建来源", "PLAN_LABEL": "完整演示计划", "MANIFEST": "功能清单", "NAV_LABEL": "导航索引",
-        "COVERAGE_LABEL": "覆盖率", "DIFF_LABEL": "API 变化", "DOCTEST_LABEL": "示例验证", "SCHEMAS": "数据结构定义",
+        "COVERAGE_LABEL": "覆盖率", "DIFF_LABEL": "API 变化", "NATIVE_CHECK_LABEL": "原生示例检查", "SCHEMAS": "数据结构定义",
         "USAGE": "使用说明", "ADVANCED": "高级用法", "RELEASE": "发布流程", "LEGACY": "旧版演示入口"},
     "en": {"HOME": "en.html", "SKIP": "Skip to content", "TAGLINE": "documentation in practice", "NAVIGATION": "Showcase navigation",
         "THEME": "Theme: System", "COPY": "Copy", "EYEBROW": "CANGJIE · NATIVE API DOCUMENTATION", "REPRODUCE": "Reproduce the PocketKit example",
         "BUILD_LABEL": "Build provenance", "PLAN_LABEL": "Full demonstration plan", "MANIFEST": "Feature manifest", "NAV_LABEL": "Navigation",
-        "COVERAGE_LABEL": "Coverage", "DIFF_LABEL": "API diff", "DOCTEST_LABEL": "Doctest", "SCHEMAS": "Schemas",
+        "COVERAGE_LABEL": "Coverage", "DIFF_LABEL": "API diff", "NATIVE_CHECK_LABEL": "Native example checks", "SCHEMAS": "Schemas",
         "USAGE": "Usage", "ADVANCED": "Advanced usage", "RELEASE": "Release process", "LEGACY": "Legacy demo entry"},
 }
 

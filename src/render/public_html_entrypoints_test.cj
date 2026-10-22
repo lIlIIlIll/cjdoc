@@ -86,18 +86,20 @@ class PublicHtmlEntrypointsTest {
     }
 
     @TestCase
-    func htmlConvenienceAndSingleMarkdownCombinationStillReturnCompleteHtml(): Unit {
+    func htmlAndMarkdownCombinationReturnsCompleteSites(): Unit {
         let original = entrypointDocumentation()
         let authorIr = encodeDocIr(original)
-        verifyCompleteHtmlEntrypoint(renderDocumentationFormats(original, ["html"]), "en", true)
-        let mixed = renderDocumentationFormatsWithOptions(original, ["html", "markdown"],
-            locale: "en", markdownLayout: "single")
+        verifyCompleteHtmlEntrypoint(renderDocumentationFormatsWithOptions(original, ["html"], locale: "en"), "en", true)
+        let mixed = renderDocumentationFormatsWithOptions(original, ["html", "markdown"], locale: "en")
         verifyCompleteHtmlEntrypoint(mixed, "en", true)
-        @Expect(!entrypointContent(mixed, "markdown/docs.md").isEmpty())
-        for (artifact in mixed) {
-            @Expect(!artifact.path.startsWith("markdown/concepts/"))
-            @Expect(!artifact.path.startsWith("markdown/assets/"))
+        @Expect(!entrypointContent(mixed, "markdown/index.md").isEmpty())
+        @Expect(!entrypointContent(mixed, "markdown/" + ENTRYPOINT_GUIDE.removeSuffix(".html") + ".md").isEmpty())
+        var markdownImages: Int64 = 0
+        for (artifact in mixed where artifact.path.startsWith("markdown/assets/")) {
+            @Expect(artifact.isBinary)
+            markdownImages++
         }
+        @Expect(markdownImages, 1)
         @Expect(encodeDocIr(original), authorIr)
     }
 
@@ -113,7 +115,7 @@ class PublicHtmlEntrypointsTest {
             @Expect(entrypointContent(artifacts, "html/" + ENTRYPOINT_GUIDE).contains(
                 "data-translation-state=\"fallback\""))
         }
-        let convenience = renderDocumentationFormats(original, ["html"])
+        let convenience = renderDocumentationFormatsWithOptions(original, ["html"], locale: "en")
         verifyCompleteHtmlEntrypoint(convenience, "en", false)
         @Expect(entrypointContent(convenience, "html/" + ENTRYPOINT_GUIDE).contains(
             "data-translation-state=\"fallback\""))

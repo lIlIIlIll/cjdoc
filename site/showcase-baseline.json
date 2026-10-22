@@ -13,7 +13,7 @@
     {"id":"resource-lifetime","implementation":"complete","demonstration":"available","journey":"resources","targets":[{"id":"read","version":"demo-v2"}]},
     {"id":"guide-association","implementation":"partial","demonstration":"available","journey":"guides","targets":[{"id":"catalogue-guide","version":"demo-v2"}]},
     {"id":"search-discovery","implementation":"complete","demonstration":"available","journey":"search","targets":[{"id":"catalogue-search","version":"demo-v2"}]},
-    {"id":"doctest-results","implementation":"partial","demonstration":"available","journey":"doctest","targets":[{"id":"doctest-report","version":"demo-v2"}]},
+    {"id":"native-example-checks","implementation":"partial","demonstration":"available","journey":"native-check","targets":[{"id":"native-check-report","version":"demo-v2"}]},
     {"id":"api-diff","implementation":"partial","demonstration":"available","journey":"diff","targets":[{"id":"changes","version":"demo-v2"}]},
     {"id":"multi-version","implementation":"complete","demonstration":"available","journey":"versions","targets":[{"id":"common-overload","version":"demo-v2"},{"id":"removed-member","version":"demo-v1"},{"id":"old-integer-overload","version":"demo-v1"}]},
     {"id":"quality","implementation":"complete","demonstration":"available","journey":"quality","targets":[{"id":"coverage-report","version":"demo-v2"}]},

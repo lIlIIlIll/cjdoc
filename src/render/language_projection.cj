@@ -34,7 +34,7 @@ internal func selectedDocumentationText(comment: DocComment, fieldId: String, lo
     referenceOnlyTextFor(comment, fieldId, comment.defaultLanguage)
 }
 
-private func selectedDocumentationTag(text: DocumentationText, locale: String, symbolId: String,
+private func selectedDocumentationTag(text: DocumentationText, locale: String,
     requestedState!: String = ""): DocTag {
     let state = if (!requestedState.isEmpty() && text.language != Some(locale)) { requestedState + "-fallback" }
         else if (text.state == "unpaired") { "unpaired" }
@@ -48,7 +48,6 @@ private func selectedDocumentationTag(text: DocumentationText, locale: String, s
         exampleMarkdown: if (text.kind == "example") { Some(text.markdown) } else { None },
         contentLanguage: text.language, translationState: state, fieldId: text.fieldId,
         descriptionMarkdown: if (text.kind == "example") { None } else { Some(text.markdown) },
-        evidenceKey: if (text.kind == "example") { documentationExampleKey(symbolId, text) } else { "" },
         navigation: text.navigation)
 }
 
@@ -77,7 +76,7 @@ private func selectedComment(value: DocComment, symbol: SymbolDoc, locale: Strin
         if (let Some(text) <- selectedDocumentationText(value, id, locale)) {
             if (kind == "summary") { summary = text.text } else { description = text.text }
             children.add(all: text.markdown.children)
-            tags.add(selectedDocumentationTag(text, locale, symbol.id, requestedState: requestedDocumentationState(value, id, locale)))
+            tags.add(selectedDocumentationTag(text, locale, requestedState: requestedDocumentationState(value, id, locale)))
         } else if (kind == "summary") { tags.add(missingDocumentationTag(kind, "", id, value, locale)) }
     }
     for (tag in value.tags) {
@@ -88,7 +87,7 @@ private func selectedComment(value: DocComment, symbol: SymbolDoc, locale: Strin
         let id = symbol.id + ":doc:param:" + parameter.name
         let _ = seen.add(id)
         match (selectedDocumentationText(value, id, locale)) {
-            case Some(text) => tags.add(selectedDocumentationTag(text, locale, symbol.id, requestedState: requestedDocumentationState(value, id, locale)))
+            case Some(text) => tags.add(selectedDocumentationTag(text, locale, requestedState: requestedDocumentationState(value, id, locale)))
             case None => tags.add(missingDocumentationTag("param", parameter.name, id, value, locale))
         }
     }
@@ -97,10 +96,10 @@ private func selectedComment(value: DocComment, symbol: SymbolDoc, locale: Strin
         if (text.state == "unpaired") {
             // Without a proven association these are independent author entries,
             // including contract facts. Hiding one would pretend it was a translation.
-            tags.add(selectedDocumentationTag(text, locale, symbol.id))
+            tags.add(selectedDocumentationTag(text, locale))
         } else if (seen.add(text.fieldId)) {
             match (selectedDocumentationText(value, text.fieldId, locale)) {
-                case Some(selected) => tags.add(selectedDocumentationTag(selected, locale, symbol.id, requestedState: requestedDocumentationState(value, text.fieldId, locale)))
+                case Some(selected) => tags.add(selectedDocumentationTag(selected, locale, requestedState: requestedDocumentationState(value, text.fieldId, locale)))
                 case None => tags.add(missingDocumentationTag(text.kind, text.subject, text.fieldId, value, locale))
             }
         }

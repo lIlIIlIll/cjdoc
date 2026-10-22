@@ -151,6 +151,6 @@ class ExampleMarkdownReviewTest {
         let projected = symbol.documentation.getOrThrow().tags[0]
         @Expect(projected.description.toArray(), "```cj\nlet n = 1\n```".toArray())
         @Expect(projected.directives.toArray(), "{must-pass}".toArray())
-        @Expect(api_render.exampleEvidenceKey(symbol.id, projected.subject), symbol.id + "\u{0}Bytes")
+        @Expect(projected.subject, "Bytes")
     }
 }

@@ -117,6 +117,29 @@ private func hasExampleDiagnosticAbout(documentation: public_model.Documentation
     false
 }
 
+private func hasExampleDiagnosticSeverity(documentation: public_model.DocumentationSet,
+    code: String, severity: String): Bool {
+    for (diagnostic in documentation.diagnostics) {
+        if (diagnostic.code == code && diagnostic.severity == severity) { return true }
+    }
+    false
+}
+
+private func invalidCangjieExampleSource(): String {
+    """
+    package example_compile
+
+    /**
+     * Adds two values.
+     * @example Invalid call
+     * ```cangjie
+     * let result = missingApi(1, 2)
+     * ```
+     */
+    public func add(left: Int64, right: Int64): Int64 { left + right }
+    """
+}
+
 private func exampleDiagnosticSummary(documentation: public_model.DocumentationSet): Array<String> {
     let summary = ArrayList<String>()
     for (diagnostic in documentation.diagnostics) {
@@ -187,22 +210,29 @@ class ExampleCompilerTest {
 
     @TestCase
     func invalidCangjieExampleReportsCompilerDiagnostic(): Unit {
-        let root = createExampleProject(
-            """
-            package example_compile
-
-            /**
-             * Adds two values.
-             * @example Invalid call
-             * ```cangjie
-             * let result = missingApi(1, 2)
-             * ```
-             */
-            public func add(left: Int64, right: Int64): Int64 { left + right }
-            """)
+        let root = createExampleProject(invalidCangjieExampleSource())
         try {
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
             @Expect(hasExampleDiagnostic(documentation, "CJDOC3030"))
+            @Expect(hasExampleDiagnosticSeverity(documentation, "CJDOC3030", "error"))
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
+
+    @TestCase
+    func exampleNotCompilingRuleControlsNativeFailureSeverity(): Unit {
+        let root = createExampleProject(invalidCangjieExampleSource())
+        try {
+            File.writeTo(root.join("cjdoc.toml"),
+                "[lint]\nexample-not-compiling = \"warning\"\n".toArray())
+            let warning = DocumentationEngine().generate(exampleRequest(root, true))
+            @Expect(hasExampleDiagnosticSeverity(warning, "CJDOC3030", "warning"))
+
+            File.writeTo(root.join("cjdoc.toml"),
+                "[lint]\nexample-not-compiling = \"off\"\n".toArray())
+            let disabled = DocumentationEngine().generate(exampleRequest(root, true))
+            @Expect(!hasExampleDiagnostic(disabled, "CJDOC3030"))
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
@@ -306,10 +336,13 @@ class ExampleCompilerTest {
             public func add(left: Int64, right: Int64): Int64 { "not a number" }
             """)
         try {
+            File.writeTo(root.join("cjdoc.toml"),
+                "[lint]\nexample-not-compiling = \"off\"\n".toArray())
             let documentation = DocumentationEngine().generate(exampleRequest(root, true))
-            @Expect(hasExampleDiagnostic(documentation, "CJDOC3031"))
+            @Expect(hasExampleDiagnosticSeverity(documentation, "CJDOC3031", "error"))
             @Expect(hasExampleDiagnosticAbout(documentation, "CJDOC3070",
                 "did not fail inside the example"))
+            @Expect(hasExampleDiagnosticSeverity(documentation, "CJDOC3070", "error"))
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
@@ -679,74 +712,23 @@ class ExampleCompilerTest {
     }
 
     @TestCase
-    func directiveManagedExamplesDoNotEnterLegacyDoctest(): Unit {
-        let root = createExampleProject(sourceWith(
-            """
-             * @example Expected failure {must-fail}
-             * ```cangjie
-             * let invalid: Int64 = "wrong"
-             * ```
-            """))
-        try {
-            let generated = generateDocumentationWithSource(
-                exampleRequest(root, false), defaultSemanticProvider())
-            let report = runDoctests(generated.publicDocumentation,
-                DoctestConfig(mode: "warn"), root.join("legacy-doctest"),
-                projectRoot: root,
-                sourceOrigins: generated.internalDocumentation.sourceFileOrigins.toArray())
-            @Expect(report.results.size, 0)
-        } finally {
-            let _ = removeIfExists(root, recursive: true)
-        }
-    }
-
-    @TestCase
-    func legacyDoctestKeepsDiagnosticsPortableOrRefusesUnboundedCompilation(): Unit {
-        let root = createExampleProject(sourceWith(
-            """
-             * @example Ordinary failure
-             * ```cangjie
-             * let invalid: Int64 = "wrong"
-             * ```
-            """))
-        try {
-            let generated = generateDocumentationWithSource(
-                exampleRequest(root, false), defaultSemanticProvider())
-            let config = DoctestConfig(mode: "warn")
-            let unavailable = "address-space memory limit is unavailable on this platform"
-            // Probe the existing command wrapper without launching a process.
-            // Platforms without prlimit must reject the request, not run this
-            // regression with the memory limit disabled or silently skip it.
-            let canBoundMemory = try {
-                let _ = memoryBoundedCommand("cjc", [], config.memoryMb)
-                true
+    func memoryWrapperPreservesBoundsOrRefusesUnavailableLimiter(): Unit {
+        @ExpectThrows[IllegalArgumentException](memoryBoundedCommand("cjc", [], -1))
+        let (unboundedCommand, unboundedArguments) = memoryBoundedCommand("cjc", ["--version"], 0)
+        @Expect(unboundedCommand, "cjc")
+        @Expect(unboundedArguments, ["--version"])
+        if (!exists(Path("/usr/bin/prlimit")) && !exists(Path("/bin/prlimit"))) {
+            var refusal = ""
+            try {
+                let _ = memoryBoundedCommand("cjc", [], 2048)
             } catch (error: IllegalStateException) {
-                @Expect(error.message, unavailable)
-                false
+                refusal = error.message
             }
-            if (!canBoundMemory) {
-                var refusal = ""
-                try {
-                    let _ = runDoctests(generated.publicDocumentation, config,
-                        root.join("legacy-doctest"), projectRoot: root,
-                        sourceOrigins: generated.internalDocumentation.sourceFileOrigins.toArray())
-                } catch (error: IllegalStateException) {
-                    refusal = error.message
-                }
-                @Expect(refusal, unavailable)
-                return
-            }
-            let report = runDoctests(generated.publicDocumentation,
-                config, root.join("legacy-doctest"),
-                projectRoot: root,
-                sourceOrigins: generated.internalDocumentation.sourceFileOrigins.toArray())
-            @Expect(report.results.size, 1)
-            @Expect(report.results[0].status, "failed")
-            @Expect(report.results[0].stderr.contains("example.cj:"))
-            @Expect(!report.results[0].stderr.contains(root.toString()))
-            @Expect(!report.results[0].stderr.contains("tmpDir"))
-        } finally {
-            let _ = removeIfExists(root, recursive: true)
+            @Expect(refusal, "address-space memory limit is unavailable on this platform")
+        } else {
+            let (command, arguments) = memoryBoundedCommand("cjc", ["--version"], 2048)
+            @Expect(command == "/usr/bin/prlimit" || command == "/bin/prlimit")
+            @Expect(arguments, ["--as=2147483648", "--", "/usr/bin/env", "cjHeapSize=512MB", "cjc", "--version"])
         }
     }
 

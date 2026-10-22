@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the documented PocketKit serve/watch command with the native CLI.
 
-The report describes a process-level authoring check, not individual doctests.
+The report describes a process-level authoring check, not per-example results.
 Only an isolated copy is edited; the downloadable source remains unchanged.
 """
 from __future__ import annotations

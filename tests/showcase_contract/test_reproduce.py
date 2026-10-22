@@ -1,98 +1,84 @@
 """Negative evidence gates; fixtures are not native execution evidence."""
 from __future__ import annotations
 
-from copy import deepcopy
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+from check_showcase_source import native_check_identity
+from showcase_contract.site import ContractError
 SPEC = importlib.util.spec_from_file_location("pocketkit_reproduce", ROOT / "examples/pocketkit/reproduce.py")
 REPRODUCE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(REPRODUCE)
 
 
-class NegativeExampleGateTests(unittest.TestCase):
+class NativeExampleEvidenceTests(unittest.TestCase):
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
-        (self.root / "doctest").mkdir()
-        self.report = {
-            "schemaVersion": "cjdoc.doctest/2", "mode": "warn",
-            "summary": {"passed": 0, "failed": 1, "timedOut": 0, "skipped": 1},
-            "results": [
-                {"qualifiedName": "pocket_diagnostics.deliberateFailure", "status": "failed",
-                 "exitCode": 1, "message": "compile failed", "stderr": "error: mismatched types"},
-                {"qualifiedName": "pocket_diagnostics.explanatoryExample", "status": "skipped",
-                 "exitCode": None, "message": "no executable Cangjie fence", "stderr": ""},
-            ],
-        }
+        self.binary = self.root / "cjdoc"
+        self.binary.write_bytes(b"test executable")
+        self.source = self.root / "source"
+        for name, content in (("cjpm.toml", '[package]\nname="checks"\n'),
+                              ("cjdoc.toml", "# explicit --check-examples\n"),
+                              ("src/api.cj", "package checks\n")):
+            path = self.source / "check-modes" / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        self.output = self.root / "output"
+        self.output.mkdir()
 
-    def validate(self, report: dict) -> None:
-        (self.root / "doctest/results.json").write_text(json.dumps(report), encoding="utf-8")
-        REPRODUCE.validate_diagnostic_examples(self.root)
+    def capture(self, stderr: str = "warning: [CJDOC3032] no executable code", exit_code: int = 0) -> Path:
+        checked = subprocess.CompletedProcess([], exit_code, "", stderr)
+        compiler = subprocess.CompletedProcess([], 0, "Cangjie Compiler 1.2.0", "")
+        with patch.object(REPRODUCE.subprocess, "run", side_effect=[checked, compiler]) as runner:
+            destination = REPRODUCE.check_directive_examples(self.binary, self.source, self.output)
+        self.assertIn("--check-examples", runner.call_args_list[0].args[0])
+        return destination / "native-check.json"
 
-    def test_only_the_declared_negative_outcomes_are_allowed(self) -> None:
-        self.validate(self.report)
-        for field, value in (("qualifiedName", "pocket_diagnostics.unexpectedFailure"),
-                             ("status", "timeout"), ("status", "passed"),
-                             ("exitCode", 0), ("exitCode", None), ("exitCode", True),
-                             ("message", "compiler unavailable"), ("message", "runtime failed"),
-                             ("stderr", "linker unavailable")):
-            with self.subTest(field=field, value=value):
-                changed = deepcopy(self.report)
-                changed["results"][0][field] = value
-                with self.assertRaises(ValueError):
-                    self.validate(changed)
+    def test_successful_aggregate_evidence_retains_exact_sources_without_per_example_results(self) -> None:
+        path = self.capture()
+        evidence = json.loads(path.read_text())
+        self.assertEqual(evidence["scope"], "aggregate command evidence; no per-example result claim")
+        self.assertNotIn("results", evidence)
+        self.assertEqual(evidence["executableSha256"], hashlib.sha256(self.binary.read_bytes()).hexdigest())
+        self.assertEqual(len(evidence["sources"]), 3)
+        self.assertEqual(native_check_identity(path)["exitCode"], 0)
+        self.assertFalse((self.output / "doctest").exists())
 
-    def test_extra_missing_duplicate_or_miscounted_results_fail(self) -> None:
-        variants = []
-        for results in (self.report["results"][:1], self.report["results"] * 2,
-                        [self.report["results"][0]] * 2):
-            changed = deepcopy(self.report)
-            changed["results"] = results
-            variants.append(changed)
-        changed = deepcopy(self.report)
-        changed["summary"]["passed"] = 1
-        variants.append(changed)
-        for report in variants:
-            with self.subTest(report=report), self.assertRaises(ValueError):
-                self.validate(report)
+    def test_unexpected_native_diagnostics_are_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "exact expected skip diagnostic"):
+            self.capture("warning: [CJDOC3070] expected compile failure did not occur")
 
+    def test_failed_command_is_not_published_as_success(self) -> None:
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.capture("error: [CJDOC3070] unexpected compile success", 1)
 
-class DoctestEvidenceRelocationTests(unittest.TestCase):
-    def test_standalone_and_language_subtrees_keep_validation_and_member_links(self) -> None:
-        for locale in (None, "en", "zh-CN"):
-            with self.subTest(locale=locale), tempfile.TemporaryDirectory() as directory:
-                output = Path(directory)
-                root = output / "html" if locale is None else output / "html" / locale
-                (root / "symbols").mkdir(parents=True)
-                (output / "doctest").mkdir()
-                (output / "doctest/results.json").write_bytes(b'{"results":[]}')
-                prefix = "../" if locale is None else "../../"
-                validation = root / "validation.html"
-                member = root / "symbols/api.html"
-                validation.write_text(f'<a href="{prefix}doctest/results.json">Evidence</a>')
-                member.write_text(f'<a href="../{prefix}doctest/results.json">Evidence</a>')
-                REPRODUCE.relocate_doctest_evidence(output, root)
-                self.assertEqual((root / "doctest/results.json").read_bytes(), b'{"results":[]}')
-                self.assertIn('href="doctest/results.json"', validation.read_text())
-                self.assertIn('href="../doctest/results.json"', member.read_text())
-                self.assertTrue((member.parent / "../doctest/results.json").is_file())
+    def test_reproduction_rejects_changed_inputs(self) -> None:
+        path = self.capture()
+        (path.parent / "src/api.cj").write_text("modified", encoding="utf-8")
+        with self.assertRaisesRegex(ContractError, "source inventory or hash mismatch"):
+            native_check_identity(path)
 
-    def test_unexpected_native_validation_link_still_fails(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory)
-            root = output / "html/en"
-            root.mkdir(parents=True)
-            (output / "doctest").mkdir()
-            (output / "doctest/results.json").write_text("{}")
-            (root / "validation.html").write_text('<a href="missing.json">Evidence</a>')
-            with self.assertRaisesRegex(ValueError, "expected doctest evidence link"):
-                REPRODUCE.relocate_doctest_evidence(output, root)
+    def test_reproduction_rejects_unsupported_schema_scope_command_or_exit(self) -> None:
+        path = self.capture()
+        original = json.loads(path.read_text())
+        for key, value in (("schemaVersion", "unsupported"), ("scope", "per-example results"),
+                           ("command", ["cjdoc", "check"]), ("exitCode", 1)):
+            with self.subTest(key=key):
+                changed = {**original, key: value}
+                path.write_text(json.dumps(changed), encoding="utf-8")
+                with self.assertRaises(ContractError):
+                    native_check_identity(path)
 
 
 class StandaloneTimingTests(unittest.TestCase):

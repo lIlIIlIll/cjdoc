@@ -26,7 +26,7 @@ private func replaceLanguageLabel(content: String, locale: String, switcher: Str
 
 
 internal func renderAllDocumentationLanguages(documentation: DocumentationSet, formats: Array<String>,
-    version: ?String, evidence: HashMap<String, String>): Array<RenderArtifact> {
+    version: ?String): Array<RenderArtifact> {
     let options = match (documentation.languageOptions) {
         case Some(value) => value
         case None => throw IllegalArgumentException("--all-languages requires explicit [i18n] languages")
@@ -36,7 +36,7 @@ internal func renderAllDocumentationLanguages(documentation: DocumentationSet, f
     let rendered = HashMap<String, Array<RenderArtifact>>()
     for (language in options.languages) {
         let values = renderDocumentationFormatsWithOptions(documentation, formats, locale: language,
-            docVersion: version, exampleEvidence: evidence)
+            docVersion: version)
         rendered[language] = values
         for (artifact in values) {
             if (artifact.path.startsWith("html/") && artifact.path.endsWith(".html")) {
@@ -60,12 +60,6 @@ internal func renderAllDocumentationLanguages(documentation: DocumentationSet, f
             }
             let path = parts[0] + "/" + language + "/" + parts[1]
             var content = artifact.content
-            if (parts[0] == "html" && path.endsWith(".html")) {
-                // The report is shared outside html/, while reading pages gain a language directory.
-                let prefix = pageRootPrefix(parts[1])
-                content = content.replace("href=\"" + prefix + "../doctest/results.json\"",
-                    "href=\"" + prefix + "../../doctest/results.json\"")
-            }
             if (parts[0] == "html" && path.endsWith(".html") && content.contains("id=\"cjdoc-main\"")) {
                 let route = parts[1]
                 let identity = languagePageIdentity(documentation, route, language)

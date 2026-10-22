@@ -222,7 +222,7 @@ class Acceptance:
         api, cli = load(api_output), load(cli_output / 'docs.json')
         difference = first_difference(api, cli)
         assert difference is None, 'public API and CLI Doc IR differ at ' + str(difference)
-        assert api['schemaVersion'] == 'cjdoc.doc-ir/15'
+        assert api['schemaVersion'] == 'cjdoc.doc-ir/16'
         assert any(item["name"] == "echo" for item in api["declarations"]), "preflight/source collection produced no consumer API"
         assert api['documentationRevision'] == revision
         assert api['generator']['toolchain'] == '', 'ambient SDK metadata authenticated an unknown linked parser'

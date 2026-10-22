@@ -347,7 +347,7 @@ class ReleaseEvidenceTest(ReleaseToolsTestSupport, unittest.TestCase):
                 "worktree_identity.py",
                 "repository_input_contracts.py",
                 "repository_input_files.py",
-                "repository_input_migrations.py",
+                "repository_input_codec.py",
                 "repository_input_vendor.py",
                 "showcase_inputs.py",
             ):

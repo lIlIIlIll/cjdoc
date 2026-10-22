@@ -23,13 +23,13 @@ sys.dont_write_bytecode = True
 
 try:
     from .verify_release_package import verify_archive
-    from .install_cangjie_sdk import validate_cached_sdk_root, validate_combined_sdk_root
+    from .install_cangjie_sdk import validate_combined_sdk_root
     from .release_package_contracts import RELEASE_SEMVER, release_version_from_tag
     from .safe_output_root import safe_output_directory, safe_output_file, safe_regular_file
     from .worktree_identity import exact_worktree_identity
 except ImportError:  # Direct script execution.
     from verify_release_package import verify_archive
-    from install_cangjie_sdk import validate_cached_sdk_root, validate_combined_sdk_root
+    from install_cangjie_sdk import validate_combined_sdk_root
     from release_package_contracts import RELEASE_SEMVER, release_version_from_tag
     from safe_output_root import safe_output_directory, safe_output_file, safe_regular_file
     from worktree_identity import exact_worktree_identity
@@ -40,40 +40,23 @@ SHA256 = re.compile(r"^[0-9a-f]{64}$")
 SEMVER = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 SCHEMA_FILES = (
     "doc-ir.schema.json",
-    "doc-ir-v9.schema.json",
-    "doc-ir-v11.schema.json",
-    "doc-ir-v12.schema.json",
-    "doc-ir-v13.schema.json",
-    "doc-ir-v14.schema.json",
-    "doc-ir-v15.schema.json",
-    "api-surface-v2.schema.json",
+    "doc-ir-v16.schema.json",
     "api-surface-v3.schema.json",
-    "api-diff-v1.schema.json",
     "api-diff-v2.schema.json",
-    "doctest-results-v1.schema.json",
-    "doctest-results-v2.schema.json",
-    "search-index-v8.schema.json",
     "search-index-v9.schema.json",
-    "versions-v1.schema.json",
     "versions-v2.schema.json",
     "versions.schema.json",
     "translation-coverage.schema.json",
     "site-manifest.schema.json",
-    "doc-ir-v10.schema.json",
-    "doc-ir-v6.schema.json",
-    "doc-ir-v7.schema.json",
-    "doc-ir-v8.schema.json",
     "diagnostics.schema.json",
     "cfg-matrix.schema.json",
     "search-index.schema.json",
     "symbol-index.schema.json",
     "navigation-index.schema.json",
     "api-surface.schema.json",
-    "api-surface-v1.schema.json",
     "api-diff.schema.json",
     "documentation-coverage.schema.json",
     "documentation-quality.schema.json",
-    "doctest-results.schema.json",
 )
 
 
@@ -162,7 +145,7 @@ def committed_package_version(repo: Path, source_commit: str) -> str:
 
 def verify_candidate_receipt(receipt: dict, binary_content: bytes, platform_name: str,
                              source_commit: str, sdk_sha256: str,
-                             stdx_sha256: str | None) -> tuple[str, str, str]:
+                             stdx_sha256: str) -> tuple[str, str, str]:
     """Return (tag, tree, receipt digest) after binding the receipt to this package.
 
     The receipt is the only accepted proof that this exact binary passed this
@@ -185,7 +168,7 @@ def verify_candidate_receipt(receipt: dict, binary_content: bytes, platform_name
     toolchain = receipt.get("toolchain")
     if not isinstance(toolchain, dict) or toolchain.get("sdkArchiveSha256") != sdk_sha256:
         raise ValueError("release candidate receipt used a different SDK archive")
-    if stdx_sha256 is not None and toolchain.get("stdxArchiveSha256") != stdx_sha256:
+    if toolchain.get("stdxArchiveSha256") != stdx_sha256:
         raise ValueError("release candidate receipt used a different stdx archive")
     binary = receipt.get("binary")
     if not isinstance(binary, dict):
@@ -202,16 +185,13 @@ def verify_candidate_receipt(receipt: dict, binary_content: bytes, platform_name
 def collect_payload(repo: Path, binary: Path, windows: bool, version: str,
                     platform_name: str, source_commit: str,
                     sdk_version: str, sdk_sha256: str,
-                    stdx_version: str | None = None,
-                    stdx_sha256: str | None = None,
-                    candidate_receipt: dict | None = None) -> dict[str, tuple[bytes, int]]:
-    if (stdx_version is None) != (stdx_sha256 is None):
-        raise ValueError("stdx version and checksum must be supplied together")
-    if stdx_version is not None:
-        if not stdx_version or not SEMVER.fullmatch(stdx_version):
-            raise ValueError("stdx version must be a stable three-part SemVer")
-        if not SHA256.fullmatch(stdx_sha256 or ""):
-            raise ValueError("stdx archive SHA-256 must be lowercase 64-hex")
+                    stdx_version: str,
+                    stdx_sha256: str,
+                    candidate_receipt: dict) -> dict[str, tuple[bytes, int]]:
+    if not isinstance(stdx_version, str) or not SEMVER.fullmatch(stdx_version):
+        raise ValueError("stdx version must be a stable three-part SemVer")
+    if not isinstance(stdx_sha256, str) or not SHA256.fullmatch(stdx_sha256):
+        raise ValueError("stdx archive SHA-256 must be lowercase 64-hex")
     executable_name = "cjdoc.exe" if windows else "cjdoc"
     executable_content = binary.read_bytes()
     payload: dict[str, tuple[bytes, int]] = {
@@ -232,17 +212,12 @@ def collect_payload(repo: Path, binary: Path, windows: bool, version: str,
         "requiresCangjieSdk": True,
         "sdkVersion": sdk_version,
         "sdkArchiveSha256": sdk_sha256,
+        "requiresStdx": True,
+        "stdxVersion": stdx_version,
+        "stdxArchiveSha256": stdx_sha256,
     }
-    schema_version = "cjdoc.release-package/2"
-    if stdx_version is not None:
-        schema_version = "cjdoc.release-package/3"
-        runtime.update({
-            "requiresStdx": True,
-            "stdxVersion": stdx_version,
-            "stdxArchiveSha256": stdx_sha256,
-        })
     manifest = {
-        "schemaVersion": schema_version,
+        "schemaVersion": "cjdoc.release-package/4",
         "version": version,
         "platform": platform_name,
         "sourceCommit": source_commit,
@@ -252,21 +227,19 @@ def collect_payload(repo: Path, binary: Path, windows: bool, version: str,
             for name, (content, _) in sorted(payload.items())
         },
     }
-    if candidate_receipt is not None:
-        tag, tree, receipt_digest = verify_candidate_receipt(
-            candidate_receipt, executable_content, platform_name, source_commit,
-            sdk_sha256, stdx_sha256)
-        manifest.update({
-            "schemaVersion": "cjdoc.release-package/4",
-            "releaseTag": tag,
-            "sourceTree": tree,
-            "candidateReceiptSha256": receipt_digest,
-        })
-        receipt_content = (json.dumps(candidate_receipt, ensure_ascii=False,
-                                      sort_keys=True, indent=2) + "\n").encode()
-        payload["release-candidate.json"] = (receipt_content, 0o644)
-        manifest["files"]["release-candidate.json"] = {
-            "sha256": sha256_bytes(receipt_content), "size": len(receipt_content)}
+    tag, tree, receipt_digest = verify_candidate_receipt(
+        candidate_receipt, executable_content, platform_name, source_commit,
+        sdk_sha256, stdx_sha256)
+    manifest.update({
+        "releaseTag": tag,
+        "sourceTree": tree,
+        "candidateReceiptSha256": receipt_digest,
+    })
+    receipt_content = (json.dumps(candidate_receipt, ensure_ascii=False,
+                                  sort_keys=True, indent=2) + "\n").encode()
+    payload["release-candidate.json"] = (receipt_content, 0o644)
+    manifest["files"]["release-candidate.json"] = {
+        "sha256": sha256_bytes(receipt_content), "size": len(receipt_content)}
     manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
     payload["release-manifest.json"] = (manifest_bytes, 0o644)
     return payload
@@ -318,9 +291,9 @@ def _verify_receipt_against_worktree(receipt: dict, identity: dict[str, object],
 def build_archive(repo: Path, binary: Path, platform_name: str, output: Path,
                   *, source_commit: str, sdk_version: str, sdk_sha256: str,
                   release_version: str,
-                  stdx_version: str | None = None,
-                  stdx_sha256: str | None = None,
-                  candidate_receipt: dict | None = None) -> Path:
+                  stdx_version: str,
+                  stdx_sha256: str,
+                  candidate_receipt: dict) -> Path:
     if not COMMIT.fullmatch(source_commit):
         raise ValueError("source commit must be a lowercase 40-hex commit")
     identity = verify_source_commit(repo, source_commit)
@@ -335,8 +308,11 @@ def build_archive(repo: Path, binary: Path, platform_name: str, output: Path,
         raise ValueError("SDK archive SHA-256 must be lowercase 64-hex")
     if not sdk_version:
         raise ValueError("SDK version is missing")
-    if candidate_receipt is not None:
-        _verify_receipt_against_worktree(candidate_receipt, identity, version)
+    _verify_receipt_against_worktree(candidate_receipt, identity, version)
+    payload = collect_payload(repo, binary, platform_name.startswith("windows-"),
+                              release_version, platform_name, source_commit,
+                              sdk_version, sdk_sha256, stdx_version, stdx_sha256,
+                              candidate_receipt)
     windows = platform_name.startswith("windows-")
     extension = ".zip" if windows else ".tar.gz"
     output = safe_output_directory(repo, output, create=True)
@@ -348,11 +324,7 @@ def build_archive(repo: Path, binary: Path, platform_name: str, output: Path,
     safe_output_file(checksum, description="release package checksum")
     asset.unlink(missing_ok=True)
     checksum.unlink(missing_ok=True)
-    verify_source_commit(repo, source_commit)
     root_name = f"cjdoc-{release_version}"
-    payload = collect_payload(repo, binary, windows, release_version, platform_name,
-                              source_commit, sdk_version, sdk_sha256,
-                              stdx_version, stdx_sha256, candidate_receipt)
     verify_source_commit(repo, source_commit)
     with tempfile.NamedTemporaryFile(dir=output, prefix=f".{asset.name}.", delete=False) as stream:
         temporary = Path(stream.name)
@@ -400,11 +372,11 @@ def main() -> int:
     parser.add_argument("--release-tag", default=os.environ.get("CJDOC_RELEASE_TAG"))
     parser.add_argument("--sdk-version", required=True)
     parser.add_argument("--sdk-sha256", required=True)
-    parser.add_argument("--stdx-version")
-    parser.add_argument("--stdx-sha256")
+    parser.add_argument("--stdx-version", required=True)
+    parser.add_argument("--stdx-sha256", required=True)
     parser.add_argument("--sdk-root", type=Path,
                         default=Path(configured_sdk_root) if configured_sdk_root else None)
-    parser.add_argument("--candidate-receipt", type=Path,
+    parser.add_argument("--candidate-receipt", type=Path, required=True,
                         help="cjdoc.release-candidate/1 receipt that accepted this binary")
     args = parser.parse_args()
     try:
@@ -428,17 +400,9 @@ def main() -> int:
             raise ValueError("SDK archive SHA-256 must be lowercase 64-hex")
         if not args.sdk_version:
             raise ValueError("SDK version is missing")
-        stdx_options = (args.stdx_version, args.stdx_sha256)
-        if any(value is not None for value in stdx_options) and not all(stdx_options):
-            raise ValueError("--stdx-version and --stdx-sha256 must be supplied together")
-        if args.stdx_sha256 is None:
-            validate_cached_sdk_root(args.sdk_root, args.sdk_sha256)
-        else:
-            validate_combined_sdk_root(args.sdk_root, args.sdk_sha256, args.stdx_sha256)
+        validate_combined_sdk_root(args.sdk_root, args.sdk_sha256, args.stdx_sha256)
         verify_binary_version(binary, version)
-        candidate_receipt = None
-        if args.candidate_receipt is not None:
-            candidate_receipt = json.loads(Path(args.candidate_receipt).read_text(encoding="utf-8"))
+        candidate_receipt = json.loads(Path(args.candidate_receipt).read_text(encoding="utf-8"))
         asset = build_archive(
             repo, binary, args.platform, args.output,
             source_commit=args.source_commit,

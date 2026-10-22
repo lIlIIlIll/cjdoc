@@ -64,12 +64,27 @@ def extract_source(site: Path, destination: Path) -> dict:
     return manifest
 
 
-def result_identity(path: Path) -> dict:
+def native_check_identity(path: Path) -> dict:
     value = load_json(path)
-    return {"schemaVersion": value["schemaVersion"], "mode": value["mode"], "summary": value["summary"],
-            "results": [{key: result[key] for key in
-                         ("id", "symbolId", "qualifiedName", "title", "status", "exitCode", "message")}
-                        for result in value["results"]]}
+    if value.get("schemaVersion") != "cjdoc.showcase-native-check/1":
+        raise ContractError("unsupported native check evidence schema")
+    if value.get("exitCode") != 0:
+        raise ContractError("native check evidence must record a successful command")
+    if value.get("scope") != "aggregate command evidence; no per-example result claim":
+        raise ContractError("unsupported native check evidence scope")
+    if not isinstance(value.get("command"), list) or "--check-examples" not in value["command"]:
+        raise ContractError("native check evidence must use --check-examples")
+    if not value.get("sources"):
+        raise ContractError("native check evidence has no source inputs")
+    seen = set()
+    for item in value["sources"]:
+        name = relative_path(item["path"])
+        source = path.parent / name
+        if name in seen or not source.is_file() or digest(source) != item["sha256"]:
+            raise ContractError("native check evidence source inventory or hash mismatch")
+        seen.add(name)
+    return {key: value[key] for key in ("schemaVersion", "scope", "command", "exitCode",
+                                       "executableSha256", "compilerVersion", "sources")}
 
 
 def compare_outputs(site: Path, generated: Path) -> list[dict]:
@@ -78,6 +93,7 @@ def compare_outputs(site: Path, generated: Path) -> list[dict]:
     versions = load_json(generated / "composed/versions.json")
     if versions.get("schemaVersion") != "cjdoc.versions/2":
         raise ContractError("source reproduction requires the native language manifest")
+    check_identity = native_check_identity(generated / "check-modes/native-check.json")
     for locale in ("zh-CN", "en"):
         documents = roots(site, locale)
         for version in ("demo-v1", "demo-v2", "diagnostics"):
@@ -94,10 +110,10 @@ def compare_outputs(site: Path, generated: Path) -> list[dict]:
             for name in files:
                 if not (published / name).is_file() or (actual / name).read_bytes() != (published / name).read_bytes():
                     raise ContractError(f"source reproduction differs from published native output: {locale}/{version}/{name}")
-            if result_identity(actual / "doctest/results.json") != result_identity(published / "doctest/results.json"):
-                raise ContractError("source reproduction doctest identities/statuses differ")
+            if check_identity != native_check_identity(published / "check-modes/native-check.json"):
+                raise ContractError("source reproduction native check command or inputs differ")
             comparisons.append({"locale": locale, "version": version, "exactFiles": len(files),
-                                "doctest": "actual identities, statuses and exit codes match; durations are measured independently"})
+                                "nativeCheck": "successful aggregate command and exact source inputs match; no per-example result claim"})
         if (generated / "api-diff.json").read_bytes() != (documents["demo-v2"] / "machine/api-diff.json").read_bytes():
             raise ContractError("reproduced native API diff differs")
     return comparisons

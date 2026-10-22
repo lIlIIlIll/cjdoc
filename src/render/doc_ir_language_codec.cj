@@ -49,16 +49,15 @@ internal func decodeDocumentationLanguageOptions(node: ?JsonNode, path: String):
     }
 }
 
-internal func decodeOptionalDocumentationMarkdown(node: ?JsonNode, path: String,
-    assets: HashMap<String, String>): ?MarkdownNode {
+internal func decodeOptionalDocumentationMarkdown(node: ?JsonNode, path: String): ?MarkdownNode {
     match (node) {
         case None => None
-        case Some(value) => Some(decodeMarkdown(value, path + ".descriptionMarkdown", 0, false, assets))
+        case Some(value) =>
+            if (value.isNull) { None } else { Some(decodeMarkdown(value, path, 0)) }
     }
 }
 
-internal func decodeDocumentationTexts(node: ?JsonNode, path: String,
-    assets: HashMap<String, String>): Array<DocumentationText> {
+internal func decodeDocumentationTexts(node: ?JsonNode, path: String): Array<DocumentationText> {
     if (node.isNone()) { return [] }
     let result = ArrayList<DocumentationText>()
     var index: Int64 = 0
@@ -69,10 +68,12 @@ internal func decodeDocumentationTexts(node: ?JsonNode, path: String,
         let sourceNode = required(object, "source", field)
         result.add(DocumentationText(stringAt(object, "fieldId", field), stringAt(object, "kind", field),
             stringAt(object, "subject", field), optionalDocumentationLanguage(Some(required(object, "language", field)), field),
-            stringAt(object, "text", field), decodeMarkdown(required(object, "markdown", field), field + ".markdown", 0, false, assets),
+            stringAt(object, "text", field),
+            decodeMarkdown(required(object, "markdown", field), field + ".markdown", 0),
             source: if (sourceNode.isNull) { None } else { Some(decodeRange(sourceNode, field + ".source")) },
             state: stringAt(object, "state", field), referenceState: stringAt(object, "referenceState", field),
-            targetSymbolId: nullableStringAt(object, "targetSymbolId", field), directives: stringAt(object, "directives", field),
+            targetSymbolId: nullableStringAt(object, "targetSymbolId", field),
+            directives: stringAt(object, "directives", field),
             navigation: decodeTypeNavigation(object.get("navigation"), field + ".navigation")))
         index++
     }

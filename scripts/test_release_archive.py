@@ -37,7 +37,7 @@ from scripts.release_tools_test_support import (
 from scripts.verify_repository_inputs import GOLDEN_NAMES, SCHEMA_NAMES
 
 class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
-    def test_release_archives_include_current_schema_ids_and_frozen_legacy(self) -> None:
+    def test_release_archives_include_only_current_schema_ids(self) -> None:
         self.assertEqual(
             {f"docs/schema/{name}" for name in package_release.SCHEMA_FILES},
             release_package_contracts.SCHEMA_PAYLOAD,
@@ -54,25 +54,27 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 schema_id = urlsplit(json.loads(path.read_text(encoding="utf-8"))["$id"])
                 self.assertIn("/docs/schema/", schema_id.path)
                 expected_schemas.add("docs/schema/" + schema_id.path.rsplit("/", 1)[-1])
-            expected_schemas.update(f"docs/schema/{name}.schema.json" for name in (
-                "doc-ir-v6", "doc-ir-v7", "doc-ir-v8", "doc-ir-v9", "doc-ir-v10",
-                "doc-ir-v11", "doc-ir-v12", "doc-ir-v13", "api-surface-v1", "api-surface-v2",
-                "api-diff-v1", "doctest-results-v1", "search-index-v8", "versions-v1",
-            ))
+            for name in SCHEMA_NAMES:
+                if re.search(r"-v[0-9]+$", name):
+                    expected_schemas.add(f"docs/schema/{name}.schema.json")
+            self.assertEqual(expected_schemas, release_package_contracts.SCHEMA_PAYLOAD)
             for platform in ("linux-x64", "windows-x64"):
                 with self.subTest(platform=platform):
                     asset = package_release.build_archive(
                         repo, binary, platform, repo / "target/release-package",
                         source_commit=commit, sdk_version="1.1.3",
                         sdk_sha256=SDK_SHA256, release_version="0.7.0",
+                        stdx_version="1.2.0", stdx_sha256="2" * 64,
+                        candidate_receipt=self.make_candidate_receipt(repo, binary, commit, platform),
                     )
                     manifest, members, _ = verify_release_package.inspect_archive(
                         asset, platform, "0.7.0", "1.1.3", SDK_SHA256, commit,
+                        "1.2.0", "2" * 64,
                     )
                     self.assertEqual(expected_schemas - members.keys(), set(),
-                                     "archive omits current $id or frozen legacy schemas")
+                                     "archive omits current schemas")
                     self.assertEqual(expected_schemas - manifest["files"].keys(), set(),
-                                     "manifest omits current $id or frozen legacy schemas")
+                                     "manifest omits current schemas")
                     if platform.startswith("windows-"):
                         with zipfile.ZipFile(asset) as archive:
                             content = {name: archive.read("cjdoc-0.7.0/" + name)
@@ -97,7 +99,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 "if sys.argv[1:] == ['--version']:\n"
                 "    print('cjdoc 0.7.0')\n"
                 "elif sys.argv[1:] == ['schema', 'list']:\n"
-                "    print('doc-ir\\ndoc-ir-v7\\ndoc-ir-v8')\n"
+                "    print('doc-ir\\ndoc-ir-v16')\n"
                 "else:\n"
                 "    raise SystemExit(2)\n",
                 encoding="utf-8",
@@ -109,6 +111,8 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 "sdk_version": "1.1.3",
                 "sdk_sha256": SDK_SHA256,
                 "release_version": "0.7.0",
+                "stdx_version": "1.2.0", "stdx_sha256": "2" * 64,
+                "candidate_receipt": self.make_candidate_receipt(repo, binary, commit),
             }
             asset = package_release.build_archive(
                 repo, binary, "linux-x64", output, **options
@@ -124,6 +128,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 asset, "linux-x64", "0.7.0", "1.1.3", SDK_SHA256, commit,
                 smoke=os.name != "nt", repository=repo, sdk_root=sdk_root,
                 sdk_marker_verified=True,
+                stdx_version="1.2.0", stdx_sha256="2" * 64,
             )
             files = evidence["manifest"]["files"]
             self.assertIn("THIRD_PARTY_NOTICES.md", files)
@@ -136,7 +141,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                     {"cjc": "tools/bin/cjc", "cjpm": "tools/bin/cjpm"},
                 )
             _, members, _ = verify_release_package.inspect_archive(
-                asset, "linux-x64", "0.7.0", "1.1.3", SDK_SHA256, commit
+                asset, "linux-x64", "0.7.0", "1.1.3", SDK_SHA256, commit, "1.2.0", "2" * 64
             )
             self.assertIsNone(members["README.md"].content)
             self.assertIsNotNone(members["release-manifest.json"].content)
@@ -158,6 +163,8 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                     sdk_version="1.1.3",
                     sdk_sha256=SDK_SHA256,
                     release_version="0.7.0",
+                    stdx_version="1.2.0", stdx_sha256="2" * 64,
+                    candidate_receipt=self.make_candidate_receipt(repo, binary, commit),
                 )
 
             readme = repo / "README.md"
@@ -166,7 +173,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "bytes differ"):
                 package_release.build_archive(repo, binary, "linux-x64", output, **options)
             readme.write_bytes(original_readme)
-            schema = repo / "docs/schema/doc-ir-v8.schema.json"
+            schema = repo / "docs/schema/doc-ir.schema.json"
             original_schema = schema.read_bytes()
             schema.write_bytes(original_schema + b"\n")
             with self.assertRaisesRegex(ValueError, "bytes differ"):
@@ -184,16 +191,20 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 source_commit=commit, sdk_version="1.3.0", sdk_sha256=SDK_SHA256,
                 release_version="0.7.0",
                 stdx_version="1.3.0", stdx_sha256="b" * 64,
+                candidate_receipt=self.make_candidate_receipt(
+                    repo, binary, commit, sdk_version="1.3.0",
+                    stdx_version="1.3.0", stdx_sha256="b" * 64),
             )
             manifest, _, _ = verify_release_package.inspect_archive(
                 asset, "linux-x64", "0.7.0", "1.3.0", SDK_SHA256, commit,
                 stdx_version="1.3.0", stdx_sha256="b" * 64,
             )
-            self.assertEqual(manifest["schemaVersion"], "cjdoc.release-package/3")
+            self.assertEqual(manifest["schemaVersion"], "cjdoc.release-package/4")
             self.assertEqual(manifest["runtime"]["stdxArchiveSha256"], "b" * 64)
             with self.assertRaisesRegex(ValueError, "stdx requirements"):
                 verify_release_package.inspect_archive(
                     asset, "linux-x64", "0.7.0", "1.3.0", SDK_SHA256, commit,
+                    stdx_version="1.3.0", stdx_sha256="c" * 64,
                 )
 
     def test_release_archive_rejects_path_traversal(self) -> None:
@@ -229,6 +240,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
             payload = package_release.collect_payload(
                 repo, binary, False, "0.7.0", "linux-x64", commit,
                 "1.1.3", SDK_SHA256,
+                "1.2.0", "2" * 64, self.make_candidate_receipt(repo, binary, commit),
             )
             output = repo / "target/release-package"
             output.mkdir(parents=True)
@@ -238,7 +250,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 package.writestr("cjdoc-0.7.0/cjdoc", b"binary")
             with self.assertRaisesRegex(ValueError, "format mismatch"):
                 verify_release_package.inspect_archive(
-                    asset, "linux-x64", "0.7.0", "1.1.3", SDK_SHA256, commit
+                    asset, "linux-x64", "0.7.0", "1.1.3", SDK_SHA256, commit, "1.2.0", "2" * 64
                 )
 
             for name, mode in (("cjdoc", 0o644), ("README.md", 0o4755)):
@@ -250,18 +262,20 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "member mode mismatch"):
                         verify_release_package.inspect_archive(
                             asset, "linux-x64", "0.7.0", "1.1.3", SDK_SHA256,
-                            commit,
+                            commit, "1.2.0", "2" * 64,
                         )
 
             windows_payload = package_release.collect_payload(
                 repo, binary, True, "0.7.0", "windows-x64", commit,
                 "1.1.3", SDK_SHA256,
+                "1.2.0", "2" * 64,
+                self.make_candidate_receipt(repo, binary, commit, "windows-x64"),
             )
             windows_asset = output / "cjdoc-0.7.0-windows-x64.zip"
             package_release.write_zip(windows_asset, "cjdoc-0.7.0", windows_payload)
             verify_release_package.inspect_archive(
                 windows_asset, "windows-x64", "0.7.0", "1.1.3", SDK_SHA256,
-                commit,
+                commit, "1.2.0", "2" * 64,
             )
             content, _ = windows_payload["cjdoc.exe"]
             windows_payload["cjdoc.exe"] = (content, 0o644)
@@ -269,7 +283,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "member mode mismatch"):
                 verify_release_package.inspect_archive(
                     windows_asset, "windows-x64", "0.7.0", "1.1.3",
-                    SDK_SHA256, commit,
+                    SDK_SHA256, commit, "1.2.0", "2" * 64,
                 )
 
     def test_release_tar_rejects_pax_extensions_before_tarfile(self) -> None:
@@ -343,6 +357,8 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                     repo, binary, "linux-x64", repo / "target/release-package",
                         source_commit=commit, sdk_version="1.1.3", sdk_sha256=SDK_SHA256,
                         release_version="0.7.0",
+                        stdx_version="1.2.0", stdx_sha256="2" * 64,
+                        candidate_receipt=self.make_candidate_receipt(repo, binary, commit),
                     )
             self.assertFalse(
                 (repo / "target/release-package/cjdoc-0.7.0-linux-x64.tar.gz").exists()
@@ -376,6 +392,8 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                         repo, binary, "linux-x64", output,
                         source_commit=commit, sdk_version="1.1.3",
                         sdk_sha256=SDK_SHA256, release_version="0.7.0",
+                        stdx_version="1.2.0", stdx_sha256="2" * 64,
+                        candidate_receipt=self.make_candidate_receipt(repo, binary, commit),
                     )
             self.assertFalse((output / "cjdoc-0.7.0-linux-x64.tar.gz").exists())
             self.assertFalse((output / "cjdoc-0.7.0-linux-x64.tar.gz.sha256").exists())
@@ -395,7 +413,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 "if sys.argv[1:] == ['--version']:\n"
                 "    print('cjdoc 0.7.0')\n"
                 "elif sys.argv[1:] == ['schema', 'list']:\n"
-                "    print('doc-ir\\ndoc-ir-v7\\ndoc-ir-v8')\n"
+                "    print('doc-ir\\ndoc-ir-v16')\n"
                 "else:\n"
                 "    raise SystemExit(2)\n",
                 encoding="utf-8",
@@ -407,6 +425,8 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 "sdk_version": "1.1.3",
                 "sdk_sha256": SDK_SHA256,
                 "release_version": "0.7.0-rc.1",
+                "stdx_version": "1.2.0", "stdx_sha256": "2" * 64,
+                "candidate_receipt": self.make_candidate_receipt(repo, binary, commit),
             }
             asset = package_release.build_archive(repo, binary, "linux-x64", output, **options)
             self.assertEqual(asset.name, "cjdoc-0.7.0-rc.1-linux-x64.tar.gz")
@@ -418,6 +438,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 asset, "linux-x64", "0.7.0-rc.1", "1.1.3", SDK_SHA256, commit,
                 smoke=os.name != "nt", repository=repo, sdk_root=sdk_root,
                 sdk_marker_verified=True,
+                stdx_version="1.2.0", stdx_sha256="2" * 64,
             )
             # Extracting and running the payload needs a POSIX host, so the smoke
             # evidence is only present where the sibling test also asserts it.
@@ -435,6 +456,8 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                     repo, binary, "linux-x64", repo / "target/release-package",
                     source_commit=commit, sdk_version="1.1.3",
                     sdk_sha256=SDK_SHA256, release_version="0.8.0-rc.1",
+                    stdx_version="1.2.0", stdx_sha256="2" * 64,
+                    candidate_receipt=self.make_candidate_receipt(repo, binary, commit),
                 )
 
     def test_release_version_rejects_malformed_or_empty_suffix(self) -> None:
@@ -450,6 +473,8 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                             repo, binary, "linux-x64", repo / "target/release-package",
                             source_commit=commit, sdk_version="1.1.3",
                             sdk_sha256=SDK_SHA256, release_version=value,
+                            stdx_version="1.2.0", stdx_sha256="2" * 64,
+                            candidate_receipt=self.make_candidate_receipt(repo, binary, commit),
                         )
 
 

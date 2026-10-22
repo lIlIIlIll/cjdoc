@@ -5,6 +5,68 @@ import std.env.*
 import std.fs.*
 
 private let MAX_EXAMPLE_DEPENDENCY_PACKAGES: Int64 = 128
+private func exampleSourceOriginForLogicalPath(origins: Array<SourceFileOrigin>, moduleId: String,
+    logicalPath: String): ?SourceFileOrigin {
+    var found: ?SourceFileOrigin = None
+    for (origin in origins where origin.moduleId == moduleId && origin.logicalPath == logicalPath) {
+        if (found.isSome()) { return None }
+        found = Some(origin)
+    }
+    found
+}
+
+internal func discoveredPackageSourceRoot(moduleId: String, sourcePrefix: String,
+    sourceFiles: Array<String>, origins: Array<SourceFileOrigin>): ?String {
+    if (sourceFiles.isEmpty()) { return None }
+    var actualRoot: ?String = None
+    var packageRoot: ?String = None
+    for (logicalPath in sourceFiles) {
+        let origin = match (exampleSourceOriginForLogicalPath(origins, moduleId, logicalPath)) {
+            case Some(value) => value
+            case None => return None
+        }
+        if (origin.logicalPrefix != sourcePrefix ||
+            !hostPathIsWithin(origin.actualRoot, origin.actualPath)) { return None }
+        let relative = match (relativePathFromResolved(origin.actualRoot, origin.actualPath)) {
+            case Some(value) => value
+            case None => return None
+        }
+        let expected = if (sourcePrefix.isEmpty()) { relative }
+            else { sourcePrefix + "/" + relative }
+        if (expected != logicalPath) { return None }
+        match (actualRoot) {
+            case Some(value) => if (value != origin.actualRoot) { return None }
+            case None => actualRoot = Some(origin.actualRoot)
+        }
+        let candidate = try {
+            canonicalize(Path(origin.actualPath).parent.toString()).toString()
+        } catch (_: Exception) { return None }
+        match (packageRoot) {
+            case None => packageRoot = Some(candidate)
+            case Some(value) =>
+                var common = value
+                if (hostPathIsWithin(common, candidate)) {
+                    ()
+                } else if (hostPathIsWithin(candidate, common)) {
+                    common = candidate
+                } else {
+                    var found = false
+                    while (true) {
+                        let parent = Path(common).parent.normalize().toString()
+                        if (parent == common) { break }
+                        common = parent
+                        if (hostPathIsWithin(common, candidate)) {
+                            found = true
+                            break
+                        }
+                    }
+                    if (!found) { return None }
+                }
+                packageRoot = Some(common)
+        }
+    }
+    packageRoot
+}
 
 internal class ExamplePackageArtifact {
     public let packageName: String

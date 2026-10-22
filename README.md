@@ -49,7 +49,7 @@ cjdoc --version
 当前版本应看到类似下面的输出：
 
 ```text
-cjdoc 0.7.2
+cjdoc 0.7.3
 ```
 
 如果发布页没有对应平台的文件，请不要猜文件名或下载地址。源码构建说明位于 [`docs/advanced-usage.md`](docs/advanced-usage.md#从源码构建维护者用)。
@@ -111,19 +111,19 @@ generated <你的项目目录>/target/doc
 | 检查文档问题 | `cjdoc check --project .` | 终端诊断，成功退出码为 `0` |
 | 检查示例 | `cjdoc check --project . --check-examples` | 按 `@example` 指令校验或运行 `cangjie` 代码块 |
 
-启用可执行的 `@example` Cangjie 代码块，在项目根的 `cjdoc.toml` 中加入：
+示例检查通过显式 `--check-examples` 开启；默认只编译，只有 `@example 标题 {run}` 才执行程序。例如：
 
-```toml
-[doctest]
-mode = "warn"       # off（默认）、warn 或 deny
-timeout-ms = 2000
-memory-mb = 2048    # Cangjie native backend requires at least 2048 MiB
-jobs = 1
-```
+````cangjie
+/**
+ * @example Greeting {run}
+ * ```cangjie
+ * println("Hello")
+ * ```
+ */
+public func greet(): Unit {}
+````
 
-`generate` 会把结果写入 `target/doc/doctest/results.json`；`warn` 只报告失败，`deny` 返回退出码 `1`。每个示例在独立临时工作目录中通过参数数组启动编译器和程序，不经过 shell；`--stdout` 不能与启用的 doctest 同时使用。结果 schema 是 `cjdoc.doctest/2`。
-
-这条 legacy doctest 管线的正数内存限制依赖 `/usr/bin/prlimit` 或 `/bin/prlimit`。限制器不可用时（包括当前 macOS、Windows 环境），会在启动编译进程前明确拒绝；`warn` 不会绕过这项安全要求。
+运行 `cjdoc check --project . --check-examples` 后，检查结果通过诊断和退出码呈现。执行仍受超时、输出和内存上限约束；无法实施所需限制的平台会明确拒绝，不会降级为无界运行。旧 `[doctest]` 配置已移除，包含该表的项目必须删除它并改用上述开关和指令；不再生成逐例执行报告或 HTML 执行徽标。
 
 比较 API snapshot 使用 `diff`：
 
@@ -131,7 +131,7 @@ jobs = 1
 cjdoc diff --baseline api-surface.json --current api-surface-next.json --format text --deny-breaking-api
 ```
 
-`diff` 默认保留报告并返回 `0`；deny 选项让对应 breaking 分类返回 `1`，参数或 snapshot 错误返回 `2`。当前生成器输出 `cjdoc.api-surface/3`；v1/v2 snapshot 仍可作为只读迁移输入，JSON diff 报告的版本是 `cjdoc.api-diff/2`。
+`diff` 默认保留报告并返回 `0`；deny 选项让对应 breaking 分类返回 `1`，参数或 snapshot 错误返回 `2`。生成和比较都只支持 `cjdoc.api-surface/3`；v1/v2 snapshot 已停止接受。JSON diff 报告的版本是 `cjdoc.api-diff/2`。
 
 如果项目在 GitHub 上并希望声明页显示 `View source`，生成时显式提供仓库根和 revision：
 
@@ -181,7 +181,7 @@ cjdoc generate --project . --format html --audience all
 
 ## 当前边界
 
-- 当前输出版本是 `cjdoc.doc-ir/15`。输入端严格迁移已发布的 v6–v14；普通用户不需要直接编辑这个 JSON。Schema 与迁移规则见 [`docs/usage.md`](docs/usage.md#schema-与旧版迁移)。
+- 当前输出版本是 `cjdoc.doc-ir/16`。`render` 只接受当前 schema，不再迁移旧 Doc IR；普通用户不需要直接编辑这个 JSON。Schema 说明见 [`docs/usage.md`](docs/usage.md#doc-ir-schema)。
 - 无法展开的宏、没有提供的条件编译输入和部分不支持的源码会产生诊断，并可能使结果标为 `partial`。
 - cjdoc 不会替你下载依赖源码。需要把依赖纳入文档时，按 [`docs/advanced-usage.md`](docs/advanced-usage.md) 的说明提供路径或 cache。
 

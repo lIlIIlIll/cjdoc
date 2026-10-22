@@ -41,27 +41,8 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
         self.binary.chmod(0o755)
 
     def receipt(self, **overrides) -> dict:
-        document = {
-            "schemaVersion": "cjdoc.release-candidate/1",
-            "source": {"tag": "v0.7.0", "releaseVersion": "0.7.0", "commit": self.commit,
-                       "tree": self.git(self.repo, "rev-parse", "HEAD^{tree}"),
-                       "dirty": False, "worktreeSha256": "a" * 64},
-            "platform": {"id": PLATFORM, "os": "Linux", "architecture": "x86_64",
-                         "compilerTarget": "x86_64-unknown-linux-gnu"},
-            "toolchain": {"sdkVersion": "1.2.0", "sdkArchiveSha256": SDK_SHA256,
-                          "stdxVersion": "1.2.0", "stdxArchiveSha256": STDX_SHA256,
-                          "compilerVersion": "Cangjie Compiler: 1.2.0", "cjpmVersion": "1.2.0",
-                          "stdxDigest": "b" * 64, "toolchainFingerprint": "c" * 64},
-            "build": {"command": ["cjpm", "build", "--jobs", "1"],
-                      "effectiveCompileOptions": ["-O1"],
-                      "buildConfigurationSha256": "d" * 64},
-            "binary": {"path": "target/release/bin/main",
-                       "sha256": verify_release_package.sha256_file(self.binary),
-                       "size": self.binary.stat().st_size,
-                       "versionOutput": "cjdoc 0.7.0"},
-            "execution": {"runId": "1", "runAttempt": 1, "job": "release-candidate (linux-x64)"},
-            "gates": {"release-gate": "e" * 64},
-        }
+        document = self.make_candidate_receipt(
+            self.repo, self.binary, self.commit, PLATFORM, sdk_version="1.2.0")
         document.update(overrides)
         return document
 
@@ -122,6 +103,16 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unexpected release candidate receipt schema"):
             self.build({"schemaVersion": "cjdoc.release-candidate/9"})
 
+    def test_package_requires_stdx_and_receipt_before_creating_output(self):
+        output = self.repo / "target/release-package"
+        for receipt, stdx_sha256, pattern in (
+            (None, STDX_SHA256, "unexpected release candidate receipt schema"),
+            (self.receipt(), None, "stdx version"),
+        ):
+            with self.subTest(pattern=pattern), self.assertRaisesRegex(ValueError, pattern):
+                self.build(receipt, stdx_sha256=stdx_sha256)
+            self.assertFalse(output.exists())
+
     def test_package_rejects_a_replaced_binary_after_acceptance(self):
         receipt = self.receipt()
         asset = self.build(receipt)
@@ -143,6 +134,10 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
             }
         original = payload["release-manifest.json"][0].decode("utf-8")
         for mutate, pattern in (
+            (lambda document: document.__setitem__("schemaVersion", "cjdoc.release-package/2"),
+             "unknown release package manifest schema"),
+            (lambda document: document.__setitem__("schemaVersion", "cjdoc.release-package/3"),
+             "unknown release package manifest schema"),
             (lambda document: document.pop("releaseTag"), "unknown release package manifest schema"),
             (lambda document: document.__setitem__("sourceTree", "not-a-tree"),
              "requires its source tree"),
