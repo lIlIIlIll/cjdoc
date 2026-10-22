@@ -436,3 +436,54 @@ jobs:
           python scripts/ci_required.py \
             --outcome-json "${CJDOC_NEEDS}" \
             --plan "${CJDOC_PLAN}"
+
+  # DONE-03 asks for the wall clock as an artifact, not only as a checked-in document.
+  # It is its own job on purpose: it reads the Actions API, so it must not be able to
+  # fail the required gate when that API is slow or rate-limited, and it must still
+  # report when the rest of the run failed.
+  wallclock:
+    name: Wall clock
+    if: always()
+    # `required` is a dependency for the same reason: it is the last link of the
+    # chain the document reports, and a clock that reads it while it is still
+    # running records 0 ms and drops it. Nothing needs this job, so waiting is
+    # not gating.
+    needs: [changes, candidate-linux, linux-acceptance, candidate-other, required]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Reading this run's jobs needs more than the read-only contents scope.
+      actions: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Classify the run wall clock
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-evidence
+          python scripts/ci_stage.py wallclock \
+            --run "${GITHUB_RUN_ID}" \
+            --attempt "${GITHUB_RUN_ATTEMPT}" \
+            --repository "${GITHUB_REPOSITORY}" \
+            --output target/ci-evidence/wallclock.json
+
+      - name: Upload the wall clock
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-wallclock-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/ci-evidence/wallclock.json
+          retention-days: 7
+          if-no-files-found: error

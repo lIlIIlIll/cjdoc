@@ -229,7 +229,10 @@ class ReleaseAssetLayoutTest(unittest.TestCase):
             candidate.index("name: Stage the release assets"))
 
     def test_the_publisher_only_reads_flat_asset_files(self) -> None:
-        publish = self.workflow().split("\n  publish:\n", 1)[1]
+        # Bounded at the next job: `release.yml` ends with the `wallclock`
+        # collector, and an unbounded slice would silently include it.
+        publish = self.workflow().split("\n  publish:\n", 1)[1].split(
+            "\n  wallclock:\n", 1)[0]
         # A recursive search would hide a nested layout instead of failing loudly.
         self.assertIn("root.iterdir()", publish)
         self.assertIn('root.glob("*.sha256")', publish)
@@ -259,7 +262,8 @@ class PublishAssetSetTest(unittest.TestCase):
 
     def publish(self) -> str:
         return (PROJECT_ROOT / ".github/workflows/release.yml").read_text(
-            encoding="utf-8").split("\n  publish:\n", 1)[1]
+            encoding="utf-8").split("\n  publish:\n", 1)[1].split(
+                "\n  wallclock:\n", 1)[0]
 
     def test_expected_asset_set_accepts_every_candidate_receipt(self) -> None:
         publish = self.publish()
@@ -294,7 +298,8 @@ class ReleaseArtifactScopeTest(unittest.TestCase):
             upload)
 
     def test_publish_downloads_only_the_current_attempt(self) -> None:
-        publish = self.release_workflow().split("\n  publish:\n", 1)[1]
+        publish = self.release_workflow().split("\n  publish:\n", 1)[1].split(
+            "\n  wallclock:\n", 1)[0]
         self.assertIn("pattern: cjdoc-release-*-${{ github.run_id }}-${{ github.run_attempt }}",
                       publish)
         self.assertNotIn("pattern: cjdoc-release-*\n", publish)
@@ -383,7 +388,10 @@ class RoutingAndSelectionTest(unittest.TestCase):
 
     def test_ci_passes_the_plan_through_the_environment(self) -> None:
         ci = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        required = ci.split("Enforce the planned job outcomes", 1)[1]
+        # Bounded at the next job: `wallclock` sits after `required` in the same file,
+        # so an unbounded slice would let its text satisfy these assertions.
+        required = ci.split("Enforce the planned job outcomes", 1)[1] \
+            .split("\n  wallclock:\n", 1)[0]
         # Shell interpolation would break on JSON containing quotes.
         self.assertNotIn("--plan '${{", required)
         self.assertIn("CJDOC_PLAN: ${{ needs.changes.outputs.plan }}", required)
@@ -487,7 +495,7 @@ class PagesCandidatePolicyTest(unittest.TestCase):
         """
         pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
         # Bound the block to this job: the next top-level job must not be searched.
-        verify = pages.split("verify-site:", 1)[1].split("\n  deploy:", 1)[0]
+        verify = pages.split("verify-site:", 1)[1].split("\n  wallclock:\n", 1)[0]
         # Read the ACTIVE job-level key only. A naive first-occurrence split would
         # accept a commented-out `timeout-minutes: 70` sitting above an active
         # `timeout-minutes: 20`, which is exactly the regression this guards; the
@@ -510,7 +518,7 @@ class PagesCandidatePolicyTest(unittest.TestCase):
 
     def test_publication_rechecks_the_consumed_run(self) -> None:
         pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
-        verify = pages.split("verify-site:", 1)[1]
+        verify = pages.split("verify-site:", 1)[1].split("\n  wallclock:\n", 1)[0]
         # An early start must not become an early pass: the deployed run has to be
         # the one whose CI conclusion is still success.
         self.assertIn("ci_candidate_source.py require-ready", verify)
@@ -537,7 +545,7 @@ class StagedGateAndReceiptTest(unittest.TestCase):
 
     def test_branch_receipt_is_created_after_the_browser_merge(self) -> None:
         pages = (PROJECT_ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8")
-        verify = pages.split("verify-site:", 1)[1]
+        verify = pages.split("verify-site:", 1)[1].split("\n  wallclock:\n", 1)[0]
         self.assertIn("showcase_branch_receipts.py", verify)
         receipt_step = verify.index("Bind every branch including the merged browser evidence")
         merge_step = verify.index("Merge shards and run the unmodified full evidence gate")

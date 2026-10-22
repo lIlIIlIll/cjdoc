@@ -37,10 +37,37 @@ env:
   CJDOC_STS_STDX_MACOS_ARM64_SHA256: "9264fc3a5e2c3372059acccdbf72c42ab2b57d2eaede9342da0ffdc76354b7fd"
 
 jobs:
+  # Refuses a tag that is not a release of `main`, BEFORE three platform builds
+  # start. Issue #96 records the cost of not having this: throwaway `v0.7.2-rc-*`
+  # tags on feature branches each published a real GitHub pre-release that had to
+  # be deleted by hand. The check is reachability from `main` rather than the tag
+  # spelling, because `-rc2` on `main` is a legitimate candidate and
+  # `-rc-perf-check` on a branch is not.
+  guard:
+    name: Release tag guard
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out the tagged commit and its history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # The ancestry test needs the release branch, not just the tagged commit.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Require the tag to be a release of main
+        shell: bash
+        run: python scripts/verify_release_tag_allowed.py
   # One job per platform: build once, accept on that platform, write the release
   # candidate receipt, then package the same binary. Nothing is rebuilt later.
   release-candidate:
     name: Release candidate / ${{ matrix.platform }} / Cangjie 1.2.0 STS + stdx
+    needs: guard
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
@@ -292,8 +319,13 @@ jobs:
   # tagged commit before publishing.
   publish:
     name: Publish verified release
-    needs: release-candidate
-    if: ${{ always() && needs.release-candidate.result == 'success' }}
+    # `guard` is listed as well so a refused tag cannot publish even if a future
+    # edit loosens the candidate job's dependency. The condition is explicit rather
+    # than implied by the skip: `always()` would otherwise let this job evaluate on a
+    # run whose guard failed.
+    needs: [guard, release-candidate]
+    if: ${{ always() && needs.guard.result == 'success'
+      && needs.release-candidate.result == 'success' }}
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -493,3 +525,53 @@ jobs:
           require_draft
           gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
             --draft=false ${release_flags}
+  # The release wall clock is attached to the tag run itself. It needs every job
+  # it measures so it reads them completed; it is never a dependency of `publish`,
+  # because an evidence collector failing must not be able to block or unblock a
+  # publication.
+  wallclock:
+    name: Wall clock
+    if: always()
+    # `publish` is a dependency so the collector cannot read the publisher while
+    # it is still running. It is not a gate in the other direction: nothing needs
+    # this job, and `always()` keeps the clock running when publication fails or
+    # is skipped.
+    needs: [guard, release-candidate, publish]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Reading this run's jobs needs more than the read-only contents scope.
+      actions: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Classify the run wall clock
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-evidence
+          python scripts/ci_stage.py wallclock \
+            --run "${GITHUB_RUN_ID}" \
+            --attempt "${GITHUB_RUN_ATTEMPT}" \
+            --repository "${GITHUB_REPOSITORY}" \
+            --output target/ci-evidence/wallclock.json
+
+      - name: Upload the wall clock
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ci-wallclock-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/ci-evidence/wallclock.json
+          retention-days: 30
+          if-no-files-found: error

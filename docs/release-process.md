@@ -106,7 +106,7 @@ Before creating a tag:
 3. Confirm the exact commit has successful required stable-platform CI. If the four daily compiler/stdx repository variables are configured, also require a successful daily run; otherwise confirm that the optional daily job is explicitly skipped rather than failed.
 4. Review public Cangjie compatibility and Doc IR/schema changes separately.
 5. Confirm the version and release notes describe the breaking Doc IR v16 cutover, rejected legacy Doc IR inputs, and known limitations.
-6. Create and push the exact signed or otherwise project-approved tag through the normal repository process.
+6. Create and push the exact signed or otherwise project-approved tag through the normal repository process. The tag's commit must already be on `main`: `release.yml` starts with a `guard` job that runs `scripts/verify_release_tag_allowed.py`, and every other job needs it. A tag whose commit is not reachable from `main` is refused before any platform builds, so a throwaway tag on a feature branch can no longer publish a real pre-release (issue #96).
 7. Watch `release.yml`; a pushed tag or draft is not a published release. Verify the public release and downloaded checksums only after the publish job succeeds.
 
 Repository tag protection/rulesets and any protected release environment are GitHub settings outside this repository diff. Configure and verify them separately; the workflow permissions do not create those controls.
