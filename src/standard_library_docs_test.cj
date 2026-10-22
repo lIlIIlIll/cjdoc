@@ -11,6 +11,8 @@ private let STANDARD_LIBRARY_ARRAY_LIST_URL =
     "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/collection/collection_package_api/collection_package_class.html#class-arraylistt"
 private let STANDARD_LIBRARY_STRING_URL =
     "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_structs.html#struct-string"
+private let STANDARD_LIBRARY_ARRAY_URL =
+    "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_structs.html#struct-arrayt"
 private let STANDARD_LIBRARY_HASH_MAP_110_URL =
     "https://docs.cangjie-lang.cn/docs/1.1.0-beta.25/libs/std/collection/collection_package_api/" +
     "collection_package_class.html#class-hashmapk-v-where-k--hashable--equatablek"
@@ -269,4 +271,103 @@ class StandardLibraryDocsTest {
             }
         } finally { let _ = removeIfExists(temporary, recursive: true) }
     }
+}
+
+@Test
+class StandardLibraryWildcardDocsTest {
+    @TestCase
+    func standardWildcardLinksArrayAndItsImplicitCoreStringArgument(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            standardLibraryLinkProject(temporary, """
+                package fixture
+                import std.collection.*
+                public func accept(values: Array<String>): String { "ok" }
+                """)
+            let symbol = standardLibraryLinkFunction(standardLibraryLinkGenerate(temporary), "accept")
+            let array = symbol.parameters[0].typeRef
+            @Expect(array.navigation.getOrThrow().url, STANDARD_LIBRARY_ARRAY_URL)
+            @Expect(array.arguments[0].navigation.getOrThrow().url, STANDARD_LIBRARY_STRING_URL)
+            @Expect(symbol.returnType.getOrThrow().navigation.getOrThrow().url, STANDARD_LIBRARY_STRING_URL)
+            @Expect(array.navigation.getOrThrow().matchLevel, "manual")
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func unknownExplicitOrWildcardImportsCannotClaimAnImplicitCoreType(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            for ((name, imports) in [
+                ("explicit", "import std.collection.*\nimport std.collection.String"),
+                ("external", "import std.collection.*\nimport another.*"),
+                ("unknown-standard", "import std.unindexed.*"),
+                ("conditional", "@When[feature == \"on\"]\nimport std.collection.*"),
+                ("documented-alias", "import std.core.StringBuilder as String")
+            ]) {
+                let project = temporary.join(name)
+                standardLibraryLinkProject(project, """
+                    package fixture
+                    ${imports}
+                    public func accept(value: String): Unit {}
+                    """)
+                let symbol = standardLibraryLinkFunction(standardLibraryLinkGenerate(project), "accept")
+                @Expect(symbol.parameters[0].typeRef.navigation.getOrThrow().url.isEmpty(), true)
+            }
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func localArrayAndStringKeepPrecedenceOverStandardWildcardDocumentation(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            standardLibraryLinkProject(temporary, """
+                package fixture
+                import std.collection.*
+                public struct String {}
+                public class Array<T> {}
+                public func accept(values: Array<String>, value: String): String { value }
+                """)
+            let symbol = standardLibraryLinkFunction(standardLibraryLinkGenerate(temporary), "accept")
+            let array = symbol.parameters[0].typeRef
+            @Expect(array.navigation.getOrThrow().matchLevel, "exact")
+            @Expect(array.navigation.getOrThrow().url != STANDARD_LIBRARY_ARRAY_URL, true)
+            @Expect(array.arguments[0].navigation.getOrThrow().matchLevel, "exact")
+            @Expect(array.arguments[0].navigation.getOrThrow().url != STANDARD_LIBRARY_STRING_URL, true)
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+}
+
+@Test
+class StandardLibraryMemberSignatureDocsTest {
+    @TestCase
+    func memberSummariesLinkStringAndNestedArrayTypes(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            standardLibraryLinkProject(temporary, """
+                package fixture
+                import std.collection.*
+                public class Catalog {
+                    public func add(value: String): Unit {}
+                    public func addAll(values: Array<String>): Unit {}
+                }
+                """)
+            let artifacts = standard_library_render.renderDocumentationFormatsWithOptions(
+                standardLibraryLinkGenerate(temporary), ["html"], locale: "en")
+            let add = standardLibraryMemberSummary(artifacts, "add")
+            @Expect(add.contains("href=\"" + STANDARD_LIBRARY_STRING_URL + "\""), true)
+            let addAll = standardLibraryMemberSummary(artifacts, "addAll")
+            @Expect(addAll.contains("href=\"" + STANDARD_LIBRARY_ARRAY_URL + "\""), true)
+            @Expect(addAll.contains("href=\"" + STANDARD_LIBRARY_STRING_URL + "\""), true)
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+}
+
+private func standardLibraryMemberSummary(artifacts: Array<standard_library_render.RenderArtifact>,
+    name: String): String {
+    let marker = "data-member-name=\"" + name + "\""
+    for (artifact in artifacts where artifact.path.startsWith("html/symbols/") &&
+        artifact.content.contains(marker)) {
+        return artifact.content.split(marker, 2)[1].split("<summary", 2)[1].split("</summary>", 2)[0]
+    }
+    throw IllegalArgumentException("expected generated member summary is missing")
 }

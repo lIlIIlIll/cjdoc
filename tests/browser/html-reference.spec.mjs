@@ -335,7 +335,7 @@ test.describe('generated HTML reference', () => {
     const extensionMember = page.locator('[data-cjdoc-member][data-member-origin="extension"]');
     await expect(extensionMember).not.toHaveCount(0);
     await expect(extensionMember.first()).toContainText('extensionMarker');
-    await extensionMember.first().locator('.member-detail-summary').click();
+    await extensionMember.first().locator('.member-detail-summary .member-display-name').click();
     await expect(extensionMember.first().locator('.extension-conditions')).toContainText('extension target');
     await originFilter.selectOption('');
     await memberFilter.fill('normalize');
@@ -343,7 +343,7 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-member][data-member-name="label"]')).toBeHidden();
     await expect(page.locator('[data-cjdoc-member-filter-status]')).toContainText('matching member');
     const normalizeForRestore = page.locator('details[data-cjdoc-member][data-member-name="normalize"]');
-    await normalizeForRestore.locator('.member-detail-summary').click();
+    await normalizeForRestore.locator('.member-detail-summary .member-display-name').click();
     const restoreHref = await memberActions(normalizeForRestore).locator('.member-permalink').getAttribute('href');
     expect(restoreHref).toBeTruthy();
     await page.evaluate(() => window.scrollTo(0, Math.min(520, document.documentElement.scrollHeight - innerHeight)));
@@ -365,16 +365,16 @@ test.describe('generated HTML reference', () => {
     // History restoration intentionally keeps the member open. Close it explicitly
     // before exercising the fresh one-action expansion path.
     await expect(normalizeDetail).toHaveAttribute('open', '');
-    await normalizeDetail.locator('.member-detail-summary').click();
+    await normalizeDetail.locator('.member-detail-summary .member-display-name').click();
     await expect(normalizeDetail).not.toHaveAttribute('open', '');
     const typePageUrl = page.url();
-    await normalizeDetail.locator('.member-detail-summary').click();
+    await normalizeDetail.locator('.member-detail-summary .member-display-name').click();
     await expect(normalizeDetail).toHaveAttribute('open', '');
     await expect(normalizeDetail.locator('.member-detail-body')).toContainText('Parameters');
     await expect(normalizeDetail.locator('.member-detail-body')).toContainText('Returns');
     await expect(normalizeDetail.locator('.member-detail-body')).toContainText('precondition');
     expect(page.url()).toBe(typePageUrl);
-    await labelDetail.locator('.member-detail-summary').click();
+    await labelDetail.locator('.member-detail-summary .member-display-name').click();
     await expect(labelDetail).toHaveAttribute('open', '');
     await expect(labelDetail.locator('.api-usages')).toContainText('Getting started');
     const actions = memberActions(labelDetail);
@@ -445,8 +445,8 @@ test.describe('generated HTML reference', () => {
     await memberFilter.fill('');
     await expect(pingGroup.locator('[data-cjdoc-overload-count]')).toHaveText('2 overloads');
     await expect(pingGroup).toBeVisible();
-    await pingDetails.nth(0).locator('.member-detail-summary').click();
-    await pingDetails.nth(1).locator('.member-detail-summary').click();
+    await pingDetails.nth(0).locator('.member-detail-summary .member-display-name').click();
+    await pingDetails.nth(1).locator('.member-detail-summary .member-display-name').click();
     await expect(pingDetails.nth(0)).toHaveAttribute('open', '');
     await expect(pingDetails.nth(1)).toHaveAttribute('open', '');
     const normalizeAnchor = await normalizeDetail.getAttribute('id');
@@ -482,7 +482,20 @@ test.describe('generated HTML reference', () => {
     await expect(longDetail.locator('summary .declaration-signature')).toContainText('timeoutMs!: Int64 = 1000');
 
     const useDetail = page.locator('details[data-cjdoc-member][data-member-name="use"]');
-    await useDetail.locator('.member-detail-summary').click();
+    const useSummary = useDetail.locator('summary .declaration-signature');
+    await expect(useSummary).toHaveText('public func use(label!: String = "Token", item!: Token): Unit');
+    const localTypeLink = useSummary.getByRole('link', { name: 'Token', exact: true });
+    await expect(localTypeLink).toHaveCount(1);
+    await expect(useDetail).not.toHaveAttribute('open', '');
+    const beforeTypeNavigation = page.url();
+    await localTypeLink.focus();
+    await expect(localTypeLink).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.page-header h1')).toHaveText('Token');
+    await page.goBack();
+    await expect(page).toHaveURL(beforeTypeNavigation);
+    await expect(useDetail).not.toHaveAttribute('open', '');
+    await useDetail.locator('.member-detail-summary .member-display-name').click();
     await expect(useDetail.locator('summary .declaration-signature'))
       .toContainText('label!: String = "Token", item!: Token');
     const useHref = await memberActions(useDetail).locator('.member-permalink').getAttribute('href');
@@ -490,10 +503,6 @@ test.describe('generated HTML reference', () => {
     const useSignature = page.locator('.signature-block code');
     const linkedSignatureHtml = await useSignature.innerHTML();
     await expect(useSignature).toContainText('label!: String = "Token", item!: Token');
-    // This source-only fixture intentionally leaves Token unresolved. The renderer must
-    // fail closed instead of guessing from spelling, while resolved-link behavior is
-    // covered by HtmlSignatureMappingTest.
-    await expect(useSignature.locator('.signature-type-link')).toHaveCount(0);
     expect(linkedSignatureHtml).not.toMatch(/"[^"]*<a[^>]*>Token<\/a>[^"]*"/);
     await page.goBack();
     await expectStable(page);
@@ -765,7 +774,7 @@ test.describe('generated HTML reference', () => {
         'details[data-cjdoc-member][data-member-origin="extension"][data-member-name="extensionMarker"]'
       );
       await expect(extensionMember).toHaveCount(1);
-      await extensionMember.locator('summary').click();
+      await extensionMember.locator('summary .member-display-name').click();
       await extensionMember.locator('.member-origin a').click();
       const extensionUrl = page.url();
       if (start === indexUrl) offlineExtensionUrl = extensionUrl;
@@ -774,7 +783,7 @@ test.describe('generated HTML reference', () => {
       const ownMember = page.locator('details[data-cjdoc-member][data-member-name="extensionMarker"]');
       await expect(ownMember).toHaveCount(1);
       await expect(page.locator('.sidebar-context a[href^="#"]')).toHaveCount(1);
-      await ownMember.locator('summary').click();
+      await ownMember.locator('summary .member-display-name').click();
       await expect(ownMember.locator('.member-detail-body')).toBeVisible();
       await expect(ownMember).toContainText('Member supplied by an extension.');
       await expect(memberActions(ownMember).locator('.member-permalink')).toHaveAttribute('href', /symbol-/);
@@ -785,7 +794,7 @@ test.describe('generated HTML reference', () => {
       await page.goBack();
       await expect(page).toHaveURL(extensionUrl);
       if (!(await ownMember.evaluate(node => node.open))) {
-        await ownMember.locator('summary').click();
+        await ownMember.locator('summary .member-display-name').click();
       }
       // Desktop actions become actionable when the pointer enters their member row.
       await ownMember.hover();
@@ -801,7 +810,7 @@ test.describe('generated HTML reference', () => {
       await offlinePage.goto(offlineExtensionUrl);
       const member = offlinePage.locator('details[data-cjdoc-member][data-member-name="extensionMarker"]');
       await expect(member).toHaveCount(1);
-      await member.locator('summary').click();
+      await member.locator('summary .member-display-name').click();
       await expect(member.locator('.member-detail-body')).toBeVisible();
       await expect(offlinePage.locator('.symbol-relationships a.relation-target')).toHaveCount(1);
     } finally {
@@ -847,7 +856,7 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-member-origin] option[value="declared"]')).toContainText('直接声明');
     const convert = page.locator('[data-cjdoc-member][data-member-name="convert"]').first();
     await expect(convert).toContainText('将整数转换为文本');
-    await convert.locator('.member-detail-summary').click();
+    await convert.locator('.member-detail-summary .member-display-name').click();
     await expect(convert.locator('.member-detail-body')).toContainText('返回值');
   });
 
@@ -921,6 +930,9 @@ test.describe('generated HTML reference', () => {
 
     await summary.focus();
     await page.keyboard.press('Tab');
+    const signatureTypeLink = summary.getByRole('link', { name: 'String', exact: true });
+    await expect(signatureTypeLink).toBeFocused();
+    await page.keyboard.press('Tab');
     await expect(actions.locator('.member-permalink')).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(actions.locator('.member-source-link')).toBeFocused();
@@ -928,7 +940,7 @@ test.describe('generated HTML reference', () => {
     await expect(actions.locator('.member-action-copy')).toBeFocused();
     await expect(actions).toHaveCSS('opacity', '1');
 
-    await summary.click();
+    await summary.locator('.member-display-name').click();
     await expect(member).toHaveAttribute('open', '');
     await expect(member.locator('.member-detail-body')).toBeVisible();
     await expect(member.locator('.member-detail-actions')).toHaveCount(0);
@@ -978,7 +990,7 @@ test.describe('generated HTML reference', () => {
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await page.touchscreen.tap(5, 830);
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await detail.locator('.member-detail-summary').tap();
+    await detail.locator('.member-detail-summary .member-display-name').tap();
     await expect(detail).toHaveAttribute('open', '');
     expect(page.url()).toBe(before);
     const last = page.locator('details[data-cjdoc-member]').last();

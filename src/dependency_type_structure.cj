@@ -249,6 +249,22 @@ internal class DependencyImportIndex {
         true
     }
 
+    func wildcardPackage(head: String, candidate: String, work: DependencyNavigationWork): ?String {
+        if (failed) { return None }
+        if (let Some(bindings) <- named.get(head)) {
+            for (binding in bindings) {
+                if (!work.take() || binding.target == candidate) { return None }
+            }
+        }
+        for (binding in wildcards) {
+            if (!work.take()) { return None }
+            if (!binding.conditional && candidate.size == binding.target.size + 1 + head.size &&
+                candidate.startsWith(binding.target) && candidate[binding.target.size] == b'.' &&
+                candidate.endsWith(head)) { return Some(binding.target) }
+        }
+        None
+    }
+
     func candidates(head: String, work: DependencyNavigationWork): Array<String> {
         if (failed || !work.consumeBytes(head.size)) { return [] }
         let result = ArrayList<String>()

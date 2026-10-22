@@ -267,7 +267,7 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     out.append("<span class=\"member-display-name\">" + escapeHtml(member.name) + "</span>")
     if (!member.headerSpelling.isEmpty()) {
         out.append("<code class=\"declaration-signature\">")
-        appendSignatureTextHtml(out, member)
+        appendLinkedSignatureHtml(out, member, typeLinkIndex, rootPrefix)
         out.append("</code>")
     } else {
         out.append("<code class=\"declaration-signature\">${escapeHtml(member.name)}</code>")

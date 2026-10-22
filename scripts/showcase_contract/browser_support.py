@@ -47,7 +47,7 @@ class Journey:
         from playwright.sync_api import expect
         member.locator("summary").first.scroll_into_view_if_needed()
         def complete():
-            self.click(member.locator("summary").first)
+            self.click(member.locator("summary .member-display-name").first)
             expect(member).to_have_attribute("open", "")
             expect(member.locator(".member-detail-body")).to_be_visible()
         self.measured("expandMs", complete, member.locator("summary").first, "click")
