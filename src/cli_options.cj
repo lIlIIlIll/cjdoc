@@ -57,6 +57,8 @@ internal class NewCliOptions {
     var allLanguages = false
     let requiredLanguages = ArrayList<String>()
     var docVersion: ?String = None
+    var standardLibraryDocsVersion: ?String = None
+    var standardLibraryDocsBaseUrl: ?String = None
     var agentFull = false
     var versionSubcommand = ""
 
@@ -78,7 +80,7 @@ internal class NewCliOptions {
 }
 internal func newUsage(): String {
     "usage:\n" +
-    "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout] [--doc-version <version>]\n" +
+    "  cjdoc generate [--project <dir>] [--format json|markdown|html|api-surface|coverage]... [--output <dir>|--stdout] [--doc-version <version>] [--stdlib-doc-version <version>] [--stdlib-doc-base-url <https-url>]\n" +
     "                 [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
     "                 [--chir-worker <executable>]\n" +
     "                 [--highlight-adapter <absolute path> --highlight-node <absolute path>]\n" +
@@ -247,6 +249,12 @@ private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>,
         case "--doc-version" =>
             options.docVersion = Some(requireNonEmptyCliValue(args, index, "--doc-version"))
             Some(index + 2)
+        case "--stdlib-doc-version" =>
+            options.standardLibraryDocsVersion = Some(requireNonEmptyCliValue(args, index, "--stdlib-doc-version"))
+            Some(index + 2)
+        case "--stdlib-doc-base-url" =>
+            options.standardLibraryDocsBaseUrl = Some(requireNonEmptyCliValue(args, index, "--stdlib-doc-base-url"))
+            Some(index + 2)
         case "--locale" =>
             options.locale = requireCliValue(args, index, "--locale")
             options.localeExplicit = true
@@ -373,8 +381,10 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
         options.cacheDirectory.isSome() || options.noCache || options.cjpmCacheRoot.isSome() ||
         options.repositoryUrl.isSome() || options.repositoryRevision.isSome() || options.repositoryRoot.isSome() ||
         !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty() ||
-        options.docVersion.isSome() || options.agentFull || options.servePortExplicit ||
-        options.serveOpenExplicit || options.checkExamples || !options.formats.isEmpty() ||
+        options.docVersion.isSome() || options.standardLibraryDocsVersion.isSome() ||
+        options.standardLibraryDocsBaseUrl.isSome() || options.agentFull ||
+        options.servePortExplicit || options.serveOpenExplicit || options.checkExamples ||
+        !options.formats.isEmpty() ||
         options.semanticExplicit || options.cjcExplicit ||
         options.chirWorkerExecutable.isSome() || !options.chirImportPaths.isEmpty() ||
         options.localeExplicit || options.allLanguages || !options.requiredLanguages.isEmpty() ||
@@ -473,6 +483,23 @@ private func validateCliOptions(options: NewCliOptions): Unit {
     }
     if (options.docVersion.isSome() && !options.formats.contains("html")) {
         throw IllegalArgumentException("--doc-version requires --format html")
+    }
+    if ((options.standardLibraryDocsVersion.isSome() || options.standardLibraryDocsBaseUrl.isSome()) &&
+        options.command != "generate") {
+        throw IllegalArgumentException("--stdlib-doc-version and --stdlib-doc-base-url are only valid for generate")
+    }
+    if (let Some(baseUrl) <- options.standardLibraryDocsBaseUrl) {
+        if (!isValidStandardLibraryDocsBaseUrl(baseUrl)) {
+            throw IllegalArgumentException("--stdlib-doc-base-url must be HTTPS and end in /libs/std")
+        }
+    }
+    if (let Some(version) <- options.standardLibraryDocsVersion) {
+        if (!isValidStandardLibraryDocsVersion(version)) {
+            throw IllegalArgumentException("--stdlib-doc-version must be a safe URL path segment")
+        }
+        if (options.standardLibraryDocsBaseUrl.isNone() && !hasBuiltInStandardLibraryDocsBase(version)) {
+            throw IllegalArgumentException("--stdlib-doc-base-url is required for this standard-library documentation version")
+        }
     }
     if (options.agentFull && options.command != "generate" && options.command != "render" &&
         options.command != "serve") {

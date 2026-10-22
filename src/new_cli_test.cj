@@ -96,6 +96,11 @@ class NewCliRegressionTest {
             "diff", "old.json", "new.json", "--semantic", "source"]))
         @ExpectThrows[IllegalArgumentException](parseNewCli([
             "diff", "old.json", "new.json", "--doc-version", "v1"]))
+        @ExpectThrows[IllegalArgumentException](parseNewCli([
+            "diff", "old.json", "new.json", "--stdlib-doc-version", "1.2.0"]))
+        @ExpectThrows[IllegalArgumentException](parseNewCli([
+            "diff", "old.json", "new.json", "--stdlib-doc-base-url",
+            "https://docs.example.test/1.2.0/libs/std"]))
     }
 
     @TestCase

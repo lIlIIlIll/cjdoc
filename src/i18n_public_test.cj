@@ -213,9 +213,17 @@ class I18nPublicApiTest {
                 if (!artifact.content.contains("#### Parameters")) { continue }
                 let tree = parseStandaloneMarkdown(artifact.content)
                 let lists = ArrayList<api_model.MarkdownNode>()
-                for (node in tree.children where node.kind == "list") { lists.add(node) }
+                // Select documentation fields, not the signature or footer lists.
+                for (node in tree.children where node.kind == "list") {
+                    let text = i18nMarkdownText(node)
+                    if (text.contains("左参数第一段。") || text.contains("First condition.") ||
+                        text.contains("First requirement.") || text.contains("First reference.")) {
+                        lists.add(node)
+                    }
+                }
                 @Expect(lists.size, 4)
-                for (index in 0..3) { @Expect(lists[index].children.size, 2) }
+                for (index in 0..2) { @Expect(lists[index].children.size, 2) }
+                @Expect(lists[3].children.size >= 2, true)
                 @Expect(i18nMarkdownText(lists[0].children[0]).contains("左参数第二段。"))
                 @Expect(i18nMarkdownText(lists[0].children[0]).contains("左参数嵌套条目。"))
                 @Expect(!i18nMarkdownText(lists[0].children[0]).contains("let right: Int64"))

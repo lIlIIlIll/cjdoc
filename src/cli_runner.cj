@@ -323,7 +323,9 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
             documentSources: options.documentSources.toArray(), linkLanguage: options.linkLanguage,
             linkLanguageFallback: options.linkLanguageFallback, linkCompatible: options.linkCompatible,
             documentInventoryPins: options.documentInventoryPins.toArray(),
-            documentationRevision: options.docVersion.getOrDefault({ => "" })))
+            documentationRevision: options.docVersion.getOrDefault({ => "" }),
+            standardLibraryDocsVersion: options.standardLibraryDocsVersion,
+            standardLibraryDocsBaseUrl: options.standardLibraryDocsBaseUrl))
     }
     var documentation = match (generationRequest) {
         case Some(request) =>

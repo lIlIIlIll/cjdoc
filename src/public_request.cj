@@ -102,6 +102,10 @@ public class GenerationRequest {
     public let linkCompatible: Bool
     /** Publication revision only; never participates in dependency selection. */
     public let documentationRevision: String
+    /** Optional release selector for standard-library documentation links. */
+    public let standardLibraryDocsVersion: ?String
+    /** Optional HTTPS std-library docs root, used when the release has a different host or route prefix. */
+    public let standardLibraryDocsBaseUrl: ?String
     private let documentSourcesStorage: ArrayList<String>
     private let documentInventoryPinsStorage: ArrayList<DocumentInventoryPin>
     private let requiredLanguagesStorage: ArrayList<String>
@@ -121,7 +125,9 @@ public class GenerationRequest {
         i18n!: ?public_model.DocumentationLanguageOptions = None, requiredLanguages!: Array<String> = [],
         buildContext!: ?String = None, documentSources!: Array<String> = [], linkLanguage!: String = "",
         linkLanguageFallback!: Bool = false, linkCompatible!: Bool = false,
-        documentInventoryPins!: Array<DocumentInventoryPin> = [], documentationRevision!: String = "") {
+        documentInventoryPins!: Array<DocumentInventoryPin> = [], documentationRevision!: String = "",
+        standardLibraryDocsVersion!: ?String = None,
+        standardLibraryDocsBaseUrl!: ?String = None) {
         if (projectRoot.isEmpty()) {
             throw IllegalArgumentException("project root cannot be empty")
         }
@@ -142,6 +148,19 @@ public class GenerationRequest {
         }
         if (repositoryRoot.isSome() && repository.isNone()) {
             throw IllegalArgumentException("repository root requires repository metadata")
+        }
+        if (let Some(baseUrl) <- standardLibraryDocsBaseUrl) {
+            if (!isValidStandardLibraryDocsBaseUrl(baseUrl)) {
+                throw IllegalArgumentException("standard-library documentation base URL must be HTTPS and end in /libs/std")
+            }
+        }
+        if (let Some(version) <- standardLibraryDocsVersion) {
+            if (!isValidStandardLibraryDocsVersion(version)) {
+                throw IllegalArgumentException("standard-library documentation version must be a safe URL path segment")
+            }
+            if (standardLibraryDocsBaseUrl.isNone() && !hasBuiltInStandardLibraryDocsBase(version)) {
+                throw IllegalArgumentException("standard-library documentation base URL is required for this version")
+            }
         }
         let _ = highlightExternalOptions(highlightAdapter, highlightNode)
         this.projectRoot = projectRoot
@@ -176,6 +195,8 @@ public class GenerationRequest {
         this.linkLanguageFallback = linkLanguageFallback
         this.linkCompatible = linkCompatible
         this.documentationRevision = documentationRevision
+        this.standardLibraryDocsVersion = standardLibraryDocsVersion
+        this.standardLibraryDocsBaseUrl = standardLibraryDocsBaseUrl
         this.requiredLanguagesStorage = ArrayList<String>()
         for (language in requiredLanguages) {
             let normalized = public_model.documentationLanguage(language)

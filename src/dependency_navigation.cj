@@ -242,6 +242,40 @@ internal class DependencyNavigationBinder {
         }
         names.toArray()
     }
+    private func standardImportDisambiguatesCoreTarget(imports: Array<String>,
+        implicitCoreName: String, docsVersion: String, baseUrlOverride: ?String): Bool {
+        if (!isValidStandardLibraryDocsVersion(docsVersion)) { return false }
+        var foundStandardImport = false
+        for (candidate in imports where candidate != implicitCoreName) {
+            if (!candidate.startsWith("std.") ||
+                !hasStandardLibraryDocTarget(docsVersion, candidate,
+                    baseUrlOverride: baseUrlOverride)) { return false }
+            foundStandardImport = true
+        }
+        foundStandardImport
+    }
+
+    private func selectedStandardLibraryDocsVersion(moduleId: String): ?String {
+        if (let Some(version) <- request.standardLibraryDocsVersion) { return Some(version) }
+        var selected = ""
+        var found = false
+        for (dependency in dependencies where dependency.moduleId == moduleId && dependency.kind == "std") {
+            if (dependency.state == "conflict") { return None }
+            if (!dependency.version.isEmpty()) {
+                if (dependency.state != "verified" && dependency.state != "observed") { return None }
+                if (found && selected != dependency.version) { return None }
+                selected = dependency.version
+                found = true
+            }
+        }
+        if (!found) { return Some(defaultStandardLibraryDocsVersion()) }
+        if (isValidStandardLibraryDocsVersion(selected) &&
+            (hasBuiltInStandardLibraryDocsBase(selected) || request.standardLibraryDocsBaseUrl.isSome())) {
+            return Some(selected)
+        }
+        None
+    }
+
 
     private func scopeMatches(dependency: link_model.DependencyInstance,
         set: link_model.DocumentSetIdentity): Bool {
@@ -522,21 +556,48 @@ internal class DependencyNavigationBinder {
             if (canonical) {
                 if (let Some(identity) <- typeRef.semantic.canonical) { names.clear(); names.add(identity) }
             }
+            if (!canonical && value.head.startsWith("std.") && !names.contains(value.head)) {
+                names.add(value.head)
+            }
+            let docsVersion = selectedStandardLibraryDocsVersion(owner.moduleId)
             var sourceAmbiguity = false
+            var standardImportAmbiguity = false
             if (!canonical && !value.head.contains(".")) {
                 let key = owner.moduleId + "|" + owner.source.path + "|" + value.head
+                let implicitCoreName = "std.core." + value.head
                 if (let Some(imports) <- importCandidates.get(key)) {
-                    sourceAmbiguity = imports.size > 1 && imports.contains("std.core." + value.head)
+                    sourceAmbiguity = imports.size > 1 && imports.contains(implicitCoreName)
+                    if (sourceAmbiguity) {
+                        standardImportAmbiguity = standardImportDisambiguatesCoreTarget(imports,
+                            implicitCoreName, docsVersion.getOrDefault({ => "" }),
+                            request.standardLibraryDocsBaseUrl)
+                    }
                 }
             }
-            let selected = resolve(owner.moduleId, owner.packageName, names.toArray(), typesOnly: true, sourceAmbiguity: sourceAmbiguity,
+            var navigation = resolve(owner.moduleId, owner.packageName, names.toArray(),
+                typesOnly: true, sourceAmbiguity: sourceAmbiguity && !standardImportAmbiguity,
                 genericArity: value.children.size)
-            decision = Some(selected)
-            if (selected.state != "resolved" && diagnostics.size < 4096 && visible(owner) &&
+            // Only scoped resolution may suppress the fallback; unrelated inventory
+            // entries and declarations rejected by arity are not binding evidence.
+            if (navigation.state == "unresolved") {
+                if (let Some(version) <- docsVersion) {
+                    if (let Some(pinned) <- standardLibraryTypeNavigation(version, names.toArray(),
+                        baseUrlOverride: request.standardLibraryDocsBaseUrl)) {
+                        navigation = pinned
+                    }
+                }
+            }
+            decision = Some(navigation)
+            if (navigation.state != "resolved" && diagnostics.size < 4096 && visible(owner) &&
                 (!request.documentSources.isEmpty() || request.buildContext.isSome())) {
                 diagnostics.add(link_model.Diagnostic(if (request.lintProfile == "strict") { "error" } else { "warning" },
-                    "CJDOC2310", "type '" + value.head + "': " + selected.reason,
+                    "CJDOC2310", "type '" + value.head + "': " + navigation.reason,
                     source: Some(owner.source), symbolId: Some(owner.id)))
+            }
+        } else if (!parameter && value.kind == "primitive") {
+            if (let Some(version) <- selectedStandardLibraryDocsVersion(owner.moduleId)) {
+                decision = standardLibraryTypeNavigation(version, ["std.core." + value.head],
+                    baseUrlOverride: request.standardLibraryDocsBaseUrl)
             }
         }
         let kind = if (parameter) { "typeParameter" } else if (["primitive", "optional", "tuple", "function"].contains(value.kind)) { value.kind } else { typeRef.kind }

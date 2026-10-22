@@ -205,6 +205,23 @@ def versions(journey: Journey):
 
 def external(journey: Journey):
     page = journey.page
+    standard_library_links = page.locator('main a[href*="/libs/std/"]')
+    if not standard_library_links.count():
+        raise AssertionError("TextCatalog has no standard-library API link")
+    standard_library_href = standard_library_links.first.get_attribute("href")
+    standard_library_url = urlsplit(standard_library_href or "")
+    path_segments = [segment for segment in standard_library_url.path.split("/") if segment]
+    try:
+        standard_index = path_segments.index("std")
+    except ValueError as error:
+        raise AssertionError("standard-library link does not target the std API") from error
+    if (standard_library_url.scheme != "https" or standard_index < 2
+            or path_segments[standard_index - 1] != "libs"
+            or not path_segments[standard_index - 2][0].isdigit()
+            or "." not in path_segments[standard_index - 2]):
+        raise AssertionError("standard-library link must use an HTTPS versioned API route")
+
+    journey.assertions.append("TextCatalog signatures expose a clickable, versioned HTTPS standard-library API route")
     local = page.locator("main a").filter(has_text="Stamp")
     local = next((item for item in local.all() if item.inner_text().strip() == "Stamp"), None)
     if local is None:

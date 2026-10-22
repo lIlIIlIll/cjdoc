@@ -545,7 +545,11 @@ class SharedExternalInventoryBudgetTest {
                 @Expect(tag.navigation.getOrThrow().matchLevel, "manual")
                 @Expect(tag.navigation.getOrThrow().dependencyInstanceId, "")
             }
-            if (let Some(decision) <- symbol.parameters[0].typeRef.navigation) { @Expect(decision.state != "resolved") }
+            let typeNavigation = symbol.parameters[0].typeRef.navigation.getOrThrow()
+            @Expect(typeNavigation.state, "resolved")
+            @Expect(typeNavigation.matchLevel, "manual")
+            @Expect(typeNavigation.dependencyInstanceId, "")
+            @Expect(typeNavigation.documentSetId, "")
         } finally { let _ = removeIfExists(temporary, recursive: true) }
     }
 
