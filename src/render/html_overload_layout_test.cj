@@ -61,9 +61,9 @@ class HtmlOverloadContractLayoutTest {
     func compactContractColumnsDoNotReserveAFixedNineteenRemSlot(): Unit {
         @Expect(HTML_STYLE.contains(".parameter-row{display:grid;grid-template-columns:fit-content(14rem)"))
         @Expect(HTML_RETURN_LAYOUT_STYLE.contains("grid-template-columns:fit-content(14rem)"))
-        @Expect(HTML_LAYOUT_HARDENING_STYLE.contains(".throws-row{display:grid;grid-template-columns:fit-content(14rem)"))
-        @Expect(HTML_LAYOUT_HARDENING_STYLE.contains(".throws-row:last-child{border-bottom:0}"))
-        @Expect(HTML_LAYOUT_HARDENING_STYLE.contains(".throws-list + .behavior-contracts{border-top:0"))
+        @Expect(HTML_REFERENCE_BROWSER_STYLE.contains(".throws-row{display:grid;grid-template-columns:fit-content(14rem)"))
+        @Expect(HTML_REFERENCE_BROWSER_STYLE.contains(".throws-row:last-child{border-bottom:0}"))
+        @Expect(HTML_REFERENCE_BROWSER_STYLE.contains(".throws-list + .behavior-contracts{border-top:0"))
         @Expect(HTML_RETURN_LAYOUT_STYLE.contains("@media(max-width:760px)"))
     }
 
