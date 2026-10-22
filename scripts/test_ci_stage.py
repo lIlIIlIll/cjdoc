@@ -404,8 +404,12 @@ class NonOverlappingChainTest(unittest.TestCase):
 class WallclockDocumentTest(unittest.TestCase):
     """`classify_wallclock` is the pure seam: the API payload is the only input."""
 
+    # The Actions API always reports `status`. It is `completed` here because these
+    # fixtures describe finished runs; a run that has not finished has no wall to
+    # publish and is covered by its own test.
     RUN = {
         "id": 7, "name": "CI", "head_sha": "a" * 40, "run_attempt": 1,
+        "status": "completed",
         "created_at": "2026-01-01T00:00:00Z",
         "run_started_at": "2026-01-01T00:00:00Z",
     }
@@ -630,6 +634,27 @@ class WallclockDocumentTest(unittest.TestCase):
             self.RUN, {"jobs": [self.job("build", 1, 3)]}, 1)
         self.assertEqual(document["wallSource"], "run")
 
+    def test_a_run_that_has_not_finished_is_measured_through_its_last_job(self) -> None:
+        """The collector measures a run it is itself part of, so the run is open.
+
+        `wallclock` is a job inside the run it classifies, so the API always reports
+        that run as `in_progress` and `updated_at` is a partly-flushed snapshot that
+        moves between two reads. Publishing it as `wall` claims a completion time the
+        run does not have and silently drops the collector's own tail. The span is a
+        lower bound: it covers completed jobs only, and `wallSource` says which.
+        """
+        running = dict(self.RUN, status="in_progress",
+                       updated_at="2026-01-01T00:00:05Z")
+        document = ci_stage.classify_wallclock(
+            running, {"jobs": [self.job("build", 1, 3), self.job("gate", 4, 9)]}, 1)
+        self.assertEqual(document["wallSource"], "terminal-job")
+        # 5 s would be the stale snapshot, and 9 s is the last completed job. The
+        # collector's own row is still open, so this is the last link it can see.
+        self.assertEqual(document["wallMs"], 9_000)
+        self.assertEqual(document["jobSpanMs"], 8_000)
+        # The 1 s before the first job is queueing, and the wall measures it.
+        self.assertEqual(document["wallMs"] - document["jobSpanMs"], 1_000)
+
     def test_a_run_with_no_jobs_still_produces_the_document(self) -> None:
         document = ci_stage.classify_wallclock(self.RUN, {"jobs": []}, 1)
         self.assertEqual(document["jobWallMs"], {})
@@ -647,7 +672,8 @@ class WallclockClocksTest(unittest.TestCase):
 
     def run_payload(self, **overrides: str) -> dict:
         payload = {"id": 9, "name": "Deploy showcase", "head_sha": "b" * 40,
-                   "run_attempt": 1, "created_at": "2026-01-01T00:00:00Z",
+                   "run_attempt": 1, "status": "completed",
+                   "created_at": "2026-01-01T00:00:00Z",
                    "run_started_at": "2026-01-01T00:00:10Z",
                    "updated_at": "2026-01-01T00:03:00Z"}
         payload.update(overrides)

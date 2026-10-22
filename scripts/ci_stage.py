@@ -658,7 +658,21 @@ def classify_wallclock(run: dict[str, object], jobs_payload: dict[str, object],
     # `updated_at` is also a run-level timestamp, so for an older attempt it ends
     # the latest attempt rather than this one. There the number is not a wall at
     # all, and `wallSource` says so instead of publishing an overstatement.
-    if attempt == latest_attempt:
+    #
+    # A run that has not finished has no wall yet. The collector job runs inside the
+    # run it measures, so it always sees itself `in_progress` and `updated_at` is
+    # whatever the API happened to have flushed -- the number moves between two reads
+    # of the same run and stops before the collector's own upload. Publishing it as
+    # `wall` would claim a completion time the run does not have. `wallSource` names
+    # the clock that was actually read so a reader is never handed the wrong one.
+    if run.get("status") != "completed":
+        # Measured through the last completed job, which is the terminal publisher --
+        # the last link this job actually needs. The collector cannot see its own end,
+        # so this is a lower bound and `wallSource` names the clock it is.
+        last_end = max((end for _name, _start, end in intervals), default=0)
+        wall_ms = last_end
+        wall_source = "terminal-job"
+    elif attempt == latest_attempt:
         wall_ms = _milliseconds(run_origin, run.get("updated_at"))
         wall_source = "run"
     else:

@@ -83,9 +83,17 @@ Three clocks are reported, because collapsing them hides the actual cost:
 
 * **wall** — `run_started_at` to `updated_at`, i.e. what a user waits for. Both
   are run-level and describe the latest attempt, so `wallSource` says which clock
-  the number is: `run` for the run-level span, and `attempt-jobs` when an older
+  the number is: `run` for the run-level span, `attempt-jobs` when an older
   attempt was classified — there the wall is that attempt's own first job start
-  to last job end, because the run-level end belongs to a different attempt.
+  to last job end, because the run-level end belongs to a different attempt — and
+  `terminal-job` when the run has not finished. The last case is not an edge: the
+  `wallclock` job runs inside the run it measures, so it always sees that run
+  `in_progress`, and `updated_at` is a partly-flushed snapshot that moves between
+  two reads of the same run. Publishing it as a wall would name a completion time
+  the run does not have, so the artifact uploaded by the job measures the run's
+  start to the end of its last completed job — the terminal publisher. All three
+  rows above were classified after their runs finished, so every one of them is
+  `run`.
   A re-run's job listing carries the previous attempt's unchanged records with
   their original timestamps. Those jobs did not run in this attempt, so they get
   the 0 ms a skipped job gets: they drop out of the chain instead of stretching
@@ -100,9 +108,13 @@ Three clocks are reported, because collapsing them hides the actual cost:
 
 `wall − job span` is the pre-start gap (queueing, runner acquisition) plus the
 tail after the last job ends. It is large on some Pages runs and negligible on
-CI, which is itself a finding. The identity needs `wallSource: run`: when it is
-`attempt-jobs` the wall *is* the span, so the difference is 0 by construction
-and says nothing about queueing — there `queuedMs` is the only queue figure.
+CI, which is itself a finding. The identity needs `wallSource: run`: under
+`attempt-jobs` the wall *is* the span, so the difference is 0 by construction and
+says nothing about queueing — there `queuedMs` is the only queue figure. Under
+`terminal-job` the difference is the pre-start gap only, and the wall is a lower
+bound: the collector's own row is still open, so the tail after the last completed
+job is outside it. A reader who needs the finished wall classifies the run after
+it completes, which is what every row here does.
 
 The document also describes the sequence the run actually executed:
 `nonOverlappingChain` carries `chain`, `wallMs`, `equalsLongestJob`, `longestJob`
