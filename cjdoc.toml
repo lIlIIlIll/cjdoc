@@ -2,6 +2,11 @@
 index = "README.md"
 
 [[docs.pages]]
+source = "docs/README.md"
+route = "concepts/manual/index"
+title = "文档索引 / Documentation index"
+
+[[docs.pages]]
 source = "docs/usage.md"
 route = "concepts/manual/usage"
 title = "使用说明 / Usage"

@@ -75,7 +75,7 @@ Windows 解压后把 `cjdoc.exe` 放到例如 `C:\Tools\cjdoc\cjdoc.exe`，然�
 
 如果只下载了裸可执行文件：Linux/macOS 先 `chmod +x` 并改名为 `cjdoc`，Windows 改名为 `cjdoc.exe`，然后同样放入 `PATH` 中的目录。
 
-发布页没有适合你平台的文件时，只能从源码构建（面向维护者）：见 [构建说明](docs/maintainer/build.md)。普通使用者优先使用发布资产。
+发布页没有适合你平台的文件时，只能从源码构建（面向维护者）：见 [构建说明](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/build.md)。普通使用者优先使用发布资产。
 
 ### 3. 确认安装
 
@@ -198,7 +198,7 @@ cjdoc generate --project . --format html --audience all
 
 ### 输出目录报所有权或冲突错误
 
-首次生成时不要预先创建 `target/doc`。重写一个已有目录前，cjdoc 会检查目录是不是它之前管理的；如果目录里有别的文件，换一个新输出目录，或者明确使用 `--force-owned` 接管。托管目录再次生成时可以直接复用。
+首次生成时不要预先创建 `target/doc`。cjdoc 只接受不存在的目录，或此前由它写入过所有权清单的目录；预创建或含无关文件的目录会报错，请换一个新输出目录。只有此前由 cjdoc 管理过的目录，才可以用 `--force-owned` 接受其中被修改的已登记产物。托管目录再次生成时可以直接复用。
 
 ## 当前边界
 

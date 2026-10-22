@@ -256,4 +256,4 @@ cjdoc generate --project . --format coverage --output target/quality-report
 - 把覆盖率、API 快照等接入 CI：[高级用法](advanced-usage.md)
 - 需要中英文两种语言时：[多语言文档](i18n.md)
 
-维护者内容（CI 编排、报告内部格式等）见 [`docs/maintainer/`](maintainer/README.md)。
+维护者内容（CI 编排、报告内部格式等）见 [`docs/maintainer/`](https://github.com/lIlIIlIll/cjdoc/tree/main/docs/maintainer)。

@@ -113,7 +113,7 @@ missing-translation = "warn"
 | 键 | 含义 | 取值 | 默认值 |
 |---|---|---|---|
 | `severity` | 未单独配置的规则的默认级别 | `off`、`warning` 或 `error` | `warning` |
-| 规则名（见下表） | 覆盖单条规则的级别 | `off`、`warning` 或 `error` | 跟随 `severity` |
+| 规则名（见下表） | 覆盖单条规则的级别 | `off`、`warning` 或 `error` | 跟随 `severity`（`example-not-compiling` 除外） |
 
 | 规则名 | 检查内容 |
 |---|---|
@@ -133,6 +133,8 @@ missing-translation = "warn"
 | `duplicate-return` | 写了多个 `@return` |
 | `duplicate-throws` | 同一异常写了多个 `@throws` |
 | `example-not-compiling` | 示例自身编译失败（`CJDOC3030`） |
+
+`example-not-compiling` 是例外：没有单独配置时它默认按 `error` 处理，不跟随 `[lint].severity`。需要放宽时，显式写 `example-not-compiling = "warning"` 或 `"off"`；其他规则仍按 `severity` 或各自的显式设置执行。
 
 ```toml
 [lint]
@@ -218,7 +220,7 @@ on-error = "warn"
 | `base-url` | 外部文档根地址 | `https://` 地址或以 `./` 开头的相对路径 | 无 |
 | `version` | 展示的文档版本 | 字符串 | 无 |
 
-`--doc-source` 的用法见 [高级用法](advanced-usage.md)，两种方式的完整规则见 [跨文档链接维护](maintainer/document-links.md)。
+`--doc-source` 的用法见 [高级用法](advanced-usage.md)，两种方式的完整规则见 [跨文档链接维护](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/document-links.md)。
 
 ```toml
 [external-docs.support]

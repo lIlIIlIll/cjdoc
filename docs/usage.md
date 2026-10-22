@@ -482,7 +482,7 @@ cjdoc render \
 - 不写 `--output` 时输出到当前目录下的 `target/doc`。
 - `--stdout` 规则和 `generate` 相同：只能配合恰好一个 JSON 类格式。
 - 还支持 `--locale`、`--all-languages`、`--doc-version`（要求 HTML）、`--agent-full`（要求 HTML）。
-- 输出目录必须不存在，或此前由 cjdoc 管理；目录里有其他内容时需要 `--force-owned` 接管，使用前请确认。
+- 输出目录必须不存在，或此前由 cjdoc 管理。只有后者能配合 `--force-owned` 接管被修改的已登记产物；预创建或含无关文件的目录不能用 `--force-owned` 接管，请换一个新目录。
 
 ## 本地预览
 
@@ -531,7 +531,7 @@ cjdoc generate --project /path/to/my-project --format html
 
 ### 输出目录报所有权或冲突错误
 
-不要预先创建 `target/doc`，也不要把含无关文件的目录直接交给 cjdoc。换一个新的输出目录；确实要接管已有目录时再加 `--force-owned`。由 cjdoc 管理过的目录可以直接重复使用。
+不要预先创建 `target/doc`，也不要把含无关文件的目录直接交给 cjdoc。换一个新的输出目录；只有此前由 cjdoc 管理过的目录，才能用 `--force-owned` 接受其中被修改的已登记产物。由 cjdoc 管理过的目录可以直接重复使用。
 
 ### 示例检查失败
 
@@ -573,7 +573,7 @@ cjdoc generate --project /path/to/my-project --format html
 | `--format <格式>` | `generate`、`render` | `json` | `json`、`markdown`、`html`、`api-surface`、`coverage`、`symbol-index`；可重复。 |
 | `--output <目录>` | `generate`、`render` | `target/doc`（`render` 为当前目录下） | 输出目录，与 `--stdout` 互斥。 |
 | `--stdout` | `generate`、`render` | 关闭 | 把单个 JSON 类产物写到标准输出。 |
-| `--force-owned` | `generate`、`render` | 关闭 | 接管已有输出目录或覆盖被修改的产物。 |
+| `--force-owned` | `generate`、`render` | 关闭 | 接管此前由 cjdoc 管理过的输出目录，并覆盖被修改的已登记产物。 |
 | `--audience <值>` | `generate` | `external` | `external`、`package` 或 `all`。 |
 | `--lint-profile <值>` | `generate`、`check` | `standard` | `off`、`standard` 或 `strict`。 |
 | `--jobs <1..64>` | `generate`、`check` | `1` | 并行解析源码文件的个数。 |
@@ -655,7 +655,7 @@ cjdoc generate --project /path/to/my-project --format html
 | `--base-path ID=PATH` | 版本 ID | 该版本在输出站点里的路径前缀。 |
 | `--release ID=URL` | 无 | 版本发布页地址。 |
 | `--diff ID=PATH` | 无 | 该版本对应的 API diff JSON 报告。 |
-| `--force-owned` | 关闭 | 接管已有输出目录。 |
+| `--force-owned` | 关闭 | 接管此前由 cjdoc 管理过的输出目录。 |
 
 多版本文档的完整做法见 [高级用法](advanced-usage.md)。
 

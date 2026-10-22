@@ -119,7 +119,7 @@ def publish_compatibility(repo: Path, site: Path, current: Path, result: dict) -
     links = ''.join('<li><a href="' + html.escape(path.name) + '">' + html.escape(path.name) + '</a></li>'
                     for path in sorted((site / "schemas").glob("*.json")))
     (site / "schemas/index.html").write_text('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Schema registry</title></head><body><a href="../index.html">Showcase</a><h1>Schema registry</h1><ul>' + links + '</ul></body></html>', encoding="utf-8")
-    for name in ("usage.md", "advanced-usage.md", "configuration.md", "guides.md",
+    for name in ("README.md", "usage.md", "advanced-usage.md", "configuration.md", "guides.md",
                  "documentation-quality.md", "i18n.md"):
         copy_file(repo / "docs" / name, site / "docs" / name)
 

@@ -16,11 +16,11 @@
 
 ## 维护者文档
 
-- [维护者文档入口](maintainer/README.md)：从源码构建、发布流程、内部结构与设计研究记录。这些内容假定你在维护 cjdoc 本身，普通使用者不需要阅读。
+- [维护者文档入口](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/README.md)：从源码构建、发布流程、内部结构与设计研究记录。这些内容假定你在维护 cjdoc 本身，普通使用者不需要阅读。
 
 ## 建议阅读顺序
 
 1. 第一次使用：根目录 [README](../README.md) → [使用手册](usage.md)。
 2. 需要配置项目或多格式输出：[配置参考](configuration.md)、[高级用法](advanced-usage.md)。
 3. 需要多语言或文档度量：[多语言文档](i18n.md)、[文档质量检查](documentation-quality.md)。
-4. 参与 cjdoc 开发：[维护者文档入口](maintainer/README.md)。
+4. 参与 cjdoc 开发：[维护者文档入口](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/README.md)。

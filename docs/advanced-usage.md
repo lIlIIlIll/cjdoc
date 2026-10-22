@@ -117,7 +117,7 @@ cjdoc generate --project . \
 - 首次使用某个目录时不要预先创建，让 cjdoc 自己创建。目录已存在但没有所有权清单时，命令会报错。
 - 再次生成时可以继续使用同一个目录。cjdoc 只替换自己登记过的文件；上次生成、这次不再产出的文件会被清理，目录里不属于 cjdoc 的文件不会被删除。
 - 如果 cjdoc 登记过的文件被手工改过，或新产物会覆盖目录里的未知内容，命令会拒绝写入。
-- `--force-owned` 用于你已经确认要采用该目录内容的场景：替换被修改的已登记文件、接管冲突的产物目录。它不能把一个从未由 cjdoc 管理过的目录直接变成输出根目录，也不会递归删除无关文件。
+- `--force-owned` 只用于此前由 cjdoc 管理、且你确认要采用其当前内容的目录：替换被修改的已登记文件、接管与新产物冲突的已登记路径。它不能把一个从未由 cjdoc 管理过的目录（包括预创建的空目录）直接变成输出根目录，也不会递归删除无关文件。
 
 ```bash
 cjdoc generate --project . \
@@ -236,7 +236,7 @@ cjdoc versions compose \
 | `--diff ID=FILE` | 关联该版本的 API diff 报告，见下文 |
 | `--latest ID` | 最新版本，默认是第一个 `--version` |
 | `--output <目录>` | 必填，组合结果输出目录 |
-| `--force-owned` | 接管已有输出目录 |
+| `--force-owned` | 接管此前由 cjdoc 管理过的输出目录（预创建或无关目录不能用它接管） |
 
 组合后的输出目录包含：
 
@@ -370,7 +370,7 @@ cjdoc generate --project . --format html \
 - `--cjc` 指定编译器，默认 `cjc`；`--chir-import-path` 可重复；`--chir-worker` 指向独立 worker 可执行文件。
 - 只有 `--semantic chir` 才接受这三个选项；`render` 不接受语义选项。
 - worker 未配置或 CHIR 处理失败时，cjdoc 保留源码结果并输出 warning（`CJDOC2101` 等），不会中断生成。
-- 如何构建 worker 见 [维护者构建说明](maintainer/build.md)。
+- 如何构建 worker 见 [维护者构建说明](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/build.md)。
 
 ### 使用外部高亮后端
 
@@ -384,7 +384,7 @@ cjdoc generate --project . --format html \
 
 - 两个选项必须成对出现，都要求绝对路径，且不能包含 shell 元字符；只用于 `generate` 和 `check`。
 - 适配器失败时保留纯文本并输出 warning（`CJDOC3120`）；`[highlight].on-error = "error"` 时改为 error（`CJDOC4027`）并使构建失败。
-- 没有适配器时不要传这组选项；适配器的实现与打包见 [维护者文档索引](maintainer/README.md)。
+- 没有适配器时不要传这组选项；适配器的实现与打包见 [维护者文档索引](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/README.md)。
 
 ## 能力边界
 
@@ -403,8 +403,8 @@ cjdoc generate --project . --format html \
 
 源码构建、发布流程、内部格式与 schema 维护、跨文档链接的完整规则等维护者内容不面向普通使用者：
 
-- [维护者文档索引](maintainer/README.md)
-- [构建与本地门禁](maintainer/build.md)
-- [内部格式与 schema 维护](maintainer/doc-ir.md)
-- [跨文档链接维护](maintainer/document-links.md)
-- [发布流程](maintainer/release-process.md)
+- [维护者文档索引](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/README.md)
+- [构建与本地门禁](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/build.md)
+- [内部格式与 schema 维护](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/doc-ir.md)
+- [跨文档链接维护](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/document-links.md)
+- [发布流程](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/release-process.md)
