@@ -63,6 +63,19 @@ def resolve_commit(repository: str, revision: str) -> str:
     return result.stdout.strip()
 
 
+def ensure_commit_present(repository: str, commit: str) -> None:
+    """Fetch `commit` when the checkout does not already contain it.
+
+    `workflow_run` checkouts of the default branch need not contain a branch
+    commit. Without the object, `merge-base --is-ancestor` fails for a reason
+    that has nothing to do with ancestry, which would turn a real refusal into
+    "cannot determine".
+    """
+    if _git(repository, "cat-file", "-e", f"{commit}^{{commit}}").returncode == 0:
+        return
+    _git(repository, "fetch", "--no-tags", "origin", commit)
+
+
 def ancestry(repository: str, commit: str, branch: str) -> bool:
     """Whether `commit` is already part of `branch`.
 

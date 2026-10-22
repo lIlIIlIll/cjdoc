@@ -1,0 +1,56 @@
+name: Audit release tags
+
+# `release.yml` refuses a tag that is not a release of `main`, but GitHub runs a
+# tag-triggered workflow from the *tagged* commit. A `v*` tag pushed onto a commit
+# older than that guard therefore executes the older `release.yml`, which has no
+# guard, and publishes anyway -- which is exactly the throwaway-tag incident in
+# issue #96, reopened for every pre-guard branch.
+#
+# `workflow_run` workflows are always taken from the default branch, so no tag can
+# select a revision that omits this one. It is the backstop: it removes what such
+# a tag published and fails loudly. It cannot prevent the publication itself,
+# because only the tag push grants that; repository tag rules are the preventive
+# control and are described in `docs/release-process.md`.
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Audit a published release tag
+    # Only a tag push can publish something to audit. A `completed` run of
+    # `Release` from any other event has nothing to remove.
+    if: ${{ github.event.workflow_run.event == 'push'
+      && startsWith(github.event.workflow_run.head_branch, 'v') }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Ancestry needs the full history of the release branch.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Remove a release whose tag is not on main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTHONDONTWRITEBYTECODE: "1"
+          TAG: ${{ github.event.workflow_run.head_branch }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          python scripts/audit_release_tag.py --tag "${TAG}" --commit "${COMMIT}"

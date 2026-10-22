@@ -43,6 +43,12 @@ jobs:
   # be deleted by hand. The check is reachability from `main` rather than the tag
   # spelling, because `-rc2` on `main` is a legitimate candidate and
   # `-rc-perf-check` on a branch is not.
+  #
+  # This job only protects commits that contain it: GitHub evaluates a tag-push
+  # workflow from the tagged commit, so a tag on an older commit runs the older
+  # `release.yml` and never reaches this guard. `release-audit.yml` is the
+  # backstop for that case, triggered by `workflow_run` so it is always read from
+  # the default branch; it removes what such a tag published.
   guard:
     name: Release tag guard
     runs-on: ubuntu-22.04
