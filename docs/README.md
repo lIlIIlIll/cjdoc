@@ -1,0 +1,26 @@
+# cjdoc 文档
+
+这里集中放 cjdoc 0.7.3 的文档。第一次使用请从仓库根目录的 [README](../README.md) 开始；已经能生成文档、想深入某个主题时，按下表选择。
+
+## 使用文档
+
+| 文档 | 内容 |
+|---|---|
+| [README](../README.md) | 安装、三步上手、常用任务和常见问题。 |
+| [使用手册](usage.md) | 完整的日常任务说明：注释写法、示例检查、生成各类产物、check、diff、render、serve、排错和命令速查。 |
+| [高级用法](advanced-usage.md) | 多格式组合、workspace 与依赖、缓存与并行、条件编译、多版本文档、面向 AI 代理的产物、自动化检查接入。 |
+| [配置参考](configuration.md) | `cjdoc.toml` 的完整配置键：lint、覆盖率阈值、代码高亮、多语言、概念页。 |
+| [概念页与指南](guides.md) | 把项目里的 Markdown 组织成文档页面，以及页面与 API 的绑定规则。 |
+| [多语言文档](i18n.md) | 作者提供中英文正文、翻译配对、缺译策略和翻译覆盖率。 |
+| [文档质量检查](documentation-quality.md) | 文档质量规则、覆盖率报告与 HTML 中的展示方式。 |
+
+## 维护者文档
+
+- [维护者文档入口](maintainer/README.md)：从源码构建、发布流程、内部结构与设计研究记录。这些内容假定你在维护 cjdoc 本身，普通使用者不需要阅读。
+
+## 建议阅读顺序
+
+1. 第一次使用：根目录 [README](../README.md) → [使用手册](usage.md)。
+2. 需要配置项目或多格式输出：[配置参考](configuration.md)、[高级用法](advanced-usage.md)。
+3. 需要多语言或文档度量：[多语言文档](i18n.md)、[文档质量检查](documentation-quality.md)。
+4. 参与 cjdoc 开发：[维护者文档入口](maintainer/README.md)。
