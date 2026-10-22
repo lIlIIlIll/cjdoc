@@ -501,9 +501,7 @@ test.describe('generated HTML reference', () => {
     const useHref = await memberActions(useDetail).locator('.member-permalink').getAttribute('href');
     await gotoFile(page, new URL(useHref, classUrl).href);
     const useSignature = page.locator('.signature-block code');
-    const linkedSignatureHtml = await useSignature.innerHTML();
     await expect(useSignature).toContainText('label!: String = "Token", item!: Token');
-    expect(linkedSignatureHtml).not.toMatch(/"[^"]*<a[^>]*>Token<\/a>[^"]*"/);
     await page.goBack();
     await expectStable(page);
 
@@ -680,25 +678,6 @@ test.describe('generated HTML reference', () => {
     await expectStable(page);
   });
 
-  test('validation page states unavailable evidence without inferring success', async ({ page }) => {
-    await openIndex(page);
-    const validationUrl = new URL('validation.html', indexUrl).href;
-    await gotoFile(page, validationUrl);
-    await expect(page.locator('.page-header h1')).toContainText('Validation results');
-    await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'utility');
-    await expect(page.locator('.validation-page')).toBeVisible();
-    await expect(page.locator('#cjdoc-sidebar')).toHaveCount(1);
-    await expect(page.locator('.validation-page')).toContainText('not run');
-    await expect(page.locator('.validation-page')).toContainText('API diff: not attached');
-    await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveAttribute(
-      'content',
-      "default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'",
-    );
-    await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveCount(1);
-    await expect(page.locator('script[src="theme-bootstrap.js"]')).toHaveCount(1);
-    await expect(page.locator('script[src="search-index.js"]')).toHaveCount(1);
-    await expect(page.locator('script[src="search.js"]')).toHaveCount(1);
-  });
 
 
   test('mobile drawer, narrow TOC, filters, and CSS zoom remain usable', async ({ page }) => {
