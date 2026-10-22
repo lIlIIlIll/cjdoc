@@ -44,6 +44,8 @@ HTML 和 Markdown 使用同一份生成结果。HTML 是静态站点，可以直
 
 HTML 和 Markdown 页面会为可唯一对应到预置目录的结构化标准库类型签名添加 API 链接，例如 `std.collection.ArrayList` 和 `std.core.String`。本地声明以及显式文档源的匹配优先；存在名称歧义、类型未收录或导航证据不足时不添加外链。
 
+其他 workspace 模块中未选入当前依赖上下文的同名类型、未选中的外部 inventory，以及泛型参数数量不匹配的声明，不阻止标准库后备链接。当前作用域内被 audience 排除的匹配目标仍保持 unavailable。
+
 默认文档目标为 STS 1.2.0。若 `--build-context` 中当前模块的 `std` dependency 提供无冲突且已观察的 `version`，生成器使用该版本；也可显式覆盖：
 
 ```bash
@@ -52,6 +54,8 @@ cjdoc generate --project . --format html --format markdown \
 ```
 
 版本值是安全的 URL 路径段，不是有限枚举。已知文档根目录包含 `1.0.5`、`1.1.0`、`1.1.0-beta.25`、`1.1.3` 和 `1.2.0`；其他版本需显式提供以 `/libs/std` 结尾的 HTTPS 文档根目录：
+
+自定义根目录使用与 Doc IR 导航相同的 URL 安全规则：不接受用户名/密码，端口必须在 `1..65535` 内，也不接受 query 或 fragment。`--stdlib-doc-version` 和 `--stdlib-doc-base-url` 只适用于 `generate`，其他命令会拒绝它们。
 
 ```bash
 cjdoc generate --project . --format html \

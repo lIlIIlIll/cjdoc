@@ -15,10 +15,10 @@ private let STANDARD_LIBRARY_HASH_MAP_110_URL =
     "https://docs.cangjie-lang.cn/docs/1.1.0-beta.25/libs/std/collection/collection_package_api/" +
     "collection_package_class.html#class-hashmapk-v-where-k--hashable--equatablek"
 
-private func standardLibraryLinkProject(root: Path, source: String): Unit {
+private func standardLibraryLinkProject(root: Path, source: String, name!: String = "stdlib_link_fixture"): Unit {
     Directory.create(root.join("src"), recursive: true)
     File.writeTo(root.join("cjpm.toml"),
-        "[package]\nname = \"stdlib_link_fixture\"\nversion = \"1.0.0\"\n".toArray())
+        ("[package]\nname = \"" + name + "\"\nversion = \"1.0.0\"\n").toArray())
     File.writeTo(root.join("src/api.cj"), source.toArray())
 }
 
@@ -195,5 +195,78 @@ class StandardLibraryDocsTest {
         @Expect(navigation.url,
             "https://cj-docs.gitcode.com/zh/1.1.3/libs/std/collection/collection_package_api/collection_package_class.html#class-arraylistt")
         @Expect(navigation.reason.contains("unvalidated"), true)
+    }
+
+    @TestCase
+    func unrelatedWorkspaceTypeDoesNotSuppressStandardLibraryLink(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            File.writeTo(temporary.join("cjpm.toml"),
+                "[workspace]\nmembers = [\"app\", \"unrelated\"]\n".toArray())
+            standardLibraryLinkProject(temporary.join("app"), """
+                package fixture
+                import std.collection.ArrayList
+                public func accept(values: ArrayList<String>): Unit {}
+                """, name: "app")
+            standardLibraryLinkProject(temporary.join("unrelated"), """
+                package fixture
+                public class ArrayList<T> {}
+                """, name: "unrelated")
+            let documentation = standardLibraryLinkGenerate(temporary)
+            let typeRef = standardLibraryLinkFunction(documentation, "accept").parameters[0].typeRef
+            @Expect(typeRef.navigation.getOrThrow().url, STANDARD_LIBRARY_ARRAY_LIST_URL)
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func unselectedExternalInventoryDoesNotSuppressStandardLibraryLink(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            let app = temporary.join("app")
+            let unrelated = temporary.join("unrelated")
+            standardLibraryLinkProject(app, """
+                package fixture
+                import std.collection.ArrayList
+                public func accept(values: ArrayList<String>): Unit {}
+                """)
+            standardLibraryLinkProject(unrelated, """
+                package fixture
+                public class ArrayList<T> {}
+                """, name: "fixture")
+            let inventory = standard_library_render.rendererFor("symbol-index")
+                .render(standardLibraryLinkGenerate(unrelated))[0].content
+            File.writeTo(app.join("inventory.json"), inventory.toArray())
+            File.writeTo(app.join("catalog.json"),
+                ("{\"schemaVersion\":\"cjdoc.doc-sources/1\",\"documents\":[" +
+                "{\"index\":\"inventory.json\",\"baseUrl\":\"https://docs.example.test/unrelated\"}]}").toArray())
+            let documentation = DocumentationEngine().generate(GenerationRequest(app.toString(),
+                lintProfile: "off", astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT,
+                documentSources: ["catalog.json"]))
+            let typeRef = standardLibraryLinkFunction(documentation, "accept").parameters[0].typeRef
+            @Expect(typeRef.navigation.getOrThrow().url, STANDARD_LIBRARY_ARRAY_LIST_URL)
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
+    }
+
+    @TestCase
+    func typeArityAndAudienceStillControlStandardLibraryFallback(): Unit {
+        let temporary = Directory.createTemp(getTempDirectory())
+        try {
+            for ((parameters, expectedUrl, expectedState) in [
+                ("T, U", STANDARD_LIBRARY_ARRAY_LIST_URL, "resolved"),
+                ("T", "", "unavailable")
+            ]) {
+                let project = temporary.join(expectedState)
+                standardLibraryLinkProject(project, """
+                    package fixture
+                    import std.collection.ArrayList
+                    private class ArrayList<${parameters}> {}
+                    public func accept(values: ArrayList<String>): Unit {}
+                    """)
+                let documentation = standardLibraryLinkGenerate(project)
+                let typeRef = standardLibraryLinkFunction(documentation, "accept").parameters[0].typeRef
+                @Expect(typeRef.navigation.getOrThrow().url, expectedUrl)
+                @Expect(typeRef.navigation.getOrThrow().state, expectedState)
+            }
+        } finally { let _ = removeIfExists(temporary, recursive: true) }
     }
 }

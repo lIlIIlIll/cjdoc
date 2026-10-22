@@ -242,32 +242,6 @@ internal class DependencyNavigationBinder {
         }
         names.toArray()
     }
-    private func hasLocalTypeCandidate(names: Array<String>): Bool {
-        for (name in names) {
-            if (let Some(candidates) <- local.get(name)) {
-                for (candidate in candidates) {
-                    if (candidate.kind == "class" || candidate.kind == "struct" ||
-                        candidate.kind == "enum" || candidate.kind == "interface" ||
-                        candidate.kind == "typeAlias") { return true }
-                }
-            }
-        }
-        false
-    }
-
-    private func hasExternalTypeCandidate(names: Array<String>): Bool {
-        for (name in names) {
-            if (let Some(candidates) <- external.get(name)) {
-                for ((_, entry) in candidates) {
-                    if (entry.kind == "class" || entry.kind == "struct" ||
-                        entry.kind == "enum" || entry.kind == "interface" ||
-                        entry.kind == "typeAlias") { return true }
-                }
-            }
-        }
-        false
-    }
-
     private func standardImportDisambiguatesCoreTarget(imports: Array<String>,
         implicitCoreName: String, docsVersion: String, baseUrlOverride: ?String): Bool {
         if (!isValidStandardLibraryDocsVersion(docsVersion)) { return false }
@@ -600,16 +574,12 @@ internal class DependencyNavigationBinder {
                     }
                 }
             }
-            let selected = resolve(owner.moduleId, owner.packageName, names.toArray(), typesOnly: true, sourceAmbiguity: sourceAmbiguity,
+            var navigation = resolve(owner.moduleId, owner.packageName, names.toArray(),
+                typesOnly: true, sourceAmbiguity: sourceAmbiguity && !standardImportAmbiguity,
                 genericArity: value.children.size)
-            var navigation = selected
-            let implicitConflictReason =
-                "source imports cannot exclude an implicit std.core conflict; qualify the type or use a canonical provider"
-            let mayUsePinnedDocs = selected.state == "unresolved" ||
-                (selected.state == "unavailable" && selected.reason == implicitConflictReason &&
-                    standardImportAmbiguity)
-            if (mayUsePinnedDocs && !hasLocalTypeCandidate(names.toArray()) &&
-                !hasExternalTypeCandidate(names.toArray())) {
+            // Only scoped resolution may suppress the fallback; unrelated inventory
+            // entries and declarations rejected by arity are not binding evidence.
+            if (navigation.state == "unresolved") {
                 if (let Some(version) <- docsVersion) {
                     if (let Some(pinned) <- standardLibraryTypeNavigation(version, names.toArray(),
                         baseUrlOverride: request.standardLibraryDocsBaseUrl)) {
