@@ -40,12 +40,12 @@ UI_TEXT = {
         "THEME": "主题：跟随系统", "COPY": "复制", "EYEBROW": "仓颉 · 原生 API 文档", "REPRODUCE": "复现 PocketKit 示例",
         "BUILD_LABEL": "构建来源", "PLAN_LABEL": "完整演示计划", "MANIFEST": "功能清单", "NAV_LABEL": "导航索引",
         "COVERAGE_LABEL": "覆盖率", "DIFF_LABEL": "API 变化", "NATIVE_CHECK_LABEL": "原生示例检查", "SCHEMAS": "数据结构定义",
-        "USAGE": "使用说明", "ADVANCED": "高级用法", "RELEASE": "发布流程", "LEGACY": "旧版演示入口"},
+        "USAGE": "使用说明", "ADVANCED": "高级用法", "CONFIG": "配置参考", "LEGACY": "旧版演示入口"},
     "en": {"HOME": "en.html", "SKIP": "Skip to content", "TAGLINE": "documentation in practice", "NAVIGATION": "Showcase navigation",
         "THEME": "Theme: System", "COPY": "Copy", "EYEBROW": "CANGJIE · NATIVE API DOCUMENTATION", "REPRODUCE": "Reproduce the PocketKit example",
         "BUILD_LABEL": "Build provenance", "PLAN_LABEL": "Full demonstration plan", "MANIFEST": "Feature manifest", "NAV_LABEL": "Navigation",
         "COVERAGE_LABEL": "Coverage", "DIFF_LABEL": "API diff", "NATIVE_CHECK_LABEL": "Native example checks", "SCHEMAS": "Schemas",
-        "USAGE": "Usage", "ADVANCED": "Advanced usage", "RELEASE": "Release process", "LEGACY": "Legacy demo entry"},
+        "USAGE": "Usage", "ADVANCED": "Advanced usage", "CONFIG": "Configuration reference", "LEGACY": "Legacy demo entry"},
 }
 
 
@@ -115,20 +115,21 @@ def publish(repo: Path, site: Path, manifest: dict, metadata: dict) -> None:
             content = content.replace('__' + key + '__', html.escape(value, quote=True))
         content = content.replace('<!-- SHOWCASE_FEATURES -->', cards(manifest, locale))
         content = content.replace('<!-- SHOWCASE_COVERAGE -->', coverage(manifest, locale))
-        content = content.replace('<!-- SHOWCASE_GET_STARTED -->', getting_started(locale, metadata["source"]["repository"]))
+        content = content.replace('<!-- SHOWCASE_GET_STARTED -->', getting_started(locale, metadata["source"]["repository"], manifest["revision"]))
         (site / filename).write_text(content, encoding="utf-8")
 
 
-def getting_started(locale: str, repository: str) -> str:
+def getting_started(locale: str, repository: str, revision: str) -> str:
     zh = locale == "zh-CN"
     title = "给自己的项目生成文档" if zh else "Document your own project"
-    intro = ("先安装仓颉 SDK，再从发布页选择实际提供的平台文件，改名为 cjdoc（Windows 为 cjdoc.exe）并加入 PATH。若没有适合的平台文件，按源码构建说明安装。"
-             if zh else "Install the Cangjie SDK, then choose an available platform file from Releases. Rename it to cjdoc (cjdoc.exe on Windows) and add it to PATH. If no matching file is available, follow the source build instructions.")
+    intro = ("先安装仓颉 SDK（cjdoc 运行需要 SDK 运行时），再从发布页选择实际提供的平台文件，改名为 cjdoc（Windows 为 cjdoc.exe）并加入 PATH。若没有适合的平台文件，按源码构建说明安装。"
+             if zh else "Install the Cangjie SDK first (cjdoc needs its runtime), then choose an available platform file from Releases. Rename it to cjdoc (cjdoc.exe on Windows) and add it to PATH. If no matching file is available, follow the source build instructions.")
     links = ("下载安装包", "源码构建说明", "完整使用说明") if zh else ("Download a release", "Build from source", "Full usage guide")
+    build_url = html.escape(repository, quote=True) + '/blob/' + html.escape(revision, quote=True) + '/docs/maintainer/build.md'
     command = 'cjdoc --version\ncjdoc generate --project /path/to/your-project --format html'
     note = ("项目根目录需要 cjpm.toml 与 src/。为公开 API 添加 /** ... */ 注释，再运行上面的命令。打开项目下的 target/doc/html/index.html 即可阅读；不需要启动服务器。"
             if zh else "Your project root needs cjpm.toml and src/. Add /** ... */ comments to public APIs and run the commands above. Open target/doc/html/index.html in that project; no server is required.")
-    return f'<section class="quickstart own-project" id="get-started" aria-labelledby="own-project-title"><div><h2 id="own-project-title">{title}</h2><p>{intro}</p><p><a href="{html.escape(repository, quote=True)}/releases">{links[0]}</a> · <a href="api/concepts/manual/advanced-usage.html">{links[1]}</a> · <a href="api/concepts/manual/usage.html">{links[2]}</a></p></div><div><pre><code id="own-project-command">{html.escape(command)}</code></pre><button type="button" data-showcase-copy="own-project-command">{"复制" if zh else "Copy"}</button><p>{note}</p></div></section>'
+    return f'<section class="quickstart own-project" id="get-started" aria-labelledby="own-project-title"><div><h2 id="own-project-title">{title}</h2><p>{intro}</p><p><a href="{html.escape(repository, quote=True)}/releases">{links[0]}</a> · <a href="{build_url}">{links[1]}</a> · <a href="api/concepts/manual/usage.html">{links[2]}</a></p></div><div><pre><code id="own-project-command">{html.escape(command)}</code></pre><button type="button" data-showcase-copy="own-project-command">{"复制" if zh else "Copy"}</button><p>{note}</p></div></section>'
 
 
 def coverage(manifest: dict, locale: str) -> str:

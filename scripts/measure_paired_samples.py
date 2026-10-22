@@ -916,7 +916,7 @@ def report(samples: list[dict], workflow: str, out: Path,
                           if s.get("hasEvidence") and s["state"] == "mixed")
         if not mixed_state:
             # No job recorded a split condition, so keep the exact sentence the
-            # checked-in capture `docs/paired-samples-main.md` was generated with: that
+            # checked-in capture `docs/maintainer/paired-samples-main.md` was generated with: that
             # file is reporter output, and rewording it here would make the committed
             # capture unreproducible from the code that claims to have produced it.
             parts = [f"{len(unclassified)} successful job(s) carry no cache state and "

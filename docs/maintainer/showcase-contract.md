@@ -33,7 +33,7 @@ manifest 也可通过 `--previous` 做跨发布回归检查。更新范围基线
 ## 构建与本地复现
 
 准备仓库要求的 Cangjie 1.2.0 和匹配 stdx sidecar，严格按
-[Pages workflow](../.github/workflows/pages.yml) 的固定工具链步骤构建 cjdoc。
+[Pages workflow](../../.github/workflows/pages.yml) 的固定工具链步骤构建 cjdoc。
 当前 SDK 1.2.0 的 `llc` 在默认优化级别处理 markdown/yjson 时会崩溃，因此该工作流的
 “Build cjdoc”步骤临时将唯一的空 `override-compile-option` 改为 `-O1`，构建后通过
 `finally` 恢复原始清单。复现时沿用该完整步骤，不直接运行省略此处理的默认构建命令。
