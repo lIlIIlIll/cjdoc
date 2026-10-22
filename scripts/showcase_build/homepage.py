@@ -126,10 +126,11 @@ def getting_started(locale: str, repository: str, revision: str) -> str:
              if zh else "Install the Cangjie SDK first (cjdoc needs its runtime), then choose an available platform file from Releases. Rename it to cjdoc (cjdoc.exe on Windows) and add it to PATH. If no matching file is available, follow the source build instructions.")
     links = ("下载安装包", "源码构建说明", "完整使用说明") if zh else ("Download a release", "Build from source", "Full usage guide")
     build_url = html.escape(repository, quote=True) + '/blob/' + html.escape(revision, quote=True) + '/docs/maintainer/build.md'
+    usage_url = html.escape(repository, quote=True) + '/blob/' + html.escape(revision, quote=True) + '/docs/usage.md'
     command = 'cjdoc --version\ncjdoc generate --project /path/to/your-project --format html'
     note = ("项目根目录需要 cjpm.toml 与 src/。为公开 API 添加 /** ... */ 注释，再运行上面的命令。打开项目下的 target/doc/html/index.html 即可阅读；不需要启动服务器。"
             if zh else "Your project root needs cjpm.toml and src/. Add /** ... */ comments to public APIs and run the commands above. Open target/doc/html/index.html in that project; no server is required.")
-    return f'<section class="quickstart own-project" id="get-started" aria-labelledby="own-project-title"><div><h2 id="own-project-title">{title}</h2><p>{intro}</p><p><a href="{html.escape(repository, quote=True)}/releases">{links[0]}</a> · <a href="{build_url}">{links[1]}</a> · <a href="api/concepts/manual/usage.html">{links[2]}</a></p></div><div><pre><code id="own-project-command">{html.escape(command)}</code></pre><button type="button" data-showcase-copy="own-project-command">{"复制" if zh else "Copy"}</button><p>{note}</p></div></section>'
+    return f'<section class="quickstart own-project" id="get-started" aria-labelledby="own-project-title"><div><h2 id="own-project-title">{title}</h2><p>{intro}</p><p><a href="{html.escape(repository, quote=True)}/releases">{links[0]}</a> · <a href="{build_url}">{links[1]}</a> · <a href="{usage_url}">{links[2]}</a></p></div><div><pre><code id="own-project-command">{html.escape(command)}</code></pre><button type="button" data-showcase-copy="own-project-command">{"复制" if zh else "Copy"}</button><p>{note}</p></div></section>'
 
 
 def coverage(manifest: dict, locale: str) -> str:

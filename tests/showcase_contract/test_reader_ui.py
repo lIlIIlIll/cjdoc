@@ -214,9 +214,9 @@ location.hash="#coverage";handlers.hashchange();if(attrs.href!=="../demo-v1/repo
         content = getting_started("zh-CN", "https://github.com/o/r", "abc123")
         self.assertIn('https://github.com/o/r/releases', content)
         self.assertIn('https://github.com/o/r/blob/abc123/docs/maintainer/build.md', content)
+        self.assertIn('https://github.com/o/r/blob/abc123/docs/usage.md', content)
         self.assertIn('cjdoc generate --project /path/to/your-project --format html', content)
         self.assertIn('target/doc/html/index.html', content)
-        self.assertIn('api/concepts/manual/usage.html', content)
 
     @unittest.skipUnless(shutil.which("node"), "Node is required for publication JavaScript runtime checks")
     def test_language_href_tracks_hash_before_activation_and_clears_stale_hash(self) -> None:
