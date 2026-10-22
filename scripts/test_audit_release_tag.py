@@ -1,18 +1,16 @@
-"""A tag that predates the release guard must still not keep its release.
+"""A default-branch audit detects tags that predate the release guard.
 
-Issue #96 fixed the publication path by refusing a tag that is not a release of
-`main`, but GitHub evaluates a tag-triggered workflow from the tagged commit. A
-`v*` tag on an older commit runs the older `release.yml`, which has no guard, so
-the fix alone leaves the original incident reachable. `release-audit.yml` is
-triggered by `workflow_run`, always read from the default branch, and removes
-what such a tag published.
+GitHub evaluates tag-triggered workflows from the tagged commit. A `v*` tag on
+an older commit therefore runs the old `release.yml` without the guard.
+`release-audit.yml` is triggered by `workflow_run` from the default branch and
+reports off-main publications for manual cleanup. It is read-only because no
+GitHub API operation atomically binds release deletion and tag deletion to the
+commit that was audited.
 
-Three outcomes, and the difference between the last two is the point:
-
-* the commit is on `main` -- nothing is deleted;
-* it is not -- the release is deleted and the job fails;
-* git cannot answer -- the job fails and **nothing is deleted**. A wrong deletion
-  is a second incident, so uncertainty must never be read as refusal.
+* the event commit is on `main` -- the run succeeds;
+* it is off `main` and the release/live tag match -- the run fails and requests
+  manual cleanup without changing either;
+* history or API state is uncertain -- the run fails without changing either.
 """
 
 from __future__ import annotations
@@ -69,58 +67,117 @@ class AuditTest(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.repository = Repository(Path(self.temporary.name))
 
-    def run_audit(self, tag: str, commit: str, *, exists: bool = True,
-                  container_on_main: bool = True) -> tuple[int, list[tuple[str, str]]]:
-        deleted: list[tuple[str, str]] = []
-
-        def remove(slug: str, name: str) -> None:
-            deleted.append((slug, name))
-
-        code = audit.audit(str(self.repository.root), tag, commit, "owner/repo",
-                           remove=remove, exists=lambda slug, name: exists)
-        return code, deleted
+    def run_audit(self, tag: str, commit: str, *, exists=True
+                  ) -> tuple[int, mock.Mock]:
+        lookup = exists if callable(exists) else lambda _slug, _tag: exists
+        with mock.patch.object(audit, "verify_live_tag") as verify:
+            code = audit.audit(str(self.repository.root), tag, commit, "owner/repo",
+                               exists=lookup)
+        return code, verify
 
     def test_a_release_of_main_is_left_alone(self) -> None:
-        code, deleted = self.run_audit("v0.7.4", self.repository.main_commit)
+        code, verify = self.run_audit("v0.7.4", self.repository.main_commit)
         self.assertEqual(code, audit.ALLOWED)
-        self.assertEqual(deleted, [])
+        verify.assert_called_once_with("owner/repo", "v0.7.4", self.repository.main_commit)
 
-    def test_a_tag_off_main_is_deleted(self) -> None:
-        code, deleted = self.run_audit("v0.7.2-rc2", self.repository.branch_commit)
-        self.assertEqual(code, audit.REMOVED)
-        self.assertEqual(deleted, [("owner/repo", "v0.7.2-rc2")])
+    def test_an_off_main_release_requests_manual_cleanup(self) -> None:
+        code, verify = self.run_audit("v0.7.2-rc2", self.repository.branch_commit)
+        self.assertEqual(code, audit.REFUSED)
+        verify.assert_called_once_with("owner/repo", "v0.7.2-rc2",
+                                       self.repository.branch_commit)
 
-    def test_a_tag_that_published_nothing_still_fails(self) -> None:
-        code, deleted = self.run_audit("v0.7.2-rc2", self.repository.branch_commit,
-                                       exists=False)
-        self.assertEqual(code, audit.REMOVED)
-        self.assertEqual(deleted, [])
+    def test_an_off_main_tag_without_a_release_fails(self) -> None:
+        code, verify = self.run_audit("v0.7.2-rc2", self.repository.branch_commit,
+                                      exists=lambda slug, name: False)
+        self.assertEqual(code, audit.REFUSED)
+        verify.assert_called_once_with("owner/repo", "v0.7.2-rc2",
+                                       self.repository.branch_commit)
 
-    def test_an_unreadable_history_deletes_nothing(self) -> None:
-        """Uncertainty must alarm, never destroy."""
-        deleted: list[tuple[str, str]] = []
-        with mock.patch.object(audit, "ancestry",
-                               side_effect=guard.TagNotAllowed("cannot run git")):
-            code = audit.audit(str(self.repository.root), "v0.7.2-rc2",
-                               self.repository.branch_commit, "owner/repo",
-                               remove=lambda slug, name: deleted.append((slug, name)),
-                               exists=lambda slug, name: True)
+    def test_an_unreadable_history_is_undetermined(self) -> None:
+        exists = mock.Mock(return_value=True)
+        with mock.patch.object(audit, "verify_live_tag"):
+            with mock.patch.object(audit, "ancestry",
+                                   side_effect=guard.TagNotAllowed("cannot run git")):
+                code = audit.audit(str(self.repository.root), "v0.7.2-rc2",
+                                   self.repository.branch_commit, "owner/repo",
+                                   exists=exists)
         self.assertEqual(code, audit.UNDETERMINED)
-        self.assertEqual(deleted, [])
+        exists.assert_not_called()
 
-    def test_a_failed_deletion_is_not_reported_as_removed(self) -> None:
-        def failing(slug: str, name: str) -> None:
-            raise guard.TagNotAllowed("cannot delete release")
+    def test_a_release_api_failure_is_undetermined(self) -> None:
+        exists = mock.Mock(side_effect=guard.TagNotAllowed("rate limited"))
+        with mock.patch.object(audit, "verify_live_tag") as verify:
+            code = audit.audit(str(self.repository.root), "v0.7.2-rc2",
+                               self.repository.branch_commit, "owner/repo", exists=exists)
+        self.assertEqual(code, audit.UNDETERMINED)
+        verify.assert_called_once_with("owner/repo", "v0.7.2-rc2",
+                                       self.repository.branch_commit)
 
-        code = audit.audit(str(self.repository.root), "v0.7.2-rc2",
-                           self.repository.branch_commit, "owner/repo",
-                           remove=failing, exists=lambda slug, name: True)
+    def test_a_moved_live_tag_is_undetermined(self) -> None:
+        with mock.patch.object(audit, "verify_live_tag",
+                               side_effect=guard.TagNotAllowed("remote tag moved")):
+            code = audit.audit(
+                str(self.repository.root), "v0.7.2-rc2", self.repository.branch_commit,
+                "owner/repo", exists=lambda slug, name: True)
+        self.assertEqual(code, audit.UNDETERMINED)
+
+    def test_a_main_tag_moved_after_release_is_undetermined(self) -> None:
+        with mock.patch.object(audit, "verify_live_tag",
+                               side_effect=guard.TagNotAllowed("remote tag moved")):
+            code = audit.audit(str(self.repository.root), "v0.7.4",
+                               self.repository.main_commit, "owner/repo")
         self.assertEqual(code, audit.UNDETERMINED)
 
     def test_a_tag_outside_the_release_namespace_is_ignored(self) -> None:
-        code, deleted = self.run_audit("not-a-release", self.repository.branch_commit)
+        code, verify = self.run_audit("not-a-release", self.repository.branch_commit)
         self.assertEqual(code, audit.ALLOWED)
-        self.assertEqual(deleted, [])
+        verify.assert_not_called()
+
+
+
+
+class ReleaseLookupTest(unittest.TestCase):
+    def test_lookup_requests_the_release_endpoint_with_status(self) -> None:
+        calls: list[list[str]] = []
+
+        def request(arguments, **_kwargs):
+            calls.append(arguments)
+            return subprocess.CompletedProcess(arguments, 1, "HTTP/2.0 404 Not Found\n", "")
+
+        self.assertFalse(audit.release_exists("owner/repo", "v0.7.2-rc2", run=request))
+        self.assertEqual(calls, [[
+            "gh", "api", "--include", "repos/owner/repo/releases/tags/v0.7.2-rc2"]])
+
+    def test_only_a_404_means_missing(self) -> None:
+        missing = subprocess.CompletedProcess([], 1, "HTTP/2.0 404 Not Found\n", "not found")
+        self.assertFalse(audit.release_exists("owner/repo", "v0.7.2-rc2",
+                                              run=lambda *_args, **_kwargs: missing))
+
+    def test_a_successful_lookup_means_present(self) -> None:
+        found = subprocess.CompletedProcess([], 0, "HTTP/2.0 200 OK\n{}", "")
+        self.assertTrue(audit.release_exists("owner/repo", "v0.7.2-rc2",
+                                             run=lambda *_args, **_kwargs: found))
+
+    def test_rate_limit_is_not_misreported_as_absence(self) -> None:
+        limited = subprocess.CompletedProcess([], 1, "HTTP/2.0 403 Forbidden\n", "rate limited")
+        with self.assertRaises(guard.TagNotAllowed):
+            audit.release_exists("owner/repo", "v0.7.2-rc2",
+                                 run=lambda *_args, **_kwargs: limited)
+
+    def test_transport_failure_is_not_misreported_as_absence(self) -> None:
+        unavailable = subprocess.CompletedProcess([], 1, "", "connection refused")
+        with self.assertRaises(guard.TagNotAllowed):
+            audit.release_exists("owner/repo", "v0.7.2-rc2",
+                                 run=lambda *_args, **_kwargs: unavailable)
+
+    def test_subprocess_errors_are_refusals(self) -> None:
+        def timeout(*_args, **_kwargs):
+            raise subprocess.TimeoutExpired("gh api", 120)
+
+        with self.assertRaises(guard.TagNotAllowed):
+            audit.release_exists("owner/repo", "v0.7.2-rc2", run=timeout)
+
+
 
 
 class WorkflowTest(unittest.TestCase):
@@ -148,6 +205,11 @@ class WorkflowTest(unittest.TestCase):
 
     def test_it_checks_out_full_history_for_ancestry(self) -> None:
         self.assertIn("fetch-depth: 0", self.text)
+
+    def test_it_has_read_only_permissions(self) -> None:
+        self.assertIn("permissions:\n  contents: read", self.text)
+        self.assertNotIn("contents: write", self.text)
+        self.assertNotIn("actions: write", self.text)
 
     def test_it_runs_the_audit_against_the_trigger_identity(self) -> None:
         self.assertIn("python scripts/audit_release_tag.py", self.text)

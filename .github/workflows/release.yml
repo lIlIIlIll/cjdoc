@@ -47,8 +47,8 @@ jobs:
   # This job only protects commits that contain it: GitHub evaluates a tag-push
   # workflow from the tagged commit, so a tag on an older commit runs the older
   # `release.yml` and never reaches this guard. `release-audit.yml` is the
-  # backstop for that case, triggered by `workflow_run` so it is always read from
-  # the default branch; it removes what such a tag published.
+  # read-only backstop for that case, triggered by `workflow_run` from the default
+  # branch; it reports the off-main release and asks for manual cleanup.
   guard:
     name: Release tag guard
     runs-on: ubuntu-22.04
