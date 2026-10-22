@@ -34,7 +34,7 @@ import threading
 import time
 
 STAGE_SCHEMA = "cjdoc.ci-stage/1"
-WALLCLOCK_SCHEMA = "cjdoc.ci-wallclock/1"
+WALLCLOCK_SCHEMA = "cjdoc.ci-wallclock/2"
 BUILD_MANIFEST_SCHEMA = "cjdoc.ci-build-manifest/1"
 STAGE_KINDS = frozenset({
     "build", "native", "python", "cli", "provider", "smoke", "site-assemble",
@@ -522,15 +522,23 @@ def _milliseconds(start: str | None, end: str | None) -> int:
     return max(0, round((parse(end) - parse(start)).total_seconds() * 1000))
 
 
-def critical_path(intervals: list[tuple[str, int, int]]) -> dict[str, object]:
-    """The longest chain of jobs that ran one after another.
+def non_overlapping_chain(intervals: list[tuple[str, int, int]]) -> dict[str, object]:
+    """The longest chain of jobs that did not overlap in time.
 
-    Derived only from observed start/end times: the Jobs API reports no
-    dependency graph, so a chain is claimed only where the next job actually
-    began after the previous one ended. That makes the result a lower bound on
-    the true critical path rather than an inference about which `needs` edge was
-    responsible -- and it is reported with `equalsLongestJob`, so a reader cannot
-    mistake "the longest job" for "the measured chain".
+    Derived only from observed start/end times, because the Jobs API reports no
+    dependency graph. A job extends the chain when it started no earlier than the
+    previous one ended.
+
+    This is NOT the dependency critical path, and the field names say `chain`
+    rather than `criticalPath` for that reason. Two independent jobs -- `pages.yml`'s
+    source reproduction and its browser shards are siblings that each need only
+    `assemble-site` -- can be serialized by runner availability, and a chain built
+    from timestamps alone would then join them and exceed the real dependency path.
+    The number is what actually happened, which is the question this document asks,
+    but it is not an attribution of the wall clock to a `needs` edge.
+
+    `equalsLongestJob` reports the flat case, so a reader cannot mistake "the
+    longest job" for a measured chain.
 
     `intervals` is `(name, startMs, endMs)` with times relative to one origin.
     """
@@ -686,7 +694,7 @@ def classify_wallclock(run: dict[str, object], jobs_payload: dict[str, object],
         "jobMinutes": round(sum(job_wall.values()) / 60_000, 1),
         "jobWallMs": job_wall,
         "stepWallMs": step_wall,
-        "criticalPath": critical_path(intervals),
+        "nonOverlappingChain": non_overlapping_chain(intervals),
         "manualRerunGapMs": rerun_gaps,
         "partialRerun": partial,
     }

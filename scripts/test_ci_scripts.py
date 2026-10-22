@@ -21,6 +21,7 @@ import ci_diagnostics
 import ci_stage
 import measure_paired_samples as paired
 import ci_required
+from test_ci_wallclock_wiring import function_block as _job_block
 
 
 class ChangesRoutingTest(unittest.TestCase):
@@ -552,12 +553,81 @@ class PairedSampleTests(unittest.TestCase):
              "environment": ({} if cache is None else {"cache": cache})}]}
         (directory / "stages.json").write_text(json.dumps(document), encoding="utf-8")
 
+    def test_every_cost_bearing_cache_a_job_restores_is_recorded(self) -> None:
+        """A job that restores several caches must report all the ones that cost time.
+
+        The Pages browser shards restore the CJK fonts AND the Playwright browser
+        build, and either miss lengthens the job. Recording only the fonts labelled a
+        shard that had to download Chromium as warm, which pools it with a genuinely
+        warm sample and could satisfy DONE-03's warm requirement on a false pairing.
+
+        Nothing is exempt. `pip` is restored by setup-python, which is not an
+        `actions/cache` step, so it never appears among the restored ids; an exemption
+        set would therefore be inert today and would silently tolerate a future
+        `actions/cache` restore added without a recorded key. Comparing every restore
+        against every recorded key makes that addition fail loudly instead.
+        """
+        text = (Path(__file__).resolve().parent.parent
+                / ".github/workflows/pages.yml").read_text(encoding="utf-8")
+        block = _job_block(text, "browser-shard")
+        restored = {match.removesuffix("-cache")
+                    for match in re.findall(r"^\s+id: (\w+-cache)$", block, re.MULTILINE)}
+        self.assertIn("playwright", restored)
+        self.assertIn("font", restored)
+        recorded = set()
+        for value in re.findall(r"CJDOC_CACHE_STATE=([^\"\n]*)", block):
+            recorded |= {part.split("=")[0].strip() for part in value.split(",") if "=" in part}
+        # The step id (`font-cache`) and the recorded label (`fonts`) need not be
+        # spelled alike, so compare them singularised.
+        normalize = lambda name: name.rstrip("s")
+        self.assertEqual({normalize(name) for name in restored},
+                         {normalize(name) for name in recorded},
+                         f"restores {sorted(restored)} but records {sorted(recorded)}")
+        self.assertEqual(recorded, {"fonts", "playwright"},
+                         f"recorded cache keys changed: {sorted(recorded)}")
+        # Comparing the sets alone cannot tell which step feeds which key: recording
+        # `playwright=${{ steps.font-cache.outputs.cache-hit ... }}` keeps both key
+        # names present and labels every shard warm. Bind each key to its own step.
+        bindings = dict(re.findall(
+            r"(\w+)=\$\{\{ steps\.([\w-]+)\.outputs\.cache-hit", block))
+        self.assertEqual(bindings,
+                         {"fonts": "font-cache", "playwright": "playwright-cache"},
+                         f"each recorded key must come from its own restore step: {bindings}")
+
     def test_the_cache_state_comes_from_the_job_artifact(self) -> None:
         self.write_artifact("ci-timing-ci-linux-x64-1-1", {"cjv": "hit"})
         self.write_artifact("ci-timing-ci-windows-x64-1-1", {"cjv": "miss"})
         states = paired.job_cache_states(self.root)
         self.assertEqual(states["ci-timing-ci-linux-x64-1-1"], "hit")
         self.assertEqual(states["ci-timing-ci-windows-x64-1-1"], "miss")
+
+    def write_shard_artifact(self, name: str, cache: dict) -> None:
+        directory = self.root / name
+        directory.mkdir(parents=True)
+        document = {"schemaVersion": "cjdoc.ci-stage/1", "stages": [
+            {"stageId": "browser", "kind": "browser-shard", "wallMs": 1.0,
+             "environment": {"cache": cache}}]}
+        (directory / "stages.json").write_text(json.dumps(document), encoding="utf-8")
+
+    def test_a_shard_that_recorded_one_of_its_two_caches_is_not_called_warm(self) -> None:
+        """A predating shard records `fonts` only; it must not fill the warm cell.
+
+        The Playwright browser cache was added to this shard after the first Pages
+        runs, and artifacts from those runs are retained for days. Their single key
+        collapsed to a bare `hit`, so a shard that downloaded Chromium was pooled with
+        a genuinely warm one -- exactly the false pairing the second key prevents.
+        `unknown` is the honest label: `mixed` would claim a split that was never
+        measured, and `hit` would claim a warmth the artifact does not support.
+        """
+        self.write_shard_artifact("shard-0-partial", {"fonts": "hit"})
+        self.write_shard_artifact("shard-1-complete",
+                                  {"fonts": "hit", "playwright": "hit"})
+        self.write_shard_artifact("shard-2-split",
+                                  {"fonts": "hit", "playwright": "miss"})
+        states = paired.job_cache_states(self.root)
+        self.assertEqual(states["shard-0-partial"], "unknown")
+        self.assertEqual(states["shard-1-complete"], "hit")
+        self.assertEqual(states["shard-2-split"], "mixed")
 
     def test_a_job_name_matches_its_own_artifact_toolchain_words_included(self) -> None:
         states = {"ci-timing-ci-linux-x64-1-1": "hit",
@@ -655,6 +725,51 @@ class PairedSampleTests(unittest.TestCase):
         text = out.read_text(encoding="utf-8")
         self.assertNotIn("**ci required**", text)
         self.assertNotIn("ci required / **hit**", text)
+
+    def test_a_job_with_one_cache_hit_and_one_miss_is_not_called_unrecorded(self) -> None:
+        """`mixed` is a recorded condition, and the report must not describe it as absent.
+
+        A Pages browser shard now records both the font and the Playwright caches, so a
+        run where one hit and the other missed is a real outcome, not a gap in the
+        evidence. Calling it "carry no cache state" would blame the artifact for a
+        condition it recorded correctly, and would hide the sample shape that most
+        needs a warning: it is excluded from both cells, so DONE-03 can never count it.
+        """
+        def sample(state):
+            return {"run": 1, "attempt": 1, "revision": "e" * 40, "event": "push",
+                    "job": "Browser shard 0", "shape": "browser shard 0",
+                    "conclusion": "success", "state": state, "jobMinutes": 4.0,
+                    "runWallMinutes": 6.0, "runRunnerMinutes": 12.0, "hasEvidence": True}
+        # A job with NO stage evidence is `unknown` too, and must be named by its own
+        # sentence rather than swept into the mixed branch's arithmetic.
+        witness = dict(sample("unknown"), job="Assemble final site",
+                       shape="assemble-site", hasEvidence=False)
+        out = self.root / "mixed.md"
+        paired.report([sample("hit") for _ in range(5)] + [sample("mixed"), witness],
+                      "pages.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("restored caches in different states", text)
+        self.assertIn("1 job(s) (browser shard 0) restored caches in different states", text)
+        self.assertNotIn("carry no cache state", text)
+        self.assertIn("2 successful job(s) are excluded from the cells", text)
+        self.assertIn("assemble-site record no stage evidence", text)
+
+    def test_an_unknown_cache_state_is_still_described_as_unrecorded(self) -> None:
+        """The complement: a genuinely missing state keeps the older wording.
+
+        Both branches share one paragraph, so pinning only the `mixed` case would let a
+        rewrite collapse them and silently delete the sentence that tells a reader a
+        cache-bearing job was excluded because nothing was recorded.
+        """
+        blank = {"run": 1, "attempt": 1, "revision": "f" * 40, "event": "push",
+                 "job": "Assemble final site", "shape": "assemble-site",
+                 "conclusion": "success", "state": "unknown", "jobMinutes": 4.0,
+                 "runWallMinutes": 6.0, "runRunnerMinutes": 12.0, "hasEvidence": True}
+        out = self.root / "unknown.md"
+        paired.report([blank], "pages.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("carry no cache state", text)
+        self.assertNotIn("restored caches in different states", text)
 
     def test_attempts_are_enumerated_not_resolved_to_the_latest(self) -> None:
         calls = []

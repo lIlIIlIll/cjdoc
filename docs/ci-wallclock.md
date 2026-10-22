@@ -1,4 +1,4 @@
-# CI, Pages and Release wall clock with critical-path attribution (issue #82, DONE-04)
+# CI, Pages and Release wall clock and where its time went (issue #82, DONE-04)
 
 Every number here was read back from the GitHub API and cross-checked with
 `scripts/ci_stage.py wallclock` on the same run IDs.
@@ -30,6 +30,27 @@ Reproduce a single run:
 python scripts/ci_stage.py wallclock --run <RUN_ID> --attempt 1 \
     --repository lIlIIlIll/cjdoc --output target/ci-evidence/wallclock.json
 ```
+
+The document is `cjdoc.ci-wallclock/2`. Version 1 called the chain field
+`criticalPath`; it was renamed here, and the version bumped with it, because the
+number is a non-overlapping execution sequence and not the dependency critical
+path (see below). Issue #82's DONE-04 asks for `执行关键路径` — "the execution
+critical path" — and issue #96's Done-when item 2 renders that as "critical-path
+attribution". What the artifact can attribute from the Actions API is the
+execution sequence: the API exposes no `needs` graph, so no field here claims a
+dependency path. The criterion is met by reporting the sequence under a name
+that says what it is, not by keeping a field name the number does not earn.
+
+No workflow on `main` ever emitted version 1 — the `wallclock` job lands with
+this change — so the bump breaks no producer. The version 1 documents that do
+exist are the two artifacts this branch uploaded before the rename
+(`ci-wallclock-39707863509-1`, `ci-wallclock-pages-39707863550-1`), which are
+superseded by the `wallclock` jobs that now write version 2, and issue #96
+comment `6318233984`, which predates the rename and is left as it stands — it is
+a point-in-time capture, not a maintained document. Comment
+[`6318438417`](https://github.com/lIlIIlIll/cjdoc/issues/96#issuecomment-6318438417)
+is the only one regenerated at version 2; its earlier body held the same three
+documents.
 
 All three measured workflows run this classifier themselves — `ci.yml`,
 `pages.yml` and `release.yml` each have a `wallclock` job that re-reads the run's
@@ -83,22 +104,34 @@ CI, which is itself a finding. The identity needs `wallSource: run`: when it is
 `attempt-jobs` the wall *is* the span, so the difference is 0 by construction
 and says nothing about queueing — there `queuedMs` is the only queue figure.
 
-The document also attributes the path: `criticalPath` carries `chain`,
-`wallMs`, `equalsLongestJob`, `longestJob` and `longestJobMs`. The chain is
+The document also describes the sequence the run actually executed:
+`nonOverlappingChain` carries `chain`, `wallMs`, `equalsLongestJob`, `longestJob`
+and `longestJobMs`. The chain is
 derived from observed start/end times only — a job extends the chain when it
 started no earlier than the previous link ended, so an inclusive handoff (a job
 starting at the instant the previous one stopped) is a link, while a zero-length
 job is a point in time and cannot shadow a real chain. The Jobs API exposes no
-dependency graph, so this is a measured lower bound, and it never invents an
-ordering for jobs that overlapped. `equalsLongestJob: true` means the run was
-flat and the chain is a single job; none of the runs below is flat, so every
-`chain` column names both the parallel jobs and the sequence that actually
-serialised, and the separate "longest job" column keeps the two apart.
+dependency graph, so it never invents an ordering for jobs that overlapped.
+
+It is a **non-overlapping execution sequence, not the dependency critical
+path**, and the field name says so. Two `needs` siblings can be serialized by
+runner availability — `source-reproduction` and the two `browser-shard` jobs in
+`pages.yml` each need only `assemble-site` — and a chain built from timestamps
+alone would then join them and exceed the real dependency path. The number
+answers "what did this run actually spend its time on", which is the question
+these tables ask; it does not attribute the wall clock to a `needs` edge.
+
+`equalsLongestJob: true` means the run was flat and the chain is a single job;
+none of the runs below is flat, so every `chain` column names both the parallel
+jobs and the sequence that actually serialised, and the separate "longest job"
+column keeps the two apart.
 
 Three real documents, one per measured workflow, are reproduced verbatim in
-[issue #96 comment 6318438417](https://github.com/lIlIIlIll/cjdoc/issues/96#issuecomment-6318438417):
+[issue #96 comment 6318438417](https://github.com/lIlIIlIll/cjdoc/issues/96#issuecomment-6318438417)
+(regenerated at schema `cjdoc.ci-wallclock/2`, so it carries the same field names
+as this document):
 
-| workflow | run | chain (`criticalPath.chain`, verbatim) | chain wall |
+| workflow | run | chain (`nonOverlappingChain.chain`, verbatim) | chain wall |
 | --- | --- | --- | ---: |
 | CI | `39559560039` | Classify changes → Linux candidate / Linux candidate <matrix> → linux-x64 <matrix> → CI required | 56.3 m |
 | Pages | `39198382577` | Resolve Linux candidate source → Reuse the CI Linux candidate → Assemble final site → Browser shard 1 → Verify the final site and every branch → Publish showcase | 33.0 m |
@@ -110,7 +143,7 @@ every platform job carries.
 
 ## PR-required CI (`ci.yml`)
 
-| run | revision | wall | job span | gap | total job-min | longest job | measured chain (lower bound) |
+| run | revision | wall | job span | gap | total job-min | longest job | non-overlapping chain |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
 | `39198382507` | `b0c3e5fb` | 55.4 m | 55.1 m | 0.3 m | 131.8 | linux-x64 <matrix> 50.1 m | Classify changes → Linux candidate / Linux candidate <matrix> → linux-x64 <matrix> → CI required = 55.0 m |
 | `39194009025` | `c5177d9d` | 54.9 m | 54.9 m | 0.1 m | 126.8 | linux-x64 <matrix> 49.4 m | Classify changes → Linux candidate / Linux candidate <matrix> → linux-x64 <matrix> → CI required = 54.7 m |
@@ -152,7 +185,7 @@ clock really is execution time.
 
 ## Pages / showcase (`pages.yml`)
 
-| run | revision | wall | job span | gap | total job-min | longest job | measured chain (lower bound) |
+| run | revision | wall | job span | gap | total job-min | longest job | non-overlapping chain |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
 | `39198382577` | `b0c3e5fb` | 57.3 m | 33.3 m | 24.0 m | 45.1 | Verify the final site and every branch 13.8 m | Resolve Linux candidate source → Reuse the CI Linux candidate → Assemble final site → Browser shard 1 → Verify the final site and every branch → Publish showcase = 33.0 m |
 | `38640674884` | `5aab6cc5` | 29.0 m | 28.9 m | 0.1 m | 42.4 | Verify the final site and every branch 8.9 m | Resolve Linux candidate source → Reuse the CI Linux candidate → Assemble final site → Browser shard 1 → Verify the final site and every branch → Publish showcase = 28.6 m |
@@ -187,7 +220,7 @@ merged `main` — and the five older runs answer "what did it cost at an earlier
 revision", which is a different question with a different toolchain. Nothing is
 dropped silently: every successful publisher in the history is named here:
 
-| run | revision | wall | job span | gap | total job-min | longest job | measured chain (lower bound) |
+| run | revision | wall | job span | gap | total job-min | longest job | non-overlapping chain |
 | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
 | `38131066496` | `c43bfd2d` | 39.1 m | 39.0 m | 0.1 m | 82.5 | Release gate / linux-x64 <matrix> 32.2 m | Release gate / linux-x64 <matrix> → Package / macos-arm64 → Publish verified release = 38.8 m |
 | `39217926544` | `b0c3e5fb` | 71.2 m | 71.2 m | 0.1 m | 145.7 | Release candidate / linux-x64 <matrix> 70.7 m | Release candidate / linux-x64 <matrix> → Publish verified release = 71.1 m |
@@ -208,7 +241,7 @@ one population and are not pooled: they show the loop on a branch and on `main`,
 not a before/after.
 
 Every cell in these three tables is read from the corresponding `wallclock.json`
-(`wallMs`, `wallSource`, `jobSpanMs`, `jobMinutes`, `jobWallMs`, `criticalPath`);
+(`wallMs`, `wallSource`, `jobSpanMs`, `jobMinutes`, `jobWallMs`, `nonOverlappingChain`);
 the doc does not carry a number the artifact cannot reproduce. Every row below is
 a latest attempt, so every row's `wallSource` is `run`.
 

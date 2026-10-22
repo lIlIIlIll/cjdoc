@@ -329,22 +329,26 @@ class TransientReadTests(unittest.TestCase):
         self.assertEqual(payload, {"total_count": 3})
 
 
-class CriticalPathTest(unittest.TestCase):
+class NonOverlappingChainTest(unittest.TestCase):
     """Criterion 2 of issue #96 asks the artifact itself to attribute the path.
 
-    The document used to carry only per-job durations, so "critical path" lived in
-    prose an author could compute any way they liked. The derivation here is
-    deliberately narrow: a chain is claimed only where the next job actually
-    started after the previous one ended, because the Jobs API exposes no
-    dependency graph. Overlapping jobs therefore report a flat run rather than an
-    invented sequence, and `equalsLongestJob` says so.
+    The document used to carry only per-job durations, so the path lived in prose an
+    author could compute any way they liked. The derivation here is deliberately
+    narrow: a chain is claimed only where the next job actually started after the
+    previous one ended, because the Jobs API exposes no dependency graph. Overlapping
+    jobs therefore report a flat run rather than an invented sequence, and
+    `equalsLongestJob` says so.
+
+    The result is named for what it measures, not for the dependency critical path: a
+    `needs` sibling serialized by runner availability is not on the dependency path,
+    so the longer of the two is still a truthful "what happened", not an attribution.
     """
 
     def intervals(self, *spec: tuple[str, int, int]) -> list[tuple[str, int, int]]:
         return list(spec)
 
     def test_a_sequential_chain_is_longer_than_its_longest_job(self) -> None:
-        result = ci_stage.critical_path(self.intervals(
+        result = ci_stage.non_overlapping_chain(self.intervals(
             ("native", 0, 30_000), ("cli", 30_000, 60_000), ("smoke", 60_000, 90_000)))
         self.assertEqual(result["chain"], ["native", "cli", "smoke"])
         self.assertEqual(result["wallMs"], 90_000)
@@ -352,7 +356,7 @@ class CriticalPathTest(unittest.TestCase):
 
     def test_overlapping_jobs_are_not_chained(self) -> None:
         """Two jobs that ran at the same time did not run one after the other."""
-        result = ci_stage.critical_path(self.intervals(
+        result = ci_stage.non_overlapping_chain(self.intervals(
             ("candidate-linux", 0, 60_000), ("candidate-other", 5_000, 40_000)))
         self.assertEqual(result["chain"], ["candidate-linux"])
         self.assertTrue(result["equalsLongestJob"])
@@ -360,12 +364,12 @@ class CriticalPathTest(unittest.TestCase):
 
     def test_the_chain_prefers_the_longest_preceding_total(self) -> None:
         """A short late job must extend the longest chain, not the nearest one."""
-        result = ci_stage.critical_path(self.intervals(
+        result = ci_stage.non_overlapping_chain(self.intervals(
             ("long", 0, 50_000), ("short", 10_000, 15_000), ("tail", 50_000, 60_000)))
         self.assertEqual(result["chain"], ["long", "tail"])
 
     def test_an_empty_run_claims_nothing(self) -> None:
-        result = ci_stage.critical_path([])
+        result = ci_stage.non_overlapping_chain([])
         self.assertEqual((result["chain"], result["wallMs"]), ([], 0))
         self.assertTrue(result["equalsLongestJob"])
         # A consumer reading the attribution must not need a special case for a run
@@ -379,20 +383,20 @@ class CriticalPathTest(unittest.TestCase):
         can land on the short detour -- would print a wall that contradicts the
         chain printed beside it.
         """
-        result = ci_stage.critical_path([("A", 0, 90), ("B", 90, 1000), ("Z", 95, 96)])
+        result = ci_stage.non_overlapping_chain([("A", 0, 90), ("B", 90, 1000), ("Z", 95, 96)])
         self.assertEqual(result["chain"], ["A", "B"])
         self.assertEqual(result["wallMs"], 1_000)
 
     def test_a_zero_length_job_does_not_shadow_the_real_chain(self) -> None:
         """A job with no duration is a point in time, not a link with cost."""
-        result = ci_stage.critical_path(self.intervals(
+        result = ci_stage.non_overlapping_chain(self.intervals(
             ("gate", 0, 30_000), ("stamp", 30_000, 30_000), ("tail", 30_000, 40_000)))
         self.assertEqual(result["chain"], ["gate", "tail"])
         self.assertEqual(result["wallMs"], 40_000)
 
     def test_a_job_that_ends_when_the_next_starts_is_chained(self) -> None:
         """Handoff is inclusive: `started_at == completed_at` is still sequential."""
-        result = ci_stage.critical_path(self.intervals(
+        result = ci_stage.non_overlapping_chain(self.intervals(
             ("first", 0, 10_000), ("second", 10_000, 20_000)))
         self.assertEqual(result["chain"], ["first", "second"])
 
@@ -413,10 +417,35 @@ class WallclockDocumentTest(unittest.TestCase):
                 "started_at": stamp % divmod(start, 60),
                 "completed_at": stamp % divmod(end, 60)}
 
+    def test_a_serialised_sibling_is_part_of_the_chain_but_not_called_the_critical_path(self) -> None:
+        """The chain is what ran, and its name says so rather than implying `needs`.
+
+        `pages.yml`'s `source-reproduction` and its two `browser-shard` jobs all need
+        only `assemble-site`, so none of them is on the dependency critical path. Two of
+        them serialized by runner availability still spend the run's wall clock one
+        after another, and a reader asking "where did the time go" needs that sequence.
+        A reader asking "which `needs` edge is longest" must not be answered with it,
+        which is why the field is `nonOverlappingChain` and no field claims a dependency
+        path.
+        """
+        document = ci_stage.classify_wallclock(self.RUN, {"jobs": [
+            self.job("assemble-site", 1, 3),
+            self.job("source-reproduction", 3, 6),
+            self.job("browser-shard-0", 6, 9)]}, 1)
+        # Assert the absence FIRST: a rename back to `criticalPath` must fail here with
+        # the intent stated, not with a KeyError on the name this test expects.
+        self.assertNotIn("criticalPath", document)
+        self.assertNotIn("dependencyPath", document)
+        chain = document["nonOverlappingChain"]
+        self.assertEqual(chain["chain"], ["assemble-site", "source-reproduction",
+                                          "browser-shard-0"])
+        self.assertEqual(chain["wallMs"], 8_000)
+        self.assertFalse(chain["equalsLongestJob"])
+
     def test_the_document_carries_path_attribution_and_the_queue_delay(self) -> None:
         document = ci_stage.classify_wallclock(
             self.RUN, {"jobs": [self.job("build", 1, 3), self.job("accept", 3, 8)]}, 1)
-        self.assertEqual(document["criticalPath"]["chain"], ["build", "accept"])
+        self.assertEqual(document["nonOverlappingChain"]["chain"], ["build", "accept"])
         self.assertEqual(document["queuedMs"], 1_000)
         self.assertEqual(document["jobWallMs"]["accept"], 5_000)
 
@@ -471,8 +500,8 @@ class WallclockDocumentTest(unittest.TestCase):
         self.assertEqual(document["jobSpanMs"], 7_000)
         self.assertEqual(document["wallMs"], 7_000)
         self.assertEqual(document["wallSource"], "attempt-jobs")
-        self.assertEqual(document["criticalPath"]["chain"], ["build", "accept"])
-        self.assertEqual(document["criticalPath"]["wallMs"], 7_000)
+        self.assertEqual(document["nonOverlappingChain"]["chain"], ["build", "accept"])
+        self.assertEqual(document["nonOverlappingChain"]["wallMs"], 7_000)
         # With `attempt-jobs` the wall IS the span, so the difference carries no
         # information about queueing; the doc says so and `queuedMs` is what reports it.
         self.assertEqual(document["wallMs"] - document["jobSpanMs"], 0)
@@ -545,9 +574,9 @@ class WallclockDocumentTest(unittest.TestCase):
         self.assertEqual(document["wallSource"], "run")
         self.assertEqual(document["wallMs"], 7_000)
         self.assertEqual(document["jobSpanMs"], 7_000)
-        self.assertEqual(document["criticalPath"]["chain"], ["macos", "gate"])
-        self.assertEqual(document["criticalPath"]["wallMs"], 7_000)
-        self.assertGreaterEqual(document["wallMs"], document["criticalPath"]["wallMs"])
+        self.assertEqual(document["nonOverlappingChain"]["chain"], ["macos", "gate"])
+        self.assertEqual(document["nonOverlappingChain"]["wallMs"], 7_000)
+        self.assertGreaterEqual(document["wallMs"], document["nonOverlappingChain"]["wallMs"])
         # Measured from this attempt's own start and first job, not from the carried
         # record: `created_at` is the first attempt's creation, so reading it here
         # would report the entire previous attempt as this attempt's queue delay.
@@ -580,7 +609,7 @@ class WallclockDocumentTest(unittest.TestCase):
         self.assertEqual(delayed["jobSpanMs"], 12_000)
         self.assertEqual(delayed["wallMs"] - delayed["jobSpanMs"], delayed["queuedMs"])
         self.assertEqual(delayed["jobMinutes"], 0.2)
-        self.assertEqual(delayed["criticalPath"]["chain"], ["macos", "gate"])
+        self.assertEqual(delayed["nonOverlappingChain"]["chain"], ["macos", "gate"])
 
     def test_an_attempt_beyond_the_run_is_reported_as_having_no_jobs(self) -> None:
         """A hand-passed `--attempt 3` on a two-attempt run must not borrow a wall.
@@ -604,7 +633,7 @@ class WallclockDocumentTest(unittest.TestCase):
     def test_a_run_with_no_jobs_still_produces_the_document(self) -> None:
         document = ci_stage.classify_wallclock(self.RUN, {"jobs": []}, 1)
         self.assertEqual(document["jobWallMs"], {})
-        self.assertEqual(document["criticalPath"]["wallMs"], 0)
+        self.assertEqual(document["nonOverlappingChain"]["wallMs"], 0)
         self.assertEqual(document["queuedMs"], 0)
 
 

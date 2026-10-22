@@ -472,7 +472,8 @@ they were previously reported with the wrong cause:
 
 The issue requires ≥5 cold and ≥5 warm paired samples per workflow under matched
 conditions. That collection, the cold/warm classification rule, the failure and
-re-run tables, and the critical-path attribution are tracked by #96; the raw
+re-run tables, and the attribution of the run's time to a non-overlapping chain
+are tracked by #96; the raw
 wall-clock classifications for the sampled runs are the `wallclock-*.json`
 documents produced by `scripts/ci_stage.py wallclock` and attached there. This
 document does not restate them, because a summary that drifts from the raw

@@ -232,7 +232,7 @@ class WallClockWiringTest(unittest.TestCase):
         """A clock must not read a job that is still running.
 
         The Jobs API reports a running job's `completed_at` as null, which
-        classifies as 0 ms and drops it from `criticalPath.chain`, so the clock
+        classifies as 0 ms and drops it from `nonOverlappingChain.chain`, so the clock
         has to start after the last job it measures. The invariant is transitive
         rather than a literal list: every job other than the clock itself must be
         reachable from the clock's `needs`, whether directly or through another

@@ -158,6 +158,13 @@ BROWSER_FONT_AXES = (("browserVersion", "browser version"),
 # contributes no cell today; were one built from it, the missing axis would qualify the
 # verdict rather than excuse it.
 BROWSER_STAGE_KINDS = frozenset({"browser", "browser-shard", "reading"})
+# Cache keys a stage kind MUST carry before its record counts as a warmth measurement.
+# A browser shard restores the CJK fonts AND the Playwright browser build, and either
+# miss lengthens the job. An artifact written before the second key was recorded
+# carries `{"fonts": "hit"}` alone; collapsed to a bare `hit` it would pool a shard
+# that downloaded Chromium with a genuinely warm one -- the false pairing the second
+# key exists to prevent. A partial record is therefore not a state at all.
+REQUIRED_CACHE_KEYS = {"browser-shard": frozenset({"fonts", "playwright"})}
 
 
 def browser_attested_axes(condition: str) -> set[str]:
@@ -295,9 +302,20 @@ def job_cache_states(evidence: Path) -> dict[str, str]:
     for path in sorted(evidence.glob("*/stages.json")):
         document = json.loads(path.read_text(encoding="utf-8"))
         found: set[str] = set()
+        partial = False
         for stage in document.get("stages", []):
             cache = (stage.get("environment") or {}).get("cache") or {}
             found.update(cache.values())
+            required = REQUIRED_CACHE_KEYS.get(stage.get("kind"))
+            if required is not None and not required <= set(cache):
+                # One recorded key cannot speak for a job whose other cost-bearing
+                # cache went unrecorded. `unknown` (not `mixed`) is the honest label:
+                # `mixed` claims the job really ran split, and this one was never
+                # measured on the missing axis.
+                partial = True
+        if partial:
+            states[path.parent.name] = "unknown"
+            continue
         states[path.parent.name] = (found.pop() if len(found) == 1
                                     else "unknown" if not found else "mixed")
     return states
@@ -875,19 +893,67 @@ def report(samples: list[dict], workflow: str, out: Path,
         # NOT `unrecorded`: that name holds the missing DONE-03 axes above and is
         # returned to the caller, so reusing it here silently replaced the axis list
         # with a list of job shapes whenever a job had no cache state.
+        #
+        # `mixed` is separated from `unknown` because they mean different things and
+        # only one of them is the artifact's fault. A job that restores several timed
+        # caches (a Pages browser shard restores fonts AND the Playwright browser
+        # build) really did run with one hit and one miss; calling that "carry no
+        # cache state" would describe a recorded condition as an unrecorded one.
         unrecorded_state = sorted({s["shape"] for s in unclassified
-                                   if s.get("hasEvidence")})
-        parts = [f"{len(unclassified)} successful job(s) carry no cache state and are "
-                 "excluded from the cells."]
-        if never:
-            parts.append(f"Of those, {', '.join(never)} record no stage evidence at all, "
-                         "so they can never be either condition and are not requirements.")
-        if unrecorded_state:
-            parts.append(f"The rest ({', '.join(unrecorded_state)}) are cache-bearing jobs "
-                         "whose state was not recorded -- from runs predating the "
-                         "recording, or from artifacts that expired -- so they remain "
-                         "requirements showing as 0 collected above rather than "
-                         "disappearing.")
+                                   if s.get("hasEvidence") and s["state"] == "unknown"})
+        # Gated on `hasEvidence` exactly like `unknown_count`, or a shape whose samples
+        # all lacked stage evidence would print "0 job(s) (<shape>) restored caches in
+        # different states" -- a count and a name that contradict each other.
+        mixed_state = sorted({s["shape"] for s in unclassified
+                              if s.get("hasEvidence") and s["state"] == "mixed"})
+        # Counted by predicate, not by subtraction. A job with no stage evidence at all
+        # is `unknown` too, and the sentences below name it separately ("record no stage
+        # evidence at all"), so "the rest" must not include it or the paragraph would
+        # claim a job is both evidence-less and merely unrecorded.
+        unknown_count = sum(1 for s in unclassified
+                            if s.get("hasEvidence") and s["state"] == "unknown")
+        mixed_count = sum(1 for s in unclassified
+                          if s.get("hasEvidence") and s["state"] == "mixed")
+        if not mixed_state:
+            # No job recorded a split condition, so keep the exact sentence the
+            # checked-in capture `docs/paired-samples-main.md` was generated with: that
+            # file is reporter output, and rewording it here would make the committed
+            # capture unreproducible from the code that claims to have produced it.
+            parts = [f"{len(unclassified)} successful job(s) carry no cache state and "
+                     "are excluded from the cells."]
+            if never:
+                parts.append(f"Of those, {', '.join(never)} record no stage evidence at "
+                             "all, so they can never be either condition and are not "
+                             "requirements.")
+            if unrecorded_state:
+                parts.append(f"The rest ({', '.join(unrecorded_state)}) are cache-bearing "
+                             "jobs whose state was not recorded -- from runs predating the "
+                             "recording, or from artifacts that expired -- so they remain "
+                             "requirements showing as 0 collected above rather than "
+                             "disappearing.")
+        else:
+            # A job that restores more than one timed cache can legitimately record one
+            # hit and one miss. Saying it "carries no cache state" would blame the
+            # artifact for a condition it recorded correctly, and would hide the one
+            # fact a reader needs: it is excluded from BOTH cells, so no amount of
+            # waiting turns it into a sample.
+            parts = [f"{len(unclassified)} successful job(s) are excluded from the "
+                     "cells."]
+            if never:
+                parts.append(f"Of those, {', '.join(never)} record no stage evidence at "
+                             "all, so they can never be either condition and are not "
+                             "requirements.")
+            if mixed_state:
+                parts.append(f"{mixed_count} job(s) ({', '.join(mixed_state)}) restored "
+                             "caches in different states -- typically one hit and one "
+                             "miss -- so they are neither wholly warm nor wholly cold and "
+                             "cannot be pooled with either.")
+            if unrecorded_state:
+                parts.append(f"The remaining {unknown_count} ({', '.join(unrecorded_state)}) "
+                             "are cache-bearing jobs whose state was not recorded -- from "
+                             "runs predating the recording, or from artifacts that expired "
+                             "-- so they remain requirements showing as 0 collected above "
+                             "rather than disappearing.")
         lines += ["", " ".join(parts)]
     if acquisition_failures:
         flat = [item for group in acquisition_failures for item in group]
