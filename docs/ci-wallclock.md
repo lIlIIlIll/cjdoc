@@ -91,9 +91,10 @@ Three clocks are reported, because collapsing them hides the actual cost:
   `in_progress`, and `updated_at` is a partly-flushed snapshot that moves between
   two reads of the same run. Publishing it as a wall would name a completion time
   the run does not have, so the artifact uploaded by the job measures the run's
-  start to the end of its last completed job — the terminal publisher. All three
-  rows above were classified after their runs finished, so every one of them is
-  `run`.
+  start to the end of its last completed job. That job is the publisher only when
+  the run has one: on a `pull_request` run the deploy is skipped, so the last
+  completed job is the final verification and the chain ends there. All three rows
+  above were classified after their runs finished, so every one of them is `run`.
   A re-run's job listing carries the previous attempt's unchanged records with
   their original timestamps. Those jobs did not run in this attempt, so they get
   the 0 ms a skipped job gets: they drop out of the chain instead of stretching

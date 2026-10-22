@@ -666,9 +666,10 @@ def classify_wallclock(run: dict[str, object], jobs_payload: dict[str, object],
     # `wall` would claim a completion time the run does not have. `wallSource` names
     # the clock that was actually read so a reader is never handed the wrong one.
     if run.get("status") != "completed":
-        # Measured through the last completed job, which is the terminal publisher --
-        # the last link this job actually needs. The collector cannot see its own end,
-        # so this is a lower bound and `wallSource` names the clock it is.
+        # Measured through the last job that has finished -- on a run whose publisher
+        # is skipped (every `pull_request` Pages run) that is the last verification
+        # job, not a publisher, so the name says `terminal-job` and claims no more.
+        # The collector cannot see its own end, so this is a lower bound.
         last_end = max((end for _name, _start, end in intervals), default=0)
         wall_ms = last_end
         wall_source = "terminal-job"
