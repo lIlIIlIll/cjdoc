@@ -565,7 +565,12 @@ class PairedSampleTests(unittest.TestCase):
         `actions/cache` step, so it never appears among the restored ids; an exemption
         set would therefore be inert today and would silently tolerate a future
         `actions/cache` restore added without a recorded key. Comparing every restore
-        against every recorded key makes that addition fail loudly instead.
+        against every recorded key makes that addition fail loudly instead -- but only
+        for restores that carry an `id: *-cache`, since that is how a restore is
+        discovered here. The step count is therefore pinned to the number of such ids,
+        so a cache step added with a differently-named id, or with no id at all (the
+        style `reading-regressions` already uses), fails instead of falling outside the
+        comparison and leaving the shard labelled wholly warm.
         """
         text = (Path(__file__).resolve().parent.parent
                 / ".github/workflows/pages.yml").read_text(encoding="utf-8")
@@ -593,6 +598,13 @@ class PairedSampleTests(unittest.TestCase):
         self.assertEqual(bindings,
                          {"fonts": "font-cache", "playwright": "playwright-cache"},
                          f"each recorded key must come from its own restore step: {bindings}")
+        # `restored` can only see ids ending in `-cache`, so a cache step whose id is
+        # named otherwise -- or omitted, which is valid `actions/cache` usage -- would
+        # restore a cost-bearing cache and never enter the comparison above.
+        cache_steps = len(re.findall(r"^\s+-?\s*uses: actions/cache@", block, re.MULTILINE))
+        self.assertEqual(cache_steps, len(restored),
+                         f"every cache step needs an `id: <name>-cache`: "
+                         f"{cache_steps} step(s) vs {sorted(restored)}")
 
     def test_the_cache_state_comes_from_the_job_artifact(self) -> None:
         self.write_artifact("ci-timing-ci-linux-x64-1-1", {"cjv": "hit"})
