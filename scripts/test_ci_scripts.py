@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 import signal
 import subprocess
@@ -17,8 +18,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ci_changes
 import ci_diagnostics
+import ci_stage
 import measure_paired_samples as paired
 import ci_required
+from test_ci_wallclock_wiring import function_block as _job_block
 
 
 class ChangesRoutingTest(unittest.TestCase):
@@ -495,6 +498,45 @@ class RunWithTimeoutTests(unittest.TestCase):
 
 
 
+def _called_workflows(workflow: str) -> set[str]:
+    """The workflows one workflow invokes through `uses: ./.github/workflows/...`."""
+    root = Path(__file__).resolve().parent.parent / ".github/workflows"
+    path = root / workflow
+    if not path.is_file():
+        return set()
+    text = path.read_text(encoding="utf-8")
+    return {Path(name).name for name in re.findall(r"uses: \./\.github/workflows/([\w.-]+\.ya?ml)", text)}
+
+
+def timing_artifact_stems() -> dict[str, set[str]]:
+    """The `ci-timing-*` stems each workflow actually uploads, matrix expanded.
+
+    A workflow names the artifact as `ci-timing-<stem>-${{ github.run_id }}-...`, so
+    the stem is the text between that prefix and the run id, with `${{ matrix.NAME }}`
+    replaced by each value the workflow's own `matrix:` declares.
+    """
+    uploads: dict[str, set[str]] = {}
+    root = Path(__file__).resolve().parent.parent / ".github/workflows"
+    for path in sorted(root.glob("*.yml")):
+        text = path.read_text(encoding="utf-8")
+        matrix: dict[str, set[str]] = {}
+        for key, items in re.findall(r"^\s+(\w+): \[([^\]]*)\]$", text, re.MULTILINE):
+            matrix[key] = {item.strip().strip("'\"") for item in items.split(",")}
+        for key, item in re.findall(r"^\s+- (\w+): (\S+)$", text, re.MULTILINE):
+            matrix.setdefault(key, set()).add(item.strip("'\""))
+        found: set[str] = set()
+        for template in re.findall(r"ci-timing-(.+?)-\$\{\{ github\.run_id \}\}", text):
+            names = [template]
+            for key in re.findall(r"\$\{\{ matrix\.(\w+) \}\}", template):
+                placeholders = {name: None for name in names}
+                names = [name.replace(f"${{{{ matrix.{key} }}}}", value)
+                         for name in placeholders for value in matrix.get(key, set())]
+            found.update(names)
+        if found:
+            uploads[path.name] = found
+    return uploads
+
+
 class PairedSampleTests(unittest.TestCase):
     """DONE-03's classification: never assume a condition the evidence omits."""
 
@@ -511,12 +553,93 @@ class PairedSampleTests(unittest.TestCase):
              "environment": ({} if cache is None else {"cache": cache})}]}
         (directory / "stages.json").write_text(json.dumps(document), encoding="utf-8")
 
+    def test_every_cost_bearing_cache_a_job_restores_is_recorded(self) -> None:
+        """A job that restores several caches must report all the ones that cost time.
+
+        The Pages browser shards restore the CJK fonts AND the Playwright browser
+        build, and either miss lengthens the job. Recording only the fonts labelled a
+        shard that had to download Chromium as warm, which pools it with a genuinely
+        warm sample and could satisfy DONE-03's warm requirement on a false pairing.
+
+        Nothing is exempt. `pip` is restored by setup-python, which is not an
+        `actions/cache` step, so it never appears among the restored ids; an exemption
+        set would therefore be inert today and would silently tolerate a future
+        `actions/cache` restore added without a recorded key. Comparing every restore
+        against every recorded key makes that addition fail loudly instead -- but only
+        for restores that carry an `id: *-cache`, since that is how a restore is
+        discovered here. The step count is therefore pinned to the number of such ids,
+        so a cache step added with a differently-named id, or with no id at all (the
+        style `reading-regressions` already uses), fails instead of falling outside the
+        comparison and leaving the shard labelled wholly warm.
+        """
+        text = (Path(__file__).resolve().parent.parent
+                / ".github/workflows/pages.yml").read_text(encoding="utf-8")
+        block = _job_block(text, "browser-shard")
+        restored = {match.removesuffix("-cache")
+                    for match in re.findall(r"^\s+id: (\w+-cache)$", block, re.MULTILINE)}
+        self.assertIn("playwright", restored)
+        self.assertIn("font", restored)
+        recorded = set()
+        for value in re.findall(r"CJDOC_CACHE_STATE=([^\"\n]*)", block):
+            recorded |= {part.split("=")[0].strip() for part in value.split(",") if "=" in part}
+        # The step id (`font-cache`) and the recorded label (`fonts`) need not be
+        # spelled alike, so compare them singularised.
+        normalize = lambda name: name.rstrip("s")
+        self.assertEqual({normalize(name) for name in restored},
+                         {normalize(name) for name in recorded},
+                         f"restores {sorted(restored)} but records {sorted(recorded)}")
+        self.assertEqual(recorded, {"fonts", "playwright"},
+                         f"recorded cache keys changed: {sorted(recorded)}")
+        # Comparing the sets alone cannot tell which step feeds which key: recording
+        # `playwright=${{ steps.font-cache.outputs.cache-hit ... }}` keeps both key
+        # names present and labels every shard warm. Bind each key to its own step.
+        bindings = dict(re.findall(
+            r"(\w+)=\$\{\{ steps\.([\w-]+)\.outputs\.cache-hit", block))
+        self.assertEqual(bindings,
+                         {"fonts": "font-cache", "playwright": "playwright-cache"},
+                         f"each recorded key must come from its own restore step: {bindings}")
+        # `restored` can only see ids ending in `-cache`, so a cache step whose id is
+        # named otherwise -- or omitted, which is valid `actions/cache` usage -- would
+        # restore a cost-bearing cache and never enter the comparison above.
+        cache_steps = len(re.findall(r"^\s+-?\s*uses: actions/cache@", block, re.MULTILINE))
+        self.assertEqual(cache_steps, len(restored),
+                         f"every cache step needs an `id: <name>-cache`: "
+                         f"{cache_steps} step(s) vs {sorted(restored)}")
+
     def test_the_cache_state_comes_from_the_job_artifact(self) -> None:
         self.write_artifact("ci-timing-ci-linux-x64-1-1", {"cjv": "hit"})
         self.write_artifact("ci-timing-ci-windows-x64-1-1", {"cjv": "miss"})
         states = paired.job_cache_states(self.root)
         self.assertEqual(states["ci-timing-ci-linux-x64-1-1"], "hit")
         self.assertEqual(states["ci-timing-ci-windows-x64-1-1"], "miss")
+
+    def write_shard_artifact(self, name: str, cache: dict) -> None:
+        directory = self.root / name
+        directory.mkdir(parents=True)
+        document = {"schemaVersion": "cjdoc.ci-stage/1", "stages": [
+            {"stageId": "browser", "kind": "browser-shard", "wallMs": 1.0,
+             "environment": {"cache": cache}}]}
+        (directory / "stages.json").write_text(json.dumps(document), encoding="utf-8")
+
+    def test_a_shard_that_recorded_one_of_its_two_caches_is_not_called_warm(self) -> None:
+        """A predating shard records `fonts` only; it must not fill the warm cell.
+
+        The Playwright browser cache was added to this shard after the first Pages
+        runs, and artifacts from those runs are retained for days. Their single key
+        collapsed to a bare `hit`, so a shard that downloaded Chromium was pooled with
+        a genuinely warm one -- exactly the false pairing the second key prevents.
+        `unknown` is the honest label: `mixed` would claim a split that was never
+        measured, and `hit` would claim a warmth the artifact does not support.
+        """
+        self.write_shard_artifact("shard-0-partial", {"fonts": "hit"})
+        self.write_shard_artifact("shard-1-complete",
+                                  {"fonts": "hit", "playwright": "hit"})
+        self.write_shard_artifact("shard-2-split",
+                                  {"fonts": "hit", "playwright": "miss"})
+        states = paired.job_cache_states(self.root)
+        self.assertEqual(states["shard-0-partial"], "unknown")
+        self.assertEqual(states["shard-1-complete"], "hit")
+        self.assertEqual(states["shard-2-split"], "mixed")
 
     def test_a_job_name_matches_its_own_artifact_toolchain_words_included(self) -> None:
         states = {"ci-timing-ci-linux-x64-1-1": "hit",
@@ -614,6 +737,51 @@ class PairedSampleTests(unittest.TestCase):
         text = out.read_text(encoding="utf-8")
         self.assertNotIn("**ci required**", text)
         self.assertNotIn("ci required / **hit**", text)
+
+    def test_a_job_with_one_cache_hit_and_one_miss_is_not_called_unrecorded(self) -> None:
+        """`mixed` is a recorded condition, and the report must not describe it as absent.
+
+        A Pages browser shard now records both the font and the Playwright caches, so a
+        run where one hit and the other missed is a real outcome, not a gap in the
+        evidence. Calling it "carry no cache state" would blame the artifact for a
+        condition it recorded correctly, and would hide the sample shape that most
+        needs a warning: it is excluded from both cells, so DONE-03 can never count it.
+        """
+        def sample(state):
+            return {"run": 1, "attempt": 1, "revision": "e" * 40, "event": "push",
+                    "job": "Browser shard 0", "shape": "browser shard 0",
+                    "conclusion": "success", "state": state, "jobMinutes": 4.0,
+                    "runWallMinutes": 6.0, "runRunnerMinutes": 12.0, "hasEvidence": True}
+        # A job with NO stage evidence is `unknown` too, and must be named by its own
+        # sentence rather than swept into the mixed branch's arithmetic.
+        witness = dict(sample("unknown"), job="Assemble final site",
+                       shape="assemble-site", hasEvidence=False)
+        out = self.root / "mixed.md"
+        paired.report([sample("hit") for _ in range(5)] + [sample("mixed"), witness],
+                      "pages.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("restored caches in different states", text)
+        self.assertIn("1 job(s) (browser shard 0) restored caches in different states", text)
+        self.assertNotIn("carry no cache state", text)
+        self.assertIn("2 successful job(s) are excluded from the cells", text)
+        self.assertIn("assemble-site record no stage evidence", text)
+
+    def test_an_unknown_cache_state_is_still_described_as_unrecorded(self) -> None:
+        """The complement: a genuinely missing state keeps the older wording.
+
+        Both branches share one paragraph, so pinning only the `mixed` case would let a
+        rewrite collapse them and silently delete the sentence that tells a reader a
+        cache-bearing job was excluded because nothing was recorded.
+        """
+        blank = {"run": 1, "attempt": 1, "revision": "f" * 40, "event": "push",
+                 "job": "Assemble final site", "shape": "assemble-site",
+                 "conclusion": "success", "state": "unknown", "jobMinutes": 4.0,
+                 "runWallMinutes": 6.0, "runRunnerMinutes": 12.0, "hasEvidence": True}
+        out = self.root / "unknown.md"
+        paired.report([blank], "pages.yml", out)
+        text = out.read_text(encoding="utf-8")
+        self.assertIn("carry no cache state", text)
+        self.assertNotIn("restored caches in different states", text)
 
     def test_attempts_are_enumerated_not_resolved_to_the_latest(self) -> None:
         calls = []
@@ -800,8 +968,12 @@ class PairedSampleTests(unittest.TestCase):
             return {"run": 1, "attempt": 1, "revision": revision, "event": "push",
                     "job": "macos-arm64 / Cangjie", "shape": "macos-arm64",
                     "conclusion": "success", "state": state, "jobMinutes": 10.0,
+                    # `job_conditions` appends the axes its browser stages attested;
+                    # a condition without that marker came from an artifact whose
+                    # browser stage reported nothing, which stays unrecorded.
                     "condition": "macos15|1.2.0|d|aarch64|f|152.0|chromium-123|"
-                                 "fonts-sha|--jobs 1,-O1",
+                                 "fonts-sha|--jobs 1,-O1"
+                                 "|browser=browserVersion,browserIdentity,fontSetDigest",
                     "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
         samples = ([sample("hit", f"{n:040x}") for n in range(1, 6)]
                    + [sample("miss", f"{n:040x}") for n in range(6, 11)])
@@ -826,7 +998,8 @@ class PairedSampleTests(unittest.TestCase):
                     "condition": condition, "runWallMinutes": 25.0,
                     "runRunnerMinutes": 50.0}
         old = "macos15|1.2.0|d|aarch64|f||||--jobs 1,-O1"
-        new = "macos15|1.2.0|d|aarch64|f|152.0|chromium-123|fonts-sha|--jobs 1,-O1"
+        new = ("macos15|1.2.0|d|aarch64|f|152.0|chromium-123|fonts-sha|--jobs 1,-O1"
+               "|browser=browserVersion,browserIdentity,fontSetDigest")
         samples = ([sample("hit", old, f"{n:040x}") for n in range(1, 6)]
                    + [sample("miss", old, f"{n:040x}") for n in range(6, 11)]
                    + [sample("hit", new, f"{n:040x}") for n in range(11, 16)])
@@ -879,38 +1052,224 @@ class PairedSampleTests(unittest.TestCase):
         self.assertEqual(result["unrecordedAxes"],
                          ["browser version", "browser identity", "font set"])
 
-    def test_a_later_stage_that_omits_an_axis_keeps_it_unrecorded(self) -> None:
-        """An axis recorded by stage 1 but not by a diverged stage is not attested.
+    def test_a_multistage_job_attests_the_axis_from_its_browser_stage(self) -> None:
+        """The axis belongs to the stage that rendered, not to every stage.
 
-        `job_conditions` appends `|stageN=<tuple>` only for a stage that diverged, and
-        that tuple is the whole point: the leading tuple alone would let a job whose
-        second stage recorded no browser/font identity claim it compared that axis.
-        Built through `job_conditions` so the real serialization is under test.
+        The real Linux acceptance artifact opens with a preflight stage that has no
+        browser and only later runs `html-a11y` with one. Requiring a Chromium version
+        from EVERY stage tuple made the axis unreachable for exactly the job DONE-03
+        samples, so the attestation is read from the browser-kind stages.
         """
-        root = self.root / "later-stage-axes"
-        full = {"runnerImage": "macos15", "sdkVersion": "1.2.0", "stdxDigest": "d",
-                "toolchainTarget": "aarch64", "toolchainFingerprint": "f",
-                "browserVersion": "152.0", "browserIdentity": "chromium-123",
-                "fontSetDigest": "fonts-sha", "compileOptions": ["--jobs 1", "-O1"]}
-        # Stage 2 differs in compileOptions, so it gets its own tuple -- and that tuple
-        # records none of the browser/font fields.
-        later = dict(full, compileOptions=["--jobs 1", "-O1", "--LTO"])
-        later.update({key: "" for key in ("browserVersion", "browserIdentity",
-                                          "fontSetDigest")})
-        for name, stages in (("full", [{"environment": full}]),
-                             ("gap", [{"environment": full},
-                                      {"environment": later}])):
+        root = self.root / "multistage-axes"
+        base = {"runnerImage": "ubuntu22", "sdkVersion": "1.2.0", "stdxDigest": "d",
+                "toolchainTarget": "x86_64", "toolchainFingerprint": "f",
+                "browserVersion": "", "browserIdentity": "", "fontSetDigest": "",
+                "compileOptions": ["--jobs 1", "-O1"]}
+        rendered = dict(base, browserVersion="143.0.7499.4",
+                        browserIdentity="chromium", fontSetDigest="fe73356062ea")
+        silent = dict(base, compileOptions=["--jobs 1", "-O1", "--LTO"])
+        for name, stages in (
+                ("rendered", [{"kind": "python", "environment": base},
+                              {"kind": "browser", "environment": rendered}]),
+                ("silent", [{"kind": "python", "environment": base},
+                            {"kind": "browser", "environment": silent}]),
+                ("nobrowser", [{"kind": "python", "environment": base},
+                               {"kind": "cli", "environment": silent}])):
             directory = root / name
             directory.mkdir(parents=True)
             (directory / "stages.json").write_text(
                 json.dumps({"stages": stages}), encoding="utf-8")
         conditions = paired.job_conditions(root)
-        self.assertTrue(any("|stage2=" in value for value in conditions.values()),
-                        conditions)
-        # The first-stage-only artifact attests every axis...
-        self.assertEqual(paired.unrecorded_axes({conditions["full"]}), [])
-        # ...the two-stage one does not, because its stage-2 tuple omits them.
-        self.assertEqual(paired.unrecorded_axes({conditions["gap"]}),
+        # The preflight stage has no browser identity and does not have to: the browser
+        # stage that really rendered attests the axis.
+        self.assertEqual(paired.unrecorded_axes({conditions["rendered"]}), [])
+        # A browser stage that launched and reported nothing is NOT excused.
+        self.assertEqual(paired.unrecorded_axes({conditions["silent"]}),
+                         ["browser version", "browser identity", "font set"])
+        # A job with no browser stage records no marker, so nothing is attested -- the
+        # caller decides that this is "not applicable" rather than "not recorded".
+        self.assertNotIn("|browser=", conditions["nobrowser"])
+        self.assertEqual(paired.unrecorded_axes({conditions["nobrowser"]}),
+                         ["browser version", "browser identity", "font set"])
+
+    def test_a_job_with_no_browser_stage_is_not_asked_for_the_axis(self) -> None:
+        """A job that never opens a page has no browser/font condition to match.
+
+        `ci.yml` installs Chromium only for the Linux job's `html-a11y` stage, so macOS
+        and Windows build and test without rendering anything. Reporting their cells as
+        "met on the recorded axes only" would describe a gap that does not exist and
+        would keep DONE-03 unmet forever. The verdict must still SAY the axis is not
+        applicable: "matched on every axis" and "axis not applicable" are different
+        claims and must not print identically.
+        """
+        def sample(state, browser_driven):
+            return {"run": 1, "attempt": 1, "revision": "a" * 40, "event": "push",
+                    "job": "macos-arm64 / Cangjie", "shape": "macos-arm64",
+                    "conclusion": "success", "state": state, "jobMinutes": 10.0,
+                    "condition": "macos15|1.2.0|d|aarch64|f||||--jobs 1,-O1",
+                    "browserDriven": browser_driven, "runWallMinutes": 25.0,
+                    "runRunnerMinutes": 50.0}
+        samples = ([sample("hit", False) for _ in range(5)]
+                   + [sample("miss", False) for _ in range(5)])
+        out = self.root / "no-browser.md"
+        result = paired.report(samples, "ci.yml", out)
+        text = out.read_text(encoding="utf-8")
+        section = text.split("## Requirement check")[1]
+        self.assertIn("paired samples under this condition: 5 — met -- browser/font axis "
+                      "not applicable (no stage of this job drives a browser)", section)
+        self.assertNotIn("met on the recorded axes only", section)
+        # A shape that was excused must not make the report-wide list claim the axis is
+        # recorded: no producer recorded it, there was simply nothing to record.
+        self.assertEqual(result["unrecordedAxes"], [])
+
+    def test_a_browser_driving_job_still_has_to_record_the_axis(self) -> None:
+        """Excusing non-browser jobs must not excuse a job that really renders.
+
+        The Linux job runs `html-a11y`, so its samples DO have a browser/font condition,
+        and in this fixture nothing recorded it. If applicability were decided
+        report-wide -- "some shape does not use a browser, so drop the axis" -- the
+        Linux cell would print a bare `met` for an axis it never compared.
+        """
+        def sample(shape, condition, browser_driven):
+            return {"run": 1, "attempt": 1, "revision": "a" * 40, "event": "push",
+                    "job": f"{shape} / Cangjie", "shape": shape,
+                    "conclusion": "success", "state": "hit", "jobMinutes": 10.0,
+                    "condition": condition, "browserDriven": browser_driven,
+                    "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        macos = "macos15|1.2.0|d|aarch64|f||||--jobs 1,-O1"
+        linux = "ubuntu22|1.2.0|d|x86_64|f||||--jobs 1,-O1"
+        samples = ([sample("macos-arm64", macos, False) for _ in range(5)]
+                   + [sample("linux-x64", linux, True) for _ in range(5)])
+        out = self.root / "mixed-browser.md"
+        result = paired.report(samples, "ci.yml", out)
+        section = out.read_text(encoding="utf-8").split("## Requirement check")[1]
+        linux_lines = [line for line in section.splitlines()
+                       if line.startswith("* ") and f"`{linux}`" in line]
+        # Both states print a row; only the hit reaches five.
+        self.assertEqual(len(linux_lines), 2, linux_lines)
+        qualified = [line for line in linux_lines if "5 collected" in line]
+        self.assertEqual(len(qualified), 1, qualified)
+        self.assertIn("met on the recorded axes only", qualified[0])
+        self.assertNotIn("not applicable", qualified[0])
+        self.assertEqual(result["unrecordedAxes"],
+                         ["browser version", "browser identity", "font set"])
+
+    def test_every_stage_kind_that_launches_chromium_makes_a_job_browser_driving(self) -> None:
+        """Applicability is derived from recorded KINDS, and three of them drive Chromium.
+
+        `ci.yml` records `html-a11y` as `browser`; `pages.yml` records each shard as
+        `browser-shard` and the reading job as `reading`. All three call
+        `playwright.chromium.launch` (`showcase_contract/browser.py`,
+        `showcase_contract/browser_reading_regressions.py`). A launch kind missing from
+        the set is the dangerous direction: the cell would print "not applicable" while
+        its stage really rendered pages. Kinds that never open a browser must stay out,
+        or a compile-only job would be qualified forever instead of excused.
+        """
+        root = self.root / "usage"
+        # artifact directory name -> the stage kind its record carries
+        recorded = {"linux": "browser", "shard": "browser-shard", "reading": "reading",
+                    "python": "python", "merge": "merge", "assemble": "site-assemble",
+                    "reproduce": "source-reproduction", "build": "build"}
+        expected = {name: kind in paired.BROWSER_STAGE_KINDS
+                    for name, kind in recorded.items()}
+        for name, kind in recorded.items():
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(
+                json.dumps({"stages": [{"kind": kind}]}), encoding="utf-8")
+        usage = paired.job_browser_usage(root)
+        self.assertEqual(usage, expected)
+        # The three launching kinds specifically, so a set that dropped one cannot pass
+        # by redefining what `expected` derives from.
+        for name in ("linux", "shard", "reading"):
+            self.assertTrue(usage[name], name)
+        # Every recognised kind must be a kind the recorder will actually write, or the
+        # applicability rule would key on a string no stage can ever produce.
+        self.assertTrue(paired.BROWSER_STAGE_KINDS <= ci_stage.STAGE_KINDS)
+
+    def test_a_job_browser_drives_if_any_of_its_artifacts_launched_a_browser(self) -> None:
+        """The OLDEST artifact must not be the one that excuses the axis.
+
+        `_job_browser_for` resolves a job to the FIRST artifact directory whose name
+        contains its stem, and artifacts sort by directory name. A job whose older
+        sample predates its browser stage would therefore report False while its newer
+        samples really rendered pages.
+        """
+        root = self.root / "any-artifact"
+        for name, kind in (("000-ci-timing-ci-linux-x64-1-1", "python"),
+                           ("999-ci-timing-ci-linux-x64-2-1", "browser")):
+            directory = root / name
+            directory.mkdir(parents=True)
+            (directory / "stages.json").write_text(
+                json.dumps({"stages": [{"kind": kind}]}), encoding="utf-8")
+        usage = paired.job_browser_usage(root)
+        self.assertEqual(usage, {"000-ci-timing-ci-linux-x64-1-1": False,
+                                 "999-ci-timing-ci-linux-x64-2-1": True})
+        # The older artifact recorded no browser stage; the shape must still be treated
+        # as browser-driving, because one of its artifacts really rendered pages.
+        self.assertTrue(paired._job_browser_for("linux-x64 / Cangjie", usage))
+        # A job with no artifact at all cannot claim it had a browser stage.
+        self.assertFalse(paired._job_browser_for("CI required", usage))
+
+    def test_a_collected_job_carries_the_browser_usage_it_recorded(self) -> None:
+        """`report` decides applicability from the sample, so the field must be set.
+
+        The verdict tests above build sample dicts by hand and would keep passing even
+        if `_attempt_samples` stopped recording the value: the conservative default
+        would then make every shape look browser-driving, and a job that genuinely has
+        no browser stage would be qualified forever. This drives the real collection
+        path, so dropping the field fails here.
+        """
+        def write_evidence(directory: Path, kind: str) -> None:
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / "stages.json").write_text(
+                json.dumps({"stages": [{"kind": kind, "environment": {}}]}),
+                encoding="utf-8")
+
+        jobs = [{"name": "linux-x64 / Cangjie", "conclusion": "success", "id": 1,
+                 "started_at": "2026-01-01T00:00:00Z",
+                 "completed_at": "2026-01-01T00:10:00Z"},
+                {"name": "macos-arm64 / Cangjie", "conclusion": "success", "id": 2,
+                 "started_at": "2026-01-01T00:00:00Z",
+                 "completed_at": "2026-01-01T00:10:00Z"}]
+        kinds = {"ci-linux-x64": "browser", "ci-macos-arm64": "cli"}
+
+        def fake_download(_repository, run_id, attempt, evidence):
+            for stem, kind in kinds.items():
+                write_evidence(Path(evidence) / f"ci-timing-{stem}-{run_id}-{attempt}", kind)
+            return []
+
+        original_download = paired.download_evidence
+        original_jobs = paired.jobs_of
+        paired.download_evidence = fake_download
+        paired.jobs_of = lambda *a, **k: jobs
+        try:
+            samples, _ = paired._attempt_samples(
+                "o/r", {"head_sha": "a" * 40, "event": "push"}, 7, 1, self.root, set(),
+                [], "ci.yml")
+        finally:
+            paired.download_evidence = original_download
+            paired.jobs_of = original_jobs
+        driven = {sample["shape"]: sample["browserDriven"] for sample in samples}
+        self.assertEqual(driven, {"linux-x64": True, "macos-arm64": False})
+
+    def test_a_sample_without_the_usage_field_is_treated_as_browser_driving(self) -> None:
+        """An omitted field must not be what excuses an axis.
+
+        Older callers build sample dicts by hand. Defaulting a missing
+        `browserDriven` to False would let any such caller quietly weaken the
+        requirement; the conservative default is that the job does render.
+        """
+        sample = {"run": 1, "attempt": 1, "revision": "a" * 40, "event": "push",
+                  "job": "macos-arm64 / Cangjie", "shape": "macos-arm64",
+                  "conclusion": "success", "state": "hit", "jobMinutes": 10.0,
+                  "condition": "macos15|1.2.0|d|aarch64|f||||--jobs 1,-O1",
+                  "runWallMinutes": 25.0, "runRunnerMinutes": 50.0}
+        out = self.root / "implicit-browser.md"
+        result = paired.report([dict(sample) for _ in range(5)], "ci.yml", out)
+        section = out.read_text(encoding="utf-8").split("## Requirement check")[1]
+        self.assertIn("met on the recorded axes only", section)
+        self.assertEqual(result["unrecordedAxes"],
                          ["browser version", "browser identity", "font set"])
 
     def test_the_pairing_signature_excludes_the_revision(self) -> None:
@@ -1142,9 +1501,38 @@ class PairedSampleTests(unittest.TestCase):
                          "ci-linux-x64")
         self.assertEqual(paired.job_artifact_stem("Assemble final site", "pages.yml"),
                          "pages-assemble")
+        # A shard records the browser it rendered with, so it is its own sample -- and
+        # the two shards must NOT collapse onto one stem, or shard 0 would report the
+        # condition recorded by shard 1.
+        self.assertEqual(paired.job_artifact_stem("Browser shard 0", "pages.yml"),
+                         "pages-browser-shard-0")
+        self.assertEqual(paired.job_artifact_stem("Browser shard 1", "pages.yml"),
+                         "pages-browser-shard-1")
         self.assertEqual(paired.job_artifact_stem("linux-x64 / Cangjie 1.2.0 STS", "daily.yml"),
                          "daily")
         self.assertEqual(paired.job_artifact_stem("CI required", "ci.yml"), None)
+
+    def test_every_declared_stem_is_the_artifact_its_workflow_uploads(self) -> None:
+        """The stem map and the workflow text must agree, not each be self-consistent.
+
+        `job_artifact_stem` only says which directory a job's evidence lands in; the
+        name is written in the workflow, and a matrix placeholder means one template
+        declares several stems. Testing the map against itself cannot catch a rename,
+        and the consequence is silent: the artifact still matches the `ci-timing-`
+        prefix, the stem stops resolving, and every affected cell reports `unknown`
+        while the whole suite stays green.
+        """
+        uploaded = timing_artifact_stems()
+        # A job may run a reusable workflow, and that workflow owns the artifact name
+        # (`candidate-linux` calls `build-linux-candidate.yml`). A stem therefore
+        # satisfies the contract if the calling workflow or any workflow it calls
+        # uploads it.
+        for workflow, stems in paired.JOB_ARTIFACT_STEMS.items():
+            owners = _called_workflows(workflow) | {workflow}
+            names = set().union(*(uploaded.get(owner, set()) for owner in owners))
+            for _token, stem in stems:
+                with self.subTest(workflow=workflow, stem=stem):
+                    self.assertIn(stem, names)
 
     def test_an_unsupported_workflow_is_refused_not_reported_as_unknown(self) -> None:
         """A silent empty mapping would look like a legitimate "no samples" result."""

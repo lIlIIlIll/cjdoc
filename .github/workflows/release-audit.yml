@@ -1,0 +1,54 @@
+name: Audit release tags
+
+# `release.yml` refuses an off-main tag before builds when the tagged revision
+# contains the guard. GitHub evaluates tag-triggered workflows from the tagged
+# commit, though, so a tag on an older commit runs the old, unguarded workflow.
+# This `workflow_run` workflow is read from the default branch and reports that
+# publication for manual cleanup.
+#
+# It is read-only: release deletion and tag deletion are separate, unconditional
+# operations, so an updated tag could lose a valid replacement release between
+# verification and cleanup. A maintainer must verify the event commit and live
+# tag before removing anything.
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+
+jobs:
+  audit:
+    name: Audit a published release tag
+    # Only a tag push can publish something to audit. Other Release runs have
+    # nothing to inspect.
+    if: ${{ github.event.workflow_run.event == 'push'
+      && startsWith(github.event.workflow_run.head_branch, 'v') }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Ancestry needs the full history of the release branch.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Report an off-main release for manual cleanup
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTHONDONTWRITEBYTECODE: "1"
+          TAG: ${{ github.event.workflow_run.head_branch }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          python scripts/audit_release_tag.py --tag "${TAG}" --commit "${COMMIT}"

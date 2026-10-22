@@ -145,53 +145,86 @@ IDENTITY_FIELDS = ("runnerImage", "sdkVersion", "stdxDigest", "toolchainTarget",
 BROWSER_FONT_AXES = (("browserVersion", "browser version"),
                      ("browserIdentity", "browser identity"),
                      ("fontSetDigest", "font set"))
+# Stage kinds that drive a real browser. A job whose evidence contains none of these
+# has no browser/font condition to match, so the axis is not applicable to it rather
+# than missing from it: `ci.yml` installs Chromium only for the Linux job's `html-a11y`
+# stage, so macOS and Windows build-and-test without ever opening a page.
+#
+# `reading` is here because it really launches Chromium --
+# `showcase_contract/browser_reading_regressions.run` calls `playwright.chromium.launch`
+# -- and a browser stage missing from this set is excused as "not applicable" while it
+# rendered pages, which is the one direction the applicability rule must never take.
+# It reports no identity of its own and publishes no `ci-timing-*` artifact, so it
+# contributes no cell today; were one built from it, the missing axis would qualify the
+# verdict rather than excuse it.
+BROWSER_STAGE_KINDS = frozenset({"browser", "browser-shard", "reading"})
+# Cache keys a stage kind MUST carry before its record counts as a warmth measurement.
+# A browser shard restores the CJK fonts AND the Playwright browser build, and either
+# miss lengthens the job. An artifact written before the second key was recorded
+# carries `{"fonts": "hit"}` alone; collapsed to a bare `hit` it would pool a shard
+# that downloaded Chromium with a genuinely warm one -- the false pairing the second
+# key exists to prevent. A partial record is therefore not a state at all.
+REQUIRED_CACHE_KEYS = {"browser-shard": frozenset({"fonts", "playwright"})}
 
 
-def condition_stage_tuples(condition: str) -> list[list[str]]:
-    """Every serialized identity tuple inside one condition signature.
+def browser_attested_axes(condition: str) -> set[str]:
+    """Axes attested by the browser-driving stages recorded inside one condition.
 
-    `job_conditions` writes the first stage's tuple, then `|stageN=<tuple>` for each
-    later stage whose identity diverged. A stage whose identity agreed with the first
-    is not repeated, and it agreed on EVERY field, so the leading tuple stands for it.
+    The axis belongs to the stage that rendered, not to the job: `ci.yml`'s Linux
+    acceptance artifact starts with a preflight stage that has no browser and only
+    later runs `html-a11y` with one. Asking every stage tuple for a Chromium version
+    would make the axis unreachable for exactly the job DONE-03 samples, so
+    `job_conditions` records which axes the browser-kind stages attested and this reads
+    that marker. A browser stage that reported nothing leaves its axes out, so a job
+    with a real browser stage that stayed silent is still qualified rather than excused.
     """
-    parts = condition.split("|stage")
-    tuples = [parts[0].split("|")]
-    for segment in parts[1:]:
-        _label, _, identity = segment.partition("=")
-        tuples.append(identity.split("|"))
-    return tuples
+    marker = "|browser="
+    index = condition.rfind(marker)
+    if index < 0:
+        return set()
+    reported = set(condition[index + len(marker):].split(","))
+    return {name for field, name in BROWSER_FONT_AXES if field in reported}
 
 
 def unrecorded_axes(conditions: set[str]) -> list[str]:
     """Axes DONE-03 names that NO condition in the report recorded a value for.
 
-    Every sample page records these slots, but no producer fills them yet. A count of
-    five can therefore be reached on the toolchain axes alone, and reporting that as a
-    plain "met" would read as closing DONE-03 when the browser/font axis was never
-    compared. The caller qualifies the verdict with the names returned here.
+    Every sample page records these slots, and only the browser stages fill them. A
+    sample whose job never runs such a stage records nothing here, which is why the
+    caller decides applicability separately: for a browser-driving cell a blank slot
+    means the axis was not compared, and a five-count then reads as closing DONE-03
+    when it did not. The caller qualifies the verdict with the names returned here.
 
-    EVERY stage tuple is inspected, not just the first: a later stage that diverged
-    gets its own tuple, and an axis it failed to record is not attested by the job even
-    when the first stage recorded it. Only a stage that agreed with the first is absent
-    from the signature, and agreement covers all of these fields.
+    The attestation comes from the stages that actually drive a browser (see
+    `browser_attested_axes`). Requiring it of EVERY stage was wrong in the direction
+    that matters: a multi-stage job's first tuple is a preflight stage that never has a
+    browser, so no such job could ever attest the axis.
     """
-    positions = [IDENTITY_FIELDS.index(field) for field, _name in BROWSER_FONT_AXES]
-    recorded = [False] * len(BROWSER_FONT_AXES)
+    attested: set[str] = set()
     for condition in conditions:
         if not condition:
             continue
-        tuples = condition_stage_tuples(condition)
-        for index, position in enumerate(positions):
-            if all(position < len(values) and values[position].strip()
-                   for values in tuples):
-                recorded[index] = True
-    return [name for (_field, name), seen in zip(BROWSER_FONT_AXES, recorded) if not seen]
+        attested |= browser_attested_axes(condition)
+    return [name for (_field, name) in BROWSER_FONT_AXES if name not in attested]
 
 
-def requirement_verdict(met: bool, unrecorded: list[str]) -> str:
-    """The verdict text, never claiming more than the recorded axes support."""
+def requirement_verdict(met: bool, unrecorded: list[str],
+                        browser_applicable: bool = True) -> str:
+    """The verdict text, never claiming more than the recorded axes support.
+
+    `browser_applicable` is False for a job shape whose stages never drive a browser.
+    DONE-03's browser/font condition describes a rendering sample, so a job that builds
+    and tests without opening a page has no such condition to match: the axis is not
+    applicable to it rather than missing from it, and saying "not recorded" would
+    describe a gap that does not exist. The wording still names the axis, so a reader
+    can tell "matched on every axis" from "axis not applicable" -- the two are not the
+    same claim and must not print identically.
+    """
     if not met:
         return "NOT met"
+    if not browser_applicable:
+        return ("met -- browser/font axis not applicable (no stage of this job drives a "
+                "browser)")
     if not unrecorded:
         return "met"
     return ("met on the recorded axes only -- " + ", ".join(unrecorded)
@@ -238,6 +271,21 @@ def job_conditions(evidence: Path) -> dict[str, str]:
             later = stage_identity(stage.get("environment") or {})
             if later != signature.split("|stage", 1)[0]:
                 signature += f"|stage{index}={later}"
+        # The browser/font axis is attested by the stages that RENDERED, not by every
+        # stage: a preflight or compile stage never has a Chromium version, and
+        # requiring one from it would make the axis unreachable for the multi-stage job
+        # DONE-03 actually samples. The marker is part of the signature, so two
+        # artifacts whose browser stages attest different axes never share a cell.
+        attested: list[str] = []
+        for stage in stages:
+            if stage.get("kind") not in BROWSER_STAGE_KINDS:
+                continue
+            recorded = stage.get("environment") or {}
+            for field, _name in BROWSER_FONT_AXES:
+                if str(recorded.get(field) or "").strip() and field not in attested:
+                    attested.append(field)
+        if any(stage.get("kind") in BROWSER_STAGE_KINDS for stage in stages):
+            signature += "|browser=" + ",".join(attested)
         conditions[path.parent.name] = signature
     return conditions
 
@@ -254,12 +302,42 @@ def job_cache_states(evidence: Path) -> dict[str, str]:
     for path in sorted(evidence.glob("*/stages.json")):
         document = json.loads(path.read_text(encoding="utf-8"))
         found: set[str] = set()
+        partial = False
         for stage in document.get("stages", []):
             cache = (stage.get("environment") or {}).get("cache") or {}
             found.update(cache.values())
+            required = REQUIRED_CACHE_KEYS.get(stage.get("kind"))
+            if required is not None and not required <= set(cache):
+                # One recorded key cannot speak for a job whose other cost-bearing
+                # cache went unrecorded. `unknown` (not `mixed`) is the honest label:
+                # `mixed` claims the job really ran split, and this one was never
+                # measured on the missing axis.
+                partial = True
+        if partial:
+            states[path.parent.name] = "unknown"
+            continue
         states[path.parent.name] = (found.pop() if len(found) == 1
                                     else "unknown" if not found else "mixed")
     return states
+
+
+def job_browser_usage(evidence: Path) -> dict[str, bool]:
+    """Per artifact directory, whether its stages drove a real browser.
+
+    DONE-03's sample condition names the browser/font set. A job that never opens a
+    browser has no such condition to match, so the axis is not applicable to its cells
+    instead of missing from them. Applicability is derived from recorded stage kinds
+    rather than from a job-name list: `ci.yml` installs Chromium only for the Linux
+    job's `html-a11y` stage, but a workflow change that adds or removes that stage must
+    move the answer with it, and a hard-coded platform list would not.
+    """
+    usage: dict[str, bool] = {}
+    for path in sorted(evidence.glob("*/stages.json")):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        usage[path.parent.name] = any(
+            stage.get("kind") in BROWSER_STAGE_KINDS
+            for stage in document.get("stages", []))
+    return usage
 
 
 def matching_artifacts(repository: str, run_id: int, attempt: int) -> list[dict]:
@@ -430,6 +508,7 @@ def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
                                      "artifacts": missing})
     states = job_cache_states(evidence)
     conditions = job_conditions(evidence)
+    browser_usage = job_browser_usage(evidence)
     # `Re-run failed jobs` executes only the failed jobs and their dependents; the
     # attempt response still carries the successful jobs from the previous attempt,
     # reported as if they belonged to this one. Their `run_attempt` says the new attempt
@@ -463,6 +542,9 @@ def _attempt_samples(repository: str, run: dict, run_id: int, attempt: int,
             # Recorded per sample so `report` never has to re-derive the mapping from a
             # job name alone, which is workflow-specific.
             "hasEvidence": job_artifact_stem(name, workflow) is not None,
+            # Whether this job's stages drove a browser, which decides if DONE-03's
+            # browser/font condition applies to it at all.
+            "browserDriven": _job_browser_for(name, browser_usage, workflow),
             "workflow": workflow,
             "jobMinutes": job_minutes(job),
             "runWallMinutes": wall, "runRunnerMinutes": total,
@@ -489,6 +571,15 @@ JOB_ARTIFACT_STEMS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     "pages.yml": (
         ("assemble", "pages-assemble"),
+        # Each browser shard records the Chromium and font set it rendered with, so its
+        # record is a sample in its own right. The index is part of the stem because
+        # both shards are separate artifacts: a shared stem would resolve every shard to
+        # whichever directory the glob found first, so shard 0 would report shard 1's
+        # condition. The indexes mirror the workflow's `shard: [0, 1]` matrix; a shard
+        # added there without an entry here reports `unknown` rather than borrowing its
+        # sibling's evidence.
+        ("browser shard 0", "pages-browser-shard-0"),
+        ("browser shard 1", "pages-browser-shard-1"),
     ),
     "daily.yml": (
         # The daily artifact is `ci-timing-daily-*` but its only job is named
@@ -570,6 +661,21 @@ def _job_condition_for(job_name: str, conditions: dict[str, str],
     return ""
 
 
+def _job_browser_for(job_name: str, usage: dict[str, bool],
+                     workflow: str = "ci.yml") -> bool:
+    """Whether this job's recorded stages drove a browser.
+
+    A job whose artifact is missing reports False: absence of evidence is not evidence
+    that the job opened a page, and claiming applicability would demand an axis it
+    never had. The reverse error is caught by `report`, which treats a shape as
+    browser-driving if ANY of its artifacts recorded the stage.
+    """
+    stem = job_artifact_stem(job_name, workflow)
+    if stem is None:
+        return False
+    return any(driven for directory, driven in usage.items() if stem in directory)
+
+
 def report(samples: list[dict], workflow: str, out: Path,
            provenance: str | None = None) -> dict:
     # `collect` may attach the acquisition failures; they are not samples.
@@ -647,20 +753,26 @@ def report(samples: list[dict], workflow: str, out: Path,
     lines += ["", "## Matched cells (successful jobs only)", "",
               "Each cell is one (job shape, cache state, matched environment) triple. The",
               "condition signature is the runner image, SDK version, stdx digest, toolchain",
-              "fingerprint, toolchain target and compile options recorded by EVERY stage of",
-              "that job (a divergent",
-              "later stage gives the artifact a signature of its own). The source revision is",
+              "fingerprint, toolchain target and compile options observed across the job's",
+              "stages (a divergent later stage gives the artifact a signature of its own,",
+              "and the axes its browser stages attested are part of that signature). The",
+              "source revision is",
               "NOT part of the key: DONE-03's before/after samples are different commits by",
               "definition. Every sample keeps its own revision AND its environment, both",
               "shown in the run table, so the revision-keyed view stays reconstructible.",
               "",
-              "**Unmeasured axis:** DONE-03 also names the browser/font set. `ci_stage` does",
-              "not record it, so no signature can attest it and these cells do not claim it",
-              "was matched. While it stays unrecorded, a count that reaches five is printed",
-              "as `met on the recorded axes only` and names the axis it could not compare,",
-              "so it is never read as closing the requirement. If a producer starts",
-              "recording it, the signature picks it up automatically, cells split",
-              "accordingly, and the qualification disappears with the gap.", ""]
+              "**Browser/font axis:** DONE-03 also names the browser/font set, and only a",
+              "job that drives a browser has that condition to match. The Linux acceptance",
+              "matrix and the Pages browser shards publish the Chromium version and a",
+              "font-family digest, which `ci_stage` merges into the stage environment. The",
+              "Pages reading job's `reading` stage launches a browser too, so it counts as",
+              "browser-driving; it reports no identity and publishes no timing artifact, so",
+              "it yields no cell today. A cell whose browser stage recorded the",
+              "axis can earn a plain `met`; a cell that drives a browser but did not record",
+              "it is printed as `met on the recorded axes only` and names the axis it could",
+              "not compare. A cell whose job runs no browser stage is printed as",
+              "`browser/font axis not applicable`, which is a deliberately different",
+              "string: an unmeasured axis is never reported as one that matched.", ""]
     for key in sorted(cells):
         shape, state, condition = key
         # Inline code cannot contain a raw pipe in a table, and these bullets may be
@@ -709,24 +821,52 @@ def report(samples: list[dict], workflow: str, out: Path,
     # platform that only ever failed cannot vanish from the requirement section.
     for shape in requirement_shapes:
         conditions_by_shape.setdefault(shape, set())
-    # DONE-03 names the browser/font set, but no producer records it yet. Counts are
-    # reached on the toolchain axes alone, so a bare "met" would overstate them.
+    # DONE-03 names the browser/font set, and only a job that drives a browser has that
+    # condition to match. Applicability is derived per job SHAPE from the stage kinds
+    # the evidence records, never from a platform name: `ci.yml` installs Chromium only
+    # for the Linux job, but a workflow edit that adds or removes the stage must move
+    # the answer with it.
     #
-    # Computed PER CONDITION, not from the union of every condition: once a producer
-    # starts recording these slots, old artifacts without them keep appearing in the
-    # report, and a union would mark the axis recorded because the NEW conditions
-    # supply it -- handing an old cell a bare "met" it never earned.
+    # A shape counts as browser-driving if ANY of its artifacts recorded a browser
+    # stage. That direction is deliberate: an artifact that predates the stage would
+    # otherwise make a genuinely browser-driving shape look inapplicable, and the report
+    # would then excuse the axis on the strength of the OLDEST sample -- the same
+    # failure the per-condition qualification exists to prevent.
+    #
+    # A sample that carries no `browserDriven` field counts as driving a browser, which
+    # is the conservative reading: an omitted field must never be the thing that excuses
+    # an axis, or a caller that forgets to populate it silently weakens the requirement.
+    browser_shapes: set[str] = set()
+    for sample in samples:
+        if sample.get("browserDriven", True):
+            browser_shapes.add(sample["shape"])
+    # DONE-03 names the browser/font set. A producer now records it, but only the
+    # stages that really launch a browser do, so a cell can be missing it for two
+    # distinct reasons: its job has no browser stage (not applicable), or its job has
+    # one that did not report (unrecorded). Only the second qualifies a verdict.
+    #
+    # Computed PER CONDITION, not from the union of every condition: old artifacts
+    # without these slots keep appearing in the report, and a union would mark the axis
+    # recorded because the NEW conditions supply it -- handing an old cell a bare "met"
+    # it never earned.
     #
     # The returned list is the conservative one: an axis appears if ANY condition fails
     # to record it, so an empty `unrecordedAxes` means every cell in the report was
     # compared on every axis DONE-03 names. Order follows the declaration above so the
     # value reads the same way every run.
+    #
+    # Only browser-driving shapes contribute: a shape whose stages never open a page
+    # cannot record the axis and is not asked to, so letting it into this union would
+    # report the axis as missing forever and no cell could ever earn a plain "met".
     seen_unrecorded: set[str] = set()
-    for values in conditions_by_shape.values():
+    for shape, values in conditions_by_shape.items():
+        if shape not in browser_shapes:
+            continue
         for condition in values:
             seen_unrecorded.update(unrecorded_axes({condition}))
     for shape in sorted(conditions_by_shape):
         conditions = conditions_by_shape[shape]
+        applicable = shape in browser_shapes
         if not conditions:
             for state in ("miss", "hit"):
                 lines.append(f"* {shape} / **{state}**: 0 collected — NOT met "
@@ -737,12 +877,14 @@ def report(samples: list[dict], workflow: str, out: Path,
             condition_unrecorded = unrecorded_axes({condition})
             for state in ("miss", "hit"):
                 count = len(cells.get((shape, state, condition), []))
-                verdict = requirement_verdict(count >= 5, condition_unrecorded)
+                verdict = requirement_verdict(count >= 5, condition_unrecorded,
+                                              applicable)
                 lines.append(f"* {shape} / **{state}** {label}: {count} collected — "
                              f"{verdict}")
             paired = min(len(cells.get((shape, "miss", condition), [])),
                          len(cells.get((shape, "hit", condition), [])))
-            paired_verdict = requirement_verdict(paired >= 5, condition_unrecorded)
+            paired_verdict = requirement_verdict(paired >= 5, condition_unrecorded,
+                                                 applicable)
             lines.append(f"  * paired samples under this condition: {paired} — "
                          f"{paired_verdict}")
     unclassified = [s for s in successful if s["state"] not in CLASSIFIED_STATES]
@@ -751,19 +893,67 @@ def report(samples: list[dict], workflow: str, out: Path,
         # NOT `unrecorded`: that name holds the missing DONE-03 axes above and is
         # returned to the caller, so reusing it here silently replaced the axis list
         # with a list of job shapes whenever a job had no cache state.
+        #
+        # `mixed` is separated from `unknown` because they mean different things and
+        # only one of them is the artifact's fault. A job that restores several timed
+        # caches (a Pages browser shard restores fonts AND the Playwright browser
+        # build) really did run with one hit and one miss; calling that "carry no
+        # cache state" would describe a recorded condition as an unrecorded one.
         unrecorded_state = sorted({s["shape"] for s in unclassified
-                                   if s.get("hasEvidence")})
-        parts = [f"{len(unclassified)} successful job(s) carry no cache state and are "
-                 "excluded from the cells."]
-        if never:
-            parts.append(f"Of those, {', '.join(never)} record no stage evidence at all, "
-                         "so they can never be either condition and are not requirements.")
-        if unrecorded_state:
-            parts.append(f"The rest ({', '.join(unrecorded_state)}) are cache-bearing jobs "
-                         "whose state was not recorded -- from runs predating the "
-                         "recording, or from artifacts that expired -- so they remain "
-                         "requirements showing as 0 collected above rather than "
-                         "disappearing.")
+                                   if s.get("hasEvidence") and s["state"] == "unknown"})
+        # Gated on `hasEvidence` exactly like `unknown_count`, or a shape whose samples
+        # all lacked stage evidence would print "0 job(s) (<shape>) restored caches in
+        # different states" -- a count and a name that contradict each other.
+        mixed_state = sorted({s["shape"] for s in unclassified
+                              if s.get("hasEvidence") and s["state"] == "mixed"})
+        # Counted by predicate, not by subtraction. A job with no stage evidence at all
+        # is `unknown` too, and the sentences below name it separately ("record no stage
+        # evidence at all"), so "the rest" must not include it or the paragraph would
+        # claim a job is both evidence-less and merely unrecorded.
+        unknown_count = sum(1 for s in unclassified
+                            if s.get("hasEvidence") and s["state"] == "unknown")
+        mixed_count = sum(1 for s in unclassified
+                          if s.get("hasEvidence") and s["state"] == "mixed")
+        if not mixed_state:
+            # No job recorded a split condition, so keep the exact sentence the
+            # checked-in capture `docs/paired-samples-main.md` was generated with: that
+            # file is reporter output, and rewording it here would make the committed
+            # capture unreproducible from the code that claims to have produced it.
+            parts = [f"{len(unclassified)} successful job(s) carry no cache state and "
+                     "are excluded from the cells."]
+            if never:
+                parts.append(f"Of those, {', '.join(never)} record no stage evidence at "
+                             "all, so they can never be either condition and are not "
+                             "requirements.")
+            if unrecorded_state:
+                parts.append(f"The rest ({', '.join(unrecorded_state)}) are cache-bearing "
+                             "jobs whose state was not recorded -- from runs predating the "
+                             "recording, or from artifacts that expired -- so they remain "
+                             "requirements showing as 0 collected above rather than "
+                             "disappearing.")
+        else:
+            # A job that restores more than one timed cache can legitimately record one
+            # hit and one miss. Saying it "carries no cache state" would blame the
+            # artifact for a condition it recorded correctly, and would hide the one
+            # fact a reader needs: it is excluded from BOTH cells, so no amount of
+            # waiting turns it into a sample.
+            parts = [f"{len(unclassified)} successful job(s) are excluded from the "
+                     "cells."]
+            if never:
+                parts.append(f"Of those, {', '.join(never)} record no stage evidence at "
+                             "all, so they can never be either condition and are not "
+                             "requirements.")
+            if mixed_state:
+                parts.append(f"{mixed_count} job(s) ({', '.join(mixed_state)}) restored "
+                             "caches in different states -- typically one hit and one "
+                             "miss -- so they are neither wholly warm nor wholly cold and "
+                             "cannot be pooled with either.")
+            if unrecorded_state:
+                parts.append(f"The remaining {unknown_count} ({', '.join(unrecorded_state)}) "
+                             "are cache-bearing jobs whose state was not recorded -- from "
+                             "runs predating the recording, or from artifacts that expired "
+                             "-- so they remain requirements showing as 0 collected above "
+                             "rather than disappearing.")
         lines += ["", " ".join(parts)]
     if acquisition_failures:
         flat = [item for group in acquisition_failures for item in group]

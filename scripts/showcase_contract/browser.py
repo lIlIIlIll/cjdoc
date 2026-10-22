@@ -140,6 +140,23 @@ def check_locale_navigation(journey: Journey):
     journey.assertions.append("the language control follows the same native declaration/version and browser Back returns")
 
 
+def _report_browser_identity(browser_version: str) -> None:
+    """Publish this shard's real browser identity to the stage recorder.
+
+    Imported lazily and guarded: this module is also run outside CI, where there is no
+    recorder to report to and no reason to require the script package on the path.
+    """
+    try:
+        import ci_stage
+    except ImportError:
+        return
+    ci_stage.report_identity({
+        "browserVersion": browser_version,
+        "browserIdentity": "chromium",
+        "fontSetDigest": ci_stage.font_set_digest(),
+    })
+
+
 def exercise(browser, target: dict, key: tuple, base: str, site: Site, output: Path, homes: dict) -> dict:
     from playwright.sync_api import expect
     behavior, _, width, height, theme, _ = SCENARIOS[key[2]]
@@ -297,6 +314,12 @@ def run(site_path: Path, evidence_path: Path, executable: str | None = None,
                     browser.close()
         if Site(site_path).digest() != fingerprint:
             raise ContractError("final published tree changed during browser verification")
+        # DONE-03 pairs samples under a matched browser/font condition, and this job
+        # renders real pages, so what it actually launched is reported to the recorder.
+        # `runner` above already carries it inside the shard evidence; publishing it
+        # here puts the same value in the stage record, where the paired-sample report
+        # reads its condition signature from.
+        _report_browser_identity(browser_version)
         runner = {"name": "cjdoc-final-showcase-browser",
                   "version": importlib.metadata.version("playwright"),
                   "browser": "chromium", "browserVersion": browser_version}

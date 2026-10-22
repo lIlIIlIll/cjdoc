@@ -126,7 +126,10 @@ class ReleaseSecurityTest(ReleaseToolsTestSupport, unittest.TestCase):
             encoding="utf-8"
         )
         candidate = workflow.split("\n  release-candidate:\n", 1)[1].split("\n  publish:\n", 1)[0]
-        publish = workflow.split("\n  publish:\n", 1)[1]
+        # Bounded: the file now ends with the `wallclock` collector, and an
+        # unbounded slice would let that job satisfy the publisher's assertions
+        # (it also checks out with `persist-credentials: false`).
+        publish = workflow.split("\n  publish:\n", 1)[1].split("\n  wallclock:\n", 1)[0]
         # The tag-release toolchain is pinned inline, so a release never depends on
         # repository variables being configured.
         self.assertNotIn("vars.CANGJIE", workflow)
@@ -148,9 +151,16 @@ class ReleaseSecurityTest(ReleaseToolsTestSupport, unittest.TestCase):
         self.assertLess(candidate.index("python scripts/verify_release.py"), build_offset)
         self.assertGreater(candidate.rindex("python scripts/verify_release.py"), build_offset)
         self.assertEqual(workflow.count("contents: write"), 1)
-        self.assertIn(
-            "if: ${{ always() && needs.release-candidate.result == 'success' }}", publish
-        )
+        # The publisher must be gated on BOTH a successful candidate and an allowing
+        # guard: `always()` alone would let it run on a refused tag.
+        self.assertIn("needs.release-candidate.result == 'success'", publish)
+        self.assertIn("needs.guard.result == 'success'", publish)
+        # ...and the guard must run BEFORE the builds, so a refused tag costs no
+        # platform build at all.
+        guard = workflow.split("\n  guard:\n", 1)[1].split("\n  release-candidate:\n", 1)[0]
+        self.assertIn("scripts/verify_release_tag_allowed.py", guard)
+        self.assertIn("fetch-depth: 0", guard)
+        self.assertIn("needs: guard", candidate)
         self.assertIn("persist-credentials: false", publish)
         self.assertIn(
             "actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3",

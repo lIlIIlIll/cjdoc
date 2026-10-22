@@ -34,7 +34,7 @@ import threading
 import time
 
 STAGE_SCHEMA = "cjdoc.ci-stage/1"
-WALLCLOCK_SCHEMA = "cjdoc.ci-wallclock/1"
+WALLCLOCK_SCHEMA = "cjdoc.ci-wallclock/2"
 BUILD_MANIFEST_SCHEMA = "cjdoc.ci-build-manifest/1"
 STAGE_KINDS = frozenset({
     "build", "native", "python", "cli", "provider", "smoke", "site-assemble",
@@ -42,6 +42,21 @@ STAGE_KINDS = frozenset({
     "publish", "sdk",
 })
 STAGES_FILE = "stages.json"
+# A stage reports identity it could only learn by running (the browser build, the font
+# set it rendered with) through this file. It is a declared channel rather than an
+# environment variable so the value cannot be inherited by a later, unrelated stage,
+# and rather than scraping stdout so a log line never becomes a measurement.
+IDENTITY_REPORT_FILE = "stage-identity.json"
+# The recorder exports this to the stage it launched, so the report always lands where
+# that run will read it. Passing it as an environment variable rather than deriving it
+# from `CJDOC_CI_EVIDENCE` keeps the channel working for every workflow: only some of
+# them set that variable, and a stage that silently reported nowhere would leave the
+# axis permanently unrecorded.
+IDENTITY_REPORT_ENV = "CJDOC_STAGE_IDENTITY_REPORT"
+# Only fields `stage_environment` already declares may be reported, and only the ones
+# a stage can genuinely learn about itself. An unrestricted channel would let a stage
+# forge the toolchain identity it is supposed to be measured against.
+REPORTABLE_IDENTITY = frozenset({"browserVersion", "browserIdentity", "fontSetDigest"})
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _RECORDS: list[dict] = []
 _COMPILE_OPTIONS = ("--jobs 1", "-O1")
@@ -90,6 +105,54 @@ def parse_cache(value: str | None) -> dict[str, str]:
     return parsed
 
 
+def font_set_digest() -> str:
+    """Digest font families and version metadata fontconfig resolves, or return `""`.
+
+    DONE-03 puts the font set in the matched condition because font substitution
+    changes browser rendering. Family names alone miss same-family font updates.
+    Fontconfig's version metadata captures those updates without reading every font
+    file; incomplete listings are unavailable rather than partial evidence.
+    """
+    try:
+        completed = subprocess.run(["fc-list", "--format", "%{family}\\t%{fontversion}\\n"],
+                                   capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+    font_versions: set[tuple[str, str]] = set()
+    for line in completed.stdout.splitlines():
+        family, separator, version = line.partition("\t")
+        family, version = family.strip(), version.strip()
+        if not separator or not family or not version:
+            return ""
+        font_versions.add((family, version))
+    if not font_versions:
+        return ""
+    identity = "\n".join(f"{family}\t{version}" for family, version in sorted(font_versions))
+    return hashlib.sha256(b"cjdoc-font-set-version-v1\0" + identity.encode("utf-8")).hexdigest()
+
+
+def report_identity(values: dict[str, str], path: Path | None = None) -> None:
+    """Publish what this stage actually ran with, for `ci_stage` to record.
+
+    `path` is the report FILE. It defaults to the recorder's environment, so a stage
+    always writes to the place its own run will read. No-op outside the recorder (a
+    developer invoking the stage directly), where no file would be read anyway.
+    """
+    target = path if path is not None else os.environ.get(IDENTITY_REPORT_ENV)
+    if not target:
+        return
+    payload = {field: str(values.get(field) or "") for field in sorted(REPORTABLE_IDENTITY)}
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Written to a sibling and moved into place: the recorder reads this file after the
+    # stage exits, and a stage killed mid-write must not leave a truncated document that
+    # the recorder would then reject as malformed.
+    staging = target.with_name(target.name + ".partial")
+    staging.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                       encoding="utf-8", newline="\n")
+    staging.replace(target)
+
+
 def stage_environment(repo: Path | None = None) -> dict[str, object]:
     """Identity fields that must stay stable across producers and consumers."""
     repo = Path(repo or os.environ.get("CJDOC_REPO", ".")).resolve()
@@ -112,7 +175,44 @@ def stage_environment(repo: Path | None = None) -> dict[str, object]:
         "runId": os.environ.get("GITHUB_RUN_ID", ""),
         "runAttempt": int(os.environ.get("GITHUB_RUN_ATTEMPT", "0") or 0),
         "job": os.environ.get("GITHUB_JOB", ""),
+        # Present but empty until a stage reports them, so every artifact carries the
+        # same key set and a missing axis is visible as an empty value rather than as
+        # an absent field that a consumer might read as "not applicable".
+        **{field: "" for field in sorted(REPORTABLE_IDENTITY)},
     }
+
+
+def read_reported_identity(path: Path) -> dict[str, str]:
+    """The identity a stage reported about itself, or `{}` when it reported none.
+
+    Read only from the file this run owns, and only for the declared fields: a stage
+    that writes an unknown key is a defect, not extra evidence, so it fails loudly
+    instead of silently adding a field nothing validates.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        # Not fatal: the stage's own record is the evidence, and aborting here would
+        # destroy it so the whole job disappears from the sample instead of appearing
+        # with an unrecorded axis. A stage that cannot report identity has recorded
+        # nothing, which is exactly what an absent report means.
+        print(f"ci_stage.py: ignoring unreadable stage identity report {path}: {error}",
+              file=sys.stderr)
+        return {}
+    if not isinstance(payload, dict):
+        print(f"ci_stage.py: ignoring non-object stage identity report {path}",
+              file=sys.stderr)
+        return {}
+    unknown = set(payload) - REPORTABLE_IDENTITY
+    if unknown:
+        # Undeclared fields stay fatal: they mean the producer and the recorder disagree
+        # about the contract, which is a defect rather than missing evidence.
+        raise SystemExit(
+            f"ci_stage.py: stage identity report has undeclared field(s): {sorted(unknown)}")
+    return {field: str(payload.get(field) or "") for field in REPORTABLE_IDENTITY}
 
 
 class StageHandle:
@@ -279,12 +379,21 @@ def run_stage(stage_id: str, kind: str, command: list[str], evidence_dir: Path,
         raise SystemExit("ci_stage.py: run requires -- and a command")
     evidence_dir = Path(evidence_dir)
     evidence_dir.mkdir(parents=True, exist_ok=True)
+    # A report left by an earlier stage must never be inherited by this one: the file
+    # describes what a stage ran WITH, so a stale copy would attribute one stage's
+    # browser identity to a later stage that recorded none.
+    (evidence_dir / IDENTITY_REPORT_FILE).unlink(missing_ok=True)
     handle = StageHandle(stage_id, kind, command)
     handle.record(extra)
     handle.record_value["startedAt"] = utc_now()
     started = time.perf_counter()
     cancelled: list[int] = []
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # The stage learns the path from the recorder, so it always writes where THIS run
+    # reads.
+    child_environment = dict(os.environ)
+    child_environment[IDENTITY_REPORT_ENV] = str(evidence_dir / IDENTITY_REPORT_FILE)
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               env=child_environment)
 
     def cancel(signum, _frame):
         cancelled.append(signum)
@@ -308,12 +417,20 @@ def run_stage(stage_id: str, kind: str, command: list[str], evidence_dir: Path,
         for signum, handler in previous.items():
             signal.signal(signum, handler)
     exit_code = returncode if returncode >= 0 else 128 - returncode
+    environment = stage_environment()
+    # Read only after the stage has ended: the value it reports is what it actually
+    # ran with. The file is a one-shot channel, so it is deleted once consumed --
+    # `stages.json` is the evidence, and a leftover copy would be uploaded as if it
+    # were a separate measurement.
+    report = evidence_dir / IDENTITY_REPORT_FILE
+    environment.update(read_reported_identity(report))
+    report.unlink(missing_ok=True)
     handle.record_value.update({
         "wallMs": round((time.perf_counter() - started) * 1000, 3),
         "exitCode": exit_code,
         "status": "cancelled" if cancelled else ("passed" if exit_code == 0 else "failed"),
         "endedAt": utc_now(),
-        "environment": stage_environment(),
+        "environment": environment,
     })
     write_stage_evidence(evidence_dir / STAGES_FILE, [handle.record_value])
     return exit_code
@@ -408,44 +525,213 @@ def _milliseconds(start: str | None, end: str | None) -> int:
     return max(0, round((parse(end) - parse(start)).total_seconds() * 1000))
 
 
-def wallclock(run_id: str, attempt: int, repository: str) -> dict[str, object]:
-    """Read-only wall-clock classification from the Actions jobs API."""
-    run = _gh_json(f"repos/{repository}/actions/runs/{run_id}", paginate=False)
-    if not isinstance(run, dict):
-        raise SystemExit("ci_stage.py: unexpected run payload")
-    jobs_payload = _gh_json(
-        f"repos/{repository}/actions/runs/{run_id}/jobs?filter=latest&per_page=100")
+def non_overlapping_chain(intervals: list[tuple[str, int, int]]) -> dict[str, object]:
+    """The longest chain of jobs that did not overlap in time.
+
+    Derived only from observed start/end times, because the Jobs API reports no
+    dependency graph. A job extends the chain when it started no earlier than the
+    previous one ended.
+
+    This is NOT the dependency critical path, and the field names say `chain`
+    rather than `criticalPath` for that reason. Two independent jobs -- `pages.yml`'s
+    source reproduction and its browser shards are siblings that each need only
+    `assemble-site` -- can be serialized by runner availability, and a chain built
+    from timestamps alone would then join them and exceed the real dependency path.
+    The number is what actually happened, which is the question this document asks,
+    but it is not an attribution of the wall clock to a `needs` edge.
+
+    `equalsLongestJob` reports the flat case, so a reader cannot mistake "the
+    longest job" for a measured chain.
+
+    `intervals` is `(name, startMs, endMs)` with times relative to one origin.
+    """
+    ordered = sorted((start, end, name) for name, start, end in intervals)
+    best: list[int] = []
+    previous: list[int] = []
+    for index, (start, end, _name) in enumerate(ordered):
+        wall = max(0, end - start)
+        best_index, best_total = -1, 0
+        for earlier in range(index):
+            if ordered[earlier][1] <= start and best[earlier] > best_total:
+                best_index, best_total = earlier, best[earlier]
+        best.append(best_total + wall)
+        previous.append(best_index)
+    if not best:
+        # Every field is present here too: a consumer that reads `longestJobMs`
+        # must not need a special case for a run with no timings.
+        return {"chain": [], "wallMs": 0, "equalsLongestJob": True, "longestJob": "",
+                "longestJobMs": 0}
+    # One index decides both the chain and its wall: computing the maximum twice
+    # lets a later, shorter chain overwrite the number while `chain` keeps naming
+    # the longer one, so the document would contradict itself.
+    peak = max(range(len(best)), key=lambda index: best[index])
+    link = peak
+    chain: list[str] = []
+    while link != -1:
+        chain.append(ordered[link][2])
+        link = previous[link]
+    chain.reverse()
+    longest = max(ordered, key=lambda item: item[1] - item[0])
+    return {
+        "chain": chain,
+        "wallMs": best[peak],
+        # True means the run was flat: no chain is longer than its single longest
+        # job, so attributing the wall clock to a sequence would be invented.
+        "equalsLongestJob": len(chain) == 1,
+        "longestJob": longest[2],
+        "longestJobMs": max(0, longest[1] - longest[0]),
+    }
+
+
+def classify_wallclock(run: dict[str, object], jobs_payload: dict[str, object],
+                       attempt: int) -> dict[str, object]:
+    """Build the wall-clock document from already-fetched API payloads."""
     jobs = jobs_payload.get("jobs", []) if isinstance(jobs_payload, dict) else []
     jobs = [job for job in jobs if job.get("run_attempt") == attempt]
+    started = [job["started_at"] for job in jobs if job.get("started_at")]
+    latest_attempt = int(run.get("run_attempt", attempt))
+    run_origin = run.get("run_started_at") or run.get("created_at")
     job_wall: dict[str, int] = {}
     step_wall: dict[str, dict[str, int]] = {}
+    # A re-run copies the previous attempt's unchanged job records with their original
+    # timestamps. Those jobs did not run in this attempt, so they get the same 0 ms a
+    # skipped job gets -- anywhere else their durations would be counted twice across
+    # attempts and would contradict the chain, which drops them.
+    #
+    # The test is a completed record that ended before the run origin. A job that has
+    # not completed is still running in this attempt, and classifying mid-run must
+    # keep the steps it has recorded so far; scoping to the latest attempt keeps an
+    # older attempt's own records intact, since only that attempt's jobs can be
+    # mistaken for carried ones.
+    carried = {
+        id(job) for job in jobs
+        if attempt == latest_attempt and run_origin
+        and job.get("completed_at") and job["completed_at"] < run_origin
+    }
     for job in jobs:
         name = job.get("name", "")
+        if id(job) in carried:
+            job_wall[name] = 0
+            continue
         job_wall[name] = _milliseconds(job.get("started_at"), job.get("completed_at"))
         if job.get("steps"):
             step_wall[name] = {step.get("name", ""): _milliseconds(step.get("started_at"), step.get("completed_at"))
                                for step in job["steps"] if step.get("completed_at")}
-    started = [job["started_at"] for job in jobs if job.get("started_at")]
-    queued_ms = _milliseconds(run.get("created_at"), min(started)) if started else 0
-    partial = int(run.get("run_attempt", attempt)) > 1 or any(
+    partial = latest_attempt > 1 or any(
         int(job.get("run_attempt", attempt)) > 1 for job in jobs)
     rerun_gaps = [
         {"job": job.get("name", ""), "runAttempt": job.get("run_attempt"),
          "gapMs": _milliseconds(run.get("run_started_at"), job.get("started_at"))}
         for job in jobs if int(job.get("run_attempt", attempt)) > 1
     ]
+    # The origin depends on which attempt is being described, because the two
+    # cases have opposite failure modes:
+    #
+    # * latest attempt -- `run_started_at` is its own origin, and a re-run carries
+    #   the previous attempt's unchanged job records with their original
+    #   timestamps. Anchoring on the earliest job start would then measure from
+    #   before this attempt existed: a span longer than the run's own wall and a
+    #   chain outlasting the run. Anchored on the run origin those carried records
+    #   clamp to zero length and drop out, which is the truth: this attempt did not
+    #   run them.
+    # * older attempt -- the reverse. `run_started_at` belongs to the latest
+    #   attempt, so every job of this one lands before the origin and clamps to
+    #   (0, 0): a non-zero wall beside a zero span and a chain that lost every job.
+    #   The attempt's own jobs are the only available origin.
+    if attempt >= latest_attempt and run_origin:
+        anchor = run_origin
+    else:
+        anchor = min(started) if started else None
+    # Carried records are excluded here too, not merely clamped: against the anchor
+    # they would clamp to a start of 0, which becomes the minimum, so the span would
+    # run from the attempt origin instead of from the first job that actually ran.
+    # `wall - job span` is documented as the pre-start gap plus the post-completion
+    # tail, so a phantom 0 start would report no queueing at all.
+    intervals = [
+        (job.get("name", ""), _milliseconds(anchor, job.get("started_at")),
+         _milliseconds(anchor, job.get("completed_at")))
+        for job in jobs
+        if job.get("started_at") and job.get("completed_at") and id(job) not in carried
+    ]
+    # The three clocks `docs/ci-wallclock.md` tabulates, computed here rather than in
+    # the table's author: a number a reader cannot reproduce from the artifact is not
+    # evidence. `wall` is what a user waits for; the job span excludes the
+    # controller's own pre-start queueing; job-minutes do not hide parallel work.
+    #
+    # `updated_at` is also a run-level timestamp, so for an older attempt it ends
+    # the latest attempt rather than this one. There the number is not a wall at
+    # all, and `wallSource` says so instead of publishing an overstatement.
+    #
+    # A run that has not finished has no wall yet. The collector job runs inside the
+    # run it measures, so it always sees itself `in_progress` and `updated_at` is
+    # whatever the API happened to have flushed -- the number moves between two reads
+    # of the same run and stops before the collector's own upload. Publishing it as
+    # `wall` would claim a completion time the run does not have. `wallSource` names
+    # the clock that was actually read so a reader is never handed the wrong one.
+    if run.get("status") != "completed":
+        # Measured through the last job that has finished -- on a run whose publisher
+        # is skipped (every `pull_request` Pages run) that is the last verification
+        # job, not a publisher, so the name says `terminal-job` and claims no more.
+        # The collector cannot see its own end, so this is a lower bound.
+        last_end = max((end for _name, _start, end in intervals), default=0)
+        wall_ms = last_end
+        wall_source = "terminal-job"
+    elif attempt == latest_attempt:
+        wall_ms = _milliseconds(run_origin, run.get("updated_at"))
+        wall_source = "run"
+    else:
+        # An older attempt, or one the run never had: either way the run-level wall
+        # is not this attempt's, and publishing it beside an empty job list would
+        # read as a measured run that simply had no jobs.
+        wall_ms = 0
+        wall_source = "attempt-jobs"
+    # Queueing is the wait before this attempt's first job starts, so both ends must
+    # belong to this attempt. `created_at` is when the RUN was created, which for a
+    # re-run is the first attempt's creation: measured from there, a re-run reports
+    # the interval spanning the previous attempt as its own queue delay. A re-run's
+    # own start is `run_started_at`, so that is the origin it gets.
+    queue_origin = run.get("created_at") if attempt <= 1 else run_origin
+    in_attempt = [start for start in started if start >= (queue_origin or start)]
+    queued_ms = _milliseconds(queue_origin, min(in_attempt)) if in_attempt else 0
+    job_span_ms = (max(end for _name, _start, end in intervals)
+                   - min(start for _name, start, _end in intervals)) if intervals else 0
+    if wall_source == "attempt-jobs":
+        # Same span, reported as the wall: this attempt has no run-level wall to
+        # read, and 0 next to a non-zero span would read as a measurement.
+        wall_ms = job_span_ms
     return {
         "schemaVersion": WALLCLOCK_SCHEMA,
-        "runId": str(run_id),
+        "runId": str(run.get("id", "")),
         "attempt": attempt,
         "workflow": run.get("name", ""),
         "headSha": run.get("head_sha", ""),
         "queuedMs": queued_ms,
+        "wallMs": wall_ms,
+        "wallSource": wall_source,
+        "jobSpanMs": job_span_ms,
+        "jobMinutes": round(sum(job_wall.values()) / 60_000, 1),
         "jobWallMs": job_wall,
         "stepWallMs": step_wall,
+        "nonOverlappingChain": non_overlapping_chain(intervals),
         "manualRerunGapMs": rerun_gaps,
         "partialRerun": partial,
     }
+
+
+def wallclock(run_id: str, attempt: int, repository: str) -> dict[str, object]:
+    """Read-only wall-clock classification from the Actions jobs API."""
+    run = _gh_json(f"repos/{repository}/actions/runs/{run_id}", paginate=False)
+    if not isinstance(run, dict):
+        raise SystemExit("ci_stage.py: unexpected run payload")
+    # `filter=all`, not `filter=latest`: the classifier selects the attempt it was
+    # asked for, and `latest` would hand it only the newest one. Classifying an
+    # earlier attempt of a re-run run would then find no jobs and report a complete,
+    # plausible document of zeros instead of that attempt's timings.
+    jobs_payload = _gh_json(
+        f"repos/{repository}/actions/runs/{run_id}/jobs?filter=all&per_page=100")
+    document = classify_wallclock(run, jobs_payload, attempt)
+    document["runId"] = str(run_id)
+    return document
 
 
 def verify_identity(manifest_path: Path, main_binary: Path | None, worker_binary: Path | None,

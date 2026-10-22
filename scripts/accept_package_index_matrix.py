@@ -30,6 +30,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ci_stage
+
 # Every fixture is paired with the anchors its own declarations must publish.
 # These are expectations, not discoveries: they were read from each project's
 # sources (and its Doc IR), so a renderer that drops a category alias fails here
@@ -448,7 +451,17 @@ def main() -> int:
             failures += check_keyboard(page, pages[0])
             failures += check_accessible_names(page, pages)
         finally:
+            browser_version = browser.version
             browser.close()
+    # DONE-03 pairs samples under matched browser/font conditions, so the identity this
+    # stage actually rendered with is published rather than assumed. Reported only
+    # after the matrix ran: a version string is evidence of what executed, and reading
+    # it up front would attribute a browser to a run that never started.
+    ci_stage.report_identity({
+        "browserVersion": browser_version,
+        "browserIdentity": "chromium",
+        "fontSetDigest": ci_stage.font_set_digest(),
+    })
 
     if failures:
         for failure in failures:

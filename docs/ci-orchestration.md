@@ -37,9 +37,21 @@ signature of its own instead of being pooled with one that did not. Environments
 appear only in failed or cancelled samples are still listed as unmet requirements, so a
 platform whose samples all failed cannot look requirement-free.
 
-One axis DONE-03 names is **not measured**: the browser/font set. `ci_stage` does not
-record it, so no cell claims it was matched; if a producer begins recording it, the
-signature consumes it automatically.
+One axis DONE-03 names is the browser/font set. It is recorded by the stages that
+actually drive a browser: the Linux acceptance matrix and the Pages browser shards
+publish the Chromium version and a digest of the resolved font families through
+`ci_stage.report_identity`, and `ci_stage` merges that into the stage environment.
+The Pages reading job launches Chromium too (`showcase_contract/browser_reading_regressions`)
+and its stage kind `reading` is classified as browser-driving for exactly that reason,
+so a cell built from it would be qualified rather than excused; it publishes no
+`ci-timing-*` artifact today, so it contributes no cell at all. Jobs that never open a
+page run no such stage, so the axis is **not applicable** to their cells and the report
+says exactly that -- which is a different claim from matching it, and is never printed
+as a plain `met`.
+
+A cell only earns a plain `met` where the browser stages that drive it recorded the
+axis. Where a browser-driving job did not record it, the verdict stays
+`met on the recorded axes only` and names the missing axis.
 
 What remains a real requirement: five successful samples per cell **per cache state**,
 so both the hit and the miss side must reach five under one environment.
@@ -66,12 +78,12 @@ is evicted, a push-with-no-workflow-edit does advance the cold count.
 Consequences for DONE-03's "at least five cold and five warm under matched
 conditions":
 
-* the macOS cell reaches the recorded-axes threshold and nothing more: on the current
-  macOS runner image that one matched condition has 9 warm and 5 cold samples
-  (paired = 5), which the report prints as `met on the recorded axes only -- browser
-  version, browser identity, font set not recorded`. The fifth cold sample arrived with
-  `df4bdc26`. DONE-03 names the browser/font set, no producer records it, so this is
-  **not** a full match and the requirement stays open;
+* the macOS cell reaches the recorded-axes threshold: on the current macOS runner
+  image that one matched condition has 10 warm and 5 cold samples (paired = 5). macOS
+  runs no browser stage, so the browser/font axis is **not applicable** to it rather
+  than missing from it, and the report says so explicitly. The fifth cold sample
+  arrived with `df4bdc26`. Note that this is an applicability argument, not recorded
+  identity: nothing in a macOS artifact attests a browser, because none ran one;
 * the warm side accumulates with pushes and is also met on linux-x64, which has no
   cold sample on any single condition yet;
 * pending no eviction, the cold side advances only on the commits that edit those
@@ -460,7 +472,8 @@ they were previously reported with the wrong cause:
 
 The issue requires ≥5 cold and ≥5 warm paired samples per workflow under matched
 conditions. That collection, the cold/warm classification rule, the failure and
-re-run tables, and the critical-path attribution are tracked by #96; the raw
+re-run tables, and the attribution of the run's time to a non-overlapping chain
+are tracked by #96; the raw
 wall-clock classifications for the sampled runs are the `wallclock-*.json`
 documents produced by `scripts/ci_stage.py wallclock` and attached there. This
 document does not restate them, because a summary that drifts from the raw
@@ -491,7 +504,7 @@ merged until the maintainer merges it.
 | 06.5-06.6 source ZIP reproduction and profiling | `check_showcase_source.py`, the phase attribution (`showcase_build.stage_timing`) | the archive is re-run from the ZIP with the generating binary; the named phases total ~25 s of a ~500 s `site-assemble` | `Reproduce the downloaded source bundle` job, plus the three re-measurement runs `38630501893` / `38616758091` / `38612144866` (elapsed-stage shares) |
 | 07.1-07.3, 07.5-07.6 cache correctness | `install_cangjie_sdk.py` marker + verified archives, `with_stdx.py` fingerprints, cache keys carrying arch/channel/component identity | cache tests and the cold/warm equality assertion of the measurement script | `scripts/test_install_cangjie_sdk.py`, `scripts/test_with_stdx.py`; `identityEqualUnderBothVariants: true` |
 | 07.4 cache shape measurement | `scripts/measure_sdk_install.py`, `sdk-install-measure.yml` | three dispatches of 5 paired cycles | see the CI-07.4 table above |
-| 08.1-08.6 release closure | `release.yml` per-platform candidate + receipt, `release_check.sh`, `verify_release.py` | `scripts/test_release_candidate.py`, `test_release_evidence.py`, `test_release_transaction.py` | those suites pass; the orchestration work is merged to `main`, but a real tagged run is still pending (see below) |
+| 08.1-08.6 release closure | `release.yml` per-platform candidate + receipt, `release_check.sh`, `verify_release.py` | `scripts/test_release_candidate.py`, `test_release_evidence.py`, `test_release_transaction.py` | those suites pass, and the loop has run to completion on merged `main`: tag `v0.7.2-rc2` at `b0c3e5fb27ae` ran `release-candidate` then `publish` (run `39217926544`, all three platform receipts accepted), and the throwaway tag and pre-release were removed afterwards |
 | 09.1-09.5 failure feedback | `ci_diagnostics.py`, bounded log capture, no default golden regeneration | `scripts/test_ci_scripts.py` | diagnostics are collected on failure only, into a bounded directory |
 | 10.1-10.7 routing, cancellation and Daily | `ci_changes.py`, `ci_required.py`, concurrency groups, `daily.yml` | routing table and the aggregate-gate tests | `scripts.test_ci_scripts` and `scripts.test_ci_stage` |
 
@@ -500,12 +513,14 @@ merged until the maintainer merges it.
 One row above is deliberately not "delivered", and it is recorded rather than
 quietly closed:
 
-* **DONE-03 / DONE-04** cannot be satisfied by the history that exists. The
-  enumeration found exactly one source-matched warm Pages pair and no
-  source-matched Release samples at all, so the ≥5-pairs-per-cold/warm-cell
-  requirement is not met by any amount of re-reporting. The raw collection and
-  its limits are attached to #96; a successful tag run would add one sample, not
-  fill the cells.
+* **DONE-03 / DONE-04** cannot be satisfied by the history that exists. Only one
+  cell reaches five paired samples (macOS, warm vs cold under one runner image);
+  every Release run in the history is a tag run, and each tag contributes exactly
+  one sample, so no Release cell can approach five pairs by re-reporting. The raw
+  collection and its limits are attached to #96. The successful tag run on `main`
+  (`39217926544`, tag `v0.7.2-rc2`) adds one Release sample, which is the whole of
+  its effect: it proves the `release-candidate` -> `publish` loop, not the sample
+  count.
 
 ### Acceptance matrix items (OPT-T01–T14)
 

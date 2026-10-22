@@ -457,6 +457,7 @@ jobs:
           cache-dependency-path: scripts/requirements-showcase.txt
 
       - name: Restore Playwright browsers
+        id: playwright-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           # Playwright's default per-user cache; keyed by its exact pin.
@@ -476,6 +477,18 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check psutil -r scripts/requirements-showcase.txt
           python -m playwright install --with-deps chromium
+          # DONE-03 classifies each sample as warm or cold, and this shard's restore
+          # cost is the font archive AND the Playwright browser build: either one
+          # missing changes how long the job takes. Recording only the fonts labelled
+          # a shard that had to download Chromium as warm, and the classifier reads the
+          # whole map, so a cache left out here silently mislabels the sample.
+          #
+          # pip's wheel cache is deliberately NOT recorded. It covers one small pinned
+          # dependency, and treating it as part of warmth would split a cell on an axis
+          # that does not move the measured duration.
+          {
+            echo "CJDOC_CACHE_STATE=fonts=${{ steps.font-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }},playwright=${{ steps.playwright-cache.outputs.cache-hit == 'true' && 'hit' || 'miss' }}"
+          } >> "${GITHUB_ENV}"
           # Chromium cannot rasterize CJK text without a fallback font, so the
           # evidence screenshots depend on this package being present. The
           # 61 MB archive is slow to fetch on a cold runner, so cache the four
@@ -592,6 +605,19 @@ jobs:
             target/browser-history-selection.json
             target/browser-history
             target/browser-shard-${{ matrix.shard }}
+          retention-days: 7
+          if-no-files-found: error
+
+      # The shard reported the Chromium version and font set it rendered with into the
+      # stage recorder. Uploading that record is what makes the claim checkable, so it
+      # travels as its own `ci-timing-*` artifact: mixing an absolute evidence path
+      # into the upload above would move the artifact root off the checked-out tree.
+      - name: Upload the shard's stage record
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-timing-pages-browser-shard-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-evidence/
           retention-days: 7
           if-no-files-found: error
 
@@ -831,6 +857,58 @@ jobs:
           name: cjdoc-showcase-preview-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/sealed/showcase-site
           include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
+
+  # The wall clock is attached to the Pages run itself, because a figure read back
+  # from the API later describes a different state of the run than the one that
+  # produced this site. It is not a dependency of `deploy`: an API failure must not
+  # block a publication, and it is not part of any required gate.
+  wallclock:
+    name: Wall clock
+    if: always()
+    # `deploy` is a dependency for the same reason: the published chain ends with
+    # `Publish showcase`, and a clock that reads it while it is still running
+    # records 0 ms and drops the last link. Nothing needs this job, so waiting is
+    # not gating. On `pull_request` runs `deploy` is skipped and `always()` keeps
+    # the clock running anyway.
+    needs: [assemble-site, source-reproduction, browser-shard, reading-regressions, verify-site, deploy]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # Reading this run's jobs needs more than the read-only contents scope.
+      actions: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Classify the run wall clock
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p target/ci-evidence
+          python scripts/ci_stage.py wallclock \
+            --run "${GITHUB_RUN_ID}" \
+            --attempt "${GITHUB_RUN_ATTEMPT}" \
+            --repository "${GITHUB_REPOSITORY}" \
+            --output target/ci-evidence/wallclock.json
+
+      - name: Upload the wall clock
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-wallclock-pages-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/ci-evidence/wallclock.json
           retention-days: 7
           if-no-files-found: error
 
