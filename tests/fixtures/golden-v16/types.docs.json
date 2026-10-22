@@ -456,7 +456,18 @@
             "semanticState": "partial",
             "semanticCanonical": null,
             "semanticProvider": "syntax",
-            "navigation": null
+            "navigation": {
+              "state": "resolved",
+              "matchLevel": "manual",
+              "reason": "validated official 1.2.0 standard-library documentation route; not API identity evidence",
+              "dependencyInstanceId": "",
+              "documentSetId": "",
+              "indexIdentity": "",
+              "symbolKey": "",
+              "url": "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_intrinsics.html#int64",
+              "apiIdentity": "",
+              "language": ""
+            }
           },
           "documentation": "horizontal coordinate",
           "defaultExpression": null
@@ -473,7 +484,18 @@
             "semanticState": "partial",
             "semanticCanonical": null,
             "semanticProvider": "syntax",
-            "navigation": null
+            "navigation": {
+              "state": "resolved",
+              "matchLevel": "manual",
+              "reason": "validated official 1.2.0 standard-library documentation route; not API identity evidence",
+              "dependencyInstanceId": "",
+              "documentSetId": "",
+              "indexIdentity": "",
+              "symbolKey": "",
+              "url": "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_intrinsics.html#int64",
+              "apiIdentity": "",
+              "language": ""
+            }
           },
           "documentation": "vertical coordinate",
           "defaultExpression": null
@@ -678,7 +700,18 @@
         "semanticState": "partial",
         "semanticCanonical": null,
         "semanticProvider": "syntax",
-        "navigation": null
+        "navigation": {
+          "state": "resolved",
+          "matchLevel": "manual",
+          "reason": "validated official 1.2.0 standard-library documentation route; not API identity evidence",
+          "dependencyInstanceId": "",
+          "documentSetId": "",
+          "indexIdentity": "",
+          "symbolKey": "",
+          "url": "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_intrinsics.html#int64",
+          "apiIdentity": "",
+          "language": ""
+        }
       },
       "annotations": [
         
@@ -781,7 +814,18 @@
         "semanticState": "partial",
         "semanticCanonical": null,
         "semanticProvider": "syntax",
-        "navigation": null
+        "navigation": {
+          "state": "resolved",
+          "matchLevel": "manual",
+          "reason": "validated official 1.2.0 standard-library documentation route; not API identity evidence",
+          "dependencyInstanceId": "",
+          "documentSetId": "",
+          "indexIdentity": "",
+          "symbolKey": "",
+          "url": "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_intrinsics.html#int64",
+          "apiIdentity": "",
+          "language": ""
+        }
       },
       "annotations": [
         
@@ -884,7 +928,18 @@
         "semanticState": "partial",
         "semanticCanonical": null,
         "semanticProvider": "syntax",
-        "navigation": null
+        "navigation": {
+          "state": "resolved",
+          "matchLevel": "manual",
+          "reason": "validated official 1.2.0 standard-library documentation route; not API identity evidence",
+          "dependencyInstanceId": "",
+          "documentSetId": "",
+          "indexIdentity": "",
+          "symbolKey": "",
+          "url": "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_intrinsics.html#int64",
+          "apiIdentity": "",
+          "language": ""
+        }
       },
       "annotations": [
         
@@ -1025,10 +1080,18 @@
             "semanticState": "partial",
             "semanticCanonical": null,
             "semanticProvider": "syntax",
-            "navigation": [
-              "unresolved",
-              "no documentation symbol in the selected module dependency context"
-            ]
+            "navigation": {
+              "state": "resolved",
+              "matchLevel": "manual",
+              "reason": "validated official 1.2.0 standard-library documentation route; not API identity evidence",
+              "dependencyInstanceId": "",
+              "documentSetId": "",
+              "indexIdentity": "",
+              "symbolKey": "",
+              "url": "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_structs.html#struct-string",
+              "apiIdentity": "",
+              "language": ""
+            }
           },
           "documentation": null,
           "defaultExpression": null
