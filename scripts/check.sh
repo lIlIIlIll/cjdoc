@@ -641,7 +641,9 @@ stage_cli() {
     diff -qr "${check_dir}/all/first/html" "${check_dir}/roundtrip/html"
     "${python_cmd}" scripts/test_package_overviews.py --binary "${binary}" \
         --output "${check_dir}/package-overviews"
-    rm -rf "${check_dir}/agent" "${check_dir}/agent-second" "${check_dir}/versions" "${check_dir}/versions-second"
+    rm -rf "${check_dir}/agent" "${check_dir}/agent-second" \
+        "${check_dir}/versions" "${check_dir}/versions-second" \
+        "${check_dir}/versions-v1" "${check_dir}/api-diff-v1.json"
     "${binary}" generate --project tests/fixtures/projects/basic --format html --format api-surface --agent-full --doc-version 1.3.0 --output "${check_dir}/agent" --cache-dir "${check_dir}/cache/agent" >/dev/null
     "${binary}" generate --project tests/fixtures/projects/basic --format html --format api-surface --agent-full --doc-version 1.3.0 --output "${check_dir}/agent-second" --cache-dir "${check_dir}/cache/agent" >/dev/null
     diff -qr "${check_dir}/agent/html" "${check_dir}/agent-second/html"
@@ -655,6 +657,46 @@ stage_cli() {
     "${binary}" versions compose --version 1.2.0="${check_dir}/all/first/html" --version 1.3.0="${check_dir}/agent/html" --diff 1.3.0="${check_dir}/agent/api-diff.json" --latest 1.3.0 --output "${check_dir}/versions-second" >/dev/null
     diff -qr "${check_dir}/versions" "${check_dir}/versions-second"
     "${python_cmd}" -c 'import json,sys; root=sys.argv[1]; value=json.load(open(root+"/versions.json", encoding="utf-8")); assert value["schemaVersion"]=="cjdoc.versions/2" and value["latest"]=="1.3.0" and value["versions"][1]["apiDiff"]=="1.3.0/api-diff.json"; assert json.load(open(root+"/1.3.0/navigation-index.json", encoding="utf-8"))["schemaVersion"]=="cjdoc.navigation-index/1"; assert json.load(open(root+"/1.3.0/api-diff.json", encoding="utf-8"))["schemaVersion"]=="cjdoc.api-diff/2"' "${check_dir}/versions"
+    "${python_cmd}" - "${check_dir}/api-diff-v1.json" <<'PY'
+import json
+import pathlib
+import sys
+
+identity = {
+    "project": "basic",
+    "audience": "external",
+    "cfgProfile": "default",
+    "schemaVersion": "cjdoc.api-surface/2",
+    "collectionState": "resolved",
+}
+report = {
+    "schemaVersion": "cjdoc.api-diff/1",
+    "baseline": identity,
+    "current": identity,
+    "comparisonState": "resolved",
+    "summary": {
+        "breaking": 0,
+        "potentiallyBreaking": 0,
+        "additive": 0,
+        "documentationOnly": 0,
+        "metadataOnly": 0,
+        "unchanged": 0,
+    },
+    "entries": [],
+}
+pathlib.Path(sys.argv[1]).write_text(
+    json.dumps(report, separators=(",", ":")) + "\n",
+    encoding="utf-8",
+)
+PY
+    "${binary}" versions compose \
+        --version 1.2.0="${check_dir}/all/first/html" \
+        --version 1.3.0="${check_dir}/agent/html" \
+        --diff 1.3.0="${check_dir}/api-diff-v1.json" \
+        --latest 1.3.0 \
+        --output "${check_dir}/versions-v1" >/dev/null
+    "${python_cmd}" -c 'import json,pathlib,sys; root=pathlib.Path(sys.argv[1]); expected=pathlib.Path(sys.argv[2]).read_bytes(); manifest=json.loads((root/"versions.json").read_text(encoding="utf-8")); assert manifest["versions"][1]["apiDiff"]=="1.3.0/api-diff.json"; assert (root/"1.3.0/api-diff.json").read_bytes()==expected' \
+        "${check_dir}/versions-v1" "${check_dir}/api-diff-v1.json"
     set +e
     "${binary}" versions compose --version ../bad="${check_dir}/all/first/html" --output "${check_dir}/versions-bad" >/dev/null 2>"${check_dir}/versions-bad.stderr"
     version_traversal_code=$?

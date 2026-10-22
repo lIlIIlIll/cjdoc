@@ -395,7 +395,7 @@ private func loadVersionApiDiff(spec: VersionComposeSpec, budget: VersionCompose
         throw IllegalArgumentException("version API diff must be an object '${source}'")
     }
     match (versionJsonStringField(object, "schemaVersion")) {
-        case Some(value) => if (value != "cjdoc.api-diff/2") {
+        case Some(value) => if (value != "cjdoc.api-diff/1" && value != "cjdoc.api-diff/2") {
             throw IllegalArgumentException("version API diff schema is unsupported '${source}'")
         }
         case None => throw IllegalArgumentException("version API diff has no schemaVersion '${source}'")
