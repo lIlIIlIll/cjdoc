@@ -95,17 +95,18 @@ Three clocks are reported, because collapsing them hides the actual cost:
   the run has one: on a `pull_request` run the deploy is skipped, so the last
   completed job is the final verification and the chain ends there. All three rows
   above were classified after their runs finished, so every one of them is `run`.
-  A re-run's job listing carries the previous attempt's unchanged records with
-  their original timestamps. Those jobs did not run in this attempt, so they get
-  the 0 ms a skipped job gets: they drop out of the chain instead of stretching
-  the span past the run, and they are not billed to `jobMinutes`, which would
-  otherwise count the same runner minutes in both attempts. `queuedMs` for a
-  re-run is measured from that attempt's own start rather than from `created_at`,
-  which is when the *run* was created;
 * **job span** — first job start to last job end, i.e. execution without the
   controller's own queueing;
 * **job-minutes** — the sum of every job's duration, i.e. total runner time,
   where parallel work is not hidden.
+
+One more rule, about re-runs rather than about which clock: a re-run's job listing
+carries the previous attempt's unchanged records with their original timestamps.
+Those jobs did not run in this attempt, so they get the 0 ms a skipped job gets:
+they drop out of the chain instead of stretching the span past the run, and they
+are not billed to `jobMinutes`, which would otherwise count the same runner
+minutes in both attempts. `queuedMs` for a re-run is measured from that attempt's
+own start rather than from `created_at`, which is when the *run* was created.
 
 `wall − job span` is the pre-start gap (queueing, runner acquisition) plus the
 tail after the last job ends. It is large on some Pages runs and negligible on
@@ -116,6 +117,20 @@ says nothing about queueing — there `queuedMs` is the only queue figure. Under
 bound: the collector's own row is still open, so the tail after the last completed
 job is outside it. A reader who needs the finished wall classifies the run after
 it completes, which is what every row here does.
+
+Run `39729078623` is a worked example of the difference. Its uploaded artifact
+`ci-wallclock-pages-39729078623-1` reports `wallSource: terminal-job`, `wallMs`
+25.38 m and `jobSpanMs` 24.8 m. Both were read while the run was still going, so
+the 0.58 m difference is that run's pre-start queueing and nothing else. The same
+run classified after it finished reports `run`, 25.75 m and 25.15 m. The span
+grows by 21 s: 18 s is the `Wall clock` job itself and 3 s is the wait before it
+started. The wall grows by 22 s, the same 21 s plus the second the run took to
+mark itself complete. The chain in the artifact ends at `Verify the final site and
+every branch` — this was a `pull_request` run whose `Publish showcase` was
+skipped — and after completion it ends at `Wall clock`, because the collector is
+a job of the run it measures. That is circular only in appearance: the run really
+does execute one more job after its last verification, and a reader who wants the
+sequence the run performed gets it.
 
 The document also describes the sequence the run actually executed:
 `nonOverlappingChain` carries `chain`, `wallMs`, `equalsLongestJob`, `longestJob`
