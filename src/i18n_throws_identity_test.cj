@@ -50,9 +50,9 @@ class I18nThrowsIdentityTest {
             let encoded = api_render.encodeDocIr(generated)
             let imported = api_render.decodeDocIr(encoded)
             @Expect(api_render.encodeDocIr(imported), encoded)
-            for ((locale, wanted, other) in [
-                ("zh-CN", "越界。", "is out of range."),
-                ("en", "is out of range.", "越界。")
+            for ((locale, wanted, other, wantedMarkdown, otherMarkdown) in [
+                ("zh-CN", "越界。", "is out of range.", "越界。", "is out of range\\."),
+                ("en", "is out of range.", "越界。", "is out of range\\.", "越界。")
             ]) {
                 @Expect(localizedThrowsCount(imported, locale), 1)
                 let html = localizedThrowsHtml(imported, locale)
@@ -63,8 +63,8 @@ class I18nThrowsIdentityTest {
                 @Expect(!html.contains("Original text: zh-CN"))
                 let md = renderedContent(api_render.renderDocumentationFormatsWithOptions(imported,
                     ["markdown"], locale: locale))
-                @Expect(md.contains(wanted))
-                @Expect(!md.contains(other))
+                @Expect(md.contains(wantedMarkdown))
+                @Expect(!md.contains(otherMarkdown))
             }
             @Expect(api_render.translationCoverageFor(imported, "zh-CN").unpaired, 0)
             @Expect(api_render.translationCoverageFor(imported, "en").unpaired, 0)
@@ -172,6 +172,40 @@ class I18nThrowsIdentityTest {
             .getOrThrow().entryId, Some("valid_1"))
         @Expect(localizedTagHead("@throws[lang=EN,id=valid_1] IllegalArgumentException Text.")
             .getOrThrow().language, Some("en"))
+    }
+
+    @TestCase
+    func strictReplayRejectsForgedThrowsAuthorGroups(): Unit {
+        // Both pairs are valid source groups until a serialized field identity
+        // is altered: cross-language subject disagreement and same-language reuse.
+        for ((first, second) in [
+            ("@throws[id=left] IllegalArgumentException First condition.",
+                "@throws[lang=en,id=right] IllegalStateException Second condition."),
+            ("@throws[lang=en,id=left] IllegalArgumentException First condition.",
+                "@throws[lang=en,id=right] IllegalArgumentException Second condition.")
+        ]) {
+            let project = i18nTestProject("/** 中文摘要。\n * " + first + "\n * " + second + "\n */")
+            try {
+                let encoded = api_render.encodeDocIr(i18nTestGenerate(project))
+                let forged = encoded.replace(":doc:throws:author-right\"", ":doc:throws:author-left\"")
+                @Assert(forged != encoded)
+                @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(forged))
+            } finally { let _ = removeIfExists(project, recursive: true) }
+        }
+    }
+
+    @TestCase
+    func strictReplayRejectsMalformedThrowsAuthorSuffixes(): Unit {
+        let project = i18nTestProject("/** 中文摘要。\n * @throws[id=left] IllegalArgumentException Left condition.\n */")
+        try {
+            let encoded = api_render.encodeDocIr(i18nTestGenerate(project))
+            for (id in ["", "Bad", "2first", "a/b", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]) {
+                let forged = encoded.replace(":doc:throws:author-left\"",
+                    ":doc:throws:author-" + id + "\"")
+                @Assert(forged != encoded)
+                @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(forged))
+            }
+        } finally { let _ = removeIfExists(project, recursive: true) }
     }
 
     @TestCase
