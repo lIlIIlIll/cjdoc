@@ -65,7 +65,10 @@ private func translationFieldEntry(symbol: SymbolDoc, fieldId: String, kind: Str
             state = if (text.state == "conflict" || text.state == "invalid") { "conflict" }
                 else if (text.state == "unpaired") { "unpaired" } else { "empty" }
         }
-        let original = localizedTextFor(value, fieldId, value.defaultLanguage)
+        var original = localizedTextFor(value, fieldId, value.defaultLanguage)
+        if (original.isNone() && kind == "throws") {
+            original = soleForeignThrowsText(value, fieldId, locale)
+        }
         if (let Some(text) <- original) {
             actual = text.language
             if (state == "missing") { state = if (actual.isNone()) { "unknown" } else { "fallback" } }
