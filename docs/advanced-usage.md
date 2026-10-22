@@ -40,6 +40,27 @@ target/doc/
 
 HTML 和 Markdown 使用同一份生成结果。HTML 是静态站点，可以直接打开 `html/index.html`；`search-index.js` 让浏览器在 `file://` 下也能使用搜索。
 
+## 标准库 API 文档链接
+
+HTML 和 Markdown 页面会为可唯一对应到预置目录的结构化标准库类型签名添加 API 链接，例如 `std.collection.ArrayList` 和 `std.core.String`。本地声明以及显式文档源的匹配优先；存在名称歧义、类型未收录或导航证据不足时不添加外链。
+
+默认文档目标为 STS 1.2.0。若 `--build-context` 中当前模块的 `std` dependency 提供无冲突且已观察的 `version`，生成器使用该版本；也可显式覆盖：
+
+```bash
+cjdoc generate --project . --format html --format markdown \
+  --stdlib-doc-version 1.1.0-beta.25
+```
+
+版本值是安全的 URL 路径段，不是有限枚举。已知文档根目录包含 `1.0.5`、`1.1.0`、`1.1.0-beta.25`、`1.1.3` 和 `1.2.0`；其他版本需显式提供以 `/libs/std` 结尾的 HTTPS 文档根目录：
+
+```bash
+cjdoc generate --project . --format html \
+  --stdlib-doc-version 1.1.4 \
+  --stdlib-doc-base-url https://cj-docs.gitcode.com/zh/1.1.4/libs/std
+```
+
+文档主机随发布版本变化，未知版本不会猜测主机，也不会静默回退。路由目录以 1.2.0 为基准，并对 1.1 系列应用已收集的路由覆盖；完整页面/锚点校验目前覆盖 1.2.0 与 1.1.0-beta.25，其他版本是 best-effort。版本选择不认证项目所用标准库 API 与目标文档完全一致。`--doc-version` 仍只控制站点发布版本；`render --input` 保留生成时已写入 Doc IR 的链接。
+
 ## 概念文档与本地预览
 
 项目配置了 `[docs]` 或 `[[docs.pages]]` 后，概念页面会与 API 站点一起生成到 `html/concepts/` 和 `markdown/concepts/`。`docs/index.md`、模块/包概览以及显式配置的 guides 页面共享安全的 Markdown 投影；概念页会被加入搜索索引。
