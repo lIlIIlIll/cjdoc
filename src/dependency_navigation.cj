@@ -243,13 +243,26 @@ internal class DependencyNavigationBinder {
         names.toArray()
     }
     private func standardImportDisambiguatesCoreTarget(imports: Array<String>,
-        implicitCoreName: String, docsVersion: String, baseUrlOverride: ?String): Bool {
+        implicitCoreName: String, docsVersion: String, sourceKey: String, head: String): Bool {
         if (!isValidStandardLibraryDocsVersion(docsVersion)) { return false }
         var foundStandardImport = false
         for (candidate in imports where candidate != implicitCoreName) {
-            if (!candidate.startsWith("std.") ||
-                !hasStandardLibraryDocTarget(docsVersion, candidate,
-                    baseUrlOverride: baseUrlOverride)) { return false }
+            if (!candidate.startsWith("std.")) { return false }
+            if (!hasStandardLibraryDocTarget(docsVersion, candidate,
+                baseUrlOverride: request.standardLibraryDocsBaseUrl)) {
+                let index = match (importIndexes.get(sourceKey)) {
+                    case Some(value) => value
+                    case None => return false
+                }
+                let packageName = match (index.wildcardPackage(head, candidate, work)) {
+                    case Some(value) => value
+                    case None => return false
+                }
+                // A wildcard synthesizes names, not declarations. An absent entry
+                // in a known std documentation package must not invent a conflict.
+                // This selects a manual documentation route, never a canonical type.
+                if (!hasStandardLibraryDocPackage(packageName)) { return false }
+            }
             foundStandardImport = true
         }
         foundStandardImport
@@ -563,14 +576,15 @@ internal class DependencyNavigationBinder {
             var sourceAmbiguity = false
             var standardImportAmbiguity = false
             if (!canonical && !value.head.contains(".")) {
-                let key = owner.moduleId + "|" + owner.source.path + "|" + value.head
+                let sourceKey = owner.moduleId + "|" + owner.source.path
+                let key = sourceKey + "|" + value.head
                 let implicitCoreName = "std.core." + value.head
                 if (let Some(imports) <- importCandidates.get(key)) {
                     sourceAmbiguity = imports.size > 1 && imports.contains(implicitCoreName)
                     if (sourceAmbiguity) {
                         standardImportAmbiguity = standardImportDisambiguatesCoreTarget(imports,
                             implicitCoreName, docsVersion.getOrDefault({ => "" }),
-                            request.standardLibraryDocsBaseUrl)
+                            sourceKey, value.head)
                     }
                 }
             }

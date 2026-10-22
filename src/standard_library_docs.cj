@@ -643,6 +643,22 @@ private func buildSts120StandardLibraryDocTargets(): HashMap<String, String> {
 
 private let STS_1_2_0_STANDARD_LIBRARY_DOC_TARGETS = buildSts120StandardLibraryDocTargets()
 
+private func buildStandardLibraryDocPackages(): HashSet<String> {
+    let packages = HashSet<String>()
+    for ((qualifiedName, _) in STS_1_2_0_STANDARD_LIBRARY_DOC_ROUTES) {
+        var end = qualifiedName.size
+        while (end > 0 && qualifiedName[end - 1] != b'.') { end-- }
+        if (end > 0) { let _ = packages.add(qualifiedName[..end - 1]) }
+    }
+    packages
+}
+
+private let STANDARD_LIBRARY_DOC_PACKAGES = buildStandardLibraryDocPackages()
+
+internal func hasStandardLibraryDocPackage(packageName: String): Bool {
+    STANDARD_LIBRARY_DOC_PACKAGES.contains(packageName)
+}
+
 private let STS_1_1_0_BETA_25_STANDARD_LIBRARY_DOC_ROUTE_OVERRIDES: Array<(String, String)> = [
     ("std.collection.concurrent.ConcurrentHashMap", "collection_concurrent/collection_concurrent_package_api/collection_concurrent_class.html#class-concurrenthashmapk-v-where-k--hashable--equatablek"),
     ("std.collection.concurrent.ConcurrentHashMapIterator", "collection_concurrent/collection_concurrent_package_api/collection_concurrent_class.html#class-concurrenthashmapiteratork-v-where-k--hashable--equatablek"),

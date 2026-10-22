@@ -204,24 +204,39 @@ def versions(journey: Journey):
 
 
 def external(journey: Journey):
+    from playwright.sync_api import expect
     page = journey.page
-    standard_library_links = page.locator('main a[href*="/libs/std/"]')
-    if not standard_library_links.count():
-        raise AssertionError("TextCatalog has no standard-library API link")
-    standard_library_href = standard_library_links.first.get_attribute("href")
-    standard_library_url = urlsplit(standard_library_href or "")
-    path_segments = [segment for segment in standard_library_url.path.split("/") if segment]
-    try:
-        standard_index = path_segments.index("std")
-    except ValueError as error:
-        raise AssertionError("standard-library link does not target the std API") from error
-    if (standard_library_url.scheme != "https" or standard_index < 2
-            or path_segments[standard_index - 1] != "libs"
-            or not path_segments[standard_index - 2][0].isdigit()
-            or "." not in path_segments[standard_index - 2]):
-        raise AssertionError("standard-library link must use an HTTPS versioned API route")
-
-    journey.assertions.append("TextCatalog signatures expose a clickable, versioned HTTPS standard-library API route")
+    # This showcase pins its documentation target; accepting any std link lets
+    # primitive Int64 hide missing String and nested Array<String> navigation.
+    standard_page = "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_structs.html"
+    for name, signature, expected_types in (
+        ("add", "public func add(value: String): Unit", (("String", "struct-string"),)),
+        ("addAll", "public func addAll(entries: Array<String>): Unit",
+         (("Array", "struct-arrayt"), ("String", "struct-string"))),
+    ):
+        candidates = page.locator(f'details[data-cjdoc-member][data-member-name="{name}"]')
+        matching = [member for member in candidates.all()
+                    if member.locator("summary .declaration-signature").inner_text().strip() == signature]
+        if len(matching) != 1:
+            raise AssertionError("expected one native member signature: " + signature)
+        member = matching[0]
+        summary = member.locator("summary .declaration-signature")
+        expect(member).not_to_have_attribute("open", "")
+        for type_name, fragment in expected_types:
+            link = summary.get_by_role("link", name=type_name, exact=True)
+            expect(link).to_have_count(1)
+            expect(link).to_have_attribute("href", standard_page + "#" + fragment)
+            expect(link).to_be_visible()
+            link.focus()
+            expect(link).to_be_focused()
+        journey.expand(member)
+        for type_name, fragment in expected_types:
+            link = member.locator(".parameter-type-code").get_by_role("link", name=type_name, exact=True)
+            expect(link).to_have_count(1)
+            expect(link).to_have_attribute("href", standard_page + "#" + fragment)
+        journey.click(member.locator("summary .member-display-name"))
+        expect(member).not_to_have_attribute("open", "")
+    journey.assertions.append("String and nested Array<String> have versioned signature and parameter links; signature links are keyboard-focusable and disclosure controls still work")
     local = page.locator("main a").filter(has_text="Stamp")
     local = next((item for item in local.all() if item.inner_text().strip() == "Stamp"), None)
     if local is None:

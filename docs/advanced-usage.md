@@ -44,6 +44,10 @@ HTML 和 Markdown 使用同一份生成结果。HTML 是静态站点，可以直
 
 HTML 和 Markdown 页面会为可唯一对应到预置目录的结构化标准库类型签名添加 API 链接，例如 `std.collection.ArrayList` 和 `std.core.String`。本地声明以及显式文档源的匹配优先；存在名称歧义、类型未收录或导航证据不足时不添加外链。
 
+成员的折叠标题、展开后的参数和返回类型都保留类型链接；例如 `add(value: String)` 与 `addAll(entries: Array<String>)` 中的 `String`、`Array` 可分别打开对应 API。点击类型链接执行导航，点击成员名称或用键盘激活标题控制展开/收起。
+
+`import std.collection.*` 这类已收录标准库 package 的通配导入只生成候选名称，不证明该 package 声明了同名类型。若目录中只有一个文档目标，缺失的通配候选不会阻止 `std.core.String`、`std.core.Array` 等后备链接；导航仍标为 `manual`，不升级语义状态，也不证明当前 SDK 的 API 身份。显式未知导入、未知或非标准库通配导入、条件导入及多个不同的已收录目标仍按歧义保守处理。
+
 其他 workspace 模块中未选入当前依赖上下文的同名类型、未选中的外部 inventory，以及泛型参数数量不匹配的声明，不阻止标准库后备链接。当前作用域内被 audience 排除的匹配目标仍保持 unavailable。
 
 默认文档目标为 STS 1.2.0。若 `--build-context` 中当前模块的 `std` dependency 提供无冲突且已观察的 `version`，生成器使用该版本；也可显式覆盖：
