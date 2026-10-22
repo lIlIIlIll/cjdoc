@@ -106,26 +106,29 @@ def parse_cache(value: str | None) -> dict[str, str]:
 
 
 def font_set_digest() -> str:
-    """A digest of the font families this machine can resolve, or `""`.
+    """Digest font families and version metadata fontconfig resolves, or return `""`.
 
-    DONE-03 puts the font set in the matched condition because a CJK fallback changes
-    what the rendered pages show. There is exactly ONE implementation on purpose: two
-    call sites hashing the same fonts differently would produce conditions that can
-    never be equal, and every cell would silently stay unpaired.
-
-    The digest covers the resolved families, not the font files: two runners with the
-    same families render the same text, and hashing thousands of files on every run
-    would cost more than the evidence is worth.
+    DONE-03 puts the font set in the matched condition because font substitution
+    changes browser rendering. Family names alone miss same-family font updates.
+    Fontconfig's version metadata captures those updates without reading every font
+    file; incomplete listings are unavailable rather than partial evidence.
     """
     try:
-        completed = subprocess.run(["fc-list", "--format", "%{family}\\n"],
+        completed = subprocess.run(["fc-list", "--format", "%{family}\\t%{fontversion}\\n"],
                                    capture_output=True, text=True, check=True)
     except (OSError, subprocess.CalledProcessError):
         return ""
-    families = sorted({line.strip() for line in completed.stdout.splitlines() if line.strip()})
-    if not families:
+    font_versions: set[tuple[str, str]] = set()
+    for line in completed.stdout.splitlines():
+        family, separator, version = line.partition("\t")
+        family, version = family.strip(), version.strip()
+        if not separator or not family or not version:
+            return ""
+        font_versions.add((family, version))
+    if not font_versions:
         return ""
-    return hashlib.sha256("\n".join(families).encode("utf-8")).hexdigest()
+    identity = "\n".join(f"{family}\t{version}" for family, version in sorted(font_versions))
+    return hashlib.sha256(b"cjdoc-font-set-version-v1\0" + identity.encode("utf-8")).hexdigest()
 
 
 def report_identity(values: dict[str, str], path: Path | None = None) -> None:

@@ -104,6 +104,20 @@ class ReportedBrowserIdentityTest(unittest.TestCase):
         # Either the machine can resolve fonts, or it honestly reports none.
         self.assertTrue(first == "" or len(first) == 64, first)
 
+    def test_the_font_digest_tracks_version_metadata(self) -> None:
+        """Same-family font updates must not retain the same matched identity."""
+        listed_versions = [
+            mock.Mock(stdout="Fixture Sans\t202602\n"),
+            mock.Mock(stdout="Fixture Sans\t202602\n"),
+            mock.Mock(stdout="Fixture Sans\t202603\n"),
+        ]
+        with mock.patch.object(ci_stage.subprocess, "run", side_effect=listed_versions):
+            first = ci_stage.font_set_digest()
+            same_version = ci_stage.font_set_digest()
+            changed_version = ci_stage.font_set_digest()
+        self.assertEqual(first, same_version)
+        self.assertNotEqual(first, changed_version)
+
 
 if __name__ == "__main__":
     unittest.main()
