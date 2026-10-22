@@ -722,9 +722,8 @@ internal func isValidStandardLibraryDocsBaseUrl(baseUrl: String): Bool {
         baseUrl.contains("..") || baseUrl.contains("#") || baseUrl.contains("?") ||
         baseUrl.contains(" ") || baseUrl.contains("\t") || baseUrl.contains("\n") ||
         baseUrl.contains("\r")) { return false }
-    let components = baseUrl.split("/")
-    components.size >= 5 && components[0] == "https:" &&
-        components[1].isEmpty() && !components[2].isEmpty()
+    standard_library_model.isSafeAbsoluteDocumentationUrl(baseUrl,
+        allowFragment: false, allowQuery: false)
 }
 
 private func standardLibraryDocsDefaultBaseUrl(version: String): String {

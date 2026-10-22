@@ -179,12 +179,14 @@ class StandardLibraryDocsTest {
         } catch (_: IllegalArgumentException) { missingBaseRejected = true }
         @Expect(missingBaseRejected, true)
 
-        var unsafeBaseRejected = false
-        try {
-            let _ = GenerationRequest("project",
-                standardLibraryDocsBaseUrl: Some("javascript:alert(1)"))
-        } catch (_: IllegalArgumentException) { unsafeBaseRejected = true }
-        @Expect(unsafeBaseRejected, true)
+        for (unsafeBase in [
+            "javascript:alert(1)",
+            "https://user@example.com/libs/std",
+            "https://example.com:99999/libs/std"
+        ]) {
+            @ExpectThrows[IllegalArgumentException](GenerationRequest("project",
+                standardLibraryDocsBaseUrl: Some(unsafeBase)))
+        }
     }
 
     @TestCase

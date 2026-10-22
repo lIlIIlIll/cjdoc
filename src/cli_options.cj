@@ -381,8 +381,10 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
         options.cacheDirectory.isSome() || options.noCache || options.cjpmCacheRoot.isSome() ||
         options.repositoryUrl.isSome() || options.repositoryRevision.isSome() || options.repositoryRoot.isSome() ||
         !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty() ||
-        options.docVersion.isSome() || options.agentFull || options.servePortExplicit ||
-        options.serveOpenExplicit || options.checkExamples || !options.formats.isEmpty() ||
+        options.docVersion.isSome() || options.standardLibraryDocsVersion.isSome() ||
+        options.standardLibraryDocsBaseUrl.isSome() || options.agentFull ||
+        options.servePortExplicit || options.serveOpenExplicit || options.checkExamples ||
+        !options.formats.isEmpty() ||
         options.semanticExplicit || options.cjcExplicit ||
         options.chirWorkerExecutable.isSome() || !options.chirImportPaths.isEmpty() ||
         options.localeExplicit || options.allLanguages || !options.requiredLanguages.isEmpty() ||
