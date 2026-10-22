@@ -5,13 +5,16 @@ import std.collection.*
 internal class LocalizedCommentItem {
     let tag: DocTag
     let language: ?String
+    let entryId: ?String
     var source: ?SourceLocation
     var state = "valid"
     var fieldId = ""
     // Recomputed from the owning input profile; not source/API identity or IR.
     var highlightEligible: Bool = true
-    init(tag: DocTag, language: ?String, source: ?SourceLocation) {
+    init(tag: DocTag, language: ?String, source: ?SourceLocation,
+        entryId!: ?String = None) {
         this.tag = tag; this.language = language; this.source = source
+        this.entryId = entryId
     }
 }
 
@@ -76,7 +79,7 @@ private func localizedItem(head: LocalizedTagHead, defaultLanguage: ?String,
         let (_, directives) = splitExampleDirectives(head.rest)
         tag.directives = directives
     }
-    LocalizedCommentItem(tag, language, source)
+    LocalizedCommentItem(tag, language, source, entryId: head.entryId)
 }
 
 internal func parseLocalizedComment(base: DocComment, defaultLanguage: ?String,
@@ -147,7 +150,7 @@ internal func requiresLocalizedComment(raw: String): Bool {
     var candidate = false
     for (line in lines) {
         if (let Some(head) <- localizedTagHead(line)) {
-            if (head.language.isSome() || head.error.isSome() || head.name == "summary" || head.name == "description") { candidate = true; break }
+            if (head.language.isSome() || head.entryId.isSome() || head.error.isSome() || head.name == "summary" || head.name == "description") { candidate = true; break }
         }
     }
     if (!candidate) { return false }
@@ -156,7 +159,7 @@ internal func requiresLocalizedComment(raw: String): Bool {
     while (index < lines.size) {
         if (eligible[index]) {
             if (let Some(head) <- localizedTagHead(lines[index])) {
-                if (head.language.isSome() || head.error.isSome() ||
+                if (head.language.isSome() || head.entryId.isSome() || head.error.isSome() ||
                     head.name == "summary" || head.name == "description") { return true }
             }
         }
