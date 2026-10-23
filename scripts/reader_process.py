@@ -11,7 +11,7 @@ import time
 
 
 def measured_process(command: list[str], stdout: Path, stderr: Path,
-                     timeout: float) -> dict:
+                     timeout: float, cwd: Path | None = None) -> dict:
     """Measure one process tree without confusing cumulative child RSS with its RSS."""
     if os.name != "posix" or not hasattr(os, "wait4"):
         raise ValueError("bounded native process-tree measurement requires POSIX wait4; unsupported is not PASS")
@@ -19,7 +19,7 @@ def measured_process(command: list[str], stdout: Path, stderr: Path,
     started = time.perf_counter()
     with stdout.open("wb") as output, stderr.open("wb") as errors:
         process = subprocess.Popen(command, stdout=output, stderr=errors,
-                                   start_new_session=os.name == "posix")
+                                   cwd=cwd, start_new_session=os.name == "posix")
 
         def kill_group() -> None:
             try:

@@ -10,6 +10,8 @@ on:
       - 'tests/browser/*reader-scale*.mjs'
       - 'tests/browser/check-reader-discovery.mjs'
       - 'docs/maintainer/reader-scale*'
+      - 'docs/contract-review.md'
+      - 'examples/pocketkit/**'
       - '.github/workflows/reader-scale.yml'
   push:
     branches: [main]
@@ -18,6 +20,7 @@ on:
       - 'scripts/reader_*.py'
       - 'tests/browser/*reader-scale*.mjs'
       - 'tests/browser/check-reader-discovery.mjs'
+      - 'examples/pocketkit/**'
       - '.github/workflows/reader-scale.yml'
   workflow_dispatch:
     inputs:
@@ -154,6 +157,8 @@ jobs:
           python scripts/with_stdx.py --variant static -- python -m unittest discover \
             -s scripts -p test_reader_benchmark.py -v
           install -d -m 0700 "${RUNNER_TEMP}/reader-evidence"
+          python scripts/with_stdx.py --variant static -- python scripts/reader_contract_review.py \
+            --revision "${READER_REVISION}" --output "${RUNNER_TEMP}/reader-evidence/contracts"
           python scripts/with_stdx.py --variant static -- python scripts/reader_capture.py \
             --binary "${RUNNER_TEMP}/reader-baseline-source/target/release/bin/main" \
             --revision 2ef643c5d795ab2e3dfd1035517baeec3a88b0aa --label baseline \
