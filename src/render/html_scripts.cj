@@ -153,7 +153,6 @@ internal let HTML_SEARCH_SCRIPT = """
     flush();
     return words;
   };
-  const acronym = (value) => wordParts(value).map((word) => Array.from(word)[0]).join("");
   const oneEditApart = (query, candidate) => {
     if (candidate.length > query.length * 2 + 2 || query.length > candidate.length * 2 + 2) return false;
     const queryChars = [...query];
@@ -182,9 +181,30 @@ internal let HTML_SEARCH_SCRIPT = """
     if (queryIndex < queryChars.length || candidateIndex < candidateChars.length) edits += 1;
     return edits === 1;
   };
-  const hasOneSpellingError = (entry, query) => {
-    const candidates = [entry.name.toLocaleLowerCase(), ...wordParts(entry.name), ...wordParts(entry.qualifiedName)];
-    return candidates.some((candidate) => oneEditApart(query, candidate));
+  // Cache only immutable entry facts, bounded by this page's native index.
+  // Distinct queries still run the same ranking and stable tie-breaks.
+  const entryTextCache = new WeakMap();
+  const entryText = (entry) => {
+    let text = entryTextCache.get(entry);
+    if (!text) {
+      const haystack = (entry.qualifiedName + " " + entry.kind + " " + entry.packageName + " " + (entry.ownerName || "") + " " + (entry.parameterTypes || []).join(" ") + " " + (entry.returnType || "") + " " + entry.summary).toLocaleLowerCase();
+      text = {haystack, words: wordParts(haystack)};
+      entryTextCache.set(entry, text);
+    }
+    return text;
+  };
+  const wordInitials = (words) => words.map((word) => Array.from(word)[0]).join("");
+  const entrySpelling = (entry, text) => {
+    if (!text.spelling) {
+      const nameWords = wordParts(entry.name);
+      const qualifiedWords = wordParts(entry.qualifiedName);
+      text.spelling = {
+        nameAcronym: wordInitials(nameWords),
+        qualifiedAcronym: wordInitials(qualifiedWords),
+        candidates: [entry.name.toLocaleLowerCase(), ...nameWords, ...qualifiedWords]
+      };
+    }
+    return text.spelling;
   };
   const rank = (entry, parsed) => {
     if (parsed.filters.some((filter) => !fieldValue(entry, filter.field).includes(filter.value))) return -1;
@@ -197,14 +217,17 @@ internal let HTML_SEARCH_SCRIPT = """
     if (qualified === query) return 1;
     if (name.startsWith(query)) return 2;
     if (qualified.startsWith(query)) return 3;
-    const haystack = (entry.qualifiedName + " " + entry.kind + " " + entry.packageName + " " + (entry.ownerName || "") + " " + (entry.parameterTypes || []).join(" ") + " " + (entry.returnType || "") + " " + entry.summary).toLocaleLowerCase();
-    const words = wordParts(haystack);
+    const text = entryText(entry);
+    const haystack = text.haystack;
+    const words = text.words;
     const body = (entry.body || "").toLocaleLowerCase();
     if (terms.every((term) => words.some((word) => word.startsWith(term)))) return 4;
-    if (terms.length === 1 && (acronym(entry.name) === query || acronym(entry.qualifiedName) === query)) return 5;
+    const spelling = terms.length === 1 ? entrySpelling(entry, text) : null;
+    if (spelling && (spelling.nameAcronym === query || spelling.qualifiedAcronym === query)) return 5;
     if (terms.every((term) => haystack.includes(term))) return 6;
     const queryLength = [...query].length;
-    if (terms.length === 1 && queryLength >= 4 && queryLength <= 128 && hasOneSpellingError(entry, query)) return 7;
+    if (spelling && queryLength >= 4 && queryLength <= 128 &&
+        spelling.candidates.some((candidate) => oneEditApart(query, candidate))) return 7;
     // Body and contract prose ranks below every name/structured-field match, so a
     // page that merely mentions the word cannot displace an exact symbol result.
     if (body && terms.every((term) => body.includes(term))) return 8;

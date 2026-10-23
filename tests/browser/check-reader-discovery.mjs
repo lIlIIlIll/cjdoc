@@ -97,6 +97,20 @@ try {
     return member?.open && !member.hidden;
   }, tailAnchor);
   assert.equal(await page.locator('[data-cjdoc-member-filter]').inputValue(), '');
+  await page.waitForFunction(id => {
+    const summary = document.getElementById(id)?.querySelector(":scope > summary");
+    if (!summary) return false;
+    const box = summary.getBoundingClientRect();
+    return box.bottom > 64 && box.top >= 0 && box.top < innerHeight;
+  }, tailAnchor);
+  const tailActions = tail.locator('..').locator('[data-cjdoc-member-actions]');
+  await tailActions.locator('[data-cjdoc-member-actions-toggle]').click();
+  assert.equal(await tailActions.locator('a').first().evaluate(link => {
+    const box = link.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return hit === link || link.contains(hit);
+  }), true, 'offscreen layout containment must not clip the revealed member action menu');
+  await page.keyboard.press('Escape');
   report.tasks.push({ id: 'ime-keyboard-exact-api-page-and-hidden-tail-deep-link', pass: true, targetId: target[0].id });
 
   await page.locator('[data-cjdoc-member-filter]').fill('member0256');
