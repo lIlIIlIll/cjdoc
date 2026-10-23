@@ -82,6 +82,23 @@ class EvidenceIntegrityTests(unittest.TestCase):
         compare_browser(a, b, manifest, budget, failures)
         self.assertIn("file/query/target: reader task failed", failures)
 
+    def test_print_cannot_keep_counts_while_hiding_other_native_contracts(self):
+        a, b, manifest, budget = evidence_pair()
+        a["accessibility"] = {
+            "screenReaderSpeech": {"status": "not-measured"},
+            "noScript": {"accessibleTree": "native member order", "independentlyOpen": True},
+            "print": {"contentVisible": True, "overflowPx": 0, "signatures": 2, "detailBodies": 2,
+                      "visibleSignatureIds": ["one", "two"], "visibleDetailIds": ["one", "two"]},
+            "printCounterexamples": [{"detected": True}] * 3}
+        b["accessibility"] = deepcopy(a["accessibility"])
+        b["accessibility"]["print"]["visibleDetailIds"] = ["one", "another"]
+        with self.assertRaises(EvidenceError):
+            compare_browser(a, b, manifest, budget, [])
+        b["accessibility"] = deepcopy(a["accessibility"])
+        b["accessibility"]["printCounterexamples"] = []
+        with self.assertRaises(EvidenceError):
+            compare_browser(a, b, manifest, budget, [])
+
     def test_corpus_changes_and_unlisted_source_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory) / "project"
@@ -132,6 +149,24 @@ class ProcessLifetimeTests(unittest.TestCase):
             self.assertFalse(result["timedOut"])
             self.assertGreater(result["userCpuMs"] + result["systemCpuMs"], 0)
             self.assertGreater(heavy["peakRssBytes"] - result["peakRssBytes"], 32 * 1024 * 1024)
+
+    def test_parent_exit_cleans_up_running_descendants_on_success_and_failure(self):
+        for exit_code in (0, 7):
+            with self.subTest(exit_code=exit_code), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                ready, marker = root / "child-started", root / "leaked-child"
+                child = ("import time,pathlib; pathlib.Path(" + repr(str(ready)) +
+                         ").write_text('started'); time.sleep(.5); pathlib.Path(" +
+                         repr(str(marker)) + ").write_text('leaked')")
+                parent = ("import subprocess,sys,time,pathlib; subprocess.Popen([sys.executable,'-c'," +
+                          repr(child) + "]); ready=pathlib.Path(" + repr(str(ready)) + "); " +
+                          "\nwhile not ready.exists(): time.sleep(.005)\nraise SystemExit(" + str(exit_code) + ")")
+                result = measured_process([sys.executable, "-c", parent], root / "out", root / "err", 2)
+                self.assertTrue(ready.exists(), "the descendant must actually be running before parent exit")
+                self.assertEqual(result["exitCode"], exit_code)
+                self.assertFalse(result["timedOut"])
+                time.sleep(.7)
+                self.assertFalse(marker.exists(), "parent exit leaked a descendant past the measurement")
 
     def test_timeout_terminates_descendants_not_just_the_parent(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -189,6 +224,23 @@ class NativeResourceBoundaryTests(unittest.TestCase):
             self.assertEqual(report["status"], "resource-limited")
             self.assertEqual(report["locales"], [])
             self.assertIn("CJDOC3027", [item["code"] for item in report["nativeResult"]["diagnostics"]])
+
+    def test_real_native_deadline_is_failure_not_an_unsupported_scale(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "corpus"
+            generate_corpus(project, 1000)
+            output = root / "evidence"
+            options = argparse.Namespace(binary=Path(os.environ["CJDOC_READER_TEST_BINARY"]),
+                project=project, manifest=project / "reader-corpus.json", output=output,
+                revision=os.environ["CJDOC_READER_TEST_REVISION"], label="baseline",
+                locales=["en"], samples=20, transports="file", screenshots=False, no_browser=True,
+                timeout=.001, browser_timeout=1800)
+            self.assertEqual(run(options), 1)
+            report = json.loads((output / "reader-generation.json").read_text(encoding="utf-8"))
+            self.assertTrue(report["stages"][0]["timedOut"])
+            self.assertEqual(report["status"], "failed")
+            self.assertEqual(report["locales"], [])
 
 
 if __name__ == "__main__":

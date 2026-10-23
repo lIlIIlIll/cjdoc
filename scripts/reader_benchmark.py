@@ -63,7 +63,7 @@ def verify_corpus(project: Path, manifest: dict) -> None:
 
 def resource_failure(text: str, diagnostics: list[dict], result: dict) -> str | None:
     if result["timedOut"]:
-        return "fixed benchmark timeout exhausted; not a native resource-budget rejection"
+        return None
     if "CJDOC3027" in text or any(item.get("code") == "CJDOC3027" for item in diagnostics):
         return "native Doc IR resource budget rejected the corpus (CJDOC3027)"
     if "Out of Memory" in text or "Out of memory" in text:
@@ -172,8 +172,9 @@ def run(args: argparse.Namespace) -> int:
             report.update(status="resource-limited", reason=limited)
             return 1
         errors = [item for item in diagnostics if item.get("severity") == "error"]
-        if generated["exitCode"] or errors or not document:
-            report.update(status="failed", reason="native source generation failed")
+        if generated["exitCode"] or generated["timedOut"] or errors or not document:
+            report.update(status="failed", reason="native source generation exceeded the fixed observation timeout"
+                          if generated["timedOut"] else "native source generation failed")
             return 1
         if len(document.get("declarations", [])) < manifest["targetDeclarations"]:
             report.update(status="failed", reason="native corpus contains fewer declarations than the fixed target")
@@ -186,9 +187,10 @@ def run(args: argparse.Namespace) -> int:
             report["stages"].append({"name": "doc-ir-to-html", "locale": locale, **rendered})
             text = (root / rendered["stderr"]).read_text(encoding="utf-8")
             limited = resource_failure(text, [], rendered)
-            if limited or rendered["exitCode"]:
+            if limited or rendered["exitCode"] or rendered["timedOut"]:
                 report.update(status="resource-limited" if limited else "failed",
-                              reason=limited or "native HTML replay failed")
+                              reason=limited or ("native HTML replay exceeded the fixed observation timeout"
+                                                if rendered["timedOut"] else "native HTML replay failed"))
                 return 1
             site = destination / "html"
             locale_report = {"locale": locale, "site": site.relative_to(root).as_posix(),

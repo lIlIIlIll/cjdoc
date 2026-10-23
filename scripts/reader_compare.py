@@ -132,6 +132,13 @@ def check_visuals(before: dict, after: dict, required: bool, failures: list[str]
             failures.append("no-JS multi-open or print visibility/overflow regression")
         require(a["print"]["signatures"] == b["print"]["signatures"] and
                 a["print"]["detailBodies"] == b["print"]["detailBodies"], "print omitted signatures or detail bodies")
+        for key in ("visibleSignatureIds", "visibleDetailIds"):
+            require(isinstance(a["print"].get(key), list) and
+                    a["print"][key] == b["print"].get(key), "print changed visible native member identities")
+        for observation in (a, b):
+            guards = observation.get("printCounterexamples", [])
+            require(len(guards) == 3 and all(row.get("detected") is True for row in guards),
+                    "missing actual print visibility counterexamples")
 
 
 def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,

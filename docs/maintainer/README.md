@@ -37,6 +37,9 @@
 | 调查记录 | [../research/](../research/) | CHIR、`std.ast`、高亮边界等时间点调查记录 |
 | 发布 schema | [../schema/](../schema/) | 当前发布的 18 个 schema 文件，由 `scripts/update_schemas.sh` 从构建产物同步 |
 
+阅读基准把原生超时记为失败，不当作已观察到的资源拒绝；父进程正常/异常退出后也清理尚存的子进程组。打印证据检查签名、契约及祖先的实际可见性，并用三种真实 CSS 隐藏反例校验观察器。修正观测协议时要重采同协议的 before/after，不能混用旧 harness 数据或调整事前预算。
+
+
 ## 验收记录
 
 [acceptance/](acceptance/) 下的文件按 issue 归档：

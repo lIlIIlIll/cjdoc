@@ -21,14 +21,17 @@ def measured_process(command: list[str], stdout: Path, stderr: Path,
         process = subprocess.Popen(command, stdout=output, stderr=errors,
                                    start_new_session=os.name == "posix")
 
-        def terminate() -> None:
-            if process.returncode is not None:
-                return
-            expired.set()
+        def kill_group() -> None:
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+
+        def terminate() -> None:
+            if process.returncode is not None:
+                return
+            expired.set()
+            kill_group()
 
         timer = threading.Timer(timeout, terminate)
         timer.daemon = True
@@ -50,5 +53,8 @@ def measured_process(command: list[str], stdout: Path, stderr: Path,
         finally:
             timer.cancel()
             timer.join()
+            # A completed parent does not imply its descendants have exited.
+            # Do not leave an orphaned group running after cancelling its deadline.
+            kill_group()
     return {"exitCode": process.returncode, "timedOut": expired.is_set(),
             "elapsedMs": (time.perf_counter() - started) * 1000, **resources}

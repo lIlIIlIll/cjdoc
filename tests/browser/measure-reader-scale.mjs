@@ -176,14 +176,51 @@ async function noScriptAndPrint(browser, index, manifest, base) {
     const noScript = { memberCount: count, independentlyOpen: count >= 2 ? await page.locator('[data-cjdoc-member][open]').count() === 2 : null,
       accessibleTree: await page.locator('main').ariaSnapshot() };
     await page.emulateMedia({ media: 'print' });
-    const print = await page.evaluate(() => ({
-      contentVisible: getComputedStyle(document.querySelector('main')).display !== 'none',
-      signatures: document.querySelectorAll('[data-cjdoc-member] summary code').length,
-      detailBodies: document.querySelectorAll('.member-detail-body').length,
-      overflowPx: Math.max(0, document.documentElement.scrollWidth - innerWidth),
-    }));
+    const observePrint = () => page.evaluate(() => {
+      const visible = element => {
+        if (!element) return false;
+        for (let node = element; node; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' ||
+              Number(style.opacity) === 0 || style.contentVisibility === 'hidden') return false;
+        }
+        return [...element.getClientRects()].some(rect => rect.width > 0 && rect.height > 0);
+      };
+      const signatures = [...document.querySelectorAll('[data-cjdoc-member] summary .declaration-signature')];
+      const bodies = [...document.querySelectorAll('.member-detail-body')];
+      const ids = nodes => nodes.filter(visible).map(node => node.closest('[data-cjdoc-member]').id);
+      const visibleSignatureIds = ids(signatures), visibleDetailIds = ids(bodies);
+      return { contentVisible: visible(document.querySelector('main')),
+        signatures: visibleSignatureIds.length, detailBodies: visibleDetailIds.length,
+        signatureNodes: signatures.length, detailBodyNodes: bodies.length,
+        visibleSignatureIds, visibleDetailIds,
+        overflowPx: Math.max(0, document.documentElement.scrollWidth - innerWidth),
+        semantics: 'computed ancestor visibility and rendered boxes under print media, not paper pagination' };
+    });
+    const print = await observePrint();
+    const printCounterexamples = [];
+    if (count >= 2) {
+      if (!print.signatures || !print.detailBodies) throw new Error('positive native print contracts are not visible');
+      let hiddenSelector = '';
+      await page.route('**/style.css', async route => {
+        const response = await route.fetch();
+        await route.fulfill({ response, body: await response.text() +
+          '\n@media print{' + hiddenSelector + '{display:none!important}}' });
+      });
+      for (const selector of ['.member-detail-body', '[data-cjdoc-member] summary .declaration-signature', 'main']) {
+        hiddenSelector = selector;
+        await page.reload();
+        await rows.evaluateAll(nodes => { nodes[0].open = true; nodes[nodes.length - 1].open = true; });
+        const hidden = await observePrint();
+        const detected = selector === 'main' ? !hidden.contentVisible && !hidden.signatures && !hidden.detailBodies
+          : selector === '.member-detail-body' ? hidden.detailBodies === 0 : hidden.signatures === 0;
+        if (!detected) throw new Error('print observer missed CSS counterexample: ' + selector);
+        printCounterexamples.push({ selector, detected, observation: hidden });
+      }
+    }
     await page.close();
-    return { noScript, print, screenReaderSpeech: { status: 'not-measured', reason: 'ARIA tree is captured; no human or screen-reader speech session is claimed' } };
+    return { noScript, print, printCounterexamples,
+      screenReaderSpeech: { status: 'not-measured', reason: 'ARIA tree is captured; no human or screen-reader speech session is claimed' } };
   } finally { await context.close(); }
 }
 
