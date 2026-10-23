@@ -653,7 +653,7 @@ def classify_wallclock(run: dict[str, object], jobs_payload: dict[str, object],
         for job in jobs
         if job.get("started_at") and job.get("completed_at") and id(job) not in carried
     ]
-    # The three clocks `docs/ci-wallclock.md` tabulates, computed here rather than in
+    # The three clocks `docs/maintainer/ci-wallclock.md` tabulates, computed here rather than in
     # the table's author: a number a reader cannot reproduce from the artifact is not
     # evidence. `wall` is what a user waits for; the job span excludes the
     # controller's own pre-start queueing; job-minutes do not hide parallel work.

@@ -17,7 +17,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-from showcase_build.integration import copy_composed_publication, install_output, publish_examples
+from showcase_build.integration import (copy_composed_publication, install_output,
+                                        pin_documentation_links, publish_examples)
 from showcase_build.manifest import roots
 from showcase_build.navigation import mount, markdown_declarations
 from showcase_build.packaging import copy_sources, source_archive
@@ -40,6 +41,63 @@ class BuildIntegrationTests(unittest.TestCase):
         path.write_text(json.dumps(value) if isinstance(value, dict) else value,
                         encoding="utf-8", newline="\n")
         return path
+
+    def test_self_hosted_manual_links_follow_the_fork_revision_without_rewriting_ir(self) -> None:
+        source = "https://github.com/lIlIIlIll/cjdoc/blob/main/"
+        source_tree = "https://github.com/lIlIIlIll/cjdoc/tree/main/"
+        repository = "https://github.com/example-owner/cjdoc-fork"
+        revision = "c" * 40
+        target = repository + "/blob/" + revision + "/"
+        target_tree = repository + "/tree/" + revision + "/"
+        foreign = "https://github.com/example-owner/another-project/blob/main/README.md"
+        html_page = self.write("site/api/concepts/index.html",
+            f'<a href="{source}docs/usage.md#generate">Usage</a>'
+            f'<a href="{source}README.md">README</a><a href="{foreign}">Other</a>'
+            f'<a href="{source_tree}docs/maintainer#build">Maintainer</a>'
+            f'<code>{source}docs/usage.md</code>')
+        original_markdown = (f'[Usage]({source}docs/usage.md#generate)\n'
+                             f'[Maintainer]({source_tree}docs/maintainer#build)\n[Other]({foreign})\n')
+        markdown = [self.write(path, original_markdown)
+                    for path in ("site/markdown/concepts/index.md", "site/docs/README.md",
+                                 "site/docs/i18n.md", "site/docs/documentation-quality.md")]
+        author_ir = self.write("site/artifacts/docs.json", {"pages": [{"url": source + "docs/usage.md"}]})
+        original_ir = author_ir.read_bytes()
+        pin_documentation_links(self.root / "site", {"repository": repository, "revision": revision},
+                                own_api_index=True)
+        published = html_page.read_text(encoding="utf-8")
+        self.assertIn(f'href="{target}docs/usage.md#generate"', published)
+        self.assertIn(f'href="{target}README.md"', published)
+        self.assertIn(f'href="{target_tree}docs/maintainer#build"', published)
+        self.assertIn(f'href="{foreign}"', published)
+        self.assertIn(f'<code>{source}docs/usage.md</code>', published)
+        for path in markdown:
+            self.assertEqual(path.read_text(encoding="utf-8"),
+                             f'[Usage]({target}docs/usage.md#generate)\n'
+                             f'[Maintainer]({target_tree}docs/maintainer#build)\n[Other]({foreign})\n')
+        self.assertEqual(author_ir.read_bytes(), original_ir)
+
+    def test_alternate_project_keeps_its_index_but_pins_copied_cjdoc_manuals(self) -> None:
+        source = "https://github.com/lIlIIlIll/cjdoc"
+        repository = "https://github.com/example-owner/cjdoc-fork"
+        revision = "d" * 40
+        html_index = self.write("site/api/concepts/index.html",
+                               f'<a href="{source}/blob/main/README.md">Upstream cjdoc</a>')
+        markdown_index = self.write("site/markdown/concepts/index.md",
+                                   f'[Upstream cjdoc]({source}/blob/main/README.md)')
+        original_indexes = [(path, path.read_bytes()) for path in (html_index, markdown_index)]
+        manual = self.write("site/docs/README.md", f'[Usage]({source}/blob/main/docs/usage.md)')
+        directory = self.write("site/docs/i18n.md", f'[Maintainer]({source}/tree/main/docs/maintainer)')
+        readme = self.write("site/README.md", f'[Guide]({source}/blob/main/docs/guides.md)')
+        pin_documentation_links(self.root / "site", {"repository": repository, "revision": revision},
+                                own_api_index=False)
+        self.assertEqual(manual.read_text(encoding="utf-8"),
+                         f'[Usage]({repository}/blob/{revision}/docs/usage.md)')
+        self.assertEqual(directory.read_text(encoding="utf-8"),
+                         f'[Maintainer]({repository}/tree/{revision}/docs/maintainer)')
+        self.assertEqual(readme.read_text(encoding="utf-8"),
+                         f'[Guide]({repository}/blob/{revision}/docs/guides.md)')
+        for path, original in original_indexes:
+            self.assertEqual(path.read_bytes(), original)
 
     def test_source_download_preserves_paths_license_and_exact_configuration(self) -> None:
         inventory = ["examples/pocketkit/LICENSE", "examples/pocketkit/demo-v1/cjdoc.toml"]

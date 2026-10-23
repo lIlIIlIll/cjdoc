@@ -1,64 +1,99 @@
 # cjdoc
 
-cjdoc 是一个命令行工具：它读取 Cangjie 项目的源码和文档注释，生成可直接打开的 HTML、Markdown 和 JSON API 文档。
+cjdoc 是仓颉的 API 文档生成器。它读取项目源码里的 `/** ... */` 文档注释，生成可以直接打开的 HTML 站点、Markdown 页面和 JSON 数据。产物都是静态文件，生成后不需要启动服务器。
 
-如果你第一次使用 cjdoc，先完成下面的快速开始。进阶任务见 [`docs/usage.md`](docs/usage.md) 和 [`docs/advanced-usage.md`](docs/advanced-usage.md)。
+如果你正在为仓颉库写文档，用 cjdoc 可以很快得到一份带摘要、参数、返回值、异常、示例和行为契约的参考文档。它只读取源码和注释，不会自动生成使用说明，也不会替你补写文档内容。
 
-作者正文的中英文写法、独立语言站点及缺译门槛见 [多语言文档](docs/i18n.md)。
+## 开始之前
 
-## 快速开始
+你需要准备两样东西：
 
-### 准备项目
+1. **仓颉 SDK**。cjdoc 依赖仓颉运行时，发布包**不包含** SDK。先安装仓颉 SDK，并按 SDK 自带的环境脚本（`envsetup`）配置好环境，确认下面两个命令可用：
 
-你需要一个 Cangjie 项目根目录。目录中至少有一个 `cjpm.toml` 和一个 `src/` 源码目录：
+   ```bash
+   cjc -v
+   cjpm -v
+   ```
 
-```text
-my-project/
-├── cjpm.toml
-└── src/
-    └── api.cj
-```
+2. **一个仓颉项目**。项目根目录里要有 `cjpm.toml`，源码放在 `src/` 下：
 
-### 安装并确认 cjdoc
+   ```text
+   my-project/
+   ├── cjpm.toml
+   └── src/
+       └── api.cj
+   ```
 
-从 [Releases](https://github.com/lIlIIlIll/cjdoc/releases) 下载与你的平台匹配的文件。发布页实际提供的文件才是可用安装包；当前构建支持以下平台名称：
+## 安装 cjdoc
 
-| 平台 | 可执行文件名称 |
-|---|---|
-| Linux x64 | `cjdoc-<version>-linux-x64` |
-| macOS ARM64 | `cjdoc-<version>-macos-arm64` |
-| Windows x64 | `cjdoc-<version>-windows-x64.exe` |
+从 [Releases](https://github.com/lIlIIlIll/cjdoc/releases) 下载 0.7.3 对应平台的文件。每个平台提供一个裸可执行文件和一个压缩包：
 
-解压后，把可执行文件放到一个目录，并把这个目录加入 `PATH`。如果独立可执行文件的文件名带有版本号，请将它改名为 `cjdoc`；Windows 改名为 `cjdoc.exe`。Linux 和 macOS 需要确保文件具有执行权限。打开一个新终端，确认命令可用：
+| 平台 | 裸可执行文件 | 压缩包 |
+|---|---|---|
+| Linux x64 | `cjdoc-0.7.3-linux-x64` | `cjdoc-0.7.3-linux-x64.tar.gz` |
+| macOS ARM64 | `cjdoc-0.7.3-macos-arm64` | `cjdoc-0.7.3-macos-arm64.tar.gz` |
+| Windows x64 | `cjdoc-0.7.3-windows-x64.exe` | `cjdoc-0.7.3-windows-x64.zip` |
 
-Linux/macOS 可以这样安装到当前用户目录：
+下载页里同名的 `.sha256` 文件是校验文件。裸可执行文件里只有二进制；压缩包里还有 README、LICENSE、第三方声明和发布清单。
+
+### 1. 校验下载的文件
+
+在下载文件所在的目录执行。Linux：
 
 ```bash
-chmod +x cjdoc-<version>-<platform>
+sha256sum -c cjdoc-0.7.3-linux-x64.tar.gz.sha256
+```
+
+macOS：
+
+```bash
+shasum -a 256 -c cjdoc-0.7.3-macos-arm64.tar.gz.sha256
+```
+
+Windows PowerShell 分两步，把 `.sha256` 文件里的哈希和实际文件的哈希对比：
+
+```powershell
+Get-Content .\cjdoc-0.7.3-windows-x64.zip.sha256
+(Get-FileHash .\cjdoc-0.7.3-windows-x64.zip -Algorithm SHA256).Hash.ToLower()
+```
+
+### 2. 放入 `PATH`
+
+Linux 和 macOS 解压后把可执行文件改名放到一个已有或新建的用户目录，再把该目录加进 `PATH`。Linux 示例：
+
+```bash
+tar -xzf cjdoc-0.7.3-linux-x64.tar.gz
+chmod +x cjdoc-0.7.3/cjdoc
 mkdir -p ~/.local/bin
-mv cjdoc-<version>-<platform> ~/.local/bin/cjdoc
+mv cjdoc-0.7.3/cjdoc ~/.local/bin/cjdoc
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-把 `~/.local/bin` 加入你的 shell 配置文件，之后的新终端也会自动找到 `cjdoc`。Windows 用户将 `cjdoc.exe` 放到例如 `C:\Tools\cjdoc`，再在“环境变量”的用户 `Path` 中加入这个目录；重新打开终端即可。
+把最后一行 `export` 也加到你的 `~/.bashrc` 或 `~/.zshrc`，以后新开的终端也能找到 cjdoc。macOS 把文件名换成 `cjdoc-0.7.3-macos-arm64.tar.gz` 即可。
+
+Windows 解压后把 `cjdoc.exe` 放到例如 `C:\Tools\cjdoc\cjdoc.exe`，然后在“环境变量”的用户变量 `Path` 中加入 `C:\Tools\cjdoc`，重新打开终端。
+
+如果只下载了裸可执行文件：Linux/macOS 先 `chmod +x` 并改名为 `cjdoc`，Windows 改名为 `cjdoc.exe`，然后同样放入 `PATH` 中的目录。
+
+发布页没有适合你平台的文件时，只能从源码构建（面向维护者）：见 [构建说明](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/maintainer/build.md)。普通使用者优先使用发布资产。
+
+### 3. 确认安装
 
 ```bash
 cjdoc --version
 ```
 
-当前版本应看到类似下面的输出：
-
 ```text
 cjdoc 0.7.3
 ```
 
-如果发布页没有对应平台的文件，请不要猜文件名或下载地址。源码构建说明位于 [`docs/advanced-usage.md`](docs/advanced-usage.md#从源码构建维护者用)。
+`cjdoc --help` 可以查看用法。只有顶层命令支持 `--help`，子命令没有单独的帮助；参数写错时，错误信息会附上用法并以退出码 `2` 结束。
 
-### 1. 给公开 API 写文档注释
+## 三步生成第一份文档
 
-在你自己的 `.cj` 文件中，把 `/** ... */` 放在要生成文档的 `public` 声明前面。下面的例子会在页面中生成函数摘要、参数说明和返回值说明。
+### 1. 写文档注释
 
-`src/api.cj`：
+在你要公开的声明前面写 `/** ... */` 注释。例如 `src/api.cj`：
 
 ```cangjie
 /**
@@ -73,95 +108,73 @@ public func add(left: Int64, right: Int64): Int64 {
 }
 ```
 
-普通的 `//` 和 `/* ... */` 注释不会绑定到 API 声明。默认输出面向项目外部使用者，只展示 `public` 和 `protected` 声明。
+普通的 `//` 和 `/* ... */` 注释不会出现在文档里。默认只展示 `public` 和 `protected` 声明。
 
 ### 2. 生成 HTML
 
-进入项目根目录，运行生成命令。默认输出目录是项目下的 `target/doc`。
+在项目根目录运行：
 
 ```bash
-cd <你的项目目录>
 cjdoc generate --project . --format html
 ```
 
-成功时终端会打印类似下面的结果：
-
-```text
-generated <你的项目目录>/target/doc
-```
+成功后会打印类似 `generated target/doc` 的一行。默认输出目录是项目下的 `target/doc`；不写 `--format` 时，cjdoc 只生成 JSON 数据（`docs.json`）。
 
 ### 3. 打开文档
 
-直接打开下面的文件：
+用浏览器打开：
 
 ```text
-<你的项目目录>/target/doc/html/index.html
+target/doc/html/index.html
 ```
 
-这是静态站点，不需要启动服务器。修改注释后再次运行同一条 `generate` 命令，再刷新页面即可看到新内容。
+这是静态页面，双击即可，不需要服务器。改完注释后重新运行同一条命令，再刷新浏览器就能看到新内容。
 
-## 常用命令
+## 常用任务
 
 | 目的 | 命令 | 主要产物 |
 |---|---|---|
 | 生成 HTML | `cjdoc generate --project . --format html` | `target/doc/html/index.html` |
 | 生成 Markdown | `cjdoc generate --project . --format markdown` | `target/doc/markdown/index.md` |
-| 生成 JSON | `cjdoc generate --project . --format json` | `target/doc/docs.json` |
-| 生成 API snapshot | `cjdoc generate --project . --format api-surface --stdout > api-surface.json` | `api-surface.json` |
-| 检查文档问题 | `cjdoc check --project .` | 终端诊断，成功退出码为 `0` |
-| 检查示例 | `cjdoc check --project . --check-examples` | 按 `@example` 指令校验或运行 `cangjie` 代码块 |
+| 生成 JSON 数据 | `cjdoc generate --project . --format json` | `target/doc/docs.json` |
+| 保存 API 快照 | `cjdoc generate --project . --format api-surface --stdout > api-surface.json` | `api-surface.json` |
+| 查看文档覆盖率 | `cjdoc generate --project . --format coverage` | `target/doc/coverage/coverage.json` |
+| 检查文档问题 | `cjdoc check --project .` | 终端诊断；没有问题时退出码为 `0` |
+| 检查并运行示例 | `cjdoc check --project . --check-examples` | 按 `@example` 指令编译、运行示例 |
+| 本地预览 | `cjdoc serve --project .` | 打开 `http://127.0.0.1:8080/`，改源码后自动重建 |
+| 比较 API 变化 | `cjdoc diff --baseline old.json --current new.json --deny-breaking-api` | 终端或 JSON 报告；命中破坏性变化时退出码为 `1` |
+| 从已有 JSON 重新生成 | `cjdoc render --input target/doc/docs.json --format html --output target/doc-rendered` | 重新渲染的 HTML |
 
-示例检查通过显式 `--check-examples` 开启；默认只编译，只有 `@example 标题 {run}` 才执行程序。例如：
-
-````cangjie
-/**
- * @example Greeting {run}
- * ```cangjie
- * println("Hello")
- * ```
- */
-public func greet(): Unit {}
-````
-
-运行 `cjdoc check --project . --check-examples` 后，检查结果通过诊断和退出码呈现。执行仍受超时、输出和内存上限约束；无法实施所需限制的平台会明确拒绝，不会降级为无界运行。旧 `[doctest]` 配置已移除，包含该表的项目必须删除它并改用上述开关和指令；不再生成逐例执行报告或 HTML 执行徽标。
-
-比较 API snapshot 使用 `diff`：
-
-```bash
-cjdoc diff --baseline api-surface.json --current api-surface-next.json --format text --deny-breaking-api
-```
-
-`diff` 默认保留报告并返回 `0`；deny 选项让对应 breaking 分类返回 `1`，参数或 snapshot 错误返回 `2`。生成和比较都只支持 `cjdoc.api-surface/3`；v1/v2 snapshot 已停止接受。JSON diff 报告的版本是 `cjdoc.api-diff/2`。
-
-如果项目在 GitHub 上并希望声明页显示 `View source`，生成时显式提供仓库根和 revision：
-
-```bash
-cjdoc generate --project . --format html --repository-url https://github.com/<owner>/<repo> \
-  --repository-revision <commit-or-ref> --repository-root .
-```
-
-URL 只接受 canonical GitHub HTTPS 仓库根；缺少可证明的源码映射时不会生成假链接。生成后的 HTML 是离线静态站点，支持包/声明索引、参数与返回值目录、键盘搜索、主题选择和移动端导航抽屉。
-
-一次生成多个格式：
+一次生成多个格式时，重复写 `--format`：
 
 ```bash
 cjdoc generate --project . \
-  --format json \
+  --format html \
   --format markdown \
-  --format html
+  --format json
 ```
 
-`--format` 可以重复指定。默认语义后端为 `source`。显式启用 CHIR enrichment 时，仅 `generate`/`check` 接受 `--semantic chir`，并且必须提供独立构建的 `--chir-worker <path>`；worker 实现位于 `tools/chir-worker`，只有该包依赖 `stdx.chir`。可用 `--cjc <path>` 和重复的 `--chir-import-path <dir>` 配置 worker。缺少 worker 或 CHIR 失败时，source declarations 会保留并产生 `CJDOC2101`–`CJDOC2106` warning。`render` 只消费已有 Doc IR。完整任务说明见 [`docs/usage.md`](docs/usage.md)；workspace、依赖、条件编译、缓存和 CI 见 [`docs/advanced-usage.md`](docs/advanced-usage.md)。
+把 JSON 交给管道或其他工具时，用 `--stdout`：
+
+```bash
+cjdoc generate --project . --format json --stdout > docs.json
+```
+
+`--stdout` 与 `--output` 互斥，并且只允许恰好一个 JSON 类格式（`json`、`api-surface`、`coverage`、`symbol-index`）。诊断写到 stderr，所以重定向得到的文件仍是单个 JSON。
 
 ## 常见问题
 
-### `cjdoc: command not found`
+### 提示 `cjdoc: command not found`（或 Windows 提示不是内部或外部命令）
 
-可执行文件所在目录没有加入当前终端的 `PATH`。加入后打开新终端，再运行 `cjdoc --version`。
+`PATH` 还没有包含 cjdoc 所在目录。把目录加入 `PATH` 后重新打开终端，再运行 `cjdoc --version`。
+
+### 启动时报缺少仓颉运行时库（Windows 上通常是 DLL）
+
+说明仓颉 SDK 没有安装好，或者 SDK 的环境脚本没有在当前终端生效。安装 SDK，执行 SDK 自带的 `envsetup` 后重新打开终端，确认 `cjc -v` 可用。
 
 ### 提示项目必须包含 `cjpm.toml`
 
-`--project` 必须指向项目根目录，而不是 `src/` 目录：
+`--project` 要指向项目根目录，而不是 `src/` 子目录。这个错误会作为 error 诊断报告，命令退出码为 `1`：
 
 ```bash
 cjdoc generate --project /path/to/my-project --format html
@@ -169,7 +182,7 @@ cjdoc generate --project /path/to/my-project --format html
 
 ### 页面里没有我的声明
 
-先确认三件事：声明是 `public` 或 `protected`，注释使用 `/** ... */`，并且命令指向正确的项目目录。如果你要查看内部声明，使用：
+按顺序检查：声明是 `public` 或 `protected`；注释是 `/** ... */` 且紧贴声明；命令指向的项目目录正确。想看内部声明可以改用：
 
 ```bash
 cjdoc generate --project . --format html --audience all
@@ -177,17 +190,23 @@ cjdoc generate --project . --format html --audience all
 
 ### 修改注释后页面没有变化
 
-重新运行 `cjdoc generate ...`，确认打开的是同一个项目下的 `target/doc/html/index.html`，然后刷新浏览器页面。
+重新运行 `cjdoc generate ...`，确认打开的是同一个输出目录下的 `target/doc/html/index.html`，然后刷新页面。
+
+### 生成结果被标记为不完整（partial）
+
+说明部分源码或引用没有完整解析。先看终端诊断里的文件和行列，再确认是否需要通过 `--cfg NAME=VALUE` 补充条件编译输入。cjdoc 会保留能解析的部分，不会把不确定的信息标成已解析。
+
+### 输出目录报所有权或冲突错误
+
+首次生成时不要预先创建 `target/doc`。cjdoc 只接受不存在的目录，或此前由它写入过所有权清单的目录；预创建或含无关文件的目录会报错，请换一个新输出目录。只有此前由 cjdoc 管理过的目录，才可以用 `--force-owned` 接受其中被修改的已登记产物。托管目录再次生成时可以直接复用。
 
 ## 当前边界
 
-- 当前输出版本是 `cjdoc.doc-ir/16`。`render` 只接受当前 schema，不再迁移旧 Doc IR；普通用户不需要直接编辑这个 JSON。Schema 说明见 [`docs/usage.md`](docs/usage.md#doc-ir-schema)。
-- 无法展开的宏、没有提供的条件编译输入和部分不支持的源码会产生诊断，并可能使结果标为 `partial`。
-- cjdoc 不会替你下载依赖源码。需要把依赖纳入文档时，按 [`docs/advanced-usage.md`](docs/advanced-usage.md) 的说明提供路径或 cache。
+- 运行 cjdoc 需要已安装的仓颉 SDK，发布包不包含 SDK；`--check-examples` 还要求 `cjc` 在 `PATH` 中。
+- cjdoc 不会下载依赖源码。要把依赖纳入文档，需要显式提供依赖路径或缓存（见文档索引中的高级用法）。
+- 无法展开的宏和部分不支持的源码会让生成结果被标记为不完整，能解析的部分仍会输出。
+- cjdoc 不编译你的项目，也不做类型检查；它按源码和注释生成文档，需要验证示例能否编译运行时请用 `--check-examples`。
 
-## 其他文档
+## 文档
 
-- [`docs/usage.md`](docs/usage.md)：常用任务和文档注释写法。
-- [`docs/advanced-usage.md`](docs/advanced-usage.md)：多格式、workspace、依赖、缓存、CI 和维护者用法。
-- [`docs/release-process.md`](docs/release-process.md)：发布与验收流程，面向维护者。
-- [`docs/research/`](https://github.com/lIlIIlIll/cjdoc/tree/main/docs/research)：源码解析能力和架构决策记录，面向维护者。
+- [文档索引](docs/README.md)：使用文档与维护者文档的入口。

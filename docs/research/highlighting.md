@@ -122,4 +122,4 @@ Doc IR **`cjdoc.doc-ir/14`** 的可选 `codeHighlight` / `signatureHighlight` �
 
 ## 复现验收
 
-完整命令、H-T 覆盖映射与证据边界见 [静态高亮验收](../issue-100-acceptance.md)。`scripts/highlight_acceptance.py` 在新的私有工作目录生成真实 fixture 和 `report.json`；它不使用旧日志补齐结果。报告记录固定输入摘要、SDK/运行库摘要、Node/grammar 版本、renderer 源文件摘要与三组交替 on/off 生成耗时，以及 IR/HTML 字节、DOM/span 数。浏览器的首次阅读、复制与布局证据单独记录，不把生成成本等同于阅读速度。
+完整命令、H-T 覆盖映射与证据边界见 [静态高亮验收](../maintainer/acceptance/issue-100-acceptance.md)。`scripts/highlight_acceptance.py` 在新的私有工作目录生成真实 fixture 和 `report.json`；它不使用旧日志补齐结果。报告记录固定输入摘要、SDK/运行库摘要、Node/grammar 版本、renderer 源文件摘要与三组交替 on/off 生成耗时，以及 IR/HTML 字节、DOM/span 数。浏览器的首次阅读、复制与布局证据单独记录，不把生成成本等同于阅读速度。

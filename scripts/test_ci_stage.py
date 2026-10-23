@@ -663,7 +663,7 @@ class WallclockDocumentTest(unittest.TestCase):
 
 
 class WallclockClocksTest(unittest.TestCase):
-    """The three clocks `docs/ci-wallclock.md` tabulates come out of the artifact.
+    """The three clocks `docs/maintainer/ci-wallclock.md` tabulates come out of the artifact.
 
     A table whose columns can only be computed by hand is prose, not evidence: a
     reader cannot reproduce "job span" or "gap" from the document. These clocks are

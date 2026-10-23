@@ -205,7 +205,7 @@ Linux x64 archive 使用当前 binary 独立构建两次，两个文件的 SHA-2
 - Markdown node range 尚未映射成完整项目 source range。
 - 正式发布前仍需在精确提交上完成 GitHub stable 三平台、configured daily 与 tag-release workflow，并验证公开 release 的六个下载 asset 和 checksum。
 
-CHIR capability 细节见 [`docs/research/api-capability-matrix.md`](docs/research/api-capability-matrix.md)。发布证据层级与 checklist 见 [`docs/release-process.md`](docs/release-process.md)。
+CHIR capability 细节见 [`docs/research/api-capability-matrix.md`](../research/api-capability-matrix.md)。发布证据层级与 checklist 见 [`docs/maintainer/release-process.md`](release-process.md)。
 
 ## 8. 历史复现命令（仅适用于当时的 v0.6.0 快照）
 

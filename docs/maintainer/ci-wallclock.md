@@ -320,7 +320,7 @@ remote tags), while the run `39217926544` and its logs remain retrievable and
 
 ## What this does not establish
 
-`docs/paired-samples-main.md` (issue #96) remains the authority for the
+`docs/maintainer/paired-samples-main.md` (issue #96) remains the authority for the
 cold/warm paired-sample requirement, and it prints its own counts rather than
 pooling samples across revisions or cache states. One cell now reaches the
 recorded-axes threshold: on `macos15-20260907.0337.1` with the pinned SDK and

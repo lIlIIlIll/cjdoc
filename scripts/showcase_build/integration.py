@@ -119,8 +119,33 @@ def publish_compatibility(repo: Path, site: Path, current: Path, result: dict) -
     links = ''.join('<li><a href="' + html.escape(path.name) + '">' + html.escape(path.name) + '</a></li>'
                     for path in sorted((site / "schemas").glob("*.json")))
     (site / "schemas/index.html").write_text('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Schema registry</title></head><body><a href="../index.html">Showcase</a><h1>Schema registry</h1><ul>' + links + '</ul></body></html>', encoding="utf-8")
-    for name in ("usage.md", "advanced-usage.md", "release-process.md", "documentation-quality.md", "i18n.md", "issue-64-acceptance.md"):
+    copy_file(repo / "README.md", site / "README.md")
+    for name in ("README.md", "usage.md", "advanced-usage.md", "configuration.md", "guides.md",
+                 "documentation-quality.md", "i18n.md"):
         copy_file(repo / "docs" / name, site / "docs" / name)
+
+
+def pin_documentation_links(site: Path, provenance: dict, *, own_api_index: bool) -> None:
+    """Pin copied manuals, plus cjdoc's own API index, without changing author IR."""
+    prefixes = [(f"https://github.com/lIlIIlIll/cjdoc/{view}/main/",
+                 provenance["repository"] + f"/{view}/" + provenance["revision"] + "/")
+                for view in ("blob", "tree")]
+    index = site / "api/concepts/index.html"
+    if own_api_index and index.is_file():
+        content = index.read_text(encoding="utf-8")
+        for source_prefix, target_prefix in prefixes:
+            content = content.replace('href="' + source_prefix,
+                                      'href="' + html.escape(target_prefix, quote=True))
+        index.write_text(content, encoding="utf-8")
+    markdown = [site / "README.md", *sorted((site / "docs").glob("*.md"))]
+    if own_api_index:
+        markdown.append(site / "markdown/concepts/index.md")
+    for path in markdown:
+        if path.is_file():
+            content = path.read_text(encoding="utf-8")
+            for source_prefix, target_prefix in prefixes:
+                content = content.replace("](" + source_prefix, "](" + target_prefix)
+            path.write_text(content, encoding="utf-8")
 
 
 def build(repo: Path, binary: Path, project: Path, site: Path, work: Path,
@@ -159,6 +184,7 @@ def build(repo: Path, binary: Path, project: Path, site: Path, work: Path,
     with stage_timing.phase("showcase.reports"):
         publish_examples(result, site, provenance)
         publish_compatibility(repo, site, current, result)
+        pin_documentation_links(site, provenance, own_api_index=project == repo)
     # `legacy` is a separately listed surface in the issue's phase inventory, so it
     # is timed on its own instead of being folded into the report phase.
     with stage_timing.phase("showcase.legacy"):
