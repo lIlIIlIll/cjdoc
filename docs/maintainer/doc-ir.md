@@ -36,6 +36,8 @@ cjdoc schema doc-ir-v16
 8. 若生成输出的 Doc IR 字节发生变化，还要刷新 `tests/perf/baseline.json` 的 Doc IR identity：CI 每个 push 都跑 `python3 scripts/perf_gate.py identities --binary target/release/bin/main --evidence target/ci-evidence/perf-identities.json`，未刷新的 baseline 会让 CI 失败。性能基线的刷新与冻结规则见 [release-process.md](release-process.md) 的“Performance baseline”。
 9. 跑 `bash scripts/check.sh`（至少 `native`、`cli`）确认 current-only codec round-trip、两次生成确定性、HTML 全站校验和 schema 同步。
 
+`self` 性能 profile 也会捕获 `cjdoc.toml` 配置的概念页，因此只修改文档正文或发布页面配置，也可能改变 Doc IR identity。此类变更应实跑生成并核对产物后同步 `referenceDocsSha256`；不要因此重设 elapsed/RSS 测量值、阈值或参考环境。只更新校验值不是性能重新标定，也不是性能回归证据。
+
 ### `scripts/update_schemas.sh`
 
 - 从 `target/release/bin/main`（或 `main.exe`）导出一整套发布 schema，先写入 staging 再原子替换。
