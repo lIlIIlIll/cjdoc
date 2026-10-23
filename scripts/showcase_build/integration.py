@@ -119,6 +119,7 @@ def publish_compatibility(repo: Path, site: Path, current: Path, result: dict) -
     links = ''.join('<li><a href="' + html.escape(path.name) + '">' + html.escape(path.name) + '</a></li>'
                     for path in sorted((site / "schemas").glob("*.json")))
     (site / "schemas/index.html").write_text('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Schema registry</title></head><body><a href="../index.html">Showcase</a><h1>Schema registry</h1><ul>' + links + '</ul></body></html>', encoding="utf-8")
+    copy_file(repo / "README.md", site / "README.md")
     for name in ("README.md", "usage.md", "advanced-usage.md", "configuration.md", "guides.md",
                  "documentation-quality.md", "i18n.md"):
         copy_file(repo / "docs" / name, site / "docs" / name)
@@ -136,7 +137,7 @@ def pin_documentation_links(site: Path, provenance: dict, *, own_api_index: bool
             content = content.replace('href="' + source_prefix,
                                       'href="' + html.escape(target_prefix, quote=True))
         index.write_text(content, encoding="utf-8")
-    markdown = sorted((site / "docs").glob("*.md"))
+    markdown = [site / "README.md", *sorted((site / "docs").glob("*.md"))]
     if own_api_index:
         markdown.append(site / "markdown/concepts/index.md")
     for path in markdown:

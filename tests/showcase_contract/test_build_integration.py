@@ -87,12 +87,15 @@ class BuildIntegrationTests(unittest.TestCase):
         original_indexes = [(path, path.read_bytes()) for path in (html_index, markdown_index)]
         manual = self.write("site/docs/README.md", f'[Usage]({source}/blob/main/docs/usage.md)')
         directory = self.write("site/docs/i18n.md", f'[Maintainer]({source}/tree/main/docs/maintainer)')
+        readme = self.write("site/README.md", f'[Guide]({source}/blob/main/docs/guides.md)')
         pin_documentation_links(self.root / "site", {"repository": repository, "revision": revision},
                                 own_api_index=False)
         self.assertEqual(manual.read_text(encoding="utf-8"),
                          f'[Usage]({repository}/blob/{revision}/docs/usage.md)')
         self.assertEqual(directory.read_text(encoding="utf-8"),
                          f'[Maintainer]({repository}/tree/{revision}/docs/maintainer)')
+        self.assertEqual(readme.read_text(encoding="utf-8"),
+                         f'[Guide]({repository}/blob/{revision}/docs/guides.md)')
         for path, original in original_indexes:
             self.assertEqual(path.read_bytes(), original)
 

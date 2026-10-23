@@ -68,6 +68,8 @@ fork 和历史构建不跳到上游 `main`。
 这些链接只在展示站发布层重绑定，原始作者 Doc IR 和源码下载仍保留采集时的内容。
 使用 `--project` 展示其他项目时，复制的 cjdoc 手册仍按构建元数据绑定；该项目自己的
 HTML/Markdown 概念索引保留作者链接，不作为 cjdoc 手册改写。
+仓库根 `README.md` 随手册一起发布到站点根目录并重绑定仓库链接，保留手册中
+`../README.md` 的返回路径。
 
 本地 `serve` 教程由相同原生概念页提供。`scripts/check_showcase_authoring.py` 启动
 真实服务器、读取状态、在隔离副本中修改注释，再验证成功构建计数和 HTTP 内容均更新。
