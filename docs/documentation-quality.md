@@ -122,7 +122,7 @@ cjdoc generate --project . --format coverage --audience all
 public func normalize(value: Int64): Int64 { value }
 ```
 
-三条模板规则只能由 `--lint-profile` 整组开关，不能用 `[lint]` 逐条关闭；`--lint-profile off` 会关闭整组 lint（包括这三条诊断），但不会阻止 `quality.json` 计算质量分。`[lint]` 配置的严重级别适用于下一节列出的其他 lint 规则。
+三条模板规则只能由 `--lint-profile` 整组开关，不能用 `[lint]` 逐条关闭；`--lint-profile off` 会关闭常规 lint（包括这三条诊断），但不会阻止 `quality.json` 计算质量分，也不会关闭 `--check-examples` 启用的示例编译诊断。`[lint]` 配置的严重级别适用于下一节列出的规则，示例编译有独立的默认级别。
 
 ## 设置会失败的门槛
 
@@ -169,14 +169,14 @@ missing-param = "error"
 missing-example = "off"
 ```
 
-- `severity` 是默认级别，可被每条规则的设置覆盖；取值 `off`、`warning`、`error`。
-- 只有 `--lint-profile` 不是 `off` 时 lint 才会运行；`--lint-profile off` 下 `[lint]` 配置不生效。
+- `severity` 是常规 lint 的默认级别，可被每条规则的设置覆盖；取值 `off`、`warning`、`error`。
+- 常规 lint 只在 `--lint-profile` 不是 `off` 时运行；`--check-examples` 启用的示例编译不受此开关影响。
 - 可配置的规则键：
   - 缺失类：`missing-symbol-doc`、`missing-summary`、`missing-param`、`missing-return`、`missing-throws`、`missing-example`、`empty-description`
   - 引用类：`broken-link`、`ambiguous-link`、`unresolved-type-link`
   - 元数据类：`invalid-since-version`、`deprecated-without-message`
   - 重复类：`duplicate-param`、`duplicate-return`、`duplicate-throws`
-  - 示例类：`example-not-compiling`，只在 `--check-examples` 时生效，默认按 error 处理
+  - 示例类：`example-not-compiling` 控制归因到示例文件的编译失败 `CJDOC3030`，只在 `--check-examples` 时生效，默认按 error 处理，不继承 `severity`；即使 `--lint-profile off` 仍会报告，可显式设为 `off` 关闭该诊断。未归因到示例文件的编译失败 `CJDOC3031` 仍按 error 报告。
 - 把关键规则改成 `error` 后，`cjdoc check` 会在命中时以退出码 1 失败。`--deny-warnings` 则把当前所有 warning 一并视为失败，适合发布前收紧。
 
 退出码：

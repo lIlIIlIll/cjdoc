@@ -89,7 +89,7 @@ kind = "guide"
 - 支持标题、段落、列表、表格、引用、代码块、行内代码、强调、链接和本地图片。
 - 原始 HTML 不会作为 HTML 注入，会按文本显示；只有 `<!-- cjdoc-bind ... -->` 标记有特殊含义（见下文）。
 - 指向另一个概念页源文件的相对链接，会自动替换成生成后的页面路由；同一个页面里的 `#标题` 锚点也会映射到实际锚点。指向非概念页的相对链接保持原样。
-- 本地图片支持 PNG、JPEG、GIF、WebP、AVIF。Linux/macOS 上会嵌入页面；Windows 上不会嵌入，只保留替代文本并输出 warning（`CJDOC4026`）。远程图片 URL 不会渲染成图片。
+- 本地图片支持 PNG、JPEG、GIF、WebP、AVIF。目前仅 Linux 会嵌入页面；macOS 和 Windows 上不会嵌入，只保留替代文本并输出 warning（`CJDOC4026`），页面标记为不完整（partial）。远程图片 URL 不会渲染成图片。
 
 需要把同一页面发布成多种语言时，给两个 `[[docs.pages]]` 写相同的 `id`、不同的 `language`，见 [多语言文档](i18n.md)。
 

@@ -198,13 +198,13 @@ public func add(left: Int64, right: Int64): Int64 {
 | 单次运行时间 | 10 秒，超时报告 `CJDOC3073` |
 | stdout 上限 | 64 KiB，超限报告 `CJDOC3075` |
 | stderr 上限 | 64 KiB，超限报告 `CJDOC3075` |
-| 内存上限 | 2048 MiB；平台无法建立该限制时拒绝运行并报告 `CJDOC3074`（例如 macOS 上带 `{run}` 的示例无法运行） |
+| 内存上限 | 2048 MiB；无法建立地址空间限制时拒绝运行并报告 `CJDOC3074`，例如没有可用 `prlimit` 的 macOS 环境 |
 | 一次检查的示例总数 | 最多 256 个 |
 
 示例检查的其他结果：
 
-- 示例代码编译失败：`CJDOC3030`。
-- 示例所在源码包的上下文编译失败：`CJDOC3031`。
+- 编译器将错误归因到生成的示例文件：`CJDOC3030`。
+- 未归因到该文件的编译失败（例如源码包上下文无法编译）：`CJDOC3031`。
 - 固定了结果但没有真正检查（例如因数量限制被跳过）：`CJDOC3070`。
 - 运行退出码不是 0：`CJDOC3071`。
 - 标准输出和 `output` 块不一致：`CJDOC3072`。
@@ -574,11 +574,15 @@ cjdoc generate --project /path/to/my-project --format html
 | `--output <目录>` | `generate`、`render` | `target/doc`（`render` 为当前目录下） | 输出目录，与 `--stdout` 互斥。 |
 | `--stdout` | `generate`、`render` | 关闭 | 把单个 JSON 类产物写到标准输出。 |
 | `--force-owned` | `generate`、`render` | 关闭 | 接管此前由 cjdoc 管理过的输出目录，并覆盖被修改的已登记产物。 |
-| `--audience <值>` | `generate`、`check` | `external` | `external`、`package` 或 `all`。 |
+| `--audience <值>` | `generate`、`check` | `external` | `external`、`package` 或 `all`；不会从 `docs.json` 剔除内部声明。 |
 | `--lint-profile <值>` | `generate`、`check` | `standard` | `off`、`standard` 或 `strict`。 |
 | `--jobs <1..64>` | `generate`、`check` | `1` | 并行解析源码文件的个数。 |
 | `--cfg NAME=VALUE` | `generate`、`check` | 无 | 条件编译输入，可重复。 |
 | `--check-examples` | `generate`、`check` | 关闭 | 编译校验示例，带 `{run}` 的还会运行。 |
+| `--deny-warnings` | `generate`、`check` | 关闭 | 把 warning 也当作失败。 |
+| `--api-surface-baseline <文件>` | `generate`、`check` | 无 | 要求当前 API 与快照完全一致。 |
+| `--min-symbol-coverage <0..100>` | `generate`、`check` | 无 | 符号文档覆盖率下限。 |
+| `--min-parameter-coverage <0..100>` | `generate`、`check` | 无 | 参数文档覆盖率下限。 |
 | `--locale zh-CN\|en` | `generate`、`render` | `zh-CN` | 单语言读取视图。 |
 | `--all-languages` | `generate`、`render` | 关闭 | 生成各语言独立目录，与 `--locale`、`--stdout` 冲突。 |
 | `--require-language <语言>` | `generate`、`check` | 无 | 要求指定语言的翻译覆盖率达到 100%，可重复。 |
@@ -613,14 +617,7 @@ cjdoc generate --project /path/to/my-project --format html
 
 ### `check` 的选项
 
-`check` 还接受上表中的 `--project`、`--audience`、`--lint-profile`、`--jobs`、`--cfg`、`--check-examples`、`--require-language`、`--include-path-dependencies`、`--include-cached-dependencies`、`--dependency-source`、`--cjpm-cache`、`--cache-dir`、`--no-cache`、`--semantic`、`--cjc`、`--chir-worker`、`--chir-import-path`、`--highlight-adapter`、`--highlight-node`、`--build-context`、`--doc-source`、`--doc-inventory-pin`、`--link-language`、`--link-language-fallback`、`--link-compatible`。此外独有：
-
-| 选项 | 默认 | 说明 |
-|---|---|---|
-| `--deny-warnings` | 关闭 | 把 warning 也当作失败。 |
-| `--api-surface-baseline <文件>` | 无 | 要求当前 API 与快照完全一致。 |
-| `--min-symbol-coverage <0..100>` | 无 | 符号文档覆盖率下限。 |
-| `--min-parameter-coverage <0..100>` | 无 | 参数文档覆盖率下限。 |
+`check` 接受上表中“适用”列包含 `check` 的选项；它只执行检查，不写生成产物。告警、API 基线与覆盖率门槛选项也可用于 `generate`，并非 `check` 独有。
 
 `check` 不接受 `--format`、`--output`、`--stdout`、`--locale`、`--force-owned`、`--all-languages`，以及仓库链接和渲染相关的选项。
 

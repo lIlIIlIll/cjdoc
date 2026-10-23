@@ -81,7 +81,7 @@ cjdoc 不会为了生成文档下载任何依赖或文档：找不到的依赖�
 cjdoc generate --project . --format html --audience all
 ```
 
-audience 同时影响 HTML、Markdown、JSON、搜索、agent 产物和覆盖率统计，`check` 也按选定 audience 检查。
+audience 影响 HTML、Markdown、搜索、agent 产物和覆盖率统计，`check` 的文档规则与覆盖率也使用所选 audience。`docs.json` 记录 audience，但保留全部已收集声明与作者内容；它不是裁剪后的公开 API 导出，不能用 `--audience external` 隐藏 JSON 中的内部声明。
 
 ### 界面语言
 
@@ -393,7 +393,7 @@ cjdoc generate --project . --format html \
 - 无法唯一解析的类型引用保留原文并标记为不可用，cjdoc 不会猜测目标。
 - GitHub 源码链接只支持 `https://github.com/<owner>/<repo>` 形式的仓库根，且要求源码确实位于仓库根内。
 - 标准库链接只是文档参考，不证明项目所用 API 与目标文档版本一致；未收录或匹配不唯一的类型不加链接。
-- Windows 上不嵌入本地图片，只保留替代文本（`CJDOC4026`）；页面会被标记为不完整（partial）。
+- macOS 和 Windows 上不嵌入本地图片，只保留替代文本（`CJDOC4026`）；页面会被标记为不完整（partial）。
 - 单次扫描、单个源码文件和辅助输入都有大小及数量上限；超限时保留已收集的结果并输出诊断，生成状态会变成 partial。
 - `--locale` 只影响界面标签，不翻译作者正文；多语言首版只支持 `zh-CN` 和 `en`，并且最多发布两种语言。
 - `versions compose` 只做“复制 + 注入版本选择器”，不重新生成、不校验各版本的内容一致性；版本源目录必须包含 `index.html`（或带 `site-manifest.json` 的多语言输出根）。
