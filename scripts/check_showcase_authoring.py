@@ -59,6 +59,43 @@ def stop(process: subprocess.Popen) -> None:
         process.wait(timeout=10)
 
 
+def check_served_artifact_limit(opener, base: str, site: Path) -> None:
+    artifact = site / "serve-size-boundary.html"
+    url = base + "/" + artifact.name
+    mib = 1024 * 1024
+    try:
+        for size in (32 * mib + 1, 64 * mib):
+            with artifact.open("wb") as stream:
+                stream.truncate(size)
+            request = urllib.request.Request(url, method="HEAD")
+            with opener.open(request, timeout=30) as response:
+                if response.status != 200 or int(response.headers["Content-Length"]) != size:
+                    raise AssertionError("serve rejected an artifact within the renderer's size limit")
+                if response.read():
+                    raise AssertionError("HEAD returned an artifact body")
+            if size == 32 * mib + 1:
+                with opener.open(url, timeout=30) as response:
+                    received = 0
+                    while chunk := response.read(mib):
+                        if chunk != bytes(len(chunk)):
+                            raise AssertionError("served artifact bytes changed")
+                        received += len(chunk)
+                    if received != size:
+                        raise AssertionError("serve truncated a large artifact")
+        with artifact.open("ab") as stream:
+            stream.write(b"x")
+        try:
+            with opener.open(urllib.request.Request(url, method="HEAD"), timeout=30):
+                pass
+        except urllib.error.HTTPError as error:
+            if error.code != 404:
+                raise
+        else:
+            raise AssertionError("serve accepted an artifact over 64 MiB")
+    finally:
+        artifact.unlink(missing_ok=True)
+
+
 def check(binary: Path, source: Path, output: Path, timeout: float = 180) -> dict:
     binary, source = binary.resolve(strict=True), source.resolve(strict=True)
     original = source / "demo-v2/src/catalog.cj"
@@ -86,6 +123,7 @@ def check(binary: Path, source: Path, output: Path, timeout: float = 180) -> dic
                 with opener.open(base + "/index.html", timeout=5) as response:
                     if b"pocketkit" not in response.read().lower():
                         raise RuntimeError("serve did not publish PocketKit")
+                check_served_artifact_limit(opener, base, root / "generated/html")
                 edited = project / "src/catalog.cj"
                 text = edited.read_text(encoding="utf-8")
                 summary = "保存按插入顺序排列的文本条目"
@@ -118,6 +156,7 @@ def check(binary: Path, source: Path, output: Path, timeout: float = 180) -> dic
               "before": before, "after": after, "publishedHref": href,
               "durationMs": round((time.monotonic() - started) * 1000),
               "assertions": ["initial native build and HTTP page succeeded",
+                             "GET/HEAD serve artifacts through 64 MiB and reject larger files",
                              "source edit increased successfulBuilds",
                              "native route served changed content",
                              "managed source stayed unchanged and process was stopped"]}

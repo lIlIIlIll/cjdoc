@@ -3,13 +3,16 @@ package cjdoc.render
 import cjdoc.model.*
 import yjson.*
 
-public func decodeDocIr(text: String): DocumentationSet {
+/** Decode strict Doc IR with an optional UTF-8 document budget, at most 64 MiB. */
+public func decodeDocIr(text: String,
+    maxDocumentBytes!: Int64 = DOC_IR_MAX_JSON_DOCUMENT_BYTES): DocumentationSet {
+    validateDocIrDocumentLimit(maxDocumentBytes)
     let parsed = JsonNode.parse(text, config: JsonReadOptions(
         duplicateKeyPolicy: JsonDuplicateKeyPolicy.Reject,
         maxDepth: DOC_IR_CODEC_MAX_NESTING_DEPTH,
         maxStringBytes: DOC_IR_MAX_JSON_STRING_BYTES,
-        maxBufferedValueBytes: DOC_IR_MAX_JSON_DOCUMENT_BYTES,
-        maxInputBytes: DOC_IR_MAX_JSON_DOCUMENT_BYTES))
+        maxBufferedValueBytes: maxDocumentBytes,
+        maxInputBytes: maxDocumentBytes))
     validateRawSchemaShape(parsed)
     validatePortablePathFields(parsed, "$")
     validateDeclarativeSchema(parsed)
@@ -54,6 +57,6 @@ public func decodeDocIr(text: String): DocumentationSet {
         documentSets: decodeDocumentSetIdentities(root.get("documentSets")),
         apiCollectionState: Some(stringAt(root, "apiCollectionState", "$")),
         documentationRevision: stringAt(root, "documentationRevision", "$"))
-    validateDocumentationSet(documentation)
+    validateDocumentationSet(documentation, maxDocumentBytes: maxDocumentBytes)
     documentation
 }

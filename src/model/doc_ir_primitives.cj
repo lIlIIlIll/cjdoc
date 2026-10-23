@@ -7,11 +7,9 @@ public let DOC_IR_MAX_TYPE_DEPTH: Int64 = 64
 public let DOC_IR_MAX_MARKDOWN_DEPTH: Int64 = 64
 public let DOC_IR_MAX_FENCE_LENGTH: Int64 = 1024
 protected let DOC_IR_MAX_JSON_STRING_BYTES: Int64 = 24 * 1024 * 1024
-// The release runtime uses a 256 MiB default heap. Keep the complete JSON text,
-// parsed tree, schema evaluation graph, and typed Doc IR simultaneously bounded
-// by limiting input to one eighth of that heap and independently bounding its
-// structured shape below.
-protected let DOC_IR_MAX_JSON_DOCUMENT_BYTES: Int64 = 32 * 1024 * 1024
+// The document budget is independent of string, object, and occurrence limits.
+// Larger documents may require a larger runtime heap.
+protected let DOC_IR_MAX_JSON_DOCUMENT_BYTES: Int64 = 64 * 1024 * 1024
 protected let DOC_IR_MAX_OUTPUT_ARTIFACT_BYTES: Int64 = 64 * 1024 * 1024
 protected let DOC_IR_MAX_SCHEMA_OBJECTS: Int64 = 65536
 protected let DOC_IR_MAX_SCHEMA_ARRAY_ITEMS: Int64 = 100000

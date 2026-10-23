@@ -1,5 +1,6 @@
 package cjdoc
 
+import cjdoc.model.DOC_IR_MAX_OUTPUT_ARTIFACT_BYTES
 import std.collection.*
 import std.env.*
 import std.fs.*
@@ -7,7 +8,7 @@ import std.net.*
 import std.process.*
 
 internal let SERVE_REQUEST_LIMIT: Int64 = 64 * 1024
-internal let SERVE_FILE_LIMIT: Int64 = 32 * 1024 * 1024
+internal let SERVE_FILE_LIMIT: Int64 = DOC_IR_MAX_OUTPUT_ARTIFACT_BYTES
 internal let SERVE_ACCEPT_TIMEOUT = Some(Duration.second / 4)
 
 internal class ServeSnapshot {

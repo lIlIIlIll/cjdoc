@@ -77,6 +77,8 @@ public class DocumentInventoryPin {
 
 
 public class GenerationRequest {
+    /** Effective Doc IR budget in UTF-8 bytes; CLI/request overrides [limits]. */
+    public let maxDocIrBytes: Int64
     public let projectRoot: String
     public let repository: ?public_model.RepositoryInfo
     public let repositoryRoot: ?String
@@ -127,7 +129,7 @@ public class GenerationRequest {
         linkLanguageFallback!: Bool = false, linkCompatible!: Bool = false,
         documentInventoryPins!: Array<DocumentInventoryPin> = [], documentationRevision!: String = "",
         standardLibraryDocsVersion!: ?String = None,
-        standardLibraryDocsBaseUrl!: ?String = None) {
+        standardLibraryDocsBaseUrl!: ?String = None, maxDocIrMiB!: ?Int64 = None) {
         if (projectRoot.isEmpty()) {
             throw IllegalArgumentException("project root cannot be empty")
         }
@@ -163,6 +165,7 @@ public class GenerationRequest {
             }
         }
         let _ = highlightExternalOptions(highlightAdapter, highlightNode)
+        this.maxDocIrBytes = loadDocIrLimit(projectRoot, maxDocIrMiB)
         this.projectRoot = projectRoot
         this.repository = repository
         this.repositoryRoot = normalizeRepositoryRoot(repositoryRoot)

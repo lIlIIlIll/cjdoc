@@ -56,14 +56,23 @@ private func validateReplayThrowsEntries(declaration: SymbolDoc, comment: DocCom
     }
 }
 
-public func validateDocumentationSet(documentation: DocumentationSet): Unit {
+internal func validateDocIrDocumentLimit(limit: Int64): Unit {
+    if (limit < 1 || limit > DOC_IR_MAX_JSON_DOCUMENT_BYTES) {
+        throw IllegalArgumentException("Doc IR document budget must be in 1..67108864 bytes")
+    }
+}
+
+/** Validate Doc IR, including its conservative encoded size within the selected budget. */
+public func validateDocumentationSet(documentation: DocumentationSet,
+    maxDocumentBytes!: Int64 = DOC_IR_MAX_JSON_DOCUMENT_BYTES): Unit {
+    validateDocIrDocumentLimit(maxDocumentBytes)
     if (documentation.schemaVersion != DOC_IR_SCHEMA_VERSION) {
         domainFail("$.schemaVersion", "typed documentation must be current Doc IR")
     }
     // This occurrence-based preflight deliberately walks shared references once
     // per encoded occurrence. It bounds all recursive validation and the later
     // JSON encoder by the work and bytes they will actually emit.
-    validateDocIrEncodingBudget(documentation, DOC_IR_MAX_JSON_DOCUMENT_BYTES)
+    validateDocIrEncodingBudget(documentation, maxDocumentBytes)
     if (documentation.status != "complete" && documentation.status != "partial") {
         domainFail("$.status", "invalid structural status")
     }

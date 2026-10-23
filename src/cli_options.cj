@@ -6,6 +6,7 @@ import cjdoc.model as public_model
 
 internal class NewCliOptions {
     var command = ""
+    var maxDocIrMiB: ?Int64 = None
     var semanticMode = "source"
     var semanticExplicit = false
     var cjcExecutable = "cjc"
@@ -91,12 +92,12 @@ internal func newUsage(): String {
     "                 [--build-context <record.json>] [--doc-source <catalog-or-dir>]...\n" +
     "                 [--doc-inventory-pin PATH=SHA256]...\n" +
     "                 [--link-language <lang>] [--link-language-fallback] [--link-compatible]\n" +
-    "                 [--cache-dir <dir>|--no-cache] [--force-owned]\n" +
+    "                 [--cache-dir <dir>|--no-cache] [--force-owned] [--max-doc-ir-mib 1..64]\n" +
     "                 [--locale zh-CN|en|--all-languages] [--require-language zh-CN|en]...\n" +
     "  cjdoc check [--project <dir>] [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
     "              [--chir-worker <executable>]\n" +
     "              [--highlight-adapter <absolute path> --highlight-node <absolute path>]\n" +
-    "              [--deny-warnings] [--lint-profile off|standard|strict] [--check-examples]\n" +
+    "              [--deny-warnings] [--lint-profile off|standard|strict] [--check-examples] [--max-doc-ir-mib 1..64]\n" +
     "              [--api-surface-baseline <file>] [--min-symbol-coverage 0..100] [--min-parameter-coverage 0..100]\n" +
     "              [--build-context <record.json>] [--doc-source <catalog-or-dir>]...\n" +
     "              [--doc-inventory-pin PATH=SHA256]...\n" +
@@ -104,8 +105,8 @@ internal func newUsage(): String {
     "  cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout] [--force-owned] [--doc-version <version>]\n" +
-    "               [--locale zh-CN|en]\n" +
-    "  cjdoc serve [--project <dir>] [--port <port>] [--open] [--agent-full]\n" +
+    "               [--locale zh-CN|en] [--max-doc-ir-mib 1..64]\n" +
+    "  cjdoc serve [--project <dir>] [--port <port>] [--open] [--agent-full] [--max-doc-ir-mib 1..64]\n" +
     "  cjdoc versions compose --version ID=PATH... [--label ID=TEXT] [--channel ID=TEXT] [--status ID=TEXT]\n" +
     "                        [--base-path ID=PATH] [--release ID=URL] [--diff ID=PATH] [--latest ID] --output <dir> [--force-owned]\n" +
     "  cjdoc schema <name> (use 'cjdoc schema list' for available schemas)\n"
@@ -297,6 +298,11 @@ private func parseCollectionOption(options: NewCliOptions, args: Array<String>, 
 
 private func parseNumericOption(options: NewCliOptions, args: Array<String>, index: Int64): ?Int64 {
     match (args[index]) {
+        case "--max-doc-ir-mib" =>
+            let value = Int64.parse(requireCliValue(args, index, "--max-doc-ir-mib"))
+            let _ = docIrLimitBytes(value)
+            options.maxDocIrMiB = Some(value)
+            Some(index + 2)
         case "--min-symbol-coverage" =>
             options.minSymbolCoverage = Some(
                 Int64.parse(requireCliValue(args, index, "--min-symbol-coverage")))
@@ -373,7 +379,7 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
         throw IllegalArgumentException("diff requires both baseline and current inputs")
     }
     if (!hasBaseline) { throw IllegalArgumentException("diff requires OLD NEW or --baseline/--current") }
-    if (options.output.isSome() || options.stdout || options.projectExplicit || options.input.isSome() ||
+    if (options.maxDocIrMiB.isSome() || options.output.isSome() || options.stdout || options.projectExplicit || options.input.isSome() ||
         options.apiSurfaceBaseline.isSome() || options.minSymbolCoverage.isSome() ||
         options.minParameterCoverage.isSome() || options.denyWarnings || options.forceOwned ||
         options.jobsExplicit || options.audienceExplicit || options.lintProfileExplicit ||
@@ -457,7 +463,7 @@ private func validateCliOptions(options: NewCliOptions): Unit {
         !options.dependencySources.isEmpty() || !options.cfgValues.isEmpty() ||
         options.jobsExplicit || options.audienceExplicit || options.lintProfileExplicit)) {
         throw IllegalArgumentException(
-            "render accepts only --input, --format, --output, --stdout, and --force-owned")
+            "render accepts only --input, render options, and --max-doc-ir-mib")
     }
     if (options.command != "render" && options.input.isSome()) {
         throw IllegalArgumentException("--input is only valid for render")
