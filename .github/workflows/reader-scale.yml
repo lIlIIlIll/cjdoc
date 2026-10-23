@@ -49,11 +49,6 @@ jobs:
       CJDOC_PYTHON: python
       cjHeapSize: '512MB'
       PLAYWRIGHT_SKIP_BROWSER_GC: '1'
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/reader-browsers
-      CJDOC_BROWSER_REQUIRE_ROOT: ${{ runner.temp }}/reader-browser-dependencies
-      TMPDIR: ${{ runner.temp }}/reader-tmp
-      TMP: ${{ runner.temp }}/reader-tmp
-      TEMP: ${{ runner.temp }}/reader-tmp
     steps:
       - name: Prepare disk-backed task directories
         shell: bash
@@ -63,7 +58,15 @@ jobs:
             echo 'Reader evidence requires disk-backed runner temporary storage' >&2
             exit 1
           fi
-          install -d -m 0700 "${TMPDIR}" "${CJDOC_BROWSER_REQUIRE_ROOT}" "${PLAYWRIGHT_BROWSERS_PATH}"
+          python3 -c 'import os,shutil; print("Reader available disk bytes:", shutil.disk_usage(os.environ["RUNNER_TEMP"]).free)'
+          install -d -m 0700 "${RUNNER_TEMP}/reader-tmp" \
+            "${RUNNER_TEMP}/reader-browser-dependencies" "${RUNNER_TEMP}/reader-browsers"
+          printf '%s=%s\n' \
+            PLAYWRIGHT_BROWSERS_PATH "${RUNNER_TEMP}/reader-browsers" \
+            CJDOC_BROWSER_REQUIRE_ROOT "${RUNNER_TEMP}/reader-browser-dependencies" \
+            TMPDIR "${RUNNER_TEMP}/reader-tmp" \
+            TMP "${RUNNER_TEMP}/reader-tmp" \
+            TEMP "${RUNNER_TEMP}/reader-tmp" >> "${GITHUB_ENV}"
 
       - name: Check out measurement source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
