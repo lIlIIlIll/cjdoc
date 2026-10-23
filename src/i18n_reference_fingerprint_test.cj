@@ -25,7 +25,12 @@ private func referenceFingerprintDocumentation(kind: String, changedLanguage: ?S
         for (language in [Some("en"), Some("zh-CN"), None<String>]) {
             fields.add(api_model.DocumentationText(REFERENCE_FINGERPRINT_API + ":doc:summary:",
                 "summary", "", language, "Summary.", referenceFingerprintMarkdown("Summary.")))
-            fields.add(api_model.DocumentationText(REFERENCE_FINGERPRINT_API + ":doc:" + kind + ":author-reference",
+            // A resolved @throws condition cannot change its target while
+            // retaining the same cross-language author identity. Different
+            // targets are independent conditions, not translation variants.
+            let entryId = if (kind == "throws" && language == changedLanguage &&
+                target == Some(REFERENCE_FINGERPRINT_B)) { "author-reference-b" } else { "author-reference" }
+            fields.add(api_model.DocumentationText(REFERENCE_FINGERPRINT_API + ":doc:" + kind + ":" + entryId,
                 kind, "Reference", language, "Reference description.", referenceFingerprintMarkdown("Reference description."),
                 referenceState: if (language == changedLanguage) { referenceState } else { "resolved" },
                 targetSymbolId: if (language == changedLanguage) { target } else { Some(REFERENCE_FINGERPRINT_A) }))
@@ -119,6 +124,23 @@ class I18nReferenceFingerprintTest {
             for (language in [Some("en"), Some("zh-CN"), None<String>]) {
                 expectReferenceLanguageDiff(kind, language, "resolved", Some(REFERENCE_FINGERPRINT_B))
             }
+        }
+    }
+
+    @TestCase
+    func changedThrowsTargetCannotReuseCrossLanguageConditionIdentity(): Unit {
+        // A legitimate target change uses an independent exception-condition
+        // identity. Forging it back to the old one must fail strict Doc IR
+        // replay rather than silently hiding an authored condition.
+        for (language in [Some("en"), Some("zh-CN"), None<String>]) {
+            let valid = referenceFingerprintDocumentation("throws", language,
+                "resolved", Some(REFERENCE_FINGERPRINT_B))
+            let encoded = api_render.encodeDocIr(valid)
+            @Expect(api_render.encodeDocIr(api_render.decodeDocIr(encoded)), encoded)
+            let forged = encoded.replace(":doc:throws:author-reference-b\"",
+                ":doc:throws:author-reference\"")
+            @Assert(forged != encoded)
+            @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(forged))
         }
     }
 
