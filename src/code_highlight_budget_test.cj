@@ -131,7 +131,7 @@ class CodeHighlightBudgetTest {
         }
         let chunk = String.fromUtf8(Array<Byte>(1024 * 1024, repeat: b'x'))
         for (_ in 0..31) { input.diagnostics.add(Diagnostic("warning", "CJDOC3999", chunk)) }
-        let result = publicDocumentation(input, GenerationRequest("unused", lintProfile: "off"))
+        let result = publicDocumentation(input, GenerationRequest("unused", lintProfile: "off", maxDocIrMiB: 32))
         @Assert(result.declarations.size, 150)
         for (symbol in result.declarations) {
             @Expect(symbol.headerSpelling, signature)

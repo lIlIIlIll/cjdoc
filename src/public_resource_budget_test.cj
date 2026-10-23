@@ -89,20 +89,25 @@ class PublicResourceBudgetTest {
     @TestCase
     func escapedNavigationReasonsRespectThePublishedDocumentBoundaryAndFallback(): Unit {
         // The shared 1 MiB value expands to 2 MiB at each JSON occurrence.
-        // Fifteen fit within 32 MiB; sixteen plus the surrounding model do not.
+        // Thirty-one fit within 64 MiB; thirty-two plus the surrounding model do not.
         let reason = String.fromUtf8(Array<Byte>(1024 * 1024, repeat: b'"')) + "\n中文"
         let request = GenerationRequest("unused", lintProfile: "off")
-        let accepted = boundGeneratedDocumentation(navigationOutputBoundaryFixture(15, reason), request)
+        let accepted = boundGeneratedDocumentation(navigationOutputBoundaryFixture(31, reason), request)
         @Expect(accepted.declarations.size, 1)
         @Expect(accepted.apiCollectionState, "resolved")
-        let encoded = api_render.encodeDocIr(accepted)
+        api_render.validateDocumentationSet(accepted)
+        // Keep the full boundary in validation; round-trip a value above the old
+        // 32 MiB cap without retaining a second near-64 MiB encoding in the suite.
+        let roundTrip = navigationOutputBoundaryFixture(17, reason)
+        let encoded = api_render.encodeDocIr(roundTrip)
+        @Expect(encoded.size > 32 * 1024 * 1024)
         @Expect(encoded.size < api_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)
         let replay = api_render.decodeDocIr(encoded)
         @Expect(replay.declarations.size, 1)
         let arguments = replay.declarations[0].returnType.getOrThrow().arguments
-        @Expect(arguments.size, 15)
+        @Expect(arguments.size, 17)
         @Expect(arguments[0].navigation.getOrThrow().reason, reason)
-        let rejected = navigationOutputBoundaryFixture(16, reason)
+        let rejected = navigationOutputBoundaryFixture(32, reason)
         @ExpectThrows[IllegalArgumentException](api_render.encodeDocIr(rejected))
         let fallback = boundGeneratedDocumentation(rejected, request)
         @Expect(fallback.declarations.size, 0)
@@ -120,8 +125,10 @@ class PublicResourceBudgetTest {
         let documentation = api_model.DocumentationSet(api_model.GeneratorInfo("cjdoc", "test"), "partial",
             api_model.ProjectInfo("decoder-budget"), api_model.ConfigurationSnapshot(lintProfile: "off"),
             diagnostics: diagnostics.toArray())
-        @Expect(boundGeneratedDocumentation(documentation, GenerationRequest("unused", lintProfile: "off")).project.name,
+        @Expect(boundGeneratedDocumentation(documentation, GenerationRequest("unused", lintProfile: "off", maxDocIrMiB: 32)).project.name,
             "resource-limited")
+        @Expect(boundGeneratedDocumentation(documentation, GenerationRequest("unused", lintProfile: "off")).project.name,
+            "decoder-budget")
     }
     @TestCase
     func projectionReplacesOversizedFieldsAndAggregateOutput(): Unit {

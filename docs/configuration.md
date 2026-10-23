@@ -1,8 +1,8 @@
 # 配置参考
 
-`cjdoc.toml` 放在项目根目录（即 `--project` 指向的目录），所有表都可省略。`generate`、`check`、`serve` 会读取这个文件；`render` 直接使用 `docs.json` 里已经保存的配置，不重新读取 `cjdoc.toml`。
+`cjdoc.toml` 放在项目根目录（即 `--project` 指向的目录），所有表都可省略。`generate`、`check`、`serve` 会读取这个文件；`render` 直接使用 `docs.json` 里已经保存的配置，不重新读取 `cjdoc.toml`。Doc IR 大小上限使用默认值或命令行选项。
 
-配置写错（未知键、重复键、非法取值）时，命令会打印 `error:` 并以退出码 `2` 结束，不会生成文档。下面几节里，`[i18n]`、`[lint]`、`[coverage]` 及其子表、`[highlight]` 是严格解析的，出现不认识的键会报错；`[docs]`、`[[docs.pages]]`、`[docs.packages]` 只读取列出的键，键名写错会被静默忽略，改完配置后建议重新生成确认效果。
+配置写错（未知键、重复键、非法取值）时，命令会打印 `error:` 并以退出码 `2` 结束，不会生成文档。下面几节里，`[i18n]`、`[lint]`、`[coverage]` 及其子表、`[highlight]`、`[limits]` 是严格解析的，出现不认识的键会报错；`[docs]`、`[[docs.pages]]`、`[docs.packages]` 只读取列出的键，键名写错会被静默忽略，改完配置后建议重新生成确认效果。
 
 ## [docs]：项目首页
 
@@ -90,6 +90,37 @@ overview = "docs/pocketkit-core.md"
 包概述页的第一段（最多 240 个字符）会显示在 HTML 包页上，并链接到完整的概念页。要让概述出现在包页上，页面需要有正文，且页面里的 `cjdoc-bind` 必须全部能解析；同一个 Markdown 文件只保留一个入口。`kind = "package"` 的页面优先作为正式概述，普通指南页作为候选。
 
 `slug` 是包名去掉 ASCII 字母和数字之外的字符后折叠成的短名，例如 `pocketkit-core`；自动包页路由为 `concepts/packages/<slug>.html`。
+
+## [limits]：Doc IR 大小上限
+
+| 键 | 含义 | 取值 | 默认值 |
+|---|---|---|---|
+| `max-doc-ir-mib` | Doc IR JSON 的 UTF-8 字节预算，单位为 MiB | `1..64` 的整数 | `64` |
+
+```toml
+[limits]
+max-doc-ir-mib = 64
+```
+
+仅支持上述单表写法（表名可加引号）；顶层点号键 `limits.max-doc-ir-mib = 32`、内联表 `limits = { max-doc-ir-mib = 32 }`、数组表 `[[limits]]` 和子表均会报错，请改用 `[limits]`。
+
+默认上限为 64 MiB（67,108,864 字节）。需要保留原有的 32 MiB 预算时，将它设为 `32`。`generate`、`check` 和 `serve` 的 `--max-doc-ir-mib` 覆盖项目配置；配置本身有非法值、重复键或未知键时，即使给了命令行覆盖值也会报错。
+
+```bash
+cjdoc generate --project . --format json --max-doc-ir-mib 32
+cjdoc check --project . --max-doc-ir-mib 32
+cjdoc serve --project . --max-doc-ir-mib 32
+```
+
+`render` 不读取项目配置，使用默认上限或显式选项：
+
+```bash
+cjdoc render --input docs.json --format html --max-doc-ir-mib 64
+```
+
+输入文件的预算包含空白和所有输入字节；超限返回退出码 `2`。生成时按转义、缩进和重复对象的编码大小保守计量；超限保留有界回退和 `CJDOC3027` warning。`check --deny-warnings` 会使这类 warning 返回退出码 `1`。
+
+64 MiB 是硬上限，配置用于收紧预算。单字符串仍限 24 MiB，单输出产物仍限 64 MiB，对象数量和递归深度限制继续生效。大型 JSON 的文本、解析树和模型会同时占用内存，可能需要提高运行时堆大小，例如 `cjHeapSize=1024MB cjdoc render --input docs.json --format html`。
 
 ## [i18n]：多语言
 
@@ -293,4 +324,7 @@ en = 90
 mode = "static"
 languages = ["cangjie"]
 on-error = "warn"
+
+[limits]
+max-doc-ir-mib = 64
 ```

@@ -183,7 +183,7 @@ internal func aggregateProviderState(binding: SemanticBindingStats, summary: Fin
 protected func boundGeneratedDocumentation(candidate: public_model.DocumentationSet,
     request: GenerationRequest, force!: Bool = false): public_model.DocumentationSet {
     if (!force &&
-        public_render.docIrFitsEncodedBudget(candidate, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
+        public_render.docIrFitsEncodedBudget(candidate, request.maxDocIrBytes)) {
         return candidate
     }
     // Generation must return a valid, renderable value even when a hostile or
@@ -206,7 +206,7 @@ protected func boundGeneratedDocumentation(candidate: public_model.Documentation
         fallback.appendDiagnostic(diagnostic)
     }
     if (fallback.documentationRevision.isEmpty() ||
-        public_render.docIrFitsEncodedBudget(fallback, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
+        public_render.docIrFitsEncodedBudget(fallback, request.maxDocIrBytes)) {
         return fallback
     }
     // Optional publication provenance cannot make the resource fallback itself

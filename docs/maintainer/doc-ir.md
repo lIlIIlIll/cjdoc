@@ -83,10 +83,12 @@ Doc IR `/16` 把三项类型语义事实命名平铺为必需的 `semanticState`
 
 ## 资源预算与回退
 
-- Doc IR 的对象数量上限为 **65,536**，完整文档上限 **32 MiB**，数组/字符串预算保持不变。
+- Doc IR 的对象数量上限为 **65,536**，完整文档默认上限 **64 MiB**；可通过 `[limits].max-doc-ir-mib` 或 `--max-doc-ir-mib` 收紧到 `1..64` MiB，配置规则见 [配置参考](../configuration.md)。数组/字符串预算保持不变。
 - 导航诊断最多 **4096** 条；导航绑定/解析的累计工作预算为 **262144 步与 32 MiB**，不逐索引或递归子图重置（该预算与依赖文档解析共用，细节见 [document-links.md](document-links.md)）。
 - 超限时按既有有界回退编码：保留仍可按 codec 边界编码的部分，并记录 `CJDOC3027`（文档产物超过资源限制）或 `CJDOC3026`（Markdown/概念页解析退化）等诊断。
 - 渲染器只读 Doc IR；普通 `render` 不读取原项目、receipt、索引、SDK 或网络，也不重新选版本。
+
+公开 API 的 `GenerationRequest(..., maxDocIrMiB: 32)` 使用同一配置规则。`encodeDocIr`、`decodeDocIr` 和 `validateDocumentationSet` 接受可选的 `maxDocumentBytes` 字节预算，范围为 `1..67108864`。配置属于运行策略，不写入 Doc IR，schema/wire 格式不变。
 
 ## 验证
 

@@ -221,8 +221,7 @@ private func runSchema(name: String): Int64 {
     0
 }
 
-private func readDocIrInput(path: Path): String {
-    let limit: Int64 = 64 * 1024 * 1024
+private func readDocIrInput(path: Path, limit: Int64): String {
     readTextBounded(path, limit)
 }
 
@@ -325,7 +324,8 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
             documentInventoryPins: options.documentInventoryPins.toArray(),
             documentationRevision: options.docVersion.getOrDefault({ => "" }),
             standardLibraryDocsVersion: options.standardLibraryDocsVersion,
-            standardLibraryDocsBaseUrl: options.standardLibraryDocsBaseUrl))
+            standardLibraryDocsBaseUrl: options.standardLibraryDocsBaseUrl,
+            maxDocIrMiB: options.maxDocIrMiB))
     }
     var documentation = match (generationRequest) {
         case Some(request) =>
@@ -334,7 +334,10 @@ private func renderValidationHtml(documentation: public_model.DocumentationSet,
                 case None => defaultSemanticProvider()
             }
             generateDocumentationWithSource(request, semanticProvider).publicDocumentation
-        case None => decodeValidatedDocIr(readDocIrInput(Path(options.input.getOrThrow())))
+        case None =>
+            let limit = docIrLimitBytes(options.maxDocIrMiB.getOrDefault({ => 64 }))
+            public_render.decodeDocIr(readDocIrInput(Path(options.input.getOrThrow()), limit),
+                maxDocumentBytes: limit)
     }
     var artifacts: Array<public_render.RenderArtifact> = []
     if (options.command != "check") {

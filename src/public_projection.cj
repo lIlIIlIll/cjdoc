@@ -418,7 +418,7 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
     // Preserve all declarations/text without optional highlighting before the
     // existing fallback, if the stricter whole-document codec boundary is hit.
     if (canDropHighlights &&
-        !public_render.docIrFitsEncodedBudget(candidate, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
+        !public_render.docIrFitsEncodedBudget(candidate, request.maxDocIrBytes)) {
         return projectPublicDocumentation(documentation, request, 0, capturePages, externalOptions, inventorySnapshot,
             retainedHighlightFailures: declarationProjection.markdownContext.highlightDiagnostics())
     }
@@ -431,7 +431,7 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
     let bound = bindDependencyNavigation(result, request, documentation.sourceFileOrigins.toArray(),
         externalResolvers: Some(inventorySnapshot))
     if (!canDropHighlights) { return boundGeneratedDocumentation(bound, request) }
-    if (public_render.docIrFitsEncodedBudget(bound, public_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
+    if (public_render.docIrFitsEncodedBudget(bound, request.maxDocIrBytes)) {
         return bound
     }
     // Drop optional display metadata once before the bounded hard fallback;

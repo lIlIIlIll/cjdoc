@@ -148,6 +148,16 @@ cjdoc generate --project . --format html --jobs 4
 
 提高 `--jobs` 只影响扫描源码的并行度，不改变产物内容和输出顺序；内存或磁盘紧张时把值调小。`check` 也会使用缓存，`render` 不扫描源码、不使用源码缓存。
 
+## 调整 Doc IR 大小预算
+
+Doc IR JSON 默认最多 64 MiB。需要更小的预算时，在 `cjdoc.toml` 的 `[limits]` 中设置 `max-doc-ir-mib`，或通过命令行覆盖：
+
+```bash
+cjdoc generate --project . --format json --max-doc-ir-mib 32
+```
+
+取值范围、`render` 的设置方式与超限行为见 [配置参考](configuration.md)。
+
 ## 添加 GitHub 源码链接
 
 想让 HTML 的声明页链接到 GitHub 上的源码位置，生成时提供仓库地址和版本：

@@ -570,6 +570,8 @@ stage_cli() {
     fi
     export CJDOC_CHIR_WORKER="${worker_binary}"
     local binary="${main_binary}"
+    "${python_cmd}" scripts/check_doc_ir_limits.py --binary "${binary}" \
+        --workdir "${check_dir}/doc-ir-limits"
 
     run_golden() {
         local name="$1"

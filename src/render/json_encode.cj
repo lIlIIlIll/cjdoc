@@ -496,10 +496,12 @@ private func prettyJson(compact: String): String {
     out.toString()
 }
 
-public func encodeDocIr(documentation: DocumentationSet): String {
-    validateDocumentationSet(documentation)
+/** Encode strict Doc IR with an optional UTF-8 document budget, at most 64 MiB. */
+public func encodeDocIr(documentation: DocumentationSet,
+    maxDocumentBytes!: Int64 = DOC_IR_MAX_JSON_DOCUMENT_BYTES): String {
+    validateDocumentationSet(documentation, maxDocumentBytes: maxDocumentBytes)
     let encoded = prettyJson(compactDocIr(documentation))
-    let _ = decodeDocIr(encoded)
+    let _ = decodeDocIr(encoded, maxDocumentBytes: maxDocumentBytes)
     encoded
 }
 
