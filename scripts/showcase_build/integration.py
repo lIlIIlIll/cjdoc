@@ -124,19 +124,21 @@ def publish_compatibility(repo: Path, site: Path, current: Path, result: dict) -
         copy_file(repo / "docs" / name, site / "docs" / name)
 
 
-def pin_documentation_links(site: Path, provenance: dict) -> None:
-    """Bind the self-hosted manual's reading links without changing author IR."""
+def pin_documentation_links(site: Path, provenance: dict, *, own_api_index: bool) -> None:
+    """Pin copied manuals, plus cjdoc's own API index, without changing author IR."""
     prefixes = [(f"https://github.com/lIlIIlIll/cjdoc/{view}/main/",
                  provenance["repository"] + f"/{view}/" + provenance["revision"] + "/")
                 for view in ("blob", "tree")]
     index = site / "api/concepts/index.html"
-    if index.is_file():
+    if own_api_index and index.is_file():
         content = index.read_text(encoding="utf-8")
         for source_prefix, target_prefix in prefixes:
             content = content.replace('href="' + source_prefix,
                                       'href="' + html.escape(target_prefix, quote=True))
         index.write_text(content, encoding="utf-8")
-    markdown = [site / "markdown/concepts/index.md", *sorted((site / "docs").glob("*.md"))]
+    markdown = sorted((site / "docs").glob("*.md"))
+    if own_api_index:
+        markdown.append(site / "markdown/concepts/index.md")
     for path in markdown:
         if path.is_file():
             content = path.read_text(encoding="utf-8")
@@ -181,8 +183,7 @@ def build(repo: Path, binary: Path, project: Path, site: Path, work: Path,
     with stage_timing.phase("showcase.reports"):
         publish_examples(result, site, provenance)
         publish_compatibility(repo, site, current, result)
-        if project == repo:
-            pin_documentation_links(site, provenance)
+        pin_documentation_links(site, provenance, own_api_index=project == repo)
     # `legacy` is a separately listed surface in the issue's phase inventory, so it
     # is timed on its own instead of being folded into the report phase.
     with stage_timing.phase("showcase.legacy"):

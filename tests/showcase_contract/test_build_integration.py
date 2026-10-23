@@ -62,7 +62,8 @@ class BuildIntegrationTests(unittest.TestCase):
                                  "site/docs/i18n.md", "site/docs/documentation-quality.md")]
         author_ir = self.write("site/artifacts/docs.json", {"pages": [{"url": source + "docs/usage.md"}]})
         original_ir = author_ir.read_bytes()
-        pin_documentation_links(self.root / "site", {"repository": repository, "revision": revision})
+        pin_documentation_links(self.root / "site", {"repository": repository, "revision": revision},
+                                own_api_index=True)
         published = html_page.read_text(encoding="utf-8")
         self.assertIn(f'href="{target}docs/usage.md#generate"', published)
         self.assertIn(f'href="{target}README.md"', published)
@@ -74,6 +75,26 @@ class BuildIntegrationTests(unittest.TestCase):
                              f'[Usage]({target}docs/usage.md#generate)\n'
                              f'[Maintainer]({target_tree}docs/maintainer#build)\n[Other]({foreign})\n')
         self.assertEqual(author_ir.read_bytes(), original_ir)
+
+    def test_alternate_project_keeps_its_index_but_pins_copied_cjdoc_manuals(self) -> None:
+        source = "https://github.com/lIlIIlIll/cjdoc"
+        repository = "https://github.com/example-owner/cjdoc-fork"
+        revision = "d" * 40
+        html_index = self.write("site/api/concepts/index.html",
+                               f'<a href="{source}/blob/main/README.md">Upstream cjdoc</a>')
+        markdown_index = self.write("site/markdown/concepts/index.md",
+                                   f'[Upstream cjdoc]({source}/blob/main/README.md)')
+        original_indexes = [(path, path.read_bytes()) for path in (html_index, markdown_index)]
+        manual = self.write("site/docs/README.md", f'[Usage]({source}/blob/main/docs/usage.md)')
+        directory = self.write("site/docs/i18n.md", f'[Maintainer]({source}/tree/main/docs/maintainer)')
+        pin_documentation_links(self.root / "site", {"repository": repository, "revision": revision},
+                                own_api_index=False)
+        self.assertEqual(manual.read_text(encoding="utf-8"),
+                         f'[Usage]({repository}/blob/{revision}/docs/usage.md)')
+        self.assertEqual(directory.read_text(encoding="utf-8"),
+                         f'[Maintainer]({repository}/tree/{revision}/docs/maintainer)')
+        for path, original in original_indexes:
+            self.assertEqual(path.read_bytes(), original)
 
     def test_source_download_preserves_paths_license_and_exact_configuration(self) -> None:
         inventory = ["examples/pocketkit/LICENSE", "examples/pocketkit/demo-v1/cjdoc.toml"]
