@@ -1,0 +1,190 @@
+{
+  "architecture": "x64",
+  "binarySha256": "b0c1b3f34455486471c360627821f82717e0d8c312dd059aa14cdf793c76f99a",
+  "browser": "153.0.8010.12",
+  "browserJsHeapMiB": 512,
+  "cases": [
+    {
+      "case": "1000",
+      "nativeResult": {
+        "declarations": 1000,
+        "docIrBytes": 7408201,
+        "docIrSha256": "f74686c099dd984a5a2ed6fc30c8e326ac0070fa0ff10dba51ee96cb9d504d53",
+        "status": "complete"
+      },
+      "nativeStages": [
+        {
+          "elapsedMs": 64306.86146799417,
+          "exitCode": 0,
+          "locale": null,
+          "name": "source-to-doc-ir",
+          "peakRssBytes": 278216704,
+          "systemCpuMs": 1330.8899999999999,
+          "userCpuMs": 84564.24900000001
+        },
+        {
+          "elapsedMs": 222734.13110599358,
+          "exitCode": 0,
+          "locale": "en",
+          "name": "doc-ir-to-html",
+          "peakRssBytes": 378593280,
+          "systemCpuMs": 3765.7780000000002,
+          "userCpuMs": 257820.16800000003
+        },
+        {
+          "elapsedMs": 291876.5218100016,
+          "exitCode": 0,
+          "locale": "zh-CN",
+          "name": "doc-ir-to-html",
+          "peakRssBytes": 347639808,
+          "systemCpuMs": 5209.219,
+          "userCpuMs": 335005.874
+        }
+      ],
+      "reason": null,
+      "receipts": {
+        "browserSha256": {
+          "en": "d39b34c40ac1ae72dac64eeb92065e85832b28e1753df67663fe664bbca08c6c",
+          "zh-CN": "769ac7f3e1f1603cb7002cddc41ddb788ac90bc017f0cc9a10c797759b618dbe"
+        },
+        "generationSha256": "0399ce53cde745856eabe12f083c169916c87c44c2ed188c21874a99b3658131",
+        "rendererRevision": "2ef643c5d795ab2e3dfd1035517baeec3a88b0aa",
+        "sourceSha256": "ade4b8ef804bdadad567d0df4109ac29fb1832e0a3b74ec85d233aea93bc1a83",
+        "status": "measured"
+      },
+      "recipe": "rdr-scale-v1",
+      "sourceSha256": "ade4b8ef804bdadad567d0df4109ac29fb1832e0a3b74ec85d233aea93bc1a83",
+      "status": "measured"
+    },
+    {
+      "case": "10000",
+      "nativeResult": {
+        "declarations": 0,
+        "docIrBytes": 1203,
+        "docIrSha256": "bfee6eddc8c088b4915604e3af4ac23dcbc27fc3f000f02a475befdbb157dc9b",
+        "status": "partial"
+      },
+      "nativeStages": [
+        {
+          "elapsedMs": 60400.57475699723,
+          "exitCode": 0,
+          "locale": null,
+          "name": "source-to-doc-ir",
+          "peakRssBytes": 402083840,
+          "systemCpuMs": 7694.8,
+          "userCpuMs": 66675.359
+        }
+      ],
+      "reason": "native Doc IR resource budget rejected the corpus (CJDOC3027)",
+      "receipts": {
+        "browserSha256": {},
+        "generationSha256": "77ded0a32d739f77fd8aef21be45e57c6d3e7bb7d442ac2454bec6857a6c28a8",
+        "rendererRevision": "2ef643c5d795ab2e3dfd1035517baeec3a88b0aa",
+        "sourceSha256": "2433ff4397b64e86b0d89c9785007db439500489688fef5be996447849752f6f",
+        "status": "resource-limited"
+      },
+      "recipe": "rdr-scale-v1",
+      "sourceSha256": "2433ff4397b64e86b0d89c9785007db439500489688fef5be996447849752f6f",
+      "status": "resource-limited"
+    },
+    {
+      "case": "50000",
+      "nativeResult": {
+        "declarations": 0,
+        "docIrBytes": null,
+        "docIrSha256": null,
+        "status": null
+      },
+      "nativeStages": [
+        {
+          "elapsedMs": 262413.43295199476,
+          "exitCode": 1,
+          "locale": null,
+          "name": "source-to-doc-ir",
+          "peakRssBytes": 604577792,
+          "systemCpuMs": 47287.695,
+          "userCpuMs": 322069.42
+        }
+      ],
+      "reason": "fixed Cangjie runtime heap exhausted",
+      "receipts": {
+        "browserSha256": {},
+        "generationSha256": "9f350b2b7d4161606a9276eb84ec5a39c04cd8987359de1eeadda35cbd5f52c1",
+        "rendererRevision": "2ef643c5d795ab2e3dfd1035517baeec3a88b0aa",
+        "sourceSha256": "738f9c827595fbdd73602d57b4ed40cb06a43f5184feddaed7019e8ad06cc5a2",
+        "status": "resource-limited"
+      },
+      "recipe": "rdr-scale-v1",
+      "sourceSha256": "738f9c827595fbdd73602d57b4ed40cb06a43f5184feddaed7019e8ad06cc5a2",
+      "status": "resource-limited"
+    },
+    {
+      "case": "external-yjson",
+      "nativeResult": {
+        "declarations": 2319,
+        "docIrBytes": 9443910,
+        "docIrSha256": "2e2f256fe460a928047aeadde8405a5e12b0df553aa093a1a128d0b076418c55",
+        "status": "partial"
+      },
+      "nativeStages": [
+        {
+          "elapsedMs": 62265.41367000027,
+          "exitCode": 0,
+          "locale": null,
+          "name": "source-to-doc-ir",
+          "peakRssBytes": 342704128,
+          "systemCpuMs": 1288.407,
+          "userCpuMs": 80696.82
+        },
+        {
+          "elapsedMs": 169482.97684699355,
+          "exitCode": 0,
+          "locale": "en",
+          "name": "doc-ir-to-html",
+          "peakRssBytes": 342519808,
+          "systemCpuMs": 2827.1459999999997,
+          "userCpuMs": 193283.539
+        },
+        {
+          "elapsedMs": 181940.4049520017,
+          "exitCode": 0,
+          "locale": "zh-CN",
+          "name": "doc-ir-to-html",
+          "peakRssBytes": 365305856,
+          "systemCpuMs": 3142.777,
+          "userCpuMs": 208792.523
+        }
+      ],
+      "reason": null,
+      "receipts": {
+        "browserSha256": {
+          "en": "3849f79a488a84481a0a5df51f052dafef875ef6b9bb3777dde1562147552acd",
+          "zh-CN": "8fffd883d372d3d9e688a05deafd5830d2bff4554c33858e6a261b3a7ed68dcd"
+        },
+        "generationSha256": "844da0ba98e8f3a8225aec4c06d5c0a4d9571dcbfbf85fcdec7cffb1c6066203",
+        "rendererRevision": "2ef643c5d795ab2e3dfd1035517baeec3a88b0aa",
+        "sourceSha256": "d22250b060c1d8afe48bbf0da0e530e6a45c7e3a7116d09b20d5eb5e041f2a1e",
+        "status": "measured"
+      },
+      "recipe": "external-yjson-54b4965dee0f0b96710cbc678ec5ec9a126b055c",
+      "sourceSha256": "d22250b060c1d8afe48bbf0da0e530e6a45c7e3a7116d09b20d5eb5e041f2a1e",
+      "status": "measured"
+    }
+  ],
+  "cpuCondition": "unthrottled shared host; no physical CPU isolation or cross-device comparison claim",
+  "generatorRevision": "2ef643c5d795ab2e3dfd1035517baeec3a88b0aa",
+  "generatorVersion": "0.7.3",
+  "nativeDocIrSchema": "cjdoc.doc-ir/16",
+  "nativeHeap": "512MB",
+  "node": "v26.12.0",
+  "platform": "linux",
+  "playwright": "1.63.0",
+  "sampleSemantics": "20 samples per query and alternating clear/target member-filter task; frame is next requestAnimationFrame, not a guaranteed paint timestamp",
+  "schemaVersion": "cjdoc.reader-baseline-snapshot/1",
+  "screenReaderSpeech": "not measured; semantic ARIA trees are recorded",
+  "sdkArchiveSha256": "8c5fd944cd9cc51ee63d4a240e3ecc4f540345dae1468e8b47c927ecf2ba998f",
+  "sdkVersion": "1.2.0",
+  "stdxArchiveSha256": "c036a192e8fd4206b84ca9a94611820bc66623198975f3dff874f748d65a8b47",
+  "stdxVersion": "1.2.0.1",
+  "zoom200": "layout-equivalent CSS720x450 at deviceScaleFactor2, physical1440x900; no browser chrome UI zoom claim"
+}
