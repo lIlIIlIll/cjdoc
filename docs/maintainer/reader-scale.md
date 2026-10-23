@@ -112,6 +112,8 @@ python3 scripts/reader_compare.py \
 
 `python3 -m unittest discover -s scripts -p test_reader_benchmark.py -v` 覆盖原始分位一致性、成对身份/字体/排序、真实任务失败不能被快时延掩盖、源码漂移、已有证据保护、资源统计不串进程、超时终止后代和日志隐私。设置 `CJDOC_READER_TEST_BINARY` 与真实 `CJDOC_READER_TEST_REVISION` 后，还运行实际原生 CLI 的 1 MiB 紧预算反例：原生命令退出 0，但观测器必须识别 `CJDOC3027`，不伪造 HTML 或浏览器通过。
 
+RSS 顺序回归在独立的小控制进程中运行，避免完整测试套件的高驻留内存经 fork/exec 前阶段污染子进程峰值。64 MiB 分配与 32 MiB 差值断言不放宽；单文件通过不能替代完整 Python suite 的执行结果。
+
 [Reader scale observations workflow](../../.github/workflows/reader-scale.yml) 复用同源 STS candidate，核对 binary SHA-256，运行上述真实反例，再从源码生成 1k 观测。手动运行可选其它 cohort。原始 JSON、日志、原生 Doc IR、截图保存为该 run 的 artifact；默认保留 30 天，需要长期归档时下载并保留摘要。每个 run 是独立环境的观测，不冒充本地快照原始文件。
 
 build、仓颉 unit、golden/integration、真实库、本地浏览器、远端 CI 必须分别报告。源码中存在脚本、较小 fixture 通过、ARIA snapshot 或截图好看，都不是较高层级已执行的证据。

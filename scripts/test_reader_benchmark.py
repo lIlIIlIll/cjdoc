@@ -7,6 +7,7 @@ import json
 from copy import deepcopy
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import time
@@ -111,10 +112,22 @@ class ProcessLifetimeTests(unittest.TestCase):
     def test_exit_and_cpu_rss_belong_to_the_measured_process(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            heavy = measured_process([sys.executable, "-c", "buffer = bytearray(64 * 1024 * 1024); assert buffer[-1] == 0"],
-                                     root / "heavy-out", root / "heavy-err", 10)
-            result = measured_process([sys.executable, "-c", "raise SystemExit(7 if sum(range(1000000)) == 499999500000 else 9)"],
-                                      root / "out", root / "err", 10)
+            # A long-lived unittest runner can have a larger resident set than
+            # either child. Isolate the controller so pre-exec fork RSS does not
+            # mask the allocation difference or make this depend on test order.
+            controller = (
+                "import json,sys; from pathlib import Path; "
+                "from reader_process import measured_process; root=Path(sys.argv[1]); "
+                "heavy=measured_process([sys.executable,'-c',"
+                "'buffer=bytearray(64*1024*1024); assert buffer[-1]==0'],"
+                "root/'heavy-out',root/'heavy-err',10); "
+                "light=measured_process([sys.executable,'-c',"
+                "'raise SystemExit(7 if sum(range(1000000))==499999500000 else 9)'],"
+                "root/'out',root/'err',10); print(json.dumps([heavy,light]))"
+            )
+            completed = subprocess.run([sys.executable, "-c", controller, str(root)],
+                cwd=Path(__file__).parent, capture_output=True, text=True, check=True, timeout=30)
+            heavy, result = json.loads(completed.stdout)
             self.assertEqual(result["exitCode"], 7)
             self.assertFalse(result["timedOut"])
             self.assertGreater(result["userCpuMs"] + result["systemCpuMs"], 0)
