@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "cjdoc.reader-budgets/1",
+  "minimumSamples": 20,
+  "transports": ["root", "subpath", "file"],
+  "requireScreenshots": true,
+  "absolute": {
+    "querySyncP95Ms": 100,
+    "queryFrameP95Ms": 100,
+    "memberSyncP95Ms": 100,
+    "memberFrameP95Ms": 150,
+    "coldInteractiveMs": 3000,
+    "warmInteractiveMs": 300,
+    "queryHeapBytes": 33554432,
+    "memberHeapBytes": 16777216,
+    "bundleFileBytes": 8388608,
+    "memberDomNodes": 25000
+  },
+  "relative": {
+    "latency": {"factor": 1.25, "slack": 15},
+    "loading": {"factor": 1.5, "slack": 150},
+    "memory": {"factor": 1.25, "slack": 8388608},
+    "bundle": {"factor": 1.1, "slack": 16384},
+    "domGrowthNodes": 16
+  },
+  "scope": "Same corpus, Doc IR, index payload, harness, browser, fonts, locale, viewport and transports. Fixed engineering ceilings, not cross-device performance scores.",
+  "registrationPolicy": "Bind an actual baseline before measuring after. Never derive or relax numeric thresholds from after results. Resource-limited is not PASS. Existing controlled density budgets remain unchanged."
+}
