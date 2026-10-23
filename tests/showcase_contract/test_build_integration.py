@@ -44,28 +44,35 @@ class BuildIntegrationTests(unittest.TestCase):
 
     def test_self_hosted_manual_links_follow_the_fork_revision_without_rewriting_ir(self) -> None:
         source = "https://github.com/lIlIIlIll/cjdoc/blob/main/"
+        source_tree = "https://github.com/lIlIIlIll/cjdoc/tree/main/"
         repository = "https://github.com/example-owner/cjdoc-fork"
         revision = "c" * 40
         target = repository + "/blob/" + revision + "/"
+        target_tree = repository + "/tree/" + revision + "/"
         foreign = "https://github.com/example-owner/another-project/blob/main/README.md"
         html_page = self.write("site/api/concepts/index.html",
             f'<a href="{source}docs/usage.md#generate">Usage</a>'
             f'<a href="{source}README.md">README</a><a href="{foreign}">Other</a>'
+            f'<a href="{source_tree}docs/maintainer#build">Maintainer</a>'
             f'<code>{source}docs/usage.md</code>')
-        markdown = [self.write(path, f'[Usage]({source}docs/usage.md#generate)\n[Other]({foreign})\n')
+        original_markdown = (f'[Usage]({source}docs/usage.md#generate)\n'
+                             f'[Maintainer]({source_tree}docs/maintainer#build)\n[Other]({foreign})\n')
+        markdown = [self.write(path, original_markdown)
                     for path in ("site/markdown/concepts/index.md", "site/docs/README.md",
-                                 "site/docs/usage.md")]
+                                 "site/docs/i18n.md", "site/docs/documentation-quality.md")]
         author_ir = self.write("site/artifacts/docs.json", {"pages": [{"url": source + "docs/usage.md"}]})
         original_ir = author_ir.read_bytes()
         pin_documentation_links(self.root / "site", {"repository": repository, "revision": revision})
         published = html_page.read_text(encoding="utf-8")
         self.assertIn(f'href="{target}docs/usage.md#generate"', published)
         self.assertIn(f'href="{target}README.md"', published)
+        self.assertIn(f'href="{target_tree}docs/maintainer#build"', published)
         self.assertIn(f'href="{foreign}"', published)
         self.assertIn(f'<code>{source}docs/usage.md</code>', published)
         for path in markdown:
             self.assertEqual(path.read_text(encoding="utf-8"),
-                             f'[Usage]({target}docs/usage.md#generate)\n[Other]({foreign})\n')
+                             f'[Usage]({target}docs/usage.md#generate)\n'
+                             f'[Maintainer]({target_tree}docs/maintainer#build)\n[Other]({foreign})\n')
         self.assertEqual(author_ir.read_bytes(), original_ir)
 
     def test_source_download_preserves_paths_license_and_exact_configuration(self) -> None:

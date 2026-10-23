@@ -63,7 +63,8 @@ python3 examples/pocketkit/reproduce.py \
 SDK 和 cjdoc 可执行文件不包含在下载中。源代码按钮指向固定 revision 的真实仓库位置。
 
 自生成文档的首页入口、HTML/Markdown 文档索引及复制发布的手册链接，使用同一份
-`repository` 与 `revision` 元数据定位仓库文件；fork 和历史构建不跳到上游 `main`。
+`repository` 与 `revision` 元数据定位仓库文件与目录，保留 `blob` / `tree` 路由及锚点；
+fork 和历史构建不跳到上游 `main`。
 这些链接只在展示站发布层重绑定，原始作者 Doc IR 和源码下载仍保留采集时的内容。
 
 本地 `serve` 教程由相同原生概念页提供。`scripts/check_showcase_authoring.py` 启动
