@@ -653,7 +653,7 @@ cjdoc generate --project /path/to/my-project --format html
 | `--channel ID=TEXT` | `unspecified` | 版本渠道标记。 |
 | `--status ID=TEXT` | `published` | 版本状态标记。 |
 | `--base-path ID=PATH` | 版本 ID | 该版本在输出站点里的路径前缀。 |
-| `--release ID=URL` | 无 | 版本发布页地址。 |
+| `--release ID=TEXT` | 无 | 版本发布信息，按纯文本显示在版本卡片上，不生成链接。 |
 | `--diff ID=PATH` | 无 | 该版本对应的 API diff JSON 报告。 |
 | `--force-owned` | 关闭 | 接管此前由 cjdoc 管理过的输出目录。 |
 
