@@ -124,6 +124,24 @@ def publish_compatibility(repo: Path, site: Path, current: Path, result: dict) -
         copy_file(repo / "docs" / name, site / "docs" / name)
 
 
+def pin_documentation_links(site: Path, provenance: dict) -> None:
+    """Bind the self-hosted manual's reading links without changing author IR."""
+    source_prefix = "https://github.com/lIlIIlIll/cjdoc/blob/main/"
+    target_prefix = provenance["repository"] + "/blob/" + provenance["revision"] + "/"
+    index = site / "api/concepts/index.html"
+    if index.is_file():
+        content = index.read_text(encoding="utf-8")
+        index.write_text(content.replace('href="' + source_prefix,
+                                         'href="' + html.escape(target_prefix, quote=True)),
+                         encoding="utf-8")
+    markdown = [site / "markdown/concepts/index.md", *sorted((site / "docs").glob("*.md"))]
+    for path in markdown:
+        if path.is_file():
+            content = path.read_text(encoding="utf-8")
+            path.write_text(content.replace("](" + source_prefix, "](" + target_prefix),
+                            encoding="utf-8")
+
+
 def build(repo: Path, binary: Path, project: Path, site: Path, work: Path,
           provenance: dict, previous: Path | None = None) -> dict:
     with stage_timing.phase("showcase.tool-versions"):
@@ -160,6 +178,8 @@ def build(repo: Path, binary: Path, project: Path, site: Path, work: Path,
     with stage_timing.phase("showcase.reports"):
         publish_examples(result, site, provenance)
         publish_compatibility(repo, site, current, result)
+        if project == repo:
+            pin_documentation_links(site, provenance)
     # `legacy` is a separately listed surface in the issue's phase inventory, so it
     # is timed on its own instead of being folded into the report phase.
     with stage_timing.phase("showcase.legacy"):

@@ -17,7 +17,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
-from showcase_build.integration import copy_composed_publication, install_output, publish_examples
+from showcase_build.integration import (copy_composed_publication, install_output,
+                                        pin_documentation_links, publish_examples)
 from showcase_build.manifest import roots
 from showcase_build.navigation import mount, markdown_declarations
 from showcase_build.packaging import copy_sources, source_archive
@@ -40,6 +41,32 @@ class BuildIntegrationTests(unittest.TestCase):
         path.write_text(json.dumps(value) if isinstance(value, dict) else value,
                         encoding="utf-8", newline="\n")
         return path
+
+    def test_self_hosted_manual_links_follow_the_fork_revision_without_rewriting_ir(self) -> None:
+        source = "https://github.com/lIlIIlIll/cjdoc/blob/main/"
+        repository = "https://github.com/example-owner/cjdoc-fork"
+        revision = "c" * 40
+        target = repository + "/blob/" + revision + "/"
+        foreign = "https://github.com/example-owner/another-project/blob/main/README.md"
+        html_page = self.write("site/api/concepts/index.html",
+            f'<a href="{source}docs/usage.md#generate">Usage</a>'
+            f'<a href="{source}README.md">README</a><a href="{foreign}">Other</a>'
+            f'<code>{source}docs/usage.md</code>')
+        markdown = [self.write(path, f'[Usage]({source}docs/usage.md#generate)\n[Other]({foreign})\n')
+                    for path in ("site/markdown/concepts/index.md", "site/docs/README.md",
+                                 "site/docs/usage.md")]
+        author_ir = self.write("site/artifacts/docs.json", {"pages": [{"url": source + "docs/usage.md"}]})
+        original_ir = author_ir.read_bytes()
+        pin_documentation_links(self.root / "site", {"repository": repository, "revision": revision})
+        published = html_page.read_text(encoding="utf-8")
+        self.assertIn(f'href="{target}docs/usage.md#generate"', published)
+        self.assertIn(f'href="{target}README.md"', published)
+        self.assertIn(f'href="{foreign}"', published)
+        self.assertIn(f'<code>{source}docs/usage.md</code>', published)
+        for path in markdown:
+            self.assertEqual(path.read_text(encoding="utf-8"),
+                             f'[Usage]({target}docs/usage.md#generate)\n[Other]({foreign})\n')
+        self.assertEqual(author_ir.read_bytes(), original_ir)
 
     def test_source_download_preserves_paths_license_and_exact_configuration(self) -> None:
         inventory = ["examples/pocketkit/LICENSE", "examples/pocketkit/demo-v1/cjdoc.toml"]

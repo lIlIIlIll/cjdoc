@@ -62,6 +62,10 @@ python3 examples/pocketkit/reproduce.py \
 输出目录必须不存在。下载包含示例许可证、配置、两个快照、独立依赖及诊断项目；
 SDK 和 cjdoc 可执行文件不包含在下载中。源代码按钮指向固定 revision 的真实仓库位置。
 
+自生成文档的首页入口、HTML/Markdown 文档索引及复制发布的手册链接，使用同一份
+`repository` 与 `revision` 元数据定位仓库文件；fork 和历史构建不跳到上游 `main`。
+这些链接只在展示站发布层重绑定，原始作者 Doc IR 和源码下载仍保留采集时的内容。
+
 本地 `serve` 教程由相同原生概念页提供。`scripts/check_showcase_authoring.py` 启动
 真实服务器、读取状态、在隔离副本中修改注释，再验证成功构建计数和 HTTP 内容均更新。
 原始证据位于 `artifacts/authoring.json`。静态 Pages 不运行编译器或常驻服务。
