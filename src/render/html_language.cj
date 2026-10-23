@@ -6,7 +6,7 @@ import std.collection.*
 internal func contentLanguageLabel(tag: DocTag, locale: String): String {
     let language = tag.contentLanguage.getOrDefault({ => label(locale, "unknown language", "语言未知") })
     match (tag.translationState) {
-        case "fallback" => label(locale, "Original text: ", "原文：") + language
+        case "fallback" => label(locale, "Translation missing. Original text: ", "暂无当前语言翻译，原文：") + language
         case "empty-fallback" => label(locale, "Empty translation; original text: ", "译文为空；原文：") + language
         case "conflict-fallback" => label(locale, "Translation conflict; original text: ", "译文冲突；原文：") + language
         case "empty" => label(locale, "Translation is empty", "译文为空")

@@ -24,6 +24,19 @@ private func referenceOnlyTextFor(comment: DocComment, fieldId: String, language
     result
 }
 
+// Preserve a documented exception condition when its only authored prose is
+// in the other published language. This must never choose between candidates.
+internal func soleForeignThrowsText(comment: DocComment, fieldId: String, locale: String): ?DocumentationText {
+    var result: ?DocumentationText = None
+    for (text in comment.localizedTexts) {
+        if (text.fieldId != fieldId || text.kind != "throws" ||
+            text.state != "valid" || text.language == Some(locale)) { continue }
+        if (result.isSome()) { return None }
+        result = Some(text)
+    }
+    result
+}
+
 internal func selectedDocumentationText(comment: DocComment, fieldId: String, locale: String): ?DocumentationText {
     let selected = localizedTextFor(comment, fieldId, Some(locale))
     if (selected.isSome()) { return selected }
@@ -31,7 +44,9 @@ internal func selectedDocumentationText(comment: DocComment, fieldId: String, lo
     if (fallback.isSome()) { return fallback }
     let reference = referenceOnlyTextFor(comment, fieldId, Some(locale))
     if (reference.isSome()) { return reference }
-    referenceOnlyTextFor(comment, fieldId, comment.defaultLanguage)
+    let defaultReference = referenceOnlyTextFor(comment, fieldId, comment.defaultLanguage)
+    if (defaultReference.isSome()) { return defaultReference }
+    soleForeignThrowsText(comment, fieldId, locale)
 }
 
 private func selectedDocumentationTag(text: DocumentationText, locale: String,

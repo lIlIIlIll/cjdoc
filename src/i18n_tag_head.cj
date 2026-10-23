@@ -12,8 +12,11 @@ internal class LocalizedTagHead {
     let language: ?String
     let rest: String
     let error: ?String
-    init(name: String, language: ?String, rest: String, error!: ?String = None) {
-        this.name = name; this.language = language; this.rest = rest; this.error = error
+    let entryId: ?String
+    init(name: String, language: ?String, rest: String, error!: ?String = None,
+        entryId!: ?String = None) {
+        this.name = name; this.language = language; this.rest = rest
+        this.error = error; this.entryId = entryId
     }
 }
 
@@ -75,6 +78,18 @@ internal func wellFormedDocumentationLanguage(value: String): Bool {
     index == parts.size
 }
 
+// Scoped only to @throws: an author-provided identity for one exception condition.
+private func validThrowsEntryId(value: String): Bool {
+    if (value.isEmpty() || value.size > 64) { return false }
+    for (index in 0..value.size) {
+        let byte = value[index]
+        if (byte >= b'a' && byte <= b'z') { continue }
+        if (index > 0 && ((byte >= b'0' && byte <= b'9') || byte == b'-' || byte == b'_')) { continue }
+        return false
+    }
+    true
+}
+
 internal func localizedTagHead(line: String): ?LocalizedTagHead {
     let text = line.trimAscii()
     if (!text.startsWith("@")) { return None }
@@ -83,21 +98,44 @@ internal func localizedTagHead(line: String): ?LocalizedTagHead {
     let name = text[1..end]
     if (!LOCALIZED_TAG_NAMES.contains(name)) { return None }
     var language: ?String = None
+    var entryId: ?String = None
     if (end < text.size && text[end] == b'[') {
         let close = text[end..].indexOf("]")
         if (close.isNone()) { return Some(LocalizedTagHead(name, language, "", error: "CJDOC3101")) }
         let stop = end + close.getOrThrow()
         let attribute = text[end + 1..stop]
-        if (!attribute.startsWith("lang=") || attribute.contains(",") || attribute.contains(" ") ||
-            attribute.contains("\t") || attribute.contains("\"") || attribute.contains("'")) {
+        if (attribute.contains(" ") || attribute.contains("\t") ||
+            attribute.contains("\"") || attribute.contains("'")) {
             return Some(LocalizedTagHead(name, language, "", error: "CJDOC3101"))
         }
-        let value = attribute[5..]
-        if (!wellFormedDocumentationLanguage(value)) {
-            return Some(LocalizedTagHead(name, language, "", error: "CJDOC3102"))
-        }
-        language = try { Some(public_model.documentationLanguage(value)) } catch (_: Exception) {
-            return Some(LocalizedTagHead(name, language, "", error: "CJDOC3103"))
+        let attributes = attribute.split(",", removeEmpty: false)
+        if (attributes.size > 2) { return Some(LocalizedTagHead(name, language, "", error: "CJDOC3101")) }
+        if (attributes[0].startsWith("lang=")) {
+            let value = attributes[0][5..]
+            if (!wellFormedDocumentationLanguage(value)) {
+                return Some(LocalizedTagHead(name, language, "", error: "CJDOC3102"))
+            }
+            language = try { Some(public_model.documentationLanguage(value)) } catch (_: Exception) {
+                return Some(LocalizedTagHead(name, language, "", error: "CJDOC3103"))
+            }
+            if (attributes.size == 2) {
+                if (name != "throws" || !attributes[1].startsWith("id=")) {
+                    return Some(LocalizedTagHead(name, language, "", error: "CJDOC3101"))
+                }
+                let value = attributes[1][3..]
+                if (!validThrowsEntryId(value)) {
+                    return Some(LocalizedTagHead(name, language, "", error: "CJDOC3113"))
+                }
+                entryId = Some(value)
+            }
+        } else if (name == "throws" && attributes.size == 1 && attributes[0].startsWith("id=")) {
+            let value = attributes[0][3..]
+            if (!validThrowsEntryId(value)) {
+                return Some(LocalizedTagHead(name, language, "", error: "CJDOC3113"))
+            }
+            entryId = Some(value)
+        } else {
+            return Some(LocalizedTagHead(name, language, "", error: "CJDOC3101"))
         }
         end = stop + 1
         if (["since", "version", "author"].contains(name)) {
@@ -111,5 +149,5 @@ internal func localizedTagHead(line: String): ?LocalizedTagHead {
     if (rest.startsWith("[")) {
         return Some(LocalizedTagHead(name, language, "", error: "CJDOC3101"))
     }
-    Some(LocalizedTagHead(name, language, rest))
+    Some(LocalizedTagHead(name, language, rest, entryId: entryId))
 }

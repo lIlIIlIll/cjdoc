@@ -291,7 +291,7 @@ pre{position:relative;margin:1rem 0;padding:1.1rem 3.3rem 1.1rem 1rem;overflow:a
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
 /* A parameter declaration is one semantic unit; its prose sits immediately beside it. */
 .parameter-list{display:block;margin:.45rem 0 .85rem;border-top:1px solid var(--line)}
-.parameter-row{display:grid;grid-template-columns:minmax(0,19rem) minmax(0,1fr);column-gap:.75rem;align-items:start;padding:0;border-bottom:1px solid var(--line)}
+.parameter-row{display:grid;grid-template-columns:fit-content(14rem) minmax(0,1fr);column-gap:.75rem;align-items:start;padding:0;border-bottom:1px solid var(--line)}
 .parameter-row dt,.parameter-row dd{min-width:0;margin:0;padding:.55rem 0;border:0}
 .parameter-row .parameter-declaration{font-weight:500;overflow-wrap:anywhere}
 .parameter-row .parameter-type{color:var(--muted);font-weight:400;white-space:normal;overflow-wrap:anywhere}
@@ -324,7 +324,8 @@ pre{position:relative;margin:1rem 0;padding:1.1rem 3.3rem 1.1rem 1rem;overflow:a
 """
 
 internal let HTML_RETURN_LAYOUT_STYLE = """
-.return-value{display:flex;align-items:baseline;flex-wrap:wrap;gap:.65rem;margin:1rem 0;color:var(--muted)}.return-type{flex:0 1 auto;min-width:0;overflow-wrap:anywhere;padding:.13rem .35rem;border:1px solid var(--line);border-radius:5px;background:var(--code-bg);color:var(--ink);font-size:.91em}.return-description{min-width:0;flex:1 1 14rem}.return-description>p{margin:0}
+.return-value{display:grid;grid-template-columns:fit-content(14rem) minmax(0,1fr);align-items:baseline;gap:.75rem;margin:.5rem 0 .8rem;color:var(--muted)}.return-type{flex:0 1 auto;min-width:0;overflow-wrap:anywhere;padding:.13rem .35rem;border:1px solid var(--line);border-radius:5px;background:var(--code-bg);color:var(--ink);font-size:.91em}.return-description{min-width:0}.return-description>p{margin:0}
+@media(max-width:760px){.return-value{grid-template-columns:minmax(0,1fr);gap:.2rem}}
 """
 
 internal let HTML_TYPE_LINK_STYLE = """
@@ -419,7 +420,9 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
 @media(max-width:760px){:root{--cjdoc-header-height:128px}.docs-sidebar{top:0;height:100dvh}.member-detail-summary>.declaration-kind{grid-column:2;grid-row:2;justify-self:start}.member-detail-body{padding-left:.8rem}.member-browser-toolbar input{min-width:8rem}.api-page-header{margin-bottom:.8rem}}
 /* Contract reading: put the API name and its explanation in the same row. */
 .throws-list{display:block;margin:.45rem 0 .85rem;padding:0}
-.throws-row{display:grid;grid-template-columns:minmax(0,19rem) minmax(0,1fr);gap:.75rem;padding:.55rem 0;border-bottom:1px solid var(--line)}
+.throws-row{display:grid;grid-template-columns:fit-content(14rem) minmax(0,1fr);gap:.75rem;padding:.55rem 0;border-bottom:1px solid var(--line)}
+.throws-row:last-child{border-bottom:0}
+.throws-list + .behavior-contracts{border-top:0;margin-top:.25rem;padding-top:.15rem}
 .throws-row dt,.throws-row dd{margin:0;min-width:0;overflow-wrap:anywhere}
 .throws-row dd>:first-child{margin-top:0}
 .throws-row dd>:last-child{margin-bottom:0}

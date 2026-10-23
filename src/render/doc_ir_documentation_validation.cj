@@ -3,6 +3,59 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
+// Replay must enforce the same reserved throws identity grammar as the source
+// producer. The generic opaque field-id rule cannot prove these associations.
+private func validReplayThrowsEntryId(value: String): Bool {
+    if (value.isEmpty() || value.size > 64) { return false }
+    for (index in 0..value.size) {
+        let byte = value[index]
+        if (byte >= b'a' && byte <= b'z') { continue }
+        if (index > 0 && ((byte >= b'0' && byte <= b'9') || byte == b'-' || byte == b'_')) { continue }
+        return false
+    }
+    true
+}
+
+private func validateReplayThrowsEntries(declaration: SymbolDoc, comment: DocComment): Unit {
+    let prefix = declaration.id + ":doc:throws:author-"
+    let subjects = HashMap<String, String>()
+    let targets = HashMap<String, String>()
+    let languages = HashSet<String>()
+    for (text in comment.localizedTexts) {
+        if (text.kind != "throws" || !text.fieldId.startsWith(prefix)) { continue }
+        let id = text.fieldId[prefix.size..]
+        if (!validReplayThrowsEntryId(id)) {
+            domainFail("$.documentation.localizedTexts.fieldId", "invalid explicit throws author identity")
+        }
+        if (text.state == "unpaired") {
+            domainFail("$.documentation.localizedTexts.fieldId", "unpaired throws cannot retain an author identity")
+        }
+        // Invalid or conflicting author entries are kept for diagnostics, but
+        // cannot establish a trusted equivalence or hide a readable condition.
+        if (text.state == "invalid" || text.state == "conflict") { continue }
+        match (subjects.get(text.fieldId)) {
+            case Some(previous) => if (previous != text.subject) {
+                domainFail("$.documentation.localizedTexts", "throws author identity has conflicting subjects")
+            }
+            case None => subjects[text.fieldId] = text.subject
+        }
+        // The producer compares resolved targets only when both are known.
+        // Do not reject a legitimate paired fallback whose other target is absent.
+        if (let Some(target) <- text.targetSymbolId) {
+            match (targets.get(text.fieldId)) {
+                case Some(previous) => if (previous != target) {
+                    domainFail("$.documentation.localizedTexts", "throws author identity has conflicting targets")
+                }
+                case None => targets[text.fieldId] = target
+            }
+        }
+        let languageKey = text.fieldId + ":" + text.language.getOrDefault({ => "unknown" })
+        if (!languages.add(languageKey)) {
+            domainFail("$.documentation.localizedTexts", "repeated throws author identity within a language")
+        }
+    }
+}
+
 public func validateDocumentationSet(documentation: DocumentationSet): Unit {
     if (documentation.schemaVersion != DOC_IR_SCHEMA_VERSION) {
         domainFail("$.schemaVersion", "typed documentation must be current Doc IR")
@@ -245,6 +298,7 @@ public func validateDocumentationSet(documentation: DocumentationSet): Unit {
             relationshipIndex++
         }
         if (let Some(comment) <- declaration.documentation) {
+            validateReplayThrowsEntries(declaration, comment)
             let validFields = HashSet<String>()
             for (text in comment.localizedTexts) {
                 if (let Some(navigation) <- text.navigation) {

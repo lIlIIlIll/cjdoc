@@ -98,8 +98,8 @@ public class TextCatalog {
      * @param[lang=en] index The zero-based index.
      * @return 保存在该位置的文本。
      * @return[lang=en] The text stored at that position.
-     * @throws IllegalArgumentException index 小于零或不小于 size。
-     * @throws[lang=en] IllegalArgumentException index is negative or is not smaller than size.
+     * @throws[id=index-range] IllegalArgumentException `index` 小于 0 或大于等于 `size`。
+     * @throws[lang=en,id=index-range] IllegalArgumentException `index` is negative or is not smaller than `size`.
      * @precondition 0 <= index < size。
      * @precondition[lang=en] 0 <= index < size.
      */
