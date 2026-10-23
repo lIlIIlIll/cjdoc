@@ -103,6 +103,8 @@ try {
     const box = summary.getBoundingClientRect();
     return box.bottom > 64 && box.top >= 0 && box.top < innerHeight;
   }, tailAnchor);
+  // Compact action menus are a mobile affordance; desktop exposes direct actions.
+  await page.setViewportSize({ width: 390, height: 844 });
   const tailActions = tail.locator('..').locator('[data-cjdoc-member-actions]');
   await tailActions.locator('[data-cjdoc-member-actions-toggle]').click();
   assert.equal(await tailActions.locator('a').first().evaluate(link => {
@@ -111,6 +113,8 @@ try {
     return hit === link || link.contains(hit);
   }), true, 'offscreen layout containment must not clip the revealed member action menu');
   await page.keyboard.press('Escape');
+  report.tasks.push({ id: 'mobile-tail-member-menu-not-clipped', pass: true });
+  await page.setViewportSize({ width: 1440, height: 900 });
   report.tasks.push({ id: 'ime-keyboard-exact-api-page-and-hidden-tail-deep-link', pass: true, targetId: target[0].id });
 
   await page.locator('[data-cjdoc-member-filter]').fill('member0256');
