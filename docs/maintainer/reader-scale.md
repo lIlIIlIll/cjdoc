@@ -29,6 +29,14 @@
 
 500 成员筛选有超过 100ms 的同步处理样本；CPU 采样热点位于 `saveMemberState` 读取滚动坐标的位置，而不是直接证明 `textContent` 或全站 rank/sort 有瓶颈。只在定位、成对复测后修改对应路径；不预先引入分片、全文复制或另一套搜索引擎。
 
+## RDR-S2 的针对性改动
+
+- 结果列表仍有界为每页 20 项，通过上一页/下一页继续发现；翻页复用当前查询的稳定排序，不引入另一套搜索引擎。查询、类别或包变更重置页码，原有精确身份、字段优先级、IME 与键盘交互保留。
+- 空结果只表示当前索引没有命中；面板明确说明每项 2,000-rune 正文摘录边界，不提高截断上限或复制完整正文。
+- `saveMemberState` 原来保存的文档滚动坐标没有恢复消费者，却会在成员 DOM 变更后强制布局。移除该无用字段，文档位置继续由原生历史负责；仅缓存实际恢复的 sidebar offset，并在 pagehide 同步取最终快照，覆盖未派发 scroll 事件就导航的情况。不能仅凭同步 JS 变快就宣称像素呈现变快；需要分开观察布局/下一帧与额外渲染机会。
+- `tests/browser/check-reader-discovery.mjs` 在实际原生 1k 站点检查完整分页身份/顺序、查询重置、IME/键盘精确尾部链接、立即导航后的 sidebar/文档历史，以及规定视口/明暗主题中的翻页控件和边界说明。它不替代冻结的三文件规模测量 harness。
+
+
 ## 环境与指标语义
 
 - SDK 固定为 Cangjie 1.2.0 STS、stdx 1.2.0.1 static sidecar、仓库现有 `-O1` wrapper。sidecar 在 SDK 的父级布局中解析，不假设在 `cangjie/` 内。按[构建指南](build.md)准备环境，不修改 SDK/compiler/std/stdx。
@@ -114,6 +122,6 @@ python3 scripts/reader_compare.py \
 
 RSS 顺序回归在独立的小控制进程中运行，避免完整测试套件的高驻留内存经 fork/exec 前阶段污染子进程峰值。64 MiB 分配与 32 MiB 差值断言不放宽；单文件通过不能替代完整 Python suite 的执行结果。
 
-[Reader scale observations workflow](../../.github/workflows/reader-scale.yml) 复用同源 STS candidate，核对 binary SHA-256，运行上述真实反例，再从源码生成 1k 观测。手动运行可选其它 cohort。原始 JSON、日志、原生 Doc IR、截图保存为该 run 的 artifact；默认保留 30 天，需要长期归档时下载并保留摘要。每个 run 是独立环境的观测，不冒充本地快照原始文件。
+[Reader scale observations workflow](../../.github/workflows/reader-scale.yml) 复用同源 STS candidate 并核对 binary SHA-256；另把固定 `2ef643c5d795ab2e3dfd1035517baeec3a88b0aa` 源码移到 checkout 外，使用同一认证 SDK 构建 baseline。在同一 runner 上依次采 baseline、绑定事先登记的数值模板、采 after、运行行为回归和严格比较。原始 JSON、日志、Doc IR、截图与比较保存为该 run 的 artifact，默认保留 30 天；需要长期归档时下载并保留摘要。手动选择资源受限 cohort 时比较仍为 `pass: false`、退出失败，不能把观测已完成误写成支持该规模。每个 run 都是独立 cohort，不冒充本地快照原始文件。
 
 build、仓颉 unit、golden/integration、真实库、本地浏览器、远端 CI 必须分别报告。源码中存在脚本、较小 fixture 通过、ARIA snapshot 或截图好看，都不是较高层级已执行的证据。

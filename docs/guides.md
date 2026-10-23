@@ -159,7 +159,7 @@ docs/modules/pocketkit.md
 ## 路由与搜索
 
 - 生成的 HTML 里，概念页统一放在 `html/concepts/` 下；生成 Markdown 时在 `markdown/concepts/` 下有对应页面。
-- 所有概念页都会进入站点搜索索引，可以直接按标题和正文搜索。
+- 所有概念页都会进入站点搜索索引，可以按标题和有界正文摘录搜索；不是完整全文检索。结果分页与 2,000-rune 边界见[使用指南](usage.md#在静态页面中查找-api)。
 - 项目首页会列出其他概念页；API 页会列出绑定到它的指南。
 - 同一个语言内路由不能重复。配置的两页撞到同一路由时，cjdoc 会保留可读前缀并追加稳定后缀，同时输出 warning（`CJDOC4060`）；此时以 `html/navigation-index.json` 里的实际路由为准。
 - 自动生成的页面路由由名称决定，不能直接配置；需要固定 URL 的页面请用 `[[docs.pages]]` 显式写 `route`。

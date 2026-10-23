@@ -255,7 +255,9 @@ test.describe('generated HTML reference', () => {
     await expect(results).not.toHaveCount(0);
     await expect(results.filter({ hasText: 'normalize' })).not.toHaveCount(0);
     await search.fill('wat:foo');
-    await expect(page.locator('[data-cjdoc-search-status]')).toContainText('Invalid filter');
+    await expect(results).toHaveCount(0);
+    await expect(search).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('[data-cjdoc-search-status]')).toBeVisible();
     await search.fill('ReferenceBox');
     await clickOutside(page);
     await expect(results).toHaveCount(0);
