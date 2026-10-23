@@ -26,7 +26,7 @@
       "minDeclarations": 1,
       "name": "self",
       "project": ".",
-      "referenceDocsSha256": "a8cc642ad178bb82bbba76e1bd659273eecae12adb8b226288eae0f38f599c20",
+      "referenceDocsSha256": "7c184c8dcd441597bf091101496b9cf4bbaf55e8d655bc8f7b87462403bfa361",
       "variants": {
         "cold": {
           "baselineMedianElapsedMs": 98320,
