@@ -574,14 +574,14 @@ cjdoc generate --project /path/to/my-project --format html
 | `--output <目录>` | `generate`、`render` | `target/doc`（`render` 为当前目录下） | 输出目录，与 `--stdout` 互斥。 |
 | `--stdout` | `generate`、`render` | 关闭 | 把单个 JSON 类产物写到标准输出。 |
 | `--force-owned` | `generate`、`render` | 关闭 | 接管此前由 cjdoc 管理过的输出目录，并覆盖被修改的已登记产物。 |
-| `--audience <值>` | `generate` | `external` | `external`、`package` 或 `all`。 |
+| `--audience <值>` | `generate`、`check` | `external` | `external`、`package` 或 `all`。 |
 | `--lint-profile <值>` | `generate`、`check` | `standard` | `off`、`standard` 或 `strict`。 |
 | `--jobs <1..64>` | `generate`、`check` | `1` | 并行解析源码文件的个数。 |
 | `--cfg NAME=VALUE` | `generate`、`check` | 无 | 条件编译输入，可重复。 |
 | `--check-examples` | `generate`、`check` | 关闭 | 编译校验示例，带 `{run}` 的还会运行。 |
 | `--locale zh-CN\|en` | `generate`、`render` | `zh-CN` | 单语言读取视图。 |
 | `--all-languages` | `generate`、`render` | 关闭 | 生成各语言独立目录，与 `--locale`、`--stdout` 冲突。 |
-| `--require-language <语言>` | `generate` | 无 | 要求指定语言的翻译覆盖率达到 100%，可重复。 |
+| `--require-language <语言>` | `generate`、`check` | 无 | 要求指定语言的翻译覆盖率达到 100%，可重复。 |
 | `--doc-version <版本>` | `generate`、`render` | 无 | 文档版本标签，要求 `--format html`。 |
 | `--agent-full` | `generate`、`render`、`serve` | 关闭 | 生成完整代理文本产物，生成/渲染时要求 `--format html`。 |
 | `--repository-url <URL>` | `generate`、`serve` | 无 | GitHub 仓库根地址，必须和 `--repository-revision` 成对。 |
@@ -613,7 +613,7 @@ cjdoc generate --project /path/to/my-project --format html
 
 ### `check` 的选项
 
-`check` 还接受上表中的 `--project`、`--lint-profile`、`--jobs`、`--cfg`、`--check-examples`、`--include-path-dependencies`、`--include-cached-dependencies`、`--dependency-source`、`--cjpm-cache`、`--cache-dir`、`--no-cache`、`--semantic`、`--cjc`、`--chir-worker`、`--chir-import-path`、`--highlight-adapter`、`--highlight-node`、`--build-context`、`--doc-source`、`--doc-inventory-pin`、`--link-language`、`--link-language-fallback`、`--link-compatible`。此外独有：
+`check` 还接受上表中的 `--project`、`--audience`、`--lint-profile`、`--jobs`、`--cfg`、`--check-examples`、`--require-language`、`--include-path-dependencies`、`--include-cached-dependencies`、`--dependency-source`、`--cjpm-cache`、`--cache-dir`、`--no-cache`、`--semantic`、`--cjc`、`--chir-worker`、`--chir-import-path`、`--highlight-adapter`、`--highlight-node`、`--build-context`、`--doc-source`、`--doc-inventory-pin`、`--link-language`、`--link-language-fallback`、`--link-compatible`。此外独有：
 
 | 选项 | 默认 | 说明 |
 |---|---|---|

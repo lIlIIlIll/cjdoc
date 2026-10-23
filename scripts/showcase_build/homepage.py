@@ -104,11 +104,15 @@ def publish(repo: Path, site: Path, manifest: dict, metadata: dict) -> None:
     template = (repo / "site/index.html").read_text(encoding="utf-8")
     if template.count('<!-- SHOWCASE_FEATURES -->') != 1:
         raise ContractError("homepage needs exactly one feature-catalog slot")
+    documentation_root = metadata["source"]["repository"] + '/blob/' + manifest["revision"] + '/docs/'
     for locale, filename in (("zh-CN", "index.html"), ("en", "en.html")):
         values = {**TEXT[locale], **UI_TEXT[locale], "LOCALE": locale, "REPOSITORY": metadata["source"]["repository"],
                   "PRIMARY": first(manifest, "compact-members", locale)["resolved"]["href"],
                   "GUIDE": first(manifest, "guide-association", locale)["resolved"]["href"],
                   "SOURCE": metadata["source"]["repository"] + '/tree/' + manifest["revision"] + '/examples/pocketkit',
+                  "USAGE_URL": documentation_root + "usage.md",
+                  "ADVANCED_URL": documentation_root + "advanced-usage.md",
+                  "CONFIG_URL": documentation_root + "configuration.md",
                   "BUILD": json.dumps(metadata, ensure_ascii=False, indent=2)}
         content = template
         for key, value in values.items():
