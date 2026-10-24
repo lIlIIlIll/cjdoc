@@ -1,6 +1,5 @@
 package cjdoc
 
-import cjdoc.model as query_model
 import cjdoc.render as query_render
 import std.collection.*
 import yjson.*

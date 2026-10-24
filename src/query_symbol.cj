@@ -3,7 +3,6 @@ package cjdoc
 import cjdoc.model as query_model
 import cjdoc.render as query_render
 import std.collection.*
-import std.sort.*
 import yjson.*
 
 // get_symbol reads one captured declaration (or conceptual page) at a time.

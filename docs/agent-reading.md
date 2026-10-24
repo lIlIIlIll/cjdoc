@@ -18,7 +18,9 @@ cjdoc render --input target/agent-demo/docs.json \
   --output target/agent-replay
 ```
 
-HTML 输出默认附带每个可见声明的 Markdown/JSON，不需要 `--agent-full`。该选项只增加聚合全文；单独选择 Markdown 或 JSON 格式不产生不存在的 HTML alternate。
+HTML 输出默认附带每个可见声明的 Markdown/JSON，不需要 `--agent-full`。该选项只增加聚合全文。
+
+单独选择 `--format markdown` 保留既有包页、容器页及其中的成员正文布局；`--format json` 保留完整 Doc IR 输出。需要每声明独立 Markdown/JSON 时，发布 HTML 文档根中的 `agent/` 包。仅选 Markdown 或 JSON 格式不生成 HTML、机器包 manifest 或不存在的 HTML alternate。
 
 | 文档根中的入口 | 用途 |
 |---|---|

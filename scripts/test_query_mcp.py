@@ -566,6 +566,13 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(process.trailing_messages(), [])
 
 
+def setUpModule() -> None:
+    if BINARY is None:
+        raise unittest.SkipTest(
+            "Native MCP integration requires explicit --binary and --snapshot; "
+            "scripts/check.sh cli runs the configured suite.")
+
+
 def tearDownModule() -> None:
     global _SHARED
     if _SHARED is None:
