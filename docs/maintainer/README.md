@@ -48,6 +48,7 @@
 - [issue-64-acceptance.md](acceptance/issue-64-acceptance.md)：#64 中英文作者正文、语言目录与字段投影。
 - [issue-100-acceptance.md](acceptance/issue-100-acceptance.md)：#100 静态代码高亮的 CLI、冻结 IR 与浏览器复现。
 - [issue-113-acceptance.md](acceptance/issue-113-acceptance.md)：#113 验收包索引中的作者概述。
+- [issue-153-acceptance.md](acceptance/issue-153-acceptance.md)：#153 大规模检索、作者契约、重载任务与最终原生视觉证据及资源边界。
 
 这些记录是各自时间点的证据映射，文中有实测环境、复现命令和边界声明；不要把它们当作当前门禁结果。当前证据要在目标提交上重新运行对应脚本。
 
