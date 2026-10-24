@@ -67,6 +67,8 @@
 
 实际生成并经 strict validator 核对的 `search.js` SHA-256 为 `afcc26dbb107f4b7f606aebab2e467d42270aecb78653dd13b4829c0e8948f08`，62,854 bytes；stylesheet 为 `76bdba8c03b296fef3ccf4c915d5a4d3c1951363317d077ede7e4bc601637e3a`，78,082 bytes。两语言各验证 2008 页、1001 个搜索目标；不从源码解码 hash 代替原生 emitted proof。
 
+该二进制的完整本机 cohort 另与固定 baseline `2ef643c5d795ab2e3dfd1035517baeec3a88b0aa` 配对，严格比较 **248 PASS / failures=[]**。使用相同源码、字体、SDK、浏览器、两语言/三载体及 20 样本；数值模板在 S1 已冻结且未改。本次实际采样顺序为 after→baseline，注册器只把 baseline 绑定到既有模板，不读取 after，也不据 after 改阈值；不是交替全 cohort 或 hosted-runner 证据。
+
 最终原生 cohort 的两语言/三载体合并结果如下。区间为具体自动化 task 的 min–max，不是 P95 或人类阅读时间；每个组的选择均两次操作、双展开比较均三次操作。
 
 | 同名重载数 | 准确选择用例 | 选择耗时区间 / ms | 双展开比较用例 | 比较耗时区间 / ms |
@@ -84,9 +86,13 @@
 
 最终真实 native HTML 采集 **160 张**成员/重载/作者样本截图：1440×900、960×900、390×844、760/761/1180/1181px、720×450 DPR2，light/dark、en/zh-CN。最后一项为物理 1440×900 的 200% 等价布局，不声称操作了 Chrome zoom 菜单。所有布局记录 overflow=0；实际检查了移动中文长默认/命名参数、缺译标记、缩放下完整作者签名与焦点、桌面第 500 项展开正文，不只检查 DOM 文本。
 
+同环境原生 baseline 的对应 160 图也已完整采集，形成 320 张 before/after 矩阵；最终搜索控件另采两语言共 32 图。最终两语言 discovery 各八个真实任务通过，包括 971 个函数的 49 页精确序列、实际焦点/IME、离屏双展开全文、移动 popup hit-testing、独立页/深链与立即 Back 恢复。
+
 正文保持 15px。Member500 保留 21,338 DOM nodes 与 503 个 TOC 定位链接；长签名确会折行，现有 wrapped-link heuristic 不是完整逐行排版统计。重复导航的存在本身不证明任务退化：准确深链/筛选/Back 保留，删除 TOC 还会损失超过 256 项的直接定位，因此不无证据重划左右栏职责、缩字号、删信息或加主题。
 
 两语言无 JS 的两个原生重载可独立同时展开；print media 中两份原始签名与两份契约正文可见。观察器通过真实隐藏 body/signature/main 的三种 CSS 反例验证，检查所有祖先 computed visibility 与渲染 box，不用仅长度或存在性冒充可见性。ARIA tree 不等于读屏语音，print media 不等于实体纸张/分页；语音会话没有实测。
+
+补充原生 S2/S4 的 500 成员对照：禁用页面 JS 时，整个 main 的 ARIA tree/顺序完全一致；由自动化打开全部 500 个 details 后，在 print media 中 500 个签名及 500 个正文均可见、身份逐项相同、无横向溢出。不将这写成默认关闭状态自动全展开、语音会话或纸张分页的证明。
 
 实际 HTTP GUI 从搜索进入 Member500，过滤并键盘展开 member0499，观察到 500 个 DOM 成员、完整作者摘要与返回值、overflow=0、无页面 JS error；辅助 managed 浏览器不混入冻结 Chromium/font/viewport 性能 cohort。
 
@@ -96,6 +102,7 @@
 - S2 首次完整 cohort 曾测出 500 成员 frame P95 165.4ms，未达到事前 150ms；保留失败，不放宽预算。全行 content-visibility 的早期方案又使离屏展开正文 rendered text 变空，真实 showcase 捕获后改为闭合闲置行，并补真实远距离双展开场景。
 - 分页 Next 后键盘失败在原生页复现后修复；测试提供真实 DOM target，删除截取函数加空 render stub 的 wiring 测试，不为新函数名重新钉 stub。既有真实 Control/Meta+K modal/inert/focus 场景保留。
 - S2 `d849313` 的 Reader/Showcase/macOS/Windows 通过；Linux 的 native/Python/CLI/provider/a11y/真实仓库 acceptance 通过后，独立 self Doc IR identity 捕获旧 checksum。实际两次输出均 `78c0b5b4…`，`4c3a45a` 仅同步 `referenceDocsSha256`，不改 frozen 状态、elapsed/RSS 或门槛。不把该历史 workflow failure 写成成功；后续以 PR 最新 HEAD 为准。
+- `4c3a45a` 最新 HEAD 随后实际全部通过：[三平台 CI 40054825031](https://github.com/lIlIIlIll/cjdoc/actions/runs/40054825031)、[Reader 40054825122](https://github.com/lIlIIlIll/cjdoc/actions/runs/40054825122)、[Showcase 40054825060](https://github.com/lIlIIlIll/cjdoc/actions/runs/40054825060)、[review gate 40054821882](https://github.com/lIlIIlIll/cjdoc/actions/runs/40054821882)。这是 S2 的完成证据，不外推为 S3/S4 的最新 HEAD 通过。
 
 | 完成条件 | 可复核入口与边界 |
 |---|---|
