@@ -421,20 +421,37 @@ internal let HTML_SEARCH_SCRIPT = """
   const isComposing = (event) => composing || (event && event.isComposing === true);
   input.addEventListener("compositionstart", () => { composing = true; });
   input.addEventListener("compositionend", () => { composing = false; render(); });
-  input.addEventListener("focus", () => { if (input.value.trim()) render(); });
+  const showSearch = () => {
+    if (!input.value.trim() || (searchPopover && !searchPopover.hidden)) return;
+    if (currentQuery && matches.length) renderPage(currentQuery);
+    else render();
+  };
+  input.addEventListener("focus", showSearch);
   input.addEventListener("input", (event) => { if (isComposing(event)) return; render(); });
   if (kindFilter) kindFilter.addEventListener("change", render);
   if (packageFilter) packageFilter.addEventListener("change", render);
-  input.addEventListener("keydown", (event) => {
+  (searchArea || input).addEventListener("keydown", (event) => {
     // Escape stays usable mid-composition; navigation and activation do not.
-    if (isComposing(event)) {
-      if (event.key === "Escape") { input.value = ""; render(); input.blur(); }
+    if (event.key === "Escape") {
+      input.value = "";
+      render();
+      if (event.target === input) input.blur();
+      else input.focus();
       return;
     }
-    if (event.key === "ArrowDown") { event.preventDefault(); select(selected + 1); }
-    else if (event.key === "ArrowUp") { event.preventDefault(); select(selected < 0 ? visible.length - 1 : selected - 1); }
-    else if (event.key === "Enter" && selected >= 0) { const active = results.children[selected]; const link = active && active.querySelector("a"); if (link) { event.preventDefault(); link.click(); } }
-    else if (event.key === "Escape") { input.value = ""; render(); input.blur(); }
+    if (isComposing(event)) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const focused = event.target.closest('[role="option"]');
+      const position = focused ? Array.prototype.indexOf.call(results.children, focused) : -1;
+      const active = position >= 0 ? position : selected;
+      select(event.key === "ArrowDown" ? active + 1 : active < 0 ? visible.length - 1 : active - 1);
+      if (event.target !== input && selected >= 0) results.children[selected].querySelector("a").focus();
+    } else if (event.key === "Enter" && event.target === input && selected >= 0) {
+      const active = results.children[selected];
+      const link = active && active.querySelector("a");
+      if (link) { event.preventDefault(); link.click(); }
+    }
   });
   document.addEventListener("click", (event) => {
     if (searchArea && !searchArea.contains(event.target) && !event.target.closest(".search-filters") && !event.target.closest("[data-cjdoc-filter-toggle]")) closeSearch();
@@ -446,7 +463,7 @@ internal let HTML_SEARCH_SCRIPT = """
       if (typeof closeMenu === "function") closeMenu(false);
       openMobileSearch();
       input.focus();
-      render();
+      showSearch();
     }
   });
   }

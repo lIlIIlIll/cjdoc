@@ -74,6 +74,34 @@ try {
   report.tasks.push({ id: 'arrow-up-wraps-to-last-visible-native-result', pass: true });
 
   await query('kind:function');
+  await next.click();
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.locator('[data-cjdoc-results] li a').nth(1)
+    .evaluate(link => link === document.activeElement), true,
+    'ArrowDown must move actual result focus after pagination');
+  await page.keyboard.press('ArrowUp');
+  assert.equal(await page.locator('[data-cjdoc-results] li a').first()
+    .evaluate(link => link === document.activeElement), true);
+  await keyboardField.focus();
+  assert.deepEqual(await links(), expected.slice(20, 40),
+    'returning focus to the query must not reset the current result page');
+  await keyboardField.press('Control+k');
+  assert.deepEqual(await links(), expected.slice(20, 40),
+    'the search shortcut must preserve the current result page');
+  await keyboardField.press('ArrowDown');
+  await keyboardField.press('Enter');
+  await page.waitForURL(new URL(expected[21], indexUrl).href);
+  await page.goto(indexUrl);
+  await query('kind:function');
+  await next.click();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('[data-cjdoc-search-popover]').isVisible(), false,
+    'Escape from a paged result must dismiss the search');
+  assert.equal(await keyboardField.evaluate(input => input === document.activeElement), true,
+    'dismissing a focused result must return focus to the search control');
+  report.tasks.push({ id: 'paged-result-keyboard-and-query-refocus', pass: true });
+
+  await query('kind:function');
   const field = page.locator('[data-cjdoc-search]');
   await field.dispatchEvent('compositionstart');
   await field.fill('name:member0499 owner:Member500');
