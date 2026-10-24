@@ -13,8 +13,12 @@ public class HtmlDocumentationRenderer <: DocumentationRenderer {
 }
 
 internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
-    documentation: DocumentationSet, locale!: String = "en", docVersion!: ?String = None): Unit {
-        validateTypedDocumentationSet(documentation)
+    documentation: DocumentationSet, locale!: String = "en", docVersion!: ?String = None,
+    capturedSymbolInventory!: ?String = None): Unit {
+        // The captured inventory already validated this publication. A direct
+        // internal caller still uses the validating inventory producer.
+        let inventory = capturedSymbolInventory.getOrDefault({ =>
+            renderSymbolIndex(documentation, hrefPrefix: "", version: docVersion) })
         let projection = RenderProjection(documentation)
         let index = projection.visibleIndex
         let typeLinkIndex = HtmlTypeLinkIndex(documentation, projection)
@@ -29,8 +33,7 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
                 .replace("<div class=\"conceptual-entry\" data-conceptual-entry></div>",
                     "<div class=\"conceptual-entry\" data-conceptual-entry>" + capturedConceptualEntryHtml(documentation, locale) + "</div>"))
         artifacts.addText("html/search-index.json", "application/json", searchIndex)
-        artifacts.addText("html/symbol-index.json", "application/json",
-            renderSymbolIndex(documentation, hrefPrefix: "", version: docVersion))
+        artifacts.addText("html/symbol-index.json", "application/json", inventory)
         artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
             renderSearchIndexScript(searchIndex, searchSignatures))
         artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8", HTML_THEME_BOOTSTRAP_SCRIPT)
@@ -282,10 +285,12 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
 
 public func renderDocumentationFormatsWithOptions(documentation: DocumentationSet,
     formats: Array<String>, locale!: String = "zh-CN", docVersion!: ?String = None,
-    allLanguages!: Bool = false):
+    allLanguages!: Bool = false, agentFull!: Bool = false,
+    reports!: Array<DocumentationReportAttachment> = []):
     Array<RenderArtifact> {
     if (allLanguages) {
-        return renderAllDocumentationLanguages(documentation, formats, docVersion)
+        return renderAllDocumentationLanguages(documentation, formats, docVersion,
+            agentFull: agentFull, reports: reports)
     }
     if (locale != "zh-CN" && locale != "en") {
         throw IllegalArgumentException("locale must be zh-CN or en")
@@ -295,12 +300,23 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
     if (!docIrFitsEncodedBudget(localized, DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
         throw RenderResourceLimitException("selected documentation exceeds the existing Doc IR budget")
     }
+    // Finish the detached machine projection before retaining HTML pages. Only
+    // immutable output payloads survive this call, not its model/index caches.
+    let machineArtifacts: Array<RenderArtifact> = if (formats.contains("html")) {
+        renderAgentReadableArtifacts(localized, includeFull: agentFull,
+            version: docVersion, includeValidation: true, reports: reports)
+    } else { [] }
+    var capturedSymbolInventory: ?String = None
+    for (artifact in machineArtifacts where artifact.path == "html/agent/symbol-index.json") {
+        capturedSymbolInventory = Some(artifact.content)
+        break
+    }
     for (format in formats) {
         match (format) {
             case "json" => appendJsonArtifacts(artifacts, documentation)
             case "markdown" => appendMarkdownSiteArtifacts(artifacts, localized, locale)
             case "html" => appendHtmlArtifacts(artifacts, localized, locale: locale,
-                docVersion: docVersion)
+                docVersion: docVersion, capturedSymbolInventory: capturedSymbolInventory)
             case "api-surface" => appendApiSurfaceArtifacts(artifacts, documentation)
             case "coverage" =>
                 appendCoverageArtifacts(artifacts, documentation)
@@ -317,6 +333,11 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
     }
     if (!capturedFormats.isEmpty()) {
         appendCapturedPageArtifacts(artifacts, localized, capturedFormats.toArray(), locale, docVersion)
+    }
+    if (formats.contains("html")) {
+        artifacts.addText("html/validation.html", "text/html; charset=utf-8",
+            renderValidationHtml(localized, docVersion, locale))
+        for (artifact in machineArtifacts) { artifacts.add(artifact) }
     }
     artifacts.toArray()
 }

@@ -180,21 +180,25 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                 }
                 out.append("</dl>\n")
             }
-            match (symbol.returnType) {
-                case Some(returnType) => if (!isUnitType(returnType)) {
-                    out.append("<h3 id=\"${docBlockAnchor(symbol, "return")}\">${label(locale, "Returns", "返回值")}</h3><div class=\"return-value\">")
-                    appendTypeRefCodeHtml(out, returnType, typeLinkIndex, rootPrefix, locale,
+            var showReturnType = false
+            if (let Some(returnType) <- symbol.returnType) { showReturnType = !isUnitType(returnType) }
+            var hasReturnDocumentation = false
+            for (tag in comment.tags) {
+                if (tag.name == "return" || tag.name == "returns") { hasReturnDocumentation = true; break }
+            }
+            if (showReturnType || hasReturnDocumentation) {
+                out.append("<h3 id=\"${docBlockAnchor(symbol, "return")}\">${label(locale, "Returns", "返回值")}</h3><div class=\"return-value\">")
+                if (showReturnType) {
+                    appendTypeRefCodeHtml(out, symbol.returnType.getOrThrow(), typeLinkIndex, rootPrefix, locale,
                         className: "return-type")
-                    match (findTag(comment, "return")) {
-                        case Some(tag) =>
-                            out.append("<div class=\"return-description\">")
-                            appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
-                            out.append("</div>")
-                        case None => ()
-                    }
-                    out.append("</div>\n")
                 }
-                case None => ()
+                for (tag in comment.tags) {
+                    if (tag.name != "return" && tag.name != "returns") { continue }
+                    out.append("<div class=\"return-description\">")
+                    appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
+                    out.append("</div>")
+                }
+                out.append("</div>\n")
             }
             var hasThrows = false
             for (tag in comment.tags) { if (tag.name == "throws") { hasThrows = true; break } }

@@ -26,7 +26,8 @@ private func replaceLanguageLabel(content: String, locale: String, switcher: Str
 
 
 internal func renderAllDocumentationLanguages(documentation: DocumentationSet, formats: Array<String>,
-    version: ?String): Array<RenderArtifact> {
+    version: ?String, agentFull!: Bool = false,
+    reports!: Array<DocumentationReportAttachment> = []): Array<RenderArtifact> {
     let options = match (documentation.languageOptions) {
         case Some(value) => value
         case None => throw IllegalArgumentException("--all-languages requires explicit [i18n] languages")
@@ -36,7 +37,7 @@ internal func renderAllDocumentationLanguages(documentation: DocumentationSet, f
     let rendered = HashMap<String, Array<RenderArtifact>>()
     for (language in options.languages) {
         let values = renderDocumentationFormatsWithOptions(documentation, formats, locale: language,
-            docVersion: version)
+            docVersion: version, agentFull: agentFull, reports: reports)
         rendered[language] = values
         for (artifact in values) {
             if (artifact.path.startsWith("html/") && artifact.path.endsWith(".html")) {

@@ -273,9 +273,10 @@ public/docs/
 
 | 文件 | 内容 |
 |---|---|
-| `html/navigation-index.json` | 全部页面的目录（含 API 声明页）：页面类别、标题、相对链接、稳定符号 ID、所属包/模块、语义状态 |
-| `html/llms.txt` | 有大小上限的纯文本摘要：入口链接、概念页清单、包清单 |
-| `html/llms-full.txt` | 只在加 `--agent-full` 时生成：概念页正文、包清单、公开符号的签名和文档摘要 |
+| `html/navigation-index.json` | 带快照、整体完整性和实际续取路径的 v2 导航；跟随下一片直至结束。 |
+| `html/llms.txt` | 精简发现入口，指向目录、表示 manifest 和已启用的全文索引。 |
+| `html/agent/manifest.json` | 每声明及页面的 HTML、Markdown、JSON 映射；自包含模型、库存、资源 hash 与已附报告。 |
+| `html/agent-full-index.json`、`html/llms-full.txt` | 仅 `--agent-full`：按完整语义单元分片的聚合全文，列出每片完整性和继续读取入口。 |
 
 ```bash
 cjdoc generate --project . --format html --agent-full
@@ -284,9 +285,10 @@ cjdoc generate --project . --format html --agent-full
 - `--agent-full` 用于 `generate`、`render` 和 `serve`；在 `generate`/`render` 里要求同时生成 HTML 格式。
 - 这些文件使用相对链接、内容确定，可以直接通过 `file://` 消费，不需要解析 HTML。
 - 只包含当前 audience 可见的声明；private 或被过滤的声明不会出现。文档不足以确定的内容保持 unavailable/partial，不会升级成确定结果。
-- `llms.txt` 里列出的概念页是 `kind = "concept"` 的页面（最多 512 条），包清单来自自动生成的包页。
+- `llms.txt` 不枚举并截断全站正文；完整目录与单声明详情以导航/manifest 为准。
 - 多语言站点使用 `--all-languages` 时，每个语言目录下各有一份对应的 agent 产物。
 - 需要给下游工具一份字段说明时，可用 `cjdoc schema navigation-index` 导出；`cjdoc schema list` 列出所有可用名称。
+- 本地 `query` 与可选 stdio `mcp` 直接读取固定 Doc IR/机器包，复用同一核心，不执行生成、依赖重观察或示例。完整操作、预算、状态、schema 迁移与客户端配置见[逐声明读取、查询与 MCP](agent-reading.md)。
 
 ## 从已有 docs.json 重新渲染
 

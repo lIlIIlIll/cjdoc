@@ -609,10 +609,24 @@ stage_cli() {
     "${python_cmd}" -c 'import json,sys; document=json.load(open(sys.argv[1], encoding="utf-8")); assert len(document["declarations"])==25 and any(item["code"]=="CJDOC2101" and "worker executable is not configured" in item["message"] for item in document["diagnostics"])' \
         "${check_dir}/chir-unconfigured-cli.json"
 
-    for schema_name in doc-ir doc-ir-v16 diagnostics cfg-matrix search-index search-index-v9 symbol-index navigation-index api-surface api-surface-v3 api-diff api-diff-v2 documentation-coverage documentation-quality versions versions-v2 translation-coverage site-manifest; do
+    # Published file stem to CLI schema name: the v1 navigation contract stays
+    # frozen while the `navigation-index` alias now answers v2.
+    for entry in \
+        doc-ir=doc-ir doc-ir-v16=doc-ir-v16 diagnostics=diagnostics cfg-matrix=cfg-matrix \
+        search-index=search-index search-index-v9=search-index-v9 symbol-index=symbol-index \
+        navigation-index=navigation-index-v1 navigation-index-v2=navigation-index \
+        api-surface=api-surface api-surface-v3=api-surface-v3 \
+        api-diff=api-diff api-diff-v2=api-diff-v2 \
+        documentation-coverage=documentation-coverage documentation-quality=documentation-quality \
+        versions=versions versions-v2=versions-v2 translation-coverage=translation-coverage \
+        site-manifest=site-manifest \
+        agent-full-index=agent-full-index declaration=declaration page=page \
+        machine-manifest=machine-manifest query-request=query-request query-result=query-result; do
+        published="${entry%%=*}"
+        schema_name="${entry#*=}"
         "${binary}" schema "${schema_name}" | tr -d '\r' \
-            >"${check_dir}/schemas/${schema_name}.schema.json"
-        cmp "docs/schema/${schema_name}.schema.json" "${check_dir}/schemas/${schema_name}.schema.json"
+            >"${check_dir}/schemas/${published}.schema.json"
+        cmp "docs/schema/${published}.schema.json" "${check_dir}/schemas/${published}.schema.json"
     done
 
     run_golden basic tests/fixtures/projects/basic tests/fixtures/golden-v16/basic.docs.json
@@ -655,12 +669,19 @@ stage_cli() {
     test -f "${check_dir}/agent/html/llms.txt"
     test -f "${check_dir}/agent/html/llms-full.txt"
     "${python_cmd}" scripts/validate_html_site.py "${check_dir}/agent/html"
-    "${python_cmd}" -c 'import json,sys; root=sys.argv[1]; nav=json.load(open(root+"/navigation-index.json", encoding="utf-8")); assert nav["schemaVersion"]=="cjdoc.navigation-index/1" and nav["project"]["version"]=="1.3.0" and any(page["kind"]=="symbol" for page in nav["pages"]); assert "1.3.0" in open(root+"/llms.txt", encoding="utf-8").read() and len(open(root+"/llms-full.txt", encoding="utf-8").read().encode()) <= 16*1024*1024' "${check_dir}/agent/html"
+    # The integration check reads the real generated document root: navigation
+    # continuations, the full-reference index, the manifest, every declaration
+    # and page artifact, plus schema export equality with docs/schema.
+    "${python_cmd}" scripts/test_agent_artifacts.py --binary "${binary}" \
+        --root "${check_dir}/agent/html"
+    "${python_cmd}" scripts/test_query_mcp.py --binary "${binary}" \
+        --snapshot "${check_dir}/agent/html/agent/manifest.json"
+    "${python_cmd}" -c 'import json,sys; root=sys.argv[1]; nav=json.load(open(root+"/navigation-index.json", encoding="utf-8")); assert nav["schemaVersion"]=="cjdoc.navigation-index/2" and nav["project"]["version"]=="1.3.0" and any(page["kind"]=="symbol" for page in nav["pages"]); assert "1.3.0" in open(root+"/llms.txt", encoding="utf-8").read() and len(open(root+"/llms-full.txt", encoding="utf-8").read().encode()) <= 16*1024*1024' "${check_dir}/agent/html"
     "${binary}" diff --baseline "${check_dir}/agent/api-surface/api-surface.json" --current "${check_dir}/agent-second/api-surface/api-surface.json" --format json >"${check_dir}/agent/api-diff.json"
     "${binary}" versions compose --version 1.2.0="${check_dir}/all/first/html" --version 1.3.0="${check_dir}/agent/html" --diff 1.3.0="${check_dir}/agent/api-diff.json" --latest 1.3.0 --output "${check_dir}/versions" >/dev/null
     "${binary}" versions compose --version 1.2.0="${check_dir}/all/first/html" --version 1.3.0="${check_dir}/agent/html" --diff 1.3.0="${check_dir}/agent/api-diff.json" --latest 1.3.0 --output "${check_dir}/versions-second" >/dev/null
     diff -qr "${check_dir}/versions" "${check_dir}/versions-second"
-    "${python_cmd}" -c 'import json,sys; root=sys.argv[1]; value=json.load(open(root+"/versions.json", encoding="utf-8")); assert value["schemaVersion"]=="cjdoc.versions/2" and value["latest"]=="1.3.0" and value["versions"][1]["apiDiff"]=="1.3.0/api-diff.json"; assert json.load(open(root+"/1.3.0/navigation-index.json", encoding="utf-8"))["schemaVersion"]=="cjdoc.navigation-index/1"; assert json.load(open(root+"/1.3.0/api-diff.json", encoding="utf-8"))["schemaVersion"]=="cjdoc.api-diff/2"' "${check_dir}/versions"
+    "${python_cmd}" -c 'import json,sys; root=sys.argv[1]; value=json.load(open(root+"/versions.json", encoding="utf-8")); assert value["schemaVersion"]=="cjdoc.versions/2" and value["latest"]=="1.3.0" and value["versions"][1]["apiDiff"]=="1.3.0/api-diff.json"; assert json.load(open(root+"/1.3.0/navigation-index.json", encoding="utf-8"))["schemaVersion"]=="cjdoc.navigation-index/2"; assert json.load(open(root+"/1.3.0/api-diff.json", encoding="utf-8"))["schemaVersion"]=="cjdoc.api-diff/2"' "${check_dir}/versions"
     "${python_cmd}" - "${check_dir}/api-diff-v1.json" <<'PY'
 import json
 import pathlib

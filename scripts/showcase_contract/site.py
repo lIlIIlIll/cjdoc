@@ -45,6 +45,132 @@ def load_json(path: Path) -> dict:
     return value
 
 
+NAVIGATION_V1 = "cjdoc.navigation-index/1"
+NAVIGATION_V2 = "cjdoc.navigation-index/2"
+
+
+def _navigation_part_pages(value: dict, name: str) -> list[dict]:
+    pages = value.get("pages")
+    if not isinstance(pages, list) or any(not isinstance(page, dict) for page in pages):
+        raise ContractError(f"invalid navigation pages: {name}")
+    return pages
+
+
+def _navigation_child(index_name: str, child: object) -> str:
+    """Resolve a continuation to a document-root-relative canonical path."""
+    relative_path(child)
+    if not child.endswith(".json") or child == index_name:
+        raise ContractError(f"navigation continuation is not a new JSON part: {child!r}")
+    root = PurePosixPath(index_name).parent
+    return child if root == PurePosixPath(".") else (root / child).as_posix()
+
+
+def load_navigation_index(read, index_name: str) -> dict:
+    """Return one readable navigation view, following every continuation.
+
+    `read(name)` returns a parsed object for a document-root-relative path and
+    raises when the file is absent. v1 stays frozen-readable for captures made
+    before v2 existed; v2 is assembled only when every continuation repeats the
+    same snapshot identity and continues the same stable offset sequence, so a
+    truncated or interleaved tree cannot pass as a complete enumeration.
+    """
+    first = read(index_name)
+    version = first.get("schemaVersion")
+    if version == NAVIGATION_V1:
+        # Frozen v1 captures predate the scope/pagination contract and stay
+        # readable exactly as published; only the page list is required here.
+        _navigation_part_pages(first, index_name)
+        return first
+    if version != NAVIGATION_V2:
+        raise ContractError(f"unsupported navigation schema: {index_name}")
+    project = first.get("project")
+    scope = first.get("scope")
+    if not isinstance(project, dict) or not isinstance(scope, dict):
+        raise ContractError(f"navigation scope is missing: {index_name}")
+    if not isinstance(project.get("version"), (str, type(None))):
+        raise ContractError(f"navigation project version is invalid: {index_name}")
+    query_id = first.get("queryId")
+    snapshot_id = scope.get("snapshotId")
+    if not isinstance(query_id, str) or not query_id.startswith("cjdoc:query:v1:"):
+        raise ContractError(f"navigation query identity is invalid: {index_name}")
+    if not isinstance(snapshot_id, str) or not snapshot_id.startswith("cjdoc:snapshot:v1:"):
+        raise ContractError(f"navigation snapshot identity is invalid: {index_name}")
+    first_pagination = first.get("pagination")
+    if not isinstance(first_pagination, dict):
+        raise ContractError(f"navigation pagination is missing: {index_name}")
+    total = first_pagination.get("total")
+    parts = first_pagination.get("parts")
+    if not isinstance(total, int) or not isinstance(parts, int) or parts < 1 or total < 0:
+        raise ContractError(f"navigation pagination bounds are invalid: {index_name}")
+    if first_pagination.get("pathBase") != "document-root":
+        raise ContractError(f"navigation path base is not the document root: {index_name}")
+
+    merged: list[dict] = []
+    visited = {index_name}
+    content_complete = True
+    expected_offset = 0
+    name = index_name
+    part = 0
+    value = first
+    while True:
+        pagination = value.get("pagination")
+        if not isinstance(pagination, dict):
+            raise ContractError(f"navigation part has no pagination: {name}")
+        for key, expected in (("part", part), ("parts", parts), ("total", total),
+                              ("offset", expected_offset), ("pathBase", "document-root")):
+            if pagination.get(key) != expected:
+                raise ContractError(
+                    f"navigation continuation {name} has inconsistent {key}: "
+                    f"{pagination.get(key)!r} != {expected!r}")
+        if value.get("project") != project:
+            raise ContractError(f"navigation continuation {name} changed the project")
+        part_scope = value.get("scope")
+        if not isinstance(part_scope, dict) or part_scope.get("snapshotId") != snapshot_id:
+            raise ContractError(f"navigation continuation {name} changed the snapshot")
+        if value.get("queryId") != query_id:
+            raise ContractError(f"navigation continuation {name} changed the query")
+        if value.get("apiCollectionState") != first.get("apiCollectionState"):
+            raise ContractError(f"navigation continuation {name} changed API collection state")
+        completeness = value.get("completeness")
+        if not isinstance(completeness, dict) or not isinstance(
+                completeness.get("enumerationComplete"), bool) or not isinstance(
+                completeness.get("contentComplete"), bool):
+            raise ContractError(f"navigation continuation {name} has no completeness state")
+        if completeness["enumerationComplete"] != (parts == 1):
+            raise ContractError(f"navigation continuation {name} misstates enumeration completeness")
+        pages = _navigation_part_pages(value, name)
+        if pagination.get("returned") != len(pages):
+            raise ContractError(f"navigation continuation {name} returned count is wrong")
+        content_complete = content_complete and completeness["contentComplete"]
+        merged.extend(pages)
+        expected_offset += len(pages)
+        child = pagination.get("next")
+        if part + 1 == parts:
+            if child is not None:
+                raise ContractError(f"navigation final part still offers a continuation: {name}")
+            break
+        if child is None:
+            raise ContractError(f"navigation part {part} of {parts} has no continuation: {name}")
+        child_name = _navigation_child(index_name, child)
+        if child_name in visited:
+            raise ContractError(f"navigation continuation loop or duplicate: {child_name}")
+        visited.add(child_name)
+        part += 1
+        name = child_name
+        value = read(name)
+        if value.get("schemaVersion") != NAVIGATION_V2:
+            raise ContractError(f"navigation continuation is not v2: {name}")
+    if len(merged) != total:
+        raise ContractError(
+            f"navigation enumeration is incomplete: {len(merged)} pages != {total} declared")
+    return {"schemaVersion": NAVIGATION_V2, "project": project, "scope": scope,
+            "queryId": query_id, "apiCollectionState": first.get("apiCollectionState"),
+            "completeness": {"enumerationComplete": True, "contentComplete": content_complete},
+            "pagination": {**first_pagination, "offset": 0, "returned": len(merged),
+                           "part": 0, "parts": parts, "next": None},
+            "pages": merged}
+
+
 def relative_path(value: object) -> str:
     """Validate a canonical, unescaped, root-relative inventory path, not a URL."""
     if not isinstance(value, str) or not value:
@@ -246,14 +372,10 @@ class Site:
     def navigation_target(self, target: dict) -> dict:
         """Resolve semantic selectors through the generated navigation index only."""
         index_name = relative_path(target["index"])
-        index = load_json(self.file(index_name))
-        if index.get("schemaVersion") != "cjdoc.navigation-index/1":
-            raise ContractError(f"unsupported navigation schema: {index_name}")
+        index = load_navigation_index(lambda name: load_json(self.file(name)), index_name)
         if index.get("project") != target["project"]:
             raise ContractError(f"navigation project/version/audience mismatch: {index_name}")
-        pages = index.get("pages")
-        if not isinstance(pages, list) or any(not isinstance(p, dict) for p in pages):
-            raise ContractError(f"invalid navigation pages: {index_name}")
+        pages = index["pages"]
         if "docIr" in target:
             from .routes import inline_route, select_declaration
             declaration, page = select_declaration(self, target, pages)
@@ -275,7 +397,7 @@ class Site:
         if not isinstance(href, str) or not href:
             raise ContractError(f"navigation page has no href: {index_name}")
         parsed = urlsplit(href)
-        # navigation-index/1 safePath disallows dot segments and absolute routes.
+        # Navigation safePath disallows dot segments and absolute routes.
         if parsed.scheme or parsed.netloc or parsed.query:
             raise ContractError(f"nonlocal navigation route: {href}")
         relative_path(parsed.path)

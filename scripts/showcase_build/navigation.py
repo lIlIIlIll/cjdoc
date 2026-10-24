@@ -8,7 +8,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from showcase_contract.site import ContractError, HtmlDocument, load_json, relative_path
+from showcase_contract.site import (ContractError, HtmlDocument, load_json,
+    load_navigation_index, relative_path)
 
 STYLE = '.showcase-tools{display:flex;flex-wrap:wrap;gap:.5rem 1rem;border-top:1px solid currentColor;margin:2rem 1rem 0;padding:1rem;max-width:100%;font-size:.875rem}.showcase-tools a,.showcase-tools span{overflow-wrap:anywhere}.showcase-tools a:focus-visible{outline:2px solid currentColor;outline-offset:3px}'
 SCRIPT = '''"use strict";
@@ -126,9 +127,11 @@ def href(origin: Path, target: Path) -> str:
 
 
 def native_pages(root: Path) -> dict[str, str]:
-    index = load_json(root / "navigation-index.json")
-    if index.get("schemaVersion") != "cjdoc.navigation-index/1":
-        raise ContractError("unsupported navigation index while mounting publication links")
+    """Read every navigation part, then key pages by their native identity."""
+    def read(name: str) -> dict:
+        return load_json(root / relative_path(name))
+
+    index = load_navigation_index(read, "navigation-index.json")
     result = {}
     for page in index["pages"]:
         key = page.get("symbolId") or page["id"]

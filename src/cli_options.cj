@@ -34,6 +34,8 @@ internal class NewCliOptions {
     var stdout = false
     var denyWarnings = false
     var checkExamples = false
+    var validationReport: ?String = None
+    var apiDiffReport: ?String = None
     var forceOwned = false
     var jobs: Int64 = 1
     var jobsExplicit = false
@@ -94,6 +96,7 @@ internal func newUsage(): String {
     "                 [--link-language <lang>] [--link-language-fallback] [--link-compatible]\n" +
     "                 [--cache-dir <dir>|--no-cache] [--force-owned] [--max-doc-ir-mib 1..64]\n" +
     "                 [--locale zh-CN|en|--all-languages] [--require-language zh-CN|en]...\n" +
+    "                 [--agent-full] [--validation-report <report.json>] [--api-diff-report <report.json>]\n" +
     "  cjdoc check [--project <dir>] [--semantic source|chir] [--cjc <executable>] [--chir-import-path <dir>]...\n" +
     "              [--chir-worker <executable>]\n" +
     "              [--highlight-adapter <absolute path> --highlight-node <absolute path>]\n" +
@@ -105,10 +108,13 @@ internal func newUsage(): String {
     "  cjdoc diff OLD NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc diff --baseline OLD --current NEW [--format text|json] [--deny-breaking-api|--deny-potentially-breaking-api]\n" +
     "  cjdoc render --input <docs.json> [--format json|markdown|html|api-surface|coverage|symbol-index]... [--output <dir>|--stdout] [--force-owned] [--doc-version <version>]\n" +
-    "               [--locale zh-CN|en] [--max-doc-ir-mib 1..64]\n" +
+    "               [--locale zh-CN|en|--all-languages] [--max-doc-ir-mib 1..64]\n" +
+    "               [--agent-full] [--validation-report <report.json>] [--api-diff-report <report.json>]\n" +
     "  cjdoc serve [--project <dir>] [--port <port>] [--open] [--agent-full] [--max-doc-ir-mib 1..64]\n" +
     "  cjdoc versions compose --version ID=PATH... [--label ID=TEXT] [--channel ID=TEXT] [--status ID=TEXT]\n" +
     "                        [--base-path ID=PATH] [--release ID=URL] [--diff ID=PATH] [--latest ID] --output <dir> [--force-owned]\n" +
+    "  cjdoc query --snapshot <docs.json|agent/manifest.json|versions.json>... --request <request.json|->\n" +
+    "  cjdoc mcp --snapshot <docs.json|agent/manifest.json|versions.json>...\n" +
     "  cjdoc schema <name> (use 'cjdoc schema list' for available schemas)\n"
 }
 
@@ -180,6 +186,12 @@ internal func highlightHostPathIsAbsolute(value: String): Bool {
 
 private func parsePathAndTextOption(options: NewCliOptions, args: Array<String>, index: Int64): ?Int64 {
     match (args[index]) {
+        case "--validation-report" =>
+            options.validationReport = Some(requireNonEmptyCliValue(args, index, "--validation-report"))
+            Some(index + 2)
+        case "--api-diff-report" =>
+            options.apiDiffReport = Some(requireNonEmptyCliValue(args, index, "--api-diff-report"))
+            Some(index + 2)
         case "--build-context" =>
             options.buildContext = Some(requireNonEmptyCliValue(args, index, "--build-context"))
             Some(index + 2)
@@ -403,6 +415,10 @@ private func validateDiffOptions(options: NewCliOptions): Unit {
     }
 }
 private func validateCliOptions(options: NewCliOptions): Unit {
+    if ((options.validationReport.isSome() || options.apiDiffReport.isSome()) &&
+        options.command != "generate" && options.command != "render") {
+        throw IllegalArgumentException("captured report attachments are only valid for generate and render")
+    }
     if ((options.buildContext.isSome() || !options.documentSources.isEmpty() || !options.documentInventoryPins.isEmpty() || !options.linkLanguage.isEmpty() ||
         options.linkLanguageFallback || options.linkCompatible) && options.command != "generate" && options.command != "check") {
         throw IllegalArgumentException("dependency documentation options are only valid for generate and check")
@@ -513,6 +529,12 @@ private func validateCliOptions(options: NewCliOptions): Unit {
     }
     if (options.agentFull && options.command != "serve" && !options.formats.contains("html")) {
         throw IllegalArgumentException("--agent-full requires --format html")
+    }
+    if (options.validationReport.isSome() || options.apiDiffReport.isSome()) {
+        if ((options.command != "generate" && options.command != "render") ||
+            !options.formats.contains("html") || options.stdout) {
+            throw IllegalArgumentException("captured report attachments require generate/render HTML directory output")
+        }
     }
 
     if (options.stdout && (options.formats.size != 1 ||

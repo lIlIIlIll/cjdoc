@@ -209,6 +209,26 @@ internal func lockedFileWrite(path: Path, bytes: Array<Byte>, handle: OutputLock
     ensureOutputLockCurrent(handle)
 }
 
+internal func lockedTextFileWrite(path: Path, content: String, handle: OutputLockHandle): Unit {
+    ensureOutputLockCurrent(handle)
+    let file = File(path, OpenMode.Write)
+    try {
+        let capacity = if (content.size < OUTPUT_HASH_CHUNK_BYTES) { content.size }
+            else { OUTPUT_HASH_CHUNK_BYTES }
+        let buffer = Array<Byte>(capacity, repeat: 0)
+        var offset: Int64 = 0
+        while (offset < content.size) {
+            let remaining = content.size - offset
+            let count = if (remaining < buffer.size) { remaining } else { buffer.size }
+            for (index in 0..count) { buffer[index] = content[offset + index] }
+            if (count == buffer.size) { file.write(buffer) }
+            else { file.write(buffer[0..count]) }
+            offset += count
+        }
+    } finally { file.close() }
+    ensureOutputLockCurrent(handle)
+}
+
 internal func lockedRemoveIfExists(path: Path, handle: OutputLockHandle,
     recursive!: Bool = false): Bool {
     ensureOutputLockCurrent(handle)

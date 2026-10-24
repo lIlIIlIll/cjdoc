@@ -105,7 +105,19 @@ def compare_outputs(site: Path, generated: Path) -> list[dict]:
                 actual = generated / "composed" / relative_path(language["root"])
             published = documents[version]
             files = ["machine/" + name for name in native_files]
-            files += ["navigation-index.json", "symbol-index.json", "search-index.json", "llms.txt", "llms-full.txt"]
+            # v2 navigation and the aggregate full reference are enumerations
+            # through continuation files, so every actually published part is
+            # compared; an extra or missing part must fail here, not at read time.
+            files += [path.relative_to(actual).as_posix()
+                      for pattern in ("navigation-index*.json", "llms-full*.txt")
+                      for path in sorted(actual.glob(pattern)) if path.is_file()]
+            files += ["symbol-index.json", "search-index.json", "llms.txt",
+                      "agent-full-index.json"]
+            # The machine bundle is published under its own document-root-relative
+            # layout, so every file it carries is compared, not a fixed subset.
+            if (actual / "agent").is_dir():
+                files += [path.relative_to(actual).as_posix()
+                          for path in sorted((actual / "agent").rglob("*")) if path.is_file()]
             files += [path.relative_to(actual).as_posix() for path in sorted((actual / "machine/markdown").rglob("*")) if path.is_file()]
             for name in files:
                 if not (published / name).is_file() or (actual / name).read_bytes() != (published / name).read_bytes():

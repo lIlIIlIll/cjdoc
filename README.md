@@ -144,6 +144,8 @@ target/doc/html/index.html
 | 本地预览 | `cjdoc serve --project .` | 打开 `http://127.0.0.1:8080/`，改源码后自动重建 |
 | 比较 API 变化 | `cjdoc diff --baseline old.json --current new.json --deny-breaking-api` | 终端或 JSON 报告；命中破坏性变化时退出码为 `1` |
 | 从已有 JSON 重新生成 | `cjdoc render --input target/doc/docs.json --format html --output target/doc-rendered` | 重新渲染的 HTML |
+| 查询固定文档 | `cjdoc query --snapshot target/doc/docs.json --request request.json` | 单个版本化 JSON 结果；不扫描或编译目标项目 |
+| 接入本地 MCP | `cjdoc mcp --snapshot target/doc/html/agent/manifest.json` | 同一只读查询核心的 stdio 适配 |
 
 一次生成多个格式时，重复写 `--format`：
 
@@ -161,6 +163,8 @@ cjdoc generate --project . --format json --stdout > docs.json
 ```
 
 `--stdout` 与 `--output` 互斥，并且只允许恰好一个 JSON 类格式（`json`、`api-surface`、`coverage`、`symbol-index`）。诊断写到 stderr，所以重定向得到的文件仍是单个 JSON。
+
+HTML 输出同时发布每个可见声明的独立 Markdown/JSON、`agent/manifest.json` 与可续取导航。`--agent-full` 另加完整单元的聚合全文和分片索引。身份选择、章节预算、离线部署与客户端配置见[逐声明读取、查询与 MCP](docs/agent-reading.md)；`serve` 仍用于项目预览和重建。
 
 ## 常见问题
 

@@ -57,6 +57,13 @@ SCHEMA_FILES = (
     "api-diff.schema.json",
     "documentation-coverage.schema.json",
     "documentation-quality.schema.json",
+    "navigation-index-v2.schema.json",
+    "agent-full-index.schema.json",
+    "declaration.schema.json",
+    "page.schema.json",
+    "machine-manifest.schema.json",
+    "query-request.schema.json",
+    "query-result.schema.json",
 )
 
 

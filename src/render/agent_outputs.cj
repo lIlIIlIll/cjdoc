@@ -8,7 +8,6 @@ internal let AGENT_NAVIGATION_LIMIT: Int64 = 16 * 1024 * 1024
 internal let AGENT_LLMS_LIMIT: Int64 = 256 * 1024
 internal let AGENT_FULL_LIMIT: Int64 = 16 * 1024 * 1024
 internal let AGENT_FIELD_LIMIT: Int64 = 16 * 1024
-internal let AGENT_CONCEPT_LIMIT: Int64 = 64 * 1024
 internal let AGENT_LLMS_LIST_LIMIT: Int64 = 512
 
 
@@ -45,7 +44,7 @@ private func agentRuneWidth(rune: Rune): Int64 {
     else if (code <= 0xFFFFu32) { 3 } else { 4 }
 }
 
-private func agentTruncate(value: String, limit: Int64): String {
+internal func agentTruncate(value: String, limit: Int64): String {
     if (limit <= 0) { return "" }
     if (value.size <= limit) { return value }
     let contentLimit = if (limit > 3) { limit - 3 } else { limit }
@@ -79,18 +78,6 @@ private func agentAppendFixed(out: RenderTextBuffer, value: String, limit: Int64
     true
 }
 
-private func appendAgentJsonText(out: RenderTextBuffer, value: String,
-    limit!: Int64 = AGENT_FIELD_LIMIT): Unit {
-    appendSearchJsonString(out, agentTruncate(value, limit))
-}
-
-private func appendAgentJsonNullable(out: RenderTextBuffer, value: ?String,
-    limit!: Int64 = AGENT_FIELD_LIMIT): Unit {
-    match (value) {
-        case Some(text) => appendAgentJsonText(out, text, limit: limit)
-        case None => out.append("null")
-    }
-}
 
 private func agentSymbolSummary(symbol: SymbolDoc): ?String {
     match (symbol.documentation) {
@@ -99,10 +86,10 @@ private func agentSymbolSummary(symbol: SymbolDoc): ?String {
     }
 }
 
-private func agentNavigationPages(documentation: DocumentationSet,
+private func agentNavigationPages(context: DocumentationReadSnapshot,
     conceptualPages: Array<DocumentationPage>, includeValidation: Bool): ArrayList<AgentNavigationPage> {
-    validateTypedDocumentationSet(documentation)
-    let projection = RenderProjection(documentation)
+    let documentation = context.documentation
+    let projection = context.projection
     let pages = ArrayList<AgentNavigationPage>()
     pages.add(AgentNavigationPage("cjdoc:page:index", "project", documentation.project.name,
         "index.html"))
@@ -138,68 +125,13 @@ private func agentNavigationPages(documentation: DocumentationSet,
     pages
 }
 
-private func agentJsonStringBound(value: String, limit: Int64): Int64 {
-    let selected = agentTruncate(value, limit)
-    2 + 6 * selected.size
-}
-
-private func agentJsonNullableBound(value: ?String): Int64 {
-    match (value) {
-        case Some(text) => agentJsonStringBound(text, AGENT_FIELD_LIMIT)
-        case None => 4
-    }
-}
-
-private func agentNavigationPageBound(page: AgentNavigationPage): Int64 {
-    "{\"id\":".size + agentJsonStringBound(page.id, AGENT_FIELD_LIMIT) +
-        ",\"kind\":".size + agentJsonStringBound(page.kind, AGENT_FIELD_LIMIT) +
-        ",\"title\":".size + agentJsonStringBound(page.title, AGENT_FIELD_LIMIT) +
-        ",\"href\":".size + agentJsonStringBound(page.href, AGENT_FIELD_LIMIT) +
-        ",\"summary\":".size + agentJsonNullableBound(page.summary) +
-        ",\"symbolId\":".size + agentJsonNullableBound(page.symbolId) +
-        ",\"moduleId\":".size + agentJsonNullableBound(page.moduleId) +
-        ",\"packageName\":".size + agentJsonNullableBound(page.packageName) +
-        ",\"semanticState\":".size + agentJsonNullableBound(page.semanticState) +
-        1
-}
-
-private func renderAgentNavigationIndex(documentation: DocumentationSet,
-    pages: ArrayList<AgentNavigationPage>, version: ?String): String {
-    let out = RenderTextBuffer(limit: AGENT_NAVIGATION_LIMIT)
-    out.append("{\n  \"schemaVersion\":\"cjdoc.navigation-index/1\",\n  \"project\":{")
-    out.append("\"name\":"); appendAgentJsonText(out, documentation.project.name)
-    out.append(",\"audience\":"); appendAgentJsonText(out, documentation.configuration.audience)
-    out.append(",\"version\":"); appendAgentJsonNullable(out, version)
-    out.append("},\n  \"pages\":[")
-    let closing = "\n  ]\n}\n"
-    var first = true
-    for (page in pages) {
-        let separator = if (first) { "\n    " } else { ",\n    " }
-        if (out.size + separator.size + agentNavigationPageBound(page) + closing.size >
-            AGENT_NAVIGATION_LIMIT) { break }
-        out.append(separator)
-        out.append("{\"id\":"); appendAgentJsonText(out, page.id)
-        out.append(",\"kind\":"); appendAgentJsonText(out, page.kind)
-        out.append(",\"title\":"); appendAgentJsonText(out, page.title)
-        out.append(",\"href\":"); appendAgentJsonText(out, page.href)
-        out.append(",\"summary\":"); appendAgentJsonNullable(out, page.summary)
-        out.append(",\"symbolId\":"); appendAgentJsonNullable(out, page.symbolId)
-        out.append(",\"moduleId\":"); appendAgentJsonNullable(out, page.moduleId)
-        out.append(",\"packageName\":"); appendAgentJsonNullable(out, page.packageName)
-        out.append(",\"semanticState\":"); appendAgentJsonNullable(out, page.semanticState)
-        out.append("}")
-        first = false
-    }
-    out.append(closing)
-    out.toString()
-}
 
 private func agentMarkdownLabel(value: String): String {
     agentOneLine(value).replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
 }
 
 private func agentMarkdownDestination(value: String): String {
-    let selected = agentTruncate(value, AGENT_FIELD_LIMIT)
+    let selected = value
     let safe = selected.replace("\\", "%5C").replace("<", "%3C").replace(">", "%3E")
     "<${safe}>"
 }
@@ -207,8 +139,9 @@ private func agentLinkText(title: String, href: String): String {
     "- [${agentMarkdownLabel(title)}](${agentMarkdownDestination(href)})\n"
 }
 
-private func renderAgentLlms(documentation: DocumentationSet,
-    pages: ArrayList<AgentNavigationPage>, version: ?String): String {
+private func renderAgentLlms(context: DocumentationReadSnapshot,
+    pages: ArrayList<AgentNavigationPage>, version: ?String, includeFull: Bool): String {
+    let documentation = context.documentation
     let out = RenderTextBuffer(limit: AGENT_LLMS_LIMIT)
     if (!agentAppendFixed(out, "# ", AGENT_LLMS_LIMIT)) { return out.toString() }
     agentAppendLimited(out, agentOneLine(documentation.project.name), AGENT_LLMS_LIMIT, reserve: 2)
@@ -230,6 +163,13 @@ private func renderAgentLlms(documentation: DocumentationSet,
     if (!agentAppendFixed(out, "- [Navigation index](navigation-index.json)\n", AGENT_LLMS_LIMIT)) { return out.toString() }
     if (!agentAppendFixed(out, "- [Symbol index](symbol-index.json)\n", AGENT_LLMS_LIMIT)) { return out.toString() }
     if (!agentAppendFixed(out, "- [Search index](search-index.json)\n", AGENT_LLMS_LIMIT)) { return out.toString() }
+    out.append("- [Machine manifest and independent declarations](agent/manifest.json)\n")
+    out.append("\nThis is a selected directory, not a complete enumeration. Follow navigation-index.json and its actual continuation files. Snapshot: " +
+        context.snapshotId + ".\n")
+    if (includeFull) {
+        out.append("- [Full reference and continuation](llms-full.txt)\n")
+        out.append("- [Full reference part manifest](agent-full-index.json)\n")
+    }
 
     var conceptCount: Int64 = 0
     for (page in pages) {
@@ -272,155 +212,32 @@ private func renderAgentLlms(documentation: DocumentationSet,
     out.toString()
 }
 
-private func agentAppendDocumentation(out: RenderTextBuffer, symbol: SymbolDoc): Bool {
-    match (symbol.documentation) {
-        case Some(comment) =>
-            if (!comment.description.trimAscii().isEmpty()) {
-                if (!agentAppendFixed(out, "\n", AGENT_FULL_LIMIT)) { return false }
-                agentAppendLimited(out, agentTruncate(comment.description, AGENT_CONCEPT_LIMIT),
-                    AGENT_FULL_LIMIT, reserve: 1)
-                if (!agentAppendFixed(out, "\n", AGENT_FULL_LIMIT)) { return false }
-            }
-            for (tag in comment.tags) {
-                if (tag.name != "return" && tag.name != "returns" && tag.name != "throws" &&
-                    tag.name != "example" && tag.name != "deprecated" && tag.name != "since") {
-                    continue
-                }
-                if (!agentAppendFixed(out, "- @", AGENT_FULL_LIMIT)) { return false }
-                agentAppendLimited(out, agentOneLine(tag.name), AGENT_FULL_LIMIT, reserve: 2)
-                if (!tag.subject.isEmpty()) {
-                    if (!agentAppendFixed(out, " ", AGENT_FULL_LIMIT)) { return false }
-                    agentAppendLimited(out, agentOneLine(tag.subject), AGENT_FULL_LIMIT, reserve: 2)
-                }
-                if (!tag.description.isEmpty()) {
-                    if (!agentAppendFixed(out, ": ", AGENT_FULL_LIMIT)) { return false }
-                    agentAppendLimited(out, agentOneLine(tag.description, limit: AGENT_CONCEPT_LIMIT),
-                        AGENT_FULL_LIMIT, reserve: 1)
-                }
-                if (!agentAppendFixed(out, "\n", AGENT_FULL_LIMIT)) { return false }
-            }
-            true
-        case None => true
-    }
-}
-
-private func renderAgentFull(documentation: DocumentationSet,
-    conceptualPages: Array<DocumentationPage>, version: ?String): String {
-    let out = RenderTextBuffer(limit: AGENT_FULL_LIMIT)
-    if (!agentAppendFixed(out, "# ", AGENT_FULL_LIMIT)) { return out.toString() }
-    agentAppendLimited(out, agentOneLine(documentation.project.name), AGENT_FULL_LIMIT, reserve: 2)
-    if (!agentAppendFixed(out, "\n\nAudience: ", AGENT_FULL_LIMIT)) { return out.toString() }
-    agentAppendLimited(out, documentation.configuration.audience, AGENT_FULL_LIMIT, reserve: 12)
-    match (version) {
-        case Some(value) =>
-            if (!agentAppendFixed(out, "\nVersion: ", AGENT_FULL_LIMIT)) { return out.toString() }
-            agentAppendLimited(out, agentOneLine(value), AGENT_FULL_LIMIT, reserve: 2)
-        case None => ()
-    }
-    if (!agentAppendFixed(out, "\n\n", AGENT_FULL_LIMIT)) { return out.toString() }
-    if (!conceptualPages.isEmpty()) {
-        if (!agentAppendFixed(out, "## Conceptual documentation\n\n", AGENT_FULL_LIMIT)) {
-            return out.toString()
-        }
-        for (page in conceptualPages) {
-            if (!agentAppendFixed(out, "### ", AGENT_FULL_LIMIT)) { return out.toString() }
-            agentAppendLimited(out, agentOneLine(page.title), AGENT_FULL_LIMIT, reserve: 15)
-            if (!agentAppendFixed(out, "\n\nStable page: ", AGENT_FULL_LIMIT)) {
-                return out.toString()
-            }
-            agentAppendLimited(out, page.route, AGENT_FULL_LIMIT, reserve: 2)
-            if (!page.text.trimAscii().isEmpty()) {
-                if (!agentAppendFixed(out, "\n\n", AGENT_FULL_LIMIT)) { return out.toString() }
-                agentAppendLimited(out, agentTruncate(page.text, AGENT_CONCEPT_LIMIT),
-                    AGENT_FULL_LIMIT, reserve: 2)
-            }
-            if (!agentAppendFixed(out, "\n\n", AGENT_FULL_LIMIT)) { return out.toString() }
-        }
-    }
-
-    let projection = RenderProjection(documentation)
-    let symbols = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
-    sort(symbols, lessThan: { left, right => left.id < right.id }, stable: true)
-    let packages = ArrayList<ProjectedPackage>(projection.packages.toArray())
-    sort(packages, lessThan: { left, right => left.source.name < right.source.name }, stable: true)
-    if (!agentAppendFixed(out, "## API packages\n\n", AGENT_FULL_LIMIT)) { return out.toString() }
-    for (pkg in packages) {
-        if (!agentAppendFixed(out, "### ", AGENT_FULL_LIMIT)) { return out.toString() }
-        agentAppendLimited(out, agentOneLine(pkg.source.name), AGENT_FULL_LIMIT, reserve: 15)
-        if (!agentAppendFixed(out, "\n\nStable page: ", AGENT_FULL_LIMIT)) { return out.toString() }
-        agentAppendLimited(out, packagePagePath(pkg.source.moduleId, pkg.source.name),
-            AGENT_FULL_LIMIT, reserve: 2)
-        if (!agentAppendFixed(out, "\n\n", AGENT_FULL_LIMIT)) { return out.toString() }
-    }
-    if (!agentAppendFixed(out, "## Public symbols\n\n", AGENT_FULL_LIMIT)) { return out.toString() }
-    for (symbol in symbols) {
-        if (!agentAppendFixed(out, "### ", AGENT_FULL_LIMIT)) { return out.toString() }
-        agentAppendLimited(out, agentOneLine(symbol.qualifiedName), AGENT_FULL_LIMIT, reserve: 16)
-        if (!agentAppendFixed(out, "\n\nStable id: ", AGENT_FULL_LIMIT)) { return out.toString() }
-        agentAppendLimited(out, symbol.id, AGENT_FULL_LIMIT, reserve: 7)
-        if (!agentAppendFixed(out, "\nPage: ", AGENT_FULL_LIMIT)) { return out.toString() }
-        agentAppendLimited(out, symbolUrl(projection.visibleIndex, symbol), AGENT_FULL_LIMIT, reserve: 7)
-        if (!agentAppendFixed(out, "\nKind: ", AGENT_FULL_LIMIT)) { return out.toString() }
-        agentAppendLimited(out, agentOneLine(symbol.kind), AGENT_FULL_LIMIT, reserve: 20)
-        if (!agentAppendFixed(out, "\nSemantic state: ", AGENT_FULL_LIMIT)) { return out.toString() }
-        agentAppendLimited(out, symbol.semantic.state, AGENT_FULL_LIMIT, reserve: 8)
-        if (!symbol.headerSpelling.trimAscii().isEmpty()) {
-            if (!agentAppendFixed(out, "\n\n```cj\n", AGENT_FULL_LIMIT)) { return out.toString() }
-            agentAppendLimited(out, agentTruncate(symbol.headerSpelling, AGENT_FIELD_LIMIT),
-                AGENT_FULL_LIMIT, reserve: 5)
-            if (!agentAppendFixed(out, "\n```\n", AGENT_FULL_LIMIT)) { return out.toString() }
-        }
-        match (symbol.documentation) {
-            case Some(comment) =>
-                if (!comment.summary.trimAscii().isEmpty()) {
-                    if (!agentAppendFixed(out, "\nSummary: ", AGENT_FULL_LIMIT)) { return out.toString() }
-                    agentAppendLimited(out, agentOneLine(comment.summary), AGENT_FULL_LIMIT, reserve: 1)
-                    if (!agentAppendFixed(out, "\n", AGENT_FULL_LIMIT)) { return out.toString() }
-                }
-            case None => ()
-        }
-        for (parameter in symbol.parameters) {
-            if (!agentAppendFixed(out, "- Parameter `", AGENT_FULL_LIMIT)) { return out.toString() }
-            agentAppendLimited(out, agentOneLine(parameter.name), AGENT_FULL_LIMIT, reserve: 3)
-            if (!agentAppendFixed(out, "`: ", AGENT_FULL_LIMIT)) { return out.toString() }
-            agentAppendLimited(out, agentOneLine(parameter.typeRef.spelling), AGENT_FULL_LIMIT, reserve: 3)
-            match (parameter.documentation) {
-                case Some(text) =>
-                    if (!text.trimAscii().isEmpty()) {
-                        if (!agentAppendFixed(out, " — ", AGENT_FULL_LIMIT)) { return out.toString() }
-                        agentAppendLimited(out, agentOneLine(text, limit: AGENT_CONCEPT_LIMIT),
-                            AGENT_FULL_LIMIT, reserve: 1)
-                    }
-                case None => ()
-            }
-            if (!agentAppendFixed(out, "\n", AGENT_FULL_LIMIT)) { return out.toString() }
-        }
-        match (symbol.returnType) {
-            case Some(returnType) =>
-                if (!agentAppendFixed(out, "Return: ", AGENT_FULL_LIMIT)) { return out.toString() }
-                agentAppendLimited(out, agentOneLine(returnType.spelling), AGENT_FULL_LIMIT, reserve: 1)
-                if (!agentAppendFixed(out, "\n", AGENT_FULL_LIMIT)) { return out.toString() }
-            case None => ()
-        }
-        if (!agentAppendDocumentation(out, symbol)) { return out.toString() }
-        if (!agentAppendFixed(out, "\n", AGENT_FULL_LIMIT)) { return out.toString() }
-    }
-    out.toString()
-}
+/**
+ * Render the machine-readable companions deployed inside an HTML document root.
+ * Independent declarations and continuations are actual bounded artifacts;
+ * callers publishing these companions also publish the corresponding HTML site.
+ */
 public func renderAgentReadableArtifacts(documentation: DocumentationSet,
     includeFull!: Bool = false, version!: ?String = None,
-    includeValidation!: Bool = false): Array<RenderArtifact> {
-    let locale = documentation.readingLanguage.getOrDefault({ => "en" })
-    let concepts = selectedDocumentationPages(documentation, locale)
-    let pages = agentNavigationPages(documentation, concepts, includeValidation)
-    let artifacts = ArrayList<RenderArtifact>()
-    artifacts.add(RenderArtifact("html/navigation-index.json", "application/json",
-        renderAgentNavigationIndex(documentation, pages, version)))
-    artifacts.add(RenderArtifact("html/llms.txt", "text/plain; charset=utf-8",
-        renderAgentLlms(documentation, pages, version)))
-    if (includeFull) {
-        artifacts.add(RenderArtifact("html/llms-full.txt", "text/plain; charset=utf-8",
-            renderAgentFull(documentation, concepts.toArray(), version)))
-    }
+    includeValidation!: Bool = false,
+    reports!: Array<DocumentationReportAttachment> = []): Array<RenderArtifact> {
+    let context = DocumentationReadSnapshot(documentation, version: version)
+    let artifacts = RenderArtifactCollector()
+    appendAgentReadableArtifacts(artifacts, context, includeFull: includeFull,
+        version: version, includeValidation: includeValidation, reports: reports)
     artifacts.toArray()
+}
+
+internal func appendAgentReadableArtifacts(artifacts: RenderArtifactCollector,
+    context: DocumentationReadSnapshot, includeFull!: Bool = false,
+    version!: ?String = None, includeValidation!: Bool = false,
+    reports!: Array<DocumentationReportAttachment> = []): Unit {
+    let concepts = selectedDocumentationPages(context.documentation, context.locale)
+    let pages = agentNavigationPages(context, concepts, includeValidation)
+    appendAgentNavigationArtifacts(artifacts, context, pages, version,
+        includeValidation: includeValidation)
+    appendAgentDeclarationArtifacts(artifacts, context, includeFull: includeFull, reports: reports)
+    artifacts.addText("html/llms.txt", "text/plain; charset=utf-8",
+        renderAgentLlms(context, pages, version, includeFull))
+    if (includeFull) { appendAgentFullArtifacts(artifacts, context, concepts) }
 }

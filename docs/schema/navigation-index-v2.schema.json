@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/navigation-index-v2.schema.json",
+  "title": "cjdoc agent navigation index v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "project", "scope", "queryId", "apiCollectionState", "completeness", "pagination", "pages"],
+  "properties": {
+    "schemaVersion": {"const": "cjdoc.navigation-index/2"},
+    "project": {"$ref": "#/$defs/project"},
+    "scope": {"$ref": "#/$defs/scope"},
+    "queryId": {"type": "string", "pattern": "^cjdoc:query:v1:[0-9a-f]{64}$"},
+    "apiCollectionState": {"enum": ["resolved", "partial", "unavailable"]},
+    "completeness": {
+      "type": "object", "additionalProperties": false,
+      "required": ["enumerationComplete", "contentComplete"],
+      "properties": {
+        "enumerationComplete": {"type": "boolean"},
+        "contentComplete": {"type": "boolean"}
+      }
+    },
+    "pagination": {
+      "type": "object", "additionalProperties": false,
+      "required": ["offset", "returned", "total", "part", "parts", "next", "pathBase"],
+      "properties": {
+        "offset": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "returned": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "total": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "part": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "parts": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "next": {"anyOf": [{"$ref": "#/$defs/safePath"}, {"type": "null"}]},
+        "pathBase": {"const": "document-root"}
+      }
+    },
+    "pages": {"type": "array", "maxItems": 1000000, "items": {"$ref": "#/$defs/page"}}
+  },
+  "allOf": [
+    {"if": {"required": ["pagination"], "properties": {"pagination": {"required": ["parts"],
+      "properties": {"parts": {"const": 1}}}}},
+     "then": {"required": ["completeness"], "properties": {"completeness": {
+       "required": ["enumerationComplete"],
+       "properties": {"enumerationComplete": {"const": true}}}}}},
+    {"if": {"required": ["pagination"], "properties": {"pagination": {"required": ["parts"],
+      "properties": {"parts": {"minimum": 2}}}}},
+     "then": {"required": ["completeness"], "properties": {"completeness": {
+       "required": ["enumerationComplete"],
+       "properties": {"enumerationComplete": {"const": false}}}}}}
+  ],
+  "$defs": {
+    "safePath": {
+      "type": "string", "minLength": 1,
+      "not": {"anyOf": [
+        {"pattern": "^/"},
+        {"pattern": "\\\\"},
+        {"pattern": ":"},
+        {"pattern": "[?]"},
+        {"pattern": "[#]"},
+        {"pattern": "(^|/)[.][.]?(/|$)"},
+        {"pattern": "//"},
+        {"pattern": "/$"}
+      ]}
+    },
+    "scope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["snapshotId", "audience", "language", "order", "includeValidation"],
+      "properties": {
+        "snapshotId": {"type": "string", "pattern": "^cjdoc:snapshot:v1:[0-9a-f]{64}$"},
+        "audience": {"enum": ["external", "package", "all"]},
+        "language": {"type": "string"},
+        "order": {"const": "href,id"},
+        "includeValidation": {"type": "boolean"}
+      }
+    },
+    "project": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "audience", "version"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "audience": {"enum": ["external", "package", "all"]},
+        "version": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]}
+      }
+    },
+    "page": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "title", "href", "summary", "summaryState", "symbolId", "moduleId", "packageName", "semanticState"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1},
+        "title": {"type": "string"},
+        "href": {"$ref": "#/$defs/safePath"},
+        "summary": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "summaryState": {"enum": ["complete", "missing", "budget_omitted"]},
+        "symbolId": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "moduleId": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "packageName": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "semanticState": {"anyOf": [{"type": "string"}, {"type": "null"}]}
+      },
+      "allOf": [
+        {"if": {"required": ["summaryState"], "properties": {"summaryState": {"const": "complete"}}},
+         "then": {"properties": {"summary": {"type": "string"}}}},
+        {"if": {"required": ["summaryState"], "properties": {"summaryState": {"const": "missing"}}},
+         "then": {"properties": {"summary": {"type": "null"}}}},
+        {"if": {"required": ["summaryState"], "properties": {"summaryState": {"const": "budget_omitted"}}},
+         "then": {"properties": {"summary": {"type": "string"}}}}
+      ]
+    }
+  }
+}

@@ -59,6 +59,13 @@ SCHEMA_PAYLOAD = {
     "docs/schema/api-diff.schema.json",
     "docs/schema/documentation-coverage.schema.json",
     "docs/schema/documentation-quality.schema.json",
+    "docs/schema/navigation-index-v2.schema.json",
+    "docs/schema/agent-full-index.schema.json",
+    "docs/schema/declaration.schema.json",
+    "docs/schema/page.schema.json",
+    "docs/schema/machine-manifest.schema.json",
+    "docs/schema/query-request.schema.json",
+    "docs/schema/query-result.schema.json",
 }
 REPOSITORY_PAYLOAD = {
     "README.md": "README.md",

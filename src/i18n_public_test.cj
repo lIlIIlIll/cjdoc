@@ -490,7 +490,7 @@ class I18nPublicApiTest {
             @Expect(documentation.declarations.size, 1)
             @Expect(documentation.declarations[0].parameters.size, 2)
             let serialized = api_render.encodeDocIr(documentation)
-            let english = renderedContent(api_render.renderDocumentationFormatsWithOptions(
+            let english = renderedHtmlContent(api_render.renderDocumentationFormatsWithOptions(
                 api_render.decodeDocIr(serialized), ["html"], locale: "en"))
             @Expect(english.contains("Adds two integers."))
             @Expect(english.contains("The left operand."))

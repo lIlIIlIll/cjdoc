@@ -106,7 +106,14 @@ def publish_compatibility(repo: Path, site: Path, current: Path, result: dict) -
               "api-diff.json": result["locales"]["en"]["diff"],
               "demo-docs.json": demo / "docs.json",
               "native-check.json": result["checks"] / "native-check.json"}
-    for name in ("navigation-index.json", "symbol-index.json", "search-index.json", "llms.txt", "llms-full.txt"):
+    # v2 enumerates through real continuation files, and the aggregate full
+    # reference does the same, so every deployed part is copied, not just part 0.
+    for name in sorted(path.name for path in (current / "html").glob("navigation-index*.json")):
+        inputs[name] = current / "html" / name
+    for name in sorted(path.name for path in (current / "html").glob("llms-full*.txt")):
+        inputs[name] = current / "html" / name
+    for name in ("symbol-index.json", "search-index.json", "llms.txt",
+                 "agent-full-index.json"):
         inputs[name] = current / "html" / name
     for name, path in inputs.items():
         if name in ("docs.json", "demo-docs.json"):
@@ -115,6 +122,13 @@ def publish_compatibility(repo: Path, site: Path, current: Path, result: dict) -
             target.write_bytes(canonical_json(publication_projection(load_json(path))))
         else:
             copy_file(path, site / "artifacts" / name)
+    # The machine manifest addresses every packaged resource relative to its own
+    # document root, so the whole `agent/` bundle is published with that layout.
+    # Flattening it would leave the manifest naming files that do not exist.
+    bundle = current / "html" / "agent"
+    if not (bundle / "manifest.json").is_file():
+        raise ContractError("native output has no machine manifest to publish")
+    shutil.copytree(bundle, site / "artifacts/agent")
     shutil.copytree(repo / "docs/schema", site / "schemas")
     links = ''.join('<li><a href="' + html.escape(path.name) + '">' + html.escape(path.name) + '</a></li>'
                     for path in sorted((site / "schemas").glob("*.json")))

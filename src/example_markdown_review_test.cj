@@ -79,7 +79,7 @@ class ExampleMarkdownReviewTest {
         }
         let artifacts = api_render.HtmlDocumentationRenderer().render(documentation)
         for (artifact in artifacts) { @Expect(artifact.mediaType != "image/gif") }
-        let html = renderedContent(artifacts)
+        let html = renderedHtmlContent(artifacts)
         // The legacy path displayed literal Markdown, not an image element.
         @Expect(html.contains("![pixel](pixel.gif)"))
         @Expect(html.contains("![missing](missing.gif)"))

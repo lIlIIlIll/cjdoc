@@ -4,6 +4,7 @@ from __future__ import annotations
 from urllib.parse import unquote, urljoin, urlsplit
 
 from .browser_support import Journey, click_and_return, copy_code, require_text, assert_native_symbol, assert_native_id, directory_navigation, member_action
+from .site import load_json, load_navigation_index
 
 
 def selected_member(journey: Journey):
@@ -316,8 +317,13 @@ def machine(journey: Journey):
     selected = [item for item in ir["declarations"] if item["id"] == target["resolved"]["symbolId"]]
     if len(selected) != 1 or selected[0]["headerSpelling"] != target["signature"]:
         raise AssertionError("HTML and machine Doc IR disagree on the selected native declaration")
-    navigation = journey.raw('[data-machine-format="navigation"]', "cjdoc.navigation-index/1")
-    if navigation["project"]["version"] != target["version"]:
+    # Read the raw part-0 artifact through the browser, then enumerate every
+    # published continuation from the site so a multi-part index is followed to
+    # completion instead of silently trusting the first file.
+    first = journey.raw('[data-machine-format="navigation"]', "cjdoc.navigation-index/2")
+    navigation = load_navigation_index(
+        lambda name: load_json(journey.site.file(name)), "navigation-index.json")
+    if first != navigation or navigation["project"]["version"] != target["version"]:
         raise AssertionError("navigation index is for a different documentation version")
     rows = [item for item in navigation["pages"] if item.get("symbolId") == selected[0]["id"]]
     if len(rows) != 1 or not target["resolved"]["href"].endswith(rows[0]["href"]):

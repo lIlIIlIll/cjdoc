@@ -46,6 +46,15 @@ internal func renderedContent(artifacts: Array<api_render.RenderArtifact>): Stri
     out.toString()
 }
 
+internal func renderedHtmlContent(artifacts: Array<api_render.RenderArtifact>): String {
+    let out = StringBuilder()
+    for (artifact in artifacts where artifact.path.endsWith(".html")) {
+        out.append("\n--- ${artifact.path} ---\n")
+        out.append(artifact.content)
+    }
+    out.toString()
+}
+
 internal func hasArtifactPrefix(artifacts: Array<api_render.RenderArtifact>, prefix: String): Bool {
     for (artifact in artifacts) {
         if (artifact.path.startsWith(prefix)) {

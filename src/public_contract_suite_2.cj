@@ -52,7 +52,7 @@ class PublicApiContractsSuite2 {
             children: [api_model.MarkdownNode("paragraph",
                 children: [api_model.MarkdownNode("text", literal: "AST truth")])])
         let documentation = rendererFixture(markdown, "SUMMARY-LIE-<script>alert(1)</script>")
-        let html = renderedContent(api_render.HtmlDocumentationRenderer().render(documentation))
+        let html = renderedHtmlContent(api_render.HtmlDocumentationRenderer().render(documentation))
         let renderedMarkdown = renderedContent(api_render.MarkdownDocumentationRenderer().render(documentation))
         @Expect(html.contains("AST truth"))
         @Expect(renderedMarkdown.contains("AST truth"))

@@ -28,10 +28,14 @@ internal func reserveRenderBytes(current: Int64, incoming: Int64, limit: Int64,
     current + incoming
 }
 
+internal let RENDER_TEXT_CHUNK_BYTES: Int64 = 1024 * 1024
+
 internal class RenderTextBuffer {
-    private let storage = StringBuilder()
+    private var storage = StringBuilder()
+    private var fragments: ?ArrayList<String> = None
     private let limit: Int64
     private var bytesWritten: Int64 = 0
+    private var storageBytes: Int64 = 0
 
     init(limit!: Int64 = RENDER_ARTIFACT_LIMIT) {
         if (limit < 0 || limit > RENDER_ARTIFACT_LIMIT) {
@@ -40,10 +44,32 @@ internal class RenderTextBuffer {
         this.limit = limit
     }
 
+    private func appendFragment(value: String): Unit {
+        match (fragments) {
+            case Some(values) => values.add(value)
+            case None => fragments = Some(ArrayList<String>([value]))
+        }
+    }
+
+    private func flushStorage(): Unit {
+        if (storageBytes == 0) { return }
+        appendFragment(storage.toString())
+        storage = StringBuilder()
+        storageBytes = 0
+    }
+
     func append(value: String): Unit {
         bytesWritten = reserveRenderBytes(bytesWritten, value.size, limit,
             "renderer text buffer")
+        if (value.isEmpty()) { return }
+        if (value.size >= RENDER_TEXT_CHUNK_BYTES) {
+            flushStorage()
+            appendFragment(value)
+            return
+        }
+        if (storageBytes > RENDER_TEXT_CHUNK_BYTES - value.size) { flushStorage() }
         storage.append(value)
+        storageBytes += value.size
     }
 
     func append(value: Rune): Unit {
@@ -52,12 +78,25 @@ internal class RenderTextBuffer {
             else if (code <= 0xFFFFu32) { 3 } else { 4 }
         bytesWritten = reserveRenderBytes(bytesWritten, width, limit,
             "renderer text buffer")
+        if (storageBytes > RENDER_TEXT_CHUNK_BYTES - width) { flushStorage() }
         storage.append(value)
+        storageBytes += width
     }
 
     prop size: Int64 { get() { bytesWritten } }
 
-    func toString(): String { storage.toString() }
+    func toString(): String {
+        match (fragments) {
+            case None => storage.toString()
+            case Some(values) =>
+                // Large pages must not geometrically grow a second contiguous
+                // payload while immutable machine artifacts remain live.
+                let joined = StringBuilder(bytesWritten)
+                for (value in values) { joined.append(value) }
+                if (storageBytes > 0) { joined.append(storage.toString()) }
+                joined.toString()
+        }
+    }
 }
 
 public class RenderArtifact {
@@ -149,6 +188,11 @@ internal class RenderArtifactCollector {
     func addText(path: String, mediaType: String, content: String): Unit {
         reserve(content.size, path)
         artifacts.add(RenderArtifact(path, mediaType, content))
+    }
+
+    func add(artifact: RenderArtifact): Unit {
+        reserve(artifact.byteSize, artifact.path)
+        artifacts.add(artifact)
     }
 
     func addOwnedBytes(path: String, mediaType: String, bytes: Array<Byte>): Unit {

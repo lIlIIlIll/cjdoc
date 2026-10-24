@@ -66,7 +66,8 @@ internal func prepareOutputTransaction(root: Path, artifacts: Array<RenderArtifa
             let target = stage.join(artifact.path)
             let ignored = ArrayList<Path>()
             ensureParentDirectories(stage, artifact.path, ignored, lock)
-            lockedFileWrite(target, artifact.bytes, lock)
+            if (artifact.isBinary) { lockedFileWrite(target, artifact.bytes, lock) }
+            else { lockedTextFileWrite(target, artifact.content, lock) }
             let expected = nextByPath[artifact.path].digest
             if (digestRegularFile(target, "staged output artifact", stageBudget) != expected) {
                 throw IllegalStateException("staged output digest mismatch for '${artifact.path}'")

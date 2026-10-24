@@ -63,9 +63,25 @@ fi
 test -d "${schema_dir}"
 stage_dir="$(mktemp -d "${schema_parent}/.schema.XXXXXX")"
 
-for schema_name in doc-ir doc-ir-v16 diagnostics cfg-matrix search-index search-index-v9 symbol-index navigation-index api-surface api-surface-v3 api-diff api-diff-v2 documentation-coverage documentation-quality versions versions-v2 translation-coverage site-manifest; do
+# Each entry is `<published file stem>=<CLI schema name>`. The published v1
+# navigation file stays byte-frozen, so the CLI alias that now returns v2 is
+# exported to the v2 file and the explicit v1 name republishes the frozen file
+# unchanged. Every other name matches its file.
+for entry in \
+    doc-ir=doc-ir doc-ir-v16=doc-ir-v16 diagnostics=diagnostics cfg-matrix=cfg-matrix \
+    search-index=search-index search-index-v9=search-index-v9 symbol-index=symbol-index \
+    navigation-index=navigation-index-v1 navigation-index-v2=navigation-index \
+    api-surface=api-surface api-surface-v3=api-surface-v3 \
+    api-diff=api-diff api-diff-v2=api-diff-v2 \
+    documentation-coverage=documentation-coverage documentation-quality=documentation-quality \
+    versions=versions versions-v2=versions-v2 translation-coverage=translation-coverage \
+    site-manifest=site-manifest \
+    agent-full-index=agent-full-index declaration=declaration page=page \
+    machine-manifest=machine-manifest query-request=query-request query-result=query-result; do
+    published="${entry%%=*}"
+    schema_name="${entry#*=}"
     "${binary}" schema "${schema_name}" | tr -d '\r' \
-        >"${stage_dir}/${schema_name}.schema.json"
+        >"${stage_dir}/${published}.schema.json"
 done
 
 "${python_cmd}" - "${stage_dir}" <<'PY'
@@ -82,9 +98,12 @@ if actual != expected:
         "schema set mismatch: missing=" + ",".join(sorted(expected - actual)) +
         " unexpected=" + ",".join(sorted(actual - expected))
     )
+frozen_definitions = strict_load(
+    root / "doc-ir-v16.schema.json", description="generated frozen Doc IR v16 schema"
+)["$defs"]
 for name in SCHEMA_NAMES:
     value = strict_load(root / f"{name}.schema.json", description=f"generated {name} schema")
-    validate_schema_document(name, value)
+    validate_schema_document(name, value, frozen_definitions)
 PY
 
 backup_dir="${schema_parent}/.schema.backup.$$"

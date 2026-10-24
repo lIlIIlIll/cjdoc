@@ -158,13 +158,17 @@ private class CapturedPageLinkResolver {
     let page: DocumentationPage
     let prefix: String
     let markdown: Bool
+    let relocated: Bool
     let originals = HashMap<String, DocumentationPage>()
     let selectedPages = HashMap<String, DocumentationPage>()
     let ambiguousSources = HashSet<String>()
 
     init(documentation: DocumentationSet, page: DocumentationPage,
-        pages: Array<DocumentationPage>, markdown: Bool) {
-        this.page = page; this.prefix = pageRootPrefix(page.route); this.markdown = markdown
+        pages: Array<DocumentationPage>, markdown: Bool, outputPath!: ?String = None) {
+        this.page = page
+        this.prefix = pageRootPrefix(outputPath.getOrDefault({ => page.route }))
+        this.markdown = markdown
+        this.relocated = outputPath.isSome()
         for (original in documentation.pages) {
             for (selected in pages where original.id == selected.id) {
                 if (originals.contains(original.source) &&
@@ -185,7 +189,9 @@ private class CapturedPageLinkResolver {
             let parts = tree.literal.split("#", 2)
             if (parts[0].isEmpty() && parts.size == 2) {
                 if (let Some(anchor) <- documentationSectionAnchor(page.markdown, parts[1])) {
-                    result[tree.literal] = "#" + if (markdown) { anchor.removePrefix("standalone--doc-") } else { anchor }
+                    result[tree.literal] = if (relocated && !markdown) {
+                        prefix + page.route + "#" + anchor
+                    } else { "#" + if (markdown) { anchor.removePrefix("standalone--doc-") } else { anchor } }
                 }
             }
             let path = if (parts[0].isEmpty()) { "" } else { capturedSourcePath(page.source, parts[0]) }
@@ -204,9 +210,10 @@ private class CapturedPageLinkResolver {
 }
 
 internal func capturedPageSourceLinks(documentation: DocumentationSet, page: DocumentationPage,
-    pages: Array<DocumentationPage>, markdown!: Bool = false): HashMap<String, String> {
+    pages: Array<DocumentationPage>, markdown!: Bool = false,
+    outputPath!: ?String = None): HashMap<String, String> {
     let result = HashMap<String, String>()
-    CapturedPageLinkResolver(documentation, page, pages, markdown).collect(page.markdown, result)
+    CapturedPageLinkResolver(documentation, page, pages, markdown, outputPath: outputPath).collect(page.markdown, result)
     result
 }
 
@@ -288,13 +295,14 @@ internal func capturedPageBindingsHtml(page: DocumentationPage, documentation: D
 }
 
 internal func appendCapturedPageBindingsMarkdown(out: RenderTextBuffer,
-    page: DocumentationPage, documentation: DocumentationSet, locale: String): Unit {
+    page: DocumentationPage, documentation: DocumentationSet, locale: String,
+    pagePath!: ?String = None, canonicalHtml!: Bool = false): Unit {
     if (page.bindings.isEmpty()) { return }
     out.append("\n## " + label(locale, "API associations", "API 关联") + "\n\n")
     let visible = RenderProjection(documentation).visibleIndex
     for (binding in page.bindings) {
         let target = CapturedPageBindingTarget(binding, visible)
-        let destination = target.destination(pageRootPrefix(page.route), true)
+        let destination = target.destination(pageRootPrefix(pagePath.getOrDefault({ => page.route })), !canonicalHtml)
         out.append("- **" + target.stateLabel(locale) + "** ")
         if (!target.hidden) {
             let spelling = match (target.symbol) { case Some(value) => value.qualifiedName; case None => binding.target }

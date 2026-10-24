@@ -244,11 +244,19 @@ internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: 
     documentation: DocumentationSet, projection: RenderProjection,
     locale!: String = "en", currentPackagePath!: ?String = None,
     currentRoute!: String = "overview", docVersion!: ?String = None,
-    currentSymbol!: ?SymbolDoc = None): Unit {
+    currentSymbol!: ?SymbolDoc = None, agentReadable!: Bool = false,
+    alternateMarkdown!: ?String = None): Unit {
     out.append("<!doctype html>\n<html lang=\"${locale}\"><head><meta charset=\"utf-8\">")
     out.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
     out.append("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'\">")
     out.append("<title>${escapeHtml(title)}</title><script src=\"${rootPrefix}theme-bootstrap.js\"></script><link rel=\"stylesheet\" href=\"${rootPrefix}style.css\">")
+    if (agentReadable) {
+        out.append("<link rel=\"describedby\" type=\"text/plain\" href=\"${rootPrefix}llms.txt\">")
+        out.append("<link rel=\"describedby\" type=\"application/json\" href=\"${rootPrefix}agent/manifest.json\">")
+        if (let Some(path) <- alternateMarkdown) {
+            out.append("<link rel=\"alternate\" type=\"text/markdown\" href=\"${escapeHtml(rootPrefix + path)}\">")
+        }
+    }
     out.append("<script defer src=\"${rootPrefix}search-index.js\"></script>")
     out.append("<script defer src=\"${rootPrefix}search.js\"></script></head><body data-cjdoc-route=\"${escapeHtml(currentRoute)}\"")
     match (docVersion) {

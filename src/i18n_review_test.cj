@@ -190,7 +190,7 @@ class I18nReviewTest {
         let project = i18nTestProject("/** 中文作者摘要。\n * @summary[lang=en] English authored summary.\n */")
         try {
             let selected = api_render.projectDocumentationLanguage(i18nTestGenerate(project), "zh-CN")
-            let html = renderedContent(api_render.HtmlDocumentationRenderer().render(selected))
+            let html = renderedHtmlContent(api_render.HtmlDocumentationRenderer().render(selected))
             let markdown = renderedContent(api_render.MarkdownDocumentationRenderer().render(selected))
             @Expect(html.contains("<html lang=\"zh-CN\""))
             @Expect(html.contains("中文作者摘要。"))
@@ -204,16 +204,16 @@ class I18nReviewTest {
     func localizedSummaryIndexesContainRenderedWords(): Unit {
         let project = i18nTestProject("/** 中文摘要。\n * @summary[lang=en] **Fast** [API](https://example.test/api).\n */")
         try {
-            var indexes: Int64 = 0
-            for (artifact in api_render.renderDocumentationFormatsWithOptions(i18nTestGenerate(project), ["html"], locale: "en")) {
-                if (!artifact.path.endsWith("symbol-index.json") && !artifact.path.endsWith("search-index.json")) { continue }
-                @Expect(artifact.content.contains("Fast"))
-                @Expect(artifact.content.contains("API"))
-                @Expect(!artifact.content.contains("**Fast**"))
-                @Expect(!artifact.content.contains("[API]"))
-                indexes++
+            let artifacts = api_render.renderDocumentationFormatsWithOptions(
+                i18nTestGenerate(project), ["html"], locale: "en")
+            for (path in ["html/symbol-index.json", "html/search-index.json",
+                "html/agent/symbol-index.json"]) {
+                let content = artifactContent(artifacts, path)
+                @Expect(content.contains("Fast"))
+                @Expect(content.contains("API"))
+                @Expect(!content.contains("**Fast**"))
+                @Expect(!content.contains("[API]"))
             }
-            @Expect(indexes, 2)
         } finally { let _ = removeIfExists(project, recursive: true) }
     }
 
@@ -241,7 +241,8 @@ class I18nReviewTest {
                 var emitted: Int64 = 0
                 for (artifact in artifacts where artifact.path.contains("/assets/")) { emitted++ }
                 @Expect(emitted, 1)
-                let rendered = renderedContent(artifacts)
+                let rendered = if (format == "html") { renderedHtmlContent(artifacts) }
+                    else { renderedContent(artifacts) }
                 @Expect(rendered.contains("English image"))
                 @Expect(!rendered.contains("中文图片"))
                 @Expect(rendered.contains("assets/"))
@@ -423,7 +424,8 @@ class I18nAssetCaptureTest {
                 var emitted: Int64 = 0
                 for (artifact in artifacts where artifact.path.contains("/assets/")) { emitted++ }
                 @Expect(emitted, 1)
-                let rendered = renderedContent(artifacts)
+                let rendered = if (format == "html") { renderedHtmlContent(artifacts) }
+                    else { renderedContent(artifacts) }
                 @Expect(rendered.contains("English image"))
                 @Expect(!rendered.contains("中文图片"))
                 @Expect(rendered.contains("assets/"))

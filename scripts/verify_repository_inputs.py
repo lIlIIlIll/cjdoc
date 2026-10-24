@@ -16,6 +16,7 @@ try:
     from .repository_input_contracts import (
         CURRENT_GOLDEN_VERSION,
         GOLDEN_NAMES,
+        SCHEMA_CONTRACTS,
         SCHEMA_NAMES,
     )
     from .repository_input_files import (
@@ -36,6 +37,7 @@ except ImportError:  # Direct script execution.
     from repository_input_contracts import (
         CURRENT_GOLDEN_VERSION,
         GOLDEN_NAMES,
+        SCHEMA_CONTRACTS,
         SCHEMA_NAMES,
     )
     from repository_input_files import (

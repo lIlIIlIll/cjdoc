@@ -32,7 +32,10 @@ private func rendererSafetyContent(artifacts: Array<RenderArtifact>, path: Strin
 private func rendererSafetyText(artifacts: Array<RenderArtifact>): String {
     let out = StringBuilder()
     for (artifact in artifacts) {
-        if (!artifact.isBinary) { out.append(artifact.content) }
+        if (!artifact.isBinary && !artifact.path.startsWith("html/agent/") &&
+            (artifact.path.endsWith(".html") || artifact.path.endsWith(".md"))) {
+            out.append(artifact.content)
+        }
     }
     out.toString()
 }

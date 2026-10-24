@@ -12,6 +12,59 @@ internal func markdownRelativeDestination(destination: String, pagePath: String)
     } else { destination }
 }
 
+// Agent references are published inside the HTML document root. pagePath is
+// relative to that root, not the generator's staging directory. Never embed
+// the staging directory name: a site can be deployed at any HTTP subpath.
+// Aggregate site Markdown retains its historical sibling-directory routing.
+internal func markdownOutputRootPrefix(pagePath: String): String {
+    let segments = ArrayList<String>()
+    for (segment in pagePath.split("/")) {
+        if (!segment.isEmpty()) { segments.add(segment) }
+    }
+    var hops = segments.size
+    if (!pagePath.endsWith("/") && hops > 0) { hops-- }
+    var prefix = ""
+    for (_ in 0..hops) { prefix += "../" }
+    prefix
+}
+
+internal func markdownCanonicalHtmlDestination(value: String, pagePath: String): ?String {
+    if (value.startsWith("https://") || value.startsWith("http://")) {
+        return markdownLinkDestination(value)
+    }
+    let relative = value.removePrefix("./")
+    let parts = relative.split("#", 2)
+    if (parts.isEmpty() || !safeRelativeLinkDestination(parts[0])) { return None }
+    var destination = markdownOutputRootPrefix(pagePath) + parts[0]
+    if (parts.size == 2) {
+        if (!safeLinkDestination("#" + parts[1])) { return None }
+        destination += "#" + parts[1]
+    }
+    Some(encodeMarkdownDestination(destination))
+}
+
+internal func markdownCanonicalSymbolDestination(symbol: SymbolDoc, pagePath: String): ?String {
+    markdownCanonicalHtmlDestination(symbolPagePath(symbol) + "#" + symbolAnchor(symbol), pagePath)
+}
+
+internal func markdownResolvedNavigationDestination(navigation: TypeNavigation,
+    pagePath: String, symbolIndex: HashMap<String, SymbolDoc>,
+    canonicalHtml: Bool): ?String {
+    if (canonicalHtml) {
+        if (navigation.symbolKey.startsWith("cjdoc:v2:") &&
+            !symbolIndex.contains(navigation.symbolKey)) { return None }
+        if (let Some(target) <- symbolIndex.get(navigation.symbolKey)) {
+            // A navigation frozen at the target's own page keeps its anchor so
+            // readers land on the declaration, not the top of the document.
+            if (navigation.url == symbolPagePath(target)) {
+                return markdownCanonicalSymbolDestination(target, pagePath)
+            }
+        }
+        return markdownCanonicalHtmlDestination(navigation.url, pagePath)
+    }
+    return markdownNavigationDestination(navigation, pagePath, symbolIndex)
+}
+
 internal func markdownTargetPagePath(target: SymbolDoc,
     symbolIndex: HashMap<String, SymbolDoc>): String {
     if (isContainerDeclaration(target)) {
@@ -29,10 +82,14 @@ internal func markdownTargetPagePath(target: SymbolDoc,
 
 private func markdownSemanticLinkDestination(destination: String, pagePath: String,
     targetSymbolId!: ?String = None,
-    symbolIndex!: ?HashMap<String, SymbolDoc> = None): ?String {
+    symbolIndex!: ?HashMap<String, SymbolDoc> = None,
+    canonicalHtml!: Bool = false): ?String {
     match ((targetSymbolId, symbolIndex)) {
         case (Some(targetId), Some(index)) => match (index.get(targetId)) {
             case Some(target) =>
+                if (canonicalHtml) {
+                    return markdownCanonicalSymbolDestination(target, pagePath)
+                }
                 let targetPage = if (pagePath.isEmpty()) {
                     "#${symbolAnchor(target)}"
                 } else {
@@ -48,6 +105,7 @@ private func markdownSemanticLinkDestination(destination: String, pagePath: Stri
         }
         case _ => ()
     }
+    if (canonicalHtml) { return markdownCanonicalHtmlDestination(destination, pagePath) }
     let localDestination = if (!pagePath.isEmpty() && destination.startsWith("symbols/") &&
         destination.endsWith(".html")) {
         destination[..destination.size - 5] + ".md"
@@ -59,30 +117,31 @@ private func markdownSemanticLinkDestination(destination: String, pagePath: Stri
 internal func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode,
     assetLookup: HashMap<String, String>, headingBase: Int64,
     pagePath!: String = "", symbolIndex!: ?HashMap<String, SymbolDoc> = None,
-    tableCell!: Bool = false, capturedLinks!: ?HashMap<String, String> = None): Unit {
+    tableCell!: Bool = false, capturedLinks!: ?HashMap<String, String> = None,
+    canonicalHtml!: Bool = false): Unit {
     match (node.kind) {
         case "text" => appendEscapedMarkdownText(out, node.literal)
         case "soft_break" => out.append(if (tableCell) { "<br>" } else { "\n" })
         case "hard_break" => out.append(if (tableCell) { "<br>" } else { "  \n" })
         case "emphasis" =>
             out.append("*"); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, canonicalHtml: canonicalHtml, capturedLinks: capturedLinks,
                     tableCell: tableCell)
             }; out.append("*")
         case "strong" =>
             out.append("**"); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, canonicalHtml: canonicalHtml, capturedLinks: capturedLinks,
                     tableCell: tableCell)
             }; out.append("**")
         case "strikethrough" =>
             out.append("~~"); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, canonicalHtml: canonicalHtml, capturedLinks: capturedLinks,
                     tableCell: tableCell)
             }; out.append("~~")
         case "code_span" => appendMarkdownCodeSpan(out, node.literal, tableCell: tableCell)
         case "link" =>
             out.append("["); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, canonicalHtml: canonicalHtml, capturedLinks: capturedLinks,
                     tableCell: tableCell)
             }; out.append("]")
             let captured: ?String = match (capturedLinks) { case Some(links) => links.get(node.literal); case None => None }
@@ -97,21 +156,23 @@ internal func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode
             }
         case "semantic_link" =>
             out.append("["); for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, canonicalHtml: canonicalHtml, capturedLinks: capturedLinks,
                     tableCell: tableCell)
             }; out.append("]")
             match (node.metadata) {
                 case Some(metadata) =>
                     if (let Some(navigation) <- metadata.semanticNavigation) {
                         let index = symbolIndex.getOrDefault({ => HashMap<String, SymbolDoc>() })
-                        if (let Some(encoded) <- markdownNavigationDestination(navigation, pagePath, index)) {
+                        if (let Some(encoded) <- markdownResolvedNavigationDestination(navigation,
+                            pagePath, index, canonicalHtml)) {
                             out.append("(" + encoded)
                             appendMarkdownNavigationTitle(out, Some(navigation))
                             out.append(")")
                         }
                     } else if (let Some(destination) <- metadata.semanticExternalUrl) {
                         if (let Some(encoded) <- markdownSemanticLinkDestination(destination, pagePath,
-                            targetSymbolId: metadata.semanticTargetSymbolId, symbolIndex: symbolIndex)) {
+                            targetSymbolId: metadata.semanticTargetSymbolId, symbolIndex: symbolIndex,
+                            canonicalHtml: canonicalHtml)) {
                             out.append("(" + encoded + ")")
                         }
                     }
@@ -130,7 +191,7 @@ internal func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode
             }
         case "html_inline" | "html_block" => appendEscapedMarkdownText(out, node.literal)
         case _ => for (child in node.children) {
-            appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks,
+            appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, canonicalHtml: canonicalHtml, capturedLinks: capturedLinks,
                 tableCell: tableCell)
         }
     }
@@ -158,14 +219,15 @@ internal func appendMarkdownPrefixedBlock(out: RenderTextBuffer, content: String
 internal func appendMarkdownTableMarkdown(out: RenderTextBuffer, node: MarkdownNode,
     assetLookup: HashMap<String, String>, headingBase: Int64, pagePath!: String = "",
     symbolIndex!: ?HashMap<String, SymbolDoc> = None,
-    capturedLinks!: ?HashMap<String, String> = None): Unit {
+    capturedLinks!: ?HashMap<String, String> = None,
+    canonicalHtml!: Bool = false): Unit {
     var rowIndex: Int64 = 0
     for (row in node.children) {
         out.append("|")
         for (cell in row.children) {
             out.append(" ")
             for (child in cell.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks,
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, canonicalHtml: canonicalHtml, capturedLinks: capturedLinks,
                     tableCell: true)
             }
             out.append(" |")
@@ -199,25 +261,26 @@ internal func appendMarkdownTableMarkdown(out: RenderTextBuffer, node: MarkdownN
 internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNode,
     assetLookup: HashMap<String, String>, headingBase: Int64,
     pagePath!: String = "", symbolIndex!: ?HashMap<String, SymbolDoc> = None,
-    capturedLinks!: ?HashMap<String, String> = None): Unit {
+    capturedLinks!: ?HashMap<String, String> = None,
+    canonicalHtml!: Bool = false): Unit {
     match (node.kind) {
         case "document" => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks)
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
         }
         case "paragraph" =>
             for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks)
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
             }
             out.append("\n\n")
         case "heading" =>
             appendMarkdownMarks(out, "#", markdownHeadingLevel(node, headingBase)); out.append(" ")
             for (child in node.children) {
-                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks)
+                appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
             }
             out.append("\n\n")
         case "text" | "soft_break" | "hard_break" | "emphasis" | "strong" |
             "strikethrough" | "code_span" | "link" | "image" | "html_inline" =>
-            appendMarkdownInlineNode(out, node, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks)
+            appendMarkdownInlineNode(out, node, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
         case "code_block" =>
             match (node.metadata) {
                 case Some(metadata) => if (metadata.kind == "code_block" &&
@@ -235,7 +298,7 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
         case "block_quote" =>
             let nested = RenderTextBuffer()
             for (child in node.children) {
-                appendMarkdownNodeMarkdown(nested, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks)
+                appendMarkdownNodeMarkdown(nested, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
             }
             appendMarkdownPrefixedBlock(out, nested.toString(), "> ", "> ")
             out.append("\n")
@@ -267,7 +330,7 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
                 }
                 let nested = RenderTextBuffer()
                 for (itemChild in child.children) {
-                    appendMarkdownNodeMarkdown(nested, itemChild, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks)
+                    appendMarkdownNodeMarkdown(nested, itemChild, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
                 }
                 let continuation = RenderTextBuffer()
                 appendMarkdownMarks(continuation, " ", firstPrefix.toString().size)
@@ -279,16 +342,16 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
             out.append("\n")
         case "list_item" =>
             for (child in node.children) {
-                appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks)
+                appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
             }
-        case "table" => appendMarkdownTableMarkdown(out, node, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks)
+        case "table" => appendMarkdownTableMarkdown(out, node, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
         case "table_row" | "table_cell" | "custom_block" => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks)
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
         }
-        case "custom_inline" => appendMarkdownInlineNode(out, node, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks)
+        case "custom_inline" => appendMarkdownInlineNode(out, node, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
         case "html_block" => appendEscapedMarkdownText(out, node.literal); out.append("\n\n")
         case _ => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks)
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
         }
     }
 }
@@ -334,169 +397,223 @@ internal func appendMarkdownExampleContent(out: RenderTextBuffer, value: String)
     }
 }
 
-private func markdownBehaviorContractTag(name: String): Bool {
-    name == "precondition" || name == "postcondition" || name == "invariant" ||
-        name == "performance" || name == "state" || name == "concurrency" ||
-        name == "platform" || name == "compatibility" || name == "error"
+private func markdownHasDescription(comment: DocComment): Bool {
+    for (tag in comment.tags) {
+        if (tag.name == "deprecated" || tag.name == "summary" || tag.name == "description") {
+            return true
+        }
+    }
+    if (comment.localizedTexts.isEmpty()) {
+        return !comment.markdown.children.isEmpty() || !comment.markdown.literal.isEmpty()
+    }
+    false
 }
 
-private func markdownBehaviorContractLabel(name: String, locale: String): String {
-    if (locale != "zh-CN") { return name }
-    match (name) {
-        case "precondition" => "前置条件"
-        case "postcondition" => "后置条件"
-        case "invariant" => "不变量"
-        case "performance" => "性能"
-        case "state" => "状态"
-        case "concurrency" => "并发"
-        case "platform" => "平台"
-        case "compatibility" => "兼容性"
-        case "error" => "错误行为"
-        case _ => name
+private func markdownSectionSelected(sections: ?Array<String>, name: String): Bool {
+    match (sections) {
+        case Some(values) => values.contains(name)
+        case None => true
     }
 }
 
-private func appendDocumentationTagMarkdown(out: RenderTextBuffer, tag: DocTag,
+internal func appendDocumentationTagMarkdown(out: RenderTextBuffer, tag: DocTag,
     assetLookup: HashMap<String, String>, locale: String, pagePath: String,
-    symbolIndex: ?HashMap<String, SymbolDoc>): Unit {
+    symbolIndex: ?HashMap<String, SymbolDoc>, canonicalHtml!: Bool = false,
+    headingBase!: Int64 = 4): Unit {
     let languageLabel = contentLanguageLabel(tag, locale)
     if (!tag.translationState.isEmpty() && !languageLabel.isEmpty()) {
         out.append("_"); appendEscapedMarkdownText(out, languageLabel); out.append("_.\n\n")
     }
     if (tag.name == "example") {
+        // Examples stay in their authored line structure: fence markers,
+        // indentation, Unicode and nested fences survive unchanged.
         appendMarkdownExampleContent(out, tag.description)
         return
     }
     match (tag.descriptionMarkdown) {
-        case Some(tree) => appendMarkdownNodeMarkdown(out, tree, assetLookup, 4, pagePath: pagePath, symbolIndex: symbolIndex)
+        case Some(tree) => appendMarkdownNodeMarkdown(out, tree, assetLookup, headingBase,
+            pagePath: pagePath, symbolIndex: symbolIndex, canonicalHtml: canonicalHtml)
         case None => appendEscapedMarkdownText(out, tag.description)
     }
 }
 
-private func appendDocumentationListTagMarkdown(out: RenderTextBuffer, tag: DocTag,
+internal func appendDocumentationListTagMarkdown(out: RenderTextBuffer, tag: DocTag,
     assetLookup: HashMap<String, String>, locale: String, pagePath: String,
-    symbolIndex: ?HashMap<String, SymbolDoc>): Unit {
+    symbolIndex: ?HashMap<String, SymbolDoc>, canonicalHtml!: Bool = false,
+    headingBase!: Int64 = 4): Unit {
     let content = RenderTextBuffer()
-    appendDocumentationTagMarkdown(content, tag, assetLookup, locale, pagePath, symbolIndex)
+    appendDocumentationTagMarkdown(content, tag, assetLookup, locale, pagePath, symbolIndex,
+        canonicalHtml: canonicalHtml, headingBase: headingBase)
     appendMarkdownPrefixedBlock(out, content.toString(), "", "    ")
 }
 
+// One projection feeds the Markdown site, declaration references and the
+// reading core. Callers select chapters; the chapters themselves stay the
+// author's unmodified text and code.
 internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocComment,
     assetLookup: HashMap<String, String>, locale!: String = "en", pagePath!: String = "",
-    symbolIndex!: ?HashMap<String, SymbolDoc> = None): Unit {
-    for (tag in comment.tags) {
-        if (tag.name == "deprecated") {
-            let content = RenderTextBuffer()
-            content.append("**${label(locale, "Deprecated.", "已弃用。")}** ")
-            appendDocumentationTagMarkdown(content, tag, assetLookup, locale, pagePath, symbolIndex)
-            appendMarkdownPrefixedBlock(out, content.toString(), "> ", "> ")
-            out.append("\n")
-            break
+    symbolIndex!: ?HashMap<String, SymbolDoc> = None, canonicalHtml!: Bool = false,
+    sections!: ?Array<String> = None, headingPrefix!: String = "####",
+    headingBase!: Int64 = 4): Unit {
+    if (markdownSectionSelected(sections, "description") && markdownHasDescription(comment)) {
+        if (sections.isSome()) {
+            out.append("${headingPrefix} ${label(locale, "Description", "说明")}\n\n")
         }
-    }
-    if (comment.localizedTexts.isEmpty()) {
-        appendMarkdownNodeMarkdown(out, comment.markdown, assetLookup, 4, pagePath: pagePath, symbolIndex: symbolIndex)
-    } else {
-        for (tag in comment.tags where tag.name == "summary" || tag.name == "description") {
-            appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
-            out.append("\n\n")
-        }
-    }
-    var hasExamples = false
-    for (tag in comment.tags) { if (tag.name == "example") { hasExamples = true; break } }
-    if (hasExamples) {
-        out.append("#### ${label(locale, "Examples", "示例")}\n\n")
-        for (tag in comment.tags) {
-            if (tag.name != "example") { continue }
-            if (!tag.subject.isEmpty()) {
-                out.append("##### ")
-                appendEscapedMarkdownText(out, tag.subject)
+        if (comment.localizedTexts.isEmpty()) {
+            appendMarkdownNodeMarkdown(out, comment.markdown, assetLookup, headingBase, pagePath: pagePath,
+                symbolIndex: symbolIndex, canonicalHtml: canonicalHtml)
+        } else {
+            for (tag in comment.tags where tag.name == "summary" || tag.name == "description") {
+                appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
+                    canonicalHtml: canonicalHtml, headingBase: headingBase)
                 out.append("\n\n")
             }
-            let content = trimExampleBlankLines(tag.description)
-            if (!content.isEmpty() || !tag.translationState.isEmpty()) {
-                appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
+        }
+    }
+    if (markdownSectionSelected(sections, "contracts")) {
+        for (tag in comment.tags) {
+            if (tag.name == "deprecated") {
+                let content = RenderTextBuffer()
+                content.append("**${label(locale, "Deprecated.", "已弃用。")}** ")
+                appendDocumentationTagMarkdown(content, tag, assetLookup, locale, pagePath, symbolIndex,
+                    canonicalHtml: canonicalHtml, headingBase: headingBase)
+                appendMarkdownPrefixedBlock(out, content.toString(), "> ", "> ")
                 out.append("\n")
+                break
             }
         }
     }
-    var hasParameters = false
-    for (tag in comment.tags) { if (tag.name == "param") { hasParameters = true; break } }
-    if (hasParameters) {
-        out.append("#### ${label(locale, "Parameters", "参数")}\n\n")
-        for (tag in comment.tags) {
-            if (tag.name == "param") {
-                out.append("- "); appendMarkdownCodeSpan(out, tag.subject); out.append(" — ")
-                appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
+    if (markdownSectionSelected(sections, "examples")) {
+        var hasExamples = false
+        for (tag in comment.tags) { if (tag.name == "example") { hasExamples = true; break } }
+        if (hasExamples) {
+            out.append("${headingPrefix} ${label(locale, "Examples", "示例")}\n\n")
+            for (tag in comment.tags) {
+                if (tag.name != "example") { continue }
+                if (!tag.subject.isEmpty()) {
+                    out.append("${headingPrefix}# ")
+                    appendEscapedMarkdownText(out, tag.subject)
+                    out.append("\n\n")
+                }
+                let content = trimExampleBlankLines(tag.description)
+                if (!content.isEmpty() || !tag.translationState.isEmpty()) {
+                    appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
+                        canonicalHtml: canonicalHtml, headingBase: headingBase)
+                    out.append("\n")
+                }
             }
         }
-        out.append("\n")
     }
-    for (tag in comment.tags) {
-        if (tag.name == "return") {
-            out.append("#### ${label(locale, "Returns", "返回值")}\n\n"); appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex); out.append("\n\n")
-        }
-    }
-    var hasThrows = false
-    for (tag in comment.tags) { if (tag.name == "throws") { hasThrows = true; break } }
-    if (hasThrows) {
-        out.append("#### ${label(locale, "Throws", "异常")}\n\n")
-        for (tag in comment.tags) {
-            if (tag.name == "throws") {
-                out.append("- "); appendTagSubjectMarkdown(out, tag, pagePath, symbolIndex); out.append(" — ")
-                appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
-            }
-        }
-        out.append("\n")
-    }
-    var hasContracts = false
-    for (tag in comment.tags) {
-        if (markdownBehaviorContractTag(tag.name)) { hasContracts = true; break }
-    }
-    if (hasContracts) {
-        out.append("#### " + label(locale, "Behavior contracts", "行为契约") + "\n\n")
-        for (tag in comment.tags) {
-            if (!markdownBehaviorContractTag(tag.name)) { continue }
-            out.append("- **")
-            appendEscapedMarkdownText(out, markdownBehaviorContractLabel(tag.name, locale))
-            out.append("**")
-            if (!tag.subject.isEmpty()) {
-                out.append(" (")
-                appendMarkdownCodeSpan(out, tag.subject)
-                out.append(")")
-            }
-            out.append(" — ")
-            if (tag.description.trimAscii().isEmpty()) {
-                out.append("**incomplete**")
-            } else {
-                appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
+    if (markdownSectionSelected(sections, "parameters")) {
+        var hasParameters = false
+        for (tag in comment.tags) { if (tag.name == "param") { hasParameters = true; break } }
+        if (hasParameters) {
+            out.append("${headingPrefix} ${label(locale, "Parameters", "参数")}\n\n")
+            for (tag in comment.tags) {
+                if (tag.name == "param") {
+                    out.append("- "); appendMarkdownCodeSpan(out, tag.subject); out.append(" — ")
+                    appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
+                        canonicalHtml: canonicalHtml, headingBase: headingBase)
+                }
             }
             out.append("\n")
         }
-        out.append("\n")
     }
-    var hasSee = false
-    for (tag in comment.tags) { if (tag.name == "see") { hasSee = true; break } }
-    if (hasSee) {
-        out.append("#### ${label(locale, "See also", "另请参阅")}\n\n")
+    if (markdownSectionSelected(sections, "returns")) {
         for (tag in comment.tags) {
-            if (tag.name == "see") { out.append("- "); appendTagSubjectMarkdown(out, tag, pagePath, symbolIndex)
-                if (!tag.description.isEmpty() || !tag.translationState.isEmpty()) {
-                    out.append(" — "); appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex)
-                }; out.append("\n") }
+            if (tag.name == "return" || tag.name == "returns") {
+                out.append("${headingPrefix} ${label(locale, "Returns", "返回值")}\n\n")
+                appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
+                    canonicalHtml: canonicalHtml, headingBase: headingBase)
+                out.append("\n\n")
+            }
         }
-        out.append("\n")
+    }
+    if (markdownSectionSelected(sections, "contracts")) {
+        var hasThrows = false
+        for (tag in comment.tags) { if (tag.name == "throws") { hasThrows = true; break } }
+        if (hasThrows) {
+            out.append("${headingPrefix} ${label(locale, "Throws", "异常")}\n\n")
+            for (tag in comment.tags) {
+                if (tag.name == "throws") {
+                    out.append("- ")
+                    appendTagSubjectMarkdown(out, tag, pagePath, symbolIndex,
+                        canonicalHtml: canonicalHtml)
+                    out.append(" — ")
+                    appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
+                        canonicalHtml: canonicalHtml, headingBase: headingBase)
+                }
+            }
+            out.append("\n")
+        }
+    }
+    if (markdownSectionSelected(sections, "contracts")) {
+        var hasContracts = false
+        for (tag in comment.tags) {
+            if (isBehaviorContractTag(tag.name)) { hasContracts = true; break }
+        }
+        if (hasContracts) {
+            out.append("${headingPrefix} " + label(locale, "Behavior contracts", "行为契约") + "\n\n")
+            for (tag in comment.tags) {
+                if (!isBehaviorContractTag(tag.name)) { continue }
+                out.append("- **")
+                appendEscapedMarkdownText(out, behaviorContractLabel(tag.name, locale))
+                out.append("**")
+                if (!tag.subject.isEmpty()) {
+                    out.append(" (")
+                    appendMarkdownCodeSpan(out, tag.subject)
+                    out.append(")")
+                }
+                out.append(" — ")
+                if (tag.description.trimAscii().isEmpty()) {
+                    out.append("**incomplete**")
+                } else {
+                    appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
+                        canonicalHtml: canonicalHtml, headingBase: headingBase)
+                }
+                out.append("\n")
+            }
+            out.append("\n")
+        }
+    }
+    if (markdownSectionSelected(sections, "relations")) {
+        var hasSee = false
+        for (tag in comment.tags) { if (tag.name == "see") { hasSee = true; break } }
+        if (hasSee) {
+            out.append("${headingPrefix} ${label(locale, "See also", "另请参阅")}\n\n")
+            for (tag in comment.tags) {
+                if (tag.name == "see") {
+                    out.append("- "); appendTagSubjectMarkdown(out, tag, pagePath, symbolIndex,
+                        canonicalHtml: canonicalHtml)
+                    if (!tag.description.isEmpty() || !tag.translationState.isEmpty()) {
+                        out.append(" — ")
+                        appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
+                            canonicalHtml: canonicalHtml, headingBase: headingBase)
+                    }
+                    out.append("\n")
+                }
+            }
+            out.append("\n")
+        }
     }
     for ((name, heading) in [("since", "Since"), ("author", "Authors"),
-        ("version", "Version")]) {
-        var opened = false
-        for (tag in comment.tags) {
-            if (tag.name != name) { continue }
-            if (!opened) { out.append("#### ${label(locale, heading, match (name) { case "since" => "自版本"; case "author" => "作者"; case _ => "版本" })}\n\n"); opened = true }
-            out.append("- "); appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex); out.append("\n")
+            ("version", "Version")]) {
+        if ((name == "since" && !markdownSectionSelected(sections, "contracts")) ||
+            (name != "since" && !markdownSectionSelected(sections, "relations"))) { continue }
+            var opened = false
+            for (tag in comment.tags) {
+                if (tag.name != name) { continue }
+                if (!opened) {
+                    out.append("${headingPrefix} ${label(locale, heading, match (name) { case "since" => "自版本"; case "author" => "作者"; case _ => "版本" })}\n\n")
+                    opened = true
+                }
+                out.append("- ")
+                appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
+                    canonicalHtml: canonicalHtml, headingBase: headingBase)
+                out.append("\n")
+            }
+            if (opened) { out.append("\n") }
         }
-        if (opened) { out.append("\n") }
-    }
 }
 
 internal func markdownNavigationDestination(navigation: TypeNavigation, pagePath: String,
@@ -534,11 +651,13 @@ private func appendMarkdownNavigationTitle(out: RenderTextBuffer, navigation: ?T
 }
 
 
-private func appendTagSubjectMarkdown(out: RenderTextBuffer, tag: DocTag,
-    pagePath: String, symbolIndex: ?HashMap<String, SymbolDoc>): Unit {
+internal func appendTagSubjectMarkdown(out: RenderTextBuffer, tag: DocTag,
+    pagePath: String, symbolIndex: ?HashMap<String, SymbolDoc>,
+    canonicalHtml!: Bool = false): Unit {
     let index = symbolIndex.getOrDefault({ => HashMap<String, SymbolDoc>() })
     let destination: ?String = match (tag.navigation) {
-        case Some(navigation) => markdownNavigationDestination(navigation, pagePath, index)
+        case Some(navigation) => markdownResolvedNavigationDestination(navigation, pagePath,
+            index, canonicalHtml)
         case None => None
     }
     if (destination.isSome()) { out.append("[") }
@@ -549,12 +668,14 @@ private func appendTagSubjectMarkdown(out: RenderTextBuffer, tag: DocTag,
 }
 
 private func appendMarkdownTypeAtom(out: RenderTextBuffer, typeRef: TypeRef,
-    spelling: String, pagePath: String, symbolIndex: HashMap<String, SymbolDoc>): Unit {
+    spelling: String, pagePath: String, symbolIndex: HashMap<String, SymbolDoc>,
+    canonicalHtml: Bool): Unit {
     if (typeRef.navigation.isNone()) {
         appendMarkdownCodeSpan(out, spelling); return
     }
     let destination: ?String = match (typeRef.navigation) {
-        case Some(navigation) => markdownNavigationDestination(navigation, pagePath, symbolIndex)
+        case Some(navigation) => markdownResolvedNavigationDestination(navigation, pagePath,
+            symbolIndex, canonicalHtml)
         case None => None
     }
     if (destination.isSome()) { out.append("[") }
@@ -565,29 +686,35 @@ private func appendMarkdownTypeAtom(out: RenderTextBuffer, typeRef: TypeRef,
 }
 
 internal func appendTypeRefMarkdown(out: RenderTextBuffer, typeRef: TypeRef,
-    pagePath: String, symbolIndex: HashMap<String, SymbolDoc>): Unit {
+    pagePath: String, symbolIndex: HashMap<String, SymbolDoc>,
+    canonicalHtml!: Bool = false): Unit {
     if (typeRef.kind == "optional" && typeRef.arguments.size == 1) {
         out.append("?")
-        appendTypeRefMarkdown(out, typeRef.arguments[0], pagePath, symbolIndex)
+        appendTypeRefMarkdown(out, typeRef.arguments[0], pagePath, symbolIndex,
+            canonicalHtml: canonicalHtml)
     } else if ((typeRef.kind == "tuple" || typeRef.kind == "function") && !typeRef.arguments.isEmpty()) {
         appendEscapedMarkdownText(out, "(")
         for (index in 0..typeRef.arguments.size) {
             if (typeRef.kind == "function" && index == typeRef.arguments.size - 1) {
                 appendEscapedMarkdownText(out, ") -> ")
             } else if (index > 0) { out.append(", ") }
-            appendTypeRefMarkdown(out, typeRef.arguments[index], pagePath, symbolIndex)
+            appendTypeRefMarkdown(out, typeRef.arguments[index], pagePath, symbolIndex,
+                canonicalHtml: canonicalHtml)
         }
         if (typeRef.kind == "tuple") { appendEscapedMarkdownText(out, ")") }
     } else if (!typeRef.arguments.isEmpty() && typeRef.spelling.contains("<")) {
-        appendMarkdownTypeAtom(out, typeRef, typeHeadSpelling(typeRef.spelling), pagePath, symbolIndex)
+        appendMarkdownTypeAtom(out, typeRef, typeHeadSpelling(typeRef.spelling), pagePath, symbolIndex,
+            canonicalHtml)
         appendEscapedMarkdownText(out, "<")
         var first = true
         for (child in typeRef.arguments) {
             if (!first) { out.append(", ") }; first = false
-            appendTypeRefMarkdown(out, child, pagePath, symbolIndex)
+            appendTypeRefMarkdown(out, child, pagePath, symbolIndex, canonicalHtml: canonicalHtml)
         }
         appendEscapedMarkdownText(out, ">" + typeGenericSuffix(typeRef.spelling))
-    } else { appendMarkdownTypeAtom(out, typeRef, typeRef.spelling, pagePath, symbolIndex) }
+    } else {
+        appendMarkdownTypeAtom(out, typeRef, typeRef.spelling, pagePath, symbolIndex, canonicalHtml)
+    }
 }
 
 private func hasResolvedTypeNavigation(value: TypeRef): Bool {
