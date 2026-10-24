@@ -7,14 +7,17 @@ import json
 from copy import deepcopy
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 from reader_benchmark import file_digest, run, scrub, verify_corpus
 from reader_compare import EvidenceError, compare_browser, p95
+from reader_contract_review import copy_sources
 from reader_corpus import digest, generate_corpus
 from reader_process import measured_process
 
@@ -113,6 +116,40 @@ class EvidenceIntegrityTests(unittest.TestCase):
             source.write_text(source.read_text(encoding="utf-8") + "\npublic class Changed {}\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 verify_corpus(project, manifest)
+
+    def test_contract_inventory_identifies_copied_bytes_during_original_edits(self):
+        paths = ("examples/pocketkit/demo-v2/cjpm.toml",
+                 "examples/pocketkit/demo-v2/src/value.cj",
+                 "examples/pocketkit/contract_review.cj")
+        for relative in paths:
+            with self.subTest(source=relative), tempfile.TemporaryDirectory() as directory:
+                repo, output = Path(directory) / "repo", Path(directory) / "evidence"
+                output.mkdir()
+                for version in ("demo-v2", "support-v1"):
+                    project = repo / "examples/pocketkit" / version
+                    (project / "src").mkdir(parents=True)
+                    (project / "cjpm.toml").write_text('[package]\nname = "pocketkit"\n', encoding="utf-8")
+                    (project / "src/value.cj").write_text(
+                        "package pocketkit\npublic func value(): Int64 { 7 }\n", encoding="utf-8")
+                consumer = repo / "examples/pocketkit/contract_review.cj"
+                consumer.write_text("package contract_probe\nmain(): Int64 { 0 }\n", encoding="utf-8")
+                original = repo / relative
+                original_bytes = original.read_bytes()
+                actual_copy = shutil.copyfile
+
+                def copy_then_edit(source, destination):
+                    result = actual_copy(source, destination)
+                    if source == original:
+                        original.write_bytes(original_bytes + b"\n")
+                    return result
+
+                with patch("reader_contract_review.shutil.copyfile", side_effect=copy_then_edit):
+                    inventory = copy_sources(repo, output)
+                copied = (output / "contract_review.cj" if original == consumer else
+                          output / "sources/demo-v2" / original.relative_to(repo / "examples/pocketkit/demo-v2"))
+                recorded = next(row["sha256"] for row in inventory if row["path"] == relative)
+                self.assertEqual(copied.read_bytes(), original_bytes)
+                self.assertEqual(recorded, digest(original_bytes))
 
     def test_existing_corpus_is_not_overwritten(self):
         with tempfile.TemporaryDirectory() as directory:

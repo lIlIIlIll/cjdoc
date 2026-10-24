@@ -16,6 +16,8 @@ This document separates development evidence from release evidence. A lower gate
 
 `scripts/release_check.sh` does not create a tag, push, open a pull request or publish a release.
 
+The `native` stage runs the complete suite with `--jobs 1 --parallel 1 --no-progress`. STS 1.2's optional animated progress collector has thrown `NoneValueException` in `TestProgressCollector` even after 625/625 cases passed, making `cjpm test` exit 1. Plain reporting avoids that presentation path; individual case results, assertion diagnostics, the final summary and the actual process exit status remain authoritative. A real compiled two-case control returned exit 1 with one deliberately failing assertion and exit 0 with both assertions passing. This is not an exception filter, retry or exit-code override; the SDK, assertions, input gates, scheduling and timeouts are unchanged.
+
 ## Performance baseline
 
 [`tests/perf/baseline.json`](../../tests/perf/baseline.json) contains two profiles:

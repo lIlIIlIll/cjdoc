@@ -13,6 +13,7 @@
 | [概念页与指南](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/guides.md) | 把项目里的 Markdown 组织成文档页面，以及页面与 API 的绑定规则。 |
 | [多语言文档](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/i18n.md) | 作者提供中英文正文、翻译配对、缺译策略和翻译覆盖率。 |
 | [文档质量检查](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/documentation-quality.md) | 文档质量规则、覆盖率报告与 HTML 中的展示方式。 |
+| [作者侧契约复核](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/contract-review.md) | 区分质量三层，以作者事实、源码和真实消费者复核输入域、失败与状态；保留未知。 |
 
 ## 维护者文档
 
