@@ -115,6 +115,11 @@ try {
   report.tasks.push({ id: 'distant-open-contract-retains-complete-rendered-text', pass: true });
   // Compact action menus are a mobile affordance; desktop exposes direct actions.
   await page.setViewportSize({ width: 390, height: 844 });
+  // Match the existing showcase keyboard path: expose the heading, not an
+  // overlay scrolled to the viewport edge, before checking paint containment.
+  await tail.locator(':scope > summary').evaluate(node =>
+    node.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  await frame(page);
   const tailActions = tail.locator('..').locator('[data-cjdoc-member-actions]');
   await tailActions.locator('[data-cjdoc-member-actions-toggle]').click();
   assert.equal(await tailActions.locator('a').first().evaluate(link => {
