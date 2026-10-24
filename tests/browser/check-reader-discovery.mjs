@@ -143,18 +143,24 @@ try {
   report.tasks.push({ id: 'distant-open-contract-retains-complete-rendered-text', pass: true });
   // Compact action menus are a mobile affordance; desktop exposes direct actions.
   await page.setViewportSize({ width: 390, height: 844 });
-  // Match the existing showcase keyboard path: expose the heading, not an
-  // overlay scrolled to the viewport edge, before checking paint containment.
-  await tail.locator(':scope > summary').evaluate(node =>
-    node.scrollIntoView({ block: 'center', behavior: 'instant' }));
-  await frame(page);
   const tailActions = tail.locator('..').locator('[data-cjdoc-member-actions]');
   await tailActions.locator('[data-cjdoc-member-actions-toggle]').click();
-  assert.equal(await tailActions.locator('a').first().evaluate(link => {
+  // An off-viewport popup is not paint clipping. Expose the actual menu before
+  // independently checking that native pointer hit-testing reaches its action.
+  await tailActions.locator('.member-action-list').scrollIntoViewIfNeeded();
+  const menuHit = await tailActions.locator('a').first().evaluate(link => {
     const box = link.getBoundingClientRect();
     const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-    return hit === link || link.contains(hit);
-  }), true, 'offscreen layout containment must not clip the revealed member action menu');
+    return { withinLink: hit === link || link.contains(hit),
+      bounds: { x: box.x, y: box.y, width: box.width, height: box.height },
+      withinViewport: box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight,
+      viewport: { width: innerWidth, height: innerHeight },
+      hitTag: hit?.tagName, hitClass: hit?.getAttribute('class') };
+  });
+  assert.equal(menuHit.withinViewport, true,
+    'the actual member action must be inside the viewport: ' + JSON.stringify(menuHit));
+  assert.equal(menuHit.withinLink, true,
+    'the revealed member action must receive pointer input: ' + JSON.stringify(menuHit));
   await page.keyboard.press('Escape');
   report.tasks.push({ id: 'mobile-tail-member-menu-not-clipped', pass: true });
   await page.setViewportSize({ width: 1440, height: 900 });
