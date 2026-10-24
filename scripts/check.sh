@@ -440,8 +440,10 @@ stage_native() {
     # with one unittest worker while retaining those concurrency checks.
     # Native Windows Python bypasses the extensionless Bash cjpm wrapper.
     # Resolve cjpm in Bash so the pinned STS override and restore trap apply.
+    # STS 1.2's animated collector can throw after every assertion has passed.
+    # Plain reporting retains case results and the real failing process status.
     native_bound=("${python_cmd}" scripts/run_with_timeout.py "${native_timeout}" -- \
-        "${BASH:-bash}" -c 'exec cjpm "$@"' cjdoc-native-test test --jobs 1 --parallel 1)
+        "${BASH:-bash}" -c 'exec cjpm "$@"' cjdoc-native-test test --jobs 1 --parallel 1 --no-progress)
     # The suite has wedged on runners more than once, always the same way: one
     # case parks on futexes with no runnable thread and the log stops mid-suite.
     # The post-mortem cannot inspect a process that the bound above has already
