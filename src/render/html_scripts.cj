@@ -1109,6 +1109,11 @@ internal let HTML_SEARCH_SCRIPT = """
   const memberFilter = document.querySelector("[data-cjdoc-member-filter]");
   const originFilter = document.querySelector("[data-cjdoc-member-origin]");
   const memberRows = [...document.querySelectorAll("[data-cjdoc-member]")];
+  // Ordinary overload groups pay extra layout cost without a large-page gain.
+  // Reuse the existing navigation cap as the large member-browser boundary.
+  if (memberRows.length > 256) {
+    memberFilter?.closest(".member-browser")?.classList.add("member-browser-large");
+  }
   const memberGroups = [...document.querySelectorAll("[data-cjdoc-member-group]")];
   const overloadGroups = [...document.querySelectorAll("[data-cjdoc-overload-group]")];
   const memberStatus = document.querySelector("[data-cjdoc-member-filter-status]");
