@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import { chromium, entryIndex, screenshot, typeEntry } from './reader-scale-metrics.mjs';
+import { chromium, entryIndex, frame, screenshot, typeEntry } from './reader-scale-metrics.mjs';
 
 const { values } = parseArgs({ options: {
   site: { type: 'string' }, output: { type: 'string' }, locale: { type: 'string', default: 'en' }
@@ -103,6 +103,16 @@ try {
     const box = summary.getBoundingClientRect();
     return box.bottom > 64 && box.top >= 0 && box.top < innerHeight;
   }, tailAnchor);
+  const tailContract = await tail.innerText();
+  assert.ok(tailContract.includes(target[0].summary), 'the opened contract includes its native author summary');
+  const firstMember = page.locator('[data-cjdoc-member][data-member-name="member0000"]');
+  await firstMember.locator(':scope > summary').click();
+  await frame(page);
+  assert.equal(await firstMember.getAttribute('open'), '');
+  assert.equal(await tail.getAttribute('open'), '');
+  assert.equal(await tail.innerText(), tailContract,
+    'opening a distant member must not discard the already-open tail contract from rendered text');
+  report.tasks.push({ id: 'distant-open-contract-retains-complete-rendered-text', pass: true });
   // Compact action menus are a mobile affordance; desktop exposes direct actions.
   await page.setViewportSize({ width: 390, height: 844 });
   const tailActions = tail.locator('..').locator('[data-cjdoc-member-actions]');
