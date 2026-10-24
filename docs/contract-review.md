@@ -31,7 +31,7 @@ python scripts/with_stdx.py --variant static -- python scripts/reader_contract_r
   --revision "$REVISION" --output "${EVIDENCE_ROOT:?}/contracts"
 ```
 
-runner 将原始 `demo-v2`、`support-v1` 的包配置及源码复制到独立证据目录，使用真实 `cjpm build` 构建库，再编译运行 [`contract_review.cj`](../examples/pocketkit/contract_review.cj)，不替换库实现。`reader-contract-review.json` 分别保存原始源码/消费者 SHA-256、SDK 与工具版本、构建/编译/运行的退出码和资源记录、十三个实际用例；对应标准输出/错误日志保留并归一化本机路径。输出失败也是失败证据，不改写为缺少作者说明或全契约正确。
+runner 将原始 `demo-v2`、`support-v1` 的包配置及源码复制到独立证据目录，使用真实 `cjpm build` 构建库，再编译运行 [`contract_review.cj`](../examples/pocketkit/contract_review.cj)，不替换库实现。`reader-contract-review.json` 分别保存编译器实际读取的源码/消费者副本 SHA-256、SDK 与工具版本、构建/编译/运行的退出码和资源记录、十三个实际用例；结束时按这份快照核对原始文件，并发编辑使本次验收失败，不能把新版原文件的哈希归给旧版编译输入。对应标准输出/错误日志保留并归一化本机路径。输出失败也是失败证据，不改写为缺少作者说明或全契约正确。
 
 源事实入口：[`catalog.cj`](../examples/pocketkit/demo-v2/src/catalog.cj)、[`reader.cj`](../examples/pocketkit/demo-v2/src/io/reader.cj)。Reader scale 工作流在性能测量开始前执行同一 runner，报告和日志与阅读观测一起保留；它不是性能样本或跨线程安全证明。
 

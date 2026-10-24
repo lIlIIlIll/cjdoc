@@ -35,10 +35,12 @@ def copy_sources(repo: Path, output: Path) -> list[dict]:
             destination = output / 'sources' / version / source.relative_to(project)
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, destination)
-            inventory.append({'path': source.relative_to(repo).as_posix(), 'sha256': sha256(source)})
+            # Bind evidence to the compiler input, not a later read of an edited original.
+            inventory.append({'path': source.relative_to(repo).as_posix(), 'sha256': sha256(destination)})
     consumer = repo / 'examples/pocketkit/contract_review.cj'
-    shutil.copyfile(consumer, output / 'contract_review.cj')
-    inventory.append({'path': consumer.relative_to(repo).as_posix(), 'sha256': sha256(consumer)})
+    destination = output / 'contract_review.cj'
+    shutil.copyfile(consumer, destination)
+    inventory.append({'path': consumer.relative_to(repo).as_posix(), 'sha256': sha256(destination)})
     return inventory
 
 
