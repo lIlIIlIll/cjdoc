@@ -101,36 +101,6 @@ assert.equal(entry.item.hidden,false);assert.equal(mobileEntry.item.hidden,false
 '''
         self.run_source(source,harness)
 
-    def test_search_shortcut_closes_mobile_theme_modal_before_focusing_input(self):
-        script=canonical_search_script()
-        close=callback(script, '  const closeTheme = (restoreFocus = false) => {', '\n  };')
-        start='  document.addEventListener("keydown", (event) => {\n    if ((event.ctrlKey || event.metaKey) && event.key.toLocaleLowerCase() === "k") {'
-        hotkey=start+script.split(start,1)[1].split('\n  });',1)[0]+'\n  });\n'
-        harness=r'''
-const assert=require('node:assert/strict'),vm=require('node:vm');
-let handler,focused=false,inert=true,searchOpen=false,prevented=false;
-const themePopover={hidden:false},themeBackdrop={hidden:false};
-const themeToggle={setAttribute(){},focus(){}};
-const context=vm.createContext({themePopover,themeBackdrop,themeToggle,
- document:{documentElement:{classList:{remove(){}}},addEventListener(_,f){handler=f}},
- setThemeModal(active){inert=active},closeMenu(){},openMobileSearch(){searchOpen=true},
- input:{focus(){if(!inert)focused=true}},render(){}});
-vm.runInContext(SOURCE,context);
-for(const key of ['k','K']) {
- themePopover.hidden=false;themeBackdrop.hidden=false;inert=true;focused=false;searchOpen=false;prevented=false;
- handler({key,ctrlKey:false,metaKey:false,preventDefault(){prevented=true}});
- assert.equal(prevented,false,'ordinary K must keep default action');
- assert.equal(themePopover.hidden,false);assert.equal(themeBackdrop.hidden,false);assert.equal(inert,true);
- assert.equal(searchOpen,false);assert.equal(focused,false);
-}
-for(const modifier of ['ctrlKey','metaKey']) {
- themePopover.hidden=false;themeBackdrop.hidden=false;inert=true;focused=false;searchOpen=false;prevented=false;
- handler({key:'K',ctrlKey:modifier==='ctrlKey',metaKey:modifier==='metaKey',preventDefault(){prevented=true}});
- assert.equal(prevented,true);assert.equal(themePopover.hidden,true,modifier);
- assert.equal(themeBackdrop.hidden,true);assert.equal(inert,false);assert.equal(searchOpen,true);assert.equal(focused,true);
-}
-'''
-        self.run_source(close+'\n'+hotkey,harness)
 
 
 if __name__ == "__main__":

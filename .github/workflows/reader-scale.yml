@@ -8,6 +8,7 @@ on:
       - 'scripts/reader_*.py'
       - 'scripts/test_reader_benchmark.py'
       - 'tests/browser/*reader-scale*.mjs'
+      - 'tests/browser/check-reader-discovery.mjs'
       - 'docs/maintainer/reader-scale*'
       - '.github/workflows/reader-scale.yml'
   push:
@@ -16,6 +17,7 @@ on:
       - 'src/render/**'
       - 'scripts/reader_*.py'
       - 'tests/browser/*reader-scale*.mjs'
+      - 'tests/browser/check-reader-discovery.mjs'
       - '.github/workflows/reader-scale.yml'
   workflow_dispatch:
     inputs:
@@ -113,6 +115,27 @@ jobs:
           "${CJDOC_BROWSER_REQUIRE_ROOT}/node_modules/.bin/playwright" install --with-deps chromium
           sudo apt-get install -y fonts-noto-cjk
 
+      - name: Check out the immutable pre-change generator
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: '2ef643c5d795ab2e3dfd1035517baeec3a88b0aa'
+          path: reader-scale-baseline-source
+          persist-credentials: false
+
+      - name: Build baseline outside the measured source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline="${RUNNER_TEMP}/reader-baseline-source"
+          mv reader-scale-baseline-source "${baseline}"
+          export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
+          . scripts/with_sts_o1_cjpm.sh
+          GITHUB_WORKSPACE="${baseline}" bash "${baseline}/scripts/check.sh" build \
+            --repo "${baseline}" \
+            --main-binary-out "${baseline}/target/release/bin/main" \
+            --worker-binary-out "${baseline}/target/release/bin/chir-worker-main" \
+            --manifest "${baseline}/target/ci-build/build-manifest.json"
+
       - name: Capture fixed native and browser observations
         shell: bash
         env:
@@ -130,9 +153,31 @@ jobs:
           export CJDOC_READER_TEST_REVISION="${READER_REVISION}"
           python scripts/with_stdx.py --variant static -- python -m unittest discover \
             -s scripts -p test_reader_benchmark.py -v
+          install -d -m 0700 "${RUNNER_TEMP}/reader-evidence"
           python scripts/with_stdx.py --variant static -- python scripts/reader_capture.py \
-            --binary target/release/bin/main --revision "${READER_REVISION}" \
-            --corpus "${READER_CORPUS}" --output "${RUNNER_TEMP}/reader-evidence"
+            --binary "${RUNNER_TEMP}/reader-baseline-source/target/release/bin/main" \
+            --revision 2ef643c5d795ab2e3dfd1035517baeec3a88b0aa --label baseline \
+            --corpus "${READER_CORPUS}" --output "${RUNNER_TEMP}/reader-evidence/baseline"
+          python scripts/reader_register.py \
+            --baseline "${RUNNER_TEMP}/reader-evidence/baseline/observation" \
+            --template docs/maintainer/reader-scale-budgets.json \
+            --output "${RUNNER_TEMP}/reader-evidence/registered.json"
+          python scripts/with_stdx.py --variant static -- python scripts/reader_capture.py \
+            --binary target/release/bin/main --revision "${READER_REVISION}" --label after \
+            --corpus "${READER_CORPUS}" --output "${RUNNER_TEMP}/reader-evidence/after"
+          if [[ "${READER_CORPUS}" == 1000 ]]; then
+            for locale in en zh-CN; do
+              node tests/browser/check-reader-discovery.mjs \
+                --site "${RUNNER_TEMP}/reader-evidence/after/observation/locale-${locale}/html" \
+                --locale "${locale}" --output "${RUNNER_TEMP}/reader-evidence/discovery-${locale}"
+            done
+          fi
+          python scripts/reader_compare.py \
+            --baseline "${RUNNER_TEMP}/reader-evidence/baseline/observation" \
+            --after "${RUNNER_TEMP}/reader-evidence/after/observation" \
+            --manifest "${RUNNER_TEMP}/reader-evidence/baseline/corpus/reader-corpus.json" \
+            --budgets "${RUNNER_TEMP}/reader-evidence/registered.json" \
+            --output "${RUNNER_TEMP}/reader-evidence/comparison.json"
 
       - name: Retain uncut measurements and actual generated-page screenshots
         if: always()
@@ -140,9 +185,8 @@ jobs:
         with:
           name: reader-observations-${{ github.sha }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/reader-evidence/corpus/reader-corpus.json
-            ${{ runner.temp }}/reader-evidence/observation/**/*.json
-            ${{ runner.temp }}/reader-evidence/observation/**/*.log
-            ${{ runner.temp }}/reader-evidence/observation/**/*.png
+            ${{ runner.temp }}/reader-evidence/**/*.json
+            ${{ runner.temp }}/reader-evidence/**/*.log
+            ${{ runner.temp }}/reader-evidence/**/*.png
           retention-days: 30
           if-no-files-found: warn

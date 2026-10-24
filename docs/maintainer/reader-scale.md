@@ -29,6 +29,19 @@
 
 500 成员筛选有超过 100ms 的同步处理样本；CPU 采样热点位于 `saveMemberState` 读取滚动坐标的位置，而不是直接证明 `textContent` 或全站 rank/sort 有瓶颈。只在定位、成对复测后修改对应路径；不预先引入分片、全文复制或另一套搜索引擎。
 
+## RDR-S2 的针对性改动
+
+- 结果列表仍有界为每页 20 项，通过上一页/下一页继续发现；翻页复用当前查询的稳定排序，不引入另一套搜索引擎。查询、类别或包变更重置页码，原有精确身份、字段优先级、IME 与键盘交互保留。
+- 翻页后结果链接继续支持方向键、Enter 和 Escape；方向键移动真实焦点，返回查询框或用 Ctrl+K 聚焦不会把当前页重置为第一页。查询、类别和包实际变更仍重置页码。Escape 保留原有清空查询语义，从结果返回搜索框。
+- 空结果只表示当前索引没有命中；面板明确说明每项 2,000-rune 正文摘录边界，不提高截断上限或复制完整正文。
+- `saveMemberState` 原来保存的文档滚动坐标没有恢复消费者，却会在成员 DOM 变更后强制布局。移除该无用字段，文档位置继续由原生历史负责；仅缓存实际恢复的 sidebar offset，并在 pagehide 同步取最终快照，覆盖未派发 scroll 事件就导航的情况。不能仅凭同步 JS 变快就宣称像素呈现变快；需要分开观察布局/下一帧与额外渲染机会。
+- 键盘回归使用真实 DOM 事件与原生生成页面。保留 ranking/IME 单元行为检查，并让 DOM test double 提供标准事件 `target`；删除截取内部函数再用空 `render` stub 复述调用顺序的测试，不给新函数名重建 stub。现有真实 browser 的 Control/Meta+K 关闭移动主题 modal、解除 inert 并聚焦搜索的用例继续保留。
+- 移动菜单的 pointer hit-test 先将实际 popup 原生滚入视口，再分别验证 action 位于视口内且实际接收指针；不将视口以外的坐标误判为 paint containment 裁切。菜单仍必须通过独立的浏览器 hit-testing，不能只看 DOM 存在或 `display`。
+- `tests/browser/check-reader-discovery.mjs` 在实际原生 1k 站点检查完整分页身份/顺序、查询重置、IME/键盘精确尾部链接、立即导航后的 sidebar/文档历史，以及规定视口/明暗主题中的翻页控件和边界说明。它不替代冻结的三文件规模测量 harness。
+- 首次完整成对 CI 的 500 成员下一帧 P95 最高 165.4ms，未达到事前 150ms 目标。独立 trace 将主要成本定位到恢复 500 行时的样式/布局（一次涉及 16,984 个样式元素、约 19k dirty layout objects），并排除仅增加 layout containment 的方案。仅在 screen media 中对未展开、无焦点且未打开操作菜单的行使用浏览器原生 `content-visibility:auto`；保留全部 DOM、作者正文和精确锚点，展开契约与 print 始终走完整布局。不支持所用 selector 的浏览器保留原布局。对所有行延后布局的早期方案曾使离屏展开契约的 rendered text 变为空，既有 showcase 检查捕获该回归；双展开后保留完整作者正文的实际场景防止重现。诊断样本不是正式通过凭据，仍以完整 cohort 的比较为准。
+- 真实库的成对相对门槛也捕获了查询与冷加载退化；不同查询交替的 CPU profile 显示 `wordParts` 及逐字符分类是主要脚本成本。按原生 entry 对象惰性缓存不随查询变化的分词/缩写/拼写候选；缓存数量受当前索引条目数约束，不复制全部正文、不缓存固定查询响应，也不跳过不同查询的原始 rank/sort。正式比较继续要求原始前 20 排序和 index payload 完全一致。
+
+
 ## 环境与指标语义
 
 - SDK 固定为 Cangjie 1.2.0 STS、stdx 1.2.0.1 static sidecar、仓库现有 `-O1` wrapper。sidecar 在 SDK 的父级布局中解析，不假设在 `cangjie/` 内。按[构建指南](build.md)准备环境，不修改 SDK/compiler/std/stdx。
@@ -114,6 +127,6 @@ python3 scripts/reader_compare.py \
 
 RSS 顺序回归在独立的小控制进程中运行，避免完整测试套件的高驻留内存经 fork/exec 前阶段污染子进程峰值。64 MiB 分配与 32 MiB 差值断言不放宽；单文件通过不能替代完整 Python suite 的执行结果。
 
-[Reader scale observations workflow](../../.github/workflows/reader-scale.yml) 复用同源 STS candidate，核对 binary SHA-256，运行上述真实反例，再从源码生成 1k 观测。手动运行可选其它 cohort。原始 JSON、日志、原生 Doc IR、截图保存为该 run 的 artifact；默认保留 30 天，需要长期归档时下载并保留摘要。每个 run 是独立环境的观测，不冒充本地快照原始文件。
+[Reader scale observations workflow](../../.github/workflows/reader-scale.yml) 复用同源 STS candidate 并核对 binary SHA-256；另把固定 `2ef643c5d795ab2e3dfd1035517baeec3a88b0aa` 源码移到 checkout 外，使用同一认证 SDK 构建 baseline。在同一 runner 上依次采 baseline、绑定事先登记的数值模板、采 after、运行行为回归和严格比较。原始 JSON、日志、Doc IR、截图与比较保存为该 run 的 artifact，默认保留 30 天；需要长期归档时下载并保留摘要。手动选择资源受限 cohort 时比较仍为 `pass: false`、退出失败，不能把观测已完成误写成支持该规模。每个 run 都是独立 cohort，不冒充本地快照原始文件。
 
 build、仓颉 unit、golden/integration、真实库、本地浏览器、远端 CI 必须分别报告。源码中存在脚本、较小 fixture 通过、ARIA snapshot 或截图好看，都不是较高层级已执行的证据。

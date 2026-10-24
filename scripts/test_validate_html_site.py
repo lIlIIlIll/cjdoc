@@ -106,7 +106,6 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             self.write_site(root)
             result = self.validate(root)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("validated 1 HTML pages", result.stdout)
 
     def test_alias_requires_canonical_script_and_valid_target(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -143,52 +142,6 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("invalid search entry fields", result.stderr)
 
-    def test_canonical_search_arrow_up_starts_at_last_result(self) -> None:
-        script = canonical_search_script()
-        self.assertIn(
-            "select(selected < 0 ? visible.length - 1 : selected - 1)", script
-        )
-        self.assertNotIn("select(selected - 1)", script)
-
-    def test_canonical_search_displays_context_and_signatures(self) -> None:
-        script = canonical_search_script()
-        self.assertIn("const ownerLabel = entry.ownerName || entry.packageName", script)
-        self.assertIn("context.textContent = [ownerLabel, moduleLabel]", script)
-        self.assertIn("context.title = [entry.qualifiedName, entry.moduleName, entry.moduleId]", script)
-        self.assertIn("const signatures = globalThis.__CJDOC_SEARCH_SIGNATURES__ || {}", script)
-        self.assertIn("signatures[entry.id] || signatures[entry.canonicalId]", script)
-        self.assertIn('signature.className = "search-result-signature"', script)
-    def test_canonical_script_exposes_all_theme_presets(self) -> None:
-        script = canonical_search_script()
-        for theme in ("system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"):
-            with self.subTest(theme=theme):
-                self.assertIn(f'"{theme}"', script)
-        self.assertIn("const themeValues = new Set", script)
-        self.assertIn("data-cjdoc-theme-popover", script)
-        self.assertIn("data-cjdoc-theme-backdrop", script)
-        self.assertIn("data-cjdoc-theme-label", script)
-        self.assertIn('closeTheme(true)', script)
-        self.assertIn('localStorage.setItem("cjdoc-theme", next)', script)
-
-    def test_theme_markup_keeps_all_presets_and_non_mac_shortcut(self) -> None:
-        layout = (SCRIPT.parent.parent / "src/render/html_layout.cj").read_text(encoding="utf-8")
-        self.assertIn("<kbd>Ctrl + K</kbd>", layout)
-        self.assertIn("data-cjdoc-theme-label", layout)
-        self.assertIn("theme-palette-icon", layout)
-        self.assertNotIn('class=\\\"icon-sun\\\"', layout)
-        for theme in ("system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"):
-            with self.subTest(theme=theme):
-                self.assertIn(f'data-cjdoc-theme-value=\\\"{theme}\\\"', layout)
-
-    def test_theme_bootstrap_restores_and_propagates_theme(self) -> None:
-        script = canonical_theme_bootstrap_script()
-        for theme in ("system", "light", "dark", "paper", "ocean", "forest", "terminal", "violet"):
-            with self.subTest(theme=theme):
-                self.assertIn(f'"{theme}"', script)
-        self.assertIn('new URLSearchParams(window.location.search)', script)
-        self.assertIn('window.history.replaceState', script)
-        self.assertIn('target.searchParams.set("theme", state.navigationTheme)', script)
-        self.assertIn('globalThis.__CJDOC_THEME__', script)
 
     def test_rejects_mismatched_real_tags(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

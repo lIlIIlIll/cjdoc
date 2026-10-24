@@ -51,6 +51,8 @@ context.__CJDOC_SEARCH_INDEX__.entries.push(
  {...entry("overloaded", "net", "function"), id:"module-b", ownerName:"net.Client", moduleName:"sdk-b", moduleId:"cjdoc:module:b"});
 context.__CJDOC_SEARCH_SIGNATURES__ = {"module-a":"func overloaded(String)", "module-b":"func overloaded(Int64)"};
 vm.runInNewContext(SCRIPT, context);
+// A DOM-dispatched keyboard event always carries its originating element.
+const keydown = event => input.events.keydown({target: input, ...event});
 const search = query => { input.value = query; input.events.input(); return results.children.map(x => x.children[0].children[0].children[0].textContent); };
 assert(search("HttpClientBuilder").includes("HttpClientBuilder"));
 assert(search("httpclientbuilder").includes("httpclientbuilder"));
@@ -85,11 +87,11 @@ assert(search("Http").includes("HttpClientBuilder"));
 kind.value = "class"; kind.events.change();
 assert.equal(search("send").length, 0);
 kind.value = ""; kind.events.change(); search("Http");
-input.events.keydown({key: "ArrowDown", preventDefault() {}});
+keydown({key: "ArrowDown", preventDefault() {}});
 assert.equal(input.attrs["aria-activedescendant"], "cjdoc-search-result-0");
 const link = results.children[0].children[0];
-input.events.keydown({key: "Enter", preventDefault() {}}); assert(link.clicked);
-input.events.keydown({key: "Escape"}); assert.equal(results.children.length, 0);
+keydown({key: "Enter", preventDefault() {}}); assert(link.clicked);
+keydown({key: "Escape"}); assert.equal(results.children.length, 0);
 document.keydown({key: "k", ctrlKey: true, preventDefault() {}}); assert(input.focused);
 assert.equal(search("overloaded").length, 2);
 const moduleLinks = results.children.map(item => item.children[0]);
@@ -105,17 +107,17 @@ assert.equal(results.children.length, 0);
 input.events.compositionend();
 input.value = "Http"; input.events.input();
 assert(search("Http").includes("HttpClientBuilder"));
-input.events.keydown({key: "ArrowDown", preventDefault() {}});
+keydown({key: "ArrowDown", preventDefault() {}});
 input.events.compositionstart();
 // Enter during composition must not activate the highlighted result.
 results.children[0].children[0].clicked = undefined;
-input.events.keydown({key: "Enter", preventDefault() {}, isComposing: true});
+keydown({key: "Enter", preventDefault() {}, isComposing: true});
 assert.equal(results.children[0].children[0].clicked, undefined);
 input.events.compositionend();
 // Committing the composition re-renders for the committed text, so the
 // selection restarts; the reader picks again before opening.
-input.events.keydown({key: "ArrowDown", preventDefault() {}});
-input.events.keydown({key: "Enter", preventDefault() {}});
+keydown({key: "ArrowDown", preventDefault() {}});
+keydown({key: "Enter", preventDefault() {}});
 assert(results.children[0].children[0].clicked);
 '''
         script = "const SCRIPT = " + __import__("json").dumps(canonical_search_script()) + ";\n" + harness

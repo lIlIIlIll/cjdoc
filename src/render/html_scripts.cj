@@ -96,6 +96,14 @@ internal let HTML_SEARCH_SCRIPT = """
   const kindFilter = document.querySelector("[data-cjdoc-kind]");
   const packageFilter = document.querySelector("[data-cjdoc-package]");
   const searchStatus = document.querySelector("[data-cjdoc-search-status]");
+  const searchPopover = document.querySelector("[data-cjdoc-search-popover]");
+  const searchPages = document.querySelector("[data-cjdoc-search-pages]");
+  const previousPage = document.querySelector("[data-cjdoc-search-previous]");
+  const nextPage = document.querySelector("[data-cjdoc-search-next]");
+  const pageSize = 20;
+  let matches = [];
+  let currentPage = 0;
+  let currentQuery = null;
   let entries = [];
   let visible = [];
   let selected = -1;
@@ -145,7 +153,6 @@ internal let HTML_SEARCH_SCRIPT = """
     flush();
     return words;
   };
-  const acronym = (value) => wordParts(value).map((word) => Array.from(word)[0]).join("");
   const oneEditApart = (query, candidate) => {
     if (candidate.length > query.length * 2 + 2 || query.length > candidate.length * 2 + 2) return false;
     const queryChars = [...query];
@@ -174,9 +181,30 @@ internal let HTML_SEARCH_SCRIPT = """
     if (queryIndex < queryChars.length || candidateIndex < candidateChars.length) edits += 1;
     return edits === 1;
   };
-  const hasOneSpellingError = (entry, query) => {
-    const candidates = [entry.name.toLocaleLowerCase(), ...wordParts(entry.name), ...wordParts(entry.qualifiedName)];
-    return candidates.some((candidate) => oneEditApart(query, candidate));
+  // Cache only immutable entry facts, bounded by this page's native index.
+  // Distinct queries still run the same ranking and stable tie-breaks.
+  const entryTextCache = new WeakMap();
+  const entryText = (entry) => {
+    let text = entryTextCache.get(entry);
+    if (!text) {
+      const haystack = (entry.qualifiedName + " " + entry.kind + " " + entry.packageName + " " + (entry.ownerName || "") + " " + (entry.parameterTypes || []).join(" ") + " " + (entry.returnType || "") + " " + entry.summary).toLocaleLowerCase();
+      text = {haystack, words: wordParts(haystack)};
+      entryTextCache.set(entry, text);
+    }
+    return text;
+  };
+  const wordInitials = (words) => words.map((word) => Array.from(word)[0]).join("");
+  const entrySpelling = (entry, text) => {
+    if (!text.spelling) {
+      const nameWords = wordParts(entry.name);
+      const qualifiedWords = wordParts(entry.qualifiedName);
+      text.spelling = {
+        nameAcronym: wordInitials(nameWords),
+        qualifiedAcronym: wordInitials(qualifiedWords),
+        candidates: [entry.name.toLocaleLowerCase(), ...nameWords, ...qualifiedWords]
+      };
+    }
+    return text.spelling;
   };
   const rank = (entry, parsed) => {
     if (parsed.filters.some((filter) => !fieldValue(entry, filter.field).includes(filter.value))) return -1;
@@ -189,14 +217,17 @@ internal let HTML_SEARCH_SCRIPT = """
     if (qualified === query) return 1;
     if (name.startsWith(query)) return 2;
     if (qualified.startsWith(query)) return 3;
-    const haystack = (entry.qualifiedName + " " + entry.kind + " " + entry.packageName + " " + (entry.ownerName || "") + " " + (entry.parameterTypes || []).join(" ") + " " + (entry.returnType || "") + " " + entry.summary).toLocaleLowerCase();
-    const words = wordParts(haystack);
+    const text = entryText(entry);
+    const haystack = text.haystack;
+    const words = text.words;
     const body = (entry.body || "").toLocaleLowerCase();
     if (terms.every((term) => words.some((word) => word.startsWith(term)))) return 4;
-    if (terms.length === 1 && (acronym(entry.name) === query || acronym(entry.qualifiedName) === query)) return 5;
+    const spelling = terms.length === 1 ? entrySpelling(entry, text) : null;
+    if (spelling && (spelling.nameAcronym === query || spelling.qualifiedAcronym === query)) return 5;
     if (terms.every((term) => haystack.includes(term))) return 6;
     const queryLength = [...query].length;
-    if (terms.length === 1 && queryLength >= 4 && queryLength <= 128 && hasOneSpellingError(entry, query)) return 7;
+    if (spelling && queryLength >= 4 && queryLength <= 128 &&
+        spelling.candidates.some((candidate) => oneEditApart(query, candidate))) return 7;
     // Body and contract prose ranks below every name/structured-field match, so a
     // page that merely mentions the word cannot displace an exact symbol result.
     if (body && terms.every((term) => body.includes(term))) return 8;
@@ -242,32 +273,12 @@ internal let HTML_SEARCH_SCRIPT = """
     input.setAttribute("aria-activedescendant", active.id);
     active.scrollIntoView({block: "nearest"});
   };
-  const render = () => {
+  const renderPage = (parsedQuery) => {
     results.replaceChildren();
-    visible = [];
     selected = -1;
     input.removeAttribute("aria-activedescendant");
-    if (searchStatus) searchStatus.hidden = true;
-    const rawQuery = input.value.trim().toLocaleLowerCase();
-    if (!rawQuery) { input.setAttribute("aria-expanded", "false"); return; }
-    const parsedQuery = parseQuery(rawQuery);
-    if (parsedQuery.errors.length) {
-      if (searchStatus) {
-        searchStatus.textContent = isChinese ? "筛选语法错误：支持 name:、owner:、param:、return:、package:、kind:" : "Invalid filter; use name:, owner:, param:, return:, package:, or kind:";
-        searchStatus.hidden = false;
-      }
-      input.setAttribute("aria-expanded", "false");
-      return;
-    }
-    const selectedPackage = packageFilter ? packageFilter.value : "";
-    // Read the controls themselves: history restores their values without change events.
-    const selectedKind = kindFilter ? kindFilter.value : "";
-    const matches = entries.map((entry) => ({entry, rank: rank(entry, parsedQuery)}))
-      .filter((item) => item.rank >= 0 && (!selectedKind || item.entry.kind === selectedKind) &&
-        (!selectedPackage || item.entry.packageName === selectedPackage))
-      .sort((left, right) => left.rank - right.rank ||
-        left.entry.qualifiedName.localeCompare(right.entry.qualifiedName) || left.entry.id.localeCompare(right.entry.id));
-    visible = matches.slice(0, 20);
+    const start = currentPage * pageSize;
+    visible = matches.slice(start, start + pageSize);
     const signatures = globalThis.__CJDOC_SEARCH_SIGNATURES__ || {};
     for (const match of visible) {
       const entry = match.entry;
@@ -322,17 +333,57 @@ internal let HTML_SEARCH_SCRIPT = """
       item.append(link);
       results.append(item);
     }
-    if (!visible.length && searchStatus) {
-      searchStatus.textContent = isChinese ? "没有匹配的声明" : "No matching declarations";
-      searchStatus.hidden = false;
-    } else if (matches.length > visible.length && searchStatus) {
-      searchStatus.textContent = isChinese
-        ? "显示前 " + visible.length + " 项，共 " + matches.length + " 项；请缩小查询范围。"
-        : "Showing " + visible.length + " of " + matches.length + " matches; narrow your query for more.";
+    if (searchStatus) {
+      searchStatus.textContent = !visible.length
+        ? (isChinese ? "此索引中没有匹配项。" : "No matches in this index.")
+        : (isChinese ? "显示 " : "Showing ") + (start + 1) + "–" + (start + visible.length) +
+          (isChinese ? " 项，共 " : " of ") + matches.length + (isChinese ? " 项。" : " matches.");
       searchStatus.hidden = false;
     }
+    if (searchPages) searchPages.hidden = matches.length <= pageSize;
+    if (previousPage) previousPage.disabled = currentPage === 0;
+    if (nextPage) nextPage.disabled = start + pageSize >= matches.length;
+    if (searchPopover) searchPopover.hidden = false;
     input.setAttribute("aria-expanded", visible.length ? "true" : "false");
   };
+  const render = () => {
+    closeSearch();
+    matches = [];
+    currentPage = 0;
+    const rawQuery = input.value.trim().toLocaleLowerCase();
+    if (!rawQuery) return;
+    const parsedQuery = parseQuery(rawQuery);
+    if (parsedQuery.errors.length) {
+      if (searchStatus) {
+        searchStatus.textContent = isChinese ? "筛选语法错误：支持 name:、owner:、param:、return:、package:、kind:" : "Invalid filter; use name:, owner:, param:, return:, package:, or kind:";
+        searchStatus.hidden = false;
+      }
+      if (searchPopover) searchPopover.hidden = false;
+      return;
+    }
+    // Read restored controls on every new query; page changes reuse its stable ranking.
+    const selectedPackage = packageFilter ? packageFilter.value : "";
+    const selectedKind = kindFilter ? kindFilter.value : "";
+    matches = entries.map((entry) => ({entry, rank: rank(entry, parsedQuery)}))
+      .filter((item) => item.rank >= 0 && (!selectedKind || item.entry.kind === selectedKind) &&
+        (!selectedPackage || item.entry.packageName === selectedPackage))
+      .sort((left, right) => left.rank - right.rank ||
+        left.entry.qualifiedName.localeCompare(right.entry.qualifiedName) || left.entry.id.localeCompare(right.entry.id));
+    currentQuery = parsedQuery;
+    renderPage(parsedQuery);
+  };
+  const changePage = (offset) => {
+    const page = currentPage + offset;
+    if (!currentQuery || page < 0 || page * pageSize >= matches.length) return;
+    currentPage = page;
+    renderPage(currentQuery);
+    // Keep keyboard users on the new results, not a now-disabled final-page button.
+    const first = results.querySelector("a");
+    if (first) first.focus();
+    results.scrollTop = 0;
+  };
+  if (previousPage) previousPage.addEventListener("click", () => changePage(-1));
+  if (nextPage) nextPage.addEventListener("click", () => changePage(1));
 
   const addOptions = (selectElement, values) => {
     if (!selectElement) return;
@@ -359,6 +410,8 @@ internal let HTML_SEARCH_SCRIPT = """
     input.removeAttribute("aria-activedescendant");
     input.setAttribute("aria-expanded", "false");
     if (searchStatus) searchStatus.hidden = true;
+    if (searchPages) searchPages.hidden = true;
+    if (searchPopover) searchPopover.hidden = true;
   };
   render();
   // While an input method editor composes (for example Chinese pinyin), the
@@ -368,20 +421,37 @@ internal let HTML_SEARCH_SCRIPT = """
   const isComposing = (event) => composing || (event && event.isComposing === true);
   input.addEventListener("compositionstart", () => { composing = true; });
   input.addEventListener("compositionend", () => { composing = false; render(); });
-  input.addEventListener("focus", () => { if (input.value.trim()) render(); });
+  const showSearch = () => {
+    if (!input.value.trim() || (searchPopover && !searchPopover.hidden)) return;
+    if (currentQuery && matches.length) renderPage(currentQuery);
+    else render();
+  };
+  input.addEventListener("focus", showSearch);
   input.addEventListener("input", (event) => { if (isComposing(event)) return; render(); });
   if (kindFilter) kindFilter.addEventListener("change", render);
   if (packageFilter) packageFilter.addEventListener("change", render);
-  input.addEventListener("keydown", (event) => {
+  (searchArea || input).addEventListener("keydown", (event) => {
     // Escape stays usable mid-composition; navigation and activation do not.
-    if (isComposing(event)) {
-      if (event.key === "Escape") { input.value = ""; render(); input.blur(); }
+    if (event.key === "Escape") {
+      input.value = "";
+      render();
+      if (event.target === input) input.blur();
+      else input.focus();
       return;
     }
-    if (event.key === "ArrowDown") { event.preventDefault(); select(selected + 1); }
-    else if (event.key === "ArrowUp") { event.preventDefault(); select(selected < 0 ? visible.length - 1 : selected - 1); }
-    else if (event.key === "Enter" && selected >= 0) { const active = results.children[selected]; const link = active && active.querySelector("a"); if (link) { event.preventDefault(); link.click(); } }
-    else if (event.key === "Escape") { input.value = ""; render(); input.blur(); }
+    if (isComposing(event)) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const focused = event.target.closest('[role="option"]');
+      const position = focused ? Array.prototype.indexOf.call(results.children, focused) : -1;
+      const active = position >= 0 ? position : selected;
+      select(event.key === "ArrowDown" ? active + 1 : active < 0 ? visible.length - 1 : active - 1);
+      if (event.target !== input && selected >= 0) results.children[selected].querySelector("a").focus();
+    } else if (event.key === "Enter" && event.target === input && selected >= 0) {
+      const active = results.children[selected];
+      const link = active && active.querySelector("a");
+      if (link) { event.preventDefault(); link.click(); }
+    }
   });
   document.addEventListener("click", (event) => {
     if (searchArea && !searchArea.contains(event.target) && !event.target.closest(".search-filters") && !event.target.closest("[data-cjdoc-filter-toggle]")) closeSearch();
@@ -393,7 +463,7 @@ internal let HTML_SEARCH_SCRIPT = """
       if (typeof closeMenu === "function") closeMenu(false);
       openMobileSearch();
       input.focus();
-      render();
+      showSearch();
     }
   });
   }
@@ -1126,6 +1196,12 @@ internal let HTML_SEARCH_SCRIPT = """
   })();
   const navigationEntry = performance.getEntriesByType("navigation")[0];
   const isHistoryNavigation = navigationEntry && navigationEntry.type === "back_forward";
+  // Document scroll belongs to native history restoration; its old stored copy
+  // had no reader. Cache only the sidebar offset that this script restores.
+  let sidebarScrollTop = 0;
+  if (sidebar) sidebar.addEventListener("scroll", () => {
+    sidebarScrollTop = sidebar.scrollTop;
+  }, {passive: true});
   const saveMemberState = () => {
     try {
       const open = [...document.querySelectorAll("details[data-cjdoc-member][open]")]
@@ -1137,8 +1213,7 @@ internal let HTML_SEARCH_SCRIPT = """
         contextFilter: contextFilter ? contextFilter.value : "",
         sidebarFilter: sidebarFilter ? sidebarFilter.value : "",
         sidebarGroups: savedSidebarState || [...document.querySelectorAll(".sidebar-group")].map((group) => group.open),
-        scroll: [window.scrollX, window.scrollY],
-        sidebar: sidebar ? sidebar.scrollTop : 0
+        sidebar: sidebarScrollTop
       }));
     } catch (_) {}
   };
@@ -1227,7 +1302,11 @@ internal let HTML_SEARCH_SCRIPT = """
     try { target = new URL(link.href, window.location.href); } catch (_) { return; }
     if (target.href === window.location.href) revealHashTarget(true);
   });
-  window.addEventListener("pagehide", saveMemberState);
+  window.addEventListener("pagehide", () => {
+    // Navigation may happen before a queued scroll event, so take a final snapshot.
+    sidebarScrollTop = sidebar ? sidebar.scrollTop : 0;
+    saveMemberState();
+  });
   restoreSidebarState();
   applyMemberFilter();
   const finishPageLayout = (event) => {
