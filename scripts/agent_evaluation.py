@@ -43,7 +43,8 @@ except ImportError:  # Direct script execution.
     from strict_json import strict_dumps, strict_load
 
 REPO = Path(__file__).resolve().parent.parent
-DEFAULT_PROTOCOL = REPO / "tests/agent/evaluation-protocol.json"
+FACT_PROTOCOL = REPO / "tests/agent/evaluation-protocol.json"
+DEFAULT_PROTOCOL = REPO / "tests/agent/evaluation-client-transport-v2.json"
 DEFAULT_RUBRIC = REPO / "tests/agent/evaluation-rubric.json"
 ARMS = ("baseline-html-index", "shared-query-mcp")
 MCP_SERVER_NAME = "cjdoc"
@@ -100,11 +101,36 @@ def _require(condition: bool, message: str) -> None:
         raise ProtocolError(message)
 
 
+def _expand_client_transport(protocol: dict) -> dict:
+    if protocol.get("schemaVersion") == "cjdoc.agent-evaluation-protocol/1":
+        return protocol
+    _require(protocol.get("schemaVersion") == "cjdoc.agent-evaluation-protocol/2",
+             "unsupported protocol schemaVersion")
+    allowed = {"schemaVersion", "status", "factProtocol", "clientTransport",
+               "supersedesObservation"}
+    _require(not set(protocol) - allowed,
+             "transport protocol cannot override frozen tasks, budgets or client settings")
+    _require(protocol.get("clientTransport") == "codex-0.163-mcp-host",
+             "unsupported documentation-only client transport")
+    reference = protocol.get("factProtocol")
+    _require(isinstance(reference, dict) and set(reference) == {"path", "sha256"} and
+             reference["path"] == FACT_PROTOCOL.name,
+             "transport protocol must reference the original frozen factual protocol")
+    _require(digest_of(FACT_PROTOCOL) == reference["sha256"],
+             "original factual protocol digest differs")
+    facts = strict_load(FACT_PROTOCOL, description="original frozen factual protocol")
+    _require(isinstance(facts, dict) and
+             facts.get("schemaVersion") == "cjdoc.agent-evaluation-protocol/1",
+             "transport protocol requires the original factual protocol version")
+    expanded = dict(facts)
+    expanded.update(protocol)
+    return expanded
+
+
 def load_protocol(path: Path) -> dict:
     protocol = strict_load(path, description="evaluation protocol")
     _require(isinstance(protocol, dict), "protocol must be an object")
-    _require(protocol.get("schemaVersion") == "cjdoc.agent-evaluation-protocol/1",
-             "unsupported protocol schemaVersion")
+    protocol = _expand_client_transport(protocol)
     comparison = protocol.get("comparison") or {}
     _require(list(comparison.get("paths") or []) == list(ARMS),
              f"protocol paths must be exactly {list(ARMS)}")
@@ -534,6 +560,7 @@ def read_relay_log(path: Path) -> dict:
         "transportBytes": {"clientToServer": 0, "serverToClient": 0},
         "responses": 0, "errors": 0, "protocolVersion": None, "serverInfo": None,
         "budget": None, "malformedLines": 0, "budgetRefusals": 0,
+        "receiptSizesConsistent": True,
         "withheldResults": 0, "callMs": [], "callMsTotal": 0.0,
     }
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -584,10 +611,17 @@ def read_relay_log(path: Path) -> dict:
             summary["toolNames"].append(item["tool"])
             entry = {"tool": item["tool"], "id": item.get("id"),
                      "callMs": item.get("callMs"), "withheld": False}
-            if "resultBytes" in item:
-                summary["resultBytes"] += int(item["resultBytes"])
-                entry["resultBytes"] = item["resultBytes"]
+            parsed = _safe_loads(item.get("line"))
+            if parsed is not None and ("result" in parsed or "error" in parsed):
+                field = "result" if "result" in parsed else "error"
+                actual_bytes = _result_bytes(item["line"].encode("utf-8"), field)
+                summary["resultBytes"] += actual_bytes
+                entry["resultBytes"] = actual_bytes
                 entry["ok"] = item.get("ok")
+                if type(item.get("resultBytes")) is not int or item["resultBytes"] != actual_bytes:
+                    summary["receiptSizesConsistent"] = False
+            else:
+                summary["receiptSizesConsistent"] = False
             if item.get("withheldResultBytes") is not None:
                 summary["withheldResults"] += 1
                 entry.update(withheld=True, withheldResultBytes=item["withheldResultBytes"],
@@ -600,17 +634,30 @@ def read_relay_log(path: Path) -> dict:
             summary["responses"] += 1
             if item.get("ok") is False:
                 summary["errors"] += 1
+    requested = sorted((compact(item["id"]), item["tool"])
+                       for item in summary["toolRequests"])
+    delivered = sorted((compact(item["id"]), item["tool"])
+                       for item in summary["toolResults"])
+    # Codex can kill its MCP subprocess instead of closing stdin. A complete
+    # request/delivery journal still proves the exact transmitted result spans;
+    # an in-flight, malformed or mismatched receipt must remain unknown.
+    journal_complete = (
+        bool(summary["protocolVersion"]) and isinstance(summary["serverInfo"], dict)
+        and summary["toolDefinitions"] is not None
+        and not summary["malformedLines"] and summary["receiptSizesConsistent"]
+        and requested == delivered)
+    summary["deliveryJournalComplete"] = journal_complete
+    summary["totalsRecorded"] = summary["budget"] is not None
     if summary["budget"] is None:
-        # Without the closing budget line the run died mid-session; the byte total
-        # is then unknown rather than zero.
-        summary["resultBytes"] = None
-        summary["totalsRecorded"] = False
+        summary["totalsSource"] = "complete-delivery-journal" if journal_complete else "unknown"
+        if not journal_complete:
+            summary["resultBytes"] = None
     else:
-        summary["totalsRecorded"] = True
-        # The two independent counts must agree; a divergence means the transcript
-        # or the enforcement path is broken and the measurement cannot be trusted.
+        summary["totalsSource"] = "closing-budget"
+        # Compare the closing counters with independent raw-wire span counts.
         summary["totalsConsistent"] = (
-            int(summary["budget"].get("toolCalls") or 0) == summary["toolCalls"]
+            summary["receiptSizesConsistent"] and not summary["malformedLines"]
+            and int(summary["budget"].get("toolCalls") or 0) == summary["toolCalls"]
             and int(summary["budget"].get("resultBytes") or 0) == summary["resultBytes"])
     return summary
 
@@ -677,20 +724,26 @@ def toml_array(values: list[str]) -> str:
     return "[" + ", ".join(toml_string(value) for value in values) + "]"
 
 
-# The MCP arm must reach documentation only through the server, so the shell and
-# every non-MCP content tool are turned off there. The baseline arm is defined by
-# reading published files, so it keeps read-only shell access and loses only web
-# search.
-# Both arms are documentation servers behind the same stdio relay, so both lose
-# every client-side route to files, processes, network or other context. These are
-# the feature names `codex features list` actually reports for this client; the
-# top-level `web_search` setting is a config value, not a feature flag.
+# Both arms use documentation servers behind the same stdio relay; content tools
+# remain disabled. Codex 0.163 also needs code_mode_host for MCP discovery/dispatch
+# even with code_mode disabled. Replay v1 unchanged; v2 fixes only that transport
+# prerequisite and the native loader environment, never the frozen task oracle.
 DISABLED_FEATURES = (
     "shell_tool", "unified_exec", "apps", "browser_use", "browser_use_external",
     "computer_use", "in_app_browser", "code_mode", "code_mode_host", "plugins",
     "memories", "multi_agent", "multi_agent_v2", "skill_search", "view_image",
     "image_generation",
 )
+NATIVE_RUNTIME_ENVIRONMENT = ("PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH",
+                              "DYLD_FALLBACK_LIBRARY_PATH", "cjHeapSize")
+
+
+def client_feature_policy(protocol: dict) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    enabled = (("code_mode_host",) if
+               protocol["schemaVersion"] == "cjdoc.agent-evaluation-protocol/2" else ())
+    disabled = tuple(feature for feature in DISABLED_FEATURES if feature not in enabled)
+    return disabled, enabled
+
 BASELINE_SERVER = Path(__file__).resolve().parent / "agent_baseline_mcp.py"
 BASELINE_SERVER_KIND = "captured-published-docs"
 NATIVE_SERVER_KIND = "native-cjdoc-mcp"
@@ -720,8 +773,11 @@ def codex_command(options: "RunOptions", session: Path, prompt: str,
                "-c", 'approval_policy="never"']
     if client.get("ignoreUserConfig", True):
         command.append("--ignore-user-config")
-    for feature in DISABLED_FEATURES:
+    disabled, enabled = client_feature_policy(options.protocol)
+    for feature in disabled:
         command.extend(["--disable", feature])
+    for feature in enabled:
+        command.extend(["--enable", feature])
     prefix = f"mcp_servers.{MCP_SERVER_NAME}."
     command.extend([
         "-c", f"{prefix}command={toml_string(server['command'][0])}",
@@ -731,6 +787,10 @@ def codex_command(options: "RunOptions", session: Path, prompt: str,
         "-c", f"{prefix}startup_timeout_sec={int(server['startupTimeoutSec'])}",
         "-c", f"{prefix}tool_timeout_sec={int(server['toolTimeoutSec'])}",
     ])
+    if options.protocol["schemaVersion"] == "cjdoc.agent-evaluation-protocol/2":
+        command.extend(["-c", f"{prefix}required=true"])
+    for name, value in sorted(server.get("env", {}).items()):
+        command.extend(["-c", f"{prefix}env.{name}={toml_string(value)}"])
     command.append(prompt)
     return command
 
@@ -765,6 +825,9 @@ def arm_server(options: "RunOptions", session: Path, arm: str) -> dict:
         server = relay_launch(options, session, session, native)
         server["kind"] = NATIVE_SERVER_KIND
         server["expectedTools"] = list(NATIVE_TOOLS)
+        if options.protocol["schemaVersion"] == "cjdoc.agent-evaluation-protocol/2":
+            server["env"] = {name: os.environ[name] for name in NATIVE_RUNTIME_ENVIRONMENT
+                             if name in os.environ and (name != "PATH" or os.name == "nt")}
     return server
 
 
@@ -1067,7 +1130,7 @@ def run_one(options: RunOptions, run: dict, session: Path) -> dict:
         failures.append({"kind": "toolCalls", "limit": budget["maximumToolCallsPerTask"],
                          "observed": summary["toolCalls"]})
     if result_bytes is None:
-        # A relay that died before writing its totals leaves the byte count unknown;
+        # In-flight or incomplete receipts cannot prove the delivered byte total;
         # that is a measurement gap, not evidence of a budget breach.
         measurement_gaps = ["documentBytesUnknown"]
     else:
@@ -1076,9 +1139,11 @@ def run_one(options: RunOptions, run: dict, session: Path) -> dict:
             failures.append({"kind": "documentBytes",
                              "limit": budget["maximumDocumentBytesPerTask"],
                              "observed": result_bytes})
+    if transport.get("totalsConsistent") is False or transport.get("receiptSizesConsistent") is False:
+        measurement_gaps.append("inconsistentRelayCounters")
     relay_budget = transport.get("budget") or {}
-    if relay_budget.get("exceeded"):
-        failures.append({"kind": "relayRefusal", "limit": relay_budget["exceeded"],
+    if relay_budget.get("exceeded") or transport.get("budgetRefusals") or transport.get("withheldResults"):
+        failures.append({"kind": "relayRefusal", "limit": relay_budget.get("exceeded", "recorded-refusal"),
                          "observed": {"toolCalls": relay_budget.get("toolCalls"),
                                       "resultBytes": relay_budget.get("resultBytes"),
                                       "refusals": transport.get("budgetRefusals"),
@@ -1100,7 +1165,8 @@ def run_one(options: RunOptions, run: dict, session: Path) -> dict:
                     "serverKind": server["kind"],
                     "server": options.placeholders.scrub(server["nativeCommand"]),
                     "serverCommand": options.placeholders.command(server["command"]),
-                    "expectedTools": server["expectedTools"]},
+                    "expectedTools": server["expectedTools"],
+                    "runtimeEnvironment": options.placeholders.scrub(server.get("env", {}))},
         "client": {
             "command": options.placeholders.command(command),
             "process": process,
@@ -1148,8 +1214,9 @@ def server_contact(transport: dict, expected_tools: tuple[str, ...]) -> dict:
     advertised = tuple(transport.get("advertisedTools") or ())
     return {
         "transportAvailable": bool(transport.get("available")),
-        "initialized": int(transport.get("initialize") or 0) > 0,
-        "toolsListed": int(transport.get("toolsList") or 0) > 0,
+        "initialized": bool(transport.get("protocolVersion"))
+                       and isinstance(transport.get("serverInfo"), dict),
+        "toolsListed": transport.get("toolDefinitions") is not None,
         "advertisedTools": list(advertised),
         "expectedTools": list(expected_tools),
         "missingTools": [name for name in expected_tools if name not in advertised],
@@ -1484,17 +1551,29 @@ def main(argv: list[str] | None = None) -> int:
         (REPO, "<repo>"),
         (Path(tempfile.gettempdir()), "$TMPDIR"),
     ])
+    disabled_features, enabled_features = client_feature_policy(protocol)
+    host = shutil.which("codex-code-mode-host") if enabled_features else None
     manifest = {
         "schemaVersion": "cjdoc.agent-evaluation-run/1",
         "protocol": {"path": repo_relative(args.protocol), "sha256": digest_of(args.protocol)},
         "rubric": {"path": repo_relative(args.rubric), "sha256": digest_of(args.rubric)},
         "baselineRevision": protocol.get("baselineRevision"),
         "binary": {"label": "<binary>", "sha256": digest_of(options.binary)},
+        "harness": {"runnerSha256": digest_of(Path(__file__).resolve()),
+                    "baselineServerSha256": digest_of(BASELINE_SERVER)},
         "snapshots": [{"label": f"<snapshot:{index}>", "sha256": digest_of(path)}
                       for index, path in enumerate(options.snapshots, start=1)],
         "client": protocol["client"],
         "mcpProtocol": protocol.get("protocol"),
-        "disabledClientFeatures": list(DISABLED_FEATURES),
+        "disabledClientFeatures": list(disabled_features),
+        "enabledClientFeatures": list(enabled_features),
+        "clientTransport": protocol.get("clientTransport", "legacy-host-disabled"),
+        "requiredDocumentationServer": bool(enabled_features),
+        "factProtocol": protocol.get("factProtocol"),
+        "codeModeHost": ({"name": "codex-code-mode-host", "sha256": digest_of(Path(host))}
+                         if host else None),
+        "nativeRuntimeEnvironmentKeys": (list(NATIVE_RUNTIME_ENVIRONMENT)
+                                          if enabled_features else []),
         "webSearch": 'web_search="disabled" (top-level client setting)',
         "nativeContract": "<binary> mcp --snapshot <PATH> [--snapshot <PATH> ...]",
         "baselineContract": (f"{sys.executable} agent_baseline_mcp.py --baseline "

@@ -4,11 +4,12 @@
 
 ## 事前固定输入
 
-- [evaluation-protocol.json](../../tests/agent/evaluation-protocol.json)：12 个固定任务、两个消费路径、交替顺序，每任务每路径一次；客户端/模型/推理强度和预算固定。
+- [evaluation-protocol.json](../../tests/agent/evaluation-protocol.json)：产品变更前冻结的 12 题、事实答案、两个路径、顺序、客户端/模型与预算；保持原文件只读。
+- [evaluation-client-transport-v2.json](../../tests/agent/evaluation-client-transport-v2.json)：当前客户端接入配置，按 SHA 引用原事实协议，不能覆盖题目、预算或模型；仅启用 Codex 0.163 必需的 MCP dispatch host，要求文档服务器完成启动，并显式传递 allowlist 中的 native 运行库环境及已有 heap 设置。
 - [evaluation-rubric.json](../../tests/agent/evaluation-rubric.json)：逐事实、身份/版本、签名/命名默认参数、引用、不确定性和成本口径。
 - 基线源码 revision、源码归档 tree/hash、原生二进制及 build manifest、工具链版本/hash、每个输入 Doc IR 与静态站的 hash。
 
-协议/评分表在产品变更和任一模型路径之前提交；没有根据回答改题、删失败、增加预算、重试择优的分支。一次完整配对观测不能声称稳定改进。若修复产品后重新观察，保留先前所有运行，分别列明二进制/协议身份，不把不同产品版本混为同一次配对。
+事实协议/评分表在产品变更和任一模型路径之前提交；不改题、删失败、增加预算或重试择优。首轮完整 24 次真实记录暴露了客户端 host 被禁用和 native 运行库环境未传递两处接入故障；原协议与全部轨迹保留，不能把这轮冒充有效模型效果。transport v2 在修正后的完整对照前单独冻结，原题、事实、模型、预算和顺序不变；两个路径使用同一文档工具禁用策略。每个完整观测单独列出协议和二进制身份，不跨配置合并或择优，也不凭一次观测声称稳定改进。
 
 ## 捕获旧消费路径
 
@@ -52,6 +53,7 @@ python3 scripts/test_query_mcp.py --binary "$CURRENT_BINARY" \
 
 ```bash
 python3 scripts/agent_evaluation.py \
+  --protocol tests/agent/evaluation-client-transport-v2.json \
   --binary "$CURRENT_BINARY" --baseline "$BASELINE" \
   --site pocketkit-v1-en=composed/demo-v1/html/en \
   --site pocketkit-v1-zh=composed/demo-v1/html/zh-CN \
@@ -72,12 +74,15 @@ python3 scripts/agent_evaluation.py \
 
 两个路径都经过相同 recording/budget relay，使用同一固定客户端、模型、推理强度及非文档工具禁用策略。记录实际工具定义、初始化/发现、请求和返回、原始客户端事件、最终回答、usage、进程退出与预算错误。没有真实工具调用、客户端错误、超时、无回答、违反答案结构都留在 12 任务分母内。调用成功和任务正确分别报告。
 
+初始化和工具发现以服务器的真实回复为准，不能把仅发送请求计作成功。读取字节按原始 JSON 行中的 result/error UTF-8 范围重新计算，并核对 relay 回执。客户端可能直接终止 MCP 子进程而不关闭 stdin：只有初始化/发现已回复、每个工具请求都有对应的已交付结果、无损坏行且字节回执一致时，才能从完整 delivery journal 恢复总数，并明确记录该来源；尚有请求未完成时总数仍为 unknown，不能填零。预算拒绝即使没有最终汇总行也必须保留。
+
 ## 编译、运行，再判分
 
 对原始回答逐项验证，不能修好模型代码后再算模型通过：
 
 ```bash
 python3 scripts/agent_evaluation_proof.py verify \
+  --protocol tests/agent/evaluation-client-transport-v2.json \
   --output "$RUN" --project-root "$CAPTURED_SOURCE" --sdk-root "$CANGJIE_HOME"
 ```
 
@@ -104,6 +109,7 @@ Doc IR 证据必须来自捕获 manifest 中的文件 hash，并绑定真实源�
 
 ```bash
 python3 scripts/agent_evaluation_proof.py report \
+  --protocol tests/agent/evaluation-client-transport-v2.json \
   --output "$RUN" --project-root "$CAPTURED_SOURCE" \
   --doc-ir pocketkit-0.2.0="$BASELINE/composed/demo-v2/html/en/machine/docs.json" \
   --doc-ir pocketkit-0.1.0="$BASELINE/composed/demo-v1/html/en/machine/docs.json" \

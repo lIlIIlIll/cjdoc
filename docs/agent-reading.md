@@ -158,12 +158,22 @@ stdio 遵循 [MCP 2025-11-25 生命周期](https://modelcontextprotocol.io/speci
 Codex CLI 的 TOML 配置示例（从能解析这些输入路径的目录启动）：
 
 ```toml
+[features]
+code_mode_host = true
+
 [mcp_servers.cjdoc]
 command = "cjdoc"
 args = ["mcp", "--snapshot", "target/agent-demo/html/agent/manifest.json"]
+required = true
 startup_timeout_sec = 120
 tool_timeout_sec = 180
+# Linux 且运行库不在系统搜索路径时，替换为实际运行库搜索路径：
+env = { LD_LIBRARY_PATH = "<Cangjie-runtime-library-path>" }
 ```
+
+Codex 0.163 需要配套的 `codex-code-mode-host` 才能发现和调度 MCP 工具，即使 `code_mode` 未启用也不能禁用该 host。它是客户端调度前提，不等于启用 shell 或网页工具。Codex 不保证把启动终端的运行库环境传给 MCP 子进程：Linux 显式配置适用的 `LD_LIBRARY_PATH`，macOS 使用对应的 DYLD 搜索路径，Windows 则配置包含运行库 DLL 的 `PATH`；运行库已经安装到系统搜索路径时可省略环境项。
+
+`required = true` 要求客户端等真实连接完成初始化，不能在较大的多 snapshot 输入尚未加载时就把文档工具当作不存在。启动与工具超时仍受客户端整体任务期限约束。
 
 MCP 消息使用一行一个 UTF-8 JSON 对象；请求仍是 1 MiB。传输会再次携带可读正文，因此外层最多 130 MiB，不能把核心内容预算冒充整个协议包预算。`serve` 保持项目预览/重建用途；不要把它当作只读 MCP。
 

@@ -21,8 +21,8 @@ runtime evidence. These are explicit reviewer judgments, not automatic semantic
 proof or keyword scoring. Invalid assessments never promote behavior to verified.
 
 Run verify --output "$RUN" --project-root . --sdk-root "$SDK" first; fill the
-emitted adjudication template, then run report with --adjudications, --doc-ir
-LABEL=PATH and --final. The Doc IR inputs must be the files frozen in the capture.
+emitted adjudication template, then run report with --adjudications and --doc-ir
+LABEL=PATH. Optional --final PATH overrides the default final-report.json.
 `report` refuses final publication while any verification/adjudication gap remains.
 `observations` retains measured outcomes without assigning natural-language scores.
 Published reports normalize registered local roots; private captures retain the
@@ -61,7 +61,7 @@ except ImportError:
     from . import agent_evaluation_runtime as consumer_runtime
 
 REPO = Path(__file__).resolve().parent.parent
-PROTOCOL = REPO / "tests/agent/evaluation-protocol.json"
+PROTOCOL = evaluation.DEFAULT_PROTOCOL
 RUBRIC = REPO / "tests/agent/evaluation-rubric.json"
 VERIFICATION_DIRECTORY = "verification"
 VERIFICATION_NAME = "verification.json"

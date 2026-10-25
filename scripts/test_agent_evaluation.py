@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import select
 import sys
 import tempfile
 import unittest
@@ -491,6 +492,73 @@ class RelayBudgetTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(json.loads(calls[0]["line"])["params"]["name"], "read_document")
 
+    @unittest.skipUnless(os.name == "posix", "requires a real SIGKILL")
+    def test_client_kill_preserves_complete_receipts_but_not_inflight_totals(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        log = Path(temporary.name)
+        root = make_site(log / "capture")
+        command = [sys.executable, str(SCRIPTS / "agent_evaluation.py"), "relay",
+                   "--log", str(log), "--max-tool-calls", "24",
+                   "--max-result-bytes", "262144", "--cwd", str(log), "--",
+                   sys.executable, str(SCRIPTS / "agent_baseline_mcp.py"),
+                   "--baseline", str(root)]
+        requests = [INITIALIZE, INITIALIZED, TOOLS_LIST,
+                    call(2, "read_document", {"document": "site/en/llms.txt"}),
+                    {"jsonrpc": "2.0", "id": 3, "method": "ping"}]
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, bufsize=0)
+        try:
+            process.stdin.write("".join(json.dumps(item) + "\n" for item in requests).encode())
+            process.stdin.flush()
+            replies = []
+            while not any(item.get("id") == 3 for item in replies):
+                self.assertTrue(select.select([process.stdout], [], [], 30)[0],
+                                "real MCP response was not delivered")
+                line = process.stdout.readline()
+                self.assertTrue(line, "relay ended before the ping barrier")
+                replies.append(json.loads(line))
+            # The server thread records each response before reading the next.
+            # Ping proves the preceding document receipt was flushed, while
+            # stdin stays open: this is supervisor teardown, not normal EOF.
+            process.kill()
+            process.communicate(timeout=30)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate(timeout=30)
+        path = log / evaluation.RELAY_LOG_NAME
+        summary = evaluation.read_relay_log(path)
+        expected = next(item["result"] for item in replies if item.get("id") == 2)
+        self.assertFalse(summary["totalsRecorded"])
+        self.assertEqual(summary["totalsSource"], "complete-delivery-journal")
+        self.assertEqual(summary["resultBytes"], len(json.dumps(
+            expected, ensure_ascii=False, separators=(",", ":")).encode("utf-8")))
+        self.assertEqual(summary["toolCalls"], 1)
+        events = [json.loads(line) for line in path.read_text("utf-8").splitlines()]
+        incomplete = log / "incomplete.jsonl"
+        incomplete.write_text("".join(json.dumps(item) + "\n" for item in events
+            if not (item.get("direction") == "server->client"
+                    and item.get("tool") == "read_document")), encoding="utf-8")
+        interrupted = evaluation.read_relay_log(incomplete)
+        self.assertIsNone(interrupted["resultBytes"])
+        self.assertFalse(interrupted["deliveryJournalComplete"])
+
+    def test_requests_without_server_replies_do_not_prove_initialization(self):
+        _, transcript, _ = self.run_relay(
+            [INITIALIZE, INITIALIZED, TOOLS_LIST], calls=24, bytes_=262144)
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        path = Path(temporary.name) / "request-only.jsonl"
+        path.write_text("".join(json.dumps(item) + "\n" for item in transcript
+            if item.get("direction") == "client->server"), encoding="utf-8")
+        summary = evaluation.read_relay_log(path)
+        contact = evaluation.server_contact(summary, evaluation.BASELINE_TOOLS)
+        self.assertFalse(contact["initialized"])
+        self.assertFalse(contact["toolsListed"])
+        self.assertEqual(contact["missingTools"], list(evaluation.BASELINE_TOOLS))
+        self.assertIsNone(summary["resultBytes"])
+
 
 class ProtocolTests(unittest.TestCase):
     def test_frozen_protocol_and_rubric_are_consistent(self):
@@ -524,6 +592,31 @@ class ProtocolTests(unittest.TestCase):
                 path = write(Path(temporary.name) / "protocol.json", text.replace(old, new))
                 with self.assertRaises(evaluation.ProtocolError):
                     evaluation.load_protocol(path)
+
+    def test_transport_profile_preserves_the_original_factual_experiment(self):
+        original = evaluation.load_protocol(PROTOCOL)
+        corrected = evaluation.load_protocol(evaluation.DEFAULT_PROTOCOL)
+        for field in ("tasks", "budgets", "client", "comparison", "answerFields",
+                      "baselineRevision", "scoreDimensions", "rules"):
+            with self.subTest(field=field):
+                self.assertEqual(corrected[field], original[field])
+
+    def test_transport_profile_cannot_override_oracle_or_content_capabilities(self):
+        registered = json.loads(evaluation.DEFAULT_PROTOCOL.read_text(encoding="utf-8"))
+        mutations = [
+            {**registered, "tasks": []},
+            {**registered, "budgets": {"maximumSecondsPerTask": 181}},
+            {**registered, "client": {"requestedModel": "different-model"}},
+            {**registered, "clientTransport": "shell-and-filesystem"},
+            {**registered, "factProtocol": {**registered["factProtocol"], "sha256": "0" * 64}},
+        ]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "transport.json"
+            for changed in mutations:
+                with self.subTest(changed=changed):
+                    write(path, json.dumps(changed))
+                    with self.assertRaises(evaluation.ProtocolError):
+                        evaluation.load_protocol(path)
 
 
 CONTACT = {"transportAvailable": True, "initialized": True, "toolsListed": True,
