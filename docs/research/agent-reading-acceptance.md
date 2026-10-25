@@ -147,6 +147,8 @@ API 选择的两个 not-applicable 任务是正确拒绝不可用 API，不是 A
 
 内容身份检查单次生成时禁用 source cache，避免在受严格身份保护的 fixture 中留下 `target/cjdoc/cache`。这不改变正式性能门禁的显式 cold/warm 缓存测量，也不改变其 ceiling。
 
+实际内容身份检查中，`basic` 保持原 hash；`self` 在新增 API 和测试输入角色修正后产生新的真实 Doc IR hash `d095bb0efaad0db1dd404a9368a1a05c9f2a26d1589844196f22a74d1a2246f6`。只刷新这一项内容身份，不重测或放宽既有时间/RSS ceiling，不将当前机器耗时冒充固定参考环境的性能结论。
+
 ## 发布与复算
 
 每轮 `traces.jsonl.gz` 是 UTF-8 JSONL 的 gzip：首行描述归一化口径，后续每行包含相对文件名、原始/显示字节数与 SHA-256、完整显示文本。包含全部 24 条 record、客户端事件、真实 stdio、答案、逐项判分，以及每段非空原程序和实际编译/运行日志；不包括 SDK、库产物或 ELF。对应 `traces-receipt.json` 列出完整文件清单。显示文本不是可冒充原始运行目录的副本；消费者输入字节保持原样，原始消息读字节独立记录。
