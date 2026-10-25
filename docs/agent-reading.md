@@ -34,6 +34,8 @@ HTML 输出默认附带每个可见声明的 Markdown/JSON，不需要 `--agent-
 
 路径基准是**当前文档根**，不是服务器根或其他格式的兄弟目录。部署整个 `html/`，不要只复制 HTML 文件。HTML head 的 `alternate` 指向随站点发布的逐页/逐声明 Markdown，`describedby` 指向同一根的 `llms.txt` 和 manifest。内容协商不是前提；普通静态托管、项目子路径和 `file://` 均使用这些文件。
 
+`sidebar-index.js` 只共享重复的侧栏导航元数据；完整声明页、包/成员索引和源码签名仍保留。它与其他资源一起静态部署，不通过 fetch 或额外服务装载。
+
 `--all-languages` 为各语言生成独立文档根。多版本组合沿用 [高级用法](advanced-usage.md#组合多版本文档站)：组合完整版本目录，保留各语言根、manifest 和分片。`--doc-version` 是**文档发布标签**，不是依赖包版本或编译器认证。
 
 ## CLI：读取固定输入
@@ -107,7 +109,7 @@ cjdoc query --snapshot target/agent-demo/html/agent/manifest.json \
   --request detail-request.json > detail-result.json
 ```
 
-cursor 绑定内容、查询条件、排序、语言/回退和受众；换输入或改条件不能继续用旧 cursor。更大预算重试若改变请求，应按结果中的说明重新开始，而不是同时修改预算又沿用旧 cursor。
+cursor 绑定内容、查询条件、排序、语言/回退、受众和字节预算；换输入或改条件不能继续用旧 cursor。若初次或后续页的完整候选超出预算，按 `requiredBytes` 提高预算并移除旧 cursor，从原查询重新开始，再用新预算继续分页；不能同时修改预算又沿用旧 cursor。
 
 仅装载 Doc IR 时，`scope.snapshots[].packagedRepresentations` 为 false：结果中的规范路由不是文件已随输入打包的证明，完整正文仍可通过 `get_symbol` 取得。装载机器 manifest 才校验已打包资源的 hash、快照、库存及完整表示映射。外部源码 URL 是捕获的出处，不要求随离线包复制源码。
 

@@ -149,6 +149,20 @@ API 选择的两个 not-applicable 任务是正确拒绝不可用 API，不是 A
 
 实际内容身份检查中，`basic` 保持原 hash；`self` 在新增 API 和测试输入角色修正后产生新的真实 Doc IR hash `d095bb0efaad0db1dd404a9368a1a05c9f2a26d1589844196f22a74d1a2246f6`。只刷新这一项内容身份，不重测或放宽既有时间/RSS ceiling，不将当前机器耗时冒充固定参考环境的性能结论。
 
+## PR #161 的真实查询边界回归
+
+[原生 CLI 回执](agent-reading-acceptance/review-query-bounds.json)使用相同冻结 Doc IR 重放两条真实 review 重现。修复 native 绑定 `c00cfc7ff6075c636e07fc58b4ffafa28cb78914` 的 source tree；不是把历史模型观测改标为新构建，也不是远端 CI 结论。
+
+| 重现 | 实际修复前 | 实际修复后 |
+|---|---|---|
+| 关系深度 1 | 发出深度 2 的边 | 最深 1；逐条续取 5 页，与有效深度内原有边完全相同 |
+| 关系深度 4 | 发出深度 5 的边 | 最深 4；逐条续取 16 页，与有效深度内原有边完全相同 |
+| 歧义候选、`maxBytes=1024` | 仍返回两个候选，仅候选 JSON 已有 4473 字节 | `budget_exceeded`、退出 3，给出完整候选所需字节 |
+
+关系遍历结束不冒充正文完整：最后一页保留 `relation_depth` 或 `resource_limit` 省略原因。歧义候选按完整 JSON 加对应可读行计费；固定协议封装和诊断前缀不在这个内容预算内。按真实字节提示重新开始后，两页候选逐字段与冻结旧响应相等；改变预算却沿用旧 cursor 的负例仍明确返回 `stale_cursor`。
+
+发布体积修正保持所有声明及正文：机器 manifest 复用文档根唯一的 `symbol-index.json`；自包含 Doc IR 仅去除 JSON 结构空白；侧栏导航元数据通过静态 `sidebar-index.js` 共享。完整声明 HTML、Markdown、JSON、包及成员索引不被抽样或截断。既有全站与 ZIP 字节 ceiling 保持不变；最终发布结论仍以最新 revision 的实际门禁及下载包为准。
+
 ## 发布与复算
 
 每轮 `traces.jsonl.gz` 是 UTF-8 JSONL 的 gzip：首行描述归一化口径，后续每行包含相对文件名、原始/显示字节数与 SHA-256、完整显示文本。包含全部 24 条 record、客户端事件、真实 stdio、答案、逐项判分，以及每段非空原程序和实际编译/运行日志；不包括 SDK、库产物或 ELF。对应 `traces-receipt.json` 列出完整文件清单。显示文本不是可冒充原始运行目录的副本；消费者输入字节保持原样，原始消息读字节独立记录。

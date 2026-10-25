@@ -1,0 +1,152 @@
+{
+  "schemaVersion": "cjdoc.issue137.review-query-bounds-evidence/1",
+  "scope": "Actual native CLI replay of both PR #161 review reproductions; not a new Agent study or a latest-HEAD CI claim.",
+  "candidate": {
+    "revision": "c00cfc7ff6075c636e07fc58b4ffafa28cb78914",
+    "sourceTree": "9417b46d37f858bb2e6317c06a75b1bed7025c07",
+    "nativeSha256": "008ace3cfe149cdb89917f4122a750c73d1d49b3039c2072ff3d07afb8220593",
+    "compiler": "Cangjie 1.2.0 cjnative",
+    "target": "x86_64-unknown-linux-gnu"
+  },
+  "frozenInputs": [
+    {
+      "name": "chain.doc-ir.json",
+      "sha256": "ac0f1d1f945fe5e496fb6bf8df0e4f24d4f7a55cbfc19eb0c35f1d73e5dec71b"
+    },
+    {
+      "name": "ambiguous.first.doc-ir.json",
+      "sha256": "b25ecaca107bef546ea5b686649a8ad889b72c9f327d8b008e3bc3c7d3756d08"
+    },
+    {
+      "name": "ambiguous.second.doc-ir.json",
+      "sha256": "468697c2f807e437d070650b0ce756c654db3fcf95241bf8a444ea8d0ad50a68"
+    }
+  ],
+  "relations": [
+    {
+      "requestedDepth": 1,
+      "beforeDepths": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "afterDepths": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "limitOnePages": 5,
+      "allPagesExactlyMatchBoundedUnpagedRows": true,
+      "lastQueryComplete": true,
+      "lastContentComplete": false,
+      "omittedRelations": [
+        {
+          "section": "relations",
+          "reason": "relation_depth",
+          "next": {
+            "maxBytes": 65536,
+            "detail": "Increase relations.depth up to 4."
+          }
+        }
+      ]
+    },
+    {
+      "requestedDepth": 4,
+      "beforeDepths": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        4,
+        5
+      ],
+      "afterDepths": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        2,
+        3,
+        3,
+        3,
+        4
+      ],
+      "limitOnePages": 16,
+      "allPagesExactlyMatchBoundedUnpagedRows": true,
+      "lastQueryComplete": true,
+      "lastContentComplete": false,
+      "omittedRelations": [
+        {
+          "section": "relations",
+          "reason": "resource_limit",
+          "next": null
+        }
+      ]
+    }
+  ],
+  "ambiguous": {
+    "initialMaxBytes": 1024,
+    "beforeStatus": "ambiguous",
+    "beforeCandidates": 2,
+    "beforeCandidateJsonBytes": 4473,
+    "afterStatus": "budget_exceeded",
+    "afterExit": 3,
+    "firstRequiredBytes": 2384,
+    "firstExactRetryCandidates": 1,
+    "secondRequiredBytes": 2385,
+    "changingBudgetWithOldCursor": "stale_cursor",
+    "restartWithoutCursorMaxBytes": 2385,
+    "restartedPageCounts": [
+      1,
+      1
+    ],
+    "allCandidateFieldsExactlyMatchFrozenBefore": true,
+    "lastQueryComplete": true,
+    "candidates": [
+      {
+        "snapshotId": "cjdoc:snapshot:v1:3a435a1532fd052f4d8e07e8bcbdcc7fa2aa61afd3269e7e2fa2f2ae55bacc44",
+        "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::class:Parser#g1()",
+        "signature": "public class Parser<T> <: Reader",
+        "canonicalJsonSha256": "ab7b100046c1ec4cabe4414b4a0a096237561735cdf15f0b028f5e1fbda04af0"
+      },
+      {
+        "snapshotId": "cjdoc:snapshot:v1:cf25f8a1bc1bf7822243deba83ce0b31436531a814be64aaf0973c681d2de9d8",
+        "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::class:Parser#g1()",
+        "signature": "public class Parser<T> <: Reader",
+        "canonicalJsonSha256": "7d49644f3baf593c29c8af0c0bc6ae1bd5ad8a94d7747924d2a34aa8848e62b5"
+      }
+    ]
+  },
+  "budgetAccounting": "Intact candidate JSON plus its per-candidate readable line; fixed protocol envelope and diagnostic prefix are not included.",
+  "cursorContract": "Cursors bind the byte budget. When a larger intact candidate needs more bytes, restart the original query without its old cursor, then follow cursors with the unchanged new budget.",
+  "rawEvidence": "Private first-run request/stdout/stderr files retained; this public receipt contains no machine-specific input paths."
+}
