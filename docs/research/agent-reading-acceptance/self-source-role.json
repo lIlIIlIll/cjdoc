@@ -1,0 +1,188 @@
+{
+  "schemaVersion": "cjdoc.self-documentation-source-role-regression/1",
+  "scope": "Actual native generation before and after correcting 26 test-only fragment filenames. The same pinned reader binary is used to isolate source-input role selection; this is not a new native build or a model rerun.",
+  "binarySha256": "57fccf60012c72b3fd36a08262f9a480ba1160d6ab9b3dbcc598dc9024c5e52f",
+  "sourceBaseRevision": "6b7e516c5cef7276f9b3fd4b1c455d44acdddd26",
+  "changes": [
+    {
+      "before": "src/api_diff_suite.cj",
+      "after": "src/api_diff_suite_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/output_transaction_fixtures.cj",
+      "after": "src/output_transaction_fixtures_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/output_transaction_suite_1.cj",
+      "after": "src/output_transaction_suite_1_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/output_transaction_suite_2.cj",
+      "after": "src/output_transaction_suite_2_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/output_transaction_suite_3.cj",
+      "after": "src/output_transaction_suite_3_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/public_contract_fixtures_a.cj",
+      "after": "src/public_contract_fixtures_a_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/public_contract_fixtures_b.cj",
+      "after": "src/public_contract_fixtures_b_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/public_contract_fixtures_c.cj",
+      "after": "src/public_contract_fixtures_c_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/public_contract_helpers.cj",
+      "after": "src/public_contract_helpers_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/public_contract_suite_1.cj",
+      "after": "src/public_contract_suite_1_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/public_contract_suite_2.cj",
+      "after": "src/public_contract_suite_2_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/public_contract_suite_3.cj",
+      "after": "src/public_contract_suite_3_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/public_contract_suite_4.cj",
+      "after": "src/public_contract_suite_4_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/public_contract_suite_5.cj",
+      "after": "src/public_contract_suite_5_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/public_contract_suite_6.cj",
+      "after": "src/public_contract_suite_6_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/public_contract_suite_7.cj",
+      "after": "src/public_contract_suite_7_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/public_contract_suite_8.cj",
+      "after": "src/public_contract_suite_8_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/source_pipeline_cached_suite.cj",
+      "after": "src/source_pipeline_cached_suite_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/source_pipeline_fixtures.cj",
+      "after": "src/source_pipeline_fixtures_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/source_pipeline_suite_1.cj",
+      "after": "src/source_pipeline_suite_1_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/source_pipeline_suite_2.cj",
+      "after": "src/source_pipeline_suite_2_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/source_pipeline_suite_3.cj",
+      "after": "src/source_pipeline_suite_3_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/source_pipeline_suite_4.cj",
+      "after": "src/source_pipeline_suite_4_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/source_pipeline_suite_5.cj",
+      "after": "src/source_pipeline_suite_5_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/source_pipeline_suite_6.cj",
+      "after": "src/source_pipeline_suite_6_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    },
+    {
+      "before": "src/render/model_codec_current_suite_5.cj",
+      "after": "src/render/model_codec_current_suite_5_test.cj",
+      "change": "filename only; test and fixture bodies retained"
+    }
+  ],
+  "beforeDefault": {
+    "lintProfile": "standard",
+    "exitCode": 0,
+    "declarations": 0,
+    "diagnostics": [
+      {
+        "severity": "warning",
+        "code": "CJDOC3027",
+        "message": "generated documentation exceeded codec or output resource limits and was replaced by a bounded fallback",
+        "source": null,
+        "symbolId": null
+      }
+    ],
+    "stdoutJsonSha256": "b5d318a9b4bf71d691fd2f932c38c1c8aba946797ffff2181f1adfab47986d90",
+    "nativeException": "invalid Doc IR domain at $.diagnostics: JSON array item occurrence budget exceeded"
+  },
+  "diagnosticOnlyControl": {
+    "lintProfile": "off",
+    "purpose": "Determine source inventory and the previous visible API set; not a passing acceptance run and not a final configuration change.",
+    "declarations": 5200,
+    "files": 238,
+    "arrayItems": 97696,
+    "effectivelyVisibleDeclarations": 852
+  },
+  "afterDefault": {
+    "lintProfile": "standard",
+    "exitCode": 0,
+    "status": "partial",
+    "declarations": 4924,
+    "files": 212,
+    "arrayItems": 94997,
+    "diagnostics": 1209,
+    "errorDiagnostics": 0,
+    "resourceFallback": false,
+    "effectivelyVisibleDeclarations": 852,
+    "stdoutJsonSha256": "d095bb0efaad0db1dd404a9368a1a05c9f2a26d1589844196f22a74d1a2246f6"
+  },
+  "preserved": {
+    "all852VisibleSymbolIds": true,
+    "allVisibleSourceHeaders": true,
+    "allVisibleSourceApiSignatureTokens": true,
+    "allTestBodies": true,
+    "defaultLintProfile": true,
+    "codecArrayItemsLimit": 100000,
+    "codecSchemaObjectsLimit": 65536,
+    "docIrBytesLimit": 67108864,
+    "heap": "512MB",
+    "existingTimingAndRssCeilings": "unchanged"
+  },
+  "limits": "The source result still truthfully reports partial status. This receipt does not establish final-revision compilation, final-revision unit counts, remote CI, or unchanged source-root identity. Those are separately exercised gates."
+}

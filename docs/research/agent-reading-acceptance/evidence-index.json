@@ -282,6 +282,14 @@
       "displayBytes": 611513,
       "historicalObservation": false,
       "normalization": "The same explicitly normalized display entry carried in the complete trajectory archive; raw report hash and source/record references remain pinned to original private captures."
+    },
+    {
+      "path": "self-source-role.json",
+      "originalSha256": "82df2acb7644dec13df2e146a413a91aaf8e815a3572ad4ec84afe17d5b568dd",
+      "displaySha256": "82df2acb7644dec13df2e146a413a91aaf8e815a3572ad4ec84afe17d5b568dd",
+      "displayBytes": 7198,
+      "historicalObservation": false,
+      "normalization": "Authored from actual native observations with relative paths only; explicitly distinguishes diagnostic control, input-role smoke, and subsequent build/CI gates."
     }
   ],
   "studies": [

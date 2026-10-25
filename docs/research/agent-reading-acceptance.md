@@ -135,6 +135,16 @@ API 选择的两个 not-applicable 任务是正确拒绝不可用 API，不是 A
 
 修正删除这个尚未发布的无调用者副本，不增加别名或另一套 manifest。完整 `api/` 保持原路径；[实际生产函数 smoke](agent-reading-acceptance/publisher-cutover.json)使用真实 native 的全部生产格式生成，再调用修改后的 `publish_compatibility`，校验完整表示闭包，并用 native 从发布后的 manifest 读取真实声明。没有用 mock 文件存在检查代替消费证明。
 
+## 自身文档门禁的测试文件角色修正
+
+既有 `perf_gate.py identities` 还实际发现自身文档的默认生成触发了空声明资源回退。对固定 native 的异常断点确认拒绝原因是 `$.diagnostics` 处的 JSON 数组项总预算，而不是缺 SDK 或编译失败。未用空结果刷新基线，也未放宽 100000 数组项、65536 对象、64 MiB Doc IR、512MB heap 或既有耗时/RSS ceiling。
+
+[失败前／修正后回执](agent-reading-acceptance/self-source-role.json)记录：26 个仅供测试的 suite、fixture 和 helper 文件原来缺少 `_test.cj` 后缀，错误进入自身文档的生产源码输入。修正只将这些文件归入既有测试文件命名规则，完整保留文件内容和测试；不改解析器规则，不按项目名称特殊处理。
+
+同一 native 在修正后以原默认 `standard` lint 和相同 heap 实际生成 4924 个声明、212 个源文件、94997 个数组项和 1209 条诊断；无错误诊断，也无资源回退。852 个实际可见 API 的 SymbolId、源码 header 和全部 signature tokens 与修正前的诊断控制运行完全相同；移除的是 276 个测试输入声明，不是真实可见 API。诊断控制运行的 lint-off 仅用于确定旧输入和可见 API 集，未成为验收配置。
+
+这次测试文件角色修正会改变后续编译输入，因而不重标前述固定 native、静态包或模型轨迹。其最终构建、完整单元测试及内容身份结果分别读取最新 revision 的门禁；本回执仅证明实际源码输入切换和默认生成行为。
+
 ## 发布与复算
 
 每轮 `traces.jsonl.gz` 是 UTF-8 JSONL 的 gzip：首行描述归一化口径，后续每行包含相对文件名、原始/显示字节数与 SHA-256、完整显示文本。包含全部 24 条 record、客户端事件、真实 stdio、答案、逐项判分，以及每段非空原程序和实际编译/运行日志；不包括 SDK、库产物或 ELF。对应 `traces-receipt.json` 列出完整文件清单。显示文本不是可冒充原始运行目录的副本；消费者输入字节保持原样，原始消息读字节独立记录。
