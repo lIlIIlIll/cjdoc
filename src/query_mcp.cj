@@ -77,8 +77,9 @@ private func mcpToolTitle(operation: String): String {
 private func mcpToolDescription(operation: String): String {
     match (operation) {
         case "resolve_docs" =>
-            "Resolve a documentation target (query, symbol id or key, qualified name, " +
-            "signature parts) to the symbols a reader can see in the loaded snapshots."
+            "Select captured documentation sets by library, API version, module/package " +
+            "or explicit consumer/dependency context. Returns fixed snapshot identities, " +
+            "matching evidence, candidates and unknowns. Use search to find symbols."
         case "search" =>
             "Search visible documentation text and identifiers in the loaded snapshots " +
             "and return ranked hits with their documentation identity."

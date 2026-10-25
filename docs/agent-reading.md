@@ -64,7 +64,7 @@ cjdoc query --snapshot target/agent-demo/html/agent/manifest.json \
 
 | 操作 | 核心输入 | 返回范围 |
 |---|---|---|
-| `resolve_docs` | library、模块/包范围、捕获的 dependency/context、API 版本和显式策略 | 选中项、可区分候选、matchLevel、原因与原始依赖证据。 |
+| `resolve_docs` | library、模块/包范围、捕获的 dependency/context、API 版本和显式策略；`query` 只匹配库/模块/包名，符号名使用 `search` | 选中项、可区分候选、matchLevel、原因与原始依赖证据。 |
 | `search` | Symbol ID/key、限定名、名称/别名、参数类型/泛型数量或用途文字 | 精确身份/重载特征优先，随后名称及正文；短摘要、完整源码签名、详情身份与规范路由。 |
 | `get_symbol` | `symbolId`、`symbolKey`、`pageId` 恰好一个；固定快照/文档集 | 所选完整章节、关系、来源与附带报告；概念页没有伪造的 Symbol ID。 |
 
