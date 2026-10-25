@@ -1,0 +1,208 @@
+{
+  "schemaVersion": "cjdoc.functional-acceptance-evidence-map/1",
+  "completeLocalGate": true,
+  "rows": [
+    {
+      "id": "AI-T01",
+      "requirement": "九类契约在所有完整表示及查询中一致，摘要指向详情",
+      "state": "exercised",
+      "evidence": [
+        "666 native: allNineContractsAreProjectedWithLocalizedLabels; structuredCallChaptersRetainCapturedTypesDefaultsAndTags",
+        "scenarios/current-projection-first/receipt.json"
+      ]
+    },
+    {
+      "id": "AI-T02",
+      "requirement": "多行准备输出 fence Unicode 示例保持原文及完整单元",
+      "state": "exercised",
+      "evidence": [
+        "666 native: signatureAndExamplesKeepTheirExactSourceStructure; headingsInsideExampleOutputCannotSplitABudgetedChapter",
+        "scenarios/current-projection-first/receipt.json"
+      ]
+    },
+    {
+      "id": "AI-T03",
+      "requirement": "长签名及必要契约预算不足时准确重试或报告边界",
+      "state": "exercised",
+      "evidence": [
+        "666 native: budgetAndResourceLimitsNeverTruncateAContract; resolveBudgetIsAHonestBoundaryWithoutFabricatedMatches",
+        "scenarios/current-budget-context-third/receipt.json"
+      ]
+    },
+    {
+      "id": "AI-T04",
+      "requirement": "所有声明种类均独立读取并映射正确归属和出处",
+      "state": "exercised",
+      "evidence": [
+        "scenarios/scale-segmented-buffer-isolated/validation-second/receipt.json",
+        "scenarios/current-projection-first/receipt.json"
+      ]
+    },
+    {
+      "id": "AI-T05",
+      "requirement": "重载跨模块同名及重导出歧义和身份读取正确",
+      "state": "exercised",
+      "evidence": [
+        "scenarios/current-reexport-query-third/receipt.json",
+        "scenarios/captured-dependency-selection-current-first/receipt.json",
+        "666 native: ambiguousIdentityAcrossScopesIsARegularResult"
+      ]
+    },
+    {
+      "id": "AI-T06",
+      "requirement": "同标签异内容及 root/dependency 不串身份或版本",
+      "state": "exercised",
+      "evidence": [
+        "666 native: capturedContextNamespacesRemainDistinctAndCanBePinned; multipleCapturedEditionsDoNotChooseTheFirstRelatedTarget",
+        "scenarios/current-catalog-query-first/receipt.json"
+      ]
+    },
+    {
+      "id": "AI-T07",
+      "requirement": "依赖证据匹配等级与语义状态不互相升级",
+      "state": "exercised",
+      "evidence": [
+        "scenarios/captured-dependency-selection-current-first/receipt.json",
+        "666 native dependency identity/navigation evidence tests",
+        "scenarios/current-report-query-first/receipt.json"
+      ]
+    },
+    {
+      "id": "AI-T08",
+      "requirement": "同 API 语言回退不偷换另一 API 版本",
+      "state": "exercised",
+      "evidence": [
+        "scenarios/current-catalog-query-first/receipt.json",
+        "666 native: languageFallbackStillNarrowsAnAllAudienceSnapshot; languageSelectionPreservesApiAndFallsBackPerParameter"
+      ]
+    },
+    {
+      "id": "AI-T09",
+      "requirement": "完整无命中、不完整来源、未覆盖详情及预算结果可区分",
+      "state": "exercised",
+      "evidence": [
+        "666 native: searchNeverWidensTheAudienceAndSeparatesAbsenceFromIncompleteness; getSymbolReportsMissingDocumentationWithoutInventingIt",
+        "scenarios/current-budget-context-third/receipt.json"
+      ]
+    },
+    {
+      "id": "AI-T10",
+      "requirement": "大目录全文跨页分片遍历不重不漏且完整性明确",
+      "state": "exercised",
+      "evidence": [
+        "scenarios/scale-segmented-buffer-isolated/validation-second/receipt.json",
+        "scenarios/scale-query-current-first/receipt.json"
+      ]
+    },
+    {
+      "id": "AI-T11",
+      "requirement": "快照筛选语言受众排序变更使旧续取明确失效",
+      "state": "exercised",
+      "evidence": [
+        "666 native: malformedRequestsAndStaleCursorsAreMachineReadable; longValidRequestsProduceUsableBoundContinuation"
+      ]
+    },
+    {
+      "id": "AI-T12",
+      "requirement": "关系循环深度跨依赖与同名身份的预算和去重正确",
+      "state": "exercised",
+      "evidence": [
+        "666 native: conceptsCarryPageIdentityOnlyAndRelationsStayBounded; sameLocalTargetIdDoesNotOverrideTheCapturedExternalSnapshot; multipleCapturedEditionsDoNotChooseTheFirstRelatedTarget"
+      ]
+    },
+    {
+      "id": "AI-T13",
+      "requirement": "受众 cfg 隐藏内容在索引详情上下文错误和 MCP 中均不泄漏",
+      "state": "exercised",
+      "evidence": [
+        "666 native projection, cfg, navigation and query audience boundary tests",
+        "source-bound-final-first: actual configured MCP22"
+      ]
+    },
+    {
+      "id": "AI-T14",
+      "requirement": "generate、离线 render、公开接口及 MCP 同输入一致且查询无 SDK 源码网络可运行",
+      "state": "exercised",
+      "evidence": [
+        "scenarios/dependency-public-api-current/evidence.json",
+        "scenarios/public-query-api-current-third/receipt.json",
+        "scenarios/offline-runtime-current-fourth/receipt.json",
+        "static-publication.json",
+        "static-browser.json",
+        "offline-runtime.json"
+      ]
+    },
+    {
+      "id": "AI-T15",
+      "requirement": "示例未查编译运行失败与报告缺失不符状态真实",
+      "state": "exercised",
+      "evidence": [
+        "scenarios/current-report-query-first/receipt.json",
+        "666 native example compiler runtime/timeout/failure and query report contracts; aggregate reports never promoted to per-example pass"
+      ]
+    },
+    {
+      "id": "AI-T16",
+      "requirement": "已附 diff 双身份变化缺失不符均准确显示",
+      "state": "exercised",
+      "evidence": [
+        "scenarios/current-report-query-first/receipt.json",
+        "source-bound-final-first: strict native API diff CLI contracts"
+      ]
+    },
+    {
+      "id": "AI-T17",
+      "requirement": "HTTP 子路径多版本双语离线及未启用表示无死链假入口",
+      "state": "exercised",
+      "evidence": [
+        "scenarios/offline-static-current-first/browser-receipt.json",
+        "scenarios/publication-modes-current-fifth/receipt.json",
+        "static-publication.json",
+        "static-browser.json",
+        "offline-runtime.json"
+      ]
+    },
+    {
+      "id": "AI-T18",
+      "requirement": "新旧 schema 真实 producer 非法超限及中途失败保持严格事务",
+      "state": "exercised",
+      "evidence": [
+        "scenarios/schema-freeze-current/receipt.json",
+        "source-bound-final-first full gate",
+        "666 native transaction/recovery/budget and strict query schema tests"
+      ]
+    },
+    {
+      "id": "AI-T19",
+      "requirement": "真实 MCP Agent 客户端与 CLI 完成同任务并分别验证协议与任务",
+      "state": "exercised",
+      "evidence": [
+        "real-client-body.json",
+        "real-client-cli.json",
+        "observations/final-reviewed-interface/report.json: AG-01 shared-query-mcp; original consumer compiled and behavior verified; all eight actual requests including three invalid_request responses retained"
+      ]
+    },
+    {
+      "id": "AI-T20",
+      "requirement": "冻结任务旧新路径真实 Agent 对照有完整轨迹评分编译与行为证据",
+      "state": "exercised",
+      "evidence": [
+        "observations/initial-infrastructure-failure/report.json",
+        "observations/pre-description-review/report.json",
+        "observations/final-reviewed-interface/report.json",
+        "Each corresponding traces.jsonl.gz retains all 24 records and every nonempty original consumer; no best-of selection."
+      ]
+    }
+  ],
+  "realAgentRowsExcluded": [
+    "AI-T19",
+    "AI-T20"
+  ],
+  "sourceAndBinaryProvenance": "Receipts retain their exact producing binary; earlier static replay and scale probes are not relabeled as the final native binary. Synthetic scale is not real-source or model evidence.",
+  "currentNativeGate": {
+    "sourceRevision": "9610eb4fffafb3c6ff73762ae76243767892e25f",
+    "binarySha256": "57fccf60012c72b3fd36a08262f9a480ba1160d6ab9b3dbcc598dc9024c5e52f",
+    "receipt": "native-gate.json"
+  },
+  "scope": "Current complete native gate plus separately pinned actual historical scenario receipts. Historical binaries and outcomes are not relabelled as final-native observations; exercised does not mean every real-model answer succeeded."
+}

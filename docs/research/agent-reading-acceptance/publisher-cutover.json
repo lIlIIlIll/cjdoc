@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "cjdoc.actual-publisher-cutover-smoke/1",
+  "binarySha256": "57fccf60012c72b3fd36a08262f9a480ba1160d6ab9b3dbcc598dc9024c5e52f",
+  "publisherSourceSha256": "dfae68d739d808693c2793a395cb0bf84afc86a010a2ed50fcd72b512f26636c",
+  "scope": "Actual native basic-project generation in every production API format, changed publish_compatibility function, complete representation graph validator and native manifest consumer. Real captured PocketKit reports supplied to the unchanged report-copy inputs.",
+  "incompleteAliasAbsent": true,
+  "missingRepresentationPaths": [],
+  "graphValidatorExitCode": 0,
+  "nativeQueryExitCode": 0,
+  "nativeQueryStatus": "ok",
+  "observedSymbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::basic::Box::constructor:init#g0(@g0)",
+  "packagedRepresentations": true
+}

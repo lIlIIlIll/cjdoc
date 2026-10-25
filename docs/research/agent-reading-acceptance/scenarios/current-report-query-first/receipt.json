@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "cjdoc.actual-report-query-smoke/1",
+  "binarySha256": "065e4c6d3a5699ac8360b840ed0f919fcf040c2ab8421d5c9a5a705b3cc76c49",
+  "validationSha256": "a9ad2eed40d8eabefd6c7f650d8635e31cd8d444572ad0567c2e02ab5f0ed9e3",
+  "apiDiffSha256": "41f30801251bed473804b63cf289ae85970f52b6d9c281809e21c7d8b45e68a1",
+  "scope": "Actual native aggregate check and API diff preserved; no per-example pass claim; derivatives are explicit negative fixtures",
+  "scenarios": [
+    {
+      "scenario": "not-attached",
+      "queryStatus": "ok",
+      "reports": {
+        "validation": {
+          "bindingState": "not_attached",
+          "chapterState": "missing",
+          "rawReportPreserved": true
+        },
+        "diff": {
+          "bindingState": "not_attached",
+          "chapterState": "missing",
+          "rawReportPreserved": true
+        }
+      }
+    },
+    {
+      "scenario": "actual-reports",
+      "queryStatus": "ok",
+      "reports": {
+        "validation": {
+          "bindingState": "binding_unavailable",
+          "chapterState": "unavailable",
+          "rawReportPreserved": true
+        },
+        "diff": {
+          "bindingState": "binding_unavailable",
+          "chapterState": "unavailable",
+          "rawReportPreserved": true
+        }
+      }
+    },
+    {
+      "scenario": "deliberately-corrupted-binding",
+      "queryStatus": "ok",
+      "reports": {
+        "validation": {
+          "bindingState": "binding_mismatch",
+          "chapterState": "unavailable",
+          "rawReportPreserved": true
+        },
+        "diff": {
+          "bindingState": "binding_mismatch",
+          "chapterState": "unavailable",
+          "rawReportPreserved": true
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "schemaVersion": "cjdoc.fixed-input-native-cost-summary/1",
+  "protocolSha256": "0e1dafbd1a0140bdae506e90aafe6f89d10dfe9ca715c6a25ff2ab1cb9190807",
+  "pins": {
+    "baseline": "6dde46fefae364c450d344641383eebed63a7eb8bc2f40086d2effc212d736c5",
+    "current": "57fccf60012c72b3fd36a08262f9a480ba1160d6ab9b3dbcc598dc9024c5e52f",
+    "input": "a7872c159872511eb06ae7ab6babfb26bc7dba2a1b890c9d4eec71862ba8eed2",
+    "helper": "1a5731fc60e6e3e3d70b94c1eb3c98c7218065e861e930d4edf735d3bef8ca2f",
+    "buildManifest": "c2159f691f88de55f648bff2e5c4537c26b0751fa0fcb502929ceeca1e3ed399"
+  },
+  "scope": "Local descriptive measurements of three alternating publication pairs over the identical captured 54-declaration v16 input. Current publication adds independently readable artifacts; this is not an identical-output speedup. Queries are fresh processes, not a cold-cache or warm-session benchmark. No model or remote-CI claim.",
+  "publication": {
+    "baseline": {
+      "observations": 3,
+      "medianElapsedSeconds": 12.506743,
+      "medianPeakRssKiB": 181940,
+      "maximumPeakRssKiB": 191820,
+      "fileCount": 132,
+      "totalArtifactBytes": 2137745
+    },
+    "current": {
+      "observations": 3,
+      "medianElapsedSeconds": 20.530903,
+      "medianPeakRssKiB": 203412,
+      "maximumPeakRssKiB": 203660,
+      "fileCount": 266,
+      "totalArtifactBytes": 4538349
+    }
+  },
+  "currentFreshProcessQueries": {
+    "resolve": {
+      "observations": 3,
+      "medianElapsedSeconds": 9.399081,
+      "maximumPeakRssKiB": 201884,
+      "responseUtf8Bytes": 4866,
+      "status": "ok",
+      "sameFrozenResponseAcrossRepetitions": true
+    },
+    "search": {
+      "observations": 3,
+      "medianElapsedSeconds": 9.419709,
+      "maximumPeakRssKiB": 202860,
+      "responseUtf8Bytes": 4531,
+      "status": "ambiguous",
+      "sameFrozenResponseAcrossRepetitions": true
+    },
+    "get-window": {
+      "observations": 3,
+      "medianElapsedSeconds": 9.406881,
+      "maximumPeakRssKiB": 203508,
+      "responseUtf8Bytes": 70235,
+      "status": "ok",
+      "sameFrozenResponseAcrossRepetitions": true
+    }
+  },
+  "interpretation": "Artifact bytes and publication time increased. Query costs are absolute current-path observations because the baseline has no equivalent native query operation. RSS includes runtime and native mappings; the configured 512MB Cangjie heap is not an RSS ceiling."
+}

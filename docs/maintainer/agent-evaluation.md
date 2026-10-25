@@ -62,8 +62,8 @@ python3 scripts/agent_evaluation.py \
   --site pocket-support-v1=support/html \
   --site reexports-fixture=extra/reexports-complete/html \
   --site partial-source-fixture=extra/unsupported/html \
-  --snapshot "$BASELINE/composed/demo-v1/html/en/machine/docs.json" \
   --snapshot "$BASELINE/composed/demo-v2/html/en/machine/docs.json" \
+  --snapshot "$BASELINE/composed/demo-v1/html/en/machine/docs.json" \
   --snapshot "$BASELINE/support/docs.json" \
   --snapshot "$BASELINE/extra/reexports-complete/html/machine/docs.json" \
   --snapshot "$BASELINE/extra/unsupported/html/machine/docs.json" \
@@ -124,3 +124,5 @@ python3 scripts/agent_evaluation_proof.py report \
 ## 发布证据
 
 提交的是脱敏、可复算的报告与验收映射，不是本机的完整运行目录。路径用相对路径或 `<repo>`、`<workspace>`、`$HOME`；不包含本机用户名、主机、私有地址、认证信息或原始私有配置。报告归一化已注册的 capture、verification、源码、SDK、临时目录和 home 根；这不能替代对其他身份信息的人工检查和发布隐私门禁。原始字节 hash 指向私有捕获，显示文本可能经过根路径归一化。保留有价值的失败轨迹及其 hash/大小，注明其私有证据位置。远端最新 HEAD 与最终 main 的 CI 单独读回，不能把本机通过写成 runner 已通过。
+
+[issue #137 验收记录](../research/agent-reading-acceptance.md)收录三轮共 72 条完整记录及全部原程序、编译/运行结果和逐事实判分。公开 `traces.jsonl.gz` 是明确标注的显示副本：另归一化客户端线程标识、会话时钟起点和示例 loopback 地址；原始与显示 hash 分别列出，消费者输入字节保持不变。完整静态包、实际客户端正文和 CLI 对照各有独立回执；负结果不被过滤。

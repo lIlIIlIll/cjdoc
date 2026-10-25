@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "cjdoc.external-public-query-smoke/1",
+  "consumerSha256": "75b80c5a93ab67b1db4dafe228aaa4eaf384758ecdbe5a64931b42247cd67d11",
+  "snapshotSha256": "a7872c159872511eb06ae7ab6babfb26bc7dba2a1b890c9d4eec71862ba8eed2",
+  "operations": [
+    {
+      "operation": "resolve",
+      "exitCode": 0,
+      "status": "ok"
+    },
+    {
+      "operation": "search",
+      "exitCode": 0,
+      "status": "ambiguous"
+    },
+    {
+      "operation": "get",
+      "exitCode": 0,
+      "status": "ok"
+    },
+    {
+      "operation": "invalid",
+      "exitCode": 2,
+      "status": "invalid_request"
+    }
+  ]
+}

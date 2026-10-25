@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "cjdoc.resolve-budget-smoke/1",
+  "binarySha256": "bd34fff765427d989d947504633e62f42eb5a0ddc768f16cb728603ddd28afd2",
+  "snapshotSha256": "c1d4ddea72b5da9983f79b712355531d18daff5efcd35d4982142dd8be03228e",
+  "requiredBytes": 3344,
+  "scenarios": [
+    {
+      "scenario": "blocked",
+      "status": "budget_exceeded",
+      "exitCode": 3,
+      "selected": 0,
+      "candidates": 0
+    },
+    {
+      "scenario": "exact-retry",
+      "status": "ok",
+      "exitCode": 0,
+      "selected": 1,
+      "candidates": 1
+    },
+    {
+      "scenario": "known-context-missing-library",
+      "status": "not_found",
+      "exitCode": 0,
+      "selected": 0,
+      "candidates": 0
+    },
+    {
+      "scenario": "captured-source-context",
+      "status": "ok",
+      "exitCode": 0,
+      "selected": 1,
+      "candidates": 1
+    }
+  ]
+}

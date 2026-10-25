@@ -1,0 +1,342 @@
+{
+  "schemaVersion": "cjdoc.fixed-input-native-cost-observation/1",
+  "protocolSha256": "0e1dafbd1a0140bdae506e90aafe6f89d10dfe9ca715c6a25ff2ab1cb9190807",
+  "pins": {
+    "baseline": "6dde46fefae364c450d344641383eebed63a7eb8bc2f40086d2effc212d736c5",
+    "current": "57fccf60012c72b3fd36a08262f9a480ba1160d6ab9b3dbcc598dc9024c5e52f",
+    "input": "a7872c159872511eb06ae7ab6babfb26bc7dba2a1b890c9d4eec71862ba8eed2",
+    "helper": "1a5731fc60e6e3e3d70b94c1eb3c98c7218065e861e930d4edf735d3bef8ca2f",
+    "buildManifest": "c2159f691f88de55f648bff2e5c4537c26b0751fa0fcb502929ceeca1e3ed399"
+  },
+  "complete": true,
+  "publicationObservations": 6,
+  "currentQueryObservations": 9,
+  "records": [
+    {
+      "label": "publication-1-baseline",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 12.506743,
+        "peakRssKiB": 181940,
+        "userSeconds": 13.049729,
+        "systemSeconds": 0.32841699999999996,
+        "exitCode": 0
+      },
+      "directory": "publication-1-baseline",
+      "stdoutBytes": 137,
+      "stdoutSha256": "edfa85612fc579ab3fd4a47e8d4854c6aa8bae9e38b50159e16b721373391f62",
+      "stderrBytes": 34384,
+      "stderrSha256": "9ef738cfd54821904d3665cbc7c5003cc931fe5373432a97766c287c00e3c69b",
+      "repetition": 1,
+      "arm": "baseline",
+      "fileCount": 132,
+      "totalArtifactBytes": 2137745
+    },
+    {
+      "label": "publication-1-current",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 20.800933,
+        "peakRssKiB": 203660,
+        "userSeconds": 21.657837,
+        "systemSeconds": 0.577309,
+        "exitCode": 0
+      },
+      "directory": "publication-1-current",
+      "stdoutBytes": 136,
+      "stdoutSha256": "e6d8d33eef7c8a326edf25d0896928c19e5f7cfe0c4bc7ed52d4e0c8be1d4d59",
+      "stderrBytes": 34384,
+      "stderrSha256": "9ef738cfd54821904d3665cbc7c5003cc931fe5373432a97766c287c00e3c69b",
+      "repetition": 1,
+      "arm": "current",
+      "fileCount": 266,
+      "totalArtifactBytes": 4538349
+    },
+    {
+      "label": "publication-2-current",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 20.398227,
+        "peakRssKiB": 203412,
+        "userSeconds": 21.141581,
+        "systemSeconds": 0.622647,
+        "exitCode": 0
+      },
+      "directory": "publication-2-current",
+      "stdoutBytes": 136,
+      "stdoutSha256": "bf2817b40a32a928b6c36ea59a8f745ff2d61ecaff937e6df65a67cca88bc69d",
+      "stderrBytes": 34384,
+      "stderrSha256": "9ef738cfd54821904d3665cbc7c5003cc931fe5373432a97766c287c00e3c69b",
+      "repetition": 2,
+      "arm": "current",
+      "fileCount": 266,
+      "totalArtifactBytes": 4538349
+    },
+    {
+      "label": "publication-2-baseline",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 12.697644,
+        "peakRssKiB": 191820,
+        "userSeconds": 13.319654,
+        "systemSeconds": 0.37129799999999996,
+        "exitCode": 0
+      },
+      "directory": "publication-2-baseline",
+      "stdoutBytes": 137,
+      "stdoutSha256": "2fa914f3222a04d700db3a84cfffe198df209e8450b765a9ff93713acf539fa6",
+      "stderrBytes": 34384,
+      "stderrSha256": "9ef738cfd54821904d3665cbc7c5003cc931fe5373432a97766c287c00e3c69b",
+      "repetition": 2,
+      "arm": "baseline",
+      "fileCount": 132,
+      "totalArtifactBytes": 2137745
+    },
+    {
+      "label": "publication-3-baseline",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 12.376567,
+        "peakRssKiB": 178800,
+        "userSeconds": 12.9528,
+        "systemSeconds": 0.313472,
+        "exitCode": 0
+      },
+      "directory": "publication-3-baseline",
+      "stdoutBytes": 137,
+      "stdoutSha256": "e15e605b04098b1d8cb440870e8a8b65d24d801f8a12428abb3d7929f189d199",
+      "stderrBytes": 34384,
+      "stderrSha256": "9ef738cfd54821904d3665cbc7c5003cc931fe5373432a97766c287c00e3c69b",
+      "repetition": 3,
+      "arm": "baseline",
+      "fileCount": 132,
+      "totalArtifactBytes": 2137745
+    },
+    {
+      "label": "publication-3-current",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 20.530903,
+        "peakRssKiB": 203108,
+        "userSeconds": 21.384615,
+        "systemSeconds": 0.6148669999999999,
+        "exitCode": 0
+      },
+      "directory": "publication-3-current",
+      "stdoutBytes": 136,
+      "stdoutSha256": "8d6d794dcc2d9f9a0c9ae8b0aef44d14559755c0c4e309e3f75f424c99642d88",
+      "stderrBytes": 34384,
+      "stderrSha256": "9ef738cfd54821904d3665cbc7c5003cc931fe5373432a97766c287c00e3c69b",
+      "repetition": 3,
+      "arm": "current",
+      "fileCount": 266,
+      "totalArtifactBytes": 4538349
+    },
+    {
+      "label": "query-resolve-1",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 9.446991,
+        "peakRssKiB": 194612,
+        "userSeconds": 10.510752,
+        "systemSeconds": 0.10046,
+        "exitCode": 0
+      },
+      "directory": "query-resolve-1",
+      "stdoutBytes": 4866,
+      "stdoutSha256": "ef85e9d745ef758197bb64fd72a04c24ee907cb6b00814d535d316ded0a3f99f",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "repetition": 1,
+      "operation": "resolve",
+      "status": "ok",
+      "responseUtf8Bytes": 4866,
+      "sameFrozenResponseAcrossRepetitions": true
+    },
+    {
+      "label": "query-resolve-2",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 9.33952,
+        "peakRssKiB": 201884,
+        "userSeconds": 10.409539,
+        "systemSeconds": 0.10253899999999999,
+        "exitCode": 0
+      },
+      "directory": "query-resolve-2",
+      "stdoutBytes": 4866,
+      "stdoutSha256": "ef85e9d745ef758197bb64fd72a04c24ee907cb6b00814d535d316ded0a3f99f",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "repetition": 2,
+      "operation": "resolve",
+      "status": "ok",
+      "responseUtf8Bytes": 4866,
+      "sameFrozenResponseAcrossRepetitions": true
+    },
+    {
+      "label": "query-resolve-3",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 9.399081,
+        "peakRssKiB": 192180,
+        "userSeconds": 10.432958,
+        "systemSeconds": 0.10345399999999999,
+        "exitCode": 0
+      },
+      "directory": "query-resolve-3",
+      "stdoutBytes": 4866,
+      "stdoutSha256": "ef85e9d745ef758197bb64fd72a04c24ee907cb6b00814d535d316ded0a3f99f",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "repetition": 3,
+      "operation": "resolve",
+      "status": "ok",
+      "responseUtf8Bytes": 4866,
+      "sameFrozenResponseAcrossRepetitions": true
+    },
+    {
+      "label": "query-search-1",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 9.419709,
+        "peakRssKiB": 202860,
+        "userSeconds": 10.552327,
+        "systemSeconds": 0.09138099999999999,
+        "exitCode": 0
+      },
+      "directory": "query-search-1",
+      "stdoutBytes": 4531,
+      "stdoutSha256": "ae2c8ca4c79a12a0f3c36cb9bde90228903a4f35a4641d712a273ebc48cf2313",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "repetition": 1,
+      "operation": "search",
+      "status": "ambiguous",
+      "responseUtf8Bytes": 4531,
+      "sameFrozenResponseAcrossRepetitions": true
+    },
+    {
+      "label": "query-search-2",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 9.420349,
+        "peakRssKiB": 191396,
+        "userSeconds": 10.537142,
+        "systemSeconds": 0.07573099999999999,
+        "exitCode": 0
+      },
+      "directory": "query-search-2",
+      "stdoutBytes": 4531,
+      "stdoutSha256": "ae2c8ca4c79a12a0f3c36cb9bde90228903a4f35a4641d712a273ebc48cf2313",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "repetition": 2,
+      "operation": "search",
+      "status": "ambiguous",
+      "responseUtf8Bytes": 4531,
+      "sameFrozenResponseAcrossRepetitions": true
+    },
+    {
+      "label": "query-search-3",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 9.366916,
+        "peakRssKiB": 202120,
+        "userSeconds": 10.482306,
+        "systemSeconds": 0.076597,
+        "exitCode": 0
+      },
+      "directory": "query-search-3",
+      "stdoutBytes": 4531,
+      "stdoutSha256": "ae2c8ca4c79a12a0f3c36cb9bde90228903a4f35a4641d712a273ebc48cf2313",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "repetition": 3,
+      "operation": "search",
+      "status": "ambiguous",
+      "responseUtf8Bytes": 4531,
+      "sameFrozenResponseAcrossRepetitions": true
+    },
+    {
+      "label": "query-get-window-1",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 9.37912,
+        "peakRssKiB": 198640,
+        "userSeconds": 10.468086,
+        "systemSeconds": 0.09156099999999999,
+        "exitCode": 0
+      },
+      "directory": "query-get-window-1",
+      "stdoutBytes": 70235,
+      "stdoutSha256": "6f56ede51692cd2b442948ccf99196a68cba524d30be649b13893461a822e436",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "repetition": 1,
+      "operation": "get-window",
+      "status": "ok",
+      "responseUtf8Bytes": 70235,
+      "sameFrozenResponseAcrossRepetitions": true
+    },
+    {
+      "label": "query-get-window-2",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 9.406881,
+        "peakRssKiB": 202044,
+        "userSeconds": 10.598943,
+        "systemSeconds": 0.098553,
+        "exitCode": 0
+      },
+      "directory": "query-get-window-2",
+      "stdoutBytes": 70235,
+      "stdoutSha256": "6f56ede51692cd2b442948ccf99196a68cba524d30be649b13893461a822e436",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "repetition": 2,
+      "operation": "get-window",
+      "status": "ok",
+      "responseUtf8Bytes": 70235,
+      "sameFrozenResponseAcrossRepetitions": true
+    },
+    {
+      "label": "query-get-window-3",
+      "helperExitCode": 0,
+      "timedOut": false,
+      "runtime": {
+        "elapsedSeconds": 9.530867,
+        "peakRssKiB": 203508,
+        "userSeconds": 10.660724,
+        "systemSeconds": 0.09563999999999999,
+        "exitCode": 0
+      },
+      "directory": "query-get-window-3",
+      "stdoutBytes": 70235,
+      "stdoutSha256": "6f56ede51692cd2b442948ccf99196a68cba524d30be649b13893461a822e436",
+      "stderrBytes": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "repetition": 3,
+      "operation": "get-window",
+      "status": "ok",
+      "responseUtf8Bytes": 70235,
+      "sameFrozenResponseAcrossRepetitions": true
+    }
+  ],
+  "stableImprovementClaim": false,
+  "otherInputLargeScaleResultsIncluded": false
+}

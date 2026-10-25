@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "cjdoc.captured-dependency-selection-smoke/1",
+  "binarySha256": "c1649ca48ce9312ecc3053e10fa1291e89b8586191d522ef5b1482b839fa9fa3",
+  "snapshotSha256": "464466ffc3876416a4393c613b472f46783d917c8d02c5f2e80b96d9b282aa82",
+  "scope": "Actual organization dependency identity and explicit source context; no source scan or SDK identity invented",
+  "organization": "acme",
+  "moduleId": "cjdoc:module:v1:path:acme%3A%3Areexport_dep",
+  "capturedDependencyState": "observed",
+  "selectedMatchLevel": "manual",
+  "sourceBinding": "matched",
+  "scenarios": [
+    {
+      "scenario": "organization-dependency-instance",
+      "status": "ok",
+      "exitCode": 0,
+      "selected": 1
+    },
+    {
+      "scenario": "exact-document-set",
+      "status": "ok",
+      "exitCode": 0,
+      "selected": 1
+    },
+    {
+      "scenario": "different-organization-scope",
+      "status": "not_found",
+      "exitCode": 0,
+      "selected": 0
+    },
+    {
+      "scenario": "unknown-standard-library",
+      "status": "not_found",
+      "exitCode": 0,
+      "selected": 0
+    }
+  ]
+}

@@ -1,0 +1,410 @@
+{
+  "state": "passed",
+  "schemaVersion": "cjdoc.public-api-acceptance/1",
+  "cliBinarySha256": "c1649ca48ce9312ecc3053e10fa1291e89b8586191d522ef5b1482b839fa9fa3",
+  "externalCallerSourceSha256": "8f7d0ad1bb9082296ff620d3fc8382581bc3bc6d30b9cb488cbdbc3bab62bc89",
+  "externalCallerBinarySha256": "49d641c3373255bcd3b7d7f00beff5857506bcb8f3397aa534d2719be95f03dc",
+  "staticPublicExportInputs": [
+    {
+      "path": "cjdoc/cjdoc.cjo",
+      "sha256": "6b724390a7fcc9bb5c4474bb936079d2bd1432f987a724eca032986dc87f6180"
+    },
+    {
+      "path": "cjdoc/cjdoc.model.cjo",
+      "sha256": "3610ad8fda77b3731dc84b9ca5294fb9625cf7cc61c36c32acbd1aa2e1cc8a7f"
+    },
+    {
+      "path": "cjdoc/cjdoc.provider.cjo",
+      "sha256": "f9b7e7f43bbbe1820817d25caf16fc77ec534586eeace3bd7dc0539e3bb272dd"
+    },
+    {
+      "path": "cjdoc/cjdoc.quality.cjo",
+      "sha256": "c9e5ca03c9bec5d2742f93842d6a3c1c52b638017cce428e1402fd811c753b80"
+    },
+    {
+      "path": "cjdoc/cjdoc.render.cjo",
+      "sha256": "2a2f328c1b48e05abff9dec1df306a27e67426c983cb9232fc4853192a5e7411"
+    },
+    {
+      "path": "cjdoc/cjdoc.schema_data.cjo",
+      "sha256": "b4e74f430d282da7c01a5b1871ea1129b9eb694d28f0b0905e0cf4358fdb25b0"
+    },
+    {
+      "path": "cjdoc/libcjdoc.a",
+      "sha256": "9bf0f8b668b196af1d8f0c6f16e5f4d7b669ab443cb9cca70a849f0fc691d11f"
+    },
+    {
+      "path": "cjdoc/libcjdoc.model.a",
+      "sha256": "995196dd15752170dcc3a102656983a2250b274ad0e93777df986333034838a6"
+    },
+    {
+      "path": "cjdoc/libcjdoc.provider.a",
+      "sha256": "eadcb675b3840b13332abdb9b500ff02424f5fc09f90e9c7213fec25c3f6e9f2"
+    },
+    {
+      "path": "cjdoc/libcjdoc.quality.a",
+      "sha256": "258ff3a32da4452d36ac1a09f99411ee90b615b3c4f1b0c47ea40a28789f3d53"
+    },
+    {
+      "path": "cjdoc/libcjdoc.render.a",
+      "sha256": "b99b8ba266d4a126dff18dac45bd3e64b97512c2d28b4353feb8f77178c45b70"
+    },
+    {
+      "path": "cjdoc/libcjdoc.schema_data.a",
+      "sha256": "8ffbf708e7730a5b95a9801c93c6c0e179e6ba8c6f780ced1d7e961e61c668f1"
+    },
+    {
+      "path": "cjdoc_chir_protocol/cjdoc_chir_protocol.cjo",
+      "sha256": "09b4bb2d08cc972fab0fee768c110f036da4eab947dadee04c82889363705498"
+    },
+    {
+      "path": "cjdoc_chir_protocol/libcjdoc_chir_protocol.a",
+      "sha256": "1e8655fc5f6658b5df17997d7d163a8d019029688b5a690fd6e6840376c9befb"
+    },
+    {
+      "path": "markdown/libmarkdown.a",
+      "sha256": "5a7c3a11a21f8aa740f0d6cfc0e0484465cac1b88431feb7a1e9db30cc14b8ac"
+    },
+    {
+      "path": "markdown/libmarkdown.artifact.a",
+      "sha256": "d61eca613ac9df14410d55e1cf7737e76e6dcc25dbeb6bc0511409c053e65796"
+    },
+    {
+      "path": "markdown/libmarkdown.core.a",
+      "sha256": "9e0470f8d409e726b6fc01f5d20ec2cbde2ce00c188804d346b34a94fa29e4ac"
+    },
+    {
+      "path": "markdown/libmarkdown.document.a",
+      "sha256": "22b658b022054b78f1e7dd66fef0f7edae0dabc524fff90257d8d58205efc495"
+    },
+    {
+      "path": "markdown/libmarkdown.editor.a",
+      "sha256": "e59f68cb1d47f6cf4991e5d98db24b536ab6f15f0bdd4b5caa1568549bff3ea6"
+    },
+    {
+      "path": "markdown/libmarkdown.extensions.a",
+      "sha256": "f4547579f79e01fe07a0e610d47d091f1d4850855af94049dd35104a5fa02c17"
+    },
+    {
+      "path": "markdown/libmarkdown.native.a",
+      "sha256": "e293899251e1760d4fb1ebd79465ec6af4576ab3ac16365d0625ad6536b305c8"
+    },
+    {
+      "path": "markdown/libmarkdown.render.a",
+      "sha256": "542f184c1e3c35e697f6b9cd6e0a9129b2e9dcb6f384387eaf7d549409463727"
+    },
+    {
+      "path": "markdown/libmarkdown.testkit.a",
+      "sha256": "00c8874604cb5c31d6d91c8fcc23f450289e8cdae6153c88d97790c468efbf0b"
+    },
+    {
+      "path": "markdown/markdown.artifact.cjo",
+      "sha256": "62a677e713910578f0f4431448ade68f50cbe351279bedeb0736fa799dbf5dce"
+    },
+    {
+      "path": "markdown/markdown.cjo",
+      "sha256": "d43ef6115be517c68787d99b83c30a755c2d1c12cce33e6944d5f26d409895c6"
+    },
+    {
+      "path": "markdown/markdown.core.cjo",
+      "sha256": "9d6409017763304bebab22645e3a5f99c95620617f2c5a26b89598b74268cc46"
+    },
+    {
+      "path": "markdown/markdown.document.cjo",
+      "sha256": "e2d4da8b2b15328858276570bbe57f489489a27cb566d32e5be7baf7a6ccb062"
+    },
+    {
+      "path": "markdown/markdown.editor.cjo",
+      "sha256": "d5a3de234fc12bd1b07c295e80b57ef88e5fc77ba4b48b995c34ea9cadb5ca47"
+    },
+    {
+      "path": "markdown/markdown.extensions.cjo",
+      "sha256": "470ba7753220611ec7c30882c7666502f255d53ed798ffdfe7f9e219c98fb51c"
+    },
+    {
+      "path": "markdown/markdown.native.cjo",
+      "sha256": "22eca55c5175cb411389d559b260001ee94449e68d2d86ad4ca9833767ceadf4"
+    },
+    {
+      "path": "markdown/markdown.render.cjo",
+      "sha256": "aaedf2103e072f95e3813486de5d9e41b323bc5fe5b17cb36b4a57d6ca6474e9"
+    },
+    {
+      "path": "markdown/markdown.testkit.cjo",
+      "sha256": "06d35f4b0658d17bc3f16ddcd2918ad893637fdf9392ec0acd6f1adacc189f5b"
+    },
+    {
+      "path": "yjson/libyjson.a",
+      "sha256": "35b39f65e10e4a50898ed14ddab9298708743af206d3ec150e906b52b7d0f33a"
+    },
+    {
+      "path": "yjson/yjson.cjo",
+      "sha256": "d4975728c44b0774e020275480a0fa3502238170a76e75068de617388b7e3b2c"
+    },
+    {
+      "path": "yjson_algorithms/libyjson_algorithms.a",
+      "sha256": "23d2e83c8203fb85dbf4ec2df84884aa2e168ed62b2918f640ce63a32daaadc2"
+    },
+    {
+      "path": "yjson_algorithms/yjson_algorithms.cjo",
+      "sha256": "e004796e4542294fc44f627a75bfe019a7619209ba2ceeaa7c330763a5021e7f"
+    },
+    {
+      "path": "yjson_macros/lib-macro_yjson_macros.so",
+      "sha256": "5065fe39f6553060f93ec7057ddfaf231a8d93f3dd426a0104825d0c7b9ab258"
+    },
+    {
+      "path": "yjson_macros/yjson_macros.cjo",
+      "sha256": "524ef5e53e834358bf4574176667ffdb7fd8ffee2e84e8b5ce7ea6275b15738f"
+    }
+  ],
+  "actualIndependentCompiles": 5,
+  "generatorParserBuildIdentity": "unknown",
+  "cases": [
+    {
+      "case": "no-source-baseline",
+      "state": "passed",
+      "apiCliCompleteIrEqual": true,
+      "resolvedExternalPositions": 0,
+      "apiIrSha256": "ab8024f02c2de7e6088b61bac373d705e11ea613c9cc4237b864aa24311a234f",
+      "cliIrSha256": "ab8024f02c2de7e6088b61bac373d705e11ea613c9cc4237b864aa24311a234f"
+    },
+    {
+      "case": "no-pin",
+      "state": "passed",
+      "apiCliCompleteIrEqual": true,
+      "resolvedExternalPositions": 2,
+      "apiIrSha256": "60f5fccdc5eca3cdde76a4973af00c5504b7660d0e0ad482aa0020a7732090d6",
+      "cliIrSha256": "60f5fccdc5eca3cdde76a4973af00c5504b7660d0e0ad482aa0020a7732090d6"
+    },
+    {
+      "case": "host-pinned-exact",
+      "state": "passed",
+      "apiCliCompleteIrEqual": true,
+      "resolvedExternalPositions": 2,
+      "apiIrSha256": "63e08e99061733c61a1763ec240c21a9160486486d08f306b08e7832f0457424",
+      "cliIrSha256": "63e08e99061733c61a1763ec240c21a9160486486d08f306b08e7832f0457424"
+    },
+    {
+      "case": "wrong-pin",
+      "state": "passed",
+      "apiCliCompleteIrEqual": true,
+      "resolvedExternalPositions": 0,
+      "apiIrSha256": "09e19324577a399b52c5f7810a39eee4143ffc92793345deccbf58aa7ca4da90",
+      "cliIrSha256": "09e19324577a399b52c5f7810a39eee4143ffc92793345deccbf58aa7ca4da90"
+    },
+    {
+      "case": "whole-byte-pin-change",
+      "state": "passed",
+      "apiCliCompleteIrEqual": true,
+      "resolvedExternalPositions": 0,
+      "apiIrSha256": "09e19324577a399b52c5f7810a39eee4143ffc92793345deccbf58aa7ca4da90",
+      "cliIrSha256": "09e19324577a399b52c5f7810a39eee4143ffc92793345deccbf58aa7ca4da90"
+    },
+    {
+      "case": "language-required",
+      "state": "passed",
+      "apiCliCompleteIrEqual": true,
+      "resolvedExternalPositions": 0,
+      "apiIrSha256": "d7be7a6b26b1794701912586d46037ce9c4c958f2efeb4236c3ae57e4e448f7c",
+      "cliIrSha256": "d7be7a6b26b1794701912586d46037ce9c4c958f2efeb4236c3ae57e4e448f7c"
+    },
+    {
+      "case": "language-fallback",
+      "state": "passed",
+      "apiCliCompleteIrEqual": true,
+      "resolvedExternalPositions": 2,
+      "apiIrSha256": "63e08e99061733c61a1763ec240c21a9160486486d08f306b08e7832f0457424",
+      "cliIrSha256": "63e08e99061733c61a1763ec240c21a9160486486d08f306b08e7832f0457424"
+    },
+    {
+      "case": "compatible-default-rejected",
+      "state": "passed",
+      "apiCliCompleteIrEqual": true,
+      "resolvedExternalPositions": 0,
+      "apiIrSha256": "11dddefb151903ebff3686100ce6d7bed61c1c87f05591a2bf891f2a68bc0ae5",
+      "cliIrSha256": "11dddefb151903ebff3686100ce6d7bed61c1c87f05591a2bf891f2a68bc0ae5"
+    },
+    {
+      "case": "compatible-mapping-no-opt-in",
+      "state": "passed",
+      "apiCliCompleteIrEqual": true,
+      "resolvedExternalPositions": 0,
+      "apiIrSha256": "11dddefb151903ebff3686100ce6d7bed61c1c87f05591a2bf891f2a68bc0ae5",
+      "cliIrSha256": "11dddefb151903ebff3686100ce6d7bed61c1c87f05591a2bf891f2a68bc0ae5"
+    },
+    {
+      "case": "compatible-explicit",
+      "state": "passed",
+      "apiCliCompleteIrEqual": true,
+      "resolvedExternalPositions": 2,
+      "apiIrSha256": "a02b27f10846d34a2653d68bdd4e0b29dbf680e7b7fd443c8c366edcf5307fab",
+      "cliIrSha256": "a02b27f10846d34a2653d68bdd4e0b29dbf680e7b7fd443c8c366edcf5307fab"
+    },
+    {
+      "case": "documentation-revision-independent",
+      "state": "passed",
+      "apiCliCompleteIrEqual": true,
+      "resolvedExternalPositions": 2,
+      "apiIrSha256": "3b6b337bb74f632c8da405182a7904490c4f57b5ab3c3b0b4946b3ab78cadaf9",
+      "cliIrSha256": "3b6b337bb74f632c8da405182a7904490c4f57b5ab3c3b0b4946b3ab78cadaf9"
+    }
+  ],
+  "commands": [
+    {
+      "name": "public-caller-compile",
+      "exitCode": 0,
+      "seconds": 1.4205
+    },
+    {
+      "name": "library-a-compile",
+      "exitCode": 0,
+      "seconds": 0.3166
+    },
+    {
+      "name": "library-b-compile",
+      "exitCode": 0,
+      "seconds": 0.3269
+    },
+    {
+      "name": "consumer-a-compile",
+      "exitCode": 0,
+      "seconds": 0.5573
+    },
+    {
+      "name": "consumer-b-compile",
+      "exitCode": 0,
+      "seconds": 0.5576
+    },
+    {
+      "name": "producer-capture",
+      "exitCode": 0,
+      "seconds": 0.0517
+    },
+    {
+      "name": "consumer-a-capture",
+      "exitCode": 0,
+      "seconds": 0.058
+    },
+    {
+      "name": "consumer-b-capture",
+      "exitCode": 0,
+      "seconds": 0.0532
+    },
+    {
+      "name": "producer-generate",
+      "exitCode": 0,
+      "seconds": 1.6452
+    },
+    {
+      "name": "no-source-baseline-api",
+      "exitCode": 0,
+      "seconds": 0.2542
+    },
+    {
+      "name": "no-source-baseline-cli",
+      "exitCode": 0,
+      "seconds": 1.2626
+    },
+    {
+      "name": "no-pin-api",
+      "exitCode": 0,
+      "seconds": 0.2544
+    },
+    {
+      "name": "no-pin-cli",
+      "exitCode": 0,
+      "seconds": 1.3051
+    },
+    {
+      "name": "host-pinned-exact-api",
+      "exitCode": 0,
+      "seconds": 0.2535
+    },
+    {
+      "name": "host-pinned-exact-cli",
+      "exitCode": 0,
+      "seconds": 1.3941
+    },
+    {
+      "name": "wrong-pin-api",
+      "exitCode": 0,
+      "seconds": 0.2534
+    },
+    {
+      "name": "wrong-pin-cli",
+      "exitCode": 0,
+      "seconds": 1.3231
+    },
+    {
+      "name": "whole-byte-pin-change-api",
+      "exitCode": 0,
+      "seconds": 0.2438
+    },
+    {
+      "name": "whole-byte-pin-change-cli",
+      "exitCode": 0,
+      "seconds": 1.3434
+    },
+    {
+      "name": "language-required-api",
+      "exitCode": 0,
+      "seconds": 0.2504
+    },
+    {
+      "name": "language-required-cli",
+      "exitCode": 0,
+      "seconds": 1.2711
+    },
+    {
+      "name": "language-fallback-api",
+      "exitCode": 0,
+      "seconds": 0.2433
+    },
+    {
+      "name": "language-fallback-cli",
+      "exitCode": 0,
+      "seconds": 1.2838
+    },
+    {
+      "name": "compatible-default-rejected-api",
+      "exitCode": 0,
+      "seconds": 0.2437
+    },
+    {
+      "name": "compatible-default-rejected-cli",
+      "exitCode": 0,
+      "seconds": 1.2941
+    },
+    {
+      "name": "compatible-mapping-no-opt-in-api",
+      "exitCode": 0,
+      "seconds": 0.2539
+    },
+    {
+      "name": "compatible-mapping-no-opt-in-cli",
+      "exitCode": 0,
+      "seconds": 1.3341
+    },
+    {
+      "name": "compatible-explicit-api",
+      "exitCode": 0,
+      "seconds": 0.2438
+    },
+    {
+      "name": "compatible-explicit-cli",
+      "exitCode": 0,
+      "seconds": 1.2627
+    },
+    {
+      "name": "documentation-revision-independent-api",
+      "exitCode": 0,
+      "seconds": 0.2537
+    },
+    {
+      "name": "documentation-revision-independent-cli",
+      "exitCode": 0,
+      "seconds": 1.3937
+    }
+  ]
+}

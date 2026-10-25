@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "cjdoc.evidence-review-finding/1",
+  "finding": "MCP resolve_docs advertises symbol-target resolution although its shared core resolves documentation sets by library/module/package and captured dependency context.",
+  "observedBeforeViewingCurrentPairedOutcomes": true,
+  "currentPairedObservation": "real-agent-paired-transport-v2-first; retain all 24 records without interruption or filtering",
+  "sourceCommit": "373aeddd218e4f388d42463836d8d4fb4bd0d49a",
+  "nativeBinarySha256": "1bbb438bc4ed099f103361d12c2f2546a60710c3903a2913812f62c562ce39d0",
+  "evidence": [
+    "src/query_mcp.cj:77-81 advertises query, symbol id/key, qualified name and signature parts for resolve_docs",
+    "src/query_resolve.cj:237-245 matches query tokens only in captured library/module/package names",
+    "src/query_resolve.cj:271-301 filters library/module/package and uses captured dependency contexts",
+    "client-transport-v2-smoke-third native resolve_docs(query=pocketkit.TextCatalog.add) returns not_found; search/get_symbol subsequently succeed"
+  ],
+  "decision": "After the running complete observation finishes, correct only the misleading tool description, rebuild a source-bound native binary and evaluate that final interface with the unchanged frozen task/fact/rubric/client/budgets. Keep every earlier complete observation separate; do not select the best score.",
+  "notAuthorized": ["Do not change documentation resolver semantics to resolve symbols", "Do not change frozen tasks or budgets", "Do not edit source during the running model observation"]
+}

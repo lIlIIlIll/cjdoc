@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "cjdoc.actual-publication-layout-consumer/1",
+  "binarySha256": "57fccf60012c72b3fd36a08262f9a480ba1160d6ab9b3dbcc598dc9024c5e52f",
+  "scope": "Actual final native artifact and unchanged native-produced machine files. The isolated alias reproduces the publication copy layout; it is not a renderer fixture.",
+  "rows": [
+    {
+      "layout": "isolated-alias",
+      "native-query": {
+        "exitCode": 2,
+        "stdoutSha256": "b929e0f946dac0914cb5d493c12d48fda6e215c1a9e6c32c58626390c4497207",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status": "invalid_request",
+        "error": {
+          "code": "read_command_input",
+          "message": "An explicit read-command path, request or captured documentation value is invalid.",
+          "requiredBytes": null,
+          "maximumBytes": null
+        },
+        "returned": 0
+      },
+      "graph-validator": {
+        "exitCode": 1,
+        "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderrSha256": "c463f5ce761656ed3441fd9f3118f7d9532a9f9c0a1eff4392f7f0e7808e0fe8",
+        "stderr": "agent artifact verification failed: artifact is missing or unsafe: navigation-index.json"
+      }
+    },
+    {
+      "layout": "canonical-root",
+      "native-query": {
+        "exitCode": 0,
+        "stdoutSha256": "beff8f09ba987309ebd04a60cd4522314f960636147b7dcc923b0f5addf5a283",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "status": "ok",
+        "error": null,
+        "returned": 1
+      },
+      "graph-validator": {
+        "exitCode": 0,
+        "stdoutSha256": "b125d9cc43591cc88558983e06dd08c75d13d996b7bce44ad3a87d53d65a81de",
+        "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": ""
+      }
+    }
+  ]
+}

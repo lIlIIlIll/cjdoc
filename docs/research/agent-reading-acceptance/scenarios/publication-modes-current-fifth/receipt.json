@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "cjdoc.publication-modes-smoke/1",
+  "binarySha256": "c1649ca48ce9312ecc3053e10fa1291e89b8586191d522ef5b1482b839fa9fa3",
+  "inputSha256": "a7872c159872511eb06ae7ab6babfb26bc7dba2a1b890c9d4eec71862ba8eed2",
+  "scope": "Actual CLI render; three formats without --agent-full; no Agent invoked",
+  "results": [
+    {
+      "format": "html",
+      "exitCode": 0,
+      "files": 263,
+      "bytes": 4411833,
+      "sourceDiscovery": false,
+      "agentFullFlag": false,
+      "reusesPriorSuccessfulProducer": true,
+      "declarations": 54,
+      "fullReference": "disabled",
+      "advertisedMissingResources": 0,
+      "verifiedDiscoveryLinks": 305
+    },
+    {
+      "format": "markdown",
+      "exitCode": 0,
+      "files": 20,
+      "bytes": 66690,
+      "sourceDiscovery": false,
+      "agentFullFlag": false,
+      "reusesPriorSuccessfulProducer": true,
+      "legacyLayout": "package and container pages retain member contracts",
+      "sourceHeadersPreserved": 54,
+      "containerFiles": 8,
+      "htmlArtifacts": 0,
+      "machineManifestAdvertised": false
+    },
+    {
+      "format": "json",
+      "exitCode": 0,
+      "files": 2,
+      "bytes": 983308,
+      "sourceDiscovery": false,
+      "agentFullFlag": false,
+      "reusesPriorSuccessfulProducer": false,
+      "fullDocIrDeclarations": 54,
+      "htmlArtifacts": 0,
+      "markdownArtifacts": 0,
+      "machineManifestAdvertised": false
+    }
+  ]
+}

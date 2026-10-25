@@ -20,7 +20,7 @@ cjdoc render --input target/agent-demo/docs.json \
 
 HTML 输出默认附带每个可见声明的 Markdown/JSON，不需要 `--agent-full`。该选项只增加聚合全文。
 
-单独选择 `--format markdown` 保留既有包页、容器页及其中的成员正文布局；`--format json` 保留完整 Doc IR 输出。需要每声明独立 Markdown/JSON 时，发布 HTML 文档根中的 `agent/` 包。仅选 Markdown 或 JSON 格式不生成 HTML、机器包 manifest 或不存在的 HTML alternate。
+单独选择 `--format markdown` 保留既有包页、容器页及其中的成员正文布局；`--format json` 保留完整 Doc IR 输出。需要每声明独立 Markdown/JSON 时，部署完整 HTML 文档根并保留其中的 `agent/`；不要只搬运 `agent/`，否则 manifest 指向的 HTML 和全文入口会丢失。仅选 Markdown 或 JSON 格式不生成 HTML、机器包 manifest 或不存在的 HTML alternate。
 
 | 文档根中的入口 | 用途 |
 |---|---|
@@ -207,3 +207,5 @@ cjdoc schema query-result
 `schema navigation-index` 指向当前 v2；`schema navigation-index-v1` 和已发布的旧 schema 保持冻结。v1 没有整体完整性/续取证据，不能据其语法合法认定全站枚举完整。当前 decoder/query 接受 Doc IR v16；旧版本输入不会被补造为当前证据，须保留对应历史工具或从真实来源重新生成。
 
 公开仓颉入口为 `cjdoc.DocumentationQuerySession`，可从显式路径、一个 `cjdoc.model.DocumentationSet` 或其数组创建；`execute(String)` 返回同一版本化 JSON，`catalogIdentity` 暴露捕获内容身份。静态投影由 `cjdoc.render.DocumentationReadSnapshot` 及现有 renderer 提供。运行可重现模型对照、消费者编译与行为验收见维护者的 [Agent 评测流程](maintainer/agent-evaluation.md)；普通静态使用不要求模型或网络。
+
+完整发布、离线隔离、固定规模成本及三次真实客户端观测的正反结果见 [issue #137 验收记录](research/agent-reading-acceptance.md)。其中保留所有失败，不把正常退出、较少读取或一次模型观测当作整体改进。

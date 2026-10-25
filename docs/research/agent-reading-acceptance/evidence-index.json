@@ -1,0 +1,304 @@
+{
+  "schemaVersion": "cjdoc.issue137-public-evidence-index/1",
+  "scope": "Local source-bound native/static/protocol observations and three separately retained complete real-client studies. Remote latest-HEAD/main CI is reported by actual PR/Actions links, not inferred from these local receipts.",
+  "normalization": "Published traces/reports are explicitly privacy-normalized display copies, not byte-identical private run directories. Original and display hashes are separate. Original consumers remain byte-identical. Artifact byte/read cost metrics refer to originals.",
+  "files": [
+    {
+      "path": "native-gate.json",
+      "originalSha256": "a0ec3f12141206d0935996277e992f27b9d4cd24025aebb7202650ca10518dcd",
+      "displaySha256": "a0ec3f12141206d0935996277e992f27b9d4cd24025aebb7202650ca10518dcd",
+      "displayBytes": 1267,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "static-publication.json",
+      "originalSha256": "f60f41991add477ef665287f41193fe5d94a3ec8b30c86da62f235867f00e9e2",
+      "displaySha256": "f60f41991add477ef665287f41193fe5d94a3ec8b30c86da62f235867f00e9e2",
+      "displayBytes": 2632,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "static-file-manifest.json",
+      "originalSha256": "9d17da0010cd1d1f6d4252c5862c4f0da9570b6ff61e6d1b7f70a9a4f42b00ef",
+      "displaySha256": "9d17da0010cd1d1f6d4252c5862c4f0da9570b6ff61e6d1b7f70a9a4f42b00ef",
+      "displayBytes": 341869,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "static-browser.json",
+      "originalSha256": "75894fb1c87b9a47ec84f5abc9b2a8599b20d5f060ed0295709e99d1da90186b",
+      "displaySha256": "75894fb1c87b9a47ec84f5abc9b2a8599b20d5f060ed0295709e99d1da90186b",
+      "displayBytes": 4515,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "offline-runtime.json",
+      "originalSha256": "af6c4a29f5563aa54f25877f6db426187df4d3a190b19c69f41e619e63184e34",
+      "displaySha256": "af6c4a29f5563aa54f25877f6db426187df4d3a190b19c69f41e619e63184e34",
+      "displayBytes": 2436,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "publisher-layout-negative.json",
+      "originalSha256": "6a9868c481d20c9cc2c3ca0c5ce71afbe3ebb445f1fb937df9a82b4a78c61ce4",
+      "displaySha256": "6a9868c481d20c9cc2c3ca0c5ce71afbe3ebb445f1fb937df9a82b4a78c61ce4",
+      "displayBytes": 1904,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "publisher-cutover.json",
+      "originalSha256": "e62a9dd4c2f990fd75e501f6f2320ba2d9c806e9e2db04d5889f8796cf4c2007",
+      "displaySha256": "e62a9dd4c2f990fd75e501f6f2320ba2d9c806e9e2db04d5889f8796cf4c2007",
+      "displayBytes": 809,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "resolver-review-decision.json",
+      "originalSha256": "db40479a7305fc65622e7d2c5858e60c52e86e4d6ce7fbd051b891107df9e7cb",
+      "displaySha256": "db40479a7305fc65622e7d2c5858e60c52e86e4d6ce7fbd051b891107df9e7cb",
+      "displayBytes": 1578,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "schema-freeze.json",
+      "originalSha256": "31418de5920ac31eb95653d5ccbbf21fd4a2b50b0510de723f38d1b820ed4866",
+      "displaySha256": "31418de5920ac31eb95653d5ccbbf21fd4a2b50b0510de723f38d1b820ed4866",
+      "displayBytes": 754,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "fixed-input-cost/protocol.json",
+      "originalSha256": "0e1dafbd1a0140bdae506e90aafe6f89d10dfe9ca715c6a25ff2ab1cb9190807",
+      "displaySha256": "0e1dafbd1a0140bdae506e90aafe6f89d10dfe9ca715c6a25ff2ab1cb9190807",
+      "displayBytes": 2709,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "fixed-input-cost/observations.json",
+      "originalSha256": "803303360b1f8e28b2385fd335a17aec10491e4f10f45de82b7965c0606cc299",
+      "displaySha256": "803303360b1f8e28b2385fd335a17aec10491e4f10f45de82b7965c0606cc299",
+      "displayBytes": 11381,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "fixed-input-cost/summary.json",
+      "originalSha256": "152c70395aa73b4d70e5343009e772cd08a262f60b81f73c41a26abe18627b20",
+      "displaySha256": "152c70395aa73b4d70e5343009e772cd08a262f60b81f73c41a26abe18627b20",
+      "displayBytes": 2408,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "real-client-body.json",
+      "originalSha256": "59d28bc33976a78c9c2c9315d532823e32b3a7626f5946c1423aeb1bb2f4da0f",
+      "displaySha256": "59d28bc33976a78c9c2c9315d532823e32b3a7626f5946c1423aeb1bb2f4da0f",
+      "displayBytes": 3505,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "real-client-cli.json",
+      "originalSha256": "5101ac1d064b578707bcf4e1875528c848a997887f4be4bc2cd25b58b2166b86",
+      "displaySha256": "5101ac1d064b578707bcf4e1875528c848a997887f4be4bc2cd25b58b2166b86",
+      "displayBytes": 3466,
+      "historicalObservation": false,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/captured-dependency-selection-current-first/receipt.json",
+      "originalSha256": "619c5c06e56821ecf47f3d89746c55d6b4a320f333aa020a5fa989c405e6e08d",
+      "displaySha256": "619c5c06e56821ecf47f3d89746c55d6b4a320f333aa020a5fa989c405e6e08d",
+      "displayBytes": 1087,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/current-budget-context-third/receipt.json",
+      "originalSha256": "714bbea8fdfef3776659fc0a38874ce25161bb0ded2479c08310b4b5d357480f",
+      "displaySha256": "714bbea8fdfef3776659fc0a38874ce25161bb0ded2479c08310b4b5d357480f",
+      "displayBytes": 848,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/current-catalog-query-first/receipt.json",
+      "originalSha256": "6fd24decbd04302b21a1e96e6ed26675a7d4f29e348d6ce9d072f1facf8448a9",
+      "displaySha256": "6fd24decbd04302b21a1e96e6ed26675a7d4f29e348d6ce9d072f1facf8448a9",
+      "displayBytes": 998,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/current-projection-first/receipt.json",
+      "originalSha256": "1bb484aaef8587c2f5d1dc5a14db25255b7f5306541dc09554a36c5f52005185",
+      "displaySha256": "1bb484aaef8587c2f5d1dc5a14db25255b7f5306541dc09554a36c5f52005185",
+      "displayBytes": 2149,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/current-reexport-query-third/receipt.json",
+      "originalSha256": "3b18d2196a6ca10659cc6b406d6a6e8177d5c6b632dc2c42c2848d1cb2585a0d",
+      "displaySha256": "3b18d2196a6ca10659cc6b406d6a6e8177d5c6b632dc2c42c2848d1cb2585a0d",
+      "displayBytes": 860,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/current-report-query-first/receipt.json",
+      "originalSha256": "c3d102f883e89a7391ef891441839d3e88e53f6199c93b812cc87ae62d59cc20",
+      "displaySha256": "c3d102f883e89a7391ef891441839d3e88e53f6199c93b812cc87ae62d59cc20",
+      "displayBytes": 1727,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/dependency-public-api-current/evidence.json",
+      "originalSha256": "53b0af76d5017d9a2c39bb7c32ee17ee1dbcc9af9b4a942cf197c58544a43b46",
+      "displaySha256": "53b0af76d5017d9a2c39bb7c32ee17ee1dbcc9af9b4a942cf197c58544a43b46",
+      "displayBytes": 12522,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/offline-runtime-current-fourth/receipt.json",
+      "originalSha256": "8bb267364f4b7fa7c7292fc050b085d46901cecd7fb8eab2a9de5a8c57652688",
+      "displaySha256": "8bb267364f4b7fa7c7292fc050b085d46901cecd7fb8eab2a9de5a8c57652688",
+      "displayBytes": 2262,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/offline-static-current-first/browser-receipt.json",
+      "originalSha256": "3d0b0e2e248167806a2b8a3c7186afa3d3fa86ce8f1e829035a827da26635b74",
+      "displaySha256": "3d0b0e2e248167806a2b8a3c7186afa3d3fa86ce8f1e829035a827da26635b74",
+      "displayBytes": 955,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/public-query-api-current-third/receipt.json",
+      "originalSha256": "39d15e18e11faaf697ee95c4de74df4a2f56aa0b52d2f64a28edd6fc1499f159",
+      "displaySha256": "39d15e18e11faaf697ee95c4de74df4a2f56aa0b52d2f64a28edd6fc1499f159",
+      "displayBytes": 614,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/publication-modes-current-fifth/receipt.json",
+      "originalSha256": "96eeeb6aa03a72977c8c8505e4c497c273bc469092045b44e95e31519e5300a5",
+      "displaySha256": "96eeeb6aa03a72977c8c8505e4c497c273bc469092045b44e95e31519e5300a5",
+      "displayBytes": 1434,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/scale-query-current-first/receipt.json",
+      "originalSha256": "d3064955b243eaee97474a7e3005addee91373b6864994143ed47a575129af5d",
+      "displaySha256": "d3064955b243eaee97474a7e3005addee91373b6864994143ed47a575129af5d",
+      "displayBytes": 900,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/scale-segmented-buffer-isolated/validation-second/receipt.json",
+      "originalSha256": "938ea21968975c834eb9190641f36d8c2f405b7a486c1d9ca184b94109fa9fb3",
+      "displaySha256": "938ea21968975c834eb9190641f36d8c2f405b7a486c1d9ca184b94109fa9fb3",
+      "displayBytes": 1823,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/schema-freeze-current/receipt.json",
+      "originalSha256": "4106c96b1cfdbb33def1b25079143832d76f532a72244c06ce0778cfa66caa4b",
+      "displaySha256": "4106c96b1cfdbb33def1b25079143832d76f532a72244c06ce0778cfa66caa4b",
+      "displayBytes": 532,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/current-showcase-validation-second/v1-en/receipt.json",
+      "originalSha256": "07f21888a0495cb3862e4942d0d4208bbc4c5e495f0380af3c0bda3171129b02",
+      "displaySha256": "07f21888a0495cb3862e4942d0d4208bbc4c5e495f0380af3c0bda3171129b02",
+      "displayBytes": 1910,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/current-showcase-validation-second/v1-zh/receipt.json",
+      "originalSha256": "72cc1eab6d8bfccd980cb311410b2e3ac04686252d9c0b2c9277acd5d122bb4e",
+      "displaySha256": "72cc1eab6d8bfccd980cb311410b2e3ac04686252d9c0b2c9277acd5d122bb4e",
+      "displayBytes": 1909,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/current-showcase-validation-second/v2-en/receipt.json",
+      "originalSha256": "b6a8c0f24799b18cc95e2ca54e73bf6d584f9a408190fb7b4bd30b21f0b0fafa",
+      "displaySha256": "b6a8c0f24799b18cc95e2ca54e73bf6d584f9a408190fb7b4bd30b21f0b0fafa",
+      "displayBytes": 1911,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "scenarios/current-showcase-validation-second/v2-zh/receipt.json",
+      "originalSha256": "4fa0165c151136bd151a22dc729327a1f32f72d59b8668518f60f32641d74905",
+      "displaySha256": "4fa0165c151136bd151a22dc729327a1f32f72d59b8668518f60f32641d74905",
+      "displayBytes": 1911,
+      "historicalObservation": true,
+      "normalization": "Known local roots and example loopback addresses only; original file hash is separate from display hash."
+    },
+    {
+      "path": "observations/initial-infrastructure-failure/report.json",
+      "originalSha256": "b81808e7a7f48129a0be9afdcf7c83fb4e1471b80a78a2f04efc1e95cf043a03",
+      "displaySha256": "b81808e7a7f48129a0be9afdcf7c83fb4e1471b80a78a2f04efc1e95cf043a03",
+      "displayBytes": 198539,
+      "historicalObservation": true,
+      "normalization": "The same explicitly normalized display entry carried in the complete trajectory archive; raw report hash and source/record references remain pinned to original private captures."
+    },
+    {
+      "path": "observations/pre-description-review/report.json",
+      "originalSha256": "31696a6425e3a6ce4e9fc87502caa920c6c4dcc1d1d89c3a77632a280e715d3a",
+      "displaySha256": "31696a6425e3a6ce4e9fc87502caa920c6c4dcc1d1d89c3a77632a280e715d3a",
+      "displayBytes": 476089,
+      "historicalObservation": true,
+      "normalization": "The same explicitly normalized display entry carried in the complete trajectory archive; raw report hash and source/record references remain pinned to original private captures."
+    },
+    {
+      "path": "observations/final-reviewed-interface/report.json",
+      "originalSha256": "30f06f79d0a7e03d2033bf9c2b1560c3c06defd244fca0edea1c0c460ec40a62",
+      "displaySha256": "30f06f79d0a7e03d2033bf9c2b1560c3c06defd244fca0edea1c0c460ec40a62",
+      "displayBytes": 611513,
+      "historicalObservation": false,
+      "normalization": "The same explicitly normalized display entry carried in the complete trajectory archive; raw report hash and source/record references remain pinned to original private captures."
+    }
+  ],
+  "studies": [
+    {
+      "observation": "initial-infrastructure-failure",
+      "records": 24,
+      "traceArchiveSha256": "344d53d0cda6f382255a13347780b3be971ed5876e9b7fe2b68d1cd88710e32b"
+    },
+    {
+      "observation": "pre-description-review",
+      "records": 24,
+      "traceArchiveSha256": "ee432ec7d0af9d4a6c2e4a15d9b31f7bf2a69ccb17ceac69b57fd620c22d5481"
+    },
+    {
+      "observation": "final-reviewed-interface",
+      "records": 24,
+      "traceArchiveSha256": "52771e458185e47b9dee3ea9b2b1b0eca4a994da866839c21244e69da8b45df0"
+    }
+  ]
+}

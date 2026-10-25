@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "cjdoc.offline-runtime-smoke/1",
+  "binarySha256": "57fccf60012c72b3fd36a08262f9a480ba1160d6ab9b3dbcc598dc9024c5e52f",
+  "isolation": {
+    "networkNamespace": "unshared",
+    "root": "only /usr, minimal runtime and captured site mounted readonly",
+    "sdkMounted": false,
+    "sourceMounted": false,
+    "projectMounted": false,
+    "compilerOnPath": false,
+    "environment": "cleared; PATH=/usr/bin; LD_LIBRARY_PATH=/app/lib"
+  },
+  "observedNamespaceProbe": {
+    "compiler": null,
+    "packageManager": null,
+    "sdkEnvironment": null,
+    "interfaces": [
+      "lo"
+    ],
+    "path": "/usr/bin"
+  },
+  "runtimeLibraries": [
+    {
+      "name": "libcangjie-std-ast.so",
+      "sha256": "1675d166abb355eaa8f045f32536b0b387dc9e68a36413a8fc9f32aa3159e46b"
+    },
+    {
+      "name": "libcangjie-std-collection.so",
+      "sha256": "4c01ea53b77b325d39b4db1a6180db854baa7fa1c2b678ec07d9beb721d6ab4e"
+    },
+    {
+      "name": "libcangjie-std-core.so",
+      "sha256": "93e6d365ca9f03b19a4e42b5a4fd6258f18e829c3d2acd5b7eb3141ecb96b529"
+    },
+    {
+      "name": "libcangjie-std-math.so",
+      "sha256": "00775adf52e28ff350345692b2aafbd446acd9a2f52b84e5adcad6ce16eba30c"
+    },
+    {
+      "name": "libcangjie-std-sort.so",
+      "sha256": "274d82e56e7ee50fbcd602ccd1136bff889b4e2bca34d531eb26cf6c937dd3da"
+    },
+    {
+      "name": "libcangjie-runtime.so",
+      "sha256": "2e32485852cbc8648c1298c23f2d1ff5f90bdb6c0331da20b29ee3d97d03e167"
+    },
+    {
+      "name": "libboundscheck.so",
+      "sha256": "3ad04fe38be88d5123078bd11d78cbc82377c114f6e6514b393ecd374e559bb7"
+    }
+  ],
+  "cliExit": 0,
+  "mcpExit": 0,
+  "status": "ambiguous",
+  "items": 2,
+  "equivalent": true,
+  "elapsedMs": 21672,
+  "scope": {
+    "requested": {
+      "operation": "search",
+      "name": "add",
+      "apiVersion": "0.2.0"
+    },
+    "catalogId": "cjdoc:catalog:v1:71799d69545e44f9b9294d3f21132c0e4951f03cf41cac261c29a5df7a9d1f55",
+    "snapshots": [
+      {
+        "snapshotId": "cjdoc:snapshot:v1:7ab72123b54996f361741bb14358588ac930c27f892163d3ec5fd50138d48741",
+        "sourceSnapshotId": "cjdoc:snapshot:v1:7ab72123b54996f361741bb14358588ac930c27f892163d3ec5fd50138d48741",
+        "sourceKind": "machine-manifest",
+        "language": "en",
+        "audience": "external",
+        "apiCollectionState": "resolved",
+        "publicationRevision": "demo-v2",
+        "packagedRepresentations": true
+      }
+    ]
+  }
+}
