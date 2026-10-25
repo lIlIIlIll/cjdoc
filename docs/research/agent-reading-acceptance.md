@@ -163,6 +163,19 @@ API 选择的两个 not-applicable 任务是正确拒绝不可用 API，不是 A
 
 发布体积修正保持所有声明及正文：机器 manifest 复用文档根唯一的 `symbol-index.json`；自包含 Doc IR 仅去除 JSON 结构空白；侧栏导航元数据通过静态 `sidebar-index.js` 共享。完整声明 HTML、Markdown、JSON、包及成员索引不被抽样或截断。既有全站与 ZIP 字节 ceiling 保持不变；最终发布结论仍以最新 revision 的实际门禁及下载包为准。
 
+## 远端密封发布体积与入口迁移
+
+[下载后实测回执](agent-reading-acceptance/publication-size-review.json)记录两次真实 PR 密封产物，并重新计算修正后目录的 seal。后者的触发 HEAD 为 `38a7d1557c1f08597722d820d0bd6257a5bb3fbc`，实际构建 source revision 为 `ce2611fa5f7634362b7d18f30c77938256563c7b`；不把 PR HEAD 和 runner checkout commit 混为一谈。
+
+| 字节指标 | 原密封产物 | 去重后密封产物 | 既有 ceiling |
+|---|---:|---:|---:|
+| 全站 | 122785840 | 97088160 | 100000000 |
+| 离线 ZIP | 16774105 | 14515040 | 16000000 |
+
+11 个文档根的全部 1205 条表示映射逐字段相同，包含 kind、身份及 HTML/Markdown/JSON 路径。该次运行仍因陈旧的资源 schema/库存校验和 machine journey 文档根查找失败，不能标为 CI 或发布成功。入口迁移修正保留严格的逻辑快照重算、物理文件 hash、资源完整闭包及非法根资源负例，不通过移除校验来过门禁。
+
+后续跨快照 context 修正的 10 项公开查询契约实测通过，包括消费者快照恢复和目标候选仍被固定；其余 660 项未被本次 filter 选中，不计为完整单元测试通过。更正后的自身源码预提交捕获仍有 4931 个声明、95134 个数组项、1209 条诊断和零错误，852 个可见 API 的身份、header 与源码签名完全相同；实测内容 hash 为 `1de1d2f4ec32e864d378ce27b3c7ae702d0bdf6d56d47840b59d624635013f5c`。只同步内容身份，不改变时间/RSS ceiling；干净 HEAD 内容身份与跨平台 CLI/MCP 仍分别读取最新门禁结果。
+
 ## 发布与复算
 
 每轮 `traces.jsonl.gz` 是 UTF-8 JSONL 的 gzip：首行描述归一化口径，后续每行包含相对文件名、原始/显示字节数与 SHA-256、完整显示文本。包含全部 24 条 record、客户端事件、真实 stdio、答案、逐项判分，以及每段非空原程序和实际编译/运行日志；不包括 SDK、库产物或 ELF。对应 `traces-receipt.json` 列出完整文件清单。显示文本不是可冒充原始运行目录的副本；消费者输入字节保持原样，原始消息读字节独立记录。

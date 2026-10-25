@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from io import StringIO
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
@@ -316,11 +317,49 @@ def rejected(copy: dict, schema: dict, label: str) -> bool:
 # --------------------------------------------------------------------------
 # Artifact graph checks.
 # --------------------------------------------------------------------------
+def publisher_doc_ir_text(encoded: str) -> str:
+    """Restore producer indentation without changing any quoted source bytes."""
+    output = StringIO()
+    depth = 0
+    in_string = False
+    escaped = False
+    for character in encoded:
+        if in_string:
+            output.write(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+        elif character in " \t\r\n":
+            continue
+        elif character == '"':
+            in_string = True
+            output.write(character)
+        elif character in "{[":
+            depth += 1
+            output.write(character + "\n" + "  " * depth)
+        elif character in "}]":
+            depth -= 1
+            output.write("\n" + "  " * depth + character)
+        elif character == ",":
+            output.write(",\n" + "  " * depth)
+        elif character == ":":
+            output.write(": ")
+        else:
+            output.write(character)
+    output.write("\n")
+    return output.getvalue()
+
+
 def publisher_snapshot_id(encoded: str, revision: str) -> str:
-    """Recompute the content identity from the packaged bytes, not from a claim."""
+    """Recompute logical identity independently of compact/indented storage."""
     configuration = '\n{"projection":"cjdoc.read/1","publicationRevision":' + json.dumps(
         revision, ensure_ascii=False) + "}"
-    return SNAPSHOT_PREFIX + digest((encoded + configuration).encode("utf-8"))
+    fingerprint = hashlib.sha256(publisher_doc_ir_text(encoded).encode("utf-8"))
+    fingerprint.update(configuration.encode("utf-8"))
+    return SNAPSHOT_PREFIX + fingerprint.hexdigest()
 
 
 def read_text(root: Path, name: str) -> str:
@@ -519,13 +558,14 @@ def check_manifest(root: Path, schema: dict, navigation: dict) -> dict:
     if len(resources) > manifest["limits"]["artifactCount"]:
         raise ContractError("resources exceed the declared artifact count")
 
-    # The manifest's `resources` list is the packaged agent bundle, not the
-    # whole document root: every resource lives under agent/ and no file in the
-    # bundle is unaccounted for.
+    # The machine payload owns all of agent/ plus the shared root symbol index;
+    # ordinary HTML/chrome resources are not part of this immutable inventory.
     published = {path.relative_to(root).as_posix() for path in (root / "agent").rglob("*")
                  if path.is_file()}
+    published.add(manifest["symbolIndex"]["path"])
     expected = set(resources) | {"agent/manifest.json"}
-    if any(not name.startswith("agent/") for name in resources):
+    if any(not name.startswith("agent/") and name != manifest["symbolIndex"]["path"]
+           for name in resources):
         raise ContractError("a packaged resource is outside the agent bundle")
     if published != expected:
         raise ContractError(
@@ -729,6 +769,7 @@ def reject_mutations(root: Path, schemas: dict, graph: dict) -> int:
         (manifest["docIr"]["path"], None, "unknown"),
         ("agent/manifest.json", "manifest", "unsafe"),
         ("agent/manifest.json", "manifest", "missing"),
+        ("agent/manifest.json", "manifest", "unexpected-root-resource"),
         (symbol["json"], "declaration", "unknown"),
         (symbol["json"], "declaration", "unsafe"),
     ]
@@ -746,6 +787,8 @@ def reject_mutations(root: Path, schemas: dict, graph: dict) -> int:
         elif mutation == "missing":
             first = next(iter(copy))
             del copy[first]
+        elif mutation == "unexpected-root-resource":
+            copy["resources"][0]["path"] = "extra-root-payload.json"
         elif mutation == "unsafe":
             if key == "manifest":
                 # The manifest's own representation list is a list of rows; the

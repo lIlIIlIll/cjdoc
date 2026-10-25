@@ -382,7 +382,7 @@ public let MACHINE_MANIFEST_SCHEMA_TEMPLATE = ##"{
     "symbolIndex": {"$ref": "#/$defs/symbolIndexResource"},
     "documentSets": {"type": "array", "maxItems": 100000, "items": {"$ref": "#/$defs/documentSetIdentity"}},
     "representations": {"type": "array", "maxItems": 1000000, "items": {"$ref": "#/$defs/representation"}},
-    "resources": {"description": "Complete immutable agent/ payload inventory; HTML representations are existing site artifacts whose chrome may be updated by language/version composition.", "type": "array", "maxItems": 1000000, "items": {"$ref": "#/$defs/resource"}},
+    "resources": {"description": "Complete immutable machine payload inventory, including the shared root symbol index; HTML representations are existing site artifacts whose chrome may be updated by language/version composition.", "type": "array", "maxItems": 1000000, "items": {"$ref": "#/$defs/resource"}},
     "reports": {"type": "array", "maxItems": 2, "items": {"$ref": "#/$defs/report"}},
     "fullReference": {"anyOf": [{"const": "agent-full-index.json"}, {"type": "null"}]},
     "limits": {"$ref": "#/$defs/limits"}
@@ -446,7 +446,7 @@ public let MACHINE_MANIFEST_SCHEMA_TEMPLATE = ##"{
       "type": "object", "additionalProperties": false,
       "required": ["path", "mediaType", "bytes", "sha256"],
       "properties": {
-        "path": {"allOf": [{"$ref": "#/$defs/safePath"}, {"pattern": "^agent/"}]},
+        "path": {"allOf": [{"$ref": "#/$defs/safePath"}, {"anyOf": [{"pattern": "^agent/"}, {"const": "symbol-index.json"}]}]},
         "mediaType": {"type": "string", "minLength": 1},
         "bytes": {"type": "integer", "minimum": 0, "maximum": 67108864},
         "sha256": {"$ref": "#/$defs/sha256"}

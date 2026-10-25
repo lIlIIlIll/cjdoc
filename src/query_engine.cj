@@ -421,12 +421,14 @@ private func querySelectContextSnapshots(inputs: ArrayList<QuerySnapshotInput>,
     let result = ArrayList<QuerySnapshotInput>(primary)
     let selected = HashSet<String>()
     for (id in queryStrings(request, "relatedSnapshotIds")) { selected.add(id) }
-    if (selected.isEmpty()) { return result }
+    let contextId = queryString(request, "contextSnapshotId")
+    if (selected.isEmpty() && contextId.isEmpty()) { return result }
     let seen = HashSet<String>()
     let observed = HashSet<String>()
     for (input in primary) { seen.add(input.snapshot.snapshotId) }
     for (input in inputs) {
-        if (!selected.contains(input.snapshot.snapshotId) && !selected.contains(input.sourceSnapshotId)) { continue }
+        if (contextId != input.snapshot.snapshotId && contextId != input.sourceSnapshotId &&
+            !selected.contains(input.snapshot.snapshotId) && !selected.contains(input.sourceSnapshotId)) { continue }
         observed.add(input.snapshot.snapshotId)
         observed.add(input.sourceSnapshotId)
         if (seen.add(input.snapshot.snapshotId)) { result.add(input) }

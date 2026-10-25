@@ -321,9 +321,14 @@ def machine(journey: Journey):
     # published continuation from the site so a multi-part index is followed to
     # completion instead of silently trusting the first file.
     first = journey.raw('[data-machine-format="navigation"]', "cjdoc.navigation-index/2")
-    navigation = load_navigation_index(
-        lambda name: load_json(journey.site.file(name)), "navigation-index.json")
-    if first != navigation or navigation["project"]["version"] != target["version"]:
+    index_name = target["index"]
+    def read_index(name):
+        value = load_json(journey.site.file(name))
+        if name == index_name and value != first:
+            raise AssertionError("browser navigation payload differs from the published first part")
+        return value
+    navigation = load_navigation_index(read_index, index_name)
+    if navigation["project"]["version"] != target["version"]:
         raise AssertionError("navigation index is for a different documentation version")
     rows = [item for item in navigation["pages"] if item.get("symbolId") == selected[0]["id"]]
     if len(rows) != 1 or not target["resolved"]["href"].endswith(rows[0]["href"]):

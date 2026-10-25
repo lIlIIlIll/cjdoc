@@ -274,8 +274,10 @@ private func collectResolutionCandidates(inputs: ArrayList<QuerySnapshotInput>,
     let packageName = queryString(request, "packageName")
     let tokens = queryTokens(queryString(request, "query"))
     var latestDeclared = false
-    for (input in inputs) { latestDeclared = latestDeclared || input.isLatest }
-    for (input in inputs) {
+    for (input in inputs where querySnapshotMatches(input, request)) {
+        latestDeclared = latestDeclared || input.isLatest
+    }
+    for (input in inputs where querySnapshotMatches(input, request)) {
         for (scope in input.scopes) {
             if (!moduleId.isEmpty() && moduleId != scope.original.moduleId) { continue }
             if (!packageName.isEmpty()) {

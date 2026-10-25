@@ -111,6 +111,8 @@ cjdoc query --snapshot target/agent-demo/html/agent/manifest.json \
 
 cursor 绑定内容、查询条件、排序、语言/回退、受众和字节预算；换输入或改条件不能继续用旧 cursor。若初次或后续页的完整候选超出预算，按 `requiredBytes` 提高预算并移除旧 cursor，从原查询重新开始，再用新预算继续分页；不能同时修改预算又沿用旧 cursor。
 
+`resolve_docs` 的目标 `snapshotId` 与消费者 `contextSnapshotId` 可以不同。显式消费者只提供已捕获的依赖上下文，不扩大目标候选的快照范围。
+
 仅装载 Doc IR 时，`scope.snapshots[].packagedRepresentations` 为 false：结果中的规范路由不是文件已随输入打包的证明，完整正文仍可通过 `get_symbol` 取得。装载机器 manifest 才校验已打包资源的 hash、快照、库存及完整表示映射。外部源码 URL 是捕获的出处，不要求随离线包复制源码。
 
 ## 章节、状态和预算

@@ -327,6 +327,36 @@ class DocumentationQueryContractPublicTest {
     }
 
     @TestCase
+    func separateCapturedConsumerSurvivesPinnedTargetSelection(): Unit {
+        let session = DocumentationQuerySession([
+            contractDocumentation(projectName: "separate-target"),
+            contractDocumentation(projectName: "separate-consumer")])
+        let discovery = contractExecute(session, "{\"operation\":\"resolve_docs\"," +
+            "\"library\":\"pocketkit\",\"contextModuleId\":\"${CONTRACT_MODULE_A}\"}")
+        let snapshots = discovery.get("scope").getOrThrow().asObject()
+            .get("snapshots").getOrThrow().asArray()
+        @Expect(snapshots.size(), 2)
+        let targetId = queryString(snapshots[0].asObject(), "snapshotId")
+        let consumerId = queryString(snapshots[1].asObject(), "snapshotId")
+        @Expect(targetId != consumerId, true)
+        let pinned = contractExecute(session, "{\"operation\":\"resolve_docs\"," +
+            "\"library\":\"pocketkit\",\"contextModuleId\":\"${CONTRACT_MODULE_A}\"," +
+            "\"snapshotId\":\"${targetId}\",\"contextSnapshotId\":\"${consumerId}\"}")
+        @Expect(contractStatus(pinned), "ok")
+        let selected = contractSelectedRows(pinned)
+        @Expect(selected.size(), 1)
+        @Expect(queryString(selected[0].asObject(), "snapshotId"), targetId)
+        @Expect(queryString(selected[0].asObject(), "contextSnapshotId"), consumerId)
+        let candidates = contractCandidateRows(pinned)
+        for (index in 0..candidates.size()) {
+            let candidate = candidates[index].asObject()
+            @Expect(queryString(candidate, "snapshotId"), targetId)
+            @Expect(queryString(candidate, "contextSnapshotId"), consumerId)
+        }
+        @Expect(contractIsValid(contractOutputValidator(), pinned), true)
+    }
+
+    @TestCase
     func producedResultsSatisfyThePublishedResponseSchema(): Unit {
         let session = contractSession()
         let validator = contractOutputValidator()
