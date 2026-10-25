@@ -192,6 +192,18 @@ macOS 的真实失败日志已定位为普通 `agent/docs.json` 在 FD regular-f
 
 本轮功能 smoke 使用预提交的固定 Linux 可执行文件；不声称它完成了干净 HEAD 的完整受保护构建。完整构建、完整单元、跨平台 CLI/MCP 与两片浏览器门禁继续以最新 HEAD 的实际运行结果为准。
 
+## 原生构建与 CI 发现的发布入口
+
+`f8eb25d429f18d48df7777967ca9478ae22f60fa` 的受保护原生构建已实跑通过；固定应用 SHA-256 为 `1eb6f2bdb3f9f42a36ed17b8ad8cb098e035e69af6df7f622efa6e4dbbfd236f`。同一固定输入的五项真实 CLI 与五项 stdio MCP 均通过，MCP 的结构化结果及完整正文逐字段等于 CLI。匹配对照的结构化查询内容不变，正文只发生移除不存在的独立 HTML fragment 这一预期变化。真实浏览器从概念 Markdown 跳到本地声明，落点具有完整源码 header，且没有虚构 fragment。
+
+[该 HEAD 的远端 CI](https://github.com/lIlIIlIll/cjdoc/actions/runs/40207271463) 中，Windows job 已通过，macOS 的五项相对 FD 读取正反例均通过。macOS 原生单元仍有两项失败：程序实际产出安全图片，测试却把能力限定为 Linux。测试能力条件现与生产的非 Windows 描述符相对读取一致；Linux 两个精确 `Class.method` 用例各实跑一项通过，不把未选中的 673 项算作通过，也不冒充后续 macOS MCP 成功。
+
+同一 HEAD 的 Linux 正式身份门禁实际生成 `880bb2e4cb601507fadb7b6e9551b7ba61d0dfa249837e0c295ef5bc979f7fc9`，与本机停止 fixture 活动后的捕获一致，但与较早 `3c312e…` 基线不同。完整模型比较仅有根项目依赖的 `identity` 与 `instanceId` 两处差异。源码依赖指纹包含测试目录内的 `.cj`、`cjpm.toml` 和 `cjpm.lock`，不能与会改写这些文件的测试并发捕获。上述测试条件修正完成后，重新捕获的完整模型 hash 为 `8d782d44d140a205e6cf1b4b676ef15c8e66868ad4711e93a600458a456a9982`，仍只有这两个身份字段变化；声明、公开 API、诊断数量和资源限额不变。这里只同步已观测内容身份，干净新 HEAD 的正式门禁另行核验。
+
+[Pages 两个浏览器分片](https://github.com/lIlIIlIll/cjdoc/actions/runs/40207271453) 揭示另一真实生产问题：可见 Markdown 操作仍由旧聚合 Markdown 的标题反查，目标与原生表示 manifest 不同。Showcase 改按原生 HTML 路径查找 manifest 的 Markdown 表示，移除标题解析器；未发布表示的报告页不再提供无关聚合内容。原始严格浏览器比较保持不变。回归覆盖任意原生路径、概念页、重复旧标题及无表示页面；该模块 20 项实跑通过。
+
+更新后的挂载器直接处理上述固定原生 HTML，真实浏览器分别在 HTTP 和 `file://` 点击 class 与 concept 的可见 Markdown 操作并返回原页面，四项落点均精确等于原生 manifest。HTTP 的完整 UTF-8 文件内容与原生产物相同。离线浏览器识别 UTF-8；本机普通 HTTP 测试宿主未声明 charset，浏览器按 windows-1252 显示，不能用这次点击记录声称 HTTP Unicode 显示已验证。完整双分片矩阵及部署宿主仍以新 HEAD 的实际结果为准。
+
 ## 发布与复算
 
 每轮 `traces.jsonl.gz` 是 UTF-8 JSONL 的 gzip：首行描述归一化口径，后续每行包含相对文件名、原始/显示字节数与 SHA-256、完整显示文本。包含全部 24 条 record、客户端事件、真实 stdio、答案、逐项判分，以及每段非空原程序和实际编译/运行日志；不包括 SDK、库产物或 ELF。对应 `traces-receipt.json` 列出完整文件清单。显示文本不是可冒充原始运行目录的副本；消费者输入字节保持原样，原始消息读字节独立记录。

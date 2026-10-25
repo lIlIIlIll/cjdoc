@@ -45,9 +45,8 @@ class ExampleMarkdownReviewTest {
         let documentation = DocumentationEngine().generate(
             GenerationRequest(PUBLIC_FIXTURE_PROJECTS + "example_assets", lintProfile: "off",
                 astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
-        // Local asset embedding is a Linux-only capability in this repository, so the
-        // published-path assertions only apply where it is enabled; the rendered code
-        // block is asserted on every platform.
+        // Windows rejects descriptor-relative asset capture; native POSIX targets
+        // share the bundled-image contract. Rendered code is asserted everywhere.
         if (!publicLocalAssetEmbeddingEnabled()) {
             @Expect(documentation.assets.size, 0)
             let hosted = api_render.HtmlDocumentationRenderer().render(documentation)

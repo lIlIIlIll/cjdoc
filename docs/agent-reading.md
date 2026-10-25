@@ -38,6 +38,8 @@ HTML 输出默认附带每个可见声明的 Markdown/JSON，不需要 `--agent-
 
 读取全文时，先检查 `agent-full-index.json.snapshotId` 等于机器 manifest 的 `snapshotId`，再确认 manifest 的 `publicationRevision` 是所选发布修订，并检查各片的 hash、范围及续取。全文索引不重复提供发布修订；API 包版本与文档发布修订读取结构化作用域，不解析正文中的展示标签。
 
+Showcase 页面的可见 Markdown 操作也读取该 manifest，以实际 HTML 路径选中对应表示；不从声明标题、签名或旧聚合 Markdown 推算文件名。概念页沿用相同映射。没有已发布表示的报告页不提供指向无关聚合内容的 Markdown 操作。
+
 `sidebar-index.js` 只共享重复的侧栏导航元数据；完整声明页、包/成员索引和源码签名仍保留。它与其他资源一起静态部署，不通过 fetch 或额外服务装载。
 
 `--all-languages` 为各语言生成独立文档根。多版本组合沿用 [高级用法](advanced-usage.md#组合多版本文档站)：组合完整版本目录，保留各语言根、manifest 和分片。`--doc-version` 是**文档发布标签**，不是依赖包版本或编译器认证。

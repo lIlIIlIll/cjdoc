@@ -13,6 +13,7 @@ import time
 import subprocess
 import signal
 from unittest.mock import patch
+from urllib.parse import urlsplit
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,9 +21,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from showcase_build.integration import (copy_composed_publication, install_output,
                                         pin_documentation_links, publish_examples)
 from showcase_build.manifest import roots
-from showcase_build.navigation import mount, markdown_declarations
+from showcase_build.navigation import mount
 from showcase_build.packaging import copy_sources, source_archive
-from showcase_contract.site import ContractError
+from showcase_contract.site import ContractError, HtmlDocument
 from report_views.reports import UtilityRegion, native_check_view, quality_view
 from report_views.pages import Sections, publish as publish_report_pages
 
@@ -228,13 +229,34 @@ class BuildIntegrationTests(unittest.TestCase):
         self.assertIn('../../en/symbols/different-english.html', page)
         self.assertIn('data-locale-anchors="[&quot;native-member&quot;]"', page)
 
-    def test_markdown_targets_use_emitted_anchors_in_arbitrary_native_paths(self) -> None:
-        source = '<a id="native-anchor"></a>\n# `fixture.Type`\n\n```cangjie\npublic class Type\n```\n'
-        markdown = self.write("view/machine/markdown/symbols/native-route.md", source)
-        self.assertEqual(markdown_declarations(self.root / "view"), {("fixture.Type", "public class Type"): markdown})
-        self.write("view/machine/markdown/ambiguous.md", source)
-        with self.assertRaisesRegex(ContractError, "ambiguous native Markdown"):
-            markdown_declarations(self.root / "view")
+    def test_raw_markdown_follows_manifest_without_legacy_heading_or_page_fallback(self) -> None:
+        root = self.root / "site/view"
+        pages = [
+            ("native-symbol", "symbols/entry.html", "agent/symbols/content-key.md", "Complete native declaration"),
+            ("native-concept", "concepts/overview.html", "agent/pages/content-key.md", "Complete authored concept"),
+            ("unrepresented-report", "report.html", None, None),
+        ]
+        self.write("site/view/navigation-index.json", {"schemaVersion": "cjdoc.navigation-index/1",
+            "pages": [{"id": identity, "href": page} for identity, page, _, _ in pages]})
+        self.write("site/view/agent/manifest.json", {"representations": [
+            {"id": identity, "html": page, "markdown": markdown}
+            for identity, page, markdown, _ in pages if markdown is not None]})
+        # Legacy aggregate headings are not unique declaration or page identities.
+        legacy = '<a id="same"></a>\n# `fixture.Entry`\n\n```cangjie\npublic class Entry\n```\n'
+        self.write("site/view/machine/markdown/one.md", legacy)
+        self.write("site/view/machine/markdown/two.md", legacy)
+        self.write("site/view/machine/markdown/index.md", "Unrelated aggregate content")
+        for _, page, markdown, content in pages:
+            self.write("site/view/" + page, "<html><head></head><body>Native page</body></html>")
+            if markdown is not None:
+                self.write("site/view/" + markdown, content)
+        mount(root, self.root / "site", "en")
+        for _, page, _, expected in pages:
+            origin = root / page
+            links = HtmlDocument(origin.read_text(encoding="utf-8")).links
+            consumed = [(origin.parent / urlsplit(link).path).resolve().read_text(encoding="utf-8")
+                        for link in links if urlsplit(link).path.endswith(".md")]
+            self.assertEqual(consumed, [] if expected is None else [expected])
 
     def test_native_check_evidence_rejects_modified_source(self) -> None:
         self.write("view/check-modes/src/api.cj", "modified")

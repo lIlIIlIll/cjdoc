@@ -245,5 +245,64 @@
     "linuxNativeArrayAbiProbe": "PASS",
     "sameRelativeIoCasesEnabledOnMacos": true,
     "darwinSyscallAndLatestCi": "Not claimed by this local receipt."
+  },
+  "guardedNativeFollowup": {
+    "reviewedHead": "f8eb25d429f18d48df7777967ca9478ae22f60fa",
+    "sourceTree": "41f2a84a251b81969d353b617300e98570a72085",
+    "build": "PASS",
+    "applicationBytes": 17097864,
+    "applicationSha256": "1eb6f2bdb3f9f42a36ed17b8ad8cb098e035e69af6df7f622efa6e4dbbfd236f",
+    "workerSha256": "589a58011eac38a838ad6f26dcdc2d90a56715d416991b35409909498f0f4b12",
+    "manifestSha256": "994a43d86873350fcd30dbc701923edc8d78d3c17889062f8bc7375762a9df2d",
+    "actualCliCasesPassed": 5,
+    "actualStdioMcpCasesPassed": 5,
+    "mcpStructuredCoreAndCompleteReadableTextEqualCli": true,
+    "matchingControlStructuredCoreUnchanged": true,
+    "matchingControlReadableTextChange": "Remove the aggregate Markdown fragment that does not exist on standalone native HTML.",
+    "actualConceptLocalTargetBrowser": "PASS",
+    "remoteCiRun": 40207271463,
+    "windowsJob": {"id": 121210826538, "conclusion": "success"},
+    "macosJob": {
+      "id": 121210826529,
+      "relativeDescriptorBoundaryCasesPassed": 5,
+      "nativeUnitPassed": 659,
+      "nativeUnitFailed": 2,
+      "failures": [
+        "ExampleMarkdownReviewTest.retainedCodeAndImageUsePublishedAssetPath",
+        "PublicApiContractsSuite2.generationBundlesSafeImagesAndReportsMissingAssets"
+      ],
+      "cause": "Safe images are actually produced on macOS; the test capability predicate incorrectly expected no images outside Linux.",
+      "testCapabilityCutover": "Same non-Windows descriptor-relative capability as production.",
+      "focusedLinuxCasesAfterCutover": {"passed": 2, "selectedPerInvocation": 1, "unselectedPerInvocation": 673},
+      "laterMacosMcpNotClaimed": true
+    },
+    "stableSourceCapture": {
+      "scope": "Pinned guarded native reading the final image-test source conditions after native fixture activity stopped; not a latest-clean-HEAD identity gate.",
+      "docsSha256": "8d782d44d140a205e6cf1b4b676ef15c8e66868ad4711e93a600458a456a9982",
+      "bytes": 19291879,
+      "declarations": 4931,
+      "objects": 65499,
+      "arrayItems": 95118,
+      "diagnostics": 1209,
+      "errors": 0,
+      "onlyModelDifferencesFromPreviousStableCapture": ["$.dependencies[9].identity", "$.dependencies[9].instanceId"],
+      "elapsedAndRssCeilingsChanged": false
+    },
+    "publicationReaderActions": {
+      "failingPagesRun": 40207271453,
+      "cause": "Visible Markdown links still selected legacy aggregate files rather than the native representation manifest.",
+      "cutover": "Resolve the actual HTML route through agent/manifest.json; remove aggregate-heading parsing and unrelated report-page fallback.",
+      "strictBrowserComparisonRetained": true,
+      "buildIntegrationCasesPassed": 20,
+      "completeShowcaseContractCasesPassed": 204,
+      "actualBrowserCases": ["http:symbol", "http:concept", "file:symbol", "file:concept"],
+      "allDestinationsEqualActualNativeManifest": true,
+      "allBackNavigationsRestoreOriginal": true,
+      "httpCompleteUtf8FileContentEqualNative": true,
+      "offlineBrowserCharset": "UTF-8",
+      "privateHttpHostDisplayCharset": "windows-1252",
+      "privateHttpUnicodeDisplayNotClaimed": true,
+      "latestCompleteBrowserMatrixNotClaimed": true
+    }
   }
 }
