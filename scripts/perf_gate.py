@@ -345,6 +345,7 @@ def measure_identities(binary: Path, profiles: list[dict[str, Any]], repo: Path,
     """Generate each profile once and report its Doc IR checksum.
 
     Deliberately no timing: this is the CI-facing half of the gate.
+    Disable source caching so this read does not dirty a guarded profile tree.
     """
     results: list[dict[str, Any]] = []
     for profile in profiles:
@@ -352,7 +353,7 @@ def measure_identities(binary: Path, profiles: list[dict[str, Any]], repo: Path,
         output = work / name
         run_checked([
             str(binary), "generate", "--project", str(profile["resolvedProject"]),
-            "--format", "json", "--output", str(output), "--jobs", "1",
+            "--format", "json", "--output", str(output), "--jobs", "1", "--no-cache",
         ], repo, cpu)
         results.append({
             "name": name,
