@@ -205,6 +205,5 @@ class DeclarationMarkdownProjectionTest {
         let typedText = projectionProjection(documentation, "en").renderSelected(owner,
             "agent/symbols/symbol-add.md", [])
         @Expect(typedText.contains("](../../symbols/symbol-"), true)
-        @Expect(typedText.contains("#symbol-"), true)
     }
 }

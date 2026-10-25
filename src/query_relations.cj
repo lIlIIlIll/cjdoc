@@ -297,7 +297,7 @@ private func queryNavigationEdges(source: QueryDocument, symbol: query_model.Sym
             if (document.input.snapshot.snapshotId == source.input.snapshot.snapshotId) { continue }
             for (target in document.visibleSymbols) {
                 if (document.input.symbolKeys[target.id] != navigation.symbolKey) { continue }
-                if (queryNavigationScopeMatches(document, target.moduleId, navigation)) {
+                if (queryNavigationScopeMatches(source, document, target.moduleId, navigation)) {
                     matches.add((document, target))
                 }
             }
@@ -310,24 +310,49 @@ private func queryNavigationEdges(source: QueryDocument, symbol: query_model.Sym
         } else {
             result.add(QueryEdge(kind, "outgoing", Option<String>.None, display,
                 if (matches.isEmpty()) { "unavailable" } else { "ambiguous" },
-                if (matches.isEmpty()) { "Captured API identity and portable key do not bind an explicitly selected related snapshot." }
-                else { "Multiple selected snapshots bind the captured API identity and portable key; select one snapshot explicitly." },
+                if (matches.isEmpty()) { "Captured API identity, portable key and dependency context do not bind an explicitly selected related snapshot." }
+                else { "Multiple selected snapshots bind the captured API identity, portable key and dependency context; select one snapshot explicitly." },
                 navigation: Some(navigation)))
         }
     }
     result
 }
 
-private func queryNavigationScopeMatches(document: QueryDocument, moduleId: String,
-    navigation: query_model.TypeNavigation): Bool {
+private func queryNavigationScopeMatches(source: QueryDocument, document: QueryDocument,
+    moduleId: String, navigation: query_model.TypeNavigation): Bool {
     let documentSet = match (queryDocumentSetFor(document.input, moduleId)) {
         case Some(value) => value
         case None => return false
     }
-    // Producer-local document-set ids are not portable between root and
-    // dependency captures. The captured API identity and portable key are.
-    !navigation.apiIdentity.isEmpty() && navigation.apiIdentity == documentSet.identity &&
-        !navigation.symbolKey.isEmpty()
+    if (navigation.apiIdentity.isEmpty() || navigation.apiIdentity != documentSet.identity ||
+        navigation.symbolKey.isEmpty()) { return false }
+    var capturedScope = false
+    for (captured in source.input.documentation.documentSets) {
+        if (captured.id != navigation.documentSetId || captured.indexIdentity != navigation.indexIdentity) { continue }
+        capturedScope = captured.identity == documentSet.identity && captured.library == documentSet.library &&
+            (captured.target == documentSet.target || captured.target == "*") &&
+            (captured.cfg == documentSet.cfg || captured.cfg == "*") &&
+            captured.audience == documentSet.audience && captured.language == documentSet.language &&
+            captured.apiVersion == documentSet.apiVersion
+        break
+    }
+    if (!capturedScope) { return false }
+    let actual = match (document.input.relationContext(moduleId)) {
+        case Some(value) => value
+        case None => return false
+    }
+    // Producer-local module/document-set IDs cannot prove a cross-capture
+    // binding. Compare the consumer's captured selected component recursively.
+    for (dependency in source.input.documentation.dependencies) {
+        if (dependency.instanceId != navigation.dependencyInstanceId ||
+            dependency.identity != navigation.apiIdentity || dependency.target != documentSet.target ||
+            dependency.cfg != documentSet.cfg) { continue }
+        if (let Some(expected) <- source.input.relationContext(dependency.componentModuleId)) {
+            return expected.complete && actual.complete && !expected.fingerprint.isEmpty() &&
+                expected.fingerprint == actual.fingerprint
+        }
+    }
+    false
 }
 
 private func queryRelationItem(step: QueryRelationStep, edge: QueryEdge,

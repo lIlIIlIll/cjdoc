@@ -137,3 +137,70 @@ class HtmlPackageConceptsTest {
         @Expect(overviewContent(rendered, "html/concepts/other.html").contains("../" + path + "#declarations"))
     }
 }
+
+private func overviewSemanticLink(target: SymbolDoc, title: String): MarkdownNode {
+    MarkdownNode("semantic_link", MarkdownNodeMetadata.forSemanticLink(target.qualifiedName, "resolved",
+        targetSymbolId: Some(target.id), semanticNavigation: Some(TypeNavigation("resolved", "exact",
+            "local declaration", symbolKey: target.id, url: symbolPagePath(target)))),
+        children: [MarkdownNode("text", literal: title)])
+}
+
+private func overviewSemanticPage(target: SymbolDoc, hidden: SymbolDoc): DocumentationPage {
+    DocumentationPage("inline-links", "docs/links.md", "concepts/deep/links.html", "Links", "guide",
+        "Controlled inline links", MarkdownNode("document", children: [
+            MarkdownNode("paragraph", children: [
+                overviewSemanticLink(target, "Visible target"),
+                MarkdownNode("text", literal: " and "),
+                MarkdownNode("semantic_link", MarkdownNodeMetadata.forSemanticLink("dependency.Entry", "unresolved",
+                    semanticNavigation: Some(TypeNavigation("resolved", "manual", "explicit dependency documentation",
+                        url: "./dependencies/category.html#entry"))),
+                    children: [MarkdownNode("text", literal: "Dependency target")]),
+                MarkdownNode("text", literal: " and "),
+                overviewSemanticLink(hidden, "Hidden target")
+            ])
+        ]), packageName: "fixture", language: Some("en"), defaultLanguage: Some("en"))
+}
+
+@Test
+class AgentConceptualSemanticLinksTest {
+    @TestCase
+    func inlineLinksUseTheActualAgentOutputDirectory(): Unit {
+        let base = overviewFixture([])
+        let target = base.declarations[0]
+        let page = overviewSemanticPage(target, base.declarations[1])
+        let documentation = overviewFixture([page])
+        let context = DocumentationReadSnapshot(documentation)
+        let markdown = context.renderPageMarkdown(page.id, pagePath: agentPageMarkdownPath(page)).getOrThrow()
+        let link = markdown.split("[Visible target](", 2)
+        @Expect(link.size, 2)
+        if (link.size != 2) { return }
+        let destination = link[1].split(" ", 2)[0]
+        let parts = destination.split("#", 2)
+        @Expect(parts[0].startsWith("../../"), true)
+        var destinations: Int64 = 0
+        for (artifact in HtmlDocumentationRenderer().render(documentation)
+            where artifact.path == "html/" + parts[0].removePrefix("../../")) {
+            destinations++
+            @Expect(artifact.path, "html/" + symbolPagePath(target))
+            if (parts.size == 2) {
+                @Expect(artifact.content.contains("id=\"" + parts[1] + "\""), true)
+            }
+        }
+        @Expect(destinations, 1)
+        @Expect(markdown.contains("[Dependency target](../../dependencies/category.html#entry"), true)
+        @Expect(!markdown.contains("../html/"), true)
+    }
+
+    @TestCase
+    func visiblePageDoesNotLinkAHiddenLocalDeclaration(): Unit {
+        let base = overviewFixture([])
+        let hidden = base.declarations[1]
+        let page = overviewSemanticPage(base.declarations[0], hidden)
+        let documentation = overviewFixture([page])
+        let markdown = DocumentationReadSnapshot(documentation).renderPageMarkdown(page.id,
+            pagePath: agentPageMarkdownPath(page)).getOrThrow()
+        @Expect(markdown.contains("[Hidden target]"), true)
+        @Expect(!markdown.contains("[Hidden target]("), true)
+        @Expect(!markdown.contains(symbolPagePath(hidden)), true)
+    }
+}

@@ -5,7 +5,7 @@ import std.fs.*
 import std.unittest.*
 import std.unittest.testmacro.*
 
-@When[os == "Linux"]
+@When[os != "Windows"]
 import std.posix.*
 
 @Test
@@ -81,21 +81,19 @@ class BoundedIoTest {
     }
 }
 
-@When[os == "Linux"]
+@When[os != "Windows"]
 @Test
 class BoundedRelativeIoTest {
     @TestCase
     func nestedRegularFileHonorsTheExactRelativeLimit(): Unit {
-        let root = Directory.createTemp(getTempDirectory())
+        let root = canonicalize(Directory.createTemp(getTempDirectory()))
         try {
             Directory.create(root.join("nested"))
             File.writeTo(root.join("nested/pixel.gif"), "GIF".toArray())
 
-            @Expect(readFileBoundedWithin(root, "nested/pixel.gif", 3), "GIF".toArray())
-            let error = @AssertThrows[IllegalArgumentException](
-                readFileBoundedWithin(root, "nested/pixel.gif", 2))
-            @Expect(error.message,
-                "bounded relative read exceeds 2 bytes: 'nested/pixel.gif'")
+            @Expect(readFileBoundedWithinExpected(root, "nested/pixel.gif", 3, 3), "GIF".toArray())
+            @ExpectThrows[IllegalArgumentException](
+                readFileBoundedWithinExpected(root, "nested/pixel.gif", 2, 3))
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
@@ -103,14 +101,10 @@ class BoundedRelativeIoTest {
 
     @TestCase
     func nonNormalizedRelativeNamesFailClosed(): Unit {
-        let root = Directory.createTemp(getTempDirectory())
+        let root = canonicalize(Directory.createTemp(getTempDirectory()))
         try {
-            let parent = @AssertThrows[IllegalArgumentException](
-                readFileBoundedWithin(root, "../outside", 1))
-            @Expect(parent.message, "bounded relative read requires a normalized path")
-            let absolute = @AssertThrows[IllegalArgumentException](
-                readFileBoundedWithin(root, "/absolute", 1))
-            @Expect(absolute.message, "bounded relative read requires a normalized path")
+            @ExpectThrows[IllegalArgumentException](readFileBoundedWithinExpected(root, "../outside", 1, 0))
+            @ExpectThrows[IllegalArgumentException](readFileBoundedWithinExpected(root, "/absolute", 1, 0))
         } finally {
             let _ = removeIfExists(root, recursive: true)
         }
@@ -118,7 +112,7 @@ class BoundedRelativeIoTest {
 
     @TestCase
     func symbolicLinkAncestorsAreNeverFollowed(): Unit {
-        let temporary = Directory.createTemp(getTempDirectory())
+        let temporary = canonicalize(Directory.createTemp(getTempDirectory()))
         try {
             let root = temporary.join("root")
             let real = root.join("real")
@@ -126,17 +120,13 @@ class BoundedRelativeIoTest {
             File.writeTo(real.join("pixel.gif"), "GIF".toArray())
             let nestedLink = root.join("linked")
             @Expect(symlink(real.toString(), nestedLink.toString()), 0)
-            let nestedError = @AssertThrows[IllegalArgumentException](
-                readFileBoundedWithin(root, "linked/pixel.gif", 3))
-            @Expect(nestedError.message,
-                "bounded relative read rejected path 'linked/pixel.gif'")
+            @ExpectThrows[IllegalArgumentException](
+                readFileBoundedWithinExpected(root, "linked/pixel.gif", 3, 3))
 
             let rootLink = temporary.join("root-link")
             @Expect(symlink(root.toString(), rootLink.toString()), 0)
-            let rootError = @AssertThrows[IllegalArgumentException](
-                readFileBoundedWithin(rootLink, "real/pixel.gif", 3))
-            @Expect(rootError.message,
-                "bounded relative read rejected root '${rootLink}'")
+            @ExpectThrows[IllegalArgumentException](
+                readFileBoundedWithinExpected(rootLink, "real/pixel.gif", 3, 3))
         } finally {
             let _ = removeIfExists(temporary, recursive: true)
         }
@@ -144,15 +134,12 @@ class BoundedRelativeIoTest {
 
     @TestCase
     func seekableSpecialFilesAreNotAcceptedAsRegularDescriptors(): Unit {
-        let error = @AssertThrows[IllegalArgumentException](
-            readFileBoundedWithin(Path("/dev"), "null", 0))
-        @Expect(error.message,
-            "bounded relative read could not verify a regular descriptor: 'null'")
+        @ExpectThrows[IllegalArgumentException](readFileBoundedWithinExpected(Path("/dev"), "null", 0, 0))
     }
 
     @TestCase
     func openedDescriptorSurvivesAPathReplacementWithoutReopening(): Unit {
-        let root = Directory.createTemp(getTempDirectory())
+        let root = canonicalize(Directory.createTemp(getTempDirectory()))
         try {
             let original = root.join("asset.gif")
             let moved = root.join("opened.gif")

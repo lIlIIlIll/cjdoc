@@ -47,6 +47,7 @@ internal class QuerySnapshotInput {
     let pageNodes = HashMap<String, JsonObject>()
     let attachments: JsonArray
     let graph: DependencyGraphIndex
+    private let relationContexts = HashMap<String, DependencyGraphContext>()
     let importContexts: JsonArray
     let pageModules: HashMap<String, ?String>
     let capturedNavigations = HashMap<String, ArrayList<JsonObject>>()
@@ -116,6 +117,18 @@ internal class QuerySnapshotInput {
             if (let Some(node) <- rawPages.get(queryPageKey(page.id, page.source, page.language))) { pageNodes[page.id] = node }
         }
         graph = DependencyGraphIndex(ArrayList<query_model.DependencyInstance>(documentation.dependencies.toArray()))
+        // Freeze relation proof before sharing this input with concurrent readers.
+        // Resolver graph caches remain private to the serialized resolve path.
+        let contextWork = DependencyNavigationWork()
+        for (module in documentation.modules) {
+            relationContexts[module.id] = graph.context(module.id, contextWork)
+        }
+        // A captured dependency component need not publish declarations or a ModuleDoc.
+        for (dependency in documentation.dependencies) {
+            if (!relationContexts.contains(dependency.moduleId)) {
+                relationContexts[dependency.moduleId] = graph.context(dependency.moduleId, contextWork)
+            }
+        }
         importContexts = queryCapturedImportContexts(raw, snapshot)
         collectQueryNavigations(raw, capturedNavigations)
     }
@@ -123,6 +136,10 @@ internal class QuerySnapshotInput {
     func scopeForModule(moduleId: String): ?QueryDocumentScope {
         for (scope in scopes where scope.original.moduleId == moduleId) { return Some(scope) }
         None
+    }
+
+    func relationContext(moduleId: String): ?DependencyGraphContext {
+        relationContexts.get(moduleId)
     }
 }
 

@@ -25,13 +25,6 @@ internal func appendNavigationDecision(out: RenderTextBuffer, value: TypeNavigat
     out.append(",\"url\":${escapeJsonString(routeOverride.getOrDefault({ => value.url }))},\"apiIdentity\":${escapeJsonString(value.apiIdentity)},\"language\":${escapeJsonString(value.language)}}")
 }
 
-internal func appendTypeNavigation(out: RenderTextBuffer, value: ?TypeNavigation): Unit {
-    match (value) {
-        case Some(navigation) => appendNavigationDecision(out, navigation)
-        case None => out.append("null")
-    }
-}
-
 internal class SymbolInventoryIdentity {
     let sets: ArrayList<DocumentSetIdentity>
     let byModule = HashMap<String, DocumentSetIdentity>()

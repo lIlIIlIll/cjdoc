@@ -3,6 +3,7 @@ package cjdoc
 import cjdoc.model.*
 import cjdoc.model as api_model
 import cjdoc.render as relation_render
+import std.collection.*
 import std.unittest.*
 import std.unittest.testmacro.*
 import yjson.*
@@ -15,8 +16,39 @@ private func relationRange(version: String, line: Int64): SourceRange {
     SourceRange("src/api-${version}.cj", SourcePosition(line, 1, 0), SourcePosition(line, 30, 29))
 }
 
-private func relationDocumentation(version: String, navigation: ?TypeNavigation,
+private func relationDocumentation(version: String, dependency!: ?api_model.DocumentationSet = None,
     revision!: String = "reference"): api_model.DocumentationSet {
+    let rootName = if (dependency.isSome()) { "caller" } else { "fixture" }
+    let dependencies = relationRootDependencies(version, rootName)
+    let captured = ArrayList<DocumentSetIdentity>()
+    var navigation: ?TypeNavigation = None
+    if (let Some(selected) <- dependency) {
+        let identity = relation_render.DocumentationReadSnapshot(selected)
+            .documentSetForModule(RELATION_MODULE).getOrThrow()
+        let child = "cjdoc:module:v1:path:captured-fixture"
+        let index = contractFingerprint("controlled relation publisher inventory")
+        let documentSetId = "producer-local-dependency-context"
+        captured.add(DocumentSetIdentity(documentSetId, identity.library, identity.identity,
+            "declared", "controlled captured inventory", moduleId: identity.moduleId,
+            target: identity.target, cfg: identity.cfg, audience: identity.audience,
+            language: identity.language, apiVersion: identity.apiVersion,
+            documentationRevision: identity.documentationRevision, indexIdentity: index))
+        navigation = Some(TypeNavigation("resolved", "manual", "Explicit captured API identity and portable key",
+            dependencyInstanceId: "selected-fixture", documentSetId: documentSetId, indexIdentity: index,
+            apiIdentity: identity.identity, language: identity.language,
+            symbolKey: portableSymbolKey("fixture", "fixture.Target", "class", 0),
+            url: "dependencies/fixture.html"))
+        // Capture the selected graph without publishing a child module or declarations.
+        dependencies.add(DependencyInstance(RELATION_MODULE, "fixture", "selected-fixture", "source",
+            identity.identity, "observed", "controlled selected source component", version: identity.apiVersion,
+            target: identity.target, cfg: identity.cfg, componentModuleId: child))
+        for (row in selected.dependencies) {
+            dependencies.add(DependencyInstance(child, row.name, "selected-" + row.instanceId,
+                row.kind, row.identity, row.state, row.evidence, version: row.version, revision: row.revision,
+                target: row.target, cfg: row.cfg,
+                componentModuleId: if (row.componentModuleId == RELATION_MODULE) { child } else { row.componentModuleId }))
+        }
+    }
     let target = api_model.SymbolDoc(RELATION_TARGET, "class", "Target", "fixture.Target", "fixture",
         RELATION_MODULE, "public", relationRange(version, 1), "public class Target",
         SemanticInfo("partial", "ast"))
@@ -33,24 +65,23 @@ private func relationDocumentation(version: String, navigation: ?TypeNavigation,
         ConfigurationSnapshot(lintProfile: "off"), documentationRevision: revision,
         providers: [ProviderInfo("ast", "builtin", RELATION_MODULE, "partial",
             api_model.SemanticCapabilities(false, false, false, false, false))],
-        modules: [api_model.ModuleDoc(RELATION_MODULE, "fixture", "root", "", packageNames: ["fixture"])],
+        modules: [api_model.ModuleDoc(RELATION_MODULE, rootName, "root", "", packageNames: ["fixture"])],
         packages: [api_model.PackageDoc("fixture", RELATION_MODULE, sourceFiles: ["src/api-${version}.cj"],
             symbolIds: [RELATION_TARGET, RELATION_ENTRY])],
         files: [FileDoc("src/api-${version}.cj", RELATION_MODULE, "fixture")],
-        declarations: [target, entry], dependencies: [DependencyInstance(RELATION_MODULE,
-            "fixture", "captured-root-${version}", "source", "sha256:" + contractFingerprint(version),
-            "observed", "controlled captured-source fixture", version: version,
-            componentModuleId: RELATION_MODULE)])
+        declarations: [target, entry], dependencies: dependencies.toArray(), documentSets: captured.toArray())
 }
 
-private func capturedTargetNavigation(target: api_model.DocumentationSet): TypeNavigation {
-    let snapshot = relation_render.DocumentationReadSnapshot(target)
-    let identity = snapshot.documentSetForModule(RELATION_MODULE).getOrThrow()
-    TypeNavigation("resolved", "manual", "Explicit captured API identity and portable key",
-        documentSetId: "producer-local-dependency-context",
-        apiIdentity: identity.identity,
-        symbolKey: portableSymbolKey("fixture", "fixture.Target", "class", 0),
-        url: "dependencies/fixture.html")
+private func relationRootDependencies(version: String, name: String): ArrayList<DependencyInstance> {
+    let rows = ArrayList<DependencyInstance>([DependencyInstance(RELATION_MODULE,
+        name, "captured-root-${version}", "source", "sha256:" + contractFingerprint(version),
+        "observed", "controlled captured-source fixture", version: version,
+        componentModuleId: RELATION_MODULE)])
+    for (kind in ["std", "stdx", "toolchain"]) {
+        rows.add(DependencyInstance(RELATION_MODULE, kind, "captured-${kind}-${version}", kind,
+            "", "unknown", "build input not supplied"))
+    }
+    rows
 }
 
 private func relatedRequest(root: String, related: Array<String>): JsonObject {
@@ -76,8 +107,8 @@ private func relatedRequest(root: String, related: Array<String>): JsonObject {
 class DocumentationQueryRelationPublicTest {
     @TestCase
     func sameLocalTargetIdDoesNotOverrideTheCapturedExternalSnapshot(): Unit {
-        let dependency = relationDocumentation("0.2.0", Option<TypeNavigation>.None)
-        let host = relationDocumentation("0.1.0", Some(capturedTargetNavigation(dependency)))
+        let dependency = relationDocumentation("0.2.0")
+        let host = relationDocumentation("0.1.0", dependency: Some(dependency))
         let hostId = relation_render.documentationSnapshotId(host)
         let dependencyId = relation_render.documentationSnapshotId(dependency)
         let session = DocumentationQuerySession([host, dependency])
@@ -102,9 +133,9 @@ class DocumentationQueryRelationPublicTest {
 
     @TestCase
     func multipleCapturedEditionsDoNotChooseTheFirstRelatedTarget(): Unit {
-        let dependency = relationDocumentation("0.2.0", Option<TypeNavigation>.None)
-        let alternate = relationDocumentation("0.2.0", Option<TypeNavigation>.None, revision: "other-edition")
-        let host = relationDocumentation("0.1.0", Some(capturedTargetNavigation(dependency)))
+        let dependency = relationDocumentation("0.2.0")
+        let alternate = relationDocumentation("0.2.0", revision: "other-edition")
+        let host = relationDocumentation("0.1.0", dependency: Some(dependency))
         let session = DocumentationQuerySession([host, dependency, alternate])
         let request = relatedRequest(relation_render.documentationSnapshotId(host),
             [relation_render.documentationSnapshotId(dependency), relation_render.documentationSnapshotId(alternate)])

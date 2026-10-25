@@ -44,7 +44,7 @@ internal func markdownCanonicalHtmlDestination(value: String, pagePath: String):
 }
 
 internal func markdownCanonicalSymbolDestination(symbol: SymbolDoc, pagePath: String): ?String {
-    markdownCanonicalHtmlDestination(symbolPagePath(symbol) + "#" + symbolAnchor(symbol), pagePath)
+    markdownCanonicalHtmlDestination(symbolPagePath(symbol), pagePath)
 }
 
 internal func markdownResolvedNavigationDestination(navigation: TypeNavigation,
@@ -54,8 +54,8 @@ internal func markdownResolvedNavigationDestination(navigation: TypeNavigation,
         if (navigation.symbolKey.startsWith("cjdoc:v2:") &&
             !symbolIndex.contains(navigation.symbolKey)) { return None }
         if (let Some(target) <- symbolIndex.get(navigation.symbolKey)) {
-            // A navigation frozen at the target's own page keeps its anchor so
-            // readers land on the declaration, not the top of the document.
+            // Standalone HTML pages do not carry aggregate Markdown anchors.
+            // Keep their canonical route rather than inventing a fragment.
             if (navigation.url == symbolPagePath(target)) {
                 return markdownCanonicalSymbolDestination(target, pagePath)
             }

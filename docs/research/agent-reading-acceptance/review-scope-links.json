@@ -1,0 +1,249 @@
+{
+  "schemaVersion": "cjdoc.issue137.review-scope-links-evidence/1",
+  "scope": "Actual compiled-native CLI, independent static representation and real stdio MCP reproductions for PR #161 review; not a new Agent study, clean source-bound build, macOS syscall result or latest-HEAD CI claim.",
+  "candidate": {
+    "nativeSha256": "310295cb9c57db675f4b5b498ebd6540474ccdda57764c7a8833cfbf212a0e57",
+    "nativeBytes": 17099272,
+    "compiler": "Cangjie 1.2.0 cjnative",
+    "target": "x86_64-unknown-linux-gnu",
+    "stsOptimization": "-O1",
+    "buildScope": "Application compilation and functional smoke from an uncommitted worktree; no source-bound manifest is asserted.",
+    "publishedParentRevision": "858109de31eb340a41a7a5d6f8455a8db6690a8c",
+    "implementationFiles": [
+      {
+        "path": "src/query_snapshot.cj",
+        "sha256": "a165f23d3c521b9dbbf193fcfd276d4b98d1e476b6beb6e7ef9dae228615552f"
+      },
+      {
+        "path": "src/query_relations.cj",
+        "sha256": "be998cf13178c289ff8a47dfe8fd4433c297fd2f90d5c11fe63513f03a22676a"
+      },
+      {
+        "path": "src/render/agent_pages.cj",
+        "sha256": "7e05911b6c2432d46b1cc8087a7314206c2667e444e90465b054d92c4d7cadea"
+      },
+      {
+        "path": "src/bounded_io.cj",
+        "sha256": "f10ecebc8972ffcfaf2d114c0a9a3032f480a187b926e0d4d91ca3bb2bee507d"
+      }
+    ]
+  },
+  "beforeNativeSha256": "cfab1c0634baa731ef7c5dbf3f01d8185f2ea57f04e4ee38aaa3a5857a63209b",
+  "inputs": {
+    "derivation": "Controlled strict Doc IR derivatives of the frozen PocketKit 0.2.0 consumer and pocket_support 0.1.0 documentation. The see-tag navigation and conceptual-page local/external navigation are copied from actual captured records; no compiler or publisher verification is invented.",
+    "consumerSha256": "c7ddb8419f736ab7d2c7efb14d220f93ab35de723f1c65bafec17f055d78fa57",
+    "matchingTargetSha256": "130853b293d0fcb950665a75a1de60bf982a65dfaa5008f7e8f85f35427578c3",
+    "conceptSha256": "d2395d562c266b1d4d15ca49874e38962dd61b96683eb1810c4dba818ce72c63"
+  },
+  "matchingContext": {
+    "sourceSnapshotId": "cjdoc:snapshot:v1:b5852ef8fd9c9df106ba3a7790119c327b7c37db32bdd01b45a7dc7ad894e7bb",
+    "relatedSnapshotId": "cjdoc:snapshot:v1:11f90d4cf40cac812d37e65a58ecca4074804a3015af4edd7d20fae61f0eb32a",
+    "selectedComponentHasGraphButNoPublishedModule": true,
+    "wholeCoreResponseExactlyUnchanged": true,
+    "navigationMatchLevel": "manual"
+  },
+  "contextMismatches": [
+    {
+      "dimension": "target",
+      "targetInputSha256": "6db79f71e202bf29d3d779fa427fbe31f85d0a21113eb367eadcf49d51a1d308",
+      "targetSnapshotId": "cjdoc:snapshot:v1:71580d91524b5d303a4b7dddee93fa788ad4d49c1eee71c04208bbc51d4dc823",
+      "apiIdentityUnchanged": true,
+      "beforeState": "resolved",
+      "afterState": "unavailable",
+      "afterTarget": null,
+      "navigationExactlyPreserved": true,
+      "cliExit": 0
+    },
+    {
+      "dimension": "cfg",
+      "targetInputSha256": "0e724568610205a8809d78c87b87207a4060672081cb888e5144167e0282994c",
+      "targetSnapshotId": "cjdoc:snapshot:v1:574f74b5de3d6cd1a16e0501807ed25e5284452bcf5a56154f65451ed346628c",
+      "apiIdentityUnchanged": true,
+      "beforeState": "resolved",
+      "afterState": "unavailable",
+      "afterTarget": null,
+      "navigationExactlyPreserved": true,
+      "cliExit": 0
+    },
+    {
+      "dimension": "graph",
+      "targetInputSha256": "c5b4e6e4b478a18f09ad19ddf41c7c3fa1a481390c1fed26b1d512af0b301b4d",
+      "targetSnapshotId": "cjdoc:snapshot:v1:36fabd921c60bbd252fe27c383f99c1c171590ea4a31827b455a9af8f1115e74",
+      "apiIdentityUnchanged": true,
+      "beforeState": "resolved",
+      "afterState": "unavailable",
+      "afterTarget": null,
+      "navigationExactlyPreserved": true,
+      "cliExit": 0
+    }
+  ],
+  "concept": {
+    "pageId": "concepts/index.html",
+    "snapshotId": "cjdoc:snapshot:v1:915409f451f36c8a56f62ecf678468e50434449aa655be127d52ff91834b4f1b",
+    "beforeLocalSemanticLink": "unlinked label",
+    "beforeRelativeExternalPrefix": "../html/",
+    "afterQueryLinkBase": "document-root",
+    "afterIndependentRepresentationLinkPrefix": "../../",
+    "localAndCapturedExternalDestinationPathsRestored": true,
+    "independentMarkdownExactlyEqualsJsonMarkdown": true,
+    "privateDeclarationDoesNotGainPublicMarkdownLink": "PASS in AgentConceptualSemanticLinksTest"
+  },
+  "standaloneHtmlFragment": {
+    "beforeNativeSha256": "310295cb9c57db675f4b5b498ebd6540474ccdda57764c7a8833cfbf212a0e57",
+    "actualBrowserInput": "The Markdown alternate of concepts/index.html, generated independently from the controlled captured-link Doc IR.",
+    "observedNativePageTitle": "pocketkit.TextCatalog.add",
+    "observedNativeHeader": "public func add(value: String): Unit",
+    "physicalTargetPageLoaded": true,
+    "inventedAggregateSymbolFragmentExisted": false,
+    "correction": "Canonical standalone HTML routes do not acquire an aggregate Markdown symbol fragment. Explicit captured external fragments are retained.",
+    "compiledNativeRegression": "AgentConceptualSemanticLinksTest.inlineLinksUseTheActualAgentOutputDirectory checks the actual target HTML artifact and validates an id if the produced link includes a fragment; it no longer assumes a #symbol- spelling.",
+    "completeCurrentNativeSuitePassed": true,
+    "scope": "Before-browser observation and current compiled unit behavior, not a relabelled final CLI, clean-source build or CI result."
+  },
+  "mcp": {
+    "nativeSha256": "310295cb9c57db675f4b5b498ebd6540474ccdda57764c7a8833cfbf212a0e57",
+    "protocol": "2025-11-25",
+    "cases": [
+      {
+        "case": "matching-graph-only-component",
+        "status": "ok",
+        "allCoreFieldsEqualCli": true,
+        "completeReadableTextEqualCli": true,
+        "cleanEofExit": 0
+      },
+      {
+        "case": "different-target",
+        "status": "ok",
+        "allCoreFieldsEqualCli": true,
+        "completeReadableTextEqualCli": true,
+        "cleanEofExit": 0
+      },
+      {
+        "case": "different-cfg",
+        "status": "ok",
+        "allCoreFieldsEqualCli": true,
+        "completeReadableTextEqualCli": true,
+        "cleanEofExit": 0
+      },
+      {
+        "case": "different-graph",
+        "status": "ok",
+        "allCoreFieldsEqualCli": true,
+        "completeReadableTextEqualCli": true,
+        "cleanEofExit": 0
+      },
+      {
+        "case": "concept-inline-local-and-external",
+        "status": "ok",
+        "allCoreFieldsEqualCli": true,
+        "completeReadableTextEqualCli": true,
+        "cleanEofExit": 0
+      }
+    ]
+  },
+  "nativeUnitEvidence": {
+    "initialFullAttempt": {
+      "total": 674,
+      "passed": 670,
+      "errors": 3,
+      "failed": 1,
+      "conceptSemanticLinkCasesPassed": 2,
+      "note": "Not a complete-suite PASS; invalid relation fixtures and incomplete relation proof coverage were corrected subsequently."
+    },
+    "finalRelationFilter": {
+      "total": 674,
+      "passed": 4,
+      "skipped": 670,
+      "errors": 0,
+      "failed": 0,
+      "grades": [
+        "exact",
+        "compatible",
+        "manual"
+      ],
+      "negativeContexts": [
+        "target",
+        "cfg",
+        "transitive graph",
+        "incomplete graph"
+      ],
+      "graphOnlySelectedComponentPositive": true
+    },
+    "completeCurrentWorkingTree": {
+      "total": 674,
+      "passed": 674,
+      "skipped": 0,
+      "errors": 0,
+      "failed": 0,
+      "scope": "Current native test compilation after graph-only context, expected-size boundary tests, standalone HTML URI correction and unused internal serializer removal; not the older candidate executable.",
+      "pinnedChirWorkerUsed": true
+    }
+  },
+  "browserConsumer": {
+    "artifactNativeSha256": "cfab1c0634baa731ef7c5dbf3f01d8185f2ea57f04e4ee38aaa3a5857a63209b",
+    "builderCheckoutRevision": "40c5947988bec6493f3747e8e02b945c6fead661",
+    "scope": "Earlier completed production-builder tree, not relabelled as the query-fix binary or final CI.",
+    "documentRoots": 11,
+    "declarations": 1118,
+    "parts": 11,
+    "hashesRangesContinuationsAndEveryExactHeaderAndQualifiedNameChecked": true,
+    "realBrowserRawLinks": [
+      "Doc IR JSON",
+      "navigation JSON",
+      "independent declaration Markdown",
+      "complete reference"
+    ],
+    "selectedNativeHeader": "public class TextCatalog",
+    "returnedToOriginalPage": true,
+    "horizontalOverflow": false,
+    "readerPageInternalMetadataDump": false
+  },
+  "resourceBudget": {
+    "observedFailure": {
+      "diagnosticCode": "CJDOC3027",
+      "preciseNativeProbe": "invalid Doc IR domain at $.diagnostics[1206].source.start: JSON object occurrence budget exceeded",
+      "previousCompleteObjects": 65508
+    },
+    "removedObsoleteInternalEntrypoints": [
+      "cjdoc.queryStringArray(Array<String>)",
+      "cjdoc.render.appendJsonStringArray(RenderTextBuffer, ReadOnlyList<String>)",
+      "cjdoc.render.appendTypeNavigation(RenderTextBuffer, ?TypeNavigation)",
+      "cjdoc.readFileBoundedWithin(Path, String, Int64), both platform variants"
+    ],
+    "canonicalStringBuilderNavigationCodecRetained": true,
+    "productionExpectedSizeReaderRetainedAndUsedByBoundaryTests": true,
+    "temporaryDiagnosticRemoved": true,
+    "defaultCurrentSourceCapture": {
+      "generatorNativeSha256": "1db485a9c7ad6261d3fbf4b05fc2ac673e23dfd87599b805dbf451eb8b9fbab2",
+      "scope": "Actual earlier pinned generator reading the current source tree. This validates front-end source content, not the later renderer-only canonical URI correction or a clean-HEAD manifest.",
+      "docsSha256": "3c312e5f052c01ee616da96e60f83bedbe2d23d63e7b9e60f8a34b12814c4744",
+      "bytes": 19291879,
+      "declarations": 4931,
+      "objects": 65499,
+      "arrayItems": 95118,
+      "diagnostics": 1209,
+      "errors": 0,
+      "independentInventoryEntries": 852,
+      "exactlyPreviousPublicIdentitiesHeadersAndSourceSignatures": true,
+      "boundedFallback": false
+    },
+    "unchangedLimits": {
+      "objects": 65536,
+      "arrayItems": 100000,
+      "documentBytes": 67108864
+    },
+    "elapsedAndRssCeilingsChanged": false
+  },
+  "macos": {
+    "observedFailure": {
+      "runId": 40180506840,
+      "jobId": 121130396123,
+      "relativeInput": "agent/docs.json",
+      "message": "bounded relative read could not verify a regular descriptor"
+    },
+    "implementation": "Darwin fgetattrlist on the opened descriptor, ATTR_CMN_OBJTYPE, VREG; fixed-size native arrays, no path reopening or assumed stat layout.",
+    "linuxNativeArrayAbiProbe": "PASS",
+    "sameRelativeIoCasesEnabledOnMacos": true,
+    "darwinSyscallAndLatestCi": "Not claimed by this local receipt."
+  }
+}

@@ -2,6 +2,7 @@ package cjdoc
 
 import cjdoc.model.*
 import cjdoc.model as bounds_model
+import cjdoc.render as bounds_render
 import std.collection.*
 import std.unittest.*
 import std.unittest.testmacro.*
@@ -15,7 +16,9 @@ private func boundsSymbolId(index: Int64): String {
     "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::bounded::class:Node${index}#g0()"
 }
 
-private func boundsDocumentation(revision: String): bounds_model.DocumentationSet {
+private func boundsDocumentation(revision: String, navigation!: ?bounds_model.TypeNavigation = None,
+    dependencies!: Array<bounds_model.DependencyInstance> = [],
+    documentSets!: Array<bounds_model.DocumentSetIdentity> = []): bounds_model.DocumentationSet {
     let declarations = ArrayList<bounds_model.SymbolDoc>()
     let ids = ArrayList<String>()
     let summary = StringBuilder()
@@ -30,7 +33,11 @@ private func boundsDocumentation(revision: String): bounds_model.DocumentationSe
         let comment: ?bounds_model.DocComment = if (index == 0) {
             let text = summary.toString()
             Some(bounds_model.DocComment(text, text, "", MarkdownNode("document", children: [
-                MarkdownNode("paragraph", children: [MarkdownNode("text", literal: text)])])))
+                MarkdownNode("paragraph", children: [MarkdownNode("text", literal: text)])]),
+                tags: if (let Some(value) <- navigation) {
+                    [bounds_model.DocTag("see", "bounded.Node1", "Captured related declaration",
+                        navigation: Some(value))]
+                } else { [] }))
         } else { None }
         declarations.add(bounds_model.SymbolDoc(id, "class", "Node${index}", "bounded.Node${index}",
             "bounded", BOUNDS_MODULE, "public", SourceRange("src/bounded.cj",
@@ -45,7 +52,8 @@ private func boundsDocumentation(revision: String): bounds_model.DocumentationSe
         modules: [bounds_model.ModuleDoc(BOUNDS_MODULE, "bounded", "root", "", packageNames: ["bounded"])],
         packages: [bounds_model.PackageDoc("bounded", BOUNDS_MODULE,
             sourceFiles: ["src/bounded.cj"], symbolIds: ids.toArray())],
-        files: [FileDoc("src/bounded.cj", BOUNDS_MODULE, "bounded")], declarations: declarations.toArray())
+        files: [FileDoc("src/bounded.cj", BOUNDS_MODULE, "bounded")], declarations: declarations.toArray(),
+        dependencies: dependencies, documentSets: documentSets)
 }
 
 private func boundsRequest(selector: String, identity: String): JsonObject {
@@ -164,5 +172,97 @@ class DocumentationQueryBoundsRegressionTest {
         let changedEscapes = "{\"contract\":" +
             JsonNode.string("汉 \"quoted\" \\\\ tail\n").toJson() + "}"
         @Expect(queryEncodedProjectionMatches(formatted, changedEscapes), false)
+    }
+}
+
+private let RELATION_CONTEXT_API = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+private let RELATION_CONTEXT_INDEX = "2222222222222222222222222222222222222222222222222222222222222222"
+
+private func boundsContextDependencies(target: String, cfg: String,
+    standardIdentity!: String = "", complete!: Bool = true): Array<bounds_model.DependencyInstance> {
+    let rows = ArrayList<bounds_model.DependencyInstance>([
+        bounds_model.DependencyInstance(BOUNDS_MODULE, "bounded", "relation-self", "source",
+            RELATION_CONTEXT_API, "observed", "controlled source context", version: "1.0",
+            target: target, cfg: cfg, componentModuleId: BOUNDS_MODULE)
+    ])
+    for (kind in ["std", "stdx", "toolchain"]) {
+        if (!complete && kind == "stdx") { continue }
+        let identity = if (kind == "std") { standardIdentity } else { "" }
+        rows.add(bounds_model.DependencyInstance(BOUNDS_MODULE, kind, "relation-" + kind, kind,
+            identity, if (identity.isEmpty()) { "unknown" } else { "observed" },
+            "controlled captured build input", target: target, cfg: cfg))
+    }
+    rows.toArray()
+}
+
+private func boundsRelatedContextEdge(target: String, cfg: String,
+    standardIdentity: String, complete: Bool, matchLevel: String): JsonObject {
+    let captured = bounds_model.DocumentSetIdentity("captured-relation-docs", "bounded",
+        RELATION_CONTEXT_API, "declared", "source-snapshot", target: "target-a", cfg: "cfg-a",
+        language: "en", indexIdentity: RELATION_CONTEXT_INDEX, moduleId: BOUNDS_MODULE,
+        apiVersion: "1.0", documentationRevision: "captured")
+    let navigation = bounds_model.TypeNavigation("resolved", matchLevel, "captured navigation",
+        dependencyInstanceId: "relation-self", documentSetId: captured.id,
+        indexIdentity: captured.indexIdentity, symbolKey: portableSymbolKey("bounded", "bounded.Node1", "class", 0),
+        url: "symbols/related.html", apiIdentity: RELATION_CONTEXT_API, language: "en")
+    let consumer = boundsDocumentation("consumer", navigation: Some(navigation), documentSets: [captured],
+        dependencies: boundsContextDependencies("target-a", "cfg-a"))
+    let related = boundsDocumentation("related", dependencies: boundsContextDependencies(target, cfg,
+        standardIdentity: standardIdentity, complete: complete))
+    let session = DocumentationQuerySession([consumer, related])
+    let request = boundsRequest("symbolId", boundsSymbolId(0))
+    request.put("snapshotId", JsonNode.string(bounds_render.DocumentationReadSnapshot(consumer).snapshotId))
+    let snapshots = JsonNode.array()
+    snapshots.add(JsonNode.string(bounds_render.DocumentationReadSnapshot(related).snapshotId))
+    request.put("relatedSnapshotIds", snapshots)
+    let sections = JsonNode.array()
+    sections.add(JsonNode.string("relations"))
+    request.put("sections", sections)
+    let relations = JsonNode.object()
+    relations.put("direction", JsonNode.string("outgoing"))
+    relations.put("depth", JsonNode.int64(1))
+    relations.put("limit", JsonNode.int64(100))
+    request.put("relations", relations)
+    let response = boundsExecute(session, request)
+    if (queryString(response, "status") != "ok") {
+        throw IllegalStateException("relation fixture query failed: " + response.toJson())
+    }
+    let rows = response.get("result").getOrThrow().asObject().get("relations").getOrThrow().asArray()
+    let capturedEdges = ArrayList<JsonObject>()
+    for (index in 0..rows.size()) {
+        let row = rows[index].asObject()
+        if (queryString(row, "kind") == "see") { capturedEdges.add(row) }
+    }
+    if (capturedEdges.size != 1) { throw IllegalStateException("captured relation was lost or duplicated") }
+    capturedEdges[0]
+}
+
+@Test
+class DocumentationQueryRelationContextTest {
+    @TestCase
+    func matchingRelatedContextPreservesTheCapturedNavigationGrade(): Unit {
+        for (grade in ["exact", "compatible", "manual"]) {
+            let edge = boundsRelatedContextEdge("target-a", "cfg-a", "", true, grade)
+            @Expect(queryString(edge, "state"), "resolved")
+            @Expect(!edge.get("to").getOrThrow().isNull, true)
+            @Expect(queryString(edge.get("navigation").getOrThrow().asObject(), "matchLevel"), grade)
+        }
+    }
+
+    @TestCase
+    func differentOrIncompleteRelatedContextsNeverInheritNavigationEvidence(): Unit {
+        for ((target, cfg, standard, complete) in [
+            ("target-b", "cfg-a", "", true),
+            ("target-a", "cfg-b", "", true),
+            ("target-a", "cfg-a", "different-std-build", true),
+            ("target-a", "cfg-a", "", false)
+        ]) {
+            for (grade in ["exact", "compatible", "manual"]) {
+                let edge = boundsRelatedContextEdge(target, cfg, standard, complete, grade)
+                @Expect(queryString(edge, "state"), "unavailable")
+                @Expect(edge.get("to").getOrThrow().isNull, true)
+                @Expect(queryString(edge.get("navigation").getOrThrow().asObject(), "matchLevel"), grade)
+            }
+        }
     }
 }

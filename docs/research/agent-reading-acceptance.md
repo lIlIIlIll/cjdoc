@@ -176,6 +176,22 @@ API 选择的两个 not-applicable 任务是正确拒绝不可用 API，不是 A
 
 后续跨快照 context 修正的 10 项公开查询契约实测通过，包括消费者快照恢复和目标候选仍被固定；其余 660 项未被本次 filter 选中，不计为完整单元测试通过。更正后的自身源码预提交捕获仍有 4931 个声明、95134 个数组项、1209 条诊断和零错误，852 个可见 API 的身份、header 与源码签名完全相同；实测内容 hash 为 `1de1d2f4ec32e864d378ce27b3c7ae702d0bdf6d56d47840b59d624635013f5c`。只同步内容身份，不改变时间/RSS ceiling；干净 HEAD 内容身份与跨平台 CLI/MCP 仍分别读取最新门禁结果。
 
+## Review 的上下文隔离与概念链接
+
+[固定输入与原生消费者回执](agent-reading-acceptance/review-scope-links.json)保留同一请求在修正前后的实际结果。相同 API identity/key、不同 target、cfg 或捕获依赖图的相关快照，不再获得错误的 resolved 目标；原始导航逐字段保留。真正匹配的对照响应完整不变，包括仅保留依赖图、没有发布依赖 `ModuleDoc` 的消费者。公开关系测试同时覆盖 exact、compatible、manual 及不完整图，不把过滤掉的其他测试计为通过。
+
+概念页输入复制真实本地与依赖导航到受控 Markdown AST：原来本地目标只有文字，外部链接误指 `../html/`；修正后逐页 Markdown、JSON 正文和文档根查询分别使用各自实际路径，仍保留原始导航等级。实际 stdio MCP 逐字段及完整正文与相同 CLI 请求比较，不用 mock 返回值证明转发。
+
+实际浏览器进一步读取上述原生逐页 Markdown，发现本地 `pocketkit.TextCatalog.add` 文件存在，但附加的聚合 Markdown `symbol-…` fragment 在该独立 HTML 页上不存在。规范 HTML 路由不再虚构此 fragment；回归改为验证真实目标 HTML 产物及可选 id，删除仅固定 `#symbol-` 展示的断言。当前完整原生测试实测 674/674、零跳过/错误/失败，包含此链接闭包、关系上下文和相对文件读取边界；不把它改标为较早固定 CLI 或远端 CI 结果。
+
+machine journey 的发布身份改由结构化 manifest/全文索引配对，并遍历实际全文分片；不重新固定旧的展示文案。生产构建所得 11 个文档根、1118 个声明的完整源码 header、限定名、hash、范围和续取均实测；真实浏览器点击 JSON、导航、Markdown、全文四种入口并返回原页面。该静态观测绑定其原构建，不改标为后续查询 native 或最新 CI。
+
+macOS 的真实失败日志已定位为普通 `agent/docs.json` 在 FD regular-file 验证处被拒绝。Darwin 改为对打开的描述符调用 `fgetattrlist` 查询 vnode 类型，不借助 `/dev/fd` 路径反查，不重新打开文件，也不猜 `stat` 结构布局。相同相对读取正反例扩展到 macOS；Linux 的定长数组 native ABI probe 仅证明本机调用模式，不冒充 Darwin syscall 或远端门禁通过。
+
+本轮默认 self 生成也实际触发 `CJDOC3027`：临时诊断定位为 `$.diagnostics[1206].source.start` 超过既有 65536 个 JSON object 上限，不是新页面或 API 被允许省略。原完整输入已有 65508 个 object。移除新查询/JSON 编码切换后无调用的内部序列化函数，以及不再用于生产读取的无 captured-size 相对入口；读取测试改走真实 `readFileBoundedWithinExpected`。预提交默认 JSON 捕获恢复为完整的 4931 个声明、65499 个 object、95118 个数组项、1209 条诊断和零错误，独立库存恰有原来的全部 852 个可见身份，header 与源码签名完全相同。其 hash 为 `3c312e5f052c01ee616da96e60f83bedbe2d23d63e7b9e60f8a34b12814c4744`；未改变任何 codec、时间或 RSS ceiling，临时诊断代码已撤回。该捕获使用较早固定原生程序读取当前源码，不冒充后续链接行为修正；干净 HEAD 的正式身份门禁仍单独核验。
+
+本轮功能 smoke 使用预提交的固定 Linux 可执行文件；不声称它完成了干净 HEAD 的完整受保护构建。完整构建、完整单元、跨平台 CLI/MCP 与两片浏览器门禁继续以最新 HEAD 的实际运行结果为准。
+
 ## 发布与复算
 
 每轮 `traces.jsonl.gz` 是 UTF-8 JSONL 的 gzip：首行描述归一化口径，后续每行包含相对文件名、原始/显示字节数与 SHA-256、完整显示文本。包含全部 24 条 record、客户端事件、真实 stdio、答案、逐项判分，以及每段非空原程序和实际编译/运行日志；不包括 SDK、库产物或 ELF。对应 `traces-receipt.json` 列出完整文件清单。显示文本不是可冒充原始运行目录的副本；消费者输入字节保持原样，原始消息读字节独立记录。

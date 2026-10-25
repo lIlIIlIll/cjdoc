@@ -48,12 +48,6 @@ internal func queryNullable(value: ?String): JsonNode {
     match (value) { case Some(text) => JsonNode.string(text); case None => JsonNode.nullValue }
 }
 
-internal func queryStringArray(values: Array<String>): JsonArray {
-    let result = JsonArray()
-    for (value in values) { result.add(JsonNode.string(value)) }
-    result
-}
-
 internal func queryCanonical(value: JsonNode): String {
     match (value) {
         case object: JsonObject =>

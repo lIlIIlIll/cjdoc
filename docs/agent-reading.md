@@ -34,6 +34,10 @@ HTML 输出默认附带每个可见声明的 Markdown/JSON，不需要 `--agent-
 
 路径基准是**当前文档根**，不是服务器根或其他格式的兄弟目录。部署整个 `html/`，不要只复制 HTML 文件。HTML head 的 `alternate` 指向随站点发布的逐页/逐声明 Markdown，`describedby` 指向同一根的 `llms.txt` 和 manifest。内容协商不是前提；普通静态托管、项目子路径和 `file://` 均使用这些文件。
 
+上述路径基准适用于 manifest 与索引记录。逐页/逐声明 Markdown 及 JSON 中的 Markdown 正文，按实际表示文件的位置生成相对链接；聚合全文与 `get_symbol` 正文以文档根为基准。本地声明和捕获的外部语义链接均指向规范 HTML，不跳到假定的 `../html/` 兄弟目录。
+
+读取全文时，先检查 `agent-full-index.json.snapshotId` 等于机器 manifest 的 `snapshotId`，再确认 manifest 的 `publicationRevision` 是所选发布修订，并检查各片的 hash、范围及续取。全文索引不重复提供发布修订；API 包版本与文档发布修订读取结构化作用域，不解析正文中的展示标签。
+
 `sidebar-index.js` 只共享重复的侧栏导航元数据；完整声明页、包/成员索引和源码签名仍保留。它与其他资源一起静态部署，不通过 fetch 或额外服务装载。
 
 `--all-languages` 为各语言生成独立文档根。多版本组合沿用 [高级用法](advanced-usage.md#组合多版本文档站)：组合完整版本目录，保留各语言根、manifest 和分片。`--doc-version` 是**文档发布标签**，不是依赖包版本或编译器认证。
@@ -142,6 +146,8 @@ cursor 绑定内容、查询条件、排序、语言/回退、受众和字节预
 | 静态分片 | navigation/full 每片 16 MiB；摘要 16 KiB；单产物 64 MiB、总产物 512 MiB、条目 65536。 |
 
 必要调用单元放不下时返回 `budget_exceeded`、真实 requiredBytes 和可行重试；超出硬资源范围时是 `resource_limit`，不提供不存在的完整读取入口。可选章节只整章省略。关系第一条记录都放不下时不给原地循环的 cursor。额外上下文只进入 `relatedSnapshotIds` 显式选择的快照；跨 root/dependency 不用裸本地 Symbol ID 认定同一目标。
+
+跨快照导航还必须匹配捕获文档集的库、API 版本、语言、受众及 target/cfg，并绑定消费者所选组件的完整传递依赖上下文。仅有相同 API identity 和 portable key 不足以绑定另一个上下文。图证据可以保留在未发布 `ModuleDoc` 或声明的依赖组件中；这不会合成该组件的文档。证据不足或不匹配时保留 `unavailable`，多个匹配保留 `ambiguous`；原始导航及匹配等级继续保留，不将 manual/compatible 升级为 exact。
 
 | status | CLI 退出码 | 解释 |
 |---|---|---|

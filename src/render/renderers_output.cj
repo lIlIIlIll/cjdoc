@@ -56,17 +56,6 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         appendAssetArtifacts(artifacts, projectedAssets, "html")
 }
 
-internal func appendJsonStringArray(out: RenderTextBuffer, values: ReadOnlyList<String>): Unit {
-    out.append("[")
-    var first = true
-    for (value in values) {
-        if (!first) { out.append(",") }
-        first = false
-        appendSearchJsonString(out, value)
-    }
-    out.append("]")
-}
-
 internal func appendApiSurfaceArtifacts(artifacts: RenderArtifactCollector,
     documentation: DocumentationSet): Unit {
     artifacts.addText("api-surface/api-surface.json", "application/json",

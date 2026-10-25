@@ -10,10 +10,12 @@ internal class AgentPageMarkdownProjection {
     private let assets: ArrayList<AssetDoc>
     private let rootAssets: HashMap<String, String>
     private let nestedAssets: HashMap<String, String>
+    private let symbolIndex: HashMap<String, SymbolDoc>
 
     init(documentation: DocumentationSet, projection: RenderProjection, locale: String) {
         this.documentation = documentation
         this.locale = locale
+        symbolIndex = projection.visibleIndex
         pages = selectedDocumentationPages(documentation, locale)
         assets = projectAssets(documentation, projection, pages: pages)
         rootAssets = buildAssetLookup(assets)
@@ -27,7 +29,8 @@ internal class AgentPageMarkdownProjection {
         let links = capturedPageSourceLinks(documentation, page, pages, outputPath: Some(outputPath))
         let (tree, _) = capturedPageMarkdownWithoutMarkers(page.markdown, page)
         let out = RenderTextBuffer()
-        appendMarkdownNodeMarkdown(out, tree.getOrThrow(), lookup, 1, capturedLinks: Some(links))
+        appendMarkdownNodeMarkdown(out, tree.getOrThrow(), lookup, 1, pagePath: outputPath,
+            symbolIndex: Some(symbolIndex), canonicalHtml: true, capturedLinks: Some(links))
         appendCapturedPageBindingsMarkdown(out, page, documentation, locale,
             pagePath: Some(outputPath), canonicalHtml: true)
         out.append("\n\n" + label(locale, "Content language: ", "内容语言：") +
