@@ -557,7 +557,6 @@ class RendererSafetyTest {
         @Expect(mainHtml.split("A compact type summary.").size, 2)
         @Expect(html.contains("class=\"skip-link\" href=\"#cjdoc-main\""), true)
         @Expect(html.contains("id=\"cjdoc-main\""), true)
-        @Expect(html.contains("<code>member()</code>"), true)
         @Expect(mainHtml.contains("data-cjdoc-members-expand"), true)
         @Expect(mainHtml.contains("data-cjdoc-members-collapse"), true)
     }

@@ -120,7 +120,9 @@ class McpProcess:
     def read(self) -> dict:
         item = self.messages.get(timeout=self.timeout)
         if item is _EOF:
-            raise EOFError("cjdoc mcp closed stdout before answering")
+            code = self.wait()
+            raise EOFError(
+                f"cjdoc mcp exited with {code} before answering; stderr: {self.stderr_text()[:2000]}")
         assert isinstance(item, bytes)
         try:
             message = json.loads(item.decode("utf-8"))
@@ -183,7 +185,12 @@ class McpProcess:
 
     def close_stdin(self) -> None:
         if self.process.stdin is not None and not self.process.stdin.closed:
-            self.process.stdin.close()
+            try:
+                self.process.stdin.close()
+            except BrokenPipeError:
+                # Closing an already failed child's pipe must not mask its
+                # original exit status and stderr.
+                pass
 
     def wait(self) -> int:
         try:

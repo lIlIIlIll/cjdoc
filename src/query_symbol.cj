@@ -194,47 +194,59 @@ private func queryAmbiguousSymbol(outcome: QueryOutcome, candidates: ArrayList<Q
     outcome.offset = queryReadCursor(request, catalogId)
     let limit = if (request.get("limit").isSome()) { queryClamp(queryInt(request, "limit"), 0, 100) }
         else { QUERY_GET_DEFAULT_LIMIT }
+    let maxBytes = queryClamp(queryInt(request, "maxBytes", fallback: QUERY_DEFAULT_BYTES), 1024, QUERY_MAX_BYTES)
     outcome.limit = limit
-    let end = if (outcome.offset + limit > candidates.size) { candidates.size }
-        else { outcome.offset + limit }
-    var position = outcome.offset
-    while (position < end) {
-        outcome.items.add(queryCandidateIdentityItem(candidates[position]))
-        position++
-    }
-    outcome.complete = end >= candidates.size
-    if (end < candidates.size) { outcome.next = Some(queryNextCursor(request, catalogId, end)) }
     outcome.contentComplete = false
     outcome.selectedSections = querySectionOrder(querySelectedSections(request))
+    let end = if (outcome.offset + limit > candidates.size) { candidates.size }
+        else { outcome.offset + limit }
     let text = StringBuilder()
     text.append("Ambiguous documentation identity: ${candidates.size} distinct captured declarations match. ")
     text.append("They differ by snapshot, document set or owner, so relevance and list order do not select one.\n")
-    position = outcome.offset
+    var used: Int64 = 0
+    var position = outcome.offset
     while (position < end) {
         let candidate = candidates[position]
-        text.append("\n- ")
-        match (candidate.symbol) {
-            case Some(symbol) =>
-                text.append(symbol.qualifiedName)
-                text.append(" [")
-                text.append(symbol.kind)
-                text.append("] snapshot ")
-                text.append(candidate.input.snapshot.snapshotId)
-                text.append(" symbolKey ")
-                text.append(candidate.input.symbolKeys[symbol.id])
-            case None =>
-                text.append("concept page ")
-                text.append(candidate.page.map({ value => value.id }).getOrDefault({ => "" }))
-                text.append(" snapshot ")
-                text.append(candidate.input.snapshot.snapshotId)
+        let item = queryCandidateIdentityItem(candidate)
+        let line = queryAmbiguousCandidateText(candidate)
+        let size = item.toJson().size + line.size
+        if (used + size > maxBytes) {
+            if (outcome.items.isEmpty() && queryRejectRequiredBudget(outcome, size, maxBytes)) { return outcome }
+            break
         }
+        used += size
+        outcome.items.add(item)
+        text.append(line)
         position++
     }
-    if (end < candidates.size) {
+    outcome.complete = position >= candidates.size
+    if (!outcome.complete) {
+        outcome.next = Some(queryNextCursor(request, catalogId, position))
         text.append("\nMore candidates exist; continue with the returned cursor and the identical request.")
     }
     outcome.text = text.toString()
     outcome
+}
+
+private func queryAmbiguousCandidateText(candidate: QueryGetCandidate): String {
+    let text = StringBuilder()
+    text.append("\n- ")
+    match (candidate.symbol) {
+        case Some(symbol) =>
+            text.append(symbol.qualifiedName)
+            text.append(" [")
+            text.append(symbol.kind)
+            text.append("] snapshot ")
+            text.append(candidate.input.snapshot.snapshotId)
+            text.append(" symbolKey ")
+            text.append(candidate.input.symbolKeys[symbol.id])
+        case None =>
+            text.append("concept page ")
+            text.append(candidate.page.map({ value => value.id }).getOrDefault({ => "" }))
+            text.append(" snapshot ")
+            text.append(candidate.input.snapshot.snapshotId)
+    }
+    text.toString()
 }
 
 private func queryCandidateIdentityItem(candidate: QueryGetCandidate): JsonObject {

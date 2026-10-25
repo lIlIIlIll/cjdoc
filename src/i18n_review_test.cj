@@ -206,8 +206,7 @@ class I18nReviewTest {
         try {
             let artifacts = api_render.renderDocumentationFormatsWithOptions(
                 i18nTestGenerate(project), ["html"], locale: "en")
-            for (path in ["html/symbol-index.json", "html/search-index.json",
-                "html/agent/symbol-index.json"]) {
+            for (path in ["html/symbol-index.json", "html/search-index.json"]) {
                 let content = artifactContent(artifacts, path)
                 @Expect(content.contains("Fast"))
                 @Expect(content.contains("API"))

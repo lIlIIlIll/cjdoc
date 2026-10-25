@@ -427,7 +427,7 @@ public let MACHINE_MANIFEST_SCHEMA_TEMPLATE = ##"{
       "type": "object", "additionalProperties": false,
       "required": ["path", "sha256"],
       "properties": {
-        "path": {"const": "agent/symbol-index.json"},
+        "path": {"const": "symbol-index.json"},
         "sha256": {"$ref": "#/$defs/sha256"}
       }
     },

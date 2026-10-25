@@ -354,7 +354,7 @@ internal func appendDiagnostic(out: StringBuilder, value: Diagnostic): Unit {
     out.append(",\"symbolId\":${nullableString(value.symbolId)}}")
 }
 
-private func compactDocIr(documentation: DocumentationSet): String {
+internal func compactDocIr(documentation: DocumentationSet): String {
     let out = StringBuilder()
     out.append("{\"schemaVersion\":${escapeJsonString(documentation.schemaVersion)},")
     out.append("\"generator\":{\"name\":${escapeJsonString(documentation.generator.name)},")

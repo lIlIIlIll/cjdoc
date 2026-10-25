@@ -92,9 +92,13 @@ internal func runDocumentationReadCli(args: Array<String>): Int64 {
         exitCode
     } catch (error: DocumentationQueryException) {
         documentationReadCliFailure(args[0], error.status, error.code, error.message)
-    } catch (_: IllegalArgumentException) {
-        documentationReadCliFailure(args[0], "invalid_request", "read_command_input",
-            "An explicit read-command path, request or captured documentation value is invalid.")
+    } catch (error: IllegalArgumentException) {
+        let message = if (args[0] == "mcp") {
+            "The captured read input is invalid: " + error.message
+        } else {
+            "An explicit read-command path, request or captured documentation value is invalid."
+        }
+        documentationReadCliFailure(args[0], "invalid_request", "read_command_input", message)
     } catch (_: Exception) {
         documentationReadCliFailure(args[0], "unavailable", "snapshot_io",
             "An explicit frozen documentation input could not be loaded.")

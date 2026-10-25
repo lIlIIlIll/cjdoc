@@ -142,6 +142,7 @@ internal class RenderProjection {
     let modules = ArrayList<ProjectedModule>()
     let membersByOwner = HashMap<String, ArrayList<SymbolDoc>>()
     let topLevelByPackage = HashMap<String, ArrayList<SymbolDoc>>()
+    let sidebarLabelsByPackage = HashMap<String, HashMap<String, String>>()
     private let memberBrowsers = HashMap<String, HtmlMemberBrowser>()
 
     private let apiGuideIndexes = HashMap<String, CapturedApiGuideIndex>()
@@ -814,7 +815,7 @@ internal func appendAssetArtifacts(artifacts: RenderArtifactCollector,
 
 internal func validateHtmlRouting(projection: RenderProjection, assets: ArrayList<AssetDoc>): Unit {
     let paths = HashSet<String>()
-    for (path in ["index.html", "search-index.json", "search-index.js", "search.js", "theme-bootstrap.js", "symbol-alias.js", "style.css"]) {
+    for (path in ["index.html", "search-index.json", "search-index.js", "sidebar-index.js", "search.js", "theme-bootstrap.js", "symbol-alias.js", "style.css"]) {
         let _ = paths.add(path)
     }
     for (pkg in projection.packages) {

@@ -126,6 +126,7 @@ internal func queryRelations(catalog: QueryCatalog, root: QueryDocument,
     while (cursor < queue.size && !build.truncated) {
         let step = queue[cursor]
         cursor++
+        if (step.depth >= spec.depth) { continue }
         let edges = queryStepEdges(step, spec, related)
         for (edge in edges) {
             if (skip > 0) {
@@ -165,7 +166,9 @@ internal func queryRelations(catalog: QueryCatalog, root: QueryDocument,
     if (!build.truncated && !queue.isEmpty()) {
         for (position in 0..queue.size) {
             let step = queue[position]
-            if (step.depth >= spec.depth && queryStepHasEdges(step, spec)) { build.depthTruncated = true }
+            if (step.depth >= spec.depth && !queryStepEdges(step, spec, related).isEmpty()) {
+                build.depthTruncated = true
+            }
         }
     }
     if (build.depthTruncated) {
@@ -195,9 +198,6 @@ private func queryStepEdges(step: QueryRelationStep, spec: QueryRelationRequest,
     result
 }
 
-private func queryStepHasEdges(step: QueryRelationStep, spec: QueryRelationRequest): Bool {
-    queryDocumentEdges(step.document, step.symbolId, spec).size > 0
-}
 
 private func queryDocumentEdges(document: QueryDocument, symbolId: String,
     spec: QueryRelationRequest): ArrayList<QueryEdge> {

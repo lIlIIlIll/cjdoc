@@ -219,7 +219,7 @@ def validate_artifact_schema(name: str, value: dict, properties: dict,
         if doc_ir.get("properties", {}).get("path") != {"const": "agent/docs.json"}:
             raise ValueError("machine-manifest Doc IR path is invalid")
         inventory = definition(value, "symbolIndexResource")
-        if inventory.get("properties", {}).get("path") != {"const": "agent/symbol-index.json"}:
+        if inventory.get("properties", {}).get("path") != {"const": "symbol-index.json"}:
             raise ValueError("machine-manifest inventory path is invalid")
         report = definition(value, "report")
         if report.get("properties", {}).get("kind") != {"enum": ["validation", "api-diff"]} or \

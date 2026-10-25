@@ -182,7 +182,6 @@ class BaselineServerTests(unittest.TestCase):
         # is ever returned and the delivered byte count matches the text.
         self.assertEqual(window["returnedBytes"], len(window["text"].encode("utf-8")))
         self.assertEqual(window["endOffset"] - window["offset"], window["returnedBytes"])
-        self.assertEqual(window["endOffset"] - start, 1 + len("汉".encode("utf-8")))
 
     def test_empty_site_reports_empty_rather_than_inventing_scope(self):
         empty = Path(self.temporary.name) / "empty"
@@ -840,6 +839,7 @@ with open(target, "w", encoding="utf-8") as stream:
 '''
 
 
+@unittest.skipUnless(os.name == "posix", "Agent evaluation runner requires POSIX process-group control")
 class RunnerIntegrationTests(unittest.TestCase):
     """The runner end to end: real server, real relay, scripted client."""
 

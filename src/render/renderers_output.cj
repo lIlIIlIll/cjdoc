@@ -13,12 +13,7 @@ public class HtmlDocumentationRenderer <: DocumentationRenderer {
 }
 
 internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
-    documentation: DocumentationSet, locale!: String = "en", docVersion!: ?String = None,
-    capturedSymbolInventory!: ?String = None): Unit {
-        // The captured inventory already validated this publication. A direct
-        // internal caller still uses the validating inventory producer.
-        let inventory = capturedSymbolInventory.getOrDefault({ =>
-            renderSymbolIndex(documentation, hrefPrefix: "", version: docVersion) })
+    documentation: DocumentationSet, locale!: String = "en", docVersion!: ?String = None): Unit {
         let projection = RenderProjection(documentation)
         let index = projection.visibleIndex
         let typeLinkIndex = HtmlTypeLinkIndex(documentation, projection)
@@ -33,11 +28,13 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
                 .replace("<div class=\"conceptual-entry\" data-conceptual-entry></div>",
                     "<div class=\"conceptual-entry\" data-conceptual-entry>" + capturedConceptualEntryHtml(documentation, locale) + "</div>"))
         artifacts.addText("html/search-index.json", "application/json", searchIndex)
-        artifacts.addText("html/symbol-index.json", "application/json", inventory)
         artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
             renderSearchIndexScript(searchIndex, searchSignatures))
+        artifacts.addText("html/sidebar-index.js", "text/javascript; charset=utf-8",
+            renderSidebarIndexScript(projection, locale))
         artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8", HTML_THEME_BOOTSTRAP_SCRIPT)
-        artifacts.addText("html/search.js", "text/javascript; charset=utf-8", HTML_SEARCH_SCRIPT + LANGUAGE_NAVIGATION_SCRIPT)
+        artifacts.addText("html/search.js", "text/javascript; charset=utf-8",
+            HTML_SIDEBAR_SCRIPT + HTML_SEARCH_SCRIPT + LANGUAGE_NAVIGATION_SCRIPT)
         artifacts.addText("html/symbol-alias.js", "text/javascript; charset=utf-8", HTML_SYMBOL_ALIAS_SCRIPT)
         artifacts.addText("html/style.css", "text/css; charset=utf-8",
             HTML_STYLE + HTML_RETURN_LAYOUT_STYLE + HTML_TYPE_LINK_STYLE + HTML_NAVIGATION_STYLE +
@@ -306,17 +303,11 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
         renderAgentReadableArtifacts(localized, includeFull: agentFull,
             version: docVersion, includeValidation: true, reports: reports)
     } else { [] }
-    var capturedSymbolInventory: ?String = None
-    for (artifact in machineArtifacts where artifact.path == "html/agent/symbol-index.json") {
-        capturedSymbolInventory = Some(artifact.content)
-        break
-    }
     for (format in formats) {
         match (format) {
             case "json" => appendJsonArtifacts(artifacts, documentation)
             case "markdown" => appendMarkdownSiteArtifacts(artifacts, localized, locale)
-            case "html" => appendHtmlArtifacts(artifacts, localized, locale: locale,
-                docVersion: docVersion, capturedSymbolInventory: capturedSymbolInventory)
+            case "html" => appendHtmlArtifacts(artifacts, localized, locale: locale, docVersion: docVersion)
             case "api-surface" => appendApiSurfaceArtifacts(artifacts, documentation)
             case "coverage" =>
                 appendCoverageArtifacts(artifacts, documentation)

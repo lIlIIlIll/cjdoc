@@ -127,11 +127,12 @@ internal func appendAgentDeclarationArtifacts(artifacts: RenderArtifactCollector
     context: DocumentationReadSnapshot, includeFull!: Bool = false,
     reports!: Array<DocumentationReportAttachment> = []): Unit {
     let machine = RenderArtifactCollector()
-    let docIrDigest = contractFingerprint(context.encodedDocumentation)
+    let docIrText = compactDocIr(context.documentation)
+    let docIrDigest = contractFingerprint(docIrText)
     let inventoryText = context.renderSymbolInventory()
     let inventoryDigest = contractFingerprint(inventoryText)
-    machine.addText("html/agent/docs.json", "application/json", context.encodedDocumentation)
-    machine.addText("html/agent/symbol-index.json", "application/json", inventoryText)
+    machine.addText("html/agent/docs.json", "application/json", docIrText)
+    machine.addText("html/symbol-index.json", "application/json", inventoryText)
     for (symbol in context.projection.visibleSymbols) {
         let markdownPath = agentDeclarationMarkdownPath(symbol)
         let jsonPath = agentDeclarationJsonPath(symbol)
@@ -148,7 +149,7 @@ internal func appendAgentDeclarationArtifacts(artifacts: RenderArtifactCollector
         escapeJsonString(context.publicationRevision) + ",\"scope\":")
     appendAgentReadingScope(out, context, None)
     out.append(",\"docIr\":{\"path\":\"agent/docs.json\",\"sha256\":" +
-        escapeJsonString(docIrDigest) + "},\"symbolIndex\":{\"path\":\"agent/symbol-index.json\",\"sha256\":" +
+        escapeJsonString(docIrDigest) + "},\"symbolIndex\":{\"path\":\"symbol-index.json\",\"sha256\":" +
         escapeJsonString(inventoryDigest) + "},\"documentSets\":[")
     var first = true
     for (module in context.documentation.modules) {
@@ -163,7 +164,7 @@ internal func appendAgentDeclarationArtifacts(artifacts: RenderArtifactCollector
         if (!first) { out.append(",") }; first = false
         let path = resource.path.removePrefix("html/")
         let digest = if (path == "agent/docs.json") { docIrDigest }
-            else if (path == "agent/symbol-index.json") { inventoryDigest }
+            else if (path == "symbol-index.json") { inventoryDigest }
             else { contractFingerprint(resource.content) }
         out.append("{\"path\":${escapeJsonString(path)},\"mediaType\":${escapeJsonString(resource.mediaType)}," +
             "\"bytes\":${resource.byteSize},\"sha256\":${escapeJsonString(digest)}}")

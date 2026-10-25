@@ -72,6 +72,38 @@ private func queryReadTextResource(root: Path, entry: JsonObject): String {
     String.fromUtf8(bytes)
 }
 
+private func queryJsonWhitespace(byte: Byte): Bool {
+    byte == b' ' || byte == b'\t' || byte == b'\r' || byte == b'\n'
+}
+
+// Both inputs have already passed the strict codec. Ignore only structural
+// whitespace, without copying full documents or altering quoted source text.
+internal func queryEncodedProjectionMatches(expected: String, captured: String): Bool {
+    var left: Int64 = 0
+    var right: Int64 = 0
+    var inString = false
+    var escaped = false
+    while (left < expected.size || right < captured.size) {
+        if (!inString) {
+            while (left < expected.size && queryJsonWhitespace(expected[left])) { left++ }
+            while (right < captured.size && queryJsonWhitespace(captured[right])) { right++ }
+        }
+        if (left == expected.size || right == captured.size) {
+            return left == expected.size && right == captured.size && !inString
+        }
+        let byte = expected[left]
+        if (byte != captured[right]) { return false }
+        if (inString) {
+            if (escaped) { escaped = false }
+            else if (byte == b'\\') { escaped = true }
+            else if (byte == b'"') { inString = false }
+        } else if (byte == b'"') { inString = true }
+        left++
+        right++
+    }
+    !inString
+}
+
 private func loadQueryMachineManifest(path: Path, text: String, budget: QuerySourceLoadBudget,
     isLatest!: Bool = false, catalogIdentity!: String = ""): QuerySnapshotInput {
     query_render.validateDocumentationArtifactJson(text, "machine-manifest")
@@ -128,7 +160,10 @@ private func loadQueryMachineManifest(path: Path, text: String, budget: QuerySou
     let snapshot = query_render.DocumentationReadSnapshot(query_render.decodeDocIr(docIr.getOrThrow()),
         version: if (revision.isEmpty()) { None } else { Some(revision) })
     budget.reserveModel(snapshot.encodedDocumentation.size)
-    if (snapshot.snapshotId != queryString(manifest, "snapshotId") || snapshot.encodedDocumentation != docIr.getOrThrow()) {
+    // Physical JSON whitespace cannot change content identity. Both accepted
+    // encodings must still exactly represent the frozen publication projection.
+    if (snapshot.snapshotId != queryString(manifest, "snapshotId") ||
+        !queryEncodedProjectionMatches(snapshot.encodedDocumentation, docIr.getOrThrow())) {
         throw DocumentationQueryException("unavailable", "snapshot_binding_mismatch", "The bundle's content and projection do not match its snapshot identity.")
     }
     if (snapshot.renderSymbolInventory() != inventory.getOrThrow()) {

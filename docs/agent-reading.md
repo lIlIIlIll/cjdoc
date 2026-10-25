@@ -27,7 +27,7 @@ HTML 输出默认附带每个可见声明的 Markdown/JSON，不需要 `--agent-
 | `llms.txt` | 精简发现入口，链接导航、表示 manifest 和已启用的全文索引；不是全站正文。 |
 | `navigation-index.json` | `cjdoc.navigation-index/2` 第一片；读取 `pagination.next` 直至结束。 |
 | `agent/manifest.json` | `cjdoc.machine-manifest/1`；明确区分 symbol、concept、package、project 映射。 |
-| `agent/docs.json`、`agent/symbol-index.json` | 与 manifest 快照一致的自包含模型及库存。 |
+| `agent/docs.json`、`symbol-index.json` | 与 manifest 快照一致的自包含模型及唯一库存；Doc IR 使用无损紧凑 JSON。 |
 | manifest 的 `representations` | 每条记录给出实际 HTML、Markdown、JSON 相对路径；不要拼接 slug 或替换扩展名。 |
 | `agent-full-index.json` | 仅 `--agent-full`：全文各片的顺序、SHA-256、单元数及完整性。 |
 | `llms-full.txt` | 已有入口保留；较大全文通过索引继续读取后续完整单元。 |
