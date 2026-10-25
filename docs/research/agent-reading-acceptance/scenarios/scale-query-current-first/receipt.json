@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "cjdoc.synthetic-native-query-smoke/1",
+  "purpose": "Synthetic bounded public-model consumption, not real source, model task or stable performance evidence",
+  "binarySha256": "c1649ca48ce9312ecc3053e10fa1291e89b8586191d522ef5b1482b839fa9fa3",
+  "inputSha256": "8465bb12074887498a0d3cc8b3e5e796c484c81aff5d20e694e28df0cd3aa055",
+  "inputBytes": 37478935,
+  "modelDeclarations": 1108,
+  "visibleDeclarations": 1104,
+  "queriedLastAddedDeclaration": "pocketkit.scale1049",
+  "status": "ok",
+  "returned": 1,
+  "queryComplete": true,
+  "responseSha256": "b82dafca41fa1df6f6215802f3a13a569bc83befca265faef8374704959047f5",
+  "resourceUsage": {
+    "elapsedSeconds": 88.826887,
+    "peakRssKiB": 435436,
+    "userSeconds": 113.433603,
+    "systemSeconds": 1.236101,
+    "exitCode": 0
+  },
+  "cangjieHeapMiB": 512,
+  "concurrentSourceBoundGate": true,
+  "stableLatencyClaim": false
+}

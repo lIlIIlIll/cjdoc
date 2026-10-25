@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "cjdoc.reviewed-native-artifact-receipt/1",
+  "sourceRevision": "9610eb4fffafb3c6ff73762ae76243767892e25f",
+  "checkoutCommit": "21ac61752dbe2b1d0fbb366514cffc0614187ea6",
+  "sourceTree": "d9dbde146e8d8f45ea5495fb8856c90e4b2b2bee",
+  "sameLogicalRevisionAndCheckoutTree": true,
+  "main": {
+    "path": "target/release/bin/main",
+    "sha256": "57fccf60012c72b3fd36a08262f9a480ba1160d6ab9b3dbcc598dc9024c5e52f",
+    "size": 26104328,
+    "versionOutput": "cjdoc 0.7.3"
+  },
+  "worker": {
+    "path": "target/release/bin/chir-worker-main",
+    "sha256": "589a58011eac38a838ad6f26dcdc2d90a56715d416991b35409909498f0f4b12",
+    "size": 7769704
+  },
+  "manifestSha256": "c2159f691f88de55f648bff2e5c4537c26b0751fa0fcb502929ceeca1e3ed399",
+  "sdkFingerprint": "c854d1432ffa63b8dffb60fe75c23a9a1cd07667bfb07edb92bb0b3cb522388a",
+  "completeGuardedGate": {
+    "preflight": 42,
+    "native": {
+      "passed": 666,
+      "skipped": 0,
+      "failed": 0
+    },
+    "pythonTools": {
+      "reportedTests": 544,
+      "skipped": 9
+    },
+    "showcaseContracts": 204,
+    "configuredNativeMcp": 22,
+    "cliGoldenSchemaHtmlResourceSecurity": "pass",
+    "provider": "pass",
+    "full": "pass",
+    "elapsedSeconds": 1541.7
+  },
+  "remoteCi": "not-yet-run"
+}

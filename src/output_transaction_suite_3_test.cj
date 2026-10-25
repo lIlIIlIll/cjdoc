@@ -8,6 +8,26 @@ import std.unittest.testmacro.*
 @Test
 class OutputTransactionSuite3 {
     @TestCase
+    func textArtifactsPreserveUtf8AndNulAcrossChunkBoundaries(): Unit {
+        let parent = createOutputTestTempDirectory()
+        let output = parent.join("site")
+        try {
+            let bytes = Array<Byte>(2 * 64 * 1024 + 13, repeat: UInt8(0x61))
+            let boundary: Array<Byte> = [0xE6, 0xB1, 0x89, 0xE5, 0xAD, 0x97, 0]
+            for (index in 0..boundary.size) { bytes[64 * 1024 - 1 + index] = boundary[index] }
+            let content = String.fromUtf8(bytes)
+            writeOwnedArtifacts(output.toString(), [
+                RenderArtifact("data.txt", "text/plain; charset=utf-8", content)])
+            @Expect(File.readFrom(output.join("data.txt")), bytes)
+            let manifest = String.fromUtf8(File.readFrom(output.join(".cjdoc-output.json")))
+            @Expect(manifest.contains("221e3210888ff233c33eb050233161709e0159fff0ca1842b45b7bb1dd76feba"))
+            writeOwnedArtifacts(output.toString(), [
+                RenderArtifact("data.txt", "text/plain; charset=utf-8", "短")])
+            @Expect(String.fromUtf8(File.readFrom(output.join("data.txt"))), "短")
+        } finally { let _ = removeIfExists(parent, recursive: true) }
+    }
+
+    @TestCase
     func outputAndCacheOverlapIsRejectedBeforeCreatingEitherDirectory(): Unit {
         let parent = createOutputTestTempDirectory()
         let output = parent.join("site")

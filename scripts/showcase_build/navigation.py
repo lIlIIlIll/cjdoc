@@ -8,7 +8,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from showcase_contract.site import ContractError, HtmlDocument, load_json, relative_path
+from showcase_contract.site import (ContractError, HtmlDocument, load_json,
+    load_navigation_index, relative_path)
 
 STYLE = '.showcase-tools{display:flex;flex-wrap:wrap;gap:.5rem 1rem;border-top:1px solid currentColor;margin:2rem 1rem 0;padding:1rem;max-width:100%;font-size:.875rem}.showcase-tools a,.showcase-tools span{overflow-wrap:anywhere}.showcase-tools a:focus-visible{outline:2px solid currentColor;outline-offset:3px}'
 SCRIPT = '''"use strict";
@@ -87,48 +88,16 @@ class VersionLinks(HTMLParser):
         return text
 
 
-def markdown_declarations(root: Path) -> dict[tuple[str, str], Path]:
-    """Index exact emitted Markdown headings/signatures, without parsing Cangjie."""
-    result = {}
-    for path in sorted((root / "machine/markdown").rglob("*.md")):
-        lines = path.read_text(encoding="utf-8").splitlines()
-        for index, line in enumerate(lines[:-1]):
-            if not line.startswith('<a id="') or not HtmlDocument(line).ids:
-                continue
-            heading = lines[index + 1].lstrip('#').strip()
-            if not heading.startswith('`') or not heading.endswith('`'):
-                continue
-            qualified = heading[1:-1]
-            for number in range(index + 2, len(lines)):
-                opening = lines[number]
-                if opening.startswith('<a id="'):
-                    break
-                if not opening.endswith("cangjie"):
-                    continue
-                fence = opening[:-len("cangjie")]
-                if len(fence) < 3 or set(fence) != {'`'}:
-                    continue
-                end = number + 1
-                while end < len(lines) and lines[end] != fence:
-                    end += 1
-                if end == len(lines):
-                    raise ContractError("unterminated native Markdown signature")
-                key = (qualified, '\n'.join(lines[number + 1:end]))
-                if key in result:
-                    raise ContractError("ambiguous native Markdown declaration: " + qualified)
-                result[key] = path
-                break
-    return result
-
-
 def href(origin: Path, target: Path) -> str:
     return html.escape(os.path.relpath(target, origin.parent).replace(os.sep, "/"), quote=True)
 
 
 def native_pages(root: Path) -> dict[str, str]:
-    index = load_json(root / "navigation-index.json")
-    if index.get("schemaVersion") != "cjdoc.navigation-index/1":
-        raise ContractError("unsupported navigation index while mounting publication links")
+    """Read every navigation part, then key pages by their native identity."""
+    def read(name: str) -> dict:
+        return load_json(root / relative_path(name))
+
+    index = load_navigation_index(read, "navigation-index.json")
     result = {}
     for page in index["pages"]:
         key = page.get("symbolId") or page["id"]
@@ -141,10 +110,11 @@ def native_pages(root: Path) -> dict[str, str]:
 def mount(root: Path, site: Path, locale: str, alternate: Path | None = None) -> None:
     pages = native_pages(root)
     other = native_pages(alternate) if alternate else {}
-    markdown_symbols = markdown_declarations(root)
-    ir_path = root / "machine/docs.json"
-    declarations = {item["id"]: item for item in load_json(ir_path)["declarations"]} if ir_path.is_file() else {}
-    identities = {path: key for key, path in pages.items()}
+    manifest = root / "agent/manifest.json"
+    markdown_pages = {
+        relative_path(item["html"]): relative_path(item["markdown"])
+        for item in load_json(manifest)["representations"]
+    } if manifest.is_file() else {}
     counterparts = {path: alternate / other[key] for key, path in pages.items() if key in other}
     # These are explicit report-view identities produced by report_views, not API routes.
     for name in ("report-native-check.html", "report-diff.html", "report-coverage.html", "report-diagnostics.html"):
@@ -169,14 +139,10 @@ def mount(root: Path, site: Path, locale: str, alternate: Path | None = None) ->
         machine = {"json": ("machine/docs.json", "Doc IR JSON"),
                    "navigation": ("navigation-index.json", "Navigation JSON"),
                    "symbols": ("symbol-index.json", "Symbol JSON"),
-                   "markdown": ("machine/markdown/index.md", "Markdown"),
                    "llms": ("llms.txt", "llms.txt"), "llms-full": ("llms-full.txt", "llms-full.txt")}
-        declaration = declarations.get(identities.get(relative.as_posix()))
-        if declaration is not None:
-            key = (declaration["qualifiedName"], declaration["headerSpelling"].rstrip('\n'))
-            if key not in markdown_symbols:
-                raise ContractError("missing exact native Markdown declaration: " + declaration["qualifiedName"])
-            machine["markdown"] = (markdown_symbols[key].relative_to(root).as_posix(), "Markdown")
+        markdown_path = markdown_pages.get(relative.as_posix())
+        if markdown_path is not None:
+            machine["markdown"] = (markdown_path, "Markdown")
         for kind, (path, label) in machine.items():
             if (root / path).is_file():
                 nav += '<a data-machine-format="' + kind + '" href="' + href(page, root / path) + '">' + label + '</a>'

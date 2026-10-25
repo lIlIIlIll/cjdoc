@@ -22,7 +22,9 @@ class ContractFingerprintPaddingTest {
             "6836cf13bac400e9105071cd6af47084dfacad4e5e302c94bfed24e013afb73e",
             "c12cb024a2e5551cca0e08fce8f1c5e314555cc3fef6329ee994a3db752166ae"]
         for (index in 0..lengths.size) {
-            @Expect(contractFingerprintBytes(Array<Byte>(lengths[index], repeat: 0x61)), expected[index])
+            let input = Array<Byte>(lengths[index], repeat: 0x61)
+            @Expect(contractFingerprintBytes(input), expected[index])
+            @Expect(contractFingerprint(String.fromUtf8(input)), expected[index])
         }
         @Expect(contractFingerprint("abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
     }
@@ -31,5 +33,17 @@ class ContractFingerprintPaddingTest {
     func documentSizedPayloadMatchesIndependentSha256Vector(): Unit {
         let input = Array<Byte>(32 * 1024 * 1024, repeat: 0x5a)
         @Expect(contractFingerprintBytes(input), "371036ccdfc733fa30542a26a4f276536147c906d1570f0becc1d6f8b868c311")
+        @Expect(contractFingerprint(String.fromUtf8(input)),
+            "371036ccdfc733fa30542a26a4f276536147c906d1570f0becc1d6f8b868c311")
+    }
+
+    @TestCase
+    func utf8AcrossBlockBoundaryAndNulMatchIndependentSha256(): Unit {
+        let input = Array<Byte>(131085, repeat: 0x61)
+        let boundary: Array<Byte> = [0xE6, 0xB1, 0x89, 0xE5, 0xAD, 0x97, 0x00]
+        for (index in 0..boundary.size) { input[65535 + index] = boundary[index] }
+        let expected = "221e3210888ff233c33eb050233161709e0159fff0ca1842b45b7bb1dd76feba"
+        @Expect(contractFingerprint(String.fromUtf8(input)), expected)
+        @Expect(contractFingerprintBytes(input), expected)
     }
 }

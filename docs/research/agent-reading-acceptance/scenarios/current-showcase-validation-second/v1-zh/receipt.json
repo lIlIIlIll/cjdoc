@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "cjdoc.static-validation-receipt/1",
+  "binarySha256": "bd34fff765427d989d947504633e62f42eb5a0ddc768f16cb728603ddd28afd2",
+  "manifestSha256": "3b06b6311a3ba8835f1dfea28d825d5d7ed95eb33ae226b47e8de9be53e2a84d",
+  "validatorExitCode": 0,
+  "validationSeconds": 0.8097,
+  "artifactChecks": {
+    "declarations": 54,
+    "fullReference": true,
+    "navigationPages": 68,
+    "navigationParts": 1,
+    "pages": 10,
+    "rejectedMutations": 8,
+    "resources": 130,
+    "schemaExports": 8,
+    "snapshotId": "cjdoc:snapshot:v1:a14fcaaedce479dc374f09a71c425bb0ad959a5efcb5e152ad3b18d18b60baea"
+  },
+  "fileCount": 350,
+  "totalBytes": 6631986,
+  "largestArtifacts": [
+    {
+      "path": "agent/docs.json",
+      "bytes": 1061079
+    },
+    {
+      "path": "machine/docs.json",
+      "bytes": 899829
+    },
+    {
+      "path": "symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--119472432-1670961845.html",
+      "bytes": 471247
+    },
+    {
+      "path": "agent/symbol-index.json",
+      "bytes": 103424
+    },
+    {
+      "path": "symbol-index.json",
+      "bytes": 103424
+    },
+    {
+      "path": "llms-full.txt",
+      "bytes": 100935
+    },
+    {
+      "path": "search-index.js",
+      "bytes": 100009
+    },
+    {
+      "path": "symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--845178299-1492972681.html",
+      "bytes": 93619
+    },
+    {
+      "path": "search-index.json",
+      "bytes": 93140
+    },
+    {
+      "path": "dependencies/support-v1/style.css",
+      "bytes": 78082
+    }
+  ],
+  "fullReferenceParts": 1,
+  "inventoryDocumentRootRoutesChecked": 54,
+  "legacyAndPackagedInventoryAgree": true,
+  "resourceLimits": {
+    "navigationPartBytes": 16777216,
+    "fullPartBytes": 16777216,
+    "summaryBytes": 16384,
+    "artifactBytes": 67108864,
+    "totalArtifactBytes": 536870912,
+    "artifactCount": 65536
+  }
+}

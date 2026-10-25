@@ -238,7 +238,7 @@ internal func orderedOwnedFiles(artifacts: Array<RenderArtifact>): Array<OwnedOu
         if (!isSafeOutputPath(artifact.path) || digests.contains(artifact.path)) {
             throw IllegalArgumentException("duplicate or unsafe render artifact '${artifact.path}'")
         }
-        let pathBytes = artifact.path.toArray().size
+        let pathBytes = artifact.path.size
         // JSON escaping uses at most six ASCII bytes per input byte. The fixed
         // allowance covers punctuation, the digest, indentation, and separators.
         if (pathBytes > (OUTPUT_MANIFEST_LIMIT - manifestWorstCase - 128) / 6) {
@@ -250,9 +250,15 @@ internal func orderedOwnedFiles(artifacts: Array<RenderArtifact>): Array<OwnedOu
             throw IllegalArgumentException("render artifacts exceed staged tree entry limit")
         }
         treeWorstCaseEntries += pathEntries
-        let bytes = artifact.bytes
-        budget.reserve(bytes.size, "render artifact '${artifact.path}'")
-        digests.add(artifact.path, Sha256Digest.digestBytes(bytes))
+        budget.reserve(artifact.byteSize, "render artifact '${artifact.path}'")
+        let digest = StreamingOutputSha256()
+        if (artifact.isBinary) {
+            let bytes = artifact.bytes
+            digest.update(bytes, bytes.size)
+        } else {
+            digest.update(artifact.content)
+        }
+        digests.add(artifact.path, digest.finish())
         paths.add(artifact.path)
     }
     let ordered = paths.toArray()

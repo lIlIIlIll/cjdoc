@@ -12,6 +12,7 @@
 | [配置参考](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/configuration.md) | `cjdoc.toml` 的完整配置键：lint、覆盖率阈值、代码高亮、多语言、概念页。 |
 | [概念页与指南](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/guides.md) | 把项目里的 Markdown 组织成文档页面，以及页面与 API 的绑定规则。 |
 | [多语言文档](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/i18n.md) | 作者提供中英文正文、翻译配对、缺译策略和翻译覆盖率。 |
+| [逐声明读取、查询与 MCP](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/agent-reading.md) | 静态 Markdown/JSON、固定快照、身份感知查询、续取、章节预算、已有报告和真实 stdio 客户端配置。 |
 | [文档质量检查](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/documentation-quality.md) | 文档质量规则、覆盖率报告与 HTML 中的展示方式。 |
 | [作者侧契约复核](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/contract-review.md) | 区分质量三层，以作者事实、源码和真实消费者复核输入域、失败与状态；保留未知。 |
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path, PurePosixPath
+import re
 import tomllib
 from typing import Any
 
@@ -109,7 +110,135 @@ def verify_golden_set(repo: Path, version: int) -> None:
             raise ValueError(f"v{version} golden has the wrong schemaVersion: {name}")
 
 
-def validate_schema_document(name: str, value: object) -> None:
+ARTIFACT_SCHEMAS = frozenset({
+    "navigation-index-v2", "agent-full-index", "declaration", "page",
+    "machine-manifest", "query-result",
+})
+LOOSE_PROPERTY_SCHEMAS = frozenset({"query-request"})
+LOOKAROUND = re.compile(r"\(\?(?:[=!]|<[=!])")
+DOC_IR_DEFINITIONS = frozenset({"declaration", "documentationPage", "package", "documentSetIdentity"})
+ARTIFACT_REQUIRED_DEFINITIONS = {
+    "declaration": {"declaration", "diagnostic", "sourceRange"},
+    "page": {"documentationPage", "package", "documentSetIdentity"},
+    "machine-manifest": {"documentSetIdentity", "representation", "resource", "report", "limits"},
+}
+
+
+def definition(value: object, name: str) -> dict:
+    definitions = value.get("$defs") if isinstance(value, dict) else None
+    found = definitions.get(name) if isinstance(definitions, dict) else None
+    if not isinstance(found, dict):
+        raise ValueError(f"schema definition is missing or not an object: {name}")
+    return found
+
+
+def schema_refs(value: object) -> list[str]:
+    found: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key == "$ref" and isinstance(child, str):
+                found.append(child)
+            else:
+                found.extend(schema_refs(child))
+    elif isinstance(value, list):
+        for child in value:
+            found.extend(schema_refs(child))
+    return found
+
+
+def schema_patterns(value: object) -> list[str]:
+    found: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key == "pattern" and isinstance(child, str):
+                found.append(child)
+            else:
+                found.extend(schema_patterns(child))
+    elif isinstance(value, list):
+        for child in value:
+            found.extend(schema_patterns(child))
+    return found
+
+
+def validate_artifact_schema(name: str, value: dict, properties: dict,
+                             frozen_definitions: dict | None) -> None:
+    """Validate the artifact schemas that consumers actually validate natively."""
+    for reference in schema_refs(value):
+        if not reference.startswith("#/$defs/"):
+            raise ValueError(f"{name} schema is not self-contained: external reference {reference}")
+        definition(value, reference[len("#/$defs/"):])
+    for pattern in schema_patterns(value):
+        if LOOKAROUND.search(pattern):
+            raise ValueError(
+                f"{name} schema uses lookaround, which the native linear matcher rejects: {pattern}")
+    if name in ARTIFACT_REQUIRED_DEFINITIONS:
+        definitions = value.get("$defs")
+        names = set(definitions) if isinstance(definitions, dict) else set()
+        missing = ARTIFACT_REQUIRED_DEFINITIONS[name] - names
+        if missing:
+            raise ValueError(f"{name} schema definitions are missing: {sorted(missing)}")
+        embedded = set(frozen_definitions or ()) & DOC_IR_DEFINITIONS & names
+        if not embedded:
+            raise ValueError(f"{name} schema does not embed any frozen Doc IR v16 definition")
+        for definition_name in embedded:
+            if definitions[definition_name] != frozen_definitions[definition_name]:
+                raise ValueError(
+                    f"{name} schema forks the frozen Doc IR definition: {definition_name}")
+        for required in ("symbol", "page"):
+            reference = properties.get(required)
+            if isinstance(reference, dict) and reference.get("$ref", "").endswith("/null"):
+                raise ValueError(f"{name} schema does not reference the shared Doc IR model")
+    if name == "navigation-index-v2":
+        scope = definition(value, "scope")
+        if set(scope.get("required", [])) != {
+                "snapshotId", "audience", "language", "order", "includeValidation"}:
+            raise ValueError("navigation-index-v2 scope shape is invalid")
+        page = definition(value, "page")
+        summary_state = page.get("properties", {}).get("summaryState", {})
+        if summary_state != {"enum": ["complete", "missing", "budget_omitted"]}:
+            raise ValueError("navigation-index-v2 page summaryState shape is invalid")
+        pagination = properties.get("pagination", {})
+        if pagination.get("properties", {}).get("pathBase") != {"const": "document-root"}:
+            raise ValueError("navigation-index-v2 pagination root contract is invalid")
+        if pagination.get("properties", {}).get("next", {}).get("anyOf") != [
+                {"$ref": "#/$defs/safePath"}, {"type": "null"}]:
+            raise ValueError("navigation-index-v2 continuation shape is invalid")
+    elif name == "agent-full-index":
+        part = definition(value, "part")
+        if "sha256" not in part.get("required", []):
+            raise ValueError("agent-full-index part digest is not required")
+        omitted = definition(value, "omittedSection")
+        if omitted.get("properties", {}).get("reason") != {"const": "aggregate_unit_budget"}:
+            raise ValueError("agent-full-index omission reason is invalid")
+    elif name == "machine-manifest":
+        if properties.get("docIr", {}).get("$ref") != "#/$defs/docIrResource":
+            raise ValueError("machine-manifest Doc IR reference is invalid")
+        if properties.get("symbolIndex", {}).get("$ref") != "#/$defs/symbolIndexResource":
+            raise ValueError("machine-manifest inventory reference is invalid")
+        doc_ir = definition(value, "docIrResource")
+        if doc_ir.get("properties", {}).get("path") != {"const": "agent/docs.json"}:
+            raise ValueError("machine-manifest Doc IR path is invalid")
+        inventory = definition(value, "symbolIndexResource")
+        if inventory.get("properties", {}).get("path") != {"const": "symbol-index.json"}:
+            raise ValueError("machine-manifest inventory path is invalid")
+        report = definition(value, "report")
+        if report.get("properties", {}).get("kind") != {"enum": ["validation", "api-diff"]} or \
+                set(report.get("required", [])) != {
+                    "kind", "path", "sha256", "snapshotId",
+                    "baselineSnapshotId", "currentSnapshotId"}:
+            raise ValueError("machine-manifest report row shape is invalid")
+        if properties.get("fullReference", {}).get("anyOf") != [
+                {"const": "agent-full-index.json"}, {"type": "null"}]:
+            raise ValueError("machine-manifest full-reference shape is invalid")
+    elif name == "query-result":
+        for expected in ("querySnapshot", "queryItem", "queryIdentity", "queryRelation"):
+            definition(value, expected)
+        if "declaration" not in value.get("$defs", {}):
+            raise ValueError("query-result schema does not embed the Doc IR declaration model")
+
+
+def validate_schema_document(name: str, value: object,
+                             frozen_definitions: dict | None = None) -> None:
     if not isinstance(value, dict):
         raise ValueError(f"{name} schema root must be an object")
     expected_id, expected_version, expected_required = SCHEMA_CONTRACTS[name]
@@ -122,12 +251,21 @@ def validate_schema_document(name: str, value: object) -> None:
     expected_properties = set(expected_required) | set(SCHEMA_OPTIONAL_PROPERTIES.get(name, ()))
     if not isinstance(properties, dict) or not isinstance(required, list) or \
             any(not isinstance(item, str) for item in required) or \
-            tuple(required) != expected_required or set(properties) != expected_properties:
+            tuple(required) != expected_required or (
+                name not in LOOSE_PROPERTY_SCHEMAS and set(properties) != expected_properties):
         raise ValueError(f"{name} schema required/property contract is invalid")
     actual_version = properties.get("schemaVersion", {}).get("const") \
         if isinstance(properties.get("schemaVersion"), dict) else None
     if actual_version != expected_version:
         raise ValueError(f"{name} schema does not declare {expected_version}")
+    if name in LOOSE_PROPERTY_SCHEMAS:
+        # The request schema belongs to the query contract and may add optional
+        # narrowing fields; only its identity, version and mandatory operation
+        # are pinned here.
+        if not set(expected_required).issubset(properties):
+            raise ValueError(f"{name} schema lost a required field")
+    if name in ARTIFACT_SCHEMAS:
+        validate_artifact_schema(name, value, properties, frozen_definitions)
     if name in ("doc-ir", "doc-ir-v16") and properties["documentationRevision"] != {"type": "string"}:
         raise ValueError(f"{name} schema documentation revision shape is invalid")
     if name in ("doc-ir", "doc-ir-v16", "symbol-index"):
@@ -299,7 +437,15 @@ def verify_schema_set(repo: Path) -> None:
             "published schema set mismatch: missing=" + ",".join(missing) +
             " unexpected=" + ",".join(unexpected)
         )
+    # Artifact schemas must embed the same Doc IR v16 definitions rather than a
+    # forked model, so the frozen document is loaded once and compared.
+    frozen_definitions = strict_load(
+        directory / "doc-ir-v16.schema.json", description="doc-ir-v16 schema")
+    if not isinstance(frozen_definitions, dict) or not isinstance(
+            frozen_definitions.get("$defs"), dict):
+        raise ValueError("doc-ir-v16 schema definitions are missing")
+    frozen_definitions = frozen_definitions["$defs"]
     for name in SCHEMA_NAMES:
         path = directory / f"{name}.schema.json"
         value = strict_load(path, description=f"{name} schema")
-        validate_schema_document(name, value)
+        validate_schema_document(name, value, frozen_definitions)

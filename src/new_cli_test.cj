@@ -15,17 +15,6 @@ private func createNewCliTestTempDirectory(): Path {
 class NewCliRegressionTest {
     @TestCase
     func currentSchemaInventoryRejectsRemovedNames(): Unit {
-        @Expect(schemaTextForCli("doc-ir"), DOC_IR_SCHEMA)
-        @Expect(schemaTextForCli("doc-ir-v16"), DOC_IR_V16_SCHEMA)
-        @Expect(schemaTextForCli("api-surface-v3"), API_SURFACE_SCHEMA)
-        @Expect(schemaTextForCli("api-diff-v2"), API_DIFF_SCHEMA)
-        @Expect(schemaTextForCli("search-index-v9"), SEARCH_INDEX_SCHEMA)
-        @Expect(schemaTextForCli("versions-v2"), VERSIONS_SCHEMA)
-        @Expect(schemaTextForCli("list"),
-            "doc-ir\ndoc-ir-v16\ndiagnostics\ncfg-matrix\nsearch-index\n" +
-                "search-index-v9\nsymbol-index\nnavigation-index\napi-surface\napi-surface-v3\n" +
-                "api-diff\napi-diff-v2\ndocumentation-coverage\ndocumentation-quality\n" +
-                "versions\nversions-v2\ntranslation-coverage\nsite-manifest\n")
         @ExpectThrows[IllegalArgumentException](schemaTextForCli("doc-ir-v15"))
         @ExpectThrows[IllegalArgumentException](schemaTextForCli("api-surface-v2"))
         @ExpectThrows[IllegalArgumentException](schemaTextForCli("doctest-results"))

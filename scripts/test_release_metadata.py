@@ -35,6 +35,7 @@ from scripts.release_tools_test_support import (
 from scripts.verify_repository_inputs import (
     CURRENT_GOLDEN_VERSION,
     GOLDEN_NAMES,
+    SCHEMA_CONTRACTS,
     SCHEMA_NAMES,
 )
 
@@ -184,13 +185,44 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "non-finite JSON number"):
                 verify_repository_inputs.verify_repository_inputs(repo)
 
-    def test_repository_schema_inventory_has_only_current_contracts(self) -> None:
-        self.assertEqual(len(SCHEMA_NAMES), 18)
+    def test_repository_schema_inventory_is_complete_and_current(self) -> None:
+        # The inventory is checked as a whole instead of pinning a total count:
+        # every declared name must have exactly one contract, one published file
+        # with the declared version, and no published file may be undeclared.
+        self.assertEqual(
+            list(SCHEMA_NAMES),
+            list(dict.fromkeys(SCHEMA_NAMES)),
+            "schema inventory contains a duplicate name",
+        )
+        self.assertEqual(set(SCHEMA_NAMES), set(SCHEMA_CONTRACTS))
+        published = {
+            path.name.removesuffix(".schema.json")
+            for path in (PROJECT_ROOT / "docs/schema").glob("*.schema.json")
+        }
+        self.assertEqual(published, set(SCHEMA_NAMES))
+        for name in SCHEMA_NAMES:
+            schema_id, version, required = SCHEMA_CONTRACTS[name]
+            value = json.loads((PROJECT_ROOT / f"docs/schema/{name}.schema.json").read_text())
+            self.assertEqual(value["$id"], schema_id, name)
+            self.assertEqual(value["properties"]["schemaVersion"]["const"], version, name)
+            self.assertEqual(tuple(value["required"]), required, name)
         self.assertEqual(
             {name for name in SCHEMA_NAMES if name.startswith("doc-ir")},
             {"doc-ir", "doc-ir-v16"},
         )
         self.assertFalse(any("doctest" in name for name in SCHEMA_NAMES))
+        # The frozen navigation v1 contract keeps its published identity; the
+        # v2 file is a separate immutable artifact, not a silent v1 replacement.
+        self.assertEqual(
+            SCHEMA_CONTRACTS["navigation-index"][1], "cjdoc.navigation-index/1")
+        self.assertEqual(
+            SCHEMA_CONTRACTS["navigation-index-v2"][1], "cjdoc.navigation-index/2")
+        # Every release artifact contract that carries its own model must be
+        # declared in the inventory, alongside the frozen v1 navigation file.
+        for name in ("navigation-index-v2", "agent-full-index", "declaration", "page",
+                     "machine-manifest", "query-request", "query-result"):
+            self.assertIn(name, SCHEMA_NAMES)
+        self.assertIn("navigation-index", SCHEMA_NAMES)
         for name in ("doc-ir", "doc-ir-v16"):
             value = json.loads((PROJECT_ROOT / f"docs/schema/{name}.schema.json").read_text())
             self.assertNotIn("evidenceKey", value["$defs"]["tag"]["properties"])

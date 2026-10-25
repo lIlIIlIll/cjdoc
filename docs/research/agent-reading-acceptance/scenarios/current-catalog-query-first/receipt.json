@@ -1,0 +1,35 @@
+{
+  "schemaVersion": "cjdoc.actual-version-catalog-query-smoke/1",
+  "binarySha256": "c1649ca48ce9312ecc3053e10fa1291e89b8586191d522ef5b1482b839fa9fa3",
+  "catalogSha256": "154725c89022a91221a21c4fc1e57c2f4f6dedb15f320af7dc32ea823e7cf852",
+  "scope": "Actual two-version bilingual composed publication; explicit catalog latest is not an SDK identity",
+  "latestApiVersion": "0.2.0",
+  "historicalApiVersion": "0.1.0",
+  "missingVersionCandidates": [
+    "0.1.0",
+    "0.2.0"
+  ],
+  "chineseConceptStructuredTextEqualsCapturedAuthorVariant": true,
+  "scenarios": [
+    {
+      "scenario": "declared-latest",
+      "status": "ok",
+      "sourceSnapshots": 2
+    },
+    {
+      "scenario": "explicit-historical-version",
+      "status": "ok",
+      "sourceSnapshots": 2
+    },
+    {
+      "scenario": "version-not-specified",
+      "status": "ambiguous",
+      "sourceSnapshots": 2
+    },
+    {
+      "scenario": "chinese-concept-variant",
+      "status": "ok",
+      "sourceSnapshots": 1
+    }
+  ]
+}

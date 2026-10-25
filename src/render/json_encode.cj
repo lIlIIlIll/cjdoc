@@ -244,7 +244,7 @@ private func appendSymbolRelationship(out: StringBuilder, value: SymbolRelations
     out.append("\"targetSymbolId\":${nullableString(value.targetSymbolId)}}")
 }
 
-private func appendSymbol(out: StringBuilder, value: SymbolDoc): Unit {
+internal func appendSymbol(out: StringBuilder, value: SymbolDoc): Unit {
     out.append("{\"id\":${escapeJsonString(value.id)},\"kind\":${escapeJsonString(value.kind)},")
     out.append("\"name\":${escapeJsonString(value.name)},\"qualifiedName\":${escapeJsonString(value.qualifiedName)},")
     out.append("\"packageName\":${escapeJsonString(value.packageName)},")
@@ -314,7 +314,7 @@ private func appendModule(out: StringBuilder, value: ModuleDoc): Unit {
     out.append("}")
 }
 
-private func appendPackage(out: StringBuilder, value: PackageDoc): Unit {
+internal func appendPackage(out: StringBuilder, value: PackageDoc): Unit {
     out.append("{\"name\":${escapeJsonString(value.name)},\"moduleId\":${escapeJsonString(value.moduleId)},")
     out.append("\"sourceFiles\":")
     appendStrings(out, value.sourceFiles)
@@ -347,14 +347,14 @@ private func appendPackage(out: StringBuilder, value: PackageDoc): Unit {
     out.append("}")
 }
 
-private func appendDiagnostic(out: StringBuilder, value: Diagnostic): Unit {
+internal func appendDiagnostic(out: StringBuilder, value: Diagnostic): Unit {
     out.append("{\"severity\":${escapeJsonString(value.severity)},\"code\":${escapeJsonString(value.code)},")
     out.append("\"message\":${escapeJsonString(value.message)},\"source\":")
     match (value.source) { case Some(range) => appendRange(out, range) case None => out.append("null") }
     out.append(",\"symbolId\":${nullableString(value.symbolId)}}")
 }
 
-private func compactDocIr(documentation: DocumentationSet): String {
+internal func compactDocIr(documentation: DocumentationSet): String {
     let out = StringBuilder()
     out.append("{\"schemaVersion\":${escapeJsonString(documentation.schemaVersion)},")
     out.append("\"generator\":{\"name\":${escapeJsonString(documentation.generator.name)},")
@@ -464,8 +464,40 @@ private func appendIndent(out: StringBuilder, depth: Int64): Unit {
     while (index < depth) { out.append("  "); index++ }
 }
 
+private func prettyJsonByteSize(compact: String): Int64 {
+    var size = compact.size + 1
+    var depth: Int64 = 0
+    var inString = false
+    var escaped = false
+    for (rune in compact.runes()) {
+        if (inString) {
+            if (escaped) {
+                escaped = false
+            } else {
+                match (rune) {
+                    case '\\' => escaped = true
+                    case '"' => inString = false
+                    case _ => ()
+                }
+            }
+            continue
+        }
+        match (rune) {
+            case '"' => inString = true
+            case '{' | '[' => depth++; size += 1 + depth * 2
+            case '}' | ']' => depth--; size += 1 + depth * 2
+            case ',' => size += 1 + depth * 2
+            case ':' => size++
+            case _ => ()
+        }
+    }
+    size
+}
+
 private func prettyJson(compact: String): String {
-    let out = StringBuilder()
+    // Geometric growth can require a large contiguous allocation even when the
+    // completed JSON fits the existing limit. Reserve its exact UTF-8 size.
+    let out = StringBuilder(prettyJsonByteSize(compact))
     var depth: Int64 = 0
     var inString = false
     var escaped = false

@@ -25,7 +25,10 @@ def canonical_search_script() -> str:
     # Decode doubled backslashes in Cangjie string literals before execution.
     language = (SCRIPT.parent.parent / "src/render/html_language.cj").read_text(encoding="utf-8")
     navigation = language.split('internal let LANGUAGE_NAVIGATION_SCRIPT = """\n', 1)[1].split('\n"""', 1)[0]
-    return literal.replace("\\\\", "\\") + "\n" + navigation.replace("\\\\", "\\") + "\n"
+    sidebar = (SCRIPT.parent.parent / "src/render/html_sidebar_script.cj").read_text(encoding="utf-8")
+    sidebar = sidebar.split('internal let HTML_SIDEBAR_SCRIPT = """\n', 1)[1].split('\n"""', 1)[0]
+    return (sidebar.replace("\\\\", "\\") + "\n" + literal.replace("\\\\", "\\")
+            + "\n" + navigation.replace("\\\\", "\\") + "\n")
 
 
 def canonical_theme_bootstrap_script() -> str:
@@ -48,6 +51,7 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             "</head><body><main id=\"top\"><a href=\"#top\">top</a></main>"
             '<script src="theme-bootstrap.js"></script>'
             '<script defer src="search-index.js"></script>'
+            '<script defer src="sidebar-index.js"></script>'
             '<script defer src="search.js"></script></body></html>'
         )
         (root / "index.html").write_text(index, encoding="utf-8", newline="\n")
@@ -89,6 +93,18 @@ class ValidateHtmlSiteTest(unittest.TestCase):
         (root / "search-index.js").write_text(
             "globalThis.__CJDOC_SEARCH_INDEX__ = " + search_text
             + ";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = " + signature_text + ";\n",
+            encoding="utf-8", newline="\n",
+        )
+        sidebar = {
+            "packages": {"index.html": [canonical_id]},
+            "members": {},
+            "symbols": {canonical_id: {
+                "path": "index.html", "label": "example", "context": "example",
+                "kind": "function", "signature": "func example(String)", "anchor": "top",
+            }},
+        }
+        (root / "sidebar-index.js").write_text(
+            "globalThis.__CJDOC_SIDEBAR_INDEX__=" + json.dumps(sidebar) + ";\n",
             encoding="utf-8", newline="\n",
         )
 
@@ -245,6 +261,31 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             result = self.validate(root)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("payload differs", result.stderr)
+
+    def test_rejects_executable_sidebar_payload_and_escaped_targets(self) -> None:
+        for mutation in ("statement", "escaped-target", "unknown-member", "prototype"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.write_site(root)
+                source = root / "sidebar-index.js"
+                prefix = "globalThis.__CJDOC_SIDEBAR_INDEX__="
+                text = source.read_text(encoding="utf-8")
+                payload = json.loads(text[len(prefix):-2])
+                if mutation == "statement":
+                    text = text[:-2] + ";globalThis.injected=true;\n"
+                else:
+                    if mutation == "escaped-target":
+                        payload["symbols"]["cjdoc:v2:fixture:example"]["path"] = "../outside.html"
+                    elif mutation == "unknown-member":
+                        payload["members"]["cjdoc:v2:fixture:example"] = ["missing"]
+                    else:
+                        payload["symbols"]["__proto__"] = payload["symbols"].pop(
+                            "cjdoc:v2:fixture:example")
+                    text = prefix + json.dumps(payload) + ";\n"
+                source.write_text(text, encoding="utf-8")
+                result = self.validate(root)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("sidebar-index.js", result.stderr)
 
     def test_rejects_noncanonical_script_set_and_content(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -106,7 +106,14 @@ def publish_compatibility(repo: Path, site: Path, current: Path, result: dict) -
               "api-diff.json": result["locales"]["en"]["diff"],
               "demo-docs.json": demo / "docs.json",
               "native-check.json": result["checks"] / "native-check.json"}
-    for name in ("navigation-index.json", "symbol-index.json", "search-index.json", "llms.txt", "llms-full.txt"):
+    # v2 enumerates through real continuation files, and the aggregate full
+    # reference does the same, so every deployed part is copied, not just part 0.
+    for name in sorted(path.name for path in (current / "html").glob("navigation-index*.json")):
+        inputs[name] = current / "html" / name
+    for name in sorted(path.name for path in (current / "html").glob("llms-full*.txt")):
+        inputs[name] = current / "html" / name
+    for name in ("symbol-index.json", "search-index.json", "llms.txt",
+                 "agent-full-index.json"):
         inputs[name] = current / "html" / name
     for name, path in inputs.items():
         if name in ("docs.json", "demo-docs.json"):

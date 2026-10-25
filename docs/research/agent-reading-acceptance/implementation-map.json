@@ -1,0 +1,996 @@
+{
+  "schemaVersion": "cjdoc.issue137-implementation-map/1",
+  "claim": "Implementation and regression-entrypoint mapping only. Scenario execution outcomes and binary provenance are separate; this file does not claim any pending real-Agent or final-publication acceptance.",
+  "rows": [
+    {
+      "id": "AF-01.1",
+      "implementation": [
+        "src/render/markdown_renderer.cj",
+        "src/render/agent_declarations.cj",
+        "src/render/agent_full.cj",
+        "src/query_chapters.cj",
+        "src/public_api.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/render/declaration_markdown_projection_test.cj",
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T01"
+      ]
+    },
+    {
+      "id": "AF-01.2",
+      "implementation": [
+        "src/render/markdown_renderer.cj",
+        "src/render/agent_declarations.cj",
+        "src/render/agent_full.cj",
+        "src/query_chapters.cj",
+        "src/public_api.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/render/declaration_markdown_projection_test.cj",
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T01"
+      ]
+    },
+    {
+      "id": "AF-01.3",
+      "implementation": [
+        "src/render/markdown_renderer.cj",
+        "src/render/agent_declarations.cj",
+        "src/render/agent_full.cj",
+        "src/query_chapters.cj",
+        "src/public_api.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/render/declaration_markdown_projection_test.cj",
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T03"
+      ]
+    },
+    {
+      "id": "AF-01.4",
+      "implementation": [
+        "src/render/markdown_renderer.cj",
+        "src/render/agent_declarations.cj",
+        "src/render/agent_full.cj",
+        "src/query_chapters.cj",
+        "src/public_api.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/render/declaration_markdown_projection_test.cj",
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T02"
+      ]
+    },
+    {
+      "id": "AF-01.5",
+      "implementation": [
+        "src/render/markdown_renderer.cj",
+        "src/render/agent_declarations.cj",
+        "src/render/agent_full.cj",
+        "src/query_chapters.cj",
+        "src/public_api.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/render/declaration_markdown_projection_test.cj",
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T04",
+        "AI-T05"
+      ]
+    },
+    {
+      "id": "AF-01.6",
+      "implementation": [
+        "src/render/markdown_renderer.cj",
+        "src/render/agent_declarations.cj",
+        "src/render/agent_full.cj",
+        "src/query_chapters.cj",
+        "src/public_api.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/render/declaration_markdown_projection_test.cj",
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T14"
+      ]
+    },
+    {
+      "id": "AF-02.1",
+      "implementation": [
+        "src/render/agent_navigation.cj",
+        "src/render/agent_full.cj",
+        "src/query_budget.cj",
+        "src/query_engine.cj"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T09",
+        "AI-T10"
+      ]
+    },
+    {
+      "id": "AF-02.2",
+      "implementation": [
+        "src/render/agent_navigation.cj",
+        "src/render/agent_full.cj",
+        "src/query_budget.cj",
+        "src/query_engine.cj"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T10"
+      ]
+    },
+    {
+      "id": "AF-02.3",
+      "implementation": [
+        "src/render/agent_navigation.cj",
+        "src/render/agent_full.cj",
+        "src/query_budget.cj",
+        "src/query_engine.cj"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T11"
+      ]
+    },
+    {
+      "id": "AF-02.4",
+      "implementation": [
+        "src/render/agent_navigation.cj",
+        "src/render/agent_full.cj",
+        "src/query_budget.cj",
+        "src/query_engine.cj"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T03"
+      ]
+    },
+    {
+      "id": "AF-02.5",
+      "implementation": [
+        "src/render/agent_navigation.cj",
+        "src/render/agent_full.cj",
+        "src/query_budget.cj",
+        "src/query_engine.cj"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T09"
+      ]
+    },
+    {
+      "id": "AF-02.6",
+      "implementation": [
+        "src/render/agent_navigation.cj",
+        "src/render/agent_full.cj",
+        "src/query_budget.cj",
+        "src/query_engine.cj"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T03",
+        "AI-T18"
+      ]
+    },
+    {
+      "id": "AF-03.1",
+      "implementation": [
+        "src/render/agent_declarations.cj",
+        "src/render/agent_pages.cj",
+        "src/render/agent_outputs.cj",
+        "src/render/renderers_output.cj",
+        "src/query_representation_graph.cj"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "src/render/declaration_markdown_projection_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T04"
+      ]
+    },
+    {
+      "id": "AF-03.2",
+      "implementation": [
+        "src/render/agent_declarations.cj",
+        "src/render/agent_pages.cj",
+        "src/render/agent_outputs.cj",
+        "src/render/renderers_output.cj",
+        "src/query_representation_graph.cj"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "src/render/declaration_markdown_projection_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T04",
+        "AI-T17"
+      ]
+    },
+    {
+      "id": "AF-03.3",
+      "implementation": [
+        "src/render/agent_declarations.cj",
+        "src/render/agent_pages.cj",
+        "src/render/agent_outputs.cj",
+        "src/render/renderers_output.cj",
+        "src/query_representation_graph.cj"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "src/render/declaration_markdown_projection_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T01",
+        "AI-T04"
+      ]
+    },
+    {
+      "id": "AF-03.4",
+      "implementation": [
+        "src/render/agent_declarations.cj",
+        "src/render/agent_pages.cj",
+        "src/render/agent_outputs.cj",
+        "src/render/renderers_output.cj",
+        "src/query_representation_graph.cj"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "src/render/declaration_markdown_projection_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T17"
+      ]
+    },
+    {
+      "id": "AF-03.5",
+      "implementation": [
+        "src/render/agent_declarations.cj",
+        "src/render/agent_pages.cj",
+        "src/render/agent_outputs.cj",
+        "src/render/renderers_output.cj",
+        "src/query_representation_graph.cj"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "src/render/declaration_markdown_projection_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T17"
+      ]
+    },
+    {
+      "id": "AF-03.6",
+      "implementation": [
+        "src/render/agent_declarations.cj",
+        "src/render/agent_pages.cj",
+        "src/render/agent_outputs.cj",
+        "src/render/renderers_output.cj",
+        "src/query_representation_graph.cj"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "src/render/declaration_markdown_projection_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T17"
+      ]
+    },
+    {
+      "id": "AF-04.1",
+      "implementation": [
+        "src/query_resolve.cj",
+        "src/query_snapshot_io.cj",
+        "src/query_version_catalog.cj",
+        "src/query_snapshot.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_contract_public_test.cj",
+        "src/query_public_test.cj",
+        "src/query_relation_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T06",
+        "AI-T07"
+      ]
+    },
+    {
+      "id": "AF-04.2",
+      "implementation": [
+        "src/query_resolve.cj",
+        "src/query_snapshot_io.cj",
+        "src/query_version_catalog.cj",
+        "src/query_snapshot.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_contract_public_test.cj",
+        "src/query_public_test.cj",
+        "src/query_relation_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T06",
+        "AI-T07"
+      ]
+    },
+    {
+      "id": "AF-04.3",
+      "implementation": [
+        "src/query_resolve.cj",
+        "src/query_snapshot_io.cj",
+        "src/query_version_catalog.cj",
+        "src/query_snapshot.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_contract_public_test.cj",
+        "src/query_public_test.cj",
+        "src/query_relation_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T05",
+        "AI-T07"
+      ]
+    },
+    {
+      "id": "AF-04.4",
+      "implementation": [
+        "src/query_resolve.cj",
+        "src/query_snapshot_io.cj",
+        "src/query_version_catalog.cj",
+        "src/query_snapshot.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_contract_public_test.cj",
+        "src/query_public_test.cj",
+        "src/query_relation_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T06",
+        "AI-T08"
+      ]
+    },
+    {
+      "id": "AF-04.5",
+      "implementation": [
+        "src/query_resolve.cj",
+        "src/query_snapshot_io.cj",
+        "src/query_version_catalog.cj",
+        "src/query_snapshot.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_contract_public_test.cj",
+        "src/query_public_test.cj",
+        "src/query_relation_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T07"
+      ]
+    },
+    {
+      "id": "AF-04.6",
+      "implementation": [
+        "src/query_resolve.cj",
+        "src/query_snapshot_io.cj",
+        "src/query_version_catalog.cj",
+        "src/query_snapshot.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_contract_public_test.cj",
+        "src/query_public_test.cj",
+        "src/query_relation_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T14"
+      ]
+    },
+    {
+      "id": "AF-05.1",
+      "implementation": [
+        "src/query_engine.cj",
+        "src/query_cli.cj",
+        "src/query_search.cj",
+        "src/query_symbol.cj",
+        "src/query_contracts.cj",
+        "src/query_response_codec.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj",
+        "scripts/test_query_mcp.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T14",
+        "AI-T18"
+      ]
+    },
+    {
+      "id": "AF-05.2",
+      "implementation": [
+        "src/query_engine.cj",
+        "src/query_cli.cj",
+        "src/query_search.cj",
+        "src/query_symbol.cj",
+        "src/query_contracts.cj",
+        "src/query_response_codec.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj",
+        "scripts/test_query_mcp.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T05"
+      ]
+    },
+    {
+      "id": "AF-05.3",
+      "implementation": [
+        "src/query_engine.cj",
+        "src/query_cli.cj",
+        "src/query_search.cj",
+        "src/query_symbol.cj",
+        "src/query_contracts.cj",
+        "src/query_response_codec.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj",
+        "scripts/test_query_mcp.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T13"
+      ]
+    },
+    {
+      "id": "AF-05.4",
+      "implementation": [
+        "src/query_engine.cj",
+        "src/query_cli.cj",
+        "src/query_search.cj",
+        "src/query_symbol.cj",
+        "src/query_contracts.cj",
+        "src/query_response_codec.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj",
+        "scripts/test_query_mcp.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T05"
+      ]
+    },
+    {
+      "id": "AF-05.5",
+      "implementation": [
+        "src/query_engine.cj",
+        "src/query_cli.cj",
+        "src/query_search.cj",
+        "src/query_symbol.cj",
+        "src/query_contracts.cj",
+        "src/query_response_codec.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj",
+        "scripts/test_query_mcp.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T01",
+        "AI-T09"
+      ]
+    },
+    {
+      "id": "AF-05.6",
+      "implementation": [
+        "src/query_engine.cj",
+        "src/query_cli.cj",
+        "src/query_search.cj",
+        "src/query_symbol.cj",
+        "src/query_contracts.cj",
+        "src/query_response_codec.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj",
+        "scripts/test_query_mcp.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T09",
+        "AI-T18"
+      ]
+    },
+    {
+      "id": "AF-05.7",
+      "implementation": [
+        "src/query_engine.cj",
+        "src/query_cli.cj",
+        "src/query_search.cj",
+        "src/query_symbol.cj",
+        "src/query_contracts.cj",
+        "src/query_response_codec.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_public_test.cj",
+        "src/query_contract_public_test.cj",
+        "scripts/test_query_mcp.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T14"
+      ]
+    },
+    {
+      "id": "AF-06.1",
+      "implementation": [
+        "src/query_symbol.cj",
+        "src/query_chapters.cj",
+        "src/query_relations.cj",
+        "src/query_budget.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_public_test.cj",
+        "src/query_relation_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T01"
+      ]
+    },
+    {
+      "id": "AF-06.2",
+      "implementation": [
+        "src/query_symbol.cj",
+        "src/query_chapters.cj",
+        "src/query_relations.cj",
+        "src/query_budget.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_public_test.cj",
+        "src/query_relation_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T01",
+        "AI-T03"
+      ]
+    },
+    {
+      "id": "AF-06.3",
+      "implementation": [
+        "src/query_symbol.cj",
+        "src/query_chapters.cj",
+        "src/query_relations.cj",
+        "src/query_budget.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_public_test.cj",
+        "src/query_relation_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T12"
+      ]
+    },
+    {
+      "id": "AF-06.4",
+      "implementation": [
+        "src/query_symbol.cj",
+        "src/query_chapters.cj",
+        "src/query_relations.cj",
+        "src/query_budget.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_public_test.cj",
+        "src/query_relation_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T06",
+        "AI-T07"
+      ]
+    },
+    {
+      "id": "AF-06.5",
+      "implementation": [
+        "src/query_symbol.cj",
+        "src/query_chapters.cj",
+        "src/query_relations.cj",
+        "src/query_budget.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_public_test.cj",
+        "src/query_relation_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T05",
+        "AI-T12"
+      ]
+    },
+    {
+      "id": "AF-06.6",
+      "implementation": [
+        "src/query_symbol.cj",
+        "src/query_chapters.cj",
+        "src/query_relations.cj",
+        "src/query_budget.cj"
+      ],
+      "regressionEntrypoints": [
+        "src/query_public_test.cj",
+        "src/query_relation_public_test.cj"
+      ],
+      "acceptanceScenarios": [
+        "AI-T03",
+        "AI-T09",
+        "AI-T12"
+      ]
+    },
+    {
+      "id": "AF-07.1",
+      "implementation": [
+        "src/query_mcp.cj",
+        "src/query_engine.cj",
+        "scripts/agent_evaluation.py",
+        "docs/agent-reading.md"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_query_mcp.py",
+        "scripts/test_agent_evaluation.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T14"
+      ]
+    },
+    {
+      "id": "AF-07.2",
+      "implementation": [
+        "src/query_mcp.cj",
+        "src/query_engine.cj",
+        "scripts/agent_evaluation.py",
+        "docs/agent-reading.md"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_query_mcp.py",
+        "scripts/test_agent_evaluation.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T19"
+      ]
+    },
+    {
+      "id": "AF-07.3",
+      "implementation": [
+        "src/query_mcp.cj",
+        "src/query_engine.cj",
+        "scripts/agent_evaluation.py",
+        "docs/agent-reading.md"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_query_mcp.py",
+        "scripts/test_agent_evaluation.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T14",
+        "AI-T19"
+      ]
+    },
+    {
+      "id": "AF-07.4",
+      "implementation": [
+        "src/query_mcp.cj",
+        "src/query_engine.cj",
+        "scripts/agent_evaluation.py",
+        "docs/agent-reading.md"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_query_mcp.py",
+        "scripts/test_agent_evaluation.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T19"
+      ]
+    },
+    {
+      "id": "AF-08.1",
+      "implementation": [
+        "src/query_reports.cj",
+        "src/render/agent_reports.cj",
+        "scripts/agent_evaluation.py",
+        "scripts/agent_evaluation_proof.py",
+        "scripts/agent_evaluation_runtime.py",
+        "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-rubric.json",
+        "tests/agent/evaluation-client-transport-v2.json"
+      ],
+      "regressionEntrypoints": [
+        "src/query_contract_public_test.cj",
+        "scripts/test_agent_evaluation.py",
+        "scripts/test_agent_evaluation_proof.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T15"
+      ]
+    },
+    {
+      "id": "AF-08.2",
+      "implementation": [
+        "src/query_reports.cj",
+        "src/render/agent_reports.cj",
+        "scripts/agent_evaluation.py",
+        "scripts/agent_evaluation_proof.py",
+        "scripts/agent_evaluation_runtime.py",
+        "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-rubric.json",
+        "tests/agent/evaluation-client-transport-v2.json"
+      ],
+      "regressionEntrypoints": [
+        "src/query_contract_public_test.cj",
+        "scripts/test_agent_evaluation.py",
+        "scripts/test_agent_evaluation_proof.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T15"
+      ]
+    },
+    {
+      "id": "AF-08.3",
+      "implementation": [
+        "src/query_reports.cj",
+        "src/render/agent_reports.cj",
+        "scripts/agent_evaluation.py",
+        "scripts/agent_evaluation_proof.py",
+        "scripts/agent_evaluation_runtime.py",
+        "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-rubric.json",
+        "tests/agent/evaluation-client-transport-v2.json"
+      ],
+      "regressionEntrypoints": [
+        "src/query_contract_public_test.cj",
+        "scripts/test_agent_evaluation.py",
+        "scripts/test_agent_evaluation_proof.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T16"
+      ]
+    },
+    {
+      "id": "AF-08.4",
+      "implementation": [
+        "src/query_reports.cj",
+        "src/render/agent_reports.cj",
+        "scripts/agent_evaluation.py",
+        "scripts/agent_evaluation_proof.py",
+        "scripts/agent_evaluation_runtime.py",
+        "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-rubric.json",
+        "tests/agent/evaluation-client-transport-v2.json"
+      ],
+      "regressionEntrypoints": [
+        "src/query_contract_public_test.cj",
+        "scripts/test_agent_evaluation.py",
+        "scripts/test_agent_evaluation_proof.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T20"
+      ]
+    },
+    {
+      "id": "AF-08.5",
+      "implementation": [
+        "src/query_reports.cj",
+        "src/render/agent_reports.cj",
+        "scripts/agent_evaluation.py",
+        "scripts/agent_evaluation_proof.py",
+        "scripts/agent_evaluation_runtime.py",
+        "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-rubric.json",
+        "tests/agent/evaluation-client-transport-v2.json"
+      ],
+      "regressionEntrypoints": [
+        "src/query_contract_public_test.cj",
+        "scripts/test_agent_evaluation.py",
+        "scripts/test_agent_evaluation_proof.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T20"
+      ]
+    },
+    {
+      "id": "AF-08.6",
+      "implementation": [
+        "src/query_reports.cj",
+        "src/render/agent_reports.cj",
+        "scripts/agent_evaluation.py",
+        "scripts/agent_evaluation_proof.py",
+        "scripts/agent_evaluation_runtime.py",
+        "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-rubric.json",
+        "tests/agent/evaluation-client-transport-v2.json"
+      ],
+      "regressionEntrypoints": [
+        "src/query_contract_public_test.cj",
+        "scripts/test_agent_evaluation.py",
+        "scripts/test_agent_evaluation_proof.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T20"
+      ]
+    },
+    {
+      "id": "AF-08.7",
+      "implementation": [
+        "src/query_reports.cj",
+        "src/render/agent_reports.cj",
+        "scripts/agent_evaluation.py",
+        "scripts/agent_evaluation_proof.py",
+        "scripts/agent_evaluation_runtime.py",
+        "tests/agent/evaluation-protocol.json",
+        "tests/agent/evaluation-rubric.json",
+        "tests/agent/evaluation-client-transport-v2.json"
+      ],
+      "regressionEntrypoints": [
+        "src/query_contract_public_test.cj",
+        "scripts/test_agent_evaluation.py",
+        "scripts/test_agent_evaluation_proof.py"
+      ],
+      "acceptanceScenarios": [
+        "AI-T01",
+        "AI-T20"
+      ]
+    },
+    {
+      "id": "AF-09.1",
+      "implementation": [
+        "src/schema_data/query_schemas.cj",
+        "src/schema_data/agent_schemas.cj",
+        "src/render/agent_schema_validation.cj",
+        "src/output_transaction.cj",
+        "docs/agent-reading.md",
+        "docs/maintainer/agent-evaluation.md"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "scripts/test_update_tools.py",
+        "scripts/check.sh"
+      ],
+      "acceptanceScenarios": [
+        "AI-T18"
+      ]
+    },
+    {
+      "id": "AF-09.2",
+      "implementation": [
+        "src/schema_data/query_schemas.cj",
+        "src/schema_data/agent_schemas.cj",
+        "src/render/agent_schema_validation.cj",
+        "src/output_transaction.cj",
+        "docs/agent-reading.md",
+        "docs/maintainer/agent-evaluation.md"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "scripts/test_update_tools.py",
+        "scripts/check.sh"
+      ],
+      "acceptanceScenarios": [
+        "AI-T18"
+      ]
+    },
+    {
+      "id": "AF-09.3",
+      "implementation": [
+        "src/schema_data/query_schemas.cj",
+        "src/schema_data/agent_schemas.cj",
+        "src/render/agent_schema_validation.cj",
+        "src/output_transaction.cj",
+        "docs/agent-reading.md",
+        "docs/maintainer/agent-evaluation.md"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "scripts/test_update_tools.py",
+        "scripts/check.sh"
+      ],
+      "acceptanceScenarios": [
+        "AI-T18"
+      ]
+    },
+    {
+      "id": "AF-09.4",
+      "implementation": [
+        "src/schema_data/query_schemas.cj",
+        "src/schema_data/agent_schemas.cj",
+        "src/render/agent_schema_validation.cj",
+        "src/output_transaction.cj",
+        "docs/agent-reading.md",
+        "docs/maintainer/agent-evaluation.md"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "scripts/test_update_tools.py",
+        "scripts/check.sh"
+      ],
+      "acceptanceScenarios": [
+        "AI-T10",
+        "AI-T18"
+      ]
+    },
+    {
+      "id": "AF-09.5",
+      "implementation": [
+        "src/schema_data/query_schemas.cj",
+        "src/schema_data/agent_schemas.cj",
+        "src/render/agent_schema_validation.cj",
+        "src/output_transaction.cj",
+        "docs/agent-reading.md",
+        "docs/maintainer/agent-evaluation.md"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "scripts/test_update_tools.py",
+        "scripts/check.sh"
+      ],
+      "acceptanceScenarios": [
+        "AI-T17",
+        "AI-T19",
+        "AI-T20"
+      ]
+    },
+    {
+      "id": "AF-09.6",
+      "implementation": [
+        "src/schema_data/query_schemas.cj",
+        "src/schema_data/agent_schemas.cj",
+        "src/render/agent_schema_validation.cj",
+        "src/output_transaction.cj",
+        "docs/agent-reading.md",
+        "docs/maintainer/agent-evaluation.md"
+      ],
+      "regressionEntrypoints": [
+        "scripts/test_agent_artifacts.py",
+        "scripts/test_update_tools.py",
+        "scripts/check.sh"
+      ],
+      "acceptanceScenarios": [
+        "AI-T17"
+      ]
+    }
+  ]
+}

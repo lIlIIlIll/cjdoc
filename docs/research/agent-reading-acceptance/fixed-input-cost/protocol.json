@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "cjdoc.fixed-input-native-cost-protocol/1",
+  "purpose": "Local descriptive native publication and query costs, not model outcomes",
+  "frozenBeforeMeasurements": true,
+  "inputDeclarations": 54,
+  "inputApiVersion": "0.2.0",
+  "pins": {
+    "baseline": "6dde46fefae364c450d344641383eebed63a7eb8bc2f40086d2effc212d736c5",
+    "current": "57fccf60012c72b3fd36a08262f9a480ba1160d6ab9b3dbcc598dc9024c5e52f",
+    "input": "a7872c159872511eb06ae7ab6babfb26bc7dba2a1b890c9d4eec71862ba8eed2",
+    "helper": "1a5731fc60e6e3e3d70b94c1eb3c98c7218065e861e930d4edf735d3bef8ca2f",
+    "buildManifest": "c2159f691f88de55f648bff2e5c4537c26b0751fa0fcb502929ceeca1e3ed399"
+  },
+  "publicationRepetitionsPerBinary": 3,
+  "queryRepetitionsPerOperation": 3,
+  "publicationOrder": [
+    [
+      "baseline",
+      "current"
+    ],
+    [
+      "current",
+      "baseline"
+    ],
+    [
+      "baseline",
+      "current"
+    ]
+  ],
+  "publicationCommandTemplate": "<binary> render --input <captured-public-doc-ir> --output <fresh-parent>/site --format html --agent-full --locale en --doc-version demo-v2",
+  "queryCommandTemplate": "<current-binary> query --snapshot <captured-public-doc-ir> --request <request.json>",
+  "queries": [
+    {
+      "name": "resolve",
+      "request": {
+        "operation": "resolve_docs",
+        "library": "pocketkit",
+        "apiVersion": "0.2.0"
+      }
+    },
+    {
+      "name": "search",
+      "request": {
+        "operation": "search",
+        "qualifiedName": "pocketkit.TextCatalog.add",
+        "apiVersion": "0.2.0",
+        "limit": 1
+      }
+    },
+    {
+      "name": "get-window",
+      "request": {
+        "operation": "get_symbol",
+        "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::pocketkit::TextCatalog::function:window#g0(Int64,Int64)",
+        "apiVersion": "0.2.0",
+        "preset": "reference"
+      }
+    }
+  ],
+  "cangjieHeapSetting": "512MB",
+  "memoryMethod": "wait4 ru_maxrss KiB for the native child; includes native/runtime overhead, not heap occupancy",
+  "wallTimeMethod": "monotonic interval from posix_spawnp through wait4; includes native startup and snapshot loading",
+  "condition": "Run only after build/native/CLI/provider gates and other CPU-heavy probes finish; sequential children, no concurrent model study",
+  "comparability": "Both publication arms render the same captured public model with identical flags; current emits additional lossless independently-readable artifacts. Size/time differences are not identical-output speedups. Baseline has no native query command, so current CLI query costs are reported separately, not as a baseline speedup.",
+  "stableImprovementClaim": false,
+  "portableHardwareClaim": false
+}

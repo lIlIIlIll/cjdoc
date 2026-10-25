@@ -32,19 +32,30 @@ private func contractShaHexWords(words: Array<UInt32>): String {
 }
 
 public func contractFingerprint(value: String): String {
-    contractFingerprintBytes(value.toArray())
+    contractFingerprintInput(value, None)
 }
 
 public func contractFingerprintBytes(input: Array<Byte>): String {
+    contractFingerprintInput("", Some(input))
+}
+
+private func contractFingerprintInput(text: String, input: ?Array<Byte>): String {
+    let inputSize = match (input) {
+        case Some(bytes) => bytes.size
+        case None => text.size
+    }
     // Complete input blocks can be read directly. Only the remainder and
     // SHA padding need scratch storage, bounded to two 64-byte blocks.
-    let remainder = input.size % 64
-    let fullBytes = input.size - remainder
+    let remainder = inputSize % 64
+    let fullBytes = inputSize - remainder
     let tailSize: Int64 = if (remainder < 56) { 64 } else { 128 }
     let tail = Array<Byte>(tailSize, repeat: 0)
-    for (index in 0..remainder) { tail[index] = input[fullBytes + index] }
+    match (input) {
+        case Some(bytes) => for (index in 0..remainder) { tail[index] = bytes[fullBytes + index] }
+        case None => for (index in 0..remainder) { tail[index] = text[fullBytes + index] }
+    }
     tail[remainder] = 0x80
-    let bitLength = UInt64(input.size).wrappingMul(8)
+    let bitLength = UInt64(inputSize).wrappingMul(8)
     for (index in 0..8) {
         let shift = UInt64((7 - index) * 8)
         tail[tailSize - 8 + index] = UInt8((bitLength >> shift) & 0xFF)
@@ -59,17 +70,16 @@ public func contractFingerprintBytes(input: Array<Byte>): String {
     var h6: UInt32 = 0x1f83d9ab
     var h7: UInt32 = 0x5be0cd19
 
+    let words = Array<UInt32>(64, repeat: 0)
     var chunk: Int64 = 0
     while (chunk < fullBytes + tailSize) {
-        let block = if (chunk < fullBytes) { input } else { tail }
-        let blockOffset = if (chunk < fullBytes) { chunk } else { chunk - fullBytes }
-        let words = Array<UInt32>(64, repeat: 0)
-        for (index in 0..16) {
-            let offset = blockOffset + index * 4
-            words[index] = (UInt32(block[offset]) << 24) |
-                (UInt32(block[offset + 1]) << 16) |
-                (UInt32(block[offset + 2]) << 8) |
-                UInt32(block[offset + 3])
+        if (chunk < fullBytes) {
+            match (input) {
+                case Some(bytes) => loadContractShaWords(bytes, chunk, words)
+                case None => loadContractShaWords(text, chunk, words)
+            }
+        } else {
+            loadContractShaWords(tail, chunk - fullBytes, words)
         }
         for (index in 16..64) {
             let s0 = rotateContractShaRight(words[index - 15], 7) ^
@@ -116,4 +126,24 @@ public func contractFingerprintBytes(input: Array<Byte>): String {
         chunk += 64
     }
     contractShaHexWords([h0, h1, h2, h3, h4, h5, h6, h7])
+}
+
+private func loadContractShaWords(input: String, start: Int64, words: Array<UInt32>): Unit {
+    for (index in 0..16) {
+        let offset = start + index * 4
+        words[index] = (UInt32(input[offset]) << 24) |
+            (UInt32(input[offset + 1]) << 16) |
+            (UInt32(input[offset + 2]) << 8) |
+            UInt32(input[offset + 3])
+    }
+}
+
+private func loadContractShaWords(input: Array<Byte>, start: Int64, words: Array<UInt32>): Unit {
+    for (index in 0..16) {
+        let offset = start + index * 4
+        words[index] = (UInt32(input[offset]) << 24) |
+            (UInt32(input[offset + 1]) << 16) |
+            (UInt32(input[offset + 2]) << 8) |
+            UInt32(input[offset + 3])
+    }
 }

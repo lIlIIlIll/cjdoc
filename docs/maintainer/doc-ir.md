@@ -18,9 +18,9 @@ cjdoc schema doc-ir
 cjdoc schema doc-ir-v16
 ```
 
-`docs/schema/` 保存当前发布的 18 个 schema 文件：`doc-ir`、`doc-ir-v16`、`diagnostics`、`cfg-matrix`、`search-index`、`search-index-v9`、`symbol-index`、`navigation-index`、`api-surface`、`api-surface-v3`、`api-diff`、`api-diff-v2`、`documentation-coverage`、`documentation-quality`、`versions`、`versions-v2`、`translation-coverage`、`site-manifest`。
+`docs/schema/` 保存当前发布的 25 个 schema 文件：`doc-ir`、`doc-ir-v16`、`diagnostics`、`cfg-matrix`、`search-index`、`search-index-v9`、`symbol-index`、`navigation-index`（冻结 v1）、`navigation-index-v2`、`agent-full-index`、`declaration`、`page`、`machine-manifest`、`query-request`、`query-result`、`api-surface`、`api-surface-v3`、`api-diff`、`api-diff-v2`、`documentation-coverage`、`documentation-quality`、`versions`、`versions-v2`、`translation-coverage`、`site-manifest`。
 
-`scripts/check.sh cli` 会调用 `cjdoc schema <name>` 逐个导出并与 `docs/schema/` 逐字节比较，所以 schema 文件与 binary 必须同步。release 包也包含这组发布 schema 与 `release-manifest.json`；发布校验要求这 18 个 schema 与当前 golden 都被 Git 跟踪。
+`scripts/check.sh cli` 会调用 `cjdoc schema <name>` 逐个导出并与 `docs/schema/` 逐字节比较，所以 schema 文件与 binary 必须同步。release 包也包含这组发布 schema 与 `release-manifest.json`；发布校验要求这 25 个 schema 与当前 golden 都被 Git 跟踪。
 
 ## 修改 Doc IR 的同步清单
 
@@ -79,7 +79,7 @@ Doc IR `/16` 把三项类型语义事实命名平铺为必需的 `semanticState`
 
 ### 其它产物的版本
 
-`symbol-index` 当前是 `cjdoc.symbol-index/2`；HTML 内嵌 `html/symbol-index.json` 与独立 `symbol-index/symbol-index.json` 共用生产逻辑，但路由根不同：独立索引的路由根是整个输出目录（自动加 `html/` 前缀），HTML 内嵌索引不带该前缀。`navigation-index.json` 是 `cjdoc.navigation-index/1`；API snapshot 与 diff 分别是 `cjdoc.api-surface/3` 与 `cjdoc.api-diff/2`。这些格式各自版本化，不随 Doc IR 版本一起迁移。
+`symbol-index` 当前是 `cjdoc.symbol-index/2`；HTML 内嵌 `html/symbol-index.json` 与独立 `symbol-index/symbol-index.json` 共用生产逻辑，但路由根不同：独立索引的路由根是整个输出目录（自动加 `html/` 前缀），HTML 内嵌索引不带该前缀。`navigation-index.json` 当前是 `cjdoc.navigation-index/2`（分片续取），冻结的 `navigation-index-v1` 导出仍发布旧的 `cjdoc.navigation-index/1` 文件；API snapshot 与 diff 分别是 `cjdoc.api-surface/3` 与 `cjdoc.api-diff/2`。这些格式各自版本化，不随 Doc IR 版本一起迁移。
 
 ## 资源预算与回退
 

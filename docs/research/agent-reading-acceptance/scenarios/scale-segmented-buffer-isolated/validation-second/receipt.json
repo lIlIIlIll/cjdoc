@@ -1,0 +1,73 @@
+{
+  "schemaVersion": "cjdoc.static-validation-receipt/1",
+  "binarySha256": "c1649ca48ce9312ecc3053e10fa1291e89b8586191d522ef5b1482b839fa9fa3",
+  "manifestSha256": "ea697475daf8a82b784f92377e6c296c634f56cc27e66746be87cde72ab9d15b",
+  "validatorExitCode": 0,
+  "validationSeconds": 4.328517,
+  "artifactChecks": {
+    "declarations": 1104,
+    "fullReference": true,
+    "navigationPages": 1119,
+    "navigationParts": 2,
+    "pages": 11,
+    "rejectedMutations": 8,
+    "resources": 2232,
+    "schemaExports": 8,
+    "snapshotId": "cjdoc:snapshot:v1:35e4cd2e426e3d1024aff7115f01c91ec53d15a756145da316360ea6aa59c0a8"
+  },
+  "fileCount": 4466,
+  "totalBytes": 316491818,
+  "largestArtifacts": [
+    {
+      "path": "agent/docs.json",
+      "bytes": 39907309
+    },
+    {
+      "path": "agent/symbol-index.json",
+      "bytes": 19179648
+    },
+    {
+      "path": "symbol-index.json",
+      "bytes": 19179648
+    },
+    {
+      "path": "packages/package-32303a636a646f633a6d6f64756c653a76313a726f6f74706f636b65746b6974.html",
+      "bytes": 17704547
+    },
+    {
+      "path": "navigation-index.json",
+      "bytes": 16776142
+    },
+    {
+      "path": "llms-full.txt",
+      "bytes": 16765838
+    },
+    {
+      "path": "search-index.js",
+      "bytes": 3242237
+    },
+    {
+      "path": "search-index.json",
+      "bytes": 3104080
+    },
+    {
+      "path": "llms-full-part-1.txt",
+      "bytes": 1469631
+    },
+    {
+      "path": "agent/manifest.json",
+      "bytes": 1073226
+    }
+  ],
+  "fullReferenceParts": 2,
+  "inventoryDocumentRootRoutesChecked": 1104,
+  "legacyAndPackagedInventoryAgree": true,
+  "resourceLimits": {
+    "navigationPartBytes": 16777216,
+    "fullPartBytes": 16777216,
+    "summaryBytes": 16384,
+    "artifactBytes": 67108864,
+    "totalArtifactBytes": 536870912,
+    "artifactCount": 65536
+  }
+}

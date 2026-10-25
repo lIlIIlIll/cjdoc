@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "cjdoc.static-browser-acceptance/1",
+  "scope": "Actual bd34fff native publication; no Agent invoked",
+  "httpSubpath": {
+    "languageToggle": true,
+    "versionSwitchPreservesLanguage": true,
+    "searchCompleteWindowSignature": true,
+    "standaloneMemberWholeExamples": true,
+    "manifestAndMarkdownAlternateLinks": true
+  },
+  "offline": {
+    "zip": "cjdoc-offline.zip",
+    "networkOffline": true,
+    "localFileSearch": true,
+    "wholeWindowExamples": true,
+    "languageAndVersionSwitch": true,
+    "end": {
+      "protocol": "file:",
+      "online": false,
+      "language": "zh-CN",
+      "title": "pocketkit.TextCatalog.window",
+      "toggle": "中文",
+      "path": "demo-v1/html/zh-CN/symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1372079071-1792107298.html"
+    }
+  },
+  "screenshots": [
+    "http-zh-overview.webp",
+    "http-window-detail.webp",
+    "offline-search.webp"
+  ]
+}

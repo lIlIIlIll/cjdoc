@@ -1,0 +1,93 @@
+{
+  "schemaVersion": "cjdoc.final-native-publication-acceptance/1",
+  "binarySha256": "57fccf60012c72b3fd36a08262f9a480ba1160d6ab9b3dbcc598dc9024c5e52f",
+  "sourceRevision": "677f36045135ffac967ffebd195b62f1a67b33ff",
+  "scope": "Actual native source replay, two distinct API versions and two languages, exact raw aggregate reports, complete artifact graph/schema validation and ZIP byte/hash extraction proof. Not Agent or remote-CI evidence.",
+  "roots": [
+    {
+      "version": "demo-v1",
+      "language": "en",
+      "root": "demo-v1/html/en"
+    },
+    {
+      "version": "demo-v1",
+      "language": "zh-CN",
+      "root": "demo-v1/html/zh-CN"
+    },
+    {
+      "version": "demo-v2",
+      "language": "en",
+      "root": "demo-v2/html/en",
+      "attachedRawReportsAndHonestBindingStateVerified": true
+    },
+    {
+      "version": "demo-v2",
+      "language": "zh-CN",
+      "root": "demo-v2/html/zh-CN",
+      "attachedRawReportsAndHonestBindingStateVerified": true
+    }
+  ],
+  "stages": [
+    {
+      "stage": "replay",
+      "exitCode": 0,
+      "elapsedSeconds": 211.539308
+    },
+    {
+      "stage": "render-reports",
+      "exitCode": 0,
+      "elapsedSeconds": 41.964126
+    },
+    {
+      "stage": "compose",
+      "exitCode": 0,
+      "elapsedSeconds": 58.962277
+    },
+    {
+      "stage": "validate-demo-v1-en",
+      "exitCode": 0,
+      "elapsedSeconds": 0.861759
+    },
+    {
+      "stage": "validate-demo-v1-zh-CN",
+      "exitCode": 0,
+      "elapsedSeconds": 0.87198
+    },
+    {
+      "stage": "validate-demo-v2-en",
+      "exitCode": 0,
+      "elapsedSeconds": 0.901528
+    },
+    {
+      "stage": "query-reports-demo-v2-en",
+      "exitCode": 0,
+      "elapsedSeconds": 10.840911
+    },
+    {
+      "stage": "validate-demo-v2-zh-CN",
+      "exitCode": 0,
+      "elapsedSeconds": 0.970756
+    },
+    {
+      "stage": "query-reports-demo-v2-zh-CN",
+      "exitCode": 0,
+      "elapsedSeconds": 10.872187
+    },
+    {
+      "stage": "package",
+      "exitCode": 0,
+      "elapsedSeconds": 0.974981
+    }
+  ],
+  "validationReportSha256": "fb0caae288e9f5c6d483db1bc17819b521c73f63a9da2dafb298327ace86da99",
+  "apiDiffReportSha256": "41f30801251bed473804b63cf289ae85970f52b6d9c281809e21c7d8b45e68a1",
+  "offlinePackage": {
+    "schemaVersion": "cjdoc.offline-static-zip-smoke/1",
+    "scope": "Actual two-version bilingual composed publication; no compiler, SDK or source bundled",
+    "archiveSha256": "b68a302b834414b0976b52ab955314f23bfe6f46b944debf2c20461d68f11115",
+    "archiveBytes": 4541167,
+    "files": 1419,
+    "uncompressedBytes": 27717949,
+    "allExtractedBytesAndDigestsMatch": true
+  }
+}

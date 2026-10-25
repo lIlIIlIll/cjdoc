@@ -44,7 +44,7 @@ internal func packagePagePath(moduleId: String, name: String): String {
     "packages/package-${boundedHtmlSlug(routeKey(moduleId, name))}.html"
 }
 
-internal func symbolPagePath(symbol: SymbolDoc): String {
+protected func symbolPagePath(symbol: SymbolDoc): String {
     "symbols/symbol-${boundedHtmlSlug(symbol.id)}.html"
 }
 
@@ -75,7 +75,9 @@ internal func renderSymbolAlias(symbol: SymbolDoc, locale: String): String {
     let target = symbolPagePath(symbol)["symbols/".size..]
     let out = RenderTextBuffer()
     out.append("<!doctype html><html lang=\"${escapeHtml(locale)}\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'\">")
-    out.append("<title>${escapeHtml(readerQualifiedName(symbol))}</title><link rel=\"canonical\" href=\"${escapeHtml(target)}\"></head><body data-cjdoc-route=\"symbol-alias\"><main>")
+    out.append("<title>${escapeHtml(readerQualifiedName(symbol))}</title><link rel=\"canonical\" href=\"${escapeHtml(target)}\">")
+    out.append("<link rel=\"describedby\" type=\"text/plain\" href=\"../llms.txt\">")
+    out.append("<link rel=\"alternate\" type=\"text/markdown\" href=\"../${escapeHtml(agentDeclarationMarkdownPath(symbol))}\"></head><body data-cjdoc-route=\"symbol-alias\"><main>")
     out.append("<a data-cjdoc-alias-target href=\"${escapeHtml(target)}\">${escapeHtml(label(locale, "Open API documentation", "打开 API 文档"))}: ${escapeHtml(readerQualifiedName(symbol))}</a></main><script src=\"../symbol-alias.js\" defer></script></body></html>")
     out.toString()
 }
@@ -140,6 +142,7 @@ internal class RenderProjection {
     let modules = ArrayList<ProjectedModule>()
     let membersByOwner = HashMap<String, ArrayList<SymbolDoc>>()
     let topLevelByPackage = HashMap<String, ArrayList<SymbolDoc>>()
+    let sidebarLabelsByPackage = HashMap<String, HashMap<String, String>>()
     private let memberBrowsers = HashMap<String, HtmlMemberBrowser>()
 
     private let apiGuideIndexes = HashMap<String, CapturedApiGuideIndex>()
@@ -365,7 +368,7 @@ private func sourceRelativePath(module: ModuleDoc, source: SourceRange): ?String
     Some(source.path[prefix.size..])
 }
 
-internal func sourceUrl(project: ProjectInfo, module: ModuleDoc, source: SourceRange): ?String {
+protected func sourceUrl(project: ProjectInfo, module: ModuleDoc, source: SourceRange): ?String {
     let repository = match (project.repository) {
         case Some(value) => value
         case None => return None
@@ -812,7 +815,7 @@ internal func appendAssetArtifacts(artifacts: RenderArtifactCollector,
 
 internal func validateHtmlRouting(projection: RenderProjection, assets: ArrayList<AssetDoc>): Unit {
     let paths = HashSet<String>()
-    for (path in ["index.html", "search-index.json", "search-index.js", "search.js", "theme-bootstrap.js", "symbol-alias.js", "style.css"]) {
+    for (path in ["index.html", "search-index.json", "search-index.js", "sidebar-index.js", "search.js", "theme-bootstrap.js", "symbol-alias.js", "style.css"]) {
         let _ = paths.add(path)
     }
     for (pkg in projection.packages) {

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "cjdoc.actual-reexport-query-smoke/1",
+  "binarySha256": "c1649ca48ce9312ecc3053e10fa1291e89b8586191d522ef5b1482b839fa9fa3",
+  "snapshotSha256": "464466ffc3876416a4393c613b472f46783d917c8d02c5f2e80b96d9b282aa82",
+  "scope": "Actual captured source fixture with path dependencies; not overload applicability or compiler resolution proof",
+  "scenarios": [
+    {
+      "scenario": "create",
+      "status": "ok",
+      "originalId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Apath%3Aacme%253A%253Areexport_dep::reexport_dep::function:make#g0()",
+      "aliases": [
+        "create",
+        "make",
+        "orgCreate"
+      ],
+      "declaringAndTargetScopesRemainSeparate": true
+    },
+    {
+      "scenario": "collision",
+      "status": "ambiguous",
+      "candidates": 2,
+      "bothCapturedRootAndDependencyIdentitiesPreserved": true
+    }
+  ]
+}

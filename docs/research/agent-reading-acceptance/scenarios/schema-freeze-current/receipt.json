@@ -1,0 +1,18 @@
+{
+  "baselineCommit": "677f36045135ffac967ffebd195b62f1a67b33ff",
+  "comparedCommit": "6e5ecdc3076939c597cb2204ba751501dba63c34",
+  "comparison": "git diff --name-status over docs/schema and tests/fixtures/golden-v16",
+  "onlyAddedSchemas": [
+    "agent-full-index",
+    "declaration",
+    "machine-manifest",
+    "navigation-index-v2",
+    "page",
+    "query-request",
+    "query-result"
+  ],
+  "publishedSchemaFiles": 25,
+  "existingPublishedSchemasUnchanged": 18,
+  "v16GoldensUnchanged": 9,
+  "currentLocalGateFullPass": true
+}

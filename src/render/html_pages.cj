@@ -16,7 +16,8 @@ internal func renderHtmlIndex(documentation: DocumentationSet, projection: Rende
     let pageTitle = documentation.project.name + " " + apiDocumentationLabel
     let out = RenderTextBuffer()
     appendPageStart(out, pageTitle, "",
-        documentation, projection, locale: locale, docVersion: docVersion)
+        documentation, projection, locale: locale, docVersion: docVersion,
+        agentReadable: true, alternateMarkdown: Some("agent/pages/index.md"))
     out.append("<header class=\"page-header\"><h1>${escapeHtml(documentation.project.name)} ${apiDocumentationLabel}</h1></header>\n")
     // One reader entry point only. The conceptual-documentation entry is merged
     // into this section by injectConceptualNavigation, so the page never stacks
@@ -80,11 +81,12 @@ internal func renderHtmlIndex(documentation: DocumentationSet, projection: Rende
 
 
 public func renderUtilityHtmlPage(documentation: DocumentationSet, title: String, body: String,
-    rootPrefix: String, locale!: String = "en", docVersion!: ?String = None): String {
+    rootPrefix: String, locale!: String = "en", docVersion!: ?String = None,
+    agentReadable!: Bool = false): String {
     let projection = RenderProjection(documentation)
     let out = RenderTextBuffer()
     appendPageStart(out, title, rootPrefix, documentation, projection, locale: locale,
-        currentRoute: "utility", docVersion: docVersion)
+        currentRoute: "utility", docVersion: docVersion, agentReadable: agentReadable)
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"${rootPrefix}index.html\">${label(locale, "Home", "首页")}</a></li><li aria-current=\"page\">${escapeHtml(title)}</li></ol></nav>")
     out.append("<header class=\"page-header\"><h1>${escapeHtml(title)}</h1></header>\n")
     out.append(body)
@@ -94,7 +96,8 @@ public func renderUtilityHtmlPage(documentation: DocumentationSet, title: String
 
 public func renderConceptualHtmlPage(documentation: DocumentationSet, title: String, body: String,
     rootPrefix: String, source!: ?String = None, locale!: String = "en",
-    docVersion!: ?String = None, pageRoute!: ?String = None): String {
+    docVersion!: ?String = None, pageRoute!: ?String = None,
+    agentMarkdown!: ?String = None): String {
     let projection = RenderProjection(documentation)
     let out = RenderTextBuffer()
     let breadcrumbLabel = label(locale, "Breadcrumb", "面包屑导航")
@@ -102,7 +105,8 @@ public func renderConceptualHtmlPage(documentation: DocumentationSet, title: Str
     let conceptsLabel = label(locale, "Concepts", "概念文档")
     let sourceLabel = label(locale, "Source", "来源")
     appendPageStart(out, title, rootPrefix, documentation, projection, locale: locale,
-        currentRoute: "concept", docVersion: docVersion)
+        currentRoute: "concept", docVersion: docVersion, agentReadable: agentMarkdown.isSome(),
+        alternateMarkdown: agentMarkdown)
     out.append("<nav class=\"breadcrumbs\" aria-label=\"")
     out.append(breadcrumbLabel)
     out.append("\"><ol><li><a href=\"")
@@ -140,7 +144,8 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
     appendPageStart(out, "${label(locale, "Package", "包")} ${packageDoc.name}", "../",
         documentation, projection, locale: locale, docVersion: docVersion,
         currentPackagePath: Some(packagePagePath(packageDoc.moduleId, packageDoc.name)),
-        currentRoute: "api")
+        currentRoute: "api", agentReadable: true,
+        alternateMarkdown: Some(agentPackageMarkdownPath(packageDoc.moduleId, packageDoc.name)))
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li><li aria-current=\"page\">${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></li></ol></nav>\n")
     out.append("<header class=\"page-header\"><h1>${label(locale, "Package", "包")} <code>${escapeHtml(packageDoc.name)}</code></h1></header>\n")
     appendPackageConceptualOverview(out, documentation, projection, packageDoc, locale)
@@ -436,7 +441,8 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     let hasMemberPage = isTypeDeclaration(symbol) || symbol.kind == "extend"
     appendPageStart(out, pageTitle, "../", documentation, projection, locale: locale,
         currentPackagePath: Some(packagePagePath(symbol.moduleId, symbol.packageName)),
-        currentRoute: "api", docVersion: docVersion, currentSymbol: Some(symbol))
+        currentRoute: "api", docVersion: docVersion, currentSymbol: Some(symbol),
+        agentReadable: true, alternateMarkdown: Some(agentDeclarationMarkdownPath(symbol)))
     out.append("<nav class=\"breadcrumbs\" aria-label=\"${label(locale, "Breadcrumb", "面包屑导航")}\"><ol><li><a href=\"../index.html\">${label(locale, "Home", "首页")}</a></li>")
     out.append("<li><a href=\"../${escapeHtml(packagePagePath(symbol.moduleId, symbol.packageName))}\">${label(locale, "Package", "包")} <code>${escapeHtml(symbol.packageName)}</code></a></li>")
     appendOwnerBreadcrumbs(out, index, symbol, "../", locale)

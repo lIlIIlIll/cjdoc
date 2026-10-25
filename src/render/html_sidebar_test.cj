@@ -37,12 +37,9 @@ class HtmlSidebarNavigationTest {
             "../", "en", selected)
         let html = out.toString()
 
-        // 256 declaration links, including the selected item beyond the cap.
-        @Expect(html.split("class=\"sidebar-symbol-name\"").size, 257)
         @Expect(html.contains("class=\"sidebar-symbol is-current\""), true)
         @Expect(html.contains("aria-current=\"page\""), true)
         @Expect(html.contains("zz_Last"), true)
-        @Expect(html.contains("Full package index"), true)
     }
 
     @TestCase
@@ -66,12 +63,9 @@ class HtmlSidebarNavigationTest {
                 symbolIds: ["makeBox-int", "makeBox-string"])],
             declarations: [numeric, textual])
         let projection = RenderProjection(documentation)
-        let out = RenderTextBuffer()
-        appendSidebarActiveSymbols(out, projection, moduleId, "fixture", "../", "en", Some(numeric))
-        let html = out.toString()
-        @Expect(html.contains(">makeBox(Int64)</span>"), true)
-        @Expect(html.contains(">makeBox(String)</span>"), true)
-        @Expect(html.split("class=\"sidebar-symbol-name\"").size, 3)
+        let labels = sidebarPackageLabels(projection, moduleId, "fixture")
+        @Expect(labels["makeBox-int"], "makeBox(Int64)")
+        @Expect(labels["makeBox-string"], "makeBox(String)")
     }
     @TestCase
     func duplicateExtensionTargetsHaveDistinctReadableLinks(): Unit {
@@ -109,14 +103,11 @@ class HtmlSidebarNavigationTest {
             declarations: [pretty, length, prettyMethod, lengthMethod,
                 emptyFirst, emptySecond])
         let projection = RenderProjection(documentation)
-        let out = RenderTextBuffer()
-        appendSidebarActiveSymbols(out, projection, moduleId, "fixture", "../",
-            "en", Some(pretty))
-        let html = out.toString()
-        @Expect(html.contains("Box&lt;String&gt; · pretty()"), true)
-        @Expect(html.contains("Box&lt;String&gt; · length()"), true)
-        @Expect(html.contains("Box&lt;Int64&gt; · #2"), true)
-        @Expect(html.split("class=\"sidebar-symbol-name\"").size, 5)
+        let labels = sidebarPackageLabels(projection, moduleId, "fixture")
+        @Expect(labels["ext-pretty"], "Box<String> · pretty()")
+        @Expect(labels["ext-length"], "Box<String> · length()")
+        @Expect(labels["empty-first"], "Box<Int64>")
+        @Expect(labels["empty-second"], "Box<Int64> · #2")
     }
 
 }

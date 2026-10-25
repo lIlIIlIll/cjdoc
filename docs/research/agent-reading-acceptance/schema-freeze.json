@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "cjdoc.reviewed-schema-freeze-comparison/1",
+  "baselineCommit": "677f36045135ffac967ffebd195b62f1a67b33ff",
+  "nativeSourceRevision": "9610eb4fffafb3c6ff73762ae76243767892e25f",
+  "comparison": "Actual git diff --name-status from baseline to current worktree, restricted to docs/schema and tests/fixtures/golden-v16; only seven schema additions observed and no golden changes.",
+  "onlyAddedSchemaFiles": [
+    "agent-full-index.schema.json",
+    "declaration.schema.json",
+    "machine-manifest.schema.json",
+    "navigation-index-v2.schema.json",
+    "page.schema.json",
+    "query-request.schema.json",
+    "query-result.schema.json"
+  ],
+  "publishedSchemas": 25,
+  "unchangedPublishedSchemas": 18,
+  "unchangedV16Goldens": 9
+}

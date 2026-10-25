@@ -28,11 +28,13 @@ internal class DependencyNavigationBinder {
     private let typeShapes = HashMap<String, ?DependencyTypeShape>()
     private let work = DependencyNavigationWork()
     private let actualGraph: DependencyGraphIndex
+    private let documentPolicy: DependencyDocumentPolicy
     private let decisionReasons = HashMap<String, HashMap<String, String>>()
 
     init(documentation: link_model.DocumentationSet, request: GenerationRequest,
         origins: Array<SourceFileOrigin>, externalResolvers!: ?Array<ExternalDocResolver> = None) {
         this.documentation = documentation; this.request = request
+        documentPolicy = DependencyDocumentPolicy(request)
         let (capturedDependencies, graph) = captureDependencyIdentities(documentation, request,
             diagnostics: Some(diagnostics), origins: origins, navigationWork: Some(work))
         dependencies = capturedDependencies
@@ -290,13 +292,6 @@ internal class DependencyNavigationBinder {
     }
 
 
-    private func scopeMatches(dependency: link_model.DependencyInstance,
-        set: link_model.DocumentSetIdentity): Bool {
-        set.audience == request.audience &&
-            (set.target == dependency.target || set.target == "*") &&
-            (set.cfg == dependency.cfg || set.cfg == "*")
-    }
-
     private func resolve(moduleId: String, packageName: String, names: Array<String>, explicit!: Bool = false,
         typesOnly!: Bool = false, genericArity!: Int64 = -1, sourceAmbiguity!: Bool = false,
         sourceHeader!: String = ""): link_model.TypeNavigation {
@@ -332,12 +327,9 @@ internal class DependencyNavigationBinder {
         if (sourceAmbiguity) {
             return link_model.TypeNavigation("unavailable", "none", "source imports cannot exclude an implicit std.core conflict; qualify the type or use a canonical provider")
         }
-        var selected: ?(ExternalDocResolver, ExternalDocEntry, ?link_model.DependencyInstance) = None
-        var best: Int64 = -9223372036854775807
-        var ambiguous = false
+        var choice: ?DependencyDocumentChoice = None
         var reason = if (sourceHeader.isEmpty()) { "no documentation symbol in the selected module dependency context" }
             else { "no matching source-header witness for this exact guide selector" }
-        var matchLevel = "none"
         for (name in names) {
             let candidates = match (external.get(name)) {
                 case Some(values) => values
@@ -350,87 +342,65 @@ internal class DependencyNavigationBinder {
                     if (sourceHeader.isEmpty()) { 0 } else { entry.sourceHeader.size })) {
                     return link_model.TypeNavigation("unavailable", "none", "navigation matching work budget exceeded")
                 }
-                if (typesOnly && !["class", "struct", "enum", "interface", "typeAlias"].contains(entry.kind)) { continue }
-                if (typesOnly && genericArity >= 0 && entry.genericArity != genericArity) { continue }
-                if (!sourceHeader.isEmpty() && entry.sourceHeader != sourceHeader) { continue }
+                if (dependencyDocumentShapeExcluded(documentPolicy, entry, typesOnly: typesOnly,
+                    genericArity: genericArity, sourceHeader: sourceHeader)) { continue }
                 let dependency = dependencyFor(moduleId, set.library)
-                var level = "manual"
-                if (let Some(dependency) <- dependency) {
-                    if (!work.consumeBytes(dependency.identity.size + dependency.target.size + dependency.cfg.size)) {
+                var compatible = false
+                var instanceMapping = false
+                var binding = "unavailable"
+                if (let Some(value) <- dependency) {
+                    if (!work.consumeBytes(value.identity.size + value.target.size + value.cfg.size)) {
                         return link_model.TypeNavigation("unavailable", "none", "navigation matching work budget exceeded")
                     }
-                    if (dependency.state == "unknown" || dependency.state == "conflict" || dependency.identity.isEmpty()) {
-                        reason = "selected dependency identity is unknown or conflicts with build inputs"; continue
+                    let evidenceRejection = dependencyDocumentEvidenceRejection(documentPolicy, set, dependency,
+                        authoritativeModules)
+                    if (!evidenceRejection.isEmpty()) { reason = evidenceRejection; continue }
+                    var conflicted = false
+                    if (!value.componentModuleId.isEmpty()) {
+                        conflicted = actualGraph.context(value.componentModuleId, work).conflicted
                     }
-                    if (!dependency.componentModuleId.isEmpty() && authoritativeModules.contains(dependency.componentModuleId)) {
-                        reason = "authoritative documented module has no visible target; external fallback is suppressed"; continue
-                    }
-                    if (!dependency.componentModuleId.isEmpty() && actualGraph.context(dependency.componentModuleId, work).conflicted) {
-                        reason = "selected source dependency graph contains conflicting build inputs"; continue
-                    }
-                    let instanceMapping = request.linkCompatible && resolver.compatibilityMappings.get(
-                        dependencyCompatibilityKey(dependency.instanceId, dependency.target, dependency.cfg)) == Some(set.identity)
-                    var compatible = false
-                    if (dependency.identity != set.identity) {
-                        compatible = instanceMapping || (request.linkCompatible &&
-                            resolver.compatibilityMappings.get(dependencyCompatibilityKey(dependency.identity, dependency.target, dependency.cfg)) == Some(set.identity))
-                        if (!compatible) { reason = "API identity mismatch; no latest or neighbouring-version fallback"; continue }
-                    }
-                    if (set.audience != request.audience || (!scopeMatches(dependency, set) && !compatible)) {
-                        reason = "document coverage does not match target, cfg or audience"; continue
-                    }
-                    var binding = "unavailable"
-                    if (dependency.identity == set.identity) {
+                    let (rejection, accepted, mapping, bindingRequired) =
+                        assessDependencyDocumentCompatibility(documentPolicy, set, value,
+                            resolver.compatibilityMappings, sourceContextConflicted: conflicted)
+                    if (!rejection.isEmpty()) { reason = rejection; continue }
+                    compatible = accepted
+                    instanceMapping = mapping
+                    if (bindingRequired) {
                         if (let Some(publishedGraph) <- resolver.sourceGraph) {
-                            binding = publishedGraph.binding(actualGraph, dependency.componentModuleId, set.moduleId, work)
-                        }
-                        if (binding == "conflict") { reason = "published or selected dependency graph contains conflicting build inputs"; continue }
-                        if (binding == "mismatch") {
-                            if (!instanceMapping) { reason = "source bytes match but selected transitive dependency/build context differs"; continue }
-                            compatible = true
+                            binding = publishedGraph.binding(actualGraph, value.componentModuleId, set.moduleId, work)
                         }
                     }
-                    level = if (compatible) { "compatible" } else if (resolver.inventoryPinned && binding == "matched" &&
-                        (dependency.state == "observed" || dependency.state == "verified") && set.state == "declared") { "exact" } else { "manual" }
                 } else {
-                    if (dependenciesByName.contains(moduleId + "|" + set.library)) {
-                        reason = "multiple selected dependency components share this package scope"; continue
-                    }
-                    if (!explicit || typesOnly) { reason = "documented library is not a selected dependency of this module"; continue }
-                    if (set.audience != request.audience) { reason = "documentation-only reference has a different audience"; continue }
+                    let evidenceRejection = dependencyDocumentEvidenceRejection(documentPolicy, set, dependency,
+                        authoritativeModules,
+                        packageScopeAmbiguous: dependenciesByName.contains(moduleId + "|" + set.library),
+                        explicit: explicit, typesOnly: typesOnly)
+                    if (!evidenceRejection.isEmpty()) { reason = evidenceRejection; continue }
                 }
-                var score = resolver.priority * 4 + match (level) {
-                    case "exact" => 300000
-                    case "compatible" => 200000
-                    case _ => 100000
-                }
-                if (!request.linkLanguage.isEmpty()) {
-                    // 10000 exceeds the full priority span (8000); together they stay below the smallest level gap (100000).
-                    if (set.language == request.linkLanguage) { score += 10000 }
-                    else if (!request.linkLanguageFallback) { reason = "selected API identity has no requested language"; continue }
-                }
-                if (score > best) {
-                    best = score; selected = Some((resolver, entry, dependency)); ambiguous = false; matchLevel = level
-                } else if (score == best) {
-                    if (let Some((_, previous, previousDependency)) <- selected) {
-                        let previousId = if (let Some(value) <- previousDependency) { value.instanceId } else { "" }
-                        let selectedId = if (let Some(value) <- dependency) { value.instanceId } else { "" }
-                        // Shared publication routes do not make distinct declarations or document sets the same target.
-                        if (previous.symbolKey != entry.symbolKey || previous.documentSet.id != set.id ||
-                            previous.url != entry.url || previous.documentSet.identity != set.identity ||
-                            previousId != selectedId) { ambiguous = true }
-                    }
-                }
+                let (ratingRejection, level, score) = rateDependencyDocumentCandidate(documentPolicy, set,
+                    dependency, compatible: compatible, instanceMapping: instanceMapping, sourceBinding: binding,
+                    inventoryPinned: resolver.inventoryPinned, priority: resolver.priority)
+                if (!ratingRejection.isEmpty()) { reason = ratingRejection; continue }
+                choice = Some(chooseDependencyDocumentCandidate(choice, resolver, entry,
+                    if (let Some(value) <- dependency) { value.instanceId } else { "" },
+                    dependency.isSome(), level, score))
             }
         }
-        if (ambiguous) { return link_model.TypeNavigation("ambiguous", "none", "conflicting equal-priority documentation targets") }
-        if (let Some((resolver, entry, dependency)) <- selected) {
-            let reason = decisionReason(entry.documentSet, matchLevel, dependency.isSome())
-            if (reason.isEmpty()) { return link_model.TypeNavigation("unavailable", "none", "navigation metadata work budget exceeded") }
-            return link_model.TypeNavigation("resolved", matchLevel, reason,
-                dependencyInstanceId: if (let Some(value) <- dependency) { value.instanceId } else { "" }, documentSetId: entry.documentSet.id,
-                indexIdentity: resolver.fingerprint, symbolKey: entry.symbolKey, url: entry.url,
-                apiIdentity: entry.documentSet.identity, language: entry.documentSet.language)
+        match (choice) {
+            case None => ()
+            case Some(value) =>
+                if (value.ambiguous) {
+                    return link_model.TypeNavigation("ambiguous", "none", "conflicting equal-priority documentation targets")
+                }
+                // Documentation-only sets keep their distinct decision wording.
+                let reason = decisionReason(value.entry.documentSet, value.level, value.dependencyBacked)
+                if (reason.isEmpty()) {
+                    return link_model.TypeNavigation("unavailable", "none", "navigation metadata work budget exceeded")
+                }
+                return link_model.TypeNavigation("resolved", value.level, reason,
+                    dependencyInstanceId: value.dependencyInstanceId, documentSetId: value.entry.documentSet.id,
+                    indexIdentity: value.resolver.fingerprint, symbolKey: value.entry.symbolKey, url: value.entry.url,
+                    apiIdentity: value.entry.documentSet.identity, language: value.entry.documentSet.language)
         }
         if (explicit && sourceHeader.isEmpty()) {
             var url = ""

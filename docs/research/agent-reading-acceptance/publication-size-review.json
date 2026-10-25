@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "cjdoc.issue137.publication-size-review-evidence/1",
+  "scope": "Downloaded sealed PR artifacts, measured as shipped; not a successful browser/CI/deployment claim.",
+  "before": {
+    "triggerHead": "2b799abdf41d70d155cc8c098d920b6bf63d51ca",
+    "runId": 40162773325,
+    "siteBytes": 122785840,
+    "offlineBytes": 16774105
+  },
+  "after": {
+    "triggerHead": "38a7d1557c1f08597722d820d0bd6257a5bb3fbc",
+    "runId": 40174518355,
+    "buildSourceRevision": "ce2611fa5f7634362b7d18f30c77938256563c7b",
+    "checkoutTree": "22543bd7477c7c1d835b2d32cc7eb3e12929a914",
+    "nativeSha256": "3a395fa0d77c10efd201d5c1ccc80098e963ea3a3469f6f8939d37f3b8d4ac54",
+    "sealedSiteSha256": "5392262cf49dbbb983f94c238fcf0866df5c0b426493ec561154d3b9647eee96",
+    "downloadedTreeSealVerified": true,
+    "files": 5374,
+    "siteBytes": 97088160,
+    "offlineBytes": 14515040,
+    "offlineSha256": "3197f82fef8791cf7ec01828222b71860c5528f19d121f3f8b0243ff4304a15f"
+  },
+  "unchangedCeilings": {
+    "siteBytes": 100000000,
+    "offlineBytes": 16000000
+  },
+  "mappingComparisons": [
+    {
+      "manifest": "api/agent/manifest.json",
+      "representations": 867,
+      "allIdentityKindAndRepresentationPathsUnchanged": true
+    },
+    {
+      "manifest": "diagnostics/en/agent/manifest.json",
+      "representations": 12,
+      "allIdentityKindAndRepresentationPathsUnchanged": true
+    },
+    {
+      "manifest": "diagnostics/zh-CN/agent/manifest.json",
+      "representations": 12,
+      "allIdentityKindAndRepresentationPathsUnchanged": true
+    },
+    {
+      "manifest": "examples/demo-v1/html/en/agent/manifest.json",
+      "representations": 64,
+      "allIdentityKindAndRepresentationPathsUnchanged": true
+    },
+    {
+      "manifest": "examples/demo-v1/html/en/dependencies/support-v1/agent/manifest.json",
+      "representations": 14,
+      "allIdentityKindAndRepresentationPathsUnchanged": true
+    },
+    {
+      "manifest": "examples/demo-v1/html/zh-CN/agent/manifest.json",
+      "representations": 64,
+      "allIdentityKindAndRepresentationPathsUnchanged": true
+    },
+    {
+      "manifest": "examples/demo-v1/html/zh-CN/dependencies/support-v1/agent/manifest.json",
+      "representations": 14,
+      "allIdentityKindAndRepresentationPathsUnchanged": true
+    },
+    {
+      "manifest": "examples/demo-v2/html/en/agent/manifest.json",
+      "representations": 65,
+      "allIdentityKindAndRepresentationPathsUnchanged": true
+    },
+    {
+      "manifest": "examples/demo-v2/html/en/dependencies/support-v1/agent/manifest.json",
+      "representations": 14,
+      "allIdentityKindAndRepresentationPathsUnchanged": true
+    },
+    {
+      "manifest": "examples/demo-v2/html/zh-CN/agent/manifest.json",
+      "representations": 65,
+      "allIdentityKindAndRepresentationPathsUnchanged": true
+    },
+    {
+      "manifest": "examples/demo-v2/html/zh-CN/dependencies/support-v1/agent/manifest.json",
+      "representations": 14,
+      "allIdentityKindAndRepresentationPathsUnchanged": true
+    }
+  ],
+  "changes": [
+    "Share repeated sidebar navigation metadata through a static script; retain every canonical declaration page and complete index.",
+    "Store bundled Doc IR as compact lossless JSON; logical snapshot identity uses the unchanged canonical producer projection.",
+    "Own the symbol inventory once at the document root and reference it from the manifest."
+  ],
+  "limits": "Size and representation preservation passed. The observed run still failed on stale machine-navigation document-root lookup and stale resource schema/validator assumptions; later revisions must pass all gates before release."
+}

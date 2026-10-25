@@ -131,7 +131,12 @@ def check(binary: Path, source: Path, output: Path, timeout: float = 180) -> dic
                     raise RuntimeError("authoring source marker is ambiguous")
                 edited.write_text(text.replace(summary, summary + " " + marker), encoding="utf-8")
                 after = wait_status(opener, base, process, before["builds"] + 1, timeout)
-                navigation = json.loads((root / "generated/html/navigation-index.json").read_text())
+                # v2 continues through navigation-index-part-N.json; enumerate every
+                # part so a target that lands in a later part still resolves.
+                from showcase_contract.site import load_json, load_navigation_index
+                generated_root = root / "generated/html"
+                navigation = load_navigation_index(
+                    lambda name: load_json(generated_root / name), "navigation-index.json")
                 entries = [entry for entry in navigation["pages"]
                            if entry.get("kind") == "symbol" and
                            entry.get("title") == "pocketkit.TextCatalog"]

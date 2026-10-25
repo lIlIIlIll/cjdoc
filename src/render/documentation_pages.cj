@@ -113,7 +113,8 @@ internal func appendCapturedPageArtifacts(artifacts: RenderArtifactCollector, do
             artifacts.addText("html/" + page.route, "text/html; charset=utf-8",
                 renderConceptualHtmlPage(documentation, page.title,
                     introduction.toString() + body + capturedPageBindingsHtml(page, documentation, locale), prefix,
-                    source: Some(page.source), locale: locale, docVersion: version, pageRoute: Some(page.route)))
+                    source: Some(page.source), locale: locale, docVersion: version, pageRoute: Some(page.route),
+                    agentMarkdown: Some(agentPageMarkdownPath(page))))
         }
         if (formats.contains("markdown")) {
             let markdown = RenderTextBuffer()
@@ -173,7 +174,7 @@ internal class CapturedApiGuideIndex {
     }
 }
 
-private func capturedPageMarkdownWithoutMarkers(node: MarkdownNode,
+internal func capturedPageMarkdownWithoutMarkers(node: MarkdownNode,
     page: DocumentationPage): (?MarkdownNode, Bool) {
     if (["html_block", "html_inline"].contains(node.kind) && node.literal == "<!-- cjdoc-bind -->" &&
         node.source.isSome() && node.source.getOrThrow().path == page.source) {

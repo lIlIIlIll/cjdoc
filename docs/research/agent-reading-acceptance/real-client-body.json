@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "cjdoc.actual-final-agent-body-observation/1",
+  "binarySha256": "57fccf60012c72b3fd36a08262f9a480ba1160d6ab9b3dbcc598dc9024c5e52f",
+  "task": "AG-01",
+  "client": "codex-cli 0.163.0",
+  "wireSha256": "1fc9f8514a0f0ffa9935481e6a7b1f21b95766f01c557637bf0bbeaedb1f8456",
+  "clientEventsSha256": "e716e91fca21b2e3c7dc3c1b2bcc1696d0a18ca96b776e4e691dac7e37ca0d6f",
+  "claim": "Every actual completed response, including invalid_request results, has identical complete readable text and structured core in the real client event. The final answer copies exact returned identity/signature/body values. Observable client content only; no claim about hidden model state.",
+  "rows": [
+    {
+      "operation": "resolve_docs",
+      "status": "ok",
+      "readableUtf8Bytes": 1174,
+      "readableSha256": "1f521595578cbb5ee828d8ff9e8830c21835645474304afa04b02976ea87cbdf",
+      "completeReadableTextInActualClient": true,
+      "completeStructuredContentInActualClient": true
+    },
+    {
+      "operation": "search",
+      "status": "ok",
+      "readableUtf8Bytes": 7190,
+      "readableSha256": "af985db1f45649b642cd863dfa26d28950f116c02178bc88b371b81d0035e104",
+      "completeReadableTextInActualClient": true,
+      "completeStructuredContentInActualClient": true
+    },
+    {
+      "operation": "get_symbol",
+      "status": "ok",
+      "readableUtf8Bytes": 4116,
+      "readableSha256": "a316fb5ac9728789f3175a28ee4f48dd6299849a7dea30499928e5e6b3706cf6",
+      "completeReadableTextInActualClient": true,
+      "completeStructuredContentInActualClient": true
+    },
+    {
+      "operation": "get_symbol",
+      "status": "invalid_request",
+      "readableUtf8Bytes": 119,
+      "readableSha256": "a2e93bb0ac519b3a06211dcd5953268e1cb82c6c90b47373e2c13ece7040b4a8",
+      "completeReadableTextInActualClient": true,
+      "completeStructuredContentInActualClient": true
+    },
+    {
+      "operation": "get_symbol",
+      "status": "invalid_request",
+      "readableUtf8Bytes": 119,
+      "readableSha256": "a2e93bb0ac519b3a06211dcd5953268e1cb82c6c90b47373e2c13ece7040b4a8",
+      "completeReadableTextInActualClient": true,
+      "completeStructuredContentInActualClient": true
+    },
+    {
+      "operation": "get_symbol",
+      "status": "invalid_request",
+      "readableUtf8Bytes": 119,
+      "readableSha256": "a2e93bb0ac519b3a06211dcd5953268e1cb82c6c90b47373e2c13ece7040b4a8",
+      "completeReadableTextInActualClient": true,
+      "completeStructuredContentInActualClient": true
+    },
+    {
+      "operation": "get_symbol",
+      "status": "ok",
+      "readableUtf8Bytes": 1680,
+      "readableSha256": "34fccd2286869ea3d8f870ac2fb15af0f5df0814b56a629d19c50bd1bb11b524",
+      "completeReadableTextInActualClient": true,
+      "completeStructuredContentInActualClient": true
+    },
+    {
+      "operation": "get_symbol",
+      "status": "ok",
+      "readableUtf8Bytes": 1546,
+      "readableSha256": "78c9eda70f1d18a956d21e2c5b98fedbb56e860ec42e835bf21ab648c159da19",
+      "completeReadableTextInActualClient": true,
+      "completeStructuredContentInActualClient": true
+    }
+  ],
+  "exactReturnedValuesInActualAnswer": {
+    "snapshotId": "cjdoc:snapshot:v1:7ab72123b54996f361741bb14358588ac930c27f892163d3ec5fd50138d48741",
+    "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::pocketkit::TextCatalog::function:add#g0(Int64,Int64)",
+    "signature": "public func add(value: Int64, radix!: Int64 = 10): Unit",
+    "bodyLine": "仅支持十进制，默认值是 10。"
+  }
+}

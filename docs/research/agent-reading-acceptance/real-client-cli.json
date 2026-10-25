@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "cjdoc.actual-client-cli-equivalence/1",
+  "binarySha256": "57fccf60012c72b3fd36a08262f9a480ba1160d6ab9b3dbcc598dc9024c5e52f",
+  "actualClientWireSha256": "1fc9f8514a0f0ffa9935481e6a7b1f21b95766f01c557637bf0bbeaedb1f8456",
+  "pairedRunManifestSha256": "1057f13e262bfb94ee8d819693dc3a2a3fd48d4954980255b3690bcb5938673a",
+  "snapshots": [
+    {
+      "path": "composed/demo-v2/html/en/machine/docs.json",
+      "sha256": "a7872c159872511eb06ae7ab6babfb26bc7dba2a1b890c9d4eec71862ba8eed2"
+    },
+    {
+      "path": "composed/demo-v1/html/en/machine/docs.json",
+      "sha256": "b703bf65df2d21c100e484232e1125807dbb8cd0fe91da967453a6363b3c93fc"
+    },
+    {
+      "path": "support/docs.json",
+      "sha256": "bd0355fd5e9a9178e4fffc1e65cab80a238086ac8b4c9a8f032ea35301aa4af5"
+    },
+    {
+      "path": "extra/reexports-complete/html/machine/docs.json",
+      "sha256": "464466ffc3876416a4393c613b472f46783d917c8d02c5f2e80b96d9b282aa82"
+    },
+    {
+      "path": "extra/unsupported/html/machine/docs.json",
+      "sha256": "8e47a6418611b349be33e211c8174da2af7522105108dd44cd9d5c12686d6286"
+    }
+  ],
+  "scope": "Actual real-Agent MCP calls replayed unchanged through native CLI; protocol success and task-correctness are separate.",
+  "rows": [
+    {
+      "operation": "resolve_docs",
+      "status": "ok",
+      "nativeCliExitCode": 0,
+      "elapsedSeconds": 22.308318,
+      "sameRequestAndCompleteCoreResult": true,
+      "stdoutSha256": "001f9232eaef8301bab525f3f3864ad6b5a7f27b8b9f91cca5f82f781a5e8a9f"
+    },
+    {
+      "operation": "search",
+      "status": "ok",
+      "nativeCliExitCode": 0,
+      "elapsedSeconds": 23.31893,
+      "sameRequestAndCompleteCoreResult": true,
+      "stdoutSha256": "c07bec0201e5db038ea5f8ecaddeadd5b743b03d97c4790edba20954b8d57a85"
+    },
+    {
+      "operation": "get_symbol",
+      "status": "ok",
+      "nativeCliExitCode": 0,
+      "elapsedSeconds": 23.034431,
+      "sameRequestAndCompleteCoreResult": true,
+      "stdoutSha256": "6a8f85e38b0ecefdd7d623fa2494c48ab603d76c384c20018dbb6b9882400d5d"
+    },
+    {
+      "operation": "get_symbol",
+      "status": "invalid_request",
+      "nativeCliExitCode": 2,
+      "elapsedSeconds": 22.918656,
+      "sameRequestAndCompleteCoreResult": true,
+      "stdoutSha256": "ed9a9f3c792eb3c255c747da0aa3fbc19d6d48060adc12f71badf5d3098fb09f"
+    },
+    {
+      "operation": "get_symbol",
+      "status": "invalid_request",
+      "nativeCliExitCode": 2,
+      "elapsedSeconds": 20.864097,
+      "sameRequestAndCompleteCoreResult": true,
+      "stdoutSha256": "ed9a9f3c792eb3c255c747da0aa3fbc19d6d48060adc12f71badf5d3098fb09f"
+    },
+    {
+      "operation": "get_symbol",
+      "status": "invalid_request",
+      "nativeCliExitCode": 2,
+      "elapsedSeconds": 20.134768,
+      "sameRequestAndCompleteCoreResult": true,
+      "stdoutSha256": "ed9a9f3c792eb3c255c747da0aa3fbc19d6d48060adc12f71badf5d3098fb09f"
+    },
+    {
+      "operation": "get_symbol",
+      "status": "ok",
+      "nativeCliExitCode": 0,
+      "elapsedSeconds": 21.119675,
+      "sameRequestAndCompleteCoreResult": true,
+      "stdoutSha256": "019152f8d619482c2f68f69ef46f61bae8e7b57f0ae4f71b6ef13330d2e456db"
+    },
+    {
+      "operation": "get_symbol",
+      "status": "ok",
+      "nativeCliExitCode": 0,
+      "elapsedSeconds": 23.243139,
+      "sameRequestAndCompleteCoreResult": true,
+      "stdoutSha256": "6bc4abfe7e90e689b714fbb35809d9d2b315c7b2d3dbb7b01981a37434325789"
+    }
+  ]
+}

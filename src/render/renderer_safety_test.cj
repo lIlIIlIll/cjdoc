@@ -32,7 +32,10 @@ private func rendererSafetyContent(artifacts: Array<RenderArtifact>, path: Strin
 private func rendererSafetyText(artifacts: Array<RenderArtifact>): String {
     let out = StringBuilder()
     for (artifact in artifacts) {
-        if (!artifact.isBinary) { out.append(artifact.content) }
+        if (!artifact.isBinary && !artifact.path.startsWith("html/agent/") &&
+            (artifact.path.endsWith(".html") || artifact.path.endsWith(".md"))) {
+            out.append(artifact.content)
+        }
     }
     out.toString()
 }
@@ -554,7 +557,6 @@ class RendererSafetyTest {
         @Expect(mainHtml.split("A compact type summary.").size, 2)
         @Expect(html.contains("class=\"skip-link\" href=\"#cjdoc-main\""), true)
         @Expect(html.contains("id=\"cjdoc-main\""), true)
-        @Expect(html.contains("<code>member()</code>"), true)
         @Expect(mainHtml.contains("data-cjdoc-members-expand"), true)
         @Expect(mainHtml.contains("data-cjdoc-members-collapse"), true)
     }

@@ -14,6 +14,7 @@
 4. **准备发布**：[build.md](build.md) → [release-process.md](release-process.md) → [ci-orchestration.md](ci-orchestration.md)、[ci-wallclock.md](ci-wallclock.md)、[paired-samples-main.md](paired-samples-main.md)。
 5. **处理 PR 复审门禁**：[codex-review-gate.md](codex-review-gate.md) → AGENTS.md 的“Codex 复审完成门禁”。
 6. **展示站与阅读体验**：[showcase-contract.md](showcase-contract.md) → [showcase-phases.md](showcase-phases.md) → [api-reading-audit.md](api-reading-audit.md) → [reader-scale.md](reader-scale.md)（原生规模语料、成对证据和事前预算）。
+7. **机器阅读与 Agent 评测**：[../agent-reading.md](../agent-reading.md) → [agent-evaluation.md](agent-evaluation.md)（冻结协议、双路径真实客户端、消费者编译与行为裁决）。
 
 ## 文档地图
 
@@ -32,10 +33,11 @@
 | 展示站阶段归因 | [showcase-phases.md](showcase-phases.md) | Pages assemble 各阶段墙钟与并行化决策（issue #82/#93） |
 | 阅读体验审计 | [api-reading-audit.md](api-reading-audit.md) | 33 项 API 阅读体验修复的实现与验收重点 |
 | 大规模阅读基准 | [reader-scale.md](reader-scale.md) | 1k/10k/50k 与真实库语料、原生/浏览器观测、资源边界与固定门槛 |
+| Agent 效果评测 | [agent-evaluation.md](agent-evaluation.md) | 固定任务、同条件完整对照、实际读取成本、生成代码验证及证据边界 |
 | 验收记录 | [acceptance/](acceptance/) | 按 issue 归档的验收映射与复现入口 |
 | 历史实现报告 | [implementation-report-v0.6.md](implementation-report-v0.6.md) | v0.6.0 的历史报告，仅作归档，不是当前证据 |
 | 调查记录 | [../research/](../research/) | CHIR、`std.ast`、高亮边界等时间点调查记录 |
-| 发布 schema | [../schema/](../schema/) | 当前发布的 18 个 schema 文件，由 `scripts/update_schemas.sh` 从构建产物同步 |
+| 发布 schema | [../schema/](../schema/) | 当前发布的 25 个 schema 文件，由 `scripts/update_schemas.sh` 从构建产物同步 |
 
 阅读基准把原生超时记为失败，不当作已观察到的资源拒绝；父进程正常/异常退出后也清理尚存的子进程组。打印证据检查签名、契约及祖先的实际可见性，并用三种真实 CSS 隐藏反例校验观察器。修正观测协议时要重采同协议的 before/after，不能混用旧 harness 数据或调整事前预算。
 

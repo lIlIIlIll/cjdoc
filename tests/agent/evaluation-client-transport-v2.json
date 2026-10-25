@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "cjdoc.agent-evaluation-protocol/2",
+  "status": "transport-frozen-before-corrected-model-comparison; factual-protocol-remains-frozen-before-product-edits",
+  "factProtocol": {
+    "path": "evaluation-protocol.json",
+    "sha256": "ce8122221fe03bc3d26e5a73efb1f43d64a5361aebcd22c759079dcabd09c059"
+  },
+  "clientTransport": "codex-0.163-mcp-host",
+  "supersedesObservation": {
+    "label": "real-agent-paired-final-first",
+    "reportSha256": "6c869befdbd4ef0eee358d0270c6f6aa98e7e3f3c17fa7fa2c4df79db3f49875",
+    "retainedRuns": 24,
+    "classification": "complete paired infrastructure-failure observation, not a usable model-effect comparison",
+    "observedDefects": [
+      "Disabling code_mode_host prevents Codex 0.163 MCP tool discovery/dispatch even while code_mode is disabled.",
+      "Codex MCP child environment does not inherit the native Cangjie loader paths unless explicitly configured."
+    ],
+    "repairScope": "Enable only the required MCP dispatch host, require live documentation-server initialization within the unchanged whole-client deadline, and explicitly forward the allowlisted native loader environment and existing heap setting. Preserve every original task, fact, model/client setting, budget, arm order and rubric; retain the complete failed observation. Recover delivered byte totals only from a complete, independently size-checked request/result journal when client teardown omits its closing counters; unfinished receipts remain unknown."
+  }
+}

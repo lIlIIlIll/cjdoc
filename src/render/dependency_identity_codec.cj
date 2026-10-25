@@ -4,12 +4,12 @@ import cjdoc.model.*
 import std.collection.*
 import yjson.*
 
-internal func appendDependencyInstance(out: StringBuilder, value: DependencyInstance): Unit {
+protected func appendDependencyInstance(out: StringBuilder, value: DependencyInstance): Unit {
     out.append("{\"moduleId\":${escapeJsonString(value.moduleId)},\"componentModuleId\":${escapeJsonString(value.componentModuleId)},\"name\":${escapeJsonString(value.name)},\"instanceId\":${escapeJsonString(value.instanceId)},\"kind\":${escapeJsonString(value.kind)},\"identity\":${escapeJsonString(value.identity)},\"state\":${escapeJsonString(value.state)},\"evidence\":${escapeJsonString(value.evidence)},\"version\":${escapeJsonString(value.version)},\"revision\":${escapeJsonString(value.revision)},\"target\":${escapeJsonString(value.target)},\"cfg\":${escapeJsonString(value.cfg)}")
     out.append("}")
 }
 
-internal func appendDocumentSetIdentity(out: StringBuilder, value: DocumentSetIdentity): Unit {
+protected func appendDocumentSetIdentity(out: StringBuilder, value: DocumentSetIdentity): Unit {
     out.append("{\"id\":${escapeJsonString(value.id)},\"moduleId\":${escapeJsonString(value.moduleId)},\"library\":${escapeJsonString(value.library)},\"identity\":${escapeJsonString(value.identity)},\"state\":${escapeJsonString(value.state)},\"source\":${escapeJsonString(value.source)},\"target\":${escapeJsonString(value.target)},\"cfg\":${escapeJsonString(value.cfg)},\"audience\":${escapeJsonString(value.audience)},\"language\":${escapeJsonString(value.language)},\"revision\":${escapeJsonString(value.revision)},\"apiVersion\":${escapeJsonString(value.apiVersion)},\"documentationRevision\":${escapeJsonString(value.documentationRevision)},\"indexIdentity\":${escapeJsonString(value.indexIdentity)},\"baseUrl\":${escapeJsonString(value.baseUrl)}")
     out.append("}")
 }
@@ -30,7 +30,7 @@ internal func appendNavigationDecision(out: StringBuilder, value: TypeNavigation
     out.append("}")
 }
 
-internal func appendTypeNavigation(out: StringBuilder, value: ?TypeNavigation): Unit {
+protected func appendTypeNavigation(out: StringBuilder, value: ?TypeNavigation): Unit {
     match (value) {
         case Some(navigation) => appendNavigationDecision(out, navigation)
         case None => out.append("null")

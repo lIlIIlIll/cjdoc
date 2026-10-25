@@ -7,6 +7,10 @@ import std.time.*
 @When[os != "Windows"]
 import std.posix.*
 
+@When[os == "macOS"]
+foreign func fgetattrlist(descriptor: Int32, attributes: VArray<UInt32, $6>,
+    result: VArray<UInt32, $2>, resultSize: UIntNative, options: UIntNative): Int32
+
 private let BOUNDED_READ_CHUNK_BYTES: Int64 = 64 * 1024
 
 private class BoundedFileSnapshot {
@@ -274,7 +278,7 @@ private func boundedReadDescriptor(fd: Int32, request: Int64): (Array<Byte>, Int
     (buffer, count)
 }
 
-@When[os != "Windows"]
+@When[os != "Windows" && os != "macOS"]
 private func boundedRequireRegularDescriptor(fd: Int32, path: String): Unit {
     for (prefix in ["/proc/self/fd", "/dev/fd"]) {
         try {
@@ -282,6 +286,20 @@ private func boundedRequireRegularDescriptor(fd: Int32, path: String): Unit {
             if (FileInfo(target).isRegular()) { return }
         } catch (_: Exception) { }
     }
+    throw IllegalArgumentException(
+        "bounded relative read could not verify a regular descriptor: '${path}'")
+}
+
+@When[os == "macOS"]
+private func boundedRequireRegularDescriptor(fd: Int32, path: String): Unit {
+    // Darwin's /dev/fd entries are not pathname symlinks to the opened file.
+    // Query its vnode directly, without reopening a path or assuming stat's ABI.
+    // sys/attr.h: bitmapcount=5, ATTR_CMN_OBJTYPE=8; sys/vnode.h: VREG=1.
+    // Supported Darwin targets are little-endian: word 0 packs UInt16(5), UInt16(0).
+    var attributes: VArray<UInt32, $6> = [5, 0x00000008, 0, 0, 0, 0]
+    var result: VArray<UInt32, $2> = [0, 0]
+    let status = unsafe { fgetattrlist(fd, inout attributes, inout result, 8, 0) }
+    if (status == 0 && result[0] == 8 && result[1] == 1) { return }
     throw IllegalArgumentException(
         "bounded relative read could not verify a regular descriptor: '${path}'")
 }
@@ -352,12 +370,6 @@ private func readFileBoundedWithinCore(root: Path, relativePath: String,
 }
 
 @When[os != "Windows"]
-internal func readFileBoundedWithin(root: Path, relativePath: String,
-    maxBytes: Int64): Array<Byte> {
-    readFileBoundedWithinCore(root, relativePath, maxBytes, None<Int64>, { => })
-}
-
-@When[os != "Windows"]
 internal func readFileBoundedWithinExpected(root: Path, relativePath: String,
     maxBytes: Int64, expectedSize: Int64): Array<Byte> {
     if (expectedSize < 0 || expectedSize > maxBytes) {
@@ -370,13 +382,6 @@ internal func readFileBoundedWithinExpected(root: Path, relativePath: String,
 internal func readFileBoundedWithinAfterOpenForTest(root: Path, relativePath: String,
     maxBytes: Int64, afterOpen: () -> Unit): Array<Byte> {
     readFileBoundedWithinCore(root, relativePath, maxBytes, None<Int64>, afterOpen)
-}
-
-@When[os == "Windows"]
-internal func readFileBoundedWithin(root: Path, relativePath: String,
-    maxBytes: Int64): Array<Byte> {
-    throw IllegalArgumentException(
-        "bounded relative reads are unavailable on Windows")
 }
 
 @When[os == "Windows"]

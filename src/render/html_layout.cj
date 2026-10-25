@@ -11,7 +11,8 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
     projection: RenderProjection, rootPrefix: String, locale: String,
     currentPackagePath!: ?String = None, currentRoute!: String = "overview",
     currentSymbol!: ?SymbolDoc = None): Unit {
-    out.append("<aside id=\"cjdoc-sidebar\" class=\"docs-sidebar\" aria-label=\"${label(locale, "Documentation navigation", "文档导航")}\" tabindex=\"-1\">")
+    let currentId = match (currentSymbol) { case Some(symbol) => symbol.id case None => "" }
+    out.append("<aside id=\"cjdoc-sidebar\" class=\"docs-sidebar\" aria-label=\"${label(locale, "Documentation navigation", "文档导航")}\" tabindex=\"-1\" data-cjdoc-root-prefix=\"${escapeHtml(rootPrefix)}\" data-cjdoc-current-symbol=\"${escapeHtml(currentId)}\">")
     out.append("<button class=\"sidebar-close\" type=\"button\" data-cjdoc-sidebar-close aria-label=\"${label(locale, "Close navigation", "关闭导航")}\">${label(locale, "Close", "关闭")}</button>")
     out.append("<div class=\"sidebar-section\"><p class=\"sidebar-label\">${label(locale, "Documentation", "文档")}</p>")
     let overviewClass = if (currentRoute == "overview") { " is-current" } else { "" }
@@ -62,100 +63,59 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
 internal func appendSidebarActiveSymbols(out: RenderTextBuffer, projection: RenderProjection,
     moduleId: String, packageName: String, rootPrefix: String,
     locale: String, currentSymbol: ?SymbolDoc): Unit {
-    match (projection.topLevelByPackage.get(routeKey(moduleId, packageName))) {
-        case Some(symbols) =>
-            out.append("<nav class=\"sidebar-symbols\" aria-label=\"" +
-                label(locale, "Declarations in this package", "当前包声明") + "\">")
-            // The cap must not hide the page being read when its declaration
-            // sorts after the first 256 entries.
-            var currentBeyondLimit = false
-            match (currentSymbol) {
-                case Some(selected) =>
-                    var position: Int64 = 0
-                    for (symbol in symbols) {
-                        if (position >= 256 && symbol.id == selected.id) {
-                            currentBeyondLimit = true
-                            break
-                        }
-                        position++
-                    }
+    let symbols = match (projection.topLevelByPackage.get(routeKey(moduleId, packageName))) {
+        case Some(values) => values
+        case None => return
+    }
+    if (symbols.isEmpty()) { return }
+    let packagePath = packagePagePath(moduleId, packageName)
+    out.append("<nav class=\"sidebar-symbols\" aria-label=\"" +
+        label(locale, "Declarations in this package", "当前包声明") +
+        "\" data-cjdoc-sidebar-package=\"" + escapeHtml(packagePath) + "\">")
+    // The active declaration and complete index work even when scripts are
+    // unavailable. Shared data restores the unchanged bounded window offline.
+    match (currentSymbol) {
+        case Some(selected) =>
+            match (sidebarPackageLabels(projection, moduleId, packageName).get(selected.id)) {
+                case Some(name) =>
+                    out.append("<a class=\"sidebar-symbol is-current\" aria-current=\"page\" href=\"" +
+                        rootPrefix + escapeHtml(symbolPagePath(selected)) +
+                        "\"><span class=\"sidebar-symbol-name\">" + escapeHtml(name) +
+                        "</span><span class=\"sidebar-symbol-kind\">" +
+                        escapeHtml(htmlKindLabel(selected.kind, locale)) + "</span></a>")
                 case None => ()
             }
-            let maximum: Int64 = if (currentBeyondLimit) { 255 } else { 256 }
-            var shown: Int64 = 0
-            let seenLabels = HashMap<String, Int64>()
-            for (symbol in symbols) {
-                let active = match (currentSymbol) {
-                    case Some(value) => value.id == symbol.id
-                    case None => false
-                }
-                // An extension target alone is not a unique declaration.
-                // Prefer a visible member signature, with an ordinal fallback.
-                var displayName = if (symbol.kind == "extend") {
-                    readerSymbolName(symbol)
-                } else { htmlContextLabel(symbol) }
-                if (symbol.kind == "extend") {
-                    match (projection.membersByOwner.get(symbol.id)) {
-                        case Some(members) =>
-                            if (!members.isEmpty()) {
-                                displayName += " · " + htmlContextLabel(members[0])
-                            }
-                        case None => ()
-                    }
-                }
-                let ordinal = match (seenLabels.get(displayName)) {
-                    case Some(previous) => previous + 1
-                    case None => 1
-                }
-                seenLabels[displayName] = ordinal
-                if (ordinal > 1) { displayName += " · #" + ordinal.toString() }
-                if (shown >= maximum && !active) { continue }
-                let activeClass = if (active) { " is-current" } else { "" }
-                let currentAttribute = if (active) { " aria-current=\"page\"" } else { "" }
-                // Full signatures remain on their pages, rather than in repeated sidebar metadata.
-                out.append("<a class=\"sidebar-symbol" + activeClass +
-                    "\"" + currentAttribute + " href=\"" +
-                    rootPrefix + escapeHtml(symbolPagePath(symbol)) + "\"><span class=\"sidebar-symbol-name\">" +
-                    escapeHtml(displayName) +
-                    "</span><span class=\"sidebar-symbol-kind\">" +
-                    escapeHtml(htmlKindLabel(symbol.kind, locale)) + "</span></a>")
-                shown++
-            }
-            if (symbols.size > 256) {
-                out.append("<a class=\"sidebar-symbol-more\" href=\"" +
-                    rootPrefix + escapeHtml(packagePagePath(moduleId, packageName)) +
-                    "#declarations\">" + label(locale, "Full package index", "查看完整包索引") +
-                    "</a>")
-            }
-            out.append("</nav>")
         case None => ()
     }
+    out.append("<a class=\"sidebar-symbol-more\" data-cjdoc-sidebar-more href=\"" +
+        rootPrefix + escapeHtml(packagePath) + "#declarations\">" +
+        label(locale, "Full package index", "查看完整包索引") + "</a></nav>")
 }
 
 internal func appendContextSidebar(out: RenderTextBuffer, projection: RenderProjection,
     rootPrefix: String, locale: String, currentPackagePath: ?String,
     currentSymbol: ?SymbolDoc): Unit {
-    var owner: ?SymbolDoc = None
-    match (currentSymbol) {
-        case Some(symbol) => owner = memberContextOwner(projection, symbol)
-        case None => ()
+    let owner: ?SymbolDoc = match (currentSymbol) {
+        case Some(symbol) => memberContextOwner(projection, symbol)
+        case None => None
     }
-    // Top-level symbol pages use the package-symbol navigation above. Only
-    // package pages need the legacy full-package context listing.
     if (currentSymbol.isSome() && owner.isNone()) { return }
-
-    let targets = ArrayList<SymbolDoc>()
     var localMembers = false
     var contextTitle = label(locale, "In this package", "当前包")
+    var contextKey = ""
+    var contextSource = "packages"
+    var targetCount: Int64 = 0
     var moreHref = ""
     match (owner) {
         case Some(value) =>
             contextTitle = readerSymbolTitle(value, locale)
+            contextKey = value.id
+            contextSource = "members"
             localMembers = match (currentSymbol) {
                 case Some(symbol) => symbol.id == value.id
                 case None => false
             }
-            for (entry in projection.members(value).entries) { targets.add(entry.symbol) }
+            targetCount = projection.members(value).entries.size
             moreHref = rootPrefix + symbolPagePath(value)
         case None => match (currentPackagePath) {
             case Some(route) =>
@@ -163,16 +123,17 @@ internal func appendContextSidebar(out: RenderTextBuffer, projection: RenderProj
                     if (packagePagePath(pkg.source.moduleId, pkg.source.name) != route) { continue }
                     match (projection.topLevelByPackage.get(
                         routeKey(pkg.source.moduleId, pkg.source.name))) {
-                        case Some(values) => targets.add(all: values)
+                        case Some(values) => targetCount = values.size
                         case None => ()
                     }
+                    contextKey = route
                     moreHref = rootPrefix + route
+                    break
                 }
             case None => ()
         }
     }
-    if (targets.isEmpty()) { return }
-
+    if (targetCount == 0) { return }
     out.append("<section class=\"sidebar-section sidebar-context\" aria-label=\"" +
         escapeHtml(contextTitle) + "\"><p class=\"sidebar-label\">" +
         escapeHtml(contextTitle) + "</p>")
@@ -180,37 +141,17 @@ internal func appendContextSidebar(out: RenderTextBuffer, projection: RenderProj
         label(locale, "Filter this context", "筛选当前条目") +
         "</span><input type=\"search\" class=\"sidebar-filter\" data-cjdoc-context-filter placeholder=\"" +
         label(locale, "Filter declarations", "筛选声明") + "\"></label>")
-    out.append("<nav class=\"context-links\">")
-    let maximum: Int64 = 256
-    var shown: Int64 = 0
-    for (symbol in targets) {
-        if (shown >= maximum) { break }
-        let href = if (localMembers) {
-            "#" + symbolAnchor(symbol)
-        } else {
-            rootPrefix + symbolPagePath(symbol)
-        }
-        let active = match (currentSymbol) {
-            case Some(value) => value.id == symbol.id
-            case None => false
-        }
-        out.append("<a class=\"context-item")
-        if (active) { out.append(" is-current") }
-        out.append("\" data-cjdoc-context-item href=\"" + escapeHtml(href) + "\"")
-        if (active) { out.append(" aria-current=\"page\"") }
-        out.append(" title=\"" + escapeHtml(symbol.headerSpelling) + "\"><code>" +
-            escapeHtml(htmlContextLabel(symbol)) + "</code></a>")
-        shown++
-    }
-    out.append("</nav><p class=\"sidebar-no-results\" data-cjdoc-context-empty role=\"status\" hidden>" +
+    out.append("<nav class=\"context-links\" data-cjdoc-context-key=\"" +
+        escapeHtml(contextKey) + "\" data-cjdoc-context-source=\"" + contextSource +
+        "\" data-cjdoc-context-local=\"" + localMembers.toString() + "\"></nav>")
+    out.append("<p class=\"sidebar-limit\" data-cjdoc-context-fallback><a href=\"" +
+        escapeHtml(moreHref) + "\">" + label(locale, "Full index", "完整索引") + "</a></p>")
+    out.append("<p class=\"sidebar-no-results\" data-cjdoc-context-empty role=\"status\" hidden>" +
         label(locale, "No matching declarations.", "没有匹配的声明。") + "</p>")
-    if (targets.size > maximum) {
-        out.append("<p class=\"sidebar-limit\">" +
-            label(locale, "Showing the first 256 entries.", "显示前 256 个条目。") +
-            " <a href=\"" + escapeHtml(moreHref) + "\">" +
-            label(locale, "Full index", "完整索引") + "</a></p>")
-    }
-    out.append("</section>")
+    out.append("<p class=\"sidebar-limit\" data-cjdoc-context-limit hidden>" +
+        label(locale, "Showing the first 256 entries.", "显示前 256 个条目。") +
+        " <a href=\"" + escapeHtml(moreHref) + "\">" +
+        label(locale, "Full index", "完整索引") + "</a></p></section>")
 }
 
 
@@ -244,12 +185,21 @@ internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: 
     documentation: DocumentationSet, projection: RenderProjection,
     locale!: String = "en", currentPackagePath!: ?String = None,
     currentRoute!: String = "overview", docVersion!: ?String = None,
-    currentSymbol!: ?SymbolDoc = None): Unit {
+    currentSymbol!: ?SymbolDoc = None, agentReadable!: Bool = false,
+    alternateMarkdown!: ?String = None): Unit {
     out.append("<!doctype html>\n<html lang=\"${locale}\"><head><meta charset=\"utf-8\">")
     out.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
     out.append("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'self' file:; style-src 'self' file:; img-src 'self' file:; base-uri 'none'; form-action 'none'\">")
     out.append("<title>${escapeHtml(title)}</title><script src=\"${rootPrefix}theme-bootstrap.js\"></script><link rel=\"stylesheet\" href=\"${rootPrefix}style.css\">")
+    if (agentReadable) {
+        out.append("<link rel=\"describedby\" type=\"text/plain\" href=\"${rootPrefix}llms.txt\">")
+        out.append("<link rel=\"describedby\" type=\"application/json\" href=\"${rootPrefix}agent/manifest.json\">")
+        if (let Some(path) <- alternateMarkdown) {
+            out.append("<link rel=\"alternate\" type=\"text/markdown\" href=\"${escapeHtml(rootPrefix + path)}\">")
+        }
+    }
     out.append("<script defer src=\"${rootPrefix}search-index.js\"></script>")
+    out.append("<script defer src=\"${rootPrefix}sidebar-index.js\"></script>")
     out.append("<script defer src=\"${rootPrefix}search.js\"></script></head><body data-cjdoc-route=\"${escapeHtml(currentRoute)}\"")
     match (docVersion) {
         case Some(value) => out.append(" data-cjdoc-doc-version=\"${escapeHtml(value)}\"")

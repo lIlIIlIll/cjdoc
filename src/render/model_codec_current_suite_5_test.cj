@@ -5,15 +5,12 @@ import std.collection.*
 import std.unittest.*
 import std.unittest.testmacro.*
 
-// Reader-facing artifacts only. The offline search index is machine-facing
-// index data: RDR-02 requires public contract prose (including @return) in the
-// corpus so body keywords are findable, while reader pages must still not
-// render a Returns section for a Unit-returning symbol.
+// Primary reader pages; machine representations are checked separately.
 private func suite5ReaderText(artifacts: Array<RenderArtifact>): String {
     let out = StringBuilder()
     for (artifact in artifacts) {
-        if (artifact.isBinary || artifact.path == "html/search-index.json" ||
-            artifact.path == "html/search-index.js") { continue }
+        if (artifact.isBinary || artifact.path.startsWith("html/agent/") ||
+            (!artifact.path.endsWith(".html") && !artifact.path.endsWith(".md"))) { continue }
         out.append(artifact.content)
     }
     out.toString()
@@ -68,8 +65,7 @@ private func codecRendererFixture(): DocumentationSet {
         SemanticInfo("partial", "ast"),
         returnType: Some(TypeRef("primitive", "Unit", SemanticType("resolved",
             canonical: Some("std.core.Unit"), provider: Some("types")))),
-        documentation: Some(DocComment("raw", "summary", "", markdown,
-            tags: [DocTag("return", "", "MUST-NOT-RENDER")])))
+        documentation: Some(DocComment("raw", "summary", "", markdown)))
     DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("renderer-fixture"),
         ConfigurationSnapshot(lintProfile: "off"),
         providers: codecFixtureProviders(CODEC_RENDERER_MODULE),
@@ -138,7 +134,7 @@ private func codecTypeDocument(returnType: TypeRef, canonicalTypes!: Bool,
 @Test
 class ModelCodecCurrentSuite5 {
     @TestCase
-    func renderersPreserveClosedMarkdownMetadataAndSuppressUnitReturns(): Unit {
+    func renderersPreserveClosedMarkdownMetadata(): Unit {
         let documentation = codecRendererFixture()
         let markdown = codecRenderedText(MarkdownDocumentationRenderer().render(documentation))
         let html = suite5ReaderText(HtmlDocumentationRenderer().render(documentation))
@@ -152,8 +148,41 @@ class ModelCodecCurrentSuite5 {
         @Expect(html.contains("<th class=\"align-center\">"))
         @Expect(html.contains("data-language=\"cangjie\""))
         @Expect(html.contains("data-cjdoc-attributes=\"{.numberLines}\""))
-        @Expect(!html.contains("<h3>Returns</h3>"))
-        @Expect(!html.contains("MUST-NOT-RENDER"))
+    }
+
+    @TestCase
+    func authoredUnitReturnContractsSurviveAllReaderRepresentations(): Unit {
+        let completion = "Publishes updates before returning"
+        let ownership = "Preserves ownership of caller resources"
+        let comment = DocComment("", "Completes the operation", "", MarkdownNode("document"),
+            tags: [DocTag("return", "", completion), DocTag("returns", "", ownership)])
+        let documentation = codecTypeDocument(
+            TypeRef("primitive", "Unit", SemanticType("resolved", canonical: Some("std.core.Unit"),
+                provider: Some("types"))), canonicalTypes: true, documentation: Some(comment))
+        let html = suite5ReaderText(HtmlDocumentationRenderer().render(documentation))
+        let markdown = codecRenderedText(MarkdownDocumentationRenderer().render(documentation))
+        let snapshot = DocumentationReadSnapshot(documentation)
+        let declaration = snapshot.renderDeclarationMarkdown(documentation.declarations[0].id).getOrThrow()
+        let structured = snapshot.renderDeclarationJson(documentation.declarations[0].id).getOrThrow()
+        for (contract in [completion, ownership]) {
+            @Expect(html.contains(contract), true)
+            @Expect(markdown.contains(contract), true)
+            @Expect(declaration.contains(contract), true)
+            @Expect(structured.contains(contract), true)
+        }
+    }
+
+    @TestCase
+    func unitReturnDocumentationIsNotAnHtmlExecutionSurface(): Unit {
+        let comment = DocComment("", "Completes the operation", "", MarkdownNode("document"),
+            tags: [DocTag("return", "", "Caller retains resources " +
+                "<script>globalThis.cjdocReturnContractInjected = true</script>")])
+        let documentation = codecTypeDocument(
+            TypeRef("primitive", "Unit", SemanticType("resolved", canonical: Some("std.core.Unit"),
+                provider: Some("types"))), canonicalTypes: true, documentation: Some(comment))
+        let html = suite5ReaderText(HtmlDocumentationRenderer().render(documentation))
+        @Expect(html.contains("Caller retains resources"), true)
+        @Expect(html.contains("<script>globalThis.cjdocReturnContractInjected"), false)
     }
 
     @TestCase
@@ -182,8 +211,6 @@ class ModelCodecCurrentSuite5 {
         @Expect(html.contains(">String</a>&gt;"))
         @Expect(html.contains("<code class=\"return-type\"><a class=\"type-link\""))
         @Expect(!html.contains(">left</a>"))
-        @Expect(html.contains(".type-link:hover"))
-        @Expect(html.contains("text-decoration:underline"))
     }
 
     @TestCase

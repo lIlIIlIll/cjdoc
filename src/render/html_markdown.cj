@@ -289,31 +289,10 @@ internal func appendExampleHtml(out: RenderTextBuffer, value: String): Unit {
     appendStructuredTextHtml(out, trimExampleBlankLines(prose.toString()))
 }
 
-private func isBehaviorContractTag(name: String): Bool {
-    name == "precondition" || name == "postcondition" || name == "invariant" ||
-        name == "performance" || name == "state" || name == "concurrency" ||
-        name == "platform" || name == "compatibility" || name == "error"
-}
-
-private func behaviorContractLabel(name: String, locale: String): String {
-    if (locale == "zh-CN") {
-        match (name) {
-            case "precondition" => "前置条件"
-            case "postcondition" => "后置条件"
-            case "invariant" => "不变量"
-            case "performance" => "性能"
-            case "state" => "状态"
-            case "concurrency" => "并发"
-            case "platform" => "平台"
-            case "compatibility" => "兼容性"
-            case "error" => "错误行为"
-            case _ => name
-        }
-    } else { name }
-}
-
 // The single-kind heading is the reader's entry point, not an internal
-// "behavior contracts" category followed by a redundant label.
+// "behavior contracts" category followed by a redundant label. Chinese reuses
+// the published label; English headings read as prose while list labels stay
+// the raw tag names the author wrote.
 private func behaviorContractHeading(name: String, locale: String): String {
     if (locale == "zh-CN") { return behaviorContractLabel(name, locale) }
     match (name) {

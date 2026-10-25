@@ -14,7 +14,6 @@ public class HtmlDocumentationRenderer <: DocumentationRenderer {
 
 internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
     documentation: DocumentationSet, locale!: String = "en", docVersion!: ?String = None): Unit {
-        validateTypedDocumentationSet(documentation)
         let projection = RenderProjection(documentation)
         let index = projection.visibleIndex
         let typeLinkIndex = HtmlTypeLinkIndex(documentation, projection)
@@ -29,12 +28,13 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
                 .replace("<div class=\"conceptual-entry\" data-conceptual-entry></div>",
                     "<div class=\"conceptual-entry\" data-conceptual-entry>" + capturedConceptualEntryHtml(documentation, locale) + "</div>"))
         artifacts.addText("html/search-index.json", "application/json", searchIndex)
-        artifacts.addText("html/symbol-index.json", "application/json",
-            renderSymbolIndex(documentation, hrefPrefix: "", version: docVersion))
         artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
             renderSearchIndexScript(searchIndex, searchSignatures))
+        artifacts.addText("html/sidebar-index.js", "text/javascript; charset=utf-8",
+            renderSidebarIndexScript(projection, locale))
         artifacts.addText("html/theme-bootstrap.js", "text/javascript; charset=utf-8", HTML_THEME_BOOTSTRAP_SCRIPT)
-        artifacts.addText("html/search.js", "text/javascript; charset=utf-8", HTML_SEARCH_SCRIPT + LANGUAGE_NAVIGATION_SCRIPT)
+        artifacts.addText("html/search.js", "text/javascript; charset=utf-8",
+            HTML_SIDEBAR_SCRIPT + HTML_SEARCH_SCRIPT + LANGUAGE_NAVIGATION_SCRIPT)
         artifacts.addText("html/symbol-alias.js", "text/javascript; charset=utf-8", HTML_SYMBOL_ALIAS_SCRIPT)
         artifacts.addText("html/style.css", "text/css; charset=utf-8",
             HTML_STYLE + HTML_RETURN_LAYOUT_STYLE + HTML_TYPE_LINK_STYLE + HTML_NAVIGATION_STYLE +
@@ -54,17 +54,6 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
                 rendered.replace("</div></main>", links + "</div></main>"))
         }
         appendAssetArtifacts(artifacts, projectedAssets, "html")
-}
-
-internal func appendJsonStringArray(out: RenderTextBuffer, values: ReadOnlyList<String>): Unit {
-    out.append("[")
-    var first = true
-    for (value in values) {
-        if (!first) { out.append(",") }
-        first = false
-        appendSearchJsonString(out, value)
-    }
-    out.append("]")
 }
 
 internal func appendApiSurfaceArtifacts(artifacts: RenderArtifactCollector,
@@ -282,10 +271,12 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
 
 public func renderDocumentationFormatsWithOptions(documentation: DocumentationSet,
     formats: Array<String>, locale!: String = "zh-CN", docVersion!: ?String = None,
-    allLanguages!: Bool = false):
+    allLanguages!: Bool = false, agentFull!: Bool = false,
+    reports!: Array<DocumentationReportAttachment> = []):
     Array<RenderArtifact> {
     if (allLanguages) {
-        return renderAllDocumentationLanguages(documentation, formats, docVersion)
+        return renderAllDocumentationLanguages(documentation, formats, docVersion,
+            agentFull: agentFull, reports: reports)
     }
     if (locale != "zh-CN" && locale != "en") {
         throw IllegalArgumentException("locale must be zh-CN or en")
@@ -295,12 +286,17 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
     if (!docIrFitsEncodedBudget(localized, DOC_IR_MAX_JSON_DOCUMENT_BYTES)) {
         throw RenderResourceLimitException("selected documentation exceeds the existing Doc IR budget")
     }
+    // Finish the detached machine projection before retaining HTML pages. Only
+    // immutable output payloads survive this call, not its model/index caches.
+    let machineArtifacts: Array<RenderArtifact> = if (formats.contains("html")) {
+        renderAgentReadableArtifacts(localized, includeFull: agentFull,
+            version: docVersion, includeValidation: true, reports: reports)
+    } else { [] }
     for (format in formats) {
         match (format) {
             case "json" => appendJsonArtifacts(artifacts, documentation)
             case "markdown" => appendMarkdownSiteArtifacts(artifacts, localized, locale)
-            case "html" => appendHtmlArtifacts(artifacts, localized, locale: locale,
-                docVersion: docVersion)
+            case "html" => appendHtmlArtifacts(artifacts, localized, locale: locale, docVersion: docVersion)
             case "api-surface" => appendApiSurfaceArtifacts(artifacts, documentation)
             case "coverage" =>
                 appendCoverageArtifacts(artifacts, documentation)
@@ -317,6 +313,11 @@ public func renderDocumentationFormatsWithOptions(documentation: DocumentationSe
     }
     if (!capturedFormats.isEmpty()) {
         appendCapturedPageArtifacts(artifacts, localized, capturedFormats.toArray(), locale, docVersion)
+    }
+    if (formats.contains("html")) {
+        artifacts.addText("html/validation.html", "text/html; charset=utf-8",
+            renderValidationHtml(localized, docVersion, locale))
+        for (artifact in machineArtifacts) { artifacts.add(artifact) }
     }
     artifacts.toArray()
 }

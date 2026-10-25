@@ -7,12 +7,12 @@ import std.collection.*
 internal let PUBLIC_FIXTURE_PROJECTS = "tests/fixtures/projects/"
 internal let PUBLIC_TEST_AST_PREFLIGHT = Some("target/release/bin/main")
 
-@When[os == "Linux"]
+@When[os != "Windows"]
 internal func publicLocalAssetEmbeddingEnabled(): Bool {
     true
 }
 
-@When[os != "Linux"]
+@When[os == "Windows"]
 internal func publicLocalAssetEmbeddingEnabled(): Bool {
     false
 }

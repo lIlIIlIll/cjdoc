@@ -1,0 +1,125 @@
+{
+  "schemaVersion": "cjdoc.final-static-browser-acceptance/1",
+  "binarySha256": "57fccf60012c72b3fd36a08262f9a480ba1160d6ab9b3dbcc598dc9024c5e52f",
+  "archiveSha256": "b68a302b834414b0976b52ab955314f23bfe6f46b944debf2c20461d68f11115",
+  "http": {
+    "subpath": true,
+    "search": "window",
+    "heading": "window",
+    "signature": "public func window(start!: Int64 = 0, limit!: Int64 = 20): Array<?String>",
+    "examples": [
+      "let catalog = TextCatalog([\"a\", \"b\", \"c\", \"d\"])\nlet page = catalog.window(start: 1, limit: 2)\nassert(page.size == 2)\nassert(page[0] == Some(\"b\"))\nassert(page[1] == Some(\"c\"))\n",
+      "let catalog = TextCatalog([\"a\", \"b\", \"c\"])\n// limit 默认是 20；start 默认是 0。起始位置等于 size 时返回空窗口，\n// 末尾窗口可以短于 limit，不需要调用方补齐。\nassert(catalog.window().size == 3)\nassert(catalog.window(start: 2).size == 1)\nassert(catalog.window(start: 3).size == 0)\n",
+      "let catalog = TextCatalog([\"a\"])\n// start 大于 size 或 limit 小于零都会抛出；已在契约中声明。\ntry {\n    catalog.window(start: 2)\n    assert(false)\n} catch (e: IllegalArgumentException) {\n    assert(e.message == \"invalid window\")\n}\n"
+    ],
+    "discovery": [
+      {
+        "rel": "describedby",
+        "type": "text/plain",
+        "href": "../llms.txt"
+      },
+      {
+        "rel": "describedby",
+        "type": "application/json",
+        "href": "../agent/manifest.json"
+      },
+      {
+        "rel": "alternate",
+        "type": "text/markdown",
+        "href": "../agent/symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1372079071-1792107298.md"
+      }
+    ],
+    "sourceLinks": [
+      "https://github.com/lIlIIlIll/cjdoc/blob/677f36045135ffac967ffebd195b62f1a67b33ff/examples%2Fpocketkit%2Fdemo-v2/src/catalog.cj#L230-L239"
+    ],
+    "languageNavigation": "demo-v2/html/zh-CN/symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1372079071-1792107298.html",
+    "versionNavigation": "demo-v1/html/zh-CN/symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1372079071-1792107298.html",
+    "directManifestAndMarkdownHttpReads": "observed application/json and text/markdown responses; full Markdown signature and three examples retained",
+    "pageFetchLimitation": "Page-script fetch is blocked by declared default-src none CSP; direct resource navigation/HTTP readers are not page-script fetch."
+  },
+  "offline": {
+    "networkEmulation": "offline before initial file navigation",
+    "search": "window",
+    "heading": "window",
+    "completeContractEqualsHttp": true,
+    "requests": [
+      {
+        "path": "demo-v2/html/en/index.html",
+        "type": "document",
+        "status": 200,
+        "ok": true
+      },
+      {
+        "path": "demo-v2/html/en/theme-bootstrap.js",
+        "type": "script",
+        "status": 200,
+        "ok": true
+      },
+      {
+        "path": "demo-v2/html/en/style.css",
+        "type": "stylesheet",
+        "status": 200,
+        "ok": true
+      },
+      {
+        "path": "demo-v2/html/en/search-index.js",
+        "type": "script",
+        "status": 200,
+        "ok": true
+      },
+      {
+        "path": "demo-v2/html/en/search.js",
+        "type": "script",
+        "status": 200,
+        "ok": true
+      },
+      {
+        "path": "version-navigation.js",
+        "type": "script",
+        "status": 200,
+        "ok": true
+      },
+      {
+        "path": "demo-v2/html/en/symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1372079071-1792107298.html",
+        "type": "document",
+        "status": 200,
+        "ok": true
+      },
+      {
+        "path": "demo-v2/html/en/theme-bootstrap.js",
+        "type": "script",
+        "status": 200,
+        "ok": true
+      },
+      {
+        "path": "demo-v2/html/en/style.css",
+        "type": "stylesheet",
+        "status": 200,
+        "ok": true
+      },
+      {
+        "path": "demo-v2/html/en/search-index.js",
+        "type": "script",
+        "status": 200,
+        "ok": true
+      },
+      {
+        "path": "demo-v2/html/en/search.js",
+        "type": "script",
+        "status": 200,
+        "ok": true
+      },
+      {
+        "path": "version-navigation.js",
+        "type": "script",
+        "status": 200,
+        "ok": true
+      }
+    ],
+    "nonFileRequests": 0
+  },
+  "screenshots": [
+    "browser-http.png",
+    "browser-file-offline.png"
+  ]
+}

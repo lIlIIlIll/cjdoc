@@ -1,9 +1,12 @@
 """Executable user journeys over the generated PocketKit showcase."""
 from __future__ import annotations
 
+import hashlib
+
 from urllib.parse import unquote, urljoin, urlsplit
 
 from .browser_support import Journey, click_and_return, copy_code, require_text, assert_native_symbol, assert_native_id, directory_navigation, member_action
+from .site import load_json, load_navigation_index
 
 
 def selected_member(journey: Journey):
@@ -316,7 +319,17 @@ def machine(journey: Journey):
     selected = [item for item in ir["declarations"] if item["id"] == target["resolved"]["symbolId"]]
     if len(selected) != 1 or selected[0]["headerSpelling"] != target["signature"]:
         raise AssertionError("HTML and machine Doc IR disagree on the selected native declaration")
-    navigation = journey.raw('[data-machine-format="navigation"]', "cjdoc.navigation-index/1")
+    # Read the raw part-0 artifact through the browser, then enumerate every
+    # published continuation from the site so a multi-part index is followed to
+    # completion instead of silently trusting the first file.
+    first = journey.raw('[data-machine-format="navigation"]', "cjdoc.navigation-index/2")
+    index_name = target["index"]
+    def read_index(name):
+        value = load_json(journey.site.file(name))
+        if name == index_name and value != first:
+            raise AssertionError("browser navigation payload differs from the published first part")
+        return value
+    navigation = load_navigation_index(read_index, index_name)
     if navigation["project"]["version"] != target["version"]:
         raise AssertionError("navigation index is for a different documentation version")
     rows = [item for item in navigation["pages"] if item.get("symbolId") == selected[0]["id"]]
@@ -324,19 +337,51 @@ def machine(journey: Journey):
         raise AssertionError("HTML route and native navigation identity disagree")
     markdown = journey.raw('[data-machine-format="markdown"]')
     llms = journey.raw('[data-machine-format="llms-full"]')
+    root = index_name.rsplit("/", 1)[0] + "/" if "/" in index_name else ""
+    manifest = load_json(journey.site.file(root + "agent/manifest.json"))
+    full = load_json(journey.site.file(root + "agent-full-index.json"))
+    if (manifest["publicationRevision"] != target["version"]
+            or full["snapshotId"] != manifest["snapshotId"]):
+        raise AssertionError("full reference and native manifest identify different publications")
+    representations = [item for item in manifest["representations"]
+                       if item["kind"] == "symbol" and item["id"] == selected[0]["id"]]
+    markdown_file = journey.local_path(urljoin(journey.page.url,
+        journey.page.locator('[data-machine-format="markdown"]').first.get_attribute("href")))
+    if (len(representations) != 1 or representations[0]["html"] != rows[0]["href"]
+            or journey.site.file(root + representations[0]["markdown"]) != markdown_file):
+        raise AssertionError("visible raw links do not match the selected native representation")
+    texts = []
+    offset = 0
+    for index, part in enumerate(full["parts"]):
+        content = journey.site.file(root + part["path"]).read_bytes()
+        next_path = full["parts"][index + 1]["path"] if index + 1 < len(full["parts"]) else None
+        if (len(content) != part["bytes"] or hashlib.sha256(content).hexdigest() != part["sha256"]
+                or part["offset"] != offset or part["next"] != next_path):
+            raise AssertionError("full-reference continuation identity, bytes or range differ")
+        text = content.decode("utf-8")
+        if index == 0 and text.strip() != llms.strip():
+            raise AssertionError("browser full-reference entry differs from its published first part")
+        texts.append(text)
+        offset += part["returned"]
+    if offset != full["unitCount"]:
+        raise AssertionError("full-reference continuations do not enumerate every declared unit")
+    complete_reference = "\n".join(texts)
+    standalone = any(item["unitId"] == "symbol:" + selected[0]["id"]
+                     and item["next"] == representations[0]["markdown"]
+                     for part in full["parts"] for item in part["omittedSections"])
     if selected[0]["headerSpelling"] not in markdown:
         raise AssertionError("machine Markdown does not contain the exact selected source header")
-    if ("# `" + selected[0]["qualifiedName"] + "`") not in markdown:
-        raise AssertionError("machine Markdown's declaration heading disagrees with the exact native selection")
+    if selected[0]["qualifiedName"] not in markdown:
+        raise AssertionError("machine Markdown lost the selected declaration's qualified name")
     # Machine identities belong in native indexes, not in the reader-facing API.
     assert_native_id(journey, selected[0]["id"])
     require_text(journey.page.locator("main .signature-block"), selected[0]["headerSpelling"])
     if journey.page.locator("main .declaration-metadata").count():
         raise AssertionError("public API pages must not dump internal declaration diagnostics")
-    for required in ("Version: " + target["version"], "Stable id: " + selected[0]["id"],
-                     "Page: " + rows[0]["href"], selected[0]["headerSpelling"]):
-        if required not in llms:
-            raise AssertionError("llms output lacks the exact declaration identity/version/route: " + required)
+    if not standalone:
+        for required in (selected[0]["qualifiedName"], selected[0]["headerSpelling"]):
+            if required not in complete_reference:
+                raise AssertionError("complete reference lost the exact selected declaration: " + required)
     journey.assertions.append("visible artifact links agree with the HTML native identity, signature, route and documentation version")
 
 

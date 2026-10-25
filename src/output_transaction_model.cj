@@ -203,6 +203,7 @@ internal class StreamingOutputSha256 {
     private var h6: UInt32 = 0x1f83d9ab
     private var h7: UInt32 = 0x5be0cd19
     private let pending = Array<Byte>(64, repeat: 0)
+    private let words = Array<UInt32>(64, repeat: 0)
     private var pendingSize: Int64 = 0
     private var inputSize: Int64 = 0
 
@@ -213,6 +214,18 @@ internal class StreamingOutputSha256 {
         inputSize += count
         for (index in 0..count) {
             pending[pendingSize] = buffer[index]
+            pendingSize++
+            if (pendingSize == 64) {
+                processBlock()
+                pendingSize = 0
+            }
+        }
+    }
+
+    func update(value: String): Unit {
+        inputSize += value.size
+        for (index in 0..value.size) {
+            pending[pendingSize] = value[index]
             pendingSize++
             if (pendingSize == 64) {
                 processBlock()
@@ -243,7 +256,6 @@ internal class StreamingOutputSha256 {
     }
 
     private func processBlock(): Unit {
-        let words = Array<UInt32>(64, repeat: 0)
         for (index in 0..16) {
             let offset = index * 4
             words[index] = (UInt32(pending[offset]) << 24) |

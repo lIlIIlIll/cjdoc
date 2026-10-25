@@ -19,7 +19,7 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "afcc26dbb107f4b7f606aebab2e467d42270aecb78653dd13b4829c0e8948f08"
+CANONICAL_SEARCH_JS_SHA256 = "f9c811fe97ab46f05bb1fe0659b484bb29c6e7f2d42ef12cf77fc14a370d308a"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "79fe532a96603bce52c49d9fd92cea58503875a0c61f5d3475f11c337f960642"
 CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "c3d8038e8c37d201ff30c2bb7018bd7b88730a22046e26918fb173752d16938a"
 
@@ -149,6 +149,50 @@ def resolve_local(root: Path, source: Path, value: str) -> tuple[Path | None, st
     return target, unquote(parsed.fragment)
 
 
+def validate_sidebar_index(root: Path, pages: dict[Path, PageParser]) -> None:
+    source = root / "sidebar-index.js"
+    text = source.read_text(encoding="utf-8")
+    prefix, suffix = "globalThis.__CJDOC_SIDEBAR_INDEX__=", ";\n"
+    if not text.startswith(prefix) or not text.endswith(suffix):
+        raise ValueError("sidebar-index.js must contain only its generated assignment")
+    sidebar = strict_loads(text[len(prefix):-len(suffix)], description="sidebar-index.js")
+    if (
+        not isinstance(sidebar, dict)
+        or set(sidebar) != {"packages", "members", "symbols"}
+        or any(not isinstance(value, dict) for value in sidebar.values())
+    ):
+        raise ValueError("sidebar-index.js must contain package, member and symbol maps")
+    symbols = sidebar["symbols"]
+    fields = {"path", "label", "context", "kind", "signature", "anchor"}
+    for identity, symbol in symbols.items():
+        if (
+            identity in {"__proto__", "constructor", "prototype"}
+            or not isinstance(symbol, dict)
+            or set(symbol) != fields
+            or any(not isinstance(value, str) for value in symbol.values())
+        ):
+            raise ValueError("sidebar-index.js contains an invalid symbol")
+        target, fragment = resolve_local(root, source, symbol["path"])
+        if target not in pages or fragment:
+            raise ValueError(f"broken sidebar-index.js symbol target: {symbol['path']}")
+    for group in ("packages", "members"):
+        for owner, identities in sidebar[group].items():
+            if (
+                not isinstance(identities, list)
+                or any(not isinstance(identity, str) or identity not in symbols
+                       for identity in identities)
+                or len(identities) != len(set(identities))
+            ):
+                raise ValueError(f"sidebar-index.js contains invalid {group} references")
+            if group == "members":
+                if owner not in symbols:
+                    raise ValueError("sidebar-index.js contains an unknown member owner")
+            else:
+                target, fragment = resolve_local(root, source, owner)
+                if target not in pages or fragment:
+                    raise ValueError(f"broken sidebar-index.js package target: {owner}")
+
+
 def main() -> int:
     if len(sys.argv) not in (2, 4) or (len(sys.argv) == 4 and sys.argv[2] != "--publication-root"):
         print("usage: validate_html_site.py <site-dir> [--publication-root <directory>]", file=sys.stderr)
@@ -180,6 +224,7 @@ def main() -> int:
         expected_scripts = [
             prefix + "theme-bootstrap.js",
             prefix + "search-index.js",
+            prefix + "sidebar-index.js",
             prefix + "search.js",
         ]
         if parser.is_alias:
@@ -214,7 +259,8 @@ def main() -> int:
     script_paths = {
         path.relative_to(root).as_posix() for path in root.rglob("*.js")
     }
-    if script_paths != {"search.js", "search-index.js", "theme-bootstrap.js", "symbol-alias.js"}:
+    if script_paths != {"search.js", "search-index.js", "sidebar-index.js",
+                        "theme-bootstrap.js", "symbol-alias.js"}:
         raise ValueError("site must contain only the canonical script set")
     theme_bootstrap_bytes = (root / "theme-bootstrap.js").read_bytes()
     if hashlib.sha256(theme_bootstrap_bytes).hexdigest() != CANONICAL_THEME_BOOTSTRAP_JS_SHA256:
@@ -302,6 +348,7 @@ def main() -> int:
     expected_signature_ids = api_canonical_ids | exposure_ids
     if set(signatures) != expected_signature_ids:
         raise ValueError("search signatures must match canonical API and exposure entry IDs")
+    validate_sidebar_index(root, pages)
     print(f"validated {len(pages)} HTML pages and {len(entries)} search entries")
     return 0
 

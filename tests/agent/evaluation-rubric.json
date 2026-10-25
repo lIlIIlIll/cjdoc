@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "cjdoc.agent-evaluation-rubric/1",
+  "protocol": "evaluation-protocol.json",
+  "frozenBefore": "product changes and either model-comparison arm",
+  "taskDenominator": "all 12 frozen tasks for each arm, including timeouts, client errors and unsuccessful answers",
+  "claim": "One complete paired observation, not a stable-improvement estimate",
+  "dimensions": {
+    "apiSelection": {"unit":"task","score":"1 only when every requested API choice maps to the correct loaded documentation scope and full declaration; 0 for an incorrect or unresolved asserted choice; not-applicable only when the task correctly requires declining an unavailable API","oracle":"fixed task requiredFacts and captured v16 declarations; names alone are insufficient"},
+    "wrongApiVersion": {"unit":"incorrect selected or cited API scope","score":"count each selected/cited API version that differs from the explicitly requested dependency; document labels and latest cannot repair a mismatch"},
+    "signatureAndNamedDefaults": {"unit":"required signature fact","score":"count missing or incorrect parameter order, type, named marker, default expression, return type or extension target; compare complete producer sourceApiSignature/headerSpelling and structured model facts without inferring unresolved types"},
+    "contractOmissions": {"unit":"requiredFacts item","score":"count each fixed required fact omitted, contradicted or replaced by an unsupported stronger assertion; record the answer claim and source/Doc IR evidence for each judgment"},
+    "sourceAndDocumentCitations": {"unit":"citation","score":"correct only when actual manifest/index route resolves to the selected declaration/scope and an available source citation uses the captured revision and real range; absent source evidence must remain unknown rather than synthesized"},
+    "uncertaintyPreservation": {"unit":"task","score":"1 when missing, partial, fallback, candidate and validation states relevant to the task retain their separate meanings; 0 when any is silently upgraded"},
+    "readBytes": {"unit":"UTF-8 bytes","score":"sum the actual serialized tools/call result JSON delivered to the client, including text and structured content if both are present; report stdio transport bytes separately; do not deduplicate repeated reads or infer tokens from characters"},
+    "toolCalls": {"unit":"tools/call request","score":"count every attempted tool invocation, including failed and continuation calls; report initialize/tools/list discovery separately"},
+    "elapsedMs": {"unit":"monotonic milliseconds","score":"entire client invocation through final result, including process startup, tool calls and model time; compiler/runtime verification measured separately"},
+    "consumerCompile": {"unit":"generated consumer","score":"actual cjc/cjpm exit and diagnostics against the requested real API version; missing code where requested is failure; correct refusal tasks are not-applicable, never compile-pass"},
+    "consumerBehavior": {"unit":"generated consumer","score":"for behaviorRequired tasks, actual executable exit/output and required boundary/state assertions; compiler success alone is not behavioral pass"}
+  },
+  "budgets": {"toolCallLimit":24,"clientVisibleResultByteLimit":262144,"clientSecondsLimit":180,"exceeded":"retain full trace and mark budget-failed; do not silently retry, extend the limit or remove the task"},
+  "aggregation": {"reportPerTask":true,"keepBothArmFailures":true,"noBestOfSelection":true,"notApplicableExcludedOnlyForItsOwnMetric":true,"reportRawCountsAndDenominators":true,"noPortableHardwareOrCognitiveTimeClaim":true},
+  "judgment": "Use deterministic identity/signature/citation and actual compiler/runtime checks where available. For natural-language facts record a source-backed per-required-fact assessment; do not replace model evaluation with static projection assertions. Keep adjudication and raw model answers together."
+}

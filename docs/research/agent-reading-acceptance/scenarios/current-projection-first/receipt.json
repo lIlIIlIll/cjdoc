@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "cjdoc.actual-api-projection-smoke/1",
+  "binarySha256": "bd34fff765427d989d947504633e62f42eb5a0ddc768f16cb728603ddd28afd2",
+  "docIrSha256": "36dc2a4e03ef0794c3ed1053c1bc55b88d55e6002f5999b0b784f0515e7688f0",
+  "scenarios": [
+    {
+      "scenario": "integer-add",
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::pocketkit::TextCatalog::function:add#g0(Int64,Int64)",
+      "status": "ok",
+      "sourceSignatureState": "available",
+      "examplesPreserved": 0,
+      "packagedSymbolEqualsFrozenModel": true,
+      "queryStructuredSignatureAndParameterOrderEqualFrozenModel": true
+    },
+    {
+      "scenario": "window",
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::pocketkit::TextCatalog::function:window#g0(Int64,Int64)",
+      "status": "ok",
+      "sourceSignatureState": "available",
+      "examplesPreserved": 3,
+      "packagedSymbolEqualsFrozenModel": true,
+      "queryStructuredSignatureAndParameterOrderEqualFrozenModel": true
+    },
+    {
+      "scenario": "entry",
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::pocketkit::class:Entry#g1()",
+      "status": "ok",
+      "sourceSignatureState": "available",
+      "examplesPreserved": 0,
+      "packagedSymbolEqualsFrozenModel": true,
+      "queryStructuredSignatureAndParameterOrderEqualFrozenModel": true
+    },
+    {
+      "scenario": "string-extension",
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::pocketkit::extend:Entry<String>{function%3AbyteLength%23g0%28%29}#g0()",
+      "status": "ok",
+      "sourceSignatureState": "available",
+      "examplesPreserved": 0,
+      "packagedSymbolEqualsFrozenModel": true,
+      "queryStructuredSignatureAndParameterOrderEqualFrozenModel": true
+    },
+    {
+      "scenario": "byte-length",
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::pocketkit::Entry<String>::function:byteLength#g0()",
+      "status": "ok",
+      "sourceSignatureState": "available",
+      "examplesPreserved": 0,
+      "packagedSymbolEqualsFrozenModel": true,
+      "queryStructuredSignatureAndParameterOrderEqualFrozenModel": true
+    }
+  ],
+  "scope": "Real Pocketkit 0.2.0 captured authored API records; no Agent invoked"
+}

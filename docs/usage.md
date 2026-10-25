@@ -258,7 +258,7 @@ target/doc/html/index.html
 - 一次生成多种格式：重复写 `--format`；JSON 产物是输出目录根下的 `docs.json`，其余格式各有子目录。
 - 修改注释后重新运行同一条命令，刷新页面即可。
 - 在页面上显示文档版本：加上 `--doc-version 1.0.0`（要求同时生成 `--format html`），页面会显示版本标签并输出 `html/version.json`。
-- 生成给 AI 代理读取的文本：普通 HTML 输出已经包含 `html/llms.txt` 和 `html/navigation-index.json`；加 `--agent-full` 会额外生成 `html/llms-full.txt`（同样要求 `--format html`）。
+- 给脚本或 AI 代理独立读取声明：普通 HTML 已发布 `agent/manifest.json`、逐声明 Markdown/JSON、`llms.txt` 和可续取导航；`--agent-full` 另加聚合全文/分片索引。固定文档查询与本地 MCP 见[机器读取手册](agent-reading.md)。
 - 标准库链接：文档里引用标准库类型时，cjdoc 会链接到对应版本的官方标准库文档；默认使用能观察到的标准库版本，取不到时用 1.2.0。要指定版本用 `--stdlib-doc-version`，内置版本有 `1.0.5`、`1.1.0`、`1.1.0-beta.25`、`1.1.3`、`1.2.0`；自定义地址用 `--stdlib-doc-base-url`，必须是 HTTPS 且以 `/libs/std` 结尾。
 
 代码高亮默认开启，可以在 `cjdoc.toml` 的 `[highlight]` 中关闭或调整。相关配置见 [配置参考](configuration.md)。
@@ -599,6 +599,8 @@ cjdoc generate --project /path/to/my-project --format html
 | `--require-language <语言>` | `generate`、`check` | 无 | 要求指定语言的翻译覆盖率达到 100%，可重复。 |
 | `--doc-version <版本>` | `generate`、`render` | 无 | 文档版本标签，要求 `--format html`。 |
 | `--agent-full` | `generate`、`render`、`serve` | 关闭 | 生成完整代理文本产物，生成/渲染时要求 `--format html`。 |
+| `--validation-report <文件>` | `generate`、`render` | 无 | 发布已有 JSON 验证报告，不执行检查；要求 HTML 目录输出，不允许 stdout。 |
+| `--api-diff-report <文件>` | `generate`、`render` | 无 | 发布已有 API diff，保留双输入/缺失绑定状态；要求 HTML 目录输出。 |
 | `--repository-url <URL>` | `generate`、`serve` | 无 | GitHub 仓库根地址，必须和 `--repository-revision` 成对。 |
 | `--repository-revision <rev>` | `generate`、`serve` | 无 | 源码版本，必须和 `--repository-url` 成对。 |
 | `--repository-root <目录>` | `generate`、`serve` | 项目目录 | 仓库根目录，要求前两个选项同时存在。 |
@@ -670,6 +672,7 @@ cjdoc generate --project /path/to/my-project --format html
 ## 延伸阅读
 
 - [高级用法](advanced-usage.md)：多格式组合、workspace 与依赖、缓存与并行、条件编译、多版本文档、面向 AI 代理的产物、自动化检查接入。
+- [逐声明读取、查询与 MCP](agent-reading.md)：固定快照、API/文档身份、静态分片、章节预算、报告与 MCP 配置；读取不自动编译或重建。
 - [配置参考](configuration.md)：`cjdoc.toml` 全部配置键。
 - [概念页与指南](guides.md)：把项目 Markdown 组织成概念文档并与 API 绑定。
 - [多语言文档](i18n.md)：中英文作者正文、翻译配对与覆盖率。
