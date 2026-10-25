@@ -304,5 +304,47 @@
       "privateHttpUnicodeDisplayNotClaimed": true,
       "latestCompleteBrowserMatrixNotClaimed": true
     }
+  },
+  "nativePlatformAndPublicationFollowup": {
+    "head": "8c36156dfb16f95c8108b8302470c362a2ee8749",
+    "sourceTree": "0e17c9594990a0683af1f175b7103e5c24a0dfb1",
+    "guardedBuild": "PASS",
+    "applicationSha256": "1eb6f2bdb3f9f42a36ed17b8ad8cb098e035e69af6df7f622efa6e4dbbfd236f",
+    "manifestSha256": "607ac9ca775942a7f4bf097f09ebb6d466644876c0854c37f6e212b73a742e82",
+    "formalIdentityOnlyGate": {
+      "verdict": "passed",
+      "basicDocsSha256": "99699d82faab34baebe1e6ab284b03d3e1ed08eecefde8c4c414d03c754bd5a7",
+      "selfDocsSha256": "8d782d44d140a205e6cf1b4b676ef15c8e66868ad4711e93a600458a456a9982",
+      "fixedCpuTimingAndRssGateNotClaimed": true
+    },
+    "macos": {
+      "run": 40212957309,
+      "job": 121227972049,
+      "nativeUnitPassed": 661,
+      "nativeUnitSkipped": 0,
+      "nativeUnitFailed": 0,
+      "actualCliMcpCasesPassed": 22,
+      "fullAcceptanceStage": "PASS",
+      "laterJobFailure": "Optional highlight acceptance still treated native local guide-image capture as Linux-only.",
+      "failureScript": "scripts/highlight_acceptance.py",
+      "failureLine": 428,
+      "cutover": "Include Darwin in the supported native image branch; retain every original image-byte, hash, rendered-content and bounded-path assertion.",
+      "followupDarwinHighlightGateNotClaimed": true
+    },
+    "actualGuideImageSmoke": {
+      "platform": "linux",
+      "exitCode": 0,
+      "state": "embedded",
+      "mediaType": "image/gif",
+      "bytes": 43,
+      "sha256": "a065920df8cc4016d67c3a464be90099c9d28ffe7c9e6ee3a18f257efc58cbd7"
+    },
+    "pages": {
+      "run": 40212957755,
+      "conclusion": "success",
+      "browserShardsPassed": 2,
+      "actualTimingHistoryCases": 324,
+      "mainDeploymentNotClaimed": true
+    }
   }
 }

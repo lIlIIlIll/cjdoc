@@ -204,6 +204,10 @@ macOS 的真实失败日志已定位为普通 `agent/docs.json` 在 FD regular-f
 
 更新后的挂载器直接处理上述固定原生 HTML，真实浏览器分别在 HTTP 和 `file://` 点击 class 与 concept 的可见 Markdown 操作并返回原页面，四项落点均精确等于原生 manifest。HTTP 的完整 UTF-8 文件内容与原生产物相同。离线浏览器识别 UTF-8；本机普通 HTTP 测试宿主未声明 charset，浏览器按 windows-1252 显示，不能用这次点击记录声称 HTTP Unicode 显示已验证。完整双分片矩阵及部署宿主仍以新 HEAD 的实际结果为准。
 
+后续 `8c36156dfb16f95c8108b8302470c362a2ee8749` 的干净树受保护构建与正式 basic/self 内容身份门禁均实跑通过，self 为上述 `8d782d…`；identity-only 不代表固定 CPU 的时间/RSS 门禁。该 HEAD 的 [Pages](https://github.com/lIlIIlIll/cjdoc/actions/runs/40212957755) 两个浏览器分片与汇总通过，实际 timing history 包含完整 324 项。这里证明 PR 密封产物，不冒充 main 部署。
+
+同一 HEAD 的 [macOS full gate](https://github.com/lIlIIlIll/cjdoc/actions/runs/40212957309/job/121227972049) 已通过 661/661 原生单元、22 项真实 CLI/MCP 测试及 provider；job 随后失败在可选高亮验收的另一处陈旧 Linux-only 图片断言。`assert_captured_guide_image` 现将 Darwin 纳入受支持的原生捕获分支，原有 GIF 内容 hash、路径闭包、HTML 图片及源码代码检查全部保留，未禁用验收。固定原生程序在真实 Linux guide fixture 上实跑产出并验证 43 字节 GIF；这一局部 smoke 不替代后续 Darwin 高亮 gate。
+
 ## 发布与复算
 
 每轮 `traces.jsonl.gz` 是 UTF-8 JSONL 的 gzip：首行描述归一化口径，后续每行包含相对文件名、原始/显示字节数与 SHA-256、完整显示文本。包含全部 24 条 record、客户端事件、真实 stdio、答案、逐项判分，以及每段非空原程序和实际编译/运行日志；不包括 SDK、库产物或 ELF。对应 `traces-receipt.json` 列出完整文件清单。显示文本不是可冒充原始运行目录的副本；消费者输入字节保持原样，原始消息读字节独立记录。

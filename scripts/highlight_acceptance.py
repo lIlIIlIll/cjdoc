@@ -407,7 +407,7 @@ def assert_captured_guide_image(project, output, document):
     expected = (project / 'docs/images/pixel.gif').read_bytes()
     diagnostics = [item for item in document['diagnostics'] if item['code'] == 'CJDOC4026'
                    and (item.get('source') or {}).get('path') == 'docs/guide.md']
-    if sys.platform.startswith('linux'):
+    if sys.platform.startswith('linux') or sys.platform == 'darwin':
         asset, = document['assets']
         assert asset['sourcePath'] == 'docs/images/pixel.gif' and asset['mediaType'] == 'image/gif'
         assert base64.b64decode(asset['base64'], validate=True) == expected
@@ -423,8 +423,8 @@ def assert_captured_guide_image(project, output, document):
         result = {'state': 'embedded', 'mediaType': 'image/gif',
                   'sha256': hashlib.sha256(expected).hexdigest(), 'bytes': len(expected)}
     else:
-        # The repository's native generation contract is fail-closed outside
-        # Linux; rendering already captured image assets remains cross-platform.
+        # Unsupported native targets reject descriptor-relative asset capture;
+        # rendering already captured image assets remains cross-platform.
         assert document['status'] == 'partial' and document['assets'] == [], \
             'unsupported native capture must not embed a local image'
         assert image['literal'] == 'images/pixel.gif', 'rejected image lost its frozen relative reference'
