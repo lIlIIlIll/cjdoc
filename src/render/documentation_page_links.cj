@@ -233,7 +233,7 @@ private func capturedPageBindingState(binding: DocumentationPageBinding, hidden:
 }
 
 private func appendCapturedPageBindingTargetHtml(out: RenderTextBuffer,
-    binding: DocumentationPageBinding, target: CapturedPageBindingTarget, prefix: String, locale: String): Unit {
+    binding: DocumentationPageBinding, target: CapturedPageBindingTarget, prefix: String, locale: String, compact!: Bool = false): Unit {
     if (target.hidden) { return }
     let title = target.title(locale)
     let destination = target.destination(prefix, false)
@@ -243,24 +243,33 @@ private func appendCapturedPageBindingTargetHtml(out: RenderTextBuffer,
         if (!title.isEmpty()) { out.append(" title=\"" + escapeHtml(title) + "\"") }
         out.append(">")
     }
-    let spelling = match (target.symbol) { case Some(value) => value.qualifiedName; case None => binding.target }
+    let spelling = match (target.symbol) { case Some(value) => if (compact) { htmlContextLabel(value) } else { value.qualifiedName }; case None => binding.target }
     out.append("<code")
     if (destination.isNone() && !title.isEmpty()) { out.append(" title=\"" + escapeHtml(title) + "\"") }
     out.append(">" + escapeHtml(spelling) + "</code>")
     if (destination.isSome()) { out.append("</a>") }
-    if (!binding.version.isEmpty()) {
+    if (!compact && !binding.version.isEmpty()) {
         out.append(" <span class=\"binding-version\">" + escapeHtml(binding.version) + "</span>")
     }
 }
 
 internal func capturedPageBindingChipHtml(page: DocumentationPage, binding: DocumentationPageBinding,
-    visible: HashMap<String, SymbolDoc>, locale: String): String {
+    visible: HashMap<String, SymbolDoc>, locale: String, outputPath!: ?String = None): String {
     let out = RenderTextBuffer()
     let target = CapturedPageBindingTarget(binding, visible)
-    out.append("<div class=\"inline-binding\"><span class=\"binding-state\" data-state=\"" + target.state + "\">")
-    out.append(target.stateLabel(locale) + "</span> ")
-    appendCapturedPageBindingTargetHtml(out, binding, target, pageRootPrefix(page.route), locale)
-    out.append("<details class=\"binding-details\"><summary>" + label(locale, "Technical details", "技术详情") + "</summary>")
+    out.append("<div class=\"inline-binding\"><span class=\"related-api-label\">" +
+        label(locale, "Related API: ", "相关 API：") + "</span>")
+    if (target.state != "resolved" || target.destination("", false).isNone()) {
+        out.append("<span class=\"binding-state\" data-state=\"" + target.state + "\">" +
+            target.stateLabel(locale) + "</span> ")
+    }
+    appendCapturedPageBindingTargetHtml(out, binding, target,
+        pageRootPrefix(outputPath.getOrDefault({ => page.route })), locale, compact: true)
+    out.append("<details class=\"binding-details\"><summary>" + label(locale, "Link details", "关联详情") + "</summary>")
+    out.append("<span class=\"binding-meta\">" + target.stateLabel(locale) + "</span>")
+    if (!binding.version.isEmpty() && !target.hidden) {
+        out.append("<span class=\"binding-meta\">version: " + escapeHtml(binding.version) + "</span>")
+    }
     if (!target.hidden) {
         if (!binding.selector.isEmpty()) {
             out.append("<span class=\"binding-meta\">selector: " + escapeHtml(binding.selector) + "</span>")
@@ -279,8 +288,8 @@ internal func capturedPageBindingsHtml(page: DocumentationPage, documentation: D
     if (page.bindings.isEmpty()) { return "" }
     let out = RenderTextBuffer()
     let visible = RenderProjection(documentation).visibleIndex
-    out.append("<section class=\"conceptual-bindings\" aria-labelledby=\"conceptual-bindings-heading\"><h2 id=\"conceptual-bindings-heading\">")
-    out.append(label(locale, "API associations", "API 关联") + "</h2><p class=\"binding-scope\">")
+    out.append("<details class=\"conceptual-bindings\"><summary id=\"conceptual-bindings-heading\">")
+    out.append(label(locale, "API associations", "API 关联") + "</summary><p class=\"binding-scope\">")
     out.append(label(locale, "Explicit bindings from this page. Reader details stay in Technical details.",
         "本页的显式关联。技术信息见「技术详情」。") + "</p><ul>")
     for (binding in page.bindings) {
@@ -290,7 +299,7 @@ internal func capturedPageBindingsHtml(page: DocumentationPage, documentation: D
         appendCapturedPageBindingTargetHtml(out, binding, target, pageRootPrefix(page.route), locale)
         out.append("</li>")
     }
-    out.append("</ul></section>\n")
+    out.append("</ul></details>\n")
     out.toString()
 }
 

@@ -24,9 +24,7 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
         let searchIndex = renderSearchIndex(documentation, projection, locale: locale)
         let searchSignatures = renderSearchSignatureIndex(documentation, projection)
         artifacts.addText("html/index.html", "text/html; charset=utf-8",
-            renderHtmlIndex(documentation, projection, locale: locale, docVersion: docVersion)
-                .replace("<div class=\"conceptual-entry\" data-conceptual-entry></div>",
-                    "<div class=\"conceptual-entry\" data-conceptual-entry>" + capturedConceptualEntryHtml(documentation, locale) + "</div>"))
+            renderHtmlIndex(documentation, projection, locale: locale, docVersion: docVersion))
         artifacts.addText("html/search-index.json", "application/json", searchIndex)
         artifacts.addText("html/search-index.js", "text/javascript; charset=utf-8",
             renderSearchIndexScript(searchIndex, searchSignatures))
@@ -49,9 +47,8 @@ internal func appendHtmlArtifacts(artifacts: RenderArtifactCollector,
                 renderSymbolAlias(symbol, locale))
             let rendered = renderSymbolPage(documentation, projection, index, symbol, assetLookup,
                     typeLinkIndex, locale: locale, docVersion: docVersion)
-            let links = externalDocumentationHtml(documentation, symbol, locale)
             artifacts.addText("html/${symbolPagePath(symbol)}", "text/html; charset=utf-8",
-                rendered.replace("</div></main>", links + "</div></main>"))
+                rendered)
         }
         appendAssetArtifacts(artifacts, projectedAssets, "html")
 }

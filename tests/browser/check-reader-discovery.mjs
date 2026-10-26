@@ -56,6 +56,10 @@ try {
     pages: Math.ceil(found.length / 20), maximumRendered: 20 });
   await query('kind:function');
   await next.click();
+  const filterToggle = page.locator('[data-cjdoc-filter-toggle]');
+  if (await filterToggle.isVisible() && await filterToggle.getAttribute('aria-expanded') === 'false') {
+    await filterToggle.click();
+  }
   await page.locator('[data-cjdoc-kind]').selectOption('function');
   assert.deepEqual(await links(), expected.slice(0, 20), 'kind changes must reset pagination');
   await next.click();

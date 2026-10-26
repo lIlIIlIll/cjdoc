@@ -5,76 +5,14 @@ import std.collection.*
 
 internal func renderHtmlIndex(documentation: DocumentationSet, projection: RenderProjection,
     locale!: String = "en", docVersion!: ?String = None): String {
-    let apiDocumentationLabel = label(locale, "API documentation", "API 文档")
-    let startHereLabel = label(locale, "Start here", "从这里开始")
-    let startHereCopy = label(locale, "Choose a module or package to begin with the generated API reference.", "选择模块或包，开始阅读生成的 API 参考。")
-    let browseApiLabel = label(locale, "Browse the API index", "浏览 API 索引")
-    let modulesLabel = label(locale, "Modules", "模块")
-    let packagesLabel = label(locale, "Packages", "包")
-    let packageCountLabel = label(locale, "packages", "个包")
-    let diagnosticsLabel = label(locale, "Build status and diagnostics", "构建状态与诊断")
-    let pageTitle = documentation.project.name + " " + apiDocumentationLabel
     let out = RenderTextBuffer()
-    appendPageStart(out, pageTitle, "",
-        documentation, projection, locale: locale, docVersion: docVersion,
-        agentReadable: true, alternateMarkdown: Some("agent/pages/index.md"))
-    out.append("<header class=\"page-header\"><h1>${escapeHtml(documentation.project.name)} ${apiDocumentationLabel}</h1></header>\n")
-    // One reader entry point only. The conceptual-documentation entry is merged
-    // into this section by injectConceptualNavigation, so the page never stacks
-    // two headings that both tell the reader to start here.
-    out.append("<section class=\"quick-start\" aria-labelledby=\"quick-start-title\"><h2 id=\"quick-start-title\">")
-    out.append(startHereLabel)
-    out.append("</h2><p>")
-    out.append(startHereCopy)
-    out.append("</p><a href=\"#packages\">")
-    out.append(browseApiLabel)
-    out.append("</a><div class=\"conceptual-entry\" data-conceptual-entry></div></section>\n")
-    if (!projection.modules.isEmpty()) {
-        out.append("<h2 id=\"modules\">")
-        out.append(modulesLabel)
-        out.append("</h2><div class=\"module-list\">\n")
-        for (projected in projection.modules) {
-            let module = projected.source
-            out.append("<section class=\"module-record\"><h3><code>${escapeHtml(module.name)}</code> <span class=\"badge\">${escapeHtml(htmlKindLabel(module.role, locale))}</span></h3>")
-            let prefix = if (module.sourcePrefix.isEmpty()) { "." } else { module.sourcePrefix }
-            out.append("<p class=\"meta\">${label(locale, "Source prefix", "源码目录")}: <code>${escapeHtml(prefix)}</code> · ${projected.packages.size} ")
-            out.append(packageCountLabel)
-            out.append("</p></section>\n")
-        }
-        out.append("</div>\n")
-    }
-    out.append("<h2 id=\"packages\">")
-    out.append(packagesLabel)
-    out.append("</h2><ul class=\"package-index\">\n")
-    for (pkg in projection.packages) {
-        out.append("<li><a href=\"${escapeHtml(packagePagePath(pkg.source.moduleId, pkg.source.name))}\"><code>${escapeHtml(pkg.source.name)}</code></a><span class=\"meta\">${pkg.symbols.size} ${label(locale, "declarations", "个声明")}</span></li>\n")
-    }
-    out.append("</ul>\n")
-    if (projection.visibleSymbols.isEmpty()) {
-        out.append("<p class=\"empty-state\">${label(locale, "No API declarations are available for this audience.", "当前受众范围内没有可用的 API 声明。")}</p>\n")
-    } else {
-        appendApiOverview(out, projection, locale)
-    }
-    if (documentation.status != "complete") {
-        out.append("<details class=\"generation-metadata\" open><summary>${label(locale, "Generation status", "生成状态")}</summary><p>${escapeHtml(htmlStateLabel(documentation.status, locale))}</p></details>\n")
-    }
-    if (!documentation.diagnostics.isEmpty()) {
-        out.append("<details id=\"diagnostics\" class=\"build-details\"><summary>")
-        out.append(diagnosticsLabel)
-        out.append("</summary><ul class=\"diagnostics-list\">\n")
-        for (diagnostic in documentation.diagnostics) {
-            if (let Some(symbolId) <- diagnostic.symbolId) {
-                if (!projection.visibleIndex.contains(symbolId)) { continue }
-            }
-            out.append("<li><strong>${escapeHtml(htmlStateLabel(diagnostic.severity, locale))}[${escapeHtml(diagnostic.code)}]</strong>: ${escapeHtml(diagnostic.message)}")
-            match (diagnostic.source) {
-                case Some(source) => out.append(" <code>${escapeHtml(source.path)}:${source.start.line}:${source.start.column}</code>")
-                case None => ()
-            }
-            out.append("</li>\n")
-        }
-        out.append("</ul></details>\n")
-    }
+    let pageTitle = documentation.project.name + " " + label(locale, "API documentation", "API 文档")
+    appendPageStart(out, pageTitle, "", documentation, projection, locale: locale,
+        docVersion: docVersion, agentReadable: true, alternateMarkdown: Some("agent/pages/index.md"))
+    out.append("<header class=\"page-header home-header\"><h1>${escapeHtml(documentation.project.name)}</h1></header>\n")
+    appendHomeIntroduction(out, documentation, projection, locale)
+    appendHomePackageIndex(out, projection, locale)
+    appendHomeGenerationDetails(out, documentation, projection, locale)
     appendPageEnd(out, documentation, locale: locale)
     out.toString()
 }
@@ -120,18 +58,17 @@ public func renderConceptualHtmlPage(documentation: DocumentationSet, title: Str
     out.append("</a></li><li aria-current=\"page\">")
     out.append(escapeHtml(title))
     out.append("</li></ol></nav>")
-    out.append("<header class=\"page-header\"><h1>${escapeHtml(title)}</h1>")
+    out.append("<header class=\"page-header narrative-header\"><h1>${escapeHtml(title)}</h1></header>\n")
+    out.append(body)
+    appendConceptualPackageReturn(out, documentation, projection, pageRoute, source, rootPrefix, locale)
     match (source) {
-        case Some(value) => out.append("<p class=\"page-meta\"><span class=\"page-meta-item\">")
+        case Some(value) => out.append("<details class=\"page-source\"><summary>")
             out.append(sourceLabel)
-            out.append(": <code>")
+            out.append("</summary><code>")
             out.append(escapeHtml(value))
-            out.append("</code></span></p>")
+            out.append("</code></details>\n")
         case None => ()
     }
-    out.append("</header>\n")
-    appendConceptualPackageReturn(out, documentation, projection, pageRoute, source, rootPrefix, locale)
-    out.append(body)
     appendPageEnd(out, documentation, locale: locale)
     out.toString()
 }
@@ -268,8 +205,7 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     out.append("<div class=\"member-row\"><details class=\"declaration-summary member-detail\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\" data-member-origin=\"${escapeHtml(entry.origin)}\">")
     out.append("<summary class=\"member-detail-summary\" id=\"" + escapeHtml(anchor) +
         "-summary\" data-cjdoc-toc-role=\"member\" data-cjdoc-toc-label=\"" +
-        escapeHtml(htmlTocLabel(member)) + "\"><span class=\"member-summary-main\">")
-    out.append("<span class=\"member-display-name\">" + escapeHtml(member.name) + "</span>")
+        escapeHtml(htmlContextLabel(member)) + "\"><span class=\"member-summary-main\">")
     if (!member.headerSpelling.isEmpty()) {
         out.append("<code class=\"declaration-signature\">")
         appendLinkedSignatureHtml(out, member, typeLinkIndex, rootPrefix)
@@ -322,7 +258,7 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     appendReverseTypeUsages(out, index, typeLinkIndex, member, rootPrefix, locale)
     projection.apiGuides(documentation, locale).append(out, member, locale,
         headingTag: "h3", headingSuffix: "-inline-" + htmlStableSlug(member.id))
-    out.append(externalDocumentationHtml(documentation, member, locale))
+    out.append(externalDocumentationHtml(documentation, member, locale, compactUnavailable: true))
     out.append("</div></details>")
     appendInlineMemberActions(out, documentation, projection, member, rootPrefix, locale)
     out.append("</div>\n")
@@ -452,16 +388,10 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     out.append("<header class=\"page-header api-page-header${headerClass}\"><div class=\"api-title-row\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(readerSymbolTitle(symbol, locale))}</code></h1>")
     out.append("<p class=\"symbol-kind\">${escapeHtml(htmlKindLabel(symbol.kind, locale))}</p>")
     out.append("<button class=\"copy-link\" type=\"button\" data-cjdoc-copy-link=\"../${escapeHtml(symbolReadablePagePath(symbol))}\">${label(locale, "Copy link", "复制链接")}</button></div>")
-    appendSymbolMetadata(out, index, symbol, "../", assetLookup, typeLinkIndex,
-        locale: locale, pagePresentation: true)
-    match (findProjectedModule(projection, symbol.moduleId)) {
-        case Some(module) => match (sourceUrl(documentation.project, module, symbol.source)) {
-            case Some(url) => out.append("<p class=\"source-action\"><a href=\"${escapeHtml(url)}\" rel=\"noreferrer\">${label(locale, "View source", "查看源码")}</a></p>\n")
-            case None => ()
-        }
+    match (symbol.documentation) {
+        case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, "../", locale: locale)
         case None => ()
     }
-    out.append("</header>\n")
     if (hasMemberPage) {
         // Localized summaries may span paragraphs. The selected description
         // tag determines whether an Overview is rendered for localized comments.
@@ -478,14 +408,26 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
                 }
             case None => ()
         }
-        if (hasIntroduction) {
-            out.append("<h2 id=\"overview\" class=\"api-overview-heading\">${label(locale, "Overview", "概述")}</h2>")
-        }
+        if (hasIntroduction) { out.append("<div id=\"overview\" class=\"api-introduction\">") }
         appendDocumentationIntroductionHtml(out, symbol, "../", assetLookup, 4, locale)
+        if (hasIntroduction) { out.append("</div>") }
         match (symbol.documentation) {
             case Some(comment) => appendDocumentationContractsHtml(out, comment, locale, symbolAnchor(symbol))
             case None => ()
         }
+    }
+    appendSymbolMetadata(out, index, symbol, "../", assetLookup, typeLinkIndex,
+        locale: locale, includeSummary: false, pagePresentation: true)
+    match (findProjectedModule(projection, symbol.moduleId)) {
+        case Some(module) => match (sourceUrl(documentation.project, module, symbol.source)) {
+            case Some(url) => out.append("<p class=\"source-action\"><a href=\"${escapeHtml(url)}\" rel=\"noreferrer\">${label(locale, "View source", "查看源码")}</a></p>\n")
+            case None => ()
+        }
+        case None => ()
+    }
+    appendTypeGuideEntry(out, documentation, projection, symbol, locale)
+    out.append("</header>\n")
+    if (hasMemberPage) {
         // Relations explain the type before readers browse its members.
         appendReaderRelationships(out, index, symbol, "../", typeLinkIndex, locale)
         let filterLabel = label(locale, "Filter members", "筛选成员")
@@ -494,7 +436,9 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
         let browser = projection.members(symbol)
         if (!browser.entries.isEmpty()) {
             out.append("<section class=\"member-browser\" data-cjdoc-member-browser aria-label=\"${label(locale, "Members", "成员")}\">")
-            out.append("<div class=\"member-browser-toolbar\"><label for=\"cjdoc-member-filter\">" +
+            out.append("<div class=\"member-browser-toolbar\"><button type=\"button\" class=\"member-filter-toggle\" " +
+                "data-cjdoc-member-filter-toggle aria-controls=\"cjdoc-member-filter-fields\" aria-expanded=\"false\" hidden>" +
+                filterLabel + "</button><div id=\"cjdoc-member-filter-fields\" class=\"member-filter-fields\"><label for=\"cjdoc-member-filter\">" +
                 filterLabel + "</label><input id=\"cjdoc-member-filter\" type=\"search\" data-cjdoc-member-filter placeholder=\"" +
                 filterLabel + "\" autocomplete=\"off\">")
             out.append("<label for=\"cjdoc-member-origin\">" + originLabel +
@@ -504,7 +448,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
                 out.append("<option value=\"" + origin + "\">" +
                     escapeHtml(memberOriginLabel(origin, locale)) + "</option>")
             }
-            out.append("</select><div class=\"member-browser-actions\"><button type=\"button\" data-cjdoc-members-expand>" +
+            out.append("</select></div><div class=\"member-browser-actions\"><button type=\"button\" data-cjdoc-members-expand>" +
                 label(locale, "Expand all", "全部展开") + "</button><button type=\"button\" data-cjdoc-members-collapse>" +
                 label(locale, "Collapse all", "全部收起") + "</button></div></div>")
             out.append("<p class=\"member-filter-status\" data-cjdoc-member-filter-status role=\"status\" hidden>" +
@@ -530,6 +474,11 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     }
     appendReverseTypeUsages(out, index, typeLinkIndex, symbol, "../", locale)
     projection.apiGuides(documentation, locale).append(out, symbol, locale)
+    let related = HashSet<String>()
+    if (hasMemberPage) {
+        for (entry in projection.members(symbol).entries) { let _ = related.add(entry.symbol.id) }
+    }
+    out.append(externalDocumentationHtml(documentation, symbol, locale, relatedSymbolIds: related))
     appendPageEnd(out, documentation, locale: locale)
     out.toString()
 }

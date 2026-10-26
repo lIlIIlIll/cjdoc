@@ -114,7 +114,7 @@ class CapturedPageHighlightGenerationTest {
                 if (artifact.path == "html/concepts/bindings.html") { guide = artifact.content }
                 if (artifact.path == "html/index.html") { home = artifact.content }
             }
-            @Expect(home.contains("Open conceptual documentation"))
+            @Expect(home.contains("href=\"concepts/bindings.html\""))
             @Expect(guide.split("class=\"inline-binding\"").size, 4)
             let chipAt = guide.indexOf("class=\"inline-binding\"").getOrThrow()
             @Expect(guide.indexOf("Before real binding.").getOrThrow() < chipAt)

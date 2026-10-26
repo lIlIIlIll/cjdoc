@@ -11,7 +11,13 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
     projection: RenderProjection, rootPrefix: String, locale: String,
     currentPackagePath!: ?String = None, currentRoute!: String = "overview",
     currentSymbol!: ?SymbolDoc = None): Unit {
-    let currentId = match (currentSymbol) { case Some(symbol) => symbol.id case None => "" }
+    let sidebarSymbol: ?SymbolDoc = match (currentSymbol) {
+        case Some(symbol) =>
+            let owner = memberContextOwner(projection, symbol)
+            if (owner.isSome()) { owner } else { currentSymbol }
+        case None => None
+    }
+    let currentId = match (sidebarSymbol) { case Some(symbol) => symbol.id case None => "" }
     out.append("<aside id=\"cjdoc-sidebar\" class=\"docs-sidebar\" aria-label=\"${label(locale, "Documentation navigation", "文档导航")}\" tabindex=\"-1\" data-cjdoc-root-prefix=\"${escapeHtml(rootPrefix)}\" data-cjdoc-current-symbol=\"${escapeHtml(currentId)}\">")
     out.append("<button class=\"sidebar-close\" type=\"button\" data-cjdoc-sidebar-close aria-label=\"${label(locale, "Close navigation", "关闭导航")}\">${label(locale, "Close", "关闭")}</button>")
     out.append("<div class=\"sidebar-section\"><p class=\"sidebar-label\">${label(locale, "Documentation", "文档")}</p>")
@@ -20,7 +26,6 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
     let apiClass = if (currentRoute == "api") { " is-current" } else { "" }
     let apiCurrent = if (currentRoute == "api") { " aria-current=\"page\"" } else { "" }
     out.append("<a class=\"sidebar-link${overviewClass}\" data-cjdoc-nav-link${overviewCurrent} href=\"${rootPrefix}index.html\">${label(locale, "Overview", "总览")}</a>")
-    out.append("<a class=\"sidebar-link\" data-cjdoc-nav-link href=\"${rootPrefix}index.html#quick-start-title\">${label(locale, "Quick start", "快速开始")}</a>")
     out.append("<a class=\"sidebar-link${apiClass}\" data-cjdoc-nav-link${apiCurrent} href=\"${rootPrefix}index.html#packages\">${label(locale, "API Reference", "API 参考")}</a></div>")
     if (!projection.modules.isEmpty()) {
         out.append("<div class=\"sidebar-section\"><p class=\"sidebar-label\">${label(locale, "Package reference", "包参考")}</p>")
@@ -47,7 +52,7 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
                 out.append("<a class=\"sidebar-package${currentClass}\" data-cjdoc-nav-link${currentAttribute} href=\"${rootPrefix}${escapeHtml(packagePath)}\"><span>${escapeHtml(pkg.source.name)}</span><span class=\"sidebar-package-count\">${pkg.symbols.size}</span></a>")
                 if (isCurrent && currentSymbol.isSome()) {
                     appendSidebarActiveSymbols(out, projection, pkg.source.moduleId,
-                        pkg.source.name, rootPrefix, locale, currentSymbol)
+                        pkg.source.name, rootPrefix, locale, sidebarSymbol)
                 }
                 out.append("</div>")
             }
@@ -95,55 +100,26 @@ internal func appendSidebarActiveSymbols(out: RenderTextBuffer, projection: Rend
 internal func appendContextSidebar(out: RenderTextBuffer, projection: RenderProjection,
     rootPrefix: String, locale: String, currentPackagePath: ?String,
     currentSymbol: ?SymbolDoc): Unit {
-    let owner: ?SymbolDoc = match (currentSymbol) {
-        case Some(symbol) => memberContextOwner(projection, symbol)
-        case None => None
-    }
-    if (currentSymbol.isSome() && owner.isNone()) { return }
-    var localMembers = false
-    var contextTitle = label(locale, "In this package", "当前包")
-    var contextKey = ""
-    var contextSource = "packages"
+    // The left rail owns package/type context; members belong to the document.
+    if (currentSymbol.isSome() || currentPackagePath.isNone()) { return }
+    let route = currentPackagePath.getOrThrow()
     var targetCount: Int64 = 0
-    var moreHref = ""
-    match (owner) {
-        case Some(value) =>
-            contextTitle = readerSymbolTitle(value, locale)
-            contextKey = value.id
-            contextSource = "members"
-            localMembers = match (currentSymbol) {
-                case Some(symbol) => symbol.id == value.id
-                case None => false
-            }
-            targetCount = projection.members(value).entries.size
-            moreHref = rootPrefix + symbolPagePath(value)
-        case None => match (currentPackagePath) {
-            case Some(route) =>
-                for (pkg in projection.packages) {
-                    if (packagePagePath(pkg.source.moduleId, pkg.source.name) != route) { continue }
-                    match (projection.topLevelByPackage.get(
-                        routeKey(pkg.source.moduleId, pkg.source.name))) {
-                        case Some(values) => targetCount = values.size
-                        case None => ()
-                    }
-                    contextKey = route
-                    moreHref = rootPrefix + route
-                    break
-                }
-            case None => ()
+    for (pkg in projection.packages where packagePagePath(pkg.source.moduleId, pkg.source.name) == route) {
+        if (let Some(values) <- projection.topLevelByPackage.get(routeKey(pkg.source.moduleId, pkg.source.name))) {
+            targetCount = values.size
         }
     }
     if (targetCount == 0) { return }
+    let contextTitle = label(locale, "In this package", "当前包")
+    let moreHref = rootPrefix + route
     out.append("<section class=\"sidebar-section sidebar-context\" aria-label=\"" +
-        escapeHtml(contextTitle) + "\"><p class=\"sidebar-label\">" +
-        escapeHtml(contextTitle) + "</p>")
+        contextTitle + "\"><p class=\"sidebar-label\">" + contextTitle + "</p>")
     out.append("<label class=\"sidebar-filter-label\"><span class=\"sr-only\">" +
         label(locale, "Filter this context", "筛选当前条目") +
         "</span><input type=\"search\" class=\"sidebar-filter\" data-cjdoc-context-filter placeholder=\"" +
         label(locale, "Filter declarations", "筛选声明") + "\"></label>")
     out.append("<nav class=\"context-links\" data-cjdoc-context-key=\"" +
-        escapeHtml(contextKey) + "\" data-cjdoc-context-source=\"" + contextSource +
-        "\" data-cjdoc-context-local=\"" + localMembers.toString() + "\"></nav>")
+        escapeHtml(route) + "\" data-cjdoc-context-source=\"packages\" data-cjdoc-context-local=\"false\"></nav>")
     out.append("<p class=\"sidebar-limit\" data-cjdoc-context-fallback><a href=\"" +
         escapeHtml(moreHref) + "\">" + label(locale, "Full index", "完整索引") + "</a></p>")
     out.append("<p class=\"sidebar-no-results\" data-cjdoc-context-empty role=\"status\" hidden>" +
@@ -153,7 +129,6 @@ internal func appendContextSidebar(out: RenderTextBuffer, projection: RenderProj
         " <a href=\"" + escapeHtml(moreHref) + "\">" +
         label(locale, "Full index", "完整索引") + "</a></p></section>")
 }
-
 
 internal func appendHtmlThemeControl(out: RenderTextBuffer, locale: String, version: String): Unit {
     out.append("<div class=\"top-actions\">")
@@ -205,23 +180,31 @@ internal func appendPageStart(out: RenderTextBuffer, title: String, rootPrefix: 
         case Some(value) => out.append(" data-cjdoc-doc-version=\"${escapeHtml(value)}\"")
         case None => ()
     }
-    if (currentSymbol.isSome()) { out.append(" data-cjdoc-page=\"symbol\"") }
+    let pageRole = if (currentSymbol.isSome()) { "symbol" } else {
+        match (currentRoute) {
+            case "overview" => "home"
+            case "concept" => "guide"
+            case "api" => "package"
+            case _ => "utility"
+        }
+    }
+    out.append(" data-cjdoc-page=\"${pageRole}\"")
     out.append(">\n<a class=\"skip-link\" href=\"#cjdoc-main\">${label(locale, "Skip to content", "跳到正文")}</a>\n")
     out.append("<header class=\"site-nav\"><div class=\"site-nav-inner\">")
     out.append("<button class=\"nav-menu\" type=\"button\" data-cjdoc-menu aria-controls=\"cjdoc-sidebar\" aria-expanded=\"false\" aria-label=\"${label(locale, "Open navigation", "打开导航")}\"><svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M4 6h16M4 12h16M4 18h16\"/></svg></button>")
-    out.append("<a class=\"brand\" href=\"${rootPrefix}index.html\"><span class=\"brand-logo\">cjdoc</span><span class=\"brand-project\"> / ${escapeHtml(documentation.project.name)}</span></a>")
+    out.append("<a class=\"brand\" href=\"${rootPrefix}index.html\"><span class=\"brand-logo\">${escapeHtml(documentation.project.name)}</span></a>")
     out.append("<button type=\"button\" class=\"mobile-search-trigger\" data-cjdoc-search-trigger aria-controls=\"cjdoc-search-input\" aria-expanded=\"false\" aria-label=\"${label(locale, "Open search", "打开搜索")}\"><svg width=\"19\" height=\"19\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m20 20-4-4\"/></svg></button>")
     out.append("<div class=\"site-search\"><div class=\"search-area\"><div class=\"search-shell\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"></circle><path d=\"m20 20-4-4\"></path></svg><label class=\"sr-only\" for=\"cjdoc-search-input\">${label(locale, "Search API", "搜索 API")}</label>")
     out.append("<input id=\"cjdoc-search-input\" type=\"search\" placeholder=\"${label(locale, "Search docs", "搜索文档")}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" aria-controls=\"cjdoc-search-results\" aria-expanded=\"false\" data-cjdoc-search data-root=\"${rootPrefix}\"><kbd>Ctrl + K</kbd></div>")
     out.append("<div class=\"search-popover\" data-cjdoc-search-popover hidden><ul id=\"cjdoc-search-results\" class=\"search-results\" role=\"listbox\" data-cjdoc-results aria-live=\"polite\"></ul><p class=\"search-status-note\" data-cjdoc-search-status role=\"status\" hidden></p>")
     out.append("<div class=\"search-pagination\" data-cjdoc-search-pages hidden><button type=\"button\" data-cjdoc-search-previous>${label(locale, "Previous", "上一页")}</button><button type=\"button\" data-cjdoc-search-next>${label(locale, "Next", "下一页")}</button></div>")
     out.append("<p class=\"search-index-note\">${label(locale, "Search covers names, structured fields and up to 2,000 characters of body text per entry. No match does not prove absence from the full documentation.", "检索覆盖名称、结构化字段及每项最多 2,000 字符的正文摘录；没有命中不代表完整文档中不存在。")}</p></div></div>")
-    out.append("<button type=\"button\" class=\"search-filter-toggle\" data-cjdoc-filter-toggle aria-controls=\"cjdoc-search-filters\" aria-expanded=\"false\">${label(locale, "Filters", "筛选")}</button>")
+    out.append("<button type=\"button\" class=\"search-filter-toggle\" data-cjdoc-filter-toggle aria-controls=\"cjdoc-search-filters\" aria-expanded=\"false\">${label(locale, "Search filters", "检索筛选")}</button>")
     out.append("<div id=\"cjdoc-search-filters\" class=\"search-filters\"><label><span class=\"sr-only\">${label(locale, "Filter by kind", "按类别筛选")}</span><select data-cjdoc-kind aria-label=\"${label(locale, "Filter by kind", "按类别筛选")}\"><option value=\"\">${label(locale, "All kinds", "全部类别")}</option></select></label>")
     out.append("<label><span class=\"sr-only\">${label(locale, "Filter by package", "按包筛选")}</span><select data-cjdoc-package aria-label=\"${label(locale, "Filter by package", "按包筛选")}\"><option value=\"\">${label(locale, "All packages", "全部包")}</option></select></label></div></div>")
     let headerVersion = match (docVersion) {
         case Some(value) => value
-        case None => documentation.generator.version
+        case None => ""
     }
     appendHtmlThemeControl(out, locale, headerVersion)
     out.append("<span class=\"sr-only\" aria-label=\"${label(locale, "Theme", "主题")}\"></span>")

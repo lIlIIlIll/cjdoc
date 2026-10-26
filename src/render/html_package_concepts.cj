@@ -7,7 +7,7 @@ import std.collection.*
 // between modules; explicit visible bindings can prove a unique module instead.
 private func conceptualPackageOwner(documentation: DocumentationSet,
     projection: RenderProjection, page: DocumentationPage): ?PackageDoc {
-    if (page.packageName.isEmpty() || !packagePageHasContent(page)) { return None }
+    if (page.packageName.isEmpty() || !capturedPageHasContent(page)) { return None }
     for (diagnostic in documentation.diagnostics where diagnostic.code == "CJDOC3026") {
         if (let Some(source) <- diagnostic.source) {
             if (source.path == page.source) { return None }
@@ -41,14 +41,6 @@ private func conceptualPackageOwner(documentation: DocumentationSet,
         }
     }
     None
-}
-
-private func packagePageHasContent(page: DocumentationPage): Bool {
-    for (node in page.markdown.children) {
-        if (node.kind != "heading" && node.kind != "html_block" && node.kind != "html_inline" &&
-            !markdownNodeText(node).trimAscii().isEmpty()) { return true }
-    }
-    false
 }
 
 // At most one paragraph and 240 Unicode scalar values: examples, imports and
@@ -100,9 +92,8 @@ internal func appendPackageConceptualOverview(out: RenderTextBuffer, documentati
         }
         let state = if (page.language.isNone()) { "unknown" } else if (page.language == Some(locale)) { "complete" } else { "fallback" }
         appendContentLanguageHtml(out, DocTag("description", "", "", contentLanguage: page.language, translationState: state), locale)
-        out.append("<p><a class=\"package-overview-link\" href=\"../" + escapeHtml(page.route) + "\">" +
-            label(locale, "Read package overview", "阅读完整包概述") + "</a></p>")
-        out.append("<p class=\"meta\">" + label(locale, "Source", "来源") + ": <code>" + escapeHtml(page.source) + "</code></p>")
+        out.append("<nav class=\"package-reading-paths\" aria-label=\"" + label(locale, "Read next", "接下来阅读") + "\"><ul><li><a class=\"package-overview-link\" href=\"../" + escapeHtml(page.route) + "\">" +
+            label(locale, "Read package overview", "阅读完整包概述") + "</a></li>")
         let linkedSources = HashSet<String>()
         let _ = linkedSources.add(page.source)
         for (related in pages where related.id != page.id) {
@@ -110,11 +101,13 @@ internal func appendPackageConceptualOverview(out: RenderTextBuffer, documentati
             if (let Some(owner) <- conceptualPackageOwner(documentation, projection, related)) {
                 if (owner.moduleId == pkg.moduleId && owner.name == pkg.name) {
                     let _ = linkedSources.add(related.source)
-                    out.append("<p><a href=\"../" + escapeHtml(related.route) + "\">" + escapeHtml(related.title) + "</a></p>")
+                    out.append("<li><a href=\"../" + escapeHtml(related.route) + "\">" + escapeHtml(related.title) + "</a></li>")
                 }
             }
         }
-        out.append("</section>\n")
+        out.append("</ul></nav>")
+        out.append("<details class=\"page-source\"><summary>" + label(locale, "Source", "来源") +
+            "</summary><code>" + escapeHtml(page.source) + "</code></details></section>\n")
     }
 }
 

@@ -56,8 +56,7 @@ class HtmlIntroductionTest {
                     defaultLanguage: Some(locale),
                     localizedTexts: [introductionText(kind, "description", locale)])
                 let html = introductionPage(kind, comment, locale)
-                let heading = if (locale == "en") { "Overview" } else { "概述" }
-                @Expect(html.contains("id=\"overview\" class=\"api-overview-heading\">" + heading))
+                @Expect(html.contains("id=\"overview\" class=\"api-introduction\""))
                 @Expect(html.contains("class=\"description\""))
                 @Expect(html.contains("Detailed introduction"))
             }

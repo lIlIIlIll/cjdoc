@@ -60,6 +60,10 @@ internal let HTML_SEARCH_SCRIPT = """
   const input = document.querySelector("[data-cjdoc-search]");
   const results = document.querySelector("[data-cjdoc-results]");
   const isChinese = (document.documentElement.lang || "").toLocaleLowerCase().startsWith("zh");
+  const kindLabels = {function: "函数", constructor: "构造器", property: "属性", variable: "变量",
+    class: "类", struct: "结构体", interface: "接口", enum: "枚举", enumCase: "枚举项",
+    extend: "扩展", typeAlias: "类型别名", concept: "指南", macro: "宏"};
+  const kindLabel = value => isChinese ? (kindLabels[value] || value) : value;
   const copyLabels = isChinese
     ? {copy: "复制代码", copied: "已复制"}
     : {copy: "Copy code", copied: "Copied"};
@@ -305,7 +309,7 @@ internal let HTML_SEARCH_SCRIPT = """
       name.className = "search-result-name";
       name.textContent = entry.name;
       kind.className = "search-kind";
-      kind.textContent = entry.kind;
+      kind.textContent = kindLabel(entry.kind);
       context.className = "search-context";
       const ownerLabel = entry.ownerName || entry.packageName;
       const moduleLabel = entry.moduleName && entry.moduleName !== entry.packageName
@@ -385,7 +389,7 @@ internal let HTML_SEARCH_SCRIPT = """
   if (previousPage) previousPage.addEventListener("click", () => changePage(-1));
   if (nextPage) nextPage.addEventListener("click", () => changePage(1));
 
-  const addOptions = (selectElement, values) => {
+  const addOptions = (selectElement, values, display = value => value) => {
     if (!selectElement) return;
     // Conceptual search entries have no package name. Do not append an empty
     // <option> after the localized "All packages" placeholder: selecting it
@@ -394,14 +398,14 @@ internal let HTML_SEARCH_SCRIPT = """
     for (const value of [...new Set(choices)].sort((a, b) => a.localeCompare(b))) {
       const option = document.createElement("option");
       option.value = value;
-      option.textContent = value;
+      option.textContent = display(value);
       selectElement.append(option);
     }
   };
   const index = globalThis.__CJDOC_SEARCH_INDEX__;
   entries = index && index.schemaVersion === "cjdoc.search-index/9" && Array.isArray(index.entries)
     ? index.entries : [];
-  addOptions(kindFilter, entries.map((entry) => entry.kind));
+  addOptions(kindFilter, entries.map((entry) => entry.kind), kindLabel);
   addOptions(packageFilter, entries.map((entry) => entry.packageName));
   const closeSearch = () => {
     visible = [];
@@ -476,6 +480,15 @@ internal let HTML_SEARCH_SCRIPT = """
     filterToggle.setAttribute("aria-expanded", "false");
   };
   if (filterToggle && filterPanel) {
+    const filterControls = [...filterPanel.querySelectorAll("select")];
+    const syncFilterLabel = () => {
+      const count = filterControls.filter(control => control.value).length;
+      filterToggle.textContent = (isChinese ? "检索筛选" : "Search filters") + (count ? " (" + count + ")" : "");
+    };
+    for (const control of filterControls) {
+      if (control) control.addEventListener("change", syncFilterLabel);
+    }
+    syncFilterLabel();
     filterToggle.addEventListener("click", () => {
       const open = !filterPanel.classList.contains("is-open");
       filterPanel.classList.toggle("is-open", open);
@@ -772,6 +785,7 @@ internal let HTML_SEARCH_SCRIPT = """
     });
     const semanticMode = false;
     const headings = allHeadings.filter((heading) => {
+      if (heading.closest(".home-api-index")) return false;
       const role = heading.dataset.cjdocTocRole;
       return (role === "api-root" || role === "api" || role === "member" ||
         heading.tagName === "H2" || heading.tagName === "H3") &&
@@ -1108,6 +1122,18 @@ internal let HTML_SEARCH_SCRIPT = """
 
   const memberFilter = document.querySelector("[data-cjdoc-member-filter]");
   const originFilter = document.querySelector("[data-cjdoc-member-origin]");
+  const memberFilterToggle = document.querySelector("[data-cjdoc-member-filter-toggle]");
+  const memberFilterFields = document.querySelector(".member-filter-fields");
+  if (memberFilterToggle && memberFilterFields) {
+    memberFilterToggle.addEventListener("click", () => {
+      const opening = memberFilterToggle.getAttribute("aria-expanded") !== "true";
+      memberFilterToggle.setAttribute("aria-expanded", String(opening));
+      memberFilterFields.classList.toggle("is-open", opening);
+      if (opening) memberFilter?.focus();
+    });
+    memberFilterToggle.hidden = false;
+    memberFilterToggle.closest(".member-browser")?.classList.add("member-browser-enhanced");
+  }
   const memberRows = [...document.querySelectorAll("[data-cjdoc-member]")];
   // Ordinary overload groups pay extra layout cost without a large-page gain.
   // Reuse the existing navigation cap as the large member-browser boundary.
@@ -1129,6 +1155,11 @@ internal let HTML_SEARCH_SCRIPT = """
     closeMemberActionBars();
     const query = memberFilter ? memberFilter.value.trim().toLocaleLowerCase() : "";
     const origin = originFilter ? originFilter.value : "";
+    if (memberFilterToggle) {
+      const count = Number(Boolean(query)) + Number(Boolean(origin));
+      memberFilterToggle.textContent = (isChinese ? "筛选成员" : "Filter members") +
+        (count ? " (" + count + ")" : "");
+    }
     let visible = 0;
     for (const row of memberRows) {
       const haystack = (row.dataset.memberName || "") + " " +
