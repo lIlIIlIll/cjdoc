@@ -1,11 +1,11 @@
 # 使用手册
 
-本文面向第一次使用 cjdoc 的仓颉库作者，说明从写注释到生成、检查、预览文档的日常操作。示例使用 cjdoc 0.7.4，命令在项目根目录执行。
+本文面向第一次使用 cjdoc 的仓颉库作者，说明从写注释到生成、检查、预览文档的日常操作。示例使用 cjdoc 0.7.5，命令在项目根目录执行。
 
 开始前确认：
 
 - 已安装仓颉 SDK，并按 SDK 自带的环境脚本配置好环境（`cjc -v`、`cjpm -v` 可用）；cjdoc 发布包不包含 SDK。
-- 已按 [README](../README.md) 安装 cjdoc，`cjdoc --version` 输出 `cjdoc 0.7.4`。
+- 已按 [README](../README.md) 安装 cjdoc，`cjdoc --version` 输出 `cjdoc 0.7.5`。
 - 命令在包含 `cjpm.toml` 的项目根目录运行；换目录时用 `--project <项目根>` 指定。
 
 cjdoc 只有顶层 `cjdoc --help` / `cjdoc -h`；子命令没有单独的帮助。参数写错时，错误信息会附上用法并以退出码 `2` 结束。
@@ -22,7 +22,7 @@ cjpm -v
 `cjdoc --version` 应输出：
 
 ```text
-cjdoc 0.7.4
+cjdoc 0.7.5
 ```
 
 `cjdoc --help` 会列出所有命令和主要选项。如果没有安装仓颉 SDK 或 SDK 环境没有生效，cjdoc 可能启动失败或报告缺少运行库；`--check-examples` 另外要求 `cjc` 在 `PATH` 中。
@@ -52,6 +52,18 @@ my-project/
 - 正文第一段是摘要（summary），后面的段落是描述（description）。
 - 正文支持 Markdown：段落、列表、行内代码和代码块都会保留。
 - 默认只展示 `public` 和 `protected` 声明，`internal`、`private` 声明需要用 `--audience` 显式包含（见下文）。
+
+### 宏声明与宏包裹的源码
+
+`public macro` 使用与函数相同的注释标签。cjdoc 收集宏的源码签名、参数和返回类型，
+并在 HTML 的“宏”分组中展示。`@param` 和 `@return` 参与文档质量与覆盖率检查。
+
+对于 `@Derive[Equatable]` 等包裹声明的宏调用，cjdoc 收集输入中的源码声明和成员。
+声明前的注释绑定到整个宏包裹的声明，成员保留各自的源码位置。嵌套宏同样适用。
+
+cjdoc 不执行宏。宏调用保留在 `macroInvocations` 中，并通过 `CJDOC1009` 说明生成成员未知，
+文档状态保持 `partial`。无法恢复为源码声明的输入还会进入 `unsupportedDeclarations`。
+宏生成的方法、接口实现和其他成员不进入 API 清单；源码中已有的声明仍可搜索、链接和离线查询。
 
 ### 支持的标签
 
@@ -567,7 +579,7 @@ cjdoc generate --project /path/to/my-project --format html
 | 命令 | 作用 |
 |---|---|
 | `cjdoc --help` / `cjdoc -h` | 打印用法。 |
-| `cjdoc --version` | 打印 `cjdoc 0.7.4`。 |
+| `cjdoc --version` | 打印 `cjdoc 0.7.5`。 |
 | `cjdoc generate` | 扫描源码并生成 HTML、Markdown、JSON 等产物。 |
 | `cjdoc check` | 只检查文档问题，不生成产物。 |
 | `cjdoc diff` | 比较两个 API 快照。 |

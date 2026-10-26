@@ -6,7 +6,7 @@ import std.collection.*
 private func packageDeclarationCategory(kind: String): String {
     match (kind) {
         case "class" | "struct" | "interface" | "enum" | "typeAlias" |
-            "function" | "property" | "variable" | "extend" => kind
+            "function" | "macro" | "property" | "variable" | "extend" => kind
         case _ => "other"
     }
 }
@@ -19,6 +19,7 @@ private func packageDeclarationHeading(category: String, locale: String): (Strin
         case "enum" => ("enums", label(locale, "Enums", "枚举"))
         case "typeAlias" => ("aliases", label(locale, "Type aliases", "类型别名"))
         case "function" => ("functions", label(locale, "Functions", "函数"))
+        case "macro" => ("macros", label(locale, "Macros", "宏"))
         case "property" => ("properties", label(locale, "Properties", "属性"))
         case "variable" => ("variables", label(locale, "Variables", "变量"))
         case "extend" => ("extensions", label(locale, "Extensions", "扩展"))
@@ -72,7 +73,7 @@ internal func appendPackageDeclarationGroups(out: RenderTextBuffer,
         }
     }
     let ordered = ArrayList<(String, ArrayList<SymbolDoc>)>()
-    for (category in ["class", "struct", "interface", "enum", "typeAlias", "function",
+    for (category in ["class", "struct", "interface", "enum", "typeAlias", "function", "macro",
         "property", "variable", "extend", "other"]) {
         match (groups.get(category)) {
             case Some(group) => ordered.add((category, group))

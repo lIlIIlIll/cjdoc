@@ -190,7 +190,7 @@ protected func boundGeneratedDocumentation(candidate: public_model.Documentation
     // unexpectedly large source/provider field would exceed codec or output
     // transaction limits. Fixed source fields keep this fallback independent of
     // the oversized input that caused it.
-    let fallback = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.4"), "partial",
+    let fallback = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.5"), "partial",
         public_model.ProjectInfo("resource-limited"),
         public_model.ConfigurationSnapshot(audience: request.audience, lintProfile: request.lintProfile,
             cfgProfile: if (request.cfgValues.isEmpty()) {

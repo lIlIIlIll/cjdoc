@@ -96,7 +96,8 @@ private func parseDocReference(reference: String): ParsedDocReference {
 }
 
 private func supportsSignatureReference(symbol: SymbolDoc): Bool {
-    symbol.kind == "function" || symbol.kind == "constructor" || symbol.kind == "enumCase"
+    symbol.kind == "function" || symbol.kind == "constructor" || symbol.kind == "macro" ||
+        symbol.kind == "enumCase"
 }
 
 private func referenceSignatureMatches(symbol: SymbolDoc, parameterTypes: ArrayList<String>): Bool {

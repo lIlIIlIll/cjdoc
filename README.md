@@ -26,13 +26,13 @@ cjdoc 是仓颉的 API 文档生成器。它读取项目源码里的 `/** ... */
 
 ## 安装 cjdoc
 
-从 [Releases](https://github.com/lIlIIlIll/cjdoc/releases) 下载 0.7.4 对应平台的文件。每个平台提供一个裸可执行文件和一个压缩包：
+从 [Releases](https://github.com/lIlIIlIll/cjdoc/releases) 下载 0.7.5 对应平台的文件。每个平台提供一个裸可执行文件和一个压缩包：
 
 | 平台 | 裸可执行文件 | 压缩包 |
 |---|---|---|
-| Linux x64 | `cjdoc-0.7.4-linux-x64` | `cjdoc-0.7.4-linux-x64.tar.gz` |
-| macOS ARM64 | `cjdoc-0.7.4-macos-arm64` | `cjdoc-0.7.4-macos-arm64.tar.gz` |
-| Windows x64 | `cjdoc-0.7.4-windows-x64.exe` | `cjdoc-0.7.4-windows-x64.zip` |
+| Linux x64 | `cjdoc-0.7.5-linux-x64` | `cjdoc-0.7.5-linux-x64.tar.gz` |
+| macOS ARM64 | `cjdoc-0.7.5-macos-arm64` | `cjdoc-0.7.5-macos-arm64.tar.gz` |
+| Windows x64 | `cjdoc-0.7.5-windows-x64.exe` | `cjdoc-0.7.5-windows-x64.zip` |
 
 下载页里同名的 `.sha256` 文件是校验文件。裸可执行文件里只有二进制；压缩包里还有 README、LICENSE、第三方声明和发布清单。
 
@@ -41,20 +41,20 @@ cjdoc 是仓颉的 API 文档生成器。它读取项目源码里的 `/** ... */
 在下载文件所在的目录执行。Linux：
 
 ```bash
-sha256sum -c cjdoc-0.7.4-linux-x64.tar.gz.sha256
+sha256sum -c cjdoc-0.7.5-linux-x64.tar.gz.sha256
 ```
 
 macOS：
 
 ```bash
-shasum -a 256 -c cjdoc-0.7.4-macos-arm64.tar.gz.sha256
+shasum -a 256 -c cjdoc-0.7.5-macos-arm64.tar.gz.sha256
 ```
 
 Windows PowerShell 分两步，把 `.sha256` 文件里的哈希和实际文件的哈希对比：
 
 ```powershell
-Get-Content .\cjdoc-0.7.4-windows-x64.zip.sha256
-(Get-FileHash .\cjdoc-0.7.4-windows-x64.zip -Algorithm SHA256).Hash.ToLower()
+Get-Content .\cjdoc-0.7.5-windows-x64.zip.sha256
+(Get-FileHash .\cjdoc-0.7.5-windows-x64.zip -Algorithm SHA256).Hash.ToLower()
 ```
 
 ### 2. 放入 `PATH`
@@ -62,14 +62,14 @@ Get-Content .\cjdoc-0.7.4-windows-x64.zip.sha256
 Linux 和 macOS 解压后把可执行文件改名放到一个已有或新建的用户目录，再把该目录加进 `PATH`。Linux 示例：
 
 ```bash
-tar -xzf cjdoc-0.7.4-linux-x64.tar.gz
-chmod +x cjdoc-0.7.4/cjdoc
+tar -xzf cjdoc-0.7.5-linux-x64.tar.gz
+chmod +x cjdoc-0.7.5/cjdoc
 mkdir -p ~/.local/bin
-mv cjdoc-0.7.4/cjdoc ~/.local/bin/cjdoc
+mv cjdoc-0.7.5/cjdoc ~/.local/bin/cjdoc
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-把最后一行 `export` 也加到你的 `~/.bashrc` 或 `~/.zshrc`，以后新开的终端也能找到 cjdoc。macOS 把文件名换成 `cjdoc-0.7.4-macos-arm64.tar.gz` 即可。
+把最后一行 `export` 也加到你的 `~/.bashrc` 或 `~/.zshrc`，以后新开的终端也能找到 cjdoc。macOS 把文件名换成 `cjdoc-0.7.5-macos-arm64.tar.gz` 即可。
 
 Windows 解压后把 `cjdoc.exe` 放到例如 `C:\Tools\cjdoc\cjdoc.exe`，然后在“环境变量”的用户变量 `Path` 中加入 `C:\Tools\cjdoc`，重新打开终端。
 
@@ -84,7 +84,7 @@ cjdoc --version
 ```
 
 ```text
-cjdoc 0.7.4
+cjdoc 0.7.5
 ```
 
 `cjdoc --help` 可以查看用法。只有顶层命令支持 `--help`，子命令没有单独的帮助；参数写错时，错误信息会附上用法并以退出码 `2` 结束。

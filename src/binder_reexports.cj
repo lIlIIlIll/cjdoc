@@ -54,11 +54,13 @@ internal class ReExportPackageSurface {
         }
         if (!different) { return ("unchanged", 0) }
         if (!existing.isEmpty()) {
+            let kind = kindById.get(existing[0])
+            if (kind != Some("function") && kind != Some("macro")) { return ("conflict", 0) }
             for (id in existing) {
-                if (kindById.get(id) != Some("function")) { return ("conflict", 0) }
+                if (kindById.get(id) != kind) { return ("conflict", 0) }
             }
             for (id in targetIds) {
-                if (kindById.get(id) != Some("function")) { return ("conflict", 0) }
+                if (kindById.get(id) != kind) { return ("conflict", 0) }
             }
         }
         var added: Int64 = 0

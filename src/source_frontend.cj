@@ -5,7 +5,7 @@ import std.collection.*
 import std.fs.*
 import std.sync.AtomicInt64
 
-internal let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v17"
+internal let SOURCE_CACHE_FORMAT = "cjdoc-source-cache-v18"
 internal let MAX_SOURCE_FILE_BYTES: Int64 = 32 * 1024 * 1024
 internal let MAX_SOURCE_CACHE_BYTES: Int64 = 64 * 1024 * 1024
 internal let MAX_SOURCE_CACHE_ITEMS: Int64 = 100000
@@ -292,7 +292,7 @@ internal func collectDocComments(path: String, tokens: Tokens,
 
 
 internal func isFunctionLike(symbol: SourceDeclaration): Bool {
-    symbol.kind == "function" || symbol.kind == "constructor"
+    symbol.kind == "function" || symbol.kind == "constructor" || symbol.kind == "macro"
 }
 
 internal func sourceOrderLess(left: SourceDeclaration, right: SourceDeclaration): Bool {

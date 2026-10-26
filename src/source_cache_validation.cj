@@ -73,7 +73,7 @@ func sourceCacheLocationMatchesCaptured(location: SourceLocation, expectedPath: 
 internal func validCachedDeclarationKind(kind: String): Bool {
     match (kind) {
         case "class" | "struct" | "interface" | "enum" | "enumCase" | "extend" |
-            "typeAlias" | "property" | "variable" | "function" | "constructor" => true
+            "typeAlias" | "property" | "variable" | "function" | "constructor" | "macro" => true
         case _ => false
     }
 }
@@ -151,7 +151,7 @@ internal func cachedParameterDefaultMatches(parameter: SourceParameter, sourceTo
 }
 
 internal func cachedParameterDefaultsMatchSignature(declaration: SourceDeclaration): Bool {
-    if (declaration.kind != "function" && declaration.kind != "constructor") {
+    if (!isFunctionLike(declaration)) {
         for (parameter in declaration.parameters) {
             if (parameter.defaultExpression.isSome()) { return false }
         }
@@ -164,7 +164,8 @@ internal func cachedParameterDefaultsMatchSignature(declaration: SourceDeclarati
     var index: Int64 = 0
     while (index < tokens.size) {
         let value = tokens[index].value
-        if (value == "func" || (declaration.kind == "constructor" && value == "init")) {
+        if (value == "func" || (declaration.kind == "macro" && value == "macro") ||
+            (declaration.kind == "constructor" && value == "init")) {
             searchFrom = index + 1
             markerFound = true
             break
