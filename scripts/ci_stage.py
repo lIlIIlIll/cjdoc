@@ -33,6 +33,11 @@ import sys
 import threading
 import time
 
+try:
+    from .sts_compile_override import PRODUCT_OPTIONS, PRODUCT_REASON, UNIT_OPTION, UNIT_REASON
+except ImportError:
+    from sts_compile_override import PRODUCT_OPTIONS, PRODUCT_REASON, UNIT_OPTION, UNIT_REASON
+
 STAGE_SCHEMA = "cjdoc.ci-stage/1"
 WALLCLOCK_SCHEMA = "cjdoc.ci-wallclock/2"
 BUILD_MANIFEST_SCHEMA = "cjdoc.ci-build-manifest/1"
@@ -59,7 +64,7 @@ IDENTITY_REPORT_ENV = "CJDOC_STAGE_IDENTITY_REPORT"
 REPORTABLE_IDENTITY = frozenset({"browserVersion", "browserIdentity", "fontSetDigest"})
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _RECORDS: list[dict] = []
-_COMPILE_OPTIONS = ("--jobs 1", "-O1")
+_COMPILE_OPTIONS = ("--jobs 1", *PRODUCT_OPTIONS)
 
 
 def utc_now() -> str:
@@ -153,11 +158,16 @@ def report_identity(values: dict[str, str], path: Path | None = None) -> None:
     staging.replace(target)
 
 
-def stage_environment(repo: Path | None = None) -> dict[str, object]:
+def stage_environment(repo: Path | None = None, *, kind: str | None = None) -> dict[str, object]:
     """Identity fields that must stay stable across producers and consumers."""
     repo = Path(repo or os.environ.get("CJDOC_REPO", ".")).resolve()
     platform_id, os_name = runtime_platform()
-    compile_options = list(_COMPILE_OPTIONS) if os.environ.get("CJDOC_REAL_CJPM") else []
+    wrapped = bool(os.environ.get("CJDOC_REAL_CJPM"))
+    compile_options = list(_COMPILE_OPTIONS) if wrapped else []
+    compile_reason = PRODUCT_REASON if wrapped else ""
+    if wrapped and kind == "native":
+        compile_options = ["--jobs 1", UNIT_OPTION]
+        compile_reason = UNIT_REASON
     return {
         "checkoutCommit": os.environ.get("GITHUB_SHA") or git_value(repo, "rev-parse", "HEAD"),
         "checkoutTree": git_value(repo, "rev-parse", "HEAD^{tree}"),
@@ -171,6 +181,9 @@ def stage_environment(repo: Path | None = None) -> dict[str, object]:
         "toolchainFingerprint": os.environ.get("CJDOC_TOOLCHAIN_FINGERPRINT", ""),
         "toolchainTarget": os.environ.get("CJDOC_TOOLCHAIN_TARGET", ""),
         "compileOptions": compile_options,
+        "compileReason": compile_reason,
+        "productCompileOptions": list(_COMPILE_OPTIONS) if wrapped else [],
+        "unitTargetIsolation": "fresh-target-dir" if wrapped and kind == "native" else "",
         "cache": parse_cache(os.environ.get("CJDOC_CACHE_STATE")),
         "runId": os.environ.get("GITHUB_RUN_ID", ""),
         "runAttempt": int(os.environ.get("GITHUB_RUN_ATTEMPT", "0") or 0),
@@ -260,7 +273,7 @@ def stage(stage_id: str, command: list[str], *, kind: str,
         "wallMs": round((time.perf_counter() - started) * 1000, 3),
         "exitCode": 0,
         "status": "passed",
-        "environment": stage_environment(repo),
+        "environment": stage_environment(repo, kind=kind),
     })
     target.append(handle.record_value)
     return
@@ -417,7 +430,7 @@ def run_stage(stage_id: str, kind: str, command: list[str], evidence_dir: Path,
         for signum, handler in previous.items():
             signal.signal(signum, handler)
     exit_code = returncode if returncode >= 0 else 128 - returncode
-    environment = stage_environment()
+    environment = stage_environment(kind=kind)
     # Read only after the stage has ended: the value it reports is what it actually
     # ran with. The file is a one-shot channel, so it is deleted once consumed --
     # `stages.json` is the evidence, and a leftover copy would be uploaded as if it

@@ -75,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          . scripts/with_sts_o1_cjpm.sh
+          . scripts/with_sts_cjpm.sh
           bash scripts/check.sh
           # The whole repository is documented here, which exceeds the default heap
           # (same ceiling as check.sh's smoke stage).

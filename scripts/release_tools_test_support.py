@@ -142,7 +142,7 @@ class ReleaseToolsTestSupport:
                           "compilerVersion": f"Cangjie Compiler: {sdk_version}", "cjpmVersion": sdk_version,
                           "stdxDigest": "b" * 64, "toolchainFingerprint": "c" * 64},
             "build": {"command": ["cjpm", "build", "--jobs", "1"],
-                      "effectiveCompileOptions": ["-O1"],
+                      "effectiveCompileOptions": ["-O2", "--fno-chir-function-inlining"],
                       "buildConfigurationSha256": "d" * 64},
             "binary": {"path": "target/release/bin/main",
                        "sha256": verify_release_package.sha256_file(binary),

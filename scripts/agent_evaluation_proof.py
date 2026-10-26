@@ -1473,7 +1473,7 @@ def validate_consumer_receipt(item: dict, task: dict, code: str,
     require(process.get("inputSha256") == expected_hash, where + ": compiler input digest differs")
     command = process.get("command")
     compiler = (toolchain.get("cjc") or {}).get("label")
-    prefix = [compiler, "--static", "--output-type", "exe", "-O1",
+    prefix = [compiler, "--static", "--output-type", "exe", "-O2",
               "--output-dir", project_label + "/out", "-o", "main"]
     require(isinstance(command, list) and command[:len(prefix)] == prefix
             and command[-1] == project_label + "/input/main.cj"

@@ -60,6 +60,29 @@ class StageRecordTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             ci_stage.parse_cache("cjv=maybe")
 
+    def test_native_metadata_distinguishes_unit_o1_from_product_o2(self) -> None:
+        from unittest.mock import patch
+        with patch.dict("os.environ", {"CJDOC_REAL_CJPM": "cjpm"}):
+            unit = ci_stage.stage_environment(kind="native")
+            product = ci_stage.stage_environment(kind="build")
+        self.assertEqual(unit["compileOptions"], ["--jobs 1", "-O1"])
+        self.assertEqual(unit["compileReason"], "sts-1.2-linux-unit-plain-and-noinline-compiler-ice13")
+        self.assertEqual(unit["unitTargetIsolation"], "fresh-target-dir")
+        self.assertEqual(unit["productCompileOptions"], ["--jobs 1", "-O2", "--fno-chir-function-inlining"])
+        self.assertEqual(product["compileOptions"], ["--jobs 1", "-O2", "--fno-chir-function-inlining"])
+        self.assertEqual(product["unitTargetIsolation"], "")
+
+    def test_native_stage_records_the_unit_exception(self) -> None:
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as temporary:
+            evidence = Path(temporary)
+            with patch.dict("os.environ", {"CJDOC_REAL_CJPM": "cjpm"}):
+                result = ci_stage.run_stage("native", "native", [sys.executable, "-c", "pass"], evidence)
+            self.assertEqual(result, 0)
+            environment = ci_stage.load_records(evidence)[0]["environment"]
+            self.assertEqual(environment["compileOptions"], ["--jobs 1", "-O1"])
+            self.assertEqual(environment["productCompileOptions"], ["--jobs 1", "-O2", "--fno-chir-function-inlining"])
+
 
 class ReportedIdentityTest(unittest.TestCase):
     """The browser/font axis must be recorded by the stage that actually rendered.

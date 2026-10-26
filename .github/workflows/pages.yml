@@ -79,7 +79,7 @@ env:
 
 jobs:
   # Build the Linux candidate through the same reusable workflow CI uses, so the
-  # toolchain, the stdx sidecar and the -O1 workaround have one definition. The
+  # toolchain, the stdx sidecar and the pinned -O2 --fno-chir-function-inlining build options have one definition. The
   # candidate carries an identity manifest that every consumer re-verifies.
   # Decide whether this run may reuse a CI-produced candidate. Reuse requires
   # the same commit AND tree, an explicit run/attempt, or exactly one successful
@@ -132,7 +132,7 @@ jobs:
             --out "${GITHUB_OUTPUT}"
 
   # Local fallback: the reusable workflow remains the single definition of the
-  # toolchain and the -O1 workaround even when no candidate can be reused.
+  # toolchain and the pinned -O2 --fno-chir-function-inlining build options even when no candidate can be reused.
   local-candidate:
     name: Build Linux candidate locally
     needs: resolve-candidate

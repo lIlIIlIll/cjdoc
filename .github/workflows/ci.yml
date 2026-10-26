@@ -55,7 +55,7 @@ jobs:
             --out "${GITHUB_OUTPUT}"
 
   # The Linux candidate is built once by the reusable workflow, so CI and Pages
-  # share one definition of the pinned toolchain and the -O1 workaround.
+  # share one definition of the pinned toolchain and the pinned -O2 --fno-chir-function-inlining build options.
   candidate-linux:
     name: Linux candidate
     needs: changes
@@ -144,7 +144,7 @@ jobs:
           set -euo pipefail
           tar -C . -xf "${RUNNER_TEMP}/cjdoc-candidate/cjdoc-linux-candidate.tar"
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          . scripts/with_sts_o1_cjpm.sh
+          . scripts/with_sts_cjpm.sh
           identity=target/ci-build/build-manifest.json
           # `native` and `python-tools` assume the preflight stage already ran:
           # `python-tools` excludes the SDK-installer and stdx unit tests because
@@ -178,7 +178,7 @@ jobs:
         run: |
           set -euo pipefail
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          . scripts/with_sts_o1_cjpm.sh
+          . scripts/with_sts_cjpm.sh
           python scripts/perf_gate.py identities \
             --binary target/release/bin/main \
             --evidence target/ci-evidence/perf-identities.json
@@ -336,7 +336,7 @@ jobs:
         run: |
           set -euo pipefail
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          . scripts/with_sts_o1_cjpm.sh
+          . scripts/with_sts_cjpm.sh
           # The later worker gate consumes this build's manifest. Keep its worker
           # receipt valid after the ordinary stages clean their owned build tree.
           bash scripts/check.sh --manifest target/ci-build/build-manifest.json \

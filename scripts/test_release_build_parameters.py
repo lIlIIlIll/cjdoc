@@ -25,7 +25,7 @@ import release_build_parameters as params  # noqa: E402
 
 SCRIPT = PROJECT_ROOT / "scripts/release_build_parameters.py"
 MODULE = "scripts/sts_compile_override.py"
-WRAPPER = "scripts/with_sts_o1_cjpm.sh"
+WRAPPER = "scripts/with_sts_cjpm.sh"
 PATCHER = "scripts/apply_sts_override.py"
 
 
@@ -45,7 +45,7 @@ class BuildParameterTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.repo = Path(self.temporary.name) / "repo"
+        self.repo = (Path(self.temporary.name) / "repo").resolve()
         shutil.copytree(PROJECT_ROOT, self.repo, ignore=shutil.ignore_patterns(
             ".git", "target", "__pycache__", "*.pyc"))
         self.assertTrue((self.repo / "cjpm.toml").is_file(), "fixture copy is incomplete")
@@ -67,13 +67,13 @@ class BuildParameterTests(unittest.TestCase):
             with self.subTest(platform=platform):
                 result = self.run_check(platform)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(json.loads(result.stdout)["effectiveCompileOption"], "-O1")
+                self.assertEqual(json.loads(result.stdout)["effectiveCompileOption"], "-O2 --fno-chir-function-inlining")
 
     @requires_shell
     def test_the_observed_option_is_taken_from_the_manifest(self) -> None:
         """Not from the wrapper's text, which mentions the option in a comment."""
         self.edit(MODULE,
-                  "        return contents.replace(NEEDLE, f'override-compile-option = \"{OPTION}\"', 1)",
+                  "        return contents.replace(needle, f'override-compile-option = \"{option}\"', 1)",
                   "        return contents")
         result = self.run_check()
         self.assertNotEqual(result.returncode, 0)
@@ -81,10 +81,17 @@ class BuildParameterTests(unittest.TestCase):
 
     @requires_shell
     def test_a_changed_shared_option_is_refused(self) -> None:
-        self.edit(MODULE, 'OPTION = "-O1"', 'OPTION = "-O2"')
+        self.edit(MODULE, 'OPTION = "-O2 --fno-chir-function-inlining"', 'OPTION = "-O1"')
         result = self.run_check()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("-O2", result.stderr)
+        self.assertIn("-O1", result.stderr)
+
+    @requires_shell
+    def test_plain_o2_is_refused_when_the_required_extra_flag_is_missing(self) -> None:
+        self.edit(MODULE, 'OPTION = "-O2 --fno-chir-function-inlining"', 'OPTION = "-O2"')
+        result = self.run_check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--fno-chir-function-inlining", result.stderr)
 
     @requires_shell
     def test_a_wrapper_that_stops_patching_is_refused(self) -> None:
@@ -100,6 +107,41 @@ class BuildParameterTests(unittest.TestCase):
         before = (self.repo / "cjpm.toml").read_bytes()
         self.assertEqual(self.run_check().returncode, 0)
         self.assertEqual((self.repo / "cjpm.toml").read_bytes(), before)
+
+    @requires_shell
+    def test_failed_o2_build_restores_manifest_without_retry(self) -> None:
+        import os
+        import shlex
+
+        probe = self.repo / "probe-bin"
+        probe.mkdir()
+        observed = self.repo / "observed-builds.jsonl"
+        log = self.repo / "invocations.jsonl"
+        (probe / "cjc").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        (probe / "cjpm").write_text(
+            "#!/usr/bin/env bash\n"
+            'if [[ "${1:-}" == "-v" ]]; then exit 0; fi\n'
+            + shlex.quote(sys.executable) + ' - "$@" <<\'PY\'\n'
+            "import json, os, pathlib, sys, tomllib\n"
+            "package = tomllib.loads(pathlib.Path('cjpm.toml').read_text())['package']\n"
+            "assert package['override-compile-option'] == '-O2 --fno-chir-function-inlining'\n"
+            "with open(os.environ['CJDOC_PROBE_OBSERVED'], 'a') as output:\n"
+            "    output.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+            "raise SystemExit(37)\nPY\n", encoding="utf-8")
+        for path in probe.iterdir():
+            path.chmod(0o755)
+        before = (self.repo / "cjpm.toml").read_bytes()
+        environment = dict(os.environ, GITHUB_WORKSPACE=str(self.repo),
+                           RUNNER_TEMP=self.temporary.name, CJDOC_PYTHON=sys.executable,
+                           CJDOC_PROBE_OBSERVED=str(observed), CJDOC_STS_INVOCATION_LOG=str(log))
+        environment['PATH'] = str(probe) + os.pathsep + environment.get('PATH', '')
+        command = ". " + shlex.quote(str(self.repo / WRAPPER)) + "; cjpm build --jobs 1"
+        result = subprocess.run([params.usable_shell(), '-c', command], cwd=self.repo,
+                                env=environment, text=True, capture_output=True, timeout=60)
+        self.assertEqual(result.returncode, 37, result.stderr)
+        self.assertEqual((self.repo / "cjpm.toml").read_bytes(), before)
+        self.assertEqual(len(observed.read_text().splitlines()), 1)
+        self.assertEqual(json.loads(log.read_text().strip())['option'], '-O2 --fno-chir-function-inlining')
 
     def test_a_missing_wrapper_is_refused(self) -> None:
         (self.repo / WRAPPER).unlink()

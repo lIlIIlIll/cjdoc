@@ -9,21 +9,37 @@
 - **Cangjie 1.2.0 STS** 的 `cjc`/`cjpm`，以及与编译器匹配的 **`stdx` release/1.2 sidecar**。`cjpm.toml` 使用固定 `commitId` 的 Git 依赖（`markdown`、`yjson`）和 `vendor/yjson_algorithms` path 依赖；`cjpm.lock` 必须与清单一致。
 - CI 使用 [`Zxilly/setup-cangjie`](https://github.com/Zxilly/setup-cangjie) 的 `sts` channel + `stdx` component（workflow 中 `cjv-version: v0.3.2`），压缩包由 `cangjie-version-manifest` 提供 SHA-256 校验。手工准备同一套工具链可用 `cjv install sts-1.2.0 --component stdx`。
 - 根 `cjpm.toml` 的 `link-option` 与 `bin-dependencies.path-option` 引用环境变量 `${CJDOC_STDX_LINK_OPTIONS}` 和 `${CANGJIE_STDX_PATH}`；没有经过 `scripts/with_stdx.py` 认证并导出这些变量时，构建不会链接到正确的 sidecar。
-- 单作业构建：`cjpm build --jobs 1`。STS 1.2.0 自带的 `llc` 在并发 CI 作业下崩溃过，`scripts/check.sh` 也固定传 `--jobs 1`。
+- 单作业构建：`cjpm build --jobs 1`。`scripts/check.sh` 保持同一调用参数，便于三平台构建与发布回执核对。
 
-### SDK 1.2.0 的 `-O1` 覆盖
+### 正式构建的完整旗标
 
-原因：SDK 1.2.0 的 `llc` 在默认优化级别编译 `markdown`/`yjson` 依赖时崩溃。仓库把覆盖定义在 `scripts/sts_compile_override.py`：把清单里的 `override-compile-option = ""` 改成 `"-O1"`，只对 `cjdoc`、`provider_plugin_fixture`、`highlight_host_fixture` 三个包生效。
+正式工具构建、worker、Release、CLI 功能验收，以及编译 cjdoc 源码依赖的 fixture 使用
+`-O2 --fno-chir-function-inlining`。同源诊断中，额外 no-inline 选项通过了真实 Doc IR
+GC 查询与 MCP 回归；这不表示普通 `-O2` 已通过，也不认定编译器故障根因。
 
-CI 通过 `scripts/with_sts_o1_cjpm.sh` 为一次 shell 内的 `cjpm build/test/run` 安装临时 wrapper，调用结束由 trap 恢复原清单。使用前必须设置本次 checkout 与临时目录：
+仅 `cjpm test` 编译使用显式 `-O1` 例外：Linux 同源对照中，STS 1.2.0、静态 stdx、
+131072 KiB 栈和相同测试参数下，普通 `-O2` 与 `-O2 --fno-chir-function-inlining`
+都在 cjc 编译期出现 ICE 13，零测试用例运行；`-O1` 能编译并执行单测。
+这些本地结果不提供其它平台的 O2 单测通过证明。
+
+仓库在 `scripts/sts_compile_override.py` 按子命令选择选项。临时清单覆盖只对 `cjdoc`、`cjdoc_chir_worker`、`provider_plugin_fixture`、`highlight_host_fixture` 四个包生效；不因命令失败重试或自动降级。
+
+CI 通过 `scripts/with_sts_cjpm.sh` 为一次 shell 内的 `cjpm build/test/run` 安装临时 wrapper，调用结束由 trap 恢复原清单。使用前必须设置本次 checkout 与临时目录：
 
 ```bash
 export GITHUB_WORKSPACE="$PWD"
-export RUNNER_TEMP="$(mktemp -d)"
-. scripts/with_sts_o1_cjpm.sh
+mkdir -p "$HOME/.cache/agent-tmp"
+chmod 700 "$HOME/.cache/agent-tmp"
+export RUNNER_TEMP="$(mktemp -d "$HOME/.cache/agent-tmp/cjdoc-check.XXXXXX")"
+export TMPDIR="$RUNNER_TEMP" TMP="$RUNNER_TEMP" TEMP="$RUNNER_TEMP"
+. scripts/with_sts_cjpm.sh
 ```
 
-之后同一 shell 里、workspace 内的 `cjpm build`/`test`/`run` 自动使用 `-O1`；其它命令和 workspace 外的调用原样透传。手工等价步骤是：备份清单 → 把 `override-compile-option = ""` 改成 `"-O1"`（辅助 fixture 的入口清单也要改）→ 构建/测试 → 逐字节恢复。不要把覆盖写进提交。
+之后在同一 shell、workspace 内，`cjpm build`/`run` 使用 `-O2 --fno-chir-function-inlining`，`cjpm test` 使用 `-O1`。其它命令和 workspace 外的调用原样透传。不要把临时覆盖写进提交。
+
+每次单测创建 `RUNNER_TEMP` 下的新 `--target-dir`，结束后清理；wrapper 拒绝调用方另传该选项，防止单测复用或写入产品的 `target/`。测试中启动的产品构建仍选 `-O2 --fno-chir-function-inlining`，嵌套调用结束后恢复外层单测清单。
+
+`CJDOC_STS_INVOCATION_LOG` 记录实际 argv、完整清单选项、阶段、阶段理由、退出码，以及策略和 wrapper 的源码摘要；只有 `build` 记录绑定产品二进制。发布凭证仍要求使用完整旗标且成功的产品 build 及其二进制摘要，`-O1 test` 记录不能替代产品构建凭证。候选 receipt 读取真实调用日志、核对产品二进制和策略源码，并记录日志摘要；独立调用时使用 `--invocation-log`，CI 默认读取 `RUNNER_TEMP` 下的同一日志。
 
 检查某个清单当前声明的选项：
 
@@ -66,13 +82,13 @@ cjpm -v
 ./cjdoc --version
 ```
 
-产物是 `target/release/bin/main`（Windows 为 `main.exe`）。仓库根目录的 [`./cjdoc`](../../cjdoc) launcher 只是便捷入口：binary 不存在时它会尝试默认 `cjpm build`，不包含 `-O1` 处理；在 SDK 1.2.0 下先按上面的步骤完成构建。
+产物是 `target/release/bin/main`（Windows 为 `main.exe`）。仓库根目录的 [`./cjdoc`](../../cjdoc) launcher 只是便捷入口：binary 不存在时它会尝试默认 `cjpm build`。正式验收和发布仍按上述 wrapper 路径构建，以记录实际选项、调用和二进制身份。
 
-`cjpm test` 运行仓颉单测；在 SDK 1.2.0 上它同样需要 `-O1` wrapper。安装 `just` 后也可用 `just doctor`、`just build`、`just test`、`just schema`、`just check`、`just smoke`、`just provider-smoke`、`just real-smoke`、`just perf`、`just release-check`。
+`cjpm test` 运行仓颉单测；正式验收通过同一 wrapper 显式选择单测专属 `-O1` 和隔离目录。产品构建继续要求 `-O2 --fno-chir-function-inlining`。任何阶段失败都保留首次退出码，不重试或自动降低优化级别。安装 `just` 后也可用 `just doctor`、`just build`、`just test`、`just schema`、`just check`、`just smoke`、`just provider-smoke`、`just real-smoke`、`just perf`、`just release-check`。
 
 ## 本地验收门禁 `scripts/check.sh`
 
-要求：已准备 SDK 与 sidecar、Bash、Python 标准库（`CJDOC_PYTHON` 可覆盖解释器）。SDK 1.2.0 上调用前先 source `scripts/with_sts_o1_cjpm.sh`（见上）。门禁会拒绝覆盖已存在的构建输出：`tests/fixtures/**/target` 或 `tools/chir-worker/target` 已存在时先报错退出，需要自己清理。`preflight`/`build` 还要求仓库输入都已提交且可跟踪；干净 checkout 上运行最省事。
+要求：已准备 SDK 与 sidecar、Bash、Python 标准库（`CJDOC_PYTHON` 可覆盖解释器）。SDK 1.2.0 上调用前先 source `scripts/with_sts_cjpm.sh`（见上）。门禁会拒绝覆盖已存在的构建输出：`tests/fixtures/**/target` 或 `tools/chir-worker/target` 已存在时先报错退出，需要自己清理。`preflight`/`build` 还要求仓库输入都已提交且可跟踪；干净 checkout 上运行最省事。
 
 不带参数运行完整门禁：
 
@@ -86,7 +102,7 @@ bash scripts/check.sh
 |---|---|
 | `preflight` | 已跟踪仓库输入、SDK 安装器与 `with_stdx` 单测 |
 | `build` | 构建主程序与 CHIR worker，写 build manifest |
-| `native` | `cjpm test` 仓颉单测（有超时与进程快照保护） |
+| `native` | `cjpm test` 仓颉单测（显式 `-O1`、隔离 target、超时与进程快照保护） |
 | `python-tools` | `scripts/test_*.py` 与 `tests/showcase_contract/` |
 | `cli` | CLI、schema、golden、HTML、输出安全与 fixture 契约 |
 | `provider` | provider-plugin fixture |
@@ -153,18 +169,21 @@ cjdoc generate --project . --format json --stdout \
 
 ## Linux 候选构建（CI/Pages 复用的唯一构建）
 
-[`build-linux-candidate.yml`](../../.github/workflows/build-linux-candidate.yml) 是钉死工具链的唯一构建入口：安装 STS 1.2.0 + stdx sidecar、导出认证环境、source `-O1` wrapper，然后调用 `check.sh build` 一次。CI 的 Linux 验收与 Pages 消费同一个候选产物，并重新校验 `build-manifest.json` 里的二进制摘要、大小与 `--version`，身份不符即失败。
+[`build-linux-candidate.yml`](../../.github/workflows/build-linux-candidate.yml) 是钉死工具链的唯一构建入口：安装 STS 1.2.0 + stdx sidecar、导出认证环境、source 完整旗标 wrapper，然后调用 `check.sh build` 一次。CI 的 Linux 验收与 Pages 消费同一个候选产物，并重新校验 `build-manifest.json` 里的二进制摘要、大小与 `--version`，身份不符即失败。
 
 本地复现同一步骤：
 
 ```bash
 export GITHUB_WORKSPACE="$PWD"
-export RUNNER_TEMP="$(mktemp -d)"
+mkdir -p "$HOME/.cache/agent-tmp"
+chmod 700 "$HOME/.cache/agent-tmp"
+export RUNNER_TEMP="$(mktemp -d "$HOME/.cache/agent-tmp/cjdoc-check.XXXXXX")"
+export TMPDIR="$RUNNER_TEMP" TMP="$RUNNER_TEMP" TEMP="$RUNNER_TEMP"
 set -a
 eval "$(python3 scripts/with_stdx.py --variant static --print-env --)"
 set +a
 export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-. scripts/with_sts_o1_cjpm.sh
+. scripts/with_sts_cjpm.sh
 bash scripts/check.sh build --repo . \
   --main-binary-out target/release/bin/main \
   --worker-binary-out target/release/bin/chir-worker-main \
