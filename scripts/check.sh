@@ -858,12 +858,13 @@ PY
     trap - EXIT
 }
 
-stage_provider() {
+stage_provider() (
+    # Bash 3.2 drops function locals before EXIT; the subshell scopes these values.
     cd "${repo}"
     require_identity
-    local provider_project="${repo}/tests/fixtures/projects/provider_plugin"
-    local provider_build_cache="${provider_project}/build-script-cache"
-    local provider_target="${provider_project}/target"
+    provider_project="${repo}/tests/fixtures/projects/provider_plugin"
+    provider_build_cache="${provider_project}/build-script-cache"
+    provider_target="${provider_project}/target"
     "${python_cmd}" - "${provider_build_cache}" "${provider_target}" <<'PY'
 from pathlib import Path
 import stat
@@ -877,13 +878,20 @@ for value in sys.argv[1:]:
         raise SystemExit(f"provider output already exists ({kind}); refusing destructive cleanup: {path}")
 PY
     cleanup_provider() {
-        remove_owned_outputs "${provider_build_cache}" "${provider_target}"
+        provider_status=$?
+        trap - EXIT
+        provider_cleanup_status=0
+        remove_owned_outputs "${provider_build_cache}" "${provider_target}" || provider_cleanup_status=$?
+        if [[ "${provider_status}" == "0" && "${provider_cleanup_status}" != "0" ]]; then
+            provider_status="${provider_cleanup_status}"
+        fi
+        exit "${provider_status}"
     }
     trap cleanup_provider EXIT
     (cd "${provider_project}" && cjpm run --build-args "--jobs 1")
-    cleanup_provider
-    trap - EXIT
-}
+    # Bash 3.2 can continue here after a failed subshell command.
+    exit "$?"
+)
 
 stage_smoke() {
     cd "${repo}"

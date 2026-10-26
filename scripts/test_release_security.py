@@ -144,12 +144,13 @@ class ReleaseSecurityTest(ReleaseToolsTestSupport, unittest.TestCase):
         )
         self.assertNotIn("GH_TOKEN", candidate)
         self.assertNotIn("gh release", candidate)
-        # The packaged binary is the one the acceptance gates verified: identity is
-        # re-checked both before and after the single build.
+        # The complete gate owns the build; release identity surrounds either
+        # platform's acceptance entry point.
         self.assertEqual(candidate.count("python scripts/verify_release.py"), 2)
-        build_offset = candidate.index("cjpm build")
-        self.assertLess(candidate.index("python scripts/verify_release.py"), build_offset)
-        self.assertGreater(candidate.rindex("python scripts/verify_release.py"), build_offset)
+        for command in ("bash scripts/release_check.sh", "bash scripts/check.sh"):
+            gate_offset = candidate.index(command)
+            self.assertLess(candidate.index("python scripts/verify_release.py"), gate_offset)
+            self.assertGreater(candidate.rindex("python scripts/verify_release.py"), gate_offset)
         self.assertEqual(workflow.count("contents: write"), 1)
         # The publisher must be gated on BOTH a successful candidate and an allowing
         # guard: `always()` alone would let it run on a refused tag.
