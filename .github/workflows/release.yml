@@ -87,7 +87,7 @@ jobs:
             stdx_url: "https://gitcode.com/Cangjie/cangjie_stdx/releases/download/v1.2.0.1/cangjie-stdx-linux-x64-1.2.0.1.zip"
             stdx_sha256: "c036a192e8fd4206b84ca9a94611820bc66623198975f3dff874f748d65a8b47"
           - platform: windows-x64
-            runner: windows-2025
+            runner: windows-2022
             sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-windows-x64-1.2.0.zip&objectKey=6ab1eafae4bd101f57762f5e"
             sdk_sha256: "7bd5088ad56fb03c1214e73ea076de5ac08580cc419a8cbd46a524ee1ca250bf"
             stdx_url: "https://gitcode.com/Cangjie/cangjie_stdx/releases/download/v1.2.0.1/cangjie-stdx-windows-x64-1.2.0.1.zip"
@@ -175,9 +175,8 @@ jobs:
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           python scripts/verify_release.py >/dev/null
           . scripts/with_sts_cjpm.sh
-          # Build exactly once and package this same binary. The acceptance gates
-          # below may run an incremental cjpm build, but the executable promoted
-          # to the release is the one this step produces and re-verifies.
+          # The complete acceptance gate owns the product build. Package the same
+          # binary only after every gate has accepted it.
           #
           # 08.3: every platform must share these build parameters. If a platform
           # ever needs different ones, the requirement is to build a *separate*
@@ -190,14 +189,6 @@ jobs:
           # packaging time, so what is checked is what really ran.
           export CJDOC_STS_INVOCATION_LOG="${RUNNER_TEMP}/cjdoc-sts-invocations.jsonl"
           : > "${CJDOC_STS_INVOCATION_LOG}"
-          cjpm build --jobs 1
-          binary="target/release/bin/main"
-          if [[ "${RUNNER_OS}" == "Windows" ]]; then
-            binary="${binary}.exe"
-          fi
-          python scripts/verify_repository_inputs.py --require-tracked \
-            --binary "${binary}" >/dev/null
-          python scripts/verify_release.py >/dev/null
           if [[ "${{ matrix.platform }}" == "linux-x64" ]]; then
             # The Linux candidate adds the real-repository smoke and the frozen
             # performance ceiling, then promotes a cjdoc.release-gate/3 receipt.
@@ -211,9 +202,8 @@ jobs:
         if: always() && matrix.platform == 'macos-arm64' && steps.source-edge-snapshot.outcome == 'success'
         shell: bash
         run: |
-          # The acceptance gate may renormalize this tracked CRLF fixture. The
-          # candidate receipt records worktree cleanliness and the packager
-          # rejects a dirty worktree, so restore it before sealing the receipt.
+          # Restore this known CRLF fixture before the post-acceptance identity
+          # checks. Other source changes still block the candidate receipt.
           cp -p "${RUNNER_TEMP}/source-edge-fixture.cj" \
             tests/fixtures/projects/source_edges/src/fixture.cj
 
@@ -222,6 +212,7 @@ jobs:
         env:
           CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
           CJDOC_RELEASE_TAG: ${{ github.ref_name }}
+          CJDOC_RELEASE_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
@@ -229,6 +220,9 @@ jobs:
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             binary="${binary}.exe"
           fi
+          python scripts/verify_repository_inputs.py --require-tracked \
+            --binary "${binary}" >/dev/null
+          python scripts/verify_release.py >/dev/null
           gate_args=()
           for gate in target/release-evidence/gate.json target/release-evidence/metadata.json; do
             if [[ -f "${gate}" ]]; then
