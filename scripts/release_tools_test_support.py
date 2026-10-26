@@ -41,7 +41,10 @@ SDK_SHA256 = "1" * 64
 class ReleaseToolsTestSupport:
     def git(self, repo: Path, *args: str) -> str:
         result = subprocess.run(
-            ["git", "-c", "commit.gpgSign=false", "-c", "core.hooksPath=/dev/null",
+            # A detached maintenance process can recreate .git entries while
+            # TemporaryDirectory removes this short-lived repository.
+            ["git", "-c", "maintenance.auto=false", "-c", "gc.auto=0",
+             "-c", "commit.gpgSign=false", "-c", "core.hooksPath=/dev/null",
              "-c", "core.autocrlf=false",
              "-C", str(repo), *args], text=True, capture_output=True, check=True
         )

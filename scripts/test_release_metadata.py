@@ -40,6 +40,27 @@ from scripts.verify_repository_inputs import (
 )
 
 class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
+    def test_temporary_release_repository_disables_background_maintenance(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            trace = root / "git-trace.jsonl"
+            # Even a host that enables automatic maintenance must not leave a
+            # detached Git process writing into the disposable fixture.
+            with mock.patch.dict(os.environ, {
+                "GIT_TRACE2_EVENT": str(trace),
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "maintenance.auto",
+                "GIT_CONFIG_VALUE_0": "true",
+            }):
+                repo, commit = self.make_release_repo(root / "repo")
+                evidence = verify_release.verify_repository(repo, "v0.7.0", commit)
+                self.assertEqual(evidence["commit"], commit)
+            children = [event.get("argv", []) for event in
+                        (json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines())
+                        if event.get("event") == "child_start"]
+            maintenance = [args for args in children if "maintenance" in args or "gc" in args]
+            self.assertEqual(maintenance, [], "temporary repositories must not spawn Git housekeeping")
+
     def test_release_metadata_binds_tag_commit_tree_and_clean_state(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo, commit = self.make_release_repo(Path(temporary))
