@@ -54,6 +54,7 @@ internal func htmlKindLabel(kind: String, locale: String): String {
         case "enumCase" => "枚举项"
         case "constructor" => "构造器"
         case "function" => "函数"
+        case "macro" => "宏"
         case "property" => "属性"
         case "variable" => "变量"
         case "typeAlias" => "类型别名"
@@ -119,7 +120,7 @@ internal func htmlContextLabel(symbol: SymbolDoc): String {
         }
         out.append(">")
     }
-    if (symbol.kind == "function" || symbol.kind == "constructor") {
+    if (symbol.kind == "function" || symbol.kind == "constructor" || symbol.kind == "macro") {
         out.append("(")
         var first = true
         for (parameter in symbol.parameters) {

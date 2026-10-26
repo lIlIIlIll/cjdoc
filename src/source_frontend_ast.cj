@@ -14,6 +14,8 @@ internal class AstDeclarationCollector <: Visitor {
     let unsupportedDeclarations = ArrayList<UnsupportedDeclaration>()
     let diagnostics = ArrayList<Diagnostic>()
     let localScopes = ArrayList<SourceLocation>()
+    var wrappedDeclarationStart: ?SourceLocation = None
+    let wrappedAnnotations = ArrayList<String>()
     // Primary-constructor member parameters are lexically inside a constructor
     // but semantically also declare members of the surrounding type. Keep them
     // separate until local declarations have been filtered.
@@ -48,6 +50,14 @@ internal class AstDeclarationCollector <: Visitor {
                 startColumn = modifierStartColumn
             }
         }
+        // A macro wrapper is part of the source declaration header. Extending
+        // only the next declaration preserves its leading doc comment while
+        // retaining the original positions of its members.
+        if (let Some(wrapper) <- wrappedDeclarationStart) {
+            startLine = wrapper.startLine
+            startColumn = wrapper.startColumn
+            wrappedDeclarationStart = None
+        }
         if (startLine <= 0 || startColumn <= 0) { return None }
         let endLine = if (decl.endPos.line > 0) { Int64(decl.endPos.line) } else { startLine }
         let endColumn = if (decl.endPos.column > 0) { Int64(decl.endPos.column) } else { startColumn }
@@ -81,6 +91,8 @@ internal class AstDeclarationCollector <: Visitor {
             signature, isContainer: isContainer,
             enumNonExhaustive: enumNonExhaustive,
             sourceApiSignatureTokens: sourceApiSignatureTokens(signature))
+        symbol.annotations.add(all: wrappedAnnotations)
+        wrappedAnnotations.clear()
         addCommonAstData(symbol, decl)
         declarations.add(symbol)
         return symbol
@@ -237,7 +249,13 @@ internal class AstDeclarationCollector <: Visitor {
         } else {
             ""
         }
+        let wrapperStart = wrappedDeclarationStart
+        let wrapperAnnotations = wrappedAnnotations.toArray()
         for (binding in collector.bindings) {
+            // Every name in one pattern is declared by the same source header.
+            wrappedDeclarationStart = wrapperStart
+            wrappedAnnotations.clear()
+            wrappedAnnotations.add(all: wrapperAnnotations)
             if (let Some(symbol) <- add(decl, "variable", binding.name)) {
                 if (!display.isEmpty()) { symbol.returnTypeSpelling = Some(display) }
             }
@@ -277,13 +295,10 @@ internal class AstDeclarationCollector <: Visitor {
     }
 
     public override func visit(decl: MacroDecl): Unit {
-        if (let Some(location) <- sourceLocationFromAstRange(path, source,
-            Int64(decl.beginPos.line), Int64(decl.beginPos.column),
-            Int64(decl.endPos.line), Int64(decl.endPos.column))) {
-            diagnostics.add(Diagnostic("warning", "CJDOC1009",
-                "unsupported declaration 'macro ${decl.identifier.value}'", source: location))
-            unsupportedDeclarations.add(UnsupportedDeclaration("macro", decl.identifier.value,
-                "macro expansion is not executed", location))
+        if (let Some(symbol) <- add(decl, "macro", decl.identifier.value, hasBody: true)) {
+            addParameters(symbol, decl.funcParams)
+            let display = try { normalizedTokens(decl.declType) } catch (_: Exception) { "" }
+            if (!display.isEmpty()) { symbol.returnTypeSpelling = Some(display) }
         }
         breakTraverse()
     }
@@ -292,17 +307,36 @@ internal class AstDeclarationCollector <: Visitor {
         let name = try { decl.fullIdentifier.value } catch (_: Exception) {
             try { decl.identifier.value } catch (_: Exception) { "<macro>" }
         }
+        let input: ?Decl = try { Some(decl.macroInputDecl) } catch (_: Exception) { None }
+        let previousStart = wrappedDeclarationStart
+        let previousAnnotations = wrappedAnnotations.toArray()
+        for (annotation in decl.annotations) {
+            wrappedAnnotations.add(annotation.toTokens().toString().trimAscii())
+        }
         if (let Some(location) <- sourceLocationFromAstRange(path, source,
             Int64(decl.beginPos.line), Int64(decl.beginPos.column),
             Int64(decl.endPos.line), Int64(decl.endPos.column))) {
-            diagnostics.add(Diagnostic("warning", "CJDOC1009",
-                "macro invocation '${name}' is not expanded", source: location))
             macroInvocations.add(MacroInvocation(name, location))
-            unsupportedDeclarations.add(UnsupportedDeclaration("macroInvocation", name,
-                "macro expansion is not executed", location))
+            let detail = if (input.isSome()) {
+                "source input is documented; generated declarations are unavailable"
+            } else { "source input cannot be recovered as a declaration" }
+            diagnostics.add(Diagnostic("warning", "CJDOC1009",
+                "macro invocation '${name}' is not expanded: ${detail}", source: location))
+            if (input.isNone()) {
+                unsupportedDeclarations.add(UnsupportedDeclaration("macroInvocation", name,
+                    "macro expansion is not executed; ${detail}", location))
+            }
+            if (wrappedDeclarationStart.isNone()) { wrappedDeclarationStart = Some(location) }
         }
+        if (let Some(declaration) <- input) { declaration.traverse(this) }
+        wrappedDeclarationStart = previousStart
+        wrappedAnnotations.clear()
+        wrappedAnnotations.add(all: previousAnnotations)
+        // The explicit traversal preserves nested wrapper context. Do not let
+        // std.ast visit the same input again through its default traversal.
         breakTraverse()
     }
+
 }
 
 internal func declarationVisibility(decl: Decl): String {

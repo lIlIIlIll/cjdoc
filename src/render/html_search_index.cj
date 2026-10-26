@@ -309,6 +309,7 @@ private func searchDeclarationKeywordMatches(token: HtmlSignatureToken,
     symbolKind: String): Bool {
     match (symbolKind) {
         case "function" => token.kind == "FUNC"
+        case "macro" => token.kind == "MACRO"
         case "class" => token.kind == "CLASS"
         case "struct" => token.kind == "STRUCT"
         case "interface" => token.kind == "INTERFACE"

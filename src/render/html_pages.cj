@@ -334,6 +334,7 @@ internal func memberSectionTitle(symbol: SymbolDoc): String {
         case "property" => "Properties"
         case "variable" => "Variables"
         case "function" => "Functions"
+        case "macro" => "Macros"
         case "enumCase" => "Enum cases"
         case "class" => "Nested classes"
         case "struct" => "Nested structs"

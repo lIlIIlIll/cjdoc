@@ -2,11 +2,11 @@
   "schemaVersion": "cjdoc.doc-ir/16",
   "generator": {
     "name": "cjdoc",
-    "version": "0.7.4",
+    "version": "0.7.5",
     "toolchain": ""
   },
-  "status": "partial",
-  "apiCollectionState": "partial",
+  "status": "complete",
+  "apiCollectionState": "resolved",
   "documentationRevision": "",
   "project": {
     "name": "unsupported_fixture",
@@ -120,7 +120,7 @@
         "src/macro.cj"
       ],
       "symbolIds": [
-        
+        "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::unsupported_fixture::macro:Echo#g0(Tokens)"
       ],
       "reExports": [
         
@@ -135,37 +135,113 @@
     }
   ],
   "declarations": [
-    
-  ],
-  "assets": [
-    
-  ],
-  "orphanDocComments": [
     {
-      "rawText": "/** Unsupported macro declaration. */",
-      "source": {
-        "path": "src/macro.cj",
-        "start": {
-          "line": 5,
-          "column": 1,
-          "byteOffset": 53
-        },
-        "end": {
-          "line": 5,
-          "column": 38,
-          "byteOffset": 90
-        }
-      }
-    }
-  ],
-  "macroInvocations": [
-    
-  ],
-  "unsupportedDeclarations": [
-    {
+      "id": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::unsupported_fixture::macro:Echo#g0(Tokens)",
       "kind": "macro",
       "name": "Echo",
-      "reason": "macro expansion is not executed",
+      "qualifiedName": "unsupported_fixture.Echo",
+      "packageName": "unsupported_fixture",
+      "moduleId": "cjdoc:module:v1:root",
+      "ownerId": null,
+      "visibility": "public",
+      "genericParameters": [
+        
+      ],
+      "parameters": [
+        {
+          "name": "input",
+          "type": {
+            "kind": "source",
+            "spelling": "Tokens",
+            "nullable": false,
+            "arguments": [
+              
+            ],
+            "semanticState": "partial",
+            "semanticCanonical": null,
+            "semanticProvider": "syntax",
+            "navigation": {
+              "state": "resolved",
+              "matchLevel": "manual",
+              "reason": "validated official 1.2.0 standard-library documentation route; not API identity evidence",
+              "dependencyInstanceId": "",
+              "documentSetId": "",
+              "indexIdentity": "",
+              "symbolKey": "",
+              "url": "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/ast/ast_package_api/ast_package_classes.html#class-tokens",
+              "apiIdentity": "",
+              "language": ""
+            }
+          },
+          "documentation": null,
+          "defaultExpression": null
+        }
+      ],
+      "returnType": {
+        "kind": "source",
+        "spelling": "Tokens",
+        "nullable": false,
+        "arguments": [
+          
+        ],
+        "semanticState": "partial",
+        "semanticCanonical": null,
+        "semanticProvider": "syntax",
+        "navigation": {
+          "state": "resolved",
+          "matchLevel": "manual",
+          "reason": "validated official 1.2.0 standard-library documentation route; not API identity evidence",
+          "dependencyInstanceId": "",
+          "documentSetId": "",
+          "indexIdentity": "",
+          "symbolKey": "",
+          "url": "https://cj-docs.gitcode.com/zh/1.2.0/libs/std/ast/ast_package_api/ast_package_classes.html#class-tokens",
+          "apiIdentity": "",
+          "language": ""
+        }
+      },
+      "annotations": [
+        
+      ],
+      "typeRelationships": [
+        
+      ],
+      "symbolRelationships": [
+        
+      ],
+      "documentation": {
+        "rawText": "/** Unsupported macro declaration. */",
+        "summary": "Unsupported macro declaration.",
+        "description": "",
+        "markdown": {
+          "kind": "document",
+          "literal": "",
+          "source": null,
+          "metadata": null,
+          "children": [
+            {
+              "kind": "paragraph",
+              "literal": "",
+              "source": null,
+              "metadata": null,
+              "children": [
+                {
+                  "kind": "text",
+                  "literal": "Unsupported macro declaration.",
+                  "source": null,
+                  "metadata": null,
+                  "children": [
+                    
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "tags": [
+          
+        ]
+      },
       "source": {
         "path": "src/macro.cj",
         "start": {
@@ -178,8 +254,87 @@
           "column": 2,
           "byteOffset": 169
         }
+      },
+      "headerSpelling": "public macro Echo(input: Tokens): Tokens",
+      "sourceApiSignature": {
+        "state": "available",
+        "tokens": [
+          "PUBLIC:6:public",
+          "MACRO:5:macro",
+          "IDENTIFIER:4:Echo",
+          "LPAREN:1:(",
+          "IDENTIFIER:5:input",
+          "COLON:1::",
+          "IDENTIFIER:6:Tokens",
+          "RPAREN:1:)",
+          "COLON:1::",
+          "IDENTIFIER:6:Tokens"
+        ]
+      },
+      "semantic": {
+        "state": "partial",
+        "provider": "syntax",
+        "canonicalSignature": null
+      },
+      "origin": {
+        "kind": "source",
+        "macroSymbolId": null
+      },
+      "enumNonExhaustive": null,
+      "signatureHighlight": {
+        "language": "cangjie",
+        "sourceHash": "ad31e6d031c1259777fcdec99d33e69db263cf42776079ee5e35e564892e9b6c",
+        "byteLength": 40,
+        "engineId": "cjdoc-cangjie-lexer",
+        "engineRevision": "2/lexer-behavior-v1/1949a49bf58e70d2090a3f23f3004d579feb0f94283f975997dd63ba3d88c08d",
+        "state": "complete",
+        "reason": null,
+        "spans": [
+          {
+            "startByte": 0,
+            "endByte": 6,
+            "kind": "keyword"
+          },
+          {
+            "startByte": 7,
+            "endByte": 12,
+            "kind": "keyword"
+          },
+          {
+            "startByte": 17,
+            "endByte": 18,
+            "kind": "punctuation"
+          },
+          {
+            "startByte": 23,
+            "endByte": 24,
+            "kind": "punctuation"
+          },
+          {
+            "startByte": 31,
+            "endByte": 32,
+            "kind": "punctuation"
+          },
+          {
+            "startByte": 32,
+            "endByte": 33,
+            "kind": "punctuation"
+          }
+        ]
       }
     }
+  ],
+  "assets": [
+    
+  ],
+  "orphanDocComments": [
+    
+  ],
+  "macroInvocations": [
+    
+  ],
+  "unsupportedDeclarations": [
+    
   ],
   "unboundSemanticDeclarations": [
     
@@ -187,27 +342,8 @@
   "diagnostics": [
     {
       "severity": "warning",
-      "code": "CJDOC1014",
-      "message": "doc comment is not attached to a documentable declaration",
-      "source": {
-        "path": "src/macro.cj",
-        "start": {
-          "line": 5,
-          "column": 1,
-          "byteOffset": 53
-        },
-        "end": {
-          "line": 5,
-          "column": 38,
-          "byteOffset": 90
-        }
-      },
-      "symbolId": null
-    },
-    {
-      "severity": "warning",
-      "code": "CJDOC1009",
-      "message": "unsupported declaration 'macro Echo'",
+      "code": "CJDOC3004",
+      "message": "undocumented parameter 'input'",
       "source": {
         "path": "src/macro.cj",
         "start": {
@@ -221,7 +357,102 @@
           "byteOffset": 169
         }
       },
-      "symbolId": null
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::unsupported_fixture::macro:Echo#g0(Tokens)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3036",
+      "message": "documentation description is empty",
+      "source": {
+        "path": "src/macro.cj",
+        "start": {
+          "line": 6,
+          "column": 1,
+          "byteOffset": 91
+        },
+        "end": {
+          "line": 9,
+          "column": 2,
+          "byteOffset": 169
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::unsupported_fixture::macro:Echo#g0(Tokens)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3037",
+      "message": "value-returning symbol is missing @return documentation",
+      "source": {
+        "path": "src/macro.cj",
+        "start": {
+          "line": 6,
+          "column": 1,
+          "byteOffset": 91
+        },
+        "end": {
+          "line": 9,
+          "column": 2,
+          "byteOffset": 169
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::unsupported_fixture::macro:Echo#g0(Tokens)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3038",
+      "message": "public symbol is missing an @example",
+      "source": {
+        "path": "src/macro.cj",
+        "start": {
+          "line": 6,
+          "column": 1,
+          "byteOffset": 91
+        },
+        "end": {
+          "line": 9,
+          "column": 2,
+          "byteOffset": 169
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::unsupported_fixture::macro:Echo#g0(Tokens)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "parameter 'input' has an unresolved type link",
+      "source": {
+        "path": "src/macro.cj",
+        "start": {
+          "line": 6,
+          "column": 1,
+          "byteOffset": 91
+        },
+        "end": {
+          "line": 9,
+          "column": 2,
+          "byteOffset": 169
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::unsupported_fixture::macro:Echo#g0(Tokens)"
+    },
+    {
+      "severity": "warning",
+      "code": "CJDOC3041",
+      "message": "return type has an unresolved type link",
+      "source": {
+        "path": "src/macro.cj",
+        "start": {
+          "line": 6,
+          "column": 1,
+          "byteOffset": 91
+        },
+        "end": {
+          "line": 9,
+          "column": 2,
+          "byteOffset": 169
+        }
+      },
+      "symbolId": "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aroot::unsupported_fixture::macro:Echo#g0(Tokens)"
     }
   ]
 }

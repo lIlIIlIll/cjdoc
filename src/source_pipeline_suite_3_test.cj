@@ -10,7 +10,7 @@ import std.unittest.testmacro.*
 @Test
 class SourcePipelineSuite3 {
     @TestCase
-    func genericConstraintCacheRoundTripsAndInvalidatesPreConstraintEntries(): Unit {
+    func genericConstraintCacheRoundTripsAndInvalidatesOlderSourceEntries(): Unit {
         let temporary = Directory.createTemp(getTempDirectory())
         try {
             let project = temporary.join("project")
@@ -32,10 +32,10 @@ class SourcePipelineSuite3 {
             let cachePath = entries[0].path
             let bytes = File.readFrom(cachePath)
             let reader = SourceCacheReader(bytes)
-            @Expect(reader.next(), "cjdoc-source-cache-v17")
+            @Expect(reader.next(), "cjdoc-source-cache-v18")
             let key = reader.next()
             let legacyKey = SourceCacheWriter()
-            for (value in ["cjdoc-source-cache-v16", fingerprint, "src/api.cj",
+            for (value in ["cjdoc-source-cache-v17", fingerprint, "src/api.cj",
                 cold.modules[0].id, "constraints", source]) { legacyKey.add(value) }
             @Expect(key != Sha256Digest.digestBytes(legacyKey.result().getOrThrow()), true)
             let warm = provider.collect(project.toString())
@@ -52,9 +52,9 @@ class SourcePipelineSuite3 {
                 }
                 @Expect(found, true)
             }
-            // Even a pre-constraint payload placed under the new cache filename
+            // Even an older source-cache payload placed under the new cache filename
             // is rejected before decoding declarations, then rebuilt from AST.
-            let legacy = String.fromUtf8(bytes).replace("cjdoc-source-cache-v17", "cjdoc-source-cache-v16")
+            let legacy = String.fromUtf8(bytes).replace("cjdoc-source-cache-v18", "cjdoc-source-cache-v17")
             File.writeTo(cachePath, legacy.toArray())
             let reparsed = provider.collect(project.toString())
             @Expect(provider.cacheStats.hits, 0)
@@ -250,11 +250,12 @@ class SourcePipelineSuite3 {
     }
 
     @TestCase
-    func unsupportedAndBrokenSourcesProducePartialIr(): Unit {
+    func macroDeclarationsAreCollectedAndBrokenSourcesProducePartialIr(): Unit {
         let unsupported = generateFixture("unsupported")
-        @Expect(unsupported.status, "partial")
-        @Expect(unsupported.unsupportedDeclarations.size, 1)
-        @Expect(containsDiagnostic(unsupported, "CJDOC1009"), true)
+        @Expect(unsupported.status, "complete")
+        @Expect(unsupported.unsupportedDeclarations.size, 0)
+        @Expect(declarationNamed(unsupported, "Echo").kind, "macro")
+        @Expect(containsDiagnostic(unsupported, "CJDOC1009"), false)
 
         let recovery = generateFixture("recovery")
         @Expect(recovery.status, "partial")
@@ -266,13 +267,13 @@ class SourcePipelineSuite3 {
     func recordsFrontendGapsWithoutTraversingFunctionBodies(): Unit {
         let documentation = generateFixture("frontend_gaps")
         @Expect(documentation.status, "partial")
-        @Expect(documentation.declarations.size, 1)
-        @Expect(documentation.declarations[0].name, "outer")
-        @Expect(documentation.declarations[0].documentation.isSome())
+        @Expect(documentation.declarations.size, 2)
+        @Expect(declarationNamed(documentation, "Generated").kind, "class")
+        @Expect(declarationNamed(documentation, "outer").documentation.isSome())
         @Expect(documentation.orphanDocComments.size, 2)
         @Expect(documentation.macroInvocations.size, 1)
         @Expect(documentation.macroInvocations[0].name, "missing.Generate")
-        @Expect(documentation.unsupportedDeclarations.size, 1)
+        @Expect(documentation.unsupportedDeclarations.size, 0)
         @Expect(containsDiagnostic(documentation, "CJDOC1009"), true)
         @Expect(containsDiagnostic(documentation, "CJDOC1014"), true)
     }

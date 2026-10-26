@@ -18,7 +18,7 @@ CANGJIE_CONTRACT_FIXTURES = {
     "binary_punctuation", "chir_semantics", "cfg_owner", "frontend_gaps",
     "frontend_regressions", "lint", "local_assets", "manifest_headers",
     "markdown_limits", "private_file_scope", "recovery", "reexports",
-    "documentation_quality", "i18n",
+    "documentation_quality", "i18n", "macro_sources", "macro_wrapped",
 }
 CLI_CONTRACT_FIXTURES = {
     "cached_dependencies", "conditional_complex", "deep_binary", "duplicate",

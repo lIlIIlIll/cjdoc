@@ -23,6 +23,7 @@ internal class PackageSections {
         PackageSection("interfaces", "Interfaces", "接口"),
         PackageSection("enums", "Enums", "枚举"),
         PackageSection("functions", "Functions", "函数"),
+        PackageSection("macros", "Macros", "宏"),
         PackageSection("variables", "Variables and constants", "变量与常量"),
         PackageSection("aliases", "Type aliases", "类型别名"),
         PackageSection("extensions", "Extensions", "扩展"),
@@ -36,10 +37,11 @@ internal class PackageSections {
                 case "interface" => 2
                 case "enum" => 3
                 case "function" => 4
-                case "variable" => 5
-                case "typeAlias" => 6
-                case "extend" => 7
-                case _ => 8
+                case "macro" => 5
+                case "variable" => 6
+                case "typeAlias" => 7
+                case "extend" => 8
+                case _ => 9
             }
             groups[group].symbols.add(symbol)
         }

@@ -30,7 +30,7 @@ private let MCP_PROTOCOL_VERSION: String = "2025-11-25"
 private let MCP_SERVER_NAME: String = "cjdoc"
 // Kept in step with cjpm.toml/package version; a future shared version constant
 // should replace this literal rather than being duplicated again.
-private let MCP_SERVER_VERSION: String = "0.7.4"
+private let MCP_SERVER_VERSION: String = "0.7.5"
 private let MCP_SERVER_INSTRUCTIONS: String =
     "Read-only documentation queries over captured cjdoc snapshots. " +
     "Call resolve_docs, search or get_symbol; every tool result is one JSON object " +
