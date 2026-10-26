@@ -1,6 +1,6 @@
 # cjdoc 文档
 
-这里集中放 cjdoc 0.7.3 的文档。第一次使用请从仓库根目录的 [README](https://github.com/lIlIIlIll/cjdoc/blob/main/README.md) 开始；已经能生成文档、想深入某个主题时，按下表选择。
+这里集中放 cjdoc 0.7.4 的文档。第一次使用请从仓库根目录的 [README](https://github.com/lIlIIlIll/cjdoc/blob/main/README.md) 开始；已经能生成文档、想深入某个主题时，按下表选择。
 
 ## 使用文档
 
