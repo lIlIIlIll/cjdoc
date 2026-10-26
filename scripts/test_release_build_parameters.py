@@ -163,13 +163,13 @@ class BuildParameterTests(unittest.TestCase):
                              f"{pattern} suggests the workflow text is being parsed again")
         self.assertNotIn("WORKFLOW", source, "the workflow is no longer this check's input")
 
-    def test_the_release_workflow_calls_the_check_before_building(self) -> None:
+    def test_the_release_workflow_checks_parameters_before_acceptance(self) -> None:
         workflow = (self.repo / ".github/workflows/release.yml").read_text(encoding="utf-8")
         candidate = workflow.split("\n  release-candidate:\n", 1)[1].split("\n  publish:\n", 1)[0]
         check_at = candidate.index("release_build_parameters.py")
-        build_at = candidate.index("\n          cjpm build --jobs 1")
-        self.assertLess(check_at, build_at,
-                        "the override must be confirmed before anything is built")
+        for command in ("bash scripts/release_check.sh", "bash scripts/check.sh"):
+            self.assertLess(check_at, candidate.index(command),
+                            "the override must be confirmed before the gate builds")
 
     @requires_shell
     def test_the_workflows_exact_invocation_actually_runs(self) -> None:
