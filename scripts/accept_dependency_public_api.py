@@ -150,7 +150,7 @@ class Acceptance:
     def package(path, name, source, version='1.0.0', dependencies=None):
         manifest = ('[package]\ncjc-version = "1.2.0"\nname = ' + json.dumps(name) +
                     '\nversion = ' + json.dumps(version) + '\noutput-type = "static"\n'
-                    'override-compile-option = "-O1"\n')
+                    'override-compile-option = "-O2"\n')
         if dependencies:
             manifest += '\n[dependencies]\n'
             for library, selected in dependencies.items():
@@ -163,7 +163,7 @@ class Acceptance:
         caller.parent.mkdir(parents=True)
         shutil.copyfile(CALLER, caller)
         manifest = ('[package]\ncjc-version = "1.2.0"\nname = "dependency_public_api"\n'
-                    'version = "0.1.0"\noutput-type = "executable"\noverride-compile-option = "-O1"\n')
+                    'version = "0.1.0"\noutput-type = "executable"\noverride-compile-option = "-O2"\n')
         write(self.driver / 'cjpm.toml', manifest)
         for path, value, version in [(self.library_a, 11, '1.0.0'), (self.library_b, 29, '2.0.0')]:
             self.package(path, 'library', '/** Public producer type. */\npublic class Widget {\n'
@@ -273,7 +273,7 @@ class Acceptance:
         for archive in stdx.glob("lib*.a"):
             libraries.add(archive.name[3:-2])
         self.caller_binary.parent.mkdir(parents=True)
-        command = ["cjc", "--static", "--output-type", "exe", "-O1",
+        command = ["cjc", "--static", "--output-type", "exe", "-O2",
                    "--output-dir", self.caller_binary.parent, "-o", self.caller_binary.name]
         for directory in sorted(directories):
             command += ["--import-path", directory, "--library-path", directory]

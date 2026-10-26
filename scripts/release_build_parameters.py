@@ -2,7 +2,7 @@
 """Confirm the pinned STS build override is the one the release would apply (CI-08.3).
 
 This is the *observation* half of CI-08.3, and it deliberately says nothing about
-the workflow's text. It runs `scripts/with_sts_o1_cjpm.sh` with a probe `cjpm` on
+the workflow's text. It runs `scripts/with_sts_cjpm.sh` with a probe `cjpm` on
 PATH and reads back the override from the manifest at the moment the wrapper
 delegates to the build — so the value comes from the artefact the release would
 consume, not from a pattern in a file.
@@ -37,10 +37,10 @@ import tempfile
 sys.dont_write_bytecode = True
 
 PLATFORMS = ("linux-x64", "windows-x64", "macos-arm64")
-WRAPPER = Path("scripts/with_sts_o1_cjpm.sh")
+WRAPPER = Path("scripts/with_sts_cjpm.sh")
 PATCHER = Path("scripts/apply_sts_override.py")
 OVERRIDE_MODULE = Path("scripts/sts_compile_override.py")
-REQUIRED_OPTION = "-O1"
+REQUIRED_OPTION = "-O2 --fno-chir-function-inlining"
 OBSERVED_PREFIX = "CJDOC_OBSERVED_OPTION="
 
 PROBE_CJPM = '''#!/usr/bin/env bash

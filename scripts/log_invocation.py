@@ -2,7 +2,9 @@
 """Record one `cjpm` invocation performed through the STS wrapper.
 
 Appends a JSON line per build/test/run, including the digest of the binary that
-build produced. CI-08.3 reads this record instead of parsing the workflow's text, so
+build produced (test/run never bind a product binary). Phase, reason and exit
+status keep unit-only -O1 evidence distinct from the full product flag set. CI-08.3 reads this
+record instead of parsing the workflow's text, so
 what is compared is what the wrapper actually ran and produced: a build routed
 around `cjpm build` leaves no record, and a later build that overwrote the binary
 changes the digest the packaged artefact must match.
@@ -51,9 +53,16 @@ def main() -> int:
                         help="the manifest being built; its package name is recorded")
     parser.add_argument("--option", required=True)
     parser.add_argument("--binary", type=Path)
+    parser.add_argument("--exit-code", type=int, default=0)
     parser.add_argument("args", nargs=argparse.REMAINDER)
     ns = parser.parse_args()
-    argv = [arg for arg in ns.args if arg != "--"]
+    argv = ns.args[1:] if ns.args[:1] == ["--"] else ns.args
+    from sts_compile_override import phase_for, reason_for
+    if not argv:
+        raise SystemExit("invocation has no cjpm command")
+    command = argv[0]
+    if command != "build" and ns.binary is not None:
+        raise SystemExit("only a product build can record a product binary")
     binary = None
     if ns.binary is not None:
         binary = binary_digest(ns.binary)
@@ -68,6 +77,11 @@ def main() -> int:
         "schemaVersion": SCHEMA,
         "package": package.get("name", ""),
         "option": ns.option,
+        "policySha256": hashlib.sha256(Path(__file__).with_name("sts_compile_override.py").read_bytes()).hexdigest(),
+        "wrapperSha256": hashlib.sha256(Path(__file__).with_name("with_sts_cjpm.sh").read_bytes()).hexdigest(),
+        "phase": phase_for(command),
+        "reason": reason_for(command),
+        "exitCode": ns.exit_code,
         "argv": argv,
         "binary": binary,
         "platform": os.environ.get("RUNNER_OS", ""),

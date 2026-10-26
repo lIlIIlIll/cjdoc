@@ -121,7 +121,7 @@ def public_cancel_host_command(bash: Path | None) -> list[str]:
     if launcher is None:
         raise ValueError("the host build's Bash launcher is unavailable")
     return [launcher, "--noprofile", "--norc", "-c",
-            '. scripts/with_sts_o1_cjpm.sh; cd tests/fixtures/projects/highlight_host; '
+            '. scripts/with_sts_cjpm.sh; cd tests/fixtures/projects/highlight_host; '
             'cjpm build --jobs 1 --target-dir "$CJDOC_HIGHLIGHT_BUILD"']
 
 

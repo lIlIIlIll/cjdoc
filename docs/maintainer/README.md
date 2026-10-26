@@ -21,7 +21,7 @@
 | 主题 | 入口 | 说明 |
 |---|---|---|
 | 仓库工作规范 | [AGENTS.md](../../AGENTS.md) | 架构边界、修改规则、代码风格、Review 规则 |
-| 构建与本地验收 | [build.md](build.md) | SDK 1.2.0 STS + stdx sidecar、`-O1` 覆盖、`scripts/check.sh`、可选 CHIR worker |
+| 构建与本地验收 | [build.md](build.md) | SDK 1.2.0 STS + stdx sidecar、产品 `-O2 --fno-chir-function-inlining` / 单测专属 `-O1`、`scripts/check.sh`、可选 CHIR worker |
 | Doc IR 与 schema | [doc-ir.md](doc-ir.md) | Doc IR v16、current-only decoder、schema/golden 更新、导航 wire 与预算 |
 | 跨文档链接 | [document-links.md](document-links.md) | `--doc-source`/`--doc-inventory-pin`/`--build-context` 契约、identity、DL05/E2E2、验收脚本 |
 | 发布流程 | [release-process.md](release-process.md) | 证据层级、性能基线、三平台 CI、tag release 与 checklist |

@@ -187,7 +187,7 @@ class HighlightHostBuildTest(unittest.TestCase):
                     fixture = source / "tests/fixtures/projects/highlight_host"
                     scripts.mkdir(parents=True)
                     fixture.mkdir(parents=True)
-                    for name in ("with_sts_o1_cjpm.sh", "apply_sts_override.py",
+                    for name in ("with_sts_cjpm.sh", "apply_sts_override.py",
                                  "sts_compile_override.py", "log_invocation.py"):
                         shutil.copyfile(REPO / "scripts" / name, scripts / name)
                     manifests = {
@@ -257,12 +257,12 @@ class HighlightHostBuildTest(unittest.TestCase):
                     self.assertEqual(Path(record["argv"][-1]).resolve(), target)
                     self.assertEqual(Path(record["cwd"]), fixture)
                     self.assertEqual(record["sidecar"], sidecar)
-                    self.assertEqual(record["options"], ["-O1", "-O1"])
+                    self.assertEqual(record["options"], ["-O2 --fno-chir-function-inlining", "-O2 --fno-chir-function-inlining"])
                     for path, contents in manifests.items():
                         self.assertEqual(path.read_bytes(), contents)
                     receipt = json.loads((work / "invocations.jsonl").read_text(encoding="utf-8"))
                     self.assertEqual(receipt["package"], "highlight_host_fixture")
-                    self.assertEqual(receipt["option"], "-O1")
+                    self.assertEqual(receipt["option"], "-O2 --fno-chir-function-inlining")
 
 
 class HighlightNoNodeEnvironmentTest(unittest.TestCase):
