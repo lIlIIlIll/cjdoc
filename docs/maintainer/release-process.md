@@ -45,7 +45,9 @@ The checked-in measurements describe their recorded environment. They are not cl
 
 Real-repository and performance evidence rejects dirty or unversioned inputs by default. `--allow-dirty` is only a diagnostic/calibration escape hatch: the receipt then sets `trustedCommit: false`, omits `sourceCommit`, and records the project working-tree digest. Such a receipt cannot satisfy `release_check.sh`, which requires the clean release commit.
 
-`scripts/update_goldens.sh` archives the committed fixture tree into an immutable snapshot, generates only from that snapshot, and verifies its digest and Git identity again before publishing the complete current v16 set. It refuses dirty/mixed fixture inputs; no legacy Doc IR goldens are retained. A clean alternate `source_edges` checkout is supported only with all three variables below; the expected commit and subtree tree must match its Git worktree before and after generation:
+`scripts/update_goldens.sh` archives the committed fixture tree into an immutable snapshot, generates only from that snapshot, and verifies its digest and Git identity again before publishing the complete current v16 set. It refuses dirty/mixed fixture inputs; no legacy Doc IR goldens are retained. Set `CJDOC_BINARY` to use an explicitly selected compiled generator; the default is `target/release/bin/main`. This leaves the default binary in place and keeps the same executable, schema, fixture-snapshot and publication checks. Record the selected binary’s source commit and SHA-256 with the generated output.
+
+A clean alternate `source_edges` checkout is supported only with all three variables below; the expected commit and subtree tree must match its Git worktree before and after generation:
 
 ```bash
 CJDOC_SOURCE_EDGES_PROJECT=/clean/checkout/tests/fixtures/projects/source_edges \

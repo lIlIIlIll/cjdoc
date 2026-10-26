@@ -286,6 +286,39 @@ class UpdateToolsTest(unittest.TestCase):
                 self.assertEqual(json.loads(path.read_text())["schemaVersion"], "cjdoc.doc-ir/16")
             self.assertEqual(list((repo / "tests/fixtures").glob(".golden-v16.*")), [])
 
+    def test_golden_update_uses_explicit_binary_without_replacing_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            repo = root / "repo"
+            self.make_repo(repo)
+            default = repo / "target/release/bin/main"
+            original = default.read_bytes()
+            binary = root / "producer path with spaces; literal" / "main"
+            binary.parent.mkdir()
+            text = default.read_text().replace(
+                "{'schemaVersion':'cjdoc.doc-ir/16'}",
+                "{'schemaVersion':'cjdoc.doc-ir/16','producer':'explicit'}")
+            binary.write_text(text, encoding="utf-8")
+            binary.chmod(0o755)
+            result = self.run_script(repo, "update_goldens.sh", {"CJDOC_BINARY": binary.as_posix()})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            golden = repo / "tests/fixtures/golden-v16"
+            self.assertEqual({path.name for path in golden.iterdir()},
+                             {f"{name}.docs.json" for name in GOLDEN_NAMES})
+            for path in golden.iterdir():
+                self.assertEqual(json.loads(path.read_text()).get("producer"), "explicit")
+            self.assertEqual(default.read_bytes(), original)
+
+    def test_golden_update_rejects_missing_explicit_binary_without_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            repo = Path(temporary).resolve()
+            self.make_repo(repo)
+            result = self.run_script(repo, "update_goldens.sh", {
+                "CJDOC_BINARY": (repo / "missing producer").as_posix()})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("cjdoc binary is missing", result.stderr)
+            self.assertFalse((repo / "tests/fixtures/golden-v16").exists())
+
     def test_golden_update_rejects_noncurrent_output_without_partial_publish(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repo = Path(temporary)

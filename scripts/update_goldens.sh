@@ -4,7 +4,7 @@ set -euo pipefail
 export PYTHONDONTWRITEBYTECODE=1
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-binary="${repo_root}/target/release/bin/main"
+binary="${CJDOC_BINARY:-${repo_root}/target/release/bin/main}"
 update_dir="${repo_root}/target/golden-update"
 golden_dir="${repo_root}/tests/fixtures/golden-v16"
 golden_parent="${repo_root}/tests/fixtures"
