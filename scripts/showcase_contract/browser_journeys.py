@@ -44,6 +44,9 @@ def members(journey: Journey):
     require_text(current, "String", "增加一" if journey.target["locale"] == "zh-CN" else "size increases by one")
     require_text(second, "Int64", "radix", "IllegalArgumentException")
     field = page.locator("[data-cjdoc-member-filter]")
+    if not field.is_visible():
+        journey.click(page.locator("[data-cjdoc-member-filter-toggle]"))
+        expect(field).to_be_visible()
     field.fill("cjdoc_no_such_member_58b0e6")
     expect(current).not_to_be_visible()
     def filter_match():
@@ -114,16 +117,18 @@ def resources(journey: Journey):
 
 def guides(journey: Journey):
     page, guide = journey.page, journey.page.url
-    links = page.locator("main a").filter(has_text="TextCatalog.add")
+    links = page.locator(".inline-binding a").filter(has_text="add(String)")
     if not links.count():
         raise AssertionError("guide has no bound overload link")
     journey.click(links.first)
     require_text(page.locator("main"), "public func add(value: String): Unit")
     assert_native_symbol(journey, "pocketkit.TextCatalog.add", "public func add(value: String): Unit")
-    back = page.locator("main a").filter(has_text="Catalogue and lifetime").first
-    if not back.count():
-        raise AssertionError("selected member has no related-guide backlink")
-    journey.click(back)
+    backlinks = [link for link in page.locator(".api-usages a").all()
+                 if unquote(urljoin(page.url, link.get_attribute("href")).split("#")[0])
+                 == unquote(guide.split("#")[0])]
+    if len(backlinks) != 1:
+        raise AssertionError("selected member needs one exact related-guide backlink")
+    journey.click(backlinks[0])
     if unquote(page.url.split("#")[0]) != unquote(guide.split("#")[0]):
         raise AssertionError("related guide did not return to the exact bound concept page")
     copy_code(journey)
@@ -237,7 +242,7 @@ def external(journey: Journey):
             link = member.locator(".parameter-type-code").get_by_role("link", name=type_name, exact=True)
             expect(link).to_have_count(1)
             expect(link).to_have_attribute("href", standard_page + "#" + fragment)
-        journey.click(member.locator("summary .member-display-name"))
+        journey.click(member.locator(":scope > summary"), position={"x": 6, "y": 12})
         expect(member).not_to_have_attribute("open", "")
     journey.assertions.append("String and nested Array<String> have versioned signature and parameter links; signature links are keyboard-focusable and disclosure controls still work")
     local = page.locator("main a").filter(has_text="Stamp")

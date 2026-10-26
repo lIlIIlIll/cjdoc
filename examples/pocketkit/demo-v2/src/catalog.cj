@@ -23,6 +23,9 @@ import std.collection.*
  * catalog.clear()
  * assert(saved.size == 3)
  * ```
+ * @see Stamp
+ * @see pocket_support.SourceLabel
+ * @see pocket_support.SourceLabel.text
  */
 public class TextCatalog {
     private let values = ArrayList<String>()

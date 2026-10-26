@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from urllib.parse import unquote, urljoin, urlsplit
 
-from .browser_support import member_action
+from .browser_support import member_action, member_toc_link
 
 
 def _native(index: dict, identity: str) -> dict:
@@ -20,16 +20,10 @@ def _anchor(identity: str) -> str:
 
 def _select_inline_member(page, identity: str):
     from playwright.sync_api import expect
-    if page.viewport_size["width"] <= 760:
-        menu = page.locator("[data-cjdoc-menu]")
-        if menu.get_attribute("aria-expanded") != "true":
-            menu.click()
     anchor = _anchor(identity)
-    links = [item for item in page.locator("[data-cjdoc-context-item]").all()
-             if unquote(item.get_attribute("href") or "") == "#" + anchor]
-    if len(links) != 1:
-        raise AssertionError("context navigation does not expose one exact native member")
-    links[0].click()
+    link = member_toc_link(page, anchor)
+    expect(link).to_have_attribute("href", "#" + anchor)
+    link.click()
     expect(page).to_have_url(re.compile("#" + re.escape(anchor) + "$"))
 
 
