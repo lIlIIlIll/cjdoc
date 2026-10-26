@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import hashlib
+import html
 import os
 import json
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -23,7 +25,7 @@ from showcase_build.integration import (copy_composed_publication, install_outpu
 from showcase_build.manifest import roots
 from showcase_build.navigation import mount
 from showcase_build.packaging import copy_sources, source_archive
-from showcase_contract.site import ContractError, HtmlDocument
+from showcase_contract.site import ContractError, HtmlDocument, Site
 from report_views.reports import UtilityRegion, native_check_view, quality_view
 from report_views.pages import Sections, publish as publish_report_pages
 
@@ -42,6 +44,24 @@ class BuildIntegrationTests(unittest.TestCase):
         path.write_text(json.dumps(value) if isinstance(value, dict) else value,
                         encoding="utf-8", newline="\n")
         return path
+
+    def test_authored_manual_index_links_are_valid_in_the_published_tree(self) -> None:
+        manual = (ROOT / "docs/README.md").read_text(encoding="utf-8")
+        targets = re.findall(r"\[[^\]]+\]\(([^)]+)\)", manual)
+        self.assertTrue(targets)
+        # The authored manual is also the self-hosted API's concept index.
+        index = self.write("site/api/concepts/index.html", "".join(
+            '<a href="' + html.escape(target, quote=True) + '">Manual</a>'
+            for target in targets))
+        self.write("site/docs/README.md", manual)
+        repository = "https://github.com/example-owner/cjdoc-fork"
+        revision = "e" * 40
+        pin_documentation_links(self.root / "site",
+                                {"repository": repository, "revision": revision},
+                                own_api_index=True)
+        Site(self.root / "site").validate_links()
+        self.assertIn(repository + "/blob/" + revision + "/docs/release-notes.md",
+                      index.read_text(encoding="utf-8"))
 
     def test_self_hosted_manual_links_follow_the_fork_revision_without_rewriting_ir(self) -> None:
         source = "https://github.com/lIlIIlIll/cjdoc/blob/main/"

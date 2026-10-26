@@ -1,12 +1,13 @@
 # cjdoc 文档
 
-这里集中放 cjdoc 0.7.5 的文档。第一次使用请从仓库根目录的 [README](https://github.com/lIlIIlIll/cjdoc/blob/main/README.md) 开始；已经能生成文档、想深入某个主题时，按下表选择。
+这里集中放 cjdoc 0.7.6 的文档。第一次使用请从仓库根目录的 [README](https://github.com/lIlIIlIll/cjdoc/blob/main/README.md) 开始；已经能生成文档、想深入某个主题时，按下表选择。
 
 ## 使用文档
 
 | 文档 | 内容 |
 |---|---|
 | [README](https://github.com/lIlIIlIll/cjdoc/blob/main/README.md) | 安装、三步上手、常用任务和常见问题。 |
+| [0.7.6 发布记录](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/release-notes.md) | 源码宏文档、发行构建修复及保留的 0.7.5 失败记录。 |
 | [使用手册](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/usage.md) | 完整的日常任务说明：注释写法、示例检查、生成各类产物、check、diff、render、serve、排错和命令速查。 |
 | [高级用法](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/advanced-usage.md) | 多格式组合、workspace 与依赖、缓存与并行、条件编译、多版本文档、面向 AI 代理的产物、自动化检查接入。 |
 | [配置参考](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/configuration.md) | `cjdoc.toml` 的完整配置键：lint、覆盖率阈值、代码高亮、多语言、概念页。 |
