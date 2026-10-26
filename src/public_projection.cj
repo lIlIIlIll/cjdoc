@@ -401,7 +401,7 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
     } else {
         "complete"
     }
-    let candidate = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.3"), status,
+    let candidate = public_model.DocumentationSet(public_model.GeneratorInfo("cjdoc", "0.7.4"), status,
         public_model.ProjectInfo(documentation.projectName, repository: request.repository),
         public_model.ConfigurationSnapshot(audience: request.audience, lintProfile: request.lintProfile,
             cfgProfile: if (request.cfgValues.isEmpty()) { "default" } else { "custom" }),
