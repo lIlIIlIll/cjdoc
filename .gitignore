@@ -20,6 +20,8 @@
 !/tests/perf/*.json
 !/docs/maintainer/reader-scale-budgets.json
 !/docs/maintainer/reader-scale-baseline.json
+!/docs/maintainer/acceptance/issue-163/evidence.json
+!/.impeccable/design.json
 !/tests/fixtures/projects/html_reference/docs/std-symbol-index.json
 !/tests/fixtures/external_docs/official83/manifest.json
 

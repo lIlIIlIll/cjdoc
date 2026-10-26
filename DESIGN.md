@@ -1,126 +1,218 @@
 ---
 name: cjdoc API Documentation
-description: Dense, readable static API reference pages for Cangjie libraries.
+description: Technical book pages for reading source-backed Cangjie documentation.
 colors:
-  ink-light: "#171b24"
-  muted-light: "#626b7b"
-  bg-light: "#fbfcfe"
-  surface-light: "#ffffff"
-  line-light: "#e3e7ee"
-  accent-light: "#2b64d4"
-  ink-dark: "#f1f5fb"
-  muted-dark: "#9aa5b5"
-  bg-dark: "#0b0e13"
-  surface-dark: "#10141b"
-  line-dark: "#242c38"
-  accent-dark: "#80a8ff"
+  bg: "#fcfbf8"
+  surface: "#fcfbf8"
+  surface-raised: "#ffffff"
+  surface-subtle: "#f3f5ef"
+  code-bg: "#f0f3ed"
+  ink: "#24352e"
+  muted: "#56665c"
+  faint: "#58675e"
+  line: "#dfe4dc"
+  line-strong: "#c2cdc3"
+  accent: "#176a54"
+  accent-strong: "#125641"
+  accent-soft: "#edf2ea"
+  success: "#216b49"
+  warning: "#835b15"
+  danger: "#af3348"
+  code-keyword: "#754197"
+  code-type: "#14636d"
+  code-comment: "#56665c"
+  code-string: "#216b49"
+  code-number: "#8c3c2c"
 typography:
-  display:
-    fontFamily: "Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+  reading-title:
+    fontFamily: "Noto Serif SC, Noto Serif CJK SC, Source Han Serif SC, Georgia, serif"
+    fontSize: "clamp(1.9rem, 3.5vw, 2.65rem)"
+    fontWeight: 650
+    lineHeight: "1.35"
+    letterSpacing: "0"
+  api-title:
+    fontFamily: "IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace"
     fontSize: "clamp(2rem, 4vw, 3rem)"
     fontWeight: 730
     lineHeight: "1.2"
     letterSpacing: "-.02em"
   body:
-    fontFamily: "Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+    fontFamily: "Inter, Noto Sans SC, Noto Sans CJK SC, ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+    fontSize: "16px"
+    lineHeight: "1.8"
+  prose:
+    fontFamily: "Inter, Noto Sans SC, Noto Sans CJK SC, ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+    fontSize: "16px"
+    lineHeight: "1.9"
+  summary:
+    fontFamily: "Inter, Noto Sans SC, Noto Sans CJK SC, ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     fontSize: "15px"
-    lineHeight: "1.65"
-  label:
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace"
-    fontSize: ".8rem"
-    fontWeight: 600
+    lineHeight: "1.8"
+  code:
+    fontFamily: "IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace"
+    fontSize: "14px"
+    lineHeight: "1.75"
 rounded:
   sm: "5px"
-  md: "7px"
-  lg: "8px"
+  control: "6px"
+  input: "7px"
+  panel: "8px"
 spacing:
-  sm: ".55rem"
-  md: "1rem"
-  lg: "2.2rem"
+  compact: ".55rem"
+  control: ".75rem"
+  base: "1rem"
+  paragraph: "1em"
+  code: "1.4rem"
+  section: "2.75rem"
 components:
+  button-outline:
+    backgroundColor: "{colors.surface}"
+    textColor: "{colors.muted}"
+    rounded: "{rounded.sm}"
+    padding: ".25rem .55rem"
   search:
-    backgroundColor: "{colors.surface-light}"
-    textColor: "{colors.ink-light}"
-    rounded: "{rounded.md}"
+    backgroundColor: "{colors.surface-subtle}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.input}"
     height: "40px"
+  navigation-current:
+    backgroundColor: "{colors.accent-soft}"
+    textColor: "{colors.accent-strong}"
+    rounded: "{rounded.control}"
   code-block:
-    backgroundColor: "{colors.bg-light}"
-    textColor: "{colors.ink-light}"
-    rounded: "{rounded.lg}"
+    backgroundColor: "{colors.code-bg}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.panel}"
     padding: "1.1rem 3.3rem 1.1rem 1rem"
+  badge:
+    backgroundColor: "{colors.surface-subtle}"
+    textColor: "{colors.muted}"
+    rounded: "{rounded.sm}"
+    padding: ".16rem .42rem"
 ---
+
+# Design System: cjdoc API Documentation
 
 ## Overview
 
-### North Star
+**Creative North Star: "技术书页 / The Technical Book"**
 
-The Working Reference: a maintainer's workbench for finding a symbol, checking its contract, and copying a usable signature with minimal visual interruption.
+cjdoc presents source-backed documentation as a technical book: warm paper, deep ink, teal links, continuous explanation, and light divisions. Readers can follow an author's introduction, read a usable example, and continue into a guide or a complete API contract without the interface competing for attention.
 
-### Product Character
+Reading and reference share one visual system. Narrative pages use a controlled measure and serif titles; API pages keep identifiers, signatures, and complete member contracts easy to inspect. Structure, typography, and spacing carry hierarchy. Search, filters, themes, and generation evidence remain available as supporting tools.
 
-cjdoc is documentation-first. The interface is dense enough for API reference work, but uses generous line height, clear hierarchy, and restrained borders to keep long pages readable. The visual language is a quiet developer tool: cool neutral surfaces, one blue action color, monospace for identifiers, and no gradients or decorative hero treatment.
+**Key Characteristics:**
 
-The layout has three persistent jobs on desktop: navigation on the left, the Doc IR rendered in the center, and page context on the right. On narrower screens the context rail disappears first, then the navigation becomes a compact section, while the document remains the primary surface.
+- Warm white paper with deep green ink and restrained teal wayfinding.
+- Continuous prose, complete reference material, and lightweight separators.
+- Distinct reading, summary, and code roles with local font fallbacks.
+- Static routes, native disclosures, and progressively enhanced navigation.
+
+Frontmatter records the default light tokens. The implementation lives in `src/render/html_styles.cj` and `src/render/html_component_styles.cj`; page and interaction behavior lives in `html_pages.cj`, `html_layout.cj`, and `html_scripts.cj` in the same directory. Theme overrides preserve the semantic roles.
 
 ## Colors
 
-Light mode uses `#fbfcfe` as the page background and `#ffffff` for structural surfaces. `#171b24` is primary ink, `#626b7b` supports secondary copy, and `#e3e7ee` establishes quiet boundaries. `#2b64d4` is reserved for links, active navigation, focus, and explicit actions.
+Paper neutrals, green-black ink, and teal wayfinding support reading and meaning.
 
-Dark mode swaps to `#0b0e13`, `#10141b`, and `#151b24` while keeping the same hierarchy. The accent becomes `#80a8ff` for contrast. State colors are semantic: green for resolved, amber for partial, and red for unavailable or ambiguous.
+### Primary
 
-Do not introduce additional brand colors for individual modules. Syntax colors are limited to keywords, types, and comments inside code blocks.
+- **Teal:** `accent` identifies links, focus, active navigation, and actions. `accent-strong` supports linked type names and current entries; `accent-soft` provides quiet selection and hover surfaces.
+
+### Neutral
+
+- **Warm Paper:** `bg` and `surface` keep page and rails continuous. `surface-raised` distinguishes temporary panels; `surface-subtle` groups controls and supporting material.
+- **Deep Ink:** `ink` carries primary text; `muted` and `faint` support descriptions, metadata, and navigation labels.
+- **Light Divisions:** `line` separates sections and rows; `line-strong` defines inputs and code boundaries. `code-bg` gives code a pale green paper surface.
+
+### Semantic and syntax roles
+
+Success, warning, and danger retain their meanings across themes. Resolved, partial, unavailable, and ambiguous remain explicit in text; relationship-state labels may use a quieter neutral treatment. Keywords, types, comments, strings, and numbers have distinct syntax roles. Literals reuse numbers, operators and metadata reuse keywords, and functions and properties reuse types.
+
+Eight choices are implemented: System, Light, Dark, Paper, Ocean, Forest, Terminal, and Violet. System follows device appearance; Light uses the frontmatter palette. Paper adds a warmer outer page, Ocean uses deep blue and cyan, Forest uses sage and green, Terminal uses dark phosphor green and a monospace UI, and Violet uses pale cool neutrals and violet. Dark supplies the blue-accented dark palette. Presets remap shared roles rather than creating per-page identities.
+
+**The Semantic Color Rule.** A theme changes the palette while preserving link, selection, focus, syntax, and diagnostic roles.
 
 ## Typography
 
-Use the system UI stack for prose and headings so generated pages remain usable without a font download. Body text is `15px` at `1.65` line height. Display headings are responsive from `2rem` to `3rem`, weight `730`, with a small negative tracking value to keep API names compact.
+**Reading Title Font:** Noto Serif SC with CJK serif, Georgia, and generic serif fallbacks.
+**Body Font:** Inter with Noto Sans CJK and platform sans-serif fallbacks.
+**Code Font:** IBM Plex Mono with platform monospace fallbacks.
 
-Use the monospace stack for package names, module paths, symbols, signatures, schema versions, counts, and badges. Typography should carry hierarchy before color or decoration does.
+The stacks remain usable without font downloads. Serif titles establish a book-like entry to home and guide pages; monospace preserves API names and declarations. Prose uses the UI sans-serif stack for Chinese and English reading.
+
+### Hierarchy
+
+- **Reading title:** the responsive `reading-title` role introduces home and guide pages.
+- **API title:** the responsive `api-title` role displays symbol identifiers; prose page headings use the UI heading stack.
+- **Body and prose:** `body` supports the shell and document; `prose` opens the line height for authored narrative. Guide measure is capped at 72ch.
+- **Summary:** `summary` carries descriptions, parameters, returns, and behavior. Compact member summaries use line height 1.75.
+- **Code:** `code` carries signatures and examples. Member signatures use line height 1.7; narrative code and top-level API signatures use 1.75.
+- **Labels:** compact metadata and reading aids use a smaller UI size; API identifiers and counts keep monospace where appropriate.
+
+**The Full Text Rule.** Member signatures and descriptions wrap without line clamps or ellipses. Compact navigation and search-result labels may truncate; the contract remains readable in full.
 
 ## Layout
 
-The desktop shell is a sticky top bar followed by a three-column grid: a `248px` navigation rail, a flexible document column capped at `56rem`, and a `220px` table-of-contents rail. The main document uses responsive horizontal padding between `1.25rem` and `4.5rem`.
+The desktop shell has a sticky global header and a three-column document grid capped at 1600px: navigation (248px), a flexible document, and a short section outline (220px). The document caps at 64rem, home content at 60rem, and guides at 72ch. Main horizontal padding grows from 1.25rem to 4.5rem. Paragraph, code, and section spacing use the frontmatter rhythm.
 
-The header contains the cjdoc mark, global search, optional package/kind filters, version, source affordance, a theme preset picker, and the light/dark toggle. The source affordance is visibly disabled when the Doc IR does not include a repository URL; it must not invent an external destination.
+At 1180px and below, the outline moves into a native disclosure above the document and the left rail narrows to 220px. At 760px and below, navigation becomes a drawer, document padding is 1rem horizontally, and the header retains navigation, project identity, a search trigger, language, and theme controls. Global search opens on request. Enhanced member browsers initially fold filter fields behind a separate control while expand/collapse actions remain available; without enhancement the fields remain visible.
 
-At `1180px`, the table of contents yields to the document. At `760px`, the header wraps, navigation becomes compact, and record grids collapse to one column. Focus rings remain visible in every layout.
+Left navigation describes the project, packages, and types; the right outline locates short document sections. Author content leads home and guide pages. Package overviews and indexes lead into API declarations. Generation, source, and binding details use native disclosures where secondary to reading.
+
+**The Reading Order Rule.** Supporting controls and evidence must not displace the author's explanation or remove complete API content. Use disclosure to manage density, retaining a direct route to the full material.
 
 ## Elevation & Depth
 
-Depth is tonal and structural rather than ornamental. Cards and controls use `surface` versus `surface-subtle`, one-pixel borders, and small radii. Search results may use the shared shadow `0 12px 32px rgba(23, 31, 48, .08)` in light mode and `0 18px 42px rgba(0, 0, 0, .26)` in dark mode. Avoid glass, blur, gradients, and floating marketing panels.
+The document is flat at rest. Tonal surfaces and thin rules distinguish code, navigation, overload groups, and metadata. Shadows belong to temporary search/filter panels, theme selection, member action menus, and mobile navigation. Each theme supplies its shared shadow; the default is a diffuse low shadow (`0 12px 32px rgba(23, 31, 48, .08)`). Ordinary reference rows and narrative examples do not gain floating-card depth.
+
+**The Paper Surface Rule.** Keep the reading plane continuous; reserve raised surfaces for tools that temporarily overlap it.
 
 ## Shapes
 
-Use `5px` for compact inline controls and badges, `7px` for inputs and navigation controls, and `8px` for records and code blocks. Corners are softened enough to distinguish groups without making the reference feel like a consumer dashboard. Dividers are straight and quiet; the active table-of-contents marker is a two-pixel vertical rule.
+Controls and inline tokens use modest rounded corners: the frontmatter's small, control, input, and panel steps. Sections and member rows primarily use straight lightweight rules. Overload groups use a subtle rectangular field; narrative examples sit directly in the document. Mobile theme selection adopts a bottom sheet; that silhouette is a responsive interaction treatment, not a general container style.
 
 ## Components
 
 ### Buttons
 
-The theme picker offers System, Light, Dark, Paper, Ocean, Forest, Terminal, and Violet presets. Paper is warm editorial, Ocean is deep blue and cyan, Forest is calm sage, Terminal is phosphor green and monospace, and Violet is cool indigo. Each preset remaps the same semantic tokens, preserving resolved/partial/unavailable meanings and readable focus states. The adjacent theme toggle remains a compact icon button with a visible focus ring, an accessible label, and a sun/moon state. Do not add a primary CTA style to reference pages.
-
-### Cards / Containers
-
-Module records, declaration summaries, diagnostics, and empty states are low-emphasis containers. They are defined by borders, spacing, and semantic headings rather than strong shadows. A code block is the highest-contrast container because it carries executable reference material.
+Quiet outlined actions support copying, source navigation, filtering, and member expansion. Hover strengthens the border or uses a subtle/accent-soft surface. Keyboard focus uses a visible accent outline (2px) with a small offset. Copy confirmation uses success color and text or an accessible state. Keep labels concrete.
 
 ### Inputs / Fields
 
-Search is the main input. It is `40px` high, keyboard accessible, and paired with optional package and kind filters. Search results are rendered as a bounded, navigable list below the field. The keyboard hint is supplementary and must not replace a real label.
+Global search uses a soft surface, stronger border, input radius, and the frontmatter height; the mobile expanded field is 42px high. Focus adds an accent border and soft ring. Package and member fields are compact supporting controls. Results form a bounded scrollable panel with keyboard selection and pagination; the coverage note remains available. Shortcut hints supplement real labels.
 
 ### Navigation
 
-The left rail groups Getting Started, API Reference, and package/module links. The current section uses the accent-soft surface and accent text. The right rail is generated from `h2`/`h3` headings and marks the section currently in view.
+Current entries use the accent-soft field and strong accent text. Package trees retain package/type hierarchy; native disclosures expose branches. The section outline uses a slim active rule. Mobile navigation is a closeable drawer with a backdrop; the in-document outline remains a native disclosure.
 
-### Signature Component
+### Tags and Containers
 
-Signatures are rendered as labeled code blocks with a copy control. The control copies text content only and reports its state without injecting markup. Inline code, declaration metadata, relationships, parameters, returns, examples, and diagnostics retain the same token hierarchy across light and dark themes.
+Badges carry compact metadata and explicit state with a thin border and soft surface. Diagnostics retain textual status. Module records use a light border and panel radius where grouping is needed. Reading paths use ordinary links and a quiet section rule rather than promotional cards.
+
+### Code and Member Contracts
+
+Code blocks use tinted paper, stronger borders, and a copy control. Narrative code scrolls horizontally on narrow screens; API summaries wrap. Type references remain recognizable as links within declarations.
+
+Members use native `details` with a complete signature and summary. Expanded bodies retain parameters, returns, exceptions, conditions, and examples. Hover and keyboard focus reveal sibling member actions on desktop; touch layouts offer an action disclosure with labeled menu items. Native actions remain reachable without JavaScript. Overloads remain grouped and individually readable.
+
+### Theme Selection
+
+A labeled palette control names the active choice on desktop and opens a grouped list with a checked selection. On mobile it opens a bottom sheet with close action, backdrop, focus management, and Escape support. Motion is limited to brief state transitions; reduced-motion preference removes smooth scrolling and nearly eliminates transitions.
 
 ## Do's and Don'ts
 
-- Do keep the Doc IR and source comments authoritative; the renderer only presents them.
-- Do preserve explicit `unavailable`, `partial`, and `ambiguous` states in the UI.
-- Do keep links, focus states, and code readable in both themes.
-- Do use stable semantic headings so the table of contents remains useful.
-- Don't turn an API page into a marketing landing page.
-- Don't use gradients, glass effects, oversized illustrations, or decorative statistics.
-- Don't create repository links when the generated document has no repository URL.
-- Don't place user documentation into `innerHTML`; escape or construct DOM content safely.
+### Do:
+
+- **Do** use shared semantic tokens across all eight theme choices.
+- **Do** preserve the 16px body, 15px summary, and 14px code roles for their established purposes.
+- **Do** keep prose continuous and member contracts complete, with lightweight separators.
+- **Do** retain visible focus, native disclosures, honest semantic states, and static source-backed links.
+- **Do** let mobile search, filters, navigation, and themes reveal tools progressively.
+
+### Don't:
+
+- **Don't** clip API signatures, explanations, or behavioral conditions to make rows smaller.
+- **Don't** make every paragraph, example, or member a raised card.
+- **Don't** give individual packages independent accent palettes or decorative status colors.
+- **Don't** invent source destinations or promote incomplete semantic evidence into a definite claim.
+- **Don't** replace reading flow with repeated indexes, generation metadata, or decorative statistics.
