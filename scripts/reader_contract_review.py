@@ -86,7 +86,7 @@ def run(args: argparse.Namespace) -> int:
         libraries = library_root / 'release/pocketkit'
         executable = output / 'reader-contract-review'
         stage('consumer-compile', ['cjc', str(output / 'contract_review.cj'), '--import-path', str(libraries),
-              '-L', str(libraries), '-lpocketkit', '-lpocketkit.io', '-O1', '-o', str(executable)], output, 120)
+              '-L', str(libraries), '-lpocketkit', '-lpocketkit.io', '-O2', '-o', str(executable)], output, 120)
         report['executableSha256'] = sha256(executable)
         stage('consumer-run', [str(executable)], output, 30)
         actual = (output / 'consumer-run.stdout.log').read_text(encoding='utf-8').splitlines()

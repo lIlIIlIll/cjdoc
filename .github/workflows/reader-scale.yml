@@ -132,7 +132,7 @@ jobs:
           baseline="${RUNNER_TEMP}/reader-baseline-source"
           mv reader-scale-baseline-source "${baseline}"
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          . scripts/with_sts_o1_cjpm.sh
+          . scripts/with_sts_cjpm.sh
           GITHUB_WORKSPACE="${baseline}" bash "${baseline}/scripts/check.sh" build \
             --repo "${baseline}" \
             --main-binary-out "${baseline}/target/release/bin/main" \
@@ -151,7 +151,7 @@ jobs:
           tar -C . -xf "${RUNNER_TEMP}/reader-candidate/cjdoc-linux-candidate.tar"
           printf '%s  %s\n' "${EXPECTED_BINARY_SHA256}" target/release/bin/main | sha256sum --check -
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          . scripts/with_sts_o1_cjpm.sh
+          . scripts/with_sts_cjpm.sh
           export CJDOC_READER_TEST_BINARY="${PWD}/target/release/bin/main"
           export CJDOC_READER_TEST_REVISION="${READER_REVISION}"
           python scripts/with_stdx.py --variant static -- python -m unittest discover \

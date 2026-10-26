@@ -1,7 +1,7 @@
 name: Build Linux candidate
 
 # Single source of truth for the pinned Linux toolchain: the STS 1.2.0 compiler,
-# the matching authenticated static stdx sidecar and the -O1 compile workaround.
+# the matching authenticated static stdx sidecar and the pinned -O2 --fno-chir-function-inlining build options.
 # CI and Pages both call this workflow instead of repeating the setup inline.
 on:
   workflow_call:
@@ -101,7 +101,7 @@ jobs:
         run: |
           set -euo pipefail
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          . scripts/with_sts_o1_cjpm.sh
+          . scripts/with_sts_cjpm.sh
           bash scripts/check.sh build --repo . \
             --main-binary-out target/release/bin/main \
             --worker-binary-out target/release/bin/chir-worker-main \

@@ -26,11 +26,13 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
         self.repo, self.commit = self.make_release_repo(self.root / "repo")
-        # The receipt hashes the -O1 wrapper, which the release repo fixture does
+        # The receipt hashes the product wrapper and compile policy, which the release repo fixture does
         # not otherwise need.
-        wrapper = self.repo / "scripts/with_sts_o1_cjpm.sh"
+        wrapper = self.repo / "scripts/with_sts_cjpm.sh"
         wrapper.parent.mkdir(parents=True, exist_ok=True)
         wrapper.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+        (wrapper.parent / "sts_compile_override.py").write_bytes(
+            (PROJECT_ROOT / "scripts/sts_compile_override.py").read_bytes())
         self.git(self.repo, "add", "-A")
         self.git(self.repo, "-c", "user.name=t", "-c", "user.email=t@example.test",
                  "commit", "-q", "-m", "add wrapper")
@@ -39,6 +41,29 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
         self.binary.parent.mkdir(parents=True, exist_ok=True)
         self.binary.write_text("#!/bin/sh\necho 'cjdoc 0.7.0'\n", encoding="utf-8")
         self.binary.chmod(0o755)
+
+    def invocation_log(self, *, option="-O2 --fno-chir-function-inlining", policy_sha=None):
+        path = self.repo / "target/sts-invocations.jsonl"
+        script_root = self.repo / "scripts"
+        path.write_text(json.dumps({
+            "schemaVersion": "cjdoc.sts-invocation/1", "package": "cjdoc",
+            "option": option, "argv": ["build", "--jobs", "1"], "exitCode": 0,
+            "binary": {"sha256": verify_release_package.sha256_file(self.binary),
+                       "size": self.binary.stat().st_size},
+            "policySha256": policy_sha or verify_release_package.sha256_file(script_root / "sts_compile_override.py"),
+            "wrapperSha256": verify_release_package.sha256_file(script_root / "with_sts_cjpm.sh"),
+        }) + "\n")
+        return path
+
+    def receipt_command(self, output, invocation_log):
+        host_platform = {"Linux": "linux-x64", "Darwin": "macos-arm64",
+                         "Windows": "windows-x64"}.get(platform.system(), PLATFORM)
+        return [sys.executable, str(PROJECT_ROOT / "scripts/release_candidate_receipt.py"),
+                "--repo", str(self.repo), "--tag", "v0.7.0", "--platform", host_platform,
+                "--binary", str(self.binary), "--sdk-archive-sha256", SDK_SHA256,
+                "--stdx-archive-sha256", STDX_SHA256, "--sdk-version", "1.2.0",
+                "--stdx-version", "1.2.0", "--invocation-log", str(invocation_log),
+                "--output", str(output)]
 
     def receipt(self, **overrides) -> dict:
         document = self.make_candidate_receipt(
@@ -165,14 +190,7 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
         # The receipt must name the host platform, whatever platform runs the suite.
         host_platform = {"Linux": "linux-x64", "Darwin": "macos-arm64",
                          "Windows": "windows-x64"}.get(platform.system(), PLATFORM)
-        command = [
-            sys.executable, str(PROJECT_ROOT / "scripts/release_candidate_receipt.py"),
-            "--repo", str(self.repo), "--tag", "v0.7.0", "--platform", host_platform,
-            "--binary", str(self.binary),
-            "--sdk-archive-sha256", SDK_SHA256, "--stdx-archive-sha256", STDX_SHA256,
-            "--sdk-version", "1.2.0", "--stdx-version", "1.2.0",
-            "--output", str(output),
-        ]
+        command = self.receipt_command(output, self.invocation_log())
         completed = subprocess.run(command, text=True, capture_output=True)
         if completed.returncode != 0:
             # cjc/cjpm are unavailable outside the release toolchain image.
@@ -183,6 +201,36 @@ class ReleaseCandidateTests(ReleaseToolsTestSupport, unittest.TestCase):
         self.assertEqual(document["source"]["commit"], self.commit)
         self.assertEqual(document["binary"]["versionOutput"], "cjdoc 0.7.0")
         self.assertEqual(document["platform"]["id"], host_platform)
+        self.assertEqual(document["build"]["effectiveCompileOptions"], ["-O2", "--fno-chir-function-inlining"])
+        self.assertEqual(document["build"]["invocationLogSha256"],
+                         verify_release_package.sha256_file(self.repo / "target/sts-invocations.jsonl"))
+
+    def test_receipt_rejects_plain_o2_without_the_required_extra_flag(self):
+        output = self.repo / "target/release-candidate/refused.json"
+        for arguments in (["--compile-option=-O2"], []):
+            with self.subTest(arguments=arguments):
+                log = self.invocation_log(option="-O2")
+                result = subprocess.run(self.receipt_command(output, log) + arguments,
+                                        text=True, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("--fno-chir-function-inlining", result.stderr)
+                self.assertFalse(output.exists())
+
+    def test_receipt_rejects_a_build_logged_under_different_policy_source(self):
+        output = self.repo / "target/release-candidate/refused.json"
+        for package in ("cjdoc", "cjdoc_chir_worker"):
+            with self.subTest(package=package):
+                log = self.invocation_log(policy_sha="0" * 64 if package == "cjdoc" else None)
+                if package != "cjdoc":
+                    worker = json.loads(log.read_text())
+                    worker.update(package=package, policySha256="0" * 64)
+                    with log.open("a") as stream:
+                        stream.write(json.dumps(worker) + "\n")
+                result = subprocess.run(self.receipt_command(output, log),
+                                        text=True, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("policy/wrapper source", result.stderr)
+                self.assertFalse(output.exists())
 
 
 class ReleaseAssetLayoutTest(unittest.TestCase):

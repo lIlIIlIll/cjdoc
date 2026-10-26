@@ -7,7 +7,7 @@
 # CI and Pages call only the stages they need, so no orchestration repeats the
 # whole gate. Every stage records machine-readable timing, identity and cache
 # evidence through scripts/ci_stage.py. Callers that compile with the pinned STS
-# toolchain must source scripts/with_sts_o1_cjpm.sh first, exactly as before.
+# toolchain must source scripts/with_sts_cjpm.sh first, exactly as before.
 set -euo pipefail
 
 export PYTHONDONTWRITEBYTECODE=1
@@ -281,7 +281,7 @@ stage_build() {
         remove_owned_outputs "$(worker_target_path)"
     }
     trap cleanup_build_worker EXIT
-    # Keep project compilation single-job; STS 1.2.0's bundled llc has crashed under concurrent CI jobs.
+    # Keep the same single-job build command across platform acceptance and release receipts.
     cjpm build --jobs 1
     # Resolve the real executable name. Windows produces `main.exe`, and the
     # `-f main` test can succeed on a non-executable stub, so the `.exe` spelling
@@ -345,8 +345,8 @@ document = {
         "stdxDigest": environment["stdxDigest"],
         "fingerprint": environment["toolchainFingerprint"],
     },
-    "compileOptions": ["--jobs 1", "-O1"],
-    "effectiveManifest": 'override-compile-option = "-O1"',
+    "compileOptions": ["--jobs 1", "-O2", "--fno-chir-function-inlining"],
+    "effectiveManifest": 'override-compile-option = "-O2 --fno-chir-function-inlining"',
     "mainBinary": record(binary, with_version=True),
     "workerBinary": record(worker, with_version=False),
     "runId": environment["runId"],
@@ -440,6 +440,10 @@ stage_native() {
     # with one unittest worker while retaining those concurrency checks.
     # Native Windows Python bypasses the extensionless Bash cjpm wrapper.
     # Resolve cjpm in Bash so the pinned STS override and restore trap apply.
+    # The wrapper selects -O1 only for this test command: paired Linux unit
+    # compilation under plain -O2 and -O2 --fno-chir-function-inlining both
+    # fails with compiler ICE 13 before any case runs. Its
+    # fresh --target-dir cannot seed the product's -O2 target/cache or receipt.
     # STS 1.2's animated collector can throw after every assertion has passed.
     # Plain reporting retains case results and the real failing process status.
     native_bound=("${python_cmd}" scripts/run_with_timeout.py "${native_timeout}" -- \
@@ -676,6 +680,8 @@ stage_cli() {
         --root "${check_dir}/agent/html"
     "${python_cmd}" scripts/test_query_mcp.py --binary "${binary}" \
         --snapshot "${check_dir}/agent/html/agent/manifest.json"
+    "${python_cmd}" scripts/test_doc_ir_gc.py --binary "${binary}" \
+        --snapshot "${check_dir}/all/first/docs.json"
     "${python_cmd}" -c 'import json,sys; root=sys.argv[1]; nav=json.load(open(root+"/navigation-index.json", encoding="utf-8")); assert nav["schemaVersion"]=="cjdoc.navigation-index/2" and nav["project"]["version"]=="1.3.0" and any(page["kind"]=="symbol" for page in nav["pages"]); assert "1.3.0" in open(root+"/llms.txt", encoding="utf-8").read() and len(open(root+"/llms-full.txt", encoding="utf-8").read().encode()) <= 16*1024*1024' "${check_dir}/agent/html"
     "${binary}" diff --baseline "${check_dir}/agent/api-surface/api-surface.json" --current "${check_dir}/agent-second/api-surface/api-surface.json" --format json >"${check_dir}/agent/api-diff.json"
     "${binary}" versions compose --version 1.2.0="${check_dir}/all/first/html" --version 1.3.0="${check_dir}/agent/html" --diff 1.3.0="${check_dir}/agent/api-diff.json" --latest 1.3.0 --output "${check_dir}/versions" >/dev/null

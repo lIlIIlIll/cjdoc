@@ -26,9 +26,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from safe_output_root import safe_output_file
 from worktree_identity import exact_worktree_identity
+from verify_build_invocations import read_since, verify as verify_build_invocations
+from sts_compile_override import KNOWN_PACKAGES
 
 RECEIPT_SCHEMA = "cjdoc.release-candidate/1"
 GATE_SCHEMA = "cjdoc.release-gate/3"
+REQUIRED_COMPILE_OPTIONS = ["-O2", "--fno-chir-function-inlining"]
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 COMMIT = re.compile(r"^[0-9a-f]{40}$")
 
@@ -64,10 +67,11 @@ def tool_version(command: str) -> str:
 
 
 def build_configuration_digest(repo: Path, compile_options: list[str]) -> str:
-    wrapper = repo / "scripts/with_sts_o1_cjpm.sh"
+    wrapper = repo / "scripts/with_sts_cjpm.sh"
     composed = {"compileOptions": compile_options,
                 "wrapperInputs": ["cjpm.toml:override-compile-option",
-                                  f"scripts/with_sts_o1_cjpm.sh:{sha256_file(wrapper)}"]}
+                                  f"scripts/with_sts_cjpm.sh:{sha256_file(wrapper)}",
+                                  f"scripts/sts_compile_override.py:{sha256_file(repo / 'scripts/sts_compile_override.py')}"]}
     return hashlib.sha256(canonical_json(composed)).hexdigest()
 
 
@@ -104,11 +108,24 @@ def main() -> int:
     parser.add_argument("--sdk-version", required=True)
     parser.add_argument("--stdx-version", required=True)
     parser.add_argument("--gate", type=Path, action="append", default=[])
-    parser.add_argument("--compile-option", action="append", default=["-O1"])
+    parser.add_argument("--compile-option", action="append",
+                        help="explicit product flag tokens; must exactly match the frozen policy")
+    parser.add_argument("--invocation-log", type=Path,
+                        help="actual STS invocation log; defaults to CJDOC_STS_INVOCATION_LOG or RUNNER_TEMP")
     parser.add_argument("--release-gate-receipt", type=Path,
                         help="upgraded cjdoc.release-gate/3 receipt for the Linux job")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    args.compile_option = list(REQUIRED_COMPILE_OPTIONS) if args.compile_option is None else args.compile_option
+    if args.compile_option != REQUIRED_COMPILE_OPTIONS:
+        parser.error("product flags must be exactly " + " ".join(REQUIRED_COMPILE_OPTIONS))
+    if args.invocation_log is None:
+        configured = os.environ.get("CJDOC_STS_INVOCATION_LOG")
+        runner_temp = os.environ.get("RUNNER_TEMP")
+        args.invocation_log = Path(configured) if configured else (
+            Path(runner_temp) / "cjdoc-sts-invocations.jsonl" if runner_temp else None)
+    if args.invocation_log is None:
+        parser.error("an actual STS invocation log is required (--invocation-log)")
     for name in ("sdk_archive_sha256", "stdx_archive_sha256"):
         if not SHA256.fullmatch(getattr(args, name)):
             parser.error(f"--{name.replace('_', '-')} must be lowercase 64-hex")
@@ -124,6 +141,15 @@ def main() -> int:
         binary_relative = binary.relative_to(args.repo.resolve()).as_posix()
     except ValueError:
         parser.error(f"release candidate binary must live inside the repository: {binary}")
+    records = read_since(args.invocation_log, 0)
+    invocation_summary = verify_build_invocations(
+        records, " ".join(REQUIRED_COMPILE_OPTIONS), binary, ["build", "--jobs", "1"])
+    policy_digest = sha256_file(args.repo / "scripts/sts_compile_override.py")
+    wrapper_digest = sha256_file(args.repo / "scripts/with_sts_cjpm.sh")
+    for record in records:
+        if record.get("argv", [])[:1] == ["build"] and record.get("package") in KNOWN_PACKAGES:
+            if record.get("policySha256") != policy_digest or record.get("wrapperSha256") != wrapper_digest:
+                parser.error("build invocation policy/wrapper source does not match the candidate")
     version = run([str(binary), "--version"]).splitlines()[0]
     gates = gate_digests(list(args.gate))
     if args.release_gate_receipt is not None:
@@ -149,6 +175,8 @@ def main() -> int:
         },
         "build": {"command": ["cjpm", "build", "--jobs", "1"],
                   "effectiveCompileOptions": list(args.compile_option),
+                  "invocationLogSha256": sha256_file(args.invocation_log),
+                  "invocationSummary": invocation_summary,
                   "buildConfigurationSha256": build_configuration_digest(args.repo, list(args.compile_option))},
         "binary": {"path": binary_relative,
                    "sha256": sha256_file(binary), "size": binary.stat().st_size,

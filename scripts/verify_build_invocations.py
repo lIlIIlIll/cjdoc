@@ -15,7 +15,7 @@ be recorded. What is required is stricter and still simple:
   so a later build that replaced it is detected even though it was recorded.
 
 Usage: verify_build_invocations.py --log FILE --binary PATH [--since OFFSET]
-                                   [--expect-compile-option -O1]
+                                   [--expect-compile-option "-O2 --fno-chir-function-inlining"]
 """
 
 from __future__ import annotations
@@ -78,24 +78,30 @@ def verify(records: list[dict], expected_option: str, binary: Path | None,
     # Root-package builds must have run the same arguments and option as the command
     # the workflow vouches for. Checking the option without the arguments would accept
     # `--jobs 4` in a second build, which produces a differently built binary.
-    # Auxiliary builds (the CHIR worker) are recorded for completeness but read their
-    # own manifest, which carries no override to apply, so they are held to neither.
+    # Worker and provider/highlight entry manifests receive the same full product
+    # flags. Their command arguments are recorded independently from the root build;
+    # unrelated auxiliary packages may retain an untouched manifest.
     root = [build for build in builds if build.get("package") == package]
     if not root:
         raise SystemExit(
             f"build invocations: no recorded build produced {package!r}, so the packaged "
             "binary's parameters are unrecorded (CI-08.3)")
     for build in root:
+        if build.get("exitCode", 0) != 0:
+            raise SystemExit("build invocations: a product build failed; stale binary is not release evidence (CI-08.3)")
         if build.get("option") != expected_option:
             raise SystemExit(
                 f"build invocations: a {package} build ran with override-compile-option="
                 f"{build.get('option')!r}, not the required {expected_option!r} (CI-08.3)")
     for build in (other for other in builds if other.get("package") != package):
-        if build.get("option") not in (expected_option, "<none>"):
+        allowed = (expected_option,) if build.get("package") in {
+            "cjdoc_chir_worker", "provider_plugin_fixture", "highlight_host_fixture"
+        } else (expected_option, "<none>")
+        if build.get("option") not in allowed:
             raise SystemExit(
                 f"build invocations: an auxiliary build of {build.get('package')!r} ran "
-                f"with override-compile-option={build.get('option')!r}, which is neither "
-                f"the pinned {expected_option!r} nor an untouched manifest (CI-08.3)")
+                f"with override-compile-option={build.get('option')!r}; allowed options "
+                f"are {allowed!r} (CI-08.3)")
     if expected_argv is not None:
         for build in root:
             if build.get("argv") != expected_argv:
@@ -134,7 +140,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--log", type=Path, required=True)
     parser.add_argument("--since", type=int, default=0)
-    parser.add_argument("--expect-compile-option", default="-O1")
+    parser.add_argument("--expect-compile-option", default="-O2 --fno-chir-function-inlining")
     parser.add_argument("--binary", type=Path)
     parser.add_argument("--expect-command", default="cjpm build --jobs 1",
                         help="the command the release vouches for, space separated")

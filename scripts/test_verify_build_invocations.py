@@ -24,7 +24,7 @@ def run(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run([sys.executable, *args], capture_output=True, text=True, timeout=300)
 
 
-def record(option: str = "-O1", argv: list[str] | None = None,
+def record(option: str = "-O2 --fno-chir-function-inlining", argv: list[str] | None = None,
            package: str = "cjdoc") -> str:
     return json.dumps({
         "schemaVersion": "cjdoc.sts-invocation/1",
@@ -45,7 +45,7 @@ class InvocationVerificationTests(unittest.TestCase):
     def write(self, *lines: str) -> None:
         self.log.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
 
-    def check(self, since: int = 0, expect: str = "-O1") -> subprocess.CompletedProcess[str]:
+    def check(self, since: int = 0, expect: str = "-O2 --fno-chir-function-inlining") -> subprocess.CompletedProcess[str]:
         return run([str(SCRIPT), "--log", str(self.log), "--since", str(since),
                     f"--expect-compile-option={expect}"])
 
@@ -55,7 +55,7 @@ class InvocationVerificationTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         payload = json.loads(result.stdout)
         self.assertEqual(payload["builds"], 1)
-        self.assertEqual(payload["option"], "-O1")
+        self.assertEqual(payload["option"], "-O2 --fno-chir-function-inlining")
 
     def test_invocations_before_the_offset_are_ignored(self) -> None:
         self.write(record(argv=["test"]), record(argv=["build", "--jobs", "1"]))
@@ -65,17 +65,17 @@ class InvocationVerificationTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)["builds"], 1)
 
     def test_a_build_with_a_different_option_is_refused(self) -> None:
-        self.write(record(option="-O2"))
+        self.write(record(option="-O1"))
         result = self.check()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("-O2", result.stderr)
+        self.assertIn("-O1", result.stderr)
 
     def test_a_second_build_under_another_option_is_refused(self) -> None:
         """The acceptance gates rebuild; a differently optioned build invalidates it."""
-        self.write(record(), record(option="-O2"))
+        self.write(record(), record(option="-O1"))
         result = self.check()
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("-O2", result.stderr)
+        self.assertIn("-O1", result.stderr)
 
     def test_a_build_with_other_arguments_is_refused(self) -> None:
         """Same option, different arguments: a differently built binary."""
@@ -126,14 +126,14 @@ class InvocationVerificationTests(unittest.TestCase):
         manifest.write_text('[package]\n  name = "cjdoc"\n  cjdoc-test = true\n',
                             encoding="utf-8")
         result = run([str(LOGGER), "--log", str(self.log), "--manifest", str(manifest),
-                      "--option=-O1", "--", "build", "--jobs", "1"])
+                      "--option=-O2 --fno-chir-function-inlining", "--", "build", "--jobs", "1"])
         self.assertEqual(result.returncode, 0, result.stderr)
         entry = json.loads(self.log.read_text().splitlines()[0])
         self.assertEqual(entry["schemaVersion"], "cjdoc.sts-invocation/1")
         # The package comes from the manifest, so an auxiliary project is not
         # mislabelled as the root package.
         self.assertEqual(entry["package"], "cjdoc")
-        self.assertEqual(entry["option"], "-O1")
+        self.assertEqual(entry["option"], "-O2 --fno-chir-function-inlining")
         self.assertEqual(entry["argv"], ["build", "--jobs", "1"])
         self.assertIsNone(entry["binary"])
 
@@ -142,22 +142,21 @@ class InvocationVerificationTests(unittest.TestCase):
         manifest.write_text('[package]\n  name = "cjdoc_chir_worker"\n  cjdoc-test = true\n',
                             encoding="utf-8")
         result = run([str(LOGGER), "--log", str(self.log), "--manifest", str(manifest),
-                      "--option=-O1", "--", "build", "--jobs", "1"])
+                      "--option=-O2 --fno-chir-function-inlining", "--", "build", "--jobs", "1"])
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(self.log.read_text().splitlines()[0])["package"],
                          "cjdoc_chir_worker")
 
     def test_an_auxiliary_build_is_recorded_but_not_held_to_the_vouched_command(self) -> None:
-        """The CHIR worker reads its own manifest, which has no override to apply."""
+        """The worker shares the product flags but has its own recorded invocation."""
         self.write(record(),
-                   record(option="<none>", argv=["build", "--jobs", "1"],
-                          package="cjdoc_chir_worker"))
+                   record(argv=["build", "--jobs", "1"], package="cjdoc_chir_worker"))
         result = self.check()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["builds"], 2)
 
     def test_an_auxiliary_build_with_an_unexpected_option_is_refused(self) -> None:
-        self.write(record(), record(option="-O2", package="cjdoc_chir_worker"))
+        self.write(record(), record(option="-O1", package="cjdoc_chir_worker"))
         result = self.check()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("auxiliary build", result.stderr)
@@ -179,7 +178,7 @@ class InvocationVerificationTests(unittest.TestCase):
         binary.write_bytes(b"replaced")
         import hashlib
         self.write(json.dumps({
-            "schemaVersion": "cjdoc.sts-invocation/1", "package": "cjdoc", "option": "-O1",
+            "schemaVersion": "cjdoc.sts-invocation/1", "package": "cjdoc", "option": "-O2 --fno-chir-function-inlining",
             "argv": ["build", "--jobs", "1"], "platform": "Linux", "workspace": "/w",
             "binary": {"sha256": hashlib.sha256(b"original").hexdigest(), "size": 8},
         }, sort_keys=True))
@@ -193,7 +192,7 @@ class InvocationVerificationTests(unittest.TestCase):
         binary.write_bytes(b"built")
         import hashlib
         line = json.dumps({
-            "schemaVersion": "cjdoc.sts-invocation/1", "package": "cjdoc", "option": "-O1",
+            "schemaVersion": "cjdoc.sts-invocation/1", "package": "cjdoc", "option": "-O2 --fno-chir-function-inlining",
             "argv": ["build", "--jobs", "1"], "platform": "Linux", "workspace": "/w",
             "binary": {"sha256": hashlib.sha256(b"built").hexdigest(), "size": 5},
         }, sort_keys=True)
@@ -210,6 +209,54 @@ class InvocationVerificationTests(unittest.TestCase):
                       "--binary", str(binary)])
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("recorded no produced binary", result.stderr)
+
+    def test_unit_o1_is_not_a_product_build_receipt(self) -> None:
+        self.write(record(option="-O1", argv=["test", "--jobs", "1"]))
+        result = self.check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no `cjpm build`", result.stderr)
+
+    def test_unit_o1_record_does_not_relax_the_product_o2_requirement(self) -> None:
+        self.write(record(), record(option="-O1", argv=["test", "--jobs", "1"]))
+        result = self.check()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["option"], "-O2 --fno-chir-function-inlining")
+
+    def test_a_failed_product_build_cannot_vouch_for_a_stale_binary(self) -> None:
+        failed = json.loads(record())
+        failed["exitCode"] = 37
+        self.write(json.dumps(failed))
+        result = self.check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("product build failed", result.stderr)
+
+    def test_logger_refuses_product_binary_binding_for_unit_tests(self) -> None:
+        manifest = Path(self.temporary.name) / "cjpm.toml"
+        manifest.write_text('[package]\nname = "cjdoc"\n')
+        result = run([str(LOGGER), "--log", str(self.log), "--manifest", str(manifest),
+                      "--option=-O1", "--binary", str(manifest), "--", "test"])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("only a product build", result.stderr)
+
+    def test_logger_preserves_an_argument_separator_in_the_actual_command(self) -> None:
+        manifest = Path(self.temporary.name) / "cjpm.toml"
+        manifest.write_text('[package]\nname = "cjdoc"\n')
+        result = run([str(LOGGER), "--log", str(self.log), "--manifest", str(manifest),
+                      "--option=-O2 --fno-chir-function-inlining", "--", "run", "--", "generate"])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(self.log.read_text())["argv"], ["run", "--", "generate"])
+
+    def test_plain_o2_build_is_refused_without_the_required_extra_flag(self) -> None:
+        self.write(record(option="-O2"))
+        result = self.check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--fno-chir-function-inlining", result.stderr)
+
+    def test_known_worker_cannot_claim_an_unpatched_manifest(self) -> None:
+        self.write(record(), record(option="<none>", package="cjdoc_chir_worker"))
+        result = self.check()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("auxiliary build", result.stderr)
 
 
 

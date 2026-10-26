@@ -174,7 +174,7 @@ jobs:
           source "${CANGJIE_SDK_ROOT}/envsetup.sh"
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
           python scripts/verify_release.py >/dev/null
-          . scripts/with_sts_o1_cjpm.sh
+          . scripts/with_sts_cjpm.sh
           # Build exactly once and package this same binary. The acceptance gates
           # below may run an incremental cjpm build, but the executable promoted
           # to the release is the one this step produces and re-verifies.

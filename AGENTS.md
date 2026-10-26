@@ -30,6 +30,9 @@
 
 ## 常用命令
 
+先按[构建指南](docs/maintainer/build.md)准备已认证 SDK/stdx，并在当前 shell source
+`scripts/with_sts_cjpm.sh`。以下命令使用该入口固定的完整产品旗标与单测专属例外：
+
 ```bash
 cjpm build
 cjpm test

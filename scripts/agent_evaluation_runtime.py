@@ -331,7 +331,7 @@ def compile_consumer(runtime: ConsumerRuntime, code: str, root: Path,
         raise RuntimeError("consumer bytes changed before compilation")
     output = root / "out"
     output.mkdir(mode=0o700)
-    command = [str(runtime.cjc), "--static", "--output-type", "exe", "-O1",
+    command = [str(runtime.cjc), "--static", "--output-type", "exe", "-O2",
                "--output-dir", str(output), "-o", "main"]
     for directory in exports["directories"]:
         command += ["--import-path", str(directory), "--library-path", str(directory)]
