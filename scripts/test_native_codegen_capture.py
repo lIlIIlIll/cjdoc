@@ -792,4 +792,61 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn(".opt.bc",workflow);self.assertIn("/public/yjson.derived.ll",workflow)
 
 
+
+class StructuredPublicationTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name)
+
+    def publish(self,evidence):
+        from ir_publication import publish
+        return publish(self.root/'public',evidence,'',[],[],{})
+
+    def test_safe_multiline_colon_text_survives_json_representation(self):
+        safe='Build:'+chr(10)+'Complete'
+        self.assertNotIn(chr(92),safe)
+        note=self.publish({'status':'CAPTURED_BUILD_SUCCEEDED','stdout':safe})
+        self.assertEqual(note['status'],'CAPTURED_BUILD_SUCCEEDED')
+
+    def test_real_windows_path_is_still_refused(self):
+        private='C:'+chr(92)+'private'+chr(92)+'example'
+        self.assertEqual(self.publish({'value':private})['status'],'PRIVACY_BLOCKED')
+
+    def test_private_json_key_is_refused_with_hash_only_location(self):
+        private='/'+'private-example'
+        note=self.publish({private:'safe'})
+        self.assertEqual(note['status'],'PRIVACY_BLOCKED')
+        self.assertTrue(note['privacyLocations'])
+        self.assertNotIn(private,json.dumps(note))
+
+    def test_private_credential_key_and_nested_value_keep_hash_only_locations(self):
+        private='ghp_'+24*'a'
+        child='C:'+chr(92)+'private'+chr(92)+'example'
+        note=self.publish({private:{'value':child}})
+        self.assertEqual(note['status'],'PRIVACY_BLOCKED')
+        self.assertTrue(note['privacyLocations'])
+        self.assertNotIn(private,json.dumps(note))
+        self.assertNotIn(child,json.dumps(note))
+
+    def test_final_json_is_parsed_and_scanned_after_serialization(self):
+        import ir_publication
+        dumps=json.dumps
+        def altered(value,*args,**kwargs):
+            if kwargs.get('indent')==2:return dumps({'value':'/'+'private-example'},**kwargs)
+            return dumps(value,*args,**kwargs)
+        with patch.object(ir_publication.json,'dumps',side_effect=altered),self.assertRaises(ValueError):
+            self.publish({'value':'safe'})
+        self.assertFalse((self.root/'public/receipt.json').exists())
+
+    def test_minimal_refusal_keeps_safe_failure_state_and_hashes(self):
+        error='ValueError: '+('/'+'private-example')
+        note=self.publish({'status':'INPUT_CHANGED','controllerExitCode':17,'targetInvocations':1,
+            'processExitCode':17,'integrityPhase':'SOURCE','error':error})
+        self.assertEqual(note['controllerStatus'],'INPUT_CHANGED')
+        self.assertEqual(note['controllerExitCode'],17)
+        self.assertEqual(note['integrityPhase'],'SOURCE')
+        self.assertEqual(note['errorTextSha256'],hashlib.sha256(error.encode()).hexdigest())
+        self.assertNotIn(error,json.dumps(note))
+
+
 if __name__=="__main__":unittest.main()

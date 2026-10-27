@@ -121,3 +121,28 @@ class WorkflowModeTests(unittest.TestCase):
         self.assertNotIn('actions/cache@',full_job);self.assertNotIn('--verbose',full_job)
         self.assertIn('--platform "$DIAGNOSTIC_PLATFORM"',full_job)
         self.assertNotIn('public/*',full_job);self.assertNotIn('private/',full_job)
+
+
+class FailingDependencyCaptureTests(unittest.TestCase):
+    def test_full_gate_retains_actual_markdown_and_yjson_only(self):
+        with tempfile.TemporaryDirectory() as name:
+            root=Path(name);temporary=root/'tmp';temporary.mkdir();retained=root/'retained';retained.mkdir()
+            attempt=object.__new__(full.FullGateAttempt);attempt.temporary=temporary;attempt.pipeline_retained=retained
+            links=attempt.retention_links()
+            for filename in ['yjson.opt.bc','markdown.opt.bc','cjdoc.opt.bc']:
+                path=temporary/filename;path.write_bytes(filename.encode());links.accept(path);path.unlink()
+            self.assertEqual({row['name'] for row in links.finish()},{'yjson.opt.bc','markdown.opt.bc'})
+            self.assertEqual(set(attempt.trace_packages()),{'yjson','markdown'})
+
+    def test_actual_markdown_failure_is_bound_while_original_yjson_only_scope_stays_unchanged(self):
+        fixture=backend_fixtures.BackendTraceTests();fixture.setUp();self.addCleanup(fixture.doCleanups)
+        request=fixture.request('windows-x64')
+        markdown={'name':'markdown.opt.bc','sourceRelative':'markdown.opt.bc','retained':fixture.bc.name,'sha256':request.expected_bitcode_sha256}
+        yjson={**markdown,'name':'yjson.opt.bc','sourceRelative':'yjson.opt.bc'}
+        log=request.build_log.replace('yjson.opt.bc','markdown.opt.bc').replace('yjson.o','markdown.o')
+        args=([yjson,markdown],subprocess.CompletedProcess([],1),log,{'llc':fixture.tool},request.original_bitcode_path.parent,fixture.root,{})
+        selected,failure,_=prefix.select_yjson(*args)
+        self.assertEqual(selected,yjson);self.assertIsNone(failure)
+        selected,failure,original=prefix.select_yjson(*args,packages=('yjson','markdown'))
+        self.assertEqual(selected,markdown);self.assertEqual(failure,log)
+        self.assertEqual(original.name,'markdown.opt.bc')

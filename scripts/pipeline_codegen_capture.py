@@ -56,13 +56,17 @@ def temporary_aliases(root, lookup=None):
     return aliases
 
 
-def select_yjson(rows, result, log, tools, temporary, retained, environment, aliases=None, selected="windows-x64"):
-    candidates=[row for row in rows if row['name']=='yjson.opt.bc']
-    if not candidates:raise CaptureMissed('original pipeline produced no captured yjson IR; no retry')
-    failures=[line for line in log.splitlines() if 'yjson.opt.bc' in line and 'llc' in line
+def select_yjson(rows, result, log, tools, temporary, retained, environment, aliases=None, selected="windows-x64", packages=("yjson",)):
+    if not packages or len(set(packages))!=len(packages) or not set(packages)<={'yjson','markdown'}:
+        raise ValueError('trace packages differ from the frozen scope')
+    filenames={name+'.opt.bc' for name in packages}
+    candidates=[row for row in rows if row['name'] in filenames]
+    if not candidates:raise CaptureMissed('original pipeline produced no captured authorized dependency IR; no retry')
+    failures=[line for line in log.splitlines() if any(name in line for name in filenames) and 'llc' in line
               and 'command failed with exit code' in line]
     if not failures:
-        return candidates[0],None,temporary/candidates[0]['sourceRelative']
+        first=next((row for row in candidates if row['name']=='yjson.opt.bc'),candidates[0])
+        return first,None,temporary/first['sourceRelative']
     if result.returncode==0 or len(failures)!=1:
         raise CaptureMissed('backend failure does not bind one failed original pipeline')
     matches=[]
@@ -71,7 +75,7 @@ def select_yjson(rows, result, log, tools, temporary, retained, environment, ali
             original=alias/row['sourceRelative']
             request=TraceRequest(selected,tools['llc'],digest(tools['llc']),
                 retained/row['retained'],row['sha256'],original,
-                log,retained/'unused-profile-check',environment)
+                log,retained/'unused-profile-check',environment,package=row['name'].removesuffix('.opt.bc'))
             try:observed_profile(request)
             except ValueError:continue
             matches.append((row,original))
@@ -120,6 +124,9 @@ class PipelineAttempt(Attempt):
                                                  'scripts/test_pipeline_codegen_capture.py'])
         return result
 
+    def trace_packages(self):
+        return ('yjson',)
+
     def entry_shell(self):
         return shutil.which('bash',path=self.environment['PATH'])
 
@@ -164,25 +171,35 @@ class PipelineAttempt(Attempt):
         finally:self.evidence['targetCaptureIssues']=links.issues
         self.evidence['status']='CAPTURED_BUILD_FAILED' if result.returncode else 'CAPTURED_BUILD_SUCCEEDED'
         selected,failure,original=select_yjson(rows,result,self.build_log,self.tools,self.temporary,
-                                     self.pipeline_retained,self.environment,self.temporary_aliases,selected=self.selected)
-        self.evidence['selectedYjson']=selected
-        self.evidence['selectedYjsonMeaning']='Unique original failed backend path' if failure else 'First observed yjson input; no failed backend reported'
+                                     self.pipeline_retained,self.environment,self.temporary_aliases,selected=self.selected,packages=self.trace_packages())
+        package=selected['name'].removesuffix('.opt.bc')
+        meaning='Unique original failed backend path' if failure else 'First observed '+package+' input; no failed backend reported'
+        self.evidence['selectedDependencyIr']=selected
+        self.evidence['selectedDependencyPackage']=package
+        self.evidence['selectedDependencyMeaning']=meaning
+        self.evidence['tracePackages']=list(self.trace_packages())
+        if package=='yjson':
+            self.evidence['selectedYjson']=selected;self.evidence['selectedYjsonMeaning']=meaning
         self.evidence['wrapperInvocationLog']=None
         if self.invocations.is_file():
             data=self.invocations.read_bytes()
             self.evidence['wrapperInvocationLog']={'sha256':hashlib.sha256(data).hexdigest(),
                 'size':len(data),'records':[json.loads(line) for line in data.splitlines() if line]}
         # Keep the original product result even if optional disassembly fails.
-        try:self.disassemblies=[(selected['sha256'],self.disassemble('yjson',self.pipeline_retained,selected))]
+        try:
+            text=self.disassemble(package,self.pipeline_retained,selected)
+            if package=='yjson':self.disassemblies=[(selected['sha256'],text)]
+            else:self.evidence['derivedIrPublication']={'package':package,'status':'PRIVATE_ONLY',
+                'reason':'Public derived IR allowlist currently covers yjson only'}
         except Exception as error:self.evidence['disassemblyUnavailable']=type(error).__name__
         if failure is None:
-            self.evidence['backendTrace']={'backendInvocations':0,'reason':'Original command did not report a yjson llc failure'}
+            self.evidence['backendTrace']={'backendInvocations':0,'reason':'Original command did not report a failure for the authorized trace packages'}
         else:
             directory=self.private/'backend-trace'
             try:
                 request=TraceRequest(self.selected,self.tools['llc'],self.evidence['toolsBefore']['llc']['sha256'],
                     self.pipeline_retained/selected['retained'],selected['sha256'],
-                    original,self.build_log,directory,self.environment)
+                    original,self.build_log,directory,self.environment,package=package)
                 self.evidence['backendTrace']=trace_once(request)
                 if not self.evidence['backendTrace']['inputsUnchanged']:
                     self.evidence['status']='INPUT_CHANGED';self.evidence['integrityError']='backend input changed'
@@ -212,25 +229,31 @@ class PipelineAttempt(Attempt):
             self.evidence['error']=type(error).__name__+': '+str(error)
         finally:
             try:
+                self.evidence['integrityPhase']='TEMP'
                 info=self.temporary.stat()
                 self.evidence['compilerTempIdentityAfter']={'device':info.st_dev,'inode':info.st_ino}
                 if (info.st_dev,info.st_ino)!=self.temp_identity or any(
                         not os.path.samefile(self.temporary,path) for path in self.temporary_aliases):
                     raise ValueError('inherited compiler temp directory or verified aliases changed')
+                self.evidence['integrityPhase']='CONTROLLER'
                 self.evidence['controllerAfter']=self.identity()
                 if self.evidence['controllerAfter']!=self.evidence.get('controllerBefore'):
                     raise ValueError('controller identity changed')
                 if initial is not None:
+                    self.evidence['integrityPhase']='SOURCE'
                     after=self.git.snapshot(self.source,self.evidence['sourceCommit'],TREE);self.evidence['sourceAfter']=after
                     if after!=initial:raise ValueError('source identity changed')
                 if self.evidence['targetInvocations']:
+                    self.evidence['integrityPhase']='DEPENDENCIES'
                     after=self.dependencies(allow_missing=True);self.evidence['dependenciesAfterTarget']=after
                     if 'processExitCode' in self.evidence and self.evidence['processExitCode']==0:
                         if any(note.get('present') is False for note in after.values()):
                             raise ValueError('successful pipeline omitted a fixed dependency')
                 if hasattr(self,'tools'):
+                    self.evidence['integrityPhase']='TOOLS'
                     self.evidence['toolsAfter']=self.tool_hashes()
                     if self.evidence['toolsAfter']!=self.evidence['toolsBefore']:raise ValueError('SDK tool identity changed')
+                self.evidence['integrityPhase']='COMPLETE'
             except Exception as error:
                 self.evidence['integrityError']=str(error);self.evidence['status']='INPUT_CHANGED'
                 if not self.evidence.get('processExitCode'):self.exit_code=2

@@ -151,4 +151,34 @@ class BackendTraceTests(unittest.TestCase):
         self.assertEqual(attempt.evidence["backendTrace"]["backendInvocations"],0)
 
 
+
+class MarkdownBackendTraceTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture=BackendTraceTests();self.fixture.setUp();self.addCleanup(self.fixture.doCleanups)
+        original=self.fixture.request('windows-x64')
+        self.request=replace(original,package='markdown',
+            original_bitcode_path=original.original_bitcode_path.with_name('markdown.opt.bc'),
+            build_log=original.build_log.replace('yjson.opt.bc','markdown.opt.bc').replace('yjson.o','markdown.o'))
+
+    def test_exact_markdown_failure_uses_original_flags_and_one_backend(self):
+        runner=Mock(side_effect=self.fixture.runner)
+        result=trace_once(self.request,runner)
+        self.assertEqual(result['originalPackage'],'markdown')
+        self.assertEqual(result['originalFlags'],list(FLAGS['windows-x64']))
+        self.assertEqual(result['backendInvocations'],1);runner.assert_called_once()
+
+    def test_unknown_package_is_refused_before_launch(self):
+        runner=Mock()
+        with self.assertRaisesRegex(ValueError,'outside the frozen'):
+            trace_once(replace(self.request,package='unapproved'),runner)
+        runner.assert_not_called()
+
+    def test_markdown_output_name_and_extra_flag_drift_are_refused(self):
+        for log in [self.request.build_log.replace('markdown.o"','other.o"'),
+                    self.request.build_log.replace('"-O2"','"-O2" "--extra-option"')]:
+            runner=Mock()
+            with self.subTest(log=log),self.assertRaises(ValueError):trace_once(replace(self.request,build_log=log),runner)
+            runner.assert_not_called()
+
+
 if __name__=="__main__":unittest.main()

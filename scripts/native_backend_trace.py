@@ -47,6 +47,7 @@ class TraceRequest:
     build_log: str
     directory: Path
     environment: dict[str, str]
+    package: str = "yjson"
 
 
 def _command_path(value: str, platform: str) -> str:
@@ -68,11 +69,14 @@ def observed_profile(request: TraceRequest) -> dict:
     The real failure line is sufficient; do not add -V to the product target.
     Parsed shell text is evidence only and is never executed.
     """
+    if request.package not in {"yjson","markdown"}:
+        raise ValueError("backend package is outside the frozen diagnostic scope")
+    filename=request.package+".opt.bc"
     rows = [ANSI.sub("", row) for row in request.build_log.splitlines()]
-    failures = [row for row in rows if "yjson.opt.bc" in row and "llc" in row
+    failures = [row for row in rows if filename in row and "llc" in row
                 and "command failed with exit code" in row]
     if not failures:
-        raise ValueError("no explicit yjson llc failure; no backend observation started")
+        raise ValueError("no explicit "+request.package+" llc failure; no backend observation started")
     candidates = [row for row in failures
                   if _contains_path(row, request.tool, request.platform)
                   and _contains_path(row, request.original_bitcode_path, request.platform)]
@@ -94,16 +98,16 @@ def observed_profile(request: TraceRequest) -> dict:
             raise ValueError("backend loader prefix differs from the native profile")
         argv = argv[1:]
     flags = FLAGS[request.platform]
-    expected_output = re.sub(r"yjson\.opt\.bc$", "yjson.o", str(request.original_bitcode_path))
+    expected_output = re.sub(re.escape(filename)+r"$", request.package+".o", str(request.original_bitcode_path))
     if expected_output == str(request.original_bitcode_path):
-        raise ValueError("original backend input is not yjson.opt.bc")
+        raise ValueError("original backend input is not "+filename)
     if (len(argv) != len(flags) + 3
             or _command_path(argv[0], request.platform) != _command_path(str(request.tool), request.platform)
             or _command_path(argv[1], request.platform) != _command_path(str(request.original_bitcode_path), request.platform)
             or tuple(argv[2:-1]) != flags
             or _command_path(argv[-1], request.platform) != _command_path(expected_output, request.platform)):
         raise ValueError("backend argv differs from the complete frozen native profile")
-    return {"originalFlags": list(flags), "originalFailureExitCode": int(match[2]),
+    return {"originalPackage":request.package, "originalFlags": list(flags), "originalFailureExitCode": int(match[2]),
             "originalLoaderExpression": loader,
             "originalFailureLineSha256": hashlib.sha256(candidates[0].encode()).hexdigest()}
 

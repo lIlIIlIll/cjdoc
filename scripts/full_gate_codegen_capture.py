@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One original full acceptance gate; passive yjson IR capture is diagnostic only."""
+"""One original full acceptance gate; passive dependency IR capture is diagnostic only."""
 from __future__ import annotations
 import argparse
 import os
@@ -34,6 +34,11 @@ def posix_temporary(environment):
 class YjsonLinks(IrLinks):
     def accept(self,path):
         if path.name=='yjson.opt.bc':super().accept(path)
+
+
+class DependencyLinks(IrLinks):
+    def accept(self,path):
+        if path.name in {'yjson.opt.bc','markdown.opt.bc'}:super().accept(path)
 
 
 class FullGateAttempt(PipelineAttempt):
@@ -84,8 +89,11 @@ class FullGateAttempt(PipelineAttempt):
     def entry_shell(self):
         return str(self.original_bash)
 
+    def trace_packages(self):
+        return ('yjson','markdown')
+
     def retention_links(self):
-        return YjsonLinks(self.temporary,self.pipeline_retained)
+        return DependencyLinks(self.temporary,self.pipeline_retained)
 
     def stage_script(self):
         script='set -euo pipefail\n'

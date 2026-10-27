@@ -11,6 +11,39 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def structured_private_reasons(value,environment):
+    """Scan JSON string semantics, including keys, rather than JSON escapes."""
+    reasons=[]
+    def inspect(item):
+        if isinstance(item,str):reasons.extend(private_reasons(item,environment))
+        elif isinstance(item,dict):
+            for key,child in item.items():inspect(str(key));inspect(child)
+        elif isinstance(item,(list,tuple)):
+            for child in item:inspect(child)
+        elif item is not None and not isinstance(item,(int,float,bool)):
+            raise TypeError('unsupported structured publication value')
+    inspect(value)
+    return sorted(set(reasons))
+
+
+CONTROLLER_STATUSES={"BUILD_NOT_STARTED","CAPTURED_BUILD_FAILED","CAPTURED_BUILD_SUCCEEDED",
+                     "CAPTURE_MISSED","PRECONDITION_OR_CAPTURE_FAILED","INPUT_CHANGED"}
+INTEGRITY_PHASES={"TEMP","CONTROLLER","SOURCE","DEPENDENCIES","TOOLS","COMPLETE"}
+
+
+def failure_summary(evidence):
+    status=evidence.get('status')
+    note={'controllerStatus':status if isinstance(status,str) and status in CONTROLLER_STATUSES else 'UNKNOWN'}
+    code=evidence.get('controllerExitCode')
+    if type(code) is int:note['controllerExitCode']=code
+    phase=evidence.get('integrityPhase')
+    if isinstance(phase,str) and phase in INTEGRITY_PHASES:note['integrityPhase']=phase
+    for key in ('error','integrityError','publicationError'):
+        text=evidence.get(key)
+        if isinstance(text,str):note[key+'TextSha256']=sha(text.encode('utf-8','replace'))
+    return note
+
+
 def refusal_locations(value, environment, location="receipt"):
     """Report bounded locations and hashes; never export offending contents."""
     found=[]
@@ -19,9 +52,10 @@ def refusal_locations(value, environment, location="receipt"):
         if isinstance(item,dict):
             for key,child in item.items():
                 spelling=str(key)
-                safe_key=spelling if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}",spelling) else "key-"+sha(spelling.encode())[:16]
+                inspect(spelling,where+".<key-"+sha(spelling.encode())[:16]+">")
+                safe_key=spelling if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}",spelling) and not private_reasons(spelling,environment) else "key-"+sha(spelling.encode())[:16]
                 inspect(child,where+"."+safe_key)
-        elif isinstance(item,list):
+        elif isinstance(item,(list,tuple)):
             for index,child in enumerate(item):inspect(child,where+"["+str(index)+"]")
         elif isinstance(item,str):
             reasons=private_reasons(item,environment)
@@ -106,7 +140,7 @@ def publish(public, evidence, build_log, disassemblies, mappings, environment, v
     if notes:clean["derivedIr"] = sanitize(notes, mappings)
     log_bytes=log.encode("utf-8")
     log_reasons=private_reasons(log,environment)
-    reasons = private_reasons(json.dumps(clean), environment)
+    reasons = structured_private_reasons(clean, environment)
     if reasons:
         # A minimal refusal is safe even if arbitrary subprocess output is not.
         locations=refusal_locations(clean,environment)+refusal_locations(log,environment,"buildLog")
@@ -115,6 +149,7 @@ def publish(public, evidence, build_log, disassemblies, mappings, environment, v
                  "targetInvocations":evidence.get("targetInvocations",0),
                  "processExitCode":evidence.get("processExitCode"),
                  "rawBitcodePublished":False}
+        clean.update(failure_summary(evidence))
         outputs = []
     elif log_reasons:
         # A private aggregate log does not invalidate independently safe fields.
@@ -126,7 +161,8 @@ def publish(public, evidence, build_log, disassemblies, mappings, environment, v
         outputs.append(("build.sanitized.log", log))
     outputs.append(("receipt.json", json.dumps(clean,indent=2)+"\n"))
     for name, text in outputs:
-        if private_reasons(text, environment):
-            raise ValueError("publication failed its final privacy scan")
+        reasons=(structured_private_reasons(json.loads(text),environment) if name=="receipt.json"
+                 else private_reasons(text,environment))
+        if reasons:raise ValueError("publication failed its final privacy scan")
         (public/name).write_text(text,encoding="utf-8")
     return clean
