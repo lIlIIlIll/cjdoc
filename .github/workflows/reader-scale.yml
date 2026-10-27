@@ -132,7 +132,9 @@ jobs:
           baseline="${RUNNER_TEMP}/reader-baseline-source"
           mv reader-scale-baseline-source "${baseline}"
           export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"
-          . scripts/with_sts_cjpm.sh
+          # Reproduce the immutable generator with its recorded STS policy.
+          # Its markdown dependency hits the documented llc crash at -O2.
+          . "${baseline}/scripts/with_sts_o1_cjpm.sh"
           GITHUB_WORKSPACE="${baseline}" bash "${baseline}/scripts/check.sh" build \
             --repo "${baseline}" \
             --main-binary-out "${baseline}/target/release/bin/main" \
