@@ -1,11 +1,17 @@
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
 
 from sdk_cache_identity import inspect_cache, publish
+
+
+def workflow_job(workflow, name):
+    body = workflow.split(f"\n  {name}:\n", 1)[1]
+    return re.split(r"\n(?=  [A-Za-z0-9_-]+:\s*\n)", body, maxsplit=1)[0]
 
 
 class CacheIdentityTests(unittest.TestCase):
@@ -28,7 +34,7 @@ class CacheIdentityTests(unittest.TestCase):
     def test_manual_cache_mode_cannot_run_capture_or_mutate_cache(self):
         workflow=(Path(__file__).resolve().parents[1]/'.github/workflows/ci.yml').read_text()
         capture=workflow.split('  capture:',1)[1].split('  cache-identity:',1)[0]
-        cache=workflow.split('  cache-identity:',1)[1]
+        cache=workflow_job(workflow,'cache-identity')
         self.assertIn("if: ${{ inputs.mode == 'capture' }}",capture)
         self.assertIn("if: ${{ inputs.mode == 'cache-identity' }}",cache)
         self.assertIn('actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9',cache)
@@ -43,6 +49,13 @@ class CacheIdentityTests(unittest.TestCase):
         self.assertNotIn('cjpm ',cache)
         self.assertIn('path: ${{ runner.temp }}/original-sdk-cache-identity/receipt.json',cache)
         self.assertIn('retention-days: 3',cache)
+
+    def test_cache_job_excludes_an_appended_unrelated_job(self):
+        workflow = "jobs:\n  cache-identity:\n    run: inspect-only\n"
+        unrelated = "\n  another-job:\n    uses: example/setup-cangjie@fixture\n"
+        self.assertEqual(workflow_job(workflow + unrelated, 'cache-identity'),
+                         workflow_job(workflow, 'cache-identity'))
+        self.assertNotIn('setup-cangjie@', workflow_job(workflow + unrelated, 'cache-identity'))
 
     def test_records_actual_bytes_without_executing_any_tool(self):
         with patch('subprocess.run',side_effect=AssertionError('must not execute')), patch('subprocess.Popen',side_effect=AssertionError('must not execute')):

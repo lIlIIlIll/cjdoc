@@ -27,6 +27,11 @@ FLAGS = {
         "--filetype=obj", "-o",
     ),
 }
+TRACE_PACKAGES = {
+    "dependencies": frozenset({"yjson", "markdown"}),
+    "pr166-provider-155": frozenset({"cjdoc", "markdown"}),
+}
+
 # These profiles are the complete flags printed in the original failing native
 # commands. A changed profile is evidence to inspect, not permission to guess.
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -48,6 +53,7 @@ class TraceRequest:
     directory: Path
     environment: dict[str, str]
     package: str = "yjson"
+    scope: str = "dependencies"
 
 
 def _command_path(value: str, platform: str) -> str:
@@ -69,7 +75,7 @@ def observed_profile(request: TraceRequest) -> dict:
     The real failure line is sufficient; do not add -V to the product target.
     Parsed shell text is evidence only and is never executed.
     """
-    if request.package not in {"yjson","markdown"}:
+    if request.package not in TRACE_PACKAGES.get(request.scope, frozenset()):
         raise ValueError("backend package is outside the frozen diagnostic scope")
     filename=request.package+".opt.bc"
     rows = [ANSI.sub("", row) for row in request.build_log.splitlines()]

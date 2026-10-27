@@ -39,8 +39,10 @@ class YjsonLinks(IrLinks):
 
 
 class DependencyLinks(IrLinks):
+    names=frozenset({'yjson.opt.bc','markdown.opt.bc'})
+
     def accept(self,path):
-        if path.name in {'yjson.opt.bc','markdown.opt.bc'}:super().accept(path)
+        if path.name in self.names:super().accept(path)
 
 
 class CompilerTempLinks(DependencyLinks):
@@ -55,7 +57,7 @@ class CompilerTempLinks(DependencyLinks):
         roots=[]
         with os.scandir(self.temporary) as entries:
             for entry in entries:
-                if entry.name in {'yjson.opt.bc','markdown.opt.bc'}:
+                if entry.name in self.names:
                     raise CaptureMissed('dependency IR outside the compiler temporary namespace')
                 if not entry.name.startswith('cangjie-tmp-'):continue
                 try:info=entry.stat(follow_symlinks=False)
@@ -81,6 +83,11 @@ class CompilerTempLinks(DependencyLinks):
 
 
 class FullGateAttempt(PipelineAttempt):
+    source_commit=ORIGINAL_MERGE
+    profile_name='original-native-full-gate'
+    dependency_links=DependencyLinks
+    compiler_temp_links=CompilerTempLinks
+
     def __init__(self,source,output,selected,**kwargs):
         if selected not in {'windows-x64','macos-arm64'}:raise ValueError('unsupported native platform')
         inherited=os.environ.copy()
@@ -108,10 +115,11 @@ class FullGateAttempt(PipelineAttempt):
         if not self.original_bash.is_absolute() or not self.original_bash.is_file():
             raise ValueError('original workflow Bash is not an existing absolute executable path')
         self.original_bash.resolve(strict=True)
-        self.evidence['sourceCommit']=ORIGINAL_MERGE
+        self.evidence['sourceCommit']=self.source_commit
+        self.evidence['sourceTree']=self.source_tree
         self.evidence['entryProfile']={
-            'name':'original-native-full-gate','stages':['preflight','build','native','python-tools','cli','provider'],
-            'originalPrMergeCommit':ORIGINAL_MERGE,'sourceTreeEqualsOriginalPrMergeTree':TREE,
+            'name':self.profile_name,'stages':['preflight','build','native','python-tools','cli','provider'],
+            'originalPrMergeCommit':self.source_commit,'sourceTreeEqualsOriginalPrMergeTree':self.source_tree,
             'inheritedTemporaryEnvironment':{key:inherited.get(key) for key in ('TMPDIR','TMP','TEMP','RUNNER_TEMP')},
             'extraCompilerPreflight':False,'extraDependencyResolve':False,'verboseAdded':False,
             'macosFixtureSnapshotAndRestore':selected=='macos-arm64',
@@ -133,7 +141,7 @@ class FullGateAttempt(PipelineAttempt):
 
     def retention_links(self):
         if self.selected!='macos-arm64':
-            return DependencyLinks(self.temporary,self.pipeline_retained)
+            return self.dependency_links(self.temporary,self.pipeline_retained)
         data=self.tools['cjc'].read_bytes()
         observed={'sha256':hashlib.sha256(data).hexdigest(),'size':len(data)}
         before=self.evidence['toolsBefore']['cjc']
@@ -149,7 +157,7 @@ class FullGateAttempt(PipelineAttempt):
             'sourceProtocolCommit':'91c24c4fc5ce6d77cb14ff6d63d04dca85e5d803',
             'observedCjc':observed,'frozenLiteralsPresent':True,
             'provenanceLimit':'Release-tag driver source and native path observations; not an exact binary rebuild proof'}
-        return CompilerTempLinks(self.temporary,self.pipeline_retained)
+        return self.compiler_temp_links(self.temporary,self.pipeline_retained)
 
     def stage_script(self):
         script='set -euo pipefail\n'
@@ -167,7 +175,8 @@ class FullGateAttempt(PipelineAttempt):
             '--worker-binary-out target/release/bin/chir-worker-main\n')
 
 
-def main():
+def main(attempt_type=None):
+    if attempt_type is None:attempt_type=FullGateAttempt
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
@@ -180,7 +189,7 @@ def main():
     try:
         if args.output.exists() or args.output.is_symlink():parser.error('output exists; no retry')
         args.output.mkdir(mode=0o700);prepared=True
-        attempt=FullGateAttempt(args.source,args.output,args.platform)
+        attempt=attempt_type(args.source,args.output,args.platform)
     except Exception as error:return entry_failure(args.output if prepared else None,error)
     try:return attempt.execute()
     except Exception as error:

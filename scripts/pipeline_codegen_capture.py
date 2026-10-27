@@ -14,7 +14,7 @@ import tempfile
 from ir_events import EventWatch
 from ir_hardlinks import CaptureMissed, IrLinks
 from ir_publication import publish
-from native_backend_trace import TraceRequest, observed_profile, trace_once
+from native_backend_trace import TRACE_PACKAGES, TraceRequest, observed_profile, trace_once
 from native_capture_support import digest, inventory
 from native_codegen_capture import Attempt, ChildFailed, SOURCE, TREE
 
@@ -56,8 +56,8 @@ def temporary_aliases(root, lookup=None):
     return aliases
 
 
-def select_yjson(rows, result, log, tools, temporary, retained, environment, aliases=None, selected="windows-x64", packages=("yjson",)):
-    if not packages or len(set(packages))!=len(packages) or not set(packages)<={'yjson','markdown'}:
+def select_yjson(rows, result, log, tools, temporary, retained, environment, aliases=None, selected="windows-x64", packages=("yjson",), scope="dependencies"):
+    if not packages or len(set(packages))!=len(packages) or not set(packages)<=TRACE_PACKAGES.get(scope, frozenset()):
         raise ValueError('trace packages differ from the frozen scope')
     filenames={name+'.opt.bc' for name in packages}
     candidates=[row for row in rows if row['name'] in filenames]
@@ -75,7 +75,7 @@ def select_yjson(rows, result, log, tools, temporary, retained, environment, ali
             original=alias/row['sourceRelative']
             request=TraceRequest(selected,tools['llc'],digest(tools['llc']),
                 retained/row['retained'],row['sha256'],original,
-                log,retained/'unused-profile-check',environment,package=row['name'].removesuffix('.opt.bc'))
+                log,retained/'unused-profile-check',environment,package=row['name'].removesuffix('.opt.bc'),scope=scope)
             try:observed_profile(request)
             except ValueError:continue
             matches.append((row,original))
@@ -84,6 +84,9 @@ def select_yjson(rows, result, log, tools, temporary, retained, environment, ali
 
 
 class PipelineAttempt(Attempt):
+    source_tree=TREE
+    trace_scope="dependencies"
+
     def __init__(self,source,output,selected='windows-x64',**kwargs):
         if selected!='windows-x64':raise ValueError('original pipeline profile is Windows-only')
         inherited=os.environ.copy()
@@ -171,7 +174,7 @@ class PipelineAttempt(Attempt):
         finally:self.evidence['targetCaptureIssues']=links.issues
         self.evidence['status']='CAPTURED_BUILD_FAILED' if result.returncode else 'CAPTURED_BUILD_SUCCEEDED'
         selected,failure,original=select_yjson(rows,result,self.build_log,self.tools,self.temporary,
-                                     self.pipeline_retained,self.environment,self.temporary_aliases,selected=self.selected,packages=self.trace_packages())
+                                     self.pipeline_retained,self.environment,self.temporary_aliases,selected=self.selected,packages=self.trace_packages(),scope=self.trace_scope)
         package=selected['name'].removesuffix('.opt.bc')
         meaning='Unique original failed backend path' if failure else 'First observed '+package+' input; no failed backend reported'
         self.evidence['selectedDependencyIr']=selected
@@ -199,7 +202,7 @@ class PipelineAttempt(Attempt):
             try:
                 request=TraceRequest(self.selected,self.tools['llc'],self.evidence['toolsBefore']['llc']['sha256'],
                     self.pipeline_retained/selected['retained'],selected['sha256'],
-                    original,self.build_log,directory,self.environment,package=package)
+                    original,self.build_log,directory,self.environment,package=package,scope=self.trace_scope)
                 self.evidence['backendTrace']=trace_once(request)
                 if not self.evidence['backendTrace']['inputsUnchanged']:
                     self.evidence['status']='INPUT_CHANGED';self.evidence['integrityError']='backend input changed'
@@ -215,7 +218,7 @@ class PipelineAttempt(Attempt):
             self.configure_dependency_inputs()
             if self.selected=='windows-x64':
                 self.git.read(self.source,'config','--global','core.longpaths','true')
-            initial=self.git.snapshot(self.source,self.evidence['sourceCommit'],TREE);self.evidence['sourceBefore']=initial
+            initial=self.git.snapshot(self.source,self.evidence['sourceCommit'],self.source_tree);self.evidence['sourceBefore']=initial
             self.authenticate();self.lock_pins()
             prior=self.dependencies(allow_missing=True)
             self.evidence['dependenciesBeforeTarget']=prior
@@ -241,7 +244,7 @@ class PipelineAttempt(Attempt):
                     raise ValueError('controller identity changed')
                 if initial is not None:
                     self.evidence['integrityPhase']='SOURCE'
-                    after=self.git.snapshot(self.source,self.evidence['sourceCommit'],TREE);self.evidence['sourceAfter']=after
+                    after=self.git.snapshot(self.source,self.evidence['sourceCommit'],self.source_tree);self.evidence['sourceAfter']=after
                     if after!=initial:raise ValueError('source identity changed')
                 if self.evidence['targetInvocations']:
                     self.evidence['integrityPhase']='DEPENDENCIES'
