@@ -55,6 +55,8 @@ class HtmlStampEditorialTest {
         @Expect(html.contains("class=\"parameter-declaration\""), true)
         @Expect(!html.contains(">返回值</h3>"), true)
         @Expect(!html.contains("class=\"return-value\""), true)
+        @Expect(html.contains("class=\"declaration-summary member-detail member-static\""), true)
+        @Expect(html.contains("data-member-name=\"text\""), true)
         @Expect(encodeDocIr(documentation), original)
     }
 
@@ -75,7 +77,8 @@ class HtmlStampEditorialTest {
     func memberGridAndBodyShareOneLogicalInset(): Unit {
         @Expect(HTML_REFERENCE_BROWSER_STYLE.contains("--member-content-inset"), true)
         @Expect(HTML_REFERENCE_BROWSER_STYLE.contains("padding-inline:var(--member-content-inset)"), true)
-        @Expect(HTML_REFERENCE_BROWSER_STYLE.contains("min-height:3.25rem"), true)
+        @Expect(HTML_REFERENCE_BROWSER_STYLE.contains("min-height:3.35rem"), true)
         @Expect(HTML_REFERENCE_BROWSER_STYLE.contains(".see-also-list"), true)
+        @Expect(HTML_SEARCH_SCRIPT.contains("expandableMemberRows"), true)
     }
 }

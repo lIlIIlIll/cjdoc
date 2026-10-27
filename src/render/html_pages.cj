@@ -202,8 +202,53 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     rootPrefix: String, locale: String): Unit {
     let member = entry.symbol
     let anchor = symbolAnchor(member)
-    out.append("<div class=\"member-row\"><details class=\"declaration-summary member-detail\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\" data-member-origin=\"${escapeHtml(entry.origin)}\">")
-    out.append("<summary class=\"member-detail-summary\" id=\"" + escapeHtml(anchor) +
+    let body = RenderTextBuffer()
+    if (entry.origin != "declared") {
+        match (entry.declaredBy) {
+            case Some(declaredBy) =>
+                body.append("<p class=\"member-origin\">" +
+                    escapeHtml(memberOriginLabel(entry.origin, locale)) + " · <a href=\"" +
+                    rootPrefix + escapeHtml(symbolPagePath(declaredBy)) + "\"><code>" +
+                    escapeHtml(readerQualifiedName(declaredBy)) + "</code></a></p>")
+                if (entry.origin == "extension") {
+                    body.append("<p class=\"extension-conditions\">" +
+                        label(locale,
+                            "Subject to the extension target and constraints; applicability is not inferred.",
+                            "成员受扩展目标与约束限制；此处不推断对具体实例的适用性。") +
+                        "</p>")
+                    if (!declaredBy.headerSpelling.isEmpty()) {
+                        body.append("<pre class=\"extension-signature\"><code")
+                        appendCodeSourceAttribute(body, declaredBy.headerSpelling)
+                        body.append(">")
+                        appendSignatureTextHtml(body, declaredBy)
+                        body.append("</code></pre>")
+                    }
+                }
+            case None => ()
+        }
+    }
+    appendDocumentationHtml(body, index, member, rootPrefix, assetLookup, typeLinkIndex,
+        headingBase: 3, locale: locale)
+    appendReaderRelationships(body, index, member, rootPrefix, typeLinkIndex, locale,
+        headingTag: "h3")
+    appendReverseTypeUsages(body, index, typeLinkIndex, member, rootPrefix, locale)
+    projection.apiGuides(documentation, locale).append(body, member, locale,
+        headingTag: "h3", headingSuffix: "-inline-" + htmlStableSlug(member.id))
+    // The containing type page owns the unavailable-reference report; only
+    // available member-specific links are repeated next to the member.
+    body.append(externalDocumentationHtml(documentation, member, locale,
+        compactUnavailable: true, includeUnavailable: false))
+    let bodyHtml = body.toString()
+    // A documented field without extra contract content is not an accordion.
+    // Keep its summary and permalink usable without a blank disclosure panel.
+    let staticField = member.kind == "variable" && bodyHtml.trimAscii().isEmpty()
+    let wrapper = if (staticField) { "div" } else { "details" }
+    let header = if (staticField) { "div" } else { "summary" }
+    let staticClass = if (staticField) { " member-static" } else { "" }
+    out.append("<div class=\"member-row\"><" + wrapper +
+        " class=\"declaration-summary member-detail" + staticClass +
+        "\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\" data-member-origin=\"${escapeHtml(entry.origin)}\">")
+    out.append("<" + header + " class=\"member-detail-summary\" id=\"" + escapeHtml(anchor) +
         "-summary\" data-cjdoc-toc-role=\"member\" data-cjdoc-toc-label=\"" +
         escapeHtml(htmlContextLabel(member)) + "\"><span class=\"member-summary-main\">")
     if (!member.headerSpelling.isEmpty()) {
@@ -226,43 +271,13 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
             }
         case None => ()
     }
-    out.append("</summary><div class=\"member-detail-body\">")
-    if (entry.origin != "declared") {
-        match (entry.declaredBy) {
-            case Some(declaredBy) =>
-                out.append("<p class=\"member-origin\">" +
-                    escapeHtml(memberOriginLabel(entry.origin, locale)) + " · <a href=\"" +
-                    rootPrefix + escapeHtml(symbolPagePath(declaredBy)) + "\"><code>" +
-                    escapeHtml(readerQualifiedName(declaredBy)) + "</code></a></p>")
-                if (entry.origin == "extension") {
-                    out.append("<p class=\"extension-conditions\">" +
-                        label(locale,
-                            "Subject to the extension target and constraints; applicability is not inferred.",
-                            "成员受扩展目标与约束限制；此处不推断对具体实例的适用性。") +
-                        "</p>")
-                    if (!declaredBy.headerSpelling.isEmpty()) {
-                        out.append("<pre class=\"extension-signature\"><code")
-                        appendCodeSourceAttribute(out, declaredBy.headerSpelling)
-                        out.append(">")
-                        appendSignatureTextHtml(out, declaredBy)
-                        out.append("</code></pre>")
-                    }
-                }
-            case None => ()
-        }
+    out.append("</" + header + ">")
+    if (!staticField) {
+        out.append("<div class=\"member-detail-body\">")
+        out.append(bodyHtml)
+        out.append("</div>")
     }
-    appendDocumentationHtml(out, index, member, rootPrefix, assetLookup, typeLinkIndex,
-        headingBase: 3, locale: locale)
-    appendReaderRelationships(out, index, member, rootPrefix, typeLinkIndex, locale,
-        headingTag: "h3")
-    appendReverseTypeUsages(out, index, typeLinkIndex, member, rootPrefix, locale)
-    projection.apiGuides(documentation, locale).append(out, member, locale,
-        headingTag: "h3", headingSuffix: "-inline-" + htmlStableSlug(member.id))
-    // The containing type page owns one aggregate unavailable-reference report.
-    // Available member-specific references remain readable here.
-    out.append(externalDocumentationHtml(documentation, member, locale,
-        compactUnavailable: true, includeUnavailable: false))
-    out.append("</div></details>")
+    out.append("</" + wrapper + ">")
     appendInlineMemberActions(out, documentation, projection, member, rootPrefix, locale)
     out.append("</div>\n")
 }
