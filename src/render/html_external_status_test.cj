@@ -40,7 +40,7 @@ class HtmlExternalStatusTest {
             @Expect(html.split("Shared dependency index failure").size, 2)
             @Expect(html.split("Distinct ambiguity").size, 2)
             @Expect(html.split("id=\"external-reference-status\"").size, 2)
-            @Expect(html.split("href=\"#external-reference-status\"").size, 4)
+            @Expect(!html.contains("href=\"#external-reference-status\""))
             @Expect(html.contains("href=\"https://docs.example.test/first.html\""))
             @Expect(html.contains("public func first()"))
             @Expect(html.contains("public func second()"))

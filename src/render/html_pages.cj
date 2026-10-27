@@ -258,7 +258,10 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     appendReverseTypeUsages(out, index, typeLinkIndex, member, rootPrefix, locale)
     projection.apiGuides(documentation, locale).append(out, member, locale,
         headingTag: "h3", headingSuffix: "-inline-" + htmlStableSlug(member.id))
-    out.append(externalDocumentationHtml(documentation, member, locale, compactUnavailable: true))
+    // The containing type page owns one aggregate unavailable-reference report.
+    // Available member-specific references remain readable here.
+    out.append(externalDocumentationHtml(documentation, member, locale,
+        compactUnavailable: true, includeUnavailable: false))
     out.append("</div></details>")
     appendInlineMemberActions(out, documentation, projection, member, rootPrefix, locale)
     out.append("</div>\n")
