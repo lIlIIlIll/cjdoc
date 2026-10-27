@@ -70,10 +70,13 @@ class IrLinks:
             except (OSError, ValueError) as error:
                 self.issues.append(type(error).__name__ + ": " + str(error))
 
+    def walk(self):
+        return os.walk(self.temporary, followlinks=False)
+
     def scan(self):
         # Called only on filesystem notifications, once at startup and once at
         # shutdown. There is no timer or unchanged-state polling.
-        for directory, names, files in os.walk(self.temporary, followlinks=False):
+        for directory, names, files in self.walk():
             names[:] = [name for name in names
                         if not (Path(directory) / name).is_symlink()
                         and not (hasattr(Path(directory) / name, "is_junction")

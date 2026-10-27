@@ -2,12 +2,14 @@
 """One original full acceptance gate; passive dependency IR capture is diagnostic only."""
 from __future__ import annotations
 import argparse
+import hashlib
+import stat
 import os
 from pathlib import Path
 import platform
 import sys
 
-from ir_hardlinks import IrLinks
+from ir_hardlinks import CaptureMissed, IrLinks
 from native_capture_support import digest, inventory
 from native_codegen_capture import Attempt, TREE
 from pipeline_codegen_capture import PipelineAttempt, inherited_temporary, temporary_aliases, entry_failure
@@ -39,6 +41,43 @@ class YjsonLinks(IrLinks):
 class DependencyLinks(IrLinks):
     def accept(self,path):
         if path.name in {'yjson.opt.bc','markdown.opt.bc'}:super().accept(path)
+
+
+class CompilerTempLinks(DependencyLinks):
+    """STS 1.2.0 normal compile outputs below direct cangjie-tmp-* children.
+
+    Driver source v1.2.0 (91c24c4): TempFileManager.cpp creates this child
+    under inherited TMPDIR and puts T_OPT_BC there; CJNATIVEBackend passes it
+    to llc. Prior native captures independently confirm this path shape.
+    This namespace is an explicit observation scope, not a filesystem bypass.
+    """
+    def walk(self):
+        roots=[]
+        with os.scandir(self.temporary) as entries:
+            for entry in entries:
+                if entry.name in {'yjson.opt.bc','markdown.opt.bc'}:
+                    raise CaptureMissed('dependency IR outside the compiler temporary namespace')
+                if not entry.name.startswith('cangjie-tmp-'):continue
+                try:info=entry.stat(follow_symlinks=False)
+                except FileNotFoundError:continue
+                if not stat.S_ISDIR(info.st_mode) or entry.is_symlink():
+                    raise CaptureMissed('compiler temporary child is not an ordinary directory')
+                roots.append(Path(entry.path))
+        # Keep the inherited Temp root subscribed so late compiler children are
+        # discovered. Unrelated first-level namespaces are never traversed.
+        yield str(self.temporary),[path.name for path in roots],[]
+        def failed(error):
+            if isinstance(error,FileNotFoundError):return
+            raise error
+        for path in roots:
+            for directory,names,files in os.walk(path,followlinks=False,onerror=failed):
+                for name in names:
+                    child=Path(directory)/name
+                    try:info=child.lstat()
+                    except FileNotFoundError:continue
+                    if stat.S_ISLNK(info.st_mode):
+                        raise CaptureMissed('symlink inside the compiler temporary namespace')
+                yield directory,names,files
 
 
 class FullGateAttempt(PipelineAttempt):
@@ -83,7 +122,7 @@ class FullGateAttempt(PipelineAttempt):
         result=super().identity();path=Path(__file__).resolve()
         result['modules'].append({'path':str(path),'sha256':digest(path)})
         result['entryShell']={'path':str(self.original_bash),'sha256':digest(self.original_bash)}
-        result['candidateFiles']+=inventory(path.parents[1],['scripts/full_gate_codegen_capture.py','scripts/test_full_gate_codegen_capture.py'])
+        result['candidateFiles']+=inventory(path.parents[1],['scripts/full_gate_codegen_capture.py','scripts/test_full_gate_codegen_capture.py','scripts/test_compiler_temp_scope.py'])
         return result
 
     def entry_shell(self):
@@ -93,7 +132,24 @@ class FullGateAttempt(PipelineAttempt):
         return ('yjson','markdown')
 
     def retention_links(self):
-        return DependencyLinks(self.temporary,self.pipeline_retained)
+        if self.selected!='macos-arm64':
+            return DependencyLinks(self.temporary,self.pipeline_retained)
+        data=self.tools['cjc'].read_bytes()
+        observed={'sha256':hashlib.sha256(data).hexdigest(),'size':len(data)}
+        before=self.evidence['toolsBefore']['cjc']
+        if any(observed[key]!=before[key] for key in observed):
+            raise ValueError('CJC identity changed before directory observation')
+        if b'cangjie-tmp-' not in data or b'.opt.bc' not in data:
+            raise ValueError('CJC does not contain the frozen temporary namespace literals')
+        self.evidence['compilerTempObservation']={
+            'profile':'sts-1.2.0-direct-cangjie-tmp-children',
+            'inheritedTempRootMonitored':True,'recursiveCompilerChildren':True,
+            'unrelatedFirstLevelNamespaces':'EXCLUDED',
+            'namespacePermissionErrors':'FAIL_CAPTURE',
+            'sourceProtocolCommit':'91c24c4fc5ce6d77cb14ff6d63d04dca85e5d803',
+            'observedCjc':observed,'frozenLiteralsPresent':True,
+            'provenanceLimit':'Release-tag driver source and native path observations; not an exact binary rebuild proof'}
+        return CompilerTempLinks(self.temporary,self.pipeline_retained)
 
     def stage_script(self):
         script='set -euo pipefail\n'

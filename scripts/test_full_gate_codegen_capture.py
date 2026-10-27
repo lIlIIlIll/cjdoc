@@ -127,7 +127,7 @@ class FailingDependencyCaptureTests(unittest.TestCase):
     def test_full_gate_retains_actual_markdown_and_yjson_only(self):
         with tempfile.TemporaryDirectory() as name:
             root=Path(name);temporary=root/'tmp';temporary.mkdir();retained=root/'retained';retained.mkdir()
-            attempt=object.__new__(full.FullGateAttempt);attempt.temporary=temporary;attempt.pipeline_retained=retained
+            attempt=object.__new__(full.FullGateAttempt);attempt.temporary=temporary;attempt.pipeline_retained=retained;attempt.selected='windows-x64'
             links=attempt.retention_links()
             for filename in ['yjson.opt.bc','markdown.opt.bc','cjdoc.opt.bc']:
                 path=temporary/filename;path.write_bytes(filename.encode());links.accept(path);path.unlink()

@@ -901,7 +901,7 @@ class EventWatchShutdownTests(unittest.TestCase):
             stack.enter_context(patch.object(ir_events.select,'kqueue',return_value=queue,create=True))
             stack.enter_context(patch.object(ir_events.select,'kevent',return_value=object(),create=True))
             stack.enter_context(patch.object(ir_events.socket,'socketpair',return_value=(reader,writer)))
-            links=SimpleNamespace(temporary=Path(name),scan=Mock())
+            links=SimpleNamespace(temporary=Path(name),scan=Mock(),walk=lambda:os.walk(name,followlinks=False))
             watch=ir_events.EventWatch(links,'macos-arm64');watch.thread=Mock();watch.thread.is_alive.return_value=False
             watch._run()
             expected=('ValueError: observer primary fixture failure' if event_error is None else

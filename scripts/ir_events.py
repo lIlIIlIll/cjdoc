@@ -76,7 +76,7 @@ class MacEvents:
         directories = {}
         def register():
             paths = [self.links.temporary]
-            for root, names, _ in os.walk(self.links.temporary, followlinks=False):
+            for root, names, _ in self.links.walk():
                 names[:] = [n for n in names if not (Path(root) / n).is_symlink()]
                 paths.extend(Path(root) / n for n in names)
             for path in paths:
