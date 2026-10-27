@@ -780,10 +780,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:",workflow)
         self.assertNotIn("pull_request:",workflow);self.assertNotIn("  push:",workflow)
         self.assertIn("contents: read",workflow);self.assertIn("retention-days: 3",workflow)
-        # macOS already has accepted native receipts; only Windows needs follow-up.
-        self.assertIn("runner: windows-2022",workflow)
-        self.assertNotIn("runner: macos-15",workflow)
-        self.assertEqual(workflow.count("- platform:"),1)
+        # The original capture mode remains Windows-only; other explicit modes
+        # may restore the original cross-platform gate without changing it.
+        capture=workflow.split("  capture:\n",1)[1].split("\n  original-pipeline:\n",1)[0]
+        self.assertIn("runner: windows-2022",capture)
+        self.assertNotIn("runner: macos-15",capture)
+        self.assertEqual(capture.count("- platform:"),1)
         self.assertIn("ref: "+SOURCE,workflow);self.assertIn("path: controller",workflow)
         self.assertIn("path: product",workflow);self.assertNotIn("--save-temps",workflow)
         self.assertNotIn("public/*",workflow);self.assertNotIn("private/",workflow)

@@ -56,7 +56,7 @@ def temporary_aliases(root, lookup=None):
     return aliases
 
 
-def select_yjson(rows, result, log, tools, temporary, retained, environment, aliases=None):
+def select_yjson(rows, result, log, tools, temporary, retained, environment, aliases=None, selected="windows-x64"):
     candidates=[row for row in rows if row['name']=='yjson.opt.bc']
     if not candidates:raise CaptureMissed('original pipeline produced no captured yjson IR; no retry')
     failures=[line for line in log.splitlines() if 'yjson.opt.bc' in line and 'llc' in line
@@ -69,7 +69,7 @@ def select_yjson(rows, result, log, tools, temporary, retained, environment, ali
     for row in candidates:
         for alias in aliases or [temporary]:
             original=alias/row['sourceRelative']
-            request=TraceRequest('windows-x64',tools['llc'],digest(tools['llc']),
+            request=TraceRequest(selected,tools['llc'],digest(tools['llc']),
                 retained/row['retained'],row['sha256'],original,
                 log,retained/'unused-profile-check',environment)
             try:observed_profile(request)
@@ -120,27 +120,36 @@ class PipelineAttempt(Attempt):
                                                  'scripts/test_pipeline_codegen_capture.py'])
         return result
 
-    def target(self):
-        if (self.source/'target').exists():raise ValueError('original build target must be fresh')
-        if list(self.temporary.rglob('*.opt.bc')):
-            raise CaptureMissed('inherited temp contains prior optimized IR; no files removed')
-        shell=shutil.which('bash',path=self.environment['PATH'])
-        if shell is None:raise ValueError('original Bash entry unavailable')
-        self.mappings.extend([(Path(shell),'<bash>'),(Path(shell).resolve(),'<bash>')])
-        self.pipeline_retained=Path(tempfile.mkdtemp(prefix='cjdoc-pipeline-retained-',dir=self.temporary.parent))
-        self.pipeline_retained.chmod(0o700)
-        self.mappings.append((self.pipeline_retained,'<retained>'))
-        self.evidence['retentionRoot']=str(self.pipeline_retained)
-        links=IrLinks(self.temporary,self.pipeline_retained)
-        watch=self.watcher(links,self.selected)
-        script=self.private/'original-stages.sh'
-        script.write_text('set -euo pipefail\n'
+    def entry_shell(self):
+        return shutil.which('bash',path=self.environment['PATH'])
+
+    def stage_script(self):
+        return ('set -euo pipefail\n'
             'export CANGJIE_STDX_PATH="${CJDOC_STDX_PATH}"\n'
             '. "$GITHUB_WORKSPACE/scripts/with_sts_cjpm.sh"\n'
             'bash scripts/check.sh preflight --manifest target/ci-build/build-manifest.json '
             '--worker-binary-out target/release/bin/chir-worker-main\n'
             'bash scripts/check.sh build --manifest target/ci-build/build-manifest.json '
             '--worker-binary-out target/release/bin/chir-worker-main\n')
+
+    def retention_links(self):
+        return IrLinks(self.temporary,self.pipeline_retained)
+
+    def target(self):
+        if (self.source/'target').exists():raise ValueError('original build target must be fresh')
+        if list(self.temporary.rglob('*.opt.bc')):
+            raise CaptureMissed('inherited temp contains prior optimized IR; no files removed')
+        shell=self.entry_shell()
+        if shell is None:raise ValueError('original Bash entry unavailable')
+        self.mappings.extend([(Path(shell),'<bash>'),(Path(shell).resolve(),'<bash>')])
+        self.pipeline_retained=Path(tempfile.mkdtemp(prefix='cjdoc-pipeline-retained-',dir=self.temporary.parent))
+        self.pipeline_retained.chmod(0o700)
+        self.mappings.append((self.pipeline_retained,'<retained>'))
+        self.evidence['retentionRoot']=str(self.pipeline_retained)
+        links=self.retention_links()
+        watch=self.watcher(links,self.selected)
+        script=self.private/'original-stages.sh'
+        script.write_text(self.stage_script())
         (self.output/'target-attempt.marker').open('x').close()
         self.evidence['targetCommand']=[shell,str(script)]
         try:
@@ -155,7 +164,7 @@ class PipelineAttempt(Attempt):
         finally:self.evidence['targetCaptureIssues']=links.issues
         self.evidence['status']='CAPTURED_BUILD_FAILED' if result.returncode else 'CAPTURED_BUILD_SUCCEEDED'
         selected,failure,original=select_yjson(rows,result,self.build_log,self.tools,self.temporary,
-                                     self.pipeline_retained,self.environment,self.temporary_aliases)
+                                     self.pipeline_retained,self.environment,self.temporary_aliases,selected=self.selected)
         self.evidence['selectedYjson']=selected
         self.evidence['selectedYjsonMeaning']='Unique original failed backend path' if failure else 'First observed yjson input; no failed backend reported'
         self.evidence['wrapperInvocationLog']=None
@@ -187,8 +196,9 @@ class PipelineAttempt(Attempt):
             self.evidence['controllerBefore']=self.identity()
             (self.output/'attempt.marker').open('x').close()
             self.configure_dependency_inputs()
-            self.git.read(self.source,'config','--global','core.longpaths','true')
-            initial=self.git.snapshot(self.source,SOURCE,TREE);self.evidence['sourceBefore']=initial
+            if self.selected=='windows-x64':
+                self.git.read(self.source,'config','--global','core.longpaths','true')
+            initial=self.git.snapshot(self.source,self.evidence['sourceCommit'],TREE);self.evidence['sourceBefore']=initial
             self.authenticate();self.lock_pins()
             prior=self.dependencies(allow_missing=True)
             self.evidence['dependenciesBeforeTarget']=prior
@@ -211,7 +221,7 @@ class PipelineAttempt(Attempt):
                 if self.evidence['controllerAfter']!=self.evidence.get('controllerBefore'):
                     raise ValueError('controller identity changed')
                 if initial is not None:
-                    after=self.git.snapshot(self.source,SOURCE,TREE);self.evidence['sourceAfter']=after
+                    after=self.git.snapshot(self.source,self.evidence['sourceCommit'],TREE);self.evidence['sourceAfter']=after
                     if after!=initial:raise ValueError('source identity changed')
                 if self.evidence['targetInvocations']:
                     after=self.dependencies(allow_missing=True);self.evidence['dependenciesAfterTarget']=after
