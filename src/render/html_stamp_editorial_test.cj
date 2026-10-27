@@ -20,7 +20,10 @@ private func stampEditorialFixture(): DocumentationSet {
         ownerId: Some(ownerId), parameters: [ParameterDoc("text", stringType)],
         documentation: Some(DocComment("raw", "", "", MarkdownNode("document"),
             tags: [DocTag("param", "text", "标签文字。"),
-                DocTag("see", "fixture.Stamp", "", translationState: "missing")])))
+                DocTag("see", "fixture.Stamp", "", translationState: "missing"),
+                DocTag("see", "fixture.Stamp.text", "",
+                    descriptionMarkdown: Some(MarkdownNode("paragraph",
+                        children: [MarkdownNode("text", literal: "Field details")])))])))
     let field = SymbolDoc(fieldId, "variable", "text", "fixture.Stamp.text", "fixture",
         moduleId, "public", source, "public let text: String", semantic,
         ownerId: Some(ownerId), returnType: Some(stringType),
@@ -70,6 +73,7 @@ class HtmlStampEditorialTest {
         }
         @Expect(html.contains("class=\"see-also-list\""), true)
         @Expect(html.contains("fixture.Stamp</code>"), true)
+        @Expect(html.contains("Field details"), true)
         @Expect(!html.contains("译文为空"), true)
     }
 

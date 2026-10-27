@@ -238,8 +238,14 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                     if (tag.name != "see") { continue }
                     out.append("<li>")
                     appendTagSubjectHtml(out, tag, index, rootPrefix)
-                    // An absent optional @see description is not an extra translated contract.
-                    if (!tag.description.trimAscii().isEmpty()) {
+                    // Empty optional @see descriptions must not produce translation placeholders,
+                    // but structured Markdown can be present without a plain-text description.
+                    var hasDescription = !tag.description.trimAscii().isEmpty()
+                    if (let Some(tree) <- tag.descriptionMarkdown) {
+                        hasDescription = hasDescription || !tree.children.isEmpty() ||
+                            !tree.literal.trimAscii().isEmpty()
+                    }
+                    if (hasDescription) {
                         out.append(" "); appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
                     }
                     out.append("</li>\n")
