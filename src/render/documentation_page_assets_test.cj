@@ -8,15 +8,19 @@ private let PAGE_ASSET_ZH_ID = "sha256-c47dd9465c00e9a0c8b85e9ea58d3034a0d23b9cf
 private let PAGE_ASSET_EN_ID = "sha256-e878950f8091ec010cf5cc723bdea027a8539cf7147cfea199c2f666232dcd4e"
 private let PAGE_ASSET_HIDDEN_ID = "sha256-431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460"
 
-private func pageAssetTree(title: String, destination: String, alt: String): MarkdownNode {
+private func pageAssetTree(title: String, destination: String, alt: String,
+    nested!: Bool = false): MarkdownNode {
+    let image = MarkdownNode("image", literal: destination,
+        children: if (alt.isEmpty()) { Array<MarkdownNode>() } else { [MarkdownNode("text", literal: alt)] })
+    let content = if (nested) { MarkdownNode("link", literal: "javascript:alert(1)", children: [image]) } else { image }
     MarkdownNode("document", children: [
         MarkdownNode("heading", MarkdownNodeMetadata.forHeading(1),
             children: [MarkdownNode("text", literal: title)]),
-        MarkdownNode("paragraph", children: [MarkdownNode("image", literal: destination,
-            children: [MarkdownNode("text", literal: alt)])])])
+        MarkdownNode("paragraph", children: [content])])
 }
 
-private func capturedPageAssetDocumentation(includeEnglish!: Bool = true): DocumentationSet {
+private func capturedPageAssetDocumentation(includeEnglish!: Bool = true,
+    kind!: String = "guide", emptyAlt!: Bool = false, nested!: Bool = false): DocumentationSet {
     let moduleId = "cjdoc:module:v1:page-assets"
     let hiddenId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Apage-assets::fixture::function:hidden#g0()"
     let source = SourceRange("src/api.cj", SourcePosition(1, 1, 0), SourcePosition(1, 24, 23))
@@ -24,21 +28,24 @@ private func capturedPageAssetDocumentation(includeEnglish!: Bool = true): Docum
         "private", source, "private func hidden(): Unit", SemanticInfo("partial", "ast"),
         documentation: Some(DocComment("hidden", "hidden", "",
             pageAssetTree("Hidden", PAGE_ASSET_HIDDEN_ID, "Private diagram"))))
+    let visibleId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Apage-assets::fixture::function:visible#g0()"
+    let visible = SymbolDoc(visibleId, "function", "visible", "fixture.visible", "fixture", moduleId,
+        "public", source, "public func visible(): Unit", SemanticInfo("partial", "ast"))
     let chinese = DocumentationPage("guide", "docs/zh/start.md", "concepts/guides/deep/start.html",
-        "Chinese guide", "guide", "Chinese diagram",
-        pageAssetTree("Chinese guide", "./docs/images/zh.png", "Chinese diagram"),
-        language: Some("zh-CN"), defaultLanguage: Some("zh-CN"))
+        "Chinese guide", kind, "Chinese diagram",
+        pageAssetTree("Chinese guide", "./docs/images/zh.png", if (emptyAlt) { "" } else { "Chinese diagram" }, nested: nested),
+        packageName: if (kind == "package") { "fixture" } else { "" }, language: Some("zh-CN"), defaultLanguage: Some("zh-CN"))
     let english = DocumentationPage("guide", "docs/en/start.md", "concepts/guides/deep/start.html",
-        "English guide", "guide", "English diagram",
-        pageAssetTree("English guide", PAGE_ASSET_EN_ID, "English diagram"),
-        language: Some("en"), defaultLanguage: Some("zh-CN"))
+        "English guide", kind, "English diagram",
+        pageAssetTree("English guide", PAGE_ASSET_EN_ID, if (emptyAlt) { "" } else { "English diagram" }, nested: nested),
+        packageName: if (kind == "package") { "fixture" } else { "" }, language: Some("en"), defaultLanguage: Some("zh-CN"))
     DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("page-assets"),
         ConfigurationSnapshot(audience: "external", lintProfile: "off"),
         providers: [ProviderInfo("ast", "builtin", moduleId, "partial",
             SemanticCapabilities(false, false, false, false, false))],
         modules: [ModuleDoc(moduleId, "page-assets", "root", "", packageNames: ["fixture"])],
-        packages: [PackageDoc("fixture", moduleId, sourceFiles: ["src/api.cj"], symbolIds: [hiddenId])],
-        files: [FileDoc("src/api.cj", moduleId, "fixture")], declarations: [hidden],
+        packages: [PackageDoc("fixture", moduleId, sourceFiles: ["src/api.cj"], symbolIds: [hiddenId, visibleId])],
+        files: [FileDoc("src/api.cj", moduleId, "fixture")], declarations: [hidden, visible],
         languageOptions: Some(DocumentationLanguageOptions("zh-CN", languages: ["zh-CN", "en"])),
         pages: if (includeEnglish) { [chinese, english] } else { [chinese] }, assets: [
             AssetDoc(PAGE_ASSET_ZH_ID, "image/png", "docs/images/zh.png",
@@ -80,6 +87,46 @@ private func verifyCapturedPageImage(artifacts: Array<RenderArtifact>, root: Str
 
 @Test
 class DocumentationPageAssetsTest {
+    @TestCase
+    func imageOnlyAuthorOverviewsKeepCanonicalBodiesAndReadingEntries(): Unit {
+        for (kind in ["project", "package"]) {
+            for (nested in [false, true]) {
+                for (includeEnglish in [false, true]) {
+                    let document = capturedPageAssetDocumentation(kind: kind, emptyAlt: true,
+                        nested: nested, includeEnglish: includeEnglish)
+                    let imported = decodeDocIr(encodeDocIr(document))
+                    let snapshot = encodeDocIr(imported)
+                    for (locale in ["en", "zh-CN"]) {
+                        let artifacts = renderDocumentationFormatsWithOptions(imported, ["html", "markdown"], locale: locale)
+                        let page = capturedPageAssetContent(artifacts, "html/concepts/guides/deep/start.html")
+                        @Expect(page.contains("<img src=\"../../../assets/"))
+                        @Expect(page.contains("alt=\"\" loading=\"lazy\""))
+                        @Expect(!page.contains("An author overview has not been provided."))
+                        @Expect(!page.contains("作者尚未提供概述。"))
+                        @Expect(!page.contains("href=\"javascript:"))
+                        var entry = capturedPageAssetContent(artifacts, "html/index.html")
+                        if (kind == "package") {
+                            entry = ""
+                            for (artifact in artifacts where artifact.path.startsWith("html/packages/")) {
+                                entry = artifact.content
+                            }
+                        }
+                        @Assert(!entry.isEmpty())
+                        if (kind == "project") {
+                            @Expect(entry.contains("<img src=\"assets/"))
+                        } else {
+                            @Expect(entry.contains("class=\"package-overview-link\" href=\"../concepts/guides/deep/start.html\""))
+                        }
+                        let expectedByte: Byte = if (locale == "en" && includeEnglish) { 0xf8 } else { 0x60 }
+                        verifyCapturedPageImage(artifacts, "html", "concepts/guides/deep/start.html", "alt=\"\"", expectedByte)
+                        verifyCapturedPageImage(artifacts, "markdown", "concepts/guides/deep/start.md", "![](", expectedByte)
+                    }
+                    @Expect(encodeDocIr(imported), snapshot)
+                }
+            }
+        }
+    }
+
     @TestCase
     func sourceFreePagesRenderOnlyTheSelectedLanguageImages(): Unit {
         let imported = decodeDocIr(encodeDocIr(capturedPageAssetDocumentation()))

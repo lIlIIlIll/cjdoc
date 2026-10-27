@@ -48,8 +48,18 @@ internal func appendCapturedPageMarkdownNavigation(out: RenderTextBuffer,
     }
 }
 
+private func capturedPageHasImage(node: MarkdownNode): Bool {
+    if (node.kind == "image") { return true }
+    for (child in node.children) {
+        if (capturedPageHasImage(child)) { return true }
+    }
+    false
+}
+
 internal func capturedPageHasContent(page: DocumentationPage): Bool {
-    if (!page.bindings.isEmpty()) { return true }
+    // Empty alt text is valid for an authored image; text extraction cannot
+    // distinguish it from an empty overview. Asset safety remains in rendering.
+    if (!page.bindings.isEmpty() || capturedPageHasImage(page.markdown)) { return true }
     for (node in page.markdown.children) {
         if (["heading", "html_block", "html_inline"].contains(node.kind)) { continue }
         let text = markdownNodeText(node).trimAscii()
