@@ -6,13 +6,14 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
 from ir_hardlinks import CaptureMissed, IrLinks
 from ir_events import windows_notifications
 from ir_publication import derived_ir, publish
-from native_capture_support import GitEvidence, inventory, private_reasons, system_mappings, controller_identity, normalize
+from native_capture_support import GitEvidence, inventory, private_reasons, system_mappings, controller_identity, normalize, path_descriptor_mismatches
 from native_codegen_capture import Attempt, ChildFailed, PINS, SOURCE, TREE
 
 
@@ -105,6 +106,37 @@ class HardLinksTests(unittest.TestCase):
 
 
 class PublicationTests(unittest.TestCase):
+    def test_exact_observed_bash_and_platform_sdk_paths_can_be_published(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/'public'
+            sdk=Path('/Applications/Example.app/Contents/SDKs/Platform.sdk')
+            result=publish(output,{'calls':[{'argv':['/bin/bash',str(sdk/'usr/include')]}]},'',[],
+                           [(Path('/bin/bash'),'<bash>'),(sdk,'<platform-sdk>')],{})
+            self.assertNotEqual(result.get('status'),'PRIVACY_BLOCKED')
+            self.assertEqual(result['calls'][0]['argv'],['<bash>','<platform-sdk>/usr/include'])
+
+    def test_unknown_same_prefix_shell_is_withheld_with_only_location_and_hash(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/'public';unknown='/bin/bash-other'
+            result=publish(output,{'calls':[{'argv':[unknown]}]},'',[],
+                           [(Path('/bin/bash'),'<bash>')],{})
+            self.assertEqual(result['status'],'PRIVACY_BLOCKED')
+            location=result['privacyLocations'][0]
+            self.assertEqual(location['location'],'receipt.calls[0].argv[0]')
+            self.assertEqual(location['valueSha256'],hashlib.sha256(unknown.encode()).hexdigest())
+            self.assertNotIn(unknown,json.dumps(result))
+            self.assertEqual({f.name for f in output.iterdir()},{'receipt.json'})
+
+    def test_refusal_location_does_not_echo_arbitrary_dictionary_keys_or_log_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/'public'
+            result=publish(output,{'/private/unknown-key':'/private/unknown-value'},
+                           '/private/unknown-log',[],[],{})
+            self.assertEqual(result['status'],'PRIVACY_BLOCKED')
+            self.assertNotIn('/private/',json.dumps(result))
+            self.assertTrue(any(x['location']=='buildLog' for x in result['privacyLocations']))
+            self.assertEqual(private_reasons(json.dumps(result),{}),[])
+
     def test_known_path_replacements_are_bound_and_marked_derived(self):
         path=Path("/private/capture-public")
         text='; ModuleID = "/private/capture-public/x.bc"\n!0 = !DIFile(filename: "x.cj", directory: "/private/capture-public")\n'
@@ -270,6 +302,43 @@ class IdentityTests(unittest.TestCase):
             with patch.object(Path,'open',swapped):
                 with self.assertRaisesRegex(ValueError,'opened source input differs'):
                     inventory(root,['source.cj'])
+
+    def test_inventory_still_rejects_same_fd_ctime_change_during_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);source=root/'source.cj';source.write_bytes(b'original')
+            with source.open('rb') as stream:info=os.fstat(stream.fileno())
+            fields=('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_birthtime_ns')
+            values={key:getattr(info,key) for key in fields if hasattr(info,key)}
+            changed=SimpleNamespace(**(values|{'st_ctime_ns':info.st_ctime_ns+1}))
+            with patch('native_capture_support.os.fstat',side_effect=[info,changed]):
+                with self.assertRaisesRegex(ValueError,'opened source input changed'):
+                    inventory(root,['source.cj'])
+
+
+class WindowsStatBoundaryTests(unittest.TestCase):
+    def stats(self):
+        common=dict(st_dev=41,st_ino=123456789,st_size=19,st_mtime_ns=100,
+                    st_birthtime_ns=10,st_ctime_ns=10,st_mode=0o100666)
+        return SimpleNamespace(**common),SimpleNamespace(**(common|{'st_ctime_ns':20}))
+
+    def test_windows_path_creation_time_and_fd_change_time_are_distinct_apis(self):
+        path,fd=self.stats()
+        self.assertEqual(path_descriptor_mismatches(path,fd,windows=True),[])
+        self.assertEqual(path_descriptor_mismatches(path,fd,windows=False),['st_ctime_ns'])
+
+    def test_windows_suffix_execute_bits_do_not_hide_readonly_or_type_changes(self):
+        path,fd=self.stats();path.st_mode|=0o111
+        self.assertEqual(path_descriptor_mismatches(path,fd,windows=True),[])
+        for mode in [0o100444,0o040666]:
+            with self.subTest(mode=mode):
+                fd.st_mode=mode
+                self.assertIn('st_mode',path_descriptor_mismatches(path,fd,windows=True))
+
+    def test_windows_identity_size_write_and_creation_changes_remain_rejected(self):
+        for field in ['st_dev','st_ino','st_size','st_mtime_ns','st_birthtime_ns']:
+            with self.subTest(field=field):
+                path,fd=self.stats();setattr(fd,field,getattr(fd,field)+1)
+                self.assertIn(field,path_descriptor_mismatches(path,fd,windows=True))
 
 
 class RawGitSnapshotTests(unittest.TestCase):
@@ -533,6 +602,8 @@ class NativePreflightTests(unittest.TestCase):
             attempt=self.prepare(directory);attempt.preflight()
             self.assertTrue(attempt.evidence["preflightCleanup"]["controlledTempEmpty"])
             self.assertEqual(attempt.evidence["targetInvocations"],0)
+            shell=attempt.evidence['calls'][0]['argv'][0]
+            self.assertEqual(normalize(shell,attempt.mappings),'<bash>')
 
     def test_preflight_leftover_original_stops_target(self):
         with tempfile.TemporaryDirectory() as directory:

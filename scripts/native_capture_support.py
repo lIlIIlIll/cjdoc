@@ -118,6 +118,17 @@ def digest(path):
     return h.hexdigest()
 
 
+def path_descriptor_mismatches(path_info, fd_info, *, windows):
+    fields=("st_dev","st_ino","st_size","st_mtime_ns")
+    fields+=("st_birthtime_ns",) if windows else ("st_ctime_ns",)
+    differences=[name for name in fields if getattr(path_info,name)!=getattr(fd_info,name)]
+    # CPython 3.12 Windows path stat uses birthtime for ctime and derives
+    # execute bits from the suffix. fstat has ChangeTime and no suffix.
+    mask=~0o111 if windows else -1
+    if path_info.st_mode & mask != fd_info.st_mode & mask:differences.append("st_mode")
+    return differences
+
+
 def inventory(root, paths):
     result=[]
     for name in sorted(paths):
@@ -128,11 +139,14 @@ def inventory(root, paths):
             raise ValueError("source inventory includes an external/nonregular file")
         before=path.lstat()
         fields=("st_dev","st_ino","st_size","st_mtime_ns","st_ctime_ns","st_mode")
+        if os.name=="nt":fields+=("st_birthtime_ns",)
         content=hashlib.sha256()
         with path.open("rb") as stream:
             opened=os.fstat(stream.fileno())
-            if any(getattr(before,key)!=getattr(opened,key) for key in fields):
-                raise ValueError("opened source input differs from inventoried path: "+name)
+            differences=path_descriptor_mismatches(before,opened,windows=os.name=="nt")
+            if differences:
+                raise ValueError("opened source input differs from inventoried path: "+name+
+                                 " (fields: "+", ".join(differences)+")")
             blob=hashlib.sha1(b"blob "+str(opened.st_size).encode()+b"\0")
             size=0
             for block in iter(lambda:stream.read(65536),b""):

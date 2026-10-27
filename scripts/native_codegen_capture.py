@@ -101,6 +101,13 @@ class Attempt:
             original=os.environ.get(name)
             if original:self.mappings.append((Path(original),"<temporary>" if name=="RUNNER_TEMP" else "<workspace>"))
         self.mappings.append((Path(values["CJDOC_STDX_PATH"]),"<stdx>"))
+        platform_sdk=self.environment.get("SDKROOT")
+        if platform_sdk:
+            path=Path(platform_sdk)
+            if not path.is_absolute() or not path.is_dir() or path.parent==path:
+                raise ValueError("selected platform SDK path is not an existing absolute directory")
+            self.mappings.append((path,"<platform-sdk>"))
+            self.evidence["selectedPlatformSdkPath"]=str(path)
         self.evidence["toolsBefore"]=self.tool_hashes()
         self.evidence["stack"]=stack_observation(self.tools)
         if os.name!="nt":
@@ -154,6 +161,7 @@ class Attempt:
               "--fno-chir-function-inlining","-V","-o",str(archive)]
         shell=shutil.which("bash",path=self.environment["PATH"])
         if shell is None:raise ValueError("native preflight requires the same Bash entry as the target")
+        self.mappings.extend([(Path(shell),"<bash>"),(Path(shell).resolve(),"<bash>")])
         argv=[shell,"-c",'set -euo pipefail; . "$GITHUB_WORKSPACE/scripts/with_sts_cjpm.sh"; exec "$@"',
               "native-cjc-preflight",*argv]
         result,rows,temporary,retained=self.captured_call("preflight",argv,self.private)
@@ -217,6 +225,7 @@ class Attempt:
             if path.exists():raise ValueError("diagnostic source must have fresh root/provider targets")
         shell=shutil.which("bash",path=self.environment["PATH"])
         if shell is None:raise ValueError("Git Bash/POSIX bash unavailable")
+        self.mappings.extend([(Path(shell),"<bash>"),(Path(shell).resolve(),"<bash>")])
         script=self.private/"target.sh"
         command=(["cjpm","build","--verbose","--jobs","1"] if self.selected=="windows-x64"
                  else ["cjpm","run","--build-args","--jobs 1 --verbose"])

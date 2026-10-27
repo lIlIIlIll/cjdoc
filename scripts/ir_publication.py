@@ -4,11 +4,34 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from native_capture_support import normalize, private_reasons, sanitize, replace_root
+from native_capture_support import normalize, private_reasons, sanitize, replace_root, PRIVATE_CONTENT
 
 
 def sha(data):
     return hashlib.sha256(data).hexdigest()
+
+
+def refusal_locations(value, environment, location="receipt"):
+    """Report bounded locations and hashes; never export offending contents."""
+    found=[]
+    def inspect(item,where):
+        if len(found)>=32:return
+        if isinstance(item,dict):
+            for key,child in item.items():
+                spelling=str(key)
+                safe_key=spelling if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}",spelling) else "key-"+sha(spelling.encode())[:16]
+                inspect(child,where+"."+safe_key)
+        elif isinstance(item,list):
+            for index,child in enumerate(item):inspect(child,where+"["+str(index)+"]")
+        elif isinstance(item,str):
+            reasons=private_reasons(item,environment)
+            if reasons:
+                matches=list(PRIVATE_CONTENT.finditer(item))[:8]
+                found.append({"location":where,"reasons":reasons,"valueSha256":sha(item.encode()),
+                    "patternMatches":[{"sha256":sha(match.group().encode()),"characters":len(match.group())}
+                                      for match in matches]})
+    inspect(value,location)
+    return found
 
 
 def derived_ir(text, mappings, environment):
@@ -81,7 +104,9 @@ def publish(public, evidence, build_log, disassemblies, mappings, environment, v
     reasons = private_reasons(json.dumps(clean)+log, environment)
     if reasons:
         # A minimal refusal is safe even if arbitrary subprocess output is not.
+        locations=refusal_locations(clean,environment)+refusal_locations(log,environment,"buildLog")
         clean = {"status":"PRIVACY_BLOCKED", "privacyBlocked":sorted(set(reasons)),
+                 "privacyLocations":locations[:32],
                  "targetInvocations":evidence.get("targetInvocations",0),
                  "processExitCode":evidence.get("processExitCode"),
                  "rawBitcodePublished":False}
