@@ -52,8 +52,10 @@ class HtmlStampEditorialTest {
         }
         @Expect(!html.isEmpty(), true)
         @Expect(html.contains("public struct Stamp"), true)
-        @Expect(html.contains("public init(text:"), true)
-        @Expect(html.contains("public let text:"), true)
+        // Syntax highlighting inserts spans between tokens, so assert the
+        // authoritative member identities instead of an uninterrupted string.
+        @Expect(html.contains("data-member-name=\"init\" data-member-kind=\"constructor\""), true)
+        @Expect(html.contains("data-member-name=\"text\" data-member-kind=\"variable\""), true)
         @Expect(html.contains("标签文字。"), true)
         @Expect(html.contains("class=\"parameter-declaration\""), true)
         @Expect(!html.contains(">返回值</h3>"), true)
