@@ -104,16 +104,24 @@ def publish(public, evidence, build_log, disassemblies, mappings, environment, v
         "(slash-C, slash-V, slash-V-ON); lossy text only, no command-switch classification; "
         "consult existing original-byte hashes")
     if notes:clean["derivedIr"] = sanitize(notes, mappings)
-    reasons = private_reasons(json.dumps(clean)+log, environment)
+    log_bytes=log.encode("utf-8")
+    log_reasons=private_reasons(log,environment)
+    reasons = private_reasons(json.dumps(clean), environment)
     if reasons:
         # A minimal refusal is safe even if arbitrary subprocess output is not.
         locations=refusal_locations(clean,environment)+refusal_locations(log,environment,"buildLog")
-        clean = {"status":"PRIVACY_BLOCKED", "privacyBlocked":sorted(set(reasons)),
+        clean = {"status":"PRIVACY_BLOCKED", "privacyBlocked":sorted(set(reasons+log_reasons)),
                  "privacyLocations":locations[:32],
                  "targetInvocations":evidence.get("targetInvocations",0),
                  "processExitCode":evidence.get("processExitCode"),
                  "rawBitcodePublished":False}
         outputs = []
+    elif log_reasons:
+        # A private aggregate log does not invalidate independently safe fields.
+        # Withhold it entirely; publication metadata also passes the final scan.
+        clean["buildLogPublication"]={"status":"WITHHELD","reasons":log_reasons,
+            "inputTextUtf8Sha256":sha(build_log.encode("utf-8")),
+            "normalizedUtf8Sha256":sha(log_bytes),"normalizedUtf8Bytes":len(log_bytes)}
     else:
         outputs.append(("build.sanitized.log", log))
     outputs.append(("receipt.json", json.dumps(clean,indent=2)+"\n"))

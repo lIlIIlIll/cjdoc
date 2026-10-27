@@ -106,6 +106,54 @@ class HardLinksTests(unittest.TestCase):
 
 
 class PublicationTests(unittest.TestCase):
+    def test_unsafe_aggregate_log_is_withheld_without_discarding_safe_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/'public';log='header "unclosed\ncmd /C /V:ON cjc -O2\n'
+            evidence={'status':'CAPTURED_BUILD_SUCCEEDED','targetInvocations':1,'processExitCode':0,
+                      'stdout':'cmd /C /V:ON cjc -O2'}
+            result=publish(output,evidence,log,[],[],{})
+            self.assertEqual(result['status'],'CAPTURED_BUILD_SUCCEEDED')
+            self.assertEqual(result['targetInvocations'],1)
+            self.assertEqual(result['processExitCode'],0)
+            self.assertEqual(result['buildLogPublication']['status'],'WITHHELD')
+            self.assertEqual(result['buildLogPublication']['inputTextUtf8Sha256'],hashlib.sha256(log.encode()).hexdigest())
+            self.assertEqual(result['buildLogPublication']['normalizedUtf8Bytes'],len(log.encode()))
+            self.assertEqual({f.name for f in output.iterdir()},{'receipt.json'})
+            self.assertEqual(private_reasons((output/'receipt.json').read_text(),{}),[])
+
+    def test_withheld_log_hash_and_size_bind_the_normalized_utf8_text(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/'public';log='"unclosed\n/private/known/file\ncmd /C -O2'
+            mappings=[(Path('/private/known'),'<known-source>')]
+            normalized=normalize(log,mappings).encode('utf-8')
+            result=publish(output,{'status':'CAPTURED_BUILD_SUCCEEDED'},log,[],mappings,{})
+            note=result['buildLogPublication']
+            self.assertEqual(note['normalizedUtf8Sha256'],hashlib.sha256(normalized).hexdigest())
+            self.assertEqual(note['normalizedUtf8Bytes'],len(normalized))
+            self.assertNotEqual(note['normalizedUtf8Sha256'],note['inputTextUtf8Sha256'])
+            self.assertNotIn('/private/known',(output/'receipt.json').read_text())
+
+    def test_withheld_log_never_hides_failed_target_status_or_exit_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/'public'
+            result=publish(output,{'status':'CAPTURED_BUILD_FAILED','targetInvocations':1,
+                                  'processExitCode':139},'/private/unknown',[],[],{})
+            self.assertEqual(result['status'],'CAPTURED_BUILD_FAILED')
+            self.assertEqual(result['processExitCode'],139)
+            self.assertEqual(result['buildLogPublication']['status'],'WITHHELD')
+            self.assertFalse((output/'build.sanitized.log').exists())
+            self.assertNotIn('/private/unknown',(output/'receipt.json').read_text())
+
+    def test_unsafe_receipt_still_blocks_all_otherwise_safe_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output=Path(directory)/'public'
+            result=publish(output,{'status':'CAPTURED_BUILD_FAILED','stdout':'/private/unknown'},
+                           'safe build log', [('a'*64,'; safe derived IR')],[],{},
+                           lambda text:{'accepted':True})
+            self.assertEqual(result['status'],'PRIVACY_BLOCKED')
+            self.assertEqual({f.name for f in output.iterdir()},{'receipt.json'})
+            self.assertNotIn('/private/unknown',(output/'receipt.json').read_text())
+
     def test_standalone_unquoted_short_tokens_are_redacted_without_exempting_paths(self):
         cases={'cmd /C /V:ON task':'cmd <redacted-slash-C> <redacted-slash-V-ON> task',
                '/V':'<redacted-slash-V>', 'cmd /C\n':'cmd <redacted-slash-C>\n'}
@@ -732,7 +780,10 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:",workflow)
         self.assertNotIn("pull_request:",workflow);self.assertNotIn("  push:",workflow)
         self.assertIn("contents: read",workflow);self.assertIn("retention-days: 3",workflow)
-        self.assertIn("runner: windows-2022",workflow);self.assertIn("runner: macos-15",workflow)
+        # macOS already has accepted native receipts; only Windows needs follow-up.
+        self.assertIn("runner: windows-2022",workflow)
+        self.assertNotIn("runner: macos-15",workflow)
+        self.assertEqual(workflow.count("- platform:"),1)
         self.assertIn("ref: "+SOURCE,workflow);self.assertIn("path: controller",workflow)
         self.assertIn("path: product",workflow);self.assertNotIn("--save-temps",workflow)
         self.assertNotIn("public/*",workflow);self.assertNotIn("private/",workflow)

@@ -11,12 +11,11 @@ jobs:
     name: Native evidence / ${{ matrix.platform }}
     strategy:
       fail-fast: false
+      # macOS receipts are already accepted; this follow-up needs Windows only.
       matrix:
         include:
           - platform: windows-x64
             runner: windows-2022
-          - platform: macos-arm64
-            runner: macos-15
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
