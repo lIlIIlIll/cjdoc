@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 from ir_hardlinks import CaptureMissed, IrLinks
 from ir_events import windows_notifications
 from ir_publication import derived_ir, publish
-from native_capture_support import GitEvidence, inventory, private_reasons, system_mappings, controller_identity, normalize, path_descriptor_mismatches
+from native_capture_support import GitEvidence, inventory, private_reasons, system_mappings, controller_identity, normalize, path_descriptor_mismatches, canonical_checkout_environment
 from native_codegen_capture import Attempt, ChildFailed, PINS, SOURCE, TREE
 
 
@@ -106,6 +106,13 @@ class HardLinksTests(unittest.TestCase):
 
 
 class PublicationTests(unittest.TestCase):
+    def test_observed_platform_archiver_is_exact_and_same_prefix_unknown_is_refused(self):
+        for path,accepted in [('/usr/bin/ar',True),('/usr/bin/ar-other',False)]:
+            with self.subTest(path=path),tempfile.TemporaryDirectory() as directory:
+                result=publish(Path(directory)/'public',{'argv':[path]},'',[],
+                               [(Path('/usr/bin/ar'),'<platform-archiver>')],{})
+                self.assertEqual(result.get('status')!='PRIVACY_BLOCKED',accepted)
+
     def test_exact_observed_bash_and_platform_sdk_paths_can_be_published(self):
         with tempfile.TemporaryDirectory() as directory:
             output=Path(directory)/'public'
@@ -341,6 +348,33 @@ class WindowsStatBoundaryTests(unittest.TestCase):
                 self.assertIn(field,path_descriptor_mismatches(path,fd,windows=True))
 
 
+class CheckoutEnvironmentTests(unittest.TestCase):
+    def test_empty_config_count_follows_git_zero_entry_semantics(self):
+        original={'GIT_CONFIG_COUNT':''}
+        configured,note=canonical_checkout_environment(original)
+        self.assertEqual(configured['GIT_CONFIG_COUNT'],'2')
+        self.assertEqual(note['inheritedConfigCount'],0)
+        self.assertEqual(original,{'GIT_CONFIG_COUNT':''})
+
+    def test_append_preserves_inherited_config_and_does_not_mutate_caller(self):
+        original={'GIT_CONFIG_COUNT':'2','GIT_CONFIG_KEY_0':'example.first','GIT_CONFIG_VALUE_0':'value',
+                  'GIT_CONFIG_KEY_1':'core.autocrlf','GIT_CONFIG_VALUE_1':'true','TMPDIR':'controlled'}
+        configured,note=canonical_checkout_environment(original)
+        self.assertEqual(configured['GIT_CONFIG_COUNT'],'4')
+        self.assertEqual(configured['GIT_CONFIG_KEY_2'],'core.autocrlf')
+        self.assertEqual(configured['GIT_CONFIG_VALUE_2'],'false')
+        self.assertEqual(configured['GIT_CONFIG_KEY_3'],'core.eol')
+        self.assertEqual(configured['GIT_CONFIG_VALUE_3'],'lf')
+        self.assertTrue(all(configured[key]==value for key,value in original.items() if key!='GIT_CONFIG_COUNT'))
+        self.assertEqual(original['GIT_CONFIG_COUNT'],'2');self.assertEqual(note['inheritedConfigCount'],2)
+
+    def test_missing_invalid_or_incomplete_inherited_config_is_not_silently_replaced(self):
+        for environment in [{'GIT_CONFIG_COUNT':'-1'},{'GIT_CONFIG_COUNT':'bad'},
+                            {'GIT_CONFIG_COUNT':'1','GIT_CONFIG_KEY_0':'example.key'}]:
+            with self.subTest(environment=environment):
+                with self.assertRaises(ValueError):canonical_checkout_environment(environment)
+
+
 class RawGitSnapshotTests(unittest.TestCase):
     """Blob oracles below were independently obtained with git hash-object."""
     def setUp(self):
@@ -546,7 +580,7 @@ class ExecutionTests(unittest.TestCase):
 
 
 class ResolverTests(unittest.TestCase):
-    def prepare(self,directory,mutate=False):
+    def prepare(self,directory,mutate=False,bad_config=False):
         from native_codegen_capture import PROVIDER, BOUNDARY
         root=Path(directory);source=root/"source";source.mkdir();output=root/"output";output.mkdir()
         (source/PROVIDER).mkdir(parents=True)
@@ -554,6 +588,10 @@ class ResolverTests(unittest.TestCase):
         for name in BOUNDARY:(source/name).write_text(lock if name.endswith("lock") else "[package]\ncjc-version='1.3.0'\n")
         calls=[]
         def runner(argv,**kwargs):
+            if argv[0]=='git':
+                self.assertEqual(argv[-3:-1],['config','--get'])
+                value='true' if bad_config else {'core.autocrlf':'false','core.eol':'lf'}[argv[-1]]
+                return subprocess.CompletedProcess(argv,0,(value+'\n').encode(),b'')
             calls.append(argv)
             self.assertEqual(argv[-2:],["update","--skip-script"])
             if Path(kwargs["cwd"]).name=="resolver-proof":
@@ -572,6 +610,20 @@ class ResolverTests(unittest.TestCase):
             self.assertEqual(len(calls),2) # tiny proof, then one actual source resolution
             self.assertEqual(attempt.evidence["boundaryBeforeResolve"],attempt.evidence["boundaryAfterResolve"])
             self.assertEqual(attempt.evidence["targetInvocations"],0)
+
+    def test_effective_git_config_mismatch_stops_before_resolver_or_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            attempt,calls=self.prepare(directory,bad_config=True)
+            with self.assertRaisesRegex(ValueError,'effective diagnostic Git checkout config differs'):
+                attempt.resolve_sources()
+            self.assertEqual(calls,[]);self.assertEqual(attempt.evidence['targetInvocations'],0)
+
+    def test_canonical_git_policy_is_windows_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            attempt,calls=self.prepare(directory)
+            attempt.selected='macos-arm64';attempt.git.read=Mock(side_effect=AssertionError('unexpected Git override'))
+            attempt.resolve_sources()
+            self.assertNotIn('dependencyCheckoutPolicy',attempt.evidence);self.assertEqual(len(calls),2)
 
     def test_resolution_lock_drift_stops_before_any_target(self):
         with tempfile.TemporaryDirectory() as directory:

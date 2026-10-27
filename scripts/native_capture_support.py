@@ -129,6 +129,24 @@ def path_descriptor_mismatches(path_info, fd_info, *, windows):
     return differences
 
 
+def canonical_checkout_environment(environment):
+    """Append diagnostic-only Git checkout options without replacing inherited config."""
+    result=dict(environment)
+    spelling=result.get("GIT_CONFIG_COUNT") or "0"
+    if not re.fullmatch(r"[0-9]+",spelling):raise ValueError("invalid inherited GIT_CONFIG_COUNT")
+    count=int(spelling)
+    for index in range(count):
+        if any(prefix+str(index) not in result for prefix in ("GIT_CONFIG_KEY_","GIT_CONFIG_VALUE_")):
+            raise ValueError("incomplete inherited Git environment config")
+    overrides={"core.autocrlf":"false","core.eol":"lf"}
+    for index,(key,value) in enumerate(overrides.items(),count):
+        result["GIT_CONFIG_KEY_"+str(index)]=key
+        result["GIT_CONFIG_VALUE_"+str(index)]=value
+    result["GIT_CONFIG_COUNT"]=str(count+len(overrides))
+    return result,{"inheritedConfigCount":count,"overrides":overrides,
+        "scope":"Windows diagnostic canonical Git bytes; differs from original CRLF working input"}
+
+
 def inventory(root, paths):
     result=[]
     for name in sorted(paths):

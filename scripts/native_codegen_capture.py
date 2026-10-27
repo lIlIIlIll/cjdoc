@@ -18,7 +18,7 @@ from ir_events import EventWatch
 from ir_hardlinks import CaptureMissed, IrLinks
 from ir_publication import publish
 from native_backend_trace import TraceRequest, trace_once
-from native_capture_support import GitEvidence, digest, inventory, stack_observation, tools_for_sdk, system_mappings, output_bytes, controller_identity
+from native_capture_support import GitEvidence, digest, inventory, stack_observation, tools_for_sdk, system_mappings, output_bytes, controller_identity, canonical_checkout_environment
 
 SOURCE = "4dc5f81e8ff03086f914e3721eb566e9e5007f75"
 TREE = "9cb68ff6e92e96f5ded3bbe43cfdbe70867f8461"
@@ -96,6 +96,13 @@ class Attempt:
         if any(values.get(k)!=v for k,v in expected.items()):raise ValueError("SDK/stdx fingerprint differs")
         self.environment.update(values);self.evidence["sdkEnvironment"]=values
         self.sdk,self.tools=tools_for_sdk(self.environment)
+        if self.selected=="macos-arm64":
+            # The previous receipt identified this exact spelling by its SHA.
+            # Hashing the file does not prove which delegated tool it executes.
+            archiver=Path("/usr/bin/ar")
+            self.tools["platform-ar"]=archiver.resolve(strict=True)
+            self.mappings.extend([(archiver,"<platform-archiver>"),
+                                  (self.tools["platform-ar"],"<platform-archiver>")])
         self.mappings.append((self.sdk,"<sdk>"))
         for name in ("RUNNER_TEMP","GITHUB_WORKSPACE"):
             original=os.environ.get(name)
@@ -188,6 +195,16 @@ class Attempt:
             if actual!=PINS:raise ValueError("root/provider lock differs from the three frozen Git pins")
 
     def resolve_sources(self):
+        if self.selected=="windows-x64":
+            environment,note=canonical_checkout_environment(self.environment)
+            self.environment.update(environment)
+            self.evidence["dependencyCheckoutPolicy"]=note
+            observed={}
+            for key,expected in note["overrides"].items():
+                value=self.git.read(self.source,"config","--get",key).stdout.strip()
+                observed[key]=value
+                if value!=expected:raise ValueError("effective diagnostic Git checkout config differs: "+key)
+            note["effectiveValues"]=observed
         # Prove skip-script on this native tool before using it to resolve sources.
         proof=self.private/"resolver-proof";proof.mkdir(mode=0o700);(proof/"src").mkdir()
         (proof/"src/probe.cj").write_text("package capture_resolver_probe\n")
