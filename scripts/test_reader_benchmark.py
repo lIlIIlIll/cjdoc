@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from copy import deepcopy
 import os
@@ -16,7 +17,7 @@ import unittest
 from unittest.mock import patch
 
 from reader_benchmark import file_digest, run, scrub, verify_corpus
-from reader_compare import EvidenceError, compare_browser, p95
+from reader_compare import EvidenceError, check_native_ir, compare_browser, p95
 from reader_contract_review import copy_sources
 from reader_corpus import digest, generate_corpus
 from reader_process import measured_process
@@ -45,6 +46,36 @@ def evidence_pair():
                            "queryHeapBytes": 1000, "bundleFileBytes": 1000},
               "relative": {name: {"factor": 1.25, "slack": 5} for name in ("latency", "loading", "memory", "bundle")}}
     return report, deepcopy(report), {"queries": [task], "members": [], "overloads": []}, budget
+
+
+def register_presentation(budget, profile):
+    encoded = json.dumps(profile, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    budget["presentation"] = {"profile": profile, "sha256": hashlib.sha256(encoded).hexdigest()}
+
+
+def presentation_pair():
+    a, b, manifest, budget = evidence_pair()
+    for label, report in (("baseline", a), ("after", b)):
+        report["environment"]["requestedUiLocale"] = "en"
+        report["fontUsage"] = deepcopy(report["environment"]["fontFiles"])
+        report["visuals"] = [{"viewport": "desktop", "theme": "light", "target": "member", "locale": "en",
+            "metrics": {"horizontalOverflowPx": 0, "typography": {"bodyFont": "Example", "bodyFontSize": "15px" if label == "baseline" else "16px"}},
+            "focus": {"positiveTabindex": 0, "mainLandmark": 1, "headingCount": 1}}]
+        report["accessibility"] = {
+            "screenReaderSpeech": {"status": "not-measured"},
+            "noScript": {"accessibleTree": "heading and exact native contract " + label, "independentlyOpen": True},
+            "print": {"contentVisible": True, "overflowPx": 0, "signatures": 2, "detailBodies": 2,
+                      "visibleSignatureIds": ["one", "two"], "visibleDetailIds": ["one", "two"]},
+            "printCounterexamples": [{"detected": True}] * 3}
+    profile = {"schemaVersion": "cjdoc.reader-presentation/1", "recipe": "test",
+        "generatorVersions": {"baseline": "0.7.3", "after": "0.7.5"},
+        "typography": {label: report["visuals"][0]["metrics"]["typography"]
+                       for label, report in (("baseline", a), ("after", b))},
+        "locales": {"en": {label: {"fontFamilies": ["Example"], "noScriptTreeSha256":
+            hashlib.sha256(report["accessibility"]["noScript"]["accessibleTree"].encode()).hexdigest()}
+            for label, report in (("baseline", a), ("after", b))}}}
+    register_presentation(budget, deepcopy(profile))
+    return a, b, manifest, budget
 
 
 class EvidenceIntegrityTests(unittest.TestCase):
@@ -101,6 +132,70 @@ class EvidenceIntegrityTests(unittest.TestCase):
         b["accessibility"]["printCounterexamples"] = []
         with self.assertRaises(EvidenceError):
             compare_browser(a, b, manifest, budget, [])
+
+    def test_registered_aria_hashes_match_reviewable_full_snapshots(self):
+        repo = Path(__file__).resolve().parent.parent
+        profile = json.loads((repo / "docs/maintainer/reader-scale-presentation.json").read_text())
+        for locale, observations in profile["locales"].items():
+            for label, expected in observations.items():
+                path = repo / f"tests/fixtures/reader-presentation/{label}-{locale}.aria.txt"
+                self.assertEqual(file_digest(path), expected["noScriptTreeSha256"])
+
+    def test_registered_presentation_accepts_only_exact_expected_changes(self):
+        a, b, manifest, budget = presentation_pair()
+        failures = []
+        compare_browser(a, b, manifest, budget, failures)
+        self.assertEqual(failures, [])
+        changes = [lambda r: r["visuals"][0]["metrics"]["typography"].update(bodyFontSize="14px"),
+                   lambda r: r["visuals"][0]["metrics"]["typography"].update(bodyFont="Another"),
+                   lambda r: r["fontUsage"][0].update(sha256="different"),
+                   lambda r: r["accessibility"]["noScript"].update(accessibleTree="missing author contract"),
+                   lambda r: r["transports"][0]["queries"][0].update(expectedIds=["wrong-api"])]
+        for change in changes:
+            altered = deepcopy(b)
+            change(altered)
+            with self.subTest(change=changes.index(change)), self.assertRaises(EvidenceError):
+                compare_browser(a, altered, manifest, budget, [])
+        budget["presentation"]["profile"]["typography"]["after"]["bodyFontSize"] = "14px"
+        with self.assertRaises(EvidenceError):
+            compare_browser(a, b, manifest, budget, [])
+
+    def test_presentation_does_not_relax_performance_or_accessibility_gates(self):
+        a, b, manifest, budget = presentation_pair()
+        b["transports"][0]["queries"][0]["frame"] = distribution(101)
+        b["visuals"][0]["focus"]["mainLandmark"] = 0
+        failures = []
+        compare_browser(a, b, manifest, budget, failures)
+        self.assertTrue(any("frame" in item for item in failures))
+        self.assertTrue(any("landmark" in item for item in failures))
+
+    def test_native_provenance_exception_preserves_every_other_field(self):
+        _, _, _, budget = presentation_pair()
+        profile = budget["presentation"]["profile"]
+        with tempfile.TemporaryDirectory() as directory:
+            roots = [Path(directory) / label for label in ("baseline", "after")]
+            receipts = []
+            for label, root in zip(("baseline", "after"), roots):
+                (root / "native-json").mkdir(parents=True)
+                path = root / "native-json/docs.json"
+                path.write_text(json.dumps({"generator": {"version": profile["generatorVersions"][label]},
+                    "declarations": [{"id": "native:one", "signature": "exact", "contract": "author text"}]}))
+                receipts.append({"nativeResult": {"docIrSha256": file_digest(path)}})
+            check_native_ir(*roots, *receipts, profile)
+            with self.assertRaises(EvidenceError):
+                check_native_ir(*roots, *receipts, None)
+            path = roots[1] / "native-json/docs.json"
+            original = json.loads(path.read_text())
+            for field in ("id", "signature", "contract"):
+                altered = deepcopy(original)
+                altered["declarations"][0][field] = "changed"
+                path.write_text(json.dumps(altered))
+                receipts[1]["nativeResult"]["docIrSha256"] = file_digest(path)
+                with self.subTest(field=field), self.assertRaises(EvidenceError):
+                    check_native_ir(*roots, *receipts, profile)
+            path.write_text(json.dumps(original))
+            with self.assertRaises(EvidenceError):
+                check_native_ir(*roots, *receipts, profile)
 
     def test_corpus_changes_and_unlisted_source_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

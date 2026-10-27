@@ -150,3 +150,10 @@ node tests/browser/node_modules/@playwright/test/cli.js test \
 完整原始日志、浏览器报告、字体观测、原始失败、固定源码 archive、完整预览和原工作区备份保留在任务私有目录 `$HOME/.cache/agent-tmp/issue-163-5iXwTS32`（整理前约 1.4GiB）。主要文件：`final-identity.json`、`native-final.log`、`python-tools-serial.log`、`accepted-browser.log`、`accepted-browser-report/index.html`、`golden-final/results.json`、`final-discovery-{en,zh}/reader-discovery.json`、`density-final.json`、`reader-fixed-comparison.json`、`final-preview.log`。
 
 预览离线包为该目录下 `final-preview/downloads/showcase-offline.zip`，约 5.4MiB。解包后从 `index.html` 或 `examples/demo-v2/html/zh-CN/index.html` 打开；保留整个目录以支持资源和跨页导航。
+
+
+## PR #165 CI 修复补充
+
+远端展示站点检查已在 `ce583fa3d92ae9ae955946de3d02405d603703d7` 通过两组浏览器场景与阅读回归。
+后续经用户明确授权，新增固定 1k 的[展示差异登记](../reader-scale.md#163-的预期展示差异登记)，并提高产品 Doc IR 物理对象上限。
+这些是后续修复，不改写上述历史观测或将旧 invalid-evidence 重标为 PASS。远端最新提交仍需重新完成原生、集成、展示站点和阅读性能门禁。
