@@ -207,6 +207,9 @@ try {
         if (await mobile.isVisible()) await mobile.click();
         await visualPage.locator('[data-cjdoc-search]').fill('kind:function');
         await visualPage.evaluate(() => document.fonts.ready);
+        // Opening mobile search resizes the header. Observe the settled frame,
+        // after ResizeObserver updates the viewport budget used by the popup.
+        await frame(visualPage);
         const layout = await visualPage.evaluate(() => {
           const popup = document.querySelector('[data-cjdoc-search-popover]');
           const box = popup.getBoundingClientRect();
@@ -220,7 +223,7 @@ try {
         });
         assert.equal(layout.overflow, 0);
         assert.ok(layout.popup.left >= 0 && layout.popup.right <= width + 1 && layout.popup.bottom <= height + 1,
-          'result continuation and index boundary must fit the real viewport');
+          `result continuation and index boundary must fit the real viewport: ${name}/${theme} ${JSON.stringify(layout)}`);
         assert.ok(layout.buttons.every(button => button.height >= 40 && button.width >= 40 && button.bottom <= height + 1));
         const image = await screenshot(visualPage, output, `${values.locale}-${name}-${theme}-search`);
         report.visuals.push({ name, theme, layout, image });
