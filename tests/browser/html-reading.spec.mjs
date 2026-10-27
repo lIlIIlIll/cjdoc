@@ -111,6 +111,58 @@ for (const transport of ['root','subpath','file']) {
   });
 }
 
+
+test('Stamp keeps summary-only fields static and shares one member content axis', async ({page}) => {
+  for (const locale of ['zh-CN','en']) {
+    const urls = await routes(page, locale, 'file');
+    await page.goto(urls.package);
+    const link = page.locator('.declaration-row-link').filter({hasText:'Stamp'}).first();
+    const href = await link.getAttribute('href');
+    expect(href, 'Stamp must be reachable from the package index').toBeTruthy();
+    const stampUrl = new URL(href, urls.package).href;
+    for (const width of [1440,390]) {
+      await page.setViewportSize({width, height:width===390 ? 844 : 900});
+      await page.goto(stampUrl);
+      const field = page.locator('[data-cjdoc-member][data-member-name="text"]');
+      const constructor = page.locator('details[data-cjdoc-member][data-member-kind="constructor"]');
+      await expect(field).toHaveCount(1);
+      await expect(field).toHaveClass(/member-static/);
+      await expect(field).toContainText('String');
+      await expect(field.locator('summary,.member-detail-body')).toHaveCount(0);
+      await expect(field.locator('.member-summary-description')).toBeVisible();
+      await expect(constructor).toHaveCount(1);
+      await constructor.locator('summary').click();
+      const positions = await constructor.evaluate(node => {
+        const left = selector => node.querySelector(selector).getBoundingClientRect().left;
+        const summary = node.querySelector('summary').getBoundingClientRect();
+        return {
+          signature:left('.declaration-signature'),
+          heading:left('.member-detail-body h3'),
+          parameter:left('.parameter-declaration'),
+          summaryTop:summary.top,
+          summaryBottom:summary.bottom
+        };
+      });
+      expect(Math.abs(positions.signature - positions.heading)).toBeLessThanOrEqual(2);
+      expect(Math.abs(positions.signature - positions.parameter)).toBeLessThanOrEqual(2);
+      if (width===1440) {
+        const actions = await constructor.locator('xpath=..').locator('.member-detail-actions').boundingBox();
+        expect(actions.y).toBeGreaterThanOrEqual(positions.summaryTop - 1);
+        expect(actions.y + actions.height).toBeLessThanOrEqual(positions.summaryBottom + 1);
+      }
+      const reflow = await page.evaluate(() => ({
+        viewport:document.documentElement.clientWidth,
+        document:document.documentElement.scrollWidth
+      }));
+      expect(reflow.document).toBeLessThanOrEqual(reflow.viewport + 1);
+      // A static field is still a precise shareable hash target, without a disclosure click.
+      const fieldId = await field.getAttribute('id');
+      await page.goto(stampUrl + '#' + encodeURIComponent(fieldId));
+      await expect(page.locator('[data-cjdoc-member][data-member-name="text"]')).toBeVisible();
+    }
+  }
+});
+
 test('Chinese display labels preserve raw search kind values and query protocol', async ({page}) => {
   const urls = await routes(page,'zh-CN','file');
   await page.goto(urls.home);

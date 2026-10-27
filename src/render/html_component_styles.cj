@@ -175,6 +175,7 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
    The compact disclosure is an enhancement installed after its listeners exist. */
 @media (hover:none), (pointer:coarse), (any-pointer:coarse), (max-width:760px){
     .member-row>.member-detail>summary{padding-inline-end:.35rem}
+    .member-row>.member-static>.member-detail-summary{padding-inline-end:.35rem}
     .member-row>.member-detail-actions{
         position:static;inset:auto;align-items:center;width:100%;max-width:100%;
         margin:.15rem 0 .35rem;padding:0;border:0;border-radius:0;
@@ -193,6 +194,7 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
     }
     .member-detail-actions .member-action-label{display:inline;white-space:normal}
     .member-row.member-actions-enhanced>.member-detail>summary{padding-inline-end:3.25rem}
+    .member-row.member-actions-enhanced>.member-static>.member-detail-summary{padding-inline-end:3.25rem}
     .member-row.member-actions-enhanced>.member-detail-actions{
         position:absolute;inset-block-start:.25rem;inset-inline-end:.2rem;
         width:max-content;max-width:100%;margin:0;padding:0;
