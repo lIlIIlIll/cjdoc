@@ -161,6 +161,25 @@ class OriginalEntryTests(unittest.TestCase):
         self.assertEqual(attempt.evidence['status'],'INPUT_CHANGED')
 
 
+    def observer_failure_result(self,code):
+        attempt,_=self.stub_execution(exit_code=code)
+        target=attempt.target.side_effect
+        def failed_target():
+            target();raise CaptureMissed('observer primary fixture failure')
+        attempt.target.side_effect=failed_target
+        with patch.object(pipeline,'publish',return_value={}):result=attempt.execute()
+        self.assertEqual(attempt.evidence['targetInvocations'],1)
+        self.assertEqual(attempt.evidence['processExitCode'],code)
+        self.assertEqual(attempt.evidence['status'],'CAPTURE_MISSED')
+        return result
+
+    def test_observer_failure_after_success_is_diagnostic_failure(self):
+        self.assertEqual(self.observer_failure_result(0),2)
+
+    def test_observer_failure_preserves_original_nonzero_exit(self):
+        self.assertEqual(self.observer_failure_result(17),17)
+
+
 class MainFailurePrivacyTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)

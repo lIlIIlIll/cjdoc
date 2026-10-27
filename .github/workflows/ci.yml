@@ -180,10 +180,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: windows-x64
-            runner: windows-2022
-            cache_os: Windows
-            cache_arch: X64
           - platform: macos-arm64
             runner: macos-15
             cache_os: macOS

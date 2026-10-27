@@ -115,8 +115,8 @@ class WorkflowModeTests(unittest.TestCase):
         full_job=workflow.split('  original-full-gate:\n',1)[1].split('\n  cache-identity:\n',1)[0]
         self.assertIn("if: ${{ inputs.mode == 'original-full-gate' }}",full_job)
         self.assertIn('ref: '+full.ORIGINAL_MERGE,full_job)
-        self.assertIn('runner: windows-2022',full_job);self.assertIn('runner: macos-15',full_job)
-        self.assertEqual(full_job.count('- platform:'),2)
+        self.assertNotIn('runner: windows-2022',full_job);self.assertIn('runner: macos-15',full_job)
+        self.assertEqual(full_job.count('- platform:'),1)
         self.assertIn('actions/cache/restore@',full_job);self.assertIn('fail-on-cache-miss: true',full_job)
         self.assertNotIn('actions/cache@',full_job);self.assertNotIn('--verbose',full_job)
         self.assertIn('--platform "$DIAGNOSTIC_PLATFORM"',full_job)

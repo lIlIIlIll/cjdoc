@@ -849,4 +849,75 @@ class StructuredPublicationTests(unittest.TestCase):
         self.assertNotIn(error,json.dumps(note))
 
 
+
+class EventWatchShutdownTests(unittest.TestCase):
+    def watch(self):
+        from ir_events import EventWatch
+        watch=object.__new__(EventWatch)
+        watch.backend=Mock();watch.thread=Mock();watch.thread.is_alive.return_value=False;watch.errors=[]
+        return watch
+
+    def test_normal_stop_signals_and_joins_once(self):
+        watch=self.watch();watch.stop()
+        watch.backend.stop.assert_called_once_with();watch.thread.join.assert_called_once_with(10)
+
+    def test_thread_first_error_survives_closed_stop_socket(self):
+        watch=self.watch();watch.errors=['ValueError: observer fixture failed']
+        watch.backend.stop.side_effect=OSError(9,'Bad file descriptor')
+        with self.assertRaisesRegex(CaptureMissed,'ValueError: observer fixture failed'):watch.stop()
+        watch.thread.join.assert_called_once_with(10)
+
+    def test_stop_signal_error_alone_remains_capture_failure(self):
+        watch=self.watch();watch.backend.stop.side_effect=OSError(9,'Bad file descriptor')
+        with self.assertRaisesRegex(CaptureMissed,'Bad file descriptor'):watch.stop()
+        watch.thread.join.assert_called_once_with(10)
+
+    def test_join_timeout_remains_capture_failure(self):
+        watch=self.watch();watch.thread.is_alive.return_value=True
+        with self.assertRaises(CaptureMissed):watch.stop()
+        watch.thread.join.assert_called_once_with(10)
+
+    def mac_backend_failure(self,event_error=None):
+        import ir_events
+        class Socket:
+            def __init__(self,fd):self.fd=fd;self.closed=False
+            def fileno(self):return self.fd
+            def close(self):self.closed=True
+            def send(self,data):
+                if self.closed:raise OSError(9,'Bad file descriptor')
+                return len(data)
+        reader,writer=Socket(90000),Socket(90001);queue=Mock()
+        def control(changes,*args):
+            if changes is None:
+                if event_error is None:raise ValueError('observer primary fixture failure')
+                return [SimpleNamespace(ident=90002,flags=8,fflags=0,data=event_error)]
+            return []
+        queue.control.side_effect=control
+        constants={'KQ_FILTER_READ':1,'KQ_FILTER_VNODE':2,'KQ_EV_ADD':1,'KQ_EV_CLEAR':2,
+                   'KQ_NOTE_WRITE':1,'KQ_NOTE_DELETE':2,'KQ_NOTE_RENAME':4,'KQ_EV_ERROR':8}
+        from contextlib import ExitStack
+        with tempfile.TemporaryDirectory() as name,ExitStack() as stack:
+            for key,value in constants.items():stack.enter_context(patch.object(ir_events.select,key,value,create=True))
+            stack.enter_context(patch.object(ir_events.select,'kqueue',return_value=queue,create=True))
+            stack.enter_context(patch.object(ir_events.select,'kevent',return_value=object(),create=True))
+            stack.enter_context(patch.object(ir_events.socket,'socketpair',return_value=(reader,writer)))
+            links=SimpleNamespace(temporary=Path(name),scan=Mock())
+            watch=ir_events.EventWatch(links,'macos-arm64');watch.thread=Mock();watch.thread.is_alive.return_value=False
+            watch._run()
+            expected=('ValueError: observer primary fixture failure' if event_error is None else
+                      'OSError: [Errno '+str(event_error)+'] kqueue reported an event error')
+            self.assertEqual(watch.errors,[expected])
+            self.assertTrue(reader.closed and writer.closed)
+            with self.assertRaises(CaptureMissed) as failure:watch.stop()
+            self.assertIn(expected,str(failure.exception))
+            watch.thread.join.assert_called_once_with(10)
+
+    def test_actual_mac_backend_cleanup_cannot_hide_its_original_error(self):
+        self.mac_backend_failure()
+
+    def test_kqueue_error_preserves_each_numeric_system_error(self):
+        for code in [9,24]:
+            with self.subTest(errno=code):self.mac_backend_failure(code)
+
+
 if __name__=="__main__":unittest.main()

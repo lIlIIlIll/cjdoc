@@ -46,10 +46,19 @@ class EventWatch:
             raise CaptureMissed("event observer did not start: " + "; ".join(self.errors))
 
     def stop(self):
-        self.backend.stop()
+        signal_error = None
+        try:
+            self.backend.stop()
+        except Exception as error:
+            signal_error = type(error).__name__ + ": " + str(error)
+        # A failed backend may already have closed its wakeup socket. Join and
+        # report its first error even when sending the stop signal also fails.
         self.thread.join(10)
-        if self.thread.is_alive() or self.errors:
-            raise CaptureMissed("event observer did not stop: " + "; ".join(self.errors))
+        errors = list(self.errors)
+        if signal_error:errors.append("stop signal: " + signal_error)
+        if self.thread.is_alive():errors.append("observer thread still running after join")
+        if errors:
+            raise CaptureMissed("event observer did not stop: " + "; ".join(errors))
 
 
 class MacEvents:
@@ -91,7 +100,7 @@ class MacEvents:
                     break
                 for event in events:
                     if event.flags & select.KQ_EV_ERROR:
-                        raise OSError("kqueue reported an event error")
+                        raise OSError(event.data, "kqueue reported an event error")
                     if event.fflags & (select.KQ_NOTE_DELETE | select.KQ_NOTE_RENAME):
                         if event.ident in directories:
                             os.close(event.ident); del directories[event.ident]
