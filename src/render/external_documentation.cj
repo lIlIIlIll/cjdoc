@@ -42,28 +42,71 @@ internal func decodeExternalDocumentation(node: ?JsonNode): Array<ExternalDocume
     values.toArray()
 }
 
+private func externalReferenceIdentity(value: ExternalDocumentationReference): String {
+    value.name + "|" + value.state + "|" + value.reason + "|" + value.version + "|" +
+        value.index + "|" + value.format + "|" + value.fingerprint
+}
+
+private func externalReferenceStatus(value: ExternalDocumentationReference, locale: String): String {
+    if (value.state == "ambiguous") { label(locale, "Ambiguous reference", "引用不明确") }
+    else { label(locale, "No external reference", "无外部参考") }
+}
+
+private func appendExternalReference(out: RenderTextBuffer, value: ExternalDocumentationReference,
+    locale: String): Unit {
+    out.append("<li><strong>" + escapeHtml(value.name) + "</strong> ")
+    if (value.state == "available") {
+        let url = if (value.url.startsWith("./")) { "../" + value.url.removePrefix("./") } else { value.url }
+        out.append("<a rel=\"noreferrer\" href=\"" + escapeHtml(url) + "\">" +
+            label(locale, "Open external reference", "打开外部参考") + "</a>")
+    } else {
+        out.append("<span class=\"badge\" data-state=\"" + value.state + "\">" +
+            externalReferenceStatus(value, locale) + "</span> " + escapeHtml(value.reason))
+    }
+    for ((key, text) in [("version", value.version), ("index", value.index),
+        ("format", value.format), ("fingerprint", value.fingerprint)]) {
+        if (!text.isEmpty()) { out.append(" <span class=\"binding-meta\">" + key + ": " + escapeHtml(text) + "</span>") }
+    }
+    out.append("</li>")
+}
+
 internal func externalDocumentationHtml(documentation: DocumentationSet, symbol: SymbolDoc,
-    locale: String): String {
+    locale: String, relatedSymbolIds!: HashSet<String> = HashSet<String>(),
+    compactUnavailable!: Bool = false): String {
     let out = RenderTextBuffer()
+    let failures = ArrayList<ExternalDocumentationReference>()
+    let seen = HashSet<String>()
     var opened = false
-    for (value in documentation.externalDocumentation where value.symbolId == symbol.id) {
-        if (!opened) { out.append("<section class=\"external-documentation\"><h2>" + label(locale, "External documentation", "外部文档") + "</h2><ul>"); opened = true }
-        out.append("<li><strong>" + escapeHtml(value.name) + "</strong> ")
-        if (value.state == "available") {
-            let url = if (value.url.startsWith("./")) { "../" + value.url.removePrefix("./") } else { value.url }
-            out.append("<a rel=\"noreferrer\" href=\"" + escapeHtml(url) + "\">" + label(locale, "Open external reference", "打开外部参考") + "</a>")
-        } else {
-            let status = if (value.state == "ambiguous") {
-                label(locale, "Ambiguous reference", "引用不明确")
-            } else { label(locale, "No external reference", "无外部参考") }
-            out.append("<span class=\"badge\" data-state=\"" + value.state + "\">" + status + "</span> " + escapeHtml(value.reason))
+    for (value in documentation.externalDocumentation) {
+        let local = value.symbolId == symbol.id
+        if (!local && !relatedSymbolIds.contains(value.symbolId)) { continue }
+        if (value.state != "available") {
+            if (!seen.add(externalReferenceIdentity(value))) { continue }
+            failures.add(value)
+            continue
         }
-        for ((key, text) in [("version", value.version), ("index", value.index), ("format", value.format), ("fingerprint", value.fingerprint)]) {
-            if (!text.isEmpty()) { out.append(" <span class=\"binding-meta\">" + key + ": " + escapeHtml(text) + "</span>") }
+        if (!local) { continue }
+        if (!opened) {
+            let heading = if (compactUnavailable) { "h3" } else { "h2" }
+            out.append("<section class=\"external-documentation\"><" + heading + ">" +
+                label(locale, "External documentation", "外部文档") + "</" + heading + "><ul>")
+            opened = true
         }
-        out.append("</li>")
+        appendExternalReference(out, value, locale)
     }
     if (opened) { out.append("</ul></section>") }
+    if (compactUnavailable) {
+        for (value in failures) {
+            out.append("<p class=\"external-reference-note\"><strong>" + escapeHtml(value.name) + "</strong> · " +
+                externalReferenceStatus(value, locale) + " · <a href=\"#external-reference-status\">" +
+                label(locale, "Reference details", "参考详情") + "</a></p>")
+        }
+    } else if (!failures.isEmpty()) {
+        out.append("<details class=\"external-reference-status\" id=\"external-reference-status\"><summary>" +
+            label(locale, "External reference status", "外部参考状态") + "</summary><ul>")
+        for (value in failures) { appendExternalReference(out, value, locale) }
+        out.append("</ul></details>")
+    }
     out.toString()
 }
 

@@ -7,9 +7,13 @@ Create a catalogue, append values, then keep a snapshot before clearing it.
 <!-- cjdoc-bind target="pocketkit.TextCatalog.add" selector="signature:public func add(value: String): Unit" provenance="authored" -->
 
 ```cangjie
-let catalog = TextCatalog()
-catalog.add("hello")
-assert(catalog.at(0) == "hello")
+import pocketkit.*
+
+main() {
+    let catalog = TextCatalog()
+    catalog.add("hello")
+    assert(catalog.at(0) == "hello")
+}
 ```
 
 ## Keep a snapshot

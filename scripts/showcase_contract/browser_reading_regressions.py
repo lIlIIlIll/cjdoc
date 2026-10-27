@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import unquote, urljoin, urlsplit
 
 from .browser import serve
-from .browser_support import member_action
+from .browser_support import member_action, member_toc_link
 from .browser_reading_navigation import run_navigation_regressions
 from .site import Site, load_json
 from showcase_build.manifest import roots
@@ -36,6 +36,15 @@ def _visible_members(page):
     return page.locator("[data-cjdoc-member]:not([hidden])")
 
 
+def _member_filters(page):
+    from playwright.sync_api import expect
+    field = page.locator("[data-cjdoc-member-filter]")
+    if not field.is_visible():
+        page.locator("[data-cjdoc-member-filter-toggle]").click()
+        expect(field).to_be_visible()
+    return field
+
+
 def _toc_matches_content(page):
     problems = page.evaluate("""() => {
       const problems = [];
@@ -53,28 +62,22 @@ def _toc_matches_content(page):
 def check_sidebar_filters(page):
     from playwright.sync_api import expect
     _drawer(page, True)
-    field = page.locator("[data-cjdoc-context-filter]")
+    expect(page.locator(".sidebar-context")).to_have_count(0)
+    expect(page.locator(".sidebar-symbol.is-current")).to_have_text(re.compile("TextCatalog"))
+    field = page.locator("[data-cjdoc-sidebar-filter]")
     bounds = field.evaluate("""node => {
       const parent = node.closest('.docs-sidebar').getBoundingClientRect();
       const child = node.getBoundingClientRect();
       return {visible: child.top >= parent.top && child.bottom <= parent.bottom};
     }""")
     if not bounds["visible"]:
-        raise AssertionError("initial sidebar scroll hides the current declaration section")
-    field.fill("find")
-    expect(page.locator("[data-cjdoc-context-item]:visible")).to_have_count(2)
-    field.fill("cjdoc_no_match_72fb")
-    expect(page.locator("[data-cjdoc-context-item]:visible")).to_have_count(0)
-    expect(page.locator("[data-cjdoc-context-empty]")).to_be_visible()
-    field.fill("")
-    expect(page.locator("[data-cjdoc-context-empty]")).to_be_hidden()
-    package = page.locator("[data-cjdoc-sidebar-filter]")
-    package.fill("parsing")
+        raise AssertionError("initial sidebar scroll hides the package filter")
+    field.fill("parsing")
     expect(page.locator(".sidebar-package:visible")).to_have_count(1)
-    package.fill("cjdoc_no_match_72fb")
+    field.fill("cjdoc_no_match_72fb")
     expect(page.locator(".sidebar-package:visible")).to_have_count(0)
     expect(page.locator("[data-cjdoc-sidebar-no-results]")).to_be_visible()
-    package.fill("")
+    field.fill("")
     expect(page.locator(".sidebar-package:visible")).to_have_count(3)
     _drawer(page, False)
 
@@ -143,7 +146,7 @@ def check_member_toolbar(page):
 
 def check_member_filters_and_actions(page):
     from playwright.sync_api import expect
-    field = page.locator("[data-cjdoc-member-filter]")
+    field = _member_filters(page)
     field.fill("find")
     expect(_visible_members(page)).to_have_count(2)
     expect(page.locator(".member-row:not([hidden]) > details[data-cjdoc-member]")).to_have_count(2)
@@ -176,7 +179,7 @@ def _member_round_trip(page, member):
     origin = page.url
     summary = member.locator("summary").first
     if member.get_attribute("open") is None:
-        summary.click()
+        summary.click(position={"x": 6, "y": 12})
     member_action(member, "a.member-permalink").click()
     page.wait_for_load_state("load")
     if unquote(page.url) == unquote(origin):
@@ -188,9 +191,9 @@ def _member_round_trip(page, member):
 
 def check_member_history(page, member_url):
     from playwright.sync_api import expect
-    field = page.locator("[data-cjdoc-member-filter]")
     for url in (member_url, member_url.split("#", 1)[0]):
         page.goto(url, wait_until="load")
+        field = _member_filters(page)
         field.fill("find")
         member = page.locator('[data-cjdoc-member][data-member-name="find"]').first
         _member_round_trip(page, member)
@@ -236,34 +239,37 @@ def check_search_and_sidebar_history(page, member_url):
         raise AssertionError("search no longer distinguishes the two find overloads")
     search.press("Escape")
     _drawer(page, True)
-    for selector in ("[data-cjdoc-context-filter]", "[data-cjdoc-sidebar-filter]"):
-        page.locator(selector).fill("cjdoc_no_match_72fb")
+    page.locator("[data-cjdoc-sidebar-filter]").fill("cjdoc_no_match_72fb")
     _drawer(page, False)
     _member_round_trip(page, page.locator("[data-cjdoc-member][open]").first)
     _drawer(page, True)
-    expect(page.locator("[data-cjdoc-context-filter]")).to_have_value("cjdoc_no_match_72fb")
     expect(page.locator("[data-cjdoc-sidebar-filter]")).to_have_value("cjdoc_no_match_72fb")
-    expect(page.locator("[data-cjdoc-context-item]:visible")).to_have_count(0)
     expect(page.locator(".sidebar-package:visible")).to_have_count(0)
-    expect(page.locator("[data-cjdoc-context-empty]")).to_be_visible()
     expect(page.locator("[data-cjdoc-sidebar-no-results]")).to_be_visible()
-    page.locator("[data-cjdoc-context-filter]").fill("")
     page.locator("[data-cjdoc-sidebar-filter]").fill("")
     _drawer(page, False)
 
 
 def check_filtered_hash_and_header(page, member_url):
     from playwright.sync_api import expect
-    page.goto(member_url, wait_until="load")
+    page.goto(member_url.split("#", 1)[0], wait_until="load")
     anchor = unquote(urlsplit(member_url).fragment)
     target = page.locator("details[data-cjdoc-member]")
     target = next(item for item in target.all() if item.get_attribute("id") == anchor)
-    page.locator("[data-cjdoc-member-filter]").fill("find")
+    link = member_toc_link(page, anchor)
+    destination = urljoin(page.url, link.get_attribute("href"))
+    if unquote(urlsplit(destination).fragment) != anchor:
+        raise AssertionError("page outline lost the exact native member anchor")
+    _member_filters(page).fill("find")
     expect(target).to_be_hidden()
-    _drawer(page, True)
-    link = next(item for item in page.locator("[data-cjdoc-context-item]").all()
-                if unquote(item.get_attribute("href") or "") == "#" + anchor)
-    link.click()
+    page.goto(destination, wait_until="load")
+    expect(page.locator("[data-cjdoc-member-filter]")).to_have_value("")
+    expect(target).to_have_attribute("open", "")
+    expect(target).to_be_visible()
+    # Re-enter the same deep URL with a conflicting saved filter as well.
+    _member_filters(page).fill("find")
+    expect(target).to_be_hidden()
+    page.reload(wait_until="load")
     expect(page.locator("[data-cjdoc-member-filter]")).to_have_value("")
     expect(target).to_have_attribute("open", "")
     expect(target).to_be_visible()
@@ -294,7 +300,7 @@ def run_reading_regressions(page, member_url: str) -> list[str]:
             "Back preserves member filters and disclosure state with and without a URL hash",
             "history-restored category filters agree with their visible select value",
             "search results retain distinct signatures without duplicate internal context",
-            "same-hash links reveal excluded members below the measured sticky header"]
+            "rendered deep links reveal excluded members below the measured sticky header"]
 
 
 def check_no_script_member_links(browser, member_url: str):

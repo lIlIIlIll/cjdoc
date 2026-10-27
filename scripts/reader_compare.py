@@ -111,7 +111,52 @@ def check_overloads(before: list[dict], after: list[dict], tasks: list[dict], la
             failures.append(f"{label}/{identifier}: native selection, multi-open, or history failed")
 
 
-def check_visuals(before: dict, after: dict, required: bool, failures: list[str]) -> None:
+def presentation_profile(budgets: dict) -> dict | None:
+    registration = budgets.get("presentation")
+    if registration is None:
+        return None
+    profile = registration["profile"]
+    encoded = json.dumps(profile, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    require(hashlib.sha256(encoded).hexdigest() == registration["sha256"], "presentation registration changed")
+    require(profile["schemaVersion"] == "cjdoc.reader-presentation/1", "unsupported presentation profile")
+    return profile
+
+
+def check_font_usage(before: dict, after: dict, profile: dict | None) -> None:
+    if profile is None:
+        require(before.get("fontUsage") == after.get("fontUsage"), "used font identities changed")
+        return
+    locale = after["environment"]["requestedUiLocale"]
+    require(before["recipe"] == after["recipe"] == profile["recipe"], "presentation corpus recipe changed")
+    inventory = keyed(before["environment"]["fontFiles"], "family", "installed fonts")
+    for label, report in (("baseline", before), ("after", after)):
+        usage = report.get("fontUsage")
+        require(isinstance(usage, list) and bool(usage), "actual font usage is missing")
+        require([font["family"] for font in usage] == profile["locales"][locale][label]["fontFamilies"],
+                f"{label}: unregistered font usage")
+        require(all(font == inventory.get(font["family"]) for font in usage), "used font file differs from installed inventory")
+
+
+def check_native_ir(baseline: Path, after: Path, old: dict, new: dict, profile: dict | None) -> None:
+    documents = []
+    for root, receipt in ((baseline, old), (after, new)):
+        path = root / "native-json/docs.json"
+        require(digest(path) == receipt["nativeResult"]["docIrSha256"], "native Doc IR receipt hash mismatch")
+        documents.append(strict_load(path))
+    if old["nativeResult"]["docIrSha256"] == new["nativeResult"]["docIrSha256"]:
+        return
+    require(profile is not None, "native Doc IR changed; author input was not preserved")
+    for label, document in zip(("baseline", "after"), documents):
+        require(document["generator"]["version"] == profile["generatorVersions"][label],
+                "unregistered generator version")
+        # Only this provenance field may differ; every native declaration,
+        # contract, signature, diagnostic and source range still compares exactly.
+        document["generator"]["version"] = "<registered-generator-version>"
+    require(documents[0] == documents[1], "native Doc IR changed beyond registered generator provenance")
+
+
+def check_visuals(before: dict, after: dict, required: bool, failures: list[str],
+                  profile: dict | None = None) -> None:
     def key(row: dict) -> str:
         return json.dumps([row["viewport"], row["theme"], row["target"], row["locale"]], sort_keys=True)
     old, new = {key(row): row for row in before["visuals"]}, {key(row): row for row in after["visuals"]}
@@ -122,12 +167,24 @@ def check_visuals(before: dict, after: dict, required: bool, failures: list[str]
             failures.append(f"visual {identifier}: page overflow")
         if row["focus"]["positiveTabindex"] or row["focus"]["mainLandmark"] != 1 or row["focus"]["headingCount"] != 1:
             failures.append(f"visual {identifier}: landmark or tabindex regression")
-        require(row["metrics"]["typography"] == old[identifier]["metrics"]["typography"],
-                f"visual {identifier}: body typography changed")
+        if profile is None:
+            require(row["metrics"]["typography"] == old[identifier]["metrics"]["typography"],
+                    f"visual {identifier}: body typography changed")
+        else:
+            for label, observation in (("baseline", old[identifier]), ("after", row)):
+                require(observation["metrics"]["typography"] == profile["typography"][label],
+                        f"visual {identifier}: unregistered {label} body typography")
     a, b = before["accessibility"], after["accessibility"]
     require(a["screenReaderSpeech"] == b["screenReaderSpeech"], "screen-reader evidence boundary changed")
     if a.get("status") != "not-applicable":
-        require(a["noScript"]["accessibleTree"] == b["noScript"]["accessibleTree"], "no-JS accessible tree changed")
+        if profile is None:
+            require(a["noScript"]["accessibleTree"] == b["noScript"]["accessibleTree"], "no-JS accessible tree changed")
+        else:
+            locale = after["environment"]["requestedUiLocale"]
+            for label, observation in (("baseline", a), ("after", b)):
+                tree_hash = hashlib.sha256(observation["noScript"]["accessibleTree"].encode()).hexdigest()
+                require(tree_hash == profile["locales"][locale][label]["noScriptTreeSha256"],
+                        f"{label}: unregistered no-JS accessible tree")
         if b["noScript"]["independentlyOpen"] is not True or not b["print"]["contentVisible"] or b["print"]["overflowPx"] > 1:
             failures.append("no-JS multi-open or print visibility/overflow regression")
         require(a["print"]["signatures"] == b["print"]["signatures"] and
@@ -147,6 +204,8 @@ def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,
         require(before.get(key) == after.get(key) and before.get(key) is not None, f"browser {key} changed or missing")
     require(before.get("harness") and before["environment"].get("fontFiles"), "missing harness or font identities")
     require(all(font.get("status") == "measured" for font in before["environment"]["fontFiles"]), "font file identity unavailable")
+    profile = presentation_profile(budgets)
+    check_font_usage(before, after, profile)
     require(not before["failures"] and not after["failures"], "browser instrumentation failed")
     for name in ("search-index.json", "search-index.js"):
         require(before["resources"][name]["sha256"] == after["resources"][name]["sha256"],
@@ -174,7 +233,7 @@ def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,
         measurements.append(bounded(name + "/bytes", number(before["resources"][name]["bytes"], name),
             number(size["bytes"], name), number(budgets["absolute"]["bundleFileBytes"], name),
             budgets["relative"]["bundle"], failures))
-    check_visuals(before, after, budgets["requireScreenshots"], failures)
+    check_visuals(before, after, budgets["requireScreenshots"], failures, profile)
     return measurements
 
 
@@ -200,7 +259,7 @@ def compare(baseline: Path, after: Path, manifest_file: Path, budget_file: Path)
                 "baselineReason": old.get("reason"), "afterReason": new.get("reason"), "measurements": [],
                 "semantics": "unsupported scale is not PASS; no missing browser metrics are synthesized"}
     require(old["status"] == new["status"] == "measured", "native pipeline did not complete")
-    require(old["nativeResult"]["docIrSha256"] == new["nativeResult"]["docIrSha256"], "native Doc IR changed; author input was not preserved")
+    check_native_ir(baseline, after, old, new, presentation_profile(budgets))
     require(old["nativeResult"]["status"] == new["nativeResult"]["status"], "native uncertainty status changed")
     failures, measurements = [], []
     require([item["locale"] for item in old["locales"]] == [item["locale"] for item in new["locales"]], "locale set changed")

@@ -72,9 +72,16 @@ class PublicResourceBudgetTest {
         @Expect(accepted.diagnostics.size, acceptedOccurrences)
         let encoded = api_render.encodeDocIr(accepted)
         let objects = serializedObjectOccurrences(encoded)
+        @Expect(api_model.DOC_IR_MAX_SCHEMA_OBJECTS, 131072)
+        @Expect(objects > 65536)
         @Expect(objects <= api_model.DOC_IR_MAX_SCHEMA_OBJECTS)
         @Expect(api_model.DOC_IR_MAX_SCHEMA_OBJECTS - objects < perOccurrence)
         @Expect(api_render.decodeDocIr(encoded).diagnostics.size, acceptedOccurrences)
+        // Add one physical object to each diagnostic. Raw structural validation
+        // must reject the count before the unknown-field schema check.
+        let oversizedJson = encoded.replace("\"severity\":", "\"extra\":{},\"severity\":")
+        let decodeError = @AssertThrows[IllegalArgumentException](api_render.decodeDocIr(oversizedJson))
+        @Expect(decodeError.message.contains("object occurrence budget exceeded"))
         let overflow = diagnosticObjectBoundaryFixture(acceptedOccurrences + 1)
         let error = @AssertThrows[IllegalArgumentException](api_render.encodeDocIr(overflow))
         @Expect(error.message.contains("JSON object occurrence budget exceeded"))

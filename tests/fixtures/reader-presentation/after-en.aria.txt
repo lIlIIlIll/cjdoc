@@ -1,0 +1,108 @@
+- main:
+  - navigation "Breadcrumb":
+    - list:
+      - listitem:
+        - link "Home":
+          - /url: ../index.html
+      - listitem:
+        - text: /
+        - link "Package reader_scale":
+          - /url: ../packages/package-32303a636a646f633a6d6f64756c653a76313a726f6f747265616465725f7363616c65.html
+          - text: Package
+          - code: reader_scale
+      - listitem:
+        - text: /
+        - code: Overload2
+  - heading "Overload2" [level=1]:
+    - code: Overload2
+  - paragraph: class
+  - button "Copy link"
+  - paragraph: Select between 2 explicitly different input types.
+  - code: public class Overload2
+  - region "Members":
+    - text: Filter members
+    - searchbox "Filter members"
+    - text: Origin
+    - combobox "Origin":
+      - option "All origins" [selected]
+      - option "Declared"
+      - option "Inherited"
+      - option "Extension"
+    - button "Expand all"
+    - button "Collapse all"
+    - heading "Functions" [level=2]
+    - text: 2 members
+    - group "choose 2 overloads":
+      - heading "choose 2 overloads" [level=3]:
+        - code: choose
+        - text: 2 overloads
+      - group:
+        - code:
+          - text: "public func choose(value:"
+          - link "Choice00":
+            - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1378253111-1197776021.html
+          - text: "):"
+          - link "Int64":
+            - /url: https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_intrinsics.html#int64
+        - text: Accept Choice00 and return its documented category.
+        - heading "Parameters" [level=3]
+        - term:
+          - code: value
+          - text: ":"
+          - code:
+            - link "Choice00":
+              - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1378253111-1197776021.html
+        - definition:
+          - text: "Translation missing. Original text: zh-CN"
+          - paragraph: 类别 0 的输入，不推断额外约束。
+        - heading "Returns" [level=3]
+        - code:
+          - link "Int64":
+            - /url: https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_intrinsics.html#int64
+        - text: "Translation missing. Original text: zh-CN"
+        - paragraph: 固定编号 0。
+        - region "Postcondition":
+          - heading "Postcondition" [level=3]
+          - text: "Translation missing. Original text: zh-CN"
+          - paragraph: 返回值等于 0；不声明线程安全或复杂度。
+      - 'group "Member actions for public func choose(value: Choice00): Int64 Accept Choice00 and return its documented category."':
+        - text: Member actions for
+        - 'link "Open standalone API page public func choose(value: Choice00): Int64 Accept Choice00 and return its documented category."':
+          - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--82072477-1727319314.html
+        - 'button "Copy link public func choose(value: Choice00): Int64 Accept Choice00 and return its documented category."'
+        - status
+      - group:
+        - code:
+          - text: "public func choose(value:"
+          - link "Choice01":
+            - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1303037116-1366214740.html
+          - text: "):"
+          - link "Int64":
+            - /url: https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_intrinsics.html#int64
+        - text: Accept Choice01 and return its documented category.
+        - heading "Parameters" [level=3]
+        - term:
+          - code: value
+          - text: ":"
+          - code:
+            - link "Choice01":
+              - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1303037116-1366214740.html
+        - definition:
+          - text: "Translation missing. Original text: zh-CN"
+          - paragraph: 类别 1 的输入，不推断额外约束。
+        - heading "Returns" [level=3]
+        - code:
+          - link "Int64":
+            - /url: https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_intrinsics.html#int64
+        - text: "Translation missing. Original text: zh-CN"
+        - paragraph: 固定编号 1。
+        - region "Postcondition":
+          - heading "Postcondition" [level=3]
+          - text: "Translation missing. Original text: zh-CN"
+          - paragraph: 返回值等于 1；不声明线程安全或复杂度。
+      - 'group "Member actions for public func choose(value: Choice01): Int64 Accept Choice01 and return its documented category."':
+        - text: Member actions for
+        - 'link "Open standalone API page public func choose(value: Choice01): Int64 Accept Choice01 and return its documented category."':
+          - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--82072608-1727319571.html
+        - 'button "Copy link public func choose(value: Choice01): Int64 Accept Choice01 and return its documented category."'
+        - status

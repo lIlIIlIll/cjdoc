@@ -143,3 +143,27 @@ RSS 顺序回归在独立的小控制进程中运行，避免完整测试套件�
 [Reader scale observations workflow](../../.github/workflows/reader-scale.yml) 复用同源 STS candidate 并核对 binary SHA-256；另把固定 `2ef643c5d795ab2e3dfd1035517baeec3a88b0aa` 源码移到 checkout 外，使用同一认证 SDK 构建 baseline。在同一 runner 上依次采 baseline、绑定事先登记的数值模板、采 after、运行行为回归和严格比较。原始 JSON、日志、Doc IR、截图与比较保存为该 run 的 artifact，默认保留 30 天；需要长期归档时下载并保留摘要。手动选择资源受限 cohort 时比较仍为 `pass: false`、退出失败，不能把观测已完成误写成支持该规模。每个 run 都是独立 cohort，不冒充本地快照原始文件。
 
 build、仓颉 unit、golden/integration、真实库、本地浏览器、远端 CI 必须分别报告。源码中存在脚本、较小 fixture 通过、ARIA snapshot 或截图好看，都不是较高层级已执行的证据。
+
+
+## #163 的预期展示差异登记
+
+固定 1k cohort 使用 [`reader-scale-presentation.json`](reader-scale-presentation.json)。
+基线采集完成后，`reader_register.py --presentation` 将该文件的原始摘要、规范化内容摘要及完整内容写入注册预算，随后才采集 after。
+默认不提供该参数时仍要求原来的完全相同排版。其它语料需要独立登记，不自动套用 1k 的例外。
+
+该登记仅允许下列已审查差异：
+
+- 正文从 15px 变为 16px，并加入明确的 CJK 字体回退；before/after 必须分别精确匹配登记的 CSS family 与字号。
+- 实际使用字体的家族集合按语言分别登记；两次采集还必须具有完全相同的六家族安装文件清单和 SHA-256。实际节点字体仍逐项保留，不能把改后的字体使用集合当成另一台机器的环境。
+- 无 JS 原生 ARIA 树只移除重复的“声明”标题、重复的 `choose` 文本，以及操作名称中的同一冗余标识符。四份[完整树快照](../../tests/fixtures/reader-presentation/)可直接比较；任何其它角色、顺序、链接、签名或契约变化都会改变登记摘要并失败。
+- 原生 Doc IR 仅允许 `generator.version` 从 0.7.3 变为 0.7.5。比较器先校验两个原始文件各自的 receipt 摘要，再对其余全部字段作严格相等比较；不规范化声明、来源、诊断、作者正文或签名。
+
+查询排名、搜索 payload、原生目标、重载原文、print 可见身份和三种隐藏反例仍严格检查。
+`reader-scale-budgets.json` 中所有绝对/相对性能预算均未改变。该登记不是性能通过凭据，旧的 invalid-evidence 不会被改写；以最新 HEAD 的完整采集结果为准。
+
+另经单独授权，产品 Doc IR 物理对象上限由 65,536 提高到 131,072。编码器与严格解码器共用该值，并覆盖新边界的接受、拒绝和生成回退；文档/字符串字节、数组项、类型/Markdown 出现次数等独立限制不变。
+这项容量调整与展示登记分别提交；先前 10k/50k 的历史观测不据此升级为支持声明。
+
+
+固定 0.7.3 基线必须使用该 revision 自带的 `with_sts_o1_cjpm.sh`，以其记录的 `-O1` 规则重建。
+当前产品继续使用当前仓库的 `-O2 --fno-chir-function-inlining` 规则。不要把当前包装器套到旧源码：旧版本的 markdown/yjson 依赖在普通 `-O2` 下有已记录的 llc 崩溃；这会在采样之前失败，不能解释成读者性能退化。两份构建日志和原生身份各自保留。

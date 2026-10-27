@@ -28,12 +28,13 @@ internal func renderStandaloneMarkdownHtmlWithAssets(node: MarkdownNode,
     assetLookup: HashMap<String, String>, rootPrefix: String,
     sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
     pageTitle!: ?String = None, bindingSource!: String = "",
-    bindingChips!: ?HashMap<Int64, String> = None): String {
-    let context = HtmlMarkdownContext(2, sourceLinks: sourceLinks,
+    bindingChips!: ?HashMap<Int64, String> = None, headingBase!: Int64 = 2,
+    afterFirstCode!: String = ""): String {
+    let context = HtmlMarkdownContext(headingBase, sourceLinks: sourceLinks,
         bindingSource: bindingSource, bindingChips: bindingChips)
     collectMarkdownHeadings(node, "standalone", HashMap<String, Int64>(), context)
     let out = RenderTextBuffer()
-    appendStandaloneMarkdownHtml(out, node, context, pageTitle, assetLookup, rootPrefix)
+    appendStandaloneMarkdownHtml(out, node, context, pageTitle, assetLookup, rootPrefix, afterFirstCode)
     out.toString()
 }
 
@@ -66,20 +67,28 @@ private func standaloneTitleHeadingIndex(node: MarkdownNode, pageTitle: ?String)
 
 private func appendStandaloneMarkdownHtml(out: RenderTextBuffer, node: MarkdownNode,
     context: HtmlMarkdownContext, pageTitle: ?String,
-    assetLookup: HashMap<String, String>, rootPrefix: String): Unit {
-    match (standaloneTitleHeadingIndex(node, pageTitle)) {
-        case Some(index) =>
-            for (childIndex in 0..node.children.size) {
-                if (childIndex == index) {
-                    out.append("<span id=\"${escapeHtml(context.headingIds[context.nextHeading])}\"></span>\n")
-                    context.nextHeading++
-                    continue
-                }
-                appendMarkdownNodeHtml(out, node.children[childIndex], assetLookup, rootPrefix, context)
-            }
-        case None =>
-            appendMarkdownNodeHtml(out, node, assetLookup, rootPrefix, context)
+    assetLookup: HashMap<String, String>, rootPrefix: String, afterFirstCode: String): Unit {
+    if (node.kind != "document") {
+        appendMarkdownNodeHtml(out, node, assetLookup, rootPrefix, context)
+        out.append(afterFirstCode)
+        return
     }
+    let titleIndex = standaloneTitleHeadingIndex(node, pageTitle)
+    var inserted = false
+    for (index in 0..node.children.size) {
+        let child = node.children[index]
+        if (titleIndex == Some(index)) {
+            out.append("<span id=\"${escapeHtml(context.headingIds[context.nextHeading])}\"></span>\n")
+            context.nextHeading++
+        } else {
+            appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)
+        }
+        if (!inserted && child.kind == "code_block") {
+            out.append(afterFirstCode)
+            inserted = true
+        }
+    }
+    if (!inserted) { out.append(afterFirstCode) }
 }
 
 /** Resolve a source Markdown fragment using the same heading IDs as standalone HTML. */

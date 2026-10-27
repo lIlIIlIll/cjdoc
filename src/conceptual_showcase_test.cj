@@ -155,15 +155,16 @@ class CapturedPageShowcaseTest {
     }
 
     @TestCase
-    func capturedHomePageProvidesOneGuideEntry(): Unit {
+    func capturedHomePageRendersAuthorContentBeforeTheCompleteIndex(): Unit {
         let root = createShowcaseBindingProject()
         try {
+            File.writeTo(root.join("docs/index.md"), "# Binding fixture\n\nA real introduction.\n".toArray())
             let documentation = captureDocumentationPages(showcaseBindingFixture(), GenerationRequest(root.toString()))
             let index = artifactContent(api_render.HtmlDocumentationRenderer().render(documentation), "html/index.html")
-            @Expect(index.contains("concepts/index.html"))
             @Expect(index.contains("data-conceptual-entry"))
-            @Expect(index.contains("Open conceptual documentation"))
-            @Expect(index.split("Start here").size, 2)
+            @Expect(index.contains("A real introduction."))
+            @Expect(index.contains("concepts/guides/overload.html"))
+            @Expect(index.split("A real introduction.").size, 2)
             @Expect(!index.contains("Start with the guide"))
         } finally { let _ = removeIfExists(root, recursive: true) }
     }

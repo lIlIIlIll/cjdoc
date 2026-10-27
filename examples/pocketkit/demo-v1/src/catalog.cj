@@ -6,19 +6,13 @@ import std.collection.*
  * 保存按插入顺序排列的文本条目。
  *
  * TextCatalog 保留重复值和空字符串；索引从零开始。实例不提供内部同步，调用方必须
- * 在并发修改与读取之间安排同步。这是作者提供的契约，不是语义分析器证明。
- * {@link Stamp} 是本库的标签；{@link pocket_support.SourceLabel} 属于独立文档集。
- * 本地优先查找不会把 pocket_support.Stamp 当成本地类型；外部字段
- * {@link pocket_support.SourceLabel.text} 也使用同一个固定版本的本地索引。
+ * 在并发修改与读取之间安排同步。快照保留取得时的条目，之后的修改不会改变快照。
  *
  * @summary[lang=en] An insertion-ordered text catalogue.
- * @description[lang=en] TextCatalog preserves duplicate values and empty strings. Indices start at zero.
+ * @description[lang=en] Duplicate values and empty strings are allowed. Indices start at zero.
  *
  * Instances do not synchronize access internally. Arrange synchronization between concurrent readers and writers.
- * These are author-provided contracts; the semantic provider does not prove them.
- *
- * {@link Stamp} is a local label. External examples use {@link pocket_support.SourceLabel} from a separate documentation set.
- * Its {@link pocket_support.SourceLabel.text} field uses the same fixed-version local index.
+ * A snapshot preserves its entries after later catalogue changes.
  *
  * @example 顺序、重复值和快照
  * ```cangjie

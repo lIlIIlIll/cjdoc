@@ -199,9 +199,9 @@ test.describe('generated HTML reference', () => {
   test('overview, search state, typography, theme, and API routes are observable', async ({ page }) => {
     await openIndex(page);
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'overview');
-    await expect(page.locator('main h1')).toContainText('API documentation');
-    await expect(page.locator('.conceptual-entry')).toContainText('Open conceptual documentation');
-    await expect(page.locator('.quick-start')).toContainText('Browse the API index');
+    await expect(page.locator('main h1')).toHaveText('html_reference');
+    await expect(page.locator('.home-introduction')).toContainText('This guide is the starting point');
+    await expect(page.locator('.reading-paths')).toContainText('Getting started');
     await expect(page.locator('.package-index a')).toHaveCount(2);
     await expect(page.locator('.sidebar-link[aria-current="page"]')).toContainText('Overview');
     await gotoFile(page, indexUrl + '#packages');
@@ -219,7 +219,7 @@ test.describe('generated HTML reference', () => {
     });
     expect(fontMetrics.button).toBe(fontMetrics.body);
     expect(fontMetrics.input).toBe(fontMetrics.body);
-    expect(fontMetrics.heading).toBe(fontMetrics.body);
+    expect(fontMetrics.heading).not.toBe(fontMetrics.body);
     expect(fontMetrics.code).not.toBe(fontMetrics.body);
 
     const mutedContrast = await page.evaluate(() => {
@@ -228,7 +228,7 @@ test.describe('generated HTML reference', () => {
         const rgb = channels(color).map(channel => channel / 255).map(channel => channel <= .03928 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4);
         return .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2];
       };
-      const text = getComputedStyle(document.querySelector('.version-label')).color;
+      const text = getComputedStyle(document.querySelector('.sidebar-label')).color;
       const background = getComputedStyle(document.body).backgroundColor;
       const foregroundLuminance = luminance(text);
       const backgroundLuminance = luminance(background);
@@ -326,8 +326,9 @@ test.describe('generated HTML reference', () => {
     await gotoFile(page, stateUrl);
     await expect(page.locator('.external-documentation')).toHaveCount(0);
     await gotoFile(page, classUrl);
-    await expect(page.locator('.sidebar-context')).toContainText('ReferenceBox');
-    await expect(page.locator('.sidebar-context .context-item[href^="#"]').filter({ hasText: 'normalize' })).toHaveCount(1);
+    await expect(page.locator('.sidebar-context')).toHaveCount(0);
+    await expect(page.locator('.sidebar-symbol.is-current')).toContainText('ReferenceBox');
+    await expect(page.locator('.toc-panel .toc-link').filter({hasText:'normalize'})).toHaveCount(1);
     const memberFilter = page.locator('[data-cjdoc-member-filter]');
     const originFilter = page.locator('[data-cjdoc-member-origin]');
     await expect(originFilter).toHaveCount(1);
@@ -337,7 +338,7 @@ test.describe('generated HTML reference', () => {
     const extensionMember = page.locator('[data-cjdoc-member][data-member-origin="extension"]');
     await expect(extensionMember).not.toHaveCount(0);
     await expect(extensionMember.first()).toContainText('extensionMarker');
-    await extensionMember.first().locator('.member-detail-summary .member-display-name').click();
+    await extensionMember.first().locator('summary').click({position:{x:6,y:12}});
     await expect(extensionMember.first().locator('.extension-conditions')).toContainText('extension target');
     await originFilter.selectOption('');
     await memberFilter.fill('normalize');
@@ -345,14 +346,14 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-member][data-member-name="label"]')).toBeHidden();
     await expect(page.locator('[data-cjdoc-member-filter-status]')).toContainText('matching member');
     const normalizeForRestore = page.locator('details[data-cjdoc-member][data-member-name="normalize"]');
-    await normalizeForRestore.locator('.member-detail-summary .member-display-name').click();
+    await normalizeForRestore.locator('summary').click({position:{x:6,y:12}});
     const restoreHref = await memberActions(normalizeForRestore).locator('.member-permalink').getAttribute('href');
     expect(restoreHref).toBeTruthy();
     await page.evaluate(() => window.scrollTo(0, Math.min(520, document.documentElement.scrollHeight - innerHeight)));
     const readingY = await page.evaluate(() => window.scrollY);
     await memberActions(normalizeForRestore).locator('.member-permalink').click();
-    await expect(page.locator('.sidebar-context')).toBeVisible();
-    await expect(page.locator('.sidebar-context .context-item[aria-current="page"]')).toContainText('normalize');
+    await expect(page.locator('.sidebar-context')).toHaveCount(0);
+    await expect(page.locator('main h1')).toContainText('normalize');
     await page.goBack();
     await page.waitForTimeout(50);
     await expect(page.locator('[data-cjdoc-member-filter]')).toHaveValue('normalize');
@@ -367,16 +368,16 @@ test.describe('generated HTML reference', () => {
     // History restoration intentionally keeps the member open. Close it explicitly
     // before exercising the fresh one-action expansion path.
     await expect(normalizeDetail).toHaveAttribute('open', '');
-    await normalizeDetail.locator('.member-detail-summary .member-display-name').click();
+    await normalizeDetail.locator('summary').click({position:{x:6,y:12}});
     await expect(normalizeDetail).not.toHaveAttribute('open', '');
     const typePageUrl = page.url();
-    await normalizeDetail.locator('.member-detail-summary .member-display-name').click();
+    await normalizeDetail.locator('summary').click({position:{x:6,y:12}});
     await expect(normalizeDetail).toHaveAttribute('open', '');
     await expect(normalizeDetail.locator('.member-detail-body')).toContainText('Parameters');
     await expect(normalizeDetail.locator('.member-detail-body')).toContainText('Returns');
     await expect(normalizeDetail.locator('.member-detail-body')).toContainText('precondition');
     expect(page.url()).toBe(typePageUrl);
-    await labelDetail.locator('.member-detail-summary .member-display-name').click();
+    await labelDetail.locator('summary').click({position:{x:6,y:12}});
     await expect(labelDetail).toHaveAttribute('open', '');
     await expect(labelDetail.locator('.api-usages')).toContainText('Getting started');
     const actions = memberActions(labelDetail);
@@ -447,8 +448,8 @@ test.describe('generated HTML reference', () => {
     await memberFilter.fill('');
     await expect(pingGroup.locator('[data-cjdoc-overload-count]')).toHaveText('2 overloads');
     await expect(pingGroup).toBeVisible();
-    await pingDetails.nth(0).locator('.member-detail-summary .member-display-name').click();
-    await pingDetails.nth(1).locator('.member-detail-summary .member-display-name').click();
+    await pingDetails.nth(0).locator('summary').click({position:{x:6,y:12}});
+    await pingDetails.nth(1).locator('summary').click({position:{x:6,y:12}});
     await expect(pingDetails.nth(0)).toHaveAttribute('open', '');
     await expect(pingDetails.nth(1)).toHaveAttribute('open', '');
     const normalizeAnchor = await normalizeDetail.getAttribute('id');
@@ -497,7 +498,7 @@ test.describe('generated HTML reference', () => {
     await page.goBack();
     await expect(page).toHaveURL(beforeTypeNavigation);
     await expect(useDetail).not.toHaveAttribute('open', '');
-    await useDetail.locator('.member-detail-summary .member-display-name').click();
+    await useDetail.locator('summary').click({position:{x:6,y:12}});
     await expect(useDetail.locator('summary .declaration-signature'))
       .toContainText('label!: String = "Token", item!: Token');
     const useHref = await memberActions(useDetail).locator('.member-permalink').getAttribute('href');
@@ -513,9 +514,9 @@ test.describe('generated HTML reference', () => {
     const memberUrl = new URL(memberHref, classUrl).href;
     await gotoFile(page, memberUrl);
     await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
-    await expect(page.locator('.sidebar-context')).toContainText('ReferenceBox');
-    await expect(page.locator('.sidebar-context .context-item[aria-current="page"]')).toContainText('normalize');
-    await expect(page.locator('.sidebar-context .context-item').filter({ hasText: 'label' })).toHaveCount(1);
+    await expect(page.locator('.sidebar-context')).toHaveCount(0);
+    await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
+    await expect(page.locator('main h1')).toContainText('normalize');
     await expect(page.locator('.behavior-contracts h3')).toHaveText('Behavioral constraints');
     await expect(page.locator('.behavior-contracts')).toContainText('precondition');
     await expect(page.locator('.behavior-contracts')).toContainText('performance');
@@ -546,6 +547,7 @@ test.describe('generated HTML reference', () => {
         .filter(entry => entry.packageName === '').length);
     expect(emptyPackageEntries).toBeGreaterThan(0);
 
+    await page.locator('[data-cjdoc-filter-toggle]').click();
     const packageFilter = page.locator('[data-cjdoc-package]');
     const kindFilter = page.locator('[data-cjdoc-kind]');
     await expect(packageFilter).toHaveAttribute('aria-label', 'Filter by package');
@@ -577,6 +579,7 @@ test.describe('generated HTML reference', () => {
     page.on('pageerror', error => pageErrors.get(page).push(String(error)));
     await page.goto(zhIndexUrl);
     await expectStable(page);
+    await page.locator('[data-cjdoc-filter-toggle]').click();
     const packageFilter = page.locator('[data-cjdoc-package]');
     await expect(packageFilter.locator('option').first()).toHaveText('全部包');
     await expect(packageFilter.locator('option[value=""]')).toHaveCount(1);
@@ -630,8 +633,8 @@ test.describe('generated HTML reference', () => {
         clipped: node.scrollHeight > node.clientHeight,
       })));
       for (const description of descriptions) {
-        expect(description.height).toBeLessThanOrEqual(description.line * 2 + 1);
-        expect(description.clipped).toBe(true);
+        expect(description.height).toBeGreaterThan(0);
+        expect(description.clipped).toBe(false);
       }
       expect(metrics.scroll).toBeLessThanOrEqual(metrics.width + 1);
       expect(metrics.signatures).toBe(true);
@@ -755,7 +758,7 @@ test.describe('generated HTML reference', () => {
         'details[data-cjdoc-member][data-member-origin="extension"][data-member-name="extensionMarker"]'
       );
       await expect(extensionMember).toHaveCount(1);
-      await extensionMember.locator('summary .member-display-name').click();
+      await extensionMember.locator('summary').click({position:{x:6,y:12}});
       await extensionMember.locator('.member-origin a').click();
       const extensionUrl = page.url();
       if (start === indexUrl) offlineExtensionUrl = extensionUrl;
@@ -763,8 +766,8 @@ test.describe('generated HTML reference', () => {
       await expect(page.locator('.breadcrumbs li[aria-current="page"]')).toContainText('Extension');
       const ownMember = page.locator('details[data-cjdoc-member][data-member-name="extensionMarker"]');
       await expect(ownMember).toHaveCount(1);
-      await expect(page.locator('.sidebar-context a[href^="#"]')).toHaveCount(1);
-      await ownMember.locator('summary .member-display-name').click();
+      await expect(page.locator('.toc-panel .toc-link').filter({hasText:'extensionMarker'})).toHaveCount(1);
+      await ownMember.locator('summary').click({position:{x:6,y:12}});
       await expect(ownMember.locator('.member-detail-body')).toBeVisible();
       await expect(ownMember).toContainText('Member supplied by an extension.');
       await expect(memberActions(ownMember).locator('.member-permalink')).toHaveAttribute('href', /symbol-/);
@@ -775,7 +778,7 @@ test.describe('generated HTML reference', () => {
       await page.goBack();
       await expect(page).toHaveURL(extensionUrl);
       if (!(await ownMember.evaluate(node => node.open))) {
-        await ownMember.locator('summary .member-display-name').click();
+        await ownMember.locator('summary').click({position:{x:6,y:12}});
       }
       // Desktop actions become actionable when the pointer enters their member row.
       await ownMember.hover();
@@ -791,7 +794,7 @@ test.describe('generated HTML reference', () => {
       await offlinePage.goto(offlineExtensionUrl);
       const member = offlinePage.locator('details[data-cjdoc-member][data-member-name="extensionMarker"]');
       await expect(member).toHaveCount(1);
-      await member.locator('summary .member-display-name').click();
+      await member.locator('summary').click({position:{x:6,y:12}});
       await expect(member.locator('.member-detail-body')).toBeVisible();
       await expect(offlinePage.locator('.symbol-relationships a.relation-target')).toHaveCount(1);
     } finally {
@@ -837,7 +840,7 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('[data-cjdoc-member-origin] option[value="declared"]')).toContainText('直接声明');
     const convert = page.locator('[data-cjdoc-member][data-member-name="convert"]').first();
     await expect(convert).toContainText('将整数转换为文本');
-    await convert.locator('.member-detail-summary .member-display-name').click();
+    await convert.locator('summary').click({position:{x:6,y:12}});
     await expect(convert.locator('.member-detail-body')).toContainText('返回值');
   });
 
@@ -854,7 +857,7 @@ test.describe('generated HTML reference', () => {
     const anchor = await normalize.getAttribute('id');
     await page.goto(page.url().split('#')[0] + '#' + anchor);
     await expect(normalize).toHaveAttribute('open', '');
-    await expect(page.locator('.sidebar-context')).toContainText('ReferenceBox');
+    await expect(page.locator('.sidebar-symbol.is-current')).toContainText('ReferenceBox');
     await expect(page.locator('link[href="../style.css"]')).toHaveCount(1);
     await expectStable(page);
   });
@@ -921,7 +924,7 @@ test.describe('generated HTML reference', () => {
     await expect(actions.locator('.member-action-copy')).toBeFocused();
     await expect(actions).toHaveCSS('opacity', '1');
 
-    await summary.locator('.member-display-name').click();
+    await summary.click({position:{x:6,y:12}});
     await expect(member).toHaveAttribute('open', '');
     await expect(member.locator('.member-detail-body')).toBeVisible();
     await expect(member.locator('.member-detail-actions')).toHaveCount(0);
@@ -971,7 +974,7 @@ test.describe('generated HTML reference', () => {
     await expect(toggle).toHaveAttribute('aria-expanded', 'true');
     await page.touchscreen.tap(5, 830);
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await detail.locator('.member-detail-summary .member-display-name').tap();
+    await detail.locator('.member-detail-summary .declaration-signature').tap();
     await expect(detail).toHaveAttribute('open', '');
     expect(page.url()).toBe(before);
     const last = page.locator('details[data-cjdoc-member]').last();

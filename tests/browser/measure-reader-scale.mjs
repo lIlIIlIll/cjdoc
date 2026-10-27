@@ -13,14 +13,19 @@ import { chromium, playwrightVersion, distribution, entryIndex, installMetrics, 
   resourceSizes, screenshot, sha256, timedQuery, typeEntry } from './reader-scale-metrics.mjs';
 import { anchorFor, instrumentedPage, memberTasks, overloadTasks, queryTasks } from './reader-scale-tasks.mjs';
 
-async function fontIdentities(report) {
-  const families = new Set();
+async function fontIdentities(report, inventory = false) {
+  // The installed environment is independent of which fonts the edited page uses.
+  // Actual per-node usage remains in the report and has its own registered check.
+  const families = new Set(inventory ? [
+    'DejaVu Sans Mono', 'Liberation Mono', 'Liberation Sans',
+    'Noto Sans CJK SC', 'Noto Serif CJK SC', 'WenQuanYi Zen Hei',
+  ] : []);
   const visit = value => {
     if (!value || typeof value !== 'object') return;
     if (Array.isArray(value.fonts)) for (const font of value.fonts) if (!font.custom) families.add(font.family);
     for (const child of Object.values(value)) if (child && typeof child === 'object') visit(child);
   };
-  visit(report);
+  if (!inventory) visit(report);
   const identities = [];
   for (const family of [...families].sort()) {
     try {
@@ -282,7 +287,8 @@ finally {
   await browser.close();
   hosted.server.closeAllConnections?.();
   await new Promise(resolve => hosted.server.close(resolve));
-  report.environment.fontFiles = await fontIdentities(report);
+  report.fontUsage = await fontIdentities(report);
+  report.environment.fontFiles = await fontIdentities(report, true);
   await writeFile(path.join(config.output, 'reader-browser.json'), JSON.stringify(report, null, 2) + '\n');
 }
 console.log(JSON.stringify({ label: config.label, nativeIndexEntries: report.nativeIndexEntries,

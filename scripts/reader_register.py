@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 from copy import deepcopy
 from pathlib import Path
 import sys
@@ -16,12 +18,19 @@ except ImportError:
     from strict_json import strict_load, strict_dumps
 
 
-def register(baseline: Path, template: Path) -> dict:
+def register(baseline: Path, template: Path, presentation: Path | None = None) -> dict:
     budget = deepcopy(strict_load(template))
     if budget.get("schemaVersion") != "cjdoc.reader-budgets/1" or "baseline" in budget:
         raise ValueError("an unbound cjdoc.reader-budgets/1 template is required")
     if type(budget.get("minimumSamples")) is not int or budget["minimumSamples"] < 20:
         raise ValueError("registered percentiles require at least 20 raw samples")
+    if presentation is not None:
+        profile = strict_load(presentation)
+        if profile.get("schemaVersion") != "cjdoc.reader-presentation/1":
+            raise ValueError("unsupported presentation profile")
+        encoded = json.dumps(profile, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+        budget["presentation"] = {"sha256": hashlib.sha256(encoded).hexdigest(),
+                                  "fileSha256": file_digest(presentation), "profile": profile}
     receipt = baseline / "reader-generation.json"
     native = strict_load(receipt)
     if native.get("label") != "baseline" or native.get("status") not in {"measured", "resource-limited"}:
@@ -49,8 +58,9 @@ def main() -> int:
     parser.add_argument("--baseline", required=True, type=Path)
     parser.add_argument("--template", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--presentation", type=Path, help="expected presentation changes, frozen before after capture")
     args = parser.parse_args()
-    result = register(args.baseline, args.template)
+    result = register(args.baseline, args.template, args.presentation)
     with args.output.open("x", encoding="utf-8") as output:
         output.write(strict_dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
     print(strict_dumps({"status": result["baseline"]["status"],

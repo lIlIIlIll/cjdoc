@@ -1,0 +1,105 @@
+- main:
+  - navigation "面包屑导航":
+    - list:
+      - listitem:
+        - link "首页":
+          - /url: ../index.html
+      - listitem:
+        - text: /
+        - link "包 reader_scale":
+          - /url: ../packages/package-32303a636a646f633a6d6f64756c653a76313a726f6f747265616465725f7363616c65.html
+          - text: 包
+          - code: reader_scale
+      - listitem:
+        - text: /
+        - code: Overload2
+  - heading "Overload2" [level=1]:
+    - code: Overload2
+  - paragraph: 类
+  - button "复制链接"
+  - paragraph: 比较 2 种显式参数类型，名称不证明语义相同。
+  - heading "声明" [level=2]
+  - code: public class Overload2
+  - region "成员":
+    - text: 筛选成员
+    - searchbox "筛选成员"
+    - text: 来源
+    - combobox "来源":
+      - option "所有来源" [selected]
+      - option "直接声明"
+      - option "继承"
+      - option "扩展"
+    - button "全部展开"
+    - button "全部收起"
+    - heading "函数" [level=2]
+    - text: 2 个成员
+    - group "choose 2 个重载":
+      - heading "choose 2 个重载" [level=3]:
+        - code: choose
+        - text: 2 个重载
+      - group:
+        - text: choose
+        - code:
+          - text: "public func choose(value:"
+          - link "Choice00":
+            - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1378253111-1197776021.html
+          - text: "):"
+          - link "Int64":
+            - /url: https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_intrinsics.html#int64
+        - text: 接受 Choice00，返回作者声明的类别编号。
+        - heading "参数" [level=3]
+        - term:
+          - code: value
+          - text: ":"
+          - code:
+            - link "Choice00":
+              - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1378253111-1197776021.html
+        - definition:
+          - paragraph: 类别 0 的输入，不推断额外约束。
+        - heading "返回值" [level=3]
+        - code:
+          - link "Int64":
+            - /url: https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_intrinsics.html#int64
+        - paragraph: 固定编号 0。
+        - region "后置条件":
+          - heading "后置条件" [level=3]
+          - paragraph: 返回值等于 0；不声明线程安全或复杂度。
+      - 'group "成员操作： choose public func choose(value: Choice00): Int64 接受 Choice00，返回作者声明的类别编号。"':
+        - text: 成员操作：
+        - 'link "打开独立 API 页面 choose public func choose(value: Choice00): Int64 接受 Choice00，返回作者声明的类别编号。"':
+          - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--82072477-1727319314.html
+        - 'button "复制链接 choose public func choose(value: Choice00): Int64 接受 Choice00，返回作者声明的类别编号。"'
+        - status
+      - group:
+        - text: choose
+        - code:
+          - text: "public func choose(value:"
+          - link "Choice01":
+            - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1303037116-1366214740.html
+          - text: "):"
+          - link "Int64":
+            - /url: https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_intrinsics.html#int64
+        - text: 接受 Choice01，返回作者声明的类别编号。
+        - heading "参数" [level=3]
+        - term:
+          - code: value
+          - text: ":"
+          - code:
+            - link "Choice01":
+              - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1303037116-1366214740.html
+        - definition:
+          - paragraph: 类别 1 的输入，不推断额外约束。
+        - heading "返回值" [level=3]
+        - code:
+          - link "Int64":
+            - /url: https://cj-docs.gitcode.com/zh/1.2.0/libs/std/core/core_package_api/core_package_intrinsics.html#int64
+        - paragraph: 固定编号 1。
+        - region "后置条件":
+          - heading "后置条件" [level=3]
+          - paragraph: 返回值等于 1；不声明线程安全或复杂度。
+      - 'group "成员操作： choose public func choose(value: Choice01): Int64 接受 Choice01，返回作者声明的类别编号。"':
+        - text: 成员操作：
+        - 'link "打开独立 API 页面 choose public func choose(value: Choice01): Int64 接受 Choice01，返回作者声明的类别编号。"':
+          - /url: ../symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--82072608-1727319571.html
+        - 'button "复制链接 choose public func choose(value: Choice01): Int64 接受 Choice01，返回作者声明的类别编号。"'
+        - status

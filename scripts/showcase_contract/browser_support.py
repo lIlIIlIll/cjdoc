@@ -16,9 +16,9 @@ class Journey:
         self.assertions = []
         self.timings = {"queryMs": [], "expandMs": []}
 
-    def click(self, locator):
+    def click(self, locator, **options):
         self.activations += 1
-        locator.click()
+        locator.click(**options)
         self.page.wait_for_load_state("load")
 
     def back(self, expected: str):
@@ -47,7 +47,7 @@ class Journey:
         from playwright.sync_api import expect
         member.locator("summary").first.scroll_into_view_if_needed()
         def complete():
-            self.click(member.locator("summary .member-display-name").first)
+            self.click(member.locator(":scope > summary"), position={"x": 6, "y": 12})
             expect(member).to_have_attribute("open", "")
             expect(member.locator(".member-detail-body")).to_be_visible()
         self.measured("expandMs", complete, member.locator("summary").first, "click")
@@ -133,6 +133,19 @@ def member_action(member, selector: str):
     action = actions.locator(selector)
     action.focus()
     return action
+
+
+def member_toc_link(page, anchor: str):
+    """Locate the exact rendered member link in the page outline."""
+    from playwright.sync_api import expect
+    desktop = page.locator("[data-cjdoc-toc]")
+    compact = not desktop.is_visible()
+    toc = page.locator("[data-cjdoc-mobile-toc]") if compact else desktop
+    if compact and toc.get_attribute("open") is None:
+        toc.locator(":scope > summary").click()
+    link = toc.locator(f'[data-toc-target="{anchor}"]')
+    expect(link).to_have_count(1)
+    return link
 
 
 def clipboard_code_matches(copied: str, source: str) -> bool:

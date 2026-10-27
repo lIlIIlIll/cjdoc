@@ -1,0 +1,258 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-26T15:29:22+00:00",
+  "title": "Design System: cjdoc API Documentation",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "displayName": "Bg"
+      },
+      "surface": {
+        "displayName": "Surface"
+      },
+      "surface-raised": {
+        "displayName": "Surface Raised"
+      },
+      "surface-subtle": {
+        "displayName": "Surface Subtle"
+      },
+      "code-bg": {
+        "displayName": "Code Bg"
+      },
+      "ink": {
+        "displayName": "Ink"
+      },
+      "muted": {
+        "displayName": "Muted"
+      },
+      "faint": {
+        "displayName": "Faint"
+      },
+      "line": {
+        "displayName": "Line"
+      },
+      "line-strong": {
+        "displayName": "Line Strong"
+      },
+      "accent": {
+        "displayName": "Accent"
+      },
+      "accent-strong": {
+        "displayName": "Accent Strong"
+      },
+      "accent-soft": {
+        "displayName": "Accent Soft"
+      },
+      "success": {
+        "displayName": "Success"
+      },
+      "warning": {
+        "displayName": "Warning"
+      },
+      "danger": {
+        "displayName": "Danger"
+      },
+      "code-keyword": {
+        "displayName": "Code Keyword"
+      },
+      "code-type": {
+        "displayName": "Code Type"
+      },
+      "code-comment": {
+        "displayName": "Code Comment"
+      },
+      "code-string": {
+        "displayName": "Code String"
+      },
+      "code-number": {
+        "displayName": "Code Number"
+      }
+    },
+    "typographyMeta": {
+      "reading-title": {
+        "displayName": "Reading title",
+        "purpose": "Home and guide entry titles with CJK serif fallbacks."
+      },
+      "api-title": {
+        "displayName": "API title",
+        "purpose": "Monospace symbol identifiers."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Shared document and shell text."
+      },
+      "prose": {
+        "displayName": "Prose",
+        "purpose": "Continuous authored narrative with an open line height."
+      },
+      "summary": {
+        "displayName": "Summary",
+        "purpose": "Complete descriptions, parameters, returns, and behavior."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Signatures and executable examples."
+      }
+    },
+    "shadows": [
+      {
+        "name": "temporary-panel-light",
+        "value": "0 12px 32px rgba(23, 31, 48, .08)",
+        "purpose": "Default light search, filters, theme, action menus, and mobile navigation."
+      },
+      {
+        "name": "temporary-panel-dark",
+        "value": "0 18px 42px rgba(0, 0, 0, .26)",
+        "purpose": "The same temporary surfaces in dark appearance."
+      }
+    ],
+    "motion": [
+      {
+        "name": "search-focus",
+        "value": "border-color .18s ease, box-shadow .18s ease",
+        "purpose": "Search focus feedback."
+      },
+      {
+        "name": "type-link",
+        "value": "background-color .12s ease, color .12s ease",
+        "purpose": "Type link hover and focus feedback."
+      },
+      {
+        "name": "disclosure-chevron",
+        "value": "transform .16s ease",
+        "purpose": "Package navigation expansion."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "transition-duration: .01ms; animation-duration: .01ms; scroll-behavior: auto",
+        "purpose": "Honor the user's reduced-motion preference."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "outline-to-disclosure",
+        "value": "1180px"
+      },
+      {
+        "name": "mobile-tools-and-drawer",
+        "value": "760px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Outline action",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Quiet member expansion or supporting action.",
+      "html": "<button class=\"ds-outline\">Expand all</button>",
+      "css": ".ds-outline{min-height:34px;padding:.25rem .55rem;border:1px solid var(--line-strong,#c2cdc3);border-radius:5px;background:var(--surface,#fcfbf8);color:var(--muted,#56665c);font-size:.78rem;cursor:pointer}.ds-outline:hover{border-color:var(--accent,#176a54);color:var(--accent,#176a54)}.ds-outline:focus-visible{outline:2px solid var(--accent,#176a54);outline-offset:3px}.ds-outline:active{background:var(--surface-subtle,#f3f5ef)}"
+    },
+    {
+      "name": "Document search",
+      "kind": "input",
+      "refersTo": "search",
+      "description": "Labeled global search field with a quiet focus ring.",
+      "html": "<label class=\"ds-search\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m20 20-4-4\"/></svg><input type=\"search\" aria-label=\"Search documentation\" placeholder=\"Search docs\"></label>",
+      "css": ".ds-search{display:flex;align-items:center;gap:.65rem;height:40px;padding:0 .75rem;border:1px solid var(--line-strong,#c2cdc3);border-radius:7px;background:var(--surface-subtle,#f3f5ef);color:var(--muted,#56665c);transition:border-color .18s ease,box-shadow .18s ease}.ds-search:focus-within{border-color:var(--accent,#176a54);box-shadow:0 0 0 3px var(--accent-soft,#edf2ea)}.ds-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--ink,#24352e);font:inherit}.ds-search input::placeholder{color:var(--muted,#56665c)}"
+    },
+    {
+      "name": "Current navigation",
+      "kind": "nav",
+      "refersTo": "navigation-current",
+      "description": "Project and package navigation shares one quiet selected field.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Documentation\"><a href=\"#overview\" aria-current=\"page\">Overview</a><a href=\"#reference\">API reference</a></nav>",
+      "css": ".ds-nav{display:grid;gap:.12rem}.ds-nav a{display:flex;align-items:center;min-height:34px;padding:.38rem .6rem;border-radius:6px;color:var(--muted,#56665c);font-size:.88rem;text-decoration:none}.ds-nav a:hover{background:var(--surface-subtle,#f3f5ef);color:var(--ink,#24352e)}.ds-nav a[aria-current]{background:var(--accent-soft,#edf2ea);color:var(--accent-strong,#125641);font-weight:680}.ds-nav a:focus-visible{outline:2px solid var(--accent,#176a54);outline-offset:3px}"
+    },
+    {
+      "name": "State badge",
+      "kind": "chip",
+      "refersTo": "badge",
+      "description": "An explicit textual state, not a color-only indicator.",
+      "html": "<span class=\"ds-badge\">partial</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;padding:.16rem .42rem;border:1px solid color-mix(in srgb,var(--warning,#835b15) 38%,var(--line,#dfe4dc));border-radius:5px;background:var(--surface-subtle,#f3f5ef);color:var(--warning,#835b15);font:650 .69rem/1.4 ui-monospace,monospace}"
+    },
+    {
+      "name": "Module record",
+      "kind": "card",
+      "description": "A light bordered grouping when the document needs a module container.",
+      "html": "<section class=\"ds-record\"><h3><a href=\"#package\">catalog</a></h3><p>Collections and their documented contracts.</p></section>",
+      "css": ".ds-record{padding:1rem 1.1rem;border:1px solid var(--line,#dfe4dc);border-radius:8px;background:var(--surface,#fcfbf8)}.ds-record h3{margin:0;font-size:1rem}.ds-record p{margin:.35rem 0;color:var(--muted,#56665c);font-size:.84rem}.ds-record a{color:var(--accent,#176a54);text-decoration:none}.ds-record a:hover{text-decoration:underline}.ds-record a:focus-visible{outline:2px solid var(--accent,#176a54);outline-offset:3px}"
+    },
+    {
+      "name": "Code block",
+      "kind": "custom",
+      "refersTo": "code-block",
+      "description": "Tinted paper distinguishes executable material from continuous prose.",
+      "html": "<pre class=\"ds-code\"><code><span class=\"ds-keyword\">let</span> catalog = TextCatalog()</code></pre>",
+      "css": ".ds-code{margin:1.4rem 0;padding:1.1rem 3.3rem 1.1rem 1rem;overflow:auto;border:1px solid var(--line-strong,#c2cdc3);border-radius:8px;background:var(--code-bg,#f0f3ed);color:var(--ink,#24352e);font:14px/1.75 var(--code-font,ui-monospace,monospace);white-space:pre-wrap;overflow-wrap:anywhere}.ds-keyword{color:var(--code-keyword,#754197)}"
+    },
+    {
+      "name": "Member disclosure",
+      "kind": "custom",
+      "description": "Native expansion keeps the complete summary and contract available.",
+      "html": "<details class=\"ds-member\"><summary><code>public func snapshot(): Array&lt;String&gt;</code><span>Retain the current entries as a snapshot.</span></summary><p>The snapshot remains unchanged after later catalog edits.</p></details>",
+      "css": ".ds-member{border-block:1px solid var(--line,#dfe4dc);color:var(--ink,#24352e)}.ds-member summary{cursor:pointer;padding:.45rem .35rem;border-radius:6px}.ds-member summary:hover,.ds-member[open]>summary{background:var(--surface-subtle,#f3f5ef)}.ds-member summary:focus-visible{outline:2px solid var(--accent,#176a54);outline-offset:3px}.ds-member code{font:500 14px/1.7 var(--code-font,ui-monospace,monospace);white-space:pre-wrap;overflow-wrap:anywhere}.ds-member summary span{display:block;margin-top:.2rem;color:var(--muted,#56665c);font-size:15px;line-height:1.75}.ds-member p{padding:.75rem .5rem 1.4rem 1.3rem;margin:0;font-size:15px;line-height:1.8}"
+    },
+    {
+      "name": "In-document outline",
+      "kind": "nav",
+      "description": "Native section disclosure on narrower layouts.",
+      "html": "<details class=\"ds-outline-nav\"><summary>On this page</summary><nav><a href=\"#usage\">Usage</a><a href=\"#members\">Members</a></nav></details>",
+      "css": ".ds-outline-nav{padding:.7rem .85rem;border:1px solid var(--line,#dfe4dc);border-radius:8px;background:var(--surface-subtle,#f3f5ef);color:var(--ink,#24352e)}.ds-outline-nav summary{cursor:pointer;font-weight:650}.ds-outline-nav nav{display:grid;gap:.35rem;margin-top:.6rem}.ds-outline-nav a{color:var(--muted,#56665c);font-size:.84rem;text-decoration:none}.ds-outline-nav a:hover{color:var(--accent,#176a54);text-decoration:underline}.ds-outline-nav a:focus-visible,.ds-outline-nav summary:focus-visible{outline:2px solid var(--accent,#176a54);outline-offset:3px}"
+    },
+    {
+      "name": "Selected theme option",
+      "kind": "button",
+      "description": "The active preset is named and checked in the theme list.",
+      "html": "<button class=\"ds-theme-option\" aria-pressed=\"true\">Paper<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"m5 12 4 4L19 6\"/></svg></button>",
+      "css": ".ds-theme-option{display:flex;align-items:center;gap:.6rem;width:100%;min-height:36px;padding:.45rem .65rem;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--ink,#24352e);font-size:.8rem;text-align:left;cursor:pointer}.ds-theme-option svg{margin-left:auto}.ds-theme-option:hover,.ds-theme-option[aria-pressed=true]{background:var(--accent-soft,#edf2ea);color:var(--accent,#176a54)}.ds-theme-option:focus-visible{outline:2px solid var(--accent,#176a54);outline-offset:3px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "技术书页 / The Technical Book",
+    "overview": "cjdoc presents source-backed documentation as a technical book: warm paper, deep ink, teal links, continuous explanation, and light divisions. Readers can follow an author's introduction, read a usable example, and continue into a guide or a complete API contract without the interface competing for attention.\n\nReading and reference share one visual system. Narrative pages use a controlled measure and serif titles; API pages keep identifiers, signatures, and complete member contracts easy to inspect. Structure, typography, and spacing carry hierarchy. Search, filters, themes, and generation evidence remain available as supporting tools.",
+    "keyCharacteristics": [
+      "Warm white paper with deep green ink and restrained teal wayfinding.",
+      "Continuous prose, complete reference material, and lightweight separators.",
+      "Distinct reading, summary, and code roles with local font fallbacks.",
+      "Static routes, native disclosures, and progressively enhanced navigation."
+    ],
+    "rules": [
+      {
+        "name": "The Semantic Color Rule",
+        "body": "A theme changes the palette while preserving link, selection, focus, syntax, and diagnostic roles.",
+        "section": "colors"
+      },
+      {
+        "name": "The Full Text Rule",
+        "body": "Member signatures and descriptions wrap without line clamps or ellipses. Compact navigation and search-result labels may truncate; the contract remains readable in full.",
+        "section": "typography"
+      },
+      {
+        "name": "The Reading Order Rule",
+        "body": "Supporting controls and evidence must not displace the author's explanation or remove complete API content. Use disclosure to manage density, retaining a direct route to the full material.",
+        "section": "layout"
+      },
+      {
+        "name": "The Paper Surface Rule",
+        "body": "Keep the reading plane continuous; reserve raised surfaces for tools that temporarily overlap it.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** use shared semantic tokens across all eight theme choices.",
+      "**Do** preserve the 16px body, 15px summary, and 14px code roles for their established purposes.",
+      "**Do** keep prose continuous and member contracts complete, with lightweight separators.",
+      "**Do** retain visible focus, native disclosures, honest semantic states, and static source-backed links.",
+      "**Do** let mobile search, filters, navigation, and themes reveal tools progressively."
+    ],
+    "donts": [
+      "**Don't** clip API signatures, explanations, or behavioral conditions to make rows smaller.",
+      "**Don't** make every paragraph, example, or member a raised card.",
+      "**Don't** give individual packages independent accent palettes or decorative status colors.",
+      "**Don't** invent source destinations or promote incomplete semantic evidence into a definite claim.",
+      "**Don't** replace reading flow with repeated indexes, generation metadata, or decorative statistics."
+    ]
+  }
+}

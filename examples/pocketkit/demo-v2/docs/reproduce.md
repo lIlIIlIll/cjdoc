@@ -68,3 +68,11 @@ Visit the local URL and edit a comment to trigger rebuilding. The status endpoin
 Static GitHub Pages does not run this compiler or server.
 
 [返回使用入门 / Back to the usage guide](guide.md)
+
+## 文档演示的来源与边界
+
+类型页的行为说明是库作者提供的契约，cjdoc 的语义补充不构成行为证明。
+同名类型与外部字段的演示使用固定版本的 `pocket_support` 文档索引：本库的 `Stamp`
+和依赖中的 `pocket_support.Stamp` 保持独立，`pocket_support.SourceLabel.text` 的目标也由该索引确定。
+复现脚本先为 `support-v1` 生成索引，再生成两个教学快照；直接生成单个项目且未准备索引时，
+外部参考会明确显示不可用。API 本身的源码、签名和作者契约仍然保留。

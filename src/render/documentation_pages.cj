@@ -48,20 +48,61 @@ internal func appendCapturedPageMarkdownNavigation(out: RenderTextBuffer,
     }
 }
 
-internal func capturedConceptualEntryHtml(documentation: DocumentationSet, locale: String): String {
-    var localized = documentation.languageOptions.isSome()
-    for (page in documentation.pages) { if (page.language.isSome()) { localized = true; break } }
-    let pages = selectedDocumentationPages(documentation, locale)
-    if (pages.isEmpty()) { return "" }
-    var route = pages[0].route
-    for (page in pages where page.kind == "project") { route = page.route; break }
-    if (!localized) {
-        return "<p>" + label(locale,
-            "Read the project guide before browsing the full generated API index.",
-            "先阅读项目指南，再浏览完整的生成 API 索引。") + "</p><a href=\"" + escapeHtml(route) + "\">" +
-            label(locale, "Open conceptual documentation", "打开概念文档") + "</a>\n"
+private func capturedPageHasImage(node: MarkdownNode): Bool {
+    if (node.kind == "image") { return true }
+    for (child in node.children) {
+        if (capturedPageHasImage(child)) { return true }
     }
-    "<p><a href=\"" + escapeHtml(route) + "\">" + label(locale, "Start with the guide", "从指南开始") + "</a></p>"
+    false
+}
+
+internal func capturedPageHasContent(page: DocumentationPage): Bool {
+    // Empty alt text is valid for an authored image; text extraction cannot
+    // distinguish it from an empty overview. Asset safety remains in rendering.
+    if (!page.bindings.isEmpty() || capturedPageHasImage(page.markdown)) { return true }
+    for (node in page.markdown.children) {
+        if (["heading", "html_block", "html_inline"].contains(node.kind)) { continue }
+        let text = markdownNodeText(node).trimAscii()
+        // Legacy generator fallbacks stay in the snapshot, but are not author introductions.
+        if (page.kind == "project" && text ==
+            "This site contains the conceptual documentation and generated API reference.") { continue }
+        if (page.kind == "package" && text == "This page describes the conceptual role of the package.") { continue }
+        if (!text.isEmpty()) { return true }
+    }
+    false
+}
+
+internal func appendPageContentLanguage(out: RenderTextBuffer, page: DocumentationPage,
+    locale: String): Unit {
+    let state = if (page.language.isNone()) { "unknown" } else if (page.language == Some(locale)) { "complete" } else { "fallback" }
+    appendContentLanguageHtml(out, DocTag("description", "", "",
+        contentLanguage: page.language, translationState: state), locale)
+}
+
+// Reuse the captured tree, highlight, assets and binding decisions when the
+// same author's introduction is read at home or at its canonical guide URL.
+internal func capturedPageBodyHtml(documentation: DocumentationSet, page: DocumentationPage,
+    locale: String, outputPath: String, assetLookup: HashMap<String, String>,
+    afterFirstCode!: String = ""): String {
+    let pages = selectedDocumentationPages(documentation, locale)
+    let relocated: ?String = if (outputPath == page.route) { None } else { Some(outputPath) }
+    let links = capturedPageSourceLinks(documentation, page, pages, outputPath: relocated)
+    let visible = RenderProjection(documentation).visibleIndex
+    let chips = HashMap<Int64, String>()
+    for (binding in page.bindings) {
+        chips[binding.sourceLine] = capturedPageBindingChipHtml(page, binding, visible, locale,
+            outputPath: relocated)
+    }
+    var body = renderStandaloneMarkdownHtmlWithAssets(page.markdown, assetLookup,
+        pageRootPrefix(outputPath), sourceLinks: links, pageTitle: Some(page.title),
+        bindingSource: page.source, bindingChips: Some(chips), headingBase: 1, afterFirstCode: afterFirstCode)
+    for (section in page.sections) {
+        if (let Some(anchor) <- documentationSectionAnchor(page.markdown, section.anchor)) {
+            body = body.replace("id=\"" + anchor + "\"", "id=\"" + anchor +
+                "\" data-semantic-section=\"" + escapeHtml(section.id) + "\"")
+        }
+    }
+    body
 }
 
 internal func appendCapturedPageArtifacts(artifacts: RenderArtifactCollector, documentation: DocumentationSet,
@@ -69,50 +110,47 @@ internal func appendCapturedPageArtifacts(artifacts: RenderArtifactCollector, do
     let pages = selectedDocumentationPages(documentation, locale)
     let assets = projectAssets(documentation, RenderProjection(documentation), pages: pages)
     let assetLookup = buildAssetLookup(assets)
-    let links = HashMap<String, String>()
-    for (page in pages) { links[page.source] = page.route }
     for (page in pages) {
         let prefix = pageRootPrefix(page.route)
-        let sourceLinks = capturedPageSourceLinks(documentation, page, pages)
-        let visible = RenderProjection(documentation).visibleIndex
-        let bindingChips = HashMap<Int64, String>()
-        for (binding in page.bindings) {
-            bindingChips[binding.sourceLine] = capturedPageBindingChipHtml(page, binding, visible, locale)
+        let body = RenderTextBuffer()
+        body.append("<article class=\"guide-content prose\">")
+        let placeholder = !capturedPageHasContent(page) && ["project", "package"].contains(page.kind)
+        if (placeholder) {
+            let context = HtmlMarkdownContext(2)
+            collectMarkdownHeadings(page.markdown, "standalone", HashMap<String, Int64>(), context)
+            for (anchor in context.headingIds) { body.append("<span id=\"" + escapeHtml(anchor) + "\"></span>") }
+            body.append("<p>" + label(locale, "An author overview has not been provided.", "作者尚未提供概述。") +
+                "</p><p><a href=\"" + prefix + "index.html#packages\">" +
+                label(locale, "Browse the complete API reference", "浏览完整 API 参考") + "</a></p>")
+        } else {
+            appendPageContentLanguage(body, page, locale)
+            body.append(capturedPageBodyHtml(documentation, page, locale, page.route, assetLookup))
         }
-        var body = renderStandaloneMarkdownHtmlWithAssets(page.markdown, assetLookup, prefix,
-            sourceLinks: sourceLinks, pageTitle: Some(page.title),
-            bindingSource: page.source, bindingChips: Some(bindingChips))
-        for (section in page.sections) {
-            if (let Some(anchor) <- documentationSectionAnchor(page.markdown, section.anchor)) {
-                // The explicit semantic id sits at the real heading position.
-                body = body.replace("id=\"" + anchor + "\"", "id=\"" + anchor + "\" data-semantic-section=\"" + escapeHtml(section.id) + "\"")
-            }
-        }
-        let state = if (page.language.isNone()) { "unknown" } else if (page.language == Some(locale)) { "complete" } else { "fallback" }
-        let provenance = DocTag("description", "", "", contentLanguage: page.language, translationState: state)
-        let introduction = RenderTextBuffer()
-        appendContentLanguageHtml(introduction, provenance, locale)
+        body.append("</article>\n")
+        let navigation = RenderTextBuffer()
         if (page.kind == "project") {
-            introduction.append("<nav aria-label=\"" + label(locale, "Guides", "指南") + "\"><ul>")
-            for (other in pages where other.id != page.id) {
-                introduction.append("<li><a href=\"" + prefix + escapeHtml(other.route) + "\">" + escapeHtml(other.title) + "</a></li>")
+            navigation.append("<nav class=\"reading-paths\" aria-label=\"" + label(locale, "Guides", "指南") + "\"><ul>")
+            for (other in pages where other.kind == "guide" && capturedPageHasContent(other)) {
+                navigation.append("<li><a href=\"" + prefix + escapeHtml(other.route) + "\">" + escapeHtml(other.title) + "</a></li>")
             }
-            introduction.append("</ul></nav>")
+            navigation.append("</ul></nav>")
         }
         if (!page.targetSymbolIds.isEmpty()) {
-            introduction.append("<nav aria-label=\"" + label(locale, "Related APIs", "相关 API") + "\"><ul>")
+            navigation.append("<nav class=\"guide-related-api\" aria-label=\"" + label(locale, "Related APIs", "相关 API") + "\"><ul>")
             let visible = RenderProjection(documentation).visibleIndex
             for (id in page.targetSymbolIds) {
                 if (let Some(symbol) <- visible.get(id)) {
-                    introduction.append("<li><a href=\"" + prefix + escapeHtml(symbolUrl(visible, symbol)) + "\">" + escapeHtml(symbol.qualifiedName) + "</a></li>")
+                    navigation.append("<li><a href=\"" + prefix + escapeHtml(symbolUrl(visible, symbol)) + "\">" + escapeHtml(symbol.qualifiedName) + "</a></li>")
                 }
             }
-            introduction.append("</ul></nav>")
+            navigation.append("</ul></nav>")
         }
+        appendGuideSequence(navigation, pages, page, locale)
         if (formats.contains("html")) {
             artifacts.addText("html/" + page.route, "text/html; charset=utf-8",
-                renderConceptualHtmlPage(documentation, page.title,
-                    introduction.toString() + body + capturedPageBindingsHtml(page, documentation, locale), prefix,
+                renderConceptualHtmlPage(documentation,
+                    if (placeholder && page.kind == "package") { label(locale, "Package ", "包 ") + page.packageName } else { page.title },
+                    body.toString() + navigation.toString() + capturedPageBindingsHtml(page, documentation, locale), prefix,
                     source: Some(page.source), locale: locale, docVersion: version, pageRoute: Some(page.route),
                     agentMarkdown: Some(agentPageMarkdownPath(page))))
         }
@@ -167,8 +205,12 @@ internal class CapturedApiGuideIndex {
         let heading = "conceptual-api-usages-heading" + headingSuffix
         out.append("<section class=\"api-usages\" aria-labelledby=\"" + escapeHtml(heading) + "\"><" + headingTag + " id=\"" + escapeHtml(heading) + "\">" + label(locale, "Related guides", "相关指南") + "</" + headingTag + "><ul>")
         for (page in pages) {
-            out.append("<li><a data-guide-id=\"" + escapeHtml(page.id) + "\" href=\"../" + escapeHtml(page.route) + "\">")
-            out.append(escapeHtml(page.title) + "</a></li>")
+            for ((route, section) in guideSectionTargets(page, symbol.id)) {
+                out.append("<li><a data-guide-id=\"" + escapeHtml(page.id) + "\" href=\"../" + escapeHtml(route) + "\">")
+                out.append(escapeHtml(page.title))
+                if (!section.isEmpty()) { out.append(" · " + escapeHtml(section)) }
+                out.append("</a></li>")
+            }
         }
         out.append("</ul></section>")
     }
@@ -209,4 +251,3 @@ internal func capturedPageMarkdownWithoutMarkers(node: MarkdownNode,
     }
     (Some(replacement), true)
 }
-

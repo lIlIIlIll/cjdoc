@@ -76,11 +76,12 @@ try {
   const baseline = await measure(browser, baselineRoot);
   const current = await measure(browser, currentRoot);
   const evidence = {
-    baselineCommit: 'c0ec28b6698e16da4e02cf7f59ff08d8e20fadf0',
+    baselineCommit: process.env.CJDOC_DENSITY_BASELINE_REVISION || 'c0ec28b6698e16da4e02cf7f59ff08d8e20fadf0',
+    currentCommit: process.env.CJDOC_DENSITY_CURRENT_REVISION || null,
     fixture: 'tests/fixtures/projects/html_reference',
     viewport: {width: 1440, height: 900},
-    baselineGenerationMs: Number(baselineMsArg || 0),
-    currentGenerationMs: Number(currentMsArg || 0),
+    baselineGenerationMs: baselineMsArg === undefined ? null : Number(baselineMsArg),
+    currentGenerationMs: currentMsArg === undefined ? null : Number(currentMsArg),
     baseline,
     current,
     delta: {

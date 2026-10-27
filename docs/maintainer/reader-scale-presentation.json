@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "cjdoc.reader-presentation/1",
+  "id": "issue-163-technical-book-1k",
+  "recipe": "rdr-scale-v1",
+  "generatorVersions": {
+    "baseline": "0.7.3",
+    "after": "0.7.5"
+  },
+  "typography": {
+    "baseline": {
+      "bodyFont": "Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "bodyFontSize": "15px"
+    },
+    "after": {
+      "bodyFont": "Inter, \"Noto Sans SC\", \"Noto Sans CJK SC\", ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif",
+      "bodyFontSize": "16px"
+    }
+  },
+  "locales": {
+    "en": {
+      "baseline": {
+        "noScriptTreeSha256": "f614fb99791a34d2daa3d12670e67a1e9721552ca9fdbdf459dc0cc5119304d5",
+        "fontFamilies": [
+          "Liberation Mono",
+          "Liberation Sans",
+          "WenQuanYi Zen Hei"
+        ]
+      },
+      "after": {
+        "noScriptTreeSha256": "97917fc669bfa93f546ffeeae2021b64d1e61210d14509e0fe70b55c2fa68977",
+        "fontFamilies": [
+          "DejaVu Sans Mono",
+          "Liberation Mono",
+          "Noto Sans CJK SC",
+          "Noto Serif CJK SC",
+          "WenQuanYi Zen Hei"
+        ]
+      }
+    },
+    "zh-CN": {
+      "baseline": {
+        "noScriptTreeSha256": "8a816f1532988fb9caa97c576f4fde79eda1a86caacebd8bf176f4030ee391a5",
+        "fontFamilies": [
+          "Liberation Mono",
+          "Liberation Sans",
+          "Noto Sans CJK SC"
+        ]
+      },
+      "after": {
+        "noScriptTreeSha256": "e9ccda3101ff75c57bc127bda159dcb468e75b65b53c445aa420f7da985d9a35",
+        "fontFamilies": [
+          "Liberation Mono",
+          "Noto Sans CJK SC",
+          "Noto Serif CJK SC"
+        ]
+      }
+    }
+  },
+  "changes": [
+    "16px body with explicit CJK fallbacks; 15px summaries and 14px code remain independently checked by reading regressions",
+    "Remove redundant Declaration heading and repeated choose label; signatures, author contracts, controls, links and their order remain exact"
+  ]
+}

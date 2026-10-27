@@ -84,8 +84,8 @@ class HtmlOverloadContractLayoutTest {
         @Expect(html.split("data-member-name=\"add\"").size, 3)
         // Distinct signatures, not just the shared "add" name, must appear
         // in the page outline for readers choosing between overloads.
-        @Expect(html.contains("data-cjdoc-toc-label=\"func add(value: Int64"), true)
-        @Expect(html.contains("data-cjdoc-toc-label=\"func add(value: String"), true)
+        @Expect(html.contains("data-cjdoc-toc-label=\"add(Int64"), true)
+        @Expect(html.contains("data-cjdoc-toc-label=\"add(String"), true)
 
         @Expect(html.contains("</div>\n<div class=\"member-row\"><details class=\"declaration-summary member-detail\" id=\"${symbolAnchor(addAll)}\""), true)
         @Expect(html.contains("data-member-name=\"addAll\""), true)
