@@ -260,6 +260,105 @@ class IdentityTests(unittest.TestCase):
             self.assertEqual(row["sha256"],hashlib.sha256(path.read_bytes()).hexdigest())
             self.assertEqual(row["mode"],path.stat().st_mode&0o777)
 
+    def test_inventory_rejects_a_different_open_file_even_when_its_bytes_match(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);source=root/'source.cj';other=root/'other.cj'
+            source.write_bytes(b'same bytes');other.write_bytes(b'same bytes')
+            real_open=Path.open
+            def swapped(path,*args,**kwargs):
+                return real_open(other if path==source else path,*args,**kwargs)
+            with patch.object(Path,'open',swapped):
+                with self.assertRaisesRegex(ValueError,'opened source input differs'):
+                    inventory(root,['source.cj'])
+
+
+class RawGitSnapshotTests(unittest.TestCase):
+    """Blob oracles below were independently obtained with git hash-object."""
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
+        self.root=Path(self.temp.name)
+        (self.root/"fixture.cj").write_bytes(b"line\r\n")
+        (self.root/"tool.sh").write_bytes(b"#!/bin/sh\nexit 0\n")
+        (self.root/"tool.sh").chmod(0o755)
+        self.head="a"*40;self.tree="b"*40
+        self.entries=["100644 blob 0e7d2a27f5d40d534cd366dd2c9b60ecb3fa7437\tfixture.cj",
+                      "100755 blob 039e4d0069c5c26909f86c505b9de66182e6d1f3\ttool.sh",
+                      "160000 commit "+"c"*40+"\tcomponent"]
+        self.index=[row.replace(" blob "," ").replace(" commit "," ").replace("\t"," 0\t",1)
+                    for row in self.entries]
+
+    def evidence(self,diff_code=0,status="",index=None):
+        responses={('rev-parse','HEAD'):(0,self.head+'\n'),
+                   ('rev-parse','HEAD^{tree}'):(0,self.tree+'\n'),
+                   ('ls-tree','-rz','--full-tree','HEAD'):(0,'\0'.join(self.entries)+'\0'),
+                   ('ls-files','--stage','-z'):(0,'\0'.join(self.index if index is None else index)+'\0'),
+                   ('diff','--exit-code','HEAD','--'):(diff_code,'CRLF clean-filter difference\n' if diff_code else ''),
+                   ('status','--porcelain=v1','--untracked-files=all'):(0,status.replace('\0','\n')),
+                   ('status','--porcelain=v1','-z','--untracked-files=all'):(0,status)}
+        def runner(argv,**kwargs):
+            self.assertEqual(kwargs['env']['GIT_OPTIONAL_LOCKS'],'0')
+            code,stdout=responses[tuple(argv[3:])]
+            return subprocess.CompletedProcess(argv,code,stdout.encode(),b'')
+        return GitEvidence(runner,{'GIT_OPTIONAL_LOCKS':'0'})
+
+    def test_git_observations_disable_optional_index_writes_without_mutating_caller_env(self):
+        environment={'EXAMPLE':'value'}
+        runner=Mock(return_value=subprocess.CompletedProcess([],0,b'',b''))
+        evidence=GitEvidence(runner,environment)
+        # Attempt installs controlled temp variables after creating GitEvidence.
+        environment['TMPDIR']='controlled-temp'
+        evidence.read(self.root,'rev-parse','HEAD')
+        observed=runner.call_args.kwargs['env']
+        self.assertEqual(observed['GIT_OPTIONAL_LOCKS'],'0')
+        self.assertEqual(observed['TMPDIR'],'controlled-temp')
+        self.assertEqual(environment,{'EXAMPLE':'value','TMPDIR':'controlled-temp'})
+
+    def test_exact_raw_crlf_blob_accepted_without_hiding_normalized_git_difference(self):
+        evidence=self.evidence(1,' M fixture.cj\0')
+        result=evidence.snapshot(self.root,self.head,self.tree)
+        self.assertTrue(result['rawGitBlobsVerified']);self.assertTrue(result['indexMatchesHead'])
+        self.assertEqual((self.root/'fixture.cj').read_bytes(),b'line\r\n')
+        note=evidence.normalized_observations[0]
+        self.assertEqual(note['diffExitCode'],1);self.assertEqual(note['porcelainStatus'],' M fixture.cj\0')
+        self.assertFalse(result['gitlinks'][0]['followed'])
+
+    def test_git_clean_filter_cannot_hide_changed_raw_bytes(self):
+        (self.root/'fixture.cj').write_bytes(b'line\n')
+        with self.assertRaisesRegex(ValueError,'raw working bytes differ'):
+            self.evidence().snapshot(self.root,self.head,self.tree)
+
+    def test_index_modes_oids_stages_duplicates_and_extra_paths_are_rejected(self):
+        variants=[self.index[1:],self.index+[self.index[0]],
+                  [self.index[0].replace('100644','100755'),*self.index[1:]],
+                  [self.index[0].replace(' 0\t',' 2\t'),*self.index[1:]],
+                  [self.index[0].replace('0e7d2a27','12345678'),*self.index[1:]],
+                  self.index+['100644 '+'d'*40+' 0\tuntracked-in-index']]
+        for index in variants:
+            with self.subTest(index=index):
+                with self.assertRaisesRegex(ValueError,'Git index differs'):
+                    self.evidence(index=index).snapshot(self.root,self.head,self.tree)
+
+    def test_untracked_and_unsupported_status_remain_failures(self):
+        for status in ['?? extra.cj\0','M  fixture.cj\0',' R fixture.cj\0old.cj\0']:
+            with self.subTest(status=status):
+                with self.assertRaisesRegex(ValueError,'untracked, staged, or unsupported'):
+                    self.evidence(status=status).snapshot(self.root,self.head,self.tree)
+
+    def test_git_diff_operational_failure_is_not_an_accepted_normalization(self):
+        with self.assertRaisesRegex(ValueError,'normalized diff failed'):
+            self.evidence(diff_code=128).snapshot(self.root,self.head,self.tree)
+
+    @unittest.skipIf(os.name=='nt','POSIX executable mode only')
+    def test_working_execute_mode_drift_is_rejected(self):
+        (self.root/'tool.sh').chmod(0o644)
+        with self.assertRaisesRegex(ValueError,'execute mode differs'):
+            self.evidence().snapshot(self.root,self.head,self.tree)
+
+    @unittest.skipIf(os.name=='nt','POSIX Git owner executable mode only')
+    def test_group_execute_bit_does_not_change_git_owner_execute_mode(self):
+        (self.root/'fixture.cj').chmod(0o654)
+        self.assertTrue(self.evidence().snapshot(self.root,self.head,self.tree)['rawGitBlobsVerified'])
+
 
 class NotificationTests(unittest.TestCase):
     def test_real_windows_notification_layout(self):
@@ -351,6 +450,15 @@ class ExecutionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             attempt=self.make(directory);(attempt.output/"attempt.marker").write_text("")
             self.assertEqual(attempt.execute(),2);self.assertEqual(attempt.target_calls,0)
+
+    def test_initial_snapshot_failure_keeps_rejected_working_inventory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            attempt=self.make(directory)
+            attempt.git.last_snapshot={'rawGitBlobsVerified':False,'files':[{'path':'fixture.cj','sha256':'a'*64}]}
+            attempt.git.snapshot=Mock(side_effect=ValueError('raw working bytes differ'))
+            self.assertEqual(attempt.execute(),2);self.assertEqual(attempt.target_calls,0)
+            self.assertIn('lastRejectedWorkingSnapshot',attempt.evidence)
+            self.assertEqual(attempt.evidence['lastRejectedWorkingSnapshot'],attempt.git.last_snapshot)
 
     def test_publication_error_cannot_replace_original_target_exit(self):
         with tempfile.TemporaryDirectory() as directory:

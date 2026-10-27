@@ -126,18 +126,38 @@ def inventory(root, paths):
             raise ValueError("source inventory includes a symlink or junction")
         if not path.is_file() or not path.resolve().is_relative_to(root.resolve()):
             raise ValueError("source inventory includes an external/nonregular file")
-        result.append({"path":name,"sha256":digest(path),"size":path.stat().st_size,
-                       "mode":path.stat().st_mode & 0o777})
+        before=path.lstat()
+        fields=("st_dev","st_ino","st_size","st_mtime_ns","st_ctime_ns","st_mode")
+        content=hashlib.sha256()
+        with path.open("rb") as stream:
+            opened=os.fstat(stream.fileno())
+            if any(getattr(before,key)!=getattr(opened,key) for key in fields):
+                raise ValueError("opened source input differs from inventoried path: "+name)
+            blob=hashlib.sha1(b"blob "+str(opened.st_size).encode()+b"\0")
+            size=0
+            for block in iter(lambda:stream.read(65536),b""):
+                content.update(block);blob.update(block);size+=len(block)
+            finished=os.fstat(stream.fileno())
+            if size!=opened.st_size or any(getattr(opened,key)!=getattr(finished,key) for key in fields):
+                raise ValueError("opened source input changed during inventory: "+name)
+        after=path.lstat()
+        if any(getattr(before,key)!=getattr(after,key) for key in fields):
+            raise ValueError("source input changed during inventory: "+name)
+        result.append({"path":name,"sha256":content.hexdigest(),"gitBlobSha1":blob.hexdigest(),
+                       "size":after.st_size,"mode":after.st_mode & 0o777})
     return result
 
 
 class GitEvidence:
     def __init__(self, runner=subprocess.run, environment=None):
-        self.calls=[];self.raw_calls=[];self.runner=runner;self.environment=environment
+        self.calls=[];self.raw_calls=[];self.normalized_observations=[];self.runner=runner
+        self.environment=os.environ if environment is None else environment
 
     def read(self,root,*args,check=True):
         command=["git","-C",str(root),*args]
-        process=self.runner(command,capture_output=True,text=False,check=False,env=self.environment)
+        environment=dict(self.environment)
+        environment["GIT_OPTIONAL_LOCKS"]="0"
+        process=self.runner(command,capture_output=True,text=False,check=False,env=environment)
         stdout=output_bytes(process.stdout);stderr=output_bytes(process.stderr)
         self.raw_calls.append((stdout,stderr))
         r=subprocess.CompletedProcess(command,process.returncode,stdout.decode("utf-8","replace"),
@@ -156,21 +176,47 @@ class GitEvidence:
         if head!=commit or (tree and actual_tree!=tree):
             raise ValueError("source commit/tree does not match frozen input")
         listing=self.read(root,"ls-tree","-rz","--full-tree","HEAD").stdout
-        blobs=[];gitlinks=[]
+        blobs=[];gitlinks=[];expected_index=[];expected_blobs={}
         for record in listing.rstrip("\0").split("\0"):
             if not record:continue
             metadata,name=record.split("\t",1);mode,kind,oid=metadata.split(" ")
+            if not re.fullmatch(r"[0-9a-f]{40}",oid):raise ValueError("expected SHA-1 Git object identity")
+            expected_index.append(mode+" "+oid+" 0\t"+name)
             if kind=="commit" and mode=="160000":
                 gitlinks.append({"path":name,"commit":oid,"workingExists":(root/name).exists(),
                                  "followed":False})
-            elif kind=="blob" and mode in {"100644","100755"}:blobs.append(name)
+            elif kind=="blob" and mode in {"100644","100755"}:
+                blobs.append(name);expected_blobs[name]=(mode,oid)
             else:raise ValueError("source Git tree includes unsupported nonregular entry")
         self.last_snapshot={"commit":head,"tree":actual_tree,"files":inventory(root,blobs),
-                            "gitTreeEntries":listing,"gitlinks":gitlinks}
-        self.read(root,"diff","--exit-code","HEAD","--")
-        status=self.read(root,"status","--porcelain=v1","--untracked-files=all").stdout
-        self.last_snapshot["workingStatus"]=status
-        if status:raise ValueError("source working tree is not clean (tracked or untracked files)")
+                            "gitTreeEntries":listing,"gitlinks":gitlinks,
+                            "rawGitBlobsVerified":False,"indexMatchesHead":False,
+                            "workingExecuteBitCheck":"POSIX executable bit" if os.name!="nt" else
+                                "Windows mode observed; tracked execute mode verified in index"}
+        for row in self.last_snapshot["files"]:
+            mode,oid=expected_blobs[row["path"]]
+            if row["gitBlobSha1"]!=oid:
+                raise ValueError("raw working bytes differ from Git blob: "+row["path"])
+            if os.name!="nt" and bool(row["mode"] & 0o100)!=(mode=="100755"):
+                raise ValueError("working execute mode differs from Git tree: "+row["path"])
+        self.last_snapshot["rawGitBlobsVerified"]=True
+        index=self.read(root,"ls-files","--stage","-z").stdout
+        actual_index=index.rstrip("\0").split("\0") if index else []
+        if sorted(actual_index)!=sorted(expected_index):
+            raise ValueError("Git index differs from frozen HEAD entries or modes")
+        self.last_snapshot["indexMatchesHead"]=True
+        diff=self.read(root,"diff","--exit-code","HEAD","--",check=False)
+        if diff.returncode not in (0,1):raise ValueError("Git normalized diff failed")
+        status=self.read(root,"status","--porcelain=v1","-z","--untracked-files=all").stdout
+        self.normalized_observations.append({"root":str(root),"commit":head,
+            "diffExitCode":diff.returncode,"porcelainStatus":status,
+            "meaning":"Git clean-filter observation; source identity uses exact raw blobs and index"})
+        for record in status.rstrip("\0").split("\0") if status else []:
+            # A raw-verified file may be shown as modified because the committed
+            # CRLF blob is normalized by Git's text clean filter. Preserve that
+            # observation without calling it clean or changing the source.
+            if not record.startswith(" M ") or record[3:] not in expected_blobs:
+                raise ValueError("source has an untracked, staged, or unsupported status entry")
         return self.last_snapshot
 
 

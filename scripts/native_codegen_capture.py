@@ -321,6 +321,7 @@ class Attempt:
                         self.evidence.get("firstChildFailureExitCode")):self.exit_code=2
             self.evidence["status"]="CAPTURE_MISSED" if isinstance(error,CaptureMissed) else "PRECONDITION_OR_CAPTURE_FAILED"
             self.evidence["error"]=type(error).__name__+": "+str(error)
+            self.evidence["lastRejectedWorkingSnapshot"]=getattr(self.git,"last_snapshot",None)
         finally:
             try:
                 identity=self.identity();self.evidence["controllerAfter"]=identity
@@ -341,6 +342,7 @@ class Attempt:
                 if not (self.evidence.get("processExitCode") or
                         self.evidence.get("firstChildFailureExitCode")):self.exit_code=2
             self.evidence["gitCalls"]=self.git.calls
+            self.evidence["gitNormalizedObservations"]=self.git.normalized_observations
             for index,(stdout,stderr) in enumerate(self.git.raw_calls):
                 (self.private/("git-"+str(index)+".stdout")).write_bytes(stdout)
                 (self.private/("git-"+str(index)+".stderr")).write_bytes(stderr)
