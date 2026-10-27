@@ -1,0 +1,153 @@
+name: Release 0.7.6 failure evidence
+
+on:
+  push:
+    branches: [diag/release076-evidence]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: release076-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    if: ${{ github.run_attempt == 1 }}
+    name: Release failure evidence / ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-x64
+            runner: windows-2022
+            sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-windows-x64-1.2.0.zip&objectKey=6ab1eafae4bd101f57762f5e"
+            sdk_sha256: "7bd5088ad56fb03c1214e73ea076de5ac08580cc419a8cbd46a524ee1ca250bf"
+            stdx_url: "https://gitcode.com/Cangjie/cangjie_stdx/releases/download/v1.2.0.1/cangjie-stdx-windows-x64-1.2.0.1.zip"
+            stdx_sha256: "bb7ac563ca39213429e34113902343df68b45d862fb6a9ae1b5484583c7bea8a"
+          - platform: linux-x64
+            runner: ubuntu-22.04
+            sdk_url: "https://cangjie-lang.cn/v1/files/auth/downLoad?nsId=142267&fileName=cangjie-sdk-linux-x64-1.2.0.tar.gz&objectKey=6ab1e26eece1f87ff5befa73"
+            sdk_sha256: "8c5fd944cd9cc51ee63d4a240e3ecc4f540345dae1468e8b47c927ecf2ba998f"
+            stdx_url: "https://gitcode.com/Cangjie/cangjie_stdx/releases/download/v1.2.0.1/cangjie-stdx-linux-x64-1.2.0.1.zip"
+            stdx_sha256: "c036a192e8fd4206b84ca9a94611820bc66623198975f3dff874f748d65a8b47"
+    env:
+      CJDOC_PYTHON: python
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUTF8: "1"
+      cjHeapSize: "512MB"
+      CJDOC_CI_EVIDENCE: ${{ github.workspace }}/target/ci-evidence
+    steps:
+      - name: Check out the release diagnostic controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: release-controller
+          persist-credentials: false
+      - name: Check out the frozen diagnostic library
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: a1ef6e5db0f9214a990627b008e13ef06f6eb485
+          path: frozen-library
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Move controllers outside the original workspace
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import shutil
+          for name in ('release-controller', 'frozen-library'):
+              source = Path(os.environ['GITHUB_WORKSPACE']) / name
+              target = Path(os.environ['RUNNER_TEMP']) / name
+              if source.is_symlink() or not source.is_dir() or target.exists() or target.is_symlink():
+                  raise SystemExit('Controller relocation boundary refused')
+              shutil.move(str(source), str(target))
+          PY
+      - name: Check out the exact released source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 653457d1aa46ef2939cd10e130d7e1b16fd5d999
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Enable original Windows long paths
+        if: matrix.platform == 'windows-x64'
+        shell: bash
+        run: git config --global core.longpaths true
+      - name: Restore the exact release SDK cache without saving
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/cangjie-sdk-sts-stdx
+          key: cangjie-sdk-${{ matrix.platform }}-${{ matrix.sdk_sha256 }}-${{ matrix.stdx_sha256 }}-v5-authenticated-archive
+      - name: Authenticate or install the original release SDK archives
+        id: sdk
+        shell: bash
+        env:
+          SDK_URL: ${{ matrix.sdk_url }}
+          SDK_SHA256: ${{ matrix.sdk_sha256 }}
+          STDX_URL: ${{ matrix.stdx_url }}
+          STDX_SHA256: ${{ matrix.stdx_sha256 }}
+        run: |
+          set -euo pipefail
+          python scripts/install_cangjie_sdk.py \
+            --url "$SDK_URL" --sha256 "$SDK_SHA256" \
+            --stdx-url "$STDX_URL" --stdx-sha256 "$STDX_SHA256" \
+            --destination "$RUNNER_TEMP/cangjie-sdk-sts-stdx" --github-output "$GITHUB_OUTPUT"
+      - name: Export the original authenticated stdx environment
+        shell: bash
+        env:
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          set -euo pipefail
+          source "$CANGJIE_SDK_ROOT/envsetup.sh"
+          python scripts/with_stdx.py --variant static --print-env -- | tee -a "$GITHUB_ENV"
+      - name: Download the exact main Linux binary artifact
+        if: matrix.platform == 'linux-x64'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cjdoc-linux-candidate-40536370055-1
+          run-id: 40536370055
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/release076-candidate
+      - name: Download its sealed readiness marker
+        if: matrix.platform == 'linux-x64'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cjdoc-linux-candidate-ready-40536370055-1
+          run-id: 40536370055
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/release076-marker
+      - name: Observe one target and at most one conditional trace
+        shell: bash
+        env:
+          DIAGNOSTIC_PLATFORM: ${{ matrix.platform }}
+          CANGJIE_SDK_ROOT: ${{ steps.sdk.outputs.root }}
+        run: |
+          set -euo pipefail
+          source "$CANGJIE_SDK_ROOT/envsetup.sh"
+          host_bash="$BASH"
+          if command -v cygpath >/dev/null 2>&1; then host_bash="$(cygpath -w "$host_bash")"; fi
+          export CJDOC_ORIGINAL_BASH="$host_bash"
+          args=(--platform "$DIAGNOSTIC_PLATFORM" --source "$GITHUB_WORKSPACE"
+                --library "$RUNNER_TEMP/frozen-library" --output "$RUNNER_TEMP/release076-evidence")
+          if [[ "$DIAGNOSTIC_PLATFORM" == linux-x64 ]]; then
+            args+=(--candidate "$RUNNER_TEMP/release076-candidate/cjdoc-linux-candidate.tar"
+                   --marker "$RUNNER_TEMP/release076-marker/cjdoc-linux-candidate-ready-40536370055-1.json")
+          fi
+          python "$RUNNER_TEMP/release-controller/scripts/release076_diagnostic.py" "${args[@]}"
+      - name: Upload only scanned diagnostic receipt and log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release076-evidence-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/release076-evidence/public/receipt.json
+            ${{ runner.temp }}/release076-evidence/public/build.sanitized.log
+          retention-days: 3
+          if-no-files-found: warn
