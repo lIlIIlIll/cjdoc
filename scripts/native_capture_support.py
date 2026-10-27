@@ -89,6 +89,31 @@ def replace_root(text, variant, label, *, llvm=False, windows=False):
     return result,count
 
 
+def redact_short_log_tokens(text):
+    """Hide exact unquoted short text, without classifying it as a shell option.
+
+    The private-content classifier remains unchanged. Longer paths and ambiguous
+    quote/escape syntax are left for its fail-closed publication check. LLVM
+    derived text does not use this ordinary-log normalization.
+    """
+    pattern=re.compile(r"(?<!\S)/(?:C|V(?::ON)?)(?!\S)")
+    original_lines=text.splitlines(keepends=True)
+    # Windows and POSIX disagree about escaped quotes. A line with an open
+    # quote may continue onto later lines: refuse the entire text in either case.
+    for line in original_lines:
+        body=line.rstrip("\r\n")
+        if any(chr(92)+quote in body for quote in (chr(34),chr(39))) or quoted_context(body,len(body)):
+            return text
+    lines=[]
+    for line in original_lines:
+        body=line.rstrip("\r\n")
+        def replace(match):
+            if quoted_context(body,match.start()) is not None:return match.group()
+            return "<redacted-slash-"+match.group()[1:].replace(":","-")+">"
+        lines.append(pattern.sub(replace,line))
+    return "".join(lines)
+
+
 def normalize(text: str, mappings: list[tuple[Path, str]]) -> str:
     result = ANSI.sub("", text)
     for path, label in sorted(mappings, key=lambda pair: len(str(pair[0])), reverse=True):
@@ -96,7 +121,7 @@ def normalize(text: str, mappings: list[tuple[Path, str]]) -> str:
                               key=len, reverse=True):
             windows=bool(re.match(r"^[A-Za-z]:[\\/]|^\\\\",str(path)))
             result,_ = replace_root(result,variant,label,windows=windows)
-    return result
+    return redact_short_log_tokens(result)
 
 def sanitize(value, mappings):
     if isinstance(value, dict):

@@ -100,6 +100,9 @@ def publish(public, evidence, build_log, disassemblies, mappings, environment, v
             else:
                 note["privacyBlocked"].append("derived text not accepted by same-SDK llvm-as")
     clean = sanitize(evidence, mappings)
+    clean["publicTextNormalization"] = ("Known path mappings and unquoted standalone short token redaction "
+        "(slash-C, slash-V, slash-V-ON); lossy text only, no command-switch classification; "
+        "consult existing original-byte hashes")
     if notes:clean["derivedIr"] = sanitize(notes, mappings)
     reasons = private_reasons(json.dumps(clean)+log, environment)
     if reasons:

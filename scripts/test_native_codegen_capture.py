@@ -106,6 +106,62 @@ class HardLinksTests(unittest.TestCase):
 
 
 class PublicationTests(unittest.TestCase):
+    def test_standalone_unquoted_short_tokens_are_redacted_without_exempting_paths(self):
+        cases={'cmd /C /V:ON task':'cmd <redacted-slash-C> <redacted-slash-V-ON> task',
+               '/V':'<redacted-slash-V>', 'cmd /C\n':'cmd <redacted-slash-C>\n'}
+        for original,expected in cases.items():
+            with self.subTest(original=original):
+                self.assertTrue(private_reasons(original,{}))
+                self.assertEqual(normalize(original,[]),expected)
+                self.assertEqual(normalize(expected,[]),expected)
+                self.assertEqual(private_reasons(expected,{}),[])
+
+    def test_short_token_redaction_never_normalizes_unknown_path_extensions(self):
+        for text in ['/C/private','/C'+chr(92)+'private','/Config','/C-other','/C:secret',
+                     '/V:ON/private','/V:ON_EXTRA','/C'+chr(92)+'2Fprivate','/c','/v']:
+            with self.subTest(text=text):
+                self.assertEqual(normalize(text,[]),text)
+                self.assertTrue(private_reasons(text,{}))
+
+    def test_short_token_redaction_refuses_quoted_or_ambiguous_lines(self):
+        slash=chr(92)
+        for text in ['"/C"','"/C private"',"'/V secret'",'cmd "unterminated /C',
+                     'cmd /C "unterminated','cmd '+slash+'" /C '+slash+'"']:
+            with self.subTest(text=text):
+                self.assertEqual(normalize(text,[]),text)
+                self.assertTrue(private_reasons(text,{}))
+
+    def test_short_token_redaction_refuses_multiline_quoted_contents(self):
+        for text in ['cmd "prefix\n/C\nsuffix"',"cmd 'prefix\n/V\nsuffix'",'cmd "prefix\n/C\nunterminated']:
+            with self.subTest(text=text):
+                self.assertEqual(normalize(text,[]),text)
+                self.assertTrue(private_reasons(text,{}))
+
+    def test_short_token_redaction_does_not_hide_other_private_content(self):
+        for private in ['/private/unknown','ghp_'+'a'*24,'192.168.1.2']:
+            with self.subTest(private=private),tempfile.TemporaryDirectory() as directory:
+                result=publish(Path(directory)/'public',{'stdout':'cmd /C '+private},'',[],[],{})
+                self.assertEqual(result['status'],'PRIVACY_BLOCKED')
+                self.assertEqual({x.name for x in (Path(directory)/'public').iterdir()},{'receipt.json'})
+
+    def test_short_token_redaction_never_applies_to_llvm_derived_text(self):
+        for token in ['/C','/V','/V:ON']:
+            with self.subTest(token=token):
+                self.assertIsNone(derived_ir('!0 = !{!"'+token+'"}',[],{})[0])
+
+    def test_published_short_token_text_is_explicitly_lossy_and_retains_input_digest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log='cmd /C /V:ON cjc -O2 --fno-chir-function-inlining'
+            raw_sha=hashlib.sha256(log.encode()).hexdigest()
+            output=Path(directory)/'public'
+            result=publish(output,{'status':'CAPTURED_BUILD_SUCCEEDED','stdout':log,
+                                  'stdoutSha256':raw_sha},log,[],[],{})
+            self.assertNotEqual(result.get('status'),'PRIVACY_BLOCKED')
+            self.assertEqual(result['stdoutSha256'],raw_sha)
+            self.assertIn('short token',result['publicTextNormalization'])
+            self.assertIn('-O2 --fno-chir-function-inlining',(output/'build.sanitized.log').read_text())
+            for file in output.iterdir():self.assertEqual(private_reasons(file.read_text(),{}),[])
+
     def test_observed_platform_archiver_is_exact_and_same_prefix_unknown_is_refused(self):
         for path,accepted in [('/usr/bin/ar',True),('/usr/bin/ar-other',False)]:
             with self.subTest(path=path),tempfile.TemporaryDirectory() as directory:
