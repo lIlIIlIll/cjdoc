@@ -18,6 +18,7 @@
 !/docs/schema/*.json
 !/tests/fixtures/golden-v16/*.json
 !/tests/perf/*.json
+!/scripts/windows_crlf_catalog.json
 !/docs/maintainer/reader-scale-budgets.json
 !/docs/maintainer/reader-scale-baseline.json
 !/tests/fixtures/projects/html_reference/docs/std-symbol-index.json

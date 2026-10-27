@@ -499,7 +499,7 @@ class RawGitSnapshotTests(unittest.TestCase):
                    ('rev-parse','HEAD^{tree}'):(0,self.tree+'\n'),
                    ('ls-tree','-rz','--full-tree','HEAD'):(0,'\0'.join(self.entries)+'\0'),
                    ('ls-files','--stage','-z'):(0,'\0'.join(self.index if index is None else index)+'\0'),
-                   ('diff','--exit-code','HEAD','--'):(diff_code,'CRLF clean-filter difference\n' if diff_code else ''),
+                   ('diff','--no-ext-diff','--no-textconv','--exit-code','HEAD','--'):(diff_code,'CRLF clean-filter difference\n' if diff_code else ''),
                    ('status','--porcelain=v1','--untracked-files=all'):(0,status.replace('\0','\n')),
                    ('status','--porcelain=v1','-z','--untracked-files=all'):(0,status)}
         def runner(argv,**kwargs):

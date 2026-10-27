@@ -67,6 +67,7 @@ jobs:
           python controller/scripts/native_codegen_capture.py \
             --source "$GITHUB_WORKSPACE/product" \
             --platform "$DIAGNOSTIC_PLATFORM" \
+            --dependency-checkout windows-crlf \
             --output "$DIAGNOSTIC_OUTPUT"
       - name: Upload reviewed diagnostic files only
         if: always()

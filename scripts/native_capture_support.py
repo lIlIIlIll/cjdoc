@@ -227,7 +227,9 @@ class GitEvidence:
             raise ValueError("Git boundary failed: "+" ".join(args)+" (exit "+str(r.returncode)+")")
         return r
 
-    def snapshot(self,root,commit,tree=None):
+    def snapshot(self,root,commit,tree=None,expected_working=None):
+        guard=getattr(self,"input_policy_guard",None)
+        if guard is not None:guard(root)
         head=self.read(root,"rev-parse","HEAD").stdout.strip()
         actual_tree=self.read(root,"rev-parse","HEAD^{tree}").stdout.strip()
         if head!=commit or (tree and actual_tree!=tree):
@@ -250,24 +252,28 @@ class GitEvidence:
                             "rawGitBlobsVerified":False,"indexMatchesHead":False,
                             "workingExecuteBitCheck":"POSIX executable bit" if os.name!="nt" else
                                 "Windows mode observed; tracked execute mode verified in index"}
+        if expected_working is not None:
+            from crlf_working_inputs import verify_expected_working
+            verify_expected_working(self.last_snapshot,expected_blobs,expected_working)
         for row in self.last_snapshot["files"]:
             mode,oid=expected_blobs[row["path"]]
-            if row["gitBlobSha1"]!=oid:
+            if expected_working is None and row["gitBlobSha1"]!=oid:
                 raise ValueError("raw working bytes differ from Git blob: "+row["path"])
             if os.name!="nt" and bool(row["mode"] & 0o100)!=(mode=="100755"):
                 raise ValueError("working execute mode differs from Git tree: "+row["path"])
-        self.last_snapshot["rawGitBlobsVerified"]=True
+        self.last_snapshot["rawGitBlobsVerified"]=expected_working is None
         index=self.read(root,"ls-files","--stage","-z").stdout
         actual_index=index.rstrip("\0").split("\0") if index else []
         if sorted(actual_index)!=sorted(expected_index):
             raise ValueError("Git index differs from frozen HEAD entries or modes")
         self.last_snapshot["indexMatchesHead"]=True
-        diff=self.read(root,"diff","--exit-code","HEAD","--",check=False)
+        diff=self.read(root,"diff","--no-ext-diff","--no-textconv","--exit-code","HEAD","--",check=False)
         if diff.returncode not in (0,1):raise ValueError("Git normalized diff failed")
         status=self.read(root,"status","--porcelain=v1","-z","--untracked-files=all").stdout
         self.normalized_observations.append({"root":str(root),"commit":head,
             "diffExitCode":diff.returncode,"porcelainStatus":status,
-            "meaning":"Git clean-filter observation; source identity uses exact raw blobs and index"})
+            "meaning":("Git clean-filter observation; source identity uses exact raw blobs and index" if expected_working is None else
+                       "Git clean-filter observation; raw working bytes matched frozen checkout catalog and canonical index")})
         for record in status.rstrip("\0").split("\0") if status else []:
             # A raw-verified file may be shown as modified because the committed
             # CRLF blob is normalized by Git's text clean filter. Preserve that

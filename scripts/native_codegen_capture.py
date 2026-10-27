@@ -36,6 +36,9 @@ PROVIDER = Path("tests/fixtures/projects/provider_plugin")
 BOUNDARY = ["cjpm.toml","cjpm.lock",str(PROVIDER/"cjpm.toml"),str(PROVIDER/"cjpm.lock")]
 
 
+import crlf_working_inputs
+
+
 class ChildFailed(ValueError):
     def __init__(self, phase, code):
         super().__init__(phase+" failed (exit "+str(code)+")")
@@ -43,9 +46,10 @@ class ChildFailed(ValueError):
 
 
 class Attempt:
-    def __init__(self, source, output, selected, runner=subprocess.run, watcher=EventWatch):
+    def __init__(self, source, output, selected, runner=subprocess.run, watcher=EventWatch, dependency_checkout="canonical"):
         self.source=source.resolve(strict=True); self.output=output.resolve(strict=True)
         self.selected=selected; self.runner=runner; self.watcher=watcher
+        self.dependency_checkout=dependency_checkout;self.expected_working=None
         self.environment=os.environ.copy(); self.git=GitEvidence(runner,self.environment)
         if os.name!="nt":
             import resource
@@ -84,6 +88,19 @@ class Attempt:
         (self.private/(phase+".log")).write_text(result.stdout+result.stderr,encoding="utf-8")
         if checked and result.returncode:raise ChildFailed(phase,result.returncode)
         return result
+
+    def configure_dependency_inputs(self):
+        if self.dependency_checkout=="canonical":return
+        if self.dependency_checkout!="windows-crlf" or self.selected!="windows-x64":
+            raise ValueError("CRLF input profile is only valid for Windows diagnostics")
+        if PINS!=crlf_working_inputs.PINS:raise ValueError("controller/catalog fixed pins differ")
+        path=Path(__file__).resolve().parent/"windows_crlf_catalog.json"
+        self.expected_working=crlf_working_inputs.load_catalog(path)
+        environment,note=crlf_working_inputs.closed_git_environment(self.environment,self.private)
+        self.environment.clear();self.environment.update(environment)
+        self.evidence["dependencyCheckoutPolicy"]=note
+        self.git.input_policy_guard=lambda root:crlf_working_inputs.guard_attributes(
+            self.git,root,allow_source=root==self.source)
 
     def authenticate(self):
         version=self.call("stdx",[sys.executable,str(self.source/"scripts/with_stdx.py"),
@@ -196,9 +213,11 @@ class Attempt:
 
     def resolve_sources(self):
         if self.selected=="windows-x64":
-            environment,note=canonical_checkout_environment(self.environment)
-            self.environment.update(environment)
-            self.evidence["dependencyCheckoutPolicy"]=note
+            if self.dependency_checkout=="canonical":
+                environment,note=canonical_checkout_environment(self.environment)
+                self.environment.update(environment)
+                self.evidence["dependencyCheckoutPolicy"]=note
+            else:note=self.evidence["dependencyCheckoutPolicy"]
             observed={}
             for key,expected in note["overrides"].items():
                 value=self.git.read(self.source,"config","--get",key).stdout.strip()
@@ -233,7 +252,9 @@ class Attempt:
                 if allow_missing:
                     result[name]={"present":False,"expectedCommit":commit};continue
                 raise ValueError("resolved Git dependency cache missing: "+name)
-            note=self.git.snapshot(root,commit)
+            expected=self.expected_working[name] if self.expected_working is not None else None
+            note=(self.git.snapshot(root,commit) if expected is None else
+                  self.git.snapshot(root,commit,expected_working=expected))
             result[name]=note
         return result
 
@@ -311,12 +332,13 @@ class Attempt:
                 "stdoutSha256":note["stdoutSha256"],"stderrSha256":note["stderrSha256"]}
 
     def identity(self):
-        names=("ir_events","ir_hardlinks","ir_publication","native_capture_support","native_backend_trace")
+        names=("ir_events","ir_hardlinks","ir_publication","native_capture_support","native_backend_trace","crlf_working_inputs")
         paths=[Path(__file__),*(Path(sys.modules[name].__file__) for name in names)]
         result=controller_identity(paths,self.environment)
         root=Path(__file__).resolve().parents[1]
         names=["scripts/"+path.name for path in paths]
         names += ["scripts/test_native_codegen_capture.py","scripts/test_native_backend_trace.py",
+                  "scripts/test_crlf_working_inputs.py","scripts/windows_crlf_catalog.json",
                   ".github/workflows/ci.yml"]
         result["candidateFiles"]=inventory(root,names)
         return result
@@ -327,6 +349,7 @@ class Attempt:
             self.evidence["controllerBefore"]=self.identity()
             if (self.output/"attempt.marker").exists():raise ValueError("attempt already exists")
             (self.output/"attempt.marker").open("x").close()
+            self.configure_dependency_inputs()
             if self.selected=="windows-x64":
                 self.git.read(self.source,"config","--global","core.longpaths","true")
             initial=self.git.snapshot(self.source,SOURCE,TREE)
@@ -391,13 +414,14 @@ def main():
     parser.add_argument("--source",type=Path,required=True)
     parser.add_argument("--output",type=Path,required=True,help="must not exist")
     parser.add_argument("--platform",choices=tuple(EXPECTED),required=True)
+    parser.add_argument("--dependency-checkout",choices=("canonical","windows-crlf"),default="canonical")
     args=parser.parse_args()
     native=(os.name=="nt" and host.machine().lower() in {"amd64","x86_64"}) if args.platform=="windows-x64" else (
         sys.platform=="darwin" and host.machine().lower()=="arm64")
     if not native:parser.error("requested native OS/architecture is not available; no build started")
     if args.output.exists():parser.error("output already exists; an attempt is never retried")
     args.output.mkdir(mode=0o700)
-    return Attempt(args.source,args.output,args.platform).execute()
+    return Attempt(args.source,args.output,args.platform,dependency_checkout=args.dependency_checkout).execute()
 
 
 if __name__=="__main__":raise SystemExit(main())
