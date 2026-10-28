@@ -245,7 +245,9 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                         hasDescription = hasDescription || !tree.children.isEmpty() ||
                             !tree.literal.trimAscii().isEmpty()
                     }
-                    if (hasDescription) {
+                    // Keep the real localization provenance and field identity even when
+                    // the author supplied only a reference target, without prose.
+                    if (hasDescription || !tag.translationState.isEmpty() || !tag.fieldId.isEmpty()) {
                         out.append(" "); appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
                     }
                     out.append("</li>\n")
