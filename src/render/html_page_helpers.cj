@@ -181,7 +181,10 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                 out.append("</dl>\n")
             }
             var showReturnType = false
-            if (let Some(returnType) <- symbol.returnType) { showReturnType = !isUnitType(returnType) }
+            if (let Some(returnType) <- symbol.returnType) {
+                // A stored field's type belongs to its declaration, not a return contract.
+                showReturnType = symbol.kind != "variable" && !isUnitType(returnType)
+            }
             var hasReturnDocumentation = false
             for (tag in comment.tags) {
                 if (tag.name == "return" || tag.name == "returns") { hasReturnDocumentation = true; break }
@@ -230,12 +233,21 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
             var hasSee = false
             for (tag in comment.tags) { if (tag.name == "see") { hasSee = true; break } }
             if (hasSee) {
-                out.append("<h3>${label(locale, "See also", "另请参阅")}</h3><ul>\n")
+                out.append("<h3>${label(locale, "See also", "另请参阅")}</h3><ul class=\"see-also-list\">\n")
                 for (tag in comment.tags) {
                     if (tag.name != "see") { continue }
                     out.append("<li>")
                     appendTagSubjectHtml(out, tag, index, rootPrefix)
-                    if (!tag.description.isEmpty() || !tag.translationState.isEmpty()) {
+                    // Empty optional @see descriptions must not produce translation placeholders,
+                    // but structured Markdown can be present without a plain-text description.
+                    var hasDescription = !tag.description.trimAscii().isEmpty()
+                    if (let Some(tree) <- tag.descriptionMarkdown) {
+                        hasDescription = hasDescription || !tree.children.isEmpty() ||
+                            !tree.literal.trimAscii().isEmpty()
+                    }
+                    // Keep the real localization provenance and field identity even when
+                    // the author supplied only a reference target, without prose.
+                    if (hasDescription || !tag.translationState.isEmpty() || !tag.fieldId.isEmpty()) {
                         out.append(" "); appendDocumentationTagHtml(out, tag, locale, assetLookup, rootPrefix, markdownContext)
                     }
                     out.append("</li>\n")
@@ -268,7 +280,7 @@ internal func appendDocumentationHtml(out: RenderTextBuffer,
                 out.append("</dl>\n")
             }
             match (symbol.returnType) {
-                case Some(returnType) => if (!isUnitType(returnType)) {
+                case Some(returnType) => if (symbol.kind != "variable" && !isUnitType(returnType)) {
                     out.append("<h3 id=\"${docBlockAnchor(symbol, "return")}\">${label(locale, "Returns", "返回值")}</h3><div class=\"return-value\">")
                     appendTypeRefCodeHtml(out, returnType, typeLinkIndex, rootPrefix, locale,
                         className: "return-type")

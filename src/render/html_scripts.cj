@@ -1135,6 +1135,7 @@ internal let HTML_SEARCH_SCRIPT = """
     memberFilterToggle.closest(".member-browser")?.classList.add("member-browser-enhanced");
   }
   const memberRows = [...document.querySelectorAll("[data-cjdoc-member]")];
+  const expandableMemberRows = memberRows.filter((member) => member.tagName === "DETAILS");
   // Ordinary overload groups pay extra layout cost without a large-page gain.
   // Reuse the existing navigation cap as the large member-browser boundary.
   if (memberRows.length > 256) {
@@ -1146,7 +1147,7 @@ internal let HTML_SEARCH_SCRIPT = """
   const expandMembers = document.querySelector("[data-cjdoc-members-expand]");
   const collapseMembers = document.querySelector("[data-cjdoc-members-collapse]");
   const syncMemberActions = () => {
-    const visible = memberRows.filter((member) => !member.hidden);
+    const visible = expandableMemberRows.filter((member) => !member.hidden);
     if (expandMembers) expandMembers.disabled = !visible.some((member) => !member.open);
     if (collapseMembers) collapseMembers.disabled = !visible.some((member) => member.open);
   };
@@ -1265,7 +1266,7 @@ internal let HTML_SEARCH_SCRIPT = """
     if (originFilter && typeof state.origin === "string") originFilter.value = state.origin;
     applyMemberFilter();
     if (Array.isArray(state.open)) {
-      for (const item of memberRows) item.open = state.open.includes(item.id);
+      for (const item of expandableMemberRows) item.open = state.open.includes(item.id);
     }
     syncMemberActions();
     return true;
@@ -1284,13 +1285,13 @@ internal let HTML_SEARCH_SCRIPT = """
     filterSidebar();
     filterContext();
   };
-  for (const member of memberRows) member.addEventListener("toggle", () => {
+  for (const member of expandableMemberRows) member.addEventListener("toggle", () => {
     syncMemberActions();
     saveMemberState();
   });
   for (const [button, open] of [[expandMembers, true], [collapseMembers, false]]) {
     if (button) button.addEventListener("click", () => {
-      for (const member of memberRows) if (!member.hidden) member.open = open;
+      for (const member of expandableMemberRows) if (!member.hidden) member.open = open;
       syncMemberActions();
       saveMemberState();
     });
@@ -1309,7 +1310,7 @@ internal let HTML_SEARCH_SCRIPT = """
     if (!target) return;
     const member = target.matches("[data-cjdoc-member]")
       ? target : target.closest("[data-cjdoc-member]");
-    if (member && member.tagName === "DETAILS") {
+    if (member) {
       if (member.hidden) {
         if (memberFilter) memberFilter.value = "";
         if (originFilter) originFilter.value = "";
@@ -1319,7 +1320,7 @@ internal let HTML_SEARCH_SCRIPT = """
         applyMemberFilter();
       }
       member.hidden = false;
-      member.open = true;
+      if (member.tagName === "DETAILS") member.open = true;
       const group = member.closest("[data-cjdoc-member-group]");
       if (group) group.hidden = false;
       syncTocVisibility();

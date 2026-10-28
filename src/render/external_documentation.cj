@@ -72,7 +72,7 @@ private func appendExternalReference(out: RenderTextBuffer, value: ExternalDocum
 
 internal func externalDocumentationHtml(documentation: DocumentationSet, symbol: SymbolDoc,
     locale: String, relatedSymbolIds!: HashSet<String> = HashSet<String>(),
-    compactUnavailable!: Bool = false): String {
+    compactUnavailable!: Bool = false, includeUnavailable!: Bool = true): String {
     let out = RenderTextBuffer()
     let failures = ArrayList<ExternalDocumentationReference>()
     let seen = HashSet<String>()
@@ -81,6 +81,7 @@ internal func externalDocumentationHtml(documentation: DocumentationSet, symbol:
         let local = value.symbolId == symbol.id
         if (!local && !relatedSymbolIds.contains(value.symbolId)) { continue }
         if (value.state != "available") {
+            if (!includeUnavailable) { continue }
             if (!seen.add(externalReferenceIdentity(value))) { continue }
             failures.add(value)
             continue

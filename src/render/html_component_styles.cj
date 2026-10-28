@@ -35,8 +35,8 @@ internal let HTML_LAYOUT_HARDENING_STYLE = """
 .reference-build-details{margin-left:auto}.reference-build-details>summary{cursor:pointer;color:var(--muted);font-weight:650}.reference-build-details>div{display:flex;gap:.65rem .9rem;flex-wrap:wrap;margin-top:.4rem}
 .member-group{margin:var(--api-section-gap) 0}.member-group-heading{display:flex;align-items:baseline;gap:1rem;margin:1.4rem 0 .5rem;padding-bottom:.5rem;border-bottom:1px solid var(--line)}
 .member-group-heading>h2{margin:0;padding:0;border:0;font-size:1.2rem;line-height:1.5}
-.member-group-count{margin-left:auto;color:var(--muted);font-size:.8125rem;white-space:nowrap}.member-detail{border-bottom:1px solid var(--line);scroll-margin-top:5.5rem}.member-detail:first-of-type{border-top:1px solid var(--line)}.member-detail>summary{list-style:none;cursor:pointer;padding:var(--api-row-padding) .35rem;display:grid;grid-template-columns:.8rem minmax(0,1fr) auto;gap:.18rem .75rem;align-items:baseline;border-radius:6px;column-gap:.55rem}.member-detail>summary::-webkit-details-marker{display:none}.member-detail>summary:hover,.member-detail>summary:focus-visible{background:var(--surface-subtle)}.member-detail[open]>summary{background:var(--surface-subtle)}.member-summary-main{min-width:0;display:flex;flex-direction:column;gap:.2rem;grid-column:2;grid-row:1}.member-detail .declaration-signature{display:block;max-width:100%;overflow:visible;text-overflow:clip;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink);font:500 var(--code-size)/1.7 var(--code-font);font-size:var(--code-size)}.member-summary-description{grid-column:2/-1;color:var(--muted);font-size:var(--summary-size);line-height:1.75}.member-detail-body{padding:.75rem .5rem 1.4rem 1.3rem;border-left:0}.member-detail-body p{display:block;-webkit-line-clamp:unset;overflow:visible}.member-permalink{font-size:.78rem}.compact-signature{margin:.45rem 0 .85rem;padding:.75rem 2.8rem .75rem .8rem}.member-group[hidden]{display:none}.member-origin,.extension-conditions{margin:.35rem 0;color:var(--muted);font-size:.8rem}.extension-signature{margin:.35rem 0 .6rem}.context-links{display:grid;gap:.08rem}.context-item{display:block;padding:.28rem .45rem;border-radius:5px;color:var(--muted);text-decoration:none;overflow-wrap:anywhere}.context-item:hover,.context-item:focus-visible{background:var(--surface-subtle);color:var(--ink);text-decoration:none}.context-item.is-current{background:var(--accent-soft);color:var(--accent-strong);font-weight:650}.context-item code{padding:0;border:0;background:transparent;color:inherit;font-size:.78rem}.sidebar-context{padding-bottom:.25rem}.sidebar-limit{margin:.45rem .25rem;color:var(--muted);font-size:.75rem}
-@media(max-width:760px){.reference-build-details{width:100%;margin-left:0}.reference-build-details>div{display:grid;grid-template-columns:1fr}.member-detail>summary{grid-template-columns:.8rem minmax(0,1fr) auto;padding:.55rem .15rem;column-gap:.55rem}.member-detail-body{padding:.75rem .5rem 1.4rem 1.3rem;border-left:0}.symbol-meta,.contextual-metadata,.member-browser,.symbol-relationships dl,.behavior-contracts dl{grid-template-columns:minmax(0,1fr)}.symbol-relationships dt,.symbol-relationships dd,.symbol-relationships code,.reverse-type-usages code,.member-origin code,.extension-signature code{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-word}}
+.member-group-count{margin-left:auto;color:var(--muted);font-size:.8125rem;white-space:nowrap}.member-detail{border-bottom:1px solid var(--line);scroll-margin-top:5.5rem}.member-detail:first-of-type{border-top:1px solid var(--line)}.member-detail>summary{list-style:none;cursor:pointer;padding:var(--api-row-padding) .35rem;display:grid;grid-template-columns:.8rem minmax(0,1fr) auto;gap:.18rem .75rem;align-items:baseline;border-radius:6px;column-gap:.55rem}.member-detail>summary::-webkit-details-marker{display:none}.member-detail>summary:hover,.member-detail>summary:focus-visible{background:var(--surface-subtle)}.member-detail[open]>summary{background:var(--surface-subtle)}.member-summary-main{min-width:0;display:flex;flex-direction:column;gap:.2rem;grid-column:2;grid-row:1}.member-detail .declaration-signature{display:block;max-width:100%;overflow:visible;text-overflow:clip;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink);font:500 var(--code-size)/1.7 var(--code-font);font-size:var(--code-size)}.member-summary-description{grid-column:2/-1;color:var(--muted);font-size:var(--summary-size);line-height:1.75}.member-detail-body{padding-block:.65rem 1rem;padding-inline:var(--member-content-inset) var(--member-pad-start);border-inline-start:0}.member-detail-body p{display:block;-webkit-line-clamp:unset;overflow:visible}.member-permalink{font-size:.78rem}.compact-signature{margin:.45rem 0 .85rem;padding:.75rem 2.8rem .75rem .8rem}.member-group[hidden]{display:none}.member-origin,.extension-conditions{margin:.35rem 0;color:var(--muted);font-size:.8rem}.extension-signature{margin:.35rem 0 .6rem}.context-links{display:grid;gap:.08rem}.context-item{display:block;padding:.28rem .45rem;border-radius:5px;color:var(--muted);text-decoration:none;overflow-wrap:anywhere}.context-item:hover,.context-item:focus-visible{background:var(--surface-subtle);color:var(--ink);text-decoration:none}.context-item.is-current{background:var(--accent-soft);color:var(--accent-strong);font-weight:650}.context-item code{padding:0;border:0;background:transparent;color:inherit;font-size:.78rem}.sidebar-context{padding-bottom:.25rem}.sidebar-limit{margin:.45rem .25rem;color:var(--muted);font-size:.75rem}
+@media(max-width:760px){.reference-build-details{width:100%;margin-left:0}.reference-build-details>div{display:grid;grid-template-columns:1fr}.member-detail>summary{grid-template-columns:var(--member-chevron-width) minmax(0,1fr) auto;padding-block:.55rem;padding-inline-start:var(--member-pad-start);column-gap:var(--member-chevron-gap)}.member-detail-body{padding-block:.65rem 1rem;padding-inline:var(--member-content-inset) var(--member-pad-start);border-inline-start:0}.symbol-meta,.contextual-metadata,.member-browser,.symbol-relationships dl,.behavior-contracts dl{grid-template-columns:minmax(0,1fr)}.symbol-relationships dt,.symbol-relationships dd,.symbol-relationships code,.reverse-type-usages code,.member-origin code,.extension-signature code{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-word}}
 /* Only large member browsers defer idle closed rows. Small groups and no-JS
    retain ordinary layout; expanded contracts always retain complete rendered
    text and geometry. Unsupported selectors and print keep full layout. */
@@ -93,16 +93,16 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
 .api-extension-header .api-title-row h1{font-size:clamp(1.65rem,2.7vw,2.45rem);line-height:1.25}
 .symbol-relationships .relation-target{text-decoration:underline;text-decoration-color:var(--line-strong);text-underline-offset:.16em}
 .symbol-relationships .relation-target:hover,.symbol-relationships .relation-target:focus-visible{text-decoration-color:currentColor;outline-offset:2px}.api-page-header .symbol-kind{margin:.3rem 0;font-size:.8rem}.api-page-header .symbol-summary{margin:.5rem 0 .75rem}.api-page-header .signature-block{margin:.65rem 0;padding:.8rem 3rem .8rem .85rem;line-height:1.55}.api-page-header .source-action{margin:.4rem 0}
-.member-detail>summary{grid-template-columns:.8rem minmax(0,1fr) auto;align-items:baseline;column-gap:.55rem}
+.member-detail>summary{grid-template-columns:var(--member-chevron-width) minmax(0,1fr) auto;align-items:baseline;column-gap:var(--member-chevron-gap);padding-inline-start:var(--member-pad-start)}
 .member-detail>summary:before{content:"";grid-column:1;grid-row:1;align-self:start;width:.4rem;height:.4rem;margin:.35rem 0 0 .05rem;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(-45deg)}
 .member-detail[open]>summary:before{transform:rotate(45deg)}
 .member-summary-main{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:.2rem;min-width:0}.member-detail-summary>.declaration-kind{grid-column:3;grid-row:1}.member-summary-description{grid-column:2/-1;font-size:var(--summary-size);line-height:1.75}
-.member-detail-body{padding:.75rem .5rem 1.4rem 1.3rem;border-left:0}.member-detail-body h3{margin:.9rem 0 .4rem;font-size:.92rem}.member-detail-actions{gap:1rem;flex-wrap:wrap;justify-content:flex-start;margin:.1rem 0 .65rem;font-size:.78rem}.member-detail-body .parameter-list{margin:.4rem 0 .75rem}.member-detail-body .return-value{margin:.4rem 0 .75rem}.member-detail-body .behavior-contracts{margin:.8rem 0;padding:.55rem 0}.member-detail-body .example-list{margin:.4rem 0 .8rem;gap:.6rem}.member-detail-body .example-block{padding:.6rem .8rem}.member-detail-body .example-block pre{margin:.5rem 0;padding:.7rem 3rem .7rem .8rem;line-height:1.5}.member-detail-body .example-block>:last-child{margin-bottom:0}
+.member-detail-body{padding-block:.65rem 1rem;padding-inline:var(--member-content-inset) var(--member-pad-start);border-inline-start:0}.member-detail-body h3{margin:.9rem 0 .4rem;font-size:.92rem}.member-detail-actions{gap:1rem;flex-wrap:wrap;justify-content:flex-start;margin:.1rem 0 .65rem;font-size:.78rem}.member-detail-body .parameter-list{margin:.4rem 0 .75rem}.member-detail-body .return-value{margin:.4rem 0 .75rem}.member-detail-body .behavior-contracts{margin:.8rem 0;padding:.55rem 0}.member-detail-body .example-list{margin:.4rem 0 .8rem;gap:.6rem}.member-detail-body .example-block{padding:.6rem .8rem}.member-detail-body .example-block pre{margin:.5rem 0;padding:.7rem 3rem .7rem .8rem;line-height:1.5}.member-detail-body .example-block>:last-child{margin-bottom:0}
 .reverse-type-usages{margin:.6rem 0;padding:0;border:0;color:var(--muted);font-size:.8rem}.reverse-type-usages>summary{cursor:pointer;padding:.4rem 0}.symbol-relationships .relation-note{margin-left:.45rem;color:var(--muted);font-size:.8rem}.reference-state{font-family:inherit;font-weight:500}.badge.reference-state[data-state]{border-color:var(--line);color:var(--muted)}
 .member-browser-actions{display:flex;gap:.35rem}.member-browser-actions button{min-height:34px;padding:.25rem .55rem;border:1px solid var(--line-strong);border-radius:5px;background:var(--surface);color:var(--muted);font-size:.78rem}.member-browser-actions button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}.member-browser-actions button:disabled{opacity:.5;cursor:default}
 .parameter-row dt{overflow-wrap:anywhere}.parameter-description:empty{padding:0}.parameter-row .parameter-type-code{border:0;padding:0;background:transparent}
 .code-keyword{color:var(--code-keyword)}.code-type{color:var(--code-type)}.code-string{color:var(--code-string)}.code-number{color:var(--code-number)}.code-literal{color:var(--code-literal)}.code-comment{color:var(--code-comment)}.code-operator{color:var(--code-operator)}.code-punctuation{color:var(--code-punctuation)}.code-function{color:var(--code-function)}.code-property{color:var(--code-property)}.code-meta{color:var(--code-meta)}
-@media(max-width:760px){:root{--cjdoc-header-height:128px}.docs-sidebar{top:0;height:100dvh}.member-detail-summary>.declaration-kind{grid-column:2;grid-row:2;justify-self:start}.member-detail-body{padding-left:.8rem;padding:.75rem .5rem 1.4rem 1.3rem;border-left:0}.member-browser-toolbar input{min-width:8rem}.api-page-header{margin-bottom:.8rem}}
+@media(max-width:760px){:root{--cjdoc-header-height:128px}.docs-sidebar{top:0;height:100dvh}.member-detail-summary>.declaration-kind{grid-column:2;grid-row:2;justify-self:start}.member-browser-toolbar input{min-width:8rem}.api-page-header{margin-bottom:.8rem}}
 /* Contract reading: put the API name and its explanation in the same row. */
 .throws-list{display:block;margin:.45rem 0 .85rem;padding:0}
 .throws-row{display:grid;grid-template-columns:fit-content(14rem) minmax(0,1fr);gap:.75rem;padding:.55rem 0;border-bottom:1px solid var(--line)}
@@ -118,15 +118,18 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
 
 /* Native details owns only expansion. Sibling actions stay reachable even
    when the member is closed; reserve their width without shifting signatures. */
-.member-row{position:relative;min-width:0;margin:0}
+.member-row{--member-pad-start:.35rem;--member-chevron-width:.8rem;--member-chevron-gap:.55rem;--member-content-inset:calc(var(--member-pad-start) + var(--member-chevron-width) + var(--member-chevron-gap));position:relative;min-width:0;margin:0}
 .member-row[hidden]{display:none}
 .member-row>.member-detail{margin:0;border-top:0}
-.member-group>.member-row:first-of-type>.member-detail{border-top:1px solid var(--line)}
+.member-group>.member-row:first-of-type>.member-detail{border-top:0}
 .member-overload-group>.member-row{margin:0}
-.member-row>.member-detail>summary{padding-inline-end:8.5rem}
+.member-row>.member-detail>summary{min-height:3.35rem;padding-inline-end:8.5rem}
+.member-row>.member-static>.member-detail-summary{display:grid;grid-template-columns:var(--member-chevron-width) minmax(0,1fr) auto;column-gap:var(--member-chevron-gap);align-items:baseline;min-height:3.35rem;padding-block:.65rem;padding-inline-start:var(--member-pad-start);padding-inline-end:8.5rem;border-radius:6px}
+.member-row>.member-static>.member-detail-summary:before{content:"";grid-column:1;grid-row:1}
+.member-row>.member-static>.member-detail-summary:hover{background:var(--surface-subtle)}
 .member-row:focus-within,.member-row.member-actions-open{z-index:3}
 .member-row>.member-detail-actions{
-    position:absolute;inset-block-start:.3rem;inset-inline-end:.3rem;
+    position:absolute;inset-block-start:.5rem;inset-inline-end:.3rem;
     display:flex;align-items:center;width:max-content;max-width:100%;
     margin:0;padding:.12rem;border:1px solid var(--line);border-radius:8px;
     background:var(--surface);opacity:0;pointer-events:none
@@ -144,6 +147,11 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
     background:transparent;color:var(--muted);line-height:1;
     text-decoration:none;cursor:pointer
 }
+/* See-also is a readable link list, not a stack of code badges. */
+.see-also-list{display:grid;gap:.35rem;margin:.4rem 0 1rem;padding:0;list-style:none}
+.see-also-list li{min-width:0;margin:0;padding:.15rem 0;overflow-wrap:anywhere}
+.see-also-list code{padding:0;border:0;border-radius:0;background:transparent;font-size:var(--code-size);white-space:normal;overflow-wrap:anywhere}
+.see-also-list a{text-underline-offset:.17em}
 .member-detail-actions .member-action:hover{
     background:var(--surface-subtle);color:var(--accent);text-decoration:none
 }
@@ -167,6 +175,7 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
    The compact disclosure is an enhancement installed after its listeners exist. */
 @media (hover:none), (pointer:coarse), (any-pointer:coarse), (max-width:760px){
     .member-row>.member-detail>summary{padding-inline-end:.35rem}
+    .member-row>.member-static>.member-detail-summary{padding-inline-end:.35rem}
     .member-row>.member-detail-actions{
         position:static;inset:auto;align-items:center;width:100%;max-width:100%;
         margin:.15rem 0 .35rem;padding:0;border:0;border-radius:0;
@@ -185,6 +194,7 @@ internal let HTML_REFERENCE_BROWSER_STYLE = """
     }
     .member-detail-actions .member-action-label{display:inline;white-space:normal}
     .member-row.member-actions-enhanced>.member-detail>summary{padding-inline-end:3.25rem}
+    .member-row.member-actions-enhanced>.member-static>.member-detail-summary{padding-inline-end:3.25rem}
     .member-row.member-actions-enhanced>.member-detail-actions{
         position:absolute;inset-block-start:.25rem;inset-inline-end:.2rem;
         width:max-content;max-width:100%;margin:0;padding:0;
