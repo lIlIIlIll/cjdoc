@@ -635,8 +635,9 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("runner: windows-2022",workflow);self.assertNotIn("runner: macos-15",workflow)
         self.assertIn("ref: "+SOURCE,workflow);self.assertIn("path: controller",workflow)
         self.assertIn("path: product",workflow);self.assertNotIn("--save-temps",workflow)
-        self.assertEqual(workflow.count('GIT_CONFIG_KEY_0: core.autocrlf'),2)
-        self.assertEqual(workflow.count('GIT_CONFIG_VALUE_0: "false"'),2)
+        job_environment = workflow.split("jobs:",1)[1].split("steps:",1)[0]
+        self.assertIn('GIT_CONFIG_KEY_0: core.autocrlf',job_environment)
+        self.assertIn('GIT_CONFIG_VALUE_0: "false"',job_environment)
         self.assertNotIn("public/*",workflow);self.assertNotIn("private/",workflow)
         self.assertNotIn(".opt.bc",workflow);self.assertIn("/public/cjdoc.derived.ll",workflow)
 

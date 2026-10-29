@@ -2,6 +2,7 @@ name: macOS highlight host evidence (manual diagnostic only)
 
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -14,6 +15,9 @@ jobs:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUTF8: "1"
       cjHeapSize: "512MB"
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: "false"
     steps:
       - name: Check out diagnostic controller
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

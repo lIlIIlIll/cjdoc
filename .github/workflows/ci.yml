@@ -2,12 +2,20 @@ name: Windows cjdoc LLVM evidence (manual diagnostic only)
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        type: choice
+        default: windows-root
+        options:
+          - windows-root
+          - macos-host
 
 permissions:
   contents: read
 
 jobs:
   capture:
+    if: ${{ inputs.target != 'macos-host' }}
     name: Native evidence / ${{ matrix.platform }}
     strategy:
       fail-fast: false
@@ -22,14 +30,14 @@ jobs:
       PYTHONUTF8: "1"
       cjHeapSize: "512MB"
       DIAGNOSTIC_PLATFORM: ${{ matrix.platform }}
+      # cjpm's Git dependency checkouts must obey the same raw-blob policy.
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: "false"
     steps:
       # Controller and frozen product source deliberately have separate checkouts.
       - name: Check out diagnostic controller
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        env:
-          GIT_CONFIG_COUNT: "1"
-          GIT_CONFIG_KEY_0: core.autocrlf
-          GIT_CONFIG_VALUE_0: "false"
         with:
           path: controller
           persist-credentials: false
@@ -37,10 +45,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         # Match raw Git blobs for the byte-identity preflight. This diagnostic
         # controls checkout EOL; it does not reproduce CI's CRLF checkout policy.
-        env:
-          GIT_CONFIG_COUNT: "1"
-          GIT_CONFIG_KEY_0: core.autocrlf
-          GIT_CONFIG_VALUE_0: "false"
         with:
           ref: 62a59d5523ce6a2c9982b59b99e0ff167faea33f
           path: product
@@ -83,3 +87,7 @@ jobs:
             ${{ runner.temp }}/native-codegen-evidence/public/cjdoc.derived.ll
           if-no-files-found: warn
           retention-days: 3
+
+  macos-host:
+    if: ${{ inputs.target == 'macos-host' }}
+    uses: ./.github/workflows/highlight-host-diagnostic.yml
