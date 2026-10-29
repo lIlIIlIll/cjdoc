@@ -9,13 +9,14 @@ on:
         options:
           - windows-root
           - macos-host
+          - windows-provider
 
 permissions:
   contents: read
 
 jobs:
   capture:
-    if: ${{ inputs.target != 'macos-host' }}
+    if: ${{ inputs.target == 'windows-root' }}
     name: Native evidence / ${{ matrix.platform }}
     strategy:
       fail-fast: false
@@ -91,3 +92,9 @@ jobs:
   macos-host:
     if: ${{ inputs.target == 'macos-host' }}
     uses: ./.github/workflows/highlight-host-diagnostic.yml
+
+  windows-provider:
+    if: ${{ inputs.target == 'windows-provider' }}
+    uses: ./.github/workflows/highlight-host-diagnostic.yml
+    with:
+      profile: windows-provider

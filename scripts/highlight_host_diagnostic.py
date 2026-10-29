@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One frozen macOS cancellation-host build; no worker run or qualification."""
+"""One frozen fixture command with reviewed diagnostic publication."""
 from __future__ import annotations
 
 import argparse
@@ -18,6 +18,8 @@ from native_capture_support import digest, inventory
 class HostBuildAttempt(capture.Attempt):
     source_commit = "04ce974e94fc15df3be72ebaeffe1ac0587f9ecb"
     source_tree = "343e41e7b4bb06c23703669f5a6b591497f4b4b9"
+    diagnostic_scope = "only public-cancel-host build; original 1200-second bound"
+    status_prefix = "HOST_BUILD"
 
     def preflight(self):
         # This profile captures only text from the original host build. Its SDK,
@@ -39,6 +41,9 @@ class HostBuildAttempt(capture.Attempt):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module.public_cancel_host_command(Path(shell))
+
+    def prepare_target(self, source, shell):
+        pass
 
     def target(self):
         # The real gate builds a tracked archive, not the original Git checkout.
@@ -64,19 +69,20 @@ class HostBuildAttempt(capture.Attempt):
                               (Path(shell).resolve(), "<bash>")])
         self.environment.update({"GITHUB_WORKSPACE": str(source),
                                  "CJDOC_HIGHLIGHT_BUILD": str(self.private / "host-build")})
+        self.prepare_target(source, shell)
         command = self.host_command(shell)
         bounded = [sys.executable, str(self.source / "scripts/run_with_timeout.py"),
                    "1200", "--", *command]
         self.evidence.update({"targetInvocations": 1, "targetCommand": command,
                               "sourceArchiveSha256": digest(archive),
-                              "diagnosticScope": "only public-cancel-host build; original 1200-second bound",
+                              "diagnosticScope": self.diagnostic_scope,
                               "qualification": "diagnostic only; fresh controlled temporary paths",
                               "backendTrace": {"backendInvocations": 0, "reason": "not requested"}})
         result = self.call("target", bounded, cwd=source, checked=False)
-        self.build_log = result.stdout + result.stderr
+        self.build_log += result.stdout + result.stderr
         self.exit_code = result.returncode
         self.evidence["processExitCode"] = result.returncode
-        self.evidence["status"] = "HOST_BUILD_FAILED" if result.returncode else "HOST_BUILD_SUCCEEDED"
+        self.evidence["status"] = self.status_prefix + ("_FAILED" if result.returncode else "_SUCCEEDED")
         after = inventory(source, names)
         self.evidence["archiveTrackedSourcesUnchanged"] = after == before
         if after != before:
@@ -86,13 +92,54 @@ class HostBuildAttempt(capture.Attempt):
             self.evidence["stsInvocations"] = [json.loads(line) for line in receipt.read_text().splitlines()]
 
 
+class ProviderBuildAttempt(HostBuildAttempt):
+    diagnostic_scope = "one root CLI prerequisite build then one Windows provider run; each bounded at 1200 seconds; no backend observation"
+    status_prefix = "PROVIDER_RUN"
+
+    def prepare_target(self, source, shell):
+        # The fixture explicitly invokes ../../../../target/release/bin/main.
+        # A static path dependency does not provide that root CLI executable.
+        command = [shell, "--noprofile", "--norc", "-c",
+                   '. scripts/with_sts_cjpm.sh; cjpm build --jobs 1']
+        bounded = [sys.executable, str(self.source / "scripts/run_with_timeout.py"),
+                   "1200", "--", *command]
+        self.evidence["prerequisiteInvocations"] = 1
+        result = self.call("prerequisite-root", bounded, cwd=source, checked=False)
+        self.evidence["prerequisiteExitCode"] = result.returncode
+        self.build_log = result.stdout + result.stderr
+        if result.returncode:
+            self.exit_code = result.returncode
+            self.evidence["firstChildFailureExitCode"] = result.returncode
+        names = [row["path"] for row in self.evidence["sourceBefore"]["files"]]
+        unchanged = inventory(source, names) == self.evidence["sourceBefore"]["files"]
+        self.evidence["prerequisiteTrackedSourcesUnchanged"] = unchanged
+        if not unchanged:
+            raise ValueError("prerequisite changed a tracked archive input")
+        if result.returncode:
+            raise capture.ChildFailed("prerequisite-root", result.returncode)
+        candidates = [source / "target/release/bin" / name for name in ("main", "main.exe")]
+        binary = next((path for path in candidates if path.is_file() and not path.is_symlink()), None)
+        if binary is None:
+            raise ValueError("root CLI prerequisite did not produce its executable")
+        self.evidence["prerequisiteBinary"] = {"sha256": digest(binary), "bytes": binary.stat().st_size}
+
+    def host_command(self, shell):
+        # The exact check.sh provider invocation; no verbose or compiler flag change.
+        return [shell, "--noprofile", "--norc", "-c",
+                '. scripts/with_sts_cjpm.sh; cd tests/fixtures/projects/provider_plugin; '
+                'cjpm run --build-args "--jobs 1"']
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--profile", choices=("macos-host", "windows-provider"), default="macos-host")
     args = parser.parse_args()
     args.output.mkdir(mode=0o700, exist_ok=False)
-    return HostBuildAttempt(args.source, args.output, "macos-arm64").execute()
+    attempt, platform = ((ProviderBuildAttempt, "windows-x64") if args.profile == "windows-provider"
+                         else (HostBuildAttempt, "macos-arm64"))
+    return attempt(args.source, args.output, platform).execute()
 
 
 if __name__ == "__main__":
