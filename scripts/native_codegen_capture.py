@@ -43,6 +43,9 @@ class ChildFailed(ValueError):
 
 
 class Attempt:
+    source_commit = SOURCE
+    source_tree = TREE
+
     def __init__(self, source, output, selected, runner=subprocess.run, watcher=EventWatch):
         self.source=source.resolve(strict=True); self.output=output.resolve(strict=True)
         self.selected=selected; self.runner=runner; self.watcher=watcher
@@ -50,7 +53,7 @@ class Attempt:
         if os.name!="nt":
             import resource
             resource.setrlimit(resource.RLIMIT_CORE,(0,0))
-        self.evidence={"sourceCommit":SOURCE,"sourceTree":TREE,"platform":selected,
+        self.evidence={"sourceCommit":self.source_commit,"sourceTree":self.source_tree,"platform":selected,
                        "status":"BUILD_NOT_STARTED","targetInvocations":0,
                        "argvObservation":"verbose-command-log; not OS execve",
                        "diagnosticOnly":True,"rawBitcodePublished":False,"calls":[],
@@ -311,7 +314,7 @@ class Attempt:
             (self.output/"attempt.marker").open("x").close()
             if self.selected=="windows-x64":
                 self.git.read(self.source,"config","--global","core.longpaths","true")
-            initial=self.git.snapshot(self.source,SOURCE,TREE)
+            initial=self.git.snapshot(self.source,self.source_commit,self.source_tree)
             self.evidence["sourceBefore"]=initial
             self.authenticate();self.lock_pins();self.preflight()
             prior=self.dependencies(allow_missing=True)
@@ -336,7 +339,7 @@ class Attempt:
                 if identity!=self.evidence.get("controllerBefore"):
                     raise ValueError("diagnostic controller or interpreter identity changed")
                 if initial is not None:
-                    after=self.git.snapshot(self.source,SOURCE,TREE);self.evidence["sourceAfter"]=after
+                    after=self.git.snapshot(self.source,self.source_commit,self.source_tree);self.evidence["sourceAfter"]=after
                     if after!=initial:raise ValueError("source working bytes or modes changed")
                 if dependencies is not None:
                     after=self.dependencies();self.evidence["dependenciesAfter"]=after

@@ -1,0 +1,56 @@
+name: macOS highlight host evidence (manual diagnostic only)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-build:
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUTF8: "1"
+      cjHeapSize: "512MB"
+    steps:
+      - name: Check out diagnostic controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: controller
+          persist-credentials: false
+      - name: Check out frozen product source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 04ce974e94fc15df3be72ebaeffe1ac0587f9ecb
+          path: product
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Set up the original STS SDK with stdx
+        uses: Zxilly/setup-cangjie@91463316b1c359f216c2ac49e35900f9341c1571 # v3.2.0
+        with:
+          channel: sts
+          version: "1.2.0"
+          components: stdx
+          cjv-version: v0.3.2
+      - name: Run the original host build once
+        shell: bash
+        run: |
+          set -euo pipefail
+          python controller/scripts/highlight_host_diagnostic.py \
+            --source "$GITHUB_WORKSPACE/product" \
+            --output "${RUNNER_TEMP}/highlight-host-diagnostic"
+      - name: Upload reviewed diagnostic files only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: highlight-host-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/highlight-host-diagnostic/public/receipt.json
+            ${{ runner.temp }}/highlight-host-diagnostic/public/build.sanitized.log
+          if-no-files-found: warn
+          retention-days: 3
