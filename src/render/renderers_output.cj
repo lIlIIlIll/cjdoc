@@ -127,7 +127,8 @@ internal func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
     appendMarkdownTypeDetails(out, symbol, pagePath, symbolIndex, locale)
     match (symbol.documentation) {
         case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
-            locale: locale, pagePath: pagePath, symbolIndex: Some(symbolIndex))
+            locale: locale, pagePath: pagePath, symbolIndex: Some(symbolIndex),
+            headingPrefix: heading + "#", headingBase: heading.size + 1)
         case None => ()
     }
     out.append("- "); appendEscapedMarkdownText(out, "${symbol.kind} · ${symbol.visibility}")
@@ -216,19 +217,27 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
         }
         out.append("## ${label(locale, "Declarations", "声明")}\n\n")
         match (topLevelByPackage.get(routeKey(pkg.source.moduleId, pkg.source.name))) {
-            case Some(symbols) => for (symbol in symbols) {
+            case Some(symbols) =>
+                let roles = declarationGroups(symbols)
+                let grouped = hasDeclarationGroups(roles)
+                for (role in roles) {
+                    if (grouped) { appendDeclarationGroupMarkdown(out, role, "###", locale) }
+                    for (symbol in role.symbols) {
                 if (isContainerDeclaration(symbol)) {
                     out.append("- ["); appendMarkdownCodeSpan(out, symbol.qualifiedName)
                     out.append("](../${markdownSymbolPagePath(symbol)})\n")
                 } else {
-                    appendMarkdownSiteSymbol(out, symbol, assetLookup, "###", locale,
+                    appendMarkdownSiteSymbol(out, symbol, assetLookup,
+                        if (grouped) { "####" } else { "###" }, locale,
                         markdownPackagePagePath(pkg.source.moduleId, pkg.source.name),
                         projection.visibleIndex)
                     appendExternalDocumentationMarkdown(out, documentation, symbol, locale,
-                        markdownPackagePagePath(pkg.source.moduleId, pkg.source.name))
+                        markdownPackagePagePath(pkg.source.moduleId, pkg.source.name),
+                        headingPrefix: if (grouped) { "#####" } else { "####" })
                 }
             }
-            case None => out.append("${label(locale, "No direct declarations.", "没有直接声明。")}\n")
+                }
+                        case None => out.append("${label(locale, "No direct declarations.", "没有直接声明。")}\n")
         }
         artifacts.addText("markdown/${markdownPackagePagePath(pkg.source.moduleId, pkg.source.name)}",
             "text/markdown; charset=utf-8", out.toString())
@@ -252,10 +261,17 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
         match (membersByOwner.get(symbol.id)) {
             case Some(members) => if (!members.isEmpty()) {
                 out.append("## ${label(locale, "Members", "成员")}\n\n")
-                for (member in members) {
-                    appendMarkdownSiteSymbol(out, member, assetLookup, "###", locale,
-                        markdownSymbolPagePath(symbol), projection.visibleIndex)
-                    appendExternalDocumentationMarkdown(out, documentation, member, locale, markdownSymbolPagePath(symbol))
+                let roles = declarationGroups(members)
+                let grouped = hasDeclarationGroups(roles)
+                for (role in roles) {
+                    if (grouped) { appendDeclarationGroupMarkdown(out, role, "###", locale) }
+                    for (member in role.symbols) {
+                        appendMarkdownSiteSymbol(out, member, assetLookup,
+                            if (grouped) { "####" } else { "###" }, locale,
+                            markdownSymbolPagePath(symbol), projection.visibleIndex)
+                        appendExternalDocumentationMarkdown(out, documentation, member, locale, markdownSymbolPagePath(symbol),
+                            headingPrefix: if (grouped) { "#####" } else { "####" })
+                    }
                 }
             }
             case None => ()

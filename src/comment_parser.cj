@@ -129,7 +129,9 @@ private func behaviorContractName(tagText: String): ?String {
     None
 }
 private func isStructuredDocTag(tagText: String): Bool {
-    tagText.startsWith("@param ") ||
+    tagText == "@group" || tagText.startsWith("@group ") || tagText.startsWith("@group\t") ||
+        tagText.startsWith("@group[") ||
+        tagText.startsWith("@param ") ||
         tagText == "@return" || tagText.startsWith("@return ") ||
         tagText.startsWith("@throws ") ||
         tagText == "@see" || tagText.startsWith("@see ") ||
@@ -323,7 +325,11 @@ private class DocCommentParseState {
     func consumeStructuredTag(line: String, tagText: String): Bool {
         if (!tagText.startsWith("@")) { return false }
         currentTag = None
-        if (tagText.startsWith("@param ")) {
+        if (tagText == "@group" || tagText.startsWith("@group ") || tagText.startsWith("@group\t")) {
+            let (subject, description) = splitSubject(tagText.removePrefix("@group").replace("\t", " "))
+            // A group is shared, single-line presentation metadata, not prose.
+            contracts.add(DocTag("group", subject, description))
+        } else if (tagText.startsWith("@param ")) {
             let (subject, description) = splitSubject(tagText.removePrefix("@param "))
             let tag = DocTag("param", subject, description)
             params.add(tag)

@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -132,6 +133,12 @@ class EvidenceIntegrityTests(unittest.TestCase):
         b["accessibility"]["printCounterexamples"] = []
         with self.assertRaises(EvidenceError):
             compare_browser(a, b, manifest, budget, [])
+
+    def test_registered_after_version_matches_current_candidate(self):
+        repo = Path(__file__).resolve().parent.parent
+        profile = json.loads((repo / "docs/maintainer/reader-scale-presentation.json").read_text())
+        package = tomllib.loads((repo / "cjpm.toml").read_text())
+        self.assertEqual(profile["generatorVersions"]["after"], package["package"]["version"])
 
     def test_registered_aria_hashes_match_reviewable_full_snapshots(self):
         repo = Path(__file__).resolve().parent.parent

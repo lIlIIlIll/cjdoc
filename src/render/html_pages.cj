@@ -283,9 +283,10 @@ internal func memberSectionTitle(symbol: SymbolDoc): String {
 
 internal func appendMemberSection(out: RenderTextBuffer,
     documentation: DocumentationSet, projection: RenderProjection,
-    index: HashMap<String, SymbolDoc>, browser: HtmlMemberBrowser,
+    index: HashMap<String, SymbolDoc>, entries: ArrayList<HtmlMemberEntry>,
     title: String, assetLookup: HashMap<String, String>,
-    typeLinkIndex: HtmlTypeLinkIndex, locale: String): Unit {
+    typeLinkIndex: HtmlTypeLinkIndex, locale: String,
+    grouped!: Bool = false): Unit {
     let sectionLabel = match (title) {
         case "Constructors" => "构造器"
         case "Properties" => "属性"
@@ -301,25 +302,22 @@ internal func appendMemberSection(out: RenderTextBuffer,
     }
     let overloadCountLabel = label(locale, "overloads", "个重载")
     let overloadCounts = HashMap<String, Int64>()
-    var groupCount: Int64 = 0
-    for (entry in browser.entries) {
-        if (memberSectionTitle(entry.symbol) != title) { continue }
-        groupCount++
+    for (entry in entries) {
         let key = "${entry.groupKey}:${entry.symbol.name}"
         overloadCounts[key] = match (overloadCounts.get(key)) {
             case Some(value) => value + 1
             case None => 1
         }
     }
+    let heading = if (grouped) { "h3" } else { "h2" }
     var opened = false
     var activeOverloadKey = ""
-    for (entry in browser.entries) {
+    for (entry in entries) {
         let member = entry.symbol
-        if (memberSectionTitle(member) != title) { continue }
         if (!opened) {
-            out.append("<section class=\"member-group\" data-cjdoc-member-group><div class=\"member-group-heading\"><h2>" +
-                escapeHtml(label(locale, title, sectionLabel)) + "</h2><span class=\"member-group-count\">" +
-                groupCount.toString() + " " + label(locale, "members", "个成员") + "</span></div>\n")
+            out.append("<section class=\"member-group\" data-cjdoc-member-group><div class=\"member-group-heading\"><" + heading + ">" +
+                escapeHtml(label(locale, title, sectionLabel)) + "</" + heading + "><span class=\"member-group-count\">" +
+                entries.size.toString() + " " + label(locale, "members", "个成员") + "</span></div>\n")
             opened = true
         }
         let overloadKey = "${entry.groupKey}:${member.name}"
@@ -387,6 +385,7 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     let headerClass = if (symbol.kind == "extend") { " api-extension-header" } else { "" }
     out.append("<header class=\"page-header api-page-header${headerClass}\"><div class=\"api-title-row\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(readerSymbolTitle(symbol, locale))}</code></h1>")
     out.append("<p class=\"symbol-kind\">${escapeHtml(htmlKindLabel(symbol.kind, locale))}</p>")
+    appendDeclarationGroupBadge(out, symbol)
     out.append("<button class=\"copy-link\" type=\"button\" data-cjdoc-copy-link=\"../${escapeHtml(symbolReadablePagePath(symbol))}\">${label(locale, "Copy link", "复制链接")}</button></div>")
     match (symbol.documentation) {
         case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, "../", locale: locale)
@@ -453,11 +452,24 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
                 label(locale, "Collapse all", "全部收起") + "</button></div></div>")
             out.append("<p class=\"member-filter-status\" data-cjdoc-member-filter-status role=\"status\" hidden>" +
                 noResultsLabel + "</p>")
-            for (title in ["Constructors", "Properties", "Variables", "Functions", "Enum cases",
-                "Nested classes", "Nested structs", "Nested interfaces", "Nested enums",
-                "Nested extensions", "Other members"]) {
-                appendMemberSection(out, documentation, projection, index, browser,
-                    title, assetLookup, typeLinkIndex, locale)
+            let sections = HtmlMemberSections(browser.entries)
+            let roles = sections.roles
+            let grouped = hasDeclarationGroups(roles)
+            for (role in roles) {
+                if (grouped) {
+                    let anchor = if (role.key.isEmpty()) { "api-ungrouped" } else { "api-group-" + role.key }
+                    out.append("<section class=\"api-declaration-group\" data-cjdoc-declaration-group=\"" +
+                        escapeHtml(role.key) + "\"><h2 id=\"" + anchor + "\">" +
+                        escapeHtml(declarationGroupTitle(role, locale)) + "</h2>")
+                }
+                for (title in ["Constructors", "Properties", "Variables", "Functions", "Enum cases",
+                    "Nested classes", "Nested structs", "Nested interfaces", "Nested enums",
+                    "Nested extensions", "Other members"]) {
+                    appendMemberSection(out, documentation, projection, index,
+                        sections.entries(role.key, title), title, assetLookup, typeLinkIndex,
+                        locale, grouped: grouped)
+                }
+                if (grouped) { out.append("</section>") }
             }
             out.append("</section>\n")
         } else if (symbol.kind == "extend") {

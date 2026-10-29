@@ -596,6 +596,13 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
             out.append("\n")
         }
     }
+    if (sections.isNone()) {
+        if (let Some(tag) <- documentationGroup(comment)) {
+            out.append(label(locale, "API group: ", "接口分组："))
+            appendEscapedMarkdownText(out, tag.description)
+            out.append("\n\n")
+        }
+    }
     for ((name, heading) in [("since", "Since"), ("author", "Authors"),
             ("version", "Version")]) {
         if ((name == "since" && !markdownSectionSelected(sections, "contracts")) ||

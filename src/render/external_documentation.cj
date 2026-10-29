@@ -111,11 +111,12 @@ internal func externalDocumentationHtml(documentation: DocumentationSet, symbol:
 }
 
 internal func appendExternalDocumentationMarkdown(out: RenderTextBuffer,
-    documentation: DocumentationSet, symbol: SymbolDoc, locale: String, pagePath: String): Unit {
+    documentation: DocumentationSet, symbol: SymbolDoc, locale: String, pagePath: String,
+    headingPrefix!: String = "####"): Unit {
     var opened = false
     for (value in documentation.externalDocumentation where value.symbolId == symbol.id) {
         if (!opened) {
-            out.append("#### " + label(locale, "External documentation", "外部文档") + "\n\n")
+            out.append(headingPrefix + " " + label(locale, "External documentation", "外部文档") + "\n\n")
             opened = true
         }
         out.append("- **")

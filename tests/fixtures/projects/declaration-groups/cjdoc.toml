@@ -1,0 +1,4 @@
+[i18n]
+default-language = "zh-CN"
+languages = ["zh-CN", "en"]
+missing-translation = "warn"

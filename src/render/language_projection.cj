@@ -95,7 +95,7 @@ private func selectedComment(value: DocComment, symbol: SymbolDoc, locale: Strin
         } else if (kind == "summary") { tags.add(missingDocumentationTag(kind, "", id, value, locale)) }
     }
     for (tag in value.tags) {
-        if (["since", "version", "author"].contains(tag.name)) { tags.add(tag) }
+        if (["since", "version", "author", "group"].contains(tag.name)) { tags.add(tag) }
     }
     let seen = HashSet<String>()
     for (parameter in symbol.parameters) {
