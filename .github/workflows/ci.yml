@@ -26,11 +26,21 @@ jobs:
       # Controller and frozen product source deliberately have separate checkouts.
       - name: Check out diagnostic controller
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: "false"
         with:
           path: controller
           persist-credentials: false
       - name: Check out frozen product source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # Match raw Git blobs for the byte-identity preflight. This diagnostic
+        # controls checkout EOL; it does not reproduce CI's CRLF checkout policy.
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: "false"
         with:
           ref: 62a59d5523ce6a2c9982b59b99e0ff167faea33f
           path: product
