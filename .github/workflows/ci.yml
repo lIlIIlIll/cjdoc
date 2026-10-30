@@ -10,6 +10,8 @@ on:
           - windows-root
           - macos-host
           - windows-provider
+          - windows-root-main
+          - macos-provider-main
 
 permissions:
   contents: read
@@ -98,3 +100,15 @@ jobs:
     uses: ./.github/workflows/highlight-host-diagnostic.yml
     with:
       profile: windows-provider
+
+  windows-root-main:
+    if: ${{ inputs.target == 'windows-root-main' }}
+    uses: ./.github/workflows/highlight-host-diagnostic.yml
+    with:
+      profile: windows-root-main
+
+  macos-provider-main:
+    if: ${{ inputs.target == 'macos-provider-main' }}
+    uses: ./.github/workflows/highlight-host-diagnostic.yml
+    with:
+      profile: macos-provider-main

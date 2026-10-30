@@ -16,8 +16,8 @@ from native_capture_support import digest, inventory
 
 # PR #168 failure: the optional-worker gate reached this exact host-build step.
 class HostBuildAttempt(capture.Attempt):
-    source_commit = "04ce974e94fc15df3be72ebaeffe1ac0587f9ecb"
-    source_tree = "343e41e7b4bb06c23703669f5a6b591497f4b4b9"
+    source_commit = "8cc8f71a296b1c6321e575b56fadbd0c379e242a"
+    source_tree = "8bc115f09ed8823cdbe8dd66fdd940bf29b35af8"
     diagnostic_scope = "only public-cancel-host build; original 1200-second bound"
     status_prefix = "HOST_BUILD"
 
@@ -92,8 +92,17 @@ class HostBuildAttempt(capture.Attempt):
             self.evidence["stsInvocations"] = [json.loads(line) for line in receipt.read_text().splitlines()]
 
 
+class RootBuildAttempt(HostBuildAttempt):
+    diagnostic_scope = "one original Windows root CLI build; 1200-second bound; no IR or backend observation"
+    status_prefix = "ROOT_BUILD"
+
+    def host_command(self, shell):
+        return [shell, "--noprofile", "--norc", "-c",
+                '. scripts/with_sts_cjpm.sh; cjpm build --jobs 1']
+
+
 class ProviderBuildAttempt(HostBuildAttempt):
-    diagnostic_scope = "one root CLI prerequisite build then one Windows provider run; each bounded at 1200 seconds; no backend observation"
+    diagnostic_scope = "one root CLI prerequisite build then one provider run; each bounded at 1200 seconds; no backend observation"
     status_prefix = "PROVIDER_RUN"
 
     def prepare_target(self, source, shell):
@@ -130,15 +139,22 @@ class ProviderBuildAttempt(HostBuildAttempt):
                 'cjpm run --build-args "--jobs 1"']
 
 
+PROFILES = {
+    "macos-host": (HostBuildAttempt, "macos-arm64"),
+    "windows-provider": (ProviderBuildAttempt, "windows-x64"),
+    "windows-root-main": (RootBuildAttempt, "windows-x64"),
+    "macos-provider-main": (ProviderBuildAttempt, "macos-arm64"),
+}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--profile", choices=("macos-host", "windows-provider"), default="macos-host")
+    parser.add_argument("--profile", choices=tuple(PROFILES), default="macos-host")
     args = parser.parse_args()
     args.output.mkdir(mode=0o700, exist_ok=False)
-    attempt, platform = ((ProviderBuildAttempt, "windows-x64") if args.profile == "windows-provider"
-                         else (HostBuildAttempt, "macos-arm64"))
+    attempt, platform = PROFILES[args.profile]
     return attempt(args.source, args.output, platform).execute()
 
 

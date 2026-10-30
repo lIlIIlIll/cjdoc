@@ -135,6 +135,34 @@ class HostDiagnosticTests(unittest.TestCase):
             self.assertEqual(attempt.evidence["firstChildFailureExitCode"], 7)
             self.assertEqual(attempt.evidence["targetInvocations"], 0)
 
+    def test_main_root_runs_one_original_command_without_prerequisite(self):
+        for code in (0, 7, 124):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as directory:
+                attempt, calls = self.attempt(directory, code=code,
+                                             attempt_type=diagnostic.RootBuildAttempt)
+                self.assertEqual(diagnostic.RootBuildAttempt.host_command(attempt, "bash"),
+                    ["bash", "--noprofile", "--norc", "-c",
+                     '. scripts/with_sts_cjpm.sh; cjpm build --jobs 1'])
+                with patch("highlight_host_diagnostic.shutil.which", return_value="/bin/bash"):
+                    attempt.target()
+                self.assertEqual([row[0] for row in calls], ["tracked-source", "target"])
+                self.assertEqual(attempt.evidence["targetInvocations"], 1)
+                self.assertEqual(attempt.exit_code, code)
+                self.assertEqual(attempt.evidence["backendTrace"]["backendInvocations"], 0)
+
+    def test_main_profiles_bind_the_merged_source_and_native_target(self):
+        self.assertEqual(diagnostic.PROFILES["windows-root-main"],
+                         (diagnostic.RootBuildAttempt, "windows-x64"))
+        self.assertEqual(diagnostic.PROFILES["macos-provider-main"],
+                         (diagnostic.ProviderBuildAttempt, "macos-arm64"))
+        self.assertEqual(diagnostic.HostBuildAttempt.source_commit,
+                         "8cc8f71a296b1c6321e575b56fadbd0c379e242a")
+        self.assertEqual(diagnostic.HostBuildAttempt.source_tree,
+                         "8bc115f09ed8823cdbe8dd66fdd940bf29b35af8")
+        caller = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text()
+        self.assertIn("if: ${{ inputs.target == 'windows-root-main' }}", caller)
+        self.assertIn("if: ${{ inputs.target == 'macos-provider-main' }}", caller)
+
     def test_tracked_archive_mutation_stops_the_diagnostic(self):
         with tempfile.TemporaryDirectory() as directory:
             attempt, _ = self.attempt(directory, mutate=True)

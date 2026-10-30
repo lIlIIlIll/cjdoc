@@ -9,6 +9,8 @@ on:
         options:
           - macos-host
           - windows-provider
+          - windows-root-main
+          - macos-provider-main
   workflow_call:
     inputs:
       profile:
@@ -21,8 +23,8 @@ permissions:
 
 jobs:
   host-build:
-    runs-on: ${{ inputs.profile == 'windows-provider' && 'windows-2022' || 'macos-15' }}
-    timeout-minutes: ${{ inputs.profile == 'windows-provider' && 60 || 35 }}
+    runs-on: ${{ startsWith(inputs.profile, 'windows-') && 'windows-2022' || 'macos-15' }}
+    timeout-minutes: ${{ contains(inputs.profile, 'provider') && 60 || 35 }}
     env:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUTF8: "1"
@@ -40,7 +42,7 @@ jobs:
       - name: Check out frozen product source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 04ce974e94fc15df3be72ebaeffe1ac0587f9ecb
+          ref: 8cc8f71a296b1c6321e575b56fadbd0c379e242a
           path: product
           persist-credentials: false
       - name: Set up Python
