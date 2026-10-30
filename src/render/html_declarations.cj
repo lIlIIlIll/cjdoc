@@ -57,6 +57,34 @@ private func appendDeclarationRow(out: RenderTextBuffer, symbol: SymbolDoc,
 
 internal func appendPackageDeclarationGroups(out: RenderTextBuffer,
     symbols: ArrayList<SymbolDoc>, links: HtmlTypeLinkIndex, locale: String): Unit {
+    let roles = declarationGroups(symbols)
+    if (!hasDeclarationGroups(roles)) {
+        appendPackageDeclarationKinds(out, symbols, links, locale)
+        return
+    }
+    out.append("<span id=\"declarations\" class=\"section-anchor-alias\" aria-hidden=\"true\"></span>")
+    let aliases = HashSet<String>()
+    for (role in roles) {
+        for (symbol in role.symbols) {
+            let (alias, _) = packageDeclarationHeading(packageDeclarationCategory(symbol.kind), locale)
+            if (aliases.add(alias)) {
+                out.append("<span class=\"section-anchor-alias\" id=\"" + alias + "\" aria-hidden=\"true\"></span>")
+            }
+        }
+        let anchor = if (role.key.isEmpty()) { "api-ungrouped" } else { "api-group-" + role.key }
+        out.append("<section class=\"api-declaration-group\" data-cjdoc-declaration-group=\"" +
+            escapeHtml(role.key) + "\"><h2 id=\"" + anchor + "\">" +
+            escapeHtml(declarationGroupTitle(role, locale)) +
+            label(locale, " (${role.symbols.size})", "（${role.symbols.size}）") + "</h2>")
+        appendPackageDeclarationKinds(out, role.symbols, links, locale,
+            groupPrefix: "api-kind-${role.key.size}-${role.key}-")
+        out.append("</section>\n")
+    }
+}
+
+private func appendPackageDeclarationKinds(out: RenderTextBuffer,
+    symbols: ArrayList<SymbolDoc>, links: HtmlTypeLinkIndex, locale: String,
+    groupPrefix!: String = ""): Unit {
     // Only the audience/cfg projection reaches this function. Hidden members
     // cannot affect counts or introduce a same-name kind badge.
     let groups = HashMap<String, ArrayList<SymbolDoc>>()
@@ -84,10 +112,11 @@ internal func appendPackageDeclarationGroups(out: RenderTextBuffer,
     // second heading for the same content; the category heading becomes the
     // section and keeps the audience-visible count.
     let singleCategory = ordered.size == 1
-    if (!singleCategory) {
+    if (!singleCategory && groupPrefix.isEmpty()) {
         out.append("<h2 id=\"declarations\">${label(locale, "Declarations", "声明")}</h2>\n")
     }
-    let headingLevel = if (singleCategory) { "h2" } else { "h3" }
+    let headingLevel = if (!groupPrefix.isEmpty()) { "h3" }
+        else if (singleCategory) { "h2" } else { "h3" }
     for (entry in ordered) {
         let category = entry[0]
         let group = entry[1]
@@ -95,13 +124,14 @@ internal func appendPackageDeclarationGroups(out: RenderTextBuffer,
         // The sole group keeps the historical anchor so old deep links resolve.
         // The id lives on the heading, never on the wrapping section, so the
         // historical anchor has exactly one owner and one scroll target.
-        let anchorId = if (singleCategory) { "declarations" } else { groupId }
+        let anchorId = if (!groupPrefix.isEmpty()) { groupPrefix + groupId }
+            else if (singleCategory) { "declarations" } else { groupId }
         let count = label(locale, " (${group.size})", "（${group.size}）")
         out.append("<section class=\"declaration-group\">")
         // Merging the umbrella and category headings must not break either deep
         // link. The category anchor survives as a non-heading alias, so the TOC
         // (which only walks headings and roles) still sees one node.
-        if (singleCategory) {
+        if (singleCategory && groupPrefix.isEmpty()) {
             out.append("<span class=\"section-anchor-alias\" id=\"${groupId}\" aria-hidden=\"true\"></span>")
         }
         out.append("<${headingLevel} id=\"${anchorId}\" data-cjdoc-toc-role=\"group\">${heading}${count}</${headingLevel}><div class=\"declaration-list\">")

@@ -5,7 +5,7 @@ import std.collection.*
 
 internal let LOCALIZED_TAG_NAMES = ["summary", "description", "param", "return", "throws", "see",
     "deprecated", "example", "precondition", "postcondition", "invariant", "performance", "state",
-    "concurrency", "platform", "compatibility", "error", "since", "version", "author"]
+    "concurrency", "platform", "compatibility", "error", "since", "version", "author", "group"]
 
 internal class LocalizedTagHead {
     let name: String
@@ -138,7 +138,7 @@ internal func localizedTagHead(line: String): ?LocalizedTagHead {
             return Some(LocalizedTagHead(name, language, "", error: "CJDOC3101"))
         }
         end = stop + 1
-        if (["since", "version", "author"].contains(name)) {
+        if (["since", "version", "author", "group"].contains(name)) {
             return Some(LocalizedTagHead(name, language, "", error: "CJDOC3112"))
         }
     }

@@ -80,6 +80,7 @@ internal class DeclarationMarkdownProjection {
     private func appendSelectedSections(out: RenderTextBuffer, symbol: SymbolDoc,
         pagePath: String, sections: Array<String>): Unit {
         let allSections = sections.isEmpty()
+        if (allSections) { appendDeclarationGroupMetadata(out, symbol, locale) }
         let selected = ArrayList<String>(sections)
         if (allSections || selected.contains("signature")) {
             appendSignature(out, symbol)

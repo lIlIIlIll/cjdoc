@@ -70,6 +70,16 @@ class ExternalDocumentationMarkdownTest {
     }
 
     @TestCase
+    func externalMetadataAcceptsTheContainingDeclarationHeadingDepth(): Unit {
+        let documentation = externalMarkdownFixture()
+        let out = RenderTextBuffer()
+        appendExternalDocumentationMarkdown(out, documentation, documentation.declarations[0],
+            "zh-CN", "packages/package-codec.md", headingPrefix: "#####")
+        @Expect(out.toString().startsWith("##### 外部文档\n\n"))
+        expectExternalMarkdownRoutes(out.toString(), "../")
+    }
+
+    @TestCase
     func importedPrivateReferencesRespectEachAudience(): Unit {
         for (audience in ["external", "package", "all"]) {
             let original = externalMarkdownFixture(audience: audience)

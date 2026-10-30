@@ -19,6 +19,9 @@ CANGJIE_CONTRACT_FIXTURES = {
     "frontend_regressions", "lint", "local_assets", "manifest_headers",
     "markdown_limits", "private_file_scope", "recovery", "reexports",
     "documentation_quality", "i18n", "macro_sources", "macro_wrapped",
+    # Shared group metadata, source-free replay and mixed member groups are
+    # exercised by DeclarationGroupingContracts through the public facade.
+    "declaration-groups",
 }
 CLI_CONTRACT_FIXTURES = {
     "cached_dependencies", "conditional_complex", "deep_binary", "duplicate",

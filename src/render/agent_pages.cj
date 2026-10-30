@@ -56,11 +56,20 @@ private func agentPackageMarkdown(context: DocumentationReadSnapshot, pkg: Packa
     out.append("# Package ")
     appendEscapedMarkdownText(out, pkg.name)
     out.append("\n\nSnapshot: " + context.snapshotId + "\n\nThis is a declaration directory; each linked declaration is independently readable.\n\n")
+    let symbols = ArrayList<SymbolDoc>()
     for (symbol in context.projection.visibleSymbols where symbol.moduleId == pkg.moduleId && symbol.packageName == pkg.name) {
+        symbols.add(symbol)
+    }
+    let groups = declarationGroups(symbols)
+    let grouped = hasDeclarationGroups(groups)
+    for (group in groups) {
+        if (grouped) { appendDeclarationGroupMarkdown(out, group, "##", context.locale) }
+        for (symbol in group.symbols) {
         out.append("- [")
         appendEscapedMarkdownText(out, symbol.qualifiedName)
         out.append("](" + encodeMarkdownDestination("../../" + symbolPagePath(symbol)) + ") — [Markdown](" +
             encodeMarkdownDestination("../../" + agentDeclarationMarkdownPath(symbol)) + ")\n")
+    }
     }
     out.toString()
 }

@@ -20,7 +20,7 @@ internal class HtmlMemberEntry {
             case Some(value) => value.id
             case None => ""
         }
-        "${origin}:${owner}:${memberSectionTitle(symbol)}"
+        "${declarationGroupKey(symbol)}:${origin}:${owner}:${memberSectionTitle(symbol)}"
     } }
 }
 
@@ -71,6 +71,33 @@ internal class HtmlMemberBrowser {
             case Some(values) =>
                 for (symbol in values) { add(symbol, origin, Some(owner)) }
             case None => ()
+        }
+    }
+}
+
+// Partition once after browser ordering so each section only visits its own
+// members. Keeping the original entries preserves origin and overload context.
+internal class HtmlMemberSections {
+    let roles: ArrayList<DeclarationGroup>
+    private let byRoleAndKind = HashMap<String, ArrayList<HtmlMemberEntry>>()
+
+    init(entries: ArrayList<HtmlMemberEntry>) {
+        let symbols = ArrayList<SymbolDoc>()
+        for (entry in entries) {
+            symbols.add(entry.symbol)
+            let key = "${declarationGroupKey(entry.symbol)}:${memberSectionTitle(entry.symbol)}"
+            match (byRoleAndKind.get(key)) {
+                case Some(values) => values.add(entry)
+                case None => byRoleAndKind[key] = ArrayList<HtmlMemberEntry>([entry])
+            }
+        }
+        roles = declarationGroups(symbols)
+    }
+
+    func entries(role: String, title: String): ArrayList<HtmlMemberEntry> {
+        match (byRoleAndKind.get("${role}:${title}")) {
+            case Some(values) => values
+            case None => ArrayList<HtmlMemberEntry>()
         }
     }
 }

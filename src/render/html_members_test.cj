@@ -1,6 +1,7 @@
 package cjdoc.render
 
 import cjdoc.model.*
+import std.collection.*
 import std.unittest.*
 import std.unittest.testmacro.*
 
@@ -108,5 +109,84 @@ class HtmlMemberBrowserTest {
         let browser = RenderProjection(documentation).members(owner)
         @Expect(browser.entries.size, 1)
         @Expect(browser.entries[0].origin, "declared")
+    }
+}
+
+@Test
+class HtmlMemberSectionsTest {
+    private func entry(id: String, kind: String, role: String, origin: String,
+        owner: SymbolDoc): HtmlMemberEntry {
+        let documentation: ?DocComment = if (role.isEmpty()) { None } else {
+            Some(DocComment("raw", "Summary", "", MarkdownNode("document"),
+                tags: [DocTag("group", role, "Group " + role)]))
+        }
+        let symbol = SymbolDoc(id, kind, "sameName", "fixture.Box.sameName", "fixture",
+            "module", "public", memberBrowserTestSource(2), "public func sameName(): Unit",
+            SemanticInfo("partial", "ast"), ownerId: Some(owner.id),
+            documentation: documentation)
+        HtmlMemberEntry(symbol, origin, Some(owner))
+    }
+
+    private func owner(): SymbolDoc {
+        SymbolDoc("owner", "class", "Box", "fixture.Box", "fixture", "module", "public",
+            memberBrowserTestSource(1), "public class Box", SemanticInfo("partial", "ast"))
+    }
+
+    @TestCase
+    func distinctGroupsPartitionRatherThanRepeatEveryMember(): Unit {
+        let entries = ArrayList<HtmlMemberEntry>()
+        let declaredBy = owner()
+        // One group per member is the adversarial case: section inputs must
+        // total N entries, rather than N entries for each of the N groups.
+        for (index in 0..512) {
+            entries.add(entry("member-${index}", "function", "group-${index}", "declared", declaredBy))
+        }
+        let sections = HtmlMemberSections(entries)
+        @Expect(sections.roles.size, 512)
+        var sectionInputCount: Int64 = 0
+        let seen = HashSet<String>()
+        for (role in sections.roles) {
+            let values = sections.entries(role.key, "Functions")
+            @Expect(values.size, 1)
+            sectionInputCount += values.size
+            for (value in values) {
+                @Expect(declarationGroupKey(value.symbol), role.key)
+                @Expect(seen.add(value.symbol.id))
+            }
+            @Expect(sections.entries(role.key, "Properties").isEmpty())
+        }
+        @Expect(sectionInputCount, 512)
+        @Expect(seen.size, 512)
+    }
+
+    @TestCase
+    func partitionsPreserveUngroupedKindsOriginsOwnersAndOverloadOrder(): Unit {
+        let declaredBy = owner()
+        let direct = entry("direct", "function", "application", "declared", declaredBy)
+        let overload = entry("overload", "function", "application", "declared", declaredBy)
+        let inherited = entry("inherited", "function", "application", "inherited", declaredBy)
+        let extension = entry("extension", "function", "spi", "extension", declaredBy)
+        let property = entry("property", "property", "application", "declared", declaredBy)
+        let ungrouped = entry("ungrouped", "macro", "", "declared", declaredBy)
+        let alias = entry("alias", "typeAlias", "", "declared", declaredBy)
+        let sections = HtmlMemberSections(ArrayList<HtmlMemberEntry>([
+            direct, overload, inherited, extension, property, ungrouped, alias]))
+        @Expect(sections.roles.size, 3)
+        @Expect(sections.roles[0].key, "application")
+        @Expect(sections.roles[1].key, "spi")
+        @Expect(sections.roles[2].key, "")
+        let functions = sections.entries("application", "Functions")
+        @Expect(functions.size, 3)
+        @Expect(functions[0].symbol.id, "direct")
+        @Expect(functions[1].symbol.id, "overload")
+        @Expect(functions[0].groupKey, functions[1].groupKey)
+        @Expect(functions[2].origin, "inherited")
+        @Expect(functions[2].declaredBy.getOrThrow().id, declaredBy.id)
+        @Expect(sections.entries("spi", "Functions")[0].origin, "extension")
+        @Expect(sections.entries("application", "Properties")[0].symbol.id, "property")
+        @Expect(sections.entries("", "Macros")[0].symbol.id, "ungrouped")
+        @Expect(sections.entries("", "Other members")[0].symbol.id, "alias")
+        @Expect(sections.entries("missing", "Functions").isEmpty())
+        @Expect(HtmlMemberSections(ArrayList<HtmlMemberEntry>()).roles.isEmpty())
     }
 }
