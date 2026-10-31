@@ -114,6 +114,31 @@ internal func markdownPackagePagePath(moduleId: String, name: String): String {
     "packages/package-${boundedHtmlSlug(routeKey(moduleId, name))}.md"
 }
 
+/**
+ * Partition member declarations by their rendered section title, in the same
+ * reading order the HTML member page uses, so both surfaces pick the same
+ * heading depth for a role.
+ */
+internal func memberSectionCategories(symbols: ArrayList<SymbolDoc>):
+    ArrayList<(String, ArrayList<SymbolDoc>)> {
+    let groups = HashMap<String, ArrayList<SymbolDoc>>()
+    for (symbol in symbols) {
+        let title = memberSectionTitle(symbol)
+        match (groups.get(title)) {
+            case Some(values) => values.add(symbol)
+            case None => groups[title] = ArrayList<SymbolDoc>([symbol])
+        }
+    }
+    let ordered = ArrayList<(String, ArrayList<SymbolDoc>)>()
+    for (title in MEMBER_SECTION_TITLES) {
+        match (groups.get(title)) {
+            case Some(values) => ordered.add((title, values))
+            case None => continue
+        }
+    }
+    ordered
+}
+
 internal func markdownSymbolPagePath(symbol: SymbolDoc): String {
     "symbols/symbol-${boundedHtmlSlug(symbol.id)}.md"
 }
@@ -222,20 +247,34 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                 let grouped = hasDeclarationGroups(roles)
                 for (role in roles) {
                     if (grouped) { appendDeclarationGroupMarkdown(out, role, "###", locale) }
-                    for (symbol in role.symbols) {
-                if (isContainerDeclaration(symbol)) {
-                    out.append("- ["); appendMarkdownCodeSpan(out, symbol.qualifiedName)
-                    out.append("](../${markdownSymbolPagePath(symbol)})\n")
-                } else {
-                    appendMarkdownSiteSymbol(out, symbol, assetLookup,
-                        if (grouped) { "####" } else { "###" }, locale,
-                        markdownPackagePagePath(pkg.source.moduleId, pkg.source.name),
-                        projection.visibleIndex)
-                    appendExternalDocumentationMarkdown(out, documentation, symbol, locale,
-                        markdownPackagePagePath(pkg.source.moduleId, pkg.source.name),
-                        headingPrefix: if (grouped) { "#####" } else { "####" })
-                }
-            }
+                    // A grouped role whose published projection carries one
+                    // kind skips the redundant kind heading, so declarations
+                    // move up one level exactly like the HTML page.
+                    let categories = packageDeclarationCategories(role.symbols)[0]
+                    let mixed = grouped && categories.size > 1
+                    let entryLevel = if (mixed) { "#####" } else if (grouped) { "####" } else { "###" }
+                    let pagePath = markdownPackagePagePath(pkg.source.moduleId, pkg.source.name)
+                    for (category in categories) {
+                        if (mixed) {
+                            // The kind heading is the parent of each
+                            // declaration heading, mirroring the HTML tree.
+                            out.append("#### ")
+                            appendEscapedMarkdownText(out,
+                                packageDeclarationHeading(category[0], locale)[1])
+                            out.append("\n\n")
+                        }
+                        for (symbol in category[1]) {
+                            if (isContainerDeclaration(symbol)) {
+                                out.append("- ["); appendMarkdownCodeSpan(out, symbol.qualifiedName)
+                                out.append("](../${markdownSymbolPagePath(symbol)})\n")
+                                continue
+                            }
+                            appendMarkdownSiteSymbol(out, symbol, assetLookup, entryLevel, locale,
+                                pagePath, projection.visibleIndex)
+                            appendExternalDocumentationMarkdown(out, documentation, symbol, locale,
+                                pagePath, headingPrefix: entryLevel + "#")
+                        }
+                    }
                 }
                         case None => out.append("${label(locale, "No direct declarations.", "没有直接声明。")}\n")
         }
@@ -265,12 +304,23 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                 let grouped = hasDeclarationGroups(roles)
                 for (role in roles) {
                     if (grouped) { appendDeclarationGroupMarkdown(out, role, "###", locale) }
-                    for (member in role.symbols) {
-                        appendMarkdownSiteSymbol(out, member, assetLookup,
-                            if (grouped) { "####" } else { "###" }, locale,
-                            markdownSymbolPagePath(symbol), projection.visibleIndex)
-                        appendExternalDocumentationMarkdown(out, documentation, member, locale, markdownSymbolPagePath(symbol),
-                            headingPrefix: if (grouped) { "#####" } else { "####" })
+                    let categories = memberSectionCategories(role.symbols)
+                    let mixed = grouped && categories.size > 1
+                    let entryLevel = if (mixed) { "#####" }
+                        else if (grouped) { "####" } else { "###" }
+                    for (category in categories) {
+                        if (mixed) {
+                            out.append("#### ")
+                            appendEscapedMarkdownText(out, memberSectionLabel(category[0], locale))
+                            out.append("\n\n")
+                        }
+                        for (member in category[1]) {
+                            appendMarkdownSiteSymbol(out, member, assetLookup,
+                                entryLevel, locale,
+                                markdownSymbolPagePath(symbol), projection.visibleIndex)
+                            appendExternalDocumentationMarkdown(out, documentation, member, locale,
+                                markdownSymbolPagePath(symbol), headingPrefix: entryLevel + "#")
+                        }
                     }
                 }
             }

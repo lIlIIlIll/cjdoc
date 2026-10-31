@@ -73,6 +73,7 @@ internal func prepareDocumentationLanguages(documentation: DocumentationSet, req
     for (symbol in documentation.symbols) {
         if (let Some(comment) <- symbol.documentation) {
             validateDeclarationGroup(documentation, symbol, comment)
+            validateDeclarationTags(documentation, symbol, comment)
             let noOptions: ?public_model.DocumentationLanguageOptions = None
             let options = profiles.get(symbol.moduleId).getOrDefault({ => noOptions })
             if (options.isNone() && !requiresLocalizedComment(comment.raw)) { continue }

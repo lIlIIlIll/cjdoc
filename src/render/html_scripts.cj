@@ -788,6 +788,7 @@ internal let HTML_SEARCH_SCRIPT = """
       if (heading.closest(".home-api-index")) return false;
       const role = heading.dataset.cjdocTocRole;
       return (role === "api-root" || role === "api" || role === "member" ||
+        role === "group" || role === "overload" ||
         heading.tagName === "H2" || heading.tagName === "H3") &&
         !heading.classList.contains("signature-heading");
     });
@@ -829,9 +830,9 @@ internal let HTML_SEARCH_SCRIPT = """
       link.textContent = headingLabel(heading);
       return link;
     };
-    const appendFlatItem = (heading, index) => {
+    const appendFlatItem = (heading, index, level) => {
       const item = document.createElement("li");
-      item.dataset.depth = heading.tagName === "H3" || heading.dataset.cjdocTocRole === "member" ? "3" : "2";
+      item.dataset.depth = String(level);
       item.append(createLink(heading, "toc-flat-link"));
       tocList.append(item);
     };
@@ -907,8 +908,19 @@ internal let HTML_SEARCH_SCRIPT = """
         }
       }
     } else {
+      // A member link sits one level below its nearest structural heading, so
+      // the TOC mirrors the real document outline instead of a fixed depth.
+      let structuralLevel = 1;
       for (let index = 0; index < headings.length; index += 1) {
-        appendFlatItem(headings[index], index);
+        const heading = headings[index];
+        const role = heading.dataset.cjdocTocRole;
+        let level = Number(heading.tagName.slice(1));
+        if (role === "member") {
+          level = Math.min(6, structuralLevel + 1);
+        } else {
+          structuralLevel = level;
+        }
+        appendFlatItem(heading, index, level);
       }
     }
     toc.hidden = headings.length === 0;
@@ -1196,6 +1208,12 @@ internal let HTML_SEARCH_SCRIPT = """
         const count = matches === members.length ? members.length : matches + " / " + members.length;
         label.textContent = count + (isChinese ? " 个成员" : " members");
       }
+    }
+    // A group whose every member is filtered out must not leave an empty
+    // section heading, an empty outer group, or a TOC entry behind.
+    for (const role of document.querySelectorAll("[data-cjdoc-declaration-group]")) {
+      const everything = [...role.querySelectorAll("[data-cjdoc-member]")];
+      role.hidden = everything.length > 0 && everything.every((member) => member.hidden);
     }
     syncTocVisibility();
     syncMemberActions();

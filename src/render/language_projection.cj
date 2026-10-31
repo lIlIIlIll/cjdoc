@@ -95,7 +95,9 @@ private func selectedComment(value: DocComment, symbol: SymbolDoc, locale: Strin
         } else if (kind == "summary") { tags.add(missingDocumentationTag(kind, "", id, value, locale)) }
     }
     for (tag in value.tags) {
-        if (["since", "version", "author", "group"].contains(tag.name)) { tags.add(tag) }
+        // Shared metadata keeps every declaration an author marked, in both
+        // languages, because membership is not a translated field.
+        if (["since", "version", "author", "group", "tag"].contains(tag.name)) { tags.add(tag) }
     }
     let seen = HashSet<String>()
     for (parameter in symbol.parameters) {

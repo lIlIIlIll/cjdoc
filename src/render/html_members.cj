@@ -4,6 +4,13 @@ import cjdoc.model.*
 import std.collection.*
 import std.sort.*
 
+// Reading order of member kind partitions. This is exactly the order the page
+// rendered before the layout decision existed; "Macros" is intentionally absent
+// because macros are never members of a declaration.
+internal let MEMBER_SECTION_TITLES = ["Constructors", "Properties", "Variables", "Functions",
+    "Enum cases", "Nested classes", "Nested structs", "Nested interfaces", "Nested enums",
+    "Nested extensions", "Other members"]
+
 internal class HtmlMemberEntry {
     let symbol: SymbolDoc
     let origin: String
@@ -80,6 +87,7 @@ internal class HtmlMemberBrowser {
 internal class HtmlMemberSections {
     let roles: ArrayList<DeclarationGroup>
     private let byRoleAndKind = HashMap<String, ArrayList<HtmlMemberEntry>>()
+    private let kindTitles = HashMap<String, ArrayList<String>>()
 
     init(entries: ArrayList<HtmlMemberEntry>) {
         let symbols = ArrayList<SymbolDoc>()
@@ -90,6 +98,12 @@ internal class HtmlMemberSections {
                 case Some(values) => values.add(entry)
                 case None => byRoleAndKind[key] = ArrayList<HtmlMemberEntry>([entry])
             }
+            let roleKey = declarationGroupKey(entry.symbol)
+            let title = memberSectionTitle(entry.symbol)
+            match (kindTitles.get(roleKey)) {
+                case Some(values) => if (!values.contains(title)) { values.add(title) }
+                case None => kindTitles[roleKey] = ArrayList<String>([title])
+            }
         }
         roles = declarationGroups(symbols)
     }
@@ -99,6 +113,20 @@ internal class HtmlMemberSections {
             case Some(values) => values
             case None => ArrayList<HtmlMemberEntry>()
         }
+    }
+
+    /**
+     * Non-empty member-kind partitions of one group, in reading order. The
+     * count decides whether the redundant kind heading is rendered.
+     */
+    func kinds(role: String): ArrayList<String> {
+        let present = match (kindTitles.get(role)) {
+            case Some(values) => values
+            case None => return ArrayList<String>()
+        }
+        let ordered = ArrayList<String>()
+        for (title in MEMBER_SECTION_TITLES where present.contains(title)) { ordered.add(title) }
+        ordered
     }
 }
 

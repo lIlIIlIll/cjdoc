@@ -199,7 +199,7 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, entry: HtmlMemberEntry,
     assetLookup: HashMap<String, String>, typeLinkIndex: HtmlTypeLinkIndex,
-    rootPrefix: String, locale: String): Unit {
+    rootPrefix: String, locale: String, sectionHeadingLevel!: Int64 = 3): Unit {
     let member = entry.symbol
     let anchor = symbolAnchor(member)
     out.append("<div class=\"member-row\"><details class=\"declaration-summary member-detail\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\" data-member-origin=\"${escapeHtml(entry.origin)}\">")
@@ -252,13 +252,15 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
         }
     }
     appendDocumentationHtml(out, index, member, rootPrefix, assetLookup, typeLinkIndex,
-        headingBase: 3, locale: locale)
+        headingBase: sectionHeadingLevel, locale: locale, sectionHeadingLevel: sectionHeadingLevel)
+    let headingTag = "h${min(6, sectionHeadingLevel)}"
     appendReaderRelationships(out, index, member, rootPrefix, typeLinkIndex, locale,
-        headingTag: "h3")
+        headingTag: headingTag)
     appendReverseTypeUsages(out, index, typeLinkIndex, member, rootPrefix, locale)
     projection.apiGuides(documentation, locale).append(out, member, locale,
-        headingTag: "h3", headingSuffix: "-inline-" + htmlStableSlug(member.id))
-    out.append(externalDocumentationHtml(documentation, member, locale, compactUnavailable: true))
+        headingTag: headingTag, headingSuffix: "-inline-" + htmlStableSlug(member.id))
+    out.append(externalDocumentationHtml(documentation, member, locale, compactUnavailable: true,
+        headingLevel: sectionHeadingLevel))
     out.append("</div></details>")
     appendInlineMemberActions(out, documentation, projection, member, rootPrefix, locale)
     out.append("</div>\n")
@@ -281,12 +283,8 @@ internal func memberSectionTitle(symbol: SymbolDoc): String {
     }
 }
 
-internal func appendMemberSection(out: RenderTextBuffer,
-    documentation: DocumentationSet, projection: RenderProjection,
-    index: HashMap<String, SymbolDoc>, entries: ArrayList<HtmlMemberEntry>,
-    title: String, assetLookup: HashMap<String, String>,
-    typeLinkIndex: HtmlTypeLinkIndex, locale: String,
-    grouped!: Bool = false): Unit {
+/** Localized label of one member kind section, shared by HTML and Markdown. */
+internal func memberSectionLabel(title: String, locale: String): String {
     let sectionLabel = match (title) {
         case "Constructors" => "构造器"
         case "Properties" => "属性"
@@ -300,6 +298,17 @@ internal func appendMemberSection(out: RenderTextBuffer,
         case "Nested extensions" => "嵌套扩展"
         case _ => "其他成员"
     }
+    label(locale, title, sectionLabel)
+}
+
+internal func appendMemberSection(out: RenderTextBuffer,
+    documentation: DocumentationSet, projection: RenderProjection,
+    index: HashMap<String, SymbolDoc>, entries: ArrayList<HtmlMemberEntry>,
+    title: String, assetLookup: HashMap<String, String>,
+    typeLinkIndex: HtmlTypeLinkIndex, locale: String,
+    showKindHeading!: Bool = false, kindHeadingLevel!: Int64 = 3,
+    entryParentLevel!: Int64 = 3): Unit {
+    if (entries.isEmpty()) { return }
     let overloadCountLabel = label(locale, "overloads", "个重载")
     let overloadCounts = HashMap<String, Int64>()
     for (entry in entries) {
@@ -309,15 +318,24 @@ internal func appendMemberSection(out: RenderTextBuffer,
             case None => 1
         }
     }
-    let heading = if (grouped) { "h3" } else { "h2" }
+    let overloadHeadingLevel = min(6, entryParentLevel + 1)
     var opened = false
     var activeOverloadKey = ""
     for (entry in entries) {
         let member = entry.symbol
         if (!opened) {
-            out.append("<section class=\"member-group\" data-cjdoc-member-group><div class=\"member-group-heading\"><" + heading + ">" +
-                escapeHtml(label(locale, title, sectionLabel)) + "</" + heading + "><span class=\"member-group-count\">" +
-                entries.size.toString() + " " + label(locale, "members", "个成员") + "</span></div>\n")
+            // An omitted kind heading keeps the filterable container and its
+            // members but never renders an empty heading shell, a duplicate
+            // count row or a TOC node, and leaves behind none of the heading's
+            // margins.
+            if (showKindHeading) {
+                let heading = "h${min(6, kindHeadingLevel)}"
+                out.append("<section class=\"member-group\" data-cjdoc-member-group><div class=\"member-group-heading\"><" + heading + ">" +
+                    escapeHtml(memberSectionLabel(title, locale)) + "</" + heading + "><span class=\"member-group-count\">" +
+                    entries.size.toString() + " " + label(locale, "members", "个成员") + "</span></div>\n")
+            } else {
+                out.append("<section class=\"member-group member-group-plain\" data-cjdoc-member-group>\n")
+            }
             opened = true
         }
         let overloadKey = "${entry.groupKey}:${member.name}"
@@ -334,14 +352,17 @@ internal func appendMemberSection(out: RenderTextBuffer,
             out.append("<div class=\"member-overload-group\" role=\"group\" aria-labelledby=\"" +
                 escapeHtml(groupTitleId) + "\" data-cjdoc-overload-group data-overload-total=\"" +
                 count.toString() + "\">")
-            out.append("<h3 class=\"overload-group-label\" id=\"" +
-                escapeHtml(groupTitleId) + "\"><code>" + escapeHtml(member.name) +
+            out.append("<h${overloadHeadingLevel} class=\"overload-group-label\" id=\"" +
+                escapeHtml(groupTitleId) + "\" data-cjdoc-toc-role=\"overload\" data-cjdoc-toc-label=\"" +
+                escapeHtml(member.name) + "\"><code>" + escapeHtml(member.name) +
                 "</code><span class=\"overload-count\" data-cjdoc-overload-count>" +
-                count.toString() + " " + escapeHtml(overloadCountLabel) + "</span></h3>\n")
+                count.toString() + " " + escapeHtml(overloadCountLabel) + "</span></h${overloadHeadingLevel}>\n")
             activeOverloadKey = overloadKey
         }
         appendInlineMemberDetail(out, documentation, projection, index, entry,
-            assetLookup, typeLinkIndex, "../", locale)
+            assetLookup, typeLinkIndex, "../", locale,
+            sectionHeadingLevel: min(6,
+                (if (count > 1) { overloadHeadingLevel } else { entryParentLevel }) + 1))
     }
     if (!activeOverloadKey.isEmpty()) { out.append("</div>\n") }
     if (opened) { out.append("</section>\n") }
@@ -462,12 +483,19 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
                         escapeHtml(role.key) + "\"><h2 id=\"" + anchor + "\">" +
                         escapeHtml(declarationGroupTitle(role, locale)) + "</h2>")
                 }
-                for (title in ["Constructors", "Properties", "Variables", "Functions", "Enum cases",
-                    "Nested classes", "Nested structs", "Nested interfaces", "Nested enums",
-                    "Nested extensions", "Other members"]) {
+                let kinds = sections.kinds(role.key)
+                // A grouped role omits its kind heading when the published
+                // projection leaves exactly one kind; an ungrouped role keeps
+                // the kind heading that is its section heading.
+                let showKindHeading = !grouped || kinds.size > 1
+                let kindHeadingLevel: Int64 = if (grouped) { 3 } else { 2 }
+                let entryParentLevel: Int64 = if (grouped && kinds.size > 1) { 3 } else { 2 }
+                for (title in MEMBER_SECTION_TITLES) {
                     appendMemberSection(out, documentation, projection, index,
                         sections.entries(role.key, title), title, assetLookup, typeLinkIndex,
-                        locale, grouped: grouped)
+                        locale, showKindHeading: showKindHeading,
+                        kindHeadingLevel: kindHeadingLevel,
+                        entryParentLevel: entryParentLevel)
                 }
                 if (grouped) { out.append("</section>") }
             }

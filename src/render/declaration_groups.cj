@@ -62,6 +62,44 @@ internal func declarationGroups(symbols: ArrayList<SymbolDoc>): ArrayList<Declar
     result
 }
 
+/**
+ * Heading structure of one grouped declaration partition.
+ *
+ * Counts come from the published projection, so an audience/cfg decision can
+ * never be re-derived here: a group whose kind partition has exactly one
+ * non-empty category omits the redundant category heading, while a mixed group
+ * keeps it one level below the group heading.
+ */
+internal class DeclarationGroupLayout {
+    let showKindHeading: Bool
+    let kindHeadingLevel: Int64
+    let entryParentLevel: Int64
+
+    init(showKindHeading: Bool, kindHeadingLevel: Int64, entryParentLevel: Int64) {
+        this.showKindHeading = showKindHeading
+        this.kindHeadingLevel = kindHeadingLevel
+        this.entryParentLevel = entryParentLevel
+    }
+
+    // The level of the heading that directly precedes a declaration entry.
+    prop entryHeadingLevel: Int64 { get() { entryParentLevel } }
+}
+
+/**
+ * Structure for `visibleKindCount` non-empty categories inside a group whose
+ * own heading is `groupHeadingLevel`. A single category needs no umbrella
+ * heading; several push the category heading one level down. Callers skip a
+ * group with zero categories before asking for its layout.
+ */
+internal func declarationGroupLayout(visibleKindCount: Int64,
+    groupHeadingLevel: Int64): DeclarationGroupLayout {
+    if (visibleKindCount <= 1) {
+        return DeclarationGroupLayout(false, groupHeadingLevel, groupHeadingLevel)
+    }
+    let kindLevel = groupHeadingLevel + 1
+    return DeclarationGroupLayout(true, kindLevel, kindLevel)
+}
+
 internal func hasDeclarationGroups(groups: ArrayList<DeclarationGroup>): Bool {
     for (group in groups where !group.key.isEmpty()) { return true }
     false

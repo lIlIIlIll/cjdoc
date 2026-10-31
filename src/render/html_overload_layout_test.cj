@@ -98,9 +98,15 @@ class HtmlOverloadContractLayoutTest {
         @Expect(html.contains("class=\"throws-row\""), true)
         @Expect(html.contains("radix must equal 10"), true)
         @Expect(html.contains("behavior-contract-single"), true)
-        @Expect(html.contains(">Postcondition</h3>"), true)
+        // A member detail heading follows its real structural parent. This
+        // page has no custom group, so the chain is kind H2 -> overload H3 ->
+        // detail H4: the contract inside an overload family is one level below
+        // the overload title instead of tying with it.
+        @Expect(html.contains(">Postcondition</h4>"), true)
+        @Expect(html.contains(">Postcondition</h3>"), false)
         @Expect(html.contains("new entry matches value.toString()"), true)
         @Expect(!html.contains(">Behavior contracts</h3>"), true)
+        @Expect(!html.contains(">Behavior contracts</h4>"), true)
         @Expect(!html.contains("class=\"badge reference-state\""), true)
     }
 

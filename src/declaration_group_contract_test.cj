@@ -63,9 +63,16 @@ class DeclarationGroupingContracts {
         }
         for (artifact in artifacts where artifact.path.startsWith("markdown/packages/")) {
             @Expect(artifact.content.contains("\n### 应用 API\n\n"))
-            @Expect(artifact.content.contains("\n#### `declaration_groups.applicationFunction`\n"))
+            // A group with several visible kinds keeps a kind heading one level
+            // below the group and puts each declaration below that heading.
+            @Expect(artifact.content.contains("\n#### 类\n\n"))
+            @Expect(artifact.content.contains("\n#### 函数\n\n"))
+            @Expect(artifact.content.contains("\n##### `declaration_groups.applicationFunction`\n"))
             @Expect(artifact.content.contains("\n### 生成代码 SPI\n\n"))
-            @Expect(artifact.content.contains("\n#### `declaration_groups.generatedFunction`\n"))
+            @Expect(artifact.content.contains("\n##### `declaration_groups.generatedFunction`\n"))
+            // A group with exactly one visible kind omits the redundant kind
+            // heading, so its declaration sits directly under the group.
+            @Expect(artifact.content.contains("\n### 第一方内部接口\n\n"))
         }
         var sawMarkdownMember = false
         for (artifact in artifacts where artifact.path.startsWith("markdown/symbols/")) {

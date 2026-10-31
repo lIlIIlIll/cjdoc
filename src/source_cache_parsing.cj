@@ -5,7 +5,7 @@ import std.env.*
 import std.fs.*
 import std.process.*
 
-internal let SOURCE_PARSE_WORKER_PROTOCOL = "cjdoc-source-parse-worker/1"
+internal let SOURCE_PARSE_WORKER_PROTOCOL = "cjdoc-source-parse-worker/2"
 internal func decodeParsedSource(input: SourceInputFile, cacheKey: String,
     bytes: Array<UInt8>, capturedSourceIndex: CapturedSourceIndex, capturedSource: String,
     maxItems!: Int64 = MAX_SOURCE_CACHE_ITEMS): ParsedSourceFile {

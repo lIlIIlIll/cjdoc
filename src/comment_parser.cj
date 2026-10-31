@@ -131,6 +131,8 @@ private func behaviorContractName(tagText: String): ?String {
 private func isStructuredDocTag(tagText: String): Bool {
     tagText == "@group" || tagText.startsWith("@group ") || tagText.startsWith("@group\t") ||
         tagText.startsWith("@group[") ||
+        tagText == "@tag" || tagText.startsWith("@tag ") || tagText.startsWith("@tag\t") ||
+        tagText.startsWith("@tag[") ||
         tagText.startsWith("@param ") ||
         tagText == "@return" || tagText.startsWith("@return ") ||
         tagText.startsWith("@throws ") ||
@@ -329,6 +331,12 @@ private class DocCommentParseState {
             let (subject, description) = splitSubject(tagText.removePrefix("@group").replace("\t", " "))
             // A group is shared, single-line presentation metadata, not prose.
             contracts.add(DocTag("group", subject, description))
+        } else if (tagText == "@tag" || tagText.startsWith("@tag ") || tagText.startsWith("@tag\t")) {
+            // A declaration tag is one line. Surplus arguments are kept in the
+            // description so validation can diagnose them instead of silently
+            // treating the extra words as another tag or as prose.
+            let line = declarationTagLine(tagText.removePrefix("@tag").replace("\t", " "))
+            contracts.add(DocTag("tag", line.id, line.rest))
         } else if (tagText.startsWith("@param ")) {
             let (subject, description) = splitSubject(tagText.removePrefix("@param "))
             let tag = DocTag("param", subject, description)
