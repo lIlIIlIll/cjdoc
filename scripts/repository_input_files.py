@@ -145,7 +145,7 @@ def validate_classification_definitions(value: dict, name: str) -> None:
     group = definition(value, "documentationClassificationGroup")
     if identifier.get("type") != "string" or \
             identifier.get("minLength") != 1 or identifier.get("maxLength") != 64 or \
-            identifier.get("pattern") != "^[A-Za-z0-9_-]{1,64}$":
+            identifier.get("pattern") != "^[A-Za-z0-9_-]+$":
         raise ValueError(f"{name} classification ID constraints are invalid")
     if title.get("type") != "string" or title.get("minLength") != 1 or \
             title.get("maxLength") != 256 or title.get("x-maxUtf8Bytes") != 256 or \

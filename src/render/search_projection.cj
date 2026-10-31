@@ -54,12 +54,6 @@ protected func searchContractLimits(): SearchContractLimits {
 
 protected func searchContractJson(): String { DOCUMENTATION_SEARCH_CONTRACT_JSON }
 
-/** Profile the native query session projects captured Doc IR with. */
-protected func searchProfileName(): String { searchContractLimits().defaultProfile }
-
-protected func searchProfileIsKnown(profile: String): Bool {
-    searchContractLimits().profiles.contains(profile)
-}
 /** The publisher uses the unique non-default profile from the shared contract. */
 protected func searchStaticProfileName(): String {
     searchContractLimits().staticProfile

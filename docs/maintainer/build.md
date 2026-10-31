@@ -192,6 +192,60 @@ bash scripts/check.sh build --repo . \
 
 候选产物包含 `target/release/bin/main`、`target/release/bin/chir-worker-main` 与 `target/ci-build/build-manifest.json`；workflow 用固定 ustar 参数打包后上传，消费方解包后必须重新校验身份。
 
+## 浏览器回归
+
+完整 Playwright 套件需要真实生成的参考页、双语分组/标签页、版本组合和 PocketKit 阅读站点。
+先完成上述工具链和产品构建准备，使用 CI 固定的 Node 26.11.1 与 `tests/browser/package-lock.json`。
+在仓库根目录执行；`OUT` 必须是本次新建的绝对输出目录，不能复用旧产物。
+fixture 仓库 URL 只用于验证捕获后的源码链接，不表示该示例仓库或 revision 可以远程访问。
+
+```bash
+npm ci --prefix tests/browser
+node tests/browser/node_modules/@playwright/test/cli.js install chromium
+BIN="$PWD/target/release/bin/main"
+OUT="$PWD/target/browser-regression"
+REV="$(git rev-parse HEAD)"
+repository=(
+  --repository-url https://github.com/example/reference
+  --repository-revision "$REV"
+  --repository-root "$PWD"
+)
+
+for locale in en zh-CN; do
+  "$BIN" generate --project tests/fixtures/projects/html_reference \
+    --format html --locale "$locale" "${repository[@]}" \
+    --output "$OUT/reference-$locale" --no-cache
+done
+"$BIN" generate --project tests/fixtures/projects/declaration-groups \
+  --format html --all-languages --output "$OUT/groups" --no-cache
+"$BIN" generate --project tests/fixtures/projects/declaration-tags \
+  --format html --all-languages "${repository[@]}" --output "$OUT/tags" --no-cache
+for version in 1.2.0 1.3.0; do
+  "$BIN" generate --project tests/fixtures/projects/basic \
+    --format html --locale en --doc-version "$version" \
+    --output "$OUT/version-$version" --no-cache
+done
+"$BIN" versions compose \
+  --version "1.2.0=$OUT/version-1.2.0/html" \
+  --version "1.3.0=$OUT/version-1.3.0/html" \
+  --latest 1.3.0 --output "$OUT/versions"
+python3 examples/pocketkit/reproduce.py \
+  --cjdoc "$BIN" --output "$OUT/pocketkit" --locale both
+
+export CJDOC_HTML_FIXTURE="$OUT/reference-en/html"
+export CJDOC_HTML_FIXTURE_ZH="$OUT/reference-zh-CN/html"
+export CJDOC_DECLARATION_GROUPS_FIXTURE="$OUT/groups/html"
+export CJDOC_DECLARATION_TAGS_FIXTURE="$OUT/tags/html"
+export CJDOC_VERSION_FIXTURE="$OUT/versions"
+export CJDOC_READING_FIXTURE="$OUT/pocketkit/native/demo-v2/html"
+node tests/browser/node_modules/@playwright/test/cli.js test \
+  --config tests/browser/playwright.config.mjs --retries=0
+```
+
+分组和标签变量指向含 `en/index.html` 与 `zh-CN/index.html` 的父目录；缺失会使收集失败。
+参考页必须传完整 repository 参数，否则源码操作不会出现。完整验收应报告实际通过、失败和跳过数量，
+不把缺少阅读/版本 fixture 后的跳过结果写成完整通过。
+
 ## 验证层级
 
 不要把较低层级的通过当成更高层证据：

@@ -6,7 +6,7 @@
       "minDeclarations": 1,
       "name": "basic",
       "project": "tests/fixtures/projects/basic",
-      "referenceDocsSha256": "ebcfdd9e86298b0b0e2e0be4d040c95bdce0f2bf0a8a5ab47c2f05fa4e1839af",
+      "referenceDocsSha256": "5c0ee87311665229e43e8ae2329a5a78d976d8afb3f490ed0e2105d9001ace0e",
       "variants": {
         "cold": {
           "baselineMedianElapsedMs": 1056,

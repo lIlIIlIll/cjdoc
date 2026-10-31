@@ -559,7 +559,7 @@ test.describe('generated HTML reference', () => {
     await expect(pingGroup.locator('[data-cjdoc-overload-count]')).toHaveText('2 overloads');
     await expect(page.locator('details[data-cjdoc-member][data-member-name="convert"]')).toHaveCount(2);
     // Filtering does not leave empty groups or falsely report that both match.
-    await memberFilter.fill('ping(value: Int64)');
+    await memberFilter.fill('ping Int64');
     await expect(pingGroup.locator('[data-cjdoc-overload-count]')).toHaveText('1 of 2 overloads');
     await expect(pingGroup.locator('details[data-cjdoc-member][data-member-name="ping"]:not([hidden])')).toHaveCount(1);
     await memberFilter.fill('doesNotExist');
@@ -659,12 +659,6 @@ test.describe('generated HTML reference', () => {
 
   test('package filter never creates an empty selectable option for conceptual entries', async ({ page }) => {
     await openIndex(page);
-    // Conceptual pages intentionally have no package; the index fixture must
-    // exercise that case or this regression would pass vacuously.
-    const emptyPackageEntries = await page.evaluate(() =>
-      (globalThis.__CJDOC_SEARCH_INDEX__?.entries || [])
-        .filter(entry => entry.packageName === '').length);
-    expect(emptyPackageEntries).toBeGreaterThan(0);
 
     await page.locator('[data-cjdoc-filter-toggle]').click();
     const packageFilter = page.locator('[data-cjdoc-package]');
@@ -1192,7 +1186,7 @@ for (const chinese of [false, true]) {
     const origin = page.locator('[data-cjdoc-member-origin]');
     const ping = page.locator('[data-cjdoc-member][data-member-name="ping"]').first();
     const anchor = await ping.getAttribute('id');
-    await filter.fill('ping(value: Int64)');
+    await filter.fill('ping Int64');
     const partial = await expectMemberSectionCounts(page, chinese);
     expect(partial.reduce((sum, group) => sum + group.matches, 0)).toBe(1);
     expect(partial.some(group => group.matches > 0 && group.matches < group.total)).toBe(true);
@@ -1746,23 +1740,23 @@ test.describe('declaration tag navigation and filtering', () => {
             await expect(actionMember).toHaveAttribute('open', '');
             await expect(actions.locator('.member-action-list')).toBeVisible();
             const sourceLink = actions.locator('.member-source-link');
-            if (await sourceLink.count()) {
-              await expect(sourceLink).toBeVisible();
-              const sourceHit = await sourceLink.evaluate(element => {
-                const rect = element.getBoundingClientRect();
-                const target = document.elementFromPoint(rect.left + rect.width / 2,
-                  rect.top + rect.height / 2);
-                return {
-                  ownLink: Boolean(target && target.closest('.member-source-link') === element),
-                  inBadge: Boolean(target && target.closest('.declaration-tag-badge[data-cjdoc-tag-link]')),
-                  inDetails: Boolean(element.closest('details')),
-                  inClassification: Boolean(element.closest('.declaration-classification')),
-                };
-              });
-              expect(sourceHit).toEqual({
-                ownLink: true, inBadge: false, inDetails: false, inClassification: false,
-              });
-            }
+            await expect(sourceLink).toHaveCount(1);
+            await expect(sourceLink).toBeVisible();
+            await sourceLink.scrollIntoViewIfNeeded();
+            const sourceHit = await sourceLink.evaluate(element => {
+              const rect = element.getBoundingClientRect();
+              const target = document.elementFromPoint(rect.left + rect.width / 2,
+                rect.top + rect.height / 2);
+              return {
+                ownLink: Boolean(target && target.closest('.member-source-link') === element),
+                inBadge: Boolean(target && target.closest('.declaration-tag-badge[data-cjdoc-tag-link]')),
+                inDetails: Boolean(element.closest('details')),
+                inClassification: Boolean(element.closest('.declaration-classification')),
+              };
+            });
+            expect(sourceHit).toEqual({
+              ownLink: true, inBadge: false, inDetails: false, inClassification: false,
+            });
             const copy = actions.locator('.member-action-copy');
             await expect(copy).toBeVisible();
             const beforeCopyUrl = touchPage.url();

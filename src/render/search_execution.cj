@@ -234,10 +234,6 @@ protected func searchContractRequestVersion(): String {
         .get("const").getOrThrow().asString()
 }
 
-protected func searchContractProfile(index: Int64): String {
-    SEARCH_PROFILE_VALUES[index]
-}
-
 protected func searchContractProfileIsKnown(profile: String): Bool {
     SEARCH_PROFILE_VALUES.contains(profile)
 }
@@ -385,11 +381,6 @@ protected func searchAcronym(words: Array<String>): String {
         for (rune in word.runes()) { out.append(rune); break }
     }
     out.toString()
-}
-
-/** Exactly one insertion, deletion or substitution; a transposition is not a match. */
-protected func searchOneEditApart(query: String, candidate: String): Bool {
-    searchOneEditApartRunes(searchRunes(query), searchRunes(candidate))
 }
 
 private func searchOneEditApartRunes(left: Array<Rune>, right: Array<Rune>): Bool {
@@ -882,8 +873,6 @@ protected class SearchFilter {
 
     protected func key(): String { field + "\u{0}" + op + "\u{0}" + value }
 }
-
-protected func searchFilterKey(filter: SearchFilter): String { filter.key() }
 
 private func searchFilterSpec(field: String): ?SearchFilterSpec {
     SEARCH_FILTER_SPECS.get(field)
