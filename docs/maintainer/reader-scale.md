@@ -99,6 +99,8 @@ python3 scripts/with_stdx.py --variant static -- python3 scripts/reader_capture.
 
 安装浏览器系统依赖/字体是环境准备，不在测量中途安装。`--corpus` 还支持 `10000`、`50000`、`external`。每次要求全新输出目录，拒绝覆盖已有证据。`reader_capture.py` 只把明确的非 1k 资源拒绝当作完成观测；任意源码/渲染/浏览器故障仍退出失败。`measured` 表示采样完成，不表示所有读者任务通过。
 
+当前采集器只消费实际发布的 `cjdoc.search-index/11`；升级搜索协议时必须同步 `reader-scale-metrics.mjs` 的输入契约。历史基线保留其源码版本对应的采集器及摘要，不能把旧协议拒绝误报为容量失败，也不能为绕过拒绝放宽预算、减少样本或生成手写索引。
+
 已有固定原生站点时可独立重跑浏览器观测，原生生成费用仍引用原来的真实凭据，不把重跑写成重新生成：
 
 ```bash
