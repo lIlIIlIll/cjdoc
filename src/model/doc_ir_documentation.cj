@@ -489,6 +489,7 @@ public class DocumentationSet {
     private let unsupportedDeclarationsStorage: ArrayList<UnsupportedDeclaration>
     private let unboundSemanticDeclarationsStorage: ArrayList<UnboundSemanticDeclaration>
     private let diagnosticsStorage: ArrayList<Diagnostic>
+    private let metadataValue: DocumentationMetadata
 
     public init(generator: GeneratorInfo, status: String, project: ProjectInfo,
         configuration: ConfigurationSnapshot, providers!: Array<ProviderInfo> = [],
@@ -501,7 +502,8 @@ public class DocumentationSet {
         pages!: Array<DocumentationPage> = [], readingLanguage!: ?String = None,
         externalDocumentation!: Array<ExternalDocumentationReference> = [],
         dependencies!: Array<DependencyInstance> = [], documentSets!: Array<DocumentSetIdentity> = [],
-        apiCollectionState!: ?String = None, documentationRevision!: String = "") {
+        apiCollectionState!: ?String = None, documentationRevision!: String = "",
+        metadata!: DocumentationMetadata = DocumentationMetadata()) {
         this.schemaVersion = DOC_IR_SCHEMA_VERSION
         this.generator = generator
         this.documentationRevision = documentationRevision
@@ -536,6 +538,7 @@ public class DocumentationSet {
         this.unsupportedDeclarationsStorage = ArrayList<UnsupportedDeclaration>(unsupportedDeclarations)
         this.unboundSemanticDeclarationsStorage = ArrayList<UnboundSemanticDeclaration>(unboundSemanticDeclarations)
         this.diagnosticsStorage = ArrayList<Diagnostic>(diagnostics)
+        this.metadataValue = metadata
     }
     public func appendDiagnostic(diagnostic: Diagnostic): Unit {
         diagnosticsStorage.add(diagnostic)
@@ -556,4 +559,5 @@ public class DocumentationSet {
     public prop diagnostics: ReadOnlyList<Diagnostic> { get() { diagnosticsStorage } }
     public prop pages: ReadOnlyList<DocumentationPage> { get() { pagesStorage } }
     public prop externalDocumentation: ReadOnlyList<ExternalDocumentationReference> { get() { externalDocumentationStorage } }
+    public prop metadata: DocumentationMetadata { get() { metadataValue } }
 }

@@ -260,11 +260,19 @@ def cli_query(request: dict) -> tuple[int, dict]:
 
 
 def assert_query_result(test: unittest.TestCase, structured: dict) -> None:
-    test.assertEqual(structured.get("schemaVersion"), "cjdoc.query-result/1")
+    test.assertEqual(structured.get("schemaVersion"), "cjdoc.query-result/3")
     status = structured.get("status")
     test.assertIn(status, ALL_STATUSES, f"undeclared status: {status!r}")
     test.assertIsInstance(structured.get("text"), str)
     test.assertTrue(structured["text"], "query result text must not be empty")
+    result = structured.get("result")
+    test.assertIsInstance(result, dict)
+    facets = result.get("facets")
+    test.assertIsInstance(facets, dict)
+    tag_facets = facets.get("tags")
+    test.assertIsInstance(tag_facets, list)
+    if structured.get("operation") != "search":
+        test.assertEqual(tag_facets, [])
 
 
 class DiscoveryTests(unittest.TestCase):
@@ -327,6 +335,8 @@ class ToolsCallTests(unittest.TestCase):
     PROBES = (
         ("resolve_docs", {"query": "cjdoc", "limit": 3}),
         ("search", {"query": "cjdoc", "limit": 3}),
+        ("search", {"schemaVersion": "cjdoc.query-request/3",
+                    "tags": ["stream", "stream"], "limit": 1}),
         ("get_symbol", {"qualifiedName": "missing.Symbol"}),
         ("get_symbol", {"name": "NonexistentSymbolXyz"}),
     )
@@ -402,10 +412,10 @@ class ToolsCallTests(unittest.TestCase):
 
     def test_optional_request_schema_version_reaches_the_core(self):
         result, structured = self.call("resolve_docs", {
-            "schemaVersion": "cjdoc.query-request/1", "query": "cjdoc", "limit": 1})
+            "schemaVersion": "cjdoc.query-request/3", "query": "cjdoc", "limit": 1})
         assert_query_result(self, structured)
         self.assertIn(structured["status"], ALL_STATUSES)
-        self.assertNotEqual(structured["schemaVersion"], "cjdoc.query-request/1")
+        self.assertEqual(structured["schemaVersion"], "cjdoc.query-result/3")
 
 
 class MalformedRequestTests(unittest.TestCase):
@@ -606,12 +616,33 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--binary", type=Path, required=True,
                         help="compiled cjdoc executable that implements `mcp` and `query`")
     parser.add_argument("--snapshot", type=Path, action="append", required=True,
-                        help="Doc IR v16 snapshot or machine manifest (repeatable)")
+                        help="Doc IR v17 snapshot or machine manifest (repeatable)")
     parser.add_argument("--timeout", type=float, default=TIMEOUT,
                         help="seconds to wait for one protocol response or process exit")
+    parser.add_argument("--search-cases", type=Path,
+                        help="shared source-bound CLI/MCP/published-JS expected cases")
+    parser.add_argument("--static-site", type=Path,
+                        help="published locale root paired with --search-cases")
     known, remaining = parser.parse_known_args(argv)
+    if bool(known.search_cases) != bool(known.static_site):
+        parser.error("--search-cases and --static-site must be supplied together")
     configure(known.binary.resolve(), [item.resolve() for item in known.snapshot],
               known.timeout)
+    if known.search_cases:
+        from test_search_semantics import run_search_cases
+
+        def semantic_mcp(request: dict) -> dict:
+            arguments = {key: value for key, value in request.items() if key != "operation"}
+            result = initialized_process().result(
+                "tools/call", {"name": request["operation"], "arguments": arguments})
+            return result["structuredContent"]
+
+        try:
+            run_search_cases(known.search_cases, known.static_site, SNAPSHOTS,
+                             cli_query, semantic_mcp, TIMEOUT)
+        except BaseException:
+            tearDownModule()
+            raise
     unittest.main(argv=[sys.argv[0], *remaining])
 
 

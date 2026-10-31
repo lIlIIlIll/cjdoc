@@ -469,16 +469,8 @@ internal class HtmlMarkdownContext {
 internal func collectMarkdownHeadings(node: MarkdownNode, anchorPrefix: String,
     counts: HashMap<String, Int64>, context: HtmlMarkdownContext): Unit {
     if (node.kind == "heading") {
-        let base = markdownFragmentSlug(markdownNodeText(node))
-        var occurrence = match (counts.get(base)) { case Some(value) => value case None => 0 }
-        var slug = if (occurrence == 0) { base } else { "${base}-${occurrence}" }
-        while (context.usedHeadingSlugs.contains("${anchorPrefix}--doc-${slug}")) {
-            occurrence++
-            slug = "${base}-${occurrence}"
-        }
-        counts[base] = occurrence + 1
-        let target = "${anchorPrefix}--doc-${slug}"
-        let _ = context.usedHeadingSlugs.add(target)
+        let (slug, target) = allocateMarkdownHeadingTarget(markdownNodeText(node), anchorPrefix,
+            counts, context.usedHeadingSlugs)
         context.headingIds.add(target)
         context.fragmentTargets["#${slug}"] = target
     }

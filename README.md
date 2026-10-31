@@ -166,6 +166,12 @@ cjdoc generate --project . --format json --stdout > docs.json
 
 HTML 输出同时发布每个可见声明的独立 Markdown/JSON、`agent/manifest.json` 与可续取导航。`--agent-full` 另加完整单元的聚合全文和分片索引。身份选择、章节预算、离线部署与客户端配置见[逐声明读取、查询与 MCP](docs/agent-reading.md)；`serve` 仍用于项目预览和重建。
 
+## 分类、分组与查询
+
+在声明注释中使用 `@tag` 添加可重复、大小写敏感的分类 ID；HTML 搜索可按一个或多个标签精确交集筛选，标签不会从类型或包继承。可选的模块级 `cjdoc.toml` 元数据还能为标签提供显示名，并为包或声明容器定义可排序分组。作者写法见[使用手册](docs/usage.md)，配置语法见[配置参考](docs/configuration.md)。
+
+固定快照查询与 HTML 搜索共享契约，但采用各自的模式和 profile：原生查询默认 precise + full-ir，HTML 使用 discovery + bounded-static。字段、精确标签筛选、排序与迁移边界见[逐声明读取、查询与 MCP](docs/agent-reading.md)；普通静态阅读不要求模型或网络。
+
 ## 常见问题
 
 ### 提示 `cjdoc: command not found`（或 Windows 提示不是内部或外部命令）

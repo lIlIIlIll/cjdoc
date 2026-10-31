@@ -4,62 +4,29 @@ import cjdoc.model.*
 import std.collection.*
 import std.sort.*
 
-internal func declarationGroup(symbol: SymbolDoc): ?DocTag {
-    match (symbol.documentation) { case Some(value) => documentationGroup(value); case None => None }
-}
-
-internal func documentationGroup(comment: DocComment): ?DocTag {
-    var result: ?DocTag = None
-    for (tag in comment.tags where tag.name == "group") {
-        if (result.isSome() || tag.subject.isEmpty() || tag.subject.size > 64 ||
-            tag.description.trimAscii().isEmpty() || tag.description.size > 256 ||
-            tag.description.contains("\n") || tag.description.contains("\r")) { return None }
-        for (byte in tag.description.toArray()) { if (byte < 32 || byte == 127) { return None } }
-        for (byte in tag.subject.toArray()) {
-            if (!((byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') ||
-                (byte >= b'0' && byte <= b'9') || byte == b'-' || byte == b'_')) { return None }
-        }
-        result = Some(tag)
-    }
-    result
-}
-
-internal func declarationGroupKey(symbol: SymbolDoc): String {
-    match (declarationGroup(symbol)) { case Some(tag) => tag.subject; case None => "" }
-}
-
 internal class DeclarationGroup {
-    let key: String
+    let id: String
     var title: String
+    let scopeKey: String
+    let scopeSortBytes: Array<Byte>
+    let order: ?Int64
+    let splitByScope: Bool
+    let partitionKey: String
     let symbols = ArrayList<SymbolDoc>()
-    init(key: String, title: String) { this.key = key; this.title = title }
-}
+    var anchor = ""
+    var kindPrefix = ""
+    var isPrimary = false
 
-internal func declarationGroups(symbols: ArrayList<SymbolDoc>): ArrayList<DeclarationGroup> {
-    let byKey = HashMap<String, DeclarationGroup>()
-    let result = ArrayList<DeclarationGroup>()
-    for (symbol in symbols) {
-        let tag = declarationGroup(symbol)
-        let key = match (tag) { case Some(value) => value.subject; case None => "" }
-        let title = match (tag) { case Some(value) => value.description; case None => "" }
-        let group = match (byKey.get(key)) {
-            case Some(value) => value
-            case None =>
-                let value = DeclarationGroup(key, title)
-                byKey[key] = value
-                result.add(value)
-                value
-        }
-        // Conflicting labels in decoded snapshots have a deterministic result;
-        // plain labels never participate in identity or visibility decisions.
-        if (title != group.title) { group.title = key }
-        group.symbols.add(symbol)
+    init(id: String, title: String, scopeKey: String, order: ?Int64,
+        splitByScope: Bool, partitionKey: String) {
+        this.id = id
+        this.title = title
+        this.scopeKey = scopeKey
+        this.scopeSortBytes = scopeKey.toArray()
+        this.order = order
+        this.splitByScope = splitByScope
+        this.partitionKey = partitionKey
     }
-    sort(result, lessThan: { left, right =>
-        if (left.key.isEmpty()) { false } else if (right.key.isEmpty()) { true }
-        else { left.key < right.key }
-    }, stable: true)
-    result
 }
 
 /**
@@ -80,17 +47,8 @@ internal class DeclarationGroupLayout {
         this.kindHeadingLevel = kindHeadingLevel
         this.entryParentLevel = entryParentLevel
     }
-
-    // The level of the heading that directly precedes a declaration entry.
-    prop entryHeadingLevel: Int64 { get() { entryParentLevel } }
 }
 
-/**
- * Structure for `visibleKindCount` non-empty categories inside a group whose
- * own heading is `groupHeadingLevel`. A single category needs no umbrella
- * heading; several push the category heading one level down. Callers skip a
- * group with zero categories before asking for its layout.
- */
 internal func declarationGroupLayout(visibleKindCount: Int64,
     groupHeadingLevel: Int64): DeclarationGroupLayout {
     if (visibleKindCount <= 1) {
@@ -100,36 +58,305 @@ internal func declarationGroupLayout(visibleKindCount: Int64,
     return DeclarationGroupLayout(true, kindLevel, kindLevel)
 }
 
-internal func hasDeclarationGroups(groups: ArrayList<DeclarationGroup>): Bool {
-    for (group in groups where !group.key.isEmpty()) { return true }
+private func utf8BytesLessThan(left: Array<Byte>, right: Array<Byte>): Bool {
+    let sharedSize = if (left.size < right.size) { left.size } else { right.size }
+    var index: Int64 = 0
+    while (index < sharedSize) {
+        let leftByte = Int64(left[index])
+        let rightByte = Int64(right[index])
+        if (leftByte != rightByte) { return leftByte < rightByte }
+        index++
+    }
+    left.size < right.size
+}
+
+private func declarationGroupLessThan(left: DeclarationGroup, right: DeclarationGroup): Bool {
+    if (left.id.isEmpty()) { return false }
+    if (right.id.isEmpty()) { return true }
+    match ((left.order, right.order)) {
+        case (Some(leftOrder), Some(rightOrder)) =>
+            if (leftOrder != rightOrder) { return leftOrder < rightOrder }
+        case (Some(_), None) => return true
+        case (None, Some(_)) => return false
+        case _ => ()
+    }
+    if (left.id != right.id) { return left.id < right.id }
+    if (left.scopeKey != right.scopeKey) {
+        return utf8BytesLessThan(left.scopeSortBytes, right.scopeSortBytes)
+    }
     false
 }
 
-internal func declarationGroupTitle(group: DeclarationGroup, locale: String): String {
-    if (group.key.isEmpty()) { label(locale, "Other declarations", "其他声明") } else { group.title }
+/**
+ * Partition the captured visible declarations by catalog classifications.
+ *
+ * Without a matching central definition, same-ID inline groups retain their
+ * historical page-local merge and conflicting-title fallback. If any
+ * same-ID source scope has a matching captured definition and another scope
+ * is visible on the page, all source scopes are kept distinct.
+ */
+internal func partitionDeclarationGroups(symbols: ArrayList<SymbolDoc>,
+    catalog: DeclarationGroupCatalog): ArrayList<DeclarationGroup> {
+    let classifications = ArrayList<(SymbolDoc, ?DeclarationGroupClassification)>()
+    let scopesById = HashMap<String, HashSet<String>>()
+    let definedIds = HashSet<String>()
+    for (symbol in symbols) {
+        let group = catalog.groupFor(symbol)
+        classifications.add((symbol, group))
+        match (group) {
+            case Some(value) =>
+                match (scopesById.get(value.id)) {
+                    case Some(scopes) => let _ = scopes.add(value.scopeKey)
+                    case None =>
+                        let scopes = HashSet<String>()
+                        let _ = scopes.add(value.scopeKey)
+                        scopesById[value.id] = scopes
+                }
+                if (value.defined) { let _ = definedIds.add(value.id) }
+            case None => ()
+        }
+    }
+
+    let splitIds = HashSet<String>()
+    for ((id, scopes) in scopesById) {
+        if (definedIds.contains(id) && scopes.size > 1) { let _ = splitIds.add(id) }
+    }
+
+    let resultByKey = HashMap<String, DeclarationGroup>()
+    let result = ArrayList<DeclarationGroup>()
+    for ((symbol, group) in classifications) {
+        let id = match (group) {
+            case Some(value) => value.id
+            case None => ""
+        }
+        let scopeKey = match (group) {
+            case Some(value) => value.scopeKey
+            case None => ""
+        }
+        let split = !id.isEmpty() && splitIds.contains(id)
+        let partitionKey = if (id.isEmpty()) { "" }
+            else if (split) { "${id.size}:${id}${scopeKey}" }
+            else { id }
+        let title = match (group) {
+            case Some(value) => value.title
+            case None => ""
+        }
+        let order: ?Int64 = match (group) {
+            case Some(value) => value.order
+            case None => None
+        }
+        let role = match (resultByKey.get(partitionKey)) {
+            case Some(value) =>
+                if (!id.isEmpty() && value.title != title) { value.title = value.id }
+                value
+            case None =>
+                let value = DeclarationGroup(id, title, scopeKey, order, split, partitionKey)
+                resultByKey[partitionKey] = value
+                result.add(value)
+                value
+        }
+        role.symbols.add(symbol)
+    }
+    sort(result, lessThan: { left, right => declarationGroupLessThan(left, right) },
+        stable: true)
+    result
 }
 
-internal func appendDeclarationGroupMarkdown(out: RenderTextBuffer, group: DeclarationGroup,
-    level: String, locale: String): Unit {
+internal func hasGroupedDeclarations(groups: ArrayList<DeclarationGroup>): Bool {
+    for (group in groups where !group.id.isEmpty()) { return true }
+    false
+}
+
+internal func declarationGroupDisplayTitle(group: DeclarationGroup, locale: String): String {
+    if (group.id.isEmpty()) { label(locale, "Other declarations", "其他声明") } else { group.title }
+}
+
+private func groupHashSuffix(group: DeclarationGroup): String {
+    stableFileHash(group.scopeKey)
+}
+
+private func scopeHexFallback(group: DeclarationGroup): String {
+    let digits = "0123456789abcdef"
+    let result = StringBuilder()
+    for (byte in group.scopeSortBytes) {
+        let high = Int64((byte >> 4) & 0x0F)
+        let low = Int64(byte & 0x0F)
+        result.append(digits[high..high + 1])
+        result.append(digits[low..low + 1])
+    }
+    result.toString()
+}
+
+/**
+ * Assign old primary anchors and deterministic scope-specific aliases.
+ *
+ * The preferred page container wins independently of display order; otherwise
+ * the UTF-8-smallest original scope owns the old bare group ID.
+ */
+internal func prepareDeclarationGroupAnchors(groups: ArrayList<DeclarationGroup>,
+    pageModuleId: String, pagePackageName: String, pageOwnerId: ?String): Unit {
+    let byId = HashMap<String, ArrayList<DeclarationGroup>>()
+    let primaryAnchors = HashSet<String>()
+    for (group in groups) {
+        group.isPrimary = false
+        if (group.id.isEmpty()) {
+            group.anchor = "api-ungrouped"
+            group.kindPrefix = "api-kind-0--"
+            continue
+        }
+        if (!group.splitByScope) {
+            group.anchor = "api-group-${group.id}"
+            group.kindPrefix = "api-kind-${group.id.size}-${group.id}-"
+            group.isPrimary = true
+            let _ = primaryAnchors.add(group.anchor)
+        }
+        match (byId.get(group.id)) {
+            case Some(values) => values.add(group)
+            case None => byId[group.id] = ArrayList<DeclarationGroup>([group])
+        }
+    }
+
+    for ((id, values) in byId) {
+        if (values.size <= 1) {
+            if (!values[0].isPrimary) {
+                values[0].isPrimary = true
+                values[0].anchor = "api-group-${id}"
+                values[0].kindPrefix = "api-kind-${id.size}-${id}-"
+                let _ = primaryAnchors.add(values[0].anchor)
+            }
+            continue
+        }
+        var selected: ?DeclarationGroup = None
+        let pageScope = documentationMetadataGroupKey(pageModuleId, pagePackageName,
+            pageOwnerId, id)
+        for (group in values) {
+            if (group.scopeKey == pageScope) { selected = Some(group); break }
+        }
+        if (selected.isNone()) {
+            var smallest = values[0]
+            var index: Int64 = 1
+            while (index < values.size) {
+                let group = values[index]
+                if (utf8BytesLessThan(group.scopeSortBytes, smallest.scopeSortBytes)) {
+                    smallest = group
+                }
+                index++
+            }
+            selected = Some(smallest)
+        }
+        let primary = selected.getOrThrow()
+        primary.isPrimary = true
+        primary.anchor = "api-group-${id}"
+        primary.kindPrefix = "api-kind-${id.size}-${id}-"
+        let _ = primaryAnchors.add(primary.anchor)
+    }
+
+    let hashAnchors = HashMap<String, Int64>()
+    for (group in groups where !group.id.isEmpty() && !group.isPrimary) {
+        let candidate = "api-group-${group.id}--${groupHashSuffix(group)}"
+        hashAnchors[candidate] = hashAnchors.get(candidate).getOrDefault({ => 0 }) + 1
+    }
+    let scopeFallbacks = ArrayList<DeclarationGroup>()
+    let usedAnchors = HashSet<String>()
+    for (anchor in primaryAnchors) { let _ = usedAnchors.add(anchor) }
+    for (group in groups where !group.id.isEmpty() && !group.isPrimary) {
+        let hashSuffix = groupHashSuffix(group)
+        let hashAnchor = "api-group-${group.id}--${hashSuffix}"
+        if (primaryAnchors.contains(hashAnchor) || hashAnchors[hashAnchor] > 1) {
+            scopeFallbacks.add(group)
+        } else {
+            group.anchor = hashAnchor
+            group.kindPrefix = "api-kind-${group.id.size}-${group.id}--${hashSuffix}-"
+            let _ = usedAnchors.add(hashAnchor)
+        }
+    }
+    sort(scopeFallbacks, lessThan: { left, right =>
+        if (left.id != right.id) {
+            left.id < right.id
+        } else {
+            utf8BytesLessThan(left.scopeSortBytes, right.scopeSortBytes)
+        }
+    }, stable: true)
+    for (group in scopeFallbacks) {
+        let completeScopeHex = scopeHexFallback(group)
+        var suffix = completeScopeHex
+        var anchor = "api-group-${group.id}--${suffix}"
+        while (usedAnchors.contains(anchor)) {
+            suffix += completeScopeHex
+            anchor = "api-group-${group.id}--${suffix}"
+        }
+        group.anchor = anchor
+        group.kindPrefix = "api-kind-${group.id.size}-${group.id}--${suffix}-"
+        let _ = usedAnchors.add(anchor)
+    }
+}
+
+internal func appendGroupedDeclarationMarkdown(out: RenderTextBuffer,
+    group: DeclarationGroup, level: String, locale: String): Unit {
+    out.append("<a id=\"${escapeHtml(group.anchor)}\"></a>\n")
     out.append(level + " ")
-    appendEscapedMarkdownText(out, declarationGroupTitle(group, locale))
+    appendEscapedMarkdownText(out, declarationGroupDisplayTitle(group, locale))
     out.append("\n\n")
 }
 
-internal func appendDeclarationGroupMetadata(out: RenderTextBuffer, symbol: SymbolDoc,
-    locale: String): Unit {
-    if (let Some(tag) <- declarationGroup(symbol)) {
-        out.append(label(locale, "API group: ", "接口分组："))
-        appendMarkdownCodeSpan(out, tag.subject)
-        out.append(" · ")
-        appendEscapedMarkdownText(out, tag.description)
-        out.append("\n\n")
+
+private func appendQueryValue(out: StringBuilder, value: String): Unit {
+    let digits = "0123456789ABCDEF"
+    var index: Int64 = 0
+    while (index < value.size) {
+        let byte = value[index]
+        if ((byte >= b'A' && byte <= b'Z') || (byte >= b'a' && byte <= b'z') ||
+            (byte >= b'0' && byte <= b'9') || byte == b'-' || byte == b'.' ||
+            byte == b'_' || byte == b'~') {
+            out.append(value[index..index + 1])
+        } else {
+            let high = Int64((byte >> 4) & 0x0F)
+            let low = Int64(byte & 0x0F)
+            out.append("%")
+            out.append(digits[high..high + 1])
+            out.append(digits[low..low + 1])
+        }
+        index++
     }
 }
 
-internal func appendDeclarationGroupBadge(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
-    if (let Some(tag) <- declarationGroup(symbol)) {
-        out.append("<p class=\"declaration-kind\" data-cjdoc-declaration-group=\"" +
-            escapeHtml(tag.subject) + "\">" + escapeHtml(tag.description) + "</p>")
+private func tagIndexHref(rootPrefix: String, symbol: SymbolDoc, tagId: String,
+    snapshotId: String): String {
+    if (snapshotId.isEmpty()) {
+        throw IllegalArgumentException("tag links require the captured read snapshot identity")
     }
+    let query = StringBuilder()
+    appendQueryValue(query, tagId)
+    query.append("&moduleId=")
+    appendQueryValue(query, symbol.moduleId)
+    query.append("&snapshotId=")
+    appendQueryValue(query, snapshotId)
+    "${rootPrefix}index.html?tag=${query.toString()}"
+}
+
+/**
+ * Render captured classification values. Grouped rows omit the group badge:
+ * their parent heading already supplies it, and tag-free rows need no wrapper.
+ */
+internal func appendDeclarationClassificationBadges(out: RenderTextBuffer,
+    catalog: DeclarationGroupCatalog, snapshotId: String, symbol: SymbolDoc,
+    rootPrefix: String, includeGroup!: Bool = true): Unit {
+    let classification = catalog.classificationFor(symbol)
+    if ((!includeGroup || classification.group.isNone()) && classification.tags.isEmpty()) { return }
+    out.append("<div class=\"declaration-classification\">")
+    if (includeGroup) {
+        match (classification.group) {
+            case Some(group) =>
+                out.append("<span class=\"declaration-group-badge\" data-cjdoc-declaration-group=\"" +
+                    escapeHtml(group.id) + "\">" + escapeHtml(group.title) + "</span>")
+            case None => ()
+        }
+    }
+    for (tag in classification.tags) {
+        let href = tagIndexHref(rootPrefix, symbol, tag.id, snapshotId)
+        out.append("<a class=\"declaration-tag-badge\" data-cjdoc-tag-link data-cjdoc-tag-id=\"" +
+            escapeHtml(tag.id) + "\" href=\"" + escapeHtml(href) + "\">" +
+            escapeHtml(tag.title) + "</a>")
+    }
+    out.append("</div>")
 }

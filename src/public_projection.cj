@@ -386,6 +386,14 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
         highlightMode: if (highlightConfig.mode == "off") { "off" } else { "auto" },
         highlightLanguages: highlightConfig,
         externalOptions: externalOptions)
+    let renderableDeclarations = ArrayList<public_model.SymbolDoc>()
+    for (declaration in declarationProjection.declarations) {
+        if (declarationProjection.renderableIds.contains(declaration.id)) {
+            renderableDeclarations.add(declaration)
+        }
+    }
+    let capturedMetadata = public_model.documentationMetadataForDeclarations(
+        documentation.metadata, renderableDeclarations.toArray())
     declarationProjection.markdownContext.retainHighlightFailures(retainedHighlightFailures)
     let semanticLinkDiagnostics = resolvePublicSemanticLinks(declarationProjection.declarations, request.audience,
         request.projectRoot, deferExternal: !request.documentSources.isEmpty() || request.buildContext.isSome(),
@@ -413,7 +421,8 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
         diagnostics: diagnosticProjection.diagnostics, apiCollectionState: Some(documentation.apiCollectionState),
         documentationRevision: request.documentationRevision,
         languageOptions: if (request.i18n.isSome()) { request.i18n }
-            else { loadDocumentationLanguages(request.projectRoot) })
+            else { loadDocumentationLanguages(request.projectRoot) },
+        metadata: capturedMetadata)
     // A fixed highlight allowance cannot assume the rest of the bundle is small.
     // Preserve all declarations/text without optional highlighting before the
     // existing fallback, if the stricter whole-document codec boundary is hit.

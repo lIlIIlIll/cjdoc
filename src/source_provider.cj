@@ -115,7 +115,11 @@ class SyntaxSourceProvider <: SourceProvider {
             dependencySources,
             includeCachedDependencies, cjpmCacheRoot,
             sourceSnapshot.diagnostics, auxiliaryBudget)
-        for (module in moduleRoots) { sourceSnapshot.modules.add(module.documentation) }
+        for (module in moduleRoots) {
+            sourceSnapshot.modules.add(module.documentation)
+            sourceSnapshot.metadataModuleRoots.add(
+                SourceMetadataModuleRoot(module.documentation.id, module.actualRoot))
+        }
         if (sourceSnapshot.modules.isEmpty()) {
             sourceSnapshot.modules.add(SourceModule(moduleId("root", projectName, ""),
                 projectName, "root", ""))

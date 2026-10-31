@@ -40,14 +40,24 @@ internal func appendSearchJsonString(out: RenderTextBuffer, value: String): Unit
     out.append("\"")
 }
 
-internal func searchTextExcerpt(value: String, maximum!: Int64 = 240): String {
+internal func searchTextExcerpt(value: String, maximum!: Int64): String {
+    if (maximum <= 0) { return "" }
     let out = RenderTextBuffer()
     var count: Int64 = 0
+    var pending: ?Rune = None
     for (rune in value.runes()) {
-        if (count == maximum) { out.append("…"); return out.toString() }
-        out.append(rune)
-        count++
+        if (count < maximum - 1) {
+            out.append(rune)
+            count++
+        } else if (count == maximum - 1) {
+            pending = Some(rune)
+            count++
+        } else {
+            out.append("…")
+            return out.toString()
+        }
     }
+    if (let Some(last) <- pending) { out.append(last) }
     out.toString()
 }
 
@@ -57,248 +67,279 @@ internal func appendOptionalSearchString(out: RenderTextBuffer, value: ?String):
         case None => out.append("null")
     }
 }
-
-// Public prose and behavior contracts beyond the summary. Derived from the
-// Markdown AST (the documentation source of truth) plus tag descriptions such
-// as @param/@return, never from the raw comment fields. Bounded so a single
-// verbose member cannot inflate the offline search payload.
-internal let SEARCH_BODY_EXCERPT_LIMIT: Int64 = 2000
-
-internal func searchBodyText(symbol: SymbolDoc): String {
-    let comment = match (symbol.documentation) {
-        case Some(value) => value
-        case None => return ""
-    }
-    let out = RenderTextBuffer()
-    out.append(markdownNodeText(comment.markdown))
-    for (tag in comment.tags) {
-        if (tag.description.isEmpty()) { continue }
-        out.append(" ")
-        match (tag.descriptionMarkdown) {
-            case Some(tree) => out.append(markdownNodeText(tree))
-            case None => match (tag.exampleMarkdown) {
-                case Some(tree) => out.append(markdownNodeText(tree))
-                case None => out.append(tag.description)
-            }
-        }
-    }
-    searchTextExcerpt(out.toString(), maximum: SEARCH_BODY_EXCERPT_LIMIT)
-}
-
-internal func appendSearchBody(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
-    // Emitted unconditionally so every entry has a stable shape, matching how
-    // `returnType` is present as null rather than omitted.
-    out.append(", \"body\": ")
-    appendSearchJsonString(out, searchBodyText(symbol))
-    appendSearchSections(out, symbol)
-    if (let Some(comment) <- symbol.documentation) {
-        if (!comment.localizedTexts.isEmpty()) {
-            out.append(", \"fields\": [")
-            var first = true
-            for (tag in comment.tags where !tag.translationState.isEmpty()) {
-                if (!first) { out.append(",") }; first = false
-                out.append("{\"kind\":")
-                appendSearchJsonString(out, tag.name)
-                out.append(",\"subject\":")
-                appendSearchJsonString(out, tag.subject)
-                out.append(",\"actualLanguage\":")
-                appendOptionalSearchString(out, tag.contentLanguage)
-                out.append(",\"state\":")
-                appendSearchJsonString(out, tag.translationState)
-                out.append(",\"text\":")
-                appendSearchJsonString(out, searchTextExcerpt(documentationTagPlainText(tag)))
-                out.append("}")
-            }
-            out.append("]")
-        }
+private func appendSearchDocumentSetIdentity(out: RenderTextBuffer,
+    value: ?DocumentSetIdentity): Unit {
+    match (value) {
+        case Some(identity) =>
+            out.append("{\"id\":"); appendSearchJsonString(out, identity.id)
+            out.append(",\"moduleId\":"); appendSearchJsonString(out, identity.moduleId)
+            out.append(",\"library\":"); appendSearchJsonString(out, identity.library)
+            out.append(",\"identity\":"); appendSearchJsonString(out, identity.identity)
+            out.append(",\"state\":"); appendSearchJsonString(out, identity.state)
+            out.append(",\"source\":"); appendSearchJsonString(out, identity.source)
+            out.append(",\"target\":"); appendSearchJsonString(out, identity.target)
+            out.append(",\"cfg\":"); appendSearchJsonString(out, identity.cfg)
+            out.append(",\"audience\":"); appendSearchJsonString(out, identity.audience)
+            out.append(",\"language\":"); appendSearchJsonString(out, identity.language)
+            out.append(",\"revision\":"); appendSearchJsonString(out, identity.revision)
+            out.append(",\"apiVersion\":"); appendSearchJsonString(out, identity.apiVersion)
+            out.append(",\"documentationRevision\":"); appendSearchJsonString(out, identity.documentationRevision)
+            out.append(",\"indexIdentity\":"); appendSearchJsonString(out, identity.indexIdentity)
+            out.append(",\"baseUrl\":"); appendSearchJsonString(out, identity.baseUrl)
+            out.append("}")
+        case None => out.append("null")
     }
 }
 
-// Per-block prose for the blocks that render at a stable, unconditional anchor
-// on the member page, so a hit can deep-link to the answer instead of the page
-// top. These blocks are a subset of `body`, which carries all matchable prose;
-// the description body has no element of its own, so it is matched through
-// `body` but is not used as a deep link.
-internal func appendSearchSections(out: RenderTextBuffer, symbol: SymbolDoc): Unit {
-    let comment = match (symbol.documentation) {
-        case Some(value) => value
-        case None => return
+private func appendSearchDependencyIdentity(out: RenderTextBuffer,
+    value: ?DependencyInstance): Unit {
+    match (value) {
+        case Some(dependency) =>
+            out.append("{\"moduleId\":"); appendSearchJsonString(out, dependency.moduleId)
+            out.append(",\"componentModuleId\":"); appendSearchJsonString(out, dependency.componentModuleId)
+            out.append(",\"name\":"); appendSearchJsonString(out, dependency.name)
+            out.append(",\"instanceId\":"); appendSearchJsonString(out, dependency.instanceId)
+            out.append(",\"kind\":"); appendSearchJsonString(out, dependency.kind)
+            out.append(",\"identity\":"); appendSearchJsonString(out, dependency.identity)
+            out.append(",\"state\":"); appendSearchJsonString(out, dependency.state)
+            out.append(",\"evidence\":"); appendSearchJsonString(out, dependency.evidence)
+            out.append(",\"version\":"); appendSearchJsonString(out, dependency.version)
+            out.append(",\"revision\":"); appendSearchJsonString(out, dependency.revision)
+            out.append(",\"target\":"); appendSearchJsonString(out, dependency.target)
+            out.append(",\"cfg\":"); appendSearchJsonString(out, dependency.cfg)
+            out.append("}")
+        case None => out.append("null")
     }
-    let blocks = ArrayList<(String, String, String)>()
-    // A section is only recorded when the member page actually renders that
-    // heading, so a hit always deep-links to a real element. The page renders
-    // Parameters only with parameters, Returns only with a non-Unit return
-    // type, and Throws only with a throws tag.
-    if (!symbol.parameters.isEmpty() && hasCommentTag(comment, "param")) { addSearchSectionBlock(blocks, comment, symbol, "param", "parameters") }
-    if (hasRenderedReturnHeading(symbol) && hasCommentTag(comment, "return")) { addSearchSectionBlock(blocks, comment, symbol, "return", "return") }
-    if (hasCommentTag(comment, "throws")) { addSearchSectionBlock(blocks, comment, symbol, "throws", "throws") }
-    if (blocks.isEmpty()) { return }
-    out.append(", \"sections\": [")
+}
+
+private func appendSearchPageNavigation(out: RenderTextBuffer, value: ?TypeNavigation): Unit {
+    match (value) {
+        case Some(navigation) =>
+            if (contextFreeNavigationFailure(navigation)) {
+                out.append("[")
+                appendSearchJsonString(out, navigation.state)
+                out.append(",")
+                appendSearchJsonString(out, navigation.reason)
+                out.append("]")
+                return
+            }
+            out.append("{\"state\":"); appendSearchJsonString(out, navigation.state)
+            out.append(",\"matchLevel\":"); appendSearchJsonString(out, navigation.matchLevel)
+            out.append(",\"reason\":"); appendSearchJsonString(out, navigation.reason)
+            out.append(",\"dependencyInstanceId\":")
+            appendSearchJsonString(out, navigation.dependencyInstanceId)
+            out.append(",\"documentSetId\":"); appendSearchJsonString(out, navigation.documentSetId)
+            out.append(",\"indexIdentity\":"); appendSearchJsonString(out, navigation.indexIdentity)
+            out.append(",\"symbolKey\":"); appendSearchJsonString(out, navigation.symbolKey)
+            out.append(",\"url\":"); appendSearchJsonString(out, navigation.url)
+            out.append(",\"apiIdentity\":"); appendSearchJsonString(out, navigation.apiIdentity)
+            out.append(",\"language\":"); appendSearchJsonString(out, navigation.language)
+            out.append("}")
+        case None => out.append("null")
+    }
+}
+
+private func appendSearchProjectedBindings(out: RenderTextBuffer,
+    bindings: ArrayList<SearchPageBinding>): Unit {
+    out.append("[")
     var first = true
-    for ((kind, anchorId, text) in blocks) {
+    for (binding in bindings) {
         if (!first) { out.append(",") }
         first = false
-        out.append("{\"kind\": "); appendSearchJsonString(out, kind)
-        out.append(", \"anchor\": "); appendSearchJsonString(out, anchorId)
-        out.append(", \"text\": ")
-        appendSearchJsonString(out, searchTextExcerpt(text, maximum: SEARCH_BODY_EXCERPT_LIMIT))
+        out.append("{\"target\":"); appendSearchJsonString(out, binding.target)
+        out.append(",\"selector\":"); appendSearchJsonString(out, binding.selector)
+        out.append(",\"provenance\":"); appendSearchJsonString(out, binding.provenance)
+        out.append(",\"version\":"); appendSearchJsonString(out, binding.version)
+        out.append(",\"sourceLine\":${binding.sourceLine},\"language\":")
+        appendSearchJsonString(out, binding.language)
+        out.append(",\"state\":"); appendSearchJsonString(out, binding.state)
+        out.append(",\"targetSymbolId\":"); appendOptionalSearchString(out, binding.targetSymbolId)
+        out.append(",\"href\":"); appendOptionalSearchString(out, binding.href)
+        out.append(",\"navigationTitle\":"); appendSearchJsonString(out, binding.navigationTitle)
+        out.append(",\"navigation\":"); appendSearchPageNavigation(out, binding.navigation)
         out.append("}")
     }
     out.append("]")
 }
 
-private func hasCommentTag(comment: DocComment, name: String): Bool {
-    for (tag in comment.tags) { if (tag.name == name) { return true } }
-    false
-}
 
-// The member page renders a Returns heading only when a return type is present
-// and is not Unit; `appendDocumentationHtml` omits it otherwise.
-private func hasRenderedReturnHeading(symbol: SymbolDoc): Bool {
-    match (symbol.returnType) {
-        case Some(returnType) => !isUnitType(returnType)
-        case None => false
-    }
-}
 
-private func addSearchSectionBlock(blocks: ArrayList<(String, String, String)>, comment: DocComment,
-    symbol: SymbolDoc, tagName: String, kind: String): Unit {
-    let collected = StringBuilder()
-    for (tag in comment.tags) {
-        if (tag.name != tagName || tag.description.isEmpty()) { continue }
-        if (collected.size > 0) { collected.append(" ") }
-        collected.append(documentationTagPlainText(tag))
-    }
-    if (collected.size == 0) { return }
-    blocks.add((kind, docBlockAnchor(symbol, kind), collected.toString()))
-}
-
-internal func searchModuleName(documentation: DocumentationSet, moduleId: String): ?String {
-    for (module in documentation.modules) {
-        if (module.id == moduleId) { return Some(module.name) }
-    }
-    None
-}
-
-internal func searchOwnerName(projection: RenderProjection, declaration: SymbolDoc): ?String {
-    match (declaration.ownerId) {
-        case Some(ownerId) =>
-            match (projection.visibleIndex.get(ownerId)) {
-                case Some(owner) => Some(owner.qualifiedName)
-                case None => None
+private func appendSearchClassification(out: RenderTextBuffer,
+    value: DeclarationClassification): Unit {
+    out.append("{\"group\":")
+    match (value.group) {
+        case Some(group) =>
+            out.append("{\"id\":"); appendSearchJsonString(out, group.id)
+            out.append(",\"packageName\":"); appendSearchJsonString(out, group.packageName)
+            out.append(",\"ownerId\":"); appendOptionalSearchString(out, group.ownerId)
+            out.append(",\"title\":"); appendSearchJsonString(out, group.title)
+            out.append(",\"order\":")
+            match (group.order) {
+                case Some(order) => out.append(order.toString())
+                case None => out.append("null")
             }
-        case None => None
-    }
-}
-
-internal func appendSearchMetadata(out: RenderTextBuffer, documentation: DocumentationSet,
-    projection: RenderProjection, declaration: SymbolDoc, moduleId: String): Unit {
-    out.append(", \"moduleId\": ")
-    appendSearchJsonString(out, moduleId)
-    out.append(", \"moduleName\": ")
-    appendOptionalSearchString(out, searchModuleName(documentation, moduleId))
-    out.append(", \"ownerName\": ")
-    appendOptionalSearchString(out, searchOwnerName(projection, declaration))
-    out.append(", \"parameterTypes\": [")
-    var firstParameter = true
-    for (parameter in declaration.parameters) {
-        if (!firstParameter) { out.append(",") }
-        firstParameter = false
-        appendSearchJsonString(out, parameter.typeRef.spelling)
-    }
-    out.append("] , \"returnType\": ")
-    match (declaration.returnType) {
-        case Some(typeRef) => appendSearchJsonString(out, typeRef.spelling)
+            out.append("}")
         case None => out.append("null")
     }
-    out.append(", \"returnCanonical\": ")
-    match (declaration.returnType) {
-        case Some(typeRef) => appendOptionalSearchString(out, typeRef.semantic.canonical)
-        case None => out.append("null")
-    }
-}
-
-internal func renderSearchIndex(documentation: DocumentationSet,
-    projection: RenderProjection, locale!: String = "en"): String {
-    let out = RenderTextBuffer()
-    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/9\",\n  \"entries\": [")
+    out.append(",\"tags\":[")
     var first = true
-    let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
-    sort(visible, lessThan: { left, right => left.id < right.id }, stable: true)
-    for (declaration in visible) {
+    for (tag in value.tags) {
         if (!first) { out.append(",") }
         first = false
-        out.append("\n    {\"id\": "); appendSearchJsonString(out, declaration.id)
-        out.append(", \"canonicalId\": "); appendSearchJsonString(out, declaration.id)
-        out.append(", \"exposure\": false")
-        out.append(", \"name\": "); appendSearchJsonString(out, declaration.name)
-        out.append(", \"qualifiedName\": "); appendSearchJsonString(out, declaration.qualifiedName)
-        out.append(", \"kind\": "); appendSearchJsonString(out, declaration.kind)
-        out.append(", \"packageName\": "); appendSearchJsonString(out, declaration.packageName)
-        appendSearchMetadata(out, documentation, projection, declaration, declaration.moduleId)
-        let summary = match (declaration.documentation) {
-            case Some(comment) => searchTextExcerpt(summaryPlainText(comment))
-            case None => ""
-        }
-        out.append(", \"summary\": "); appendSearchJsonString(out, summary)
-        appendSearchBody(out, declaration)
-        appendSearchExternalDocumentation(out, documentation, declaration.id)
-        out.append(", \"href\": ")
-        appendSearchJsonString(out,
-            symbolUrl(projection.visibleIndex, declaration))
+        out.append("{\"id\":"); appendSearchJsonString(out, tag.id)
+        out.append(",\"title\":"); appendSearchJsonString(out, tag.title)
         out.append("}")
     }
-    for (pkg in documentation.packages) {
-        for (reExport in pkg.reExports) {
-            for (binding in reExport.bindings) {
-                for (targetId in binding.targetSymbolIds) {
-                    match (projection.visibleIndex.get(targetId)) {
-                        case Some(target) =>
-                            if (!first) { out.append(",") }; first = false
-                            out.append("\n    {\"id\": ")
-                            appendSearchJsonString(out,
-                                "${reExport.id}:${binding.exposedName}:${target.id}")
-                            out.append(", \"canonicalId\": "); appendSearchJsonString(out, target.id)
-                            out.append(", \"exposure\": true, \"name\": ")
-                            appendSearchJsonString(out, binding.exposedName)
-                            out.append(", \"qualifiedName\": ")
-                            appendSearchJsonString(out, "${pkg.name}.${binding.exposedName}")
-                            out.append(", \"kind\": "); appendSearchJsonString(out, target.kind)
-                            out.append(", \"packageName\": "); appendSearchJsonString(out, pkg.name)
-                            appendSearchMetadata(out, documentation, projection, target, pkg.moduleId)
-                            let summary = match (target.documentation) {
-                                case Some(comment) => searchTextExcerpt(summaryPlainText(comment))
-                                case None => ""
-                            }
-                            out.append(", \"summary\": "); appendSearchJsonString(out, summary)
-                            appendSearchBody(out, target)
-                            out.append(", \"href\": ")
-                            appendSearchJsonString(out,
-                                symbolUrl(projection.visibleIndex, target))
-                            out.append("}")
-                        case None => ()
-                    }
-                }
-            }
-        }
+    out.append("]}")
+}
+
+/**
+ * Serialize the bounded-static projection captured and shared with Agent output.
+ * The exact public search contract is embedded so the browser consumes the same
+ * field mapping, rank rows and limits as the native executor.
+ */
+internal func renderSearchIndex(snapshot: DocumentationReadSnapshot): String {
+    let built = buildDocumentationSearchProjection(snapshot, searchStaticProfileName())
+    let out = RenderTextBuffer()
+    out.append("{\n  \"schemaVersion\": \"cjdoc.search-index/11\",\n  \"profile\": ")
+    appendSearchJsonString(out, built.profile)
+    out.append(",\n  \"contract\": ")
+    out.append(searchContractJson())
+    out.append(",\n  \"projectionId\": ")
+    appendSearchJsonString(out, built.contentId)
+    out.append(",\n  \"scope\": {\"snapshotId\": ")
+    appendSearchJsonString(out, built.scopeSnapshotId)
+    out.append(", \"sourceSnapshotId\": ")
+    appendSearchJsonString(out, built.sourceSnapshotId)
+    out.append(", \"publicationRevision\": ")
+    appendSearchJsonString(out, built.publicationRevision)
+    out.append(", \"project\": "); appendSearchJsonString(out, built.project)
+    out.append(", \"language\": "); appendSearchJsonString(out, built.language)
+    out.append(", \"audience\": "); appendSearchJsonString(out, built.audience)
+    out.append(", \"cfgProfile\": "); appendSearchJsonString(out, built.cfgProfile)
+    out.append(", \"apiCollectionState\": ")
+    appendSearchJsonString(out, built.apiCollectionState)
+    out.append("},\n  \"coverage\": {\"profile\": ")
+    appendSearchJsonString(out, built.profile)
+    out.append(", \"projectionId\": "); appendSearchJsonString(out, built.contentId)
+    out.append(", \"bodyTextLimit\": ")
+    match (built.bodyTextLimit) {
+        case Some(value) => out.append(value.toString())
+        case None => out.append("null")
     }
-    for (page in selectedDocumentationPages(documentation, locale)) {
-        if (!first) { out.append(",") }; first = false
-        out.append("\n    {\"id\":")
-        appendSearchJsonString(out, "cjdoc:concept:" + page.id)
-        out.append(",\"canonicalId\":")
-        appendSearchJsonString(out, "cjdoc:concept:" + page.id)
-        out.append(",\"exposure\":false,\"name\":")
-        appendSearchJsonString(out, page.title)
-        out.append(",\"qualifiedName\":")
-        appendSearchJsonString(out, page.route)
-        out.append(",\"kind\":\"concept\",\"packageName\":\"\",\"moduleId\":\"conceptual\",\"moduleName\":null,\"ownerName\":null,\"parameterTypes\":[],\"returnType\":null,\"returnCanonical\":null,\"summary\":\"\",\"body\":")
-        appendSearchJsonString(out,
-            searchTextExcerpt(markdownNodeText(page.markdown), maximum: SEARCH_BODY_EXCERPT_LIMIT))
-        out.append(",\"href\":")
-        appendSearchJsonString(out, page.route)
-        appendSearchPageBindings(out, page, projection.visibleIndex)
+    out.append(", \"bodyComplete\": "); out.append(built.bodyComplete.toString())
+    out.append(", \"truncatedEntries\": "); out.append(built.truncatedCount.toString())
+    out.append("},\n  \"modules\": [")
+    var firstModule = true
+    for (index in 0..built.modules.size) {
+        if (!firstModule) { out.append(",") }
+        firstModule = false
+        let module = built.modules[index]
+        out.append("\n    {\"moduleId\": "); appendSearchJsonString(out, module.moduleId)
+        out.append(", \"moduleName\": "); appendOptionalSearchString(out, module.moduleName)
+        out.append(", \"documentSet\": ")
+        appendSearchDocumentSetIdentity(out, module.documentSet)
+        out.append(", \"dependency\": ")
+        appendSearchDependencyIdentity(out, module.dependency)
+        out.append(", \"dependencyInstanceState\": ")
+        appendSearchJsonString(out, module.dependencyState)
         out.append("}")
+    }
+    if (!firstModule) { out.append("\n  ") }
+    out.append("],\n  \"tags\": [")
+    var firstTag = true
+    for (tag in built.tagDictionary) {
+        if (!firstTag) { out.append(",") }
+        firstTag = false
+        out.append("{\"scope\":${tag.scope},\"id\":")
+        appendSearchJsonString(out, tag.id)
+        out.append(",\"title\":"); appendSearchJsonString(out, tag.title)
+        out.append("}")
+    }
+    out.append("],\n  \"entries\": [")
+    var first = true
+    for (entry in built.entries) {
+        if (!first) { out.append(",") }
+        first = false
+        out.append("\n    {\"id\": "); appendSearchJsonString(out, entry.id)
+        out.append(", \"canonicalId\": "); appendSearchJsonString(out, entry.canonicalId)
+        out.append(", \"snapshotId\": "); appendSearchJsonString(out, entry.snapshotId)
+        out.append(", \"scope\": "); out.append(entry.scope.toString())
+        out.append(", \"concept\": "); out.append(entry.concept.toString())
+        out.append(", \"genericArity\": "); out.append(entry.genericArity.toString())
+        out.append(", \"ownerId\": "); appendOptionalSearchString(out, entry.ownerId)
+        out.append(", \"name\": "); appendSearchJsonString(out, entry.name)
+        out.append(", \"packageName\": ")
+        appendOptionalSearchString(out, if (entry.concept) { None } else { Some(entry.packageName) })
+        out.append(", \"qualifiedName\": ")
+        appendOptionalSearchString(out, if (entry.concept) { None } else { Some(entry.qualifiedName) })
+        out.append(", \"kind\": "); appendSearchJsonString(out, entry.kind)
+        out.append(", \"ownerName\": ")
+        appendOptionalSearchString(out, if (entry.ownerName.isEmpty()) { None } else { Some(entry.ownerName) })
+        out.append(", \"ownerQualifiedName\": ")
+        appendOptionalSearchString(out,
+            if (entry.ownerQualifiedName.isEmpty()) { None } else { Some(entry.ownerQualifiedName) })
+        out.append(", \"symbolKey\": ")
+        appendOptionalSearchString(out, if (entry.symbolKey.isEmpty()) { None } else { Some(entry.symbolKey) })
+        out.append(", \"parameterTypes\": [")
+        var firstParameter = true
+        for (parameter in entry.parameterTypes) {
+            if (!firstParameter) { out.append(",") }
+            firstParameter = false
+            appendSearchJsonString(out, parameter)
+        }
+        out.append("], \"returnType\": ")
+        appendOptionalSearchString(out, if (entry.returnType.isEmpty()) { None } else { Some(entry.returnType) })
+        out.append(", \"returnCanonical\": ")
+        appendOptionalSearchString(out,
+            if (entry.returnCanonical.isEmpty()) { None } else { Some(entry.returnCanonical) })
+        out.append(", \"summary\": "); appendSearchJsonString(out, entry.summary)
+        out.append(", \"summaryDisplay\": ")
+        appendSearchJsonString(out, searchTextExcerpt(entry.summary, maximum: built.summaryDisplayLimit))
+        out.append(", \"body\": "); appendSearchJsonString(out, entry.body)
+        out.append(", \"bodyTruncated\": "); out.append(entry.bodyTruncated.toString())
+        out.append(", \"classification\": "); appendSearchClassification(out, entry.classification)
+        out.append(", \"href\": "); appendSearchJsonString(out, entry.href)
+        out.append(", \"exposures\": [")
+        var firstExposure = true
+        for (exposure in entry.exposures) {
+            if (!firstExposure) { out.append(",") }
+            firstExposure = false
+            out.append("{\"id\": "); appendSearchJsonString(out, exposure.id)
+            out.append(", \"name\": "); appendSearchJsonString(out, exposure.name)
+            out.append(", \"qualifiedName\": "); appendSearchJsonString(out, exposure.qualifiedName)
+            out.append(", \"packageName\": "); appendSearchJsonString(out, exposure.packageName)
+            out.append(", \"scope\": "); out.append(exposure.scope.toString())
+            out.append("}")
+        }
+        out.append("], \"externalDocs\": [")
+        var firstExternal = true
+        for (reference in entry.externalDocs) {
+            if (!firstExternal) { out.append(",") }
+            firstExternal = false
+            out.append("{\"name\": "); appendSearchJsonString(out, reference.name)
+            out.append(", \"state\": "); appendSearchJsonString(out, reference.state)
+            out.append(", \"url\": "); appendSearchJsonString(out, reference.url)
+            out.append(", \"reason\": "); appendSearchJsonString(out, reference.reason)
+            out.append(", \"version\": "); appendSearchJsonString(out, reference.version)
+            out.append(", \"index\": "); appendSearchJsonString(out, reference.index)
+            out.append(", \"format\": "); appendSearchJsonString(out, reference.format)
+            out.append(", \"fingerprint\": "); appendSearchJsonString(out, reference.fingerprint)
+            out.append("}")
+        }
+        out.append("], \"bindings\": ")
+        appendSearchProjectedBindings(out, entry.pageBindings)
+        out.append(", \"sections\": [")
+        var firstSection = true
+        for (section in entry.sections) {
+            if (!firstSection) { out.append(",") }
+            firstSection = false
+            out.append("{\"kind\": "); appendSearchJsonString(out, section.kind)
+            out.append(", \"anchor\": "); appendSearchJsonString(out, section.anchor)
+            out.append(", \"text\": "); appendSearchJsonString(out, section.text)
+            out.append("}")
+        }
+        out.append("]}")
     }
     if (!first) { out.append("\n  ") }
     out.append("]\n}\n")
@@ -351,6 +392,7 @@ private func searchSignatureForExposure(symbol: SymbolDoc, exposedName: String):
 
 internal func renderSearchSignatureIndex(documentation: DocumentationSet,
     projection: RenderProjection): String {
+    let signatureDisplayLimit = searchContractLimits().signatureDisplayLimit
     let visible = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(visible, lessThan: { left, right => left.id < right.id }, stable: true)
     let out = RenderTextBuffer()
@@ -361,7 +403,8 @@ internal func renderSearchSignatureIndex(documentation: DocumentationSet,
         first = false
         appendSearchJsonString(out, symbol.id)
         out.append(":")
-        appendSearchJsonString(out, searchTextExcerpt(symbol.headerSpelling, maximum: 512))
+        appendSearchJsonString(out, searchTextExcerpt(symbol.headerSpelling,
+            maximum: signatureDisplayLimit))
     }
     for (pkg in documentation.packages) {
         for (reExport in pkg.reExports) {
@@ -375,7 +418,8 @@ internal func renderSearchSignatureIndex(documentation: DocumentationSet,
                                 "${reExport.id}:${binding.exposedName}:${target.id}")
                             out.append(":")
                             appendSearchJsonString(out, searchTextExcerpt(
-                                searchSignatureForExposure(target, binding.exposedName), maximum: 512))
+                                searchSignatureForExposure(target, binding.exposedName),
+                                maximum: signatureDisplayLimit))
                         case None => ()
                     }
                 }

@@ -331,6 +331,10 @@ private class DocCommentParseState {
             let (subject, description) = splitSubject(tagText.removePrefix("@group").replace("\t", " "))
             // A group is shared, single-line presentation metadata, not prose.
             contracts.add(DocTag("group", subject, description))
+        } else if (tagText.startsWith("@tag[")) {
+            // The localized parser owns qualifier diagnostics; shared metadata
+            // must never fall back into ordinary prose or a tag continuation.
+            ()
         } else if (tagText == "@tag" || tagText.startsWith("@tag ") || tagText.startsWith("@tag\t")) {
             // A declaration tag is one line. Surplus arguments are kept in the
             // description so validation can diagnose them instead of silently

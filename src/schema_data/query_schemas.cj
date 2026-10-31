@@ -3,7 +3,7 @@ package cjdoc.schema_data
 import std.collection.*
 import yjson.*
 
-// One declarative source of the `cjdoc.query-request/1` contract: the field
+// One declarative source of the `cjdoc.query-request/3` contract: the field
 // schemas plus, per operation, the fields that operation actually honours and
 // the identity-specific narrowing `get_symbol` applies. The published request
 // schema and every MCP tool input schema are generated from this table, so a
@@ -15,7 +15,7 @@ import yjson.*
 private let QUERY_REQUEST_DECLARATION = """
 {
   "properties":{
-    "schemaVersion":{"const":"cjdoc.query-request/1"},
+    "schemaVersion":{"const":"cjdoc.query-request/3"},
     "operation":{"enum":["resolve_docs","search","get_symbol"]},
     "query":{"type":"string","maxLength":4096},
     "snapshotId":{"type":"string","minLength":1,"maxLength":256},
@@ -53,7 +53,16 @@ private let QUERY_REQUEST_DECLARATION = """
       "depth":{"type":"integer","minimum":0,"maximum":4},
       "limit":{"type":"integer","minimum":0,"maximum":100}
     }},
-    "latest":{"type":"boolean"},"compatible":{"type":"boolean"}
+    "latest":{"type":"boolean"},"compatible":{"type":"boolean"},
+    "mode":{"enum":["precise","discovery"]},
+    "profile":{"enum":["full-ir","bounded-static"]},
+    "filters":{"type":"array","maxItems":64,"items":{"type":"object","additionalProperties":false,
+      "required":["field","op","value"],"properties":{
+        "field":{},
+        "op":{},
+        "value":{"type":"string","minLength":1,"maxLength":16384}}}},
+    "tags":{"type":"array","minItems":1,"maxItems":64,
+      "items":{"type":"string","pattern":"^[A-Za-z0-9_-]{1,64}$","minLength":1,"maxLength":64}}
   },
   "globalFields":["schemaVersion","operation","snapshotId","language","languageFallback","audience","cfgProfile"],
   "operations":{
@@ -62,7 +71,8 @@ private let QUERY_REQUEST_DECLARATION = """
       "latest","compatible","limit","cursor","maxBytes"]},
     "search":{"fields":["query","symbolId","symbolKey","name","qualifiedName","parameterTypes",
       "genericArity","kind","moduleId","packageName","documentSetId","apiVersion","library",
-      "dependencyInstanceId","target","cfg","latest","limit","cursor"]},
+      "dependencyInstanceId","target","cfg","latest","limit","cursor",
+      "mode","profile","filters","tags"]},
     "get_symbol":{"fields":["moduleId","packageName","kind","documentSetId","apiVersion",
       "dependencyInstanceId","library","target","cfg"],
       "identities":{
@@ -87,7 +97,25 @@ private let QUERY_REQUEST_DECLARATION = """
 """
 
 private func queryDeclaration(): JsonObject {
-    JsonNode.parse(QUERY_REQUEST_DECLARATION).asObject()
+    let declaration = JsonNode.parse(QUERY_REQUEST_DECLARATION).asObject()
+    let properties = declaration.get("properties").getOrThrow().asObject()
+    let filterProperties = properties.get("filters").getOrThrow().asObject()
+        .get("items").getOrThrow().asObject().get("properties").getOrThrow().asObject()
+    let filterFields = querySearchFilterFields()
+    let fieldNames = ArrayList<String>()
+    for (index in 0..filterFields.size()) {
+        fieldNames.add(filterFields[index].asObject().get("field").getOrThrow().asString())
+    }
+    filterProperties.get("field").getOrThrow().asObject()
+        .put("enum", queryStringArray(fieldNames.toArray()))
+    let filterOps = querySearchFilterOps()
+    let opNames = ArrayList<String>()
+    for (index in 0..filterOps.size()) {
+        opNames.add(filterOps[index].asObject().get("op").getOrThrow().asString())
+    }
+    filterProperties.get("op").getOrThrow().asObject()
+        .put("enum", queryStringArray(opNames.toArray()))
+    declaration
 }
 
 private func queryFieldArray(value: JsonObject, key: String): ArrayList<String> {
@@ -289,7 +317,7 @@ private func queryRequestSchemaNode(): JsonObject {
     let schema = JsonObject()
     schema.put("$schema", JsonNode.string("https://json-schema.org/draft/2020-12/schema"))
     schema.put("$id", JsonNode.string("https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/query-request.schema.json"))
-    schema.put("title", JsonNode.string("cjdoc read-only documentation query v1"))
+    schema.put("title", JsonNode.string("cjdoc read-only documentation query v3"))
     schema.put("type", JsonNode.string("object"))
     schema.put("additionalProperties", JsonNode.boolean(false))
     schema.put("required", queryStringArray(["operation"]))
@@ -309,7 +337,7 @@ private func queryRequestSchemaNode(): JsonObject {
 }
 
 /**
- * The published `cjdoc.query-request/1` schema: strict object, one required
+ * The published `cjdoc.query-request/3` schema: strict object, one required
  * discriminator, and per-operation admissibility generated from the single
  * declaration above.
  */
@@ -372,7 +400,7 @@ public func documentationQueryOperationSchema(operation: String): String {
 }
 
 // Section values remain existing strict Doc IR data. The exported result schema
-// is assembled with those frozen v16 definitions, rather than a parallel model.
+// is assembled with those frozen v17 definitions, rather than a parallel model.
 //
 // Every object here is a shape a current producer emits. The `allOf` block at
 // the root states only outcome invariants a producer already guarantees:
@@ -383,11 +411,11 @@ public let DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE = """
 {
   "$schema":"https://json-schema.org/draft/2020-12/schema",
   "$id":"https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/query-result.schema.json",
-  "title":"cjdoc documentation query result v1",
+  "title":"cjdoc documentation query result v3",
   "type":"object","additionalProperties":false,
   "required":["schemaVersion","status","operation","scope","selection","result","completeness","sources","text","error"],
   "properties":{
-    "schemaVersion":{"const":"cjdoc.query-result/1"},
+    "schemaVersion":{"const":"cjdoc.query-result/3"},
     "status":{"enum":["ok","ambiguous","not_found","source_incomplete","budget_exceeded","stale_cursor","invalid_request","scope_mismatch","resource_limit","unavailable"]},
     "operation":{"type":"string"},
     "scope":{"type":"object","additionalProperties":false,"required":["requested","catalogId","snapshots"],"properties":{
@@ -399,19 +427,21 @@ public let DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE = """
       "selected":{"type":"array","maxItems":1,"items":{"$ref":"#/$defs/queryCandidate"}},
       "candidates":{"type":"array","maxItems":100,"items":{"$ref":"#/$defs/queryCandidate"}}
     }}]},
-    "result":{"type":"object","additionalProperties":false,"required":["items","relations","reports"],"properties":{
+    "result":{"type":"object","additionalProperties":false,"required":["items","relations","reports","facets"],"properties":{
       "items":{"type":"array","maxItems":101,"items":{"$ref":"#/$defs/queryItem"}},
       "relations":{"type":"array","maxItems":100,"items":{"$ref":"#/$defs/queryRelation"}},
-      "reports":{"type":"array","maxItems":64,"items":{"$ref":"#/$defs/queryReport"}}
+      "reports":{"type":"array","maxItems":64,"items":{"$ref":"#/$defs/queryReport"}},
+      "facets":{"$ref":"#/$defs/queryFacets"}
     }},
     "completeness":{"type":"object","additionalProperties":false,"required":["apiCollection","query","content"],"properties":{
       "apiCollection":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["snapshotId","state"],"properties":{"snapshotId":{"type":"string"},"state":{"enum":["resolved","partial","unavailable"]}}}},
-      "query":{"type":"object","additionalProperties":false,"required":["complete","scope","offset","returned","total","next","reason"],"properties":{
+      "query":{"type":"object","additionalProperties":false,"required":["complete","scope","offset","returned","total","next","reason","coverage"],"properties":{
         "complete":{"type":"boolean"},
         "scope":{"enum":["catalog","declaration","page","relations","document_sets",""]},
         "offset":{"type":"integer","minimum":0},"returned":{"type":"integer","minimum":0},
         "total":{"type":["integer","null"],"minimum":0},"next":{"type":["string","null"]},
-        "reason":{"type":"string"}
+        "reason":{"type":"string"},
+        "coverage":{"anyOf":[{"type":"null"},{"$ref":"#/$defs/queryCoverage"}]}
       },"allOf":[
         {"if":{"required":["complete"],"properties":{"complete":{"const":true}}},
          "then":{"properties":{"next":{"type":"null"}}}},
@@ -447,6 +477,10 @@ public let DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE = """
      "then":{"properties":{"result":{"properties":{"items":{"minItems":1}}}}}},
     {"if":{"required":["operation"],"properties":{"operation":{"const":"resolve_docs"}}},
      "then":{"properties":{"result":{"properties":{"items":{"maxItems":0},"relations":{"maxItems":0},"reports":{"maxItems":0}}}}}},
+    {"if":{"required":["operation"],"properties":{"operation":{"not":{"const":"search"}}}},
+     "then":{"properties":{"result":{"properties":{"facets":{"properties":{"tags":{"maxItems":0}}}}}}}},
+    {"if":{"required":["status"],"properties":{"status":{"enum":["not_found","source_incomplete","invalid_request","scope_mismatch","stale_cursor","resource_limit","unavailable","budget_exceeded"]}}},
+     "then":{"properties":{"result":{"properties":{"facets":{"properties":{"tags":{"maxItems":0}}}}}}}},
     {"if":{"required":["status"],"properties":{"status":{"enum":["ok","ambiguous","not_found","source_incomplete"]}}},
      "then":{"properties":{"error":{"type":"null"}}}},
     {"if":{"required":["status"],"properties":{"status":{"enum":["invalid_request","scope_mismatch","stale_cursor","resource_limit","unavailable","budget_exceeded"]}}},
@@ -468,6 +502,15 @@ public let DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE = """
   ],
   "$defs":{
     "querySectionName":{"enum":["signature","parameters","returns","contracts","examples","description","relations","source","diagnostics","validation","diff"]},
+    "queryCoverage":{"type":"object","additionalProperties":false,
+      "required":["profile","projectionId","bodyTextLimit","bodyComplete","truncatedEntries"],
+      "properties":{
+        "profile":{"enum":["full-ir","bounded-static"]},
+        "projectionId":{"type":"string","minLength":1},
+        "bodyTextLimit":{"type":["integer","null"],"minimum":0},
+        "bodyComplete":{"type":"boolean"},
+        "truncatedEntries":{"type":"integer","minimum":0}
+      }},
     "queryRetry":{"type":"object","additionalProperties":false,"required":["maxBytes","detail"],"properties":{
       "maxBytes":{"type":"integer","minimum":0},"detail":{"type":"string","minLength":1}
     }},
@@ -547,9 +590,29 @@ public let DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE = """
       "dependency":{"anyOf":[{"$ref":"#/$defs/dependencyInstance"},{"type":"null"}]},
       "matchLevel":{"enum":["exact","compatible","manual","none"]},"reason":{"type":"string"},"score":{"type":"integer"},"inventoryPinned":{"type":"boolean"},"sourceBinding":{"enum":["matched","mismatch","conflict","unavailable"]},"admitted":{"type":"boolean"}
     }},
-    "queryItem":{"type":"object","additionalProperties":false,"required":["kind","identity","signature","summary","match","sections","representations","source","exposures"],"properties":{
+    "queryFacets":{"type":"object","additionalProperties":false,"required":["tags"],"properties":{
+      "tags":{"type":"array","items":{"$ref":"#/$defs/queryTagFacet"}}
+    }},
+    "queryTagFacet":{"type":"object","additionalProperties":false,
+      "required":["scope","id","title","count"],"properties":{
+        "scope":{"type":"object","additionalProperties":false,
+          "required":["snapshotId","sourceSnapshotId","moduleId","documentSet","dependencyInstance","dependencyInstanceState"],
+          "properties":{
+            "snapshotId":{"type":"string","minLength":1},
+            "sourceSnapshotId":{"type":"string","minLength":1},
+            "moduleId":{"$ref":"#/$defs/moduleId"},
+            "documentSet":{"anyOf":[{"$ref":"#/$defs/documentSetIdentity"},{"type":"null"}]},
+            "dependencyInstance":{"anyOf":[{"$ref":"#/$defs/dependencyInstance"},{"type":"null"}]},
+            "dependencyInstanceState":{"enum":["recorded","not_applicable","unrecorded","ambiguous"]}
+          }},
+        "id":{"$ref":"#/$defs/classificationId"},
+        "title":{"$ref":"#/$defs/classificationTitle"},
+        "count":{"type":"integer","minimum":1}
+      }},
+    "queryItem":{"type":"object","additionalProperties":false,"required":["kind","identity","signature","summary","match","sections","representations","source","exposures","classification"],"properties":{
       "kind":{"enum":["symbol","concept"]},"identity":{"$ref":"#/$defs/queryIdentity"},
       "signature":{"type":["string","null"]},"summary":{"type":["string","null"]},
+      "classification":{"$ref":"#/$defs/documentationClassification"},
       "match":{"type":"object","additionalProperties":false,"required":["score","reason"],"properties":{"score":{"type":"integer"},"reason":{"type":"string","minLength":1}}},
       "sections":{"type":"array","maxItems":11,"items":{"$ref":"#/$defs/querySection"}},
       "representations":{"type":"object","additionalProperties":false,"required":["html","markdown","json"],"properties":{
@@ -568,7 +631,8 @@ public let DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE = """
          "signature":{"type":"null"},
          "identity":{"properties":{"symbolId":{"type":"null"},"pageId":{"type":"string"}}},
          "source":{"anyOf":[{"$ref":"#/$defs/queryPageSource"},{"type":"null"}]},
-         "sections":{"items":{"anyOf":[{"$ref":"#/$defs/queryPageSection"},{"$ref":"#/$defs/queryConceptDiscoverySection"}]}}
+         "sections":{"items":{"anyOf":[{"$ref":"#/$defs/queryPageSection"},{"$ref":"#/$defs/queryConceptDiscoverySection"}]}},
+         "classification":{"const":{"group":null,"tags":[]}}
        }}}
     ]},
     "queryIdentity":{"type":"object","additionalProperties":false,"required":["snapshotId","sourceSnapshotId","documentSet","moduleId","dependencyInstance","dependencyInstanceState","symbolId","symbolKey","pageId","ownerId"],"properties":{
@@ -619,3 +683,153 @@ public let DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE = """
   }
 }
 """
+
+/**
+ * The one machine-readable statement of the search contract.
+ *
+ * The request schema, native executor and published static index all consume
+ * these exact values. Runtime code keeps only fixed comparison primitives.
+ */
+private func querySearchRuleRows(values: Array<(String, Int64, Int64, String)>): JsonArray {
+    let rows = JsonArray()
+    for ((primitive, level, score, reason) in values) {
+        let row = JsonObject()
+        row.put("primitive", JsonNode.string(primitive))
+        row.put("level", JsonNode.int64(level))
+        row.put("score", JsonNode.int64(score))
+        row.put("reason", JsonNode.string(reason))
+        rows.add(row)
+    }
+    rows
+}
+
+private func querySearchFilterField(field: String, property: JsonNode,
+    context: String): JsonObject {
+    let row = JsonObject()
+    row.put("field", JsonNode.string(field))
+    row.put("property", property)
+    row.put("context", JsonNode.string(context))
+    row
+}
+
+private func querySearchFilterFields(): JsonArray {
+    let fields = JsonArray()
+    fields.add(querySearchFilterField("name", JsonNode.string("name"), "canonical-or-exposure"))
+    fields.add(querySearchFilterField("qualifiedName", JsonNode.string("qualifiedName"),
+        "canonical-or-exposure"))
+    fields.add(querySearchFilterField("owner", queryStringArray(["ownerName", "ownerQualifiedName"]),
+        "entry"))
+    fields.add(querySearchFilterField("param", JsonNode.string("parameterTypes"), "entry"))
+    fields.add(querySearchFilterField("return", queryStringArray(["returnType", "returnCanonical"]),
+        "entry"))
+    fields.add(querySearchFilterField("package", JsonNode.string("packageName"), "canonical-or-exposure"))
+    fields.add(querySearchFilterField("kind", JsonNode.string("kind"), "entry"))
+    fields
+}
+private func querySearchFilterOps(): JsonArray {
+    let ops = JsonArray()
+    let equality = JsonObject()
+    equality.put("op", JsonNode.string("eq"))
+    equality.put("primitive", JsonNode.string("exact_string_equal"))
+    ops.add(equality)
+    let contains = JsonObject()
+    contains.put("op", JsonNode.string("contains"))
+    contains.put("primitive", JsonNode.string("ascii_fold_contains"))
+    ops.add(contains)
+    ops
+}
+
+private func queryPreciseSearchRules(): JsonArray {
+    querySearchRuleRows([
+        ("exact_symbol_id", 4, 4000, "symbol_id"),
+        ("exact_symbol_key", 4, 4000, "symbol_key"),
+        ("exact_qualified_name", 3, 3000, "qualified_name"),
+        ("exact_qualified_name_with_selector", 3, 3000, "qualified_name_with_overload_selector"),
+        ("exact_name", 2, 2040, "declaration_name"),
+        ("exact_name_with_selector", 2, 2040, "declaration_name_with_overload_selector"),
+        ("query_exact_name", 2, 2000, "declaration_name"),
+        ("query_exact_name_with_selector", 2, 2000, "declaration_name_with_overload_selector"),
+        ("exact_owner_member", 2, 2020, "owner_member_name"),
+        ("exact_owner_member_with_selector", 2, 2020, "owner_member_name_with_overload_selector"),
+        ("exact_alias", 2, 2030, "exposed_reexport_alias"),
+        ("exact_alias_with_selector", 2, 2030, "exposed_reexport_alias_with_overload_selector"),
+        ("structured_text", 1, 1010, "declaration_text"),
+        ("structured_text_with_selector", 1, 1010, "declaration_text_with_overload_selector"),
+        ("documentation_text", 1, 1010, "documentation_text"),
+        ("documentation_text_with_selector", 1, 1010, "documentation_text_with_overload_selector"),
+        ("concept_text", 1, 1010, "guide_text"),
+        ("filter_only", 0, 0, "filter_only")
+    ])
+}
+
+private func queryDiscoverySearchRules(): JsonArray {
+    querySearchRuleRows([
+        ("exact_symbol_id", 12, 12000, "symbol_id"),
+        ("exact_symbol_key", 12, 12000, "symbol_key"),
+        ("exact_qualified_name", 11, 11000, "qualified_name"),
+        ("exact_name", 10, 10000, "declaration_name"),
+        ("exact_owner_member", 10, 10000, "owner_member_name"),
+        ("exact_alias", 10, 10000, "exposed_reexport_alias"),
+        ("ascii_fold_name", 9, 9000, "name_casefold"),
+        ("name_prefix", 8, 8000, "name_prefix"),
+        ("qualified_prefix", 7, 7000, "qualified_prefix"),
+        ("all_token_word_prefix", 6, 6000, "word_prefix"),
+        ("acronym", 5, 5000, "acronym"),
+        ("structured_text", 4, 4000, "declaration_text"),
+        ("one_edit", 3, 3000, "edit_distance_one"),
+        ("documentation_text", 2, 2000, "documentation_text"),
+        ("concept_text", 2, 2000, "guide_text"),
+        ("filter_only", 0, 0, "filter_only")
+    ])
+}
+
+private func querySearchTextPolicy(): JsonObject {
+    JsonNode.parse("""
+{
+  "caseFold": "ascii-only",
+  "normalization": "none",
+  "tokens": "ascii-alnum-underscore-or-u0080-plus",
+  "words": "ascii-camel-acronym-boundaries",
+  "edit": "one-scalar-insert-delete-substitute",
+  "minEditRunes": 4,
+  "maxEditRunes": 128
+}
+""").asObject()
+}
+
+public func documentationSearchContract(): String {
+    let declaration = queryDeclaration()
+    let operations = declaration.get("operations").getOrThrow().asObject()
+    let search = operations.get("search").getOrThrow().asObject()
+    let properties = declaration.get("properties").getOrThrow().asObject()
+    let contract = JsonObject()
+    contract.put("version", JsonNode.string("cjdoc.search-contract/2"))
+    contract.put("textPolicy", querySearchTextPolicy())
+    contract.put("maxRequestBytes", JsonNode.int64(1048576))
+    contract.put("defaultMode", JsonNode.string("precise"))
+    contract.put("defaultProfile", JsonNode.string("full-ir"))
+    contract.put("defaultLimit", JsonNode.int64(20))
+    contract.put("maxLimit", properties.get("limit").getOrThrow().asObject()
+        .get("maximum").getOrThrow())
+    contract.put("maxFilters", properties.get("filters").getOrThrow().asObject()
+        .get("maxItems").getOrThrow())
+    contract.put("maxTags", properties.get("tags").getOrThrow().asObject()
+        .get("maxItems").getOrThrow())
+    contract.put("staticBodyTextLimit", JsonNode.int64(2000))
+    contract.put("summaryDisplayLimit", JsonNode.int64(240))
+    contract.put("signatureDisplayLimit", JsonNode.int64(512))
+    contract.put("requestProperties", declaration.get("properties").getOrThrow())
+    contract.put("globalFields", declaration.get("globalFields").getOrThrow())
+    contract.put("searchFields", search.get("fields").getOrThrow())
+    contract.put("filterFields", querySearchFilterFields())
+    contract.put("filterOps", querySearchFilterOps())
+    contract.put("setPredicates", JsonNode.parse(
+        "[{\"field\":\"tags\",\"property\":\"tagIds\",\"primitive\":\"all_exact\"}]"))
+    contract.put("preciseRules", queryPreciseSearchRules())
+    contract.put("discoveryRules", queryDiscoverySearchRules())
+    contract.toJson()
+}
+public func documentationQueryResultSchema(): String {
+    completeDocumentationSchema(documentationSchemaWithClassification(
+        DOCUMENTATION_QUERY_RESULT_SCHEMA_TEMPLATE))
+}

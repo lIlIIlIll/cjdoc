@@ -83,7 +83,7 @@ HTML/Markdown 概念索引保留作者链接，不作为 cjdoc 手册改写。
 
 | 产物 | 可读视图必须保留的含义 |
 | --- | --- |
-| Doc IR v16 | 源码声明、注释、来源位置、显式 partial 与诊断 |
+| Doc IR v17 | source declarations, comments, source positions, explicit partial status, diagnostics, and captured group/tag metadata |
 | coverage / quality | 指标分母、audience、规则和具体缺失位置；比例不代表契约正确 |
 | `--check-examples` | `must-pass`、`must-fail`、`run` 等作者指令的真实 CLI 验证；结果由诊断和退出码表达 |
 | API diff | 同库两个版本、原生分类、匹配状态、不确定性及前后声明链接 |

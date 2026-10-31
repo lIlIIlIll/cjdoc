@@ -3,7 +3,7 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
-private func packageDeclarationCategory(kind: String): String {
+internal func packageDeclarationCategory(kind: String): String {
     match (kind) {
         case "class" | "struct" | "interface" | "enum" | "typeAlias" |
             "function" | "macro" | "property" | "variable" | "extend" => kind
@@ -27,9 +27,9 @@ internal func packageDeclarationHeading(category: String, locale: String): (Stri
     }
 }
 
-private func appendDeclarationRow(out: RenderTextBuffer, symbol: SymbolDoc,
-    links: HtmlTypeLinkIndex, locale: String, showKind: Bool): Unit {
-    out.append("<article class=\"declaration-summary declaration-row\" data-cjdoc-member data-member-name=\"${escapeHtml(symbol.name)}\" data-member-kind=\"${escapeHtml(symbol.kind)}\">")
+private func appendDeclarationRow(out: RenderTextBuffer, projection: RenderProjection,
+    symbol: SymbolDoc, links: HtmlTypeLinkIndex, locale: String, showKind: Bool): Unit {
+    out.append("<article class=\"declaration-summary declaration-row\" data-cjdoc-member data-member-symbol-id=\"${escapeHtml(symbol.id)}\" data-member-name=\"${escapeHtml(symbol.name)}\" data-member-kind=\"${escapeHtml(symbol.kind)}\">")
     // The stretched name link owns the row; signature type links are siblings,
     // never nested anchors, and remain independently focusable above it.
     out.append("<a class=\"declaration-row-link\" href=\"../${escapeHtml(symbolPagePath(symbol))}\"><span class=\"declaration-summary-head\"><code>${escapeHtml(readerDeclarationName(symbol))}</code>")
@@ -37,6 +37,8 @@ private func appendDeclarationRow(out: RenderTextBuffer, symbol: SymbolDoc,
         out.append("<span class=\"declaration-kind\">${escapeHtml(htmlKindLabel(symbol.kind, locale))}</span>")
     }
     out.append("</span></a>")
+    appendDeclarationClassificationBadges(out, projection.catalog, projection.snapshotId,
+        symbol, "../", includeGroup: false)
     if (!symbol.headerSpelling.isEmpty()) {
         out.append("<code class=\"declaration-signature\">")
         appendLinkedSignatureHtml(out, symbol, links, "../")
@@ -89,12 +91,14 @@ internal func packageDeclarationCategories(symbols: ArrayList<SymbolDoc>):
 }
 
 internal func appendPackageDeclarationGroups(out: RenderTextBuffer,
+    projection: RenderProjection, pageModuleId: String, pagePackageName: String,
     symbols: ArrayList<SymbolDoc>, links: HtmlTypeLinkIndex, locale: String): Unit {
-    let roles = declarationGroups(symbols)
-    if (!hasDeclarationGroups(roles)) {
-        appendPackageDeclarationKinds(out, symbols, links, locale)
+    let roles = partitionDeclarationGroups(symbols, projection.catalog)
+    if (!hasGroupedDeclarations(roles)) {
+        appendPackageDeclarationKinds(out, projection, symbols, links, locale)
         return
     }
+    prepareDeclarationGroupAnchors(roles, pageModuleId, pagePackageName, None)
     out.append("<span id=\"declarations\" class=\"section-anchor-alias\" aria-hidden=\"true\"></span>")
     let aliases = HashSet<String>()
     for (role in roles) {
@@ -104,18 +108,18 @@ internal func appendPackageDeclarationGroups(out: RenderTextBuffer,
                 out.append("<span class=\"section-anchor-alias\" id=\"" + alias + "\" aria-hidden=\"true\"></span>")
             }
         }
-        let anchor = if (role.key.isEmpty()) { "api-ungrouped" } else { "api-group-" + role.key }
         out.append("<section class=\"api-declaration-group\" data-cjdoc-declaration-group=\"" +
-            escapeHtml(role.key) + "\"><h2 id=\"" + anchor + "\">" +
-            escapeHtml(declarationGroupTitle(role, locale)) +
-            label(locale, " (${role.symbols.size})", "（${role.symbols.size}）") + "</h2>")
-        appendPackageDeclarationKinds(out, role.symbols, links, locale,
-            groupPrefix: "api-kind-${role.key.size}-${role.key}-")
+            escapeHtml(role.id) + "\"><h2 id=\"" + escapeHtml(role.anchor) + "\">" +
+            escapeHtml(declarationGroupDisplayTitle(role, locale)) +
+            "<span data-cjdoc-group-count data-group-total=\"${role.symbols.size}\">" +
+            label(locale, " (${role.symbols.size})", "（${role.symbols.size}）") + "</span></h2>")
+        appendPackageDeclarationKinds(out, projection, role.symbols, links, locale,
+            groupPrefix: role.kindPrefix)
         out.append("</section>\n")
     }
 }
 
-private func appendPackageDeclarationKinds(out: RenderTextBuffer,
+private func appendPackageDeclarationKinds(out: RenderTextBuffer, projection: RenderProjection,
     symbols: ArrayList<SymbolDoc>, links: HtmlTypeLinkIndex, locale: String,
     groupPrefix!: String = ""): Unit {
     let (ordered, kindByName) = packageDeclarationCategories(symbols)
@@ -135,10 +139,10 @@ private func appendPackageDeclarationKinds(out: RenderTextBuffer,
                 // The omitted heading keeps its historical deep link on a
                 // zero-height alias, so old #api-kind… URLs still resolve
                 // without a second heading or TOC entry.
-                out.append("<section class=\"declaration-group\"><span class=\"section-anchor-alias\" id=\"${groupPrefix}${groupId}\" aria-hidden=\"true\"></span><div class=\"declaration-list\">")
+                out.append("<section class=\"declaration-group declaration-group-plain\"><span class=\"section-anchor-alias\" id=\"${groupPrefix}${groupId}\" aria-hidden=\"true\"></span><div class=\"declaration-list\">")
             }
             for (symbol in group) {
-                appendDeclarationRow(out, symbol, links, locale,
+                appendDeclarationRow(out, projection, symbol, links, locale,
                     category == "other" || kindByName[symbol.name].isEmpty())
             }
             out.append("</div></section>\n")
@@ -171,9 +175,10 @@ private func appendPackageDeclarationKinds(out: RenderTextBuffer,
         }
         out.append("<${headingLevel} id=\"${anchorId}\" data-cjdoc-toc-role=\"group\">${heading}${count}</${headingLevel}><div class=\"declaration-list\">")
         for (symbol in group) {
-            appendDeclarationRow(out, symbol, links, locale,
+            appendDeclarationRow(out, projection, symbol, links, locale,
                 category == "other" || kindByName[symbol.name].isEmpty())
         }
         out.append("</div></section>\n")
     }
 }
+

@@ -91,6 +91,11 @@ def verify_golden_set(repo: Path, version: int) -> None:
     directory = repo / f"tests/fixtures/golden-v{version}"
     if directory.is_symlink() or not directory.is_dir():
         raise ValueError(f"v{version} golden directory must be a regular repository directory")
+    obsolete = repo / f"tests/fixtures/golden-v{version - 1}"
+    if obsolete.exists() or obsolete.is_symlink():
+        raise ValueError(
+            f"obsolete v{version - 1} golden inventory must not be retained"
+        )
     expected = {f"{name}.docs.json" for name in GOLDEN_NAMES}
     actual = {path.name for path in directory.glob("*.docs.json")}
     missing = sorted(expected - actual)
@@ -116,7 +121,9 @@ ARTIFACT_SCHEMAS = frozenset({
 })
 LOOSE_PROPERTY_SCHEMAS = frozenset({"query-request"})
 LOOKAROUND = re.compile(r"\(\?(?:[=!]|<[=!])")
-DOC_IR_DEFINITIONS = frozenset({"declaration", "documentationPage", "package", "documentSetIdentity"})
+DOC_IR_DEFINITIONS = frozenset({
+    "declaration", "documentationPage", "package", "documentSetIdentity",
+})
 ARTIFACT_REQUIRED_DEFINITIONS = {
     "declaration": {"declaration", "diagnostic", "sourceRange"},
     "page": {"documentationPage", "package", "documentSetIdentity"},
@@ -130,6 +137,54 @@ def definition(value: object, name: str) -> dict:
     if not isinstance(found, dict):
         raise ValueError(f"schema definition is missing or not an object: {name}")
     return found
+def validate_classification_definitions(value: dict, name: str) -> None:
+    identifier = definition(value, "classificationId")
+    title = definition(value, "classificationTitle")
+    classification = definition(value, "documentationClassification")
+    tag = definition(value, "documentationClassificationTag")
+    group = definition(value, "documentationClassificationGroup")
+    if identifier.get("type") != "string" or \
+            identifier.get("minLength") != 1 or identifier.get("maxLength") != 64 or \
+            identifier.get("pattern") != "^[A-Za-z0-9_-]{1,64}$":
+        raise ValueError(f"{name} classification ID constraints are invalid")
+    if title.get("type") != "string" or title.get("minLength") != 1 or \
+            title.get("maxLength") != 256 or title.get("x-maxUtf8Bytes") != 256 or \
+            not isinstance(title.get("pattern"), str) or \
+            not isinstance(title.get("not"), dict) or \
+            not isinstance(title["not"].get("pattern"), str):
+        raise ValueError(f"{name} classification title byte limit is invalid")
+    if classification.get("type") != "object" or \
+            classification.get("additionalProperties") is not False or \
+            classification.get("required") != ["group", "tags"] or \
+            set(classification.get("properties", {})) != {"group", "tags"} or \
+            classification.get("properties", {}).get("group", {}).get("anyOf") != [
+                {"$ref": "#/$defs/documentationClassificationGroup"}, {"type": "null"}] or \
+            classification.get("properties", {}).get("tags") != {
+                "type": "array", "items": {
+                    "$ref": "#/$defs/documentationClassificationTag"}}:
+        raise ValueError(f"{name} classification shape is invalid")
+    if tag.get("type") != "object" or tag.get("additionalProperties") is not False or \
+            set(tag.get("required", [])) != {"id", "title"} or \
+            set(tag.get("properties", {})) != {"id", "title"} or \
+            tag.get("properties", {}).get("id") != {"$ref": "#/$defs/classificationId"} or \
+            tag.get("properties", {}).get("title") != {"$ref": "#/$defs/classificationTitle"}:
+        raise ValueError(f"{name} classification tag shape is invalid")
+    if group.get("type") != "object" or group.get("additionalProperties") is not False or \
+            set(group.get("required", [])) != {
+                "id", "packageName", "ownerId", "title", "order"} or \
+            set(group.get("properties", {})) != {
+                "id", "packageName", "ownerId", "title", "order"} or \
+            group.get("properties", {}).get("id") != {"$ref": "#/$defs/classificationId"} or \
+            group.get("properties", {}).get("packageName") != {
+                "type": "string", "minLength": 1} or \
+            group.get("properties", {}).get("title") != {"$ref": "#/$defs/classificationTitle"} or \
+            group.get("properties", {}).get("ownerId", {}).get("anyOf") != [
+                {"type": "string", "minLength": 1}, {"type": "null"}] or \
+            group.get("properties", {}).get("order", {}).get("anyOf") != [
+                {"type": "integer", "minimum": 0, "maximum": 999999}, {"type": "null"}]:
+        raise ValueError(f"{name} classification group identity/null contract is invalid")
+
+
 
 
 def schema_refs(value: object) -> list[str]:
@@ -179,11 +234,11 @@ def validate_artifact_schema(name: str, value: dict, properties: dict,
             raise ValueError(f"{name} schema definitions are missing: {sorted(missing)}")
         embedded = set(frozen_definitions or ()) & DOC_IR_DEFINITIONS & names
         if not embedded:
-            raise ValueError(f"{name} schema does not embed any frozen Doc IR v16 definition")
+            raise ValueError(f"{name} schema does not embed any current Doc IR v17 definition")
         for definition_name in embedded:
             if definitions[definition_name] != frozen_definitions[definition_name]:
                 raise ValueError(
-                    f"{name} schema forks the frozen Doc IR definition: {definition_name}")
+                    f"{name} schema forks the current Doc IR definition: {definition_name}")
         for required in ("symbol", "page"):
             reference = properties.get(required)
             if isinstance(reference, dict) and reference.get("$ref", "").endswith("/null"):
@@ -231,10 +286,50 @@ def validate_artifact_schema(name: str, value: dict, properties: dict,
                 {"const": "agent-full-index.json"}, {"type": "null"}]:
             raise ValueError("machine-manifest full-reference shape is invalid")
     elif name == "query-result":
-        for expected in ("querySnapshot", "queryItem", "queryIdentity", "queryRelation"):
+        validate_classification_definitions(value, name)
+        for expected in ("querySnapshot", "queryItem", "queryIdentity", "queryRelation",
+                         "queryFacets", "queryTagFacet"):
             definition(value, expected)
-        if "declaration" not in value.get("$defs", {}):
-            raise ValueError("query-result schema does not embed the Doc IR declaration model")
+        result = properties.get("result")
+        facets = definition(value, "queryFacets")
+        facet = definition(value, "queryTagFacet")
+        item = definition(value, "queryItem")
+        facet_scope = facet.get("properties", {}).get("scope", {})
+        expected_scope_fields = {
+            "snapshotId", "sourceSnapshotId", "moduleId", "documentSet",
+            "dependencyInstance", "dependencyInstanceState",
+        }
+        facet_properties = facet.get("properties", {})
+        if not isinstance(result, dict) or result.get("additionalProperties") is not False or \
+                set(result.get("required", [])) != {"items", "relations", "reports", "facets"} or \
+                result.get("properties", {}).get("facets") != {"$ref": "#/$defs/queryFacets"} or \
+                facets.get("additionalProperties") is not False or \
+                facets.get("required") != ["tags"] or \
+                set(facets.get("properties", {})) != {"tags"} or \
+                facets.get("properties", {}).get("tags", {}).get("items") != {
+                    "$ref": "#/$defs/queryTagFacet"} or \
+                facet.get("additionalProperties") is not False or \
+                set(facet.get("required", [])) != {"scope", "id", "title", "count"} or \
+                set(facet_properties) != {"scope", "id", "title", "count"} or \
+                facet_properties.get("id") != {"$ref": "#/$defs/classificationId"} or \
+                facet_properties.get("title") != {"$ref": "#/$defs/classificationTitle"} or \
+                facet_properties.get("count") != {"type": "integer", "minimum": 1} or \
+                facet_scope.get("additionalProperties") is not False or \
+                set(facet_scope.get("required", [])) != expected_scope_fields or \
+                set(facet_scope.get("properties", {})) != expected_scope_fields or \
+                facet_scope.get("properties", {}).get("moduleId") != {
+                    "$ref": "#/$defs/moduleId"} or \
+                facet_scope.get("properties", {}).get("documentSet") != {
+                    "anyOf": [{"$ref": "#/$defs/documentSetIdentity"}, {"type": "null"}]} or \
+                facet_scope.get("properties", {}).get("dependencyInstance") != {
+                    "anyOf": [{"$ref": "#/$defs/dependencyInstance"}, {"type": "null"}]} or \
+                facet_scope.get("properties", {}).get("dependencyInstanceState") != {
+                    "enum": ["recorded", "not_applicable", "unrecorded", "ambiguous"]}:
+            raise ValueError("query-result tag facet identity contract is invalid")
+        if "classification" not in item.get("required", []) or \
+                item.get("properties", {}).get("classification") != {
+                    "$ref": "#/$defs/documentationClassification"}:
+            raise ValueError("query-result item classification is not required")
 
 
 def validate_schema_document(name: str, value: object,
@@ -266,35 +361,35 @@ def validate_schema_document(name: str, value: object,
             raise ValueError(f"{name} schema lost a required field")
     if name in ARTIFACT_SCHEMAS:
         validate_artifact_schema(name, value, properties, frozen_definitions)
-    if name in ("doc-ir", "doc-ir-v16") and properties["documentationRevision"] != {"type": "string"}:
+    if name in ("doc-ir", "doc-ir-v17") and properties["documentationRevision"] != {"type": "string"}:
         raise ValueError(f"{name} schema documentation revision shape is invalid")
-    if name in ("doc-ir", "doc-ir-v16", "symbol-index"):
+    if name in ("doc-ir", "doc-ir-v17", "symbol-index"):
         definitions = value.get("$defs")
         for definition_name, graph_field in (
             ("dependencyInstance", "componentModuleId"), ("documentSetIdentity", "moduleId"),
             ("documentSetIdentity", "apiVersion"), ("documentSetIdentity", "documentationRevision"),
         ):
-            definition = definitions.get(definition_name) if isinstance(definitions, dict) else None
-            if not isinstance(definition, dict) or graph_field not in definition.get("required", []) or \
-                    definition.get("properties", {}).get(graph_field) != {"type": "string"}:
+            graph_definition = definitions.get(definition_name) if isinstance(definitions, dict) else None
+            if not isinstance(graph_definition, dict) or graph_field not in graph_definition.get("required", []) or \
+                    graph_definition.get("properties", {}).get(graph_field) != {"type": "string"}:
                 raise ValueError(f"{name} schema graph binding field is missing: {definition_name}.{graph_field}")
     if name.startswith("doc-ir"):
         definitions = value.get("$defs")
         if not isinstance(definitions, dict) or not DOC_IR_CORE_DEFS.issubset(definitions):
             raise ValueError(f"{name} schema critical definitions are missing")
-        for property_name, definition in DOC_IR_ARRAY_REFS.items():
+        for property_name, definition_name in DOC_IR_ARRAY_REFS.items():
             property_schema = properties[property_name]
             if not isinstance(property_schema, dict) or \
                     property_schema.get("type") != "array" or \
-                    property_schema.get("items") != {"$ref": f"#/$defs/{definition}"}:
+                    property_schema.get("items") != {"$ref": f"#/$defs/{definition_name}"}:
                 raise ValueError(
                     f"{name} schema collection shape is invalid: {property_name}"
                 )
-        for property_name, definition in (
+        for property_name, definition_name in (
             ("generator", "generator"), ("project", "project"),
             ("configuration", "configuration"),
         ):
-            if properties[property_name] != {"$ref": f"#/$defs/{definition}"}:
+            if properties[property_name] != {"$ref": f"#/$defs/{definition_name}"}:
                 raise ValueError(
                     f"{name} schema object reference is invalid: {property_name}"
                 )
@@ -308,12 +403,82 @@ def validate_schema_document(name: str, value: object,
             raise ValueError(f"{name} repository definition is missing")
         if "evidenceKey" in definitions.get("tag", {}).get("properties", {}):
             raise ValueError(f"{name} schema contains removed tag evidence")
-        if name in ("doc-ir", "doc-ir-v16"):
-            if not {
+        if name in ("doc-ir", "doc-ir-v17"):
+            metadata = definition(value, "documentationMetadata")
+            if properties.get("metadata") != {"$ref": "#/$defs/documentationMetadata"} or \
+                    metadata.get("additionalProperties") is not False or \
+                    metadata.get("required") != ["groups", "tags"] or \
+                    set(metadata.get("properties", {})) != {"groups", "tags"}:
+                raise ValueError(f"{name} metadata root shape is invalid")
+            metadata_shapes = {
+                "documentationTitle": ({"language", "title"}, {"language", "title"}),
+                "documentationGroupDefinition": (
+                    {"moduleId", "packageName", "ownerId", "id", "title", "titles", "order"},
+                    {"moduleId", "packageName", "ownerId", "id", "title", "titles", "order"},
+                ),
+                "documentationTagDefinition": (
+                    {"moduleId", "id", "title", "titles"},
+                    {"moduleId", "id", "title", "titles"},
+                ),
+            }
+            for definition_name, (required_fields, property_fields) in metadata_shapes.items():
+                shape = definition(value, definition_name)
+                if shape.get("additionalProperties") is not False or \
+                        set(shape.get("required", [])) != required_fields or \
+                        set(shape.get("properties", {})) != property_fields:
+                    raise ValueError(f"{name} metadata definition shape is invalid: {definition_name}")
+                if shape.get("type") != "object":
+                    raise ValueError(f"{name} metadata definition is not an object: {definition_name}")
+            title = definition(value, "documentationTitle")
+            group = definition(value, "documentationGroupDefinition")
+            tag = definition(value, "documentationTagDefinition")
+            if title.get("properties", {}).get("language") != {"enum": ["zh-CN", "en"]} or \
+                    title.get("properties", {}).get("title") != {
+                        "$ref": "#/$defs/metadataTitleText"} or \
+                    group.get("properties", {}).get("moduleId") != {
+                        "type": "string", "minLength": 1} or \
+                    group.get("properties", {}).get("packageName") != {
+                        "type": "string", "minLength": 1} or \
+                    group.get("properties", {}).get("ownerId") != {
+                        "$ref": "#/$defs/nullableSymbolId"} or \
+                    group.get("properties", {}).get("order", {}).get("anyOf") != [
+                        {"type": "integer", "minimum": 0, "maximum": 999999},
+                        {"type": "null"}] or \
+                    tag.get("properties", {}).get("moduleId") != {
+                        "type": "string", "minLength": 1}:
+                raise ValueError(f"{name} metadata group scope or null/order contract is invalid")
+            for definition_name, shape in (("documentationGroupDefinition", group),
+                                           ("documentationTagDefinition", tag)):
+                id_shape = shape.get("properties", {}).get("id", {})
+                if id_shape.get("type") != "string" or \
+                        id_shape.get("pattern") != "^[A-Za-z0-9_-]{1,64}$" or \
+                        shape.get("properties", {}).get("title") != {
+                            "$ref": "#/$defs/metadataTitleText"} or \
+                        shape.get("properties", {}).get("titles", {}).get("type") != "array" or \
+                        shape.get("properties", {}).get("titles", {}).get("maxItems") != 2 or \
+                        shape.get("properties", {}).get("titles", {}).get("items") != {
+                            "$ref": "#/$defs/documentationTitle"}:
+                    raise ValueError(
+                        f"{name} metadata title/id contract is invalid: {definition_name}")
+            for field in ("groups", "tags"):
+                if metadata.get("properties", {}).get(field, {}).get("type") != "array" or \
+                        metadata.get("properties", {}).get(field, {}).get("maxItems") != 2048:
+                    raise ValueError(f"{name} metadata definition budget is invalid: {field}")
+            for field, item in (("groups", "documentationGroupDefinition"),
+                                ("tags", "documentationTagDefinition")):
+                if metadata.get("properties", {}).get(field, {}).get("items") != {
+                        "$ref": f"#/$defs/{item}"}:
+                    raise ValueError(f"{name} metadata collection shape is invalid: {field}")
+            title_text = definition(value, "metadataTitleText")
+            if title_text.get("type") != "string" or title_text.get("minLength") != 1 or \
+                    title_text.get("maxLength") != 256 or title_text.get("x-maxUtf8Bytes") != 256:
+                raise ValueError(f"{name} metadata title byte limit is invalid")
+            markdown_definitions = {
                 "codeBlockMetadata", "headingMetadata", "listMetadata",
                 "listItemMetadata", "tableMetadata", "tableRowMetadata",
                 "tableCellMetadata",
-            }.issubset(definitions):
+            }
+            if not markdown_definitions.issubset(definitions):
                 raise ValueError(f"{name} schema Markdown definitions are missing")
             markdown_node = definitions["markdownNode"]
             if not isinstance(markdown_node, dict) or \
@@ -325,6 +490,27 @@ def validate_schema_document(name: str, value: object,
                         "kind", "literal", "source", "metadata", "children"
                     }:
                 raise ValueError(f"{name} schema Markdown node shape is invalid")
+    elif name == "query-request":
+        tags = properties.get("tags")
+        tag_items = tags.get("items") if isinstance(tags, dict) else None
+        if tags is not None and (
+                not isinstance(tags, dict)
+                or tags.get("type") != "array"
+                or tags.get("minItems") != 1
+                or tags.get("maxItems") != 64
+                or "tags" in required
+                or not isinstance(tag_items, dict)
+                or tag_items.get("type") != "string"
+                or tag_items.get("pattern") != "^[A-Za-z0-9_-]{1,64}$"
+                or tag_items.get("minLength") != 1
+                or tag_items.get("maxLength") != 64
+        ):
+            raise ValueError("query-request tags set predicate contract is invalid")
+    elif name == "declaration":
+        validate_classification_definitions(value, name)
+        if properties.get("classification") != {
+                "$ref": "#/$defs/documentationClassification"}:
+            raise ValueError("declaration classification is not required")
     elif name == "diagnostics":
         if properties["diagnostics"] != {
             "type": "array", "items": {"$ref": "doc-ir.schema.json#/$defs/diagnostic"}
@@ -342,26 +528,123 @@ def validate_schema_document(name: str, value: object,
                     "$ref": "doc-ir.schema.json"
                 }:
             raise ValueError("cfg-matrix schema profile shape is invalid")
-    elif name in ("search-index", "search-index-v9"):
-        entries = properties["entries"]
-        items = entries.get("items") if isinstance(entries, dict) else None
-        expected_required_fields = {
-            "id", "canonicalId", "exposure", "name", "qualifiedName", "kind",
-            "packageName", "summary", "href"
+    elif name in ("search-index", "search-index-v11"):
+        validate_classification_definitions(value, name)
+        entries = properties.get("entries")
+        definitions = value.get("$defs")
+        if not isinstance(definitions, dict):
+            raise ValueError("search-index schema definitions are invalid")
+        entry = definitions.get("entry")
+        module = definitions.get("module")
+        tag_dictionary_entry = definitions.get("tagDictionaryEntry")
+        coverage = properties.get("coverage")
+        scope_schema = properties.get("scope")
+        search_contract = definitions.get("searchContract")
+        search_contract_fields = {
+            "version", "maxRequestBytes", "textPolicy", "defaultMode", "defaultProfile",
+            "defaultLimit", "maxLimit", "maxFilters", "maxTags", "staticBodyTextLimit",
+            "summaryDisplayLimit", "signatureDisplayLimit", "requestProperties",
+            "globalFields", "searchFields", "filterFields", "filterOps", "setPredicates",
+            "preciseRules", "discoveryRules",
         }
-        expected_property_fields = expected_required_fields | {
-            "moduleId", "moduleName", "ownerName", "parameterTypes", "returnType", "returnCanonical", "bindings", "externalDocs", "body", "sections", "fields"
+        expected_set_predicates = {
+            "type": "array", "minItems": 1, "maxItems": 1,
+            "items": {
+                "type": "object", "additionalProperties": False,
+                "required": ["field", "property", "primitive"],
+                "properties": {
+                    "field": {"const": "tags"},
+                    "property": {"const": "tagIds"},
+                    "primitive": {"const": "all_exact"},
+                },
+            },
         }
+        entry_required = {
+            "id", "canonicalId", "snapshotId", "scope", "concept", "genericArity",
+            "ownerId", "name", "qualifiedName", "kind", "packageName", "ownerName",
+            "ownerQualifiedName", "symbolKey", "parameterTypes", "returnType",
+            "returnCanonical", "summary", "summaryDisplay", "body", "bodyTruncated",
+            "href", "exposures", "sections", "externalDocs", "bindings", "classification"
+        }
+        coverage_required = {
+            "profile", "projectionId", "bodyTextLimit", "bodyComplete", "truncatedEntries"
+        }
+        scope_required = {
+            "snapshotId", "sourceSnapshotId", "publicationRevision", "project",
+            "language", "audience", "cfgProfile", "apiCollectionState"
+        }
+        module_required = {
+            "moduleId", "moduleName", "documentSet", "dependency", "dependencyInstanceState"
+        }
+        root_required = {
+            "schemaVersion", "profile", "contract", "projectionId", "scope", "coverage",
+            "modules", "tags", "entries"
+        }
+        tags = properties.get("tags")
         if (
                 not isinstance(entries, dict)
                 or entries.get("type") != "array"
-                or not isinstance(items, dict)
-                or items.get("type") != "object"
-                or items.get("additionalProperties") is not False
-                or set(items.get("required", [])) != expected_required_fields
-                or set(items.get("properties", {})) != expected_property_fields
+                or entries.get("items") != {"$ref": "#/$defs/entry"}
+                or not isinstance(entry, dict)
+                or entry.get("type") != "object"
+                or entry.get("additionalProperties") is not False
+                or set(entry.get("required", [])) != entry_required
+                or set(entry.get("properties", {})) != entry_required
+                or entry.get("properties", {}).get("classification") != {
+                    "$ref": "#/$defs/documentationClassification"}
+                or not isinstance(tags, dict)
+                or tags.get("type") != "array"
+                or tags.get("items") != {"$ref": "#/$defs/tagDictionaryEntry"}
+                or not isinstance(tag_dictionary_entry, dict)
+                or tag_dictionary_entry.get("type") != "object"
+                or tag_dictionary_entry.get("additionalProperties") is not False
+                or tag_dictionary_entry.get("required") != ["scope", "id", "title"]
+                or set(tag_dictionary_entry.get("properties", {})) != {"scope", "id", "title"}
+                or tag_dictionary_entry.get("properties", {}).get("scope") != {
+                    "type": "integer", "minimum": 0, "maximum": 4095}
+                or tag_dictionary_entry.get("properties", {}).get("id") != {
+                    "$ref": "#/$defs/classificationId"}
+                or tag_dictionary_entry.get("properties", {}).get("title") != {
+                    "$ref": "#/$defs/classificationTitle"}
+                or not isinstance(value.get("required"), list)
+                or set(value["required"]) != root_required
+                or properties.get("contract") != {"$ref": "#/$defs/searchContract"}
+                or not isinstance(search_contract, dict)
+                or search_contract.get("additionalProperties") is not False
+                or search_contract.get("type") != "object"
+                or set(search_contract.get("required", [])) != search_contract_fields
+                or set(search_contract.get("properties", {})) != search_contract_fields
+                or search_contract.get("properties", {}).get("version") != {
+                    "const": "cjdoc.search-contract/2"}
+                or search_contract.get("properties", {}).get("maxTags") != {
+                    "type": "integer", "minimum": 1, "maximum": 64}
+                or search_contract.get("properties", {}).get("setPredicates") !=
+                    expected_set_predicates
+                or not isinstance(coverage, dict)
+                or coverage.get("type") != "object"
+                or set(coverage.get("required", [])) != coverage_required
+                or set(coverage.get("properties", {})) != coverage_required
+                or coverage.get("additionalProperties") is not False
+                or not isinstance(scope_schema, dict)
+                or scope_schema.get("type") != "object"
+                or scope_schema.get("additionalProperties") is not False
+                or set(scope_schema.get("required", [])) != scope_required
+                or set(scope_schema.get("properties", {})) != scope_required
+                or not isinstance(module, dict)
+                or module.get("type") != "object"
+                or properties.get("modules", {}).get("items") != {"$ref": "#/$defs/module"}
+                or set(module.get("required", [])) != module_required
+                or set(module.get("properties", {})) != module_required
+                or module.get("properties", {}).get("documentSet") != {
+                    "anyOf": [{"$ref": "#/$defs/documentSet"}, {"type": "null"}]}
+                or module.get("properties", {}).get("dependency") != {
+                    "anyOf": [{"$ref": "#/$defs/dependency"}, {"type": "null"}]}
+                or module.get("additionalProperties") is not False
         ):
             raise ValueError("search-index schema entry shape is invalid")
+        if module.get("properties", {}).get("dependencyInstanceState") != {
+                "enum": ["recorded", "not_applicable", "unrecorded", "ambiguous"]}:
+            raise ValueError("search-index dependency instance state contract changed")
     elif name == "symbol-index":
         entries = properties["entries"]
         items = entries.get("items") if isinstance(entries, dict) else None
@@ -437,13 +720,13 @@ def verify_schema_set(repo: Path) -> None:
             "published schema set mismatch: missing=" + ",".join(missing) +
             " unexpected=" + ",".join(unexpected)
         )
-    # Artifact schemas must embed the same Doc IR v16 definitions rather than a
-    # forked model, so the frozen document is loaded once and compared.
+    # Artifact schemas embed the current Doc IR v17 declarations; load that
+    # model once and reject forks in every consumer schema.
     frozen_definitions = strict_load(
-        directory / "doc-ir-v16.schema.json", description="doc-ir-v16 schema")
+        directory / "doc-ir-v17.schema.json", description="doc-ir-v17 schema")
     if not isinstance(frozen_definitions, dict) or not isinstance(
             frozen_definitions.get("$defs"), dict):
-        raise ValueError("doc-ir-v16 schema definitions are missing")
+        raise ValueError("doc-ir-v17 schema definitions are missing")
     frozen_definitions = frozen_definitions["$defs"]
     for name in SCHEMA_NAMES:
         path = directory / f"{name}.schema.json"

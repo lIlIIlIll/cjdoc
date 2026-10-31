@@ -18,29 +18,55 @@ CSP = (
 )
 
 
+def _decode_script_text(source: str) -> str:
+    escapes = {"n": "\n", "r": "\r", "t": "\t", "f": "\f", "v": "\v",
+               "b": "\b", "0": "\0", "\\": "\\", '"': '"', "'": "'", "$": "$"}
+    result = []
+    index = 0
+    while index < len(source):
+        value = source[index]
+        index += 1
+        if value != "\\":
+            result.append(value)
+            continue
+        escape = source[index]
+        index += 1
+        if escape == "u" and source[index] == "{":
+            end = source.index("}", index)
+            result.append(chr(int(source[index + 1:end], 16)))
+            index = end + 1
+        else:
+            result.append(escapes[escape])
+    return "".join(result)
+
+
+def _script_literal(path: Path, name: str, prefix: str = "") -> str:
+    """Reproduce a static Cangjie literal, including its emitted newlines."""
+    source = path.read_text(encoding="utf-8")
+    raw_marker = f'internal let {name} = {prefix}#"\n'
+    if raw_marker in source:
+        return "\n" + source.split(raw_marker, 1)[1].split('\n"#', 1)[0] + "\n"
+    marker = f'internal let {name} = {prefix}"""\n'
+    return _decode_script_text(source.split(marker, 1)[1].split('\n"""', 1)[0]) + "\n"
+
+
 def canonical_search_script() -> str:
-    source = (SCRIPT.parent.parent / "src/render/html_scripts.cj").read_text(encoding="utf-8")
-    marker = 'internal let HTML_SEARCH_SCRIPT = """\n'
-    literal = source.split(marker, 1)[1].split('\n"""', 1)[0]
-    # Decode doubled backslashes in Cangjie string literals before execution.
-    language = (SCRIPT.parent.parent / "src/render/html_language.cj").read_text(encoding="utf-8")
-    navigation = language.split('internal let LANGUAGE_NAVIGATION_SCRIPT = """\n', 1)[1].split('\n"""', 1)[0]
-    sidebar = (SCRIPT.parent.parent / "src/render/html_sidebar_script.cj").read_text(encoding="utf-8")
-    sidebar = sidebar.split('internal let HTML_SIDEBAR_SCRIPT = """\n', 1)[1].split('\n"""', 1)[0]
-    return (sidebar.replace("\\\\", "\\") + "\n" + literal.replace("\\\\", "\\")
-            + "\n" + navigation.replace("\\\\", "\\") + "\n")
+    render = SCRIPT.parent.parent / "src/render"
+    return (_script_literal(render / "html_sidebar_script.cj", "HTML_SIDEBAR_SCRIPT")
+            + _script_literal(render / "html_search_kernel.cj", "HTML_SEARCH_KERNEL_SCRIPT")
+            + _script_literal(render / "html_scripts.cj", "HTML_SEARCH_SCRIPT",
+                              "HTML_SEARCH_KERNEL_SCRIPT + ")
+            + _script_literal(render / "html_language.cj", "LANGUAGE_NAVIGATION_SCRIPT"))
 
 
 def canonical_theme_bootstrap_script() -> str:
-    source = (SCRIPT.parent.parent / "src/render/html_scripts.cj").read_text(encoding="utf-8")
-    marker = 'internal let HTML_THEME_BOOTSTRAP_SCRIPT = """\n'
-    literal = source.split(marker, 1)[1].split('\n"""', 1)[0]
-    return literal + "\n"
+    return _script_literal(SCRIPT.parent.parent / "src/render/html_scripts.cj",
+                           "HTML_THEME_BOOTSTRAP_SCRIPT")
 
 
 def canonical_symbol_alias_script() -> str:
-    source = (SCRIPT.parent.parent / "src/render/html_routing.cj").read_text(encoding="utf-8")
-    return "\n" + source.split('internal let HTML_SYMBOL_ALIAS_SCRIPT = #"\n', 1)[1].split('\n"#', 1)[0] + "\n"
+    return _script_literal(SCRIPT.parent.parent / "src/render/html_routing.cj",
+                           "HTML_SYMBOL_ALIAS_SCRIPT")
 
 
 class ValidateHtmlSiteTest(unittest.TestCase):
@@ -68,22 +94,65 @@ class ValidateHtmlSiteTest(unittest.TestCase):
         entry = {
             "id": canonical_id,
             "canonicalId": canonical_id,
-            "exposure": False,
+            "snapshotId": "fixture-snapshot",
+            "scope": 0,
+            "concept": False,
+            "genericArity": 0,
+            "ownerId": None,
             "name": "example",
             "qualifiedName": "Fixture.example",
             "kind": "function",
             "packageName": "Fixture",
-            "summary": "A fixture summary.",
-            "href": "index.html#top",
-            "moduleId": "fixture-module",
-            "moduleName": "Fixture",
             "ownerName": None,
+            "ownerQualifiedName": None,
+            "symbolKey": None,
             "parameterTypes": ["String"],
             "returnType": "Unit",
             "returnCanonical": "std.core.Unit",
+            "summary": "A fixture summary.",
+            "summaryDisplay": "A fixture summary.",
+            "body": "A fixture summary.",
+            "bodyTruncated": False,
+            "href": "index.html#top",
+            "exposures": [],
+            "sections": [],
+            "externalDocs": [],
+            "bindings": [],
+            "classification": {"group": None, "tags": []},
         }
         search_text = json.dumps(
-            {"schemaVersion": "cjdoc.search-index/8", "entries": [entry]},
+            {
+                "schemaVersion": "cjdoc.search-index/11",
+                "profile": "bounded-static",
+                "contract": {"version": "cjdoc.search-contract/2"},
+                "projectionId": "fixture-projection",
+                "scope": {
+                    "snapshotId": "fixture-snapshot",
+                    "sourceSnapshotId": "fixture-source-snapshot",
+                    "publicationRevision": "",
+                    "project": "Fixture",
+                    "language": "en",
+                    "audience": "external",
+                    "cfgProfile": "",
+                    "apiCollectionState": "resolved",
+                },
+                "coverage": {
+                    "profile": "bounded-static",
+                    "projectionId": "fixture-projection",
+                    "bodyTextLimit": 2000,
+                    "bodyComplete": True,
+                    "truncatedEntries": 0,
+                },
+                "modules": [{
+                    "moduleId": "fixture-module",
+                    "moduleName": "Fixture",
+                    "documentSet": None,
+                    "dependency": None,
+                    "dependencyInstanceState": "not_applicable",
+                }],
+                "tags": [],
+                "entries": [entry],
+            },
             separators=(",", ":"),
         )
         (root / "search-index.json").write_text(
@@ -116,12 +185,72 @@ class ValidateHtmlSiteTest(unittest.TestCase):
             text=True,
         )
 
+    def rewrite_search(self, root: Path, search: dict) -> None:
+        search_text = json.dumps(search, separators=(",", ":"))
+        (root / "search-index.json").write_text(
+            search_text + "\n", encoding="utf-8", newline="\n"
+        )
+        signatures = {
+            entry["canonicalId"]: "func example(String)" for entry in search["entries"]
+        }
+        signature_text = json.dumps(signatures, separators=(",", ":"))
+        (root / "search-index.js").write_text(
+            "globalThis.__CJDOC_SEARCH_INDEX__ = " + search_text
+            + ";\nglobalThis.__CJDOC_SEARCH_SIGNATURES__ = " + signature_text + ";\n",
+            encoding="utf-8", newline="\n",
+        )
+
+
     def test_accepts_well_formed_external_script_site(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self.write_site(root)
             result = self.validate(root)
             self.assertEqual(result.returncode, 0, result.stderr)
+
+
+    def test_accepts_classification_with_nullable_group_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            search = json.loads((root / "search-index.json").read_text(encoding="utf-8"))
+            search["tags"] = [{"scope": 0, "id": "stream", "title": "Streaming"}]
+            search["entries"][0]["classification"] = {
+                "group": {
+                    "id": "api", "packageName": "Fixture", "ownerId": None,
+                    "title": "API", "order": None,
+                },
+                "tags": [{"id": "stream", "title": "Streaming"}],
+            }
+            self.rewrite_search(root, search)
+            result = self.validate(root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rejects_unknown_classification_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            search = json.loads((root / "search-index.json").read_text(encoding="utf-8"))
+            search["entries"][0]["classification"]["extra"] = None
+            self.rewrite_search(root, search)
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("classification has an invalid shape", result.stderr)
+
+    def test_rejects_classification_titles_over_utf8_byte_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_site(root)
+            search = json.loads((root / "search-index.json").read_text(encoding="utf-8"))
+            title = "é" * 129
+            search["tags"] = [{"scope": 0, "id": "stream", "title": title}]
+            search["entries"][0]["classification"]["tags"] = [
+                {"id": "stream", "title": title}
+            ]
+            self.rewrite_search(root, search)
+            result = self.validate(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("search tag identity or title is invalid", result.stderr)
 
     def test_alias_requires_canonical_script_and_valid_target(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
@@ -19,9 +20,22 @@ EXPECTED_CSP = (
     "base-uri 'none'; form-action 'none'"
 )
 VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
-CANONICAL_SEARCH_JS_SHA256 = "4a179d2071abbc288f66ed1ce5bdee39fa335ce1b9e68799b6e2a37ec0faced6"
+CANONICAL_SEARCH_JS_SHA256 = "671a51c6e17e23d855bec43a0f597ea92ef86dc6050d9591606bb9203d31cf8c"
 CANONICAL_THEME_BOOTSTRAP_JS_SHA256 = "79fe532a96603bce52c49d9fd92cea58503875a0c61f5d3475f11c337f960642"
 CANONICAL_SYMBOL_ALIAS_JS_SHA256 = "c3d8038e8c37d201ff30c2bb7018bd7b88730a22046e26918fb173752d16938a"
+TAG_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+CLASSIFICATION_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+CLASSIFICATION_ASCII_WHITESPACE = re.compile(r"[ \t\n\r\f\v]*")
+
+
+def valid_classification_title(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and 1 <= len(value) <= 256
+        and len(value.encode("utf-8")) <= 256
+        and CLASSIFICATION_CONTROL.search(value) is None
+        and CLASSIFICATION_ASCII_WHITESPACE.fullmatch(value) is None
+    )
 
 
 class PageParser(HTMLParser):
@@ -308,8 +322,13 @@ def main() -> int:
         or strict_loads(embedded_search, description="embedded HTML search index") != search
     ):
         raise ValueError("search-index.js payload differs from search-index.json")
-    if search.get("schemaVersion") not in ("cjdoc.search-index/8", "cjdoc.search-index/9"):
+    if search.get("schemaVersion") != "cjdoc.search-index/11":
         raise ValueError("unexpected search index schemaVersion")
+    if set(search) != {"schemaVersion", "profile", "contract", "projectionId",
+                       "scope", "coverage", "modules", "tags", "entries"}:
+        raise ValueError("invalid search index fields")
+    if not isinstance(search["contract"], dict) or search["contract"].get("version") != "cjdoc.search-contract/2":
+        raise ValueError("search index must publish its executable contract")
     entries = search.get("entries")
     if not isinstance(entries, list):
         raise ValueError("search index entries must be an array")
@@ -318,17 +337,102 @@ def main() -> int:
     ids = [entry.get("id") for entry in entries]
     if len(ids) != len(set(ids)):
         raise ValueError("search index IDs must be unique")
-    required = {"id", "canonicalId", "exposure", "name", "qualifiedName", "kind",
-                "packageName", "summary", "href", "moduleId", "moduleName", "ownerName",
-                "parameterTypes", "returnType", "returnCanonical"}
-    allowed = required | {"bindings", "externalDocs", "body", "sections", "fields"}
+    modules = search.get("modules")
+    if not isinstance(modules, list):
+        raise ValueError("search index modules must be an array")
+    module_fields = {"moduleId", "moduleName", "documentSet", "dependency", "dependencyInstanceState"}
+    module_ids = set()
+    for module in modules:
+        if not isinstance(module, dict) or set(module) != module_fields:
+            raise ValueError("invalid search module fields")
+        if not isinstance(module["moduleId"], str) or not module["moduleId"] or module["moduleId"] in module_ids:
+            raise ValueError("search module identities must be non-empty and unique")
+        module_ids.add(module["moduleId"])
+        if module["moduleName"] is not None and not isinstance(module["moduleName"], str):
+            raise ValueError("search module name must be a string or null")
+        if any(module[key] is not None and not isinstance(module[key], dict)
+               for key in ("documentSet", "dependency")):
+            raise ValueError("search module evidence must be an object or null")
+        if module["dependencyInstanceState"] not in {
+                "recorded", "not_applicable", "unrecorded", "ambiguous"}:
+            raise ValueError("invalid search module dependency instance state")
+    tags = search.get("tags")
+    if not isinstance(tags, list):
+        raise ValueError("search index tags must be an array")
+    tag_titles: dict[tuple[int, str], str] = {}
+    previous_tag: tuple[int, bytes] | None = None
+    for tag in tags:
+        if not isinstance(tag, dict) or set(tag) != {"scope", "id", "title"}:
+            raise ValueError("invalid search tag dictionary entry")
+        scope, identifier, title = tag["scope"], tag["id"], tag["title"]
+        if type(scope) is not int or not 0 <= scope < len(modules):
+            raise ValueError("search tag scope is outside its module table")
+        if not isinstance(identifier, str) or not TAG_ID.fullmatch(identifier) or \
+                not valid_classification_title(title):
+            raise ValueError("search tag identity or title is invalid")
+        sort_key = (scope, identifier.encode("utf-8"))
+        if previous_tag is not None and sort_key <= previous_tag:
+            raise ValueError("search tag dictionary must be unique and sorted by module and ID")
+        previous_tag = sort_key
+        tag_titles[(scope, identifier)] = title
+    coverage = search.get("coverage")
+    if not isinstance(coverage, dict) or coverage.get("projectionId") != search.get("projectionId"):
+        raise ValueError("search index coverage must describe its own projection")
+    if coverage.get("bodyComplete") != (coverage.get("truncatedEntries") == 0):
+        raise ValueError("search index coverage must agree with its truncation count")
+    required = {"id", "canonicalId", "snapshotId", "scope", "concept", "genericArity",
+                "ownerId", "name", "qualifiedName", "kind", "packageName", "ownerName",
+                "ownerQualifiedName", "symbolKey", "parameterTypes", "returnType",
+                "returnCanonical", "summary", "summaryDisplay", "body", "bodyTruncated",
+                "href", "exposures", "sections", "externalDocs", "bindings", "classification"}
     for entry in entries:
-        fields = set(entry)
-        if not required.issubset(fields) or not fields.issubset(allowed):
+        if set(entry) != required:
             raise ValueError(f"invalid search entry fields for {entry.get('id')}")
-        if not isinstance(entry["moduleId"], str) or not entry["moduleId"]:
-            raise ValueError("search entry moduleId must be a non-empty string")
-        for field in ("moduleName", "ownerName", "returnType", "returnCanonical"):
+        if not isinstance(entry["bodyTruncated"], bool) or not isinstance(entry["concept"], bool):
+            raise ValueError(f"search entry flags must be booleans: {entry.get('id')}")
+        if type(entry["scope"]) is not int:
+            raise ValueError(f"search entry scope must be a module index: {entry.get('id')}")
+        classification = entry["classification"]
+        if not isinstance(classification, dict) or set(classification) != {"group", "tags"} or \
+                not isinstance(classification["tags"], list):
+            raise ValueError("search entry classification has an invalid shape")
+        group = classification["group"]
+        if group is not None:
+            if not isinstance(group, dict) or set(group) != {
+                    "id", "packageName", "ownerId", "title", "order"} or \
+                    not isinstance(group["id"], str) or not TAG_ID.fullmatch(group["id"]) or \
+                    not isinstance(group["packageName"], str) or not group["packageName"] or \
+                    (group["ownerId"] is not None and
+                     (not isinstance(group["ownerId"], str) or not group["ownerId"])) or \
+                    not valid_classification_title(group["title"]) or \
+                    (group["order"] is not None and
+                     (type(group["order"]) is not int or not 0 <= group["order"] <= 999999)):
+                raise ValueError("search entry group classification is invalid")
+        classification_ids: list[str] = []
+        for tag in classification["tags"]:
+            if not isinstance(tag, dict) or set(tag) != {"id", "title"} or \
+                    not isinstance(tag["id"], str) or not TAG_ID.fullmatch(tag["id"]) or \
+                    not valid_classification_title(tag["title"]):
+                raise ValueError("search entry tag classification is invalid")
+            classification_ids.append(tag["id"])
+            if not entry["concept"] and tag_titles.get((entry["scope"], tag["id"])) != tag["title"]:
+                raise ValueError("search entry tag does not match its scoped dictionary")
+        if classification_ids != sorted(set(classification_ids), key=lambda item: item.encode("utf-8")):
+            raise ValueError("search entry tags must be unique and sorted by ID")
+        if entry["concept"] and classification != {"group": None, "tags": []}:
+            raise ValueError("concept search entries must have empty classification")
+        if entry["concept"]:
+            if entry["scope"] != -1 or any(entry[key] is not None for key in
+                    ("packageName", "qualifiedName", "ownerId", "ownerName", "ownerQualifiedName", "symbolKey")):
+                raise ValueError("concept search entries must not invent declaration scope")
+        elif not 0 <= entry["scope"] < len(modules):
+            raise ValueError(f"search entry scope is outside its module table: {entry.get('id')}")
+        if entry["snapshotId"] != search["scope"].get("snapshotId"):
+            raise ValueError("search entry belongs to another snapshot")
+        if type(entry["genericArity"]) is not int or entry["genericArity"] < 0:
+            raise ValueError("search entry genericArity must be a non-negative integer")
+        for field in ("packageName", "qualifiedName", "ownerId", "ownerName",
+                      "ownerQualifiedName", "symbolKey", "returnType", "returnCanonical"):
             if entry[field] is not None and not isinstance(entry[field], str):
                 raise ValueError(f"search entry {field} must be a string or null")
         if not isinstance(entry["parameterTypes"], list) or any(
@@ -339,12 +443,18 @@ def main() -> int:
         target_parser = pages.get(target.resolve()) if target is not None else None
         if target_parser is None or (fragment and fragment not in target_parser.ids):
             raise ValueError(f"broken search target: {entry['href']}")
+    if coverage.get("truncatedEntries") != sum(entry["bodyTruncated"] for entry in entries):
+        raise ValueError("search coverage must count the actual truncated entries")
 
     api_canonical_ids = {
         entry["canonicalId"] for entry in entries
-        if not entry["canonicalId"].startswith("cjdoc:concept:")
+        if not entry["concept"]
     }
-    exposure_ids = {entry["id"] for entry in entries if entry["exposure"]}
+    # An exposure is an alias of its canonical entry, not a second entry, so its
+    # signature key comes from the nested exposure rows.
+    exposure_ids = {
+        exposure["id"] for entry in entries for exposure in entry["exposures"]
+    }
     expected_signature_ids = api_canonical_ids | exposure_ids
     if set(signatures) != expected_signature_ids:
         raise ValueError("search signatures must match canonical API and exposure entry IDs")

@@ -171,5 +171,6 @@ public func projectDocumentationLanguage(value: DocumentationSet, locale: String
         unboundSemanticDeclarations: value.unboundSemanticDeclarations.toArray(), diagnostics: value.diagnostics.toArray(),
         languageOptions: value.languageOptions, pages: value.pages.toArray(), readingLanguage: Some(language),
         externalDocumentation: value.externalDocumentation.toArray(),
-        dependencies: value.dependencies.toArray(), documentSets: value.documentSets.toArray())
+        dependencies: value.dependencies.toArray(), documentSets: value.documentSets.toArray(),
+        metadata: value.metadata)
 }

@@ -1,0 +1,4129 @@
+{
+  "description": "One source-bound expected answer per request for CLI, live MCP and the published static kernel. symbolRefs bind exact qualifiedName plus captured source header, never tested query/index results.",
+  "suites": {
+    "basic": {
+      "symbolRefs": {
+        "Parser": {
+          "qualifiedName": "basic.Parser",
+          "signature": "public class Parser<T> <: Reader"
+        },
+        "parseText": {
+          "qualifiedName": "basic.parse",
+          "signature": "public func parse(text: String): Int64"
+        },
+        "parseBytes": {
+          "qualifiedName": "basic.parse",
+          "signature": "public func parse(data: Array<UInt8>): Int64"
+        },
+        "boxInit": {
+          "qualifiedName": "basic.Box.init",
+          "signature": "public init(value: T)"
+        },
+        "multiline": {
+          "qualifiedName": "basic.multiline",
+          "signature": "public func multiline(\n    text: String,\n    strict: Bool\n): String"
+        },
+        "unicode": {
+          "qualifiedName": "basic.解析",
+          "signature": "public func 解析(文本: String): String"
+        }
+      },
+      "cases": [
+        {
+          "id": "exact-name",
+          "request": {
+            "query": "Parser",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "kind",
+                "op": "eq",
+                "value": "class"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Parser",
+                "score": 10000,
+                "reason": "declaration_name"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "ascii-casefold",
+          "request": {
+            "query": "parser",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "kind",
+                "op": "eq",
+                "value": "class"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Parser",
+                "score": 9000,
+                "reason": "name_casefold"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "name-prefix",
+          "request": {
+            "query": "Par",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "kind",
+                "op": "eq",
+                "value": "class"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Parser",
+                "score": 8000,
+                "reason": "name_prefix"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "one-substitution",
+          "request": {
+            "query": "Parxer",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "kind",
+                "op": "eq",
+                "value": "class"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Parser",
+                "score": 3000,
+                "reason": "edit_distance_one"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "no-transposition",
+          "request": {
+            "query": "Praser",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "kind",
+                "op": "eq",
+                "value": "class"
+              }
+            ]
+          },
+          "expect": {
+            "status": "not_found",
+            "errorCode": null,
+            "items": [],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "exact-symbol-id",
+          "request": {
+            "query": {
+              "$symbolId": "Parser"
+            },
+            "mode": "discovery"
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Parser",
+                "score": 12000,
+                "reason": "symbol_id"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "exact-qualified",
+          "request": {
+            "query": "basic.Parser",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "kind",
+                "op": "eq",
+                "value": "class"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Parser",
+                "score": 11000,
+                "reason": "qualified_name"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "precise-symbol-id",
+          "request": {
+            "symbolId": {
+              "$symbolId": "Parser"
+            }
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Parser",
+                "score": 4000,
+                "reason": "symbol_id"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "precise-qualified",
+          "request": {
+            "qualifiedName": "basic.Parser"
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Parser",
+                "score": 3000,
+                "reason": "qualified_name"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "precise-kind-only",
+          "request": {
+            "mode": "precise",
+            "filters": [
+              {
+                "field": "kind",
+                "op": "eq",
+                "value": "class"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Parser",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "discovery-kind-only",
+          "request": {
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "kind",
+                "op": "eq",
+                "value": "class"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Parser",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "package-and-kind",
+          "request": {
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "package",
+                "op": "eq",
+                "value": "basic"
+              },
+              {
+                "field": "kind",
+                "op": "eq",
+                "value": "class"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Parser",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "owner-constructor-only",
+          "request": {
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "owner",
+                "op": "contains",
+                "value": "Box"
+              },
+              {
+                "field": "kind",
+                "op": "eq",
+                "value": "constructor"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "boxInit",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "one-parameter-not-concatenation",
+          "request": {
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "multiline"
+              },
+              {
+                "field": "param",
+                "op": "contains",
+                "value": "String Bool"
+              }
+            ]
+          },
+          "expect": {
+            "status": "not_found",
+            "errorCode": null,
+            "items": [],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "unicode-name",
+          "request": {
+            "query": "解析",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "解析"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "unicode",
+                "score": 10000,
+                "reason": "declaration_name"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "empty-is-empty",
+          "request": {
+            "mode": "discovery"
+          },
+          "expect": {
+            "status": "not_found",
+            "reason": "no_match_in_scope",
+            "errorCode": null,
+            "items": [],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "no-match",
+          "request": {
+            "query": "zzzzzzzz",
+            "mode": "discovery"
+          },
+          "expect": {
+            "status": "not_found",
+            "reason": "no_match_in_scope",
+            "errorCode": null,
+            "items": [],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "limit-zero-real-total",
+          "request": {
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "kind",
+                "op": "eq",
+                "value": "class"
+              }
+            ],
+            "limit": 0
+          },
+          "expect": {
+            "status": "ok",
+            "reason": "zero_limit_requested",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Parser",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "pure-filter-order",
+          "request": {
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "parse"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "parseText",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "parseBytes",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          },
+          "order": "canonical"
+        },
+        {
+          "id": "cursor-filter-normalization",
+          "request": {
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "parse"
+              }
+            ],
+            "limit": 1
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "parseText",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "parseBytes",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          },
+          "order": "canonical",
+          "followAll": true,
+          "continueWith": {
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "parse"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "parse"
+              }
+            ]
+          },
+          "cursorErrors": true
+        },
+        {
+          "id": "unknown-field",
+          "request": {
+            "unexpected": true
+          },
+          "expect": {
+            "status": "invalid_request",
+            "errorCode": "unknown_field"
+          }
+        },
+        {
+          "id": "bad-limit-negative",
+          "request": {
+            "limit": -1
+          },
+          "expect": {
+            "status": "invalid_request",
+            "errorCode": "request_schema"
+          }
+        },
+        {
+          "id": "bad-limit-over-max",
+          "request": {
+            "limit": 101
+          },
+          "expect": {
+            "status": "invalid_request",
+            "errorCode": "request_schema"
+          }
+        },
+        {
+          "id": "empty-filter",
+          "request": {
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": ""
+              }
+            ]
+          },
+          "expect": {
+            "status": "invalid_request",
+            "errorCode": "request_schema"
+          }
+        },
+        {
+          "id": "extra-filter-field",
+          "request": {
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser",
+                "extra": true
+              }
+            ]
+          },
+          "expect": {
+            "status": "invalid_request",
+            "errorCode": "request_schema"
+          }
+        },
+        {
+          "id": "too-many-filters",
+          "request": {
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              },
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "Parser"
+              }
+            ]
+          },
+          "expect": {
+            "status": "invalid_request",
+            "errorCode": "request_schema"
+          }
+        },
+        {
+          "id": "explicit-old-wire",
+          "request": {
+            "schemaVersion": "cjdoc.query-request/1"
+          },
+          "hosts": [
+            "cli",
+            "static"
+          ],
+          "expect": {
+            "status": "invalid_request",
+            "errorCode": "request_schema"
+          }
+        },
+        {
+          "id": "static-full-ir-unavailable",
+          "request": {
+            "profile": "full-ir",
+            "query": "Parser"
+          },
+          "hosts": [
+            "static"
+          ],
+          "expect": {
+            "status": "unavailable",
+            "errorCode": "search_profile_unavailable"
+          }
+        },
+        {
+          "id": "static-operation-unavailable",
+          "request": {
+            "operation": "resolve_docs"
+          },
+          "hosts": [
+            "static"
+          ],
+          "expect": {
+            "status": "invalid_request",
+            "errorCode": "operation_unavailable"
+          }
+        },
+        {
+          "id": "cursor-explicit-defaults",
+          "request": {
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "parse"
+              }
+            ],
+            "limit": 1
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "parseText",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "parseBytes",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          },
+          "order": "canonical",
+          "followAll": true,
+          "continueWith": {
+            "mode": "precise",
+            "query": "",
+            "snapshotId": {
+              "$scope": "snapshotId"
+            },
+            "language": {
+              "$scope": "language"
+            },
+            "audience": {
+              "$scope": "audience"
+            },
+            "cfgProfile": {
+              "$scope": "cfgProfile"
+            }
+          }
+        },
+        {
+          "id": "precise-name-text-does-not-search-parameter-types",
+          "request": {
+            "query": "String",
+            "mode": "precise",
+            "filters": [{"field": "name", "op": "eq", "value": "multiline"}]
+          },
+          "expect": {
+            "status": "not_found", "errorCode": null, "items": [],
+            "coverage": {"profile": "bounded-static", "bodyTextLimit": 2000,
+                         "bodyComplete": true, "truncatedEntries": 0}
+          }
+        },
+        {
+          "id": "precise-owner-member-free-text",
+          "request": {"query": "Box.init", "mode": "precise"},
+          "expect": {
+            "status": "ok", "errorCode": null,
+            "items": [{"ref": "boxInit", "score": 2020, "reason": "owner_member_name"}],
+            "coverage": {"profile": "bounded-static", "bodyTextLimit": 2000,
+                         "bodyComplete": true, "truncatedEntries": 0}
+          }
+        },
+        {
+          "id": "captured-module-name-is-a-scope-selector",
+          "request": {
+            "moduleId": "basic", "query": "Parser", "mode": "discovery",
+            "filters": [{"field": "kind", "op": "eq", "value": "class"}]
+          },
+          "expect": {
+            "status": "ok", "errorCode": null,
+            "items": [{"ref": "Parser", "score": 10000, "reason": "declaration_name"}],
+            "coverage": {"profile": "bounded-static", "bodyTextLimit": 2000,
+                         "bodyComplete": true, "truncatedEntries": 0}
+          }
+        },
+        {
+          "id": "cursor-binds-effective-filter-only-eligibility",
+          "request": {
+            "snapshotId": {"$scope": "snapshotId"}, "mode": "discovery", "limit": 1
+          },
+          "expect": {
+            "status": "ok", "errorCode": null, "reason": "filter_only",
+            "total": 24, "returned": 1, "complete": false, "hasNext": true,
+            "coverage": {"profile": "bounded-static", "bodyTextLimit": 2000,
+                         "bodyComplete": true, "truncatedEntries": 0}
+          },
+          "cursorErrors": true,
+          "cursorRemovedFields": ["snapshotId"]
+        },
+        {
+          "id": "execution-only-controls-do-not-enumerate",
+          "request": {
+            "mode": "discovery", "latest": false, "languageFallback": true, "limit": 0
+          },
+          "expect": {
+            "status": "not_found", "errorCode": null, "reason": "no_match_in_scope", "items": [],
+            "returned": 0, "complete": true, "hasNext": false,
+            "coverage": {"profile": "bounded-static", "bodyTextLimit": 2000,
+                         "bodyComplete": true, "truncatedEntries": 0}
+          }
+        }
+      ]
+    },
+    "declaration_tags": {
+      "symbolRefs": {
+        "Reader": {
+          "qualifiedName": "declaration_tags.StreamReader",
+          "signature": "public class StreamReader"
+        },
+        "OtherReader": {
+          "qualifiedName": "declaration_tags.OtherReader",
+          "signature": "public class OtherReader"
+        },
+        "readInt": {
+          "qualifiedName": "declaration_tags.StreamReader.read",
+          "signature": "public func read(count: Int64): Int64"
+        },
+        "readText": {
+          "qualifiedName": "declaration_tags.StreamReader.read",
+          "signature": "public func read(text: String): String"
+        },
+        "readBytes": {
+          "qualifiedName": "declaration_tags.StreamReader.read",
+          "signature": "public func read(bytes: Array<UInt8>): Int64"
+        },
+        "otherRead": {
+          "qualifiedName": "declaration_tags.OtherReader.read",
+          "signature": "public func read(count: Int64): Int64"
+        },
+        "name": {
+          "qualifiedName": "declaration_tags.StreamReader.name",
+          "signature": "public prop name: String"
+        },
+        "streamingOnly": {
+          "qualifiedName": "declaration_tags.streamingOnly",
+          "signature": "public func streamingOnly(): Unit"
+        },
+        "upperCaseOnly": {
+          "qualifiedName": "declaration_tags.upperCaseOnly",
+          "signature": "public func upperCaseOnly(): Unit"
+        },
+        "camel": {
+          "qualifiedName": "declaration_tags.readJSONFile",
+          "signature": "public func readJSONFile(left: String, right: Bool): String"
+        },
+        "longSummary": {
+          "qualifiedName": "declaration_tags.longSummary",
+          "signature": "public func longSummary(): Unit"
+        },
+        "boundedBody": {
+          "qualifiedName": "declaration_tags.boundedBody",
+          "signature": "public func boundedBody(): Unit"
+        },
+        "edit128": {
+          "qualifiedName": "declaration_tags.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "signature": "public func aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa(): Unit"
+        },
+        "edit129": {
+          "qualifiedName": "declaration_tags.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "signature": "public func aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa(): Unit"
+        },
+        "pageEntry001": {
+          "qualifiedName": "declaration_tags.pageEntry001",
+          "signature": "public func pageEntry001(): Unit"
+        },
+        "pageEntry002": {
+          "qualifiedName": "declaration_tags.pageEntry002",
+          "signature": "public func pageEntry002(): Unit"
+        },
+        "pageEntry003": {
+          "qualifiedName": "declaration_tags.pageEntry003",
+          "signature": "public func pageEntry003(): Unit"
+        },
+        "pageEntry004": {
+          "qualifiedName": "declaration_tags.pageEntry004",
+          "signature": "public func pageEntry004(): Unit"
+        },
+        "pageEntry005": {
+          "qualifiedName": "declaration_tags.pageEntry005",
+          "signature": "public func pageEntry005(): Unit"
+        },
+        "pageEntry006": {
+          "qualifiedName": "declaration_tags.pageEntry006",
+          "signature": "public func pageEntry006(): Unit"
+        },
+        "pageEntry007": {
+          "qualifiedName": "declaration_tags.pageEntry007",
+          "signature": "public func pageEntry007(): Unit"
+        },
+        "pageEntry008": {
+          "qualifiedName": "declaration_tags.pageEntry008",
+          "signature": "public func pageEntry008(): Unit"
+        },
+        "pageEntry009": {
+          "qualifiedName": "declaration_tags.pageEntry009",
+          "signature": "public func pageEntry009(): Unit"
+        },
+        "pageEntry010": {
+          "qualifiedName": "declaration_tags.pageEntry010",
+          "signature": "public func pageEntry010(): Unit"
+        },
+        "pageEntry011": {
+          "qualifiedName": "declaration_tags.pageEntry011",
+          "signature": "public func pageEntry011(): Unit"
+        },
+        "pageEntry012": {
+          "qualifiedName": "declaration_tags.pageEntry012",
+          "signature": "public func pageEntry012(): Unit"
+        },
+        "pageEntry013": {
+          "qualifiedName": "declaration_tags.pageEntry013",
+          "signature": "public func pageEntry013(): Unit"
+        },
+        "pageEntry014": {
+          "qualifiedName": "declaration_tags.pageEntry014",
+          "signature": "public func pageEntry014(): Unit"
+        },
+        "pageEntry015": {
+          "qualifiedName": "declaration_tags.pageEntry015",
+          "signature": "public func pageEntry015(): Unit"
+        },
+        "pageEntry016": {
+          "qualifiedName": "declaration_tags.pageEntry016",
+          "signature": "public func pageEntry016(): Unit"
+        },
+        "pageEntry017": {
+          "qualifiedName": "declaration_tags.pageEntry017",
+          "signature": "public func pageEntry017(): Unit"
+        },
+        "pageEntry018": {
+          "qualifiedName": "declaration_tags.pageEntry018",
+          "signature": "public func pageEntry018(): Unit"
+        },
+        "pageEntry019": {
+          "qualifiedName": "declaration_tags.pageEntry019",
+          "signature": "public func pageEntry019(): Unit"
+        },
+        "pageEntry020": {
+          "qualifiedName": "declaration_tags.pageEntry020",
+          "signature": "public func pageEntry020(): Unit"
+        },
+        "pageEntry021": {
+          "qualifiedName": "declaration_tags.pageEntry021",
+          "signature": "public func pageEntry021(): Unit"
+        },
+        "pageEntry022": {
+          "qualifiedName": "declaration_tags.pageEntry022",
+          "signature": "public func pageEntry022(): Unit"
+        },
+        "pageEntry023": {
+          "qualifiedName": "declaration_tags.pageEntry023",
+          "signature": "public func pageEntry023(): Unit"
+        },
+        "pageEntry024": {
+          "qualifiedName": "declaration_tags.pageEntry024",
+          "signature": "public func pageEntry024(): Unit"
+        },
+        "pageEntry025": {
+          "qualifiedName": "declaration_tags.pageEntry025",
+          "signature": "public func pageEntry025(): Unit"
+        },
+        "pageEntry026": {
+          "qualifiedName": "declaration_tags.pageEntry026",
+          "signature": "public func pageEntry026(): Unit"
+        },
+        "pageEntry027": {
+          "qualifiedName": "declaration_tags.pageEntry027",
+          "signature": "public func pageEntry027(): Unit"
+        },
+        "pageEntry028": {
+          "qualifiedName": "declaration_tags.pageEntry028",
+          "signature": "public func pageEntry028(): Unit"
+        },
+        "pageEntry029": {
+          "qualifiedName": "declaration_tags.pageEntry029",
+          "signature": "public func pageEntry029(): Unit"
+        },
+        "pageEntry030": {
+          "qualifiedName": "declaration_tags.pageEntry030",
+          "signature": "public func pageEntry030(): Unit"
+        },
+        "pageEntry031": {
+          "qualifiedName": "declaration_tags.pageEntry031",
+          "signature": "public func pageEntry031(): Unit"
+        },
+        "pageEntry032": {
+          "qualifiedName": "declaration_tags.pageEntry032",
+          "signature": "public func pageEntry032(): Unit"
+        },
+        "pageEntry033": {
+          "qualifiedName": "declaration_tags.pageEntry033",
+          "signature": "public func pageEntry033(): Unit"
+        },
+        "pageEntry034": {
+          "qualifiedName": "declaration_tags.pageEntry034",
+          "signature": "public func pageEntry034(): Unit"
+        },
+        "pageEntry035": {
+          "qualifiedName": "declaration_tags.pageEntry035",
+          "signature": "public func pageEntry035(): Unit"
+        },
+        "pageEntry036": {
+          "qualifiedName": "declaration_tags.pageEntry036",
+          "signature": "public func pageEntry036(): Unit"
+        },
+        "pageEntry037": {
+          "qualifiedName": "declaration_tags.pageEntry037",
+          "signature": "public func pageEntry037(): Unit"
+        },
+        "pageEntry038": {
+          "qualifiedName": "declaration_tags.pageEntry038",
+          "signature": "public func pageEntry038(): Unit"
+        },
+        "pageEntry039": {
+          "qualifiedName": "declaration_tags.pageEntry039",
+          "signature": "public func pageEntry039(): Unit"
+        },
+        "pageEntry040": {
+          "qualifiedName": "declaration_tags.pageEntry040",
+          "signature": "public func pageEntry040(): Unit"
+        },
+        "pageEntry041": {
+          "qualifiedName": "declaration_tags.pageEntry041",
+          "signature": "public func pageEntry041(): Unit"
+        },
+        "pageEntry042": {
+          "qualifiedName": "declaration_tags.pageEntry042",
+          "signature": "public func pageEntry042(): Unit"
+        },
+        "pageEntry043": {
+          "qualifiedName": "declaration_tags.pageEntry043",
+          "signature": "public func pageEntry043(): Unit"
+        },
+        "pageEntry044": {
+          "qualifiedName": "declaration_tags.pageEntry044",
+          "signature": "public func pageEntry044(): Unit"
+        },
+        "pageEntry045": {
+          "qualifiedName": "declaration_tags.pageEntry045",
+          "signature": "public func pageEntry045(): Unit"
+        },
+        "pageEntry046": {
+          "qualifiedName": "declaration_tags.pageEntry046",
+          "signature": "public func pageEntry046(): Unit"
+        },
+        "pageEntry047": {
+          "qualifiedName": "declaration_tags.pageEntry047",
+          "signature": "public func pageEntry047(): Unit"
+        },
+        "pageEntry048": {
+          "qualifiedName": "declaration_tags.pageEntry048",
+          "signature": "public func pageEntry048(): Unit"
+        },
+        "pageEntry049": {
+          "qualifiedName": "declaration_tags.pageEntry049",
+          "signature": "public func pageEntry049(): Unit"
+        },
+        "pageEntry050": {
+          "qualifiedName": "declaration_tags.pageEntry050",
+          "signature": "public func pageEntry050(): Unit"
+        },
+        "pageEntry051": {
+          "qualifiedName": "declaration_tags.pageEntry051",
+          "signature": "public func pageEntry051(): Unit"
+        },
+        "pageEntry052": {
+          "qualifiedName": "declaration_tags.pageEntry052",
+          "signature": "public func pageEntry052(): Unit"
+        },
+        "pageEntry053": {
+          "qualifiedName": "declaration_tags.pageEntry053",
+          "signature": "public func pageEntry053(): Unit"
+        },
+        "pageEntry054": {
+          "qualifiedName": "declaration_tags.pageEntry054",
+          "signature": "public func pageEntry054(): Unit"
+        },
+        "pageEntry055": {
+          "qualifiedName": "declaration_tags.pageEntry055",
+          "signature": "public func pageEntry055(): Unit"
+        },
+        "pageEntry056": {
+          "qualifiedName": "declaration_tags.pageEntry056",
+          "signature": "public func pageEntry056(): Unit"
+        },
+        "pageEntry057": {
+          "qualifiedName": "declaration_tags.pageEntry057",
+          "signature": "public func pageEntry057(): Unit"
+        },
+        "pageEntry058": {
+          "qualifiedName": "declaration_tags.pageEntry058",
+          "signature": "public func pageEntry058(): Unit"
+        },
+        "pageEntry059": {
+          "qualifiedName": "declaration_tags.pageEntry059",
+          "signature": "public func pageEntry059(): Unit"
+        },
+        "pageEntry060": {
+          "qualifiedName": "declaration_tags.pageEntry060",
+          "signature": "public func pageEntry060(): Unit"
+        },
+        "pageEntry061": {
+          "qualifiedName": "declaration_tags.pageEntry061",
+          "signature": "public func pageEntry061(): Unit"
+        },
+        "pageEntry062": {
+          "qualifiedName": "declaration_tags.pageEntry062",
+          "signature": "public func pageEntry062(): Unit"
+        },
+        "pageEntry063": {
+          "qualifiedName": "declaration_tags.pageEntry063",
+          "signature": "public func pageEntry063(): Unit"
+        },
+        "pageEntry064": {
+          "qualifiedName": "declaration_tags.pageEntry064",
+          "signature": "public func pageEntry064(): Unit"
+        },
+        "pageEntry065": {
+          "qualifiedName": "declaration_tags.pageEntry065",
+          "signature": "public func pageEntry065(): Unit"
+        },
+        "pageEntry066": {
+          "qualifiedName": "declaration_tags.pageEntry066",
+          "signature": "public func pageEntry066(): Unit"
+        },
+        "pageEntry067": {
+          "qualifiedName": "declaration_tags.pageEntry067",
+          "signature": "public func pageEntry067(): Unit"
+        },
+        "pageEntry068": {
+          "qualifiedName": "declaration_tags.pageEntry068",
+          "signature": "public func pageEntry068(): Unit"
+        },
+        "pageEntry069": {
+          "qualifiedName": "declaration_tags.pageEntry069",
+          "signature": "public func pageEntry069(): Unit"
+        },
+        "pageEntry070": {
+          "qualifiedName": "declaration_tags.pageEntry070",
+          "signature": "public func pageEntry070(): Unit"
+        },
+        "pageEntry071": {
+          "qualifiedName": "declaration_tags.pageEntry071",
+          "signature": "public func pageEntry071(): Unit"
+        },
+        "pageEntry072": {
+          "qualifiedName": "declaration_tags.pageEntry072",
+          "signature": "public func pageEntry072(): Unit"
+        },
+        "pageEntry073": {
+          "qualifiedName": "declaration_tags.pageEntry073",
+          "signature": "public func pageEntry073(): Unit"
+        },
+        "pageEntry074": {
+          "qualifiedName": "declaration_tags.pageEntry074",
+          "signature": "public func pageEntry074(): Unit"
+        },
+        "pageEntry075": {
+          "qualifiedName": "declaration_tags.pageEntry075",
+          "signature": "public func pageEntry075(): Unit"
+        },
+        "pageEntry076": {
+          "qualifiedName": "declaration_tags.pageEntry076",
+          "signature": "public func pageEntry076(): Unit"
+        },
+        "pageEntry077": {
+          "qualifiedName": "declaration_tags.pageEntry077",
+          "signature": "public func pageEntry077(): Unit"
+        },
+        "pageEntry078": {
+          "qualifiedName": "declaration_tags.pageEntry078",
+          "signature": "public func pageEntry078(): Unit"
+        },
+        "pageEntry079": {
+          "qualifiedName": "declaration_tags.pageEntry079",
+          "signature": "public func pageEntry079(): Unit"
+        },
+        "pageEntry080": {
+          "qualifiedName": "declaration_tags.pageEntry080",
+          "signature": "public func pageEntry080(): Unit"
+        },
+        "pageEntry081": {
+          "qualifiedName": "declaration_tags.pageEntry081",
+          "signature": "public func pageEntry081(): Unit"
+        },
+        "pageEntry082": {
+          "qualifiedName": "declaration_tags.pageEntry082",
+          "signature": "public func pageEntry082(): Unit"
+        },
+        "pageEntry083": {
+          "qualifiedName": "declaration_tags.pageEntry083",
+          "signature": "public func pageEntry083(): Unit"
+        },
+        "pageEntry084": {
+          "qualifiedName": "declaration_tags.pageEntry084",
+          "signature": "public func pageEntry084(): Unit"
+        },
+        "pageEntry085": {
+          "qualifiedName": "declaration_tags.pageEntry085",
+          "signature": "public func pageEntry085(): Unit"
+        },
+        "pageEntry086": {
+          "qualifiedName": "declaration_tags.pageEntry086",
+          "signature": "public func pageEntry086(): Unit"
+        },
+        "pageEntry087": {
+          "qualifiedName": "declaration_tags.pageEntry087",
+          "signature": "public func pageEntry087(): Unit"
+        },
+        "pageEntry088": {
+          "qualifiedName": "declaration_tags.pageEntry088",
+          "signature": "public func pageEntry088(): Unit"
+        },
+        "pageEntry089": {
+          "qualifiedName": "declaration_tags.pageEntry089",
+          "signature": "public func pageEntry089(): Unit"
+        },
+        "pageEntry090": {
+          "qualifiedName": "declaration_tags.pageEntry090",
+          "signature": "public func pageEntry090(): Unit"
+        },
+        "pageEntry091": {
+          "qualifiedName": "declaration_tags.pageEntry091",
+          "signature": "public func pageEntry091(): Unit"
+        },
+        "pageEntry092": {
+          "qualifiedName": "declaration_tags.pageEntry092",
+          "signature": "public func pageEntry092(): Unit"
+        },
+        "pageEntry093": {
+          "qualifiedName": "declaration_tags.pageEntry093",
+          "signature": "public func pageEntry093(): Unit"
+        },
+        "pageEntry094": {
+          "qualifiedName": "declaration_tags.pageEntry094",
+          "signature": "public func pageEntry094(): Unit"
+        },
+        "pageEntry095": {
+          "qualifiedName": "declaration_tags.pageEntry095",
+          "signature": "public func pageEntry095(): Unit"
+        },
+        "pageEntry096": {
+          "qualifiedName": "declaration_tags.pageEntry096",
+          "signature": "public func pageEntry096(): Unit"
+        },
+        "pageEntry097": {
+          "qualifiedName": "declaration_tags.pageEntry097",
+          "signature": "public func pageEntry097(): Unit"
+        },
+        "pageEntry098": {
+          "qualifiedName": "declaration_tags.pageEntry098",
+          "signature": "public func pageEntry098(): Unit"
+        },
+        "pageEntry099": {
+          "qualifiedName": "declaration_tags.pageEntry099",
+          "signature": "public func pageEntry099(): Unit"
+        },
+        "pageEntry100": {
+          "qualifiedName": "declaration_tags.pageEntry100",
+          "signature": "public func pageEntry100(): Unit"
+        },
+        "pageEntry101": {
+          "qualifiedName": "declaration_tags.pageEntry101",
+          "signature": "public func pageEntry101(): Unit"
+        },
+        "pageEntry102": {
+          "qualifiedName": "declaration_tags.pageEntry102",
+          "signature": "public func pageEntry102(): Unit"
+        },
+        "pageEntry103": {
+          "qualifiedName": "declaration_tags.pageEntry103",
+          "signature": "public func pageEntry103(): Unit"
+        },
+        "pageEntry104": {
+          "qualifiedName": "declaration_tags.pageEntry104",
+          "signature": "public func pageEntry104(): Unit"
+        },
+        "pageEntry105": {
+          "qualifiedName": "declaration_tags.pageEntry105",
+          "signature": "public func pageEntry105(): Unit"
+        },
+        "pageEntry106": {
+          "qualifiedName": "declaration_tags.pageEntry106",
+          "signature": "public func pageEntry106(): Unit"
+        },
+        "pageEntry107": {
+          "qualifiedName": "declaration_tags.pageEntry107",
+          "signature": "public func pageEntry107(): Unit"
+        },
+        "pageEntry108": {
+          "qualifiedName": "declaration_tags.pageEntry108",
+          "signature": "public func pageEntry108(): Unit"
+        },
+        "pageEntry109": {
+          "qualifiedName": "declaration_tags.pageEntry109",
+          "signature": "public func pageEntry109(): Unit"
+        },
+        "pageEntry110": {
+          "qualifiedName": "declaration_tags.pageEntry110",
+          "signature": "public func pageEntry110(): Unit"
+        },
+        "pageEntry111": {
+          "qualifiedName": "declaration_tags.pageEntry111",
+          "signature": "public func pageEntry111(): Unit"
+        },
+        "pageEntry112": {
+          "qualifiedName": "declaration_tags.pageEntry112",
+          "signature": "public func pageEntry112(): Unit"
+        },
+        "pageEntry113": {
+          "qualifiedName": "declaration_tags.pageEntry113",
+          "signature": "public func pageEntry113(): Unit"
+        },
+        "pageEntry114": {
+          "qualifiedName": "declaration_tags.pageEntry114",
+          "signature": "public func pageEntry114(): Unit"
+        },
+        "pageEntry115": {
+          "qualifiedName": "declaration_tags.pageEntry115",
+          "signature": "public func pageEntry115(): Unit"
+        },
+        "pageEntry116": {
+          "qualifiedName": "declaration_tags.pageEntry116",
+          "signature": "public func pageEntry116(): Unit"
+        },
+        "pageEntry117": {
+          "qualifiedName": "declaration_tags.pageEntry117",
+          "signature": "public func pageEntry117(): Unit"
+        },
+        "pageEntry118": {
+          "qualifiedName": "declaration_tags.pageEntry118",
+          "signature": "public func pageEntry118(): Unit"
+        },
+        "pageEntry119": {
+          "qualifiedName": "declaration_tags.pageEntry119",
+          "signature": "public func pageEntry119(): Unit"
+        },
+        "pageEntry120": {
+          "qualifiedName": "declaration_tags.pageEntry120",
+          "signature": "public func pageEntry120(): Unit"
+        },
+        "pageEntry121": {
+          "qualifiedName": "declaration_tags.pageEntry121",
+          "signature": "public func pageEntry121(): Unit"
+        }
+      },
+      "classifications": {
+        "Reader": {
+          "group": {"id": "10-query", "packageName": "declaration_tags", "ownerId": null,
+                    "title": "查询入口", "order": null},
+          "tags": [{"id": "stable", "title": "stable"}, {"id": "stream", "title": "stream"}]
+        },
+        "readInt": {
+          "group": {"id": "10-query", "packageName": "declaration_tags", "ownerId": {"$symbolId": "Reader"},
+                    "title": "查询入口", "order": null},
+          "tags": [{"id": "stable", "title": "stable"}, {"id": "stream", "title": "stream"}]
+        },
+        "readText": {
+          "group": {"id": "10-query", "packageName": "declaration_tags", "ownerId": {"$symbolId": "Reader"},
+                    "title": "查询入口", "order": null},
+          "tags": [{"id": "stream", "title": "stream"}]
+        },
+        "readBytes": {
+          "group": {"id": "10-query", "packageName": "declaration_tags", "ownerId": {"$symbolId": "Reader"},
+                    "title": "查询入口", "order": null},
+          "tags": [{"id": "Stream", "title": "Stream"}]
+        },
+        "otherRead": {
+          "group": {"id": "10-query", "packageName": "declaration_tags", "ownerId": {"$symbolId": "OtherReader"},
+                    "title": "查询入口", "order": null},
+          "tags": [{"id": "stream", "title": "stream"}]
+        },
+        "name": {
+          "group": {"id": "20-state", "packageName": "declaration_tags", "ownerId": {"$symbolId": "Reader"},
+                    "title": "状态", "order": null},
+          "tags": [{"id": "stable", "title": "stable"}]
+        },
+        "streamingOnly": {"group": null, "tags": [{"id": "streaming", "title": "streaming"}]},
+        "upperCaseOnly": {"group": null, "tags": [{"id": "Stream", "title": "Stream"}]}
+      },
+      "cases": [
+        {
+          "id": "camel-word-prefix",
+          "request": {
+            "query": "read file",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "readJSONFile"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "camel",
+                "score": 6000,
+                "reason": "word_prefix"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "camel-acronym",
+          "request": {
+            "query": "rjf",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "readJSONFile"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "camel",
+                "score": 5000,
+                "reason": "acronym"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "qualified-prefix",
+          "request": {
+            "query": "declaration_tags.readJ",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "readJSONFile"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "camel",
+                "score": 7000,
+                "reason": "qualified_prefix"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "structured-text",
+          "request": {
+            "query": "String",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "readJSONFile"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "camel",
+                "score": 4000,
+                "reason": "declaration_text"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "four-rune-edit",
+          "request": {
+            "query": "JSXN",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "readJSONFile"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "camel",
+                "score": 3000,
+                "reason": "edit_distance_one"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "non-ascii-exact",
+          "request": {
+            "query": "Étiquette",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "readJSONFile"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "camel",
+                "score": 2000,
+                "reason": "documentation_text"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "non-bmp-token",
+          "request": {
+            "query": "astral😀token",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "readJSONFile"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "camel",
+                "score": 2000,
+                "reason": "documentation_text"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "three-rune-no-edit",
+          "request": {
+            "query": "JON",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "readJSONFile"
+              }
+            ]
+          },
+          "expect": {
+            "status": "not_found",
+            "errorCode": null,
+            "items": [],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "non-ascii-no-casefold",
+          "request": {
+            "query": "étiquette",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "readJSONFile"
+              }
+            ]
+          },
+          "expect": {
+            "status": "not_found",
+            "errorCode": null,
+            "items": [],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "summary-after-display-and-body-limit",
+          "request": {
+            "query": "summaryBoundaryNeedle",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "longSummary"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "longSummary",
+                "score": 2000,
+                "reason": "documentation_text"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "bounded-body-before-limit",
+          "request": {
+            "query": "bodyBeforeLimit",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "boundedBody"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "boundedBody",
+                "score": 2000,
+                "reason": "documentation_text"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "bounded-body-after-limit",
+          "request": {
+            "query": "bodyAfterLimit",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "boundedBody"
+              }
+            ]
+          },
+          "expect": {
+            "status": "not_found",
+            "errorCode": null,
+            "items": [],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "full-ir-retains-body",
+          "request": {
+            "query": "bodyAfterLimit",
+            "mode": "discovery",
+            "profile": "full-ir",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "boundedBody"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "boundedBody",
+                "score": 2000,
+                "reason": "documentation_text"
+              }
+            ],
+            "coverage": {
+              "profile": "full-ir",
+              "bodyTextLimit": null,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          },
+          "hosts": [
+            "cli",
+            "mcp"
+          ]
+        },
+        {
+          "id": "edit-upper-bound",
+          "request": {
+            "query": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "edit128",
+                "score": 3000,
+                "reason": "edit_distance_one"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "edit-over-bound",
+          "request": {
+            "query": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          },
+          "expect": {
+            "status": "not_found",
+            "errorCode": null,
+            "items": [],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "more-than-100-pure-filter-results",
+          "request": {
+            "filters": [
+              {
+                "field": "name",
+                "op": "contains",
+                "value": "pageEntry"
+              },
+              {
+                "field": "kind",
+                "op": "eq",
+                "value": "function"
+              }
+            ],
+            "limit": 100
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "pageEntry001",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry002",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry003",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry004",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry005",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry006",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry007",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry008",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry009",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry010",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry011",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry012",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry013",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry014",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry015",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry016",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry017",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry018",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry019",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry020",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry021",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry022",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry023",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry024",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry025",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry026",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry027",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry028",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry029",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry030",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry031",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry032",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry033",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry034",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry035",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry036",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry037",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry038",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry039",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry040",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry041",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry042",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry043",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry044",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry045",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry046",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry047",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry048",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry049",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry050",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry051",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry052",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry053",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry054",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry055",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry056",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry057",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry058",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry059",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry060",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry061",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry062",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry063",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry064",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry065",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry066",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry067",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry068",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry069",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry070",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry071",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry072",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry073",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry074",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry075",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry076",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry077",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry078",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry079",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry080",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry081",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry082",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry083",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry084",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry085",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry086",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry087",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry088",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry089",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry090",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry091",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry092",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry093",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry094",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry095",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry096",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry097",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry098",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry099",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry100",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry101",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry102",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry103",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry104",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry105",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry106",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry107",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry108",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry109",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry110",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry111",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry112",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry113",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry114",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry115",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry116",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry117",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry118",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry119",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry120",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "pageEntry121",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          },
+          "order": "canonical",
+          "followAll": true,
+          "continueWith": {
+            "mode": "precise",
+            "query": "",
+            "filters": [
+              {
+                "field": "kind",
+                "op": "eq",
+                "value": "function"
+              },
+              {
+                "field": "name",
+                "op": "contains",
+                "value": "pageEntry"
+              },
+              {
+                "field": "name",
+                "op": "contains",
+                "value": "pageEntry"
+              }
+            ]
+          }
+        },
+        {
+          "id": "more-than-100-discovery-results",
+          "request": {
+            "query": "pageEntry",
+            "mode": "discovery",
+            "limit": 100
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "pageEntry001",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry002",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry003",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry004",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry005",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry006",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry007",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry008",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry009",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry010",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry011",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry012",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry013",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry014",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry015",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry016",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry017",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry018",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry019",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry020",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry021",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry022",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry023",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry024",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry025",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry026",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry027",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry028",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry029",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry030",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry031",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry032",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry033",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry034",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry035",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry036",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry037",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry038",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry039",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry040",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry041",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry042",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry043",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry044",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry045",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry046",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry047",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry048",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry049",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry050",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry051",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry052",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry053",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry054",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry055",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry056",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry057",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry058",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry059",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry060",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry061",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry062",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry063",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry064",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry065",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry066",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry067",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry068",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry069",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry070",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry071",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry072",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry073",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry074",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry075",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry076",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry077",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry078",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry079",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry080",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry081",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry082",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry083",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry084",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry085",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry086",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry087",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry088",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry089",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry090",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry091",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry092",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry093",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry094",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry095",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry096",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry097",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry098",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry099",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry100",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry101",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry102",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry103",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry104",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry105",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry106",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry107",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry108",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry109",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry110",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry111",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry112",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry113",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry114",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry115",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry116",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry117",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry118",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry119",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry120",
+                "score": 8000,
+                "reason": "name_prefix"
+              },
+              {
+                "ref": "pageEntry121",
+                "score": 8000,
+                "reason": "name_prefix"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          },
+          "order": "canonical",
+          "followAll": true
+        },
+        {
+          "id": "tag-stream",
+          "request": {
+            "mode": "discovery",
+            "tags": [
+              "stream"
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Reader",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "readInt",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "readText",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "otherRead",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          },
+          "order": "canonical"
+        },
+        {
+          "id": "tag-streaming-is-not-prefix",
+          "request": {
+            "mode": "discovery",
+            "tags": [
+              "streaming"
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "streamingOnly",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          },
+          "order": "canonical"
+        },
+        {
+          "id": "tag-uppercase-distinct",
+          "request": {
+            "mode": "discovery",
+            "tags": [
+              "Stream"
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "readBytes",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "upperCaseOnly",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          },
+          "order": "canonical"
+        },
+        {
+          "id": "tag-and-intersection",
+          "request": {
+            "mode": "discovery",
+            "tags": [
+              "stream",
+              "stable"
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Reader",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "readInt",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          },
+          "order": "canonical"
+        },
+        {
+          "id": "tag-duplicate-order",
+          "request": {
+            "mode": "discovery",
+            "tags": [
+              "stable",
+              "stream",
+              "stable"
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "Reader",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "readInt",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          },
+          "order": "canonical"
+        },
+        {
+          "id": "tag-hidden-dictionary-absent",
+          "request": {
+            "mode": "discovery",
+            "tags": [
+              "secret"
+            ]
+          },
+          "expect": {
+            "status": "not_found",
+            "errorCode": null,
+            "items": [],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          },
+          "order": "canonical"
+        },
+        {
+          "id": "tag-partial-overload-two-of-three",
+          "request": {
+            "mode": "discovery",
+            "tags": [
+              "stream"
+            ],
+            "filters": [
+              {
+                "field": "owner",
+                "op": "eq",
+                "value": "StreamReader"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "readInt",
+                "score": 0,
+                "reason": "filter_only"
+              },
+              {
+                "ref": "readText",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          },
+          "order": "canonical"
+        },
+        {
+          "id": "tag-partial-overload-one-of-three",
+          "request": {
+            "tags": [
+              "stream",
+              "stable"
+            ],
+            "filters": [
+              {
+                "field": "owner",
+                "op": "eq",
+                "value": "StreamReader"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "readInt",
+                "score": 0,
+                "reason": "filter_only"
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": false,
+              "truncatedEntries": 2
+            }
+          }
+        },
+        {
+          "id": "empty-tags",
+          "request": {
+            "tags": []
+          },
+          "expect": {
+            "status": "invalid_request",
+            "errorCode": "request_schema"
+          }
+        },
+        {
+          "id": "empty-tag-id",
+          "request": {
+            "tags": [
+              ""
+            ]
+          },
+          "expect": {
+            "status": "invalid_request",
+            "errorCode": "request_schema"
+          }
+        },
+        {
+          "id": "too-long-tag",
+          "request": {
+            "tags": [
+              "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          },
+          "expect": {
+            "status": "invalid_request",
+            "errorCode": "request_schema"
+          }
+        },
+        {
+          "id": "non-ascii-tag",
+          "request": {
+            "tags": [
+              "流式"
+            ]
+          },
+          "expect": {
+            "status": "invalid_request",
+            "errorCode": "request_schema"
+          }
+        },
+        {
+          "id": "too-many-tags",
+          "request": {
+            "tags": [
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream",
+              "stream"
+            ]
+          },
+          "expect": {
+            "status": "invalid_request",
+            "errorCode": "request_schema"
+          }
+        },
+        {
+          "id": "concept-exact-title-uses-casefold-evidence",
+          "request": {"query": "Tag walkthrough", "mode": "discovery"},
+          "expect": {
+            "status": "ok", "errorCode": null,
+            "items": [{"pageId": "tag-walkthrough", "score": 9000, "reason": "name_casefold"}],
+            "facets": {"tags": []},
+            "coverage": {"profile": "bounded-static", "bodyTextLimit": 2000,
+                         "bodyComplete": false, "truncatedEntries": 2}
+          }
+        },
+        {
+          "id": "precise-concept-title-remains-documentation-evidence",
+          "request": {"query": "Tag walkthrough", "mode": "precise"},
+          "expect": {
+            "status": "ok", "errorCode": null,
+            "items": [{"pageId": "tag-walkthrough", "score": 1010, "reason": "guide_text"}],
+            "facets": {"tags": []},
+            "coverage": {"profile": "bounded-static", "bodyTextLimit": 2000,
+                         "bodyComplete": false, "truncatedEntries": 2}
+          }
+        },
+        {
+          "id": "tag-filter-excludes-untagged-concept",
+          "request": {"query": "Tag walkthrough", "mode": "discovery", "tags": ["stream"]},
+          "expect": {
+            "status": "not_found", "errorCode": null, "items": [], "facets": {"tags": []},
+            "coverage": {"profile": "bounded-static", "bodyTextLimit": 2000,
+                         "bodyComplete": false, "truncatedEntries": 2}
+          }
+        }
+      ]
+    },
+    "reexport_root": {
+      "symbolRefs": {
+        "make": {
+          "qualifiedName": "reexport_dep.make",
+          "signature": "public func make(): Int64"
+        }
+      },
+      "cases": [
+        {
+          "id": "exact-visible-alias",
+          "request": {
+            "query": "create",
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "create"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "make",
+                "score": 10000,
+                "reason": "exposed_reexport_alias",
+                "exposures": [
+                  "create"
+                ]
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "alias-filter-enumeration",
+          "request": {
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "create"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "make",
+                "score": 0,
+                "reason": "filter_only",
+                "exposures": [
+                  "create"
+                ]
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "same-alias-context-and",
+          "request": {
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "create"
+              },
+              {
+                "field": "package",
+                "op": "eq",
+                "value": "reexport_root"
+              }
+            ]
+          },
+          "expect": {
+            "status": "ok",
+            "errorCode": null,
+            "items": [
+              {
+                "ref": "make",
+                "score": 0,
+                "reason": "filter_only",
+                "exposures": [
+                  "create"
+                ]
+              }
+            ],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "two-alias-contexts-cannot-combine",
+          "request": {
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "create"
+              },
+              {
+                "field": "qualifiedName",
+                "op": "contains",
+                "value": "orgCreate"
+              }
+            ]
+          },
+          "expect": {
+            "status": "not_found",
+            "errorCode": null,
+            "items": [],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          },
+          "incompleteStatus": "source_incomplete"
+        },
+        {
+          "id": "canonical-and-alias-context-cannot-combine",
+          "request": {
+            "mode": "discovery",
+            "filters": [
+              {
+                "field": "name",
+                "op": "eq",
+                "value": "create"
+              },
+              {
+                "field": "package",
+                "op": "eq",
+                "value": "reexport_dep"
+              }
+            ]
+          },
+          "expect": {
+            "status": "not_found",
+            "errorCode": null,
+            "items": [],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          },
+          "incompleteStatus": "source_incomplete"
+        },
+        {
+          "id": "empty-query-does-not-invent-a-search-over-partial-inventory",
+          "request": {
+            "mode": "discovery",
+            "query": ""
+          },
+          "expect": {
+            "status": "not_found",
+            "errorCode": null,
+            "items": [],
+            "coverage": {
+              "profile": "bounded-static",
+              "bodyTextLimit": 2000,
+              "bodyComplete": true,
+              "truncatedEntries": 0
+            }
+          }
+        },
+        {
+          "id": "precise-qualified-exposure-is-not-a-flat-name-alias",
+          "request": {"name": "reexport_root.create", "mode": "precise"},
+          "expect": {
+            "status": "not_found", "errorCode": null, "items": [],
+            "coverage": {"profile": "bounded-static", "bodyTextLimit": 2000,
+                         "bodyComplete": true, "truncatedEntries": 0}
+          },
+          "incompleteStatus": "source_incomplete"
+        },
+        {
+          "id": "discovery-qualified-exposure-is-not-a-flat-name-alias",
+          "request": {"name": "reexport_root.create", "mode": "discovery"},
+          "expect": {
+            "status": "not_found", "errorCode": null, "items": [],
+            "coverage": {"profile": "bounded-static", "bodyTextLimit": 2000,
+                         "bodyComplete": true, "truncatedEntries": 0}
+          },
+          "incompleteStatus": "source_incomplete"
+        }
+      ]
+    }
+  }
+}

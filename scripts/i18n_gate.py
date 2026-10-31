@@ -302,14 +302,22 @@ def run_gate(binary: Path, repo: Path, work: Path) -> dict:
     search = {lang: json.loads((multi / "html" / lang / "search-index.json").read_text())
               for lang in ("en", "zh-CN")}
     for lang, value in search.items():
-        assert value["schemaVersion"] == "cjdoc.search-index/9"
+        assert value["schemaVersion"] == "cjdoc.search-index/11"
         text = json.dumps(value, ensure_ascii=False)
         assert "HiddenArithmeticalKeyword" not in text
         assert "私有中文标记" not in text
         assert ("Sapphire arithmetic marker" in text) == (lang == "en")
+    # The projection publishes the entry's own prose and per-block section text.
+    # A selected-language fallback therefore shows up as the zh-CN text of the
+    # documented `right` parameter inside this entry, not as a `fields` array.
     add = next(item for item in search["en"]["entries"] if item["name"] == "add")
-    right = next(item for item in add["fields"] if item["kind"] == "param" and item["subject"] == "right")
-    assert right["actualLanguage"] == "zh-CN" and right["state"] == "fallback"
+    documented = add["body"] + " " + " ".join(
+        section["text"] for section in add["sections"])
+    assert "右" in documented, "selected-language parameter text must reach the entry prose"
+    # This fixture is far below the static body budget, so any truncation here
+    # would mean the projection lost searchable text it should have kept.
+    assert add["bodyTruncated"] is False
+    assert search["en"]["coverage"]["bodyComplete"] is True
     manifest = json.loads((multi / "site-manifest.json").read_text())
     from publication_ir import project as publication_projection
     published = publication_projection(json.loads((multi / "docs.json").read_text()))

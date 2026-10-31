@@ -158,5 +158,5 @@ internal func bindDependencyNavigation(documentation: nav_model.DocumentationSet
         unboundSemanticDeclarations: documentation.unboundSemanticDeclarations.toArray(), diagnostics: diagnostics.toArray(),
         languageOptions: documentation.languageOptions, pages: pages.toArray(), readingLanguage: documentation.readingLanguage,
         externalDocumentation: documentation.externalDocumentation.toArray(), dependencies: binder.dependencies,
-        documentSets: binder.documentSets.toArray())
+        documentSets: binder.documentSets.toArray(), metadata: documentation.metadata)
 }

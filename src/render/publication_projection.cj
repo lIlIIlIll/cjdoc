@@ -548,8 +548,39 @@ private func publicationProjectAssets(root: JsonNode, assets: HashSet<String>): 
     publicationReplaceArray(root, "assets", retained)
 }
 
+private func publicationProjectMetadata(root: JsonNode, retained: DocumentationMetadata): Unit {
+    let metadataNode = root.asObject().get("metadata").getOrThrow()
+    let retainedGroups = HashSet<String>()
+    for (group in retained.groups) {
+        let _ = retainedGroups.add(documentationMetadataGroupKey(group.moduleId, group.packageName,
+            group.ownerId, group.id))
+    }
+    let groups = ArrayList<JsonNode>()
+    for (groupNode in publicationElements(metadataNode, "groups")) {
+        let groupObject = groupNode.asObject()
+        let ownerNode = groupObject.get("ownerId").getOrThrow()
+        let ownerId = if (ownerNode.isNull) { None<String> } else { Some(ownerNode.asString()) }
+        let key = documentationMetadataGroupKey(publicationText(groupNode, "moduleId"),
+            publicationText(groupNode, "packageName"), ownerId, publicationText(groupNode, "id"))
+        if (retainedGroups.contains(key)) { groups.add(groupNode) }
+    }
+    publicationReplaceArray(metadataNode, "groups", groups)
+
+    let retainedTags = HashSet<String>()
+    for (tag in retained.tags) {
+        let _ = retainedTags.add(documentationMetadataTagKey(tag.moduleId, tag.id))
+    }
+    let tags = ArrayList<JsonNode>()
+    for (tagNode in publicationElements(metadataNode, "tags")) {
+        let key = documentationMetadataTagKey(publicationText(tagNode, "moduleId"),
+            publicationText(tagNode, "id"))
+        if (retainedTags.contains(key)) { tags.add(tagNode) }
+    }
+    publicationReplaceArray(metadataNode, "tags", tags)
+}
+
 private func publicationProjectTree(root: JsonNode, context: PublicationContext,
-    redact: Bool): String {
+    redact: Bool, metadata: DocumentationMetadata): String {
     let hidden = context.hidden
     if (redact) {
         // Unbound author surfaces have no declaration whose audience is proven.
@@ -567,6 +598,7 @@ private func publicationProjectTree(root: JsonNode, context: PublicationContext,
     publicationSanitizeReferences(root, hidden, assets)
     publicationProjectAssets(root, assets)
     publicationSanitizeNavigationTree(root, context)
+    publicationProjectMetadata(root, metadata)
     publicationWrite(root)
 }
 
@@ -641,5 +673,11 @@ public func projectPublicationDocumentation(documentation: DocumentationSet,
         if (!kept.contains(declaration.id)) { let _ = hidden.add(declaration.id) }
     }
     let context = PublicationContext(selected, kept, hidden, documentSetAudiences)
-    decodeDocIr(publicationProjectTree(root, context, redact))
+    let keptDeclarations = ArrayList<SymbolDoc>()
+    for (declaration in requested.declarations where kept.contains(declaration.id)) {
+        keptDeclarations.add(declaration)
+    }
+    let metadata = documentationMetadataForDeclarations(requested.metadata,
+        keptDeclarations.toArray())
+    decodeDocIr(publicationProjectTree(root, context, redact, metadata))
 }

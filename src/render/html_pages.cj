@@ -92,7 +92,8 @@ internal func renderPackagePage(documentation: DocumentationSet, projection: Ren
     match (projection.topLevelByPackage.get(routeKey(packageDoc.moduleId, packageDoc.name))) {
         case Some(symbols) =>
             if (!symbols.isEmpty()) {
-                appendPackageDeclarationGroups(out, symbols, typeLinkIndex, locale)
+                appendPackageDeclarationGroups(out, projection, packageDoc.moduleId,
+                    packageDoc.name, symbols, typeLinkIndex, locale)
                 wroteDeclaration = true
             }
         case None => ()
@@ -202,9 +203,9 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     rootPrefix: String, locale: String, sectionHeadingLevel!: Int64 = 3): Unit {
     let member = entry.symbol
     let anchor = symbolAnchor(member)
-    out.append("<div class=\"member-row\"><details class=\"declaration-summary member-detail\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\" data-member-origin=\"${escapeHtml(entry.origin)}\">")
+    out.append("<div class=\"member-row\"><details class=\"declaration-summary member-detail\" id=\"${escapeHtml(anchor)}\" data-cjdoc-member data-member-name=\"${escapeHtml(member.name)}\" data-member-kind=\"${escapeHtml(member.kind)}\" data-member-origin=\"${escapeHtml(entry.origin)}\" data-member-symbol-id=\"${escapeHtml(member.id)}\">")
     out.append("<summary class=\"member-detail-summary\" id=\"" + escapeHtml(anchor) +
-        "-summary\" data-cjdoc-toc-role=\"member\" data-cjdoc-toc-label=\"" +
+        "-summary\" data-cjdoc-toc-role=\"member\" data-cjdoc-toc-depth=\"${sectionHeadingLevel}\" data-cjdoc-toc-label=\"" +
         escapeHtml(htmlContextLabel(member)) + "\"><span class=\"member-summary-main\">")
     if (!member.headerSpelling.isEmpty()) {
         out.append("<code class=\"declaration-signature\">")
@@ -262,6 +263,8 @@ internal func appendInlineMemberDetail(out: RenderTextBuffer,
     out.append(externalDocumentationHtml(documentation, member, locale, compactUnavailable: true,
         headingLevel: sectionHeadingLevel))
     out.append("</div></details>")
+    appendDeclarationClassificationBadges(out, projection.catalog, projection.snapshotId,
+        member, rootPrefix, includeGroup: false)
     appendInlineMemberActions(out, documentation, projection, member, rootPrefix, locale)
     out.append("</div>\n")
 }
@@ -301,13 +304,28 @@ internal func memberSectionLabel(title: String, locale: String): String {
     label(locale, title, sectionLabel)
 }
 
+internal func memberSectionAnchor(title: String): String {
+    match (title) {
+        case "Constructors" => "constructors"
+        case "Properties" => "properties"
+        case "Variables" => "variables"
+        case "Functions" => "functions"
+        case "Enum cases" => "enum-cases"
+        case "Nested classes" => "nested-classes"
+        case "Nested structs" => "nested-structs"
+        case "Nested interfaces" => "nested-interfaces"
+        case "Nested enums" => "nested-enums"
+        case "Nested extensions" => "nested-extensions"
+        case _ => "other-members"
+    }
+}
+
 internal func appendMemberSection(out: RenderTextBuffer,
     documentation: DocumentationSet, projection: RenderProjection,
     index: HashMap<String, SymbolDoc>, entries: ArrayList<HtmlMemberEntry>,
     title: String, assetLookup: HashMap<String, String>,
     typeLinkIndex: HtmlTypeLinkIndex, locale: String,
-    showKindHeading!: Bool = false, kindHeadingLevel!: Int64 = 3,
-    entryParentLevel!: Int64 = 3): Unit {
+    layout: DeclarationGroupLayout, kindAnchor: String): Unit {
     if (entries.isEmpty()) { return }
     let overloadCountLabel = label(locale, "overloads", "个重载")
     let overloadCounts = HashMap<String, Int64>()
@@ -318,7 +336,7 @@ internal func appendMemberSection(out: RenderTextBuffer,
             case None => 1
         }
     }
-    let overloadHeadingLevel = min(6, entryParentLevel + 1)
+    let overloadHeadingLevel = min(6, layout.entryParentLevel + 1)
     var opened = false
     var activeOverloadKey = ""
     for (entry in entries) {
@@ -328,13 +346,16 @@ internal func appendMemberSection(out: RenderTextBuffer,
             // members but never renders an empty heading shell, a duplicate
             // count row or a TOC node, and leaves behind none of the heading's
             // margins.
-            if (showKindHeading) {
-                let heading = "h${min(6, kindHeadingLevel)}"
-                out.append("<section class=\"member-group\" data-cjdoc-member-group><div class=\"member-group-heading\"><" + heading + ">" +
+            if (layout.showKindHeading) {
+                let heading = "h${min(6, layout.kindHeadingLevel)}"
+                out.append("<section class=\"member-group\" data-cjdoc-member-group><div class=\"member-group-heading\"><" +
+                    heading + " id=\"" + escapeHtml(kindAnchor) + "\" data-cjdoc-toc-role=\"group\">" +
                     escapeHtml(memberSectionLabel(title, locale)) + "</" + heading + "><span class=\"member-group-count\">" +
                     entries.size.toString() + " " + label(locale, "members", "个成员") + "</span></div>\n")
             } else {
-                out.append("<section class=\"member-group member-group-plain\" data-cjdoc-member-group>\n")
+                out.append("<section class=\"member-group member-group-plain\" data-cjdoc-member-group>" +
+                    "<span class=\"section-anchor-alias\" id=\"" + escapeHtml(kindAnchor) +
+                    "\" aria-hidden=\"true\"></span>\n")
             }
             opened = true
         }
@@ -362,7 +383,7 @@ internal func appendMemberSection(out: RenderTextBuffer,
         appendInlineMemberDetail(out, documentation, projection, index, entry,
             assetLookup, typeLinkIndex, "../", locale,
             sectionHeadingLevel: min(6,
-                (if (count > 1) { overloadHeadingLevel } else { entryParentLevel }) + 1))
+                (if (count > 1) { overloadHeadingLevel } else { layout.entryParentLevel }) + 1))
     }
     if (!activeOverloadKey.isEmpty()) { out.append("</div>\n") }
     if (opened) { out.append("</section>\n") }
@@ -406,7 +427,8 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
     let headerClass = if (symbol.kind == "extend") { " api-extension-header" } else { "" }
     out.append("<header class=\"page-header api-page-header${headerClass}\"><div class=\"api-title-row\"><h1 data-cjdoc-toc-role=\"api-root\" data-cjdoc-toc-label=\"${escapeHtml(htmlTocLabel(symbol))}\"><code>${escapeHtml(readerSymbolTitle(symbol, locale))}</code></h1>")
     out.append("<p class=\"symbol-kind\">${escapeHtml(htmlKindLabel(symbol.kind, locale))}</p>")
-    appendDeclarationGroupBadge(out, symbol)
+    appendDeclarationClassificationBadges(out, projection.catalog, projection.snapshotId,
+        symbol, "../")
     out.append("<button class=\"copy-link\" type=\"button\" data-cjdoc-copy-link=\"../${escapeHtml(symbolReadablePagePath(symbol))}\">${label(locale, "Copy link", "复制链接")}</button></div>")
     match (symbol.documentation) {
         case Some(comment) => appendSummaryHtml(out, comment, symbol, assetLookup, "../", locale: locale)
@@ -473,29 +495,70 @@ internal func renderSymbolPage(documentation: DocumentationSet, projection: Rend
                 label(locale, "Collapse all", "全部收起") + "</button></div></div>")
             out.append("<p class=\"member-filter-status\" data-cjdoc-member-filter-status role=\"status\" hidden>" +
                 noResultsLabel + "</p>")
-            let sections = HtmlMemberSections(browser.entries)
+            let sections = HtmlMemberSections(browser.entries, projection.catalog)
             let roles = sections.roles
-            let grouped = hasDeclarationGroups(roles)
+            let grouped = hasGroupedDeclarations(roles)
+            if (grouped) {
+                prepareDeclarationGroupAnchors(roles, symbol.moduleId, symbol.packageName,
+                    Some(symbol.id))
+            }
+            let kindIdsByGroup = HashMap<String, HashSet<String>>()
             for (role in roles) {
-                if (grouped) {
-                    let anchor = if (role.key.isEmpty()) { "api-ungrouped" } else { "api-group-" + role.key }
-                    out.append("<section class=\"api-declaration-group\" data-cjdoc-declaration-group=\"" +
-                        escapeHtml(role.key) + "\"><h2 id=\"" + anchor + "\">" +
-                        escapeHtml(declarationGroupTitle(role, locale)) + "</h2>")
+                for (title in sections.kinds(role)) {
+                    let kindId = memberSectionAnchor(title)
+                    match (kindIdsByGroup.get(role.id)) {
+                        case Some(values) => let _ = values.add(kindId)
+                        case None =>
+                            let values = HashSet<String>()
+                            let _ = values.add(kindId)
+                            kindIdsByGroup[role.id] = values
+                    }
                 }
-                let kinds = sections.kinds(role.key)
-                // A grouped role omits its kind heading when the published
-                // projection leaves exactly one kind; an ungrouped role keeps
-                // the kind heading that is its section heading.
-                let showKindHeading = !grouped || kinds.size > 1
-                let kindHeadingLevel: Int64 = if (grouped) { 3 } else { 2 }
-                let entryParentLevel: Int64 = if (grouped && kinds.size > 1) { 3 } else { 2 }
-                for (title in MEMBER_SECTION_TITLES) {
+            }
+            let kindAliases = HashSet<String>()
+            for (role in roles) {
+                let kinds = sections.kinds(role)
+                if (kinds.isEmpty()) { continue }
+                let ownKindIds = HashSet<String>()
+                for (title in kinds) { let _ = ownKindIds.add(memberSectionAnchor(title)) }
+                if (grouped) {
+                    out.append("<section class=\"api-declaration-group\" data-cjdoc-declaration-group=\"" +
+                        escapeHtml(role.id) + "\"><h2 id=\"" + escapeHtml(role.anchor) + "\">" +
+                        escapeHtml(declarationGroupDisplayTitle(role, locale)) +
+                        "<span data-cjdoc-group-count data-group-total=\"${role.symbols.size}\">" +
+                        label(locale, " (${role.symbols.size})", "（${role.symbols.size}）") + "</span></h2>")
+                }
+                if (grouped) {
+                    match (kindIdsByGroup.get(role.id)) {
+                        case Some(values) =>
+                            if (role.isPrimary || role.id.isEmpty()) {
+                                for (title in MEMBER_SECTION_TITLES) {
+                                    let kindId = memberSectionAnchor(title)
+                                    if (!values.contains(kindId)) { continue }
+                                    if (role.isPrimary && !ownKindIds.contains(kindId)) {
+                                        out.append("<span class=\"section-anchor-alias\" id=\"" +
+                                            escapeHtml(role.kindPrefix + kindId) +
+                                            "\" aria-hidden=\"true\"></span>")
+                                    }
+                                    if (kindAliases.add(kindId)) {
+                                        out.append("<span class=\"section-anchor-alias\" id=\"" +
+                                            escapeHtml(kindId) + "\" aria-hidden=\"true\"></span>")
+                                    }
+                                }
+                            }
+                        case None => ()
+                    }
+                }
+                let layout = if (grouped) { declarationGroupLayout(kinds.size, 2) }
+                    else { DeclarationGroupLayout(true, 2, 2) }
+                for (title in kinds) {
+                    let kindId = memberSectionAnchor(title)
+                    let kindAnchor = if (grouped) {
+                        role.kindPrefix + kindId
+                    } else { kindId }
                     appendMemberSection(out, documentation, projection, index,
-                        sections.entries(role.key, title), title, assetLookup, typeLinkIndex,
-                        locale, showKindHeading: showKindHeading,
-                        kindHeadingLevel: kindHeadingLevel,
-                        entryParentLevel: entryParentLevel)
+                        sections.entries(role, title), title, assetLookup, typeLinkIndex,
+                        locale, layout, kindAnchor)
                 }
                 if (grouped) { out.append("</section>") }
             }

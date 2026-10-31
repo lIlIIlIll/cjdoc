@@ -39,7 +39,7 @@ class PublicApiContractsSuite1 {
         let documentation = DocumentationEngine().generate(
             GenerationRequest(PUBLIC_FIXTURE_PROJECTS + "basic", lintProfile: "standard",
                 astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT))
-        @Expect(documentation.schemaVersion, "cjdoc.doc-ir/16")
+        @Expect(documentation.schemaVersion, "cjdoc.doc-ir/17")
         @Expect(documentation.declarations.size, 25)
         @Expect(documentation.files.size, 1)
         @Expect(documentation.declarations[0].source.start.byteOffset > 0)
@@ -50,13 +50,13 @@ class PublicApiContractsSuite1 {
 
         let unknown = encoded.replace("\"schemaVersion\":", "\"unknown\":true,\"schemaVersion\":")
         @ExpectThrows(api_render.decodeDocIr(unknown))
-        for (version in 6..16) {
-            let unsupported = encoded.replace("cjdoc.doc-ir/16", "cjdoc.doc-ir/${version}")
+        for (version in 6..17) {
+            let unsupported = encoded.replace("cjdoc.doc-ir/17", "cjdoc.doc-ir/${version}")
             @Expect(unsupported != encoded)
             @ExpectThrows(api_render.decodeDocIr(unsupported))
         }
-        let duplicate = encoded.replace("\"schemaVersion\": \"cjdoc.doc-ir/16\",",
-            "\"schemaVersion\": \"cjdoc.doc-ir/16\", \"schemaVersion\": \"cjdoc.doc-ir/16\",")
+        let duplicate = encoded.replace("\"schemaVersion\": \"cjdoc.doc-ir/17\",",
+            "\"schemaVersion\": \"cjdoc.doc-ir/17\", \"schemaVersion\": \"cjdoc.doc-ir/17\",")
         @ExpectThrows(api_render.decodeDocIr(duplicate))
 
         let missingProviderModule = encoded.replace(

@@ -19,6 +19,8 @@ internal class DocIrEncodingBudget {
         this.limit = limit
     }
 
+    prop encodedCapacity: Int64 { get() { encodedBytes } }
+
     func consumeBytes(amount: Int64, path: String): Unit {
         if (amount < 0 || amount > limit - encodedBytes) {
             domainFail(path, "estimated JSON encoding exceeds ${limit} bytes")
@@ -253,6 +255,55 @@ internal func consumeCommentEncoding(value: DocComment, path: String, jsonDepth:
         consumeDocumentationTexts(value, path, jsonDepth, budget)
     }
 }
+internal func consumeDocumentationMetadataEncoding(value: DocumentationMetadata, path: String,
+    budget: DocIrEncodingBudget): Unit {
+    budget.consumeObject(path, depth: 1, fields: 2)
+    budget.consumeCollection(value.groups.size, "${path}.groups", depth: 2)
+    var index: Int64 = 0
+    for (group in value.groups) {
+        let itemPath = "${path}.groups[${index}]"
+        budget.consumeObject(itemPath, depth: 3, fields: 7)
+        budget.consumeString(group.moduleId, "${itemPath}.moduleId")
+        budget.consumeString(group.packageName, "${itemPath}.packageName")
+        budget.consumeOptionalString(group.ownerId, "${itemPath}.ownerId")
+        budget.consumeString(group.id, "${itemPath}.id")
+        budget.consumeString(group.title, "${itemPath}.title")
+        budget.consumeCollection(group.titles.size, "${itemPath}.titles", depth: 4)
+        var titleIndex: Int64 = 0
+        for (title in group.titles) {
+            let titlePath = "${itemPath}.titles[${titleIndex}]"
+            budget.consumeObject(titlePath, depth: 5, fields: 2)
+            budget.consumeString(title.language, "${titlePath}.language")
+            budget.consumeString(title.title, "${titlePath}.title")
+            titleIndex++
+        }
+        match (group.order) {
+            case Some(order) => budget.consumeBytes(order.toString().size, "${itemPath}.order")
+            case None => budget.consumeBytes(4, "${itemPath}.order")
+        }
+        index++
+    }
+    budget.consumeCollection(value.tags.size, "${path}.tags", depth: 2)
+    index = 0
+    for (tag in value.tags) {
+        let itemPath = "${path}.tags[${index}]"
+        budget.consumeObject(itemPath, depth: 3, fields: 4)
+        budget.consumeString(tag.moduleId, "${itemPath}.moduleId")
+        budget.consumeString(tag.id, "${itemPath}.id")
+        budget.consumeString(tag.title, "${itemPath}.title")
+        budget.consumeCollection(tag.titles.size, "${itemPath}.titles", depth: 4)
+        var titleIndex: Int64 = 0
+        for (title in tag.titles) {
+            let titlePath = "${itemPath}.titles[${titleIndex}]"
+            budget.consumeObject(titlePath, depth: 5, fields: 2)
+            budget.consumeString(title.language, "${titlePath}.language")
+            budget.consumeString(title.title, "${titlePath}.title")
+            titleIndex++
+        }
+        index++
+    }
+}
+
 
 internal func consumeSymbolEncoding(value: SymbolDoc, path: String,
     budget: DocIrEncodingBudget): Unit {
@@ -342,7 +393,7 @@ internal func consumeSymbolEncoding(value: SymbolDoc, path: String,
     }
 }
 
-internal func validateDocIrEncodingBudget(documentation: DocumentationSet, limit: Int64): Unit {
+internal func validateDocIrEncodingBudget(documentation: DocumentationSet, limit: Int64): Int64 {
     let budget = DocIrEncodingBudget(limit)
     budget.consumeObject("$")
     budget.consumeString(documentation.schemaVersion, "$.schemaVersion")
@@ -367,6 +418,7 @@ internal func validateDocIrEncodingBudget(documentation: DocumentationSet, limit
     budget.consumeString(documentation.configuration.audience, "$.configuration.audience")
     budget.consumeString(documentation.configuration.lintProfile, "$.configuration.lintProfile")
     budget.consumeString(documentation.configuration.cfgProfile, "$.configuration.cfgProfile")
+    consumeDocumentationMetadataEncoding(documentation.metadata, "$.metadata", budget)
     if (let Some(options) <- documentation.languageOptions) {
         budget.consumeObject("$.languageOptions", fields: 3)
         budget.consumeString(options.defaultLanguage, "$.languageOptions.defaultLanguage")
@@ -543,11 +595,12 @@ internal func validateDocIrEncodingBudget(documentation: DocumentationSet, limit
         }
         budget.consumeOptionalString(diagnostic.symbolId, "${path}.symbolId"); index++
     }
+    budget.encodedCapacity
 }
 
 protected func docIrFitsEncodedBudget(documentation: DocumentationSet, limit: Int64): Bool {
     try {
-        validateDocIrEncodingBudget(documentation, limit)
+        let _ = validateDocIrEncodingBudget(documentation, limit)
         true
     } catch (_: IllegalArgumentException) {
         false

@@ -16,6 +16,7 @@ class DocumentationDriver {
 
     public func generate(projectRoot: String): DocumentationSet {
         let source = sourceProvider.collect(projectRoot)
+        captureDocumentationMetadataInventory(source)
         filterSourceForCfg(source, cfgProfile)
         source.cfgProfile = cfgProfile
         let semantic = semanticProvider.analyze(source)

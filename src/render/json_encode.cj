@@ -354,8 +354,9 @@ internal func appendDiagnostic(out: StringBuilder, value: Diagnostic): Unit {
     out.append(",\"symbolId\":${nullableString(value.symbolId)}}")
 }
 
-internal func compactDocIr(documentation: DocumentationSet): String {
-    let out = StringBuilder()
+internal func compactDocIr(documentation: DocumentationSet, capacity: Int64): String {
+    // Reuse the validated estimate instead of geometrically growing a near-limit buffer.
+    let out = StringBuilder(capacity)
     out.append("{\"schemaVersion\":${escapeJsonString(documentation.schemaVersion)},")
     out.append("\"generator\":{\"name\":${escapeJsonString(documentation.generator.name)},")
     out.append("\"version\":${escapeJsonString(documentation.generator.version)},")
@@ -370,6 +371,9 @@ internal func compactDocIr(documentation: DocumentationSet): String {
     out.append("\"configuration\":{\"audience\":${escapeJsonString(documentation.configuration.audience)},")
     out.append("\"lintProfile\":${escapeJsonString(documentation.configuration.lintProfile)},")
     out.append("\"cfgProfile\":${escapeJsonString(documentation.configuration.cfgProfile)}},")
+    out.append("\"metadata\":")
+    appendDocumentationMetadata(out, documentation.metadata)
+    out.append(",")
     if (let Some(options) <- documentation.languageOptions) {
         out.append("\"languageOptions\":"); appendDocumentationLanguageOptions(out, options); out.append(",")
     }
@@ -531,13 +535,13 @@ private func prettyJson(compact: String): String {
 /** Encode strict Doc IR with an optional UTF-8 document budget, at most 64 MiB. */
 public func encodeDocIr(documentation: DocumentationSet,
     maxDocumentBytes!: Int64 = DOC_IR_MAX_JSON_DOCUMENT_BYTES): String {
-    validateDocumentationSet(documentation, maxDocumentBytes: maxDocumentBytes)
-    let encoded = prettyJson(compactDocIr(documentation))
+    let capacity = validatedDocumentationCapacity(documentation, maxDocumentBytes)
+    let encoded = prettyJson(compactDocIr(documentation, capacity))
     let _ = decodeDocIr(encoded, maxDocumentBytes: maxDocumentBytes)
     encoded
 }
 
 func validateTypedDocumentationSet(documentation: DocumentationSet): Unit {
-    validateDocumentationSet(documentation)
-    let _ = decodeDocIr(prettyJson(compactDocIr(documentation)))
+    let capacity = validatedDocumentationCapacity(documentation, DOC_IR_MAX_JSON_DOCUMENT_BYTES)
+    let _ = decodeDocIr(prettyJson(compactDocIr(documentation, capacity)))
 }

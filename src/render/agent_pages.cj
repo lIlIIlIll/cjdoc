@@ -60,10 +60,11 @@ private func agentPackageMarkdown(context: DocumentationReadSnapshot, pkg: Packa
     for (symbol in context.projection.visibleSymbols where symbol.moduleId == pkg.moduleId && symbol.packageName == pkg.name) {
         symbols.add(symbol)
     }
-    let groups = declarationGroups(symbols)
-    let grouped = hasDeclarationGroups(groups)
+    let groups = partitionDeclarationGroups(symbols, context.projection.catalog)
+    let grouped = hasGroupedDeclarations(groups)
+    if (grouped) { prepareDeclarationGroupAnchors(groups, pkg.moduleId, pkg.name, None) }
     for (group in groups) {
-        if (grouped) { appendDeclarationGroupMarkdown(out, group, "##", context.locale) }
+        if (grouped) { appendGroupedDeclarationMarkdown(out, group, "##", context.locale) }
         for (symbol in group.symbols) {
         out.append("- [")
         appendEscapedMarkdownText(out, symbol.qualifiedName)

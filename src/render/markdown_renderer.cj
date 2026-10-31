@@ -146,7 +146,7 @@ internal func appendMarkdownInlineNode(out: RenderTextBuffer, node: MarkdownNode
             }; out.append("]")
             let captured: ?String = match (capturedLinks) { case Some(links) => links.get(node.literal); case None => None }
             if (let Some(destination) <- captured) {
-                // Only captured page routes enter this map; arbitrary author URLs keep the normal validator.
+                // Captured page routes and generated heading fragments are already validated.
                 out.append("(" + encodeMarkdownDestination(destination) + ")")
             } else {
                 match (markdownLinkDestination(node.literal)) {
@@ -262,10 +262,21 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
     assetLookup: HashMap<String, String>, headingBase: Int64,
     pagePath!: String = "", symbolIndex!: ?HashMap<String, SymbolDoc> = None,
     capturedLinks!: ?HashMap<String, String> = None,
-    canonicalHtml!: Bool = false): Unit {
+    canonicalHtml!: Bool = false, headingContext!: ?MarkdownOutputHeadingContext = None,
+    headingAnchorPrefix!: String = "markdown", headingOrdinal!: Int64 = -1): Unit {
+    if (headingContext.isNone()) {
+        if (let Some(context) <- markdownOutputHeadingContext(node, headingBase,
+            headingAnchorPrefix, headingOrdinal)) {
+            let links = markdownHeadingFragmentLinks(context, capturedLinks)
+            appendMarkdownNodeMarkdown(out, node, assetLookup, headingBase, pagePath: pagePath,
+                symbolIndex: symbolIndex, capturedLinks: Some(links), canonicalHtml: canonicalHtml,
+                headingContext: Some(context))
+            return
+        }
+    }
     match (node.kind) {
         case "document" => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml, headingContext: headingContext)
         }
         case "paragraph" =>
             for (child in node.children) {
@@ -273,7 +284,14 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
             }
             out.append("\n\n")
         case "heading" =>
-            appendMarkdownMarks(out, "#", markdownHeadingLevel(node, headingBase)); out.append(" ")
+            let level = markdownRequestedHeadingLevel(node, headingBase)
+            if (let Some(context) <- headingContext) {
+                let target = context.headingIds[context.nextHeading]
+                context.nextHeading++
+                out.append("<a id=\"${escapeHtml(target)}\"></a>\n")
+            }
+            // Do not promote deeper content into a sibling H6.
+            if (level <= 6) { appendMarkdownMarks(out, "#", level); out.append(" ") }
             for (child in node.children) {
                 appendMarkdownInlineNode(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
             }
@@ -298,7 +316,7 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
         case "block_quote" =>
             let nested = RenderTextBuffer()
             for (child in node.children) {
-                appendMarkdownNodeMarkdown(nested, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
+                appendMarkdownNodeMarkdown(nested, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml, headingContext: headingContext)
             }
             appendMarkdownPrefixedBlock(out, nested.toString(), "> ", "> ")
             out.append("\n")
@@ -330,7 +348,7 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
                 }
                 let nested = RenderTextBuffer()
                 for (itemChild in child.children) {
-                    appendMarkdownNodeMarkdown(nested, itemChild, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
+                    appendMarkdownNodeMarkdown(nested, itemChild, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml, headingContext: headingContext)
                 }
                 let continuation = RenderTextBuffer()
                 appendMarkdownMarks(continuation, " ", firstPrefix.toString().size)
@@ -342,16 +360,16 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
             out.append("\n")
         case "list_item" =>
             for (child in node.children) {
-                appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
+                appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml, headingContext: headingContext)
             }
         case "table" => appendMarkdownTableMarkdown(out, node, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
         case "table_row" | "table_cell" | "custom_block" => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml, headingContext: headingContext)
         }
         case "custom_inline" => appendMarkdownInlineNode(out, node, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
         case "html_block" => appendEscapedMarkdownText(out, node.literal); out.append("\n\n")
         case _ => for (child in node.children) {
-            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml)
+            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase, pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: capturedLinks, canonicalHtml: canonicalHtml, headingContext: headingContext)
         }
     }
 }
@@ -419,7 +437,9 @@ private func markdownSectionSelected(sections: ?Array<String>, name: String): Bo
 internal func appendDocumentationTagMarkdown(out: RenderTextBuffer, tag: DocTag,
     assetLookup: HashMap<String, String>, locale: String, pagePath: String,
     symbolIndex: ?HashMap<String, SymbolDoc>, canonicalHtml!: Bool = false,
-    headingBase!: Int64 = 4): Unit {
+    headingBase!: Int64 = 4, headingAnchorPrefix!: String = "markdown",
+    headingOrdinal!: Int64 = -1,
+    headingContext!: ?MarkdownOutputHeadingContext = None): Unit {
     let languageLabel = contentLanguageLabel(tag, locale)
     if (!tag.translationState.isEmpty() && !languageLabel.isEmpty()) {
         out.append("_"); appendEscapedMarkdownText(out, languageLabel); out.append("_.\n\n")
@@ -431,8 +451,19 @@ internal func appendDocumentationTagMarkdown(out: RenderTextBuffer, tag: DocTag,
         return
     }
     match (tag.descriptionMarkdown) {
-        case Some(tree) => appendMarkdownNodeMarkdown(out, tree, assetLookup, headingBase,
-            pagePath: pagePath, symbolIndex: symbolIndex, canonicalHtml: canonicalHtml)
+        case Some(tree) =>
+            // Independent tag bodies own fragments even when their headings still fit H1–H6.
+            let context = if (headingContext.isSome()) { headingContext }
+                else { markdownOutputHeadingContext(tree, headingBase, headingAnchorPrefix, headingOrdinal,
+                    namespaceHeadings: tag.name != "summary" && tag.name != "description") }
+            let fragmentLinks: ?HashMap<String, String> = match (context) {
+                case Some(value) => Some(markdownHeadingFragmentLinks(value, None))
+                case None => None
+            }
+            appendMarkdownNodeMarkdown(out, tree, assetLookup, headingBase,
+                pagePath: pagePath, symbolIndex: symbolIndex, capturedLinks: fragmentLinks,
+                canonicalHtml: canonicalHtml, headingContext: context,
+                headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: headingOrdinal)
         case None => appendEscapedMarkdownText(out, tag.description)
     }
 }
@@ -440,10 +471,12 @@ internal func appendDocumentationTagMarkdown(out: RenderTextBuffer, tag: DocTag,
 internal func appendDocumentationListTagMarkdown(out: RenderTextBuffer, tag: DocTag,
     assetLookup: HashMap<String, String>, locale: String, pagePath: String,
     symbolIndex: ?HashMap<String, SymbolDoc>, canonicalHtml!: Bool = false,
-    headingBase!: Int64 = 4): Unit {
+    headingBase!: Int64 = 4, headingAnchorPrefix!: String = "markdown",
+    headingOrdinal!: Int64 = -1): Unit {
     let content = RenderTextBuffer()
     appendDocumentationTagMarkdown(content, tag, assetLookup, locale, pagePath, symbolIndex,
-        canonicalHtml: canonicalHtml, headingBase: headingBase)
+        canonicalHtml: canonicalHtml, headingBase: headingBase,
+        headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: headingOrdinal)
     appendMarkdownPrefixedBlock(out, content.toString(), "", "    ")
 }
 
@@ -454,29 +487,37 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
     assetLookup: HashMap<String, String>, locale!: String = "en", pagePath!: String = "",
     symbolIndex!: ?HashMap<String, SymbolDoc> = None, canonicalHtml!: Bool = false,
     sections!: ?Array<String> = None, headingPrefix!: String = "####",
-    headingBase!: Int64 = 4): Unit {
+    headingBase!: Int64 = 4, headingAnchorPrefix!: String = "markdown"): Unit {
     if (markdownSectionSelected(sections, "description") && markdownHasDescription(comment)) {
         if (sections.isSome()) {
             out.append("${headingPrefix} ${label(locale, "Description", "说明")}\n\n")
         }
         if (comment.localizedTexts.isEmpty()) {
             appendMarkdownNodeMarkdown(out, comment.markdown, assetLookup, headingBase, pagePath: pagePath,
-                symbolIndex: symbolIndex, canonicalHtml: canonicalHtml)
+                symbolIndex: symbolIndex, canonicalHtml: canonicalHtml,
+                headingAnchorPrefix: headingAnchorPrefix)
         } else {
-            for (tag in comment.tags where tag.name == "summary" || tag.name == "description") {
+            let context = markdownDescriptionHeadingContext(comment, headingBase, headingAnchorPrefix)
+            for (tagIndex in 0..comment.tags.size) {
+                let tag = comment.tags[tagIndex]
+                if (tag.name != "summary" && tag.name != "description") { continue }
                 appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
-                    canonicalHtml: canonicalHtml, headingBase: headingBase)
+                    canonicalHtml: canonicalHtml, headingBase: headingBase,
+                    headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex,
+                    headingContext: context)
                 out.append("\n\n")
             }
         }
     }
     if (markdownSectionSelected(sections, "contracts")) {
-        for (tag in comment.tags) {
+        for (tagIndex in 0..comment.tags.size) {
+            let tag = comment.tags[tagIndex]
             if (tag.name == "deprecated") {
                 let content = RenderTextBuffer()
                 content.append("**${label(locale, "Deprecated.", "已弃用。")}** ")
                 appendDocumentationTagMarkdown(content, tag, assetLookup, locale, pagePath, symbolIndex,
-                    canonicalHtml: canonicalHtml, headingBase: headingBase)
+                    canonicalHtml: canonicalHtml, headingBase: headingBase,
+                    headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
                 appendMarkdownPrefixedBlock(out, content.toString(), "> ", "> ")
                 out.append("\n")
                 break
@@ -491,8 +532,10 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
             for (tag in comment.tags) {
                 if (tag.name != "example") { continue }
                 if (!tag.subject.isEmpty()) {
-                    out.append("${headingPrefix}# ")
+                    if (headingPrefix.size < 6) { out.append("${headingPrefix}# ") }
+                    else { out.append("**") }
                     appendEscapedMarkdownText(out, tag.subject)
+                    if (headingPrefix.size >= 6) { out.append("**") }
                     out.append("\n\n")
                 }
                 let content = trimExampleBlankLines(tag.description)
@@ -509,22 +552,26 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
         for (tag in comment.tags) { if (tag.name == "param") { hasParameters = true; break } }
         if (hasParameters) {
             out.append("${headingPrefix} ${label(locale, "Parameters", "参数")}\n\n")
-            for (tag in comment.tags) {
+            for (tagIndex in 0..comment.tags.size) {
+                let tag = comment.tags[tagIndex]
                 if (tag.name == "param") {
                     out.append("- "); appendMarkdownCodeSpan(out, tag.subject); out.append(" — ")
                     appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
-                        canonicalHtml: canonicalHtml, headingBase: headingBase)
+                        canonicalHtml: canonicalHtml, headingBase: headingBase,
+                        headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
                 }
             }
             out.append("\n")
         }
     }
     if (markdownSectionSelected(sections, "returns")) {
-        for (tag in comment.tags) {
+        for (tagIndex in 0..comment.tags.size) {
+            let tag = comment.tags[tagIndex]
             if (tag.name == "return" || tag.name == "returns") {
                 out.append("${headingPrefix} ${label(locale, "Returns", "返回值")}\n\n")
                 appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
-                    canonicalHtml: canonicalHtml, headingBase: headingBase)
+                    canonicalHtml: canonicalHtml, headingBase: headingBase,
+                    headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
                 out.append("\n\n")
             }
         }
@@ -534,14 +581,16 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
         for (tag in comment.tags) { if (tag.name == "throws") { hasThrows = true; break } }
         if (hasThrows) {
             out.append("${headingPrefix} ${label(locale, "Throws", "异常")}\n\n")
-            for (tag in comment.tags) {
+            for (tagIndex in 0..comment.tags.size) {
+                let tag = comment.tags[tagIndex]
                 if (tag.name == "throws") {
                     out.append("- ")
                     appendTagSubjectMarkdown(out, tag, pagePath, symbolIndex,
                         canonicalHtml: canonicalHtml)
                     out.append(" — ")
                     appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
-                        canonicalHtml: canonicalHtml, headingBase: headingBase)
+                        canonicalHtml: canonicalHtml, headingBase: headingBase,
+                        headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
                 }
             }
             out.append("\n")
@@ -554,7 +603,8 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
         }
         if (hasContracts) {
             out.append("${headingPrefix} " + label(locale, "Behavior contracts", "行为契约") + "\n\n")
-            for (tag in comment.tags) {
+            for (tagIndex in 0..comment.tags.size) {
+                let tag = comment.tags[tagIndex]
                 if (!isBehaviorContractTag(tag.name)) { continue }
                 out.append("- **")
                 appendEscapedMarkdownText(out, behaviorContractLabel(tag.name, locale))
@@ -569,7 +619,8 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
                     out.append("**incomplete**")
                 } else {
                     appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
-                        canonicalHtml: canonicalHtml, headingBase: headingBase)
+                        canonicalHtml: canonicalHtml, headingBase: headingBase,
+                        headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
                 }
                 out.append("\n")
             }
@@ -581,14 +632,16 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
         for (tag in comment.tags) { if (tag.name == "see") { hasSee = true; break } }
         if (hasSee) {
             out.append("${headingPrefix} ${label(locale, "See also", "另请参阅")}\n\n")
-            for (tag in comment.tags) {
+            for (tagIndex in 0..comment.tags.size) {
+                let tag = comment.tags[tagIndex]
                 if (tag.name == "see") {
                     out.append("- "); appendTagSubjectMarkdown(out, tag, pagePath, symbolIndex,
                         canonicalHtml: canonicalHtml)
                     if (!tag.description.isEmpty() || !tag.translationState.isEmpty()) {
                         out.append(" — ")
                         appendDocumentationListTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
-                            canonicalHtml: canonicalHtml, headingBase: headingBase)
+                            canonicalHtml: canonicalHtml, headingBase: headingBase,
+                            headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
                     }
                     out.append("\n")
                 }
@@ -596,19 +649,13 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
             out.append("\n")
         }
     }
-    if (sections.isNone()) {
-        if (let Some(tag) <- documentationGroup(comment)) {
-            out.append(label(locale, "API group: ", "接口分组："))
-            appendEscapedMarkdownText(out, tag.description)
-            out.append("\n\n")
-        }
-    }
     for ((name, heading) in [("since", "Since"), ("author", "Authors"),
             ("version", "Version")]) {
         if ((name == "since" && !markdownSectionSelected(sections, "contracts")) ||
             (name != "since" && !markdownSectionSelected(sections, "relations"))) { continue }
             var opened = false
-            for (tag in comment.tags) {
+            for (tagIndex in 0..comment.tags.size) {
+                let tag = comment.tags[tagIndex]
                 if (tag.name != name) { continue }
                 if (!opened) {
                     out.append("${headingPrefix} ${label(locale, heading, match (name) { case "since" => "自版本"; case "author" => "作者"; case _ => "版本" })}\n\n")
@@ -616,7 +663,8 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
                 }
                 out.append("- ")
                 appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath, symbolIndex,
-                    canonicalHtml: canonicalHtml, headingBase: headingBase)
+                    canonicalHtml: canonicalHtml, headingBase: headingBase,
+                    headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
                 out.append("\n")
             }
             if (opened) { out.append("\n") }

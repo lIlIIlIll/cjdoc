@@ -1,19 +1,19 @@
 # cjdoc 文档
 
-这里集中放 cjdoc 0.7.6 的文档。第一次使用请从仓库根目录的 [README](https://github.com/lIlIIlIll/cjdoc/blob/main/README.md) 开始；已经能生成文档、想深入某个主题时，按下表选择。
+这里集中放当前源码的 cjdoc 使用与维护文档。第一次使用请从仓库根目录的 [README](https://github.com/lIlIIlIll/cjdoc/blob/main/README.md) 开始；已经能生成文档、想深入某个主题时，按下表选择。
 
 ## 使用文档
 
 | 文档 | 内容 |
 |---|---|
 | [README](https://github.com/lIlIIlIll/cjdoc/blob/main/README.md) | 安装、三步上手、常用任务和常见问题。 |
-| [0.7.6 发布记录](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/release-notes.md) | 源码宏文档、发行构建修复及保留的 0.7.5 失败记录。 |
-| [使用手册](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/usage.md) | 完整的日常任务说明：注释写法、示例检查、生成各类产物、check、diff、render、serve、排错和命令速查。 |
-| [高级用法](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/advanced-usage.md) | 多格式组合、workspace 与依赖、缓存与并行、条件编译、多版本文档、面向 AI 代理的产物、自动化检查接入。 |
-| [配置参考](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/configuration.md) | `cjdoc.toml` 的完整配置键：lint、覆盖率阈值、代码高亮、多语言、概念页。 |
+| [0.7.6 发布记录](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/release-notes.md) | 0.7.6 的历史发布记录，以及另行标明的后续查询、分类与分组实现变更。 |
+| [使用手册](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/usage.md) | 日常操作、注释标签、声明分组、生成、检查、预览与排错。 |
+| [高级用法](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/advanced-usage.md) | 多格式、workspace 与依赖、缓存、条件编译、多版本站点、Agent 产物和自动化接入。 |
+| [配置参考](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/configuration.md) | `cjdoc.toml` 配置，包括质量规则、多语言、概念页及模块级分类和分组元数据。 |
 | [概念页与指南](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/guides.md) | 把项目里的 Markdown 组织成文档页面，以及页面与 API 的绑定规则。 |
 | [多语言文档](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/i18n.md) | 作者提供中英文正文、翻译配对、缺译策略和翻译覆盖率。 |
-| [逐声明读取、查询与 MCP](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/agent-reading.md) | 静态 Markdown/JSON、固定快照、身份感知查询、续取、章节预算、已有报告和真实 stdio 客户端配置。 |
+| [逐声明读取、查询与 MCP](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/agent-reading.md) | 当前 query/index/declaration 版本、精确与发现搜索、标签筛选、分类 facet、续取、章节预算和 MCP。 |
 | [文档质量检查](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/documentation-quality.md) | 文档质量规则、覆盖率报告与 HTML 中的展示方式。 |
 | [作者侧契约复核](https://github.com/lIlIIlIll/cjdoc/blob/main/docs/contract-review.md) | 区分质量三层，以作者事实、源码和真实消费者复核输入域、失败与状态；保留未知。 |
 

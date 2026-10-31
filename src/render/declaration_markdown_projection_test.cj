@@ -52,7 +52,8 @@ private func projectionAddTags(): Array<DocTag> {
     tags.toArray()
 }
 
-private func projectionDocumentation(): DocumentationSet {
+private func projectionDocumentation(addComment!: ?DocComment = None,
+    opaqueComment!: ?DocComment = None): DocumentationSet {
     let intType = TypeRef("primitive", "Int64", SemanticType("unavailable"))
     let owner = SymbolDoc(PROJECTION_CATALOG, "class", "Catalog", "fixture.Catalog", "fixture",
         PROJECTION_MODULE, "public", projectionSource(1), "public class Catalog",
@@ -65,15 +66,15 @@ private func projectionDocumentation(): DocumentationSet {
             ParameterDoc("value", intType),
             ParameterDoc("radix", intType, defaultExpression: Some("10"))
         ],
-        documentation: Some(DocComment("raw", "Append a value", "",
+        documentation: Some(addComment.getOrDefault({ => DocComment("raw", "Append a value", "",
             MarkdownNode("document", children: [
                 MarkdownNode("paragraph", children: [
                     MarkdownNode("text", literal: "Append a value to the catalogue.")
                 ])
-            ]), tags: projectionAddTags())))
+            ]), tags: projectionAddTags()) })))
     let undocumented = SymbolDoc(PROJECTION_UNDOCUMENTED, "function", "opaque", "fixture.opaque",
         "fixture", PROJECTION_MODULE, "public", projectionSource(70),
-        "public func opaque(): Unit", SemanticInfo("partial", "ast"))
+        "public func opaque(): Unit", SemanticInfo("partial", "ast"), documentation: opaqueComment)
     let empty = SymbolDoc(PROJECTION_EMPTY, "function", "blank", "fixture.blank", "fixture",
         PROJECTION_MODULE, "public", projectionSource(80), "public func blank(): Unit",
         SemanticInfo("partial", "ast"), documentation: Some(DocComment("", "", "",
@@ -101,6 +102,18 @@ private func projectionDeclaration(documentation: DocumentationSet, id: String):
 private func projectionProjection(documentation: DocumentationSet, locale: String):
     DeclarationMarkdownProjection {
     DeclarationMarkdownProjection(documentation, RenderProjection(documentation), locale)
+}
+
+private func projectionFragmentTag(name: String, subject: String, linkLabel: String): DocTag {
+    let text = "[${linkLabel}](#details)\n\n#### Details"
+    DocTag(name, subject, text, descriptionMarkdown: Some(MarkdownNode("document", children: [
+        MarkdownNode("paragraph", children: [
+            MarkdownNode("link", literal: "#details",
+                children: [MarkdownNode("text", literal: linkLabel)])
+        ]),
+        MarkdownNode("heading", MarkdownNodeMetadata.forHeading(4),
+            children: [MarkdownNode("text", literal: "Details")])
+    ])))
 }
 
 @Test
@@ -179,6 +192,33 @@ class DeclarationMarkdownProjectionTest {
         @Expect(complete.contains("## Parameters"), true)
         @Expect(complete.contains("## Examples"), true)
         @Expect(complete.contains("## Relationships"), true)
+    }
+
+    @TestCase
+    func independentTagBodiesAndRepeatedChaptersKeepDistinctReachableFragments(): Unit {
+        let addComment = DocComment("", "", "", MarkdownNode("document"), tags: [
+            projectionFragmentTag("param", "value", "value-jump"),
+            projectionFragmentTag("param", "radix", "radix-jump"),
+            projectionFragmentTag("param", "unmodeled", "extra-jump"),
+            projectionFragmentTag("return", "", "return-jump"),
+            projectionFragmentTag("throws", "IllegalArgumentException", "throws-jump")
+        ])
+        let opaqueComment = DocComment("", "", "", MarkdownNode("document"), tags: [
+            projectionFragmentTag("param", "authored", "other-jump")
+        ])
+        let snapshot = DocumentationReadSnapshot(projectionDocumentation(
+            addComment: Some(addComment), opaqueComment: Some(opaqueComment)))
+        let markdown = snapshot.renderDeclarationMarkdown(PROJECTION_ADD).getOrThrow() + "\n" +
+            snapshot.renderDeclarationMarkdown(PROJECTION_UNDOCUMENTED).getOrThrow()
+        let targets = HashSet<String>()
+        for (part in markdown.split("](", removeEmpty: false)) {
+            let target = part.split(")", 2)[0]
+            if (!target.startsWith("#")) { continue }
+            @Expect(targets.add(target))
+            @Expect(markdown.split("id=\"${target[1..]}\"", removeEmpty: false).size, 2)
+        }
+        @Expect(targets.size, 7)
+        @Expect(!markdown.contains("\n####### "))
     }
 
     @TestCase

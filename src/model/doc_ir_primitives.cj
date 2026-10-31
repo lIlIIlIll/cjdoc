@@ -2,7 +2,7 @@ package cjdoc.model
 
 import std.collection.*
 
-public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/16"
+public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/17"
 public let DOC_IR_MAX_TYPE_DEPTH: Int64 = 64
 public let DOC_IR_MAX_MARKDOWN_DEPTH: Int64 = 64
 public let DOC_IR_MAX_FENCE_LENGTH: Int64 = 1024

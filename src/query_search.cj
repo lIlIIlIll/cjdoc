@@ -3,20 +3,11 @@ package cjdoc
 import cjdoc.model as query_model
 import cjdoc.render as query_render
 import std.collection.*
-import std.sort.*
 import yjson.*
 
 // Search ranks only with evidence the projection already holds: stable symbol
 // identity, source spellings, re-export exposure, owner and literal author text.
 // Relevance is never presented as overload applicability or compiler resolution.
-
-private let QUERY_MATCH_SYMBOL_ID: Int64 = 4
-private let QUERY_MATCH_SYMBOL_KEY: Int64 = 4
-private let QUERY_MATCH_QUALIFIED: Int64 = 3
-private let QUERY_MATCH_OWNER: Int64 = 2
-private let QUERY_MATCH_NAME: Int64 = 2
-private let QUERY_MATCH_ALIAS: Int64 = 2
-private let QUERY_MATCH_TEXT: Int64 = 1
 
 /** One comparable match level together with the exact reason it was reached. */
 internal class QueryMatch {
@@ -145,271 +136,205 @@ internal func queryKindMatches(symbol: query_model.SymbolDoc, request: JsonObjec
     requested.isEmpty() || symbol.kind == requested
 }
 
-/** Split one free-text query into lower-cased ASCII/Unicode alphanumeric tokens. */
-internal func queryTokens(value: String): Array<String> {
-    let tokens = ArrayList<String>()
-    var current = StringBuilder()
-    for (rune in value.runes()) {
-        let code = UInt32(rune)
-        let accepted = (code >= 0x30u32 && code <= 0x39u32) || (code >= 0x41u32 && code <= 0x5Au32) ||
-            (code >= 0x61u32 && code <= 0x7Au32) || code == 0x5Fu32 || code >= 0x80u32
-        if (accepted) {
-            current.append(rune)
-        } else if (current.size > 0) {
-            tokens.add(current.toString().toAsciiLower())
-            current = StringBuilder()
-        }
-    }
-    if (current.size > 0) { tokens.add(current.toString().toAsciiLower()) }
-    tokens.toArray()
-}
 
-internal func queryContainsAll(haystack: String, tokens: Array<String>): Bool {
-    if (tokens.isEmpty()) { return false }
-    for (token in tokens) {
-        if (!haystack.contains(token)) { return false }
-    }
-    true
-}
-
-/**
- * Match one visible declaration against the request's identity and text fields.
- *
- * Overload selectors (exact captured parameter spellings and generic arity)
- * narrow an identity match; they never stand in for an applicability proof.
- */
-internal func querySymbolMatch(document: QueryDocument, symbol: query_model.SymbolDoc,
-    request: JsonObject): ?QueryMatch {
-    let symbolId = queryString(request, "symbolId")
-    let symbolKey = queryString(request, "symbolKey")
-    let qualifiedName = queryString(request, "qualifiedName")
-    let name = queryString(request, "name")
-    let query = queryString(request, "query")
-    let hasSelectors = request.get("parameterTypes").isSome() || request.get("genericArity").isSome()
-    var level: Int64 = -1
-    var reason = ""
-    if (!symbolId.isEmpty()) {
-        if (symbol.id != symbolId) { return None }
-        level = QUERY_MATCH_SYMBOL_ID
-        reason = "symbol_id"
-    } else if (!symbolKey.isEmpty()) {
-        if (document.input.symbolKeys[symbol.id] != symbolKey) { return None }
-        level = QUERY_MATCH_SYMBOL_KEY
-        reason = "symbol_key"
-    } else if (!qualifiedName.isEmpty()) {
-        if (symbol.qualifiedName != qualifiedName) { return None }
-        level = QUERY_MATCH_QUALIFIED
-        reason = "qualified_name"
-    } else if (!name.isEmpty()) {
-        let ownerName = queryOwnerName(document, symbol)
-        if (symbol.name == name) {
-            level = QUERY_MATCH_NAME
-            reason = "declaration_name"
-        } else if (symbol.qualifiedName == name) {
-            level = QUERY_MATCH_QUALIFIED
-            reason = "qualified_name"
-        } else if (!ownerName.isEmpty() && ownerName + "." + symbol.name == name) {
-            level = QUERY_MATCH_OWNER
-            reason = "owner_member_name"
-        } else if (queryAliasExposes(document, symbol.id, name)) {
-            level = QUERY_MATCH_ALIAS
-            reason = "exposed_reexport_alias"
-        } else {
-            return None
-        }
-    } else if (!query.isEmpty() && query == symbol.id) {
-        level = QUERY_MATCH_SYMBOL_ID
-        reason = "symbol_id"
-    } else if (!query.isEmpty() && query == document.input.symbolKeys[symbol.id]) {
-        level = QUERY_MATCH_SYMBOL_KEY
-        reason = "symbol_key"
-    } else if (!query.isEmpty() && query == symbol.qualifiedName) {
-        level = QUERY_MATCH_QUALIFIED
-        reason = "qualified_name"
-    } else if (!query.isEmpty() && query == symbol.name) {
-        level = QUERY_MATCH_NAME
-        reason = "declaration_name"
-    } else if (!query.isEmpty() && queryAliasExposes(document, symbol.id, query)) {
-        level = QUERY_MATCH_ALIAS
-        reason = "exposed_reexport_alias"
-    } else if (!query.isEmpty()) {
-        let tokens = queryTokens(query)
-        if (tokens.isEmpty()) { return None }
-        let identifier = (symbol.qualifiedName + "\n" + symbol.name + "\n" +
-            queryOwnerName(document, symbol)).toAsciiLower()
-        let text = document.searchText.get(symbol.id).getOrDefault({ => "" })
-        let identifierHit = queryContainsAll(identifier, tokens)
-        if (!identifierHit && !queryContainsAll(text, tokens)) { return None }
-        level = QUERY_MATCH_TEXT
-        reason = if (identifierHit) { "declaration_text" } else { "documentation_text" }
-    } else {
-        return None
-    }
-    if (hasSelectors && !querySelectorsMatch(symbol, request)) { return None }
-    if (hasSelectors && reason != "symbol_key" && reason != "symbol_id") {
-        reason = reason + "_with_overload_selector"
-    }
-    var score = level * 1000
-    if (!name.isEmpty() && symbol.name == name) { score += 40 }
-    if (level == QUERY_MATCH_ALIAS) { score += 30 }
-    if (level == QUERY_MATCH_OWNER) { score += 20 }
-    if (level == QUERY_MATCH_TEXT) { score += 10 }
-    QueryMatch(level, reason, score)
-}
-
-internal func queryOwnerName(document: QueryDocument, symbol: query_model.SymbolDoc): String {
-    match (symbol.ownerId) {
-        case Some(ownerId) => match (document.bySymbolId.get(ownerId)) {
-            case Some(owner) => owner.name
-            case None => ""
-        }
-        case None => ""
-    }
-}
-
-private func queryAliasExposes(document: QueryDocument, symbolId: String, name: String): Bool {
-    match (document.aliases.get(name)) {
-        case Some(targets) => targets.contains(symbolId)
-        case None => false
-    }
-}
-
-// Selectors are exact captured source spellings and arity, not canonical types.
-internal func querySelectorsMatch(symbol: query_model.SymbolDoc, request: JsonObject): Bool {
-    if (let Some(node) <- request.get("genericArity")) {
-        if (symbol.genericParameters.size != node.asInt64()) { return false }
-    }
-    if (let Some(node) <- request.get("parameterTypes")) {
-        let requested = node.asArray()
-        if (requested.size() != symbol.parameters.size) { return false }
-        for (index in 0..requested.size()) {
-            if (requested[index].asString() != symbol.parameters[index].typeRef.spelling) { return false }
-        }
-    }
-    true
-}
-
-/** One ranked candidate before pagination. */
+/** Captured identity reattached after the pure projection executor selects it. */
 internal class QueryCandidate {
     let input: QuerySnapshotInput
     let document: QueryDocument
     let symbol: ?query_model.SymbolDoc
     let page: ?query_model.DocumentationPage
     let relevance: QueryMatch
-    let order: Int64
+    let matchedExposureIds = ArrayList<String>()
 
     init(input: QuerySnapshotInput, document: QueryDocument, symbol: ?query_model.SymbolDoc,
-        page: ?query_model.DocumentationPage, relevance: QueryMatch, order: Int64) {
+        page: ?query_model.DocumentationPage, relevance: QueryMatch,
+        matchedExposureIds!: Array<String> = []) {
         this.input = input
         this.document = document
         this.symbol = symbol
         this.page = page
         this.relevance = relevance
-        this.order = order
+        this.matchedExposureIds.add(all: matchedExposureIds)
     }
 
-    func key(): String {
-        match (symbol) {
-            case Some(value) => "symbol:" + input.snapshot.snapshotId + "\n" + value.id
-            case None => "page:" + input.snapshot.snapshotId + "\n" +
-                page.map({ value => value.id }).getOrDefault({ => "" })
-        }
-    }
 }
 
-private func queryCandidateCompare(left: QueryCandidate, right: QueryCandidate): Int64 {
-    if (left.relevance.score != right.relevance.score) { return right.relevance.score - left.relevance.score }
-    if (left.order != right.order) { return left.order - right.order }
-    let leftKey = left.key()
-    let rightKey = right.key()
-    if (leftKey < rightKey) { return -1 }
-    if (leftKey > rightKey) { return 1 }
-    0
-}
-
-/** Search: ranked symbols and conceptual pages with explicit paging. */
+/** Search through the shared projection executor, then reattach captured DTOs. */
 internal func querySearch(projection: QueryProjection, request: JsonObject,
-    catalogId: String): QueryOutcome {
+    contentBinding: String): QueryOutcome {
     let outcome = QueryOutcome("ok", "catalog")
     if (queryBool(request, "latest") && !queryAnyLatest(projection.inputs)) {
         throw DocumentationQueryException("unavailable", "latest_not_declared",
             "No loaded snapshot is declared latest; name an explicit snapshot identity instead.")
     }
-    let tokens = queryTokens(queryString(request, "query"))
-    let identityOnly = queryString(request, "query").isEmpty()
-    let candidates = ArrayList<QueryCandidate>()
-    let seen = HashSet<String>()
-    var order: Int64 = 0
+    let mode = querySearchMode(request)
+    let profile = querySearchProfile(request)
+    let filterOnly = query_render.searchRequestIsFilterOnly(request)
+    let admitted = HashSet<String>()
+    let byKey = HashMap<String, QueryCandidate>()
+    let selectedInputs = ArrayList<QuerySnapshotInput>()
+    let projectionSet = query_render.SearchProjectionSet()
     for (input in projection.inputs) {
         if (queryBool(request, "latest") && !input.isLatest) { continue }
         let document = match (projection.catalog.byInput.get(input.snapshot.snapshotId)) {
             case Some(value) => value
             case None => continue
         }
+        selectedInputs.add(input)
+        projectionSet.addPrepared(document.searchExecutionProjectionFor(profile))
         for (symbol in document.visibleSymbols) {
-            let candidateOrder = order
-            order++
             if (!queryModuleIdMatches(input, symbol.moduleId, request)) { continue }
             if (!queryPackageMatches(symbol, request)) { continue }
             if (!queryKindMatches(symbol, request)) { continue }
             let (dependency, _) = queryDependencyState(input, symbol.moduleId)
-            if (!queryScopeAdmits(queryDocumentSetFor(input, symbol.moduleId), dependency, request)) { continue }
-            let relevance = match (querySymbolMatch(document, symbol, request)) {
-                case Some(value) => value
-                case None => continue
+            if (!queryScopeAdmits(queryDocumentSetFor(input, symbol.moduleId), dependency, request)) {
+                continue
             }
-            let candidate = QueryCandidate(input, document, Some(symbol), Option<query_model.DocumentationPage>.None, relevance, candidateOrder)
-            if (seen.add(candidate.key())) { candidates.add(candidate) }
+            let key = query_render.searchIdentityKey(input.snapshot.snapshotId, symbol.id)
+            if (admitted.contains(key)) { continue }
+            let _ = admitted.add(key)
+            byKey[key] = QueryCandidate(input, document, Some(symbol),
+                Option<query_model.DocumentationPage>.None, QueryMatch(0, "", 0))
         }
-        // Guide text is searchable only for a free-text query; it never narrows
-        // an identity lookup and never invents a symbol identity.
-        if (identityOnly || tokens.isEmpty()) { continue }
         for (page in document.pages) {
             if (!queryPageAdmitted(input, page, request)) { continue }
-            let candidateOrder = order
-            order++
-            let text = document.pageText.get(page.id).getOrDefault({ => "" })
-            if (!queryContainsAll(text, tokens)) { continue }
-            let relevance = QueryMatch(QUERY_MATCH_TEXT, "guide_text", QUERY_MATCH_TEXT * 1000)
-            let candidate = QueryCandidate(input, document, Option<query_model.SymbolDoc>.None, Some(page), relevance, candidateOrder)
-            if (seen.add(candidate.key())) { candidates.add(candidate) }
+            let key = query_render.searchIdentityKey(input.snapshot.snapshotId, page.id)
+            if (admitted.contains(key)) { continue }
+            let _ = admitted.add(key)
+            byKey[key] = QueryCandidate(input, document,
+                Option<query_model.SymbolDoc>.None, Some(page), QueryMatch(0, "", 0))
         }
     }
-    sort(candidates, lessThan: { left, right => queryCandidateCompare(left, right) < 0 }, stable: true)
-    let offset = queryReadCursor(request, catalogId)
-    if (offset > candidates.size) {
-        throw DocumentationQueryException("stale_cursor", "cursor_out_of_range",
-            "Continuation cursor is beyond the current result set.")
+
+    let limit = if (request.get("limit").isSome()) {
+        queryInt(request, "limit")
+    } else { query_render.searchContractInteger("defaultLimit") }
+    var offset: Int64 = 0
+    try {
+        offset = queryReadSearchCursor(request, contentBinding, profile,
+            projectionSet.projectionId, selectedInputs)
+    } catch (error: DocumentationQueryException) {
+        outcome.status = error.status
+        outcome.error = Some(queryErrorNode(error.code, error.message,
+            Option<Int64>.None, Option<Int64>.None))
+        outcome.limit = limit
+        outcome.contentComplete = querySourceComplete(selectedInputs)
+        outcome.coverage = Some(querySearchCoverageFromSet(projectionSet, profile))
+        outcome.selectedSections = querySectionList(QUERY_SUMMARY_SECTIONS)
+        outcome.text = "Documentation query failed: ${error.status}. ${error.message}"
+        return outcome
     }
-    let limit = if (request.get("limit").isSome()) { queryClamp(queryInt(request, "limit"), 0, 100) }
-        else { QUERY_SEARCH_DEFAULT_LIMIT }
-    let end = if (offset + limit > candidates.size) { candidates.size } else { offset + limit }
-    let ambiguous = queryIsAmbiguous(candidates)
-    outcome.status = if (candidates.isEmpty()) { "not_found" }
-        else if (ambiguous) { "ambiguous" } else { "ok" }
-    outcome.offset = offset
+    let execution = query_render.executeDocumentationSearchAcross(projectionSet, request,
+        Some(admitted), Some(filterOnly), offset)
+    let executionStatus = queryString(execution, "status")
+    let executionError = queryString(execution, "errorCode")
+    outcome.status = executionStatus
+    outcome.offset = queryInt(execution, "offset")
     outcome.limit = limit
-    outcome.total = Some(candidates.size)
-    outcome.complete = end >= candidates.size
-    outcome.reason = if (candidates.isEmpty()) { "no_match_in_scope" }
-        else if (ambiguous) { "several_captured_identities_tie" } else { "" }
-    var position = offset
-    while (position < end) {
-        outcome.items.add(querySearchItem(candidates[position]))
-        position++
+    outcome.returned = queryInt(execution, "returned")
+    outcome.total = Some(queryInt(execution, "total"))
+    outcome.complete = queryBool(execution, "complete")
+    outcome.coverage = match (execution.get("coverage")) {
+        case Some(node) => querySearchCoverageFromNode(node)
+        case None => None
     }
-    if (end < candidates.size && limit > 0) {
-        outcome.next = Some(queryNextCursor(request, catalogId, end))
+    outcome.facets = match (execution.get("facets")) {
+        case Some(value) => value.asObject()
+        case None => queryEmptyFacetsNode()
     }
-    outcome.contentComplete = querySourceComplete(projection.inputs)
-    if (candidates.isEmpty() && !outcome.contentComplete) {
-        outcome.status = "source_incomplete"
-        outcome.reason = "no_match_with_incomplete_api_collection"
+    outcome.contentComplete = querySourceComplete(selectedInputs)
+    if (!executionError.isEmpty()) {
+        let message = if (executionError == "cursor_out_of_range") {
+            "Continuation cursor is beyond the current result set."
+        } else { "Search execution could not use the requested profile or request fields." }
+        outcome.error = Some(queryErrorNode(executionError, message,
+            Option<Int64>.None, Option<Int64>.None))
+        outcome.selectedSections = querySectionList(QUERY_SUMMARY_SECTIONS)
+        outcome.text = "Documentation query failed: ${outcome.status}. ${message}"
+        return outcome
     }
-    if (limit == 0 && !candidates.isEmpty()) { outcome.reason = "zero_limit_requested" }
+    let items = execution.get("items").getOrThrow().asArray()
+    let candidates = ArrayList<QueryCandidate>()
+    for (index in 0..items.size()) {
+        let hit = items[index].asObject()
+        let snapshotId = queryString(hit, "snapshotId")
+        let canonicalId = queryString(hit, "canonicalId")
+        let key = query_render.searchIdentityKey(snapshotId, canonicalId)
+        let captured = match (byKey.get(key)) {
+            case Some(value) => value
+            case None => throw IllegalStateException(
+                "Search projection returned an identity outside its captured snapshot scope.")
+        }
+        let reason = queryString(hit, "reason")
+        let relevance = QueryMatch(query_render.searchEvidenceLevel(mode, reason), reason,
+            queryInt(hit, "score"))
+        let matchedExposureIds = ArrayList<String>()
+        let exposureIds = hit.get("matchedExposureIds").getOrThrow().asArray()
+        for (exposureIndex in 0..exposureIds.size()) {
+            matchedExposureIds.add(exposureIds[exposureIndex].asString())
+        }
+        candidates.add(QueryCandidate(captured.input, captured.document, captured.symbol,
+            captured.page, relevance, matchedExposureIds: matchedExposureIds.toArray()))
+    }
+    outcome.reason = queryString(execution, "reason")
+    for (candidate in candidates) { outcome.items.add(querySearchItem(candidate)) }
+    let returnedEnd = offset + outcome.returned
+    if (limit > 0 && returnedEnd < outcome.total.getOrDefault({ => 0 })) {
+        outcome.next = Some(queryNextSearchCursor(request, contentBinding,
+            projectionSet.projectionId, profile, returnedEnd, selectedInputs))
+    }
     outcome.selectedSections = querySectionList(QUERY_SUMMARY_SECTIONS)
-    outcome.text = querySearchText(outcome, candidates, projection.inputs)
+    outcome.text = querySearchText(outcome, candidates, selectedInputs)
     outcome
+}
+
+/** Request defaults are sourced from the exported search contract. */
+internal func querySearchMode(request: JsonObject): String {
+    let value = queryString(request, "mode")
+    if (value.isEmpty()) { return query_render.searchContractString("defaultMode") }
+    value
+}
+
+internal func querySearchProfile(request: JsonObject): String {
+    query_render.searchRequestProfile(queryString(request, "profile"))
+}
+
+
+/** Request filters use the shared field/op mappings and canonical byte order. */
+internal func querySearchFilters(request: JsonObject): ArrayList<query_render.SearchFilter> {
+    let filters = ArrayList<query_render.SearchFilter>()
+    match (request.get("filters")) {
+        case Some(node) =>
+            let values = node.asArray()
+            for (index in 0..values.size()) {
+                let item = values[index].asObject()
+                filters.add(query_render.SearchFilter(queryString(item, "field"),
+                    queryString(item, "op"), queryString(item, "value")))
+            }
+        case None => ()
+    }
+    query_render.searchNormalizeFilters(filters)
+}
+
+private func querySearchCoverageFromSet(projectionSet: query_render.SearchProjectionSet,
+    profile: String): query_render.SearchCoverage {
+    query_render.SearchCoverage(profile, projectionSet.projectionId,
+        if (profile == query_render.searchContractString("defaultProfile")) { None }
+            else { Some(query_render.searchContractInteger("staticBodyTextLimit")) },
+        projectionSet.bodyComplete, projectionSet.truncatedCount)
+}
+
+private func querySearchCoverageFromNode(node: JsonNode): ?query_render.SearchCoverage {
+    if (node.kind() == JsonKind.Null) { return None }
+    let value = node.asObject()
+    let bodyTextLimit = match (value.get("bodyTextLimit")) {
+        case Some(limit) =>
+            if (limit.kind() == JsonKind.Null) { None<Int64> } else { Some(limit.asInt64()) }
+        case None => None<Int64>
+    }
+    Some(query_render.SearchCoverage(queryString(value, "profile"),
+        queryString(value, "projectionId"), bodyTextLimit,
+        queryBool(value, "bodyComplete"), queryInt(value, "truncatedEntries")))
 }
 
 internal func queryAnyLatest(inputs: ArrayList<QuerySnapshotInput>): Bool {
@@ -417,18 +342,6 @@ internal func queryAnyLatest(inputs: ArrayList<QuerySnapshotInput>): Bool {
     false
 }
 
-// Ambiguity is a normal outcome: several distinct captured identities tie at the
-// highest relevance level. Relevance never claims overload applicability.
-private func queryIsAmbiguous(candidates: ArrayList<QueryCandidate>): Bool {
-    if (candidates.size < 2) { return false }
-    let best = candidates[0].relevance.level
-    var count: Int64 = 0
-    for (candidate in candidates) {
-        if (candidate.relevance.level != best) { break }
-        count++
-    }
-    count > 1
-}
 
 internal func querySourceComplete(inputs: ArrayList<QuerySnapshotInput>): Bool {
     for (input in inputs) {
@@ -442,6 +355,8 @@ internal func querySearchItem(candidate: QueryCandidate): JsonObject {
     let matchNode = JsonNode.object()
     matchNode.put("score", JsonNode.int64(candidate.relevance.score))
     matchNode.put("reason", JsonNode.string(candidate.relevance.reason))
+    item.put("classification",
+        query_render.capturedDeclarationClassificationNode(candidate.input.snapshot, candidate.symbol))
     match (candidate.symbol) {
         case Some(symbol) =>
             item.put("kind", JsonNode.string("symbol"))
@@ -452,7 +367,8 @@ internal func querySearchItem(candidate: QueryCandidate): JsonObject {
             let sections = JsonNode.array()
             sections.add(querySection("signature",
                 if (symbol.headerSpelling.trimAscii().isEmpty()) { "missing" } else { "available" },
-                JsonNode.string(symbol.headerSpelling)))
+                JsonNode.string(queryExcerpt(symbol.headerSpelling,
+                    query_render.searchContractInteger("signatureDisplayLimit")))))
             match (querySymbolSummary(symbol)) {
                 case Some(text) => sections.add(querySection("description", "available",
                     JsonNode.string(text)))
@@ -461,18 +377,21 @@ internal func querySearchItem(candidate: QueryCandidate): JsonObject {
             item.put("sections", sections)
             item.put("representations", querySymbolRepresentations(symbol))
             item.put("source", querySymbolSource(candidate.input, symbol))
-            item.put("exposures", querySymbolExposures(candidate.document, symbol))
+            item.put("exposures", queryMatchedSymbolExposures(candidate.document, symbol,
+                candidate.matchedExposureIds))
         case None =>
             let page = candidate.page.getOrThrow()
             item.put("kind", JsonNode.string("concept"))
             item.put("identity", queryIdentityNode(candidate.input, Option<String>.None, Some(page.id)))
             item.put("signature", JsonNode.nullValue)
-            item.put("summary", queryNullable(Some(queryExcerpt(page.text, 512))))
+            item.put("summary", queryNullable(Some(queryExcerpt(page.text,
+                query_render.searchContractInteger("summaryDisplayLimit")))))
             item.put("match", matchNode)
             let sections = JsonNode.array()
             sections.add(querySection("description",
                 if (page.text.trimAscii().isEmpty()) { "missing" } else { "available" },
-                JsonNode.string(queryExcerpt(page.text, 512))))
+                JsonNode.string(queryExcerpt(page.text,
+                    query_render.searchContractInteger("summaryDisplayLimit")))))
             item.put("sections", sections)
             item.put("representations", queryPageRepresentations(page))
             item.put("source", queryPageSource(page))
@@ -483,14 +402,21 @@ internal func querySearchItem(candidate: QueryCandidate): JsonObject {
 
 internal func querySignature(symbol: query_model.SymbolDoc): ?String {
     if (symbol.headerSpelling.trimAscii().isEmpty()) { return None }
-    Some(symbol.headerSpelling)
+    Some(queryExcerpt(symbol.headerSpelling,
+        query_render.searchContractInteger("signatureDisplayLimit")))
 }
 
 internal func querySymbolSummary(symbol: query_model.SymbolDoc): ?String {
     match (symbol.documentation) {
         case Some(comment) =>
-            if (!comment.summary.trimAscii().isEmpty()) { return Some(queryExcerpt(comment.summary, 512)) }
-            if (!comment.description.trimAscii().isEmpty()) { return Some(queryExcerpt(comment.description, 512)) }
+            if (!comment.summary.trimAscii().isEmpty()) {
+                return Some(queryExcerpt(comment.summary,
+                    query_render.searchContractInteger("summaryDisplayLimit")))
+            }
+            if (!comment.description.trimAscii().isEmpty()) {
+                return Some(queryExcerpt(comment.description,
+                    query_render.searchContractInteger("summaryDisplayLimit")))
+            }
             None
         case None => None
     }
@@ -538,6 +464,21 @@ internal func queryPageSource(page: query_model.DocumentationPage): JsonObject {
 internal func querySymbolExposures(document: QueryDocument, symbol: query_model.SymbolDoc): JsonArray {
     document.exposures.get(symbol.id).getOrDefault({ => JsonNode.array() })
 }
+internal func queryMatchedSymbolExposures(document: QueryDocument,
+    symbol: query_model.SymbolDoc, matchedExposureIds: ArrayList<String>): JsonArray {
+    let result = JsonNode.array()
+    if (matchedExposureIds.isEmpty()) { return result }
+    let exposures = querySymbolExposures(document, symbol)
+    for (index in 0..exposures.size()) {
+        let value = exposures[index]
+        let exposure = value.asObject()
+        let reExport = exposure.get("reExport").getOrThrow().asObject()
+        let id = queryString(reExport, "id") + ":" + queryString(exposure, "exposedName") +
+            ":" + queryString(exposure, "symbolId")
+        if (matchedExposureIds.contains(id)) { result.add(value) }
+    }
+    result
+}
 
 internal func querySearchText(outcome: QueryOutcome, candidates: ArrayList<QueryCandidate>,
     inputs: ArrayList<QuerySnapshotInput>): String {
@@ -556,12 +497,11 @@ internal func querySearchText(outcome: QueryOutcome, candidates: ArrayList<Query
     if (outcome.status == "not_found" && outcome.complete) {
         out.append("No declaration matched inside the loaded scope.\n")
     }
-    if (outcome.limit == 0 && !candidates.isEmpty()) {
+    if (outcome.limit == 0 && outcome.total.getOrDefault({ => 0 }) > 0) {
         out.append("The requested limit was zero, so no item was returned; this is not an absence result.\n")
     }
-    var position = outcome.offset
-    let end = outcome.offset + outcome.items.size
-    while (position < end) {
+    var position: Int64 = 0
+    while (position < candidates.size) {
         let candidate = candidates[position]
         out.append("\n")
         match (candidate.symbol) {

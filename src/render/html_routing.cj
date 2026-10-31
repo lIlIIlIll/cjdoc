@@ -136,6 +136,8 @@ internal class ProjectedModule {
 
 internal class RenderProjection {
     let allIndex: HashMap<String, SymbolDoc>
+    let catalog: DeclarationGroupCatalog
+    let snapshotId: String
     let visibleIndex = HashMap<String, SymbolDoc>()
     let visibleSymbols = ArrayList<SymbolDoc>()
     let packages = ArrayList<ProjectedPackage>()
@@ -168,7 +170,8 @@ internal class RenderProjection {
         }
     }
 
-    init(documentation: DocumentationSet) {
+    init(documentation: DocumentationSet, snapshotId!: String = "") {
+        this.snapshotId = snapshotId
         allIndex = indexSymbols(documentation)
         let renderable = renderabilityIndex(documentation, allIndex)
         for (symbol in documentation.declarations) {
@@ -177,6 +180,8 @@ internal class RenderProjection {
                 visibleIndex[symbol.id] = symbol
             }
         }
+        catalog = DeclarationGroupCatalog(documentation.metadata, visibleSymbols,
+            documentation.readingLanguage.getOrDefault({ => "en" }))
 
         for (symbol in visibleSymbols) {
             let groups = if (symbol.ownerId.isSome()) { membersByOwner } else { topLevelByPackage }

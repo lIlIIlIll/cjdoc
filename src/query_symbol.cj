@@ -258,6 +258,8 @@ private func queryCandidateIdentityItem(candidate: QueryGetCandidate): JsonObjec
         case Some(symbol) =>
             item.put("kind", JsonNode.string("symbol"))
             item.put("identity", queryIdentityNode(candidate.input, Some(symbol.id), Option<String>.None, ownerId: symbol.ownerId))
+            item.put("classification",
+                query_render.capturedDeclarationClassificationNode(candidate.input.snapshot, Some(symbol)))
             item.put("signature", queryNullable(querySignature(symbol)))
             item.put("summary", querySymbolSummary(symbol))
             item.put("match", matchNode)
@@ -269,6 +271,8 @@ private func queryCandidateIdentityItem(candidate: QueryGetCandidate): JsonObjec
             let page = candidate.page.getOrThrow()
             item.put("kind", JsonNode.string("concept"))
             item.put("identity", queryIdentityNode(candidate.input, Option<String>.None, Some(page.id)))
+            item.put("classification",
+                query_render.capturedDeclarationClassificationNode(candidate.input.snapshot, Option<query_model.SymbolDoc>.None))
             item.put("signature", JsonNode.nullValue)
             item.put("summary", queryNullable(Some(page.title)))
             item.put("match", matchNode)
@@ -352,6 +356,7 @@ private func queryFillSymbol(outcome: QueryOutcome, input: QuerySnapshotInput,
     let item = JsonNode.object()
     item.put("kind", JsonNode.string("symbol"))
     item.put("identity", queryIdentityNode(input, Some(symbol.id), Option<String>.None, ownerId: symbol.ownerId))
+    item.put("classification", query_render.capturedDeclarationClassificationNode(input.snapshot, Some(symbol)))
     item.put("signature", JsonNode.nullValue)
     item.put("summary", JsonNode.nullValue)
     for (chapter in chapters) {
@@ -419,6 +424,7 @@ private func querySymbolText(outcome: QueryOutcome, input: QuerySnapshotInput,
         case None => ()
     }
     out.append("\n\n")
+    out.append(query_render.capturedDeclarationClassificationMarkdown(input.snapshot, Some(symbol)))
     for (chapter in chapters) {
         if (!queryChapterIncluded(chapter)) {
             out.append("## ")

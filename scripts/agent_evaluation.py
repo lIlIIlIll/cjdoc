@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the frozen paired Agent evaluation against real client and server processes.
 
-Two arms consume the same captured v16 documentation, and both reach it the same
+Two arms consume the same captured v17 documentation, and both reach it the same
 way: one real MCP stdio server behind one recording, budgeting relay, with every
 non-document client tool disabled.
 

@@ -2,7 +2,7 @@
 
 `cjdoc.toml` 放在项目根目录（即 `--project` 指向的目录），所有表都可省略。`generate`、`check`、`serve` 会读取这个文件；`render` 直接使用 `docs.json` 里已经保存的配置，不重新读取 `cjdoc.toml`。Doc IR 大小上限使用默认值或命令行选项。
 
-配置写错（未知键、重复键、非法取值）时，命令会打印 `error:` 并以退出码 `2` 结束，不会生成文档。下面几节里，`[i18n]`、`[lint]`、`[coverage]` 及其子表、`[highlight]`、`[limits]` 是严格解析的，出现不认识的键会报错；`[docs]`、`[[docs.pages]]`、`[docs.packages]` 只读取列出的键，键名写错会被静默忽略，改完配置后建议重新生成确认效果。
+配置写错（未知键、重复键、非法取值）时，命令会打印 `error:` 并以退出码 `2` 结束，不会生成文档。`[i18n]`、`[lint]`、`[coverage]` 及其子表、`[highlight]`、`[limits]` 和 `[metadata]` 是严格解析的；出现不认识的键会报错。`[docs]`、`[[docs.pages]]`、`[docs.packages]` 只读取列出的键，键名写错会被静默忽略，改完配置后建议重新生成确认效果。
 
 ## [docs]：项目首页
 
@@ -90,6 +90,49 @@ overview = "docs/pocketkit-core.md"
 包概述页的第一段（最多 240 个字符）会显示在 HTML 包页上，并链接到完整的概念页。要让概述出现在包页上，页面需要有正文，且页面里的 `cjdoc-bind` 必须全部能解析；同一个 Markdown 文件只保留一个入口。`kind = "package"` 的页面优先作为正式概述，普通指南页作为候选。
 
 `slug` 是包名去掉 ASCII 字母和数字之外的字符后折叠成的短名，例如 `pocketkit-core`；自动包页路由为 `concepts/packages/<slug>.html`。
+
+## [metadata]：分组与标签显示名
+
+`metadata` 是可选配置。对每个 module，cjdoc 以其 `sourceFileOrigins.actualRoot` 为配置根读取一次根目录 `cjdoc.toml`；同一实际根的解析结果可以复用，但仍分别绑定到 module ID。workspace 根配置不会自动传播到成员项目或依赖 module。每个配置文件最多 64 KiB。`[[metadata.groups]]` 定义包级或声明容器级分组，`[[metadata.tags]]` 为该 module 的声明标签提供显示标题。
+
+```toml
+[[metadata.groups]]
+package = "pocketkit"
+owner = "pocketkit.TextCatalog" # 可改用 owner-id = "<完整 SymbolId>"
+id = "20-query"
+title = "查询"
+order = 20
+
+[metadata.groups.titles]
+en = "Query"
+
+[[metadata.tags]]
+id = "streaming"
+title = "流式"
+
+[metadata.tags.titles]
+en = "Streaming"
+```
+
+### `[[metadata.groups]]`
+
+每条分组定义必须有 `package`、`id`、`title`；`owner`、`owner-id` 和 `order` 可选。`owner` 和 `owner-id` 互斥。省略两者表示当前 module/package 的包级分组。`owner` 必须精确匹配当前包中的完整 qualified name；`owner-id` 必须精确匹配属于该 module/package 的完整 SymbolId。可作为 owner 的声明种类为 class、struct、interface、enum 和 extend，不按短名或前缀猜测。
+
+`order` 是 `0..999999` 的整数；没有 order 的分组排在显式排序的分组之后。内联 `@group <id> <标题>` 继续可用；省略标题写 `@group <id>` 时，必须能匹配相同 module、package、owner scope 的有效定义。内联标题冲突仍报告 `CJDOC3131`，集中标题不会掩盖该诊断。
+
+### `[[metadata.tags]]`
+
+每条标签定义必须有 `id` 和 `title`，不接受 package、owner 或 order。标签定义在一个 module 内共享；相同 ID 可在其他 module 独立定义。源注释仍需在每个声明上明确写 `@tag <id>`，配置不会添加或继承成员关系，也不是 `@tag` 生效的前提。
+
+### ID、标题与译名
+
+组和标签 ID 都是 1 到 64 个 ASCII 字母、数字、`-` 或 `_`。标题及译名须为 1 到 256 UTF-8 字节的单行纯文本，不得只含空白，也不得含 C0/DEL 控制字符。每条定义最多配置 `zh-CN` 和 `en` 两个译名，放在所属记录的 `[metadata.groups.titles]` 或 `[metadata.tags.titles]` 子表中。标题选择顺序为当前语言译名、基础标题、内联组标题（仅分组）、最后回退到 ID。标题用于显示，不改变 tag ID 或 API 身份，也不计入翻译覆盖率。
+
+语法只接受 `[[metadata.groups]]`、`[[metadata.tags]]` 以及各记录可选的对应 `titles` 子表；可选的 `[metadata]` 表必须为空。未知表/键、重复键、dotted/inline 变体、错误类型或越界值都报告 `CJDOC3133`，配置严格失败，退出码为 `2`，不会产生文档。每类定义最多 2048 条；这些文本也计入既有 Doc IR 64 MiB 总预算，不扩展该预算。
+
+配置解析后，scope 绑定错误会保留为文档诊断并使结果成为 partial：`CJDOC3134` 表示 package/owner 不存在，`CJDOC3135` 表示 owner 有歧义，`CJDOC3136` 表示同 scope 定义重复（相同 scope 的竞争定义均无效），`CJDOC3137` 表示无集中定义的 `@group <id>` 简写。隐藏声明仍可作为定义的绑定目标；公开 Doc IR 与 HTML 只捕获当前发布声明实际使用的定义，发布范围收窄时会再次删除无成员定义。
+
+完整捕获的 `metadata.groups` 与 `metadata.tags` 写入 Doc IR/17。`render --input docs.json` 只使用已捕获 metadata，不需要原项目源码或 `cjdoc.toml`。未在配置中定义的 `@tag` 仍按 ID 显示并可精确搜索；未定义的无标题 `@group` 简写则不产生分组。
 
 ## [limits]：Doc IR 大小上限
 

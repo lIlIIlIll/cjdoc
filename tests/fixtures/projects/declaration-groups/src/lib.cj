@@ -17,10 +17,46 @@ public class Application {
     public func apply(value: Int64): Int64 { value }
 
     /**
+     * 应用字符串。
+     * @param value 输入文本。
+     * @return 原文本。
+     * @throws IllegalArgumentException 文本不合法时。
+     * @group 10-application 应用 API
+     *
+     * @example String input
+     * ```cangjie
+     * let value = "input"
+     * ```
+     */
+    public func apply(value: String): String { value }
+
+    /**
+     * 重载之后的普通成员。
+     * @param value 输入值。
+     * @return 原值。
+     * @group 10-application 应用 API
+     */
+    public func zLast(value: Int64): Int64 { value }
+
+    /**
      * 生成代码成员。
      * @group 20-generated-spi 生成代码 SPI
      */
     public func support(): Unit {}
+
+    /**
+     * 指定计数的生成代码成员。
+     * @param count 调用次数。
+     * @return 调用次数。
+     * @group 20-generated-spi 生成代码 SPI
+     */
+    public func support(count: Int64): Int64 { count }
+
+    /**
+     * 生成代码版本。
+     * @group 20-generated-spi 生成代码 SPI
+     */
+    public prop version: Int64 { get() { 1 } }
 }
 
 /**

@@ -251,7 +251,7 @@ private func resolveNameScopeAdmits(input: QuerySnapshotInput, scope: QueryDocum
         out.append("\n")
         out.append(pkg.name)
     }
-    queryContainsAll(out.toString().toAsciiLower(), tokens)
+    query_render.searchContainsAll(out.toString().toAsciiLower(), tokens)
 }
 
 private func addResolutionCandidate(candidates: ArrayList<QueryResolutionCandidate>,
@@ -272,7 +272,7 @@ private func collectResolutionCandidates(inputs: ArrayList<QuerySnapshotInput>,
     let library = queryString(request, "library")
     let moduleId = queryString(request, "moduleId")
     let packageName = queryString(request, "packageName")
-    let tokens = queryTokens(queryString(request, "query"))
+    let tokens = query_render.searchTokens(queryString(request, "query"))
     var latestDeclared = false
     for (input in inputs where querySnapshotMatches(input, request)) {
         latestDeclared = latestDeclared || input.isLatest

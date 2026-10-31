@@ -8,10 +8,10 @@ import yjson.*
 // regular-expression lookaround so the native linear-regex validator can
 // evaluate it.
 //
-// Doc IR v16 stays the single definition of a declaration, a documentation page,
+// Doc IR v17 stays the single definition of a declaration, a documentation page,
 // a package and a document-set identity. The declaration, page and manifest
 // templates below reference those definition names, and
-// `completeDocumentationSchema` merges the frozen v16 `$defs` in rather than
+// `completeDocumentationSchema` merges the frozen v17 `$defs` in rather than
 // cloning a second model.
 
 /**
@@ -210,12 +210,12 @@ public let AGENT_FULL_INDEX_SCHEMA = ##"{
 public let DECLARATION_SCHEMA_TEMPLATE = ##"{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/declaration.schema.json",
-  "title": "cjdoc independent declaration representation",
+  "title": "cjdoc independent declaration representation v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "scope", "symbolKey", "dependencyInstanceId", "symbol", "representations", "source", "diagnostics", "documentationState", "exampleEvidence", "markdown"],
+  "required": ["schemaVersion", "scope", "symbolKey", "dependencyInstanceId", "symbol", "representations", "source", "diagnostics", "documentationState", "exampleEvidence", "markdown", "classification"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.declaration/1"},
+    "schemaVersion": {"const": "cjdoc.declaration/2"},
     "scope": {"$ref": "#/$defs/declarationScope"},
     "symbolKey": {"type": "string", "minLength": 1},
     "dependencyInstanceId": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
@@ -233,7 +233,8 @@ public let DECLARATION_SCHEMA_TEMPLATE = ##"{
         "reason": {"type": "string", "minLength": 1}
       }
     },
-    "markdown": {"type": "string"}
+    "markdown": {"type": "string"},
+    "classification": {"$ref": "#/$defs/documentationClassification"}
   },
   "$defs": {
     "safePath": {
@@ -480,11 +481,11 @@ public let MACHINE_MANIFEST_SCHEMA_TEMPLATE = ##"{
 }"##
 
 /**
- * Return a template with the frozen Doc IR v16 `$defs` merged in.
+ * Return a template with the current Doc IR v17 `$defs` merged in.
  *
  * The merge is a copy of the existing definition objects, so the published
  * artifact schema stays self-contained and `$ref: "#/$defs/declaration"` still
- * means the single Doc IR declaration model. A template may not shadow a v16
+ * means the single Doc IR declaration model. A template may not shadow a v17
  * definition: that would fork the model rather than reuse it.
  */
 public func completeDocumentationSchema(template: String): String {
@@ -493,7 +494,7 @@ public func completeDocumentationSchema(template: String): String {
         case Some(node) => node.asObject()
         case None => throw IllegalArgumentException("artifact schema template has no $defs")
     }
-    let frozen = JsonNode.parse(DOC_IR_V16_SCHEMA).asObject().get("$defs").getOrThrow().asObject()
+    let frozen = JsonNode.parse(DOC_IR_V17_SCHEMA).asObject().get("$defs").getOrThrow().asObject()
     for (index in 0..frozen.size()) {
         let name = frozen.nameAt(index)
         if (definitions.contains(name)) {
@@ -514,7 +515,8 @@ public func documentationArtifactSchema(name: String): String {
     match (name) {
         case "navigation-index-v2" => NAVIGATION_INDEX_V2_SCHEMA
         case "agent-full-index" => AGENT_FULL_INDEX_SCHEMA
-        case "declaration" => completeDocumentationSchema(DECLARATION_SCHEMA_TEMPLATE)
+        case "declaration" => completeDocumentationSchema(
+            documentationSchemaWithClassification(DECLARATION_SCHEMA_TEMPLATE))
         case "page" => completeDocumentationSchema(PAGE_SCHEMA_TEMPLATE)
         case "machine-manifest" => completeDocumentationSchema(MACHINE_MANIFEST_SCHEMA_TEMPLATE)
         case _ => throw IllegalArgumentException("unknown agent artifact schema '${name}'")

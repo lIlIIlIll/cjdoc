@@ -118,6 +118,12 @@ jobs:
           name: ${{ needs.candidate-linux.outputs.artifact_name }}
           path: ${{ runner.temp }}/cjdoc-candidate
 
+      - name: Set up the shared search and highlight runtime
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26.11.1'
+          package-manager-cache: false
+
       # Issue #115: the package index responsive/semantic/accessibility matrix
       # drives a real Chromium, so the browser is provisioned here and the stage
       # is mandatory once installed. It is a separate step from the ordinary
@@ -182,14 +188,6 @@ jobs:
           python scripts/perf_gate.py identities \
             --binary target/release/bin/main \
             --evidence target/ci-evidence/perf-identities.json
-
-      # Optional-language execution is mandatory here, but provisioned only after
-      # the ordinary Cangjie source/identity/performance gates have completed.
-      - name: Set up the optional highlight runtime
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '26.11.1'
-          package-manager-cache: false
 
       - name: Verify the real optional highlight worker
         id: highlight_worker
@@ -324,6 +322,12 @@ jobs:
           cp -p tests/fixtures/projects/source_edges/src/fixture.cj \
             "${RUNNER_TEMP}/source-edge-fixture.cj"
 
+      - name: Set up the shared search and highlight runtime
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26.11.1'
+          package-manager-cache: false
+
       - name: Run the acceptance gate
         shell: bash
         env:
@@ -350,13 +354,6 @@ jobs:
           cp -p "${RUNNER_TEMP}/source-edge-fixture.cj" \
             tests/fixtures/projects/source_edges/src/fixture.cj
 
-      # Optional-language execution is mandatory here, but provisioned only after
-      # the ordinary Cangjie source/identity/performance gates have completed.
-      - name: Set up the optional highlight runtime
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '26.11.1'
-          package-manager-cache: false
 
       - name: Verify the real optional highlight worker
         id: highlight_worker

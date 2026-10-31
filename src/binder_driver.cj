@@ -5,6 +5,7 @@ import std.collection.*
 class DocumentationBinder {
     public func bind(source: SourceSnapshot, semanticResult: SemanticResult, expectedProvider!: ?String = None): DocumentationSet {
         let documentation = DocumentationSet(source.projectName)
+        documentation.metadataInventory = source.metadataInventory
         for (module in source.modules) {
             documentation.modules.add(copyModule(module))
         }
@@ -183,6 +184,7 @@ class DocumentationBinder {
         let omittedIndices = duplicatePrunePlan(documentation, source)
         let (idsBySourceKey, survivingIds, moduleBySymbolId) = survivingIdentityMaps(source, documentation.symbols,
             omittedIndices)
+        captureDocumentationMetadataSurvivors(documentation.metadataInventory, idsBySourceKey)
         resolveSymbolRelationshipSourceKeys(documentation.symbols, omittedIndices, idsBySourceKey)
         resolveNavigationRelations(source, documentation, idsBySourceKey, omittedIndices)
         sanitizeDanglingReferences(documentation, omittedIndices, survivingIds)

@@ -67,6 +67,7 @@ internal class DeclarationMarkdownProjection {
         out.append("# ")
         appendMarkdownCodeSpan(out, symbol.qualifiedName)
         out.append("\n\n")
+        appendDeclarationClassificationMarkdown(out, projection.catalog.classificationFor(symbol), locale)
         appendSelectedSections(out, symbol, pagePath, sections)
         out.toString()
     }
@@ -80,7 +81,6 @@ internal class DeclarationMarkdownProjection {
     private func appendSelectedSections(out: RenderTextBuffer, symbol: SymbolDoc,
         pagePath: String, sections: Array<String>): Unit {
         let allSections = sections.isEmpty()
-        if (allSections) { appendDeclarationGroupMetadata(out, symbol, locale) }
         let selected = ArrayList<String>(sections)
         if (allSections || selected.contains("signature")) {
             appendSignature(out, symbol)
@@ -124,7 +124,8 @@ internal class DeclarationMarkdownProjection {
             case Some(comment) =>
                 appendDocumentationMarkdown(out, comment, assetLookup(pagePath), locale: locale,
                     pagePath: pagePath, symbolIndex: Some(symbolIndex), canonicalHtml: true,
-                    sections: Some(sections), headingPrefix: "##", headingBase: 3)
+                    sections: Some(sections), headingPrefix: "##", headingBase: 3,
+                    headingAnchorPrefix: symbolAnchor(symbol))
             case None => if (sections.contains("description")) {
                 // The Doc IR has no comment at all. Keep that fact visible
                 // instead of presenting an undocumented declaration as complete.
@@ -205,13 +206,16 @@ internal class DeclarationMarkdownProjection {
             }
             if (hasParameterTag) {
                 out.append("## ${label(locale, "Parameters", "参数")}\n\n")
-                appendTagParameters(out, comment.getOrThrow(), pagePath, documentedSubjects)
+                appendTagParameters(out, comment.getOrThrow(), pagePath, documentedSubjects,
+                    "${symbolAnchor(symbol)}--parameter-tags")
                 out.append("\n")
             }
             return
         }
         out.append("## ${label(locale, "Parameters", "参数")}\n\n")
-        for (parameter in symbol.parameters) {
+        let parameterHeadingPrefix = "${symbolAnchor(symbol)}--parameters"
+        for (parameterIndex in 0..symbol.parameters.size) {
+            let parameter = symbol.parameters[parameterIndex]
             out.append("- ")
             appendMarkdownCodeSpan(out, parameter.name)
             out.append(": ")
@@ -230,7 +234,8 @@ internal class DeclarationMarkdownProjection {
                     let _ = documentedSubjects.add(parameter.name)
                     out.append(" — ")
                     appendDocumentationListTagMarkdown(out, value, assetLookup(pagePath), locale,
-                        pagePath, Some(symbolIndex), canonicalHtml: true)
+                        pagePath, Some(symbolIndex), canonicalHtml: true,
+                        headingAnchorPrefix: parameterHeadingPrefix, headingOrdinal: parameterIndex)
                 case None => match (parameter.documentation) {
                     case Some(value) => appendStructuredTagText(out, value)
                     case None => out.append("\n")
@@ -238,7 +243,8 @@ internal class DeclarationMarkdownProjection {
             }
         }
         if (let Some(value) <- comment) {
-            appendTagParameters(out, value, pagePath, documentedSubjects)
+            appendTagParameters(out, value, pagePath, documentedSubjects,
+                "${symbolAnchor(symbol)}--parameter-tags")
         }
         out.append("\n")
     }
@@ -246,15 +252,17 @@ internal class DeclarationMarkdownProjection {
     // Authored @param text for names the structured model did not contain is
     // still an author fact and must not disappear from the reference.
     private func appendTagParameters(out: RenderTextBuffer, comment: DocComment,
-        pagePath: String, documentedSubjects: HashSet<String>): Unit {
-        for (tag in comment.tags) {
+        pagePath: String, documentedSubjects: HashSet<String>, headingAnchorPrefix: String): Unit {
+        for (tagIndex in 0..comment.tags.size) {
+            let tag = comment.tags[tagIndex]
             if (tag.name != "param" || documentedSubjects.contains(tag.subject)) { continue }
             let _ = documentedSubjects.add(tag.subject)
             out.append("- ")
             appendMarkdownCodeSpan(out, tag.subject)
             out.append(" — ")
             appendDocumentationListTagMarkdown(out, tag, assetLookup(pagePath), locale, pagePath,
-                Some(symbolIndex), canonicalHtml: true)
+                Some(symbolIndex), canonicalHtml: true,
+                headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
         }
     }
 
@@ -273,6 +281,9 @@ internal class DeclarationMarkdownProjection {
                 if (tag.name == "throws") { hasThrows = true }
             }
         }
+        let headingAnchorPrefix = if (hasReturnDocumentation || hasThrows) {
+            "${symbolAnchor(symbol)}--returns"
+        } else { "" }
         if (returnType.isSome() || hasReturnDocumentation) {
             out.append("## ${label(locale, "Returns", "返回值")}\n\n")
             if (let Some(value) <- returnType) {
@@ -282,24 +293,30 @@ internal class DeclarationMarkdownProjection {
             }
             if (hasReturnDocumentation) {
                 if (returnType.isSome()) { out.append("\n") }
-                for (tag in comment.getOrThrow().tags) {
+                let tags = comment.getOrThrow().tags
+                for (tagIndex in 0..tags.size) {
+                    let tag = tags[tagIndex]
                     if (tag.name != "return" && tag.name != "returns") { continue }
                     appendDocumentationTagMarkdown(out, tag, assetLookup(pagePath), locale, pagePath,
-                        Some(symbolIndex), canonicalHtml: true)
+                        Some(symbolIndex), canonicalHtml: true,
+                        headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
                     out.append("\n")
                 }
             }
         }
         if (hasThrows) {
             out.append("## ${label(locale, "Throws", "异常")}\n\n")
-            for (tag in comment.getOrThrow().tags) {
+            let tags = comment.getOrThrow().tags
+            for (tagIndex in 0..tags.size) {
+                let tag = tags[tagIndex]
                 if (tag.name != "throws") { continue }
                 out.append("- ")
                 appendTagSubjectMarkdown(out, tag, pagePath, Some(symbolIndex),
                     canonicalHtml: true)
                 out.append(" — ")
                 appendDocumentationListTagMarkdown(out, tag, assetLookup(pagePath), locale, pagePath,
-                    Some(symbolIndex), canonicalHtml: true)
+                    Some(symbolIndex), canonicalHtml: true,
+                    headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
             }
             out.append("\n")
         }

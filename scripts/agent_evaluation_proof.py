@@ -659,8 +659,8 @@ class Evidence:
                     "Doc IR " + label + " bytes were not captured in the evaluator run")
             document = strict_load(path, description="Doc IR " + label)
             require(digest_of(path) == before, "Doc IR changed while loading " + label)
-            require(isinstance(document, dict) and document.get("schemaVersion") == "cjdoc.doc-ir/16",
-                    "Doc IR " + label + " is not the current captured v16 format")
+            require(isinstance(document, dict) and document.get("schemaVersion") == "cjdoc.doc-ir/17",
+                    "Doc IR " + label + " is not the current captured v17 format")
             self._documents[label] = document
             self._doc_digests[label] = before
             self._declarations[label] = _declaration_index(document)

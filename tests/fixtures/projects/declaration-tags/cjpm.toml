@@ -1,0 +1,6 @@
+[package]
+cjc-version = "1.2.0"
+name = "declaration_tags"
+version = "1.0.0"
+description = "Source-bound tag filtering and member interaction fixture"
+output-type = "static"

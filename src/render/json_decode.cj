@@ -17,7 +17,7 @@ public func decodeDocIr(text: String,
     validatePortablePathFields(parsed, "$")
     validateDeclarativeSchema(parsed)
     let root = strictObject(parsed, "$", ["schemaVersion", "generator", "status", "apiCollectionState",
-        "documentationRevision", "project", "configuration", "providers", "modules", "packages", "files",
+        "documentationRevision", "project", "configuration", "metadata", "providers", "modules", "packages", "files",
         "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations",
         "unboundSemanticDeclarations", "diagnostics", "languageOptions", "pages", "readingLanguage",
         "externalDocumentation", "dependencies", "documentSets"])
@@ -55,6 +55,7 @@ public func decodeDocIr(text: String,
         externalDocumentation: decodeExternalDocumentation(root.get("externalDocumentation")),
         dependencies: decodeDependencyInstances(root.get("dependencies")),
         documentSets: decodeDocumentSetIdentities(root.get("documentSets")),
+        metadata: decodeDocumentationMetadata(required(root, "metadata", "$"), "$.metadata"),
         apiCollectionState: Some(stringAt(root, "apiCollectionState", "$")),
         documentationRevision: stringAt(root, "documentationRevision", "$"))
     validateDocumentationSet(documentation, maxDocumentBytes: maxDocumentBytes)

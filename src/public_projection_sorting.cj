@@ -201,7 +201,8 @@ protected func boundGeneratedDocumentation(candidate: public_model.Documentation
         diagnostics: [public_model.Diagnostic("warning", "CJDOC3027",
             "generated documentation exceeded codec or output resource limits and was replaced by a bounded fallback")],
         languageOptions: candidate.languageOptions, apiCollectionState: Some("unavailable"),
-        documentationRevision: candidate.documentationRevision)
+        documentationRevision: candidate.documentationRevision,
+        metadata: public_model.DocumentationMetadata())
     for (diagnostic in retainedHighlightBackendDiagnostics(candidate)) {
         fallback.appendDiagnostic(diagnostic)
     }
@@ -214,5 +215,6 @@ protected func boundGeneratedDocumentation(candidate: public_model.Documentation
     // with the same persisted resource-limit diagnostic rather than a new cap.
     public_model.DocumentationSet(fallback.generator, fallback.status, fallback.project, fallback.configuration,
         diagnostics: fallback.diagnostics.toArray(), languageOptions: fallback.languageOptions,
-        apiCollectionState: Some(fallback.apiCollectionState))
+        apiCollectionState: Some(fallback.apiCollectionState),
+        metadata: public_model.DocumentationMetadata())
 }

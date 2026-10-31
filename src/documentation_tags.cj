@@ -23,5 +23,5 @@ internal func validateDeclarationTags(documentation: DocumentationSet, symbol: S
 }
 
 private func isValidDeclarationTagTag(tag: DocTag): Bool {
-    isDeclarationTagId(tag.subject) && tag.description.trimAscii().isEmpty()
+    isDeclarationTagId(tag.subject) && tag.description.isEmpty()
 }

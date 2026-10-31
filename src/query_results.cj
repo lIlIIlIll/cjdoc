@@ -10,8 +10,7 @@ import yjson.*
 // identity objects and completeness dimensions, so a client never has to learn a
 // second result shape per operation.
 
-internal let QUERY_RESULT_SCHEMA_VERSION: String = "cjdoc.query-result/1"
-internal let QUERY_SEARCH_DEFAULT_LIMIT: Int64 = 20
+internal let QUERY_RESULT_SCHEMA_VERSION: String = "cjdoc.query-result/3"
 internal let QUERY_GET_DEFAULT_LIMIT: Int64 = 10
 internal let QUERY_SUMMARY_SECTIONS: Array<String> = ["signature", "description"]
 // Published chapter order for every selected-section projection.
@@ -219,8 +218,14 @@ internal func queryOmission(section: String, reason: String, next: ?JsonNode): J
     node
 }
 
+internal func queryEmptyFacetsNode(): JsonObject {
+    let facets = JsonNode.object()
+    facets.put("tags", JsonNode.array())
+    facets
+}
+
 internal func queryResultNode(items: ArrayList<JsonObject>, relations: ArrayList<JsonObject>,
-    reports: ArrayList<JsonObject>): JsonObject {
+    reports: ArrayList<JsonObject>, facets: JsonObject): JsonObject {
     let node = JsonNode.object()
     let itemArray = JsonNode.array()
     for (item in items) { itemArray.add(item) }
@@ -231,6 +236,7 @@ internal func queryResultNode(items: ArrayList<JsonObject>, relations: ArrayList
     let reportArray = JsonNode.array()
     for (report in reports) { reportArray.add(report) }
     node.put("reports", reportArray)
+    node.put("facets", facets)
     node
 }
 
@@ -326,7 +332,7 @@ internal func newDocumentationQueryResponse(request: JsonObject, status: String,
     match (result) {
         case Some(value) => envelope.put("result", value)
         case None => envelope.put("result", queryResultNode(ArrayList<JsonObject>(),
-            ArrayList<JsonObject>(), ArrayList<JsonObject>()))
+            ArrayList<JsonObject>(), ArrayList<JsonObject>(), queryEmptyFacetsNode()))
     }
     match (completeness) {
         case Some(value) => envelope.put("completeness", value)
@@ -356,6 +362,9 @@ internal func queryDefaultCompleteness(inputs: ArrayList<QuerySnapshotInput>): J
     query.put("total", JsonNode.nullValue)
     query.put("next", JsonNode.nullValue)
     query.put("reason", JsonNode.string("not_executed"))
+    // No retrieval projection was built for this operation, so coverage is
+    // explicitly absent instead of implying a complete search.
+    query.put("coverage", JsonNode.nullValue)
     completeness.put("query", query)
     let content = JsonNode.object()
     content.put("complete", JsonNode.boolean(false))
@@ -384,6 +393,7 @@ internal func queryCompletenessNode(inputs: ArrayList<QuerySnapshotInput>, outco
         case None => query.put("next", JsonNode.nullValue)
     }
     query.put("reason", JsonNode.string(outcome.reason))
+    query.put("coverage", queryCoverageNode(outcome.coverage))
     completeness.put("query", query)
     let content = JsonNode.object()
     content.put("complete", JsonNode.boolean(outcome.contentComplete))
@@ -402,6 +412,28 @@ internal func queryCompletenessNode(inputs: ArrayList<QuerySnapshotInput>, outco
     }
     completeness.put("content", content)
     completeness
+}
+
+/**
+ * Explicit retrieval coverage: which profile ran, its content identity, the body
+ * limit that applied and whether any entry was truncated. Absent coverage is
+ * null, so a caller never reads a missing projection as complete.
+ */
+internal func queryCoverageNode(coverage: ?query_render.SearchCoverage): JsonNode {
+    match (coverage) {
+        case Some(value) =>
+            let node = JsonNode.object()
+            node.put("profile", JsonNode.string(value.profile))
+            node.put("projectionId", JsonNode.string(value.projectionId))
+            node.put("bodyTextLimit", match (value.bodyTextLimit) {
+                case Some(limit) => JsonNode.int64(limit)
+                case None => JsonNode.nullValue
+            })
+            node.put("bodyComplete", JsonNode.boolean(value.bodyComplete))
+            node.put("truncatedEntries", JsonNode.int64(value.truncatedEntries))
+            node
+        case None => JsonNode.nullValue
+    }
 }
 
 internal func querySourcesNode(values: ArrayList<JsonObject>): JsonArray {
@@ -437,6 +469,10 @@ internal class QueryOutcome {
     var retry: ?JsonObject = None
     var contentComplete: Bool = true
     var selection: ?JsonObject = None
+    // Search coverage of the retrieval projection, or absent when no projection
+    // was built (a non-search operation, or a failure before execution).
+    var coverage: ?query_render.SearchCoverage = None
+    var facets: JsonObject = queryEmptyFacetsNode()
 
     init(status: String, scope: String) {
         this.status = status
@@ -448,7 +484,7 @@ internal class QueryOutcome {
         returned = if (scope == "relations") { relations.size } else { items.size }
         newDocumentationQueryResponse(request, status, inputs, catalogId,
             selection: selection,
-            result: queryResultNode(items, relations, reports),
+            result: queryResultNode(items, relations, reports, facets),
             completeness: queryCompletenessNode(inputs, this),
             text: text, sources: querySourcesNode(sources), error: error)
     }

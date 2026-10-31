@@ -56,6 +56,46 @@ private func validateReplayThrowsEntries(declaration: SymbolDoc, comment: DocCom
     }
 }
 
+private func validateDocumentationMetadataReferences(documentation: DocumentationSet,
+    moduleIds: HashSet<String>, packageKeys: HashSet<String>,
+    declarationsById: HashMap<String, SymbolDoc>): Unit {
+    let groupKeys = HashSet<String>()
+    var index: Int64 = 0
+    for (group in documentation.metadata.groups) {
+        let path = "$.metadata.groups[${index}]"
+        let packageKey = compositeKey(group.moduleId, group.packageName)
+        if (!moduleIds.contains(group.moduleId) || !packageKeys.contains(packageKey)) {
+            domainFail(path, "group references an unknown module/package")
+        }
+        if (let Some(ownerId) <- group.ownerId) {
+            let owner = match (declarationsById.get(ownerId)) {
+                case Some(value) => value
+                case None => domainFail("${path}.ownerId", "unknown container declaration")
+            }
+            if (!isDocIrContainerKind(owner.kind) || owner.moduleId != group.moduleId ||
+                owner.packageName != group.packageName) {
+                domainFail("${path}.ownerId", "owner must be a container in the same module/package")
+            }
+        }
+        let key = documentationMetadataGroupKey(group.moduleId, group.packageName,
+            group.ownerId, group.id)
+        if (!groupKeys.add(key)) { domainFail(path, "duplicate group definition in scope") }
+        index++
+    }
+    let tagKeys = HashSet<String>()
+    index = 0
+    for (tag in documentation.metadata.tags) {
+        let path = "$.metadata.tags[${index}]"
+        if (!moduleIds.contains(tag.moduleId)) {
+            domainFail(path, "tag references an unknown module")
+        }
+        if (!tagKeys.add(documentationMetadataTagKey(tag.moduleId, tag.id))) {
+            domainFail(path, "duplicate tag definition in module scope")
+        }
+        index++
+    }
+}
+
 internal func validateDocIrDocumentLimit(limit: Int64): Unit {
     if (limit < 1 || limit > DOC_IR_MAX_JSON_DOCUMENT_BYTES) {
         throw IllegalArgumentException("Doc IR document budget must be in 1..67108864 bytes")
@@ -65,6 +105,11 @@ internal func validateDocIrDocumentLimit(limit: Int64): Unit {
 /** Validate Doc IR, including its conservative encoded size within the selected budget. */
 public func validateDocumentationSet(documentation: DocumentationSet,
     maxDocumentBytes!: Int64 = DOC_IR_MAX_JSON_DOCUMENT_BYTES): Unit {
+    let _ = validatedDocumentationCapacity(documentation, maxDocumentBytes)
+}
+
+internal func validatedDocumentationCapacity(documentation: DocumentationSet,
+    maxDocumentBytes: Int64): Int64 {
     validateDocIrDocumentLimit(maxDocumentBytes)
     if (documentation.schemaVersion != DOC_IR_SCHEMA_VERSION) {
         domainFail("$.schemaVersion", "typed documentation must be current Doc IR")
@@ -72,7 +117,7 @@ public func validateDocumentationSet(documentation: DocumentationSet,
     // This occurrence-based preflight deliberately walks shared references once
     // per encoded occurrence. It bounds all recursive validation and the later
     // JSON encoder by the work and bytes they will actually emit.
-    validateDocIrEncodingBudget(documentation, maxDocumentBytes)
+    let capacity = validateDocIrEncodingBudget(documentation, maxDocumentBytes)
     if (documentation.status != "complete" && documentation.status != "partial") {
         domainFail("$.status", "invalid structural status")
     }
@@ -377,6 +422,7 @@ public func validateDocumentationSet(documentation: DocumentationSet,
         index++
     }
     validateOwnerDag(documentation.declarations, byId)
+    validateDocumentationMetadataReferences(documentation, moduleIds, packageKeys, byId)
 
     let listedFileKeys = HashSet<String>()
     let listedSymbolIds = HashSet<String>()
@@ -654,4 +700,5 @@ public func validateDocumentationSet(documentation: DocumentationSet,
         !documentation.unboundSemanticDeclarations.isEmpty())) {
         domainFail("$.status", "complete status conflicts with incomplete source or semantic structure")
     }
+    capacity
 }

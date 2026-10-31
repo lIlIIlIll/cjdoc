@@ -48,6 +48,7 @@ SCHEMA_NAMES = {
     "declaration": "declaration",
     "page": "page",
     "manifest": "machine-manifest",
+    "search": "search-index-v11",
 }
 # Runtime identities use the existing documented prefixes; they are not a
 # signature or an authentication claim, only a content identity.
@@ -55,6 +56,8 @@ QUERY_PREFIX = "cjdoc:query:v1:"
 SNAPSHOT_PREFIX = "cjdoc:snapshot:v1:"
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 SCHEMA_EXPORTS = (
+    ("doc-ir", "doc-ir.schema.json"),
+    ("doc-ir-v17", "doc-ir-v17.schema.json"),
     ("navigation-index", "navigation-index-v2.schema.json"),
     ("navigation-index-v1", "navigation-index.schema.json"),
     ("agent-full-index", "agent-full-index.schema.json"),
@@ -63,6 +66,8 @@ SCHEMA_EXPORTS = (
     ("machine-manifest", "machine-manifest.schema.json"),
     ("query-request", "query-request.schema.json"),
     ("query-result", "query-result.schema.json"),
+    ("search-index", "search-index-v11.schema.json"),
+    ("search-index-v11", "search-index-v11.schema.json"),
 )
 
 
@@ -137,6 +142,7 @@ KNOWN_KEYWORDS = frozenset({
     "minItems", "maxItems", "uniqueItems", "minLength", "maxLength", "pattern",
     "minimum", "maximum", "anyOf", "oneOf", "allOf", "not", "if", "then", "else",
     "propertyNames", "patternProperties", "minProperties", "maxProperties",
+    "x-maxUtf8Bytes",
 })
 
 
@@ -242,6 +248,9 @@ def validate_string(value: str, schema: dict, path: str) -> None:
         raise ContractError(f"{path}: string is shorter than {schema['minLength']}")
     if "maxLength" in schema and len(value) > schema["maxLength"]:
         raise ContractError(f"{path}: string is longer than {schema['maxLength']}")
+    if "x-maxUtf8Bytes" in schema and \
+            len(value.encode("utf-8")) > schema["x-maxUtf8Bytes"]:
+        raise ContractError(f"{path}: string exceeds the schema UTF-8 byte limit")
     if "pattern" in schema:
         pattern = schema["pattern"]
         if not isinstance(pattern, str):
@@ -583,7 +592,7 @@ def check_manifest(root: Path, schema: dict, navigation: dict) -> dict:
         raise ContractError("packaged inventory is not a versioned symbol index")
 
     doc_ir = load_json(root / manifest["docIr"]["path"])
-    if doc_ir.get("schemaVersion") != "cjdoc.doc-ir/16":
+    if doc_ir.get("schemaVersion") != "cjdoc.doc-ir/17":
         raise ContractError("packaged Doc IR is not the current version")
     declarations = {item["id"]: item for item in doc_ir.get("declarations", [])}
     pages = selected_documentation_pages(doc_ir.get("pages", []), manifest["scope"]["readingLanguage"])
@@ -765,6 +774,8 @@ def reject_mutations(root: Path, schemas: dict, graph: dict) -> int:
                    None)
     cases = [
         ("navigation-index.json", "navigation", "unknown"),
+        ("search-index.json", "search", "unknown"),
+        ("search-index.json", "search", "missing"),
         ("agent-full-index.json", "full", "unknown"),
         (manifest["docIr"]["path"], None, "unknown"),
         ("agent/manifest.json", "manifest", "unsafe"),
@@ -848,12 +859,32 @@ def load_schemas(schema_dir: Path) -> dict:
     if request.get("additionalProperties") is not False or result.get(
             "additionalProperties") is not False:
         raise ContractError("query schemas must reject unknown properties")
-    if request["properties"]["schemaVersion"]["const"] != "cjdoc.query-request/1":
+    if request["properties"]["schemaVersion"]["const"] != "cjdoc.query-request/3":
         raise ContractError("query-request schema version is not the published contract")
-    if result["properties"]["schemaVersion"]["const"] != "cjdoc.query-result/1":
+    if result["properties"]["schemaVersion"]["const"] != "cjdoc.query-result/3":
         raise ContractError("query-result schema version is not the published contract")
     if "declaration" not in result.get("$defs", {}):
         raise ContractError("query-result schema does not embed the Doc IR declaration model")
+    request_tags = request.get("properties", {}).get("tags")
+    result_body = result.get("properties", {}).get("result", {})
+    result_item = result.get("$defs", {}).get("queryItem", {})
+    result_facets = result.get("$defs", {}).get("queryFacets", {})
+    if not isinstance(request_tags, dict) or "tags" in request.get("required", []) or \
+            request_tags.get("type") != "array" or request_tags.get("minItems") != 1 or \
+            request_tags.get("maxItems") != 64 or \
+            request_tags.get("items", {}).get("pattern") != "^[A-Za-z0-9_-]{1,64}$":
+        raise ContractError("query-request tags must be an optional bounded set predicate")
+    if "facets" not in result_body.get("required", []) or \
+            "classification" not in result_item.get("required", []) or \
+            result_item.get("properties", {}).get("classification") != {
+                "$ref": "#/$defs/documentationClassification"} or \
+            result_facets.get("required") != ["tags"]:
+        raise ContractError("query-result classification or tag facets are not required")
+    declaration = schemas["declaration"]
+    if declaration.get("properties", {}).get("schemaVersion", {}).get("const") != \
+            "cjdoc.declaration/2" or \
+            "classification" not in declaration.get("required", []):
+        raise ContractError("declaration schema does not require classification v2")
     schemas["query-request"] = request
     schemas["query-result"] = result
     return schemas
@@ -863,6 +894,7 @@ def check(binary: Path, root: Path, schema_dir: Path) -> dict:
     if not root.is_dir() or root.is_symlink():
         raise ContractError("--root must be an existing regular document root")
     schemas = load_schemas(schema_dir)
+    check_schema(load_json(document(root, "search-index.json")), schemas["search"], "search-index.json")
     navigation = check_navigation(root, schemas["navigation"])
     manifest = check_manifest(root, schemas["manifest"], navigation)
     check_full_reference(root, schemas["full"], manifest["manifest"])

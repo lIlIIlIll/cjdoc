@@ -54,11 +54,13 @@ protected func appendAgentReadingScope(out: StringBuilder, context: Documentatio
 internal func renderAgentDeclarationJson(context: DocumentationReadSnapshot, symbol: SymbolDoc,
     markdown!: ?String = None): String {
     let out = StringBuilder()
-    out.append("{\"schemaVersion\":\"cjdoc.declaration/1\",\"scope\":")
+    out.append("{\"schemaVersion\":\"cjdoc.declaration/2\",\"scope\":")
     appendAgentReadingScope(out, context, Some(symbol.moduleId))
     out.append(",\"symbolKey\":${escapeJsonString(symbolInventoryKey(symbol))}," +
         "\"dependencyInstanceId\":${nullableString(declarationDependencyInstance(context, symbol))},\"symbol\":")
     appendSymbol(out, symbol)
+    out.append(",\"classification\":")
+    appendDeclarationClassificationJson(out, capturedDeclarationClassification(context, Some(symbol)))
     out.append(",\"representations\":{\"pathBase\":\"document-root\",\"html\":" +
         escapeJsonString(symbolPagePath(symbol)) + ",\"markdown\":" + escapeJsonString(agentDeclarationMarkdownPath(symbol)) +
         ",\"json\":" + escapeJsonString(agentDeclarationJsonPath(symbol)) + "},\"source\":{\"url\":")
@@ -127,7 +129,7 @@ internal func appendAgentDeclarationArtifacts(artifacts: RenderArtifactCollector
     context: DocumentationReadSnapshot, includeFull!: Bool = false,
     reports!: Array<DocumentationReportAttachment> = []): Unit {
     let machine = RenderArtifactCollector()
-    let docIrText = compactDocIr(context.documentation)
+    let docIrText = context.encodedDocumentation
     let docIrDigest = contractFingerprint(docIrText)
     let inventoryText = context.renderSymbolInventory()
     let inventoryDigest = contractFingerprint(inventoryText)
