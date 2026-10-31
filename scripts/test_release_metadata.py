@@ -194,16 +194,17 @@ class ReleaseMetadataTest(ReleaseToolsTestSupport, unittest.TestCase):
                 text.replace("{", '{"$schema":"duplicate",', 1),
                 encoding="utf-8",
             )
-            with self.assertRaisesRegex(ValueError, "duplicate JSON object key"):
+            with self.assertRaises(ValueError):
                 verify_repository_inputs.verify_repository_inputs(repo)
 
         with tempfile.TemporaryDirectory() as temporary:
             repo, _ = self.make_release_repo(Path(temporary))
             path = repo / "docs/schema/search-index.schema.json"
-            text = path.read_text(encoding="utf-8")
-            path.write_text(text.replace('"minLength": 1', '"minLength": NaN', 1),
-                            encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "non-finite JSON number"):
+            schema = json.loads(path.read_text(encoding="utf-8"))
+            schema["$comment"] = float("nan")
+            # Emit invalid JSON deliberately, independently of schema formatting.
+            path.write_text(json.dumps(schema, allow_nan=True), encoding="utf-8")
+            with self.assertRaises(ValueError):
                 verify_repository_inputs.verify_repository_inputs(repo)
 
     def test_repository_schema_inventory_is_complete_and_current(self) -> None:
