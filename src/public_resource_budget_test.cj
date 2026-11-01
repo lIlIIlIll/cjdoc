@@ -175,10 +175,16 @@ class PublicResourceBudgetTest {
         @Expect(api_model.DOC_IR_MAX_SCHEMA_OBJECTS - objects < perOccurrence)
         @Expect(api_render.decodeDocIr(encoded).diagnostics.size, acceptedOccurrences)
         // Keep the schema valid so only the aggregate occurrence boundary rejects it.
-        let oversized = JsonNode.parse(encoded).asObject()
+        // Generic yjson buffering defaults to 8 MiB, below Doc IR's existing contract.
+        let oversized = JsonNode.parse(encoded, config: JsonReadOptions(
+            maxStringBytes: api_model.DOC_IR_MAX_JSON_STRING_BYTES,
+            maxBufferedValueBytes: api_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES,
+            maxInputBytes: api_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)).asObject()
         let diagnostics = oversized.get("diagnostics").getOrThrow().asArray()
         diagnostics.add(JsonNode.parse(diagnostics.get(0).getOrThrow().toJson()))
-        @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(oversized.toJson()))
+        let oversizedJson = oversized.toJson(options: JsonWriteOptions(
+            maxOutputBytes: api_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES))
+        @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(oversizedJson))
         let overflow = diagnosticObjectBoundaryFixture(acceptedOccurrences + 1)
         @ExpectThrows[IllegalArgumentException](api_render.encodeDocIr(overflow))
         let fallback = boundGeneratedDocumentation(overflow, request)

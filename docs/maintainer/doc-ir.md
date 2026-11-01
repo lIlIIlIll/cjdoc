@@ -108,6 +108,8 @@ Doc IR `/17` 继续把三项类型语义事实命名平铺为必需的 `semantic
 
 ## 验证
 
+边界测试若用通用 `JsonNode.parse` 构造大文档反例，应显式沿用 Doc IR 的字符串、输入和缓冲字节预算；其默认 **8 MiB** 缓冲可能先于被测 decoder 拒绝合法输入。辅助序列化也使用既有 Doc IR 输出预算，不提高产品上限；反例除目标资源边界外应保持 schema 合法。
+
 ```bash
 bash scripts/check.sh cli --repo . --worker-binary target/release/bin/chir-worker-main
 ```
