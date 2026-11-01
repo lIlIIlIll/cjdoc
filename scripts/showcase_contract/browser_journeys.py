@@ -152,10 +152,11 @@ def search(journey: Journey):
     field.fill("unrecognized:TextCatalog")
     expect(results).to_have_count(0)
     expect(page.locator("[data-cjdoc-search-status]")).to_be_visible()
-    require_text(page.locator("[data-cjdoc-search-status]"), "name:", "return:")
+    expect(page.locator("[data-cjdoc-search-status]")).to_contain_text("unknown_filter_field")
     field.fill("cjdoc_no_such_symbol_58b0e6")
     expect(results).to_have_count(0)
     expect(page.locator("[data-cjdoc-search-status]")).to_be_visible()
+    expect(page.locator("[data-cjdoc-search-status]")).not_to_contain_text("unknown_filter_field")
     field.fill("name:openText")
     origin = page.url
     page.keyboard.press("ArrowDown")

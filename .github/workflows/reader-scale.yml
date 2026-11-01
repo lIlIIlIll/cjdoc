@@ -165,11 +165,7 @@ jobs:
             --binary "${RUNNER_TEMP}/reader-baseline-source/target/release/bin/main" \
             --revision 67faf0b244544a750543f049370c59479769eff4 --label baseline \
             --corpus "${READER_CORPUS}" --output "${RUNNER_TEMP}/reader-evidence/baseline"
-          presentation=()
-          if [[ "${READER_CORPUS}" == 1000 ]]; then
-            presentation=(--presentation docs/maintainer/reader-scale-presentation.json)
-          fi
-          python scripts/reader_register.py "${presentation[@]}" \
+          python scripts/reader_register.py \
             --baseline "${RUNNER_TEMP}/reader-evidence/baseline/observation" \
             --template docs/maintainer/reader-scale-budgets.json \
             --output "${RUNNER_TEMP}/reader-evidence/registered.json"

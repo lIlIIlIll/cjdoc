@@ -145,13 +145,14 @@ RSS 顺序回归在独立的小控制进程中运行，避免完整测试套件�
 [Reader scale observations workflow](../../.github/workflows/reader-scale.yml) 复用同源 STS candidate 并核对 binary SHA-256；固定以 `67faf0b244544a750543f049370c59479769eff4`（Doc IR/17、search-index/11）为当前 CI baseline，在 checkout 外使用同一认证 SDK 构建。该基线刷新经显式批准：此门禁仅证明后续修复相对该版本的回归，不把它表述为旧协议到新协议的完整性能比较。旧 `2ef643c5d795ab2e3dfd1035517baeec3a88b0aa` 的历史观测保持原样，原功能变更的成本另行披露。
 
 在同一 runner 上依次采 baseline、绑定事先登记的数值模板、采 after、运行行为回归和严格比较。Doc IR 与 search-index JSON/JS 的相同 payload 校验、原始任务、样本数、字体、声明下限和资源/延迟预算均不放宽；不添加旧索引兼容或跨协议跳过。原始 JSON、日志、Doc IR、截图与比较保存为该 run 的 artifact，默认保留 30 天。手动选择资源受限 cohort 时比较仍为 `pass: false`、退出失败，不把观测完成记作支持该规模。
+当前 baseline 与 candidate 使用相同展示契约，不登记旧 `0.7.3 → 0.7.7` 的 presentation 例外：字体使用、正文排版和无 JS ARIA 树直接严格相等比较。
 
 build、仓颉 unit、golden/integration、真实库、本地浏览器、远端 CI 必须分别报告。源码中存在脚本、较小 fixture 通过、ARIA snapshot 或截图好看，都不是较高层级已执行的证据。
 
 
-## #163 的预期展示差异登记
+## 历史 #163 的预期展示差异登记
 
-固定 1k cohort 使用 [`reader-scale-presentation.json`](reader-scale-presentation.json)。
+历史改版的固定 1k cohort 使用 [`reader-scale-presentation.json`](reader-scale-presentation.json)，该例外不用于当前 CI 基线。
 基线采集完成后，`reader_register.py --presentation` 将该文件的原始摘要、规范化内容摘要及完整内容写入注册预算，随后才采集 after。
 默认不提供该参数时仍要求原来的完全相同排版。其它语料需要独立登记，不自动套用 1k 的例外。
 
@@ -171,5 +172,5 @@ build、仓颉 unit、golden/integration、真实库、本地浏览器、远端 
 当前查询与标签模型另经授权，将累计数组项上限从 100,000 调整为 131,072。完整 self 捕获的独立物理 JSON 计数为 109,656 项，512 MiB 与原 smoke 2 GiB 配方得到相同 Doc IR；对象、字节、字符串、类型/Markdown、SDK、堆配方和声明下限不变。此处记录容量依据，不把旧的资源受限观测或性能结果重新标为通过；后续语料必须按当前源码与产物重新采集。
 
 
-固定 0.7.3 基线必须使用该 revision 自带的 `with_sts_o1_cjpm.sh`，以其记录的 `-O1` 规则重建。
+重放历史固定 0.7.3 基线时，必须使用该 revision 自带的 `with_sts_o1_cjpm.sh`，以其记录的 `-O1` 规则重建。
 当前产品继续使用当前仓库的 `-O2 --fno-chir-function-inlining` 规则。不要把当前包装器套到旧源码：旧版本的 markdown/yjson 依赖在普通 `-O2` 下有已记录的 llc 崩溃；这会在采样之前失败，不能解释成读者性能退化。两份构建日志和原生身份各自保留。

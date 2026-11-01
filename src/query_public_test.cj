@@ -155,6 +155,8 @@ private func queryDocumentation(projectName!: String = "query-fixture",
             ProviderInfo("ast", "builtin", PUBLIC_TEST_MODULE, "partial",
                 api_model.SemanticCapabilities(false, false, false, false, false)),
             ProviderInfo("ast", "builtin", PUBLIC_TEST_TAG_MODULE, "partial",
+                api_model.SemanticCapabilities(false, false, false, false, false)),
+            ProviderInfo("ast", "builtin", PUBLIC_TEST_EMPTY_MODULE, "partial",
                 api_model.SemanticCapabilities(false, false, false, false, false))
         ],
         modules: [
