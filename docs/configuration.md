@@ -93,7 +93,7 @@ overview = "docs/pocketkit-core.md"
 
 ## [metadata]：分组与标签显示名
 
-`metadata` 是可选配置。对每个 module，cjdoc 以其 `sourceFileOrigins.actualRoot` 为配置根读取一次根目录 `cjdoc.toml`；同一实际根的解析结果可以复用，但仍分别绑定到 module ID。workspace 根配置不会自动传播到成员项目或依赖 module。每个配置文件最多 64 KiB。`[[metadata.groups]]` 定义包级或声明容器级分组，`[[metadata.tags]]` 为该 module 的声明标签提供显示标题。
+`metadata` 是可选配置。对每个被发现的 module，cjdoc 从该模块的项目根目录读取一次 `cjdoc.toml`；同一实际根的解析结果可以复用，但仍分别绑定到 module ID。workspace 根配置不会自动传播到成员项目或依赖 module。每个配置文件最多 64 KiB。`[[metadata.groups]]` 定义包级或声明容器级分组，`[[metadata.tags]]` 为该 module 的声明标签提供显示标题。
 
 ```toml
 [[metadata.groups]]
@@ -131,6 +131,7 @@ en = "Streaming"
 语法只接受 `[[metadata.groups]]`、`[[metadata.tags]]` 以及各记录可选的对应 `titles` 子表；可选的 `[metadata]` 表必须为空。未知表/键、重复键、dotted/inline 变体、错误类型或越界值都报告 `CJDOC3133`，配置严格失败，退出码为 `2`，不会产生文档。每类定义最多 2048 条；这些文本也计入既有 Doc IR 64 MiB 总预算，不扩展该预算。
 
 配置解析后，scope 绑定错误会保留为文档诊断并使结果成为 partial：`CJDOC3134` 表示 package/owner 不存在，`CJDOC3135` 表示 owner 有歧义，`CJDOC3136` 表示同 scope 定义重复（相同 scope 的竞争定义均无效），`CJDOC3137` 表示无集中定义的 `@group <id>` 简写。隐藏声明仍可作为定义的绑定目标；公开 Doc IR 与 HTML 只捕获当前发布声明实际使用的定义，发布范围收窄时会再次删除无成员定义。
+`CJDOC3134`–`CJDOC3136` 的位置保留配置所属模块的可移植逻辑路径：根配置为 `cjdoc.toml`，workspace 成员例如 `packages/member/cjdoc.toml`，显式依赖源例如 `dependencies/peer/cjdoc.toml`。依赖使用其配置逻辑名称，不输出本机绝对目录。
 
 完整捕获的 `metadata.groups` 与 `metadata.tags` 写入 Doc IR/17。`render --input docs.json` 只使用已捕获 metadata，不需要原项目源码或 `cjdoc.toml`。未在配置中定义的 `@tag` 仍按 ID 显示并可精确搜索；未定义的无标题 `@group` 简写则不产生分组。
 

@@ -29,4 +29,5 @@ Doc IR 仍为 v16。生成器版本改为 `0.7.6`，需要重新生成 current g
 - Doc IR/17 捕获实际用于发布声明的 metadata，支持 source-free render；HTML 与 Markdown 采用相同的分组/kind 层级规则，按 module/package/原始 owner 区分同 ID 组，并保留既有组、kind、声明和详情深链。Markdown 中超过 H6 的作者标题降为低权重文字并保留可达片段；分组中的容器标题仍链接到成员页。
   包页与成员页的声明行以捕获的 canonical ID 参与共享筛选；未设置筛选时保留全部声明。
   摘要与正文共享作者片段导航；参数、返回值与重复出现的异常章节各用独立命名空间，避免完整参考中的锚点冲突。
+- 修正 workspace/依赖 metadata 绑定诊断的配置归属；facet 切换同步输入与有效标签条件。顶层声明名称选择器不命中 concept，discovery 保留纯标点标题的名称证据；摘要与签名预览按 Unicode 码点上限处理，并同步实际 renderer 的静态脚本校验身份。
 - 这是 current-only wire cutover：Doc IR/16、旧 query-request/query-result、旧 search-index 与 declaration 版本不会被当前 decoder/消费者迁移。使用旧输入前，须从真实源码重新生成当前 Doc IR 或静态站点。

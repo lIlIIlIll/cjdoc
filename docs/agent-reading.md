@@ -74,7 +74,7 @@ cjdoc query --snapshot target/agent-demo/html/agent/manifest.json \
 | 操作 | 核心输入 | 返回范围 |
 |---|---|---|
 | `resolve_docs` | library、模块/包范围、捕获的 dependency/context、API 版本和显式策略；`query` 只匹配库/模块/包名，符号名使用 `search` | 选中项、可区分候选、matchLevel、原因与原始依赖证据。 |
-| `search` | Symbol ID/key、限定名、名称/别名、参数类型/泛型数量、结构化字段筛选或用途文字 | 精确身份/重载特征优先，随后名称及正文；摘要、完整源码签名、详情身份、分类和规范路由。 |
+| `search` | Symbol ID/key、限定名、名称/别名、参数类型/泛型数量、结构化字段筛选或用途文字 | 精确身份/重载特征优先，随后名称及正文；摘要与签名预览、详情身份、分类和规范路由。 |
 | `get_symbol` | `symbolId`、`symbolKey`、`pageId` 恰好一个；固定快照/文档集 | 所选完整章节、关系、来源、分类与附带报告；概念页没有伪造的 Symbol ID。 |
 
 完整字段、操作适用性和取值以 `cjdoc schema query-request` 为准；请求为 `cjdoc.query-request/3`，结果为 `cjdoc.query-result/3`。未知字段、身份选择冲突、`sections` 与 `preset` 同时出现、不适用的操作选项都会被拒绝。`mode`、`profile`、`filters` 和 `tags` 只适用于 search，其他操作收到这些字段会返回 `invalid_request/field_not_applicable`。未填写 `mode`/`profile` 时原生查询默认 `precise`/`full-ir`。显式提供旧 query-request/query-result 版本会被拒绝。
@@ -84,6 +84,7 @@ cjdoc query --snapshot target/agent-demo/html/agent/manifest.json \
 #### 模式、profile 与排名
 
 `precise` 是原生查询的默认模式。它优先使用精确 `symbolId`/`symbolKey`、qualified name、名称、owner-member、重导出短别名，再匹配声明标识符或文档文本的 token；参数和返回类型不会额外扩大 precise 的自由文本范围，但仍可用显式字段条件筛选。最高证据等级并列时返回 `ambiguous`，不会按遍历顺序猜一个重载。`discovery` 用于浏览和渐进发现：多个正常候选可同时返回，按共享契约的分数从高到低排序。
+顶层 `name`、`qualifiedName`、`symbolId`、`symbolKey` 是声明选择器，不以 concept 标题命中页面；检索 concept 标题使用自由 `query`。
 
 | discovery 分数 | 证据 |
 |---:|---|
@@ -96,7 +97,7 @@ cjdoc query --snapshot target/agent-demo/html/agent/manifest.json \
 | 2000 | 文档正文或 concept 正文 |
 | 0 | 仅使用 scope/filters/tags 枚举（`filter_only`） |
 
-`full-ir` 检索捕获的完整正文；`bounded-static` 每条记录只索引正文前 2,000 个 Unicode 码点，结构化身份、参数、返回值及分类不截断。摘要展示可能截短为 240 个码点，但匹配使用完整摘要。原生查询支持两个 profile；原生与浏览器执行器都支持 `precise` / `discovery` 两种模式。发布的静态索引只提供 `bounded-static`，页面输入适配显式使用 `discovery` + `bounded-static`。
+`full-ir` 检索捕获的完整正文；`bounded-static` 每条记录只索引正文前 2,000 个 Unicode 码点，结构化身份、参数、返回值及分类不截断。摘要预览最多 240 个码点，签名预览最多 512 个码点，截短时的省略号计入上限；不按 UTF-8 字节数截短，匹配仍使用完整摘要与结构化声明。原生查询支持两个 profile；原生与浏览器执行器都支持 `precise` / `discovery` 两种模式。发布的静态索引只提供 `bounded-static`，页面输入适配显式使用 `discovery` + `bounded-static`。
 静态站只提供 `search` 操作：其他 operation 返回 `invalid_request/operation_unavailable`，请求 `full-ir` 返回 `unavailable/search_profile_unavailable`，不会伪装成空结果。
 
 搜索结果使用 canonical 声明去重，key 为 `(snapshotId, symbolId)`，concept 使用 `(snapshotId, pageId)`；不同 snapshot、module、owner 或 origin 不合并。排序按 score 降序，再按 snapshot ID、canonical ID、reason 的 UTF-8 字节升序，结果顺序不依赖哈希表或语言环境。`total` 是当前 scope 和全部过滤条件下的去重候选数，不是当前页条数；`limit: 0` 返回空页但保留真实总数，且不发出无进展游标。精确最高分并列仍保留 `ambiguous` 语义。
@@ -132,8 +133,10 @@ cjdoc query --snapshot target/agent-demo/html/agent/manifest.json \
 #### 搜索文本规则
 
 搜索仅 ASCII 大小写折叠；不做 NFC/NFKC、locale 或非 ASCII 大小写折叠。token 由 ASCII 字母、数字、下划线及所有 U+0080 以上码点组成，其他码点分隔 token。discovery 的 camelCase 与 acronym 拆分只识别 ASCII 大小写边界。一次编辑距离只允许对 4–128 码点的单 token 执行一次插入、删除或替换，不包含转置。HTML 输入保留 `name:`、`owner:`、`param:`、`return:`、`package:`、`kind:` 六种字段；package/kind 下拉选项是精确过滤。重复 `tag:<id>` 使用相同 ID 集合规则；未知字段或空值会显示结构化错误，不会被忽略。其余文本作为自由 query。
+纯标点 query 不产生 token，但仍可按名称折叠或前缀匹配 concept 标题，例如 `++`；依赖 token 的规则不会把空 token 集合解释成匹配所有声明。
 
 HTML 的搜索链接将每个 `tag`、`moduleId` 和 `snapshotId` 写入当前 locale 的站点 index URL。链接保留标签来源，不把不同 module 或 dependency 的同名标签合并；HTTP 子路径和 `file://` 页面都能由这些 query 参数恢复搜索状态。
+点击 facet 时，已有 tag 条件统一写入 URL，输入框保留其他自由文本与字段条件；取消某个 tag 后再次编辑输入，不会恢复已取消的谓词。
 
 `result.facets.tags` 是当前搜索条件（包括所有 tags）筛选后的可见 canonical 声明计数，按 snapshot/module/tag 分域，不计算 exposure 或隐藏声明。facet 项为 `{scope, id, title, count}`；scope 保留 `snapshotId`、`sourceSnapshotId`、`moduleId`、`documentSet`、`dependencyInstance` 及 `dependencyInstanceState`。非 search 结果的 `facets.tags` 为空数组。结果 item 的 `classification` 形状为 `{group: null | {id, packageName, ownerId, title, order}, tags: [{id, title}]}`；未分组时 group 为 null，ownerId/order 可以是 null；`get_symbol` 也返回 classification，concept 固定为 `{group: null, tags: []}`。tag title 可本地化显示，但过滤始终使用 ID。
 

@@ -47,6 +47,7 @@ internal func appendSearchJsonString(out: RenderTextBuffer, value: String): Unit
  */
 public func searchTextExcerpt(value: String, maximum!: Int64): String {
     if (maximum <= 0) { return "" }
+    if (value.size <= maximum) { return value }
     let out = RenderTextBuffer()
     var count: Int64 = 0
     var pending: ?Rune = None

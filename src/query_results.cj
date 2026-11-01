@@ -494,20 +494,3 @@ internal func querySectionList(values: Array<String>): ArrayList<String> {
     ArrayList<String>(values)
 }
 
-/** Byte-bounded excerpt for an index summary; never used for a contract chapter. */
-internal func queryExcerpt(value: String, limitBytes: Int64): String {
-    let text = value.replace("\r", " ").replace("\n", " ").trimAscii()
-    if (text.size <= limitBytes) { return text }
-    let out = StringBuilder()
-    var written: Int64 = 0
-    for (rune in text.runes()) {
-        let code = UInt32(rune)
-        let width: Int64 = if (code <= 0x7Fu32) { 1 } else if (code <= 0x7FFu32) { 2 }
-            else if (code <= 0xFFFFu32) { 3 } else { 4 }
-        if (written + width > limitBytes - 3) { break }
-        out.append(rune)
-        written += width
-    }
-    out.append("...")
-    out.toString()
-}
