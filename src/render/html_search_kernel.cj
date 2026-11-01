@@ -295,11 +295,16 @@ globalThis.cjdocSearch = (() => {
       nonemptyString(value.moduleId) && nonemptyString(value.name) && nonemptyString(value.instanceId) &&
       ["source", "binary", "std", "stdx", "toolchain"].includes(value.kind) &&
       ["unknown", "declared", "observed", "verified", "conflict"].includes(value.state));
-  const validIndexModule = value => exactKeys(value,
-    ["moduleId", "moduleName", "documentSet", "dependency", "dependencyInstanceState"]) &&
-      nonemptyString(value.moduleId) && nullableString(value.moduleName) &&
-      validDocumentSet(value.documentSet) && validDependency(value.dependency) &&
-      ["recorded", "not_applicable", "unrecorded", "ambiguous"].includes(value.dependencyInstanceState);
+  const validIndexModule = value => {
+    if (!exactKeys(value,
+      ["moduleId", "moduleName", "documentSet", "dependency", "dependencyInstanceState"]) ||
+        !nonemptyString(value.moduleId) || !nullableString(value.moduleName) ||
+        !validDocumentSet(value.documentSet) || !validDependency(value.dependency) ||
+        !["recorded", "not_applicable", "unrecorded", "ambiguous"].includes(value.dependencyInstanceState)) return false;
+    if (value.documentSet !== null && value.documentSet.moduleId !== value.moduleId) return false;
+    if (value.dependency !== null && value.dependency.componentModuleId !== value.moduleId) return false;
+    return true;
+  };
   const validIndexScope = value => exactKeys(value, ["snapshotId", "sourceSnapshotId", "publicationRevision",
     "project", "language", "audience", "cfgProfile", "apiCollectionState"]) &&
       nonemptyString(value.snapshotId) && nonemptyString(value.sourceSnapshotId) &&
@@ -407,13 +412,11 @@ globalThis.cjdocSearch = (() => {
         typeof entry.href !== "string" || !validClassification(entry.classification, entry.concept) ||
         !Array.isArray(entry.exposures) || !Array.isArray(entry.externalDocs) ||
         !Array.isArray(entry.bindings) || !Array.isArray(entry.sections) ||
-        !entry.sections.every(validSection) || !entry.exposures.every(exposure => isObject(exposure) &&
-          nonemptyString(exposure.id) && Number.isSafeInteger(exposure.scope) &&
-          exposure.scope >= 0 && exposure.scope < modules.length &&
-          typeof exposure.name === "string" && typeof exposure.qualifiedName === "string" &&
-          typeof exposure.packageName === "string" &&
-          !hasUnpairedSurrogate(exposure.name) && !hasUnpairedSurrogate(exposure.qualifiedName) &&
-          !hasUnpairedSurrogate(exposure.packageName))) return null;
+        !entry.sections.every(validSection) || !entry.exposures.every(exposure =>
+          isObject(exposure) && nonemptyString(exposure.id) &&
+          Number.isSafeInteger(exposure.scope) && exposure.scope >= 0 &&
+          exposure.scope < modules.length && nonemptyString(exposure.name) &&
+          nonemptyString(exposure.qualifiedName) && nonemptyString(exposure.packageName))) return null;
     if ([entry.kind, entry.summary, entry.summaryDisplay, entry.body, entry.href,
         ...entry.parameterTypes].some(hasUnpairedSurrogate)) return null;
     if (entry.snapshotId !== indexScope.snapshotId) return null;
@@ -923,6 +926,20 @@ globalThis.cjdocSearch = (() => {
     return true;
   };
 
+  // Match native scope admission: all known values on this module's document set
+  // and dependency must admit the request; only the document set uses `*`.
+  const scopeValueAdmits = (documentSet, dependency, key, requested, wildcard) => {
+    let known = false;
+    if (documentSet && documentSet[key] !== "") {
+      known = true;
+      if (documentSet[key] !== requested && !(wildcard && documentSet[key] === "*")) return false;
+    }
+    if (dependency && dependency[key] !== "") {
+      known = true;
+      if (dependency[key] !== requested) return false;
+    }
+    return known;
+  };
   const moduleScopeAdmits = (facts, modules, request) => {
     if (facts.concept) {
       const moduleFields = ["moduleId", "packageName", "documentSetId", "apiVersion", "library",
@@ -941,10 +958,10 @@ globalThis.cjdocSearch = (() => {
     if (request.library !== undefined && (!documentSet || documentSet.library !== request.library)) return false;
     if (request.apiVersion !== undefined && (!documentSet || documentSet.apiVersion !== request.apiVersion)) return false;
     if (request.dependencyInstanceId !== undefined && (!dependency || dependency.instanceId !== request.dependencyInstanceId)) return false;
-    if (request.target !== undefined && !((documentSet && documentSet.target === request.target) ||
-        (dependency && dependency.target === request.target))) return false;
-    if (request.cfg !== undefined && !((documentSet && documentSet.cfg === request.cfg) ||
-        (dependency && dependency.cfg === request.cfg))) return false;
+    if (request.target !== undefined &&
+        !scopeValueAdmits(documentSet, dependency, "target", request.target, true)) return false;
+    if (request.cfg !== undefined &&
+        !scopeValueAdmits(documentSet, dependency, "cfg", request.cfg, true)) return false;
     if (request.kind !== undefined && facts.kind !== request.kind) return false;
     return true;
   };
@@ -981,24 +998,22 @@ globalThis.cjdocSearch = (() => {
       return "projection_unavailable";
     }
     if (request.latest === true && scope.latest !== true) return "latest_not_declared";
-    const scopedKeys = ["moduleId", "packageName", "documentSetId", "apiVersion", "library",
+    const scopedKeys = ["moduleId", "documentSetId", "apiVersion", "library",
       "dependencyInstanceId", "target", "cfg"];
     if (scopedKeys.some(key => request[key] !== undefined)) {
-      const admitted = prepared.entries.some(group => {
-        const facts = group.entry;
-        if (facts.concept || (request.packageName !== undefined && facts.packageName !== request.packageName)) return false;
-        const module = prepared.modules[facts.scope];
-        if (!module || (request.moduleId !== undefined && module.moduleId !== request.moduleId &&
-            module.moduleName !== request.moduleId)) return false;
+      const admitted = prepared.modules.some(module => {
+        if (request.moduleId !== undefined && module.moduleId !== request.moduleId &&
+            module.moduleName !== request.moduleId) return false;
         const set = module.documentSet;
         const dependency = module.dependency;
         if (request.documentSetId !== undefined && (!set || set.id !== request.documentSetId)) return false;
         if (request.library !== undefined && (!set || set.library !== request.library)) return false;
         if (request.apiVersion !== undefined && (!set || set.apiVersion !== request.apiVersion)) return false;
         if (request.dependencyInstanceId !== undefined && (!dependency || dependency.instanceId !== request.dependencyInstanceId)) return false;
-        if (request.target !== undefined && !((set && set.target === request.target) ||
-            (dependency && dependency.target === request.target))) return false;
-        if (request.cfg !== undefined && !((set && set.cfg === request.cfg) || (dependency && dependency.cfg === request.cfg))) return false;
+        if (request.target !== undefined &&
+            !scopeValueAdmits(set, dependency, "target", request.target, true)) return false;
+        if (request.cfg !== undefined &&
+            !scopeValueAdmits(set, dependency, "cfg", request.cfg, true)) return false;
         return true;
       });
       if (!admitted) return "scope_not_captured";

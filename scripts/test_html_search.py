@@ -173,11 +173,27 @@ const contract = {
    ["concept_text", 2, 2000, "guide_text"], ["filter_only", 0, 0, "filter_only"]
  ].map(([primitive, level, score, reason]) => ({primitive, level, score, reason}))
 };
+const makeDocumentSet = (moduleId, id, library, target, cfg) => ({
+  id, moduleId, library, identity: library, state:"declared", source:"captured",
+  target, cfg, audience:"external", language:"en", revision:"rev",
+  apiVersion:"1.0", documentationRevision:"docs", indexIdentity:"index", baseUrl:""
+});
+const makeDependency = (moduleId, name, instanceId, target, cfg) => ({
+  moduleId:"cjdoc:module:consumer", componentModuleId:moduleId, name, instanceId, kind:"source",
+  identity:name, state:"declared", evidence:"captured", version:"1.0",
+  revision:"rev", target, cfg
+});
+const documentSetA = makeDocumentSet("cjdoc:module:a", "document-a", "library-a", "target-a", "cfg-a");
+const documentSetB = makeDocumentSet("cjdoc:module:b", "document-b", "library-b", "target-b", "cfg-b");
+const dependencyA = makeDependency("cjdoc:module:a", "library-a", "dependency-a", "target-a", "cfg-a");
+const dependencyB = makeDependency("cjdoc:module:b", "library-b", "dependency-b", "target-b", "cfg-b");
 const modules = [
  {moduleId: "cjdoc:module:net", moduleName: "net", documentSet: null, dependency: null, dependencyInstanceState: "not_applicable"},
  {moduleId: "cjdoc:module:other", moduleName: "other", documentSet: null, dependency: null, dependencyInstanceState: "not_applicable"},
- {moduleId: "cjdoc:module:a", moduleName: "sdk-a", documentSet: null, dependency: null, dependencyInstanceState: "not_applicable"},
- {moduleId: "cjdoc:module:b", moduleName: "sdk-b", documentSet: null, dependency: null, dependencyInstanceState: "not_applicable"}
+ {moduleId: "cjdoc:module:a", moduleName: "sdk-a", documentSet:documentSetA, dependency:dependencyA, dependencyInstanceState: "recorded"},
+ {moduleId: "cjdoc:module:b", moduleName: "sdk-b", documentSet:documentSetB, dependency:dependencyB, dependencyInstanceState: "recorded"},
+ {moduleId: "cjdoc:module:private", moduleName: "private", documentSet: null, dependency: null, dependencyInstanceState: "not_applicable"},
+ {moduleId: "cjdoc:module:empty", moduleName: "empty", documentSet: null, dependency: null, dependencyInstanceState: "not_applicable"}
 ];
 const modulePositions = Object.fromEntries(modules.map((module, index) => [module.moduleId, index]));
 const moduleTags = {
@@ -288,6 +304,90 @@ assert.deepEqual(Array.from(api.filterEntries(index, localRequest(qualifiedToken
   [index.entries[0].canonicalId]).canonicalIds), ["cjdoc:v2:net%3AHttpClientBuilder"]);
 assert.equal(api.execute({...index, schemaVersion:"cjdoc.search-index/10"}, baseRequest).errorCode,
   "search_index_version_unsupported");
+const scopedCopy = (projectionId, fields = {}) => ({
+  ...index, ...fields, projectionId,
+  coverage:{...index.coverage, ...(fields.coverage || {}), projectionId}
+});
+const assertNoMatch = (request, source = index) => {
+  const result = execute(request, source);
+  assert.equal(result.status, "not_found");
+  assert.equal(result.errorCode, null);
+  assert.equal(result.total, 0);
+  assert.equal(result.items.length, 0);
+  assert.equal(result.reason, "no_match_in_scope");
+};
+for (const mode of ["precise", "discovery"]) {
+  for (const request of [
+    {moduleId:"cjdoc:module:empty"},
+    {moduleId:"cjdoc:module:private", packageName:"privateOnly"},
+    {moduleId:"cjdoc:module:net", packageName:"review_preview.hidden"},
+    {moduleId:"cjdoc:module:net", packageName:"review_preview.missing"},
+    {packageName:"review_preview.missing"},
+    {moduleId:"cjdoc:module:a", packageName:"other"}
+  ]) assertNoMatch({...request, mode});
+  const sameModuleConjunction = execute({query:"overloaded", mode,
+    moduleId:"cjdoc:module:a", packageName:"net", documentSetId:"document-a",
+    library:"library-a", apiVersion:"1.0", dependencyInstanceId:"dependency-a",
+    target:"target-a", cfg:"cfg-a"});
+  assert.equal(sameModuleConjunction.status, "ok");
+  assert.deepEqual(Array.from(sameModuleConjunction.items, item => item.canonicalId), ["cjdoc:v2:module-a"]);
+}
+const unknownModule = execute({moduleId:"cjdoc:module:missing"});
+assert.equal(unknownModule.status, "scope_mismatch");
+assert.equal(unknownModule.errorCode, "scope_not_captured");
+for (const request of [
+  {moduleId:"cjdoc:module:a", documentSetId:"document-b", dependencyInstanceId:"dependency-a"},
+  {moduleId:"cjdoc:module:a", documentSetId:"document-a", dependencyInstanceId:"dependency-b"},
+  {moduleId:"cjdoc:module:a", documentSetId:"document-a", target:"target-b", cfg:"cfg-a"}
+]) {
+  const rejected = execute(request);
+  assert.equal(rejected.status, "scope_mismatch");
+  assert.equal(rejected.errorCode, "scope_not_captured");
+}
+for (const apiCollectionState of ["partial", "unavailable"]) {
+  const incomplete = scopedCopy("incomplete-" + apiCollectionState, {
+    scope:{...index.scope, apiCollectionState}
+  });
+  const absence = execute({moduleId:"cjdoc:module:empty"}, incomplete);
+  assert.equal(absence.status, "source_incomplete");
+  assert.equal(absence.errorCode, null);
+  assert.equal(absence.total, 0);
+}
+const invalidModuleIndex = (projectionId, updateModule) => scopedCopy(projectionId, {
+  modules:index.modules.map((module, position) => updateModule(module, position))
+});
+const contradictoryScope = invalidModuleIndex("contradictory-set-dependency-scope", (module, position) =>
+  position === 2 ? {...module, dependency:{...module.dependency, target:"target-b", cfg:"cfg-b"}} : module);
+const contradictoryResult = execute({query:"overloaded", moduleId:"cjdoc:module:a",
+  documentSetId:"document-a", target:"target-a", cfg:"cfg-a"}, contradictoryScope);
+assert.equal(contradictoryResult.status, "scope_mismatch");
+assert.equal(contradictoryResult.errorCode, "scope_not_captured");
+assert.equal(api.execute(invalidModuleIndex("wrong-document-set-module", (module, position) =>
+  position === 2 ? {...module, documentSet:documentSetB} : module), baseRequest).errorCode,
+  "search_index_invalid");
+assert.equal(api.execute(invalidModuleIndex("wrong-dependency-module", (module, position) =>
+  position === 2 ? {...module, dependency:dependencyB} : module), baseRequest).errorCode,
+  "search_index_invalid");
+assert.equal(api.execute(invalidModuleIndex("duplicate-module-id", (module, position) =>
+  position === 1 ? {...module, moduleId:"cjdoc:module:net"} : module), baseRequest).errorCode,
+  "search_index_invalid");
+const badEntryScope = scopedCopy("entry-scope-outside-inventory", {
+  entries:index.entries.map((row, position) => position === 4
+    ? {...row, scope:index.modules.length} : row)
+});
+assert.equal(api.execute(badEntryScope, baseRequest).errorCode, "search_index_invalid");
+const capturedExposure = scopedCopy("captured-cross-module-exposure", {
+  entries:index.entries.map((row, position) => position === 0 ? {...row, exposures:[{
+    id:"alias", scope:1, name:"Alias", qualifiedName:"other.Alias", packageName:"other"
+  }]} : row)
+});
+assert.equal(api.execute(capturedExposure, baseRequest).errorCode, null);
+const badExposureScope = scopedCopy("exposure-scope-outside-inventory", {
+  entries:index.entries.map((row, position) => position === 0 ? {...row, exposures:[{
+    id:"alias", scope:index.modules.length, name:"Alias", qualifiedName:"other.Alias", packageName:"other"
+  }]} : row)
+});
+assert.equal(api.execute(badExposureScope, baseRequest).errorCode, "search_index_invalid");
 const badClassification = {...index, projectionId:"bad-classification",
   coverage:{...index.coverage, projectionId:"bad-classification"},
   entries:index.entries.map((row, i) => i === 0

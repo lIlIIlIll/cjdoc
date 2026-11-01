@@ -74,6 +74,7 @@ bash scripts/update_goldens.sh
 `render --input` 只使用已捕获的 Doc IR/17，不读取源码目录或 `cjdoc.toml`。Doc IR/16 不接受迁移；若要重放旧项目内容，必须从可用的真实源码重新生成当前格式。
 
 `scripts/test_declaration_metadata.py --binary PATH --output-root DIR` 从真实源码捕获双语站点，移走任务副本的源码与配置后，以 compiler guard 验证重放、查询、manifest 完整性和非 breaking 的文档变更。同页 inherited/declared owner 冲突另用明确标注的公开 Doc IR 模型输入检查：syntax provider 的 `superType` 不是 `inheritedMember` 证据，测试不会把模型场景记作编译器产出的继承语义。
+Windows source-free 回放必须保留子进程的原生运行时 PATH，同时从工具定位入口排除 compiler/cjpm。用无编译器调用断言隔离工具链，不要通过缩窄 PATH 造成运行时 DLL 加载失败。
 
 ## 导航 wire
 

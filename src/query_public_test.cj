@@ -16,6 +16,7 @@ private let PUBLIC_TEST_MODULE = "cjdoc:module:v1:query-public"
 private let PUBLIC_TEST_SYMBOL_PREFIX = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aquery-public::fixture::"
 private let PUBLIC_TEST_TAG_MODULE = "cjdoc:module:v1:query-public-tags"
 private let PUBLIC_TEST_TAG_SYMBOL_PREFIX = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aquery-public-tags::peer::"
+private let PUBLIC_TEST_EMPTY_MODULE = "cjdoc:module:v1:query-empty"
 
 private func chainSymbolId(kind: String, name: String, parameters: String): String {
     "${PUBLIC_TEST_SYMBOL_PREFIX}${kind}:${name}#g0(${parameters})"
@@ -137,6 +138,11 @@ private func queryDocumentation(projectName!: String = "query-fixture",
     let hidden = api_model.SymbolDoc("${PUBLIC_TEST_SYMBOL_PREFIX}function:secret#g0()",
         "function", "secret", "fixture.secret", "fixture", PUBLIC_TEST_MODULE, "private",
         testRange(300), "private func secret(): Unit", SemanticInfo("partial", "ast"))
+    let privateOnlyId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aquery-public::privateonly::function:secret#g0()"
+    let privateOnly = api_model.SymbolDoc(privateOnlyId, "function", "secret",
+        "privateonly.secret", "privateonly", PUBLIC_TEST_MODULE, "private",
+        SourceRange("src/privateonly.cj", SourcePosition(1, 1, 0), SourcePosition(1, 42, 41)),
+        "private func secret(): Unit", SemanticInfo("partial", "ast"))
     let reader = api_model.SymbolDoc(readerId(), "class", "Reader", "fixture.Reader", "fixture",
         PUBLIC_TEST_MODULE, "public", testRange(11), "public class Reader",
         SemanticInfo("partial", "ast"))
@@ -153,21 +159,26 @@ private func queryDocumentation(projectName!: String = "query-fixture",
         ],
         modules: [
             api_model.ModuleDoc(PUBLIC_TEST_MODULE, "query-fixture", "root", "",
-                packageNames: ["fixture"]),
+                packageNames: ["fixture", "privateonly"]),
             api_model.ModuleDoc(PUBLIC_TEST_TAG_MODULE, "query-tag-peer", "root", "",
-                packageNames: ["peer"])
+                packageNames: ["peer"]),
+            api_model.ModuleDoc(PUBLIC_TEST_EMPTY_MODULE, "query-empty", "root", "",
+                packageNames: [])
         ],
         packages: [
             api_model.PackageDoc("fixture", PUBLIC_TEST_MODULE, sourceFiles: ["src/catalog.cj"],
                 symbolIds: ids),
+            api_model.PackageDoc("privateonly", PUBLIC_TEST_MODULE,
+                sourceFiles: ["src/privateonly.cj"], symbolIds: [privateOnlyId]),
             api_model.PackageDoc("peer", PUBLIC_TEST_TAG_MODULE, sourceFiles: ["src/peer.cj"],
                 symbolIds: [streamPeerId()])
         ],
         files: [
             FileDoc("src/catalog.cj", PUBLIC_TEST_MODULE, "fixture"),
+            FileDoc("src/privateonly.cj", PUBLIC_TEST_MODULE, "privateonly"),
             FileDoc("src/peer.cj", PUBLIC_TEST_TAG_MODULE, "peer")
         ],
-        declarations: [catalog, addInt, addString, window, opaque, hidden, reader, peer],
+        declarations: [catalog, addInt, addString, window, opaque, hidden, privateOnly, reader, peer],
         pages: [queryGuidePage()],
         diagnostics: [api_model.Diagnostic("warning", "CJDOC9001", "captured fixture warning",
             symbolId: Some(addIntId()))],
@@ -520,6 +531,40 @@ class DocumentationQueryPublicTest {
         let direct = queryResult(query,
             "{\"operation\":\"search\",\"symbolId\":\"${PUBLIC_TEST_SYMBOL_PREFIX}function:secret#g0()\"}")
         @Expect(direct.get("status").getOrThrow().asString(), "not_found")
+    }
+
+    @TestCase
+    func capturedEmptyModulesAndPackageFiltersPreserveNativeAbsenceSemantics(): Unit {
+        let query = session()
+        for (mode in ["precise", "discovery"]) {
+            let positive = queryResult(query, "{\"operation\":\"search\",\"mode\":\"${mode}\"," +
+                "\"moduleId\":\"${PUBLIC_TEST_MODULE}\",\"packageName\":\"fixture\"," +
+                "\"symbolId\":\"${catalogId()}\"}")
+            @Expect(positive.get("status").getOrThrow().asString(), "ok")
+            @Expect(querySearchItems(positive).size(), 1)
+            for (packageName in ["privateonly", "missing", "peer"]) {
+                let absent = queryResult(query, "{\"operation\":\"search\",\"mode\":\"${mode}\"," +
+                    "\"moduleId\":\"${PUBLIC_TEST_MODULE}\",\"packageName\":\"${packageName}\"," +
+                    "\"query\":\"secret\"}")
+                @Expect(absent.get("status").getOrThrow().asString(), "not_found")
+                @Expect(querySearchItems(absent).size(), 0)
+                @Expect(absent.get("completeness").getOrThrow().asObject()
+                    .get("query").getOrThrow().asObject().get("reason").getOrThrow().asString(),
+                    "no_match_in_scope")
+            }
+            let empty = queryResult(query,
+                "{\"operation\":\"search\",\"mode\":\"${mode}\"," +
+                "\"moduleId\":\"${PUBLIC_TEST_EMPTY_MODULE}\",\"query\":\"secret\"}")
+            @Expect(empty.get("status").getOrThrow().asString(), "not_found")
+            @Expect(querySearchItems(empty).size(), 0)
+        }
+        let incomplete = DocumentationQuerySession([
+            queryDocumentation(apiCollectionState: Some("partial"))
+        ])
+        let absence = queryResult(incomplete,
+            "{\"operation\":\"search\",\"moduleId\":\"${PUBLIC_TEST_EMPTY_MODULE}\"}")
+        @Expect(absence.get("status").getOrThrow().asString(), "source_incomplete")
+        @Expect(querySearchItems(absence).size(), 0)
     }
 
     @TestCase

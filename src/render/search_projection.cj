@@ -465,18 +465,6 @@ private func searchParameterTypes(symbol: SymbolDoc): ArrayList<String> {
 }
 
 
-private func searchPackageHasVisibleExposure(value: PackageDoc,
-    visible: HashMap<String, SymbolDoc>): Bool {
-    for (reExport in value.reExports) {
-        for (binding in reExport.bindings) {
-            for (targetId in binding.targetSymbolIds) {
-                if (visible.contains(targetId)) { return true }
-            }
-        }
-    }
-    false
-}
-
 /**
  * Build one immutable retrieval projection directly from the captured reader
  * snapshot. Query adapters may preserve an outer source identity; publication
@@ -496,31 +484,22 @@ protected func buildDocumentationSearchProjection(snapshot: DocumentationReadSna
         documentation.configuration.cfgProfile, documentation.apiCollectionState,
         documentation.project.name, limits, "")
 
-    // Sort all canonical and exposure scopes before assigning their shared
-    // table positions. The table then captures each full module identity once.
-    // Keep one full module identity per module and let entries/exposures retain
-    // their package context separately.
-    let moduleIds = ArrayList<String>()
-    let seenModuleIds = HashSet<String>()
+    // Module scopes come from the captured Doc IR inventory, not the
+    // audience-filtered declaration projection. Empty captured scopes remain
+    // addressable without manufacturing search entries.
     let orderedSymbols = ArrayList<SymbolDoc>(projection.visibleSymbols.toArray())
     sort(orderedSymbols, lessThan: { left, right =>
         if (left.moduleId != right.moduleId) { left.moduleId < right.moduleId }
         else if (left.packageName != right.packageName) { left.packageName < right.packageName }
         else { left.id < right.id }
     }, stable: true)
-    for (symbol in orderedSymbols) {
-        if (seenModuleIds.add(symbol.moduleId)) { moduleIds.add(symbol.moduleId) }
-    }
-    for (pkg in documentation.packages) {
-        if (!searchPackageHasVisibleExposure(pkg, projection.visibleIndex)) { continue }
-        if (seenModuleIds.add(pkg.moduleId)) { moduleIds.add(pkg.moduleId) }
-    }
-    sort(moduleIds)
-    for (moduleId in moduleIds) {
-        let (dependency, state) = snapshot.moduleDependencyState(moduleId)
-        result.addModule(SearchScopeModule(moduleId,
-            searchProjectionModuleName(snapshot, moduleId),
-            snapshot.documentSetForModule(moduleId), dependency, state))
+    let orderedModules = ArrayList<ModuleDoc>()
+    for (module in documentation.modules) { orderedModules.add(module) }
+    sort(orderedModules, lessThan: { left, right => left.id < right.id }, stable: true)
+    for (module in orderedModules) {
+        let (dependency, state) = snapshot.moduleDependencyState(module.id)
+        result.addModule(SearchScopeModule(module.id, Some(module.name),
+            snapshot.documentSetForModule(module.id), dependency, state))
     }
     for (symbol in orderedSymbols) {
         let scope = result.modulePosition(symbol.moduleId).getOrThrow()

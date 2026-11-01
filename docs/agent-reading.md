@@ -287,6 +287,7 @@ cjdoc schema search-index-v11
 `schema navigation-index` 指向当前 v2；`schema navigation-index-v1` 和已发布的旧 navigation schema 仍保持冻结。v1 没有整体完整性/续取证据，不能据其语法合法认定全站枚举完整。当前 decoder/query 接受 Doc IR v17；Doc IR v16 和更早版本不迁移。当前机器协议为 query-request/3、query-result/3、search-index/11、declaration/2；显式旧协议版本不会被当作当前输入接受。需要使用旧快照时，应在真实源码上重新生成当前 Doc IR/站点，而不是把旧 JSON 改写版本字段。
 
 当前 search static index 是 `cjdoc.search-index/11`，以共享 `cjdoc.search-contract/2` 执行器提供 bounded-static 语义；`cjdoc.declaration/2` 在每条声明中带 classification。静态索引的旧版本或不支持的 profile 会给出明确能力错误，不会静默显示零命中。
+静态索引的 modules 表对应捕获的模块，而不是只列出有可见搜索结果的模块。使用 snapshot、module、document-set 与 dependency identity 联合选择捕获范围；`packageName` 是候选筛选条件。范围有效、源码收集完整但没有可见候选时返回 `not_found/no_match_in_scope`，不是 scope mismatch；收集不完整时仍保留 `source_incomplete`。
 
 公开仓颉入口为 `cjdoc.DocumentationQuerySession`，可从显式路径、一个 `cjdoc.model.DocumentationSet` 或其数组创建；`execute(String)` 返回同一版本化 JSON，`catalogIdentity` 暴露捕获内容身份。静态投影由 `cjdoc.render.DocumentationReadSnapshot` 及现有 renderer 提供。运行可重现模型对照、消费者编译与行为验收见维护者的 [Agent 评测流程](maintainer/agent-evaluation.md)；普通静态使用不要求模型或网络。
 

@@ -12,7 +12,7 @@
 
 `reader-corpus.json` 保存固定源码清单、输入摘要和任务。测量前后都会验证源码；加入未登记的 `.cj`、丢失文件或修改已登记内容都会拒绝测量。不要为了改后数据变好而删除正文、改变受众、缩短 fixture、换排序或放宽应用上限。
 
-## 已采集的本地基线
+## 历史已采集的本地基线
 
 固定生成源码为 `2ef643c5d795ab2e3dfd1035517baeec3a88b0aa`，实际版本为 cjdoc 0.7.3 / `cjdoc.doc-ir/16`。本阶段不改变任何已发布 Doc IR、schema 或 golden。完整凭据摘要、原生 CPU/墙钟/RSS 和原始报告摘要见 [`reader-scale-baseline.json`](reader-scale-baseline.json)。这些是该次观测，不是其它机器或 GitHub runner 的结果。
 
@@ -142,7 +142,9 @@ python3 scripts/reader_compare.py \
 
 RSS 顺序回归在独立的小控制进程中运行，避免完整测试套件的高驻留内存经 fork/exec 前阶段污染子进程峰值。64 MiB 分配与 32 MiB 差值断言不放宽；单文件通过不能替代完整 Python suite 的执行结果。
 
-[Reader scale observations workflow](../../.github/workflows/reader-scale.yml) 复用同源 STS candidate 并核对 binary SHA-256；另把固定 `2ef643c5d795ab2e3dfd1035517baeec3a88b0aa` 源码移到 checkout 外，使用同一认证 SDK 构建 baseline。在同一 runner 上依次采 baseline、绑定事先登记的数值模板、采 after、运行行为回归和严格比较。原始 JSON、日志、Doc IR、截图与比较保存为该 run 的 artifact，默认保留 30 天；需要长期归档时下载并保留摘要。手动选择资源受限 cohort 时比较仍为 `pass: false`、退出失败，不能把观测已完成误写成支持该规模。每个 run 都是独立 cohort，不冒充本地快照原始文件。
+[Reader scale observations workflow](../../.github/workflows/reader-scale.yml) 复用同源 STS candidate 并核对 binary SHA-256；固定以 `67faf0b244544a750543f049370c59479769eff4`（Doc IR/17、search-index/11）为当前 CI baseline，在 checkout 外使用同一认证 SDK 构建。该基线刷新经显式批准：此门禁仅证明后续修复相对该版本的回归，不把它表述为旧协议到新协议的完整性能比较。旧 `2ef643c5d795ab2e3dfd1035517baeec3a88b0aa` 的历史观测保持原样，原功能变更的成本另行披露。
+
+在同一 runner 上依次采 baseline、绑定事先登记的数值模板、采 after、运行行为回归和严格比较。Doc IR 与 search-index JSON/JS 的相同 payload 校验、原始任务、样本数、字体、声明下限和资源/延迟预算均不放宽；不添加旧索引兼容或跨协议跳过。原始 JSON、日志、Doc IR、截图与比较保存为该 run 的 artifact，默认保留 30 天。手动选择资源受限 cohort 时比较仍为 `pass: false`、退出失败，不把观测完成记作支持该规模。
 
 build、仓颉 unit、golden/integration、真实库、本地浏览器、远端 CI 必须分别报告。源码中存在脚本、较小 fixture 通过、ARIA snapshot 或截图好看，都不是较高层级已执行的证据。
 

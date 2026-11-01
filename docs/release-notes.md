@@ -30,4 +30,6 @@ Doc IR 仍为 v16。生成器版本改为 `0.7.6`，需要重新生成 current g
   包页与成员页的声明行以捕获的 canonical ID 参与共享筛选；未设置筛选时保留全部声明。
   摘要与正文共享作者片段导航；参数、返回值与重复出现的异常章节各用独立命名空间，避免完整参考中的锚点冲突。
 - 修正 workspace/依赖 metadata 绑定诊断的配置归属；facet 切换同步输入与有效标签条件。顶层声明名称选择器不命中 concept，discovery 保留纯标点标题的名称证据；摘要与签名预览按 Unicode 码点上限处理，并同步实际 renderer 的静态脚本校验身份。
+- 静态索引的模块目录来自捕获的 Doc IR 模块清单，包含没有可见搜索条目的模块；module、document-set 与 dependency identity 按同一模块记录校验。`packageName` 仅收窄候选声明；已捕获 module scope 中，完整收集但没有候选时返回 `not_found/no_match_in_scope`，收集不完整时保留 `source_incomplete`，不会把 packageName 当作捕获证明。
+- Windows 源外 metadata 回放保留原生运行时路径，只隔离编译器工具和 SDK 定位入口。Reader CI 固定基线经显式批准刷新到 `67faf0b244544a750543f049370c59479769eff4`，保留相同 payload 与原任务/资源门禁；其结论只覆盖后续修复。Showcase 经显式批准仅将站点/离线包上限更新为 130,000,000/20,000,000 bytes，其他约束不变。
 - 这是 current-only wire cutover：Doc IR/16、旧 query-request/query-result、旧 search-index 与 declaration 版本不会被当前 decoder/消费者迁移。使用旧输入前，须从真实源码重新生成当前 Doc IR 或静态站点。

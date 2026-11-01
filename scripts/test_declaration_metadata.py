@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import html
 from html.parser import HTMLParser
@@ -17,6 +18,7 @@ import sys
 from urllib.parse import parse_qs, urlsplit
 
 from test_agent_artifacts import load_json, unique_keys
+from highlight_acceptance import without_tools_environment
 
 
 MALICIOUS_TITLE = "Catalog <img src=x onerror=alert(1)>"
@@ -444,9 +446,12 @@ class Acceptance:
             path = guard / executable
             path.write_text(body, encoding="utf-8")
             path.chmod(0o700)
-        environment = {key: value for key, value in os.environ.items()
+        # Deny generation tools without discarding native runtime/DLL lookup.
+        with contextlib.chdir(self.root):
+            isolated = without_tools_environment(os.environ, ("cjc", "cjpm"))
+        environment = {key: value for key, value in isolated.items()
                        if not key.startswith(("CANGJIE", "CJDOC", "CJV"))}
-        environment["PATH"] = str(guard) + os.pathsep + os.defpath
+        environment["PATH"] = str(guard) + os.pathsep + isolated["PATH"]
         environment["CJDOC_REPLAY_COMPILER_LOG"] = str(self.root / "compiler-calls.log")
         return environment
 
