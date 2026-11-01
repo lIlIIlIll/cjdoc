@@ -5,6 +5,7 @@ import cjdoc.render as api_render
 import std.collection.*
 import std.unittest.*
 import std.unittest.testmacro.*
+import yjson.*
 
 private func navigationOutputBoundaryFixture(occurrences: Int64, reason: String): api_model.DocumentationSet {
     let moduleId = "cjdoc:module:v1:navigation-budget"
@@ -55,9 +56,105 @@ private func diagnosticObjectBoundaryFixture(occurrences: Int64): api_model.Docu
         diagnostics: Array<api_model.Diagnostic>(occurrences, repeat: diagnostic))
 }
 
+private func serializedArrayItemOccurrences(encoded: String): Int64 {
+    let pending = ArrayList<JsonNode>()
+    pending.add(JsonNode.parse(encoded))
+    var count: Int64 = 0
+    while (!pending.isEmpty()) {
+        let node = pending.remove(at: pending.size - 1)
+        match (node.kind()) {
+            case JsonKind.Array =>
+                let values = node.asArray()
+                count += values.size()
+                for (index in 0..values.size()) {
+                    pending.add(values.get(index).getOrThrow())
+                }
+            case JsonKind.Object =>
+                let fields = node.asObject()
+                for (index in 0..fields.size()) { pending.add(fields.valueAt(index)) }
+            case _ => ()
+        }
+    }
+    count
+}
+
+private func arrayBudgetSymbol(name: String, occurrences: Int64): api_model.SymbolDoc {
+    let moduleId = "cjdoc:module:v1:array-budget"
+    let generics = ArrayList<String>()
+    let spelling = StringBuilder()
+    spelling.append("public func ${name}")
+    if (occurrences > 0) {
+        spelling.append("<")
+        for (index in 0..occurrences) {
+            if (index > 0) { spelling.append(",") }
+            let parameter = "T${index}"
+            generics.add(parameter)
+            spelling.append(parameter)
+        }
+        spelling.append(">")
+    }
+    spelling.append("()")
+    let header = spelling.toString()
+    let source = api_model.SourceRange("src/${name}.cj", api_model.SourcePosition(1, 1, 0),
+        api_model.SourcePosition(1, header.size + 1, header.size))
+    let symbolId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Aarray-budget::fixture::function:${name}#g${occurrences}()"
+    api_model.SymbolDoc(symbolId, "function", name, "fixture.${name}", "fixture", moduleId,
+        "public", source, header, api_model.SemanticInfo("partial", "ast"),
+        genericParameters: generics.toArray())
+}
+
+private func arrayItemBoundaryFixture(first: Int64, second: Int64): api_model.DocumentationSet {
+    let moduleId = "cjdoc:module:v1:array-budget"
+    let declarations = [arrayBudgetSymbol("first", first), arrayBudgetSymbol("second", second)]
+    api_model.DocumentationSet(api_model.GeneratorInfo("cjdoc", "test"), "partial",
+        api_model.ProjectInfo("physical-array-boundary"), api_model.ConfigurationSnapshot(lintProfile: "off"),
+        apiCollectionState: Some("resolved"), documentationRevision: "docs-array-boundary",
+        providers: [api_model.ProviderInfo("ast", "builtin", moduleId, "partial",
+            api_model.SemanticCapabilities(false, false, false, false, false))],
+        modules: [api_model.ModuleDoc(moduleId, "array-budget", "root", "", packageNames: ["fixture"])],
+        packages: [api_model.PackageDoc("fixture", moduleId,
+            sourceFiles: ["src/first.cj", "src/second.cj"],
+            symbolIds: [declarations[0].id, declarations[1].id])],
+        files: [api_model.FileDoc("src/first.cj", moduleId, "fixture"),
+            api_model.FileDoc("src/second.cj", moduleId, "fixture")], declarations: declarations)
+}
+
 
 @Test
 class PublicResourceBudgetTest {
+    @TestCase
+    func physicalArrayItemsShareThePublishedBoundaryAcrossCollections(): Unit {
+        let base = serializedArrayItemOccurrences(api_render.encodeDocIr(arrayItemBoundaryFixture(0, 0)))
+        let available = api_model.DOC_IR_MAX_SCHEMA_ARRAY_ITEMS - base
+        let first = available / 2
+        let second = available - first
+        let request = GenerationRequest("unused", lintProfile: "off")
+        let accepted = boundGeneratedDocumentation(arrayItemBoundaryFixture(first, second), request)
+        @Expect(accepted.apiCollectionState, "resolved")
+        @Assert(accepted.declarations.size == 2)
+        let encoded = api_render.encodeDocIr(accepted)
+        let items = serializedArrayItemOccurrences(encoded)
+        @Expect(items, api_model.DOC_IR_MAX_SCHEMA_ARRAY_ITEMS)
+        @Expect(items > 100000)
+        @Expect(serializedObjectOccurrences(encoded) < api_model.DOC_IR_MAX_SCHEMA_OBJECTS)
+        @Expect(encoded.size < api_model.DOC_IR_MAX_JSON_DOCUMENT_BYTES)
+        let replay = api_render.decodeDocIr(encoded)
+        @Expect(replay.declarations[0].genericParameters.size, first)
+        @Expect(replay.declarations[1].genericParameters.size, second)
+        let oversized = JsonNode.parse(encoded).asObject()
+        oversized.get("declarations").getOrThrow().asArray().get(1).getOrThrow().asObject()
+            .get("genericParameters").getOrThrow().asArray().add(JsonNode.string("Extra"))
+        @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(oversized.toJson()))
+        let overflow = arrayItemBoundaryFixture(first, second + 1)
+        @ExpectThrows[IllegalArgumentException](api_render.encodeDocIr(overflow))
+        let fallback = boundGeneratedDocumentation(overflow, request)
+        @Expect(fallback.declarations.size, 0)
+        @Expect(fallback.apiCollectionState, "unavailable")
+        @Expect(fallback.documentationRevision, "docs-array-boundary")
+        @Expect(fallback.diagnostics[0].code, "CJDOC3027")
+        @Expect(api_render.decodeDocIr(api_render.encodeDocIr(fallback)).project.name, "resource-limited")
+    }
+
     @TestCase
     func physicalObjectOccurrencesRespectThePublishedBoundaryAndFallback(): Unit {
         let one = serializedObjectOccurrences(api_render.encodeDocIr(diagnosticObjectBoundaryFixture(1)))
@@ -77,14 +174,13 @@ class PublicResourceBudgetTest {
         @Expect(objects <= api_model.DOC_IR_MAX_SCHEMA_OBJECTS)
         @Expect(api_model.DOC_IR_MAX_SCHEMA_OBJECTS - objects < perOccurrence)
         @Expect(api_render.decodeDocIr(encoded).diagnostics.size, acceptedOccurrences)
-        // Add one physical object to each diagnostic. Raw structural validation
-        // must reject the count before the unknown-field schema check.
-        let oversizedJson = encoded.replace("\"severity\":", "\"extra\":{},\"severity\":")
-        let decodeError = @AssertThrows[IllegalArgumentException](api_render.decodeDocIr(oversizedJson))
-        @Expect(decodeError.message.contains("object occurrence budget exceeded"))
+        // Keep the schema valid so only the aggregate occurrence boundary rejects it.
+        let oversized = JsonNode.parse(encoded).asObject()
+        let diagnostics = oversized.get("diagnostics").getOrThrow().asArray()
+        diagnostics.add(JsonNode.parse(diagnostics.get(0).getOrThrow().toJson()))
+        @ExpectThrows[IllegalArgumentException](api_render.decodeDocIr(oversized.toJson()))
         let overflow = diagnosticObjectBoundaryFixture(acceptedOccurrences + 1)
-        let error = @AssertThrows[IllegalArgumentException](api_render.encodeDocIr(overflow))
-        @Expect(error.message.contains("JSON object occurrence budget exceeded"))
+        @ExpectThrows[IllegalArgumentException](api_render.encodeDocIr(overflow))
         let fallback = boundGeneratedDocumentation(overflow, request)
         @Expect(fallback.project.name, "resource-limited")
         @Expect(fallback.apiCollectionState, "unavailable")
