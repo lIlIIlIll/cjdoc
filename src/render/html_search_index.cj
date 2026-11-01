@@ -40,7 +40,12 @@ internal func appendSearchJsonString(out: RenderTextBuffer, value: String): Unit
     out.append("\"")
 }
 
-internal func searchTextExcerpt(value: String, maximum!: Int64): String {
+/**
+ * Bound a search preview by Unicode scalar count, including a final ellipsis
+ * only when truncated. Native and static search share this display policy;
+ * byte-limited response and contract budgets are enforced separately.
+ */
+public func searchTextExcerpt(value: String, maximum!: Int64): String {
     if (maximum <= 0) { return "" }
     let out = RenderTextBuffer()
     var count: Int64 = 0

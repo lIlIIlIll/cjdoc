@@ -342,4 +342,54 @@ class MetadataBindingContracts {
             let _ = removeIfExists(root, recursive: true)
         }
     }
+
+    @TestCase
+    func publicMetadataDiagnosticsRetainRootWorkspaceAndDependencyConfigOrigins(): Unit {
+        let root = metadataBindingProject("package binding\npublic class Owner {}\n")
+        try {
+            Directory.create(root.join("packages"))
+            let scopes = [
+                ("", "binding", "cjdoc.toml"),
+                ("packages/member", "binding_member", "packages/member/cjdoc.toml"),
+                ("vendor", "binding_peer", "dependencies/peer/cjdoc.toml")
+            ]
+            for ((relative, packageName, _) in scopes) {
+                let moduleRoot = if (relative.isEmpty()) { root } else { root.join(relative) }
+                if (!relative.isEmpty()) {
+                    Directory.create(moduleRoot)
+                    Directory.create(moduleRoot.join("src"))
+                }
+                File.writeTo(moduleRoot.join("cjpm.toml"),
+                    "[package]\nname = \"${packageName}\"\nversion = \"0.1.0\"\n".toArray())
+                File.writeTo(moduleRoot.join("src/api.cj"),
+                    "package ${packageName}\npublic class Owner {}\n".toArray())
+                metadataBindingWriteConfig(moduleRoot,
+                    "[[metadata.groups]]\npackage = \"${packageName}\"\n" +
+                    "owner = \"${packageName}.Missing\"\nid = \"missing\"\ntitle = \"Missing\"\n" +
+                    "[[metadata.tags]]\nid = \"duplicate\"\ntitle = \"First\"\n" +
+                    "[[metadata.tags]]\nid = \"duplicate\"\ntitle = \"Second\"\n")
+            }
+            File.writeTo(root.join("cjpm.toml"),
+                ("[package]\nname = \"binding\"\nversion = \"0.1.0\"\n" +
+                "[workspace]\nmembers = [\"packages/member\"]\n").toArray())
+            let documentation = DocumentationEngine().generate(GenerationRequest(root.toString(),
+                lintProfile: "off", astPreflightExecutable: PUBLIC_TEST_AST_PREFLIGHT,
+                dependencySources: [DependencySourceInput("peer", root.join("vendor").toString())]))
+            let locations = HashSet<String>()
+            for (diagnostic in documentation.diagnostics) {
+                if (diagnostic.code != "CJDOC3134" && diagnostic.code != "CJDOC3136") { continue }
+                let source = diagnostic.source.getOrThrow()
+                let key = "${diagnostic.code}:${source.path}:${source.start.line}"
+                @Expect(locations.add(key), true)
+            }
+            @Expect(locations.size, 9)
+            for ((_, _, path) in scopes) {
+                @Expect(locations.contains("CJDOC3134:${path}:1"), true)
+                @Expect(locations.contains("CJDOC3136:${path}:6"), true)
+                @Expect(locations.contains("CJDOC3136:${path}:9"), true)
+            }
+        } finally {
+            let _ = removeIfExists(root, recursive: true)
+        }
+    }
 }

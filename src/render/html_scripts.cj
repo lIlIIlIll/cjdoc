@@ -529,23 +529,22 @@ internal let HTML_SEARCH_SCRIPT = HTML_SEARCH_KERNEL_SCRIPT + """
     if (!id || !moduleId || !snapshotId || !currentRequest) return;
     event.preventDefault();
     const tags = selectedFacetTags(currentRequest.tags || [], id);
+    // The URL owns the toggled tag set; typed predicates must not restore a
+    // removed tag on the next input event. Preserve all non-tag input tokens.
+    input.value = input.value.split(/[ \\t\\n\\r\\f\\v]+/u)
+      .filter(token => token && kernel.fold(token.slice(0, 4)) !== "tag:").join(" ");
     urlSearchState.tags = tags;
     urlSearchState.moduleId = moduleId;
     urlSearchState.snapshotId = snapshotId;
     urlSearchState.hasScope = true;
     urlSearchState.errorCode = null;
-    if (tags.length) currentRequest.tags = tags;
-    else delete currentRequest.tags;
-    currentRequest.moduleId = moduleId;
-    currentRequest.snapshotId = snapshotId;
     const url = new URL(window.location.href);
     url.searchParams.delete("tag");
     for (const tag of tags) url.searchParams.append("tag", tag);
     url.searchParams.set("moduleId", moduleId);
     url.searchParams.set("snapshotId", snapshotId);
     try { window.history.pushState({}, "", url.href); } catch (_) {}
-    cursorHistory = [];
-    runPage(null);
+    render();
   });
   // Inspect original containment before a facet handler replaces its clicked DOM node.
   document.addEventListener("click", (event) => {

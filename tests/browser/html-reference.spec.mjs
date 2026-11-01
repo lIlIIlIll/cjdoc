@@ -1494,6 +1494,29 @@ test.describe('declaration tag navigation and filtering', () => {
           expect(queryTags(page.url())).toEqual(['stable', 'stream']);
           await expectSearchRows(page, 2);
 
+          // Typed and URL-backed tags form one predicate set. A facet toggle
+          // must update the visible input before another input event occurs.
+          await openDeclarationPage(page, indexUrl, transport);
+          const searchInput = page.locator('[role="combobox"]');
+          await searchInput.fill('kind:function name:read tag:stream TAG:stream');
+          await expectSearchRows(page, 3);
+          await streamFacet.click();
+          await expect(searchInput).toHaveValue('kind:function name:read');
+          expect(queryTags(page.url())).toEqual([]);
+          const withoutTag = await expectSearchRows(page, 5);
+          expect(withoutTag.some(row => /bytes.*Array/.test(row.signature))).toBe(true);
+          await searchInput.fill('kind:function name:read ');
+          await expectSearchRows(page, 5);
+          await expect(streamFacet).not.toHaveAttribute('aria-current', 'true');
+          await streamFacet.click();
+          expect(queryTags(page.url())).toEqual(['stream']);
+          await expectSearchRows(page, 3);
+          await searchInput.fill('kind:function name:read  ');
+          await expectSearchRows(page, 3);
+          await openDeclarationPage(page, badgeUrl.href, transport);
+          await stableFacet.click();
+          await expectSearchRows(page, 2);
+
           // Locale navigation retains every repeated tag and module identity,
           // but intentionally drops the source locale's snapshot binding.
           const otherLocale = locale === 'en' ? 'zh-CN' : 'en';

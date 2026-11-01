@@ -3903,6 +3903,24 @@
           }
         },
         {
+          "id": "flat-precise-name-selector-excludes-concept",
+          "request": {"name": "Tag walkthrough", "mode": "precise"},
+          "expect": {
+            "status": "not_found", "errorCode": null, "items": [], "facets": {"tags": []},
+            "coverage": {"profile": "bounded-static", "bodyTextLimit": 2000,
+                         "bodyComplete": false, "truncatedEntries": 2}
+          }
+        },
+        {
+          "id": "flat-discovery-name-selector-excludes-concept",
+          "request": {"name": "Tag walkthrough", "mode": "discovery"},
+          "expect": {
+            "status": "not_found", "errorCode": null, "items": [], "facets": {"tags": []},
+            "coverage": {"profile": "bounded-static", "bodyTextLimit": 2000,
+                         "bodyComplete": false, "truncatedEntries": 2}
+          }
+        },
+        {
           "id": "tag-filter-excludes-untagged-concept",
           "request": {"query": "Tag walkthrough", "mode": "discovery", "tags": ["stream"]},
           "expect": {

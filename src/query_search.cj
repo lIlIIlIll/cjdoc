@@ -367,7 +367,7 @@ internal func querySearchItem(candidate: QueryCandidate): JsonObject {
             let sections = JsonNode.array()
             sections.add(querySection("signature",
                 if (symbol.headerSpelling.trimAscii().isEmpty()) { "missing" } else { "available" },
-                JsonNode.string(queryExcerpt(symbol.headerSpelling,
+                JsonNode.string(queryDisplayExcerpt(symbol.headerSpelling,
                     query_render.searchContractInteger("signatureDisplayLimit")))))
             match (querySymbolSummary(symbol)) {
                 case Some(text) => sections.add(querySection("description", "available",
@@ -384,13 +384,13 @@ internal func querySearchItem(candidate: QueryCandidate): JsonObject {
             item.put("kind", JsonNode.string("concept"))
             item.put("identity", queryIdentityNode(candidate.input, Option<String>.None, Some(page.id)))
             item.put("signature", JsonNode.nullValue)
-            item.put("summary", queryNullable(Some(queryExcerpt(page.text,
+            item.put("summary", queryNullable(Some(queryDisplayExcerpt(page.text,
                 query_render.searchContractInteger("summaryDisplayLimit")))))
             item.put("match", matchNode)
             let sections = JsonNode.array()
             sections.add(querySection("description",
                 if (page.text.trimAscii().isEmpty()) { "missing" } else { "available" },
-                JsonNode.string(queryExcerpt(page.text,
+                JsonNode.string(queryDisplayExcerpt(page.text,
                     query_render.searchContractInteger("summaryDisplayLimit")))))
             item.put("sections", sections)
             item.put("representations", queryPageRepresentations(page))
@@ -400,9 +400,14 @@ internal func querySearchItem(candidate: QueryCandidate): JsonObject {
     item
 }
 
+private func queryDisplayExcerpt(value: String, maximumScalars: Int64): String {
+    let text = value.replace("\r", " ").replace("\n", " ").trimAscii()
+    query_render.searchTextExcerpt(text, maximum: maximumScalars)
+}
+
 internal func querySignature(symbol: query_model.SymbolDoc): ?String {
     if (symbol.headerSpelling.trimAscii().isEmpty()) { return None }
-    Some(queryExcerpt(symbol.headerSpelling,
+    Some(queryDisplayExcerpt(symbol.headerSpelling,
         query_render.searchContractInteger("signatureDisplayLimit")))
 }
 
@@ -410,11 +415,11 @@ internal func querySymbolSummary(symbol: query_model.SymbolDoc): ?String {
     match (symbol.documentation) {
         case Some(comment) =>
             if (!comment.summary.trimAscii().isEmpty()) {
-                return Some(queryExcerpt(comment.summary,
+                return Some(queryDisplayExcerpt(comment.summary,
                     query_render.searchContractInteger("summaryDisplayLimit")))
             }
             if (!comment.description.trimAscii().isEmpty()) {
-                return Some(queryExcerpt(comment.description,
+                return Some(queryDisplayExcerpt(comment.description,
                     query_render.searchContractInteger("summaryDisplayLimit")))
             }
             None

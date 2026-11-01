@@ -253,6 +253,22 @@ vm.runInNewContext(SCRIPT, context);
 const api = context.cjdocSearch;
 const baseRequest = {operation: "search", mode: "discovery", profile: "bounded-static"};
 const execute = (request, source = index) => api.execute(source, {...baseRequest, ...request});
+const guide = {...entry("++"), id:"punctuation", canonicalId:"punctuation", scope:-1,
+  concept:true, kind:"concept", packageName:null, qualifiedName:null,
+  summary:"", summaryDisplay:"", body:"++", href:"concepts/guides/punctuation.html",
+  classification:{group:null, tags:[]}};
+const guideIndex = {...index, projectionId:"guide-regressions",
+  coverage:{...index.coverage, projectionId:"guide-regressions"},
+  entries:[...index.entries, guide]};
+for (const mode of ["precise", "discovery"]) {
+  assert.equal(execute({mode, name:"++"}, guideIndex).total, 0);
+}
+const punctuationResult = execute({query:"++"}, guideIndex);
+assert.deepEqual(Array.from(punctuationResult.items, row =>
+  [row.canonicalId, row.score, row.reason]), [["punctuation", 9000, "name_casefold"]]);
+assert.deepEqual(Array.from(execute({query:"+"}, guideIndex).items, row =>
+  [row.canonicalId, row.reason]), [["punctuation", "name_prefix"]]);
+assert.equal(execute({query:"---"}, guideIndex).total, 0);
 const localRequest = parsed => {
   const request = {query:parsed.query, filters:parsed.filters};
   if (parsed.tags.length) request.tags = parsed.tags;

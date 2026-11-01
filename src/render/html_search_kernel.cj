@@ -795,15 +795,15 @@ globalThis.cjdocSearch = (() => {
       return [evidenceFrom(prepared, "precise", "exact_qualified_name", "", {overload: hasOverload})].filter(Boolean);
     }
     if (request.name !== undefined) {
+      if (facts.concept) return [];
       const value = request.name;
       if (facts.name === value) return [evidenceFrom(prepared, "precise", "exact_name", "", {overload: hasOverload})].filter(Boolean);
-      if (!facts.concept && facts.qualifiedName === value) {
+      if (facts.qualifiedName === value) {
         return [evidenceFrom(prepared, "precise", "exact_qualified_name", "", {overload: hasOverload})].filter(Boolean);
       }
-      if (!facts.concept && facts.ownerName && facts.ownerName + "." + facts.name === value) {
+      if (facts.ownerName && facts.ownerName + "." + facts.name === value) {
         return [evidenceFrom(prepared, "precise", "exact_owner_member", "", {overload: hasOverload})].filter(Boolean);
       }
-      if (facts.concept) return [];
       const aliases = exactAliasFacts(exposures, value);
       return aliases.map(exposure => evidenceFrom(prepared, "precise", "exact_alias", exposure.raw.id,
         {overload: hasOverload})).filter(Boolean);
@@ -824,15 +824,15 @@ globalThis.cjdocSearch = (() => {
       return [evidenceFrom(prepared, "discovery", "exact_qualified_name")].filter(Boolean);
     }
     if (request.name !== undefined) {
+      if (facts.concept) return [];
       const value = request.name;
       if (facts.name === value) return [evidenceFrom(prepared, "discovery", "exact_name")].filter(Boolean);
-      if (!facts.concept && facts.qualifiedName === value) {
+      if (facts.qualifiedName === value) {
         return [evidenceFrom(prepared, "discovery", "exact_qualified_name")].filter(Boolean);
       }
-      if (!facts.concept && facts.ownerName && facts.ownerName + "." + facts.name === value) {
+      if (facts.ownerName && facts.ownerName + "." + facts.name === value) {
         return [evidenceFrom(prepared, "discovery", "exact_owner_member")].filter(Boolean);
       }
-      if (facts.concept) return [];
       return exactAliasFacts(exposures, value).map(exposure =>
         evidenceFrom(prepared, "discovery", "exact_alias", exposure.raw.id)).filter(Boolean);
     }
@@ -868,8 +868,8 @@ globalThis.cjdocSearch = (() => {
     return [];
   };
   const discoveryEvidence = (facts, exposures, query, prepared) => {
+    if (!query) return [];
     const wanted = tokens(query);
-    if (!wanted.length) return [];
     const foldedQuery = fold(query);
     const matches = [];
     for (const row of prepared.contract.discoveryRules) {
@@ -889,7 +889,7 @@ globalThis.cjdocSearch = (() => {
       else if (primitive === "qualified_prefix") matched = !!facts.qualifiedName && facts.qualifiedFold.startsWith(foldedQuery);
       else if (primitive === "all_token_word_prefix") {
         const words = facts.nameWords.concat(facts.ownerWords);
-        matched = wanted.every(token => words.some(word => word.startsWith(token)));
+        matched = wanted.length > 0 && wanted.every(token => words.some(word => word.startsWith(token)));
       } else if (primitive === "acronym") {
         matched = !facts.concept && wanted.length === 1 &&
           (acronym(facts.nameWords) === wanted[0] || acronym(facts.qualifiedWords) === wanted[0]);

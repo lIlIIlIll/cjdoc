@@ -319,10 +319,12 @@ class MacroInvocation {
 class SourceMetadataModuleRoot {
     public let moduleId: String
     public let actualRoot: String
+    public let configPath: String
 
-    public init(moduleId: String, actualRoot: String) {
+    public init(moduleId: String, actualRoot: String, configPath: String) {
         this.moduleId = moduleId
         this.actualRoot = actualRoot
+        this.configPath = configPath
     }
 }
 

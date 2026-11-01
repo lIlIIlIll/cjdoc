@@ -7,12 +7,12 @@ private let DOCUMENTATION_METADATA_MAX_DEFINITIONS: Int64 = 2048
 
 internal class MetadataModuleConfiguration {
     let moduleId: String
-    let actualRoot: String
+    let configPath: String
     let config: DocumentationMetadataConfig
 
-    init(moduleId: String, actualRoot: String, config: DocumentationMetadataConfig) {
+    init(moduleId: String, configPath: String, config: DocumentationMetadataConfig) {
         this.moduleId = moduleId
-        this.actualRoot = actualRoot
+        this.configPath = configPath
         this.config = config
     }
 }
@@ -51,12 +51,15 @@ internal class ResolvedMetadataGroup {
     let ownerSourceKey: ?String
     let config: MetadataGroupConfig
     let scopeKey: String
+    let configPath: String
 
-    init(moduleId: String, ownerSourceKey: ?String, config: MetadataGroupConfig, scopeKey: String) {
+    init(moduleId: String, ownerSourceKey: ?String, config: MetadataGroupConfig,
+        scopeKey: String, configPath: String) {
         this.moduleId = moduleId
         this.ownerSourceKey = ownerSourceKey
         this.config = config
         this.scopeKey = scopeKey
+        this.configPath = configPath
     }
 }
 
@@ -64,11 +67,13 @@ internal class ResolvedMetadataTag {
     let moduleId: String
     let config: MetadataTagConfig
     let scopeKey: String
+    let configPath: String
 
-    init(moduleId: String, config: MetadataTagConfig, scopeKey: String) {
+    init(moduleId: String, config: MetadataTagConfig, scopeKey: String, configPath: String) {
         this.moduleId = moduleId
         this.config = config
         this.scopeKey = scopeKey
+        this.configPath = configPath
     }
 }
 
@@ -197,7 +202,7 @@ internal func captureDocumentationMetadataInventory(source: SourceSnapshot): Uni
                 value
         }
         moduleConfigurations.add(MetadataModuleConfiguration(moduleRoot.moduleId,
-            moduleRoot.actualRoot, config))
+            moduleRoot.configPath, config))
         groupDefinitionCount += config.groups.size
         tagDefinitionCount += config.tags.size
         if (groupDefinitionCount > DOCUMENTATION_METADATA_MAX_DEFINITIONS ||
@@ -243,9 +248,9 @@ internal func captureDocumentationMetadataSurvivors(inventory: DocumentationMeta
 }
 
 private func metadataBindingDiagnostic(documentation: DocumentationSet, code: String,
-    message: String, line: Int64): Unit {
+    message: String, line: Int64, configPath: String): Unit {
     documentation.diagnostics.add(Diagnostic("error", code, message,
-        source: Some(SourceLocation("cjdoc.toml", line, 1, line, 1))))
+        source: Some(SourceLocation(configPath, line, 1, line, 1))))
 }
 
 private func metadataOwnerCandidates(inventory: DocumentationMetadataInventory,
@@ -282,7 +287,7 @@ internal func prepareDocumentationMetadata(documentation: DocumentationSet,
             if (!metadataPackageExists(inventory, moduleConfiguration.moduleId, config.packageName)) {
                 metadataBindingDiagnostic(documentation, "CJDOC3134",
                     "metadata group references a package or owner that does not exist in this module",
-                    config.line)
+                    config.line, moduleConfiguration.configPath)
                 continue
             }
 
@@ -292,13 +297,13 @@ internal func prepareDocumentationMetadata(documentation: DocumentationSet,
                 if (candidates.isEmpty()) {
                     metadataBindingDiagnostic(documentation, "CJDOC3134",
                         "metadata group references a package or owner that does not exist in this module",
-                        config.line)
+                        config.line, moduleConfiguration.configPath)
                     continue
                 }
                 if (candidates.size > 1) {
                     metadataBindingDiagnostic(documentation, "CJDOC3135",
                         "metadata group owner is ambiguous; use owner-id to select one declaration",
-                        config.line)
+                        config.line, moduleConfiguration.configPath)
                     continue
                 }
                 ownerSourceKey = Some(candidates[0].sourceKey)
@@ -307,7 +312,7 @@ internal func prepareDocumentationMetadata(documentation: DocumentationSet,
             let scopeKey = metadataGroupScopeKey(moduleConfiguration.moduleId,
                 config.packageName, ownerSourceKey, config.id)
             resolvedGroups.add(ResolvedMetadataGroup(moduleConfiguration.moduleId,
-                ownerSourceKey, config, scopeKey))
+                ownerSourceKey, config, scopeKey, moduleConfiguration.configPath))
             groupCounts[scopeKey] = match (groupCounts.get(scopeKey)) {
                 case Some(count) => count + 1
                 case None => 1
@@ -315,7 +320,8 @@ internal func prepareDocumentationMetadata(documentation: DocumentationSet,
         }
         for (config in moduleConfiguration.config.tags) {
             let scopeKey = metadataTagScopeKey(moduleConfiguration.moduleId, config.id)
-            resolvedTags.add(ResolvedMetadataTag(moduleConfiguration.moduleId, config, scopeKey))
+            resolvedTags.add(ResolvedMetadataTag(moduleConfiguration.moduleId, config, scopeKey,
+                moduleConfiguration.configPath))
             tagCounts[scopeKey] = match (tagCounts.get(scopeKey)) {
                 case Some(count) => count + 1
                 case None => 1
@@ -328,7 +334,7 @@ internal func prepareDocumentationMetadata(documentation: DocumentationSet,
         if (groupCounts[resolved.scopeKey] > 1) {
             metadataBindingDiagnostic(documentation, "CJDOC3136",
                 "metadata definitions duplicate the same scoped ID; all competing definitions are invalid",
-                resolved.config.line)
+                resolved.config.line, resolved.configPath)
             continue
         }
         var ownerId: ?String = None
@@ -346,7 +352,7 @@ internal func prepareDocumentationMetadata(documentation: DocumentationSet,
         if (tagCounts[resolved.scopeKey] > 1) {
             metadataBindingDiagnostic(documentation, "CJDOC3136",
                 "metadata definitions duplicate the same scoped ID; all competing definitions are invalid",
-                resolved.config.line)
+                resolved.config.line, resolved.configPath)
             continue
         }
         tags.add(api_model.DocumentationTagDefinition(resolved.moduleId,

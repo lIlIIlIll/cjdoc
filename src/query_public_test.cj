@@ -184,6 +184,28 @@ private func queryGuidePage(): DocumentationPage {
             children: [MarkdownNode("text", literal: body)])]), language: Some("en"))
 }
 
+private func queryPreviewDocumentation(summary: String, defaultValue: String): api_model.DocumentationSet {
+    let id = chainSymbolId("function", "preview", "String")
+    let expression = "\"${defaultValue}\""
+    let header = "public func preview(value!: String = ${expression}): Unit"
+    let symbol = api_model.SymbolDoc(id, "function", "preview", "fixture.preview", "fixture",
+        PUBLIC_TEST_MODULE, "public", testRange(1), header, SemanticInfo("partial", "ast"),
+        parameters: [api_model.ParameterDoc("value", testType("String"),
+            defaultExpression: Some(expression))],
+        documentation: Some(api_model.DocComment("", summary, "", MarkdownNode("document",
+            children: [MarkdownNode("paragraph", children: [MarkdownNode("text", literal: summary)])]))))
+    api_model.DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete", ProjectInfo("unicode-preview"),
+        ConfigurationSnapshot(lintProfile: "off"),
+        providers: [ProviderInfo("ast", "builtin", PUBLIC_TEST_MODULE, "partial",
+            api_model.SemanticCapabilities(false, false, false, false, false))],
+        modules: [api_model.ModuleDoc(PUBLIC_TEST_MODULE, "unicode-preview", "root", "",
+            packageNames: ["fixture"])],
+        packages: [api_model.PackageDoc("fixture", PUBLIC_TEST_MODULE,
+            sourceFiles: ["src/catalog.cj"], symbolIds: [id])],
+        files: [FileDoc("src/catalog.cj", PUBLIC_TEST_MODULE, "fixture")],
+        declarations: [symbol])
+}
+
 private func session(): DocumentationQuerySession {
     DocumentationQuerySession(queryDocumentation())
 }
@@ -913,5 +935,33 @@ class DocumentationQueryPublicTest {
         @Expect(snapshots.size(), 1)
         @Expect(snapshots[0].asObject().get("sourceKind").getOrThrow().asString(), "public-model")
         @Expect(result.get("schemaVersion").getOrThrow().asString(), "cjdoc.query-result/3")
+    }
+
+    @TestCase
+    func searchPreviewBoundsCountUnicodeScalarsInsteadOfUtf8Bytes(): Unit {
+        let defaultValue = StringBuilder()
+        for (_ in 0..200) { defaultValue.append("汉") }
+        for (glyph in ["汉", "😀"]) {
+            for (count in [100, 240, 241]) {
+                let summary = StringBuilder()
+                for (_ in 0..count) { summary.append(glyph) }
+                let expected = StringBuilder()
+                for (_ in 0..(if (count <= 240) { count } else { 239 })) {
+                    expected.append(glyph)
+                }
+                if (count > 240) { expected.append("…") }
+                let documentation = queryPreviewDocumentation(summary.toString(), defaultValue.toString())
+                let query = DocumentationQuerySession(documentation)
+                let response = queryResult(query,
+                    "{\"operation\":\"search\",\"name\":\"preview\",\"profile\":\"bounded-static\"}")
+                @Expect(response.get("status").getOrThrow().asString(), "ok")
+                let items = querySearchItems(response)
+                @Expect(items.size(), 1)
+                let item = items[0].asObject()
+                @Expect(item.get("summary").getOrThrow().asString(), expected.toString())
+                @Expect(item.get("signature").getOrThrow().asString(),
+                    documentation.declarations[0].headerSpelling)
+            }
+        }
     }
 }
