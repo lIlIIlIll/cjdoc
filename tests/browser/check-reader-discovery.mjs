@@ -16,8 +16,9 @@ const index = await entryIndex(site);
 const owner = typeEntry(index, 'reader_scale.Member500');
 const target = index.entries.filter(entry => entry.qualifiedName === 'reader_scale.Member500.member0499');
 assert.equal(target.length, 1, 'the native tail-member identity must be unique');
+// Filter-only hits share score, snapshot and reason; the contract orders UTF-8 identities.
 const expectedEntries = index.entries.filter(entry => entry.kind === 'function').sort((a, b) =>
-  a.qualifiedName.localeCompare(b.qualifiedName) || a.id.localeCompare(b.id));
+  Buffer.compare(Buffer.from(a.canonicalId, 'utf8'), Buffer.from(b.canonicalId, 'utf8')));
 const expected = expectedEntries.map(entry => entry.href);
 assert.ok(expected.length > 40, 'a real multi-page native corpus is required');
 const indexUrl = pathToFileURL(path.join(site, 'index.html')).href;
@@ -64,8 +65,12 @@ try {
   assert.deepEqual(await links(), expected.slice(0, 20), 'kind changes must reset pagination');
   await next.click();
   await page.locator('[data-cjdoc-package]').selectOption(target[0].packageName);
-  assert.deepEqual(await links(), expectedEntries.filter(entry => entry.packageName === target[0].packageName)
-    .slice(0, 20).map(entry => entry.href), 'package changes must reset pagination');
+  const packageEntries = expectedEntries.filter(entry => entry.packageName === target[0].packageName ||
+    entry.exposures.some(exposure => exposure.packageName === target[0].packageName));
+  assert.ok(packageEntries.some(entry => entry.packageName !== target[0].packageName),
+    'the controlled package selector must retain its source-backed re-export exposure');
+  assert.deepEqual(await links(), packageEntries.slice(0, 20).map(entry => entry.href),
+    'package changes must reset pagination and retain canonical-or-exposure matches');
   await page.locator('[data-cjdoc-package]').selectOption('');
   await page.locator('[data-cjdoc-kind]').selectOption('');
   report.tasks.push({ id: 'kind-and-package-reset', pass: true });
@@ -168,10 +173,14 @@ try {
   await page.keyboard.press('Escape');
   report.tasks.push({ id: 'mobile-tail-member-menu-not-clipped', pass: true });
   await page.setViewportSize({ width: 1440, height: 900 });
-  report.tasks.push({ id: 'ime-keyboard-exact-api-page-and-hidden-tail-deep-link', pass: true, targetId: target[0].id });
+  report.tasks.push({ id: 'ime-keyboard-exact-api-page-and-hidden-tail-deep-link', pass: true, targetId: target[0].canonicalId });
 
-  await page.locator('[data-cjdoc-member-filter]').fill('member0256');
-  assert.equal(await page.locator('[data-cjdoc-member]:not([hidden])').count(), 1);
+  const historyQuery = 'name:member0256';
+  const historyMemberId = await page.locator('[data-cjdoc-member][data-member-name="member0256"]').getAttribute('id');
+  assert.ok(historyMemberId, 'capture the source-backed member identity before history navigation');
+  await page.locator('[data-cjdoc-member-filter]').fill(historyQuery);
+  assert.deepEqual(await page.locator('[data-cjdoc-member]:not([hidden])')
+    .evaluateAll(nodes => nodes.map(node => node.id)), [historyMemberId]);
   await Promise.all([page.waitForURL(indexUrl), page.evaluate(destination => {
     const sidebar = document.querySelector('.docs-sidebar');
     sidebar.scrollTop = 160;
@@ -179,8 +188,10 @@ try {
     location.href = destination;
   }, indexUrl)]);
   await page.goBack();
-  await page.waitForFunction(() => document.querySelector('[data-cjdoc-member-filter]')?.value === 'member0256');
-  assert.equal(await page.locator('[data-cjdoc-member]:not([hidden])').count(), 1);
+  await page.waitForFunction(query => document.querySelector('[data-cjdoc-member-filter]')?.value === query,
+    historyQuery);
+  assert.deepEqual(await page.locator('[data-cjdoc-member]:not([hidden])')
+    .evaluateAll(nodes => nodes.map(node => node.id)), [historyMemberId]);
   assert.ok(Math.abs(await page.locator('.docs-sidebar').evaluate(node => node.scrollTop) - 160) <= 2,
     'pagehide must capture sidebar scroll even before its queued scroll event');
   await page.locator('[data-cjdoc-member-filter]').fill('');

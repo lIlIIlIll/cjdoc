@@ -146,6 +146,7 @@ RSS 顺序回归在独立的小控制进程中运行，避免完整测试套件�
 
 在同一 runner 上依次采 baseline、绑定事先登记的数值模板、采 after、运行行为回归和严格比较。Doc IR 与 search-index JSON/JS 的相同 payload 校验、原始任务、样本数、字体、声明下限和资源/延迟预算均不放宽；不添加旧索引兼容或跨协议跳过。原始 JSON、日志、Doc IR、截图与比较保存为该 run 的 artifact，默认保留 30 天。手动选择资源受限 cohort 时比较仍为 `pass: false`、退出失败，不把观测完成记作支持该规模。
 当前 baseline 与 candidate 使用相同展示契约，不登记旧 `0.7.3 → 0.7.7` 的 presentation 例外：字体使用、正文排版和无 JS ARIA 树直接严格相等比较。
+浏览器行为回归按当前检索契约校验：filter-only 同分结果使用 UTF-8 canonical identity 顺序，package 过滤保留 canonical-or-exposure 命中。历史恢复场景用显式 `name:` 条件选择唯一成员并核对其捕获的渲染身份，不对自由文本 discovery 的结果数量固定旧假设。
 
 build、仓颉 unit、golden/integration、真实库、本地浏览器、远端 CI 必须分别报告。源码中存在脚本、较小 fixture 通过、ARIA snapshot 或截图好看，都不是较高层级已执行的证据。
 

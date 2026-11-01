@@ -73,6 +73,41 @@ def failure_facts(error: Exception) -> dict:
         return {"reason": "host-io-error", "errno": error.errno}
     return {"reason": "validation-failed"}
 
+def public_cancel_host_receipt(path: Path) -> dict:
+    """Publish only allowlisted STS facts for the optional host build."""
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(8193)
+    except FileNotFoundError:
+        return {"status": "absent"}
+    except OSError:
+        return {"status": "unreadable"}
+    if len(raw) > 8192:
+        return {"status": "invalid"}
+    try:
+        records = raw.splitlines()
+        if len(records) != 1:
+            return {"status": "invalid"}
+        record = json.loads(records[0])
+    except (ValueError, TypeError):
+        return {"status": "invalid"}
+    if (not isinstance(record, dict) or
+            record.get("schemaVersion") != "cjdoc.sts-invocation/1" or
+            record.get("package") != "highlight_host_fixture" or
+            type(record.get("exitCode")) is not int):
+        return {"status": "invalid"}
+
+    from sts_compile_override import option_for, phase_for, reason_for
+    return {
+        "status": "recorded",
+        "package": "highlight_host_fixture",
+        "phaseMatches": record.get("phase") == phase_for("build"),
+        "reasonMatches": record.get("reason") == reason_for("build"),
+        "optionMatches": record.get("option") == option_for("build"),
+        "exitCode": record["exitCode"],
+    }
+
+
 
 def traceback_locations(source: Path, traceback) -> list[dict]:
     """Retain trusted script/line locations, never exception text or locals."""
@@ -173,6 +208,9 @@ def main() -> int:
                     step["tracebackLocations"] = locations
             raise
         finally:
+            if name == "public-cancel-host" and step["status"] == "failed":
+                step["wrapperReceipt"] = public_cancel_host_receipt(
+                    work / "sts-invocations.jsonl")
             # Raw stdout/stderr remains private; public artifacts contain fixed facts only.
             step["wallMs"] = round((time.monotonic() - started) * 1000)
             identity["steps"].append(step)

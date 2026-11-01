@@ -267,6 +267,11 @@ const context = {document, window, URL, URLSearchParams, location:window.locatio
 context.__CJDOC_SEARCH_SIGNATURES__ = {"module-a":"func overloaded(String)", "module-b":"func overloaded(Int64)"};
 vm.runInNewContext(SCRIPT, context);
 const api = context.cjdocSearch;
+for (let repeat = 0; repeat < 2; repeat++) {
+  assert.equal(api.fold("AZ_az-\u0130\u212a-\u00c9-e\u0301-\ud83d\ude00"),
+    "az_az-\u0130\u212a-\u00c9-e\u0301-\ud83d\ude00",
+    "case folding changes ASCII uppercase only, without Unicode normalization or regex state leakage");
+}
 const baseRequest = {operation: "search", mode: "discovery", profile: "bounded-static"};
 const execute = (request, source = index) => api.execute(source, {...baseRequest, ...request});
 const guide = {...entry("++"), id:"punctuation", canonicalId:"punctuation", scope:-1,

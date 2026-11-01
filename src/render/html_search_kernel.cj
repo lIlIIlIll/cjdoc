@@ -65,14 +65,9 @@ globalThis.cjdocSearch = (() => {
     return left.length === right.length ? 0 : (left.length < right.length ? -1 : 1);
   };
   const compareBytes = (left, right) => compareByteArrays(utf8Bytes(left), utf8Bytes(right));
-  const fold = value => {
-    let out = "";
-    for (const char of value) {
-      const code = char.codePointAt(0);
-      out += code >= 0x41 && code <= 0x5a ? String.fromCharCode(code + 0x20) : char;
-    }
-    return out;
-  };
+  const ASCII_UPPERCASE = /[A-Z]/g;
+  const lowercaseAscii = character => String.fromCharCode(character.charCodeAt(0) + 0x20);
+  const fold = value => value.replace(ASCII_UPPERCASE, lowercaseAscii);
   const runeCount = value => [...value].length;
   const tokens = value => {
     const result = [];
