@@ -84,11 +84,14 @@ public class FileDoc {
     public let path: String
     public let moduleId: String
     public let packageName: String
+    public let provenance: SourceProvenance
 
-    public init(path: String, moduleId: String, packageName: String) {
+    public init(path: String, moduleId: String, packageName: String,
+        provenance!: SourceProvenance = SourceProvenance.unavailable("no_registration")) {
         this.path = path
         this.moduleId = moduleId
         this.packageName = packageName
+        this.provenance = provenance
     }
 }
 
@@ -189,13 +192,15 @@ public class DocTag {
     public let fieldId: String
     public let descriptionMarkdown: ?MarkdownNode
     public let navigation: ?TypeNavigation
+    public let entryId: ?String
+    public let source: ?SourceRange
 
     public init(name: String, subject: String, description: String,
         referenceState!: String = "unavailable", targetSymbolId!: ?String = None,
         directives!: String = "", exampleMarkdown!: ?MarkdownNode = None,
         contentLanguage!: ?String = None, translationState!: String = "", fieldId!: String = "",
         descriptionMarkdown!: ?MarkdownNode = None,
-        navigation!: ?TypeNavigation = None) {
+        navigation!: ?TypeNavigation = None, entryId!: ?String = None, source!: ?SourceRange = None) {
         if (!isSemanticState(referenceState)) { throw IllegalArgumentException("invalid reference state") }
         if (let Some(language) <- contentLanguage) {
             if (documentationLanguage(language) != language) { throw IllegalArgumentException("content language must be normalized") }
@@ -220,5 +225,7 @@ public class DocTag {
         this.fieldId = fieldId
         this.descriptionMarkdown = descriptionMarkdown
         this.navigation = navigation
+        this.entryId = entryId
+        this.source = source
     }
 }

@@ -138,11 +138,8 @@ private func isStructuredDocTag(tagText: String): Bool {
         tagText.startsWith("@throws ") ||
         tagText == "@see" || tagText.startsWith("@see ") ||
         tagText.startsWith("@since ") ||
-        tagText == "@deprecated" || tagText.startsWith("@deprecated ") ||
-        tagText.startsWith("@author ") ||
-        tagText.startsWith("@version ") ||
         tagText == "@example" || tagText.startsWith("@example ") ||
-        behaviorContractName(tagText).isSome()
+        behaviorContractName(tagText).isSome() || admonitionTagHead(tagText).isSome()
 }
 
 internal func rawJoinLines(lines: ArrayList<String>): String {
@@ -285,6 +282,7 @@ private class DocCommentParseState {
     let body = ArrayList<String>()
     let params = ArrayList<DocTag>()
     let examples = ArrayList<DocTag>()
+    let admonitions = ArrayList<DocTag>()
     let contracts = ArrayList<DocTag>()
     let throwsTags = ArrayList<DocTag>()
     let seeTags = ArrayList<DocTag>()
@@ -295,6 +293,7 @@ private class DocCommentParseState {
     var deprecated: ?String = None
     var version: ?String = None
     var currentTag: ?DocTag = None
+    var currentAdmonition: ?DocTag = None
     var currentExample: ?DocTag = None
 
     private func appendExampleText(example: DocTag, line: String): Unit {
@@ -322,11 +321,29 @@ private class DocCommentParseState {
     func appendBodyLine(line: String): Unit {
         body.add(line)
         currentTag = None
+        currentAdmonition = None
+    }
+    private func appendBodyBoundary(): Unit {
+        if (!body.isEmpty() && !body[body.size - 1].isEmpty()) { body.add("") }
     }
 
     func consumeStructuredTag(line: String, tagText: String): Bool {
         if (!tagText.startsWith("@")) { return false }
         currentTag = None
+        currentAdmonition = None
+        if (let Some(head) <- admonitionTagHead(tagText)) {
+            appendBodyBoundary()
+            if (head.error.isNone()) {
+                let tag = DocTag(head.level, "", head.rest, entryId: head.entryId)
+                admonitions.add(tag)
+                currentAdmonition = Some(tag)
+            } else {
+                // Invalid prompt headers remain ordinary body text. The
+                // localized pass attaches their precise diagnostic.
+                body.add(line)
+            }
+            return true
+        }
         if (tagText == "@group" || tagText.startsWith("@group ") || tagText.startsWith("@group\t")) {
             let (subject, description) = splitSubject(tagText.removePrefix("@group").replace("\t", " "))
             // A group is shared, single-line presentation metadata, not prose.
@@ -399,8 +416,8 @@ private class DocCommentParseState {
     }
 
     func consumeTagContinuation(line: String, tagText: String): Unit {
-        match (currentTag) {
-            case Some(tag) =>
+        match ((currentTag, currentAdmonition)) {
+            case (Some(tag), _) =>
                 if (!tagText.isEmpty()) {
                     tag.description = if (tag.description.isEmpty()) {
                         tagText
@@ -410,7 +427,18 @@ private class DocCommentParseState {
                 } else {
                     appendBodyLine(line)
                 }
-            case None => body.add(line)
+            case (None, Some(tag)) =>
+                if (tagText.startsWith("@")) {
+                    currentAdmonition = None
+                    appendBodyBoundary()
+                    body.add(line)
+                } else if (!line.trimAscii().isEmpty()) {
+                    tag.description = if (tag.description.isEmpty()) { line }
+                        else { tag.description + "\n" + line }
+                } else {
+                    appendBodyLine(line)
+                }
+            case _ => body.add(line)
         }
     }
 
@@ -419,6 +447,7 @@ private class DocCommentParseState {
         let parsed = DocComment(raw, summary, description)
         parsed.params.add(all: params)
         parsed.examples.add(all: examples)
+        parsed.admonitions.add(all: admonitions)
         parsed.returns = returns
         parsed.returnTagCount = returnTagCount
         parsed.throwsTags.add(all: throwsTags)

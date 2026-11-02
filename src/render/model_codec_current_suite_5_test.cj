@@ -4,6 +4,7 @@ import cjdoc.model.*
 import std.collection.*
 import std.unittest.*
 import std.unittest.testmacro.*
+import yjson.*
 
 // Primary reader pages; machine representations are checked separately.
 private func suite5ReaderText(artifacts: Array<RenderArtifact>): String {
@@ -31,7 +32,8 @@ private func codecRenderedText(artifacts: Array<RenderArtifact>): String {
     suite5ReaderText(artifacts)
 }
 
-private func codecRendererFixture(): DocumentationSet {
+private func codecRendererFixture(provenance!: SourceProvenance =
+    SourceProvenance.unavailable("no_registration")): DocumentationSet {
     let source = SourceRange("src/api.cj", SourcePosition(1, 1, 0), SourcePosition(1, 2, 1))
     let symbolId = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Arenderer-fixture::fixture::function:topic#g0()"
     let heading = MarkdownNode("heading", MarkdownNodeMetadata.forHeading(1),
@@ -73,7 +75,7 @@ private func codecRendererFixture(): DocumentationSet {
             packageNames: ["fixture"])],
         packages: [PackageDoc("fixture", CODEC_RENDERER_MODULE, sourceFiles: ["src/api.cj"],
             symbolIds: [symbolId])],
-        files: [FileDoc("src/api.cj", CODEC_RENDERER_MODULE, "fixture")],
+        files: [FileDoc("src/api.cj", CODEC_RENDERER_MODULE, "fixture", provenance: provenance)],
         declarations: [symbol])
 }
 
@@ -133,6 +135,88 @@ private func codecTypeDocument(returnType: TypeRef, canonicalTypes!: Bool,
 
 @Test
 class ModelCodecCurrentSuite5 {
+    @TestCase
+    func provenanceIsRequiredAndReplaysOnlyItsCapturedEvidence(): Unit {
+        let digest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        let revision = "0123456789012345678901234567890123456789"
+        let provenance = SourceProvenance("verified", "receipt_matched",
+            repository: Some(RepositoryInfo("https://github.com/example/library", revision)),
+            repositoryPath: Some("src/中文 path#?.cj"), sourceDigest: Some(digest),
+            normalizedDigest: Some(digest), evidenceIdentity: Some(digest),
+            evidenceKind: "caller_pinned_receipt")
+        let encoded = encodeDocIr(codecRendererFixture(provenance: provenance))
+        let replay = decodeDocIr(encoded)
+        @Expect(replay.files[0].provenance.state, "verified")
+        @Expect(replay.files[0].provenance.repositoryPath, Some("src/中文 path#?.cj"))
+        @Expect(replay.files[0].provenance.evidenceIdentity, Some(digest))
+        let missing = JsonNode.parse(encoded).asObject()
+        for (file in jsonArrayValues(missing.get("files").getOrThrow().asArray())) {
+            let _ = file.asObject().remove("provenance")
+        }
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(missing.toJson()))
+        @Expect(encodeDocIr(replay), encoded)
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(encoded.replace(
+            "\"evidenceIdentity\": \"" + digest + "\"", "\"evidenceIdentity\": null")))
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(encoded.replace(
+            "\"state\": \"verified\"", "\"state\": \"declared\"")))
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(encoded.replace(
+            "\"sourcePrefix\": \"\"", "\"sourcePrefix\": \"\", \"repositoryPath\": null")))
+    }
+
+    @TestCase
+    func capturedAdmonitionIdentityAndScopeSurviveCurrentOnlyReplay(): Unit {
+        let source = SourceRange("src/api.cj", SourcePosition(1, 1, 0), SourcePosition(1, 2, 1))
+        let body = MarkdownNode("document", children: [
+            MarkdownNode("admonition", MarkdownNodeMetadata.forAdmonition("warning"), children: [
+                MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "Keep the resource alive.")])
+            ])
+        ])
+        let id = "cjdoc:v2:cjdoc%3Amodule%3Av1%3Acanonical-types::fixture::function:compute#g0()"
+        let fieldId = id + ":doc:warning:author-lifetime"
+        let comment = DocComment("raw", "Original summary", "", MarkdownNode("document"),
+            localizationScope: "admonitions", tags: [
+                DocTag("warning", "", "Keep the resource alive.", entryId: Some("lifetime"), source: Some(source),
+                    descriptionMarkdown: Some(body), fieldId: fieldId, translationState: "unknown")
+            ], localizedTexts: [
+                DocumentationText(fieldId, "warning", "", None, "Keep the resource alive.", body,
+                    entryId: Some("lifetime"), source: Some(source))
+            ])
+        let documentation = codecTypeDocument(
+            TypeRef("primitive", "Unit", SemanticType("resolved", canonical: Some("std.core.Unit"),
+                provider: Some("types"))), canonicalTypes: true, documentation: Some(comment))
+        let encoded = encodeDocIr(documentation)
+        let replay = decodeDocIr(encoded)
+        let captured = replay.declarations[0].documentation.getOrThrow()
+        @Expect(captured.localizationScope, "admonitions")
+        @Expect(captured.summary, "Original summary")
+        @Expect(captured.tags[0].entryId, Some("lifetime"))
+        @Expect(captured.tags[0].source.getOrThrow().end.byteOffset, 1)
+        @Expect(captured.localizedTexts[0].markdown.children[0].metadata.getOrThrow().admonitionLevel, Some("warning"))
+        @Expect(encodeDocIr(replay), encoded)
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(encoded.replace("cjdoc.doc-ir/18", "cjdoc.doc-ir/17")))
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(encoded.replace("\"level\": \"warning\"", "\"level\": \"unknown\"")))
+        @ExpectThrows[IllegalArgumentException](decodeDocIr(encoded.replace("\"level\": \"warning\"", "\"level\": \"warning\", \"title\": \"Injected\"")))
+    }
+
+    @TestCase
+    func replayRejectsEmptyInlineAndNestedAdmonitionBlocks(): Unit {
+        let paragraph = MarkdownNode("paragraph", children: [MarkdownNode("text", literal: "risk")])
+        let valid = MarkdownNode("admonition", MarkdownNodeMetadata.forAdmonition("danger"), children: [paragraph])
+        for (invalid in [
+            MarkdownNode("admonition", MarkdownNodeMetadata.forAdmonition("danger")),
+            MarkdownNode("admonition", MarkdownNodeMetadata.forAdmonition("danger"),
+                children: [MarkdownNode("text", literal: "inline")]),
+            MarkdownNode("admonition", MarkdownNodeMetadata.forAdmonition("danger"), children: [valid]),
+            MarkdownNode("block_quote", children: [valid])
+        ]) {
+            let comment = DocComment("raw", "", "", MarkdownNode("document", children: [invalid]))
+            let documentation = codecTypeDocument(
+                TypeRef("primitive", "Unit", SemanticType("resolved", canonical: Some("std.core.Unit"),
+                    provider: Some("types"))), canonicalTypes: true, documentation: Some(comment))
+            @ExpectThrows[IllegalArgumentException](encodeDocIr(documentation))
+        }
+    }
+
     @TestCase
     func renderersPreserveClosedMarkdownMetadata(): Unit {
         let documentation = codecRendererFixture()

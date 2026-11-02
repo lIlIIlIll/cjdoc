@@ -253,6 +253,7 @@ cjdoc generate --project . --format coverage --output target/quality-report
 限制：
 
 - 质量分是启发式计数，只覆盖三条已知模板规则，不是人工评审分数。
+- `@note`、`@warning`、`@danger` 与指南中的提示块等级都是作者明确标注，不是 cjdoc 根据实现、测试或文字推断的风险结论，也不计入质量分；写法与呈现见[提示标签](usage.md#写提示)和[指南提示块](guides.md#markdown-提示块)。
 - 存在覆盖率只说明“有内容”，不说明内容正确；模板规则未命中也不说明写得好。
 - 启用多语言时，`coverage.json` 与 `quality.json` 按默认语言（`[i18n].default-language`）的注释视图统计；译文完整度看 `coverage/translations.json`。
 - 质量分没有阈值配置；需要更严格的门槛时，用存在覆盖率门槛加 `[lint]` 严重级别。

@@ -99,7 +99,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 "if sys.argv[1:] == ['--version']:\n"
                 "    print('cjdoc 0.7.0')\n"
                 "elif sys.argv[1:] == ['schema', 'list']:\n"
-                "    print('doc-ir\\ndoc-ir-v17')\n"
+                "    print('doc-ir\\ndoc-ir-v18\\nsource-provenance')\n"
                 "else:\n"
                 "    raise SystemExit(2)\n",
                 encoding="utf-8",
@@ -413,7 +413,7 @@ class ReleaseArchiveTest(ReleaseToolsTestSupport, unittest.TestCase):
                 "if sys.argv[1:] == ['--version']:\n"
                 "    print('cjdoc 0.7.0')\n"
                 "elif sys.argv[1:] == ['schema', 'list']:\n"
-                "    print('doc-ir\\ndoc-ir-v17')\n"
+                "    print('doc-ir\\ndoc-ir-v18\\nsource-provenance')\n"
                 "else:\n"
                 "    raise SystemExit(2)\n",
                 encoding="utf-8",

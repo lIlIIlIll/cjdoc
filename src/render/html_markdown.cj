@@ -19,9 +19,9 @@ private func safeMappedRelativeLinkDestination(value: String): Bool {
 
 public func renderStandaloneMarkdownHtml(node: MarkdownNode,
     sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
-    pageTitle!: ?String = None): String {
+    pageTitle!: ?String = None, locale!: String = "en"): String {
     renderStandaloneMarkdownHtmlWithAssets(node, HashMap<String, String>(), "",
-        sourceLinks: sourceLinks, pageTitle: pageTitle)
+        sourceLinks: sourceLinks, pageTitle: pageTitle, locale: locale)
 }
 
 internal func renderStandaloneMarkdownHtmlWithAssets(node: MarkdownNode,
@@ -29,14 +29,15 @@ internal func renderStandaloneMarkdownHtmlWithAssets(node: MarkdownNode,
     sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
     pageTitle!: ?String = None, bindingSource!: String = "",
     bindingChips!: ?HashMap<Int64, String> = None, headingBase!: Int64 = 2,
-    afterFirstCode!: String = ""): String {
+    afterFirstCode!: String = "", locale!: String = "en"): String {
     let context = HtmlMarkdownContext(headingBase, sourceLinks: sourceLinks,
-        bindingSource: bindingSource, bindingChips: bindingChips)
+        bindingSource: bindingSource, bindingChips: bindingChips, locale: locale)
     collectMarkdownHeadings(node, "standalone", HashMap<String, Int64>(), context)
     let out = RenderTextBuffer()
     appendStandaloneMarkdownHtml(out, node, context, pageTitle, assetLookup, rootPrefix, afterFirstCode)
     out.toString()
 }
+
 
 // Suppress exactly the Markdown's own leading level-1 heading when the page
 // shell already rendered the same title as the page <h1>. A differently titled
@@ -453,18 +454,23 @@ internal class HtmlMarkdownContext {
     let sourceLinks: HashMap<String, String>
     let bindingSource: String
     let bindingChips: ?HashMap<Int64, String>
+    let locale: String
     var nextHeading: Int64 = 0
 
     init(headingBase: Int64, allowExternalLinks!: Bool = true,
         sourceLinks!: HashMap<String, String> = HashMap<String, String>(),
-        bindingSource!: String = "", bindingChips!: ?HashMap<Int64, String> = None) {
+        bindingSource!: String = "", bindingChips!: ?HashMap<Int64, String> = None,
+        locale!: String = "en") {
         this.headingBase = headingBase
         this.allowExternalLinks = allowExternalLinks
         this.sourceLinks = sourceLinks
         this.bindingSource = bindingSource
         this.bindingChips = bindingChips
+        this.locale = locale
     }
 }
+
+
 
 internal func collectMarkdownHeadings(node: MarkdownNode, anchorPrefix: String,
     counts: HashMap<String, Int64>, context: HtmlMarkdownContext): Unit {
@@ -480,8 +486,8 @@ internal func collectMarkdownHeadings(node: MarkdownNode, anchorPrefix: String,
 }
 
 internal func markdownHtmlContext(comment: DocComment, symbol: SymbolDoc,
-    headingBase: Int64): HtmlMarkdownContext {
-    let context = HtmlMarkdownContext(headingBase)
+    headingBase: Int64, locale!: String = "en"): HtmlMarkdownContext {
+    let context = HtmlMarkdownContext(headingBase, locale: locale)
     collectMarkdownHeadings(comment.markdown, symbolAnchor(symbol), HashMap<String, Int64>(), context)
     context
 }
@@ -543,6 +549,8 @@ internal func appendMarkdownNodeHtml(out: RenderTextBuffer, node: MarkdownNode,
             appendHighlightedCodeHtml(out, node.literal, displayLanguage, highlight: preparedHighlight)
             out.append("</code></pre>\n")
         case "thematic_break" => out.append("<hr>\n")
+        case "admonition" =>
+            appendAdmonitionHtml(out, node, assetLookup, rootPrefix, context)
         case "block_quote" =>
             out.append("<blockquote>"); for (child in node.children) {
                 appendMarkdownNodeHtml(out, child, assetLookup, rootPrefix, context)

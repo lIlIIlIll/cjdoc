@@ -36,7 +36,7 @@ internal func appendDocumentationTagHtml(out: RenderTextBuffer, tag: DocTag,
     if (let Some(language) <- tag.contentLanguage) { out.append("<div lang=\"" + language + "\">") }
     match (tag.descriptionMarkdown) {
         case Some(tree) =>
-            let fieldContext = HtmlMarkdownContext(3)
+            let fieldContext = HtmlMarkdownContext(3, locale: locale)
             collectMarkdownHeadings(tree, "field-" + contractFingerprint(tag.fieldId + tag.name + tag.subject), HashMap<String, Int64>(), fieldContext)
             appendMarkdownNodeHtml(out, tree, assets, rootPrefix, fieldContext)
         case None => appendStructuredTextHtml(out, tag.description)

@@ -43,6 +43,18 @@ internal func readerQualifiedName(symbol: SymbolDoc): String {
     symbol.qualifiedName
 }
 
+internal func reverseTypeUsageLabel(kind: String, locale: String): String {
+    match (kind) {
+        case "parameter" => label(locale, "Uses this type in a parameter", "在参数类型中使用此类型")
+        case "field" => label(locale, "Uses this type in a field or property", "在字段或属性类型中使用此类型")
+        case "return" => label(locale, "Uses this type in a return type", "在返回类型中使用此类型")
+        case "superType" => label(locale, "Uses this type in a parent-type clause", "在父类型声明中使用此类型")
+        case "extensionTarget" => label(locale, "Uses this type in an extension target", "在扩展目标中使用此类型")
+        case "genericConstraint" => label(locale, "Uses this type in a generic constraint", "在泛型约束中使用此类型")
+        case _ => label(locale, "References this type (relationship: ${kind})", "引用此类型（关系：${kind}）")
+    }
+}
+
 // Display labels only: IR identifiers and source spellings remain unchanged.
 internal func htmlKindLabel(kind: String, locale: String): String {
     if (locale != "zh-CN") { return kind }

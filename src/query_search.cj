@@ -444,17 +444,8 @@ internal func queryPageRepresentations(page: query_model.DocumentationPage): Jso
 }
 
 internal func querySymbolSource(input: QuerySnapshotInput, symbol: query_model.SymbolDoc): JsonObject {
-    let node = JsonNode.object()
-    let url: ?String = match (queryModuleFor(input, symbol.moduleId)) {
-        case Some(module) => query_render.sourceUrl(input.documentation.project, module, symbol.source)
-        case None => None
-    }
-    node.put("url", queryNullable(url))
-    node.put("range", querySourceRangeNode(symbol.source))
-    let repository = input.documentation.project.repository
-    node.put("recordedRevision", queryNullable(repository.map({ value => value.revision })))
-    node.put("revisionKind", JsonNode.string(if (repository.isSome()) { "recorded" } else { "unavailable" }))
-    node
+    JsonNode.parse(query_render.sourceReferenceJson(
+        input.snapshot.sourceReference(symbol.moduleId, symbol.source))).asObject()
 }
 
 internal func queryPageSource(page: query_model.DocumentationPage): JsonObject {

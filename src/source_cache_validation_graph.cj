@@ -17,8 +17,17 @@ func validateCachedParameterDefaults(declaration: SourceDeclaration): Unit {
 internal func validateCachedDocComment(comment: ?DocComment): Unit {
     if (let Some(value) <- comment) {
         if (!value.raw.startsWith("/**") || value.returnTagCount < 0 ||
-            value.returnTagCount > MAX_SOURCE_CACHE_ITEMS) {
+            value.returnTagCount > MAX_SOURCE_CACHE_ITEMS || value.localizationScope != "all") {
             throw IllegalArgumentException("invalid cached documentation")
+        }
+        for (tag in value.admonitions) {
+            let invalidId = match (tag.entryId) {
+                case Some(id) => !validDocumentationEntryId(id)
+                case None => false
+            }
+            if (!isAdmonitionKind(tag.name) || invalidId) {
+                throw IllegalArgumentException("invalid cached documentation admonition")
+            }
         }
         let expected = parseDocComment(value.raw)
         // The lexer-derived binding pass validates this range independently;

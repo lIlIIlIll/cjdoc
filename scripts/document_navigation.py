@@ -76,10 +76,10 @@ def _transform(value, decode, flat_type_semantics):
 
 
 def decode_document_navigation(value):
-    current = isinstance(value, dict) and value.get('schemaVersion') == 'cjdoc.doc-ir/17'
+    current = isinstance(value, dict) and value.get('schemaVersion') == 'cjdoc.doc-ir/18'
     return _transform(value, True, current)
 
 
 def encode_document_navigation(value):
-    current = isinstance(value, dict) and value.get('schemaVersion') == 'cjdoc.doc-ir/17'
+    current = isinstance(value, dict) and value.get('schemaVersion') == 'cjdoc.doc-ir/18'
     return _transform(value, False, current)

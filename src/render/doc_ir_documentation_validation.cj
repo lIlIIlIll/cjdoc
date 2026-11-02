@@ -3,9 +3,9 @@ package cjdoc.render
 import cjdoc.model.*
 import std.collection.*
 
-// Replay must enforce the same reserved throws identity grammar as the source
-// producer. The generic opaque field-id rule cannot prove these associations.
-private func validReplayThrowsEntryId(value: String): Bool {
+// Replay uses the producer's strict author-ID grammar for throws and
+// admonitions. Opaque field IDs alone cannot prove these associations.
+internal func validReplayAuthorEntryId(value: String): Bool {
     if (value.isEmpty() || value.size > 64) { return false }
     for (index in 0..value.size) {
         let byte = value[index]
@@ -24,7 +24,7 @@ private func validateReplayThrowsEntries(declaration: SymbolDoc, comment: DocCom
     for (text in comment.localizedTexts) {
         if (text.kind != "throws" || !text.fieldId.startsWith(prefix)) { continue }
         let id = text.fieldId[prefix.size..]
-        if (!validReplayThrowsEntryId(id)) {
+        if (!validReplayAuthorEntryId(id)) {
             domainFail("$.documentation.localizedTexts.fieldId", "invalid explicit throws author identity")
         }
         if (text.state == "unpaired") {
@@ -214,7 +214,7 @@ internal func validatedDocumentationCapacity(documentation: DocumentationSet,
     let fileKeys = HashSet<String>()
     index = 0
     for (file in documentation.files) {
-        if (!safeRelativePath(file.path) || !filePaths.add(file.path) ||
+        if (!safeRelativePath(file.path) || !filePaths.add(compositeKey(file.moduleId, file.path)) ||
             !packageKeys.contains(compositeKey(file.moduleId, file.packageName))) {
             domainFail("$.files[${index}]", "unsafe/duplicate path or unknown module/package")
         }
@@ -353,6 +353,7 @@ internal func validatedDocumentationCapacity(documentation: DocumentationSet,
         }
         if (let Some(comment) <- declaration.documentation) {
             validateReplayThrowsEntries(declaration, comment)
+            validateReplayAdmonitionEntries(declaration, comment)
             let validFields = HashSet<String>()
             for (text in comment.localizedTexts) {
                 if (let Some(navigation) <- text.navigation) {
@@ -399,6 +400,12 @@ internal func validatedDocumentationCapacity(documentation: DocumentationSet,
             }
             for (tag in comment.tags) {
                 let tagPath = "$.declarations[${index}].documentation.tags"
+                if (let Some(source) <- tag.source) {
+                    validateRange(source, tagPath + ".source")
+                    if (source.path != declaration.source.path) {
+                        domainFail(tagPath + ".source", "tag source must belong to declaration file")
+                    }
+                }
                 if (let Some(navigation) <- tag.navigation) {
                     navigationEvidence.validate(navigation, tagPath + ".navigation", declaration.moduleId)
                 }

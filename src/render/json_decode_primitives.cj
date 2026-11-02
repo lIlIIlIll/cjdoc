@@ -276,7 +276,8 @@ internal func decodeTag(node: JsonNode, path: String): DocTag {
     let value = strictObject(node, path,
         ["name", "subject", "description", "referenceState", "targetSymbolId", "directives",
             "exampleMarkdown", "contentLanguage", "translationState", "fieldId",
-            "descriptionMarkdown", "navigation"])
+            "descriptionMarkdown", "navigation", "entryId", "source"])
+    let source = required(value, "source", path)
     DocTag(stringAt(value, "name", path), stringAt(value, "subject", path),
         stringAt(value, "description", path),
         referenceState: stringAt(value, "referenceState", path),
@@ -289,13 +290,18 @@ internal func decodeTag(node: JsonNode, path: String): DocTag {
         fieldId: defaultStringAt(value, "fieldId", path),
         descriptionMarkdown: decodeOptionalDocumentationMarkdown(value.get("descriptionMarkdown"),
             "${path}.descriptionMarkdown"),
-        navigation: decodeTypeNavigation(value.get("navigation"), "${path}.navigation"))
+        navigation: decodeTypeNavigation(value.get("navigation"), "${path}.navigation"),
+        entryId: nullableStringAt(value, "entryId", path),
+        source: if (source.isNull) { None } else { Some(decodeRange(source, "${path}.source")) })
 }
 
 
 internal func decodeMarkdownMetadata(node: JsonNode, kind: String,
     path: String): MarkdownNodeMetadata {
     match (kind) {
+        case "admonition" =>
+            let value = strictObject(node, path, ["level"])
+            MarkdownNodeMetadata.forAdmonition(stringAt(value, "level", path))
         case "heading" =>
             let value = strictObject(node, path, ["level"])
             MarkdownNodeMetadata.forHeading(intAt(value, "level", path))
@@ -360,7 +366,7 @@ internal func decodeMarkdown(node: JsonNode, path: String, depth: Int64): Markdo
 }
 internal func decodeComment(node: JsonNode, path: String): DocComment {
     let value = strictObject(node, path, ["rawText", "summary", "description", "markdown", "tags",
-        "defaultLanguage", "localizedTexts"])
+        "defaultLanguage", "localizedTexts", "localizationScope"])
     let tags = ArrayList<DocTag>()
     var index: Int64 = 0
     for (tag in jsonArrayValues(arrayAt(value, "tags", path))) {
@@ -372,7 +378,8 @@ internal func decodeComment(node: JsonNode, path: String): DocComment {
         decodeMarkdown(required(value, "markdown", path), "${path}.markdown", 0),
         tags: tags.toArray(),
         defaultLanguage: optionalDocumentationLanguage(value.get("defaultLanguage"), path),
-        localizedTexts: decodeDocumentationTexts(value.get("localizedTexts"), path))
+        localizedTexts: decodeDocumentationTexts(value.get("localizedTexts"), path),
+        localizationScope: stringAt(value, "localizationScope", path))
 }
 internal func decodeParameter(node: JsonNode, path: String): ParameterDoc {
     let value = strictObject(node, path, ["name", "type", "documentation", "defaultExpression"])

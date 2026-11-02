@@ -228,8 +228,12 @@ def run_smoke(binary: Path, version: str,
         output = result.stdout.strip()
         if name == "version" and output != f"cjdoc {release_core(version)}":
             raise ValueError("extracted binary --version does not match the package")
-        if name == "schema" and "doc-ir-v17" not in output.splitlines():
-            raise ValueError("extracted binary schema list omits doc-ir-v17")
+        if name == "schema":
+            schema_names = set(output.splitlines())
+            if not {"doc-ir", "doc-ir-v18", "source-provenance"}.issubset(schema_names):
+                raise ValueError("extracted binary schema list omits a current schema")
+            if "doc-ir-v17" in schema_names:
+                raise ValueError("extracted binary schema list retains the obsolete Doc IR v17 entry")
         evidence[name] = output
     return evidence
 

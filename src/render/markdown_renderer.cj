@@ -313,6 +313,35 @@ internal func appendMarkdownNodeMarkdown(out: RenderTextBuffer, node: MarkdownNo
                 case None => appendMarkdownCodeBlock(out, node.literal, "", "`", 3)
             }
         case "thematic_break" => out.append("---\n\n")
+        case "admonition" =>
+            match (capturedAdmonitionLevel(node)) {
+                case Some(level) =>
+                    match (capturedAdmonitionMarkdownMarker(level)) {
+                        case Some(marker) =>
+                            let nested = RenderTextBuffer()
+                            nested.append("[!${marker}]\n\n")
+                            for (child in node.children) {
+                                appendMarkdownNodeMarkdown(nested, child, assetLookup, headingBase,
+                                    pagePath: pagePath, symbolIndex: symbolIndex,
+                                    capturedLinks: capturedLinks, canonicalHtml: canonicalHtml,
+                                    headingContext: headingContext)
+                            }
+                            appendMarkdownPrefixedBlock(out, nested.toString(), "> ", "> ")
+                            out.append("\n")
+                        case None => for (child in node.children) {
+                            appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase,
+                                pagePath: pagePath, symbolIndex: symbolIndex,
+                                capturedLinks: capturedLinks, canonicalHtml: canonicalHtml,
+                                headingContext: headingContext)
+                        }
+                    }
+                case None => for (child in node.children) {
+                    appendMarkdownNodeMarkdown(out, child, assetLookup, headingBase,
+                        pagePath: pagePath, symbolIndex: symbolIndex,
+                        capturedLinks: capturedLinks, canonicalHtml: canonicalHtml,
+                        headingContext: headingContext)
+                }
+            }
         case "block_quote" =>
             let nested = RenderTextBuffer()
             for (child in node.children) {
@@ -417,11 +446,12 @@ internal func appendMarkdownExampleContent(out: RenderTextBuffer, value: String)
 
 private func markdownHasDescription(comment: DocComment): Bool {
     for (tag in comment.tags) {
-        if (tag.name == "deprecated" || tag.name == "summary" || tag.name == "description") {
+        if (tag.name == "deprecated" || tag.name == "summary" ||
+            tag.name == "description" || isAdmonitionLevel(tag.name)) {
             return true
         }
     }
-    if (comment.localizedTexts.isEmpty()) {
+    if (comment.localizationScope == "admonitions" || comment.localizedTexts.isEmpty()) {
         return !comment.markdown.children.isEmpty() || !comment.markdown.literal.isEmpty()
     }
     false
@@ -468,6 +498,26 @@ internal func appendDocumentationTagMarkdown(out: RenderTextBuffer, tag: DocTag,
     }
 }
 
+private func appendDocumentationAdmonitionsMarkdown(out: RenderTextBuffer,
+    comment: DocComment, assetLookup: HashMap<String, String>, locale: String,
+    pagePath: String, symbolIndex: ?HashMap<String, SymbolDoc>, canonicalHtml: Bool,
+    headingBase: Int64, headingAnchorPrefix: String): Unit {
+    for (tagIndex in 0..comment.tags.size) {
+        let tag = comment.tags[tagIndex]
+        if (!isAdmonitionLevel(tag.name)) { continue }
+        match (tag.descriptionMarkdown) {
+            case Some(tree) =>
+                if (capturedAdmonitionTreeContains(tree, tag.name)) {
+                    appendDocumentationTagMarkdown(out, tag, assetLookup, locale, pagePath,
+                        symbolIndex, canonicalHtml: canonicalHtml, headingBase: headingBase,
+                        headingAnchorPrefix: headingAnchorPrefix, headingOrdinal: tagIndex)
+                    out.append("\n\n")
+                }
+            case None => ()
+        }
+    }
+}
+
 internal func appendDocumentationListTagMarkdown(out: RenderTextBuffer, tag: DocTag,
     assetLookup: HashMap<String, String>, locale: String, pagePath: String,
     symbolIndex: ?HashMap<String, SymbolDoc>, canonicalHtml!: Bool = false,
@@ -492,7 +542,7 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
         if (sections.isSome()) {
             out.append("${headingPrefix} ${label(locale, "Description", "说明")}\n\n")
         }
-        if (comment.localizedTexts.isEmpty()) {
+        if (comment.localizationScope == "admonitions" || comment.localizedTexts.isEmpty()) {
             appendMarkdownNodeMarkdown(out, comment.markdown, assetLookup, headingBase, pagePath: pagePath,
                 symbolIndex: symbolIndex, canonicalHtml: canonicalHtml,
                 headingAnchorPrefix: headingAnchorPrefix)
@@ -508,6 +558,8 @@ internal func appendDocumentationMarkdown(out: RenderTextBuffer, comment: DocCom
                 out.append("\n\n")
             }
         }
+        appendDocumentationAdmonitionsMarkdown(out, comment, assetLookup, locale, pagePath,
+            symbolIndex, canonicalHtml, headingBase, headingAnchorPrefix)
     }
     if (markdownSectionSelected(sections, "contracts")) {
         for (tagIndex in 0..comment.tags.size) {

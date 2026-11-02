@@ -22,6 +22,8 @@ CANGJIE_CONTRACT_FIXTURES = {
     # Shared group metadata, source-free replay and mixed member groups are
     # exercised by DeclarationGroupingContracts through the public facade.
     "declaration-groups",
+    # Per-file caller-pinned source evidence and replay coverage (#175).
+    "source_provenance",
 }
 CLI_CONTRACT_FIXTURES = {
     "cached_dependencies", "conditional_complex", "deep_binary", "duplicate",
@@ -45,6 +47,8 @@ CLI_CONTRACT_FIXTURES = {
     "dependency_public_api",
     # Shared query cases, scoped tag badges and source-free Agent artifacts.
     "declaration-tags",
+    # Captured API/guide admonitions through the CLI consumer contracts (#177).
+    "admonitions",
 }
 
 
@@ -72,7 +76,7 @@ class FixtureContractTest(unittest.TestCase):
             document = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             self.fail(f"{fixture} did not emit one valid JSON document: {error}; stderr={result.stderr}")
-        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/17")
+        self.assertEqual(document.get("schemaVersion"), "cjdoc.doc-ir/18")
         metadata = document.get("metadata")
         self.assertIsInstance(metadata, dict)
         self.assertEqual(set(metadata), {"groups", "tags"})

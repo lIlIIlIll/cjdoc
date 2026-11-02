@@ -149,7 +149,7 @@ internal func markdownSymbolPagePath(symbol: SymbolDoc): String {
 internal func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
     assetLookup: HashMap<String, String>, heading: String, locale: String,
     pagePath: String, symbolIndex: HashMap<String, SymbolDoc>,
-    catalog: DeclarationGroupCatalog): Unit {
+    projection: RenderProjection): Unit {
     let anchor = symbolAnchor(symbol)
     out.append("<a id=\"${anchor}\"></a>\n")
     out.append("${heading} ")
@@ -160,7 +160,7 @@ internal func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
     }
     out.append("\n\n")
     appendMarkdownCodeBlock(out, symbol.headerSpelling, "cangjie", "`", 3)
-    appendDeclarationClassificationMarkdown(out, catalog.classificationFor(symbol), locale)
+    appendDeclarationClassificationMarkdown(out, projection.catalog.classificationFor(symbol), locale)
     appendMarkdownTypeDetails(out, symbol, pagePath, symbolIndex, locale)
     match (symbol.documentation) {
         case Some(comment) => appendDocumentationMarkdown(out, comment, assetLookup,
@@ -172,7 +172,10 @@ internal func appendMarkdownSiteSymbol(out: RenderTextBuffer, symbol: SymbolDoc,
     out.append("- "); appendEscapedMarkdownText(out, "${symbol.kind} · ${symbol.visibility}")
     out.append("\n- "); appendMarkdownCodeSpan(out,
         "${symbol.source.path}:${symbol.source.start.line}:${symbol.source.start.column}")
-    out.append("\n\n")
+    out.append("\n")
+    appendSourceReferenceEvidenceMarkdown(out,
+        projection.sourceReferences.project(symbol.moduleId, symbol.source), locale)
+    out.append("\n")
 }
 
 internal func nestedAssetLookup(assets: ArrayList<AssetDoc>): HashMap<String, String> {
@@ -183,6 +186,23 @@ internal func nestedAssetLookup(assets: ArrayList<AssetDoc>): HashMap<String, St
         lookup["path:${asset.sourcePath}"] = path
     }
     lookup
+}
+
+private func appendMarkdownExposureSource(out: RenderTextBuffer,
+    sourceReferences: SourceReferenceProjection, moduleId: String,
+    source: SourceRange, locale: String): Unit {
+    match (sourceReferences.project(moduleId, source).url) {
+        case Some(url) =>
+            match (markdownLinkDestination(url)) {
+                case Some(destination) =>
+                    out.append(" · [")
+                    appendEscapedMarkdownText(out,
+                        label(locale, "Exposure source", "暴露位置"))
+                    out.append("](${destination})")
+                case None => ()
+            }
+        case None => ()
+    }
 }
 
 internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
@@ -219,6 +239,8 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                     appendMarkdownCodeSpan(out, reExport.targetPackageName)
                     out.append(" · "); appendEscapedMarkdownText(out,
                         "${reExport.kind} · ${reExport.state}")
+                    appendMarkdownExposureSource(out, projection.sourceReferences,
+                        pkg.source.moduleId, reExport.source, locale)
                     out.append("\n")
                     continue
                 }
@@ -226,6 +248,8 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                     out.append("- "); appendMarkdownCodeSpan(out, reExport.targetPackageName)
                     out.append(" · "); appendEscapedMarkdownText(out,
                         "${reExport.kind} · ${reExport.state}")
+                    appendMarkdownExposureSource(out, projection.sourceReferences,
+                        pkg.source.moduleId, reExport.source, locale)
                     out.append("\n")
                     continue
                 }
@@ -248,6 +272,8 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                         }
                     }
                     out.append(" · "); appendEscapedMarkdownText(out, reExport.state)
+                    appendMarkdownExposureSource(out, projection.sourceReferences,
+                        pkg.source.moduleId, reExport.source, locale)
                     out.append("\n")
                 }
             }
@@ -299,7 +325,7 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                                 continue
                             }
                             appendMarkdownSiteSymbol(out, symbol, assetLookup, entryLevel, locale,
-                                pagePath, projection.visibleIndex, projection.catalog)
+                                pagePath, projection.visibleIndex, projection)
                             appendExternalDocumentationMarkdown(out, documentation, symbol, locale,
                                 pagePath, headingPrefix: entryLevel + "#")
                         }
@@ -328,6 +354,12 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                 symbolIndex: Some(projection.visibleIndex), headingAnchorPrefix: symbolAnchor(symbol))
             case None => ()
         }
+        out.append("- ${label(locale, "Location", "位置")}: ")
+        appendMarkdownCodeSpan(out, "${symbol.source.path}:${symbol.source.start.line}:${symbol.source.start.column}")
+        out.append("\n")
+        appendSourceReferenceEvidenceMarkdown(out,
+            projection.sourceReferences.project(symbol.moduleId, symbol.source), locale)
+        out.append("\n")
         appendExternalDocumentationMarkdown(out, documentation, symbol, locale, markdownSymbolPagePath(symbol))
         match (membersByOwner.get(symbol.id)) {
             case Some(members) => if (!members.isEmpty()) {
@@ -394,7 +426,7 @@ internal func appendMarkdownSiteArtifacts(artifacts: RenderArtifactCollector,
                             appendMarkdownSiteSymbol(out, member, assetLookup,
                                 entryLevel, locale,
                                 markdownSymbolPagePath(symbol), projection.visibleIndex,
-                                projection.catalog)
+                                projection)
                             appendExternalDocumentationMarkdown(out, documentation, member, locale,
                                 markdownSymbolPagePath(symbol), headingPrefix: entryLevel + "#")
                         }

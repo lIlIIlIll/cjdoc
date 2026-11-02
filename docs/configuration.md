@@ -2,7 +2,7 @@
 
 `cjdoc.toml` 放在项目根目录（即 `--project` 指向的目录），所有表都可省略。`generate`、`check`、`serve` 会读取这个文件；`render` 直接使用 `docs.json` 里已经保存的配置，不重新读取 `cjdoc.toml`。Doc IR 大小上限使用默认值或命令行选项。
 
-配置写错（未知键、重复键、非法取值）时，命令会打印 `error:` 并以退出码 `2` 结束，不会生成文档。`[i18n]`、`[lint]`、`[coverage]` 及其子表、`[highlight]`、`[limits]` 和 `[metadata]` 是严格解析的；出现不认识的键会报错。`[docs]`、`[[docs.pages]]`、`[docs.packages]` 只读取列出的键，键名写错会被静默忽略，改完配置后建议重新生成确认效果。
+配置写错（未知键、重复键、非法取值）时，命令会打印 `error:` 并以退出码 `2` 结束，不会生成文档。`[i18n]`、`[lint]`、`[coverage]` 及其子表、`[highlight]`、`[limits]`、`[metadata]` 和 `[[source.repositories]]` 是严格解析的；出现不认识的键会报错。`[docs]`、`[[docs.pages]]`、`[docs.packages]` 只读取列出的键，键名写错会被静默忽略，改完配置后建议重新生成确认效果。
 
 ## [docs]：项目首页
 
@@ -91,6 +91,67 @@ overview = "docs/pocketkit-core.md"
 
 `slug` 是包名去掉 ASCII 字母和数字之外的字符后折叠成的短名，例如 `pocketkit-core`；自动包页路由为 `concepts/packages/<slug>.html`。
 
+## `[[source.repositories]]`：多仓源码来源
+
+为 workspace 或混合源码树中的每个源码根登记 GitHub 仓库，并用 caller-pinned receipt 核对本次生成读取的文件字节。每个 `[[source.repositories]]` 是一条登记；URL 必须是规范的 `https://github.com/owner/repo` 仓库根地址，显式多仓 revision 必须是完整 40 位小写十六进制 commit SHA。
+
+```toml
+[[source.repositories]]
+root = "packages/core/src"
+url = "https://github.com/example/core"
+revision = "1111111111111111111111111111111111111111"
+repository-path = "src"
+receipt = "evidence/core-source.json"
+receipt-sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+[[source.repositories]]
+root = "packages/macros/src"
+url = "https://github.com/example/macros"
+revision = "2222222222222222222222222222222222222222"
+repository-path = "src"
+receipt = "evidence/macros-source.json"
+receipt-sha256 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+```
+
+示例里的仓库、commit、摘要都是占位值。生成前请替换为真实 URL、该仓库的完整 commit SHA、receipt 路径和实际计算的摘要。`[[source.repositories]]` 可以位于其他普通 TOML 表或数组表之前或之后；`[docs]`、`[[docs.pages]]`、`[i18n]` 等表的顺序不会改变这些登记的归属。下一条 `[[source.repositories]]` 开始新的登记。
+
+| 键 | 含义 | 默认值 | 约束 |
+|---|---|---|---|
+| `root` | 本地被登记的源码目录或单个源码文件 | 必填 | 相对 `cjdoc.toml` 所在项目根目录，或绝对本地路径；路径只用于生成，不写入 Doc IR。必须是存在的普通目录或文件，不能是符号链接。 |
+| `url` | 该源码根所属的 GitHub 仓库根 URL | 必填 | 规范 HTTPS `https://github.com/owner/repo`。 |
+| `revision` | 仓库 commit | 必填 | 显式登记要求完整 40 位小写十六进制 commit SHA。旧 `--repository-revision` 单仓选项保留原有 ref 行为。 |
+| `repository-path` | 仓库内路径前缀 | `""` | 必须是安全的仓内相对路径。对目录 root，它会加在 root 下的相对文件路径前；对单文件 root，它必须是该文件的完整仓内路径且不能为空。 |
+| `receipt` | `cjdoc.source-provenance/1` JSON receipt | 无 | 相对 `cjdoc.toml` 的路径或绝对文件路径。 |
+| `receipt-sha256` | receipt 原始字节摘要 | 无 | 64 位小写十六进制 SHA-256；要得到 `verified`，必须与 `receipt` 同时提供。 |
+
+每个 receipt 描述单个仓库、一个完整 commit 和该仓库内文件的原始字节摘要：
+
+```json
+{
+  "schemaVersion": "cjdoc.source-provenance/1",
+  "repository": {
+    "url": "https://github.com/example/core",
+    "revision": "1111111111111111111111111111111111111111"
+  },
+  "files": [
+    {
+      "path": "src/core.cj",
+      "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ]
+}
+```
+
+Receipt 的必需字段为 `schemaVersion`、`repository`、`files`；`repository` 必须含 `url` 和 `revision`，每条 `files` 记录必须含 `path` 和 `sha256`。不接受额外字段或重复 JSON 键。文件记录的 `path` 必须唯一且为安全的仓内相对路径，`sha256` 是该文件原始字节的 64 位小写十六进制 SHA-256。用 `cjdoc schema source-provenance` 查看完整 schema。
+
+`receipt-sha256` 必须由调用方通过独立于 receipt 本身的可信渠道取得，并对 receipt 文件的**精确原始字节**计算。改动换行、空白或 JSON 排版都会改变这个 pin。Receipt 中的 `files[].sha256` 则针对本次捕获文件的原始字节，cjdoc 在同一次有界读取中用它核对来源；`normalizedDigest` 是把捕获字节中的 CRLF/CR 换行归一为 LF 后计算的摘要。公开 Doc IR 的文件级 `provenance` 记录 `state`、`reason`、`repository`、`repositoryPath`、`sourceDigest`、`normalizedDigest`、`evidenceIdentity` 和 `evidenceKind`；摘要字段采用 `sha256:<64位小写十六进制>`，其中 `evidenceIdentity` 是 receipt 原始字节摘要。
+
+`verified` 使用 `reason = "receipt_matched"`、`evidenceKind = "caller_pinned_receipt"`；`declared` 只用于旧单仓映射，使用 `reason = "legacy_project_repository"`、`evidenceKind = "none"`，且 `sourceDigest`、`normalizedDigest`、`evidenceIdentity` 均为空。`ambiguous` 使用 `reason = "conflicting_registration"`；`unavailable` 与 `ambiguous` 都不记录仓库、仓内路径或 evidence identity，且 `evidenceKind = "none"`。只有 `verified` 或 `declared` 且 source range 有效时会生成源码 URL。
+
+`verified` 只表示：配置仓库 URL/commit 与被 pin 的 receipt 一致，且 receipt 中对应文件摘要匹配本次捕获的原始源码字节。它不是 GitHub、Git commit/tree/blob、构建结果或工作树干净状态的独立认证。调用方承担 receipt 内容和 pin 的信任责任；若 receipt 与 pin 都来自同一个未受信来源，它们本身不能建立独立信任。
+
+出现任意 `[[source.repositories]]` 后，来源采用严格登记模式：未匹配登记的文件不会回退到项目主仓或 `--repository-url` 单仓选项；未登记文件为 `unavailable/no_registration`，报告 `CJDOC1032` 并省略源码链接。等价登记会合并；重叠但映射不同的登记会使相关文件成为 `ambiguous/conflicting_registration`，报告 `CJDOC1032` 且不生成源码链接，不会按最长前缀或登记顺序猜测。Receipt 缺失、未 pin、格式/仓库不匹配或某文件摘要不匹配时，来源不会成为 `verified`，该文件会得到 `unavailable` 来源状态、`CJDOC1032` warning 且省略源码链接；其源码 API 正文仍保留。旧的 `--repository-url` / `--repository-revision` 映射产生 `declared`，不提供字节回执证明。HTML、Markdown、Agent 和查询 renderer 都消费已捕获的来源状态，不在重放时读取源码或 receipt。
+
 ## [metadata]：分组与标签显示名
 
 `metadata` 是可选配置。对每个被发现的 module，cjdoc 从该模块的项目根目录读取一次 `cjdoc.toml`；同一实际根的解析结果可以复用，但仍分别绑定到 module ID。workspace 根配置不会自动传播到成员项目或依赖 module。每个配置文件最多 64 KiB。`[[metadata.groups]]` 定义包级或声明容器级分组，`[[metadata.tags]]` 为该 module 的声明标签提供显示标题。
@@ -133,7 +194,7 @@ en = "Streaming"
 配置解析后，scope 绑定错误会保留为文档诊断并使结果成为 partial：`CJDOC3134` 表示 package/owner 不存在，`CJDOC3135` 表示 owner 有歧义，`CJDOC3136` 表示同 scope 定义重复（相同 scope 的竞争定义均无效），`CJDOC3137` 表示无集中定义的 `@group <id>` 简写。隐藏声明仍可作为定义的绑定目标；公开 Doc IR 与 HTML 只捕获当前发布声明实际使用的定义，发布范围收窄时会再次删除无成员定义。
 `CJDOC3134`–`CJDOC3136` 的位置保留配置所属模块的可移植逻辑路径：根配置为 `cjdoc.toml`，workspace 成员例如 `packages/member/cjdoc.toml`，显式依赖源例如 `dependencies/peer/cjdoc.toml`。依赖使用其配置逻辑名称，不输出本机绝对目录。
 
-完整捕获的 `metadata.groups` 与 `metadata.tags` 写入 Doc IR/17。`render --input docs.json` 只使用已捕获 metadata，不需要原项目源码或 `cjdoc.toml`。未在配置中定义的 `@tag` 仍按 ID 显示并可精确搜索；未定义的无标题 `@group` 简写则不产生分组。
+完整捕获的 `metadata.groups` 与 `metadata.tags` 写入 `cjdoc.doc-ir/18`。`render --input docs.json` 只使用已捕获 metadata，不需要原项目源码或 `cjdoc.toml`。当前 decoder 只接受 Doc IR v18；旧快照不会迁移，需从可用源码重新生成当前格式，见[使用手册](usage.md#从已有-json-重新生成)。未在配置中定义的 `@tag` 仍按 ID 显示并可精确搜索；未定义的无标题 `@group` 简写则不产生分组。
 
 ## [limits]：Doc IR 大小上限
 

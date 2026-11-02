@@ -1,16 +1,16 @@
 package cjdoc.schema_data
 
 // Current distribution-time schema contracts; docs/schema copies are emitted by cjdoc schema.
-public let DOC_IR_V17_SCHEMA = """
+public let DOC_IR_V18_SCHEMA = """
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v17.schema.json",
-  "title": "cjdoc Doc IR v17",
+  "$id": "https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v18.schema.json",
+  "title": "cjdoc Doc IR v18",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "generator", "status", "apiCollectionState", "documentationRevision", "project", "configuration", "metadata", "providers", "modules", "packages", "files", "declarations", "assets", "orphanDocComments", "macroInvocations", "unsupportedDeclarations", "unboundSemanticDeclarations", "diagnostics", "dependencies", "documentSets"],
   "properties": {
-    "schemaVersion": {"const": "cjdoc.doc-ir/17"},
+    "schemaVersion": {"const": "cjdoc.doc-ir/18"},
     "generator": {"$ref": "#/$defs/generator"},
     "status": {"enum": ["complete", "partial"]},
     "apiCollectionState": {"enum": ["resolved", "partial", "unavailable"]},
@@ -59,18 +59,29 @@ public let DOC_IR_V17_SCHEMA = """
     },
     "documentationText": {
       "type": "object", "additionalProperties": false,
-      "required": ["fieldId", "kind", "subject", "language", "text", "markdown", "source", "state", "referenceState", "targetSymbolId", "directives", "navigation"],
+      "required": ["fieldId", "kind", "subject", "language", "text", "markdown", "source", "state", "referenceState", "targetSymbolId", "directives", "navigation", "entryId"],
       "properties": {
         "fieldId": {"type": "string"}, "kind": {"type": "string"}, "subject": {"type": "string"},
         "language": {"enum": ["zh-CN", "en", null]}, "text": {"type": "string"},
-        "markdown": {"$ref": "#/$defs/markdownNode"},
+        "markdown": {"$ref": "#/$defs/markdownDocument"},
         "source": {"anyOf": [{"$ref": "#/$defs/sourceRange"}, {"type": "null"}]},
         "state": {"enum": ["valid", "empty", "conflict", "unpaired", "invalid"]},
         "referenceState": {"$ref": "#/$defs/semanticState"},
         "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"}, "directives": {"type": "string"},
+        "entryId": {"$ref": "#/$defs/nullableAuthorEntryId"},
         "navigation": {"anyOf": [{"$ref": "#/$defs/typeNavigation"}, {"type": "null"}]}
       },
       "allOf": [
+        {"if": {"properties": {"kind": {"enum": ["note", "warning", "danger"]}}},
+          "then": {"allOf": [
+            {"properties": {"state": {"enum": ["valid", "empty", "unpaired", "invalid"]}}},
+            {"if": {"properties": {"state": {"enum": ["valid", "unpaired"]}}},
+              "then": {"properties": {"markdown": {"$ref": "#/$defs/admonitionDocumentShape"}}},
+              "else": {"properties": {"markdown": {"properties": {"children": {"maxItems": 0}}}}}},
+            {"if": {"properties": {"state": {"enum": ["unpaired", "invalid"]}}},
+              "then": {"properties": {"fieldId": {"const": ""}}},
+              "else": {"properties": {"entryId": {"type": "string"}}}}
+          ]}},
         {"if": {"properties": {"state": {"enum": ["valid", "empty", "conflict"]}}},
           "then": {"properties": {"fieldId": {"minLength": 1}}}},
         {"if": {"properties": {"referenceState": {"const": "resolved"}}},
@@ -96,7 +107,7 @@ public let DOC_IR_V17_SCHEMA = """
         "title": {"type": "string"}, "kind": {"enum": ["project", "package", "module", "guide"]},
         "packageName": {"type": "string"}, "language": {"enum": ["zh-CN", "en", null]},
         "defaultLanguage": {"enum": ["zh-CN", "en", null]}, "text": {"type": "string"},
-        "markdown": {"$ref": "#/$defs/markdownNode"},
+        "markdown": {"$ref": "#/$defs/markdownDocument"},
         "targetSymbolIds": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/symbolId"}},
         "bindings": {"type": "array", "items": {"type": "object", "additionalProperties": false,
           "required": ["target", "selector", "provenance", "version", "sourceLine", "language", "state", "targetSymbolId", "navigation"],
@@ -441,12 +452,12 @@ public let DOC_IR_V17_SCHEMA = """
     },
     "module": {
       "type": "object", "additionalProperties": false,
-      "required": ["id", "name", "role", "sourcePrefix", "organization", "repositoryPath", "packageNames", "dependencyIds"],
+      "required": ["id", "name", "role", "sourcePrefix", "organization", "packageNames", "dependencyIds"],
       "properties": {
         "id": {"$ref": "#/$defs/moduleId"}, "name": {"type": "string", "minLength": 1},
         "role": {"enum": ["root", "workspace", "pathDependency", "externalDependency"]},
         "sourcePrefix": {"anyOf": [{"const": ""}, {"$ref": "#/$defs/portablePath"}]}, "organization": {"$ref": "#/$defs/nullableString"}, "packageNames": {"$ref": "#/$defs/stringArray"},
-        "dependencyIds": {"type": "array", "items": {"$ref": "#/$defs/moduleId"}}, "repositoryPath": {"anyOf": [{"type": "null"}, {"const": ""}, {"$ref": "#/$defs/portablePath"}]}
+        "dependencyIds": {"type": "array", "items": {"$ref": "#/$defs/moduleId"}}
       }
     },
     "package": {
@@ -482,12 +493,93 @@ public let DOC_IR_V17_SCHEMA = """
         "bindings": {"type": "array", "items": {"$ref": "#/$defs/reExportBinding"}}
       }
     },
+    "sourceDigest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "nullableSourceDigest": {"anyOf": [{"$ref": "#/$defs/sourceDigest"}, {"type": "null"}]},
+    "sourceRepositoryPath": {
+      "type": "string", "minLength": 1, "pattern": "^[^/]+(?:/[^/]+)*$",
+      "not": {"anyOf": [{"pattern": "^[A-Za-z]:"}, {"pattern": "[\\\\\\\\]"},
+        {"pattern": "[\\u0000-\\u001f\\u007f]"}, {"pattern": "(^|/)\\\\.{1,2}(/|$)"}]}
+    },
+    "sourceProvenanceState": {"enum": ["verified", "declared", "unavailable", "ambiguous"]},
+    "sourceProvenanceReason": {"enum": ["receipt_matched", "legacy_project_repository", "no_registration", "no_project_repository",
+      "missing_receipt", "unpinned_receipt", "receipt_unavailable", "invalid_receipt", "receipt_pin_mismatch",
+      "receipt_repository_mismatch", "missing_file_record", "digest_mismatch", "conflicting_registration",
+      "path_escape", "invalid_range", "capture_unavailable", "resource_limit"]},
+    "sourceProvenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "reason", "repository", "repositoryPath", "sourceDigest", "normalizedDigest", "evidenceIdentity", "evidenceKind"],
+      "properties": {
+        "state": {"$ref": "#/$defs/sourceProvenanceState"},
+        "reason": {"$ref": "#/$defs/sourceProvenanceReason"},
+        "repository": {"anyOf": [{"$ref": "#/$defs/repository"}, {"type": "null"}]},
+        "repositoryPath": {"anyOf": [{"$ref": "#/$defs/sourceRepositoryPath"}, {"type": "null"}]},
+        "sourceDigest": {"$ref": "#/$defs/nullableSourceDigest"},
+        "normalizedDigest": {"$ref": "#/$defs/nullableSourceDigest"},
+        "evidenceIdentity": {"$ref": "#/$defs/nullableSourceDigest"},
+        "evidenceKind": {"enum": ["caller_pinned_receipt", "none"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"state": {"const": "verified"}}},
+          "then": {"properties": {"reason": {"const": "receipt_matched"},
+            "repository": {"allOf": [{"$ref": "#/$defs/repository"}, {"properties": {"revision": {"pattern": "^[0-9a-f]{40}$"}}}]},
+            "repositoryPath": {"$ref": "#/$defs/sourceRepositoryPath"}, "sourceDigest": {"$ref": "#/$defs/sourceDigest"},
+            "normalizedDigest": {"$ref": "#/$defs/sourceDigest"}, "evidenceIdentity": {"$ref": "#/$defs/sourceDigest"},
+            "evidenceKind": {"const": "caller_pinned_receipt"}}}},
+        {"if": {"properties": {"state": {"const": "declared"}}},
+          "then": {"properties": {"reason": {"const": "legacy_project_repository"}, "repository": {"$ref": "#/$defs/repository"},
+            "repositoryPath": {"$ref": "#/$defs/sourceRepositoryPath"}, "sourceDigest": {"type": "null"},
+            "normalizedDigest": {"type": "null"}, "evidenceIdentity": {"type": "null"}, "evidenceKind": {"const": "none"}}}},
+        {"if": {"properties": {"state": {"enum": ["unavailable", "ambiguous"]}}},
+          "then": {"properties": {"repository": {"type": "null"}, "repositoryPath": {"type": "null"},
+            "evidenceIdentity": {"type": "null"}, "evidenceKind": {"const": "none"},
+            "reason": {"not": {"enum": ["receipt_matched", "legacy_project_repository"]}}}}},
+        {"if": {"properties": {"state": {"const": "ambiguous"}}},
+          "then": {"properties": {"reason": {"const": "conflicting_registration"}}},
+          "else": {"properties": {"reason": {"not": {"const": "conflicting_registration"}}}}}
+      ]
+    },
+    "sourceReference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["url", "range", "state", "reason", "repository", "recordedRevision", "revisionKind",
+        "sourceDigest", "normalizedDigest", "evidenceIdentity", "evidenceKind"],
+      "properties": {
+        "url": {"$ref": "#/$defs/nullableString"}, "range": {"$ref": "#/$defs/sourceRange"},
+        "state": {"$ref": "#/$defs/sourceProvenanceState"},
+        "reason": {"$ref": "#/$defs/sourceProvenanceReason"},
+        "repository": {"anyOf": [{"$ref": "#/$defs/repository"}, {"type": "null"}]},
+        "recordedRevision": {"$ref": "#/$defs/nullableString"},
+        "revisionKind": {"enum": ["exact", "ref", "unavailable"]},
+        "sourceDigest": {"$ref": "#/$defs/nullableSourceDigest"},
+        "normalizedDigest": {"$ref": "#/$defs/nullableSourceDigest"},
+        "evidenceIdentity": {"$ref": "#/$defs/nullableSourceDigest"},
+        "evidenceKind": {"enum": ["caller_pinned_receipt", "none"]}
+      },
+      "allOf": [
+        {"if": {"properties": {"state": {"enum": ["unavailable", "ambiguous"]}}},
+          "then": {"properties": {"url": {"type": "null"}, "repository": {"type": "null"},
+            "recordedRevision": {"type": "null"}, "revisionKind": {"const": "unavailable"},
+            "evidenceIdentity": {"type": "null"}, "evidenceKind": {"const": "none"}}}},
+        {"if": {"properties": {"state": {"const": "verified"}}},
+          "then": {"properties": {"reason": {"const": "receipt_matched"},
+            "url": {"type": "string", "minLength": 1}, "repository": {"$ref": "#/$defs/repository"},
+            "recordedRevision": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "revisionKind": {"const": "exact"},
+            "sourceDigest": {"$ref": "#/$defs/sourceDigest"}, "normalizedDigest": {"$ref": "#/$defs/sourceDigest"},
+            "evidenceIdentity": {"$ref": "#/$defs/sourceDigest"}, "evidenceKind": {"const": "caller_pinned_receipt"}}}},
+        {"if": {"properties": {"state": {"const": "declared"}}},
+          "then": {"properties": {"reason": {"const": "legacy_project_repository"},
+            "url": {"type": "string", "minLength": 1}, "repository": {"$ref": "#/$defs/repository"},
+            "recordedRevision": {"type": "string", "minLength": 1}, "revisionKind": {"enum": ["exact", "ref"]},
+            "sourceDigest": {"type": "null"}, "normalizedDigest": {"type": "null"},
+            "evidenceIdentity": {"type": "null"}, "evidenceKind": {"const": "none"}}}}
+      ]
+    },
     "file": {
       "type": "object", "additionalProperties": false,
-      "required": ["path", "moduleId", "packageName"],
+      "required": ["path", "moduleId", "packageName", "provenance"],
       "properties": {
         "path": {"$ref": "#/$defs/portablePath"}, "moduleId": {"$ref": "#/$defs/moduleId"},
-        "packageName": {"type": "string", "minLength": 1}
+        "packageName": {"type": "string", "minLength": 1},
+        "provenance": {"$ref": "#/$defs/sourceProvenance"}
       }
     },
     "position": {
@@ -551,19 +643,50 @@ public let DOC_IR_V17_SCHEMA = """
     },
     "tag": {
       "type": "object", "additionalProperties": false,
-      "required": ["name", "subject", "description", "referenceState", "targetSymbolId", "navigation"],
+      "required": ["name", "subject", "description", "referenceState", "targetSymbolId", "navigation", "entryId", "source"],
       "properties": {
         "name": {"type": "string", "minLength": 1}, "subject": {"type": "string"},
         "description": {"type": "string"}, "referenceState": {"$ref": "#/$defs/semanticState"},
         "targetSymbolId": {"$ref": "#/$defs/nullableSymbolId"},
         "directives": {"type": "string"},
-        "exampleMarkdown": {"$ref": "#/$defs/markdownNode"},
+        "exampleMarkdown": {"$ref": "#/$defs/markdownDocument"},
         "contentLanguage": {"enum": ["zh-CN", "en", null]},
         "translationState": {"enum": ["complete", "fallback", "empty-fallback", "conflict-fallback", "empty", "conflict", "missing", "unknown", "unpaired"]},
         "fieldId": {"type": "string"},
-        "descriptionMarkdown": {"$ref": "#/$defs/markdownNode"},
+        "descriptionMarkdown": {"$ref": "#/$defs/markdownDocument"},
+        "entryId": {"$ref": "#/$defs/nullableAuthorEntryId"},
+        "source": {"anyOf": [{"$ref": "#/$defs/sourceRange"}, {"type": "null"}]},
         "navigation": {"anyOf": [{"$ref": "#/$defs/typeNavigation"}, {"type": "null"}]}
-      }
+      },
+      "allOf": [
+        {"if": {"properties": {"name": {"enum": ["note", "warning", "danger"]}}},
+          "then": {"required": ["descriptionMarkdown", "fieldId", "translationState"],
+            "properties": {"descriptionMarkdown": {"$ref": "#/$defs/admonitionDocumentShape"}},
+            "allOf": [{"if": {"properties": {"fieldId": {"const": ""}}},
+              "then": {"properties": {"translationState": {"const": "unpaired"}}},
+              "else": {"properties": {"entryId": {"type": "string"}}}}]}}
+      ]
+    },
+    "nullableAuthorEntryId": {
+      "anyOf": [{"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, {"type": "null"}]
+    },
+    "admonitionMetadata": {
+      "type": "object", "additionalProperties": false, "required": ["level"],
+      "properties": {"level": {"enum": ["note", "warning", "danger"]}}
+    },
+    "admonitionDocumentShape": {
+      "properties": {"children": {"minItems": 1, "maxItems": 1,
+        "items": {"properties": {"kind": {"const": "admonition"}}}}}
+    },
+    "markdownDocument": {
+      "allOf": [{"$ref": "#/$defs/markdownNode"}, {"properties": {"kind": {"const": "document"}}}]
+    },
+    "markdownChildNode": {
+      "allOf": [{"$ref": "#/$defs/markdownNode"}, {"properties": {"kind": {"not": {"const": "document"}}}}]
+    },
+    "markdownNonAdmonitionNode": {
+      "allOf": [{"$ref": "#/$defs/markdownNode"},
+        {"properties": {"kind": {"not": {"enum": ["document", "admonition"]}}}}]
     },
     "headingMetadata": {
       "type": "object", "additionalProperties": false, "required": ["level"],
@@ -648,12 +771,20 @@ public let DOC_IR_V17_SCHEMA = """
       "type": "object", "additionalProperties": false,
       "required": ["kind", "literal", "source", "metadata", "children"],
       "properties": {
-        "kind": {"enum": ["document", "block_quote", "list", "list_item", "paragraph", "heading", "thematic_break", "code_block", "html_block", "table", "table_row", "table_cell", "custom_block", "text", "soft_break", "hard_break", "code_span", "emphasis", "strong", "strikethrough", "link", "image", "html_inline", "custom_inline", "semantic_link"]}, "literal": {"type": "string"},
+        "kind": {"enum": ["document", "block_quote", "list", "list_item", "paragraph", "heading", "thematic_break", "code_block", "html_block", "table", "table_row", "table_cell", "custom_block", "text", "soft_break", "hard_break", "code_span", "emphasis", "strong", "strikethrough", "link", "image", "html_inline", "custom_inline", "semantic_link", "admonition"]}, "literal": {"type": "string"},
         "source": {"anyOf": [{"$ref": "#/$defs/sourceRange"}, {"type": "null"}]},
-        "metadata": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/headingMetadata"}, {"$ref": "#/$defs/listMetadata"}, {"$ref": "#/$defs/listItemMetadata"}, {"$ref": "#/$defs/codeBlockMetadata"}, {"$ref": "#/$defs/tableMetadata"}, {"$ref": "#/$defs/tableRowMetadata"}, {"$ref": "#/$defs/tableCellMetadata"}, {"$ref": "#/$defs/semanticLinkMetadata"}]},
-        "children": {"type": "array", "maxItems": 32767, "items": {"$ref": "#/$defs/markdownNode"}}
+        "metadata": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/admonitionMetadata"}, {"$ref": "#/$defs/headingMetadata"}, {"$ref": "#/$defs/listMetadata"}, {"$ref": "#/$defs/listItemMetadata"}, {"$ref": "#/$defs/codeBlockMetadata"}, {"$ref": "#/$defs/tableMetadata"}, {"$ref": "#/$defs/tableRowMetadata"}, {"$ref": "#/$defs/tableCellMetadata"}, {"$ref": "#/$defs/semanticLinkMetadata"}]},
+        "children": {"type": "array", "maxItems": 32767}
       },
       "allOf": [
+        {"if": {"properties": {"kind": {"const": "document"}}},
+          "then": {"properties": {"children": {"items": {"$ref": "#/$defs/markdownChildNode"}}}},
+          "else": {"properties": {"children": {"items": {"$ref": "#/$defs/markdownNonAdmonitionNode"}}}}},
+        {"if": {"properties": {"kind": {"const": "admonition"}}},
+          "then": {"properties": {"literal": {"const": ""}, "metadata": {"$ref": "#/$defs/admonitionMetadata"},
+            "children": {"minItems": 1, "items": {"properties": {"kind": {"enum": [
+              "block_quote", "list", "paragraph", "heading", "thematic_break", "code_block",
+              "html_block", "table", "custom_block"]}}}}}}},
         {"if": {"properties": {"kind": {"const": "heading"}}},
           "then": {"properties": {"metadata": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/headingMetadata"}]}}}},
         {"if": {"properties": {"kind": {"const": "list"}}},
@@ -677,13 +808,17 @@ public let DOC_IR_V17_SCHEMA = """
     },
     "comment": {
       "type": "object", "additionalProperties": false,
-      "required": ["rawText", "summary", "description", "markdown", "tags"],
+      "required": ["rawText", "summary", "description", "markdown", "tags", "localizationScope"],
       "properties": {
         "rawText": {"type": "string"}, "summary": {"type": "string"}, "description": {"type": "string"},
-        "markdown": {"$ref": "#/$defs/markdownNode"}, "tags": {"type": "array", "items": {"$ref": "#/$defs/tag"}},
+        "markdown": {"$ref": "#/$defs/markdownDocument"}, "tags": {"type": "array", "items": {"$ref": "#/$defs/tag"}},
+        "localizationScope": {"enum": ["all", "admonitions"]},
         "defaultLanguage": {"enum": ["zh-CN", "en", null]},
         "localizedTexts": {"type": "array", "items": {"$ref": "#/$defs/documentationText"}}
-      }
+      },
+      "allOf": [{"if": {"properties": {"localizationScope": {"const": "admonitions"}}},
+        "then": {"properties": {"defaultLanguage": {"type": "null"},
+          "localizedTexts": {"items": {"properties": {"kind": {"enum": ["note", "warning", "danger"]}}}}}}}]
     },
     "semanticInfo": {
       "type": "object", "additionalProperties": false,
@@ -875,4 +1010,4 @@ public let DOC_IR_V17_SCHEMA = """
 }
 """
 
-public let DOC_IR_SCHEMA = DOC_IR_V17_SCHEMA.replace("doc-ir-v17.schema.json", "doc-ir.schema.json")
+public let DOC_IR_SCHEMA = DOC_IR_V18_SCHEMA.replace("doc-ir-v18.schema.json", "doc-ir.schema.json")

@@ -124,7 +124,8 @@ internal func markdownInlineKind(kind: String): Bool {
 }
 internal func validMarkdownChild(parent: String, child: String): Bool {
     match (parent) {
-        case "document" | "block_quote" | "list_item" | "custom_block" =>
+        case "document" => markdownBlockKind(child) || child == "admonition"
+        case "block_quote" | "list_item" | "custom_block" | "admonition" =>
             markdownBlockKind(child)
         case "list" => child == "list_item"
         case "table" => child == "table_row"
@@ -148,6 +149,15 @@ internal func validateMarkdownMetadata(node: MarkdownNode, path: String,
                 domainFail("${path}.metadata.codeHighlight", "highlight is only allowed on code blocks")
             }
             match (node.kind) {
+                case "admonition" =>
+                    if (!isAdmonitionLevel(value.admonitionLevel.getOrDefault({ => "" }))) {
+                        domainFail("${path}.metadata.level", "invalid admonition level")
+                    }
+                    if (value.semanticTarget.isSome() || value.semanticState.isSome() ||
+                        value.semanticTargetSymbolId.isSome() || value.semanticExternalUrl.isSome() ||
+                        value.semanticNavigation.isSome()) {
+                        domainFail("${path}.metadata", "admonition metadata contains unrelated fields")
+                    }
                 case "heading" =>
                     let level = value.headingLevel.getOrThrow()
                     if (level < 1 || level > 6) {
@@ -288,10 +298,14 @@ internal func validateMarkdown(value: MarkdownNode, path: String, depth: Int64,
             "thematic_break" | "code_block" | "html_block" | "table" | "table_row" |
             "table_cell" | "custom_block" | "text" | "soft_break" | "hard_break" |
             "code_span" | "emphasis" | "strong" | "strikethrough" | "link" | "image" |
-            "html_inline" | "custom_inline" | "semantic_link" => ()
+            "html_inline" | "custom_inline" | "semantic_link" | "admonition" => ()
         case _ => domainFail("${path}.kind", "unknown Markdown node kind")
     }
     validateMarkdownMetadata(value, path, moduleId, evidence)
+    if (value.kind == "admonition" &&
+        (depth != 1 || value.metadata.isNone() || value.children.isEmpty() || !value.literal.isEmpty())) {
+        domainFail(path, "admonition requires metadata and nonempty blocks directly under the document")
+    }
     if ((value.kind == "document" || value.kind == "block_quote" || value.kind == "list" ||
         value.kind == "list_item" || value.kind == "paragraph" || value.kind == "heading" ||
         value.kind == "thematic_break" || value.kind == "table" || value.kind == "table_row" ||

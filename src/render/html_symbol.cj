@@ -8,9 +8,9 @@ internal func appendReverseTypeUsages(out: RenderTextBuffer,
     symbol: SymbolDoc, rootPrefix: String, locale: String): Unit {
     let usages = typeLinkIndex.reverseUsages(symbol.id)
     if (usages.isEmpty()) { return }
-    out.append("<details class=\"reverse-type-usages\"><summary>${label(locale, "Used by", "使用于")} · ${usages.size}</summary><ul>")
+    out.append("<details class=\"reverse-type-usages\"><summary>${label(locale, "Used by", "使用于")} · ${usages.size}</summary><p>${label(locale, "Lists declarations that reference this type and where they use it.", "列出引用此类型的声明及其使用位置。")}</p><ul>")
     for (usage in usages) {
-        out.append("<li><a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, usage.source))}\"><code>${escapeHtml(usage.source.qualifiedName)}</code></a> <span class=\"badge\">${escapeHtml(htmlKindLabel(usage.kind, locale))}</span></li>")
+        out.append("<li><a href=\"${rootPrefix}${escapeHtml(symbolUrl(index, usage.source))}\"><code>${escapeHtml(usage.source.qualifiedName)}</code></a> <span class=\"badge\">${escapeHtml(reverseTypeUsageLabel(usage.kind, locale))}</span></li>")
     }
     out.append("</ul></details>")
 }

@@ -352,7 +352,8 @@ private func queryFillSymbol(outcome: QueryOutcome, input: QuerySnapshotInput,
     }
     let source = querySymbolSource(input, symbol)
     outcome.sources.add(querySourceNode(input.snapshot.snapshotId, "source",
-        Some(symbol.source.path), queryOptionalString(source, "url"), "recorded"))
+        Some(symbol.source.path), queryOptionalString(source, "url"),
+        queryString(source, "state", fallback: "unavailable")))
     let item = JsonNode.object()
     item.put("kind", JsonNode.string("symbol"))
     item.put("identity", queryIdentityNode(input, Some(symbol.id), Option<String>.None, ownerId: symbol.ownerId))

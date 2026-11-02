@@ -54,7 +54,7 @@ class SourcePipelineSuite3 {
             }
             // Even an older source-cache payload placed under the new cache filename
             // is rejected before decoding declarations, then rebuilt from AST.
-            let legacy = String.fromUtf8(bytes).replace(SOURCE_CACHE_FORMAT, "cjdoc-source-cache-v18")
+            let legacy = String.fromUtf8(bytes).replace(SOURCE_CACHE_FORMAT, "cjdoc-source-cache-v19")
             File.writeTo(cachePath, legacy.toArray())
             let reparsed = provider.collect(project.toString())
             @Expect(provider.cacheStats.hits, 0)

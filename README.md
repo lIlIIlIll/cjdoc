@@ -164,7 +164,7 @@ cjdoc generate --project . --format json --stdout > docs.json
 
 `--stdout` 与 `--output` 互斥，并且只允许恰好一个 JSON 类格式（`json`、`api-surface`、`coverage`、`symbol-index`）。诊断写到 stderr，所以重定向得到的文件仍是单个 JSON。
 
-HTML 输出同时发布每个可见声明的独立 Markdown/JSON、`agent/manifest.json` 与可续取导航。`--agent-full` 另加完整单元的聚合全文和分片索引。身份选择、章节预算、离线部署与客户端配置见[逐声明读取、查询与 MCP](docs/agent-reading.md)；`serve` 仍用于项目预览和重建。
+HTML 输出同时发布每个可见声明的独立 Markdown/JSON、`agent/manifest.json` 与可续取导航。`--agent-full` 另加完整单元的聚合全文和分片索引。身份选择、章节预算、离线部署与客户端配置见[逐声明读取、查询与 MCP](docs/agent-reading.md)；`serve` 仍用于项目预览和重建。机器读取当前使用 current-only Doc IR/18；旧 JSON 需从保存的源码重新生成，协议细节见[Doc IR 维护说明](docs/maintainer/doc-ir.md)。
 
 ## 分类、分组与查询
 

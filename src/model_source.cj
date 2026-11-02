@@ -1,5 +1,6 @@
 package cjdoc
 
+import cjdoc.model as public_model
 import std.collection.*
 
 class SourceLocation {
@@ -237,6 +238,20 @@ class CapturedSourceIndex {
         }
     }
 }
+class CapturedSourceFacts {
+    public let index: CapturedSourceIndex
+    public let rawDigest: ?String
+    public let normalizedDigest: ?String
+    public let resourceLimit: Bool
+
+    public init(index: CapturedSourceIndex, rawDigest!: ?String = None,
+        normalizedDigest!: ?String = None, resourceLimit!: Bool = false) {
+        this.index = index
+        this.rawDigest = rawDigest
+        this.normalizedDigest = normalizedDigest
+        this.resourceLimit = resourceLimit
+    }
+}
 
 // Host paths are retained only while generating one in-memory result. They are
 // never exposed through the public model or serialized into Doc IR.
@@ -245,7 +260,8 @@ class SourceFileOrigin {
     public let actualPath: String
     public let actualRoot: String
     public let logicalPrefix: String
-    public let capturedSourceIndex: ?CapturedSourceIndex
+    public let capturedFacts: ?CapturedSourceFacts
+    public let provenance: ?public_model.SourceProvenance
     public let packageName: String
     public let moduleId: String
     public let imports: Array<String>
@@ -253,14 +269,16 @@ class SourceFileOrigin {
     public let capturedSource: String
 
     public init(logicalPath: String, actualPath: String, actualRoot: String,
-        logicalPrefix: String, moduleId: String, capturedSourceIndex!: ?CapturedSourceIndex = None,
-        packageName!: String = "", imports!: Array<String> = [],
-        packageImports!: Array<String> = [], capturedSource!: String = "") {
+        logicalPrefix: String, moduleId: String, capturedFacts!: ?CapturedSourceFacts = None,
+        provenance!: ?public_model.SourceProvenance = None, packageName!: String = "",
+        imports!: Array<String> = [], packageImports!: Array<String> = [],
+        capturedSource!: String = "") {
         this.logicalPath = logicalPath
         this.actualPath = actualPath
         this.actualRoot = actualRoot
         this.logicalPrefix = logicalPrefix
-        this.capturedSourceIndex = capturedSourceIndex
+        this.capturedFacts = capturedFacts
+        this.provenance = provenance
         this.packageName = packageName
         this.moduleId = moduleId
         this.imports = imports

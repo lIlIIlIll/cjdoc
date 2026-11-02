@@ -99,6 +99,25 @@ kind = "guide"
 - 指向另一个概念页源文件的相对链接，会自动替换成生成后的页面路由；同一个页面里的 `#标题` 锚点也会映射到实际锚点。指向非概念页的相对链接保持原样。
 - 本地图片支持 PNG、JPEG、GIF、WebP、AVIF。目前仅 Linux 会嵌入页面；macOS 和 Windows 上不会嵌入，只保留替代文本并输出 warning（`CJDOC4026`），页面标记为不完整（partial）。远程图片 URL 不会渲染成图片。
 
+### Markdown 提示块
+
+指南中的 Markdown 引用只有在源码结构和原文都匹配时才会转换为提示：精确的 marker 必须独占一个顶层引用块首段的第一条物理行，且后面要有正文。
+
+```markdown
+> [!NOTE]
+> 缓存内容可能早于刚完成的更新。
+
+> [!WARNING]
+> 写入失败后，请先检查临时文件再重试。
+
+> [!CAUTION]
+> 删除目标文件前请确认备份已完成。
+```
+
+识别的 marker 只有 `[!NOTE]`、`[!WARNING]` 和 `[!CAUTION]`，分别成为 `note`、`warning` 和 `danger`。同一行附加正文（例如 `> [!WARNING] 正文`）不匹配独占 marker 规则；`[!DANGER]`、`[!TIP]`、`[!IMPORTANT]`、拼写错误的 marker，以及列表或嵌套引用内的 marker 都保留为普通引用。Marker-only 引用没有正文时也保留为引用，并报告 `CJDOC3117`。
+
+HTML 把已捕获的提示渲染为静态 `<aside>`，显示本地化等级标题和装饰性图标。作者 Markdown 内容仍由安全的 Markdown 节点 renderer 处理，不能借 marker 注入 HTML 属性、样式或脚本；提示不使用 `role="alert"`、`aria-live`、弹窗或 JavaScript。Markdown 输出保留引用形式，`danger` 写作 `[!CAUTION]`。API 注释中的 `@note`、`@warning`、`@danger` 标签语法与语言配对见[使用手册](usage.md#写提示)和[多语言文档](i18n.md#为提示正文配对语言)。
+
 需要把同一页面发布成多种语言时，给两个 `[[docs.pages]]` 写相同的 `id`、不同的 `language`，见 [多语言文档](i18n.md)。
 
 ### 映射章节

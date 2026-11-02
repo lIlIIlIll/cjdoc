@@ -131,6 +131,16 @@ async function openIndex(page) {
 async function expectStable(page) {
   await page.waitForTimeout(30);
   expect(pageErrors.get(page)).toEqual([]);
+  const navigation = await page.locator('#cjdoc-sidebar').evaluateAll(sidebars =>
+    sidebars.flatMap(sidebar => [...sidebar.querySelectorAll('[aria-current="page"]')]
+      .map(link => ({href: link.href, fragment: new URL(link.href).hash}))));
+  const documentUrl = new URL(page.url());
+  documentUrl.hash = '';
+  expect(navigation.length).toBeLessThanOrEqual(1);
+  for (const current of navigation) {
+    expect(current.fragment).toBe('');
+    expect(current.href).toBe(documentUrl.href);
+  }
 }
 
 async function gotoFile(page, url) {
@@ -324,8 +334,8 @@ test.describe('generated HTML reference', () => {
     await expect(page.locator('.package-index a')).toHaveCount(2);
     await expect(page.locator('.sidebar-link[aria-current="page"]')).toContainText('Overview');
     await gotoFile(page, indexUrl + '#packages');
-    await expect(page.locator('.sidebar-link[href*="#packages"]')).toHaveAttribute('aria-current', 'page');
-    await expect(page.locator('.sidebar-link[href$="index.html"]')).not.toHaveAttribute('aria-current');
+    await expect(page.locator('.sidebar-link[href*="#packages"]')).not.toHaveAttribute('aria-current');
+    await expect(page.locator('.sidebar-link[href$="index.html"]')).toHaveAttribute('aria-current', 'page');
     await gotoFile(page, indexUrl);
 
     const fontMetrics = await page.evaluate(() => {
@@ -413,7 +423,8 @@ test.describe('generated HTML reference', () => {
     const packageUrl = new URL(packageHref, indexUrl).href;
     await gotoFile(page, packageUrl);
     await expect(page.locator('body')).toHaveAttribute('data-cjdoc-route', 'api');
-    await expect(page.locator('.sidebar-link[href*="#packages"][aria-current="page"]')).toHaveCount(1);
+    await expect(page.locator('.sidebar-link[href*="#packages"][aria-current="page"]')).toHaveCount(0);
+    await expect(page.locator('.sidebar-package[aria-current="page"]')).toHaveCount(1);
     await expect(page.locator('.declaration-row-link')).not.toHaveCount(0);
     const classHref = await referenceBoxClassHref(page);
     const classUrl = new URL(classHref, packageUrl).href;
@@ -634,6 +645,8 @@ test.describe('generated HTML reference', () => {
     await gotoFile(page, memberUrl);
     await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
     await expect(page.locator('.sidebar-context')).toHaveCount(0);
+    await expect(page.locator('#cjdoc-sidebar [aria-current="page"]')).toHaveCount(0);
+    await expect(page.locator('.sidebar-symbol.is-ancestor')).toContainText('ReferenceBox');
     await expect(page.locator('.breadcrumbs')).toContainText('ReferenceBox');
     await expect(page.locator('main h1')).toContainText('normalize');
     await expect(page.locator('.behavior-contracts h3')).toHaveText('Behavioral constraints');

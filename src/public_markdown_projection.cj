@@ -39,9 +39,9 @@ internal func publicTag(value: DocTag, targetVisible!: Bool = true): public_mode
     }
     let targetSymbolId: ?String = if (state == "resolved") { value.targetSymbolId } else { None }
     public_model.DocTag(value.name, value.subject, value.description, referenceState: state,
-        targetSymbolId: targetSymbolId, directives: value.directives)
-}
+        targetSymbolId: targetSymbolId, directives: value.directives, entryId: value.entryId)
 
+}
 internal func publicTagForAudience(value: DocTag, renderableIds: HashSet<String>): public_model.DocTag {
     match (value.targetSymbolId) {
         case Some(targetId) => publicTag(value, targetVisible: renderableIds.contains(targetId))
@@ -111,6 +111,10 @@ internal class MarkdownGenerationContext {
             public_model.Diagnostic("warning", "CJDOC3026",
                 "documentation Markdown was replaced by a bounded fallback after parsing or resource-limit failure",
                 source: Some(source), symbolId: Some(symbolId)))
+    }
+    func admonitionWithoutBody(symbolId: String): Unit {
+        diagnosticsStorage.add(public_model.Diagnostic("error", "CJDOC3117",
+            "Markdown admonition marker has no body", symbolId: Some(symbolId)))
     }
 
     func retainHighlightFailures(diagnostics: Array<public_model.Diagnostic>): Unit {
@@ -270,6 +274,67 @@ internal func publicMarkdownNode(node: NodeRef, source: SourceBuffer, assetColle
         context.consumeText(marker.literal)
         return marker
     }
+    if (depth == 1 && let NodeKind.BlockQuote <- node.kind) {
+        let quoteChildren = node.children()
+        if (!quoteChildren.isEmpty() && let NodeKind.Paragraph <- quoteChildren[0].kind) {
+            let paragraph = quoteChildren[0]
+            let paragraphChildren = paragraph.children()
+            if (!paragraphChildren.isEmpty() && let NodeKind.Text <- paragraphChildren[0].kind) {
+                let markerNode = paragraphChildren[0]
+                let markerText = markerNode.asText().getOrThrow().value
+                let level: ?String = match (markerText) {
+                    case "[!NOTE]" => Some("note")
+                    case "[!WARNING]" => Some("warning")
+                    case "[!CAUTION]" => Some("danger")
+                    case _ => None
+                }
+                if (let Some(admonitionLevel) <- level) {
+                    var removeCount: Int64 = 1
+                    var markerLayout = true
+                    if (paragraphChildren.size > 1) {
+                        if (let NodeKind.SoftBreak | NodeKind.HardBreak <- paragraphChildren[1].kind) {
+                            removeCount = 2
+                        } else {
+                            markerLayout = false
+                        }
+                    }
+                    if (markerLayout && source.text(markerNode) == markerText) {
+                        let hasBody = paragraphChildren.size > removeCount || quoteChildren.size > 1
+                        if (!hasBody) {
+                            context.admonitionWithoutBody(symbolId)
+                        } else {
+                            let blocks = ArrayList<public_model.MarkdownNode>()
+                            if (paragraphChildren.size > removeCount) {
+                                context.consumeNode(depth + 1)
+                                let inline = ArrayList<public_model.MarkdownNode>()
+                                var inlineIndex = removeCount
+                                while (inlineIndex < paragraphChildren.size) {
+                                    inline.add(publicMarkdownNode(paragraphChildren[inlineIndex], source,
+                                        assetCollector, sourcePath, declarationSource, symbolId, context,
+                                        depth + 2, bindingPositions: bindingPositions,
+                                        allowBindingMarkers: false))
+                                    inlineIndex++
+                                }
+                                blocks.add(public_model.MarkdownNode("paragraph", children: inline.toArray()))
+                            }
+                            var blockIndex: Int64 = 1
+                            while (blockIndex < quoteChildren.size) {
+                                blocks.add(publicMarkdownNode(quoteChildren[blockIndex], source,
+                                    assetCollector, sourcePath, declarationSource, symbolId, context,
+                                    depth + 1, bindingPositions: bindingPositions,
+                                    allowBindingMarkers: false))
+                                blockIndex++
+                            }
+                            context.consumeText(admonitionLevel)
+                            return public_model.MarkdownNode("admonition",
+                                public_model.MarkdownNodeMetadata.forAdmonition(admonitionLevel),
+                                children: blocks.toArray())
+                        }
+                    }
+                }
+            }
+        }
+    }
     let children = ArrayList<public_model.MarkdownNode>()
     let sourceChildren = node.children()
     let childMarkersAllowed = allowBindingMarkers &&
@@ -400,6 +465,29 @@ internal func publicMarkdown(body: String, assetCollector: LocalAssetCollector, 
     publicMarkdownNode(result.document.root(), result.source, assetCollector, sourcePath, declarationSource, symbolId,
         context, 0, bindingPositions: bindingPositions)
 }
+internal func publicAdmonitionMarkdown(level: String, body: String,
+    assetCollector: LocalAssetCollector, sourcePath: String, declarationSource: public_model.SourceRange,
+    symbolId: String, context: MarkdownGenerationContext): public_model.MarkdownNode {
+    if (!public_model.isAdmonitionLevel(level) || body.trimAscii().isEmpty()) {
+        return public_model.MarkdownNode("document")
+    }
+    let parsed = MarkdownEngine.builder().profile(MarkdownProfile.gfmModernV1()).build().parse(body)
+    let children = ArrayList<public_model.MarkdownNode>()
+    let sourceChildren = parsed.document.root().children()
+    var index: Int64 = 0
+    while (index < sourceChildren.size) {
+        children.add(publicMarkdownNode(sourceChildren[index], parsed.source, assetCollector, sourcePath,
+            declarationSource, symbolId, context, 2, allowBindingMarkers: false))
+        index++
+    }
+    context.consumeNode(1)
+    context.consumeNode(0)
+    context.consumeText(level)
+    let admonition = public_model.MarkdownNode("admonition",
+        public_model.MarkdownNodeMetadata.forAdmonition(level),
+        children: children.toArray())
+    public_model.MarkdownNode("document", children: [admonition])
+}
 public func parseStandaloneMarkdown(body: String, highlightMode!: String = "auto",
     highlightAdapter!: ?String = None, highlightNode!: ?String = None): public_model.MarkdownNode {
     let source = public_model.SourceRange("conceptual.md", public_model.SourcePosition(1, 1, 0),
@@ -474,16 +562,57 @@ private func publicMarkdownContainsCode(node: public_model.MarkdownNode): Bool {
     for (child in node.children) { if (publicMarkdownContainsCode(child)) { return true } }
     false
 }
+private func defaultPublicAdmonitionTag(text: public_model.DocumentationText,
+    translationState: String): public_model.DocTag {
+    public_model.DocTag(text.kind, text.subject, text.text, contentLanguage: text.language,
+        translationState: translationState, fieldId: text.fieldId,
+        descriptionMarkdown: Some(text.markdown), entryId: text.entryId, source: text.source)
+}
+
+private func defaultPublicAdmonitionTags(localized: Array<public_model.DocumentationText>): Array<public_model.DocTag> {
+    let tags = ArrayList<public_model.DocTag>()
+    let seen = HashSet<String>()
+    for (text in localized where public_model.isAdmonitionLevel(text.kind)) {
+        if (text.fieldId.isEmpty()) {
+            if (text.state == "unpaired" && !text.text.trimAscii().isEmpty()) {
+                tags.add(defaultPublicAdmonitionTag(text, "unpaired"))
+            }
+            continue
+        }
+        if (!seen.add(text.fieldId)) { continue }
+        let valid = ArrayList<public_model.DocumentationText>()
+        var unqualified: ?public_model.DocumentationText = None
+        var unqualifiedCount: Int64 = 0
+        for (candidate in localized where candidate.fieldId == text.fieldId &&
+            public_model.isAdmonitionLevel(candidate.kind) && candidate.state == "valid" &&
+            !candidate.text.trimAscii().isEmpty()) {
+            valid.add(candidate)
+            if (candidate.language.isNone()) {
+                unqualified = Some(candidate)
+                unqualifiedCount++
+            }
+        }
+        if (unqualifiedCount == 1) {
+            tags.add(defaultPublicAdmonitionTag(unqualified.getOrThrow(), "unknown"))
+        } else {
+            for (candidate in valid) {
+                tags.add(defaultPublicAdmonitionTag(candidate, "unknown"))
+            }
+        }
+    }
+    tags.toArray()
+}
+
 
 internal func publicComment(value: DocComment, assetCollector: LocalAssetCollector, sourcePath: String,
-    declarationSource: public_model.SourceRange, symbolId: String, context: MarkdownGenerationContext,
+    moduleId: String, declarationSource: public_model.SourceRange, symbolId: String, context: MarkdownGenerationContext,
     renderableIds: HashSet<String>, sourceMapper: PublicSourceMapper): public_model.DocComment {
     try {
         context.consumeText(value.raw)
         context.consumeText(value.summaryMarkdown)
         context.consumeText(value.descriptionMarkdown)
         context.requireBodySize(value.summaryMarkdown, value.descriptionMarkdown)
-        let localized = publicLocalizedTexts(value, assetCollector, sourcePath, declarationSource,
+        let localized = publicLocalizedTexts(value, assetCollector, sourcePath, moduleId, declarationSource,
             symbolId, context, renderableIds, sourceMapper)
         let tags = ArrayList<public_model.DocTag>()
         for (tag in value.params) {
@@ -517,6 +646,7 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
         for (tag in value.see) {
             tags.add(publicTagForAudience(tag, renderableIds))
         }
+        tags.add(all: defaultPublicAdmonitionTags(localized))
         for (tag in value.contracts) {
             tags.add(publicTagForAudience(tag, renderableIds))
         }
@@ -543,6 +673,8 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
                 case Some(value) => context.consumeText(value)
                 case None => ()
             }
+            if (let Some(entryId) <- tag.entryId) { context.consumeText(entryId) }
+            if (let Some(source) <- tag.source) { context.consumeText(source.path) }
             if (!tag.directives.isEmpty()) { context.consumeText(tag.directives) }
         }
         let body = if (value.descriptionMarkdown.isEmpty()) {
@@ -550,7 +682,7 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
         } else {
             "${value.summaryMarkdown}\n\n${value.descriptionMarkdown}"
         }
-        let bodyTree = if (localized.isEmpty()) {
+        let bodyTree = if (value.localizationScope == "admonitions" || localized.isEmpty()) {
             publicMarkdown(body, assetCollector, sourcePath, declarationSource, symbolId, context)
         } else {
             let children = ArrayList<public_model.MarkdownNode>()
@@ -564,9 +696,11 @@ internal func publicComment(value: DocComment, assetCollector: LocalAssetCollect
             public_model.MarkdownNode("document", children: children.toArray())
         }
         return public_model.DocComment(value.raw, value.summaryMarkdown, value.descriptionMarkdown,
-            bodyTree, tags: tags.toArray(), defaultLanguage: value.defaultLanguage, localizedTexts: localized)
+            bodyTree, tags: tags.toArray(), defaultLanguage: value.defaultLanguage, localizedTexts: localized,
+            localizationScope: value.localizationScope)
     } catch (_: Exception) {
         context.fail(declarationSource, symbolId)
-        return public_model.DocComment("", MARKDOWN_FALLBACK_TEXT, "", fallbackPublicMarkdown())
+        return public_model.DocComment("", MARKDOWN_FALLBACK_TEXT, "", fallbackPublicMarkdown(),
+            defaultLanguage: value.defaultLanguage, localizationScope: value.localizationScope)
     }
 }

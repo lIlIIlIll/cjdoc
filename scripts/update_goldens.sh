@@ -6,9 +6,9 @@ export PYTHONDONTWRITEBYTECODE=1
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 binary="${CJDOC_BINARY:-${repo_root}/target/release/bin/main}"
 update_dir="${repo_root}/target/golden-update"
-golden_dir="${repo_root}/tests/fixtures/golden-v17"
+golden_dir="${repo_root}/tests/fixtures/golden-v18"
 golden_parent="${repo_root}/tests/fixtures"
-obsolete_golden_dir="${golden_parent}/golden-v16"
+obsolete_golden_dir="${golden_parent}/golden-v17"
 python_cmd="${CJDOC_PYTHON:-python3}"
 source_edges_override="${CJDOC_SOURCE_EDGES_PROJECT:-}"
 source_edges_commit="${CJDOC_SOURCE_EDGES_COMMIT:-}"
@@ -63,7 +63,7 @@ if [[ -L "${obsolete_golden_dir}" || ( -e "${obsolete_golden_dir}" && ! -d "${ob
     echo "obsolete golden inventory path is not a regular directory" >&2
     exit 1
 fi
-stage_dir="$(mktemp -d "${golden_parent}/.golden-v17.XXXXXX")"
+stage_dir="$(mktemp -d "${golden_parent}/.golden-v18.XXXXXX")"
 snapshot_dir="${update_dir}/fixture-snapshot"
 snapshot_receipt="${update_dir}/fixture-snapshot.json"
 
@@ -86,7 +86,7 @@ fixture_root="${snapshot_dir}/tests/fixtures/projects"
 source_edges_project="${fixture_root}/source_edges"
 
 "${binary}" schema list | tr -d '\r' >"${update_dir}/schema-list.txt"
-"${python_cmd}" -c 'import sys; names=set(open(sys.argv[1], encoding="utf-8").read().splitlines()); assert "doc-ir-v17" in names' \
+"${python_cmd}" -c 'import sys; names=set(open(sys.argv[1], encoding="utf-8").read().splitlines()); assert "doc-ir" in names and "doc-ir-v18" in names and "source-provenance" in names and "doc-ir-v17" not in names' \
     "${update_dir}/schema-list.txt"
 
 update_golden() {
@@ -122,19 +122,19 @@ expected = {
 actual = {path.name for path in root.glob("*.docs.json")}
 if actual != expected:
     raise SystemExit(
-        "v17 golden set mismatch: missing=" + ",".join(sorted(expected - actual)) +
+        "v18 golden set mismatch: missing=" + ",".join(sorted(expected - actual)) +
         " unexpected=" + ",".join(sorted(actual - expected))
     )
 for path in root.glob("*.docs.json"):
-    value = strict_load(path, description=f"generated v17 golden {path.name}")
-    if value.get("schemaVersion") != "cjdoc.doc-ir/17":
-        raise SystemExit(f"non-v17 golden generated: {path.name}")
+    value = strict_load(path, description=f"generated v18 golden {path.name}")
+    if value.get("schemaVersion") != "cjdoc.doc-ir/18":
+        raise SystemExit(f"non-v18 golden generated: {path.name}")
 PY
 
 "${python_cmd}" scripts/fixture_snapshot.py verify --receipt "${snapshot_receipt}"
 
 if [[ -e "${golden_dir}" ]]; then
-    backup_dir="${golden_parent}/.golden-v17.backup.$$"
+    backup_dir="${golden_parent}/.golden-v18.backup.$$"
     test ! -e "${backup_dir}"
     mv "${golden_dir}" "${backup_dir}"
 fi
@@ -157,4 +157,4 @@ fi
 
 trap - EXIT
 
-echo "updated Doc IR v17 goldens"
+echo "updated Doc IR v18 goldens"

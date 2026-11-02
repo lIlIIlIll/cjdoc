@@ -4,9 +4,9 @@ Doc IR 是 renderer 的唯一输入：源码声明、注释和位置先由 front
 
 ## 当前版本与硬约束
 
-- 当前输出版本是 **`cjdoc.doc-ir/17`**（`cjdoc schema doc-ir` 会打印当前版本的 schema）。
+- 当前输出版本是 **`cjdoc.doc-ir/18`**（`cjdoc schema doc-ir` 会打印当前版本的 schema）。
 - decoder **只接受当前版本**，不迁移旧输入。`render --input docs.json` 会严格验证当前 schema 与引用关系；未知属性、重复 JSON 键和不满足当前约束的输入都会被拒绝。
-- 历史 `/6`–`/16` schema 与 golden 不进入 current-only 库存；不保留只读副本或迁移 receipt。wire 变化时提升版本并拒绝旧版本输入。
+- `/6`–`/17` schema 与 golden 均不属于 current-only 库存；只分发当前 Doc IR schema，不保留旧版副本或迁移 receipt。wire 变化时提升版本并拒绝旧版本输入。
 - 根字段 `apiCollectionState` 取 `resolved`、`partial` 或 `unavailable`，独立于展示用的 `status`。它在 source/provider 绑定后、highlight/lint/i18n/导航处理前采集；呈现错误不会把已采集的 API 改成不完整。
 - `generator.toolchain` 自动生成时为空字符串：运行时 `cjc --version`、`--cjc` 或包装器变量都不能认证真正链接的 parser SDK 构建。目标项目的 compiler/std/stdx 身份由构建记录（`--build-context`）单独绑定，见 [document-links.md](document-links.md)。
 
@@ -15,17 +15,19 @@ Doc IR 是 renderer 的唯一输入：源码声明、注释和位置先由 front
 ```bash
 cjdoc schema list
 cjdoc schema doc-ir
-cjdoc schema doc-ir-v17
+cjdoc schema doc-ir-v18
 cjdoc schema search-index
 cjdoc schema search-index-v11
 cjdoc schema query-request
 cjdoc schema query-result
 cjdoc schema declaration
+cjdoc schema page
+cjdoc schema source-provenance
 ```
 
-`docs/schema/` 当前库存以生成脚本为准：`doc-ir`、`doc-ir-v17`、`diagnostics`、`cfg-matrix`、`search-index`、`search-index-v11`、`symbol-index`、`navigation-index`（冻结 v1）、`navigation-index-v2`、`agent-full-index`、`declaration`、`page`、`machine-manifest`、`query-request`、`query-result`、`api-surface`、`api-surface-v3`、`api-diff`、`api-diff-v2`、`documentation-coverage`、`documentation-quality`、`versions`、`versions-v2`、`translation-coverage`、`site-manifest`。公开 wire 版本为 Doc IR/17、query-request/3、query-result/3、search-index/11、declaration/2；search-contract 为 /2。旧显式 query/search/declaration 版本不作为兼容输入。
+`docs/schema/` 当前库存包括 `doc-ir`/`doc-ir-v18`、`source-provenance`、`diagnostics`、`cfg-matrix`、`search-index`/`search-index-v11`、`symbol-index`、`navigation-index`（冻结 v1）、`navigation-index-v2`、`agent-full-index`、`declaration`、`page`、`machine-manifest`、`query-request`、`query-result`、`api-surface`/`api-surface-v3`、`api-diff`/`api-diff-v2`、`documentation-coverage`、`documentation-quality`、`versions`/`versions-v2`、`translation-coverage` 和 `site-manifest`。当前公开 wire 为 Doc IR/18、declaration/3、page/2、query-request/3、query-result/4、search-index/11 与 search-contract/2；独立来源回执为 `cjdoc.source-provenance/1`。不分发旧 Doc IR、declaration、page 或 query-result 版本。
 
-`scripts/check.sh cli` 会调用 `cjdoc schema <name>` 逐个导出并与 `docs/schema/` 逐字节比较，所以 schema 文件与 binary 必须同步。release 包也包含这组发布 schema 与 `release-manifest.json`；发布校验要求这 25 个 schema 与当前 golden 都被 Git 跟踪。
+`scripts/check.sh cli` 会调用 `cjdoc schema <name>` 逐个导出并与 `docs/schema/` 逐字节比较，所以 schema 文件与 binary 必须同步。release 包也包含当前发布 schema 与 `release-manifest.json`；发布校验要求当前 schema 与 golden 都被 Git 跟踪。
 
 ## 修改 Doc IR 的同步清单
 
@@ -34,10 +36,10 @@ cjdoc schema declaration
 1. 提升 `cjdoc.doc-ir/N` 版本（破坏性变更必须提升；decoder 保持 current-only）。
 2. `src/model/doc_ir_documentation.cj`、`src/model/doc_ir_metadata.cj` 及相关的 `src/model/doc_ir_*.cj` 类型。
 3. JSON encoder/decoder：`src/render/json_encode.cj`、`src/render/json_decode.cj` 及拆分出的 `json_decode_*.cj`；保持严格行为（未知属性、重复键、类型与引用约束都拒绝）。
-4. schema source：`src/schema_data/schema_v17.cj`、共享 schema 和 `src/schema_data/agent_schemas.cj`、`query_schemas.cj`、`language_artifact_schemas.cj` 等发布契约。
+4. schema source：`src/schema_data/schema_v18.cj`、共享 schema 和 `src/schema_data/agent_schemas.cj`、`query_schemas.cj`、`language_artifact_schemas.cj` 等发布契约。
 5. 重新构建后运行 `bash scripts/update_schemas.sh`，把构建产物同步到 `docs/schema/`。
 6. 更新 public-contract tests 与相应单测；不要为了让测试变绿而放宽 strict codec 或手改期望产物。
-7. 运行 `bash scripts/update_goldens.sh` 生成 `tests/fixtures/golden-v17/`，再检查 diff。golden 不手改；更新脚本自己生成并校验。
+7. 运行 `bash scripts/update_goldens.sh` 生成 `tests/fixtures/golden-v18/`，再检查 diff。golden 不手改；更新脚本自己生成并校验。
 8. 若生成输出的 Doc IR 字节发生变化，还要刷新 `tests/perf/baseline.json` 的 Doc IR identity：CI 每个 push 都跑 `python3 scripts/perf_gate.py identities --binary target/release/bin/main --evidence target/ci-evidence/perf-identities.json`，未刷新的 baseline 会让 CI 失败。性能基线的刷新与冻结规则见 [release-process.md](release-process.md) 的“Performance baseline”。
 9. 跑 `bash scripts/check.sh`（至少 `native`、`cli`）确认 current-only codec round-trip、两次生成确定性、HTML 全站校验和 schema 同步。
 
@@ -46,13 +48,13 @@ cjdoc schema declaration
 ### `scripts/update_schemas.sh`
 
 - 从 `target/release/bin/main`（或 `main.exe`）导出一整套发布 schema，先写入 staging 再原子替换。
-- 严格解析全部 schema（拒绝重复键与非有限数字），校验 `$id`、draft、版本与根契约，然后更新当前 v17 与共享 schema。
+- 严格解析全部 schema（拒绝重复键与非有限数字），校验 `$id`、draft、版本与根契约，然后更新当前 v18 与共享 schema。
 - 不发布冻结的历史 Doc IR schema；它不实现完整的官方 Draft 2020-12 meta-schema，真正的严格验证在构建的 yjson-backed decoder 与 `check.sh` 的 round-trip 中。
 - 需要先构建 binary；不要手工 normalize 一个失败的期望产物。
 
 ### `scripts/update_goldens.sh`
 
-- 先把已提交的 fixture 树归档成不可变快照，只从该快照生成，生成后再核对摘要与 Git identity，最后发布完整的 current v17 golden 集合。
+- 先把已提交的 fixture 树归档成不可变快照，只从该快照生成，生成后再核对摘要与 Git identity，最后发布完整的 current v18 golden 集合。
 - 拒绝脏的或混合来源的 fixture 输入；不保留 legacy Doc IR golden。
 - `source_edges` 使用干净的外部 checkout 时，三个变量必须同时提供，且 expected commit/subtree 在生成前后都要匹配该 Git worktree：
 
@@ -65,16 +67,34 @@ bash scripts/update_goldens.sh
 
 当前 golden 覆盖 `basic`、`functions`、`types`、`extend_visibility`、`source_edges`、`unsupported`、`workspace`、`conditional-linux`、`path-dependencies` 等 fixture，由 `scripts/check.sh cli` 逐个两次生成、比较并与 golden 字节对齐。
 
-## Doc IR/17 的分类 metadata
+## Doc IR/18 的分类 metadata
 
 根对象必须包含 `metadata: {groups: [], tags: []}`。group wire 记录严格包含 moduleId、packageName、ownerId、id、title、titles 和 order；tag 记录严格包含 moduleId、id、title 和 titles。titles 记录 language/title，数组按稳定 UTF-8 顺序编码；缺字段与 null 不可互换，未知属性被拒绝。
 
 生成时 metadata 配置先绑定完整源码声明 scope，再随公开声明投影捕获。公开 Doc IR 只保存当前发布声明实际使用的定义；audience/cfg 等发布范围收窄后，未再被使用的定义会移除。metadata 计入原有 Doc IR 字节和对象预算，不会扩大 64 MiB 总上限。metadata title/order 不进入 SymbolId 或 API fingerprint。
 
-`render --input` 只使用已捕获的 Doc IR/17，不读取源码目录或 `cjdoc.toml`。Doc IR/16 不接受迁移；若要重放旧项目内容，必须从可用的真实源码重新生成当前格式。
+`render --input` 只使用已捕获的 Doc IR/18，不读取源码目录、`cjdoc.toml` 或来源回执。Doc IR/17 及更早版本不接受迁移；若要重放旧项目内容，必须从保存的源码重新生成当前格式。
 
 `scripts/test_declaration_metadata.py --binary PATH --output-root DIR` 从真实源码捕获双语站点，移走任务副本的源码与配置后，以 compiler guard 验证重放、查询、manifest 完整性和非 breaking 的文档变更。同页 inherited/declared owner 冲突另用明确标注的公开 Doc IR 模型输入检查：syntax provider 的 `superType` 不是 `inheritedMember` 证据，测试不会把模型场景记作编译器产出的继承语义。
+
+## Doc IR/18 的逐文件源码来源
+
+每个 `FileDoc` 都必须带 `provenance`；构造默认是 `SourceProvenance.unavailable("no_registration")`。该对象及其 `state`、`reason`、`repository`、`repositoryPath`、`sourceDigest`、`normalizedDigest`、`evidenceIdentity`、`evidenceKind` 字段在 wire 中均必需；无值写 `null`，`evidenceKind` 取 `caller_pinned_receipt` 或 `none`。公开投影和消费者按 `(moduleId, SourceRange.path)` 找对应文件，不再从 `ModuleDoc.repositoryPath` 推断来源；`ModuleDoc.repositoryPath` 已从 v18 移除。
+
+`verified/receipt_matched` 表示登记的仓库 URL、完整小写 40 位 revision、仓内路径和调用方独立 pin 的 `cjdoc.source-provenance/1` 回执匹配，且回执中的文件摘要等于同一次捕获的源码 raw bytes。它不是 Git 对象、远端仓库、构建成功或工作树干净的独立证明。`evidenceIdentity` 是 pin 所指确切回执原始字节的 SHA-256，`evidenceKind` 必须为 `caller_pinned_receipt`。`sourceDigest` 和 `normalizedDigest` 分别记录 raw bytes 与换行归一后的捕获字节摘要。
+
+旧 `ProjectInfo.repository` 映射生成 `declared/legacy_project_repository`：它可产生带有效源码范围的 URL，但没有文件摘要或 receipt evidence，不能标为 verified。没有登记、来源歧义、回执或文件不匹配等失败状态仍被保留；`unavailable`/`ambiguous` 不提供仓库 URL。`SourceReference` 同样要求完整字段集，并区分 `revisionKind` 的 `exact`、`ref`、`unavailable`。普通 render、Agent、Markdown 与 query replay 只投影已捕获的 `FileDoc.provenance`，不会重读源码、Git 或回执；decoder 验证 wire 结构及内部状态一致性，不重新认证调用方的信任决定。多仓登记和回执格式见[跨文档链接维护](document-links.md)。
+
+`ReExportDoc.source` 指向暴露声明的文件与位置，按 exposing module 投影为单独的 `source` 记录；它与重导出目标声明自己的 `SymbolDoc.source` 是两个事实。re-export 行的来源链接标为“暴露位置”，目标声明的来源仍表示该声明的定义位置。
+
+## Doc IR/18 的提示 AST 与本地化 scope
+
+捕获的提示节点为 `kind="admonition"`，`literal=""`，`metadata` 恰为 `{"level":"note|warning|danger"}`，并包含非空 block children。它只能作为 `document` 的直接子节点，正文仍是节点 children；未知 metadata、inline/空/嵌套提示和其它深度的提示都不符合 current schema。Markdown/HTML/Agent/query 投影读取捕获 AST，不重新解释作者字符串。提示 marker 产生的等级只表示作者文本，不是 cjdoc 对代码风险的判定。
+
+`DocComment.localizationScope` 在 wire 中必需，值为 `all` 或 `admonitions`，构造默认值为 `all`；`all` 保持整份注释的既有本地化行为。`admonitions` 表示仅提示可本地化：`defaultLanguage` 必须为 `null`，`localizedTexts` 只含 `note`、`warning`、`danger`，普通摘要、正文与其他标签仍来自捕获的基础注释；scope 不能由空 `localizedTexts` 推断。`DocTag.entryId` 与 `DocTag.source` 的构造默认值均为 `None`，`DocumentationText.entryId` 的构造默认值也为 `None`；三者始终是必需的 nullable wire 字段，缺值写 `null`。提示 ID 与 level/声明关联，冲突或无 ID 条目保留为 unpaired/invalid，不猜配、不丢掉作者内容。提示 wrapper、ID、来源和 scope 均参与严格重放验证与现有 Doc IR 资源预算，不提高 64 MiB、深度、对象或数组上限。
 Windows source-free 回放必须保留子进程的原生运行时 PATH，同时从工具定位入口排除 compiler/cjpm。用无编译器调用断言隔离工具链，不要通过缩窄 PATH 造成运行时 DLL 加载失败。
+
+Doc IR/18 的 `declaration/3`、`page/2` 与 `query-result/4` 增加来源相关消费者形状；旧版本输入不兼容。`query-request/3`、`search-index/11`、`search-contract/2` 保持不变。需要使用旧 JSON 的项目须从保存的源码重新生成当前 Doc IR 和站点，不能只改 `schemaVersion` 或迁移旧 JSON。
 
 ## 导航 wire
 
@@ -82,7 +102,7 @@ Windows source-free 回放必须保留子进程的原生运行时 PATH，同时�
 
 ### TypeRef 的平展语义字段
 
-Doc IR `/17` 继续把三项类型语义事实命名平铺为必需的 `semanticState`、`semanticCanonical`、`semanticProvider`；后两项允许 `null`。公开的 `TypeRef.semantic: SemanticType` 模型完整保留，转换在 codec 内完成，不改变语义或导航。
+Doc IR `/18` 继续把三项类型语义事实命名平铺为必需的 `semanticState`、`semanticCanonical`、`semanticProvider`；后两项允许 `null`。公开的 `TypeRef.semantic: SemanticType` 模型完整保留，转换在 codec 内完成，不改变语义或导航。
 
 ### 紧凑失败记录
 
@@ -100,7 +120,7 @@ Doc IR `/17` 继续把三项类型语义事实命名平铺为必需的 `semantic
 ## 资源预算与回退
 
 - Doc IR 的物理 JSON 对象上限和累计数组项上限均为 **131,072**，编码器与严格 decoder 共用边界。数组项按整个文档中各数组长度累计，包括嵌套数组和重复编码的出现次数，不是每个数组独立享有上限。
-- 完整文档默认上限仍为 **64 MiB**；可通过 `[limits].max-doc-ir-mib` 或 `--max-doc-ir-mib` 收紧到 `1..64` MiB，配置规则见 [配置参考](../configuration.md)。单字符串、类型/Markdown 出现次数与边数、嵌套深度等独立预算不变；不随数组项额度增加而扩大 SDK 或运行时堆。
+- 完整文档默认上限仍为 **64 MiB**；可通过 `[limits].max-doc-ir-mib` 或 `--max-doc-ir-mib` 收紧到 `1..64` MiB，配置规则见 [配置参考](../configuration.md)。单字符串、类型/Markdown 出现次数与边数、嵌套深度等独立预算不变；来源证明、提示 AST、身份和来源范围都计入原预算。
 - 导航诊断最多 **4096** 条；导航绑定/解析的累计工作预算为 **262144 步与 32 MiB**，不逐索引或递归子图重置（该预算与依赖文档解析共用，细节见 [document-links.md](document-links.md)）。
 - 超限时按既有有界回退编码：保留仍可按 codec 边界编码的部分，并记录 `CJDOC3027`（文档产物超过资源限制）或 `CJDOC3026`（Markdown/概念页解析退化）等诊断。
 - 渲染器只读 Doc IR；普通 `render` 不读取原项目、receipt、索引、SDK 或网络，也不重新选版本。
@@ -115,4 +135,4 @@ Doc IR `/17` 继续把三项类型语义事实命名平铺为必需的 `semantic
 bash scripts/check.sh cli --repo . --worker-binary target/release/bin/chir-worker-main
 ```
 
-`check.sh cli` 覆盖：逐 schema 与 `docs/schema/` 比较、current v17 golden 双次生成与 round-trip、多格式 HTML 全站校验、输出所有权/安全、i18n 门禁、外部快照门禁。完整门禁与各阶段见 [build.md](build.md)。
+`check.sh cli` 覆盖：逐 schema 与 `docs/schema/` 比较、current v18 golden 双次生成与 round-trip、多格式 HTML 全站校验、输出所有权/安全、i18n 门禁、外部快照门禁。完整门禁与各阶段见 [build.md](build.md)。

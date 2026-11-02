@@ -39,6 +39,7 @@ from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
+from urllib.parse import quote
 
 sys.dont_write_bytecode = True
 
@@ -57,7 +58,7 @@ SNAPSHOT_PREFIX = "cjdoc:snapshot:v1:"
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 SCHEMA_EXPORTS = (
     ("doc-ir", "doc-ir.schema.json"),
-    ("doc-ir-v17", "doc-ir-v17.schema.json"),
+    ("doc-ir-v18", "doc-ir-v18.schema.json"),
     ("navigation-index", "navigation-index-v2.schema.json"),
     ("navigation-index-v1", "navigation-index.schema.json"),
     ("agent-full-index", "agent-full-index.schema.json"),
@@ -66,6 +67,7 @@ SCHEMA_EXPORTS = (
     ("machine-manifest", "machine-manifest.schema.json"),
     ("query-request", "query-request.schema.json"),
     ("query-result", "query-result.schema.json"),
+    ("source-provenance", "source-provenance.schema.json"),
     ("search-index", "search-index-v11.schema.json"),
     ("search-index-v11", "search-index-v11.schema.json"),
 )
@@ -592,7 +594,7 @@ def check_manifest(root: Path, schema: dict, navigation: dict) -> dict:
         raise ContractError("packaged inventory is not a versioned symbol index")
 
     doc_ir = load_json(root / manifest["docIr"]["path"])
-    if doc_ir.get("schemaVersion") != "cjdoc.doc-ir/17":
+    if doc_ir.get("schemaVersion") != "cjdoc.doc-ir/18":
         raise ContractError("packaged Doc IR is not the current version")
     declarations = {item["id"]: item for item in doc_ir.get("declarations", [])}
     pages = selected_documentation_pages(doc_ir.get("pages", []), manifest["scope"]["readingLanguage"])
@@ -641,8 +643,42 @@ def check_manifest(root: Path, schema: dict, navigation: dict) -> dict:
             "navigation": navigation}
 
 
+def captured_declaration_source(symbol: dict, file: dict) -> dict:
+    """Recompute the published source view only from its owning captured file."""
+    provenance = file["provenance"]
+    repository = provenance["repository"]
+    revision = repository["revision"] if repository is not None else None
+    source_range = symbol["source"]
+    url = None
+    if provenance["state"] in {"verified", "declared"}:
+        path = "/".join(quote(segment, safe="") for segment in provenance["repositoryPath"].split("/"))
+        first = source_range["start"]["line"]
+        last = source_range["end"]["line"]
+        if last > first and source_range["end"]["column"] == 1:
+            last -= 1
+        anchor = f"#L{first}" + (f"-L{last}" if last != first else "")
+        url = f'{repository["url"]}/blob/{quote(revision, safe="")}/{path}{anchor}'
+    return {
+        "url": url, "range": source_range, "state": provenance["state"],
+        "reason": provenance["reason"], "repository": repository,
+        "recordedRevision": revision,
+        "revisionKind": ("exact" if re.fullmatch(r"[0-9a-f]{40}", revision) else "ref")
+                        if revision is not None else "unavailable",
+        "sourceDigest": provenance["sourceDigest"],
+        "normalizedDigest": provenance["normalizedDigest"],
+        "evidenceIdentity": provenance["evidenceIdentity"],
+        "evidenceKind": provenance["evidenceKind"],
+    }
+
+
 def check_declaration_artifacts(root: Path, schema: dict, graph: dict) -> int:
     manifest = graph["manifest"]
+    files = {}
+    for file in graph["docIr"]["files"]:
+        key = (file["moduleId"], file["path"])
+        if key in files:
+            raise ContractError("packaged Doc IR repeats a module/file source mapping")
+        files[key] = file
     checked = 0
     for representation in manifest["representations"]:
         if representation["kind"] != "symbol":
@@ -676,13 +712,11 @@ def check_declaration_artifacts(root: Path, schema: dict, graph: dict) -> int:
         document(root, value["representations"]["html"])
         if not value["symbolKey"]:
             raise ContractError(f"{name}: declaration has no stable symbol key")
-        source = value["source"]
-        if source["revisionKind"] == "recorded" and source["recordedRevision"] is None:
-            raise ContractError(f"{name}: a recorded revision is absent")
-        if source["revisionKind"] == "unavailable" and source["recordedRevision"] is not None:
-            raise ContractError(f"{name}: an unavailable revision is advertised")
-        if source["range"] != recorded["source"]:
-            raise ContractError(f"{name}: source range differs from the packaged Doc IR")
+        source_file = files.get((recorded["moduleId"], recorded["source"]["path"]))
+        if source_file is None:
+            raise ContractError(f"{name}: declaration has no owning captured source file")
+        if value["source"] != captured_declaration_source(recorded, source_file):
+            raise ContractError(f"{name}: source evidence or URL differs from the owning captured file")
         if value["exampleEvidence"]["state"] != "not_attached" or value["exampleEvidence"]["reports"]:
             raise ContractError(f"{name}: example evidence claims an attachment that does not exist")
         checked += 1
@@ -861,7 +895,7 @@ def load_schemas(schema_dir: Path) -> dict:
         raise ContractError("query schemas must reject unknown properties")
     if request["properties"]["schemaVersion"]["const"] != "cjdoc.query-request/3":
         raise ContractError("query-request schema version is not the published contract")
-    if result["properties"]["schemaVersion"]["const"] != "cjdoc.query-result/3":
+    if result["properties"]["schemaVersion"]["const"] != "cjdoc.query-result/4":
         raise ContractError("query-result schema version is not the published contract")
     if "declaration" not in result.get("$defs", {}):
         raise ContractError("query-result schema does not embed the Doc IR declaration model")
@@ -882,9 +916,13 @@ def load_schemas(schema_dir: Path) -> dict:
         raise ContractError("query-result classification or tag facets are not required")
     declaration = schemas["declaration"]
     if declaration.get("properties", {}).get("schemaVersion", {}).get("const") != \
-            "cjdoc.declaration/2" or \
+            "cjdoc.declaration/3" or \
             "classification" not in declaration.get("required", []):
-        raise ContractError("declaration schema does not require classification v2")
+        raise ContractError("declaration schema does not require its classification")
+    page = schemas["page"]
+    if page.get("properties", {}).get("schemaVersion", {}).get("const") != \
+            "cjdoc.page/2":
+        raise ContractError("page schema is not current")
     schemas["query-request"] = request
     schemas["query-result"] = result
     return schemas

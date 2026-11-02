@@ -54,7 +54,7 @@ protected func appendAgentReadingScope(out: StringBuilder, context: Documentatio
 internal func renderAgentDeclarationJson(context: DocumentationReadSnapshot, symbol: SymbolDoc,
     markdown!: ?String = None): String {
     let out = StringBuilder()
-    out.append("{\"schemaVersion\":\"cjdoc.declaration/2\",\"scope\":")
+    out.append("{\"schemaVersion\":\"cjdoc.declaration/3\",\"scope\":")
     appendAgentReadingScope(out, context, Some(symbol.moduleId))
     out.append(",\"symbolKey\":${escapeJsonString(symbolInventoryKey(symbol))}," +
         "\"dependencyInstanceId\":${nullableString(declarationDependencyInstance(context, symbol))},\"symbol\":")
@@ -63,15 +63,10 @@ internal func renderAgentDeclarationJson(context: DocumentationReadSnapshot, sym
     appendDeclarationClassificationJson(out, capturedDeclarationClassification(context, Some(symbol)))
     out.append(",\"representations\":{\"pathBase\":\"document-root\",\"html\":" +
         escapeJsonString(symbolPagePath(symbol)) + ",\"markdown\":" + escapeJsonString(agentDeclarationMarkdownPath(symbol)) +
-        ",\"json\":" + escapeJsonString(agentDeclarationJsonPath(symbol)) + "},\"source\":{\"url\":")
-    out.append(nullableString(sourceUrl(context.documentation.project,
-        context.modulesById[symbol.moduleId], symbol.source)))
-    out.append(",\"range\":")
-    appendRange(out, symbol.source)
-    let revision = context.documentation.project.repository.map({ repository => repository.revision })
-    out.append(",\"recordedRevision\":${nullableString(revision)},\"revisionKind\":" +
-        if (revision.isSome()) { "\"recorded\"" } else { "\"unavailable\"" })
-    out.append("},\"diagnostics\":[")
+        ",\"json\":" + escapeJsonString(agentDeclarationJsonPath(symbol)) + "},\"source\":")
+    out.append(sourceReferenceJson(context.projection.sourceReferences.project(
+        symbol.moduleId, symbol.source)))
+    out.append(",\"diagnostics\":[")
     var first = true
     for (diagnostic in context.documentation.diagnostics where diagnostic.symbolId == Some(symbol.id)) {
         if (!first) { out.append(",") }

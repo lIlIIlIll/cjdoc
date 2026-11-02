@@ -40,20 +40,20 @@ GOLDEN_NAMES = (
     "path-dependencies",
 )
 
-CURRENT_GOLDEN_VERSION = 17
+CURRENT_GOLDEN_VERSION = 18
 
 SCHEMA_NAMES = (
-    "doc-ir", "doc-ir-v17", "diagnostics", "cfg-matrix",
+    "doc-ir", "doc-ir-v18", "diagnostics", "cfg-matrix",
     "search-index", "search-index-v11", "symbol-index",
     "navigation-index", "api-surface", "api-surface-v3",
     "api-diff", "api-diff-v2", "documentation-coverage",
     "documentation-quality", "versions", "versions-v2",
     "translation-coverage", "site-manifest", "navigation-index-v2",
     "agent-full-index", "declaration", "page", "machine-manifest",
-    "query-request", "query-result",
+    "query-request", "query-result", "source-provenance",
 )
 SCHEMA_CONTRACTS = {'doc-ir': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir.schema.json',
-            'cjdoc.doc-ir/17',
+            'cjdoc.doc-ir/18',
             ('schemaVersion',
              'generator',
              'status',
@@ -75,8 +75,8 @@ SCHEMA_CONTRACTS = {'doc-ir': ('https://github.com/lIlIIlIll/cjdoc/blob/main/doc
              'diagnostics',
              'dependencies',
              'documentSets')),
- 'doc-ir-v17': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v17.schema.json',
-                'cjdoc.doc-ir/17',
+ 'doc-ir-v18': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/doc-ir-v18.schema.json',
+                'cjdoc.doc-ir/18',
                 ('schemaVersion',
                  'generator',
                  'status',
@@ -172,10 +172,10 @@ SCHEMA_CONTRACTS = {'doc-ir': ('https://github.com/lIlIIlIll/cjdoc/blob/main/doc
                     'cjdoc.agent-full-index/1',
                     ('schemaVersion', 'snapshotId', 'audience', 'language', 'apiCollectionState', 'completeness', 'order', 'unitCount', 'partByteLimit', 'parts')),
  'declaration': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/declaration.schema.json',
-               'cjdoc.declaration/2',
+               'cjdoc.declaration/3',
                ('schemaVersion', 'scope', 'symbolKey', 'dependencyInstanceId', 'symbol', 'representations', 'source', 'diagnostics', 'documentationState', 'exampleEvidence', 'markdown', 'classification')),
  'page': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/page.schema.json',
-        'cjdoc.page/1',
+        'cjdoc.page/2',
         ('schemaVersion', 'id', 'kind', 'scope', 'page', 'package', 'representations', 'markdown')),
  'machine-manifest': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/machine-manifest.schema.json',
                     'cjdoc.machine-manifest/1',
@@ -184,12 +184,15 @@ SCHEMA_CONTRACTS = {'doc-ir': ('https://github.com/lIlIIlIll/cjdoc/blob/main/doc
                   'cjdoc.query-request/3',
                   ('operation',)),
  'query-result': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/query-result.schema.json',
-                 'cjdoc.query-result/3',
-                 ('schemaVersion', 'status', 'operation', 'scope', 'selection', 'result', 'completeness', 'sources', 'text', 'error'))
+                  'cjdoc.query-result/4',
+                  ('schemaVersion', 'status', 'operation', 'scope', 'selection', 'result', 'completeness', 'sources', 'text', 'error')),
+ 'source-provenance': ('https://github.com/lIlIIlIll/cjdoc/blob/main/docs/schema/source-provenance.schema.json',
+                       'cjdoc.source-provenance/1',
+                       ('schemaVersion', 'repository', 'files'))
 }
 SCHEMA_OPTIONAL_PROPERTIES = {
     "doc-ir": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
-    "doc-ir-v17": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
+    "doc-ir-v18": ("languageOptions", "pages", "readingLanguage", "externalDocumentation"),
     "symbol-index": ("provenance", "version"),
     "site-manifest": ("defaultLanguage",),
     "query-request": (
@@ -206,7 +209,7 @@ DOC_IR_CORE_DEFS = {
     "asset", "comment", "configuration", "declaration", "diagnostic", "file",
     "generator", "macroInvocation", "markdownNode", "module", "orphanComment",
     "package", "parameter", "portablePath", "position", "project", "provider",
-    "semanticInfo", "sourceRange", "unsupportedDeclaration",
+    "semanticInfo", "sourceRange", "sourceProvenance", "unsupportedDeclaration",
     "unboundSemanticDeclaration", "metadataTitleText", "documentationTitle",
     "documentationGroupDefinition", "documentationTagDefinition", "documentationMetadata",
 }

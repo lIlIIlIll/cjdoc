@@ -172,26 +172,14 @@ internal class DeclarationMarkdownProjection {
 
     private func appendSource(out: RenderTextBuffer, symbol: SymbolDoc,
         pagePath: String): Unit {
-        out.append("## ${label(locale, "Source", "源码")}\n\n")
+        let source = projection.sourceReferences.project(symbol.moduleId, symbol.source)
+        out.append("## ${label(locale, "Source", "来源")}\n\n")
         out.append("- ${label(locale, "Location", "位置")}: ")
-        appendMarkdownCodeSpan(out, "${symbol.source.path}:${symbol.source.start.line}:${symbol.source.start.column}")
+        appendMarkdownCodeSpan(out, "${source.range.path}:${source.range.start.line}:${source.range.start.column}")
         out.append("\n- ${label(locale, "HTML page", "HTML 页面")}: ")
         appendCanonicalSymbolLink(out, symbol, pagePath)
         out.append("\n")
-        match (findProjectedModule(projection, symbol.moduleId)) {
-            case Some(module) => match (sourceUrl(documentation.project, module, symbol.source)) {
-                case Some(url) =>
-                    out.append("- ${label(locale, "Repository source", "仓库源码")}: ")
-                    match (markdownLinkDestination(url)) {
-                        case Some(destination) =>
-                            out.append("[" + label(locale, "Open source", "打开源码") + "](" +
-                                destination + ")\n")
-                        case None => appendMarkdownCodeSpan(out, url); out.append("\n")
-                    }
-                case None => ()
-            }
-            case None => ()
-        }
+        appendSourceReferenceEvidenceMarkdown(out, source, locale)
         out.append("\n")
     }
 

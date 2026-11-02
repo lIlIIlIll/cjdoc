@@ -68,7 +68,7 @@ stage_dir="$(mktemp -d "${schema_parent}/.schema.XXXXXX")"
 # exported to the v2 file and the explicit v1 name republishes the frozen file
 # unchanged. Every other name matches its file.
 for entry in \
-    doc-ir=doc-ir doc-ir-v17=doc-ir-v17 diagnostics=diagnostics cfg-matrix=cfg-matrix \
+    doc-ir=doc-ir doc-ir-v18=doc-ir-v18 diagnostics=diagnostics cfg-matrix=cfg-matrix \
     search-index=search-index search-index-v11=search-index-v11 symbol-index=symbol-index \
     navigation-index=navigation-index-v1 navigation-index-v2=navigation-index \
     api-surface=api-surface api-surface-v3=api-surface-v3 \
@@ -77,7 +77,8 @@ for entry in \
     versions=versions versions-v2=versions-v2 translation-coverage=translation-coverage \
     site-manifest=site-manifest \
     agent-full-index=agent-full-index declaration=declaration page=page \
-    machine-manifest=machine-manifest query-request=query-request query-result=query-result; do
+    machine-manifest=machine-manifest query-request=query-request query-result=query-result \
+    source-provenance=source-provenance; do
     published="${entry%%=*}"
     schema_name="${entry#*=}"
     "${binary}" schema "${schema_name}" | tr -d '\r' \
@@ -99,7 +100,7 @@ if actual != expected:
         " unexpected=" + ",".join(sorted(actual - expected))
     )
 frozen_definitions = strict_load(
-    root / "doc-ir-v17.schema.json", description="generated current Doc IR v17 schema"
+    root / "doc-ir-v18.schema.json", description="generated current Doc IR v18 schema"
 )["$defs"]
 for name in SCHEMA_NAMES:
     value = strict_load(root / f"{name}.schema.json", description=f"generated {name} schema")

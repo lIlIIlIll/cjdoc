@@ -149,11 +149,16 @@ internal func cacheAddTag(writer: SourceCacheWriter, tag: DocTag): Unit {
     writer.add(tag.subject)
     writer.add(tag.description)
     writer.add(tag.directives)
+    cacheAddOptionalString(writer, tag.entryId)
+    writer.add(tag.source.isSome())
+    if (let Some(source) <- tag.source) { cacheAddLocation(writer, source) }
 }
 
 internal func cacheReadTag(reader: SourceCacheReader): DocTag {
     let tag = DocTag(reader.next(), reader.next(), reader.next())
     tag.directives = reader.next()
+    tag.entryId = cacheReadOptionalString(reader)
+    if (reader.nextBool()) { tag.source = Some(cacheReadLocation(reader)) }
     tag
 }
 
@@ -201,6 +206,8 @@ internal func cacheAddDocComment(writer: SourceCacheWriter, value: ?DocComment):
             writer.add(doc.descriptionMarkdown)
             cacheAddTags(writer, doc.params)
             cacheAddTags(writer, doc.examples)
+            writer.add(doc.localizationScope)
+            cacheAddTags(writer, doc.admonitions)
             match (doc.returns) {
                 case Some(tag) =>
                     writer.add(true)
@@ -225,6 +232,8 @@ internal func cacheReadDocComment(reader: SourceCacheReader): ?DocComment {
     let doc = DocComment(reader.next(), reader.next(), reader.next())
     cacheReadTags(reader, doc.params)
     cacheReadTags(reader, doc.examples)
+    doc.localizationScope = reader.next()
+    cacheReadTags(reader, doc.admonitions)
     if (reader.nextBool()) { doc.returns = Some(cacheReadTag(reader)) }
     doc.returnTagCount = reader.nextInt()
     cacheReadTags(reader, doc.throwsTags)
@@ -366,6 +375,7 @@ internal class ParsedSourceFile {
     let input: SourceInputFile
     var packageName: ?String = None
     var capturedSourceIndex: ?CapturedSourceIndex = None
+    var capturedSourceFacts: ?CapturedSourceFacts = None
     var capturedSource: String = ""
     let imports = ArrayList<String>()
     let packageImports = ArrayList<String>()
@@ -380,11 +390,10 @@ internal class ParsedSourceFile {
     init(input: SourceInputFile) { this.input = input }
 }
 
-internal func withCapturedSourceIndex(parsed: ParsedSourceFile,
-    capturedSourceIndex: CapturedSourceIndex): ParsedSourceFile {
-    if (capturedSourceIndex.available) {
-        parsed.capturedSourceIndex = Some(capturedSourceIndex)
-    }
+internal func withCapturedSourceFacts(parsed: ParsedSourceFile,
+    facts: CapturedSourceFacts): ParsedSourceFile {
+    if (facts.index.available) { parsed.capturedSourceIndex = Some(facts.index) }
+    parsed.capturedSourceFacts = Some(facts)
     parsed
 }
 

@@ -43,7 +43,7 @@ private func agentPageEnvelope(context: DocumentationReadSnapshot, id: String, k
     moduleId: ?String, html: String, markdownPath: String, jsonPath: String,
     markdown: String, pageJson!: String = "null", packageJson!: String = "null"): String {
     let out = StringBuilder()
-    out.append("{\"schemaVersion\":\"cjdoc.page/1\",\"id\":${escapeJsonString(id)},\"kind\":${escapeJsonString(kind)},\"scope\":")
+    out.append("{\"schemaVersion\":\"cjdoc.page/2\",\"id\":${escapeJsonString(id)},\"kind\":${escapeJsonString(kind)},\"scope\":")
     appendAgentReadingScope(out, context, moduleId)
     out.append(",\"page\":${pageJson},\"package\":${packageJson},\"representations\":{\"pathBase\":\"document-root\"," +
         "\"html\":${escapeJsonString(html)},\"markdown\":${escapeJsonString(markdownPath)},\"json\":${escapeJsonString(jsonPath)}}," +

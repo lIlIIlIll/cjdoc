@@ -82,6 +82,40 @@ cjdoc 不执行宏。宏调用保留在 `macroInvocations` 中，并通过 `CJDO
 | `@example` | 示例代码块，详见下一节。 |
 | `@group` | 源码声明分组，格式为 `@group 稳定标识 纯文本标题`。 |
 | `@tag` | 声明级分类标签，格式为 `@tag 稳定标识`，每个声明可重复多个。 |
+| `@note`、`@warning`、`@danger` | 作者明确标注的注意、警告或危险提示；完整语法见下文。 |
+
+### 写提示
+
+提示标签只识别小写 `@note`、`@warning` 和 `@danger`，且必须写在注释的顶层。标签后的连续非空顶层普通文本行属于提示正文；空行、下一条顶层 `@...` 行（即使它不是已知标签）、离开顶层普通文本结构或注释结束都会终止正文。未知顶层标签仍作为普通正文保留。若后面还有普通描述段落，用空行与提示分开。复杂的列表、表格、代码块等内容用 Markdown 提示块，见[概念页与指南](guides.md#markdown-提示块)。
+
+可选属性只接受以下顺序，不加空格或引号：
+
+```text
+@warning
+@warning[id=stale-cache]
+@warning[lang=en]
+@warning[lang=en,id=stale-cache]
+```
+
+例如：
+
+~~~cangjie
+/**
+ * Loads the cached response.
+ *
+ * @warning[id=stale-cache] The cache may contain data from before the latest update.
+ * Check its timestamp before using it.
+ *
+ * This ordinary paragraph is not part of the warning.
+ */
+public func loadResponse(): Response { ... }
+~~~
+
+`id` 是 1–64 个 ASCII 字节，必须以小写 `a-z` 开头，其余只能是小写字母、数字、`_` 或 `-`。例如 `id=stale-cache` 合法，`id=Stale-cache`、`id=1st-cache` 和 `id=` 非法。属性顺序反过来（`[id=stale-cache,lang=en]`）、未知/重复属性、带引号或带空格的属性也非法。`@Warning`、`@noteish`、代码、引用和列表中的相似文字保留为普通正文；无效提示头及其文字也会保留为正文并给出诊断。提示正文为空会报 `CJDOC3117`。
+
+这些级别由作者明确选择，cjdoc 不根据文字推断风险。HTML 使用静态、带可见本地化等级标题的提示块；正文继续走安全 Markdown renderer，不把作者内容作为 HTML 插入，也不创建弹窗、`role="alert"` 或 live region。折叠成员的 warning/danger 会显示紧凑等级徽标，note 不加风险徽标。多语言 ID 配对与仅提示本地化见[多语言文档](i18n.md#为提示正文配对语言)。
+
+诊断码：`CJDOC3115` 表示提示属性结构或语法错误（语言值格式/支持性错误使用 `CJDOC3102`/`CJDOC3103`），`CJDOC3116` 表示 ID 错误，`CJDOC3117` 表示空提示；相同 ID 在同一语言重复，或跨提示等级复用，会报 `CJDOC3118`。
 
 行为契约标签用于描述调用约定，会在页面的“行为契约”区域分组显示：
 
@@ -460,11 +494,14 @@ cjdoc generate --project . --format html \
   --repository-root .
 ```
 
-- `--repository-url` 和 `--repository-revision` 必须成对提供。
-- `--repository-root` 可选，表示仓库根目录；默认取 `--project` 的目录，当项目位于仓库子目录时才需要显式指定。它要求前两个选项同时存在。
-- URL 需要是形如 `https://github.com/owner/repo` 的仓库根地址。
-- 这三个选项只用于 `generate`（`serve` 预览也接受，用于生成同样的链接）。
-- 当 cjdoc 无法证明源码文件位于该仓库内时，页面会省略源码链接，不会生成猜测地址。
+- `--repository-url` 和 `--repository-revision` 必须成对提供；仓库 URL 是 `https://github.com/owner/repo`，revision 可使用已有的 commit 或 ref。
+- `--repository-root` 可选，表示仓库根目录；默认取 `--project` 的目录，当项目位于仓库子目录时才需要显式指定。它要求前两个选项同时提供。
+- 这些选项只用于 `generate`（`serve` 预览也接受，用于生成同样的链接），采用旧的单仓声明模式，不核对回执或捕获源码字节。
+- 无法确认源码文件位于登记仓库内时，页面会省略源码链接，不会生成猜测地址。要为多个源码根配置仓库映射和 caller-pinned receipt，见[配置参考](configuration.md)。
+
+显式的 `[[source.repositories]]` 配置启用严格登记模式：未登记的文件不会回退到上述单仓选项。Receipt 的格式、SHA-256 核对方式和信任边界见[配置参考](configuration.md)。
+
+重导出可能有两个不同的源码位置：`查看源码` 指向目标声明，`暴露位置` 指向当前模块中的重导出行。它们分别依据各自的文件来源记录和 source range 生成链接，不互相替代；任一位置没有可用链接时只省略该链接。
 
 ## 检查文档问题
 
@@ -555,6 +592,15 @@ cjdoc render \
 - `--stdout` 规则和 `generate` 相同：只能配合恰好一个 JSON 类格式。
 - 还支持 `--locale`、`--all-languages`、`--doc-version`（要求 HTML）、`--agent-full`（要求 HTML）。
 - 输出目录必须不存在，或此前由 cjdoc 管理。只有后者能配合 `--force-owned` 接管被修改的已登记产物；预创建或含无关文件的目录不能用 `--force-owned` 接管，请换一个新目录。
+
+当前 Doc IR wire 是 `cjdoc.doc-ir/18`，decoder 只接受当前版本，不迁移旧 JSON。旧 `docs.json` 需要从原始源码重新运行 `cjdoc generate` 生成 v18，再交给 `render`；没有可用源码时没有受支持的旧快照迁移路径。v18 同步使用 `cjdoc.declaration/3`、`cjdoc.page/2` 和 `cjdoc.query-result/4`；`cjdoc.query-request/3`、`cjdoc.search-index/11` 与 `cjdoc.search-contract/2` 保持不变。维护者 wire 清单见 [Doc IR、schema 与 golden](maintainer/doc-ir.md)。
+
+例如，从源码先重新捕获 v18，再从新快照渲染 HTML：
+
+```bash
+cjdoc generate --project . --format json --output target/doc-v18
+cjdoc render --input target/doc-v18/docs.json --format html --output target/doc-v18-html
+```
 
 ## 本地预览
 

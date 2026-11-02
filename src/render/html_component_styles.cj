@@ -50,6 +50,14 @@ internal let HTML_LAYOUT_HARDENING_STYLE = """
 @media screen{
 .member-browser.member-browser-large .member-row:not(:focus-within):not(.member-actions-open):has(>.member-detail:not([open])){content-visibility:auto;contain-intrinsic-size:auto 8rem}
 }
+.admonition{min-width:0;max-width:100%;margin:1rem 0;padding:.75rem .9rem;border:1px solid var(--admonition-accent,var(--accent-strong));border-radius:7px;background:var(--surface-subtle);color:var(--ink);overflow-wrap:anywhere}
+.admonition-note{--admonition-accent:var(--accent-strong)}.admonition-warning{--admonition-accent:var(--warning)}.admonition-danger{--admonition-accent:var(--danger)}
+.admonition-heading{display:flex;align-items:center;gap:.5rem;margin:0 0 .45rem;color:var(--admonition-accent);font-weight:750}.admonition-icon{display:inline-grid;place-items:center;flex:0 0 1.35rem;width:1.35rem;height:1.35rem}.admonition-title{font-size:.92rem}
+.admonition-body{min-width:0;color:var(--ink);font-size:1em;line-height:1.75;overflow-wrap:anywhere}.admonition-body>:first-child{margin-top:0}.admonition-body>:last-child{margin-bottom:0}.admonition-body pre{max-width:100%;overflow-x:auto}.admonition-body table{display:block;max-width:100%;overflow-x:auto}
+.admonition-risk-badges{grid-column:2/-1;justify-self:start;min-width:0;display:inline-flex;flex-wrap:wrap;align-items:center;gap:.25rem .4rem;max-width:100%;vertical-align:middle}
+.admonition-risk-badge{display:inline-flex;align-items:center;gap:.22rem;max-width:100%;padding:.08rem .38rem;border:1px solid var(--line-strong);border-radius:999px;background:var(--surface-subtle);font-size:.875rem;font-weight:700;line-height:1.45;overflow-wrap:anywhere}
+.admonition-risk-danger{color:var(--danger)}.admonition-risk-warning{color:var(--warning)}
+@media print{.admonition,.admonition-body,.admonition-body pre,.admonition-body table{max-width:none;overflow:visible}.admonition-body pre{white-space:pre-wrap;overflow-wrap:anywhere}}
 """
 
 internal let HTML_EXAMPLE_STYLE = """

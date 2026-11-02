@@ -2,7 +2,7 @@ package cjdoc.model
 
 import std.collection.*
 
-public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/17"
+public let DOC_IR_SCHEMA_VERSION = "cjdoc.doc-ir/18"
 public let DOC_IR_MAX_TYPE_DEPTH: Int64 = 64
 public let DOC_IR_MAX_MARKDOWN_DEPTH: Int64 = 64
 public let DOC_IR_MAX_FENCE_LENGTH: Int64 = 1024
@@ -222,27 +222,21 @@ public class ModuleDoc {
     public let name: String
     public let role: String
     public let sourcePrefix: String
-    public let repositoryPath: ?String
     public let organization: ?String
     private let packageNamesStorage: ArrayList<String>
     private let dependencyIdsStorage: ArrayList<String>
 
     public init(id: String, name: String, role: String, sourcePrefix: String,
         packageNames!: Array<String> = [], dependencyIds!: Array<String> = [],
-        organization!: ?String = None, repositoryPath!: ?String = None) {
+        organization!: ?String = None) {
         if (!portableModuleSourcePrefix(sourcePrefix)) {
             throw IllegalArgumentException(
                 "module sourcePrefix must be empty or a portable relative logical path")
-        }
-        if (repositoryPath.isSome() && !portableModuleSourcePrefix(repositoryPath.getOrThrow())) {
-            throw IllegalArgumentException(
-                "module repositoryPath must be null, empty, or a portable relative path")
         }
         this.id = id
         this.name = name
         this.role = role
         this.sourcePrefix = sourcePrefix
-        this.repositoryPath = repositoryPath
         this.organization = organization
         this.packageNamesStorage = ArrayList<String>(packageNames)
         this.dependencyIdsStorage = ArrayList<String>(dependencyIds)

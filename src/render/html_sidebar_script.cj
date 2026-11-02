@@ -7,10 +7,13 @@ internal let HTML_SIDEBAR_SCRIPT = """
   if (!sidebar || !data) return;
   const root = sidebar.dataset.cjdocRootPrefix || "";
   const current = sidebar.dataset.cjdocCurrentSymbol || "";
-  const setCurrent = (link, id) => {
-    if (id !== current) return;
-    link.classList.add("is-current");
-    link.setAttribute("aria-current", "page");
+  const currentPage = sidebar.dataset.cjdocCurrentPage || "";
+  const setCurrent = (link, id, path, local = false) => {
+    const exact = !local && !!currentPage && !path.includes("#") && path === currentPage;
+    link.classList.toggle("is-current", exact);
+    link.classList.toggle("is-ancestor", !exact && id === current);
+    if (exact) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
   };
   for (const nav of sidebar.querySelectorAll("[data-cjdoc-sidebar-package]")) {
     const ids = data.packages[nav.dataset.cjdocSidebarPackage] || [];
@@ -23,7 +26,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
       const link = document.createElement("a");
       link.className = "sidebar-symbol";
       link.setAttribute("href", root + symbol.path);
-      setCurrent(link, id);
+      setCurrent(link, id, symbol.path);
       const name = document.createElement("span");
       name.className = "sidebar-symbol-name";
       name.textContent = symbol.label;
@@ -48,7 +51,7 @@ internal let HTML_SIDEBAR_SCRIPT = """
       link.setAttribute("data-cjdoc-context-item", "");
       link.setAttribute("href", local ? "#" + symbol.anchor : root + symbol.path);
       link.setAttribute("title", symbol.signature);
-      setCurrent(link, id);
+      setCurrent(link, id, symbol.path, local);
       const name = document.createElement("code");
       name.textContent = symbol.context;
       link.append(name);

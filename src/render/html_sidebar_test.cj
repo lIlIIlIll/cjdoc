@@ -8,6 +8,15 @@ import std.unittest.testmacro.*
 @Test
 class HtmlSidebarNavigationTest {
     @TestCase
+    func pageIdentityNeverUsesFragmentsOrSuffixMatching(): Unit {
+        @Expect(sidebarPageIsCurrent("index.html", Some("index.html")))
+        @Expect(!sidebarPageIsCurrent("index.html#packages", Some("index.html")))
+        @Expect(!sidebarPageIsCurrent("index.html", Some("concepts/index.html")))
+        @Expect(!sidebarPageIsCurrent("index.html", None))
+        @Expect(!sidebarPageIsCurrent("symbols/owner.html", Some("symbols/member.html")))
+    }
+
+    @TestCase
     func currentSymbolRemainsVisibleAfterSidebarLimit(): Unit {
         let moduleId = "cjdoc:module:v1:sidebar-limit"
         let source = SourceRange("src/fixture.cj", SourcePosition(1, 1, 0),
@@ -34,12 +43,17 @@ class HtmlSidebarNavigationTest {
         let projection = RenderProjection(documentation)
         let out = RenderTextBuffer()
         appendSidebarActiveSymbols(out, projection, moduleId, "fixture",
-            "../", "en", selected)
+            "../", "en", selected, Some(symbolPagePath(selected.getOrThrow())))
         let html = out.toString()
 
         @Expect(html.contains("class=\"sidebar-symbol is-current\""), true)
         @Expect(html.contains("aria-current=\"page\""), true)
         @Expect(html.contains("zz_Last"), true)
+        let memberOut = RenderTextBuffer()
+        appendSidebarActiveSymbols(memberOut, projection, moduleId, "fixture",
+            "../", "en", selected, Some("symbols/member.html"))
+        @Expect(!memberOut.toString().contains("aria-current=\"page\""))
+        @Expect(memberOut.toString().contains("sidebar-symbol is-ancestor"))
     }
 
     @TestCase

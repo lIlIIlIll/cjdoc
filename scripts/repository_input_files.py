@@ -137,6 +137,17 @@ def definition(value: object, name: str) -> dict:
     if not isinstance(found, dict):
         raise ValueError(f"schema definition is missing or not an object: {name}")
     return found
+
+def local_schema(value: object, shape: object, description: str) -> dict:
+    if not isinstance(shape, dict):
+        raise ValueError(f"{description} schema is not an object")
+    reference = shape.get("$ref")
+    if reference is None:
+        return shape
+    if not isinstance(reference, str) or not reference.startswith("#/$defs/"):
+        raise ValueError(f"{description} schema uses a non-local reference")
+    return definition(value, reference[len("#/$defs/"):])
+
 def validate_classification_definitions(value: dict, name: str) -> None:
     identifier = definition(value, "classificationId")
     title = definition(value, "classificationTitle")
@@ -361,9 +372,9 @@ def validate_schema_document(name: str, value: object,
             raise ValueError(f"{name} schema lost a required field")
     if name in ARTIFACT_SCHEMAS:
         validate_artifact_schema(name, value, properties, frozen_definitions)
-    if name in ("doc-ir", "doc-ir-v17") and properties["documentationRevision"] != {"type": "string"}:
+    if name in ("doc-ir", "doc-ir-v18") and properties["documentationRevision"] != {"type": "string"}:
         raise ValueError(f"{name} schema documentation revision shape is invalid")
-    if name in ("doc-ir", "doc-ir-v17", "symbol-index"):
+    if name in ("doc-ir", "doc-ir-v18", "symbol-index"):
         definitions = value.get("$defs")
         for definition_name, graph_field in (
             ("dependencyInstance", "componentModuleId"), ("documentSetIdentity", "moduleId"),
@@ -401,9 +412,31 @@ def validate_schema_document(name: str, value: object,
             raise ValueError(f"{name} API collection state shape is invalid")
         if "repository" not in definitions:
             raise ValueError(f"{name} repository definition is missing")
+        file_schema = definition(value, "file")
+        provenance = definition(value, "sourceProvenance")
+        provenance_fields = {
+            "state", "reason", "repository", "repositoryPath", "sourceDigest",
+            "normalizedDigest", "evidenceIdentity", "evidenceKind",
+        }
+        if "provenance" not in file_schema.get("required", []) or \
+                file_schema.get("properties", {}).get("provenance") != {
+                    "$ref": "#/$defs/sourceProvenance"} or \
+                provenance.get("type") != "object" or \
+                provenance.get("additionalProperties") is not False or \
+                set(provenance.get("required", [])) != provenance_fields or \
+                set(provenance.get("properties", {})) != provenance_fields or \
+                provenance.get("properties", {}).get("state") != {
+                    "$ref": "#/$defs/sourceProvenanceState"} or \
+                definition(value, "sourceProvenanceState") != {
+                    "enum": ["verified", "declared", "unavailable", "ambiguous"]} or \
+                provenance.get("properties", {}).get("reason") != {
+                    "$ref": "#/$defs/sourceProvenanceReason"} or \
+                provenance.get("properties", {}).get("evidenceKind") != {
+                    "enum": ["caller_pinned_receipt", "none"]}:
+            raise ValueError(f"{name} source provenance contract is invalid")
         if "evidenceKey" in definitions.get("tag", {}).get("properties", {}):
             raise ValueError(f"{name} schema contains removed tag evidence")
-        if name in ("doc-ir", "doc-ir-v17"):
+        if name in ("doc-ir", "doc-ir-v18"):
             metadata = definition(value, "documentationMetadata")
             if properties.get("metadata") != {"$ref": "#/$defs/documentationMetadata"} or \
                     metadata.get("additionalProperties") is not False or \
@@ -490,6 +523,37 @@ def validate_schema_document(name: str, value: object,
                         "kind", "literal", "source", "metadata", "children"
                     }:
                 raise ValueError(f"{name} schema Markdown node shape is invalid")
+    elif name == "source-provenance":
+        repository = local_schema(value, properties.get("repository"), "source-provenance repository")
+        files = properties.get("files")
+        item = local_schema(value, files.get("items") if isinstance(files, dict) else None,
+                            "source-provenance file")
+        repository_properties = repository.get("properties", {})
+        item_properties = item.get("properties", {})
+        repository_url = repository_properties.get("url")
+        repository_revision = repository_properties.get("revision")
+        file_path = local_schema(value, item_properties.get("path"), "source-provenance file path")
+        file_digest = item_properties.get("sha256")
+        if repository.get("type") != "object" or \
+                repository.get("additionalProperties") is not False or \
+                set(repository.get("required", [])) != {"url", "revision"} or \
+                set(repository_properties) != {"url", "revision"} or \
+                not isinstance(repository_url, dict) or \
+                repository_url.get("pattern") != \
+                    "^https://github.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$" or \
+                not isinstance(repository_revision, dict) or \
+                repository_revision.get("pattern") != "^[0-9a-f]{40}$" or \
+                not isinstance(files, dict) or files.get("type") != "array" or \
+                files.get("maxItems") != 100000 or \
+                item.get("type") != "object" or \
+                item.get("additionalProperties") is not False or \
+                set(item.get("required", [])) != {"path", "sha256"} or \
+                set(item_properties) != {"path", "sha256"} or \
+                file_path.get("type") != "string" or file_path.get("minLength") != 1 or \
+                file_path.get("pattern") != "^[^/]+(?:/[^/]+)*$" or \
+                not isinstance(file_digest, dict) or \
+                file_digest.get("pattern") != "^[0-9a-f]{64}$":
+            raise ValueError("source-provenance receipt schema shape is invalid")
     elif name == "query-request":
         tags = properties.get("tags")
         tag_items = tags.get("items") if isinstance(tags, dict) else None
@@ -720,13 +784,13 @@ def verify_schema_set(repo: Path) -> None:
             "published schema set mismatch: missing=" + ",".join(missing) +
             " unexpected=" + ",".join(unexpected)
         )
-    # Artifact schemas embed the current Doc IR v17 declarations; load that
+    # Artifact schemas embed the current Doc IR v18 declarations; load that
     # model once and reject forks in every consumer schema.
     frozen_definitions = strict_load(
-        directory / "doc-ir-v17.schema.json", description="doc-ir-v17 schema")
+        directory / "doc-ir-v18.schema.json", description="doc-ir-v18 schema")
     if not isinstance(frozen_definitions, dict) or not isinstance(
             frozen_definitions.get("$defs"), dict):
-        raise ValueError("doc-ir-v17 schema definitions are missing")
+        raise ValueError("doc-ir-v18 schema definitions are missing")
     frozen_definitions = frozen_definitions["$defs"]
     for name in SCHEMA_NAMES:
         path = directory / f"{name}.schema.json"

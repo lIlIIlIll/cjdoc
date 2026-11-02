@@ -25,8 +25,8 @@ private let PROJECTION_HIDDEN_ASSET =
 private let PROJECTION_OMITTED_DIAGNOSTIC =
     "Details omitted because this diagnostic has no visible declaration binding."
 
-private func projectionRange(line: Int64): SourceRange {
-    SourceRange("src/api.cj", SourcePosition(line, 1, line * 20),
+private func projectionRange(line: Int64, path!: String = "src/api.cj"): SourceRange {
+    SourceRange(path, SourcePosition(line, 1, line * 20),
         SourcePosition(line, 21, line * 20 + 20))
 }
 
@@ -55,14 +55,19 @@ private func projectionHiddenDocument(): MarkdownNode {
 }
 
 private func projectionVisibleComment(): api_model.DocComment {
+    let commentSource = Some(projectionRange(12))
+    let tagSource = Some(projectionRange(13))
     let summary = DocumentationText(PROJECTION_VISIBLE + ":doc:summary:", "summary", "",
-        Some("en"), "Public entry point.", MarkdownNode("document"))
+        Some("en"), "Public entry point.", MarkdownNode("document"),
+        source: commentSource)
     let reference = DocumentationText(PROJECTION_VISIBLE + ":doc:see:" + PROJECTION_HELPER,
         "see", "hiddenHelper", Some("en"), "See hiddenHelper for details.", MarkdownNode("document"),
-        referenceState: "resolved", targetSymbolId: Some(PROJECTION_HELPER))
+        referenceState: "resolved", targetSymbolId: Some(PROJECTION_HELPER),
+        source: tagSource)
     let tag = api_model.DocTag("see", "hiddenHelper", "See hiddenHelper", referenceState: "resolved",
         targetSymbolId: Some(PROJECTION_HELPER),
-        fieldId: PROJECTION_VISIBLE + ":doc:see:" + PROJECTION_HELPER)
+        fieldId: PROJECTION_VISIBLE + ":doc:see:" + PROJECTION_HELPER,
+        source: tagSource)
     return api_model.DocComment("Public entry point.", "Public entry point.", "", projectionDocument(),
         tags: [tag], defaultLanguage: Some("en"), localizedTexts: [summary, reference])
 }
@@ -75,7 +80,8 @@ private func publicationProjectionFixture(audience: String): api_model.Documenta
         "fixture", PROJECTION_MODULE, "public", projectionRange(2), "public func visible(): Unit",
         SemanticInfo("partial", "ast"), documentation: Some(projectionVisibleComment()))
     let helper = api_model.SymbolDoc(PROJECTION_HELPER, "function", "hiddenHelper",
-        "fixture.hiddenHelper", "fixture", PROJECTION_MODULE, "private", projectionRange(3),
+        "fixture.hiddenHelper", "fixture", PROJECTION_MODULE, "private",
+        projectionRange(3, path: "src/private.cj"),
         "private func hiddenHelper(): Unit", SemanticInfo("partial", "ast"),
         documentation: Some(api_model.DocComment("Hidden", "Hidden", "", projectionHiddenDocument())))
     let internalClass = api_model.SymbolDoc(PROJECTION_INTERNAL, "class", "Internal", "fixture.Internal",
@@ -113,14 +119,18 @@ private func publicationProjectionFixture(audience: String): api_model.Documenta
             api_model.SemanticCapabilities(true, true, true, true, true, relationships: true))],
         modules: [api_model.ModuleDoc(PROJECTION_MODULE, "publication", "root", "",
             packageNames: ["fixture"])],
-        packages: [api_model.PackageDoc("fixture", PROJECTION_MODULE, sourceFiles: ["src/api.cj"],
+        packages: [api_model.PackageDoc("fixture", PROJECTION_MODULE,
+            sourceFiles: ["src/api.cj", "src/private.cj", "docs/comments.cj", "docs/tag-source.cj"],
             symbolIds: [PROJECTION_HOST, PROJECTION_VISIBLE, PROJECTION_HELPER,
                 PROJECTION_INTERNAL, PROJECTION_INTERNAL_MEMBER, PROJECTION_EXTEND,
                 PROJECTION_EXTENSION_MEMBER],
             reExports: [api_model.ReExportDoc(PROJECTION_REEXPORT_ID, "single", "fixture", "resolved",
                 projectionRange(9), targetModuleId: Some(PROJECTION_MODULE),
                 bindings: [api_model.ReExportBinding("Host", targetSymbolIds: [PROJECTION_HOST])])])],
-        files: [FileDoc("src/api.cj", PROJECTION_MODULE, "fixture")],
+        files: [FileDoc("src/api.cj", PROJECTION_MODULE, "fixture"),
+            FileDoc("src/private.cj", PROJECTION_MODULE, "fixture"),
+            FileDoc("docs/comments.cj", PROJECTION_MODULE, "fixture"),
+            FileDoc("docs/tag-source.cj", PROJECTION_MODULE, "fixture")],
         declarations: [host, visible, helper, internalClass, internalMember, extension,
             extensionMember],
         assets: [
@@ -229,6 +239,24 @@ class PublicationProjectionTest {
     }
 
     @TestCase
+    func publicationKeepsCommentSourceRangesAndPrunesUnreferencedFileInventories(): Unit {
+        let captured = publicationProjectionFixture("all")
+        let full = publication_render.projectPublicationDocumentation(captured)
+        @Expect(full.files.size, 2)
+        @Expect(full.packages[0].sourceFiles.size, 2)
+        let external = publication_render.projectPublicationDocumentation(captured,
+            audience: "external")
+        @Expect(external.files.size, 1)
+        @Expect(external.files[0].path, "src/api.cj")
+        @Expect(external.packages[0].sourceFiles.size, 1)
+        @Expect(external.packages[0].sourceFiles[0], "src/api.cj")
+        let encoded = publication_render.encodeDocIr(external)
+        @Expect(encoded.contains("src/private.cj"), false)
+        @Expect(encoded.contains("docs/comments.cj"), false)
+        @Expect(encoded.contains("docs/tag-source.cj"), false)
+    }
+
+    @TestCase
     func hiddenReferencesLoseIdentityButKeepAuthorText(): Unit {
         let captured = publicationProjectionFixture("external")
         let projected = publication_render.projectPublicationDocumentation(captured)
@@ -238,6 +266,7 @@ class PublicationProjectionTest {
         // rewritten, because publishing author text is not an identity claim.
         @Expect(comment.rawText, "Public entry point.")
         @Expect(comment.localizedTexts[0].text, "Public entry point.")
+        @Expect(comment.localizedTexts[0].source.getOrThrow().path, "src/api.cj")
         let paragraph = comment.markdown.children[0]
         @Expect(paragraph.children[0].literal.contains("hiddenHelper"), true)
         // The local reference loses its target and stops claiming resolution.
@@ -247,11 +276,13 @@ class PublicationProjectionTest {
         @Expect(reference.referenceState, "unavailable")
         @Expect(reference.fieldId.startsWith(PROJECTION_VISIBLE + ":doc:see:opaque:"), true)
         @Expect(reference.fieldId.contains(PROJECTION_HELPER), false)
+        @Expect(reference.source.getOrThrow().path, "src/api.cj")
         // The projected tag and the language variant share one opaque identity.
         @Expect(comment.tags.size, 1)
         @Expect(comment.tags[0].targetSymbolId.isNone(), true)
         @Expect(comment.tags[0].referenceState, "unavailable")
         @Expect(comment.tags[0].fieldId, reference.fieldId)
+        @Expect(comment.tags[0].source.getOrThrow().path, "src/api.cj")
         // A semantic link keeps its author-facing target and loses its identity.
         let link = paragraph.children[1]
         let metadata = link.metadata.getOrThrow()

@@ -838,9 +838,11 @@ internal let HTML_SEARCH_SCRIPT = HTML_SEARCH_KERNEL_SCRIPT + """
     if (!sidebar) return;
     const context = sidebar.querySelector(".sidebar-context");
     const current = context && [...context.querySelectorAll("a")].find((link) =>
-      link.classList.contains("is-current") || (window.location.hash && link.getAttribute("href") === window.location.hash));
-    const selectedSymbol = sidebar.querySelector(".sidebar-symbol.is-current");
-    const target = current || selectedSymbol || context || sidebar.querySelector(".sidebar-package.is-current");
+      link.classList.contains("is-current") || link.classList.contains("is-ancestor") ||
+      (window.location.hash && link.getAttribute("href") === window.location.hash));
+    const selectedSymbol = sidebar.querySelector(".sidebar-symbol.is-current, .sidebar-symbol.is-ancestor");
+    const target = current || selectedSymbol || context ||
+      sidebar.querySelector(".sidebar-package.is-current, .sidebar-package.is-ancestor");
     if (!target) return;
     sidebar.scrollTop = Math.max(0, sidebar.scrollTop + target.getBoundingClientRect().top -
       sidebar.getBoundingClientRect().top - sidebar.clientHeight / 3);
@@ -855,11 +857,13 @@ internal let HTML_SEARCH_SCRIPT = HTML_SEARCH_KERNEL_SCRIPT + """
       (declaredRoute === "overview" && window.location.hash === "#packages");
     const onQuickStart = declaredRoute === "overview" &&
       window.location.hash === "#quick-start-title";
-    const onOverview = declaredRoute === "overview" && !onApi && !onQuickStart;
+    const onOverview = sidebar && sidebar.dataset.cjdocCurrentPage === "index.html";
     for (const [link, active] of [[overview, onOverview], [quickStart, onQuickStart], [api, onApi]]) {
       if (!link) continue;
-      link.classList.toggle("is-current", active);
-      if (active) link.setAttribute("aria-current", "page");
+      const page = link === overview && onOverview;
+      link.classList.toggle("is-current", page);
+      link.classList.toggle("is-ancestor", !page && active);
+      if (page) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
     }
   };
@@ -1247,7 +1251,7 @@ internal let HTML_SEARCH_SCRIPT = HTML_SEARCH_KERNEL_SCRIPT + """
   // Ordinary overload groups pay extra layout cost without a large-page gain.
   // Reuse the existing navigation cap as the large member-browser boundary.
   if (memberRows.length > 256) {
-    memberFilter?.closest(".member-browser")?.classList.add("member-browser-large");
+    document.querySelector("[data-cjdoc-member-browser]")?.classList.add("member-browser-large");
   }
   const memberGroups = [...document.querySelectorAll("[data-cjdoc-member-group]")];
   const overloadGroups = [...document.querySelectorAll("[data-cjdoc-overload-group]")];
@@ -1400,7 +1404,10 @@ internal let HTML_SEARCH_SCRIPT = HTML_SEARCH_KERNEL_SCRIPT + """
     if (!savedMemberState || (window.location.hash && !isHistoryNavigation)) return false;
     const state = savedMemberState;
     if (memberFilter && typeof state.filter === "string") memberFilter.value = state.filter;
-    if (originFilter && typeof state.origin === "string") originFilter.value = state.origin;
+    if (originFilter && typeof state.origin === "string") {
+      originFilter.value = [...originFilter.options].some(option => option.value === state.origin)
+        ? state.origin : "";
+    }
     applyMemberFilter();
     if (Array.isArray(state.open)) {
       for (const item of memberRows) item.open = state.open.includes(item.id);

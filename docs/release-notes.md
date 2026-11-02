@@ -35,3 +35,30 @@ Doc IR 仍为 v16。生成器版本改为 `0.7.6`，需要重新生成 current g
 - 静态搜索的 ASCII 折叠不再逐码点累积拼接字符串，保留非 ASCII 文本与不规范化规则。Reader 浏览器回归按当前 UTF-8 canonical identity 顺序校验续页，保留 package 的 canonical-or-exposure 匹配；历史恢复用显式名称过滤验证目标成员，不把 discovery 的模糊匹配误当作唯一结果。
 - 可选高亮宿主构建失败时，公开证据仅增加有界、白名单化的 STS 包装器调用状态；不发布原始编译输出、路径或参数，不增加超时，也不把诊断记录视为构建成功。
 - 这是 current-only wire cutover：Doc IR/16、旧 query-request/query-result、旧 search-index 与 declaration 版本不会被当前 decoder/消费者迁移。使用旧输入前，须从真实源码重新生成当前 Doc IR 或静态站点。
+
+## 未发布：#173–#177 文档行为与消费者契约
+
+- HTML「使用于 / Used by」按关系 kind 标示反向使用位置；正向关系、去重、计数和目标链接不变。内置双语文案如下：
+
+| kind | English | 简体中文 |
+|---|---|---|
+| `parameter` | Uses this type in a parameter | 在参数类型中使用此类型 |
+| `field` | Uses this type in a field or property | 在字段或属性类型中使用此类型 |
+| `return` | Uses this type in a return type | 在返回类型中使用此类型 |
+| `superType` | Uses this type in a parent-type clause | 在父类型声明中使用此类型 |
+| `extensionTarget` | Uses this type in an extension target | 在扩展目标中使用此类型 |
+| `genericConstraint` | Uses this type in a generic constraint | 在泛型约束中使用此类型 |
+
+未知 provider kind 保留为安全转义的中性关系说明，文案形如 `References this type (relationship: ${kind})` / `引用此类型（关系：${kind}）`。
+
+- 本地 STS 1.2.0 产品构建及中英文 reference fixture 生成已运行；实际 Chromium 中展开 Token 的反向使用区域，显示成员链接和参数使用位置。此记录不代表正式 source-bound 门禁或远端 CI 通过。
+
+- 侧栏仅对无 fragment 的 HTML 路由与实际 `currentPagePath` 精确相等时设置 `aria-current="page"`。只有真实 `index.html` 路由让 Overview 成为当前页；`#packages` 等片段只影响章节高亮，API Reference 不冒充当前页。包页、声明页只在实际链接指向当前文档时为 current，包/owner 的上下文链接仅作 ancestor；侧栏没有对应成员链接时可没有 current 项。
+- 已运行双语各 94 页静态路由检查、Chromium 的 file 及 HTTP 子路径代表场景、4 项导航脚本测试和 14 项 HTML validator 测试。尚未进行实际读屏验收；ARIA/DOM 检查不能替代读屏结果。
+
+- 成员工具栏以最终投影后的 `HtmlMemberBrowser.entries` 数量为准：零或一个成员不生成筛选、来源选择和批量展开/收起；两个及以上成员显示筛选与展开/收起。来源选择器只在实际成员含两个及以上来源时出现，选项只列实际存在的 declared、inherited、extension 来源。单成员仍保留原生 `details`、签名、契约、操作和深链。
+- 本批产品重建通过；HTML 原生测试实际选中并通过 61 项、跳过 94 项。Chromium 实测单成员原生展开、单来源多成员无来源选择器、混合来源筛选、名称查询及批量展开；已失效的 session 来源值恢复为 All。实际 94 页站点及 48 条搜索条目通过 HTML validator。
+
+- 当前 Doc IR 为 `cjdoc.doc-ir/18`，严格 decoder 只接受 v18。逐文件 `FileDoc.provenance` 及其完整状态/原因/仓库路径/raw digest/normalized digest/receipt identity/evidence kind 字段都是必需的；无值以 `null` 表示，构造默认是 `unavailable/no_registration`。`declaration/3`、`page/2`、`query-result/4` 切换为新 consumer shapes；query-request/3、search-index/11、search-contract/2 保持不变。旧 JSON 必须从保存的源码重新生成，不能迁移或只改版本号。
+- `verified` 只表示 caller 独立 pin 的 `cjdoc.source-provenance/1` receipt 与本次捕获文件字节匹配，`evidenceKind` 为 `caller_pinned_receipt`；它不是 Git commit/tree/blob、远端仓库、构建成功或工作树状态的独立认证。旧项目仓库映射仍为 `declared/legacy_project_repository`，没有 pin 或文件 digest。严格登记的缺失/不匹配来源不回退到项目仓库并且没有 source URL。decoder replay 只验证保存的 wire 与状态组合，不重读 source、Git 或 receipt，也不重新认证调用方信任。`ReExportDoc.source` 表示 exposing module 的暴露位置，目标 declaration source 仍表示目标定义位置。
+- v18 的提示以 `note`、`warning`、`danger` 的捕获 Markdown AST 表示；只有直接位于 document 下的非空 block admonition 节点有效。`localizationScope` wire 字段必需，模型默认 `all`；`admonitions` scope 要求 `defaultLanguage=null` 且 localized texts 只含提示等级，同时保留普通摘要、正文和其他 tags。`DocTag.entryId/source` 与 `DocumentationText.entryId` wire 字段始终存在，构造默认 `None`。HTML、Markdown、Agent 和 query/search 复用同一捕获内容；full-ir 检索完整 AST/提示 tag 正文，bounded-static 仍限前 2,000 个 Unicode 码点。风险等级是作者文字，不是实现风险验证结论。

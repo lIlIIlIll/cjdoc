@@ -5,26 +5,22 @@ import cjdoc.render as public_render
 import cjdoc.quality.*
 import std.collection.*
 import std.sort.*
-import std.fs.*
 
 
-private func repositoryRootForRequest(request: GenerationRequest): ?String {
-    if (request.repository.isNone()) { return None }
-    match (request.repositoryRoot) {
-        case Some(path) => Some(path)
-        case None => try { Some(canonicalize(request.projectRoot).toString()) } catch (_: Exception) { None }
-    }
-}
-
-private func originForLogicalPath(origins: Array<SourceFileOrigin>, logicalPath: String): ?SourceFileOrigin {
-    var found: ?SourceFileOrigin = None
+private func indexedSourceOrigins(origins: ArrayList<SourceFileOrigin>): HashMap<String, SourceFileOrigin> {
+    let indexed = HashMap<String, SourceFileOrigin>()
+    let ambiguous = HashSet<String>()
     for (origin in origins) {
-        if (origin.logicalPath == logicalPath) {
-            if (found.isSome()) { return None }
-            found = Some(origin)
+        let key = "${origin.moduleId}\n${origin.logicalPath}"
+        if (ambiguous.contains(key)) { continue }
+        if (indexed.contains(key)) {
+            let _ = indexed.remove(key)
+            let _ = ambiguous.add(key)
+        } else {
+            indexed[key] = origin
         }
     }
-    found
+    indexed
 }
 
 private func expectedLogicalPath(module: ModuleDoc, origin: SourceFileOrigin): ?String {
@@ -37,34 +33,56 @@ private func expectedLogicalPath(module: ModuleDoc, origin: SourceFileOrigin): ?
     }
 }
 
-private func repositoryPathForModule(documentation: DocumentationSet, module: ModuleDoc,
-    repositoryRoot: ?String): ?String {
-    let root = match (repositoryRoot) {
-        case Some(value) => value
-        case None => return None
-    }
-    let origins = documentation.sourceFileOrigins.toArray()
-    var actualRoot: ?String = None
-    var sourceCount: Int64 = 0
-    for (pkg in documentation.packages where pkg.moduleId == module.id) {
-        for (logicalPath in pkg.sourceFiles) {
-            sourceCount++
-            let origin = match (originForLogicalPath(origins, logicalPath)) {
-                case Some(value) => value
-                case None => return None
-            }
-            if (expectedLogicalPath(module, origin) != Some(logicalPath)) { return None }
-            match (actualRoot) {
-                case Some(value) => if (value != origin.actualRoot) { return None }
-                case None => actualRoot = Some(origin.actualRoot)
-            }
-            if (!hostPathIsWithin(origin.actualRoot, origin.actualPath)) { return None }
+private func invalidSourceRangeFiles(documentation: DocumentationSet,
+    sourceMapper: PublicSourceMapper): HashSet<String> {
+    let invalid = HashSet<String>()
+    for (symbol in documentation.symbols) {
+        if (sourceMapper.capturedRange(symbol.moduleId, symbol.source).isNone()) {
+            let _ = invalid.add("${symbol.moduleId}\n${symbol.source.path}")
         }
     }
-    if (sourceCount == 0 || actualRoot.isNone()) { return None }
-    let resolvedRoot = actualRoot.getOrThrow()
-    if (!hostPathIsWithin(root, resolvedRoot)) { return None }
-    relativePathFromResolved(root, resolvedRoot)
+    for (pkg in documentation.packages) {
+        for (reExport in pkg.reExports) {
+            if (sourceMapper.capturedRange(pkg.moduleId, reExport.source).isNone()) {
+                let _ = invalid.add("${pkg.moduleId}\n${reExport.source.path}")
+            }
+        }
+    }
+    invalid
+}
+
+private func provenanceForPublicFile(origins: HashMap<String, SourceFileOrigin>, invalidFiles: HashSet<String>,
+    module: ModuleDoc, path: String): public_model.SourceProvenance {
+    let origin = match (origins.get("${module.id}\n${path}")) {
+        case Some(value) => value
+        case None => return public_model.SourceProvenance.unavailable("capture_unavailable")
+    }
+    if (expectedLogicalPath(module, origin) != Some(path)) {
+        return public_model.SourceProvenance.unavailable("path_escape",
+            sourceDigest: match (origin.provenance) {
+                case Some(value) => value.sourceDigest
+                case None => None
+            },
+            normalizedDigest: match (origin.provenance) {
+                case Some(value) => value.normalizedDigest
+                case None => None
+            })
+    }
+    if (invalidFiles.contains("${module.id}\n${path}")) {
+        return public_model.SourceProvenance.unavailable("invalid_range",
+            sourceDigest: match (origin.provenance) {
+                case Some(value) => value.sourceDigest
+                case None => None
+            },
+            normalizedDigest: match (origin.provenance) {
+                case Some(value) => value.normalizedDigest
+                case None => None
+            })
+    }
+    match (origin.provenance) {
+        case Some(value) => value
+        case None => public_model.SourceProvenance.unavailable("capture_unavailable")
+    }
 }
 
 internal class PublicModuleProjection {
@@ -72,16 +90,18 @@ internal class PublicModuleProjection {
     let packages: Array<public_model.PackageDoc>
     let files: Array<public_model.FileDoc>
 
-    init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper,
-        repositoryRoot!: ?String = None) {
+    init(documentation: DocumentationSet, sourceMapper: PublicSourceMapper) {
+        let origins = indexedSourceOrigins(documentation.sourceFileOrigins)
+        let invalidFiles = invalidSourceRangeFiles(documentation, sourceMapper)
         let modules = ArrayList<public_model.ModuleDoc>()
         for (module in documentation.modules) {
             modules.add(
                 public_model.ModuleDoc(module.id, module.name, module.role, module.sourcePrefix,
                     packageNames: module.packageNames.toArray(), dependencyIds: module.dependencyIds.toArray(),
-                    organization: module.organization,
-                    repositoryPath: repositoryPathForModule(documentation, module, repositoryRoot)))
+                    organization: module.organization))
         }
+        let internalModulesById = HashMap<String, ModuleDoc>()
+        for (module in documentation.modules) { internalModulesById[module.id] = module }
         let packages = ArrayList<public_model.PackageDoc>()
         let files = ArrayList<public_model.FileDoc>()
         for (pkg in documentation.packages) {
@@ -93,15 +113,20 @@ internal class PublicModuleProjection {
                         targetSymbolIds: binding.targetSymbolIds.toArray()))
                 }
                 reExports.add(public_model.ReExportDoc(reExport.id, reExport.kind,
-                    reExport.targetPackageName, reExport.state, sourceMapper.range(reExport.source),
+                    reExport.targetPackageName, reExport.state, sourceMapper.range(pkg.moduleId, reExport.source),
                     organization: reExport.organization, targetModuleId: reExport.targetModuleId,
                     alias: reExport.alias, bindings: bindings.toArray()))
             }
             packages.add(
                 public_model.PackageDoc(pkg.name, pkg.moduleId, sourceFiles: pkg.sourceFiles.toArray(),
                     symbolIds: pkg.symbolIds.toArray(), reExports: reExports.toArray()))
+            let module = internalModulesById.get(pkg.moduleId)
             for (path in pkg.sourceFiles) {
-                files.add(public_model.FileDoc(path, pkg.moduleId, pkg.name))
+                let provenance = match (module) {
+                    case Some(value) => provenanceForPublicFile(origins, invalidFiles, value, path)
+                    case None => public_model.SourceProvenance.unavailable("capture_unavailable")
+                }
+                files.add(public_model.FileDoc(path, pkg.moduleId, pkg.name, provenance: provenance))
             }
         }
         this.modules = modules.toArray()
@@ -161,7 +186,7 @@ internal func publicSymbol(value: SymbolDoc, sourceMapper: PublicSourceMapper,
         case Some(state) => state
         case None => "unavailable"
     }
-    let declarationSource = sourceMapper.range(value.source)
+    let declarationSource = sourceMapper.range(value.moduleId, value.source)
     let parameters = ArrayList<public_model.ParameterDoc>()
     let annotations = ArrayList<public_model.AnnotationDoc>()
     let typeRelationships = ArrayList<public_model.TypeRelationship>()
@@ -198,8 +223,8 @@ internal func publicSymbol(value: SymbolDoc, sourceMapper: PublicSourceMapper,
         }, annotations: annotations.toArray(), typeRelationships: typeRelationships.toArray(),
         symbolRelationships: symbolRelationships.toArray(), documentation: match (value.documentation) {
             case Some(comment) => Some(
-                publicComment(comment, assetCollector, value.source.path, declarationSource, value.id,
-                    markdownContext, renderableIds, sourceMapper))
+                publicComment(comment, assetCollector, value.source.path, value.moduleId,
+                    declarationSource, value.id, markdownContext, renderableIds, sourceMapper))
             case None => None
         },
         origin: public_model.DeclarationOrigin(kind: value.origin.kind,
@@ -290,6 +315,28 @@ internal func capturedApiCollectionState(documentation: DocumentationSet): Strin
     "resolved"
 }
 
+private func publicDiagnosticSourceRange(documentation: DocumentationSet,
+    sourceMapper: PublicSourceMapper, diagnostic: Diagnostic, publicCode: String):
+    ?public_model.SourceRange {
+    let location = match (diagnostic.source) {
+        case Some(value) => value
+        case None => return None
+    }
+    if (publicCode == "CJDOC3115" || publicCode == "CJDOC3116" ||
+        publicCode == "CJDOC3117" || publicCode == "CJDOC3118") {
+        let moduleIds = HashSet<String>()
+        for (origin in documentation.sourceFileOrigins) {
+            if (origin.logicalPath == location.path) { let _ = moduleIds.add(origin.moduleId) }
+        }
+        if (moduleIds.size != 1) { return None }
+        for (moduleId in moduleIds) {
+            return sourceMapper.capturedRange(moduleId, location)
+        }
+        return None
+    }
+    Some(sourceMapper.range(location))
+}
+
 internal class PublicDiagnosticProjection {
     let diagnostics: Array<public_model.Diagnostic>
     let hasError: Bool
@@ -314,10 +361,8 @@ internal class PublicDiagnosticProjection {
             }
             diagnostics.add(
                 public_model.Diagnostic(diagnostic.severity, publicCode, diagnostic.message,
-                    source: match (diagnostic.source) {
-                        case Some(value) => Some(sourceMapper.range(value))
-                        case None => None
-                    }, symbolId: diagnostic.symbolId))
+                    source: publicDiagnosticSourceRange(documentation, sourceMapper, diagnostic,
+                        publicCode), symbolId: diagnostic.symbolId))
         }
         if (assetCollector.incomplete) {
             incompleteSource = true
@@ -372,9 +417,7 @@ private func projectPublicDocumentation(documentation: DocumentationSet, request
     inventorySnapshot: Array<ExternalDocResolver>,
     retainedHighlightFailures!: Array<public_model.Diagnostic> = []): public_model.DocumentationSet {
     let sourceMapper = PublicSourceMapper(origins: documentation.sourceFileOrigins.toArray())
-    let repositoryRoot = repositoryRootForRequest(request)
-    let moduleProjection = PublicModuleProjection(documentation, sourceMapper,
-        repositoryRoot: repositoryRoot)
+    let moduleProjection = PublicModuleProjection(documentation, sourceMapper)
     let providerProjection = PublicProviderProjection(documentation)
     // The project's own `[highlight]` policy decides whether any display data is
     // produced at all, so an unavailable or invalid configuration never silently

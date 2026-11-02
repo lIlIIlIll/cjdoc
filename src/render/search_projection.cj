@@ -334,7 +334,7 @@ private func searchProjectionBody(value: String, profile: String,
     (out.toString(), false)
 }
 
-/** Emit every author tag's identity and parsed descriptive prose as body text. */
+/** Emit one selected tag body; localizedTexts are identity/source evidence, not another search copy. */
 private func searchTagBodyText(tag: DocTag): String {
     let out = RenderTextBuffer()
     out.append(tag.name)
@@ -353,7 +353,7 @@ private func searchTagBodyText(tag: DocTag): String {
     out.toString()
 }
 
-/** Full retrieval body from the comment AST, tags and captured parameter prose. */
+/** Full retrieval body from the captured comment AST, selected tags and captured parameter prose. */
 private func searchFullBody(symbol: SymbolDoc): String {
     let comment = match (symbol.documentation) {
         case Some(value) => value

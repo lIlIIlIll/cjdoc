@@ -13,6 +13,35 @@ private func memberBrowserTestSource(line: Int64): SourceRange {
 @Test
 class HtmlMemberBrowserTest {
     @TestCase
+    func toolbarFollowsProjectedMemberCountWithoutCollapsingOverloads(): Unit {
+        let moduleId = "member-counts"
+        let owner = SymbolDoc("count-owner", "class", "Box", "fixture.Box", "fixture",
+            moduleId, "public", memberBrowserTestSource(1), "public class Box",
+            SemanticInfo("partial", "ast"))
+        for (count in [0, 1, 2, 50, 500]) {
+            let declarations = ArrayList<SymbolDoc>([owner])
+            for (index in 0..count) {
+                declarations.add(SymbolDoc("count-member-${index}", "function", "read",
+                    "fixture.Box.read", "fixture", moduleId, "public", memberBrowserTestSource(index + 2),
+                    "public func read(value: Int64 = ${index}): Unit", SemanticInfo("partial", "ast"),
+                    ownerId: Some(owner.id)))
+            }
+            let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"), "complete",
+                ProjectInfo("member-counts"), ConfigurationSnapshot(audience: "external"),
+                modules: [ModuleDoc(moduleId, "member-counts", "root", "", packageNames: ["fixture"])],
+                packages: [PackageDoc("fixture", moduleId)], declarations: declarations.toArray())
+            let projection = RenderProjection(documentation)
+            let html = renderSymbolPage(documentation, projection, projection.visibleIndex, owner,
+                HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
+            @Expect(html.contains("member-browser-toolbar"), count >= 2)
+            @Expect(html.contains("data-cjdoc-members-expand"), count >= 2)
+            @Expect(!html.contains("data-cjdoc-member-origin"))
+            @Expect(html.split("data-cjdoc-member data-member-name=").size - 1, count)
+            @Expect(html.contains("data-cjdoc-member-browser"), count > 0)
+        }
+    }
+
+    @TestCase
     func memberOriginsRequireResolvedVisibleRelationships(): Unit {
         let moduleId = "cjdoc:module:v1:member-browser-test"
         let ownerId = "owner"
@@ -81,6 +110,13 @@ class HtmlMemberBrowserTest {
         }
         @Expect(extensionSeen, true)
         @Expect(inheritedSeen, true)
+        let html = renderSymbolPage(documentation, projection, projection.visibleIndex, owner,
+            HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
+        @Expect(browser.origins.toArray(), ["declared", "inherited", "extension"])
+        @Expect(html.contains("data-cjdoc-member-filter"))
+        @Expect(html.contains("<option value=\"declared\">"))
+        @Expect(html.contains("<option value=\"inherited\">"))
+        @Expect(html.contains("<option value=\"extension\">"))
         match (memberContextOwner(projection, extensionMember)) {
             case Some(contextOwner) => @Expect(contextOwner.id, ownerId)
             case None => @Expect(true, false)
@@ -106,9 +142,17 @@ class HtmlMemberBrowserTest {
             packages: [PackageDoc("fixture", moduleId,
                 symbolIds: ["owner-safe", "direct-safe"])],
             declarations: [owner, direct])
-        let browser = RenderProjection(documentation).members(owner)
+        let projection = RenderProjection(documentation)
+        let browser = projection.members(owner)
         @Expect(browser.entries.size, 1)
         @Expect(browser.entries[0].origin, "declared")
+        let html = renderSymbolPage(documentation, projection, projection.visibleIndex, owner,
+            HashMap<String, String>(), HtmlTypeLinkIndex(documentation, projection))
+        @Expect(!html.contains("member-browser-toolbar"))
+        @Expect(!html.contains("data-cjdoc-member-filter"))
+        @Expect(!html.contains("data-cjdoc-members-expand"))
+        @Expect(html.contains("data-cjdoc-member "))
+        @Expect(html.contains(symbolAnchor(direct)))
     }
 }
 
