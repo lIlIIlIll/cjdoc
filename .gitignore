@@ -23,6 +23,8 @@
 !/docs/maintainer/reader-scale-budgets.json
 !/docs/maintainer/reader-scale-baseline.json
 !/docs/maintainer/reader-scale-presentation.json
+!/docs/maintainer/reader-scale-docs-173-177.json
+!/docs/maintainer/reader-scale-docs-173-177/*.aria.txt
 !/tests/fixtures/reader-presentation/*.aria.txt
 !/docs/maintainer/acceptance/issue-163/evidence.json
 !/.impeccable/design.json

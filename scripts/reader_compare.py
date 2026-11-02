@@ -11,9 +11,19 @@ import sys
 
 sys.dont_write_bytecode = True
 try:
-    from .strict_json import strict_load, strict_dumps
+    from .strict_json import strict_load, strict_loads, strict_dumps
+    from .reader_aria_transition import check_aria_pair
+    from .reader_ir_transition import TRANSITION_NAME, compare_ir_transition
+    from .reader_register import REPO, REFERENCE_TEMPLATE, validate_transition_budget
+    from .reader_search_identity import compare_search_identities, verify_search_identity
+    from .test_agent_artifacts import ContractError, document
 except ImportError:
-    from strict_json import strict_load, strict_dumps
+    from strict_json import strict_load, strict_loads, strict_dumps
+    from reader_aria_transition import check_aria_pair
+    from reader_ir_transition import TRANSITION_NAME, compare_ir_transition
+    from reader_register import REPO, REFERENCE_TEMPLATE, validate_transition_budget
+    from reader_search_identity import compare_search_identities, verify_search_identity
+    from test_agent_artifacts import ContractError, document
 
 
 class EvidenceError(ValueError):
@@ -137,12 +147,37 @@ def check_font_usage(before: dict, after: dict, profile: dict | None) -> None:
         require(all(font == inventory.get(font["family"]) for font in usage), "used font file differs from installed inventory")
 
 
-def check_native_ir(baseline: Path, after: Path, old: dict, new: dict, profile: dict | None) -> None:
+def doc_ir_registration(budgets: dict) -> dict | None:
+    registration = budgets.get("docIrTransition")
+    if registration is not None:
+        require(isinstance(registration, dict) and
+                set(registration) == {"name", "native", "published"} and
+                registration["name"] == TRANSITION_NAME, "unsupported Doc IR transition registration")
+    return registration
+
+
+def check_search_transition(before: dict, after: dict, registration: dict,
+                            sites: tuple[Path, Path] | None) -> None:
+    require(sites is not None, "registered search identity transition requires actual publisher artifacts")
+    proofs = [verify_search_identity(site, report["resources"], REPO / "docs/schema")
+              for site, report in zip(sites, (before, after))]
+    locale = before["environment"]["requestedUiLocale"]
+    compare_ir_transition(proofs[0]["docIr"], proofs[1]["docIr"],
+                          registration["published"][locale], proofs[0]["docIrSha256"])
+    compare_search_identities(*proofs)
+
+
+def check_native_ir(baseline: Path, after: Path, old: dict, new: dict, profile: dict | None,
+                    transition: dict | None = None) -> None:
     documents = []
     for root, receipt in ((baseline, old), (after, new)):
-        path = root / "native-json/docs.json"
-        require(digest(path) == receipt["nativeResult"]["docIrSha256"], "native Doc IR receipt hash mismatch")
-        documents.append(strict_load(path))
+        encoded = (root / "native-json/docs.json").read_bytes()
+        require(hashlib.sha256(encoded).hexdigest() == receipt["nativeResult"]["docIrSha256"],
+                "native Doc IR receipt hash mismatch")
+        documents.append(strict_loads(encoded, description="native Doc IR observation"))
+    if transition is not None:
+        compare_ir_transition(*documents, transition["native"], old["nativeResult"]["docIrSha256"])
+        return
     if old["nativeResult"]["docIrSha256"] == new["nativeResult"]["docIrSha256"]:
         return
     require(profile is not None, "native Doc IR changed; author input was not preserved")
@@ -156,7 +191,7 @@ def check_native_ir(baseline: Path, after: Path, old: dict, new: dict, profile: 
 
 
 def check_visuals(before: dict, after: dict, required: bool, failures: list[str],
-                  profile: dict | None = None) -> None:
+                  profile: dict | None = None, aria_registration: dict | None = None) -> None:
     def key(row: dict) -> str:
         return json.dumps([row["viewport"], row["theme"], row["target"], row["locale"]], sort_keys=True)
     old, new = {key(row): row for row in before["visuals"]}, {key(row): row for row in after["visuals"]}
@@ -176,10 +211,12 @@ def check_visuals(before: dict, after: dict, required: bool, failures: list[str]
                         f"visual {identifier}: unregistered {label} body typography")
     a, b = before["accessibility"], after["accessibility"]
     require(a["screenReaderSpeech"] == b["screenReaderSpeech"], "screen-reader evidence boundary changed")
+    if aria_registration is not None:
+        check_aria_pair(before, after, aria_registration)
     if a.get("status") != "not-applicable":
-        if profile is None:
+        if aria_registration is None and profile is None:
             require(a["noScript"]["accessibleTree"] == b["noScript"]["accessibleTree"], "no-JS accessible tree changed")
-        else:
+        elif aria_registration is None:
             locale = after["environment"]["requestedUiLocale"]
             for label, observation in (("baseline", a), ("after", b)):
                 tree_hash = hashlib.sha256(observation["noScript"]["accessibleTree"].encode()).hexdigest()
@@ -199,7 +236,7 @@ def check_visuals(before: dict, after: dict, required: bool, failures: list[str]
 
 
 def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,
-                    failures: list[str]) -> list[dict]:
+                    failures: list[str], sites: tuple[Path, Path] | None = None) -> list[dict]:
     for key in ("schemaVersion", "recipe", "sourceSha256", "taskManifestSha256", "harness", "environment", "nativeIndexEntries"):
         require(before.get(key) == after.get(key) and before.get(key) is not None, f"browser {key} changed or missing")
     require(before.get("harness") and before["environment"].get("fontFiles"), "missing harness or font identities")
@@ -207,9 +244,13 @@ def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,
     profile = presentation_profile(budgets)
     check_font_usage(before, after, profile)
     require(not before["failures"] and not after["failures"], "browser instrumentation failed")
-    for name in ("search-index.json", "search-index.js"):
-        require(before["resources"][name]["sha256"] == after["resources"][name]["sha256"],
-                f"{name}: index/body/identity payload changed; not a same-input UI comparison")
+    transition = doc_ir_registration(budgets)
+    if transition is not None:
+        check_search_transition(before, after, transition, sites)
+    else:
+        for name in ("search-index.json", "search-index.js"):
+            require(before["resources"][name]["sha256"] == after["resources"][name]["sha256"],
+                    f"{name}: index/body/identity payload changed; not a same-input UI comparison")
     old, new = keyed(before["transports"], "transport", "transport"), keyed(after["transports"], "transport", "transport")
     require(set(old) == set(new) == set(budgets["transports"]), "missing or unexpected transport")
     measurements = []
@@ -233,7 +274,7 @@ def compare_browser(before: dict, after: dict, manifest: dict, budgets: dict,
         measurements.append(bounded(name + "/bytes", number(before["resources"][name]["bytes"], name),
             number(size["bytes"], name), number(budgets["absolute"]["bundleFileBytes"], name),
             budgets["relative"]["bundle"], failures))
-    check_visuals(before, after, budgets["requireScreenshots"], failures, profile)
+    check_visuals(before, after, budgets["requireScreenshots"], failures, profile, budgets.get("ariaTransition"))
     return measurements
 
 
@@ -241,6 +282,8 @@ def compare(baseline: Path, after: Path, manifest_file: Path, budget_file: Path)
     manifest, budgets = strict_load(manifest_file), strict_load(budget_file)
     require(budgets["schemaVersion"] == "cjdoc.reader-budgets/1", "unsupported registered budget")
     require(type(budgets["minimumSamples"]) is int and budgets["minimumSamples"] >= 20, "budget requires at least 20 samples")
+    validate_transition_budget(budgets, REFERENCE_TEMPLATE)
+    transition = doc_ir_registration(budgets)
     old_file, new_file = baseline / "reader-generation.json", after / "reader-generation.json"
     old, new = strict_load(old_file), strict_load(new_file)
     require(digest(old_file) == budgets["baseline"]["generationSha256"], "baseline generation receipt is not the registered observation")
@@ -259,14 +302,22 @@ def compare(baseline: Path, after: Path, manifest_file: Path, budget_file: Path)
                 "baselineReason": old.get("reason"), "afterReason": new.get("reason"), "measurements": [],
                 "semantics": "unsupported scale is not PASS; no missing browser metrics are synthesized"}
     require(old["status"] == new["status"] == "measured", "native pipeline did not complete")
-    check_native_ir(baseline, after, old, new, presentation_profile(budgets))
+    check_native_ir(baseline, after, old, new, presentation_profile(budgets), transition)
     require(old["nativeResult"]["status"] == new["nativeResult"]["status"], "native uncertainty status changed")
     failures, measurements = [], []
     require([item["locale"] for item in old["locales"]] == [item["locale"] for item in new["locales"]], "locale set changed")
+    if transition is not None:
+        require(set(transition["published"]) == {item["locale"] for item in old["locales"]},
+                "registered publisher locale set changed")
     for a, b in zip(old["locales"], new["locales"]):
         old_browser, new_browser = baseline / a["browserReport"], after / b["browserReport"]
         require(digest(old_browser) == budgets["baseline"]["browserSha256"][a["locale"]], "unregistered browser baseline")
-        measurements += compare_browser(strict_load(old_browser), strict_load(new_browser), manifest, budgets, failures)
+        sites = None
+        if transition is not None:
+            sites = (document(baseline, a["site"] + "/search-index.json").parent,
+                     document(after, b["site"] + "/search-index.json").parent)
+        measurements += compare_browser(strict_load(old_browser), strict_load(new_browser),
+                                        manifest, budgets, failures, sites)
     return {"schemaVersion": "cjdoc.reader-comparison/1", "status": "failed" if failures else "pass",
             "pass": not failures, "failures": failures, "measurements": measurements,
             "baselineGenerationSha256": digest(old_file), "afterGenerationSha256": digest(new_file),
@@ -281,7 +332,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         result = compare(args.baseline, args.after, args.manifest, args.budgets)
-    except (OSError, ValueError, KeyError, TypeError) as error:
+    except (OSError, ValueError, KeyError, TypeError, ContractError) as error:
         result = {"schemaVersion": "cjdoc.reader-comparison/1", "status": "invalid-evidence", "pass": False,
                   "reason": str(error).replace(str(Path.home()), "$HOME")}
     args.output.write_text(strict_dumps(result, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
