@@ -56,6 +56,7 @@ Doc IR 仍为 v16。生成器版本改为 `0.7.6`，需要重新生成 current g
 - 侧栏仅对无 fragment 的 HTML 路由与实际 `currentPagePath` 精确相等时设置 `aria-current="page"`。只有真实 `index.html` 路由让 Overview 成为当前页；`#packages` 等片段只影响章节高亮，API Reference 不冒充当前页。包页、声明页只在实际链接指向当前文档时为 current，包/owner 的上下文链接仅作 ancestor；侧栏没有对应成员链接时可没有 current 项。
 - 已运行双语各 94 页静态路由检查、Chromium 的 file 及 HTTP 子路径代表场景、4 项导航脚本测试和 14 项 HTML validator 测试。后续完整 canonical 浏览器回归通过 56/56，Admonition 专项矩阵通过 63/63，均未重试或跳过。
 - 实际使用 Orca 51.1 与 Chromium 153 检验固定双仓库 yjson 的中英文 backend 类型、`parseFloat64` 独立成员、包页和首页，以及双语 extension fixture：精确页面链接产生 current-page 语音，成员页的 owner 只读作链接、不产生 current-page 语音。证据来自真实 Orca 生成并交给 Speech Dispatcher/eSpeak 合成的输出，不仅是 ARIA tree；不将其表述为真人听测、完整人类可用性实验或 Windows/NVDA 验收。
+- 嵌套 owner 链沿同模块、同包的可见容器解析到既有顶层侧栏祖先，不把祖先冒充当前页。严格合法的公开 Doc IR `Outer → Inner → render` fixture 通过双语、启用/禁用 JavaScript 的 8 项真实浏览器检查与 byte-identical JSON round-trip；4 项实际 Orca 场景确认两种嵌套页面只播报 Outer 链接、不播报 current page。该 fixture 检验公开模型的 renderer 契约，不声称当前 SDK 支持源码嵌套 class。
 
 - 成员工具栏以最终投影后的 `HtmlMemberBrowser.entries` 数量为准：零或一个成员不生成筛选、来源选择和批量展开/收起；两个及以上成员显示筛选与展开/收起。来源选择器只在实际成员含两个及以上来源时出现，选项只列实际存在的 declared、inherited、extension 来源。单成员仍保留原生 `details`、签名、契约、操作和深链。
 - 本批产品重建通过；HTML 原生测试实际选中并通过 61 项、跳过 94 项。Chromium 实测单成员原生展开、单来源多成员无来源选择器、混合来源筛选、名称查询及批量展开；已失效的 session 来源值恢复为 All。实际 94 页站点及 48 条搜索条目通过 HTML validator。
