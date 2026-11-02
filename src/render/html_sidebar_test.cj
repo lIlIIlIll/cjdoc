@@ -57,6 +57,61 @@ class HtmlSidebarNavigationTest {
     }
 
     @TestCase
+    func nestedTypeAndMemberPagesHighlightOnlyTopLevelOwner(): Unit {
+        let moduleId = "cjdoc:module:v1:sidebar-nested-owner"
+        let packageName = "fixture"
+        let path = "src/nested.cj"
+        let source = SourceRange(path, SourcePosition(1, 1, 0),
+            SourcePosition(6, 2, 90))
+        let idPrefix =
+            "cjdoc:v2:cjdoc%3Amodule%3Av1%3Asidebar-nested-owner::fixture"
+        let outerId = idPrefix + "::class:Outer#g0()"
+        let innerId = idPrefix + "::Outer::class:Inner#g0()"
+        let memberId = idPrefix + "::Outer::Inner::function:render#g0()"
+        let semantic = SemanticInfo("partial", "syntax")
+        let outer = SymbolDoc(outerId, "class", "Outer", "fixture.Outer",
+            packageName, moduleId, "public", source, "public class Outer", semantic)
+        let inner = SymbolDoc(innerId, "class", "Inner", "fixture.Outer.Inner",
+            packageName, moduleId, "public", source, "public class Inner", semantic,
+            ownerId: Some(outerId))
+        let unit = TypeRef("primitive", "Unit",
+            SemanticType("partial", provider: Some("syntax")))
+        let member = SymbolDoc(memberId, "function", "render",
+            "fixture.Outer.Inner.render", packageName, moduleId, "public", source,
+            "public func render(): Unit", semantic, ownerId: Some(innerId),
+            returnType: Some(unit))
+        let documentation = DocumentationSet(GeneratorInfo("cjdoc", "test"),
+            "complete", ProjectInfo("nested-sidebar"),
+            ConfigurationSnapshot(audience: "external"),
+            providers: [ProviderInfo("syntax", "1", moduleId, "partial",
+                SemanticCapabilities(true, true, true, false, false))],
+            modules: [ModuleDoc(moduleId, "nested-sidebar", "root", "",
+                packageNames: [packageName])],
+            packages: [PackageDoc(packageName, moduleId,
+                sourceFiles: [path], symbolIds: [outerId, innerId, memberId])],
+            files: [FileDoc(path, moduleId, packageName,
+                provenance: SourceProvenance.unavailable("no_project_repository"))],
+            declarations: [outer, inner, member])
+        validateDocumentationSet(documentation)
+        let projection = RenderProjection(documentation)
+        let packagePath = packagePagePath(moduleId, packageName)
+        for (current in [inner, member]) {
+            let currentPath = symbolPagePath(current)
+            let out = RenderTextBuffer()
+            appendHtmlSidebar(out, documentation, projection, "../", "en",
+                currentPackagePath: Some(packagePath), currentRoute: "api",
+                currentSymbol: Some(current), currentPagePath: Some(currentPath))
+            let html = out.toString()
+            @Expect(html.contains("data-cjdoc-current-symbol=\"${outerId}\""), true)
+            @Expect(html.contains("data-cjdoc-current-page=\"${currentPath}\""), true)
+            @Expect(html.split("href=\"../${symbolPagePath(outer)}\"").size - 1, 1)
+            @Expect(html.contains("class=\"sidebar-symbol is-ancestor\""), true)
+            @Expect(!html.contains("aria-current=\"page\""))
+            @Expect(!html.contains("href=\"../${currentPath}\""))
+        }
+    }
+
+    @TestCase
     func overloadedTopLevelDeclarationsKeepDistinctVisibleLabels(): Unit {
         let moduleId = "cjdoc:module:v1:sidebar-overloads"
         let source = SourceRange("src/fixture.cj", SourcePosition(1, 1, 0),

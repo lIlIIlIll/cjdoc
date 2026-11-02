@@ -54,7 +54,8 @@ Doc IR 仍为 v16。生成器版本改为 `0.7.6`，需要重新生成 current g
 - 本地 STS 1.2.0 产品构建及中英文 reference fixture 生成已运行；实际 Chromium 中展开 Token 的反向使用区域，显示成员链接和参数使用位置。此记录不代表正式 source-bound 门禁或远端 CI 通过。
 
 - 侧栏仅对无 fragment 的 HTML 路由与实际 `currentPagePath` 精确相等时设置 `aria-current="page"`。只有真实 `index.html` 路由让 Overview 成为当前页；`#packages` 等片段只影响章节高亮，API Reference 不冒充当前页。包页、声明页只在实际链接指向当前文档时为 current，包/owner 的上下文链接仅作 ancestor；侧栏没有对应成员链接时可没有 current 项。
-- 已运行双语各 94 页静态路由检查、Chromium 的 file 及 HTTP 子路径代表场景、4 项导航脚本测试和 14 项 HTML validator 测试。尚未进行实际读屏验收；ARIA/DOM 检查不能替代读屏结果。
+- 已运行双语各 94 页静态路由检查、Chromium 的 file 及 HTTP 子路径代表场景、4 项导航脚本测试和 14 项 HTML validator 测试。后续完整 canonical 浏览器回归通过 56/56，Admonition 专项矩阵通过 63/63，均未重试或跳过。
+- 实际使用 Orca 51.1 与 Chromium 153 检验固定双仓库 yjson 的中英文 backend 类型、`parseFloat64` 独立成员、包页和首页，以及双语 extension fixture：精确页面链接产生 current-page 语音，成员页的 owner 只读作链接、不产生 current-page 语音。证据来自真实 Orca 生成并交给 Speech Dispatcher/eSpeak 合成的输出，不仅是 ARIA tree；不将其表述为真人听测、完整人类可用性实验或 Windows/NVDA 验收。
 
 - 成员工具栏以最终投影后的 `HtmlMemberBrowser.entries` 数量为准：零或一个成员不生成筛选、来源选择和批量展开/收起；两个及以上成员显示筛选与展开/收起。来源选择器只在实际成员含两个及以上来源时出现，选项只列实际存在的 declared、inherited、extension 来源。单成员仍保留原生 `details`、签名、契约、操作和深链。
 - 本批产品重建通过；HTML 原生测试实际选中并通过 61 项、跳过 94 项。Chromium 实测单成员原生展开、单来源多成员无来源选择器、混合来源筛选、名称查询及批量展开；已失效的 session 来源值恢复为 All。实际 94 页站点及 48 条搜索条目通过 HTML validator。

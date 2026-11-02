@@ -7,6 +7,31 @@ internal func label(locale: String, english: String, chinese: String): String {
     if (locale == "zh-CN") { chinese } else { english }
 }
 
+private func sidebarTopLevelContext(projection: RenderProjection,
+    symbol: SymbolDoc): SymbolDoc {
+    let context = memberContextOwner(projection, symbol).getOrDefault({ => symbol })
+    var current = context
+    // A valid owner chain cannot exceed the visible declaration inventory.
+    var remaining = projection.visibleIndex.size
+    while (current.ownerId.isSome()) {
+        if (remaining == 0) { return context }
+        remaining -= 1
+        let ownerId = current.ownerId.getOrThrow()
+        match (projection.visibleIndex.get(ownerId)) {
+            case Some(owner) =>
+                if (!isDocIrContainerKind(owner.kind) ||
+                    owner.moduleId != context.moduleId ||
+                    owner.packageName != context.packageName) {
+                    return context
+                }
+                current = owner
+            case None => return context
+        }
+    }
+    current
+}
+
+
 internal func sidebarPageIsCurrent(targetPath: String, currentPagePath: ?String): Bool {
     if (targetPath.isEmpty() || targetPath.contains("#") || !targetPath.endsWith(".html")) { return false }
     match (currentPagePath) {
@@ -20,9 +45,7 @@ internal func appendHtmlSidebar(out: RenderTextBuffer, documentation: Documentat
     currentPackagePath!: ?String = None, currentRoute!: String = "overview",
     currentSymbol!: ?SymbolDoc = None, currentPagePath!: ?String = None): Unit {
     let sidebarSymbol: ?SymbolDoc = match (currentSymbol) {
-        case Some(symbol) =>
-            let owner = memberContextOwner(projection, symbol)
-            if (owner.isSome()) { owner } else { currentSymbol }
+        case Some(symbol) => Some(sidebarTopLevelContext(projection, symbol))
         case None => None
     }
     let currentId = match (sidebarSymbol) { case Some(symbol) => symbol.id case None => "" }
