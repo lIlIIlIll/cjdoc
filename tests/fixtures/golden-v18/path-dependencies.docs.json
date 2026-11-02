@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "cjdoc.doc-ir/17",
+  "schemaVersion": "cjdoc.doc-ir/18",
   "generator": {
     "name": "cjdoc",
     "version": "0.7.7",
@@ -295,7 +295,6 @@
       "role": "root",
       "sourcePrefix": "",
       "organization": null,
-      "repositoryPath": null,
       "packageNames": [
         "path_dependencies_fixture"
       ],
@@ -310,7 +309,6 @@
       "role": "pathDependency",
       "sourcePrefix": "dependencies/path_dep_alpha",
       "organization": null,
-      "repositoryPath": null,
       "packageNames": [
         "path_dep_alpha"
       ],
@@ -324,7 +322,6 @@
       "role": "pathDependency",
       "sourcePrefix": "dependencies/path_dep_beta",
       "organization": null,
-      "repositoryPath": null,
       "packageNames": [
         "path_dep_beta"
       ],
@@ -378,17 +375,47 @@
     {
       "path": "dependencies/path_dep_alpha/src/alpha.cj",
       "moduleId": "cjdoc:module:v1:path:path_dep_alpha",
-      "packageName": "path_dep_alpha"
+      "packageName": "path_dep_alpha",
+      "provenance": {
+        "state": "unavailable",
+        "reason": "no_project_repository",
+        "repository": null,
+        "repositoryPath": null,
+        "sourceDigest": null,
+        "normalizedDigest": null,
+        "evidenceIdentity": null,
+        "evidenceKind": "none"
+      }
     },
     {
       "path": "dependencies/path_dep_beta/src/beta.cj",
       "moduleId": "cjdoc:module:v1:path:path_dep_beta",
-      "packageName": "path_dep_beta"
+      "packageName": "path_dep_beta",
+      "provenance": {
+        "state": "unavailable",
+        "reason": "no_project_repository",
+        "repository": null,
+        "repositoryPath": null,
+        "sourceDigest": null,
+        "normalizedDigest": null,
+        "evidenceIdentity": null,
+        "evidenceKind": "none"
+      }
     },
     {
       "path": "src/root.cj",
       "moduleId": "cjdoc:module:v1:root",
-      "packageName": "path_dependencies_fixture"
+      "packageName": "path_dependencies_fixture",
+      "provenance": {
+        "state": "unavailable",
+        "reason": "no_project_repository",
+        "repository": null,
+        "repositoryPath": null,
+        "sourceDigest": null,
+        "normalizedDigest": null,
+        "evidenceIdentity": null,
+        "evidenceKind": "none"
+      }
     }
   ],
   "declarations": [
@@ -486,9 +513,12 @@
               "url": "symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334170--112493498-1871090340.html",
               "apiIdentity": "",
               "language": ""
-            }
+            },
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "dependencies/path_dep_alpha/src/alpha.cj",
@@ -646,7 +676,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "dependencies/path_dep_beta/src/beta.cj",
@@ -820,9 +851,12 @@
               "url": "symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334170--455321135-1735653719.html",
               "apiIdentity": "",
               "language": ""
-            }
+            },
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/root.cj",

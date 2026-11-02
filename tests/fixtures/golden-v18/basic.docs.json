@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "cjdoc.doc-ir/17",
+  "schemaVersion": "cjdoc.doc-ir/18",
   "generator": {
     "name": "cjdoc",
     "version": "0.7.7",
@@ -111,7 +111,6 @@
       "role": "root",
       "sourcePrefix": "",
       "organization": null,
-      "repositoryPath": null,
       "packageNames": [
         "basic"
       ],
@@ -163,7 +162,17 @@
     {
       "path": "src/api.cj",
       "moduleId": "cjdoc:module:v1:root",
-      "packageName": "basic"
+      "packageName": "basic",
+      "provenance": {
+        "state": "unavailable",
+        "reason": "no_project_repository",
+        "repository": null,
+        "repositoryPath": null,
+        "sourceDigest": null,
+        "normalizedDigest": null,
+        "evidenceIdentity": null,
+        "evidenceKind": "none"
+      }
     }
   ],
   "declarations": [
@@ -228,9 +237,12 @@
             "description": "Box value.",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -481,7 +493,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -598,7 +611,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -714,9 +728,12 @@
             "description": "Initial value.",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -959,9 +976,12 @@
             "description": "Current number.",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -1119,7 +1139,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -1254,7 +1275,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -1716,7 +1738,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -1848,7 +1871,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -2012,7 +2036,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -2157,7 +2182,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -2282,7 +2308,9 @@
             "description": "Input value.",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           },
           {
             "name": "return",
@@ -2290,9 +2318,12 @@
             "description": "Same value.",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -2526,7 +2557,9 @@
             "description": "Text.",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           },
           {
             "name": "param",
@@ -2534,9 +2567,12 @@
             "description": "Strict mode.",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -2762,7 +2798,9 @@
             "description": "Input text.",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           },
           {
             "name": "return",
@@ -2770,9 +2808,12 @@
             "description": "Parsed value.",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -3029,7 +3070,9 @@
             "description": "Input bytes.",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           },
           {
             "name": "return",
@@ -3037,9 +3080,12 @@
             "description": "Parsed size.",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -3331,7 +3377,9 @@
             "description": "输入文本。",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           },
           {
             "name": "return",
@@ -3339,7 +3387,9 @@
             "description": "解析结果。",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           },
           {
             "name": "throws",
@@ -3350,7 +3400,9 @@
             "navigation": [
               "unresolved",
               "no documentation symbol in the selected module dependency context"
-            ]
+            ],
+            "entryId": null,
+            "source": null
           },
           {
             "name": "see",
@@ -3369,7 +3421,9 @@
               "url": "symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--396395801-790842207.html",
               "apiIdentity": "",
               "language": ""
-            }
+            },
+            "entryId": null,
+            "source": null
           },
           {
             "name": "see",
@@ -3388,7 +3442,9 @@
               "url": "symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--368765265-761285715.html",
               "apiIdentity": "",
               "language": ""
-            }
+            },
+            "entryId": null,
+            "source": null
           },
           {
             "name": "see",
@@ -3407,7 +3463,9 @@
               "url": "symbols/symbol-636a646f633a76323a636a646f632533416d6f64756c65253341763125334172--1319689488-2142671211.html",
               "apiIdentity": "",
               "language": ""
-            }
+            },
+            "entryId": null,
+            "source": null
           },
           {
             "name": "since",
@@ -3415,9 +3473,12 @@
             "description": "0.1.0",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -3620,7 +3681,9 @@
             "description": "文本值。",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           },
           {
             "name": "return",
@@ -3628,9 +3691,12 @@
             "description": "原文本。",
             "referenceState": "unavailable",
             "targetSymbolId": null,
-            "navigation": null
+            "navigation": null,
+            "entryId": null,
+            "source": null
           }
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -3784,7 +3850,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -3907,7 +3974,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",
@@ -4032,7 +4100,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "src/api.cj",

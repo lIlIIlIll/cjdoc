@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "cjdoc.doc-ir/17",
+  "schemaVersion": "cjdoc.doc-ir/18",
   "generator": {
     "name": "cjdoc",
     "version": "0.7.7",
@@ -238,7 +238,6 @@
       "role": "workspace",
       "sourcePrefix": "packages/alpha",
       "organization": null,
-      "repositoryPath": null,
       "packageNames": [
         "workspace_alpha"
       ],
@@ -252,7 +251,6 @@
       "role": "workspace",
       "sourcePrefix": "packages/beta",
       "organization": null,
-      "repositoryPath": null,
       "packageNames": [
         "workspace_beta"
       ],
@@ -293,12 +291,32 @@
     {
       "path": "packages/alpha/src/alpha.cj",
       "moduleId": "cjdoc:module:v1:workspace:packages/alpha",
-      "packageName": "workspace_alpha"
+      "packageName": "workspace_alpha",
+      "provenance": {
+        "state": "unavailable",
+        "reason": "no_project_repository",
+        "repository": null,
+        "repositoryPath": null,
+        "sourceDigest": null,
+        "normalizedDigest": null,
+        "evidenceIdentity": null,
+        "evidenceKind": "none"
+      }
     },
     {
       "path": "packages/beta/src/beta.cj",
       "moduleId": "cjdoc:module:v1:workspace:packages/beta",
-      "packageName": "workspace_beta"
+      "packageName": "workspace_beta",
+      "provenance": {
+        "state": "unavailable",
+        "reason": "no_project_repository",
+        "repository": null,
+        "repositoryPath": null,
+        "sourceDigest": null,
+        "normalizedDigest": null,
+        "evidenceIdentity": null,
+        "evidenceKind": "none"
+      }
     }
   ],
   "declarations": [
@@ -380,7 +398,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "packages/alpha/src/alpha.cj",
@@ -538,7 +557,8 @@
         },
         "tags": [
           
-        ]
+        ],
+        "localizationScope": "all"
       },
       "source": {
         "path": "packages/beta/src/beta.cj",
