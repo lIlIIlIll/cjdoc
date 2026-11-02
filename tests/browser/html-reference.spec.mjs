@@ -136,10 +136,13 @@ async function expectStable(page) {
       .map(link => ({href: link.href, fragment: new URL(link.href).hash}))));
   const documentUrl = new URL(page.url());
   documentUrl.hash = '';
+  documentUrl.search = '';
   expect(navigation.length).toBeLessThanOrEqual(1);
   for (const current of navigation) {
+    const currentUrl = new URL(current.href);
+    currentUrl.search = '';
     expect(current.fragment).toBe('');
-    expect(current.href).toBe(documentUrl.href);
+    expect(currentUrl.href).toBe(documentUrl.href);
   }
 }
 

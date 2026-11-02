@@ -245,6 +245,7 @@ node tests/browser/node_modules/@playwright/test/cli.js test \
 分组和标签变量指向含 `en/index.html` 与 `zh-CN/index.html` 的父目录；缺失会使收集失败。
 参考页必须传完整 repository 参数，否则源码操作不会出现。完整验收应报告实际通过、失败和跳过数量，
 不把缺少阅读/版本 fixture 后的跳过结果写成完整通过。
+侧栏 current-page 按 URL 的 origin/pathname 核对；搜索筛选 query 与 fragment 是同一文档上的客户端状态，不构成另一页面。当前侧栏链接本身仍不得含 fragment；tag、moduleId、snapshotId 等查询状态由导航用例分别断言保留。
 
 ## 验证层级
 
