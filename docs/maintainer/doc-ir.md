@@ -92,6 +92,9 @@ bash scripts/update_goldens.sh
 捕获的提示节点为 `kind="admonition"`，`literal=""`，`metadata` 恰为 `{"level":"note|warning|danger"}`，并包含非空 block children。它只能作为 `document` 的直接子节点，正文仍是节点 children；未知 metadata、inline/空/嵌套提示和其它深度的提示都不符合 current schema。Markdown/HTML/Agent/query 投影读取捕获 AST，不重新解释作者字符串。提示 marker 产生的等级只表示作者文本，不是 cjdoc 对代码风险的判定。
 
 `DocComment.localizationScope` 在 wire 中必需，值为 `all` 或 `admonitions`，构造默认值为 `all`；`all` 保持整份注释的既有本地化行为。`admonitions` 表示仅提示可本地化：`defaultLanguage` 必须为 `null`，`localizedTexts` 只含 `note`、`warning`、`danger`，普通摘要、正文与其他标签仍来自捕获的基础注释；scope 不能由空 `localizedTexts` 推断。`DocTag.entryId` 与 `DocTag.source` 的构造默认值均为 `None`，`DocumentationText.entryId` 的构造默认值也为 `None`；三者始终是必需的 nullable wire 字段，缺值写 `null`。提示 ID 与 level/声明关联，冲突或无 ID 条目保留为 unpaired/invalid，不猜配、不丢掉作者内容。提示 wrapper、ID、来源和 scope 均参与严格重放验证与现有 Doc IR 资源预算，不提高 64 MiB、深度、对象或数组上限。
+
+手工构造消费者 fixture 时也必须提供这些 nullable 字段；这不改变 `fieldId` / `contentLanguage` 既有的可选性。i18n 门禁同时验证必需的空值和可选元数据的独立重放。
+
 Windows source-free 回放必须保留子进程的原生运行时 PATH，同时从工具定位入口排除 compiler/cjpm。用无编译器调用断言隔离工具链，不要通过缩窄 PATH 造成运行时 DLL 加载失败。
 
 Doc IR/18 的 `declaration/3`、`page/2` 与 `query-result/4` 增加来源相关消费者形状；旧版本输入不兼容。`query-request/3`、`search-index/11`、`search-contract/2` 保持不变。需要使用旧 JSON 的项目须从保存的源码重新生成当前 Doc IR 和站点，不能只改 `schemaVersion` 或迁移旧 JSON。

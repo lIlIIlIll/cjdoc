@@ -112,7 +112,7 @@ class PublicationIrTests(unittest.TestCase):
         comment = value["declarations"][0]["documentation"]
         for language in ("en", "zh-CN"):
             comment["localizedTexts"].append(dict(kind="see", subject="Existing", language=language,
-                fieldId=preferred, text="Existing opaque field", state="valid", referenceState="unavailable", targetSymbolId=None))
+                fieldId=preferred, entryId=None, text="Existing opaque field", state="valid", referenceState="unavailable", targetSymbolId=None))
         output = project(value)
         fields = output["declarations"][0]["documentation"]["localizedTexts"]
         hidden = next(field["fieldId"] for field in fields if field["kind"] == "see" and field["subject"] == "First")
